@@ -53,6 +53,9 @@ type CreatePlacementGroupInput struct {
 	// Constraints: Up to 255 ASCII characters
 	GroupName *string
 
+	// Reserved for future use.
+	LinkedGroupId *string
+
 	// The number of partitions. Valid only when Strategy is set to partition .
 	PartitionCount *int32
 

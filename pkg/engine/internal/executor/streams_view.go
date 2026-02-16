@@ -18,8 +18,6 @@ import (
 
 // streamsView provides a view of the streams in a section, allowing for
 // querying labels of a stream.
-//
-// streamsView lazily loads streams upon the first call.
 type streamsView struct {
 	sec           *streams.Section
 	streamIDs     []int64
@@ -28,7 +26,8 @@ type streamsView struct {
 	batchSize     int
 
 	initialized  bool
-	streams      arrow.Table
+	reader       *streams.Reader
+	streams      arrow.Table   // Nil if reading hasn't happened yet.
 	idRowMapping map[int64]int // Mapping of stream ID to absolute row index in the streams table.
 	streamLabels map[int64][]labels.Label
 }
@@ -89,11 +88,56 @@ func (v *streamsView) NumLabels() int {
 	return len(v.searchColumns) - 1
 }
 
+var errStreamsViewNotOpen = errors.New("streams view not opened")
+
+// Open initializes streamsView resources.
+func (v *streamsView) Open(ctx context.Context) error {
+	if v.initialized {
+		return nil
+	}
+
+	ctx, region := xcap.StartRegion(ctx, "streamsView.init")
+	defer region.End()
+
+	if v.idColumn == nil { // Initialized in [newStreamsView].
+		// The streams builder always produces a section with a streams ID column.
+		// If we hit this, someone probably made a custom section and provided it
+		// to us.
+		return fmt.Errorf("section does not contain a stream ID column")
+	}
+
+	readerOptions := streams.ReaderOptions{
+		Columns:   v.searchColumns,
+		Allocator: memory.DefaultAllocator,
+	}
+
+	var scalarIDs []scalar.Scalar
+	for _, id := range v.streamIDs {
+		scalarIDs = append(scalarIDs, scalar.NewInt64Scalar(id))
+	}
+	if len(scalarIDs) > 0 {
+		readerOptions.Predicates = []streams.Predicate{
+			streams.InPredicate{Column: v.idColumn, Values: scalarIDs},
+		}
+	}
+
+	r := streams.NewReader(readerOptions)
+	if err := r.Open(ctx); err != nil {
+		return fmt.Errorf("opening streams reader: %w", err)
+	}
+
+	v.reader = r
+	v.initialized = true
+	return nil
+}
+
 // Labels returns all of the non-null labels of a stream with the given
 // id. If [streamsViewOptions] included a subset of labels, only those labels
 // are returned.
 func (v *streamsView) Labels(ctx context.Context, id int64) ([]labels.Label, error) {
-	if err := v.init(ctx); err != nil {
+	if !v.initialized {
+		return nil, errStreamsViewNotOpen
+	} else if err := v.lazyRead(ctx); err != nil {
 		return nil, err
 	}
 
@@ -148,43 +192,16 @@ func (v *streamsView) Labels(ctx context.Context, id int64) ([]labels.Label, err
 	return lbs, nil
 }
 
-func (v *streamsView) init(ctx context.Context) (err error) {
-	if v.initialized {
+func (v *streamsView) lazyRead(ctx context.Context) (err error) {
+	if v.streams != nil {
 		return nil
 	}
-
-	ctx, region := xcap.StartRegion(ctx, "streamsView.init")
-	defer region.End()
-
-	if v.idColumn == nil { // Initialized in [newStreamsView].
-		// The streams builder always produces a section with a streams ID column.
-		// If we hit this, someone probably made a custom section and provided it
-		// to us.
-		return fmt.Errorf("section does not contain a stream ID column")
-	}
-
-	readerOptions := streams.ReaderOptions{
-		Columns:   v.searchColumns,
-		Allocator: memory.DefaultAllocator,
-	}
-
-	var scalarIDs []scalar.Scalar
-	for _, id := range v.streamIDs {
-		scalarIDs = append(scalarIDs, scalar.NewInt64Scalar(id))
-	}
-	if len(scalarIDs) > 0 {
-		readerOptions.Predicates = []streams.Predicate{
-			streams.InPredicate{Column: v.idColumn, Values: scalarIDs},
-		}
-	}
-
-	r := streams.NewReader(readerOptions)
-	defer r.Close()
+	defer v.reader.Close() // Reader won't be needed anymore after this exits.
 
 	var records []arrow.RecordBatch
 
 	for {
-		rec, err := r.Read(ctx, v.batchSize)
+		rec, err := v.reader.Read(ctx, v.batchSize)
 		if rec != nil && rec.NumRows() > 0 {
 			records = append(records, rec)
 		}
@@ -196,7 +213,7 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 		}
 	}
 
-	table := array.NewTableFromRecords(r.Schema(), records)
+	table := array.NewTableFromRecords(v.reader.Schema(), records)
 
 	idMapping := make(map[int64]int, table.NumRows())
 	for colIndex := range int(table.NumCols()) {
@@ -225,7 +242,6 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 	}
 
 	v.streams = table
-	v.initialized = true
 	v.idRowMapping = idMapping
 	return nil
 }
@@ -257,6 +273,11 @@ func columnChunkedRow(col *arrow.Column, absoluteRow int) (arr arrow.Array, rela
 func (v *streamsView) Close() {
 	if !v.initialized {
 		return
+	}
+
+	if v.reader != nil {
+		v.reader.Close()
+		v.reader = nil
 	}
 
 	v.initialized = false

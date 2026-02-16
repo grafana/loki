@@ -52,6 +52,16 @@ livenessProbe:
 {{- end }}
 
 {{/*
+ingester startup probe
+*/}}
+{{- define "loki.ingester.startupProbe" }}
+{{- with .Values.ingester.startupProbe | default .Values.loki.startupProbe }}
+startupProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
 expects global context
 */}}
 {{- define "loki.ingester.replicaCount" -}}

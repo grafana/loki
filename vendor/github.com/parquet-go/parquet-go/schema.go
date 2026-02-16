@@ -18,6 +18,7 @@ import (
 	"github.com/parquet-go/parquet-go/compress"
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding"
+	"github.com/parquet-go/parquet-go/format"
 	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
@@ -512,6 +513,15 @@ func appendStructFields(path []string, t reflect.Type, fields []reflect.StructFi
 			}
 		}
 
+		// If no explicit parquet name was set, check for protobuf tag name.
+		// This allows protobuf-generated structs to use their proto field names
+		// (typically snake_case) as parquet column names.
+		if f.Name == t.Field(i).Name { // Name wasn't changed by parquet tag
+			if protoName := protoFieldNameFromTag(f.Tag); protoName != "" {
+				f.Name = protoName
+			}
+		}
+
 		fieldIndex := index[:len(index):len(index)]
 		fieldIndex = append(fieldIndex, i)
 
@@ -851,6 +861,47 @@ func parseUTCNormalization(arg string) (isUTCNormalized bool, err error) {
 	}
 }
 
+func parseGeometryArgs(args string) (crs string, err error) {
+	if !strings.HasPrefix(args, "(") || !strings.HasSuffix(args, ")") {
+		return "", fmt.Errorf("malformed geometry args: %s", args)
+	}
+	args = strings.TrimPrefix(args, "(")
+	args = strings.TrimSuffix(args, ")")
+	return args, nil
+}
+
+func parseGeographyArgs(args string) (crs string, alg format.EdgeInterpolationAlgorithm, err error) {
+	if !strings.HasPrefix(args, "(") || !strings.HasSuffix(args, ")") {
+		return "", 0, fmt.Errorf("malformed geography args: %s", args)
+	}
+	args = strings.TrimPrefix(args, "(")
+	args = strings.TrimSuffix(args, ")")
+
+	// geography has up to two arguments: the CRS and and the edge interpolation
+	// algorithm.
+	parts := strings.Split(args, ":")
+
+	switch len(parts) {
+	case 1:
+		crs = parts[0]
+		return crs, alg, nil
+	case 2:
+		crs = parts[0]
+		err = alg.FromString(parts[1])
+		if err != nil {
+			return "", 0, err
+		}
+		return crs, alg, nil
+	case 3:
+		// CRS very likely contains a colon, so we join all parts except the last one.
+		crs = strings.Join(parts[:2], ":")
+	default:
+		return "", 0, fmt.Errorf("malformed geography args: (%s)", args)
+	}
+
+	return crs, alg, nil
+}
+
 type goNode struct {
 	Node
 	gotype reflect.Type
@@ -1145,6 +1196,19 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 					throwInvalidNode(t, "struct field has field id that is not a valid int", name, tags)
 				}
 				fieldID = id
+
+			case "geometry":
+				crs, err := parseGeometryArgs(args)
+				if err != nil {
+					throwInvalidTag(t, name, option+args)
+				}
+				setNode(Geometry(crs))
+			case "geography":
+				crs, alg, err := parseGeographyArgs(args)
+				if err != nil {
+					throwInvalidTag(t, name, option+args)
+				}
+				setNode(Geography(crs, alg))
 			}
 		})
 	}

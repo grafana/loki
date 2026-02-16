@@ -12,7 +12,7 @@ func Pos(x, y int) Position {
 	return image.Pt(x, y)
 }
 
-// Rectange represents a rectangle.
+// Rectangle represents a rectangle.
 type Rectangle = image.Rectangle
 
 // Rect is a shorthand for Rectangle.

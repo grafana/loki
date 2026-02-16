@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
@@ -595,4 +596,81 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 			_, _ = pipeline.Read(t.Context())
 		})
 	})
+}
+
+// TestMultipleColumnCompatPreservesValues tests that when multiple ColumnCompat nodes run sequentially
+// (as happens with multiple parsers like `| json | logfmt |`), the second ColumnCompat preserves
+// values created by the first ColumnCompat instead of clobbering them.
+func TestMultipleColumnCompatPreservesValues(t *testing.T) {
+	// Simulate a batch with mixed JSON and logfmt lines
+	// After JSON parser + ColumnCompat₁:
+	// - Row 0: level="info" from JSON, level_extracted="info" created
+	// - Row 1: level=NULL (logfmt line, JSON parsing failed), level_extracted=NULL
+	//
+	// After logfmt parser + ColumnCompat₂:
+	// - Row 0: level=NULL (JSON line, logfmt parsing failed), level_extracted should STAY "info"
+	// - Row 1: level="warn" from logfmt, level_extracted should be "warn"
+
+	compat := &physical.ColumnCompat{
+		Source:      types.ColumnTypeParsed,
+		Destination: types.ColumnTypeParsed,
+		Collisions:  []types.ColumnType{types.ColumnTypeMetadata},
+	}
+
+	// Step 1: Simulate state after JSON parser + ColumnCompat₁
+	// Row 0: JSON line successfully parsed level="info", moved to level_extracted
+	// Row 1: logfmt line, JSON parsing failed, level=NULL, level_extracted=NULL
+	schemaAfterFirstCompat := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromFQN("utf8.builtin.message", true),
+		semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
+		semconv.FieldFromFQN("utf8.metadata.level", true),         // metadata level
+		semconv.FieldFromFQN("utf8.parsed.level", true),           // parsed level (NULL for row 0, set by first ColumnCompat)
+		semconv.FieldFromFQN("utf8.parsed.level_extracted", true), // created by first ColumnCompat
+	}, nil)
+
+	inputAfterFirstCompat := NewArrowtestPipeline(schemaAfterFirstCompat, arrowtest.Rows{
+		{
+			"utf8.builtin.message":           `{"level":"info","msg":"test"}`,
+			"timestamp_ns.builtin.timestamp": time.Unix(1000, 0).UTC(),
+			"utf8.metadata.level":            "debug", // metadata level different from parsed
+			"utf8.parsed.level":              nil,     // NULL - was moved to level_extracted by first ColumnCompat
+			"utf8.parsed.level_extracted":    "info",  // created by first ColumnCompat
+		},
+		{
+			"utf8.builtin.message":           `level=warn msg="test"`,
+			"timestamp_ns.builtin.timestamp": time.Unix(1001, 0).UTC(),
+			"utf8.metadata.level":            "debug",
+			"utf8.parsed.level":              "warn", // NOW set by logfmt parser (simulated)
+			"utf8.parsed.level_extracted":    nil,    // Was NULL from first ColumnCompat
+		},
+	})
+
+	// Step 2: Run second ColumnCompat (simulating logfmt parser's ColumnCompat)
+	pipeline := newColumnCompatibilityPipeline(compat, inputAfterFirstCompat, nil)
+	defer pipeline.Close()
+
+	batch, err := pipeline.Read(t.Context())
+	require.NoError(t, err)
+	require.NotNil(t, batch)
+
+	levelExtractedIdx := -1
+	for i := range batch.Schema().NumFields() {
+		if batch.Schema().Field(i).Name == "utf8.parsed.level_extracted" {
+			levelExtractedIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, levelExtractedIdx, "level_extracted column should exist")
+
+	levelExtractedCol := batch.Column(levelExtractedIdx).(*array.String)
+
+	// Row 0: Should preserve "info" from first ColumnCompat, NOT overwrite with NULL
+	require.False(t, levelExtractedCol.IsNull(0), "Row 0 level_extracted should not be NULL")
+	require.Equal(t, "info", levelExtractedCol.Value(0),
+		"Row 0 level_extracted should preserve 'info' from first ColumnCompat")
+
+	// Row 1: Should have "warn" from second ColumnCompat
+	require.False(t, levelExtractedCol.IsNull(1), "Row 1 level_extracted should not be NULL")
+	require.Equal(t, "warn", levelExtractedCol.Value(1),
+		"Row 1 level_extracted should be 'warn' from second ColumnCompat")
 }

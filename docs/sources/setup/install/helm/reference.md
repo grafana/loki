@@ -1491,7 +1491,7 @@ null
 		<tr>
 			<td>bloomGateway.livenessProbe</td>
 			<td>object</td>
-			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td>liveness probe settings for bloom-gateway pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1610,7 +1610,7 @@ null
 		<tr>
 			<td>bloomGateway.readinessProbe</td>
 			<td>object</td>
-			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td>readiness probe settings for bloom-gateway pods. If empty, use `loki.readinessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1691,7 +1691,7 @@ null
 		<tr>
 			<td>bloomGateway.startupProbe</td>
 			<td>object</td>
-			<td>startup probe settings for ingester pods. If empty, use `loki.startupProbe`</td>
+			<td>startup probe settings for bloom-gateway pods. If empty, use `loki.startupProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1948,7 +1948,7 @@ null
 		<tr>
 			<td>bloomPlanner.livenessProbe</td>
 			<td>object</td>
-			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td>liveness probe settings for bloom-planner pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2067,7 +2067,7 @@ null
 		<tr>
 			<td>bloomPlanner.readinessProbe</td>
 			<td>object</td>
-			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td>readiness probe settings for bloom-planner pods. If empty, use `loki.readinessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2148,7 +2148,7 @@ null
 		<tr>
 			<td>bloomPlanner.startupProbe</td>
 			<td>object</td>
-			<td>startup probe settings for ingester pods. If empty use `loki.startupProbe`</td>
+			<td>startup probe settings for bloom-planner pods. If empty use `loki.startupProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3127,6 +3127,7 @@ null
   "serviceAnnotations": {},
   "serviceLabels": {},
   "serviceType": "ClusterIP",
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -3282,7 +3283,7 @@ null
 		<tr>
 			<td>compactor.livenessProbe</td>
 			<td>object</td>
-			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td>liveness probe settings for compactor pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3392,7 +3393,7 @@ null
 		<tr>
 			<td>compactor.readinessProbe</td>
 			<td>object</td>
-			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td>readiness probe settings for compactor pods. If empty, use `loki.readinessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3476,6 +3477,15 @@ null
 			<td>Service type for compactor service</td>
 			<td><pre lang="json">
 "ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.startupProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3974,7 +3984,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.6.3"
+    "tag": "3.6.5"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -4010,7 +4020,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.6.1"
+  "version": "3.6.3"
 }
 </pre>
 </td>
@@ -4121,7 +4131,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.6.3"
+"3.6.5"
 </pre>
 </td>
 		</tr>
@@ -4419,6 +4429,7 @@ false
   "hostUsers": "nil",
   "initContainers": [],
   "labels": {},
+  "livenessProbe": {},
   "nodeSelector": {},
   "podSecurityContext": {
     "fsGroup": 10001,
@@ -4440,6 +4451,7 @@ false
     "labels": {},
     "type": "ClusterIP"
   },
+  "startupProbe": {},
   "strategy": {
     "type": "RollingUpdate"
   },
@@ -4560,6 +4572,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>enterpriseGateway.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterpriseGateway.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for gateway Pods</td>
@@ -4625,6 +4646,15 @@ false
   "labels": {},
   "type": "ClusterIP"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -6055,6 +6085,7 @@ null
   "serviceAnnotations": {},
   "serviceLabels": {},
   "serviceType": "ClusterIP",
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [
@@ -6504,6 +6535,15 @@ false
 			<td>Service type for ingester service</td>
 			<td><pre lang="json">
 "ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty use `loki.startupProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -7114,7 +7154,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.6.3"
+"3.6.5"
 </pre>
 </td>
 		</tr>
@@ -7678,6 +7718,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.livenessProbe</td>
+			<td>string</td>
+			<td>Liveness probe</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.lokiurl</td>
 			<td>string</td>
 			<td>If set overwrites the default value set by loki.host helper function. Use this if gateway not enabled.</td>
@@ -7771,6 +7820,15 @@ true
 			<td>Additional labels for loki-canary Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.startupProbe</td>
+			<td>string</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -9400,6 +9458,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": []
@@ -9556,7 +9615,7 @@ null
 		<tr>
 			<td>patternIngester.livenessProbe</td>
 			<td>object</td>
-			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td>liveness probe settings for pattern ingester pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9693,7 +9752,7 @@ null
 		<tr>
 			<td>patternIngester.readinessProbe</td>
 			<td>object</td>
-			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td>readiness probe settings for pattern ingester pods. If empty, use `loki.readinessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9766,6 +9825,15 @@ null
 			<td>patternIngester.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for pattern ingester service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for pattern ingester pods. If empty use `loki.startupProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>

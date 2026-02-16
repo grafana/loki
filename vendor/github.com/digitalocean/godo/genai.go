@@ -145,41 +145,47 @@ type openaiAPIKeyRoot struct {
 
 // Agent represents a Gen AI Agent
 type Agent struct {
-	AnthropicApiKey    *AnthropicApiKeyInfo      `json:"anthropic_api_key,omitempty"`
-	ApiKeyInfos        []*ApiKeyInfo             `json:"api_key_infos,omitempty"`
-	ApiKeys            []*ApiKey                 `json:"api_keys,omitempty"`
-	ChatBot            *ChatBot                  `json:"chatbot,omitempty"`
-	ChatbotIdentifiers []*AgentChatbotIdentifier `json:"chatbot_identifiers,omitempty"`
-	CreatedAt          *Timestamp                `json:"created_at,omitempty"`
-	ChildAgents        []*Agent                  `json:"child_agents,omitempty"`
-	Deployment         *AgentDeployment          `json:"deployment,omitempty"`
-	Description        string                    `json:"description,omitempty"`
-	UpdatedAt          *Timestamp                `json:"updated_at,omitempty"`
-	Functions          []*AgentFunction          `json:"functions,omitempty"`
-	Guardrails         []*AgentGuardrail         `json:"guardrails,omitempty"`
-	IfCase             string                    `json:"if_case,omitempty"`
-	Instruction        string                    `json:"instruction,omitempty"`
-	K                  int                       `json:"k,omitempty"`
-	KnowledgeBases     []*KnowledgeBase          `json:"knowledge_bases,omitempty"`
-	MaxTokens          int                       `json:"max_tokens,omitempty"`
-	Model              *Model                    `json:"model,omitempty"`
-	Name               string                    `json:"name,omitempty"`
-	OpenAiApiKey       *OpenAiApiKey             `json:"open_ai_api_key,omitempty"`
-	ParentAgents       []*Agent                  `json:"parent_agents,omitempty"`
-	ProjectId          string                    `json:"project_id,omitempty"`
-	Region             string                    `json:"region,omitempty"`
-	RetrievalMethod    string                    `json:"retrieval_method,omitempty"`
-	RouteCreatedAt     *Timestamp                `json:"route_created_at,omitempty"`
-	RouteCreatedBy     string                    `json:"route_created_by,omitempty"`
-	RouteUuid          string                    `json:"route_uuid,omitempty"`
-	RouteName          string                    `json:"route_name,omitempty"`
-	Tags               []string                  `json:"tags,omitempty"`
-	Template           *AgentTemplate            `json:"template,omitempty"`
-	Temperature        float64                   `json:"temperature,omitempty"`
-	TopP               float64                   `json:"top_p,omitempty"`
-	Url                string                    `json:"url,omitempty"`
-	UserId             string                    `json:"user_id,omitempty"`
-	Uuid               string                    `json:"uuid,omitempty"`
+	AnthropicApiKey         *AnthropicApiKeyInfo      `json:"anthropic_api_key,omitempty"`
+	ApiKeyInfos             []*ApiKeyInfo             `json:"api_key_infos,omitempty"`
+	ApiKeys                 []*ApiKey                 `json:"api_keys,omitempty"`
+	ChatBot                 *ChatBot                  `json:"chatbot,omitempty"`
+	ChatbotIdentifiers      []*AgentChatbotIdentifier `json:"chatbot_identifiers,omitempty"`
+	CreatedAt               *Timestamp                `json:"created_at,omitempty"`
+	ChildAgents             []*Agent                  `json:"child_agents,omitempty"`
+	ConversationLogsEnabled bool                      `json:"conversation_logs_enabled,omitempty"`
+	Deployment              *AgentDeployment          `json:"deployment,omitempty"`
+	Description             string                    `json:"description,omitempty"`
+	Functions               []*AgentFunction          `json:"functions,omitempty"`
+	Guardrails              []*AgentGuardrail         `json:"guardrails,omitempty"`
+	IfCase                  string                    `json:"if_case,omitempty"`
+	Instruction             string                    `json:"instruction,omitempty"`
+	K                       int                       `json:"k,omitempty"`
+	KnowledgeBases          []*KnowledgeBase          `json:"knowledge_bases,omitempty"`
+	MaxTokens               int                       `json:"max_tokens,omitempty"`
+	Model                   *Model                    `json:"model,omitempty"`
+	Name                    string                    `json:"name,omitempty"`
+	OpenAiApiKey            *OpenAiApiKey             `json:"open_ai_api_key,omitempty"`
+	ParentAgents            []*Agent                  `json:"parent_agents,omitempty"`
+	ProjectId               string                    `json:"project_id,omitempty"`
+	ProvideCitations        bool                      `json:"provide_citations,omitempty"`
+	Region                  string                    `json:"region,omitempty"`
+	RetrievalMethod         string                    `json:"retrieval_method,omitempty"`
+	RouteCreatedAt          *Timestamp                `json:"route_created_at,omitempty"`
+	RouteCreatedBy          string                    `json:"route_created_by,omitempty"`
+	RouteUuid               string                    `json:"route_uuid,omitempty"`
+	RouteName               string                    `json:"route_name,omitempty"`
+	Tags                    []string                  `json:"tags,omitempty"`
+	Template                *AgentTemplate            `json:"template,omitempty"`
+	Temperature             float64                   `json:"temperature,omitempty"`
+	TopP                    float64                   `json:"top_p,omitempty"`
+	UpdatedAt               *Timestamp                `json:"updated_at,omitempty"`
+	Url                     string                    `json:"url,omitempty"`
+	UserId                  string                    `json:"user_id,omitempty"`
+	Uuid                    string                    `json:"uuid,omitempty"`
+	VersionHash             string                    `json:"version_hash,omitempty"`
+	VPCEgressIPs            []string                  `json:"vpc_egress_ips,omitempty"`
+	VPCUuid                 string                    `json:"vpc_uuid,omitempty"`
+	Workspace               Workspace                 `json:"workspace,omitempty"`
 }
 
 // AgentVersion represents a version of a Gen AI Agent
@@ -328,6 +334,106 @@ type AgentTemplate struct {
 	Uuid           string           `json:"uuid,omitempty"`
 }
 
+// EvaluationMetricType represents the type of evaluation metric.
+type EvaluationMetricType string
+
+const (
+	MetricTypeUnspecified    EvaluationMetricType = "METRIC_TYPE_UNSPECIFIED"
+	MetricTypeGeneralQuality EvaluationMetricType = "METRIC_TYPE_GENERAL_QUALITY"
+	MetricTypeRAGAndTool     EvaluationMetricType = "METRIC_TYPE_RAG_AND_TOOL"
+)
+
+// EvaluationMetricValueType represents the value type of an evaluation metric.
+type EvaluationMetricValueType string
+
+const (
+	MetricValueTypeUnspecified EvaluationMetricValueType = "METRIC_VALUE_TYPE_UNSPECIFIED"
+	MetricValueTypeNumber      EvaluationMetricValueType = "METRIC_VALUE_TYPE_NUMBER"
+	MetricValueTypeString      EvaluationMetricValueType = "METRIC_VALUE_TYPE_STRING"
+	MetricValueTypePercentage  EvaluationMetricValueType = "METRIC_VALUE_TYPE_PERCENTAGE"
+)
+
+// EvaluationMetricCategory represents the category of an evaluation metric.
+type EvaluationMetricCategory string
+
+const (
+	MetricCategoryUnspecified       EvaluationMetricCategory = "METRIC_CATEGORY_UNSPECIFIED"
+	MetricCategoryCorrectness       EvaluationMetricCategory = "METRIC_CATEGORY_CORRECTNESS"
+	MetricCategoryUserOutcomes      EvaluationMetricCategory = "METRIC_CATEGORY_USER_OUTCOMES"
+	MetricCategorySafetyAndSecurity EvaluationMetricCategory = "METRIC_CATEGORY_SAFETY_AND_SECURITY"
+	MetricCategoryContextQuality    EvaluationMetricCategory = "METRIC_CATEGORY_CONTEXT_QUALITY"
+	MetricCategoryModelFit          EvaluationMetricCategory = "METRIC_CATEGORY_MODEL_FIT"
+)
+
+// Workspace represents a workspace containing agents and evaluation test cases.
+type Workspace struct {
+	UUID                string                `json:"uuid,omitempty"`
+	Name                string                `json:"name,omitempty"`
+	Description         string                `json:"description,omitempty"`
+	CreatedByEmail      string                `json:"created_by_email,omitempty"`
+	CreatedBy           uint64                `json:"created_by,omitempty"`
+	CreatedAt           *Timestamp            `json:"created_at,omitempty"`
+	UpdatedAt           *Timestamp            `json:"updated_at,omitempty"`
+	DeletedAt           *Timestamp            `json:"deleted_at,omitempty"`
+	Agents              []*Agent              `json:"agents,omitempty"`
+	EvaluationTestCases []*EvaluationTestCase `json:"evaluation_test_cases,omitempty"`
+}
+
+// EvaluationTestCase represents an evaluation test case configuration.
+type EvaluationTestCase struct {
+	TestCaseUUID              string              `json:"test_case_uuid,omitempty"`
+	Name                      string              `json:"name,omitempty"`
+	Description               string              `json:"description,omitempty"`
+	Version                   uint32              `json:"version,omitempty"`
+	DatasetUUID               string              `json:"dataset_uuid,omitempty"` // Deprecated
+	DatasetName               string              `json:"dataset_name,omitempty"` // Deprecated
+	Metrics                   []*EvaluationMetric `json:"metrics,omitempty"`
+	StarMetric                *StarMetric         `json:"star_metric,omitempty"`
+	TotalRuns                 int32               `json:"total_runs,omitempty"`
+	LatestVersionNumberOfRuns int32               `json:"latest_version_number_of_runs,omitempty"`
+	UpdatedByUserID           uint64              `json:"updated_by_user_id,omitempty"`
+	UpdatedByUserEmail        string              `json:"updated_by_user_email,omitempty"`
+	CreatedByUserEmail        string              `json:"created_by_user_email,omitempty"`
+	CreatedByUserID           uint64              `json:"created_by_user_id,omitempty"`
+	CreatedAt                 *Timestamp          `json:"created_at,omitempty"`
+	UpdatedAt                 *Timestamp          `json:"updated_at,omitempty"`
+	ArchivedAt                *Timestamp          `json:"archived_at,omitempty"`
+	Dataset                   *EvaluationDataset  `json:"dataset,omitempty"`
+}
+
+// EvaluationMetric represents an evaluation metric definition.
+type EvaluationMetric struct {
+	MetricUUID      string                    `json:"metric_uuid,omitempty"`
+	MetricName      string                    `json:"metric_name,omitempty"`
+	Description     string                    `json:"description,omitempty"`
+	MetricType      EvaluationMetricType      `json:"metric_type,omitempty"`
+	MetricValueType EvaluationMetricValueType `json:"metric_value_type,omitempty"`
+	RangeMin        float32                   `json:"range_min,omitempty"`
+	RangeMax        float32                   `json:"range_max,omitempty"`
+	Inverted        bool                      `json:"inverted,omitempty"`
+	Category        EvaluationMetricCategory  `json:"category,omitempty"`
+	IsMetricGoal    bool                      `json:"is_metric_goal,omitempty"`
+	MetricRank      uint32                    `json:"metric_rank,omitempty"`
+}
+
+// EvaluationDataset represents the dataset information for an evaluation.
+type EvaluationDataset struct {
+	DatasetUUID    string     `json:"dataset_uuid,omitempty"`
+	DatasetName    string     `json:"dataset_name,omitempty"`
+	RowCount       uint32     `json:"row_count,omitempty"`
+	HasGroundTruth bool       `json:"has_ground_truth,omitempty"`
+	FileSize       uint64     `json:"file_size,omitempty"`
+	CreatedAt      *Timestamp `json:"created_at,omitempty"`
+}
+
+// StarMetric represents a star metric configuration.
+type StarMetric struct {
+	MetricUUID          string   `json:"metric_uuid,omitempty"`
+	Name                string   `json:"name,omitempty"`
+	SuccessThresholdPct *int32   `json:"success_threshold_pct,omitempty"` // Deprecated
+	SuccessThreshold    *float32 `json:"success_threshold,omitempty"`
+}
+
 // KnowledgeBase represents a Gen AI Knowledge Base
 type KnowledgeBase struct {
 	AddedToAgentAt     *Timestamp       `json:"added_to_agent_at,omitempty"`
@@ -464,16 +570,18 @@ type ModelVersion struct {
 
 // AgentCreateRequest represents the request to create a new Gen AI Agent
 type AgentCreateRequest struct {
-	AnthropicKeyUuid  string   `json:"anthropic_key_uuid,omitempty"`
-	Description       string   `json:"description,omitempty"`
-	Instruction       string   `json:"instruction,omitempty"`
-	KnowledgeBaseUuid []string `json:"knowledge_base_uuid,omitempty"`
-	ModelUuid         string   `json:"model_uuid,omitempty"`
-	Name              string   `json:"name,omitempty"`
-	OpenAiKeyUuid     string   `json:"open_ai_key_uuid,omitempty"`
-	ProjectId         string   `json:"project_id,omitempty"`
-	Region            string   `json:"region,omitempty"`
-	Tags              []string `json:"tags,omitempty"`
+	AnthropicKeyUuid     string   `json:"anthropic_key_uuid,omitempty"`
+	Description          string   `json:"description,omitempty"`
+	Instruction          string   `json:"instruction,omitempty"`
+	KnowledgeBaseUuid    []string `json:"knowledge_base_uuid,omitempty"`
+	ModelProviderKeyUuid string   `json:"model_provider_key_uuid,omitempty"`
+	ModelUuid            string   `json:"model_uuid,omitempty"`
+	Name                 string   `json:"name,omitempty"`
+	OpenAiKeyUuid        string   `json:"open_ai_key_uuid,omitempty"`
+	ProjectId            string   `json:"project_id,omitempty"`
+	Region               string   `json:"region,omitempty"`
+	Tags                 []string `json:"tags,omitempty"`
+	WorkspaceUuid        string   `json:"workspace_uuid,omitempty"`
 }
 
 // AgentAPIKeyCreateRequest represents the request to create a new Gen AI Agent API Key

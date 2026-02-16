@@ -6254,8 +6254,18 @@ type FleetLaunchTemplateConfigRequest struct {
 // Describes overrides for a launch template.
 type FleetLaunchTemplateOverrides struct {
 
-	// The Availability Zone in which to launch the instances.
+	// The Availability Zone in which to launch the instances. For example, us-east-2a .
+	//
+	// Either AvailabilityZone or AvailabilityZoneId must be specified in the request,
+	// but not both.
 	AvailabilityZone *string
+
+	// The ID of the Availability Zone in which to launch the instances. For example,
+	// use2-az1 .
+	//
+	// Either AvailabilityZone or AvailabilityZoneId must be specified in the request,
+	// but not both.
+	AvailabilityZoneId *string
 
 	// The block device mappings, which define the EBS volumes and instance store
 	// volumes to attach to the instance at launch.
@@ -6369,8 +6379,18 @@ type FleetLaunchTemplateOverrides struct {
 // Describes overrides for a launch template.
 type FleetLaunchTemplateOverridesRequest struct {
 
-	// The Availability Zone in which to launch the instances.
+	// The Availability Zone in which to launch the instances. For example, us-east-2a .
+	//
+	// Either AvailabilityZone or AvailabilityZoneId must be specified in the request,
+	// but not both.
 	AvailabilityZone *string
+
+	// The ID of the Availability Zone in which to launch the instances. For example,
+	// use2-az1 .
+	//
+	// Either AvailabilityZone or AvailabilityZoneId must be specified in the request,
+	// but not both.
+	AvailabilityZoneId *string
 
 	// The block device mappings, which define the EBS volumes and instance store
 	// volumes to attach to the instance at launch.
@@ -13439,8 +13459,18 @@ type LaunchTemplateNetworkPerformanceOptionsRequest struct {
 // Describes overrides for a launch template.
 type LaunchTemplateOverrides struct {
 
-	// The Availability Zone in which to launch the instances.
+	// The Availability Zone in which to launch the instances. For example, us-east-2a .
+	//
+	// Either AvailabilityZone or AvailabilityZoneId must be specified in the request,
+	// but not both.
 	AvailabilityZone *string
+
+	// The ID of the Availability Zone in which to launch the instances. For example,
+	// use2-az1 .
+	//
+	// Either AvailabilityZone or AvailabilityZoneId must be specified in the request,
+	// but not both.
+	AvailabilityZoneId *string
 
 	// The instance requirements. When you specify instance requirements, Amazon EC2
 	// will identify instance types with the provided requirements, and then use your
@@ -16701,6 +16731,9 @@ type PlacementGroup struct {
 
 	// The name of the placement group.
 	GroupName *string
+
+	// Reserved for future use.
+	LinkedGroupId *string
 
 	// The number of partitions. Valid only if strategy is set to partition .
 	PartitionCount *int32
@@ -21119,11 +21152,23 @@ type SpotOptionsRequest struct {
 // Describes Spot Instance placement.
 type SpotPlacement struct {
 
-	// The Availability Zone.
+	// The Availability Zone. For example, us-east-2a .
 	//
 	// [Spot Fleet only] To specify multiple Availability Zones, separate them using
-	// commas; for example, "us-west-2a, us-west-2b".
+	// commas; for example, " us-east-2a , us-east-2b ".
+	//
+	// Either AvailabilityZone or AvailabilityZoneId must be specified in the request,
+	// but not both.
 	AvailabilityZone *string
+
+	// The ID of the Availability Zone. For example, use2-az1 .
+	//
+	// [Spot Fleet only] To specify multiple Availability Zones, separate them using
+	// commas; for example, " use2-az1 , use2-bz1 ".
+	//
+	// Either AvailabilityZone or AvailabilityZoneId must be specified in the request,
+	// but not both.
+	AvailabilityZoneId *string
 
 	// The name of the placement group.
 	GroupName *string

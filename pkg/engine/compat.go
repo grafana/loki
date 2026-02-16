@@ -148,7 +148,9 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 				}
 
 				b.rowBuilders[rowIdx].parsedBuilder.Set(shortName, parsedVal)
-				b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, parsedVal)
+				if !b.categorizeLabels {
+					b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, parsedVal)
+				}
 				if b.rowBuilders[rowIdx].metadataBuilder.Get(shortName) != "" {
 					b.rowBuilders[rowIdx].metadataBuilder.Del(shortName)
 				}

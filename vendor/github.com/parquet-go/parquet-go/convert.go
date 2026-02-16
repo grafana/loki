@@ -334,6 +334,23 @@ func Convert(to, from Node) (conv Conversion, err error) {
 	sourceMapping, sourceColumns := columnMappingOf(from)
 	columns := make([]conversionColumn, len(targetColumns))
 
+	targetFieldCache := make(map[Node]map[string]Field)
+	sourceFieldCache := make(map[Node]map[string]Field)
+
+	// Helper function to get or build field map for a node
+	getFieldMap := func(cache map[Node]map[string]Field, node Node) map[string]Field {
+		if fieldMap, ok := cache[node]; ok {
+			return fieldMap
+		}
+		fields := node.Fields()
+		fieldMap := make(map[string]Field, len(fields))
+		for _, f := range fields {
+			fieldMap[f.Name()] = f
+		}
+		cache[node] = fieldMap
+		return fieldMap
+	}
+
 	for i, path := range targetColumns {
 		targetColumn := targetMapping.lookup(path)
 		sourceColumn := sourceMapping.lookup(path)
@@ -359,8 +376,8 @@ func Convert(to, from Node) (conv Conversion, err error) {
 			sourceNode := from
 
 			for j := range path {
-				targetNode = fieldByName(targetNode, path[j])
-				sourceNode = fieldByName(sourceNode, path[j])
+				targetNode = getFieldMap(targetFieldCache, targetNode)[path[j]]
+				sourceNode = getFieldMap(sourceFieldCache, sourceNode)[path[j]]
 
 				targetRepetitionLevel, targetDefinitionLevel = applyFieldRepetitionType(
 					fieldRepetitionTypeOf(targetNode),
@@ -553,8 +570,11 @@ func ConvertRowGroup(rowGroup RowGroup, conv Conversion) RowGroup {
 		isMissing := sourceColumn.node == nil
 
 		if isMissing {
-			// Find adjacent column for mirroring levels
-			adjacentChunk := findAdjacentColumnChunk(schema, i, columns, sourceMapping)
+			var adjacentChunk ColumnChunk
+			if leaf.maxRepetitionLevel > 0 {
+				// Find adjacent column for mirroring levels
+				adjacentChunk = findAdjacentColumnChunk(schema, i, columns, sourceMapping)
+			}
 
 			columns[i] = &missingColumnChunk{
 				typ:                leaf.node.Type(),

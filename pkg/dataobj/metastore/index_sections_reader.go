@@ -39,17 +39,17 @@ type indexSectionsReader struct {
 	end      time.Time
 
 	// Bloom filter predicates (will be filtered to remove stream labels after init)
-	predicates         []*labels.Matcher
-	predicatesFiltered bool
+	predicates []*labels.Matcher
 
 	// Pointer scanning state
 	initialized        bool
+	hasData            bool // Whether initialization pulled data to read
 	matchingStreamIDs  []scalar.Scalar
 	pointersSections   []*dataobj.Section
 	pointersSectionIdx int
 	pointersReader     *pointers.Reader
 	cols               []*pointers.Column
-	labelsByStream     map[int64]labels.Labels
+	labelNamesByStream map[int64][]string
 
 	// Stats
 	sectionPointersRead         int64
@@ -74,24 +74,39 @@ func newIndexSectionsReader(
 	}
 
 	return &indexSectionsReader{
-		obj:            obj,
-		matchers:       matchers,
-		predicates:     equalPredicates,
-		start:          start,
-		end:            end,
-		region:         region,
-		labelsByStream: make(map[int64]labels.Labels),
+		obj:                obj,
+		matchers:           matchers,
+		predicates:         equalPredicates,
+		start:              start,
+		end:                end,
+		region:             region,
+		labelNamesByStream: make(map[int64][]string),
 	}
 }
 
-func (r *indexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	ctx = xcap.ContextWithRegion(ctx, r.region)
+var errIndexSectionsReaderNotOpen = errors.New("index sections reader not opened")
 
-	if err := r.init(ctx); err != nil {
-		return nil, err
+func (r *indexSectionsReader) Open(ctx context.Context) error {
+	if r.initialized {
+		return nil
 	}
 
-	r.filterLabelPredicates()
+	ctx = xcap.ContextWithRegion(ctx, r.region)
+	if err := r.init(ctx); err != nil {
+		return err
+	}
+	r.initialized = true
+	return nil
+}
+
+func (r *indexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	if !r.initialized {
+		return nil, errIndexSectionsReaderNotOpen
+	} else if !r.hasData {
+		return nil, io.EOF
+	}
+
+	ctx = xcap.ContextWithRegion(ctx, r.region)
 	if len(r.predicates) == 0 {
 		return r.readPointers(ctx)
 	}
@@ -117,16 +132,11 @@ func (r *indexSectionsReader) totalReadRows() uint64 {
 
 // filterLabelPredicates removes predicates that reference known stream labels.
 // This prevents false negatives on structured metadata columns with the same name.
-func (r *indexSectionsReader) filterLabelPredicates() {
-	if r.predicatesFiltered {
-		return
-	}
-	r.predicatesFiltered = true
-
-	allLabels := r.allLabels()
+func (r *indexSectionsReader) filterBloomPredicates() {
+	allLabelNames := r.allLabelNames()
 	filtered := make([]*labels.Matcher, 0, len(r.predicates))
 	for _, predicate := range r.predicates {
-		isStreamLabel := slices.Contains(allLabels, predicate.Name)
+		isStreamLabel := slices.Contains(allLabelNames, predicate.Name)
 		if !isStreamLabel {
 			filtered = append(filtered, predicate)
 		}
@@ -134,29 +144,25 @@ func (r *indexSectionsReader) filterLabelPredicates() {
 	r.predicates = filtered
 }
 
-func (r *indexSectionsReader) allLabels() []string {
-	allLabelsMap := map[string]struct{}{}
-	for _, lbls := range r.labelsByStream {
-		lbls.Range(func(l labels.Label) {
-			allLabelsMap[l.Name] = struct{}{}
-		})
+func (r *indexSectionsReader) allLabelNames() []string {
+	allLabelNamesMap := map[string]struct{}{}
+	for _, names := range r.labelNamesByStream {
+		for _, name := range names {
+			allLabelNamesMap[name] = struct{}{}
+		}
 	}
 
-	allLabels := make([]string, 0, len(allLabelsMap))
-	for label := range allLabelsMap {
-		allLabels = append(allLabels, label)
+	allLabelNames := make([]string, 0, len(allLabelNamesMap))
+	for labelName := range allLabelNamesMap {
+		allLabelNames = append(allLabelNames, labelName)
 	}
 
-	return allLabels
+	return allLabelNames
 }
 
 func (r *indexSectionsReader) init(ctx context.Context) error {
-	if r.initialized {
-		return nil
-	}
-
 	if len(r.matchers) == 0 {
-		return io.EOF
+		return nil
 	}
 
 	targetTenant, err := user.ExtractOrgID(ctx)
@@ -172,16 +178,18 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	}
 
 	if len(r.pointersSections) == 0 {
-		return io.EOF
+		return nil
 	}
 
 	// Find stream ids that satisfy the predicate and start/end, and populate labels
 	if err := r.populateMatchingStreamsAndLabels(ctx); err != nil {
 		return fmt.Errorf("creating matching stream ids: %w", err)
 	}
+	// After populating matching streams from all the predicates, filter them down to the bloom supported predicates only
+	r.filterBloomPredicates()
 
 	if r.matchingStreamIDs == nil {
-		return io.EOF
+		return nil
 	}
 
 	r.pointersSectionIdx = -1
@@ -189,7 +197,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		return err
 	}
 
-	r.initialized = true
+	r.hasData = true
 	return nil
 }
 
@@ -198,15 +206,30 @@ func (r *indexSectionsReader) populateMatchingStreamsAndLabels(ctx context.Conte
 		r.streamsReadDuration = time.Since(start)
 	}(time.Now())
 
-	predicate := streamPredicateFromMatchers(r.start, r.end, r.matchers...)
-	err := forEachStream(ctx, r.obj, predicate, func(stream streams.Stream) {
-		r.labelsByStream[stream.ID] = stream.Labels
-	})
+	sStart, sEnd := r.scalarTimestamps()
 
-	for streamID := range r.labelsByStream {
-		r.matchingStreamIDs = append(r.matchingStreamIDs, scalar.NewInt64Scalar(streamID))
+	predicateKeys := map[string]struct{}{}
+	for _, predicate := range r.predicates {
+		predicateKeys[predicate.Name] = struct{}{}
 	}
 
+	requestedColumnsFn := func(column *streams.Column) bool {
+		_, presentInPredicates := predicateKeys[column.Name]
+		return column.Type == streams.ColumnTypeLabel && presentInPredicates
+	}
+
+	err := forEachStreamWithColumns(ctx, r.obj, r.matchers, sStart, sEnd, requestedColumnsFn, func(streamID int64, columnValues map[string]string) {
+		r.matchingStreamIDs = append(r.matchingStreamIDs, scalar.NewInt64Scalar(streamID))
+		if len(columnValues) == 0 {
+			return
+		}
+
+		columns := make([]string, 0, len(columnValues))
+		for columnName := range columnValues {
+			columns = append(columns, columnName)
+		}
+		r.labelNamesByStream[streamID] = columns
+	})
 	if err != nil {
 		return fmt.Errorf("error iterating streams: %v", err)
 	}
@@ -266,7 +289,7 @@ func (r *indexSectionsReader) readWithBloomFiltering(ctx context.Context) (arrow
 		// Find matched section keys for the predicate
 		sColumnName := scalar.NewStringScalar(predicate.Name)
 		matchedSectionKeys := make(map[SectionKey]struct{})
-		err := forEachMatchedPointerSectionKey(ctx, r.obj, sColumnName, predicate.Value, func(sk SectionKey) {
+		err := forEachMatchedPointerSectionKey(ctx, r.obj, r.labelNamesByStream, sColumnName, predicate.Value, func(sk SectionKey) {
 			matchedSectionKeys[sk] = struct{}{}
 		})
 		if err != nil {
@@ -441,6 +464,7 @@ func (r *indexSectionsReader) prepareForNextSectionOrSkip(ctx context.Context) (
 		sec.Columns(),
 		pointers.ColumnTypePath,
 		pointers.ColumnTypeSection,
+		pointers.ColumnTypePointerKind,
 		pointers.ColumnTypeStreamID,
 		pointers.ColumnTypeStreamIDRef,
 		pointers.ColumnTypeMinTimestamp,
@@ -456,6 +480,7 @@ func (r *indexSectionsReader) prepareForNextSectionOrSkip(ctx context.Context) (
 		colStreamID     *pointers.Column
 		colMinTimestamp *pointers.Column
 		colMaxTimestamp *pointers.Column
+		colPointerKind  *pointers.Column
 	)
 
 	for _, c := range cols {
@@ -468,12 +493,15 @@ func (r *indexSectionsReader) prepareForNextSectionOrSkip(ctx context.Context) (
 		if c.Type == pointers.ColumnTypeMaxTimestamp {
 			colMaxTimestamp = c
 		}
-		if colStreamID != nil && colMinTimestamp != nil && colMaxTimestamp != nil {
+		if c.Type == pointers.ColumnTypePointerKind {
+			colPointerKind = c
+		}
+		if colStreamID != nil && colMinTimestamp != nil && colMaxTimestamp != nil && colPointerKind != nil {
 			break
 		}
 	}
 
-	if colStreamID == nil || colMinTimestamp == nil || colMaxTimestamp == nil {
+	if colStreamID == nil || colMinTimestamp == nil || colMaxTimestamp == nil || colPointerKind == nil {
 		// Section has no rows with stream-based indices, skip it
 		return true, nil
 	}
@@ -484,14 +512,22 @@ func (r *indexSectionsReader) prepareForNextSectionOrSkip(ctx context.Context) (
 	r.pointersReader = pointers.NewReader(pointers.ReaderOptions{
 		Columns: r.cols,
 		Predicates: []pointers.Predicate{
+			pointers.EqualPredicate{
+				Column: colPointerKind,
+				Value:  scalar.NewInt64Scalar(int64(pointers.PointerKindStreamIndex)),
+			},
 			pointers.WhereTimeRangeOverlapsWith(colMinTimestamp, colMaxTimestamp, sStart, sEnd),
 			pointers.InPredicate{
 				Column: colStreamID,
 				Values: r.matchingStreamIDs,
 			},
 		},
-		Allocator: memory.DefaultAllocator,
+		Allocator:            memory.DefaultAllocator,
+		StreamIDToLabelNames: r.labelNamesByStream,
 	})
+	if err := r.pointersReader.Open(ctx); err != nil {
+		return false, fmt.Errorf("opening pointers reader: %w", err)
+	}
 
 	return false, nil
 }
@@ -502,8 +538,10 @@ func (r *indexSectionsReader) scalarTimestamps() (*scalar.Timestamp, *scalar.Tim
 	return sStart, sEnd
 }
 
-var _ ArrowRecordBatchReader = (*indexSectionsReader)(nil)
-var _ bloomStatsProvider = (*indexSectionsReader)(nil)
+var (
+	_ ArrowRecordBatchReader = (*indexSectionsReader)(nil)
+	_ bloomStatsProvider     = (*indexSectionsReader)(nil)
+)
 
 type bloomStatsProvider interface {
 	totalReadRows() uint64
@@ -512,6 +550,7 @@ type bloomStatsProvider interface {
 func forEachMatchedPointerSectionKey(
 	ctx context.Context,
 	object *dataobj.Object,
+	labelNamesByStream map[int64][]string,
 	columnName scalar.Scalar,
 	matchColumnValue string,
 	f func(key SectionKey),
@@ -541,6 +580,7 @@ func forEachMatchedPointerSectionKey(
 			sec.Columns(),
 			pointers.ColumnTypePath,
 			pointers.ColumnTypeSection,
+			pointers.ColumnTypePointerKind,
 			pointers.ColumnTypeColumnName,
 			pointers.ColumnTypeValuesBloomFilter,
 		)
@@ -549,8 +589,9 @@ func forEachMatchedPointerSectionKey(
 		}
 
 		var (
-			colColumnName *pointers.Column
-			colBloom      *pointers.Column
+			colColumnName  *pointers.Column
+			colBloom       *pointers.Column
+			colPointerKind *pointers.Column
 		)
 
 		for _, c := range pointerCols {
@@ -560,24 +601,36 @@ func forEachMatchedPointerSectionKey(
 			if c.Type == pointers.ColumnTypeValuesBloomFilter {
 				colBloom = c
 			}
-			if colColumnName != nil && colBloom != nil {
+			if c.Type == pointers.ColumnTypePointerKind {
+				colPointerKind = c
+			}
+			if colColumnName != nil && colBloom != nil && colPointerKind != nil {
 				break
 			}
 		}
 
-		if colColumnName == nil || colBloom == nil {
+		if colColumnName == nil || colBloom == nil || colPointerKind == nil {
 			// the section has no rows for blooms and can be ignored completely
 			continue
 		}
 
 		reader.Reset(
 			pointers.ReaderOptions{
-				Columns: pointerCols,
+				Columns:              pointerCols,
+				StreamIDToLabelNames: labelNamesByStream,
 				Predicates: []pointers.Predicate{
+					pointers.EqualPredicate{
+						Column: colPointerKind,
+						Value:  scalar.NewInt64Scalar(int64(pointers.PointerKindColumnIndex)),
+					},
 					pointers.WhereBloomFilterMatches(colColumnName, colBloom, columnName, matchColumnValue),
 				},
+				Allocator: memory.DefaultAllocator,
 			},
 		)
+		if err := reader.Open(ctx); err != nil {
+			return fmt.Errorf("opening pointers reader: %w", err)
+		}
 
 		for {
 			rec, readErr := reader.Read(ctx, batchSize)

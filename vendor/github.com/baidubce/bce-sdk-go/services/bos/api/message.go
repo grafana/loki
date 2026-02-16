@@ -8,6 +8,7 @@ type BosRequest struct {
 	bce.BceRequest
 	BucketName string
 	ObjectKey  string
+	Tracker    []RequestTracker
 }
 
 func (r *BosRequest) SetBucket(bkt string) {
@@ -28,4 +29,5 @@ func (r *BosRequest) Object() string {
 
 type BosResponse struct {
 	bce.BceResponse
+	Handler []ResponseHandler
 }

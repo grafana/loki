@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"container/list"
 	"context"
 	"errors"
 	"fmt"
@@ -34,6 +35,10 @@ import (
 const (
 	mrdCommandChannelSize  = 1
 	mrdResponseChannelSize = 100
+	// This should never be hit in practice, but is a safety valve to prevent
+	// unbounded memory usage if the user is adding ranges faster than they
+	// can be processed.
+	mrdAddInternalQueueMaxSize = 50000
 )
 
 // --- internalMultiRangeDownloader Interface ---
@@ -83,18 +88,19 @@ func (c *grpcStorageClient) NewMultiRangeDownloader(ctx context.Context, params 
 
 	// Create the manager
 	manager := &multiRangeDownloaderManager{
-		ctx:           mCtx,
-		cancel:        cancel,
-		client:        c,
-		settings:      s,
-		params:        params,
-		cmds:          make(chan mrdCommand, mrdCommandChannelSize),
-		sessionResps:  make(chan mrdSessionResult, mrdResponseChannelSize),
-		pendingRanges: make(map[int64]*rangeRequest),
-		readIDCounter: 1,
-		readSpec:      readSpec,
-		attrsReady:    make(chan struct{}),
-		spanCtx:       ctx,
+		ctx:            mCtx,
+		cancel:         cancel,
+		client:         c,
+		settings:       s,
+		params:         params,
+		cmds:           make(chan mrdCommand, mrdCommandChannelSize),
+		sessionResps:   make(chan mrdSessionResult, mrdResponseChannelSize),
+		pendingRanges:  make(map[int64]*rangeRequest),
+		readIDCounter:  1,
+		readSpec:       readSpec,
+		attrsReady:     make(chan struct{}),
+		spanCtx:        ctx,
+		unsentRequests: newRequestQueue(),
 	}
 
 	mrd := &MultiRangeDownloader{
@@ -115,7 +121,9 @@ func (c *grpcStorageClient) NewMultiRangeDownloader(ctx context.Context, params 
 			manager.wg.Wait()
 			return nil, manager.permanentErr
 		}
-		mrd.Attrs = manager.attrs
+		if manager.attrs != nil {
+			mrd.Attrs = *manager.attrs
+		}
 		return mrd, nil
 	case <-ctx.Done():
 		cancel()
@@ -220,11 +228,12 @@ type multiRangeDownloaderManager struct {
 	waiters        []chan struct{}
 	readSpec       *storagepb.BidiReadObjectSpec
 	lastReadHandle []byte
-	attrs          ReaderObjectAttrs
+	attrs          *ReaderObjectAttrs
 	attrsReady     chan struct{}
 	attrsOnce      sync.Once
 	spanCtx        context.Context
 	callbackWg     sync.WaitGroup
+	unsentRequests *requestQueue
 }
 
 type rangeRequest struct {
@@ -372,10 +381,29 @@ func (m *multiRangeDownloaderManager) eventLoop() {
 	}
 
 	for {
+		var nextReq *storagepb.BidiReadObjectRequest
+		var targetChan chan<- *storagepb.BidiReadObjectRequest
+
+		// Only try to send if we have queued requests
+		if m.unsentRequests.Len() > 0 && m.currentSession != nil {
+			nextReq = m.unsentRequests.Front()
+			if nextReq != nil {
+				targetChan = m.currentSession.reqC
+			}
+		}
+		// Only read from cmds if we have space in the unsentRequests queue.
+		var cmdsChan chan mrdCommand
+		if m.unsentRequests.Len() < mrdAddInternalQueueMaxSize {
+			cmdsChan = m.cmds
+		}
 		select {
 		case <-m.ctx.Done():
 			return
-		case cmd := <-m.cmds:
+		// This path only triggers if space is available in the channel.
+		// It never blocks the eventLoop.
+		case targetChan <- nextReq:
+			m.unsentRequests.RemoveFront()
+		case cmd := <-cmdsChan:
 			cmd.apply(m.ctx, m)
 			if _, ok := cmd.(*mrdCloseCmd); ok {
 				return
@@ -384,7 +412,7 @@ func (m *multiRangeDownloaderManager) eventLoop() {
 			m.processSessionResult(result)
 		}
 
-		if len(m.pendingRanges) == 0 {
+		if len(m.pendingRanges) == 0 && m.unsentRequests.Len() == 0 {
 			for _, waiter := range m.waiters {
 				close(waiter)
 			}
@@ -487,8 +515,8 @@ func (m *multiRangeDownloaderManager) handleAddCmd(ctx context.Context, cmd *mrd
 	}
 	m.readIDCounter++
 
-	// Attributes should be ready if we are processing Add commands
-	if req.offset < 0 {
+	// Convert to positive offset only if attributes are available.
+	if m.attrs != nil && req.offset < 0 {
 		err := m.convertToPositiveOffset(req)
 		if err != nil {
 			return
@@ -510,30 +538,27 @@ func (m *multiRangeDownloaderManager) handleAddCmd(ctx context.Context, cmd *mrd
 			ReadId:     req.readID,
 		}},
 	}
-	m.currentSession.SendRequest(protoReq)
+	m.unsentRequests.PushBack(protoReq)
 }
 
 func (m *multiRangeDownloaderManager) convertToPositiveOffset(req *rangeRequest) error {
 	if req.offset >= 0 {
 		return nil
 	}
-	objSize := m.attrs.Size
+	var objSize int64
+	if m.attrs != nil {
+		objSize = m.attrs.Size
+	}
 	if objSize <= 0 {
-		err := errors.New("storage: cannot resolve negative offset without object size")
+		err := errors.New("storage: cannot resolve negative offset with object size as 0")
 		m.failRange(req, err)
 		return err
 	}
-	if req.length != 0 {
-		err := fmt.Errorf("storage: negative offset with non-zero length is not supported (offset: %d, length: %d)", req.origOffset, req.origLength)
-		m.failRange(req, err)
-		return err
-	}
-	start := objSize + req.offset
-	if start < 0 {
-		start = 0
-	}
+	start := max(objSize+req.offset, 0)
 	req.offset = start
-	req.length = objSize - start
+	if req.length == 0 {
+		req.length = objSize - start
+	}
 	return nil
 }
 
@@ -566,25 +591,19 @@ func (m *multiRangeDownloaderManager) processSessionResult(result mrdSessionResu
 	resp := result.decoder.msg
 	if handle := resp.GetReadHandle().GetHandle(); len(handle) > 0 {
 		m.lastReadHandle = handle
-		if m.params.handle != nil {
-			*m.params.handle = handle
-		}
 	}
 
 	m.attrsOnce.Do(func() {
+		defer close(m.attrsReady)
 		if meta := resp.GetMetadata(); meta != nil {
 			obj := newObjectFromProto(meta)
 			attrs := readerAttrsFromObject(obj)
-			m.attrs = attrs
-			close(m.attrsReady)
-
+			m.attrs = &attrs
 			for _, req := range m.pendingRanges {
 				if req.offset < 0 {
 					_ = m.convertToPositiveOffset(req)
 				}
 			}
-		} else {
-			m.handleStreamEnd(mrdSessionResult{err: errors.New("storage: first response from BidiReadObject stream missing metadata")})
 		}
 	})
 
@@ -662,7 +681,8 @@ func (m *multiRangeDownloaderManager) ensureSession(ctx context.Context) error {
 			}
 		}
 		if len(rangesToResend) > 0 {
-			m.currentSession.SendRequest(&storagepb.BidiReadObjectRequest{ReadRanges: rangesToResend})
+			retryReq := &storagepb.BidiReadObjectRequest{ReadRanges: rangesToResend}
+			m.unsentRequests.PushFront(retryReq)
 		}
 		return nil
 	}, m.settings.retry, true)
@@ -905,5 +925,30 @@ func readerAttrsFromObject(o *ObjectAttrs) ReaderObjectAttrs {
 		Generation:      o.Generation,
 		Metageneration:  o.Metageneration,
 		CRC32C:          o.CRC32C,
+	}
+}
+
+type requestQueue struct {
+	l *list.List
+}
+
+func newRequestQueue() *requestQueue {
+	return &requestQueue{l: list.New()}
+}
+
+func (q *requestQueue) PushBack(r *storagepb.BidiReadObjectRequest)  { q.l.PushBack(r) }
+func (q *requestQueue) PushFront(r *storagepb.BidiReadObjectRequest) { q.l.PushFront(r) }
+func (q *requestQueue) Len() int                                     { return q.l.Len() }
+
+func (q *requestQueue) Front() *storagepb.BidiReadObjectRequest {
+	if f := q.l.Front(); f != nil {
+		return f.Value.(*storagepb.BidiReadObjectRequest)
+	}
+	return nil
+}
+
+func (q *requestQueue) RemoveFront() {
+	if f := q.l.Front(); f != nil {
+		q.l.Remove(f)
 	}
 }

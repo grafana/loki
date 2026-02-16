@@ -21,6 +21,10 @@ message Metadata {
   // A list of types used by sections. The zero index is reserved for an
   // invalid type.
   repeated SectionType types = 3;
+
+  // The full size of the data object in bytes. When provided, this can be used
+  // to avoid querying the file size from object storage.
+  sfixed64 object_size = 4;
 }
 
 // SectionType specifies a namespaced type of section within a data object.

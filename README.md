@@ -35,6 +35,9 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 * [Installing Alloy](https://grafana.com/docs/loki/latest/send-data/alloy/)
 * [Getting Started](https://grafana.com/docs/loki/latest/get-started/)
 
+### ⚠️ Helm Chart Migration
+Effective March 16, 2026, the Grafana Loki Helm chart will be forked to a new repository [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts).  The chart in the Loki repository will continue to be maintained for GEL users only.  See [#20705](https://github.com/grafana/loki/issues/20705) for details.
+
 ## Upgrading
 
 * [Upgrading Loki](https://grafana.com/docs/loki/latest/upgrading/)
@@ -118,6 +121,15 @@ $ make loki
 
 # Run executable
 $ ./cmd/loki/loki -config.file=./cmd/loki/loki-local-config.yaml
+```
+
+To run multiple Loki tenants locally, ensure that auth_enabled is set to true and provide a runtime config with any tenant specific overrides.
+```bash
+# Build binary
+$ make loki
+
+# Run executable
+./loki -config.file=./cmd/loki/loki-local-multi-tenant-config.yaml -runtime-config.file=./cmd/loki/loki-overrides.yaml
 ```
 
 To build Promtail on non-Linux platforms, use the following command:

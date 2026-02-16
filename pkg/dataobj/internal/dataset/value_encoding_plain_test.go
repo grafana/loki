@@ -3,12 +3,16 @@ package dataset
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 var testStrings = []string{
@@ -24,91 +28,30 @@ var batchSize = 64
 func Test_plainBytesEncoder(t *testing.T) {
 	var buf bytes.Buffer
 
-	var (
-		enc    = newPlainBytesEncoder(&buf)
-		dec    = newPlainBytesDecoder(&buf)
-		decBuf = make([]Value, batchSize)
-	)
-
+	enc := newPlainBytesEncoder(&buf)
 	for _, v := range testStrings {
 		require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
 	}
 
-	var out []string
+	dec := newPlainBytesDecoder(buf.Bytes())
 
+	var alloc memory.Allocator
+	var out []string
 	for {
-		n, err := dec.Decode(decBuf[:batchSize])
-		if errors.Is(err, io.EOF) {
+		v, err := dec.Decode(&alloc, batchSize)
+
+		// Handle potential value before checking errors.
+		if v != nil {
+			strArr := v.(*columnar.UTF8)
+			for i := range strArr.Len() {
+				out = append(out, string(strArr.Get(i)))
+			}
+		}
+
+		if err != nil && errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			t.Fatal(err)
-		}
-		for _, v := range decBuf[:n] {
-			out = append(out, string(v.Binary()))
-		}
-	}
-
-	require.Equal(t, testStrings, out)
-}
-
-func Test_plainBytesEncoder_partialRead(t *testing.T) {
-	var buf bytes.Buffer
-
-	var (
-		enc    = newPlainBytesEncoder(&buf)
-		dec    = newPlainBytesDecoder(&oneByteReader{&buf})
-		decBuf = make([]Value, batchSize)
-	)
-
-	for _, v := range testStrings {
-		require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
-	}
-
-	var out []string
-
-	for {
-		n, err := dec.Decode(decBuf[:batchSize])
-		if errors.Is(err, io.EOF) {
-			break
-		} else if err != nil {
-			t.Fatal(err)
-		}
-		for _, v := range decBuf[:n] {
-			out = append(out, string(v.Binary()))
-		}
-	}
-
-	require.Equal(t, testStrings, out)
-}
-
-func Test_plainBytesEncoder_reusingValues(t *testing.T) {
-	var buf bytes.Buffer
-
-	var (
-		enc    = newPlainBytesEncoder(&buf)
-		dec    = newPlainBytesDecoder(&buf)
-		decBuf = make([]Value, batchSize)
-	)
-
-	for _, v := range testStrings {
-		require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
-	}
-
-	for i := range decBuf {
-		decBuf[i] = BinaryValue(make([]byte, 64))
-	}
-
-	var out []string
-
-	for {
-		n, err := dec.Decode(decBuf[:batchSize])
-		if errors.Is(err, io.EOF) {
-			break
-		} else if err != nil {
-			t.Fatal(err)
-		}
-		for _, v := range decBuf[:n] {
-			out = append(out, string(v.Binary()))
 		}
 	}
 
@@ -126,44 +69,105 @@ func Benchmark_plainBytesEncoder_Append(b *testing.B) {
 }
 
 func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
-	buf := bytes.NewBuffer(make([]byte, 0, 1024)) // Large enough to avoid reallocations.
+	const pageSize = 2_000_000
 
-	var (
-		enc    = newPlainBytesEncoder(buf)
-		dec    = newPlainBytesDecoder(buf)
-		decBuf = make([]Value, batchSize)
-	)
-
-	for _, v := range testStrings {
-		require.NoError(b, enc.Encode(BinaryValue([]byte(v))))
+	type scenario struct {
+		name       string
+		makeValues func() []Value
 	}
 
-	var err error
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		for {
-			_, err = dec.Decode(decBuf[:batchSize])
-			if errors.Is(err, io.EOF) {
-				break
-			} else if err != nil {
-				b.Fatal(err)
+	scenarios := []scenario{
+		{
+			name: "constant-size",
+			makeValues: func() []Value {
+				var result []Value
+
+				const valueSize = 100
+
+				rnd := rand.New(rand.NewSource(0))
+
+				var totalSize int
+				for totalSize+valueSize < pageSize {
+					value := make([]byte, valueSize)
+					_, _ = rnd.Read(value)
+
+					result = append(result, BinaryValue(value))
+					totalSize += valueSize
+				}
+
+				return result
+			},
+		},
+		{
+			name: "variable-size",
+			makeValues: func() []Value {
+				var result []Value
+
+				const (
+					minSize = 16
+					maxSize = 1024
+				)
+
+				rnd := rand.New(rand.NewSource(0))
+
+				var totalSize int
+				for totalSize < pageSize {
+					valueSize := minSize + rnd.Intn(maxSize-minSize+1)
+					if rem := pageSize - totalSize; valueSize > rem {
+						valueSize = rem
+					}
+
+					value := make([]byte, valueSize)
+					_, _ = rnd.Read(value)
+					result = append(result, BinaryValue(value))
+					totalSize += valueSize
+				}
+
+				return result
+			},
+		},
+	}
+
+	for _, scenario := range scenarios {
+		benchmarkName := fmt.Sprintf("scenario=%s", scenario.name)
+		b.Run(benchmarkName, func(b *testing.B) {
+			var buf bytes.Buffer
+
+			var (
+				enc = newPlainBytesEncoder(&buf)
+			)
+
+			var totalSize, totalCount int
+			for _, value := range scenario.makeValues() {
+				totalSize += len(value.Binary())
+				totalCount++
+				require.NoError(b, enc.Encode(value))
 			}
-		}
+
+			dec := newPlainBytesDecoder(buf.Bytes())
+
+			var alloc memory.Allocator
+
+			var totalRows int
+			for b.Loop() {
+				alloc.Reset()
+				dec.Reset(buf.Bytes())
+
+				for {
+					arr, err := dec.Decode(&alloc, totalCount)
+					if arr != nil {
+						totalRows += arr.Len()
+					}
+					if err != nil && errors.Is(err, io.EOF) {
+						break
+					} else if err != nil {
+						b.Fatal(err)
+					}
+				}
+			}
+
+			b.SetBytes(int64(totalSize))
+			b.ReportMetric(float64(totalRows)/b.Elapsed().Seconds(), "rows/s")
+		})
 	}
-}
-
-// oneByteReader is like iotest.OneByteReader but it supports ReadByte.
-type oneByteReader struct {
-	r streamio.Reader
-}
-
-func (r *oneByteReader) Read(p []byte) (int, error) {
-	if len(p) == 0 {
-		return 0, nil
-	}
-	return r.r.Read(p[0:1])
-}
-
-func (r *oneByteReader) ReadByte() (byte, error) {
-	return r.r.ReadByte()
 }

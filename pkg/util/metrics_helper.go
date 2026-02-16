@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/model/labels"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -771,7 +770,7 @@ func GetLabels(c prometheus.Collector, filter map[string]string) ([]labels.Label
 		c.Collect(ch)
 	}()
 
-	errs := tsdb_errors.NewMulti()
+	var errs []error
 	var result []labels.Labels
 	dtoMetric := &dto.Metric{}
 	lbls := labels.NewBuilder(labels.EmptyLabels())
@@ -780,7 +779,7 @@ nextMetric:
 	for m := range ch {
 		err := m.Write(dtoMetric)
 		if err != nil {
-			errs.Add(err)
+			errs = append(errs, err)
 			// We cannot return here, to avoid blocking goroutine calling c.Collect()
 			continue
 		}
@@ -800,7 +799,7 @@ nextMetric:
 		result = append(result, lbls.Labels())
 	}
 
-	return result, errs.Err()
+	return result, errors.Join(errs...)
 }
 
 // DeleteMatchingLabels removes metric with labels matching the filter.

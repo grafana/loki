@@ -5,6 +5,7 @@ var (
 	StatPipelineRowsOut      = NewStatisticInt64("rows.out", AggregationTypeSum)
 	StatPipelineReadCalls    = NewStatisticInt64("read.calls", AggregationTypeSum)
 	StatPipelineReadDuration = NewStatisticFloat64("read.duration", AggregationTypeSum)
+	StatPipelineExecDuration = NewStatisticFloat64("exec.duration", AggregationTypeSum)
 )
 
 // ColumnCompat statistics.
@@ -74,9 +75,25 @@ var (
 
 // Task scheduling statistics.
 var (
+	StatTaskCount = NewStatisticInt64("task.count", AggregationTypeFirst)
+
 	// Task queue duration (queued to assignment) in seconds.
-	StatTaskQueueDuration = NewStatisticFloat64("task.queue.duration", AggregationTypeSum)
+	StatTaskMaxQueueDuration = NewStatisticFloat64("task.max.queue.duration", AggregationTypeMax)
+
+	// Time from workflow start until last task assignment in seconds.
+	StatTaskAssignmentTailDuration = NewStatisticFloat64("task.assignment.tail.duration", AggregationTypeMax)
 
 	// Time spent waiting for task admission (before being queued) in seconds.
 	StatTaskAdmissionWaitDuration = NewStatisticFloat64("task.admission.wait.duration", AggregationTypeSum)
+)
+
+var (
+	// Track number of predicates applied to enforce delete request filtering.
+	StatDeletePredicates = NewStatisticInt64("delete.request.predicates", AggregationTypeFirst)
+)
+
+// Task statistics.
+var (
+	TaskRecvDuration = NewStatisticFloat64("task.recv.duration", AggregationTypeSum)
+	TaskSendDuration = NewStatisticFloat64("task.send.duration", AggregationTypeSum)
 )

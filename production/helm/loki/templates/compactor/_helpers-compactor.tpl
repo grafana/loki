@@ -50,6 +50,16 @@ livenessProbe:
 {{- end }}
 
 {{/*
+compactor startup probe
+*/}}
+{{- define "loki.compactor.startupProbe" }}
+{{- with .Values.compactor.startupProbe | default .Values.loki.startupProbe }}
+startupProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
 compactor priority class name
 */}}
 {{- define "loki.compactorPriorityClassName" }}

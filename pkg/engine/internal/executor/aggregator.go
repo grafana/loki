@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"errors"
 	"maps"
 	"slices"
 	"strings"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 )
+
+var ErrSeriesLimitExceeded = errors.New("maximum number of series limit exceeded")
 
 type groupState struct {
 	value       float64       // aggregated value
@@ -41,6 +44,10 @@ type aggregator struct {
 	operation         aggregationOperation                 // aggregation type
 	labels            []arrow.Field                        // combined list of all label fields for all sample values
 	clonedLabelValues map[string]string                    // cache of cloned strings to reduce allocations for repeated values
+
+	// Track unique series across all timestamps to enforce maxSeries limit
+	maxSeries    int                 // maximum number of unique series allowed (0 means no limit)
+	uniqueSeries map[uint64]struct{} // tracks unique series across all timestamps
 }
 
 // newAggregator creates a new aggregator with the specified grouping.
@@ -49,6 +56,7 @@ func newAggregator(pointsSizeHint int, operation aggregationOperation) *aggregat
 		digest:            xxhash.New(),
 		operation:         operation,
 		clonedLabelValues: make(map[string]string),
+		uniqueSeries:      make(map[uint64]struct{}),
 	}
 
 	if pointsSizeHint > 0 {
@@ -72,9 +80,14 @@ func (a *aggregator) AddLabels(labels []arrow.Field) {
 	}
 }
 
+// SetMaxSeries sets the maximum number of unique series allowed.
+func (a *aggregator) SetMaxSeries(maxSeries int) {
+	a.maxSeries = maxSeries
+}
+
 // Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
 // It expects labelValues to be in the same order as the groupBy columns.
-func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) {
+func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) error {
 	if len(labels) != len(labelValues) {
 		panic("len(labels) != len(labelValues)")
 	}
@@ -121,6 +134,18 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 
 		state.count++
 	} else {
+
+		if a.maxSeries > 0 {
+			// Check series limit before adding a new series
+			if _, exists := a.uniqueSeries[key]; !exists {
+				if len(a.uniqueSeries) >= a.maxSeries {
+					return ErrSeriesLimitExceeded
+				}
+
+				a.uniqueSeries[key] = struct{}{}
+			}
+		}
+
 		count := int64(1)
 
 		if len(labels) == 0 {
@@ -129,7 +154,7 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 				value: value,
 				count: count,
 			}
-			return
+			return nil
 		}
 
 		labelValuesCopy := make([]string, len(labelValues))
@@ -145,7 +170,6 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 			labelValuesCopy[i] = cloned
 		}
 
-		// TODO: add limits on number of groups
 		point[key] = &groupState{
 			labels:      labels,
 			labelValues: labelValuesCopy,
@@ -153,6 +177,7 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 			count:       count,
 		}
 	}
+	return nil
 }
 
 func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
@@ -161,15 +186,7 @@ func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
 		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
 		semconv.FieldFromIdent(semconv.ColumnIdentValue, false),
 	)
-	for _, label := range a.labels {
-		fields = append(fields, arrow.Field{
-			Name:     label.Name,
-			Type:     label.Type,
-			Nullable: true,
-			Metadata: label.Metadata,
-		})
-	}
-
+	fields = append(fields, a.labels...)
 	schema := arrow.NewSchema(fields, nil)
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)
 
@@ -181,11 +198,7 @@ func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
 	for _, ts := range sortedTimestamps {
 		total += len(a.points[ts])
 	}
-	rb.Field(0).Reserve(total)
-	rb.Field(1).Reserve(total)
-	for i := range a.labels {
-		rb.Field(2 + i).Reserve(total)
-	}
+	rb.Reserve(total)
 
 	for _, ts := range sortedTimestamps {
 		tsValue, _ := arrow.TimestampFromTime(ts, arrow.Nanosecond)
@@ -233,6 +246,8 @@ func (a *aggregator) Reset() {
 	for _, point := range a.points {
 		clear(point)
 	}
+
+	clear(a.uniqueSeries)
 }
 
 // getSortedTimestamps returns all timestamps in sorted order
