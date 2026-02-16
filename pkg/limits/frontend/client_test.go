@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -37,9 +38,10 @@ func TestCacheLimitsClient(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, resps, 0)
 		// The cache should contain the stream 0x1 for the tenant "test".
+		// We don't use [encodeStreamToBuf] so we can test it.
 		b := bytes.Buffer{}
 		b.Write([]byte("test"))
-		b.Write([]byte("1"))
+		_ = binary.Write(&b, binary.LittleEndian, uint64(1))
 		require.True(t, knownStreams.Test(b.Bytes()))
 	})
 

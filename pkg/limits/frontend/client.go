@@ -3,8 +3,8 @@ package frontend
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"math/rand"
-	"strconv"
 	"sync"
 	"time"
 
@@ -73,8 +73,7 @@ func (c *cacheLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceed
 		// If the stream was not rejected, add it to the cache.
 		if _, ok := rejected[s.StreamHash]; !ok {
 			b := bytes.Buffer{}
-			b.Write([]byte(req.Tenant))
-			b.Write([]byte(strconv.FormatUint(s.StreamHash, 10)))
+			encodeStreamToBuf(&b, req.Tenant, s)
 			c.knownStreams.Add(b.Bytes())
 		}
 	}
@@ -104,8 +103,7 @@ func (c *cacheLimitsClient) hasKnownStreams(req *proto.ExceedsLimitsRequest) boo
 	defer c.mtx.RUnlock()
 	for _, s := range req.Streams {
 		b.Reset()
-		b.Write([]byte(req.Tenant))
-		b.Write([]byte(strconv.FormatUint(s.StreamHash, 10)))
+		encodeStreamToBuf(&b, req.Tenant, s)
 		if !c.knownStreams.Test(b.Bytes()) {
 			return false
 		}
@@ -116,4 +114,11 @@ func (c *cacheLimitsClient) hasKnownStreams(req *proto.ExceedsLimitsRequest) boo
 // randDuration returns a random duration between [0, d].
 func randDuration(d time.Duration) time.Duration {
 	return time.Duration(rand.Int63n(d.Nanoseconds()))
+}
+
+// encodeStreamToBuf encodes the stream to the buffer.
+func encodeStreamToBuf(b *bytes.Buffer, tenant string, s *proto.StreamMetadata) {
+	b.Write([]byte(tenant))
+	// [bytes.Buffer] never return an error, it will panic instead.
+	_ = binary.Write(b, binary.LittleEndian, s.StreamHash)
 }
