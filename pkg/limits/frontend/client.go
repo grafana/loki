@@ -87,6 +87,16 @@ func (c *cacheLimitsClient) UpdateRates(ctx context.Context, req *proto.UpdateRa
 
 // expireTTL expires the caches if the TTL has been exceeded.
 func (c *cacheLimitsClient) expireTTL() {
+	// Fast path, first check the TTL with a read lock.
+	c.mtx.RLock()
+	lastExpired := c.lastExpired
+	c.mtx.RUnlock()
+	if time.Since(lastExpired) <= c.ttl {
+		return
+	}
+	// If we have reached here we need to reset the cache. However, before
+	// we can do that we need to check the TTL a second time with an exclusive
+	// lock as we could be in a data race.
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	if time.Since(c.lastExpired) > c.ttl {
