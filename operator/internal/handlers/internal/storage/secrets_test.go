@@ -82,9 +82,44 @@ func TestAzureExtract(t *testing.T) {
 	}
 	table := []test{
 		{
-			name:      "missing environment",
+			name:      "missing environment and endpoint_suffix",
 			secret:    &corev1.Secret{},
-			wantError: "missing secret field: environment",
+			wantError: "missing secret field: either environment or endpoint_suffix should be set",
+		},
+		{
+			name: "missing only endpoint_suffix",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("AzureGlobal"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("test-account-name"),
+					"account_key":  []byte("dGVzdC1hY2NvdW50LWtleQ=="),
+				},
+			},
+			wantCredentialMode: lokiv1.CredentialModeStatic,
+		},
+		{
+			name: "missing only environment",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint_suffix": []byte("blob.core.windows.net"),
+					"container":       []byte("this,that"),
+					"account_name":    []byte("test-account-name"),
+					"account_key":     []byte("dGVzdC1hY2NvdW50LWtleQ=="),
+				},
+			},
+			wantCredentialMode: lokiv1.CredentialModeStatic,
+		},
+		{
+			name: "invalid endpoint_suffix",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"endpoint_suffix": []byte("invalid-endpoint-suffix"),
+				},
+			},
+			wantError: "azure endpoint suffix invalid: invalid-endpoint-suffix",
 		},
 		{
 			name: "invalid environment",
@@ -245,7 +280,7 @@ func TestAzureExtract(t *testing.T) {
 					"container":       []byte("this,that"),
 					"account_name":    []byte("id"),
 					"account_key":     []byte("dGVzdC1hY2NvdW50LWtleQ=="), // test-account-key
-					"endpoint_suffix": []byte("suffix"),
+					"endpoint_suffix": []byte("blob.core.windows.net"),
 				},
 			},
 			wantCredentialMode: lokiv1.CredentialModeStatic,
