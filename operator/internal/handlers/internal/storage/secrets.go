@@ -38,6 +38,7 @@ var (
 	errAzureManagedIdentityNoOverride = errors.New("when in managed mode, storage secret can not contain credentials")
 	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
 	errAzureInvalidAccountKey         = errors.New("azure account key is not valid base64")
+	errAzureInvalidEndpointSuffix     = errors.New("azure endpoint suffix invalid")
 
 	errS3EndpointUnparseable       = errors.New("can not parse S3 endpoint as URL")
 	errS3EndpointNoURL             = errors.New("endpoint for S3 must be an HTTP or HTTPS URL")
@@ -53,6 +54,7 @@ var (
 
 	azureValidEnvironments = map[string]bool{
 		"AzureGlobal":       true,
+		"AzurePublicCloud":  true,
 		"AzureChinaCloud":   true,
 		"AzureGermanCloud":  true,
 		"AzureUSGovernment": true,
@@ -247,21 +249,25 @@ func hashSecretData(s *corev1.Secret) (string, error) {
 func extractAzureConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMode) (*storage.AzureStorageConfig, error) {
 	// Extract and validate mandatory fields
 	env := string(s.Data[storage.KeyAzureEnvironmentName])
-	if env == "" {
-		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureEnvironmentName)
+	endpointSuffix := string(s.Data[storage.KeyAzureStorageEndpointSuffix])
+	if env == "" && endpointSuffix == "" {
+		return nil, fmt.Errorf("%w: either %s or %s should be set", errSecretMissingField, storage.KeyAzureEnvironmentName, storage.KeyAzureStorageEndpointSuffix)
 	}
 
-	if !azureValidEnvironments[env] {
+	if env != "" && !azureValidEnvironments[env] {
 		return nil, fmt.Errorf("%w: %s", errAzureInvalidEnvironment, env)
 	}
 
-	endpointSuffix := string(s.Data[storage.KeyAzureStorageEndpointSuffix])
 	if endpointSuffix == "" {
 		es, ok := azureEnvironmentEndpointSuffix[env]
 		if !ok {
-			return nil, fmt.Errorf("%w: %s", errAzureInvalidEnvironment, endpointSuffix)
+			return nil, fmt.Errorf("%w: %s", errAzureInvalidEnvironment, env)
 		}
 		endpointSuffix = es
+	}
+
+	if !endpointSuffixExists(azureEnvironmentEndpointSuffix, endpointSuffix) {
+		return nil, fmt.Errorf("%w: %s", errAzureInvalidEndpointSuffix, endpointSuffix)
 	}
 
 	accountName := s.Data[storage.KeyAzureStorageAccountName]
@@ -665,4 +671,13 @@ func extractHost(endpoint []byte) (string, error) {
 	}
 
 	return parsedURL.Host, nil
+}
+
+func endpointSuffixExists(m map[string]string, value string) bool {
+	for _, v := range m {
+		if v == value {
+			return true
+		}
+	}
+	return false
 }
