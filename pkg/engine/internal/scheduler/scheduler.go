@@ -385,100 +385,92 @@ func (s *Scheduler) runAssignLoop(ctx context.Context) error {
 func (s *Scheduler) assignTasks(ctx context.Context) {
 	level.Debug(s.logger).Log("msg", "performing task assignment")
 
-	assignOne := func(worker *workerConn, msg wire.TaskAssignMessage) bool {
-		// TODO(rfratto): allow assignment timeout to be configurable.
-		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-
-		level.Debug(s.logger).Log("msg", "assigning task", "id", msg.Task.ULID, "conn", worker.RemoteAddr())
-
-		err := worker.SendMessage(ctx, msg)
-		if err == nil {
-			return true
-		}
-
-		level.Warn(s.logger).Log("msg", "failed to assign task", "id", msg.Task.ULID, "conn", worker.RemoteAddr(), "err", err)
-		if isTooManyRequestsError(err) {
-			// The worker has no more capacity available, so remove it from the
-			// ready list and wait to receive another Ready message.
-			s.assignMut.Lock()
-			delete(s.readyWorkers, worker)
-			s.assignMut.Unlock()
-
-			s.metrics.backoffsTotal.Inc()
-			s.workerSubscribe(ctx, worker)
-		}
-
-		return false
-	}
-
 	for ctx.Err() == nil {
-		t, worker, msg, ok := s.prepareAssignment()
+		// For each ready worker, spawns a workerLoop that serially assigns tasks to
+		// that worker until it NACKs (e.g. 429), errors, or the queue is empty.
+		// Because assignment is greedy per worker, workers that ACK quickly receive
+		// more tasks. Consider changing this approach if task distribution becomes
+		// too skewed, but in practice this may not be a problem?
+		worker, ok := s.nextWorker()
 		if !ok {
 			return
 		}
 
-		if assigned := assignOne(worker, msg); !assigned {
-			continue
+		go s.workerLoop(ctx, worker)
+	}
+}
+
+// workerLoop greedily assigns tasks to a single worker. It loops, sending
+// one task at a time via SendMessage (blocking until ACK/NACK/timeout), and
+// continues assigning until the worker NACKs, an error occurs, or the queue
+// is empty.
+func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
+	for ctx.Err() == nil {
+		t, pos, msg, ok := s.prepareAssignment()
+		if !ok {
+			// queue is empty. Put the worker back in the ready pool
+			// so it can be dispatched when new tasks arrive.
+			s.assignMut.Lock()
+			s.readyWorkers[worker] = struct{}{}
+			s.assignMut.Unlock()
+			return
 		}
 
-		// Remove from queue on successful assignment, and apply a cost to the
-		// scope.
-		s.assignMut.Lock()
-		{
-			// TODO(rfratto): It's currently possible for other goroutines to
-			// have modified taskQueue in between calling prepareAssignment and
-			// Pop.
-			//
-			// For example, if the only running query gets canceled in between
-			// the two operations, unregistering the scope will drain the
-			// remainder of the queue, causing Pop to return nil.
-			//
-			// This should be fixed by removing the race condition, but for now
-			// we'll log an error to track it.
-			popped, scope := s.taskQueue.Pop()
-			s.validatePop(t, popped)
+		level.Debug(s.logger).Log("msg", "assigning task", "id", msg.Task.ULID, "conn", worker.RemoteAddr())
 
-			if scope != nil {
-				// For now, we will treat every task as having an equal cost of 1.
-				//
-				// This provides some level of fairness, but not all tasks need the
-				// same amount of time to complete, so tenants running heavy queries
-				// do not get properly penalized.
-				//
-				// TODO(rfratto): Introduce a better cost estimate for tasks, which
-				// may need to include re-adjusting the scope after task completion
-				// if the cost estimate was wrong.
-				_ = s.taskQueue.AdjustScope(scope, 1)
+		// TODO(rfratto): allow assignment timeout to be configurable.
+		sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := worker.SendMessage(sendCtx, msg)
+		cancel()
+
+		if err != nil {
+			// Assignment failed: requeue the task and exit.
+			level.Warn(s.logger).Log("msg", "failed to assign task", "id", msg.Task.ULID, "conn", worker.RemoteAddr(), "err", err)
+			s.requeueTask(t, pos)
+
+			if isTooManyRequestsError(err) {
+				s.metrics.backoffsTotal.Inc()
+				s.workerSubscribe(ctx, worker)
 			}
+
+			return
 		}
-		s.assignMut.Unlock()
 
 		s.finalizeAssignment(ctx, t, worker, msg.StreamStates)
+		// continue to assign another task to this worker.
 	}
 }
 
-// validatePop logs an error if the expected task does not match the actual task.
-func (s *Scheduler) validatePop(expect, actual *task) {
-	if expect == actual {
-		return
-	}
-
-	var expectedULID, actualULID ulid.ULID
-	if expect != nil && expect.inner != nil {
-		expectedULID = expect.inner.ULID
-	}
-	if actual != nil && actual.inner != nil {
-		actualULID = actual.inner.ULID
-	}
-
-	level.Error(s.logger).Log("msg", "unexpected task removed from queue", "expected", expectedULID, "actual", actualULID)
-}
-
-// prepareAssignment builds a TaskAssignMessage for the next task and worker.
+// nextWorker removes and returns the next worker from the map.
+// The worker returned is random.
 //
-// Returns false if no candidates available.
-func (s *Scheduler) prepareAssignment() (*task, *workerConn, wire.TaskAssignMessage, bool) {
+// Returns false if no ready workers are available or no tasks are queued.
+func (s *Scheduler) nextWorker() (*workerConn, bool) {
+	s.assignMut.Lock()
+	defer s.assignMut.Unlock()
+
+	// clean up any terminal tasks at the front of the queue.
+	for s.taskQueue.Len() > 0 && s.peekTask().status.State.Terminal() {
+		s.taskQueue.Pop()
+	}
+
+	if len(s.readyWorkers) == 0 || s.taskQueue.Len() == 0 {
+		return nil, false
+	}
+
+	var worker *workerConn
+	for worker = range s.readyWorkers {
+		break
+	}
+	delete(s.readyWorkers, worker)
+	return worker, true
+}
+
+// prepareAssignment pops the next task from the queue and prepares the
+// TaskAssignMessage to send to the worker.
+//
+// Returns false if the queue is empty.
+func (s *Scheduler) prepareAssignment() (*task, fair.Position, wire.TaskAssignMessage, bool) {
 	s.resourcesMut.RLock()
 	defer s.resourcesMut.RUnlock()
 
@@ -490,22 +482,41 @@ func (s *Scheduler) prepareAssignment() (*task, *workerConn, wire.TaskAssignMess
 		s.taskQueue.Pop()
 	}
 
-	if s.taskQueue.Len() == 0 || len(s.readyWorkers) == 0 {
-		return nil, nil, wire.TaskAssignMessage{}, false
+	if s.taskQueue.Len() == 0 {
+		return nil, fair.Position{}, wire.TaskAssignMessage{}, false
 	}
 
-	task := s.peekTask()
-	worker := nextWorker(s.readyWorkers)
+	t, scope, pos := s.taskQueue.Pop()
+	if scope != nil {
+		// For now, we will treat every task as having an equal cost of 1.
+		//
+		// This provides some level of fairness, but not all tasks need the
+		// same amount of time to complete, so tenants running heavy queries
+		// do not get properly penalized.
+		//
+		// TODO(rfratto): Introduce a better cost estimate for tasks, which
+		// may need to include re-adjusting the scope after task completion
+		// if the cost estimate was wrong.
+		_ = s.taskQueue.AdjustScope(scope, 1)
+	}
 
+	msg := s.buildAssignMessage(t)
+	return t, pos, msg, true
+}
+
+// buildAssignMessage constructs a TaskAssignMessage for the given task.
+//
+// buildAssignMessage must be called while resourcesMut is held (at least RLock).
+func (s *Scheduler) buildAssignMessage(t *task) wire.TaskAssignMessage {
 	msg := wire.TaskAssignMessage{
-		Task:         task.inner,
+		Task:         t.inner,
 		StreamStates: make(map[ulid.ULID]workflow.StreamState),
-		Metadata:     task.metadata,
+		Metadata:     t.metadata,
 	}
 
 	// Populate stream states based on our view of streams that the task reads
 	// from.
-	for _, sources := range task.inner.Sources {
+	for _, sources := range t.inner.Sources {
 		for _, rawSource := range sources {
 			source, found := s.streams[rawSource.ULID]
 			if !found {
@@ -518,7 +529,28 @@ func (s *Scheduler) prepareAssignment() (*task, *workerConn, wire.TaskAssignMess
 		}
 	}
 
-	return task, worker, msg, true
+	return msg
+}
+
+// requeueTask re-inserts a task at its original position after a failed
+// assignment, undoing the scope cost adjustment.
+func (s *Scheduler) requeueTask(t *task, pos fair.Position) {
+	s.assignMut.Lock()
+	defer s.assignMut.Unlock()
+
+	if t.status.State.Terminal() {
+		return
+	}
+
+	_ = s.taskQueue.Requeue(t.scope, t, pos)
+	// Undo the scope cost that was applied when the task was popped.
+	_ = s.taskQueue.AdjustScope(t.scope, -1)
+
+	s.metrics.requeueTotal.Inc()
+
+	if len(s.readyWorkers) > 0 {
+		nudgeSemaphore(s.assignSema)
+	}
 }
 
 func (s *Scheduler) peekTask() *task {
@@ -540,9 +572,6 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 	func() {
 		s.resourcesMut.Lock()
 		defer s.resourcesMut.Unlock()
-
-		s.assignMut.Lock()
-		defer s.assignMut.Unlock()
 
 		if t.status.State.Terminal() {
 			// Worker received the assignment but task was cancelled in the meantime.
