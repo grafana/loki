@@ -220,47 +220,25 @@ func Benchmark_bitmapEncoder(b *testing.B) {
 }
 
 func benchmarkBitmapEncoder(b *testing.B, width int) {
-	b.Run("variance=none", func(b *testing.B) {
-		var cw countingWriter
-		enc := newBitmapEncoder(&cw)
+	runBenchmark := func(b *testing.B, name string, width int, m func(i, width int) uint64) {
+		b.Run(name, func(b *testing.B) {
+			var cw countingWriter
+			enc := newBitmapEncoder(&cw)
 
-		b.ResetTimer()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = enc.Encode(Uint64Value(m(i, width)))
+			}
+			_ = enc.Flush()
 
-		for i := 0; i < b.N; i++ {
-			_ = enc.Encode(Uint64Value(1))
-		}
-		_ = enc.Flush()
+			b.ReportMetric(float64(cw.n), "encoded_bytes")
+		})
+	}
 
-		b.ReportMetric(float64(cw.n), "encoded_bytes")
-	})
-
-	b.Run("variance=alternating", func(b *testing.B) {
-		var cw countingWriter
-		enc := newBitmapEncoder(&cw)
-
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = enc.Encode(Uint64Value(uint64(i % width)))
-		}
-		_ = enc.Flush()
-
-		b.ReportMetric(float64(cw.n), "encoded_bytes")
-	})
-
-	b.Run("variance=random", func(b *testing.B) {
-		rnd := rand.New(rand.NewSource(0))
-
-		var cw countingWriter
-		enc := newBitmapEncoder(&cw)
-
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = enc.Encode(Uint64Value(uint64(rnd.Int63()) % uint64(width)))
-		}
-		_ = enc.Flush()
-
-		b.ReportMetric(float64(cw.n), "encoded_bytes")
-	})
+	runBenchmark(b, "variance=none", width, func(i, width int) uint64 { return 1 })
+	runBenchmark(b, "variance=alternating", width, func(i, width int) uint64 { return uint64(i % width) })
+	rnd := rand.New(rand.NewSource(0))
+	runBenchmark(b, "variance=random", width, func(i, width int) uint64 { return uint64(rnd.Int63()) % uint64(width) })
 }
 
 func Benchmark_bitmapDecoder_DecodeBatches(b *testing.B) {
