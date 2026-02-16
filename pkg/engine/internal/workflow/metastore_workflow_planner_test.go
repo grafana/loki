@@ -53,6 +53,7 @@ func TestPlanWorkflow_MetastorePlan_UsesMergeRootAndPointersPartitions(t *testin
 		childRoot, err := child.Fragment.Root()
 		require.NoError(t, err)
 		require.IsType(t, &physical.PointersScan{}, childRoot, "partition fragment root should be PointersScan when not batching")
+
 		gotLocations[childRoot.(*physical.PointersScan).Location] = struct{}{}
 	}
 
