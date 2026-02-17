@@ -985,8 +985,8 @@ github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 h1:o4JXh1EVt
 github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55/go.mod h1:OmDBASR4679mdNQnz2pUhc2G8CO2JrUAVFDRBDP/hJE=
 github.com/pressly/goose/v3 v3.26.0 h1:KJakav68jdH0WDvoAcj8+n61WqOIaPGgH0bJWS6jpmM=
 github.com/pressly/goose/v3 v3.26.0/go.mod h1:4hC1KrritdCxtuFsqgs1R4AU5bWtTAf+cnWvfhf2DNY=
-github.com/prometheus/alertmanager v0.31.0 h1:DQW02uIUNNiAa9AD9VA5xaFw5D+xrV+bocJc4gN9bEU=
-github.com/prometheus/alertmanager v0.31.0/go.mod h1:zWPQwhbLt2ybee8rL921UONeQ59Oncash+m/hGP17tU=
+github.com/prometheus/alertmanager v0.31.1 h1:eAmIC42lzbWslHkMt693T36qdxfyZULswiHr681YS3Q=
+github.com/prometheus/alertmanager v0.31.1/go.mod h1:zWPQwhbLt2ybee8rL921UONeQ59Oncash+m/hGP17tU=
 github.com/prometheus/client_golang v0.9.1/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
 github.com/prometheus/client_golang v1.0.0/go.mod h1:db9x61etRT2tGnBNRi70OPL5FsnadC4Ky3P0J6CfImo=
 github.com/prometheus/client_golang v1.1.0/go.mod h1:I1FGZT9+L76gKKOs5djB6ezCbFQP1xR9D75/vuwEF3g=
