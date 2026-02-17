@@ -48,6 +48,16 @@ func newMergePipeline(inputs []Pipeline, maxPrefetch int) (*Merge, error) {
 	}, nil
 }
 
+// Open opens all children pipelines.
+func (m *Merge) Open(ctx context.Context) error {
+	for _, p := range m.inputs {
+		if err := p.Open(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *Merge) init(ctx context.Context) {
 	if m.initialized {
 		return

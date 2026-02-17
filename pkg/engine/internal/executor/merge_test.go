@@ -67,9 +67,10 @@ func TestMerge(t *testing.T) {
 			defer m.Close()
 
 			ctx := t.Context()
-			var actualRows []arrowtest.Rows
+			require.NoError(t, m.Open(ctx))
 
 			// Read all records from the merge pipeline
+			var actualRows []arrowtest.Rows
 			for {
 				rec, err := m.Read(ctx)
 				if errors.Is(err, EOF) {

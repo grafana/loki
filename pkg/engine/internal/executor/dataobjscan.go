@@ -56,15 +56,19 @@ func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobj
 	}
 }
 
+func (s *dataobjScan) Open(ctx context.Context) error {
+	return s.init(ctx)
+}
+
 func (s *dataobjScan) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	if err := s.init(); err != nil {
-		return nil, err
+	if !s.initialized {
+		return nil, errPipelineNotOpen
 	}
 
 	return s.read(ctx)
 }
 
-func (s *dataobjScan) init() error {
+func (s *dataobjScan) init(ctx context.Context) error {
 	if s.initialized {
 		return nil
 	}
@@ -72,9 +76,9 @@ func (s *dataobjScan) init() error {
 	// [dataobjScan.initLogs] depends on the result of [dataobjScan.initStreams]
 	// (to know whether label columns are needed), so we must initialize streams
 	// first.
-	if err := s.initStreams(); err != nil {
+	if err := s.initStreams(ctx); err != nil {
 		return fmt.Errorf("initializing streams: %w", err)
-	} else if err := s.initLogs(); err != nil {
+	} else if err := s.initLogs(ctx); err != nil {
 		return fmt.Errorf("initializing logs: %w", err)
 	}
 
@@ -83,7 +87,7 @@ func (s *dataobjScan) init() error {
 	return nil
 }
 
-func (s *dataobjScan) initStreams() error {
+func (s *dataobjScan) initStreams(ctx context.Context) error {
 	if s.opts.StreamsSection == nil {
 		return fmt.Errorf("no streams section provided")
 	}
@@ -100,6 +104,9 @@ func (s *dataobjScan) initStreams() error {
 		LabelColumns: columnsToRead,
 		BatchSize:    int(s.opts.BatchSize),
 	})
+	if err := s.streams.Open(ctx); err != nil {
+		return fmt.Errorf("opening streams view: %w", err)
+	}
 
 	s.streamsInjector = newStreamInjector(s.streams)
 	return nil
@@ -139,7 +146,7 @@ func projectedLabelColumns(sec *streams.Section, projections []physical.ColumnEx
 			panic("invalid projection type, expected *physical.ColumnExpr")
 		}
 
-		// We're loading the sterams section for joining stream labels into
+		// We're loading the streams section for joining stream labels into
 		// records, so we only need to consider label and ambiguous columns here.
 		if expr.Ref.Type != types.ColumnTypeLabel && expr.Ref.Type != types.ColumnTypeAmbiguous {
 			continue
@@ -160,7 +167,7 @@ func projectedLabelColumns(sec *streams.Section, projections []physical.ColumnEx
 	return found
 }
 
-func (s *dataobjScan) initLogs() error {
+func (s *dataobjScan) initLogs(ctx context.Context) error {
 	if s.opts.LogsSection == nil {
 		return fmt.Errorf("no logs section provided")
 	}
@@ -206,6 +213,9 @@ func (s *dataobjScan) initLogs() error {
 		Predicates: predicates,
 		Allocator:  memory.DefaultAllocator,
 	})
+	if err := s.reader.Open(ctx); err != nil {
+		return fmt.Errorf("opening logs reader: %w", err)
+	}
 
 	// Create the engine-compatible expected schema for the logs section.
 	origSchema := s.reader.Schema()

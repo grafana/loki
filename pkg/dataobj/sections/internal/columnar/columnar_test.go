@@ -100,6 +100,7 @@ func readDataset(t *testing.T, obj *dataobj.Object) []dataset.Row {
 		Dataset: dset,
 		Columns: dset.Columns(),
 	})
+	require.NoError(t, reader.Open(t.Context()))
 
 	var rows []dataset.Row
 	for {

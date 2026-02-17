@@ -86,6 +86,16 @@ func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvalua
 	}, nil
 }
 
+// Open opens all input pipelines.
+func (v *vectorAggregationPipeline) Open(ctx context.Context) error {
+	for _, input := range v.inputs {
+		if err := input.Open(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Read reads the next value into its state.
 func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if v.inputsExhausted {
@@ -120,12 +130,12 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 				return nil, err
 			}
 
+			inputsExhausted = false
+
 			if record.NumRows() == 0 {
 				// Nothing to process
 				continue
 			}
-
-			inputsExhausted = false
 
 			// extract timestamp column
 			tsVec, err := v.tsEval(record)

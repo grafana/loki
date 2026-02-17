@@ -17,6 +17,9 @@ import (
 // Pipeline represents a data processing pipeline that can read Arrow records.
 // It provides methods to read data, access the current record, and close resources.
 type Pipeline interface {
+	// Open initializes the pipeline resources and must be called before [Read].
+	// The implementation must be safe to call multiple times.
+	Open(context.Context) error
 	// Read collects the next value ([arrow.RecordBatch]) from the pipeline and returns it to the caller.
 	// It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
 	Read(context.Context) (arrow.RecordBatch, error)
@@ -59,8 +62,9 @@ type ContributingTimeRangeChangedNotifier interface {
 }
 
 var (
-	errNotImplemented = errors.New("pipeline not implemented")
-	EOF               = errors.New("pipeline exhausted") //nolint:revive,staticcheck
+	errNotImplemented  = errors.New("pipeline not implemented")
+	errPipelineNotOpen = errors.New("pipeline not opened")
+	EOF                = errors.New("pipeline exhausted") //nolint:revive,staticcheck
 )
 
 type state struct {
@@ -83,6 +87,16 @@ func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
 }
 
 var _ Pipeline = (*GenericPipeline)(nil)
+
+// Open implements Pipeline.
+func (p *GenericPipeline) Open(ctx context.Context) error {
+	for _, inp := range p.inputs {
+		if err := inp.Open(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // Read implements Pipeline.
 func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
@@ -143,6 +157,11 @@ func newPrefetchingPipeline(p Pipeline) *prefetchWrapper {
 		Pipeline: p,
 		ch:       make(chan state),
 	}
+}
+
+// Open implements [Pipeline].
+func (p *prefetchWrapper) Open(ctx context.Context) error {
+	return p.Pipeline.Open(ctx)
 }
 
 // Read implements [Pipeline].
@@ -228,7 +247,7 @@ type lazyPipeline struct {
 // are expensive to construct, or have dependencies which are only available
 // during execution.
 //
-// The ctor function will be invoked on the first call to [Pipeline.Read].
+// The ctor function will be invoked on the first call to [Pipeline.Open].
 func newLazyPipeline(ctor func(ctx context.Context, inputs []Pipeline) Pipeline, inputs []Pipeline) *lazyPipeline {
 	return &lazyPipeline{
 		ctor:   ctor,
@@ -238,11 +257,19 @@ func newLazyPipeline(ctor func(ctx context.Context, inputs []Pipeline) Pipeline,
 
 var _ Pipeline = (*lazyPipeline)(nil)
 
-// Read reads the next value from the inner pipeline. If this is the first call
-// to Read, the inner  pipeline will be constructed using the provided context.
+// Open initializes the inner pipeline.
+func (lp *lazyPipeline) Open(ctx context.Context) error {
+	if lp.built != nil {
+		return nil
+	}
+	lp.built = lp.ctor(ctx, lp.inputs)
+	return lp.built.Open(ctx)
+}
+
+// Read reads the next value from the inner pipeline.
 func (lp *lazyPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if lp.built == nil {
-		lp.built = lp.ctor(ctx, lp.inputs)
+		return nil, errPipelineNotOpen
 	}
 	return lp.built.Read(ctx)
 }
@@ -312,6 +339,11 @@ func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 	p.span.Record(xcap.StatPipelineReadDuration.Observe(time.Since(start).Seconds()))
 
 	return rec, err
+}
+
+// Open implements Pipeline.
+func (p *observedPipeline) Open(ctx context.Context) error {
+	return p.inner.Open(ctx)
 }
 
 // Unwrap returns the underlying pipeline.

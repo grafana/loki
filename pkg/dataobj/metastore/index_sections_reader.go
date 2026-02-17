@@ -42,6 +42,7 @@ type indexSectionsReader struct {
 
 	// Pointer scanning state
 	initialized        bool
+	hasData            bool // Whether initialization pulled data to read
 	matchingStreamIDs  []scalar.Scalar
 	pointersSections   []*dataobj.Section
 	pointersSectionIdx int
@@ -80,9 +81,25 @@ func newIndexSectionsReader(
 	}
 }
 
-func (r *indexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, error) {
+var errIndexSectionsReaderNotOpen = errors.New("index sections reader not opened")
+
+func (r *indexSectionsReader) Open(ctx context.Context) error {
+	if r.initialized {
+		return nil
+	}
+
 	if err := r.init(ctx); err != nil {
-		return nil, err
+		return err
+	}
+	r.initialized = true
+	return nil
+}
+
+func (r *indexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	if !r.initialized {
+		return nil, errIndexSectionsReaderNotOpen
+	} else if !r.hasData {
+		return nil, io.EOF
 	}
 
 	// inject span into context to maintain correct relation with inner readers.
@@ -139,14 +156,9 @@ func (r *indexSectionsReader) allLabelNames() []string {
 }
 
 func (r *indexSectionsReader) init(ctx context.Context) error {
-	if r.initialized {
-		return nil
-	}
-
 	ctx, r.span = xcap.StartSpan(ctx, tracer, "metastore.indexSectionsReader")
-
 	if len(r.matchers) == 0 {
-		return io.EOF
+		return nil
 	}
 
 	targetTenant, err := user.ExtractOrgID(ctx)
@@ -162,7 +174,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	}
 
 	if len(r.pointersSections) == 0 {
-		return io.EOF
+		return nil
 	}
 
 	// Find stream ids that satisfy the predicate and start/end, and populate labels
@@ -173,7 +185,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	r.filterBloomPredicates()
 
 	if r.matchingStreamIDs == nil {
-		return io.EOF
+		return nil
 	}
 
 	r.pointersSectionIdx = -1
@@ -181,7 +193,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		return err
 	}
 
-	r.initialized = true
+	r.hasData = true
 	return nil
 }
 
@@ -511,6 +523,9 @@ func (r *indexSectionsReader) prepareForNextSectionOrSkip(ctx context.Context) (
 		Allocator:            memory.DefaultAllocator,
 		StreamIDToLabelNames: r.labelNamesByStream,
 	})
+	if err := r.pointersReader.Open(ctx); err != nil {
+		return false, fmt.Errorf("opening pointers reader: %w", err)
+	}
 
 	return false, nil
 }
@@ -611,6 +626,9 @@ func forEachMatchedPointerSectionKey(
 				Allocator: memory.DefaultAllocator,
 			},
 		)
+		if err := reader.Open(ctx); err != nil {
+			return fmt.Errorf("opening pointers reader: %w", err)
+		}
 
 		for {
 			rec, readErr := reader.Read(ctx, batchSize)

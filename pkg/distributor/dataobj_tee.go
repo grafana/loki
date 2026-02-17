@@ -6,9 +6,11 @@ import (
 	"flag"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -26,11 +28,12 @@ const (
 )
 
 type DataObjTeeConfig struct {
-	Enabled               bool   `yaml:"enabled"`
-	Topic                 string `yaml:"topic"`
-	MaxBufferedBytes      int    `yaml:"max_buffered_bytes"`
-	PerPartitionRateBytes int    `yaml:"per_partition_rate_bytes"`
-	DebugMetricsEnabled   bool   `yaml:"debug_metrics_enabled"`
+	Enabled               bool          `yaml:"enabled"`
+	Topic                 string        `yaml:"topic"`
+	MaxBufferedBytes      int           `yaml:"max_buffered_bytes"`
+	PerPartitionRateBytes int           `yaml:"per_partition_rate_bytes"`
+	DebugMetricsEnabled   bool          `yaml:"debug_metrics_enabled"`
+	RateBatchWindow       time.Duration `yaml:"rate_batch_window"`
 }
 
 func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
@@ -39,6 +42,7 @@ func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&c.MaxBufferedBytes, "distributor.dataobj-tee.max-buffered-bytes", 100<<20, "Maximum number of bytes to buffer.")
 	f.IntVar(&c.PerPartitionRateBytes, "distributor.dataobj-tee.per-partition-rate-bytes", 1024*1024, "The per-tenant partition rate (bytes/sec).")
 	f.BoolVar(&c.DebugMetricsEnabled, "distributor.dataobj-tee.debug-metrics-enabled", false, "Enables optional debug metrics.")
+	f.DurationVar(&c.RateBatchWindow, "distributor.dataobj-tee.rate-batch-window", 0, "Duration to accumulate rate updates before sending to limits frontend. Set to 0 to disable batching.")
 }
 
 func (c *DataObjTeeConfig) Validate() error {
@@ -62,6 +66,7 @@ func (c *DataObjTeeConfig) Validate() error {
 type DataObjTee struct {
 	cfg          *DataObjTeeConfig
 	limitsClient *ingestLimits
+	rateBatcher  *rateBatcher // nil if batching is disabled
 	limits       Limits
 	kafkaClient  *kgo.Client
 	resolver     *SegmentationPartitionResolver
@@ -84,7 +89,7 @@ func NewDataObjTee(
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*DataObjTee, error) {
-	return &DataObjTee{
+	t := &DataObjTee{
 		cfg:          cfg,
 		resolver:     resolver,
 		kafkaClient:  kafkaClient,
@@ -109,7 +114,21 @@ func NewDataObjTee(
 			Name: "loki_distributor_dataobj_tee_produced_records_total",
 			Help: "Total number of records produced to each partition.",
 		}, []string{"partition", "tenant", "segmentation_key"}),
-	}, nil
+	}
+
+	// Create rate batcher if batching is enabled.
+	if cfg.RateBatchWindow > 0 {
+		t.rateBatcher = newRateBatcher(
+			RateBatcherConfig{
+				BatchWindow: cfg.RateBatchWindow,
+			},
+			limitsClient,
+			logger,
+			r,
+		)
+	}
+
+	return t, nil
 }
 
 // A SegmentedStream is a KeyedStream with a segmentation key.
@@ -140,15 +159,26 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 			SegmentationKeyHash: segmentationKey.Sum64(),
 		})
 	}
-	rates, err := t.limitsClient.UpdateRates(ctx, tenant, segmentationKeyStreams)
-	if err != nil {
-		level.Error(t.logger).Log("msg", "failed to update rates", "err", err)
-	}
-	// fastRates is a temporary lookup table that lets us find the rate
-	// for a segmentation key in constant time.
-	fastRates := make(map[uint64]uint64, len(rates))
-	for _, rate := range rates {
-		fastRates[rate.StreamHash] = rate.Rate
+
+	// fastRates is a lookup table that lets us find the rate for a segmentation
+	// key in constant time.
+	var fastRates map[uint64]uint64
+
+	if t.rateBatcher != nil {
+		// Batching enabled: add to batch and get last known rates
+		// (stats from this push request aren't included as we don't know if the push would be accepted).
+		// New streams will have rate=0 until first flush includes them.
+		fastRates = t.rateBatcher.Add(tenant, segmentationKeyStreams)
+	} else {
+		// Batching disabled: call UpdateRates synchronously.
+		fastRates = make(map[uint64]uint64, len(segmentationKeyStreams))
+		rates, err := t.limitsClient.UpdateRates(ctx, tenant, segmentationKeyStreams)
+		if err != nil {
+			level.Error(t.logger).Log("msg", "failed to update rates", "err", err)
+		}
+		for _, rate := range rates {
+			fastRates[rate.StreamHash] = rate.Rate
+		}
 	}
 
 	// We use max to prevent negative values becoming large positive values
@@ -215,4 +245,13 @@ func (t *DataObjTee) observeDuplicate(partition int32, tenant, segmentationKey s
 		tenantLabelValue,
 		segmentationKeyLabelValue,
 	).Inc()
+}
+
+// RateBatcher returns the rate batcher service if batching is enabled, nil otherwise.
+// This is used to add the batcher to the distributor's subservices for lifecycle management.
+func (t *DataObjTee) RateBatcher() services.Service {
+	if t.rateBatcher == nil {
+		return nil
+	}
+	return t.rateBatcher
 }

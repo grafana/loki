@@ -12,6 +12,10 @@ type metastorePipeline struct {
 	reader metastore.ArrowRecordBatchReader
 }
 
+func (m *metastorePipeline) Open(ctx context.Context) error {
+	return m.reader.Open(ctx)
+}
+
 func (m *metastorePipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	rec, err := m.reader.Read(ctx)
 	// metastore reader returns io.EOF that we translate to executor.EOF

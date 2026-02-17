@@ -14,6 +14,10 @@ type sliceRecordBatchReader struct {
 	i    int
 }
 
+func (r *sliceRecordBatchReader) Open(_ context.Context) error {
+	return nil
+}
+
 func (r *sliceRecordBatchReader) Read(_ context.Context) (arrow.RecordBatch, error) {
 	if r.i >= len(r.recs) {
 		return nil, io.EOF

@@ -62,6 +62,7 @@ type CollectSectionsResponse struct {
 }
 
 type ArrowRecordBatchReader interface {
+	Open(ctx context.Context) error
 	Read(ctx context.Context) (arrow.RecordBatch, error)
 	Close()
 }
