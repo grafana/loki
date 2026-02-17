@@ -54,7 +54,7 @@ func (c *cacheLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceed
 	// to make to limits backends.
 	c.removeKnownStreams(req)
 	if len(req.Streams) == 0 {
-		return []*proto.ExceedsLimitsResponse{}, nil
+		return nil, nil
 	}
 
 	// Need to check with the limits service.
