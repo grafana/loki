@@ -12,7 +12,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
@@ -35,6 +37,10 @@ const (
 
 	// threadStateBusy reports that a thread is currently running a task.
 	threadStateBusy
+)
+
+var (
+	tracer = otel.Tracer("pkg/engine/internal/worker")
 )
 
 func (s threadState) String() string {
@@ -163,7 +169,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 				return []executor.Pipeline{errorPipeline(errs)}
 			}
 
-			return []executor.Pipeline{input}
+			return []executor.Pipeline{executor.NewObservedPipeline("nodeSource", nil, input)}
 		},
 	}
 
@@ -172,10 +178,10 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	ctx, capture := xcap.NewCapture(ctx, nil)
 	defer capture.End()
 
-	ctx, region := xcap.StartRegion(ctx, "thread.runJob", xcap.WithRegionAttributes(
-		attribute.Stringer("task_id", job.Task.ULID),
-	))
-	defer region.End()
+	ctx, span := xcap.StartSpan(ctx, tracer, "thread.runJob",
+		trace.WithAttributes(attribute.Stringer("task_id", job.Task.ULID)),
+	)
+	defer span.End()
 
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
 
@@ -239,7 +245,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	pipeline.Close()
 	// Explicitly call End() here (even though we have a defer statement)
 	// to finalize the capture before it's included in the TaskStatusMessage.
-	region.End()
+	span.End()
 	capture.End()
 
 	duration := time.Since(startTime)

@@ -30,7 +30,6 @@ import (
 // bloom filter predicates to further filter the results.
 type indexSectionsReader struct {
 	logger log.Logger
-	region *xcap.Region
 	obj    *dataobj.Object
 
 	// Stream matching configuration
@@ -52,10 +51,10 @@ type indexSectionsReader struct {
 	labelNamesByStream map[int64][]string
 
 	// Stats
-	sectionPointersRead         int64
-	sectionPointersReadDuration time.Duration
-	streamsReadDuration         time.Duration
-	bloomRowsRead               uint64
+	bloomRowsRead uint64
+
+	// readSpan for recording observations, it is created once during init.
+	readSpan *xcap.Span
 }
 
 func newIndexSectionsReader(
@@ -63,7 +62,6 @@ func newIndexSectionsReader(
 	start, end time.Time,
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
-	region *xcap.Region,
 ) *indexSectionsReader {
 	// Only keep equal predicates for bloom filtering
 	var equalPredicates []*labels.Matcher
@@ -79,7 +77,6 @@ func newIndexSectionsReader(
 		predicates:         equalPredicates,
 		start:              start,
 		end:                end,
-		region:             region,
 		labelNamesByStream: make(map[int64][]string),
 	}
 }
@@ -91,10 +88,10 @@ func (r *indexSectionsReader) Open(ctx context.Context) error {
 		return nil
 	}
 
-	ctx = xcap.ContextWithRegion(ctx, r.region)
 	if err := r.init(ctx); err != nil {
 		return err
 	}
+
 	r.initialized = true
 	return nil
 }
@@ -106,7 +103,13 @@ func (r *indexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, erro
 		return nil, io.EOF
 	}
 
-	ctx = xcap.ContextWithRegion(ctx, r.region)
+	if r.readSpan == nil {
+		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "metastore.indexSectionsReader.Read")
+	} else {
+		// inject span into context to maintain correct relation with inner readers.
+		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
+	}
+
 	if len(r.predicates) == 0 {
 		return r.readPointers(ctx)
 	}
@@ -118,11 +121,9 @@ func (r *indexSectionsReader) Close() {
 	if r.pointersReader != nil {
 		_ = r.pointersReader.Close()
 	}
-	if r.region != nil {
-		r.region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
-		r.region.Record(xcap.StatMetastoreStreamsReadTime.Observe(r.streamsReadDuration.Seconds()))
-		r.region.Record(xcap.StatMetastoreSectionPointersRead.Observe(r.sectionPointersRead))
-		r.region.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(r.sectionPointersReadDuration.Seconds()))
+
+	if r.readSpan != nil {
+		r.readSpan.End()
 	}
 }
 
@@ -165,6 +166,9 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		return nil
 	}
 
+	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.indexSectionsReader.Open")
+	defer span.End()
+
 	targetTenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return fmt.Errorf("extracting org ID: %w", err)
@@ -202,8 +206,9 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 }
 
 func (r *indexSectionsReader) populateMatchingStreamsAndLabels(ctx context.Context) error {
+	region := xcap.RegionFromContext(ctx)
 	defer func(start time.Time) {
-		r.streamsReadDuration = time.Since(start)
+		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(start).Seconds()))
 	}(time.Now())
 
 	sStart, sEnd := r.scalarTimestamps()
@@ -234,12 +239,14 @@ func (r *indexSectionsReader) populateMatchingStreamsAndLabels(ctx context.Conte
 		return fmt.Errorf("error iterating streams: %v", err)
 	}
 
+	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
+
 	return nil
 }
 
 func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBatch, error) {
 	defer func(start time.Time) {
-		r.sectionPointersReadDuration += time.Since(start)
+		r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(start).Seconds()))
 	}(time.Now())
 
 	for {
@@ -254,7 +261,7 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 			continue
 		}
 
-		r.sectionPointersRead += rec.NumRows()
+		r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
 		r.bloomRowsRead += uint64(rec.NumRows())
 		return rec, nil
 	}
@@ -335,7 +342,7 @@ func (r *indexSectionsReader) readAllPointers(ctx context.Context) ([]arrow.Reco
 	totalRows := 0
 
 	defer func(start time.Time) {
-		r.sectionPointersReadDuration += time.Since(start)
+		r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(start).Seconds()))
 	}(time.Now())
 
 	for {
@@ -346,7 +353,7 @@ func (r *indexSectionsReader) readAllPointers(ctx context.Context) ([]arrow.Reco
 
 		if rec != nil && rec.NumRows() > 0 {
 			totalRows += int(rec.NumRows())
-			r.sectionPointersRead += rec.NumRows()
+			r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
 			recs = append(recs, rec)
 		}
 

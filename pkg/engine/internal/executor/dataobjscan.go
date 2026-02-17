@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type dataobjScanOptions struct {
@@ -35,7 +34,6 @@ type dataobjScanOptions struct {
 type dataobjScan struct {
 	opts   dataobjScanOptions
 	logger log.Logger
-	region *xcap.Region
 
 	initialized     bool
 	initializedAt   time.Time
@@ -51,11 +49,10 @@ var _ Pipeline = (*dataobjScan)(nil)
 // [arrow.RecordBatch] composed of the requested log section in a data object. Rows
 // in the returned record are ordered by timestamp in the direction specified
 // by opts.Direction.
-func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger, region *xcap.Region) *dataobjScan {
+func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobjScan {
 	return &dataobjScan{
 		opts:   opts,
 		logger: logger,
-		region: region,
 	}
 }
 
@@ -67,7 +64,8 @@ func (s *dataobjScan) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if !s.initialized {
 		return nil, errPipelineNotOpen
 	}
-	return s.read(xcap.ContextWithRegion(ctx, s.region))
+
+	return s.read(ctx)
 }
 
 func (s *dataobjScan) init(ctx context.Context) error {
@@ -386,9 +384,6 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
-	if s.region != nil {
-		s.region.End()
-	}
 	if s.streams != nil {
 		s.streams.Close()
 	}
@@ -400,10 +395,4 @@ func (s *dataobjScan) Close() {
 	s.streams = nil
 	s.streamsInjector = nil
 	s.reader = nil
-	s.region = nil
-}
-
-// Region implements RegionProvider.
-func (s *dataobjScan) Region() *xcap.Region {
-	return s.region
 }

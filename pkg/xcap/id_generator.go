@@ -13,9 +13,7 @@ type identifier [8]byte
 // ID is an exported alias for identifier.
 type ID = identifier
 
-var (
-	zeroID identifier
-)
+var zeroID identifier
 
 // IsValid reports whether the ID is valid.
 func (id identifier) IsValid() bool {

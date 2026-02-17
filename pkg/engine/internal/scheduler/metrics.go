@@ -16,6 +16,7 @@ type metrics struct {
 	streamsTotal  *prometheus.CounterVec
 	connsTotal    prometheus.Counter
 	backoffsTotal prometheus.Counter
+	requeueTotal  prometheus.Counter
 
 	taskQueueSeconds prometheus.Histogram
 	taskExecSeconds  prometheus.Histogram
@@ -42,6 +43,10 @@ func newMetrics() *metrics {
 		backoffsTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_engine_scheduler_assignment_backoffs_total",
 			Help: "Total number of times the scheduler has backed off of assigning tasks to a worker because of HTTP 429 errors",
+		}),
+		requeueTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "loki_engine_scheduler_task_requeue_total",
+			Help: "Total number of times a task was requeued after a failed assignment attempt",
 		}),
 
 		taskQueueSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{

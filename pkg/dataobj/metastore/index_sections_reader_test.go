@@ -20,7 +20,7 @@ import (
 func TestIndexSectionsReader_NoSelectorReturnsEOF(t *testing.T) {
 	t.Parallel()
 
-	r := newIndexSectionsReader(nil, now, now, nil, nil, nil)
+	r := newIndexSectionsReader(nil, now, now, nil, nil)
 	require.NoError(t, r.Open(context.Background()))
 
 	rec, err := r.Read(context.Background())
@@ -31,7 +31,7 @@ func TestIndexSectionsReader_NoSelectorReturnsEOF(t *testing.T) {
 func TestIndexSectionsReader_ReadBeforeOpenReturnsError(t *testing.T) {
 	t.Parallel()
 
-	r := newIndexSectionsReader(nil, now, now, nil, nil, nil)
+	r := newIndexSectionsReader(nil, now, now, nil, nil)
 
 	rec, err := r.Read(context.Background())
 	require.ErrorIs(t, err, errIndexSectionsReaderNotOpen)
@@ -69,7 +69,7 @@ func TestIndexSectionsReader_MissingOrgIDReturnsError(t *testing.T) {
 	end := now.Add(-time.Hour)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
-	r := newIndexSectionsReader(obj, start, end, matchers, nil, nil)
+	r := newIndexSectionsReader(obj, start, end, matchers, nil)
 
 	// Context without org ID should fail during Open.
 	require.Error(t, r.Open(context.Background()))
@@ -117,7 +117,7 @@ func TestIndexSectionsReader_FiltersByStreamMatcherAndTime(t *testing.T) {
 	end := now.Add(-time.Hour)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
-	r := newIndexSectionsReader(obj, start, end, matchers, nil, nil)
+	r := newIndexSectionsReader(obj, start, end, matchers, nil)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -170,7 +170,7 @@ func TestIndexSectionsReader_NoPredicatesPassthrough(t *testing.T) {
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
 	// No predicates - should pass through all matching records
-	r := newIndexSectionsReader(obj, start, end, matchers, nil, nil)
+	r := newIndexSectionsReader(obj, start, end, matchers, nil)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -225,7 +225,7 @@ func TestIndexSectionsReader_IgnoresNonEqualPredicates(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchRegexp, "traceID", "abcd"),
 	}
 
-	r := newIndexSectionsReader(obj, start, end, matchers, predicates, nil)
+	r := newIndexSectionsReader(obj, start, end, matchers, predicates)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -277,7 +277,7 @@ func TestIndexSectionsReader_FiltersByBloomOnSectionKey(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
 	}
 
-	r := newIndexSectionsReader(obj, start, end, matchers, predicates, nil)
+	r := newIndexSectionsReader(obj, start, end, matchers, predicates)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -341,7 +341,7 @@ func TestIndexSectionsReader_PredicateMissReturnsEOF(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "traceID", "doesnotexist"),
 	}
 
-	r := newIndexSectionsReader(obj, start, end, matchers, predicates, nil)
+	r := newIndexSectionsReader(obj, start, end, matchers, predicates)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -398,7 +398,7 @@ func TestIndexSectionsReader_LabelPredicatesFiltered(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
 	}
 
-	r := newIndexSectionsReader(obj, start, end, matchers, predicates, nil)
+	r := newIndexSectionsReader(obj, start, end, matchers, predicates)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
