@@ -31,10 +31,18 @@ func (s *Span) End(options ...trace.SpanEndOption) {
 
 // Region returns the linked Region, or nil if no Region is attached.
 func (s *Span) Region() *Region {
+	if s == nil {
+		return nil
+	}
+
 	return s.region
 }
 
 // Record records the given observation into the linked Region.
 func (s *Span) Record(observation Observation) {
+	if s == nil {
+		return
+	}
+
 	s.region.Record(observation)
 }

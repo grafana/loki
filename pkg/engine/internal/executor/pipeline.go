@@ -295,11 +295,11 @@ func (lp *lazyPipeline) Close() {
 // On Close, it ends the xcap span (which flushes region observations as
 // span attributes) after closing the inner pipeline.
 type observedPipeline struct {
-	inner Pipeline
-	name  string
-	attrs []attribute.KeyValue
-	span  *xcap.Span
-	ready bool
+	inner    Pipeline
+	name     string
+	attrs    []attribute.KeyValue
+	readSpan *xcap.Span
+	ready    bool
 }
 
 var _ Pipeline = (*observedPipeline)(nil)
@@ -313,10 +313,7 @@ func NewObservedPipeline(name string, attrs []attribute.KeyValue, inner Pipeline
 }
 
 func (p *observedPipeline) init(ctx context.Context) {
-	_, p.span = xcap.StartSpan(ctx, tracer, p.name,
-		trace.WithAttributes(p.attrs...),
-	)
-
+	_, p.readSpan = xcap.StartSpan(ctx, tracer, p.name+".Read")
 	p.ready = true
 }
 
@@ -327,22 +324,25 @@ func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 	}
 
 	start := time.Now()
-	p.span.Record(xcap.StatPipelineReadCalls.Observe(1))
+	p.readSpan.Record(xcap.StatPipelineReadCalls.Observe(1))
 
 	// Inject the span (implicitly links the associated region) into ctx.
-	ctx = xcap.ContextWithSpan(ctx, p.span)
+	ctx = xcap.ContextWithSpan(ctx, p.readSpan)
 
 	rec, err := p.inner.Read(ctx)
 	if rec != nil {
-		p.span.Record(xcap.StatPipelineRowsOut.Observe(rec.NumRows()))
+		p.readSpan.Record(xcap.StatPipelineRowsOut.Observe(rec.NumRows()))
 	}
-	p.span.Record(xcap.StatPipelineReadDuration.Observe(time.Since(start).Seconds()))
+	p.readSpan.Record(xcap.StatPipelineReadDuration.Observe(time.Since(start).Seconds()))
 
 	return rec, err
 }
 
 // Open implements Pipeline.
 func (p *observedPipeline) Open(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, p.name+".Open", trace.WithAttributes(p.attrs...))
+	defer span.End()
+
 	return p.inner.Open(ctx)
 }
 
@@ -354,7 +354,7 @@ func (p *observedPipeline) Unwrap() Pipeline {
 // Close implements Pipeline.
 func (p *observedPipeline) Close() {
 	p.inner.Close()
-	if p.span != nil {
-		p.span.End()
+	if p.readSpan != nil {
+		p.readSpan.End()
 	}
 }

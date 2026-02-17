@@ -260,9 +260,9 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	// Collect observations from logs reader as the summary stats mainly relate to log lines.
 	// In practice, new engine would process more bytes while scanning metastore objects and stream sections.
 	collector := newObservationCollector(c)
-	observations := collector.fromRegions("logs.Reader", false).filter(
-		StatPipelineRowsOut.Key(),
+	observations := collector.fromRegions("logs.Reader.Read", false).filter(
 		StatDatasetPrimaryRowsRead.Key(),
+		StatDatasetSecondaryRowsRead.Key(),
 		StatDatasetPrimaryRowBytes.Key(),
 		StatDatasetSecondaryRowBytes.Key(),
 	)
@@ -274,7 +274,7 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	// TotalPostFilterLines: rows output after filtering
 	// TODO: this will report the wrong value if the plan has a filter stage.
 	// pick the min of row_out from filter and scan nodes.
-	result.Querier.Store.Dataobj.PostFilterRows = readInt64(observations, StatPipelineRowsOut.Key())
+	result.Querier.Store.Dataobj.PostFilterRows = readInt64(observations, StatDatasetSecondaryRowsRead.Key())
 
 	result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
 	return result
@@ -305,12 +305,12 @@ func summarizeObservations(capture *Capture) *observations {
 
 	// collect observations from all logs.Reader regions.
 	result.merge(
-		collect.fromRegions("logs.Reader", false).
+		collect.fromRegions("DataObjScan.Read", true).
 			filter(
 				// object store calls
 				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
 				// dataset reader stats
-				StatDatasetMaxRows.Key(), StatDatasetRowsAfterPruning.Key(), StatDatasetReadCalls.Key(),
+				StatDatasetReadCalls.Key(),
 				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
 				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
 				StatDatasetPrimaryRowsRead.Key(), StatDatasetSecondaryRowsRead.Key(),
@@ -322,9 +322,18 @@ func summarizeObservations(capture *Capture) *observations {
 			normalizeKeys(),
 	)
 
+	result.merge(
+		collect.fromRegions("logs.Reader.Open", false).
+			filter(
+				StatDatasetMaxRows.Key(), StatDatasetRowsAfterPruning.Key(),
+			).
+			prefix("logs_dataset_").
+			normalizeKeys(),
+	)
+
 	// range aggregation stats
 	result.merge(
-		collect.fromRegions("RangeAggregation", false).
+		collect.fromRegions("RangeAggregation.Read", false).
 			filter(
 				StatPipelineReadDuration.Key(),
 				StatPipelineExecDuration.Key(),
@@ -335,7 +344,7 @@ func summarizeObservations(capture *Capture) *observations {
 
 	// vector aggregation stats
 	result.merge(
-		collect.fromRegions("VectorAggregation", false).
+		collect.fromRegions("VectorAggregation.Read", false).
 			filter(
 				StatPipelineReadDuration.Key(),
 				StatPipelineExecDuration.Key(),
@@ -359,12 +368,18 @@ func summarizeObservations(capture *Capture) *observations {
 
 	// metastore streams and pointers scan stats
 	result.merge(
-		collect.fromRegions("metastore.indexSectionsReader", false).
+		collect.fromRegions("metastore.indexSectionsReader.Open", false).
 			filter(
 				StatMetastoreStreamsRead.Key(),
-				StatMetastoreStreamsReadTime.Key(),
+			).
+			normalizeKeys(),
+	)
+
+	// metastore streams and pointers scan stats
+	result.merge(
+		collect.fromRegions("metastore.indexSectionsReader.Read", false).
+			filter(
 				StatMetastoreSectionPointersRead.Key(),
-				StatMetastoreSectionPointersReadTime.Key(),
 			).
 			normalizeKeys(),
 	)
@@ -387,7 +402,7 @@ func summarizeObservations(capture *Capture) *observations {
 
 	// streamsView bucket and dataset reader stats
 	result.merge(
-		collect.fromRegions("streams.Reader", false).
+		collect.fromRegions("streams.Reader.Read", false).
 			filter(
 				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
 				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),

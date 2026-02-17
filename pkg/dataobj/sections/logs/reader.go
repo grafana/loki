@@ -123,10 +123,10 @@ type Reader struct {
 
 	alloc *memoryv2.Allocator
 
-	// span for recording observations, it is created once during init
+	// readSpan for recording observations, it is created once during init
 	// and is passed down via context so that inner readers can record
 	// observations to it.
-	span trace.Span
+	readSpan trace.Span
 }
 
 var errReaderNotOpen = errors.New("reader not opened")
@@ -161,6 +161,7 @@ func (r *Reader) Open(ctx context.Context) error {
 		_ = r.Close()
 		return fmt.Errorf("initializing Reader: %w", err)
 	}
+
 	return nil
 }
 
@@ -186,10 +187,15 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 		return nil, errReaderNotOpen
 	}
 
+	if r.readSpan == nil {
+		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "logs.Reader.Read")
+	} else {
+		// inject span into context for inner readers to record observations.
+		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
+	}
+
 	defer r.alloc.Reclaim()
 
-	// inject span into context for inner readers to record observations.
-	ctx = xcap.ContextWithSpan(ctx, r.span)
 	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
 	if len(r.opts.Columns) < int(rb.NumCols()) {
 		// Ignore columns that are not in projection list.
@@ -216,7 +222,8 @@ func (r *Reader) init(ctx context.Context) error {
 		r.opts.Allocator = memory.DefaultAllocator
 	}
 
-	_, r.span = xcap.StartSpan(ctx, tracer, "logs.Reader")
+	ctx, span := xcap.StartSpan(ctx, tracer, "logs.Reader.Open")
+	defer span.End()
 
 	// Compose dataset using projected columns and any additional columns
 	// used for evaluating predicates.
@@ -427,8 +434,8 @@ func (r *Reader) Reset(opts ReaderOptions) {
 // Close closes the Reader and releases any resources it holds. Closed Readers
 // can be reused by calling [Reader.Reset].
 func (r *Reader) Close() error {
-	if r.span != nil {
-		r.span.End()
+	if r.readSpan != nil {
+		r.readSpan.End()
 	}
 
 	if r.inner != nil {
