@@ -431,7 +431,7 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 
 		// Eagerly close the streams reader to release resources.
 		if err := sr.Close(); err != nil {
-			level.Warn(r.logger).Log("msg", "error closing streams reader", "err", err)
+			level.Warn(utillog.WithContext(ctx, r.logger)).Log("msg", "error closing streams reader", "err", err)
 		}
 	}
 
@@ -528,7 +528,7 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 		if errors.Is(err, io.EOF) {
 			// Eager close the pointers reader to release resources.
 			if err := pr.Close(); err != nil {
-				level.Warn(r.logger).Log("msg", "error closing pointers reader", "err", err)
+				level.Warn(utillog.WithContext(ctx, r.logger)).Log("msg", "error closing pointers reader", "err", err)
 			}
 			r.pointersReaderIdx++
 		}
@@ -598,9 +598,7 @@ func (r *indexSectionsReader) readWithBloomFiltering(ctx context.Context) (arrow
 		return nil, fmt.Errorf("reading matched section keys: %w", err)
 	}
 	if len(matchedSectionKeys) == 0 {
-		if r.logger != nil {
-			level.Debug(utillog.WithContext(ctx, r.logger)).Log("msg", "no sections resolved", "reason", "no matching predicates")
-		}
+		level.Debug(utillog.WithContext(ctx, r.logger)).Log("msg", "no sections resolved", "reason", "no matching predicates")
 		return nil, io.EOF
 	}
 
