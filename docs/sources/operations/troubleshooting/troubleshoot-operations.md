@@ -2013,11 +2013,172 @@ The `DNS lookup timeout: [<address>]` string is the context cause embedded withi
 
 ## Scheduler and frontend errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+These errors relate to query scheduling, frontend workers, and queue management.
+
+### Error: Scheduler is not running
+
+**Error message:**
+
+```text
+scheduler is not running
+```
+
+**Cause:**
+
+The query scheduler service is not in a running state. This can occur when:
+
+- The scheduler is starting up
+- The scheduler encountered a fatal error
+- The scheduler is shutting down
+
+**Resolution:**
+
+1. **Check scheduler logs** for startup errors or crashes.
+1. **Verify scheduler health**:
+
+   ```bash
+   curl -s http://scheduler:3100/ready
+   ```
+
+1. **Check scheduler ring membership** if using ring-based scheduling:
+
+   ```bash
+   curl -s http://scheduler:3100/ring | jq
+   ```
+
+**Properties:**
+
+- Enforced by: Scheduler service
+- Retryable: Yes (wait for scheduler to become ready)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: Too many outstanding requests
+
+**Error message:**
+
+```text
+too many outstanding requests
+```
+
+**Cause:**
+
+The query queue has reached its maximum capacity. This indicates the system is overloaded with queries.
+
+**Resolution:**
+
+1. **Scale out queriers** to process queries faster:
+
+   ```yaml
+   querier:
+     max_concurrent: 10
+   ```
+
+1. **Increase queue capacity** (with caution):
+
+   ```yaml
+   query_scheduler:
+     max_outstanding_requests_per_tenant: 200
+   ```
+
+1. **Rate limit queries** at the client or load balancer level.
+1. **Optimize slow queries** to reduce queue time.
+
+**Properties:**
+
+- Enforced by: Query scheduler/frontend
+- Retryable: Yes
+- HTTP status: 429 Too Many Requests
+- Configurable per tenant: Yes
+
+### Error: Querying is disabled
+
+**Error message:**
+
+```text
+querying is disabled, please contact your Loki operator
+```
+
+**Cause:**
+
+Query parallelism has been set to zero, effectively disabling all queries. This is typically done intentionally during maintenance.
+
+**Resolution:**
+
+1. **Check the `max_query_parallelism` setting**:
+
+   ```yaml
+   limits_config:
+     max_query_parallelism: 32  # Must be > 0
+   ```
+
+1. **Contact your administrator** if you don't have access to change this setting.
+
+**Properties:**
+
+- Enforced by: Query frontend
+- Retryable: No (configuration must change)
+- HTTP status: 422 Unprocessable Entity
+- Configurable per tenant: Yes
+
+### Error: No frontend address
+
+**Error message:**
+
+```text
+no frontend address
+```
+
+**Cause:**
+
+The scheduler received a request from a frontend but no frontend address was provided for sending responses back.
+
+**Resolution:**
+
+1. **Check frontend configuration** to ensure the address is set:
+
+   ```yaml
+   frontend:
+     address: query-frontend:9095
+   ```
+
+1. **Verify gRPC connectivity** between frontend and scheduler.
+
+**Properties:**
+
+- Enforced by: Scheduler
+- Retryable: No (configuration issue)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Scheduler shutting down
+
+**Error message:**
+
+```text
+scheduler is shutting down
+```
+
+**Cause:**
+
+The frontend scheduler worker detected that the scheduler is in shutdown mode and cannot accept new requests.
+
+**Resolution:**
+
+1. **Wait for shutdown to complete** and the scheduler to restart.
+1. **Check if this is expected** (rolling update, maintenance).
+1. **Retry the request** after the scheduler is healthy.
+
+**Properties:**
+
+- Enforced by: Scheduler
+- Retryable: Yes (after scheduler restart)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No 
 
 ## Index gateway errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Compactor and retention errors
 
