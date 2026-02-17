@@ -1,3 +1,7 @@
+# v1.8.4 (2025-10-16)
+
+* **Dependency Update**: Bump minimum Go version to 1.23.
+
 # v1.8.3 (2025-02-18)
 
 * **Bug Fix**: Bump go version to 1.22

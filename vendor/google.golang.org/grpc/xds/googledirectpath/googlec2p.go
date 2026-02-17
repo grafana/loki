@@ -38,8 +38,8 @@ import (
 	"google.golang.org/grpc/internal/googlecloud"
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/xds/bootstrap"
+	"google.golang.org/grpc/internal/xds/xdsclient"
 	"google.golang.org/grpc/resolver"
-	"google.golang.org/grpc/xds/internal/xdsclient"
 
 	_ "google.golang.org/grpc/xds" // To register xds resolvers and balancers.
 )
@@ -119,6 +119,16 @@ func getXdsServerURI() string {
 	return fmt.Sprintf("dns:///directpath-pa.%s", universeDomain)
 }
 
+type c2pResolverWrapper struct {
+	resolver.Resolver
+	cancel func() // Release the reference to the xDS client that was created in Build().
+}
+
+func (r *c2pResolverWrapper) Close() {
+	r.Resolver.Close()
+	r.cancel()
+}
+
 type c2pResolverBuilder struct{}
 
 func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
@@ -161,7 +171,6 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse bootstrap contents: %s, %v", string(cfgJSON), err)
 	}
-	xdsClientPool.SetFallbackBootstrapConfig(config)
 
 	t = resolver.Target{
 		URL: url.URL{
@@ -170,7 +179,24 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 			Path:   t.URL.Path,
 		},
 	}
-	return resolver.Get(xdsName).Build(t, cc, opts)
+
+	// Create a new xDS client for this target using the provided bootstrap
+	// configuration. This client is stored in the xdsclient pool’s internal
+	// cache, keeping it alive and associated with this resolver until Closed().
+	// While the c2p resolver itself does not directly use the client, creating
+	// it ensures that when the xDS resolver later requests a client for the
+	// same target, the existing instance will be reused.
+	_, cancel, err := xdsClientPool.NewClientWithConfig(t.String(), opts.MetricsRecorder, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create xds client: %v", err)
+	}
+
+	r, err := resolver.Get(xdsName).Build(t, cc, opts)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	return &c2pResolverWrapper{Resolver: r, cancel: cancel}, nil
 }
 
 func (b c2pResolverBuilder) Scheme() string {
@@ -182,6 +208,7 @@ func newNodeConfig(zone string, ipv6Capable bool) map[string]any {
 		"id":       fmt.Sprintf("C2P-%d", randInt()),
 		"locality": map[string]any{"zone": zone},
 	}
+	// Enable dualstack endpoints in TD.
 	if ipv6Capable {
 		node["metadata"] = map[string]any{ipv6CapableMetadataName: true}
 	}

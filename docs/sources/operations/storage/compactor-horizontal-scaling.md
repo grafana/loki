@@ -111,12 +111,12 @@ compactor:
          [max_retries: <int> | default = 3]
 ```
 
-### Config for Main mode
+### Config for Worker mode
 
 To run Compactor in Worker mode, the Horizontal Scaling Mode needs to be set to "worker" and Main compactor's GRPC address needs to be set:
 ```yaml
 common:
-   compactor_grpc_address: <HOST>:<GRPC PORT>
+   compactor_grpc_address: <HOST>:<GRPC_PORT>
 compactor:
   # CLI flag: -compactor.horizontal-scaling-mode="worker"
   horizontal_scaling_mode: "worker"

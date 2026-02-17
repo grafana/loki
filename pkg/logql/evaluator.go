@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"golang.org/x/sync/errgroup"
@@ -183,7 +184,7 @@ func GetRangeType(q Params) QueryRangeType {
 }
 
 // ParamsWithExpressionOverride overrides the query expression so that the query
-// string and the expression can differ. This is useful for for query planning
+// string and the expression can differ. This is useful for query planning
 // when plan my not match externally available logql syntax
 type ParamsWithExpressionOverride struct {
 	Params
@@ -461,7 +462,7 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 			if e.expr.Grouping.Without {
 				e.lb.Reset(metric)
 				e.lb.Del(e.expr.Grouping.Groups...)
-				e.lb.Del(labels.MetricName)
+				e.lb.Del(model.MetricNameLabel)
 				m = e.lb.Labels()
 			} else {
 				b := labels.NewScratchBuilder(len(e.expr.Grouping.Groups))
@@ -1330,7 +1331,7 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 
 	empty := []string{}
 	for _, ma := range lm {
-		if ma.Name == labels.MetricName {
+		if ma.Name == model.MetricNameLabel {
 			continue
 		}
 		if ma.Type == labels.MatchEqual && !m.Has(ma.Name) {

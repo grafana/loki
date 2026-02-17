@@ -27,6 +27,8 @@ func toTree(p *Plan, n Node) *tree.Node {
 
 func toTreeNode(n Node) *tree.Node {
 	treeNode := tree.NewNode(n.Type().String(), "")
+	treeNode.Context = n
+
 	switch node := n.(type) {
 	case *DataObjScan:
 		treeNode.Properties = []tree.Property{
@@ -38,9 +40,18 @@ func toTreeNode(n Node) *tree.Node {
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
+		treeNode.AddComment("@max_time_range", "", []tree.Property{
+			tree.NewProperty("start", false, node.MaxTimeRange.Start.Format(time.RFC3339Nano)),
+			tree.NewProperty("end", false, node.MaxTimeRange.End.Format(time.RFC3339Nano)),
+		})
 	case *Projection:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("columns", true, toAnySlice(node.Columns)...),
+			tree.NewProperty("all", false, node.All),
+		}
+		if node.Expand {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("expand", true, toAnySlice(node.Expressions)...))
+		} else if node.Drop {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("drop", true, toAnySlice(node.Expressions)...))
 		}
 	case *Filter:
 		for i := range node.Predicates {
@@ -52,7 +63,7 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("limit", false, node.Fetch),
 		}
 	case *RangeAggregation:
-		properties := []tree.Property{
+		treeNode.Properties = []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
 			tree.NewProperty("start", false, node.Start.Format(time.RFC3339Nano)),
 			tree.NewProperty("end", false, node.End.Format(time.RFC3339Nano)),
@@ -60,23 +71,32 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("range", false, node.Range),
 		}
 
-		if len(node.PartitionBy) > 0 {
-			properties = append(properties, tree.NewProperty("partition_by", true, toAnySlice(node.PartitionBy)...))
+		if node.Grouping.Without {
+			if len(node.Grouping.Columns) > 0 {
+				treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_without", true, toAnySlice(node.Grouping.Columns)...))
+			}
+		} else {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_by", true, toAnySlice(node.Grouping.Columns)...))
+		}
+	case *VectorAggregation:
+		properties := []tree.Property{
+			tree.NewProperty("operation", false, node.Operation),
+		}
+
+		if node.Grouping.Without {
+			if len(node.Grouping.Columns) > 0 {
+				properties = append(properties, tree.NewProperty("group_without", true, toAnySlice(node.Grouping.Columns)...))
+			}
+		} else {
+			properties = append(properties, tree.NewProperty("group_by", true, toAnySlice(node.Grouping.Columns)...))
 		}
 
 		treeNode.Properties = properties
-	case *ParseNode:
-		treeNode.Properties = []tree.Property{
-			tree.NewProperty("kind", false, node.Kind.String()),
-		}
-		if len(node.RequestedKeys) > 0 {
-			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("requested_keys", true, toAnySlice(node.RequestedKeys)...))
-		}
 	case *ColumnCompat:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("src", false, node.Source),
 			tree.NewProperty("dst", false, node.Destination),
-			tree.NewProperty("collision", false, node.Collision),
+			tree.NewProperty("collisions", true, toAnySlice(node.Collisions)...),
 		}
 	case *TopK:
 		treeNode.Properties = []tree.Property{
@@ -86,6 +106,8 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("k", false, node.K),
 		}
 	case *Parallelize:
+		// Nothing to add
+	case *Merge:
 		// Nothing to add
 	case *ScanSet:
 		treeNode.Properties = []tree.Property{
@@ -109,9 +131,19 @@ func toTreeNode(n Node) *tree.Node {
 				// Create a child node to extract the properties of the target.
 				childNode := toTreeNode(target.DataObject)
 				properties = append(properties, childNode.Properties...)
+			case ScanTypePointers:
+				childNode := toTreeNode(target.Pointers)
+				properties = append(properties, childNode.Properties...)
 			}
 
 			treeNode.AddComment("@target", "", properties)
+		}
+	case *PointersScan:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("location", false, node.Location),
+			tree.NewProperty("num_predicates", false, len(node.Predicates)),
+			tree.NewProperty("start", false, node.Start.Format(time.RFC3339Nano)),
+			tree.NewProperty("end", false, node.End.Format(time.RFC3339Nano)),
 		}
 	}
 	return treeNode

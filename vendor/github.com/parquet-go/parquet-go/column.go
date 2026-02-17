@@ -10,7 +10,7 @@ import (
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding"
 	"github.com/parquet-go/parquet-go/format"
-	"github.com/parquet-go/parquet-go/internal/unsafecast"
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 // Column represents a column in a parquet file.
@@ -54,7 +54,7 @@ func (c *Column) Repeated() bool { return schemaRepetitionTypeOf(c.schema) == fo
 func (c *Column) Required() bool { return schemaRepetitionTypeOf(c.schema) == format.Required }
 
 // Leaf returns true if c is a leaf column.
-func (c *Column) Leaf() bool { return c.index >= 0 }
+func (c *Column) Leaf() bool { return isLeafSchemaElement(c.schema) }
 
 // Fields returns the list of fields on the column.
 func (c *Column) Fields() []Field { return c.fields }
@@ -193,7 +193,7 @@ func (c *Column) Value(base reflect.Value) reflect.Value {
 func (c *Column) String() string { return c.path.String() + ": " + sprint(c.Name(), c) }
 
 func (c *Column) forEachLeaf(do func(*Column)) {
-	if len(c.columns) == 0 {
+	if isLeafSchemaElement(c.schema) {
 		do(c)
 	} else {
 		for _, child := range c.columns {
@@ -251,11 +251,13 @@ func (c *Column) setLevels(depth, repetition, definition, index int) (int, error
 	c.maxDefinitionLevel = byte(definition)
 	depth++
 
-	if len(c.columns) > 0 {
-		c.index = -1
-	} else {
+	// Only leaf columns get a column index.
+	if isLeafSchemaElement(c.schema) {
 		c.index = int16(index)
 		index++
+	} else {
+		// Groups (including empty groups) don't get a column index
+		c.index = -1
 	}
 
 	var err error
@@ -281,9 +283,12 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 	c.path = columnPath(path).append(c.schema.Name)
 
 	cl.schemaIndex++
-	numChildren := int(c.schema.NumChildren)
+	numChildren := 0
+	if c.schema.NumChildren != nil {
+		numChildren = int(*c.schema.NumChildren)
+	}
 
-	if numChildren == 0 {
+	if isLeafSchemaElement(c.schema) {
 		c.typ = schemaElementTypeOf(c.schema)
 
 		if cl.columnOrderIndex < len(metadata.ColumnOrders) {
@@ -381,6 +386,17 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 	return c, nil
 }
 
+// isLeafSchemaElement returns true if the schema element represents a leaf node
+// (a column with actual data). According to the Parquet specification, the Type
+// field is set for leaf nodes and not set (nil) for group nodes.
+//
+// This is the authoritative way to distinguish between:
+//   - Leaf nodes: Type != nil (has column data)
+//   - Group nodes: Type == nil (including empty groups with NumChildren == 0)
+func isLeafSchemaElement(element *format.SchemaElement) bool {
+	return element.Type != nil
+}
+
 func schemaElementTypeOf(s *format.SchemaElement) Type {
 	if lt := s.LogicalType; lt != nil {
 		// A logical type exists, the Type interface implementations in this
@@ -405,13 +421,15 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 					typ = Int32Type
 				case Int64:
 					typ = Int64Type
+				case ByteArray:
+					typ = ByteArrayType
 				case FixedLenByteArray:
 					if s.TypeLength == nil {
 						panic("DECIMAL using FIXED_LEN_BYTE_ARRAY must specify a length")
 					}
 					typ = FixedLenByteArrayType(int(*s.TypeLength))
 				default:
-					panic("DECIMAL must be of type INT32, INT64, or FIXED_LEN_BYTE_ARRAY but got " + kind.String())
+					panic("DECIMAL must be of type INT32, INT64, BYTE_ARRAY or FIXED_LEN_BYTE_ARRAY but got " + kind.String())
 				}
 				return &decimalType{
 					decimal: *lt.Decimal,
@@ -434,6 +452,10 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 			return (*bsonType)(lt.Bson)
 		case lt.UUID != nil:
 			return (*uuidType)(lt.UUID)
+		case lt.Geometry != nil:
+			return (*geometryType)(lt.Geometry)
+		case lt.Geography != nil:
+			return (*geographyType)(lt.Geography)
 		}
 	}
 
@@ -554,12 +576,17 @@ func schemaRepetitionTypeOf(s *format.SchemaElement) format.FieldRepetitionType 
 	return format.Required
 }
 
-func (c *Column) decompress(compressedPageData []byte, uncompressedPageSize int32) (page *buffer, err error) {
+func (c *Column) decompress(compressedPageData []byte, uncompressedPageSize int32) (page *buffer[byte], err error) {
 	page = buffers.get(int(uncompressedPageSize))
-	page.data, err = c.compression.Decode(page.data, compressedPageData)
-	if err != nil {
+	decoded, err := c.compression.Decode(page.data.Slice(), compressedPageData)
+	switch {
+	case err != nil:
 		page.unref()
 		page = nil
+	case len(decoded) < int(uncompressedPageSize):
+		page.data.Resize(len(decoded))
+	case len(decoded) > int(uncompressedPageSize):
+		page.data = memory.SliceBufferFrom(decoded)
 	}
 	return page, err
 }
@@ -567,24 +594,28 @@ func (c *Column) decompress(compressedPageData []byte, uncompressedPageSize int3
 // DecodeDataPageV1 decodes a data page from the header, compressed data, and
 // optional dictionary passed as arguments.
 func (c *Column) DecodeDataPageV1(header DataPageHeaderV1, page []byte, dict Dictionary) (Page, error) {
-	return c.decodeDataPageV1(header, &buffer{data: page}, dict, -1)
+	return c.decodeDataPageV1(header, newBuffer(page), dict, -1)
 }
 
-func (c *Column) decodeDataPageV1(header DataPageHeaderV1, page *buffer, dict Dictionary, size int32) (Page, error) {
-	var pageData = page.data
-	var err error
+func (c *Column) decodeDataPageV1(header DataPageHeaderV1, page *buffer[byte], dict Dictionary, size int32) (Page, error) {
+	var (
+		pageData = page.data.Slice()
+		err      error
+	)
 
 	if isCompressed(c.compression) {
 		if page, err = c.decompress(pageData, size); err != nil {
 			return nil, fmt.Errorf("decompressing data page v1: %w", err)
 		}
 		defer page.unref()
-		pageData = page.data
+		pageData = page.data.Slice()
 	}
 
-	var numValues = int(header.NumValues())
-	var repetitionLevels *buffer
-	var definitionLevels *buffer
+	var (
+		numValues        = int(header.NumValues())
+		repetitionLevels *buffer[byte]
+		definitionLevels *buffer[byte]
+	)
 
 	if c.maxRepetitionLevel > 0 {
 		encoding := lookupLevelEncoding(header.RepetitionLevelEncoding(), c.maxRepetitionLevel)
@@ -605,7 +636,7 @@ func (c *Column) decodeDataPageV1(header DataPageHeaderV1, page *buffer, dict Di
 
 		// Data pages v1 did not embed the number of null values,
 		// so we have to compute it from the definition levels.
-		numValues -= countLevelsNotEqual(definitionLevels.data, c.maxDefinitionLevel)
+		numValues -= countLevelsNotEqual(definitionLevels.data.Slice(), c.maxDefinitionLevel)
 	}
 
 	return c.decodeDataPage(header, numValues, repetitionLevels, definitionLevels, page, pageData, dict)
@@ -614,15 +645,16 @@ func (c *Column) decodeDataPageV1(header DataPageHeaderV1, page *buffer, dict Di
 // DecodeDataPageV2 decodes a data page from the header, compressed data, and
 // optional dictionary passed as arguments.
 func (c *Column) DecodeDataPageV2(header DataPageHeaderV2, page []byte, dict Dictionary) (Page, error) {
-	return c.decodeDataPageV2(header, &buffer{data: page}, dict, -1)
+	return c.decodeDataPageV2(header, newBuffer(page), dict, -1)
 }
 
-func (c *Column) decodeDataPageV2(header DataPageHeaderV2, page *buffer, dict Dictionary, size int32) (Page, error) {
-	var numValues = int(header.NumValues())
-	var pageData = page.data
+func (c *Column) decodeDataPageV2(header DataPageHeaderV2, page *buffer[byte], dict Dictionary, size int32) (Page, error) {
+	numValues := int(header.NumValues())
+	pageData := page.data.Slice()
 	var err error
-	var repetitionLevels *buffer
-	var definitionLevels *buffer
+
+	var repetitionLevels *buffer[byte]
+	var definitionLevels *buffer[byte]
 
 	if length := header.RepetitionLevelsByteLength(); length > 0 {
 		if c.maxRepetitionLevel == 0 {
@@ -642,9 +674,10 @@ func (c *Column) decodeDataPageV2(header DataPageHeaderV2, page *buffer, dict Di
 		if repetitionLevels != nil {
 			defer repetitionLevels.unref()
 
-			if len(repetitionLevels.data) != 0 && repetitionLevels.data[0] != 0 {
+			repLevels := repetitionLevels.data.Slice()
+			if len(repLevels) != 0 && repLevels[0] != 0 {
 				return nil, fmt.Errorf("%w: first repetition level for column %d (%s) is %d instead of zero, indicating that the page contains trailing values from the previous page (this is forbidden for data pages v2)",
-					ErrMalformedRepetitionLevel, c.Index(), c.Name(), repetitionLevels.data[0])
+					ErrMalformedRepetitionLevel, c.Index(), c.Name(), repLevels[0])
 			}
 		}
 	}
@@ -669,16 +702,17 @@ func (c *Column) decodeDataPageV2(header DataPageHeaderV2, page *buffer, dict Di
 			return nil, fmt.Errorf("decompressing data page v2: %w", err)
 		}
 		defer page.unref()
-		pageData = page.data
+		pageData = page.data.Slice()
 	}
 
 	numValues -= int(header.NumNulls())
 	return c.decodeDataPage(header, numValues, repetitionLevels, definitionLevels, page, pageData, dict)
 }
 
-func (c *Column) decodeDataPage(header DataPageHeader, numValues int, repetitionLevels, definitionLevels, page *buffer, data []byte, dict Dictionary) (Page, error) {
+func (c *Column) decodeDataPage(header DataPageHeader, numValues int, repetitionLevels, definitionLevels, page *buffer[byte], data []byte, dict Dictionary) (Page, error) {
 	pageEncoding := LookupEncoding(header.Encoding())
 	pageType := c.Type()
+	pageKind := pageType.Kind()
 
 	if isDictionaryEncoding(pageEncoding) {
 		// In some legacy configurations, the PLAIN_DICTIONARY encoding is used
@@ -689,24 +723,25 @@ func (c *Column) decodeDataPage(header DataPageHeader, numValues int, repetition
 		pageType = indexedPageType{newIndexedType(pageType, dict)}
 	}
 
-	var vbuf, obuf *buffer
-	var pageValues []byte
+	var obuf *buffer[uint32]
+	var vbuf *buffer[byte]
 	var pageOffsets []uint32
-
-	if pageEncoding.CanDecodeInPlace() {
+	var pageValues []byte
+	switch {
+	case pageEncoding.CanDecodeInPlace():
 		vbuf = page
 		pageValues = data
-	} else {
+	default:
 		vbuf = buffers.get(pageType.EstimateDecodeSize(numValues, data, pageEncoding))
 		defer vbuf.unref()
-		pageValues = vbuf.data
+		pageValues = vbuf.data.Slice()
 	}
 
 	// Page offsets not needed when dictionary-encoded
-	if pageType.Kind() == ByteArray && !isDictionaryEncoding(pageEncoding) {
-		obuf = buffers.get(4 * (numValues + 1))
+	if pageKind == ByteArray && !isDictionaryEncoding(pageEncoding) {
+		obuf = offsets.get(numValues + 1)
 		defer obuf.unref()
-		pageOffsets = unsafecast.Slice[uint32](obuf.data)
+		pageOffsets = obuf.data.Slice()
 	}
 
 	values := pageType.NewValues(pageValues, pageOffsets)
@@ -722,21 +757,21 @@ func (c *Column) decodeDataPage(header DataPageHeader, numValues int, repetition
 			newPage,
 			c.maxRepetitionLevel,
 			c.maxDefinitionLevel,
-			repetitionLevels.data,
-			definitionLevels.data,
+			repetitionLevels.data.Slice(),
+			definitionLevels.data.Slice(),
 		)
 	case c.maxDefinitionLevel > 0:
 		newPage = newOptionalPage(
 			newPage,
 			c.maxDefinitionLevel,
-			definitionLevels.data,
+			definitionLevels.data.Slice(),
 		)
 	}
 
-	return newBufferedPage(newPage, vbuf, obuf, repetitionLevels, definitionLevels), nil
+	return newBufferedPage(newPage, obuf, vbuf, definitionLevels, repetitionLevels), nil
 }
 
-func decodeLevelsV1(enc encoding.Encoding, numValues int, data []byte) (*buffer, []byte, error) {
+func decodeLevelsV1(enc encoding.Encoding, numValues int, data []byte) (*buffer[byte], []byte, error) {
 	if len(data) < 4 {
 		return nil, data, io.ErrUnexpectedEOF
 	}
@@ -749,23 +784,25 @@ func decodeLevelsV1(enc encoding.Encoding, numValues int, data []byte) (*buffer,
 	return levels, data[j:], err
 }
 
-func decodeLevelsV2(enc encoding.Encoding, numValues int, data []byte, length int64) (*buffer, []byte, error) {
+func decodeLevelsV2(enc encoding.Encoding, numValues int, data []byte, length int64) (*buffer[byte], []byte, error) {
 	levels, err := decodeLevels(enc, numValues, data[:length])
 	return levels, data[length:], err
 }
 
-func decodeLevels(enc encoding.Encoding, numValues int, data []byte) (levels *buffer, err error) {
+func decodeLevels(enc encoding.Encoding, numValues int, data []byte) (levels *buffer[byte], err error) {
 	levels = buffers.get(numValues)
-	levels.data, err = enc.DecodeLevels(levels.data, data)
+	decoded, err := enc.DecodeLevels(levels.data.Slice(), data)
 	if err != nil {
 		levels.unref()
 		levels = nil
 	} else {
+		levels.data.Resize(0)
+		levels.data.Append(decoded...)
 		switch {
-		case len(levels.data) < numValues:
-			err = fmt.Errorf("decoding level expected %d values but got only %d", numValues, len(levels.data))
-		case len(levels.data) > numValues:
-			levels.data = levels.data[:numValues]
+		case levels.data.Len() < numValues:
+			err = fmt.Errorf("decoding level expected %d values but got only %d", numValues, levels.data.Len())
+		case levels.data.Len() > numValues:
+			levels.data.Resize(numValues)
 		}
 	}
 	return levels, err
@@ -781,11 +818,11 @@ func skipLevelsV2(data []byte, length int64) ([]byte, error) {
 // DecodeDictionary decodes a data page from the header and compressed data
 // passed as arguments.
 func (c *Column) DecodeDictionary(header DictionaryPageHeader, page []byte) (Dictionary, error) {
-	return c.decodeDictionary(header, &buffer{data: page}, -1)
+	return c.decodeDictionary(header, newBuffer(page), -1)
 }
 
-func (c *Column) decodeDictionary(header DictionaryPageHeader, page *buffer, size int32) (Dictionary, error) {
-	pageData := page.data
+func (c *Column) decodeDictionary(header DictionaryPageHeader, page *buffer[byte], size int32) (Dictionary, error) {
+	pageData := page.data.Slice()
 
 	if isCompressed(c.compression) {
 		var err error
@@ -793,7 +830,7 @@ func (c *Column) decodeDictionary(header DictionaryPageHeader, page *buffer, siz
 			return nil, fmt.Errorf("decompressing dictionary page: %w", err)
 		}
 		defer page.unref()
-		pageData = page.data
+		pageData = page.data.Slice()
 	}
 
 	pageType := c.Type()
@@ -813,6 +850,4 @@ func (c *Column) decodeDictionary(header DictionaryPageHeader, page *buffer, siz
 	return pageType.NewDictionary(int(c.index), numValues, values), nil
 }
 
-var (
-	_ Node = (*Column)(nil)
-)
+var _ Node = (*Column)(nil)

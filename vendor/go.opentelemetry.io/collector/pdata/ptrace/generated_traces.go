@@ -8,7 +8,6 @@ package ptrace
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpcollectortrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/trace/v1"
 )
 
 // Traces is the top-level struct that is propagated through the traces pipeline.
@@ -19,10 +18,10 @@ import (
 //
 // Must use NewTraces function to create new instances.
 // Important: zero-initialized instance is not valid for use.
-type Traces internal.Traces
+type Traces internal.TracesWrapper
 
-func newTraces(orig *otlpcollectortrace.ExportTraceServiceRequest, state *internal.State) Traces {
-	return Traces(internal.NewTraces(orig, state))
+func newTraces(orig *internal.ExportTraceServiceRequest, state *internal.State) Traces {
+	return Traces(internal.NewTracesWrapper(orig, state))
 }
 
 // NewTraces creates a new empty Traces.
@@ -30,7 +29,7 @@ func newTraces(orig *otlpcollectortrace.ExportTraceServiceRequest, state *intern
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewTraces() Traces {
-	return newTraces(internal.NewOrigExportTraceServiceRequest(), internal.NewState())
+	return newTraces(internal.NewExportTraceServiceRequest(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -42,7 +41,7 @@ func (ms Traces) MoveTo(dest Traces) {
 	if ms.getOrig() == dest.getOrig() {
 		return
 	}
-	internal.DeleteOrigExportTraceServiceRequest(dest.getOrig(), false)
+	internal.DeleteExportTraceServiceRequest(dest.getOrig(), false)
 	*dest.getOrig(), *ms.getOrig() = *ms.getOrig(), *dest.getOrig()
 }
 
@@ -54,13 +53,13 @@ func (ms Traces) ResourceSpans() ResourceSpansSlice {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Traces) CopyTo(dest Traces) {
 	dest.getState().AssertMutable()
-	internal.CopyOrigExportTraceServiceRequest(dest.getOrig(), ms.getOrig())
+	internal.CopyExportTraceServiceRequest(dest.getOrig(), ms.getOrig())
 }
 
-func (ms Traces) getOrig() *otlpcollectortrace.ExportTraceServiceRequest {
-	return internal.GetOrigTraces(internal.Traces(ms))
+func (ms Traces) getOrig() *internal.ExportTraceServiceRequest {
+	return internal.GetTracesOrig(internal.TracesWrapper(ms))
 }
 
 func (ms Traces) getState() *internal.State {
-	return internal.GetTracesState(internal.Traces(ms))
+	return internal.GetTracesState(internal.TracesWrapper(ms))
 }

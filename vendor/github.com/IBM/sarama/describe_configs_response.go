@@ -82,7 +82,7 @@ type ConfigSynonym struct {
 }
 
 func (r *DescribeConfigsResponse) encode(pe packetEncoder) (err error) {
-	pe.putInt32(int32(r.ThrottleTime / time.Millisecond))
+	pe.putDurationMs(r.ThrottleTime)
 	if err = pe.putArrayLength(len(r.Resources)); err != nil {
 		return err
 	}
@@ -98,11 +98,9 @@ func (r *DescribeConfigsResponse) encode(pe packetEncoder) (err error) {
 
 func (r *DescribeConfigsResponse) decode(pd packetDecoder, version int16) (err error) {
 	r.Version = version
-	throttleTime, err := pd.getInt32()
-	if err != nil {
+	if r.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
-	r.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
 	n, err := pd.getArrayLength()
 	if err != nil {

@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/klauspost/compress/zstd"
 
@@ -31,7 +32,7 @@ type BuilderOptions struct {
 	Compression datasetmd.CompressionType
 
 	// CompressionOptions holds optional configuration for compression.
-	CompressionOptions CompressionOptions
+	CompressionOptions *CompressionOptions
 
 	// StatisticsOptions holds optional configuration for statistics.
 	Statistics StatisticsOptions
@@ -49,10 +50,29 @@ type StatisticsOptions struct {
 }
 
 // CompressionOptions customizes the compressor used when building pages.
+// CompressionOptions cache byte compressors to reduce total allocations.
+// As an optimization, callers should reuse CompressionOptions pointers
+// wherever possible.
 type CompressionOptions struct {
 	// Zstd holds encoding options for Zstd compression. Only used for
 	// [datasetmd.COMPRESSION_TYPE_ZSTD].
 	Zstd []zstd.EOption
+
+	// A helper to get a shared Zstd Writer for the given EOptions.
+	// The shared writer can only used for EncodeAll.
+	zstdWriter func() *zstd.Encoder
+}
+
+func (o *CompressionOptions) init() {
+	if o.zstdWriter == nil {
+		o.zstdWriter = sync.OnceValue(func() *zstd.Encoder {
+			writer, err := zstd.NewWriter(nil, o.Zstd...)
+			if err != nil {
+				panic(fmt.Errorf("error initializing shared zstd writer: %w", err))
+			}
+			return writer
+		})
+	}
 }
 
 // A ColumnBuilder builds a sequence of [Value] entries of a common type into a

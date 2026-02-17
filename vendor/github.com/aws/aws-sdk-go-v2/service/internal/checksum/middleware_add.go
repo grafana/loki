@@ -1,6 +1,7 @@
 package checksum
 
 import (
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/smithy-go/middleware"
 )
 
@@ -14,10 +15,15 @@ type InputMiddlewareOptions struct {
 	// and true, or false if no algorithm is specified.
 	GetAlgorithm func(interface{}) (string, bool)
 
-	// Forces the middleware to compute the input payload's checksum. The
-	// request will fail if the algorithm is not specified or unable to compute
-	// the checksum.
+	// RequireChecksum indicates whether operation model forces middleware to compute the input payload's checksum.
+	// If RequireChecksum is set to true, checksum will be calculated and RequestChecksumCalculation will be ignored,
+	// otherwise RequestChecksumCalculation will be used to indicate if checksum will be calculated
 	RequireChecksum bool
+
+	// RequestChecksumCalculation is the user config to opt-in/out request checksum calculation. If RequireChecksum is
+	// set to true, checksum will be calculated and this field will be ignored, otherwise
+	// RequestChecksumCalculation will be used to indicate if checksum will be calculated
+	RequestChecksumCalculation aws.RequestChecksumCalculation
 
 	// Enables support for wrapping the serialized input payload with a
 	// content-encoding: aws-check wrapper, and including a trailer for the
@@ -46,33 +52,16 @@ type InputMiddlewareOptions struct {
 
 // AddInputMiddleware adds the middleware for performing checksum computing
 // of request payloads, and checksum validation of response payloads.
+//
+// Deprecated: This internal-only runtime API is frozen. Do not call or modify
+// it in new code. Checksum-enabled service operations now generate this
+// middleware setup code inline per #2507.
 func AddInputMiddleware(stack *middleware.Stack, options InputMiddlewareOptions) (err error) {
-	// TODO ensure this works correctly with presigned URLs
-
-	// Middleware stack:
-	// * (OK)(Initialize) --none--
-	// * (OK)(Serialize) EndpointResolver
-	// * (OK)(Build) ComputeContentLength
-	// * (AD)(Build) Header ComputeInputPayloadChecksum
-	//    * SIGNED Payload - If HTTP && not support trailing checksum
-	//    * UNSIGNED Payload - If HTTPS && not support trailing checksum
-	// * (RM)(Build) ContentChecksum - OK to remove
-	// * (OK)(Build) ComputePayloadHash
-	//    * v4.dynamicPayloadSigningMiddleware
-	//    * v4.computePayloadSHA256
-	//    * v4.unsignedPayload
-	//   (OK)(Build) Set computedPayloadHash header
-	// * (OK)(Finalize) Retry
-	// * (AD)(Finalize) Trailer ComputeInputPayloadChecksum,
-	//    * Requires HTTPS && support trailing checksum
-	//    * UNSIGNED Payload
-	//    * Finalize run if HTTPS && support trailing checksum
-	// * (OK)(Finalize) Signing
-	// * (OK)(Deserialize) --none--
-
 	// Initial checksum configuration look up middleware
-	err = stack.Initialize.Add(&setupInputContext{
-		GetAlgorithm: options.GetAlgorithm,
+	err = stack.Initialize.Add(&SetupInputContext{
+		GetAlgorithm:               options.GetAlgorithm,
+		RequireChecksum:            options.RequireChecksum,
+		RequestChecksumCalculation: options.RequestChecksumCalculation,
 	}, middleware.Before)
 	if err != nil {
 		return err
@@ -80,8 +69,7 @@ func AddInputMiddleware(stack *middleware.Stack, options InputMiddlewareOptions)
 
 	stack.Build.Remove("ContentChecksum")
 
-	inputChecksum := &computeInputPayloadChecksum{
-		RequireChecksum:                  options.RequireChecksum,
+	inputChecksum := &ComputeInputPayloadChecksum{
 		EnableTrailingChecksum:           options.EnableTrailingChecksum,
 		EnableComputePayloadHash:         options.EnableComputeSHA256PayloadHash,
 		EnableDecodedContentLengthHeader: options.EnableDecodedContentLengthHeader,
@@ -92,9 +80,8 @@ func AddInputMiddleware(stack *middleware.Stack, options InputMiddlewareOptions)
 
 	// If trailing checksum is not supported no need for finalize handler to be added.
 	if options.EnableTrailingChecksum {
-		trailerMiddleware := &addInputChecksumTrailer{
+		trailerMiddleware := &AddInputChecksumTrailer{
 			EnableTrailingChecksum:           inputChecksum.EnableTrailingChecksum,
-			RequireChecksum:                  inputChecksum.RequireChecksum,
 			EnableComputePayloadHash:         inputChecksum.EnableComputePayloadHash,
 			EnableDecodedContentLengthHeader: inputChecksum.EnableDecodedContentLengthHeader,
 		}
@@ -109,10 +96,10 @@ func AddInputMiddleware(stack *middleware.Stack, options InputMiddlewareOptions)
 // RemoveInputMiddleware Removes the compute input payload checksum middleware
 // handlers from the stack.
 func RemoveInputMiddleware(stack *middleware.Stack) {
-	id := (*setupInputContext)(nil).ID()
+	id := (*SetupInputContext)(nil).ID()
 	stack.Initialize.Remove(id)
 
-	id = (*computeInputPayloadChecksum)(nil).ID()
+	id = (*ComputeInputPayloadChecksum)(nil).ID()
 	stack.Finalize.Remove(id)
 }
 
@@ -126,6 +113,12 @@ type OutputMiddlewareOptions struct {
 	// mode and true, or false if no mode is specified.
 	GetValidationMode func(interface{}) (string, bool)
 
+	// SetValidationMode is a function to set the checksum validation mode of input parameters
+	SetValidationMode func(interface{}, string)
+
+	// ResponseChecksumValidation is the user config to opt-in/out response checksum validation
+	ResponseChecksumValidation aws.ResponseChecksumValidation
+
 	// The set of checksum algorithms that should be used for response payload
 	// checksum validation. The algorithm(s) used will be a union of the
 	// output's returned algorithms and this set.
@@ -134,7 +127,7 @@ type OutputMiddlewareOptions struct {
 	ValidationAlgorithms []string
 
 	// If set the middleware will ignore output multipart checksums. Otherwise
-	// an checksum format error will be returned by the middleware.
+	// a checksum format error will be returned by the middleware.
 	IgnoreMultipartValidation bool
 
 	// When set the middleware will log when output does not have checksum or
@@ -150,7 +143,9 @@ type OutputMiddlewareOptions struct {
 // checksum.
 func AddOutputMiddleware(stack *middleware.Stack, options OutputMiddlewareOptions) error {
 	err := stack.Initialize.Add(&setupOutputContext{
-		GetValidationMode: options.GetValidationMode,
+		GetValidationMode:          options.GetValidationMode,
+		SetValidationMode:          options.SetValidationMode,
+		ResponseChecksumValidation: options.ResponseChecksumValidation,
 	}, middleware.Before)
 	if err != nil {
 		return err

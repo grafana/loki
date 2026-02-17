@@ -6,32 +6,28 @@
 
 package internal
 
-type ByteSlice struct {
+type ByteSliceWrapper struct {
 	orig  *[]byte
 	state *State
 }
 
-func GetOrigByteSlice(ms ByteSlice) *[]byte {
+func GetByteSliceOrig(ms ByteSliceWrapper) *[]byte {
 	return ms.orig
 }
 
-func GetByteSliceState(ms ByteSlice) *State {
+func GetByteSliceState(ms ByteSliceWrapper) *State {
 	return ms.state
 }
 
-func NewByteSlice(orig *[]byte, state *State) ByteSlice {
-	return ByteSlice{orig: orig, state: state}
+func NewByteSliceWrapper(orig *[]byte, state *State) ByteSliceWrapper {
+	return ByteSliceWrapper{orig: orig, state: state}
 }
 
-func GenerateTestByteSlice() ByteSlice {
-	orig := GenerateOrigTestByteSlice()
-	return NewByteSlice(&orig, NewState())
+func GenTestByteSliceWrapper() ByteSliceWrapper {
+	orig := []byte{1, 2, 3}
+	return NewByteSliceWrapper(&orig, NewState())
 }
 
-func CopyOrigByteSlice(dst, src []byte) []byte {
-	return append(dst[:0], src...)
-}
-
-func GenerateOrigTestByteSlice() []byte {
+func GenTestByteSlice() []byte {
 	return []byte{1, 2, 3}
 }

@@ -18,6 +18,14 @@ common:
     kvstore:
       store: inmemory
 
+dataobj:
+  consumer:
+    lifecycler:
+      ring:
+        kvstore:
+          store: inmemory
+        replication_factor: 1
+
 kafka_config:
   topic: "loki"
   reader_config:
@@ -50,6 +58,8 @@ ingest_limits_frontend:
 ingester:
   kafka_ingestion:
     enabled: true
+  lifecycler:
+    id: "loki.local"
 
 distributor:
   kafka_writes_enabled: true

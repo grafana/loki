@@ -30,6 +30,10 @@ Query parallelization is limited by the number of instances and the setting `max
 
 ## Simple Scalable
 
+{{< admonition type="note" >}}
+Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released.
+{{< /admonition >}}
+
 The simple scalable deployment is the default configuration installed by the [Loki Helm Chart](../../setup/install/helm/). This deployment mode is the easiest way to deploy Loki at scale. It strikes a balance between deploying in [monolithic mode](#monolithic-mode) or deploying each component as a [separate microservice](#microservices-mode). Simple scalable deployment is also referred to as SSD.
 
 {{< admonition type="note" >}}
@@ -38,7 +42,7 @@ This deployment mode is sometimes referred to by the acronym SSD for simple scal
 
 Loki’s simple scalable deployment mode separates execution paths into read, write, and backend targets. These targets can be scaled independently, letting you customize your Loki deployment to meet your business needs for log ingestion and log query so that your infrastructure costs better match how you use Loki.
 
-The simple scalable deployment mode can scale up to a few TBs of logs per day, however if you go much beyond this, the microservices mode will be a better choice for most users.
+The simple scalable deployment mode can scale close to a TB of logs per day. Even though scaling it further may be possible, at that scale, the microservices mode will be a better choice in terms of scalability and ease of operations
 
 ![Simple scalable mode diagram](../scalable-monolithic-mode.png "Simple scalable mode")
 
@@ -63,7 +67,7 @@ The simple scalable deployment mode requires a reverse proxy to be deployed in f
 
 ## Microservices mode
 The microservices deployment mode runs components of Loki as distinct processes. The microservices deployment is also referred to as a Distributed deployment. Each process is invoked specifying its `target`.
-For release 3.2 the components are:
+For release 3.3 the components are:
 
 - Bloom Builder (experimental)
 - Bloom Gateway (experimental)

@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
-	"os"
 	"strconv"
 	"time"
 
@@ -40,6 +39,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -85,7 +85,7 @@ func NewRemoteEvaluator(client httpgrpc.HTTPClient, overrides RulesLimits, logge
 		client:         client,
 		overrides:      overrides,
 		logger:         logger,
-		insightsLogger: log.NewLogfmtLogger(os.Stderr),
+		insightsLogger: log.With(util_log.Logger, "msg", "request timings", "insight", "true", "source", "loki_ruler", "rule_name"),
 		metrics:        newMetrics(registerer),
 	}, nil
 }
@@ -291,7 +291,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 	if err != nil {
 		return nil, err
 	}
-	level.Info(r.insightsLogger).Log("msg", "request timings", "insight", "true", "source", "loki_ruler", "rule_name", ruleName, "rule_type", ruleType, "total", dr.Statistics.Summary.ExecTime, "total_bytes", dr.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(query))
+	level.Info(r.insightsLogger).Log(ruleName, "rule_type", ruleType, "total", dr.Statistics.Summary.ExecTime, "total_bytes", dr.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(query))
 	return dr, err
 }
 

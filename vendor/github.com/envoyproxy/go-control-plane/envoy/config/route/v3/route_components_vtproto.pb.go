@@ -52,6 +52,18 @@ func (m *VirtualHost) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.RequestBodyBufferLimit != nil {
+		size, err := (*wrapperspb.UInt64Value)(m.RequestBodyBufferLimit).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xca
+	}
 	if m.Metadata != nil {
 		if vtmsg, ok := interface{}(m.Metadata).(interface {
 			MarshalToSizedBufferVTStrict([]byte) (int, error)
@@ -471,6 +483,18 @@ func (m *Route) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.RequestBodyBufferLimit != nil {
+		size, err := (*wrapperspb.UInt64Value)(m.RequestBodyBufferLimit).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xa2
 	}
 	if len(m.StatPrefix) > 0 {
 		i -= len(m.StatPrefix)
@@ -1019,6 +1043,13 @@ func (m *WeightedCluster) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if msg, ok := m.RandomValueSpecifier.(*WeightedCluster_UseHashPolicy); ok {
+		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
 	if msg, ok := m.RandomValueSpecifier.(*WeightedCluster_HeaderName); ok {
 		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -1070,6 +1101,29 @@ func (m *WeightedCluster_HeaderName) MarshalToSizedBufferVTStrict(dAtA []byte) (
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.HeaderName)))
 	i--
 	dAtA[i] = 0x22
+	return len(dAtA) - i, nil
+}
+func (m *WeightedCluster_UseHashPolicy) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *WeightedCluster_UseHashPolicy) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.UseHashPolicy != nil {
+		size, err := (*wrapperspb.BoolValue)(m.UseHashPolicy).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	} else {
+		i = protohelpers.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x2a
+	}
 	return len(dAtA) - i, nil
 }
 func (m *ClusterSpecifierPlugin) MarshalVTStrict() (dAtA []byte, err error) {
@@ -1285,6 +1339,32 @@ func (m *RouteMatch) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.FilterState) > 0 {
+		for iNdEx := len(m.FilterState) - 1; iNdEx >= 0; iNdEx-- {
+			if vtmsg, ok := interface{}(m.FilterState[iNdEx]).(interface {
+				MarshalToSizedBufferVTStrict([]byte) (int, error)
+			}); ok {
+				size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			} else {
+				encoded, err := proto.Marshal(m.FilterState[iNdEx])
+				if err != nil {
+					return 0, err
+				}
+				i -= len(encoded)
+				copy(dAtA[i:], encoded)
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			}
+			i--
+			dAtA[i] = 0x1
+			i--
+			dAtA[i] = 0x82
+		}
 	}
 	if msg, ok := m.PathSpecifier.(*RouteMatch_PathMatchPolicy); ok {
 		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
@@ -1774,6 +1854,37 @@ func (m *RouteAction_RequestMirrorPolicy) MarshalToSizedBufferVTStrict(dAtA []by
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.HostRewriteLiteral) > 0 {
+		i -= len(m.HostRewriteLiteral)
+		copy(dAtA[i:], m.HostRewriteLiteral)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.HostRewriteLiteral)))
+		i--
+		dAtA[i] = 0x42
+	}
+	if len(m.RequestHeadersMutations) > 0 {
+		for iNdEx := len(m.RequestHeadersMutations) - 1; iNdEx >= 0; iNdEx-- {
+			if vtmsg, ok := interface{}(m.RequestHeadersMutations[iNdEx]).(interface {
+				MarshalToSizedBufferVTStrict([]byte) (int, error)
+			}); ok {
+				size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			} else {
+				encoded, err := proto.Marshal(m.RequestHeadersMutations[iNdEx])
+				if err != nil {
+					return 0, err
+				}
+				i -= len(encoded)
+				copy(dAtA[i:], encoded)
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			}
+			i--
+			dAtA[i] = 0x3a
+		}
 	}
 	if m.DisableShadowHostSuffixAppend {
 		i--
@@ -2545,6 +2656,18 @@ func (m *RouteAction) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.FlushTimeout != nil {
+		size, err := (*durationpb.Duration)(m.FlushTimeout).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xd2
 	}
 	if m.PathRewritePolicy != nil {
 		if vtmsg, ok := interface{}(m.PathRewritePolicy).(interface {
@@ -6159,6 +6282,10 @@ func (m *VirtualHost) SizeVT() (n int) {
 		}
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.RequestBodyBufferLimit != nil {
+		l = (*wrapperspb.UInt64Value)(m.RequestBodyBufferLimit).SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -6283,6 +6410,10 @@ func (m *Route) SizeVT() (n int) {
 	}
 	l = len(m.StatPrefix)
 	if l > 0 {
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.RequestBodyBufferLimit != nil {
+		l = (*wrapperspb.UInt64Value)(m.RequestBodyBufferLimit).SizeVT()
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -6490,6 +6621,20 @@ func (m *WeightedCluster_HeaderName) SizeVT() (n int) {
 	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	return n
 }
+func (m *WeightedCluster_UseHashPolicy) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.UseHashPolicy != nil {
+		l = (*wrapperspb.BoolValue)(m.UseHashPolicy).SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	} else {
+		n += 2
+	}
+	return n
+}
 func (m *ClusterSpecifierPlugin) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -6604,6 +6749,18 @@ func (m *RouteMatch) SizeVT() (n int) {
 				l = proto.Size(e)
 			}
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if len(m.FilterState) > 0 {
+		for _, e := range m.FilterState {
+			if size, ok := interface{}(e).(interface {
+				SizeVT() int
+			}); ok {
+				l = size.SizeVT()
+			} else {
+				l = proto.Size(e)
+			}
+			n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
 	n += len(m.unknownFields)
@@ -6807,6 +6964,22 @@ func (m *RouteAction_RequestMirrorPolicy) SizeVT() (n int) {
 	}
 	if m.DisableShadowHostSuffixAppend {
 		n += 2
+	}
+	if len(m.RequestHeadersMutations) > 0 {
+		for _, e := range m.RequestHeadersMutations {
+			if size, ok := interface{}(e).(interface {
+				SizeVT() int
+			}); ok {
+				l = size.SizeVT()
+			} else {
+				l = proto.Size(e)
+			}
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	l = len(m.HostRewriteLiteral)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -7214,6 +7387,10 @@ func (m *RouteAction) SizeVT() (n int) {
 		} else {
 			l = proto.Size(m.PathRewritePolicy)
 		}
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.FlushTimeout != nil {
+		l = (*durationpb.Duration)(m.FlushTimeout).SizeVT()
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)

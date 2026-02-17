@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
@@ -177,7 +178,7 @@ func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (
 func (l *Client) loadAllRulesGroupsForUserAndNamespace(_ context.Context, userID string, namespace string) (rulespb.RuleGroupList, error) {
 	filename := filepath.Join(l.cfg.Directory, userID, namespace)
 
-	rulegroups, allErrors := l.loader.Load(filename, true)
+	rulegroups, allErrors := l.loader.Load(filename, true, model.UTF8Validation)
 	if len(allErrors) > 0 {
 		return nil, errors.Wrapf(allErrors[0], "error parsing %s", filename)
 	}

@@ -1,3 +1,34 @@
+# Release (2025-12-01)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.24.0
+  * **Feature**: Improve allocation footprint of the middleware stack. This should convey a ~10% reduction in allocations per SDK request.
+
+# Release (2025-11-03)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.23.2
+  * **Bug Fix**: Adjust the initial sizes of each middleware phase to avoid some unnecessary reallocation.
+  * **Bug Fix**: Avoid unnecessary allocation overhead from the metrics system when not in use.
+
+# Release (2025-10-15)
+
+## General Highlights
+* **Dependency Update**: Bump minimum go version to 1.23.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# Release (2025-09-18)
+
+## Module Highlights
+* `github.com/aws/smithy-go/aws-http-auth`: [v1.1.0](aws-http-auth/CHANGELOG.md#v110-2025-09-18)
+  * **Feature**: Added support for SIG4/SIGV4A querystring authentication.
+
 # Release (2025-08-27)
 
 ## General Highlights

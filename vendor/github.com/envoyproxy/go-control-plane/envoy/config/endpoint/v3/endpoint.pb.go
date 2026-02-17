@@ -177,8 +177,10 @@ type ClusterLoadAssignment_Policy struct {
 	// to determine the health of the priority level, or in other words assume each host has a weight of 1 for
 	// this calculation.
 	//
-	// Note: this is not currently implemented for
-	// :ref:`locality weighted load balancing <arch_overview_load_balancing_locality_weighted_lb>`.
+	// .. note::
+	//
+	//	This is not currently implemented for
+	//	:ref:`locality weighted load balancing <arch_overview_load_balancing_locality_weighted_lb>`.
 	WeightedPriorityHealth bool `protobuf:"varint,6,opt,name=weighted_priority_health,json=weightedPriorityHealth,proto3" json:"weighted_priority_health,omitempty"`
 }
 

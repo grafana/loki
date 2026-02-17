@@ -59,7 +59,7 @@ func (s Gauge) Ident() Ident {
 	return (*Metric)(&s).Ident()
 }
 
-func (s Gauge) SetAggregationTemporality(pmetric.AggregationTemporality) {}
+func (Gauge) SetAggregationTemporality(pmetric.AggregationTemporality) {}
 
 type Summary Metric
 
@@ -71,4 +71,4 @@ func (s Summary) Ident() Ident {
 	return (*Metric)(&s).Ident()
 }
 
-func (s Summary) SetAggregationTemporality(pmetric.AggregationTemporality) {}
+func (Summary) SetAggregationTemporality(pmetric.AggregationTemporality) {}

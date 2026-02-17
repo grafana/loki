@@ -8,6 +8,7 @@ import (
 
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 )
 
 var (
@@ -16,7 +17,7 @@ var (
 )
 
 func extractMetricFamily(name, metrics string) (*io_prometheus_client.MetricFamily, error) {
-	var parser expfmt.TextParser
+	parser := expfmt.NewTextParser(model.UTF8Validation)
 	mfs, err := parser.TextToMetricFamilies(strings.NewReader(metrics))
 	if err != nil {
 		return nil, err

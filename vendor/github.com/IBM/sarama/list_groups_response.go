@@ -22,71 +22,52 @@ func (r *ListGroupsResponse) encode(pe packetEncoder) error {
 		pe.putInt32(r.ThrottleTime)
 	}
 
-	pe.putInt16(int16(r.Err))
+	pe.putKError(r.Err)
 
-	if r.Version <= 2 {
-		if err := pe.putArrayLength(len(r.Groups)); err != nil {
+	if err := pe.putArrayLength(len(r.Groups)); err != nil {
+		return err
+	}
+	for groupId, protocolType := range r.Groups {
+		if err := pe.putString(groupId); err != nil {
 			return err
 		}
-		for groupId, protocolType := range r.Groups {
-			if err := pe.putString(groupId); err != nil {
-				return err
-			}
-			if err := pe.putString(protocolType); err != nil {
+		if err := pe.putString(protocolType); err != nil {
+			return err
+		}
+		if r.Version >= 4 {
+			groupData := r.GroupsData[groupId]
+			if err := pe.putString(groupData.GroupState); err != nil {
 				return err
 			}
 		}
-	} else {
-		pe.putCompactArrayLength(len(r.Groups))
-		for groupId, protocolType := range r.Groups {
-			if err := pe.putCompactString(groupId); err != nil {
-				return err
-			}
-			if err := pe.putCompactString(protocolType); err != nil {
-				return err
-			}
 
-			if r.Version >= 4 {
-				groupData := r.GroupsData[groupId]
-				if err := pe.putCompactString(groupData.GroupState); err != nil {
-					return err
-				}
-			}
-
-			if r.Version >= 5 {
-				groupData := r.GroupsData[groupId]
-				if err := pe.putCompactString(groupData.GroupType); err != nil {
-					return err
-				}
+		if r.Version >= 5 {
+			groupData := r.GroupsData[groupId]
+			if err := pe.putString(groupData.GroupType); err != nil {
+				return err
 			}
 		}
+		pe.putEmptyTaggedFieldArray()
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
-func (r *ListGroupsResponse) decode(pd packetDecoder, version int16) error {
+func (r *ListGroupsResponse) decode(pd packetDecoder, version int16) (err error) {
 	r.Version = version
 	if r.Version >= 1 {
-		var err error
 		if r.ThrottleTime, err = pd.getInt32(); err != nil {
 			return err
 		}
 	}
 
-	kerr, err := pd.getInt16()
+	r.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
 
-	r.Err = KError(kerr)
-
-	var n int
-	if r.Version <= 2 {
-		n, err = pd.getArrayLength()
-	} else {
-		n, err = pd.getCompactArrayLength()
-	}
+	n, err := pd.getArrayLength()
 	if err != nil {
 		return err
 	}
@@ -100,37 +81,26 @@ func (r *ListGroupsResponse) decode(pd packetDecoder, version int16) error {
 		}
 
 		var groupId, protocolType string
-		if r.Version <= 2 {
-			groupId, err = pd.getString()
-			if err != nil {
-				return err
-			}
-			protocolType, err = pd.getString()
-			if err != nil {
-				return err
-			}
-		} else {
-			groupId, err = pd.getCompactString()
-			if err != nil {
-				return err
-			}
-			protocolType, err = pd.getCompactString()
-			if err != nil {
-				return err
-			}
+		groupId, err = pd.getString()
+		if err != nil {
+			return err
+		}
+		protocolType, err = pd.getString()
+		if err != nil {
+			return err
 		}
 
 		r.Groups[groupId] = protocolType
 
 		if r.Version >= 4 {
 			var groupData GroupData
-			groupState, err := pd.getCompactString()
+			groupState, err := pd.getString()
 			if err != nil {
 				return err
 			}
 			groupData.GroupState = groupState
 			if r.Version >= 5 {
-				groupType, err := pd.getCompactString()
+				groupType, err := pd.getString()
 				if err != nil {
 					return err
 				}
@@ -139,20 +109,13 @@ func (r *ListGroupsResponse) decode(pd packetDecoder, version int16) error {
 			r.GroupsData[groupId] = groupData
 		}
 
-		if r.Version >= 3 {
-			if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
-				return err
-			}
-		}
-	}
-
-	if r.Version >= 3 {
 		if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
 			return err
 		}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *ListGroupsResponse) key() int16 {
@@ -172,6 +135,14 @@ func (r *ListGroupsResponse) headerVersion() int16 {
 
 func (r *ListGroupsResponse) isValidVersion() bool {
 	return r.Version >= 0 && r.Version <= 5
+}
+
+func (r *ListGroupsResponse) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *ListGroupsResponse) isFlexibleVersion(version int16) bool {
+	return version >= 3
 }
 
 func (r *ListGroupsResponse) requiredVersion() KafkaVersion {

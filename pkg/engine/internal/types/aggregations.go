@@ -10,11 +10,9 @@ const (
 	RangeAggregationTypeSum   // Represents sum_over_time range aggregation
 	RangeAggregationTypeMax   // Represents max_over_time range aggregation
 	RangeAggregationTypeMin   // Represents min_over_time range aggregation
+	RangeAggregationTypeAvg   // Represents avg_over_time range aggregation
+	RangeAggregationTypeBytes // Represents bytes_over_time range aggregation
 )
-
-var SupportedRangeAggregationTypes = []RangeAggregationType{
-	RangeAggregationTypeCount, RangeAggregationTypeSum, RangeAggregationTypeMax, RangeAggregationTypeMin,
-}
 
 func (op RangeAggregationType) String() string {
 	switch op {
@@ -26,6 +24,10 @@ func (op RangeAggregationType) String() string {
 		return "max"
 	case RangeAggregationTypeMin:
 		return "min"
+	case RangeAggregationTypeAvg:
+		return "avg"
+	case RangeAggregationTypeBytes:
+		return "bytes"
 	default:
 		return "invalid"
 	}
@@ -50,10 +52,6 @@ const (
 	VectorAggregationTypeSortDesc // Represents sort_desc vector aggregation
 )
 
-var SupportedVectorAggregationTypes = []VectorAggregationType{
-	VectorAggregationTypeSum, VectorAggregationTypeMax, VectorAggregationTypeMin, VectorAggregationTypeCount,
-}
-
 func (op VectorAggregationType) String() string {
 	switch op {
 	case VectorAggregationTypeSum:
@@ -64,6 +62,20 @@ func (op VectorAggregationType) String() string {
 		return "min"
 	case VectorAggregationTypeCount:
 		return "count"
+	case VectorAggregationTypeAvg:
+		return "avg"
+	case VectorAggregationTypeStddev:
+		return "stddev"
+	case VectorAggregationTypeStdvar:
+		return "stdvar"
+	case VectorAggregationTypeBottomK:
+		return "bottomk"
+	case VectorAggregationTypeTopK:
+		return "topk"
+	case VectorAggregationTypeSort:
+		return "sort"
+	case VectorAggregationTypeSortDesc:
+		return "sort_desc"
 	default:
 		return "invalid"
 	}

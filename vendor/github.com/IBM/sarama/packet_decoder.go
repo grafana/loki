@@ -1,6 +1,13 @@
 package sarama
 
-import "github.com/rcrowley/go-metrics"
+import (
+	"time"
+
+	"github.com/rcrowley/go-metrics"
+)
+
+type taggedFieldDecoderFunc func(pd packetDecoder) error
+type taggedFieldDecoders map[uint64]taggedFieldDecoderFunc
 
 // PacketDecoder is the interface providing helpers for reading with Kafka's encoding rules.
 // Types implementing Decoder only need to worry about calling methods like GetString,
@@ -15,20 +22,18 @@ type packetDecoder interface {
 	getUVarint() (uint64, error)
 	getFloat64() (float64, error)
 	getArrayLength() (int, error)
-	getCompactArrayLength() (int, error)
 	getBool() (bool, error)
+	getKError() (KError, error)
+	getDurationMs() (time.Duration, error)
 	getEmptyTaggedFieldArray() (int, error)
+	getTaggedFieldArray(taggedFieldDecoders) error
 
 	// Collections
 	getBytes() ([]byte, error)
 	getVarintBytes() ([]byte, error)
-	getCompactBytes() ([]byte, error)
 	getRawBytes(length int) ([]byte, error)
 	getString() (string, error)
 	getNullableString() (*string, error)
-	getCompactString() (string, error)
-	getCompactNullableString() (*string, error)
-	getCompactInt32Array() ([]int32, error)
 	getInt32Array() ([]int32, error)
 	getInt64Array() ([]int64, error)
 	getStringArray() ([]string, error)

@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package memberlist
 
 import (
@@ -10,10 +13,25 @@ import (
 	"sync/atomic"
 	"time"
 
-	metrics "github.com/armon/go-metrics"
+	metrics "github.com/hashicorp/go-metrics/compat"
 )
 
 type NodeStateType int
+
+func (t NodeStateType) metricsString() string {
+	switch t {
+	case StateAlive:
+		return "alive"
+	case StateDead:
+		return "dead"
+	case StateSuspect:
+		return "suspect"
+	case StateLeft:
+		return "left"
+	default:
+		return fmt.Sprintf("unhandled-value-%d", t)
+	}
+}
 
 const (
 	StateAlive NodeStateType = iota
@@ -58,7 +76,7 @@ func (n *Node) String() string {
 }
 
 // NodeState is used to manage our state view of another node
-type nodeState struct {
+type NodeState struct {
 	Node
 	Incarnation uint32        // Last known incarnation number
 	State       NodeStateType // Current state
@@ -67,17 +85,17 @@ type nodeState struct {
 
 // Address returns the host:port form of a node's address, suitable for use
 // with a transport.
-func (n *nodeState) Address() string {
+func (n *NodeState) Address() string {
 	return n.Node.Address()
 }
 
 // FullAddress returns the node name and host:port form of a node's address,
 // suitable for use with a transport.
-func (n *nodeState) FullAddress() Address {
+func (n *NodeState) FullAddress() Address {
 	return n.Node.FullAddress()
 }
 
-func (n *nodeState) DeadOrLeft() bool {
+func (n *NodeState) DeadOrLeft() bool {
 	return n.State == StateDead || n.State == StateLeft
 }
 
@@ -234,9 +252,8 @@ START:
 
 	// Determine if we should probe this node
 	skip := false
-	var node nodeState
+	node := *m.nodes[m.probeIndex]
 
-	node = *m.nodes[m.probeIndex]
 	if node.Name == m.config.Name {
 		skip = true
 	} else if node.DeadOrLeft() {
@@ -285,15 +302,15 @@ func failedRemote(err error) bool {
 }
 
 // probeNode handles a single round of failure checking on a node.
-func (m *Memberlist) probeNode(node *nodeState) {
-	defer metrics.MeasureSince([]string{"memberlist", "probeNode"}, time.Now())
+func (m *Memberlist) probeNode(node *NodeState) {
+	defer metrics.MeasureSinceWithLabels([]string{"memberlist", "probeNode"}, time.Now(), m.metricLabels)
 
 	// We use our health awareness to scale the overall probe interval, so we
 	// slow down if we detect problems. The ticker that calls us can handle
 	// us running over the base interval, and will skip missed ticks.
 	probeInterval := m.awareness.ScaleTimeout(m.config.ProbeInterval)
 	if probeInterval > m.config.ProbeInterval {
-		metrics.IncrCounter([]string{"memberlist", "degraded", "probe"}, 1)
+		metrics.IncrCounterWithLabels([]string{"memberlist", "degraded", "probe"}, 1, m.metricLabels)
 	}
 
 	// Prepare a ping message and setup an ack handler.
@@ -338,14 +355,14 @@ func (m *Memberlist) probeNode(node *nodeState) {
 		}
 	} else {
 		var msgs [][]byte
-		if buf, err := encode(pingMsg, &ping); err != nil {
+		if buf, err := encode(pingMsg, &ping, m.config.MsgpackUseNewTimeFormat); err != nil {
 			m.logger.Printf("[ERR] memberlist: Failed to encode UDP ping message: %s", err)
 			return
 		} else {
 			msgs = append(msgs, buf.Bytes())
 		}
 		s := suspect{Incarnation: node.Incarnation, Node: node.Name, From: m.config.Name}
-		if buf, err := encode(suspectMsg, &s); err != nil {
+		if buf, err := encode(suspectMsg, &s, m.config.MsgpackUseNewTimeFormat); err != nil {
 			m.logger.Printf("[ERR] memberlist: Failed to encode suspect message: %s", err)
 			return
 		} else {
@@ -373,7 +390,7 @@ func (m *Memberlist) probeNode(node *nodeState) {
 	// Wait for response or round-trip-time.
 	select {
 	case v := <-ackCh:
-		if v.Complete == true {
+		if v.Complete {
 			if m.config.Ping != nil {
 				rtt := v.Timestamp.Sub(sent)
 				m.config.Ping.NotifyPingComplete(&node.Node, rtt, v.Payload)
@@ -383,7 +400,7 @@ func (m *Memberlist) probeNode(node *nodeState) {
 
 		// As an edge case, if we get a timeout, we need to re-enqueue it
 		// here to break out of the select below.
-		if v.Complete == false {
+		if !v.Complete {
 			ackCh <- v
 		}
 	case <-time.After(m.config.ProbeTimeout):
@@ -398,8 +415,10 @@ func (m *Memberlist) probeNode(node *nodeState) {
 
 HANDLE_REMOTE_FAILURE:
 	// Get some random live nodes.
+	// We intentionally don't use the node selector here for now, because we don't want to limit
+	// indirect probes. We may reconsider this in the future.
 	m.nodeLock.RLock()
-	kNodes := kRandomNodes(m.config.IndirectChecks, m.nodes, func(n *nodeState) bool {
+	kNodes := kRandomNodes(m.config.IndirectChecks, m.nodes, nil, func(n *NodeState) bool {
 		return n.Name == m.config.Name ||
 			n.Name == node.Name ||
 			n.State != StateAlive
@@ -466,11 +485,9 @@ HANDLE_REMOTE_FAILURE:
 	// channel here because we want to issue a warning below if that's the
 	// *only* way we hear back from the peer, so we have to let this time
 	// out first to allow the normal UDP-based acks to come in.
-	select {
-	case v := <-ackCh:
-		if v.Complete == true {
-			return
-		}
+	v := <-ackCh
+	if v.Complete {
+		return
 	}
 
 	// Finally, poll the fallback channel. The timeouts are set such that
@@ -534,7 +551,7 @@ func (m *Memberlist) Ping(node string, addr net.Addr) (time.Duration, error) {
 	// Wait for response or timeout.
 	select {
 	case v := <-ackCh:
-		if v.Complete == true {
+		if v.Complete {
 			return v.Timestamp.Sub(sent), nil
 		}
 	case <-time.After(m.config.ProbeTimeout):
@@ -573,11 +590,11 @@ func (m *Memberlist) resetNodes() {
 // gossip is invoked every GossipInterval period to broadcast our gossip
 // messages to a few random nodes.
 func (m *Memberlist) gossip() {
-	defer metrics.MeasureSince([]string{"memberlist", "gossip"}, time.Now())
+	defer metrics.MeasureSinceWithLabels([]string{"memberlist", "gossip"}, time.Now(), m.metricLabels)
 
 	// Get some random live, suspect, or recently dead nodes
 	m.nodeLock.RLock()
-	kNodes := kRandomNodes(m.config.GossipNodes, m.nodes, func(n *nodeState) bool {
+	kNodes := kRandomNodes(m.config.GossipNodes, m.nodes, m.config.NodeSelection, func(n *NodeState) bool {
 		if n.Name == m.config.Name {
 			return true
 		}
@@ -631,9 +648,15 @@ func (m *Memberlist) gossip() {
 // reasonably expensive as the entire state of this node is exchanged
 // with the other node.
 func (m *Memberlist) pushPull() {
-	// Get a random live node
+	// Determine how many nodes to push/pull with
+	numNodes := m.config.PushPullNodes
+	if numNodes <= 0 {
+		numNodes = 1
+	}
+
+	// Get random live nodes
 	m.nodeLock.RLock()
-	nodes := kRandomNodes(1, m.nodes, func(n *nodeState) bool {
+	nodes := kRandomNodes(numNodes, m.nodes, m.config.NodeSelection, func(n *NodeState) bool {
 		return n.Name == m.config.Name ||
 			n.State != StateAlive
 	})
@@ -643,17 +666,18 @@ func (m *Memberlist) pushPull() {
 	if len(nodes) == 0 {
 		return
 	}
-	node := nodes[0]
 
-	// Attempt a push pull
-	if err := m.pushPullNode(node.FullAddress(), false); err != nil {
-		m.logger.Printf("[ERR] memberlist: Push/Pull with %s failed: %s", node.Name, err)
+	// Attempt push/pull with each selected node
+	for _, node := range nodes {
+		if err := m.pushPullNode(node.FullAddress(), false); err != nil {
+			m.logger.Printf("[ERR] memberlist: Push/Pull with %s failed: %s", node.Name, err)
+		}
 	}
 }
 
 // pushPullNode does a complete state exchange with a specific node.
 func (m *Memberlist) pushPullNode(a Address, join bool) error {
-	defer metrics.MeasureSince([]string{"memberlist", "pushPullNode"}, time.Now())
+	defer metrics.MeasureSinceWithLabels([]string{"memberlist", "pushPullNode"}, time.Now(), m.metricLabels)
 
 	// Attempt to send and receive with the node
 	remote, userState, err := m.sendAndReceiveState(a, join)
@@ -897,7 +921,7 @@ func (m *Memberlist) invokeNackHandler(nack nackResp) {
 // accusedInc value, or you can supply 0 to just get the next incarnation number.
 // This alters the node state that's passed in so this MUST be called while the
 // nodeLock is held.
-func (m *Memberlist) refute(me *nodeState, accusedInc uint32) {
+func (m *Memberlist) refute(me *NodeState, accusedInc uint32) {
 	// Make sure the incarnation number beats the accusation.
 	inc := m.nextIncarnation()
 	if accusedInc >= inc {
@@ -986,7 +1010,7 @@ func (m *Memberlist) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 			m.logger.Printf("[WARN] memberlist: Rejected node %s (%v): %s", a.Node, net.IP(a.Addr), errCon)
 			return
 		}
-		state = &nodeState{
+		state = &NodeState{
 			Node: Node{
 				Name: a.Node,
 				Addr: a.Addr,
@@ -1125,7 +1149,7 @@ func (m *Memberlist) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 	}
 
 	// Update metrics
-	metrics.IncrCounter([]string{"memberlist", "msg", "alive"}, 1)
+	metrics.IncrCounterWithLabels([]string{"memberlist", "msg", "alive"}, 1, m.metricLabels)
 
 	// Notify the delegate of any relevant updates
 	if m.config.Events != nil {
@@ -1183,7 +1207,7 @@ func (m *Memberlist) suspectNode(s *suspect) {
 	}
 
 	// Update metrics
-	metrics.IncrCounter([]string{"memberlist", "msg", "suspect"}, 1)
+	metrics.IncrCounterWithLabels([]string{"memberlist", "msg", "suspect"}, 1, m.metricLabels)
 
 	// Update the state
 	state.Incarnation = s.Incarnation
@@ -1213,7 +1237,7 @@ func (m *Memberlist) suspectNode(s *suspect) {
 
 		m.nodeLock.Lock()
 		state, ok := m.nodeMap[s.Node]
-		timeout := ok && state.State == StateSuspect && state.StateChange == changeTime
+		timeout := ok && state.State == StateSuspect && state.StateChange.Equal(changeTime)
 		if timeout {
 			d = &dead{Incarnation: state.Incarnation, Node: state.Name, From: m.config.Name}
 		}
@@ -1221,7 +1245,7 @@ func (m *Memberlist) suspectNode(s *suspect) {
 
 		if timeout {
 			if k > 0 && numConfirmations < k {
-				metrics.IncrCounter([]string{"memberlist", "degraded", "timeout"}, 1)
+				metrics.IncrCounterWithLabels([]string{"memberlist", "degraded", "timeout"}, 1, m.metricLabels)
 			}
 
 			m.logger.Printf("[INFO] memberlist: Marking %s as failed, suspect timeout reached (%d peer confirmations)",
@@ -1274,7 +1298,7 @@ func (m *Memberlist) deadNode(d *dead) {
 	}
 
 	// Update metrics
-	metrics.IncrCounter([]string{"memberlist", "msg", "dead"}, 1)
+	metrics.IncrCounterWithLabels([]string{"memberlist", "msg", "dead"}, 1, m.metricLabels)
 
 	// Update the state
 	state.Incarnation = d.Incarnation

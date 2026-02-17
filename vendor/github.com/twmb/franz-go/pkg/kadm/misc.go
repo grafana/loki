@@ -117,6 +117,15 @@ func (cl *Client) FindTxnCoordinators(ctx context.Context, txnIDs ...string) Fin
 	return cl.findCoordinators(ctx, 1, txnIDs...)
 }
 
+// FindShareCoordinators returns the coordinator for all requested share groups.
+// Share group names have the format "groupId:topicId:partition".
+// This requires Kafka 3.9+.
+//
+// This may return *ShardErrors or *AuthError.
+func (cl *Client) FindShareCoordinators(ctx context.Context, shareGroups ...string) FindCoordinatorResponses {
+	return cl.findCoordinators(ctx, 2, shareGroups...)
+}
+
 func (cl *Client) findCoordinators(ctx context.Context, kind int8, names ...string) FindCoordinatorResponses {
 	resps := make(FindCoordinatorResponses)
 	if len(names) == 0 {
@@ -195,14 +204,14 @@ func (v *BrokerApiVersions) KeyVersions(key int16) (min, max int16, exists bool)
 	return vs.min, vs.max, exists
 }
 
-// KeyVersions returns the broker's min version for an API key and whether this
+// KeyMinVersion returns the broker's min version for an API key and whether this
 // broker supports the request.
 func (v *BrokerApiVersions) KeyMinVersion(key int16) (min int16, exists bool) {
 	min, _, exists = v.KeyVersions(key)
 	return min, exists
 }
 
-// KeyVersions returns the broker's max version for an API key and whether this
+// KeyMaxVersion returns the broker's max version for an API key and whether this
 // broker supports the request.
 func (v *BrokerApiVersions) KeyMaxVersion(key int16) (max int16, exists bool) {
 	_, max, exists = v.KeyVersions(key)
@@ -235,7 +244,7 @@ func (v *BrokerApiVersions) VersionGuess(opt ...kversion.VersionGuessOpt) string
 	return kversion.FromApiVersionsResponse(v.raw).VersionGuess(opt...)
 }
 
-// BrokerApiVersions contains API versions for all brokers that are reachable
+// BrokersApiVersions contains API versions for all brokers that are reachable
 // from a metadata response.
 type BrokersApiVersions map[int32]BrokerApiVersions
 
@@ -268,7 +277,6 @@ func (cl *Client) ApiVersions(ctx context.Context) (BrokersApiVersions, error) {
 	var wg sync.WaitGroup
 	vs := make(BrokersApiVersions, len(m.Brokers))
 	for _, n := range m.Brokers.NodeIDs() {
-		n := n
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -369,7 +377,7 @@ type DescribedClientQuota struct {
 	Values ClientQuotaValues // Values contains the quota valies for this entity.
 }
 
-// DescribedClientQuota contains client quotas that were described.
+// DescribedClientQuotas contains client quotas that were described.
 type DescribedClientQuotas []DescribedClientQuota
 
 // DescribeClientQuotas describes client quotas. If strict is true, the
@@ -732,10 +740,8 @@ func (cl *Client) AlterUserSCRAMs(ctx context.Context, del []DeleteSCRAM, upsert
 				return nil, fmt.Errorf("user %s: unknown mechanism, unable to generate password", u.User)
 			}
 			upsert[i] = u
-		} else {
-			if len(u.Salt) == 0 || len(u.SaltedPassword) == 0 {
-				return nil, fmt.Errorf("user %s: must specify either a password or a salt and salted password", u.User)
-			}
+		} else if len(u.Salt) == 0 || len(u.SaltedPassword) == 0 {
+			return nil, fmt.Errorf("user %s: must specify either a password or a salt and salted password", u.User)
 		}
 	}
 
@@ -911,13 +917,18 @@ type OffsetForLeaderEpoch struct {
 // OffsetForLeaderEpochRequest.
 type OffsetsForLeaderEpochs map[string]map[int32]OffsetForLeaderEpoch
 
+// Deprecated: this function was a typo of OffsetForLeaderEpoch.
+func (cl *Client) OffetForLeaderEpoch(ctx context.Context, r OffsetForLeaderEpochRequest) (OffsetsForLeaderEpochs, error) {
+	return cl.OffsetForLeaderEpoch(ctx, r)
+}
+
 // OffsetForLeaderEpoch requests end offsets for the requested leader epoch in
 // partitions in the request. This is a relatively advanced and client internal
 // request, for more details, see the doc comments on the OffsetForLeaderEpoch
 // type.
 //
 // This may return *ShardErrors or *AuthError.
-func (cl *Client) OffetForLeaderEpoch(ctx context.Context, r OffsetForLeaderEpochRequest) (OffsetsForLeaderEpochs, error) {
+func (cl *Client) OffsetForLeaderEpoch(ctx context.Context, r OffsetForLeaderEpochRequest) (OffsetsForLeaderEpochs, error) {
 	req := kmsg.NewPtrOffsetForLeaderEpochRequest()
 	for t, ps := range r {
 		rt := kmsg.NewOffsetForLeaderEpochRequestTopic()
@@ -956,4 +967,94 @@ func (cl *Client) OffetForLeaderEpoch(ctx context.Context, r OffsetForLeaderEpoc
 		}
 		return nil
 	})
+}
+
+/////////////////////
+// UPDATE FEATURES //
+/////////////////////
+
+// FeatureUpdate represents a request to update a single feature.
+type FeatureUpdate struct {
+	Feature         string // Feature is the name of the finalized feature to update.
+	MaxVersionLevel int16  // MaxVersionLevel is the new maximum version level for the feature. A value >= 1 is valid. A value < 1 requests deletion of the feature.
+	UpgradeType     int8   // UpgradeType determines which type of upgrade: 1 = upgrade only (default), 2 = safe downgrades only (lossless), 3 = unsafe downgrades (lossy). Only used in v1+.
+}
+
+// FeatureUpdateResult contains the result of updating a single feature.
+type FeatureUpdateResult struct {
+	Feature string // Feature is the name of the finalized feature.
+	Err     error  // Err is non-nil if this feature could not be updated.
+}
+
+// UpdatedFeatures contains the results of updating features.
+type UpdatedFeatures map[string]FeatureUpdateResult
+
+// Sorted returns all feature update results sorted by feature name.
+func (u UpdatedFeatures) Sorted() []FeatureUpdateResult {
+	s := make([]FeatureUpdateResult, 0, len(u))
+	for _, r := range u {
+		s = append(s, r)
+	}
+	sort.Slice(s, func(i, j int) bool { return s[i].Feature < s[j].Feature })
+	return s
+}
+
+// Error iterates over all results and returns the first error encountered, if any.
+func (u UpdatedFeatures) Error() error {
+	for _, r := range u {
+		if r.Err != nil {
+			return r.Err
+		}
+	}
+	return nil
+}
+
+// UpdateFeatures updates broker-wide finalized features (KIP-584, Kafka 2.7+).
+//
+// UpgradeType values: 1 = upgrade only (default), 2 = safe downgrades only (lossless),
+// 3 = unsafe downgrades (lossy).
+//
+// If validateOnly is true, the request is validated but not performed (only against Kafka 3.3+!).
+//
+// This may return *AuthError.
+func (cl *Client) UpdateFeatures(ctx context.Context, validateOnly bool, updates ...FeatureUpdate) (UpdatedFeatures, error) {
+	if len(updates) == 0 {
+		return nil, errors.New("no features specified")
+	}
+
+	req := kmsg.NewPtrUpdateFeaturesRequest()
+	req.TimeoutMillis = cl.timeoutMillis
+	req.ValidateOnly = validateOnly
+	for _, u := range updates {
+		reqUpdate := kmsg.NewUpdateFeaturesRequestFeatureUpdate()
+		reqUpdate.Feature = u.Feature
+		reqUpdate.MaxVersionLevel = u.MaxVersionLevel
+		reqUpdate.UpgradeType = u.UpgradeType
+		req.FeatureUpdates = append(req.FeatureUpdates, reqUpdate)
+	}
+
+	resp, err := req.RequestWith(ctx, cl.cl)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := maybeAuthErr(resp.ErrorCode); err != nil {
+		return nil, err
+	}
+	if err := kerr.ErrorForCode(resp.ErrorCode); err != nil {
+		return nil, err
+	}
+
+	updated := make(UpdatedFeatures)
+	for _, r := range resp.Results {
+		if err := maybeAuthErr(r.ErrorCode); err != nil {
+			return nil, err
+		}
+		updated[r.Feature] = FeatureUpdateResult{
+			Feature: r.Feature,
+			Err:     kerr.ErrorForCode(r.ErrorCode),
+		}
+	}
+
+	return updated, nil
 }

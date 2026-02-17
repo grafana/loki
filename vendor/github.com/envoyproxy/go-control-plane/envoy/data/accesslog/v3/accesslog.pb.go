@@ -470,12 +470,15 @@ type AccessLogCommon struct {
 	// Valid range is (0.0, 1.0].
 	SampleRate float64 `protobuf:"fixed64,1,opt,name=sample_rate,json=sampleRate,proto3" json:"sample_rate,omitempty"`
 	// This field is the remote/origin address on which the request from the user was received.
-	// Note: This may not be the physical peer. E.g, if the remote address is inferred from for
-	// example the x-forwarder-for header, proxy protocol, etc.
+	//
+	// .. note::
+	//
+	//	This may not be the actual peer address. For example, it might be derived from headers like ``x-forwarded-for``,
+	//	the proxy protocol, or similar sources.
 	DownstreamRemoteAddress *v3.Address `protobuf:"bytes,2,opt,name=downstream_remote_address,json=downstreamRemoteAddress,proto3" json:"downstream_remote_address,omitempty"`
 	// This field is the local/destination address on which the request from the user was received.
 	DownstreamLocalAddress *v3.Address `protobuf:"bytes,3,opt,name=downstream_local_address,json=downstreamLocalAddress,proto3" json:"downstream_local_address,omitempty"`
-	// If the connection is secure,S this field will contain TLS properties.
+	// If the connection is secure, this field will contain TLS properties.
 	TlsProperties *TLSProperties `protobuf:"bytes,4,opt,name=tls_properties,json=tlsProperties,proto3" json:"tls_properties,omitempty"`
 	// The time that Envoy started servicing this request. This is effectively the time that the first
 	// downstream byte is received.
@@ -484,7 +487,7 @@ type AccessLogCommon struct {
 	// downstream byte received (i.e. time it takes to receive a request).
 	TimeToLastRxByte *durationpb.Duration `protobuf:"bytes,6,opt,name=time_to_last_rx_byte,json=timeToLastRxByte,proto3" json:"time_to_last_rx_byte,omitempty"`
 	// Interval between the first downstream byte received and the first upstream byte sent. There may
-	// by considerable delta between “time_to_last_rx_byte“ and this value due to filters.
+	// be considerable delta between “time_to_last_rx_byte“ and this value due to filters.
 	// Additionally, the same caveats apply as documented in “time_to_last_downstream_tx_byte“ about
 	// not accounting for kernel socket buffer time, etc.
 	TimeToFirstUpstreamTxByte *durationpb.Duration `protobuf:"bytes,7,opt,name=time_to_first_upstream_tx_byte,json=timeToFirstUpstreamTxByte,proto3" json:"time_to_first_upstream_tx_byte,omitempty"`
@@ -532,7 +535,7 @@ type AccessLogCommon struct {
 	// If upstream connection failed due to transport socket (e.g. TLS handshake), provides the
 	// failure reason from the transport socket. The format of this field depends on the configured
 	// upstream transport socket. Common TLS failures are in
-	// :ref:`TLS trouble shooting <arch_overview_ssl_trouble_shooting>`.
+	// :ref:`TLS troubleshooting <arch_overview_ssl_trouble_shooting>`.
 	UpstreamTransportFailureReason string `protobuf:"bytes,18,opt,name=upstream_transport_failure_reason,json=upstreamTransportFailureReason,proto3" json:"upstream_transport_failure_reason,omitempty"`
 	// The name of the route
 	RouteName string `protobuf:"bytes,19,opt,name=route_name,json=routeName,proto3" json:"route_name,omitempty"`
@@ -545,7 +548,7 @@ type AccessLogCommon struct {
 	// “google.protobuf.Any“.
 	FilterStateObjects map[string]*anypb.Any `protobuf:"bytes,21,rep,name=filter_state_objects,json=filterStateObjects,proto3" json:"filter_state_objects,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 	// A list of custom tags, which annotate logs with additional information.
-	// To configure this value, users should configure
+	// To configure this value, see the documentation for
 	// :ref:`custom_tags <envoy_v3_api_field_extensions.access_loggers.grpc.v3.CommonGrpcAccessLogConfig.custom_tags>`.
 	CustomTags map[string]string `protobuf:"bytes,22,rep,name=custom_tags,json=customTags,proto3" json:"custom_tags,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 	// For HTTP: Total duration in milliseconds of the request from the start time to the last byte out.
@@ -561,36 +564,37 @@ type AccessLogCommon struct {
 	// Optional unique id of stream (TCP connection, long-live HTTP2 stream, HTTP request) for logging and tracing.
 	// This could be any format string that could be used to identify one stream.
 	StreamId string `protobuf:"bytes,26,opt,name=stream_id,json=streamId,proto3" json:"stream_id,omitempty"`
-	// If this log entry is final log entry that flushed after the stream completed or
-	// intermediate log entry that flushed periodically during the stream.
-	// There may be multiple intermediate log entries and only one final log entry for each
-	// long-live stream (TCP connection, long-live HTTP2 stream).
-	// And if it is necessary, unique ID or identifier can be added to the log entry
-	// :ref:`stream_id <envoy_v3_api_field_data.accesslog.v3.AccessLogCommon.stream_id>` to
-	// correlate all these intermediate log entries and final log entry.
+	// Indicates whether this log entry is the final entry (flushed after the stream completed) or an intermediate entry
+	// (flushed periodically during the stream).
+	//
+	// For long-lived streams (e.g., TCP connections or long-lived HTTP/2 streams), there may be multiple intermediate
+	// entries and only one final entry.
+	//
+	// If needed, a unique identifier (see :ref:`stream_id <envoy_v3_api_field_data.accesslog.v3.AccessLogCommon.stream_id>`)
+	// can be used to correlate all intermediate and final log entries for the same stream.
 	//
 	// .. attention::
 	//
-	//	This field is deprecated in favor of ``access_log_type`` for better indication of the
-	//	type of the access log record.
+	//	This field is deprecated in favor of ``access_log_type``, which provides a clearer indication of the log entry
+	//	type.
 	//
 	// Deprecated: Marked as deprecated in envoy/data/accesslog/v3/accesslog.proto.
 	IntermediateLogEntry bool `protobuf:"varint,27,opt,name=intermediate_log_entry,json=intermediateLogEntry,proto3" json:"intermediate_log_entry,omitempty"`
 	// If downstream connection in listener failed due to transport socket (e.g. TLS handshake), provides the
 	// failure reason from the transport socket. The format of this field depends on the configured downstream
-	// transport socket. Common TLS failures are in :ref:`TLS trouble shooting <arch_overview_ssl_trouble_shooting>`.
+	// transport socket. Common TLS failures are in :ref:`TLS troubleshooting <arch_overview_ssl_trouble_shooting>`.
 	DownstreamTransportFailureReason string `protobuf:"bytes,28,opt,name=downstream_transport_failure_reason,json=downstreamTransportFailureReason,proto3" json:"downstream_transport_failure_reason,omitempty"`
 	// For HTTP: Total number of bytes sent to the downstream by the http stream.
-	// For TCP: Total number of bytes sent to the downstream by the tcp proxy.
+	// For TCP: Total number of bytes sent to the downstream by the :ref:`TCP Proxy <config_network_filters_tcp_proxy>`.
 	DownstreamWireBytesSent uint64 `protobuf:"varint,29,opt,name=downstream_wire_bytes_sent,json=downstreamWireBytesSent,proto3" json:"downstream_wire_bytes_sent,omitempty"`
 	// For HTTP: Total number of bytes received from the downstream by the http stream. Envoy over counts sizes of received HTTP/1.1 pipelined requests by adding up bytes of requests in the pipeline to the one currently being processed.
-	// For TCP: Total number of bytes received from the downstream by the tcp proxy.
+	// For TCP: Total number of bytes received from the downstream by the :ref:`TCP Proxy <config_network_filters_tcp_proxy>`.
 	DownstreamWireBytesReceived uint64 `protobuf:"varint,30,opt,name=downstream_wire_bytes_received,json=downstreamWireBytesReceived,proto3" json:"downstream_wire_bytes_received,omitempty"`
 	// For HTTP: Total number of bytes sent to the upstream by the http stream. This value accumulates during upstream retries.
-	// For TCP: Total number of bytes sent to the upstream by the tcp proxy.
+	// For TCP: Total number of bytes sent to the upstream by the :ref:`TCP Proxy <config_network_filters_tcp_proxy>`.
 	UpstreamWireBytesSent uint64 `protobuf:"varint,31,opt,name=upstream_wire_bytes_sent,json=upstreamWireBytesSent,proto3" json:"upstream_wire_bytes_sent,omitempty"`
 	// For HTTP: Total number of bytes received from the upstream by the http stream.
-	// For TCP: Total number of bytes sent to the upstream by the tcp proxy.
+	// For TCP: Total number of bytes sent to the upstream by the :ref:`TCP Proxy <config_network_filters_tcp_proxy>`.
 	UpstreamWireBytesReceived uint64 `protobuf:"varint,32,opt,name=upstream_wire_bytes_received,json=upstreamWireBytesReceived,proto3" json:"upstream_wire_bytes_received,omitempty"`
 	// The type of the access log, which indicates when the log was recorded.
 	// See :ref:`ACCESS_LOG_TYPE <config_access_log_format_access_log_type>` for the available values.
@@ -876,7 +880,7 @@ type ResponseFlags struct {
 	FailedLocalHealthcheck bool `protobuf:"varint,1,opt,name=failed_local_healthcheck,json=failedLocalHealthcheck,proto3" json:"failed_local_healthcheck,omitempty"`
 	// Indicates there was no healthy upstream.
 	NoHealthyUpstream bool `protobuf:"varint,2,opt,name=no_healthy_upstream,json=noHealthyUpstream,proto3" json:"no_healthy_upstream,omitempty"`
-	// Indicates an there was an upstream request timeout.
+	// Indicates there was an upstream request timeout.
 	UpstreamRequestTimeout bool `protobuf:"varint,3,opt,name=upstream_request_timeout,json=upstreamRequestTimeout,proto3" json:"upstream_request_timeout,omitempty"`
 	// Indicates local codec level reset was sent on the stream.
 	LocalReset bool `protobuf:"varint,4,opt,name=local_reset,json=localReset,proto3" json:"local_reset,omitempty"`
@@ -917,7 +921,7 @@ type ResponseFlags struct {
 	ResponseFromCacheFilter bool `protobuf:"varint,21,opt,name=response_from_cache_filter,json=responseFromCacheFilter,proto3" json:"response_from_cache_filter,omitempty"`
 	// Indicates that a filter configuration is not available.
 	NoFilterConfigFound bool `protobuf:"varint,22,opt,name=no_filter_config_found,json=noFilterConfigFound,proto3" json:"no_filter_config_found,omitempty"`
-	// Indicates that request or connection exceeded the downstream connection duration.
+	// Indicates that the request or connection exceeded the downstream connection duration.
 	DurationTimeout bool `protobuf:"varint,23,opt,name=duration_timeout,json=durationTimeout,proto3" json:"duration_timeout,omitempty"`
 	// Indicates there was an HTTP protocol error in the upstream response.
 	UpstreamProtocolError bool `protobuf:"varint,24,opt,name=upstream_protocol_error,json=upstreamProtocolError,proto3" json:"upstream_protocol_error,omitempty"`
@@ -1296,7 +1300,7 @@ type HTTPRequestProperties struct {
 	// It will be generated for all external requests and internal requests that
 	// do not already have a request ID.
 	RequestId string `protobuf:"bytes,9,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	// Value of the “X-Envoy-Original-Path“ request header.
+	// Value of the “x-envoy-original-path“ request header.
 	OriginalPath string `protobuf:"bytes,10,opt,name=original_path,json=originalPath,proto3" json:"original_path,omitempty"`
 	// Size of the HTTP request headers in bytes.
 	//

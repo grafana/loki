@@ -15,7 +15,7 @@ func (r *DeleteGroupsResponse) setVersion(v int16) {
 }
 
 func (r *DeleteGroupsResponse) encode(pe packetEncoder) error {
-	pe.putInt32(int32(r.ThrottleTime / time.Millisecond))
+	pe.putDurationMs(r.ThrottleTime)
 
 	if err := pe.putArrayLength(len(r.GroupErrorCodes)); err != nil {
 		return err
@@ -24,25 +24,26 @@ func (r *DeleteGroupsResponse) encode(pe packetEncoder) error {
 		if err := pe.putString(groupID); err != nil {
 			return err
 		}
-		pe.putInt16(int16(errorCode))
+		pe.putKError(errorCode)
+		pe.putEmptyTaggedFieldArray()
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
-func (r *DeleteGroupsResponse) decode(pd packetDecoder, version int16) error {
-	throttleTime, err := pd.getInt32()
-	if err != nil {
+func (r *DeleteGroupsResponse) decode(pd packetDecoder, version int16) (err error) {
+	if r.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
-	r.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
 	n, err := pd.getArrayLength()
 	if err != nil {
 		return err
 	}
 	if n == 0 {
-		return nil
+		_, err = pd.getEmptyTaggedFieldArray()
+		return err
 	}
 
 	r.GroupErrorCodes = make(map[string]KError, n)
@@ -51,15 +52,18 @@ func (r *DeleteGroupsResponse) decode(pd packetDecoder, version int16) error {
 		if err != nil {
 			return err
 		}
-		errorCode, err := pd.getInt16()
+		r.GroupErrorCodes[groupID], err = pd.getKError()
 		if err != nil {
 			return err
 		}
 
-		r.GroupErrorCodes[groupID] = KError(errorCode)
+		if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
+			return err
+		}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *DeleteGroupsResponse) key() int16 {
@@ -71,15 +75,28 @@ func (r *DeleteGroupsResponse) version() int16 {
 }
 
 func (r *DeleteGroupsResponse) headerVersion() int16 {
+	if r.Version >= 2 {
+		return 1
+	}
 	return 0
 }
 
+func (r *DeleteGroupsResponse) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *DeleteGroupsResponse) isFlexibleVersion(version int16) bool {
+	return version >= 2
+}
+
 func (r *DeleteGroupsResponse) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 1
+	return r.Version >= 0 && r.Version <= 2
 }
 
 func (r *DeleteGroupsResponse) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 2:
+		return V2_4_0_0
 	case 1:
 		return V2_0_0_0
 	case 0:

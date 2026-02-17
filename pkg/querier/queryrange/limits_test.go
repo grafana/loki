@@ -17,7 +17,6 @@ import (
 	"go.uber.org/atomic"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -30,6 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/querylimits"
 )
 
 func TestLimits(t *testing.T) {
@@ -150,7 +150,7 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg.CacheIndexStatsResults = false
 	// split in 7 with 2 in // max.
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
-	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, engine.Config{}, nil, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemas,
 	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
@@ -652,7 +652,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 }
 
 func Test_MaxQueryLookBack(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, engine.Config{}, nil, util_log.Logger, fakeLimits{
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, fakeLimits{
 		maxQueryLookback:    1 * time.Hour,
 		maxQueryParallelism: 1,
 	}, config.SchemaConfig{
@@ -1048,6 +1048,145 @@ func Test_MaxQuerySize(t *testing.T) {
 
 			require.Equal(t, tc.expectedQueryStatsHits, *queryStatsHits)
 			require.Equal(t, tc.expectedQuerierStatsHits, *querierStatsHits)
+		})
+	}
+}
+
+func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
+	// a sentinal query value to control when our mock stats handler returns context stats
+	ctxSentinal := `{context="true"}`
+	schemas := []config.PeriodConfig{
+		{
+			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
+			IndexType: types.TSDBType,
+		},
+	}
+
+	for _, tc := range []struct {
+		desc              string
+		query             string
+		queryStart        time.Time
+		queryEnd          time.Time
+		queryBytes        uint64
+		contextStart      time.Time
+		contextEnd        time.Time
+		contextBytes      uint64
+		limit             int
+		shouldErr         bool
+		expectedStatsHits int
+	}{
+		{
+			desc:              "No context, query under limit",
+			query:             `{app="foo"} |= "foo"`,
+			queryStart:        testTime.Add(-1 * time.Hour),
+			queryEnd:          testTime,
+			queryBytes:        500,
+			limit:             1000,
+			shouldErr:         false,
+			expectedStatsHits: 1,
+		},
+		{
+			desc:              "Context range larger, both under limit",
+			query:             `{app="foo"} |= "foo"`,
+			queryStart:        testTime.Add(-1 * time.Hour),
+			queryEnd:          testTime,
+			queryBytes:        200,
+			contextStart:      testTime.Add(-24 * time.Hour),
+			contextEnd:        testTime,
+			contextBytes:      800,
+			limit:             1000,
+			shouldErr:         false,
+			expectedStatsHits: 2,
+		},
+		{
+			desc:              "Context range larger, context exceeds limit",
+			query:             `{app="foo"} |= "foo"`,
+			queryStart:        testTime.Add(-1 * time.Hour),
+			queryEnd:          testTime,
+			queryBytes:        200,
+			contextStart:      testTime.Add(-24 * time.Hour),
+			contextEnd:        testTime,
+			contextBytes:      1200,
+			limit:             1000,
+			shouldErr:         true,
+			expectedStatsHits: 2,
+		},
+		{
+			desc:              "Query range larger, query exceeds limit",
+			query:             `{app="foo"} |= "foo"`,
+			queryStart:        testTime.Add(-24 * time.Hour),
+			queryEnd:          testTime,
+			queryBytes:        1200,
+			contextStart:      testTime.Add(-1 * time.Hour),
+			contextEnd:        testTime,
+			contextBytes:      200,
+			limit:             1000,
+			shouldErr:         true,
+			expectedStatsHits: 2,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			statsHits := atomic.NewInt32(0)
+
+			statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				statsHits.Inc()
+
+				bytes := tc.queryBytes
+				if req.GetQuery() == ctxSentinal {
+					bytes = tc.contextBytes
+				}
+
+				return &IndexStatsResponse{
+					Response: &logproto.IndexStatsResponse{
+						Bytes: bytes,
+					},
+				}, nil
+			})
+
+			promHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+				return &LokiPromResponse{
+					Response: &queryrangebase.PrometheusResponse{
+						Status: "success",
+					},
+				}, nil
+			})
+
+			lokiReq := &LokiRequest{
+				Query:     tc.query,
+				StartTs:   tc.queryStart,
+				EndTs:     tc.queryEnd,
+				Direction: logproto.FORWARD,
+				Path:      "/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tc.query),
+				},
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "foo")
+
+			if !tc.contextStart.IsZero() && !tc.contextEnd.IsZero() {
+				ctx = querylimits.InjectQueryLimitsContextIntoContext(ctx, querylimits.Context{
+					Expr: ctxSentinal, // a hack to make mocking the stats handler easier, irl this should be the same query as in the request
+					From: tc.contextStart,
+					To:   tc.contextEnd,
+				})
+			}
+
+			middlewares := []queryrangebase.Middleware{
+				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, fakeLimits{
+					maxQueryBytesRead: tc.limit,
+				}, statsHandler),
+			}
+
+			_, err := queryrangebase.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, lokiReq)
+
+			if tc.shouldErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			require.Equal(t, tc.expectedStatsHits, int(statsHits.Load()))
 		})
 	}
 }

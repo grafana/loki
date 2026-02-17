@@ -27,16 +27,18 @@ const (
 // conversation with a server.  A new conversation must be created for
 // each authentication attempt.
 type ClientConversation struct {
-	client   *Client
-	nonceGen NonceGeneratorFcn
-	hashGen  HashGeneratorFcn
-	minIters int
-	state    clientState
-	valid    bool
-	gs2      string
-	nonce    string
-	c1b      string
-	serveSig []byte
+	client                  *Client
+	nonceGen                NonceGeneratorFcn
+	hashGen                 HashGeneratorFcn
+	minIters                int
+	state                   clientState
+	valid                   bool
+	gs2                     string
+	nonce                   string
+	c1b                     string
+	serveSig                []byte
+	channelBinding          ChannelBinding
+	advertiseChannelBinding bool // if true, use "y" flag instead of "n" or "p"
 }
 
 // Step takes a string provided from a server (or just an empty string for the
@@ -99,10 +101,19 @@ func (cc *ClientConversation) finalMsg(s1 string) (string, error) {
 		return "", fmt.Errorf("server requested too few iterations (%d)", msg.iters)
 	}
 
+	// Create channel binding data per RFC 5802:
+	// - For "p" flag: gs2-header + channel-binding-data
+	// - For "n" or "y" flags: gs2-header only (no channel-binding-data)
+	cbindData := []byte(cc.gs2)
+	if cc.channelBinding.IsSupported() {
+		// Only append channel binding data when actually using it (flag "p")
+		cbindData = append(cbindData, cc.channelBinding.Data...)
+	}
+
 	// Create client-final-message-without-proof
 	c2wop := fmt.Sprintf(
 		"c=%s,r=%s",
-		base64.StdEncoding.EncodeToString([]byte(cc.gs2)),
+		base64.StdEncoding.EncodeToString(cbindData),
 		cc.nonce,
 	)
 
@@ -110,11 +121,17 @@ func (cc *ClientConversation) finalMsg(s1 string) (string, error) {
 	authMsg := cc.c1b + "," + s1 + "," + c2wop
 
 	// Get derived keys from client cache
-	dk := cc.client.getDerivedKeys(KeyFactors{Salt: string(msg.salt), Iters: msg.iters})
+	dk, err := cc.client.getDerivedKeys(KeyFactors{Salt: string(msg.salt), Iters: msg.iters})
+	if err != nil {
+		return "", err
+	}
 
 	// Create proof as clientkey XOR clientsignature
 	clientSignature := computeHMAC(cc.hashGen, dk.StoredKey, []byte(authMsg))
-	clientProof := xorBytes(dk.ClientKey, clientSignature)
+	clientProof, err := xorBytes(dk.ClientKey, clientSignature)
+	if err != nil {
+		return "", err
+	}
 	proof := base64.StdEncoding.EncodeToString(clientProof)
 
 	// Cache ServerSignature for later validation
@@ -142,8 +159,23 @@ func (cc *ClientConversation) validateServer(s2 string) (string, error) {
 }
 
 func (cc *ClientConversation) gs2Header() string {
-	if cc.client.authzID == "" {
-		return "n,,"
+	var cbFlag string
+
+	if cc.channelBinding.IsSupported() {
+		// Client is using channel binding with specific type
+		cbFlag = fmt.Sprintf("p=%s", cc.channelBinding.Type)
+	} else if cc.advertiseChannelBinding {
+		// Client supports channel binding but server didn't advertise PLUS
+		cbFlag = "y"
+	} else {
+		// Client doesn't support channel binding
+		cbFlag = "n"
 	}
-	return fmt.Sprintf("n,%s,", encodeName(cc.client.authzID))
+
+	authzPart := ""
+	if cc.client.authzID != "" {
+		authzPart = "a=" + encodeName(cc.client.authzID)
+	}
+
+	return fmt.Sprintf("%s,%s,", cbFlag, authzPart)
 }

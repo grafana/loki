@@ -6,32 +6,28 @@
 
 package internal
 
-type StringSlice struct {
+type StringSliceWrapper struct {
 	orig  *[]string
 	state *State
 }
 
-func GetOrigStringSlice(ms StringSlice) *[]string {
+func GetStringSliceOrig(ms StringSliceWrapper) *[]string {
 	return ms.orig
 }
 
-func GetStringSliceState(ms StringSlice) *State {
+func GetStringSliceState(ms StringSliceWrapper) *State {
 	return ms.state
 }
 
-func NewStringSlice(orig *[]string, state *State) StringSlice {
-	return StringSlice{orig: orig, state: state}
+func NewStringSliceWrapper(orig *[]string, state *State) StringSliceWrapper {
+	return StringSliceWrapper{orig: orig, state: state}
 }
 
-func GenerateTestStringSlice() StringSlice {
-	orig := GenerateOrigTestStringSlice()
-	return NewStringSlice(&orig, NewState())
+func GenTestStringSliceWrapper() StringSliceWrapper {
+	orig := []string{"a", "b", "c"}
+	return NewStringSliceWrapper(&orig, NewState())
 }
 
-func CopyOrigStringSlice(dst, src []string) []string {
-	return append(dst[:0], src...)
-}
-
-func GenerateOrigTestStringSlice() []string {
+func GenTestStringSlice() []string {
 	return []string{"a", "b", "c"}
 }

@@ -18,8 +18,8 @@ func TestInjectAndExtractQueryLimits(t *testing.T) {
 		QueryTimeout:            model.Duration(5 * time.Second),
 	}
 
-	ctx = InjectQueryLimitsContext(ctx, limits)
-	res := ExtractQueryLimitsContext(ctx)
+	ctx = InjectQueryLimitsIntoContext(ctx, limits)
+	res := ExtractQueryLimitsFromContext(ctx)
 	require.Equal(t, limits, *res)
 }
 
@@ -68,5 +68,67 @@ func TestSerializingQueryLimits(t *testing.T) {
 	actual, err = MarshalQueryLimits(&limits)
 	require.NoError(t, err)
 	expected = `{"maxEntriesLimitPerQuery": 100, "maxQueryLength": "2d", "maxQueryLookback": "2w"}`
+	require.JSONEq(t, expected, string(actual))
+}
+
+func TestInjectAndExtractQueryLimitsContext(t *testing.T) {
+	ctx := context.Background()
+	baseTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	limitsCtx := Context{
+		Expr: `{job="app"}`,
+		From: baseTime,
+		To:   baseTime.Add(1 * time.Hour),
+	}
+
+	ctx = InjectQueryLimitsContextIntoContext(ctx, limitsCtx)
+	res := ExtractQueryLimitsContextFromContext(ctx)
+	require.Equal(t, limitsCtx, *res)
+}
+
+func TestDeserializingQueryLimitsContext(t *testing.T) {
+	baseTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	endTime := baseTime.Add(1 * time.Hour)
+
+	// full context
+	payload := `{"expr": "{job=\"app\"}", "from": "2024-01-15T10:30:00Z", "to": "2024-01-15T11:30:00Z"}`
+	limitsCtx, err := UnmarshalQueryLimitsContext([]byte(payload))
+	require.NoError(t, err)
+	require.Equal(t, `{job="app"}`, limitsCtx.Expr)
+	require.Equal(t, baseTime.Unix(), limitsCtx.From.Unix())
+	require.Equal(t, endTime.Unix(), limitsCtx.To.Unix())
+
+	// some fields are empty
+	payload = `{"expr": "rate({job=\"app\"}[5m])"}`
+	limitsCtx, err = UnmarshalQueryLimitsContext([]byte(payload))
+	require.NoError(t, err)
+	require.Equal(t, `rate({job="app"}[5m])`, limitsCtx.Expr)
+	require.True(t, limitsCtx.From.IsZero())
+	require.True(t, limitsCtx.To.IsZero())
+}
+
+func TestSerializingQueryLimitsContext(t *testing.T) {
+	baseTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	endTime := baseTime.Add(1 * time.Hour)
+
+	// full struct
+	limitsCtx := Context{
+		Expr: `{job="app"}`,
+		From: baseTime,
+		To:   endTime,
+	}
+
+	actual, err := MarshalQueryLimitsContext(&limitsCtx)
+	require.NoError(t, err)
+	expected := `{"expr": "{job=\"app\"}", "from": "2024-01-15T10:30:00Z", "to": "2024-01-15T11:30:00Z"}`
+	require.JSONEq(t, expected, string(actual))
+
+	// some fields are empty
+	limitsCtx = Context{
+		Expr: `rate({job="app"}[5m])`,
+	}
+
+	actual, err = MarshalQueryLimitsContext(&limitsCtx)
+	require.NoError(t, err)
+	expected = `{"expr": "rate({job=\"app\"}[5m])", "from": "0001-01-01T00:00:00Z", "to": "0001-01-01T00:00:00Z"}`
 	require.JSONEq(t, expected, string(actual))
 }

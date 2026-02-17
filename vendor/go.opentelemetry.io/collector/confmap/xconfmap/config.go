@@ -15,7 +15,7 @@ import (
 
 // As interface types are only used for static typing, a common idiom to find the reflection Type
 // for an interface type Foo is to use a *Foo value.
-var configValidatorType = reflect.TypeOf((*Validator)(nil)).Elem()
+var configValidatorType = reflect.TypeFor[Validator]()
 
 // Validator defines an optional interface for configurations to implement to do validation.
 type Validator interface {
@@ -172,7 +172,7 @@ func fieldName(field reflect.StructField) string {
 	}
 	// Even if the mapstructure tag exists, the field name may not
 	// be available, so set it if it is still blank.
-	if len(fieldName) == 0 {
+	if fieldName == "" {
 		fieldName = strings.ToLower(field.Name)
 	}
 
@@ -180,20 +180,17 @@ func fieldName(field reflect.StructField) string {
 }
 
 func stringifyMapKey(val reflect.Value) string {
-	var key string
-
-	if str, ok := val.Interface().(string); ok {
-		key = str
-	} else if stringer, ok := val.Interface().(fmt.Stringer); ok {
-		key = stringer.String()
-	} else {
+	switch v := val.Interface().(type) {
+	case string:
+		return v
+	case fmt.Stringer:
+		return v.String()
+	default:
 		switch val.Kind() {
 		case reflect.Ptr, reflect.Interface, reflect.Struct, reflect.Slice, reflect.Array, reflect.Map:
-			key = fmt.Sprintf("[%T key]", val.Interface())
+			return fmt.Sprintf("[%T key]", val.Interface())
 		default:
-			key = fmt.Sprintf("%v", val.Interface())
+			return fmt.Sprintf("%v", val.Interface())
 		}
 	}
-
-	return key
 }

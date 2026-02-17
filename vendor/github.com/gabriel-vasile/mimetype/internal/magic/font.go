@@ -4,14 +4,20 @@ import (
 	"bytes"
 )
 
-var (
-	// Woff matches a Web Open Font Format file.
-	Woff = prefix([]byte("wOFF"))
-	// Woff2 matches a Web Open Font Format version 2 file.
-	Woff2 = prefix([]byte("wOF2"))
-	// Otf matches an OpenType font file.
-	Otf = prefix([]byte{0x4F, 0x54, 0x54, 0x4F, 0x00})
-)
+// Woff matches a Web Open Font Format file.
+func Woff(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("wOFF"))
+}
+
+// Woff2 matches a Web Open Font Format version 2 file.
+func Woff2(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("wOF2"))
+}
+
+// Otf matches an OpenType font file.
+func Otf(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0x4F, 0x54, 0x54, 0x4F, 0x00})
+}
 
 // Ttf matches a TrueType font file.
 func Ttf(raw []byte, limit uint32) bool {

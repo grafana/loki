@@ -17,7 +17,7 @@ package resourcemapping
 import (
 	"strings"
 
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 	monitoredrespb "google.golang.org/genproto/googleapis/api/monitoredres"
 )
 

@@ -16,13 +16,14 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
 // Define our own builder config for the Table Of Contents object because they are smaller than logs objects.
-var tocBuilderCfg = indexobj.BuilderConfig{
+var tocBuilderCfg = logsobj.BuilderBaseConfig{
 	TargetObjectSize:  32 * 1024 * 1024,
 	TargetPageSize:    4 * 1024 * 1024,
 	BufferSize:        32 * 1024 * 1024, // 8x page size
@@ -227,6 +228,9 @@ func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObje
 		}
 		tenantID := section.Tenant
 		indexPointersReader.Reset(sec)
+		if err := indexPointersReader.Open(ctx); err != nil {
+			return errors.Wrap(err, "opening index pointers reader")
+		}
 		for n, err := indexPointersReader.Read(ctx, pbuf); n > 0; n, err = indexPointersReader.Read(ctx, pbuf) {
 			if err != nil && err != io.EOF {
 				return errors.Wrap(err, "reading index pointers")

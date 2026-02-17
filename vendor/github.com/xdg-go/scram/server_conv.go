@@ -25,18 +25,22 @@ const (
 // conversation with a client.  A new conversation must be created for
 // each authentication attempt.
 type ServerConversation struct {
-	nonceGen     NonceGeneratorFcn
-	hashGen      HashGeneratorFcn
-	credentialCB CredentialLookup
-	state        serverState
-	credential   StoredCredentials
-	valid        bool
-	gs2Header    string
-	username     string
-	authzID      string
-	nonce        string
-	c1b          string
-	s1           string
+	nonceGen              NonceGeneratorFcn
+	hashGen               HashGeneratorFcn
+	credentialCB          CredentialLookup
+	state                 serverState
+	credential            StoredCredentials
+	valid                 bool
+	gs2Header             string
+	username              string
+	authzID               string
+	nonce                 string
+	c1b                   string
+	s1                    string
+	channelBinding        ChannelBinding
+	requireChannelBinding bool
+	clientCBType          string
+	clientCBFlag          string
 }
 
 // Step takes a string provided from a client and attempts to move the
@@ -81,6 +85,65 @@ func (sc *ServerConversation) AuthzID() string {
 	return sc.authzID
 }
 
+// validateChannelBindingFlag validates the client's channel binding flag against
+// server configuration. The validation logic follows RFC 5802 section 6, but
+// extends those semantics to cover the case of required channel binding.
+//
+// Client flag validation:
+//   - "n": Client doesn't support channel binding
+//   - "y": Client supports channel binding but server didn't advertise PLUS
+//   - "p": Client requires channel binding with specific type
+//
+// Returns server error string (empty if validation passes) and error.
+func (sc *ServerConversation) validateChannelBindingFlag() (string, error) {
+	advertised := sc.channelBinding.IsSupported()
+
+	switch sc.clientCBFlag {
+	case "n":
+		// Client doesn't support channel binding
+		if sc.requireChannelBinding {
+			// Policy violation: server requires channel binding
+			// Use ErrServerDoesSupportChannelBinding (defined for downgrade attacks)
+			// as the best available match to signal that server requires channel binding
+			return ErrServerDoesSupportChannelBinding,
+				errors.New("server requires channel binding but client doesn't support it")
+		}
+		// OK: server either doesn't advertise PLUS or advertises it optionally
+		return "", nil
+
+	case "y":
+		// Client supports channel binding but thinks server doesn't advertise PLUS
+		if advertised {
+			// Downgrade attack: we advertised PLUS but client didn't see it
+			return ErrServerDoesSupportChannelBinding,
+				errors.New("downgrade attack detected: client used 'y' but server advertised PLUS")
+		}
+		// OK: we didn't advertise PLUS, client correctly detected this
+		return "", nil
+
+	case "p":
+		// Client requires channel binding with specific type
+		if !advertised {
+			// Server doesn't support channel binding
+			return ErrChannelBindingNotSupported,
+				errors.New("client requires channel binding but server doesn't support it")
+		}
+		if ChannelBindingType(sc.clientCBType) != sc.channelBinding.Type {
+			// Server supports channel binding but not the requested type
+			return ErrUnsupportedChannelBindingType,
+				fmt.Errorf("client requested %s but server only supports %s",
+					sc.clientCBType, sc.channelBinding.Type)
+		}
+		// OK: channel binding type matches
+		return "", nil
+
+	default:
+		// Invalid flag (should have been caught by parser)
+		return ErrOtherError,
+			fmt.Errorf("invalid channel binding flag: %s", sc.clientCBFlag)
+	}
+}
+
 func (sc *ServerConversation) firstMsg(c1 string) (string, error) {
 	msg, err := parseClientFirst(c1)
 	if err != nil {
@@ -89,13 +152,21 @@ func (sc *ServerConversation) firstMsg(c1 string) (string, error) {
 	}
 
 	sc.gs2Header = msg.gs2Header
+	sc.clientCBFlag = msg.gs2BindFlag
+	sc.clientCBType = msg.channelBinding
 	sc.username = msg.username
 	sc.authzID = msg.authzID
+
+	// Validate channel binding flag against server configuration
+	if serverErr, err := sc.validateChannelBindingFlag(); err != nil {
+		sc.state = serverDone
+		return serverErr, err
+	}
 
 	sc.credential, err = sc.credentialCB(msg.username)
 	if err != nil {
 		sc.state = serverDone
-		return "e=unknown-user", err
+		return ErrUnknownUser, err
 	}
 
 	sc.nonce = msg.nonce + sc.nonceGen()
@@ -117,17 +188,25 @@ func (sc *ServerConversation) finalMsg(c2 string) (string, error) {
 		return "", err
 	}
 
-	// Check channel binding matches what we expect; in this case, we expect
-	// just the gs2 header we received as we don't support channel binding
-	// with a data payload.  If we add binding, we need to independently
-	// compute the header to match here.
-	if string(msg.cbind) != sc.gs2Header {
-		return "e=channel-bindings-dont-match", fmt.Errorf("channel binding received '%s' doesn't match expected '%s'", msg.cbind, sc.gs2Header)
+	// Check channel binding data matches what we expect
+	var expectedCBind []byte
+	if sc.clientCBFlag == "p" {
+		// Client used channel binding - expect gs2 header + channel binding data
+		expectedCBind = append([]byte(sc.gs2Header), sc.channelBinding.Data...)
+	} else {
+		// Client didn't use channel binding - just expect gs2 header
+		expectedCBind = []byte(sc.gs2Header)
+	}
+
+	if !hmac.Equal(msg.cbind, expectedCBind) {
+		return ErrChannelBindingsDontMatch,
+			fmt.Errorf("channel binding mismatch: expected %x, got %x",
+				expectedCBind, msg.cbind)
 	}
 
 	// Check nonce received matches what we sent
 	if msg.nonce != sc.nonce {
-		return "e=other-error", errors.New("nonce received did not match nonce sent")
+		return ErrOtherError, errors.New("nonce received did not match nonce sent")
 	}
 
 	// Create auth message
@@ -135,12 +214,15 @@ func (sc *ServerConversation) finalMsg(c2 string) (string, error) {
 
 	// Retrieve ClientKey from proof and verify it
 	clientSignature := computeHMAC(sc.hashGen, sc.credential.StoredKey, []byte(authMsg))
-	clientKey := xorBytes([]byte(msg.proof), clientSignature)
+	clientKey, err := xorBytes([]byte(msg.proof), clientSignature)
+	if err != nil {
+		return ErrOtherError, err
+	}
 	storedKey := computeHash(sc.hashGen, clientKey)
 
 	// Compare with constant-time function
 	if !hmac.Equal(storedKey, sc.credential.StoredKey) {
-		return "e=invalid-proof", errors.New("challenge proof invalid")
+		return ErrInvalidProof, errors.New("challenge proof invalid")
 	}
 
 	sc.valid = true

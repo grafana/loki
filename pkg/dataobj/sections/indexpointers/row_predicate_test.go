@@ -3,6 +3,7 @@ package indexpointers
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -10,6 +11,8 @@ import (
 )
 
 type fakeColumn struct{ dataset.Column }
+
+func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
 var (
 	fakeMinTimestampColumn = &fakeColumn{

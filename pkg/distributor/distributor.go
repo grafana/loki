@@ -87,7 +87,8 @@ type Config struct {
 	PushWorkerCount int        `yaml:"push_worker_count"`
 
 	// Request parser
-	MaxRecvMsgSize int `yaml:"max_recv_msg_size"`
+	MaxRecvMsgSize      int   `yaml:"max_recv_msg_size"`
+	MaxDecompressedSize int64 `yaml:"max_decompressed_size"`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -109,15 +110,19 @@ type Config struct {
 	IngestLimitsDryRunEnabled bool `yaml:"ingest_limits_dry_run_enabled"`
 
 	KafkaConfig kafka.Config `yaml:"-"`
+
+	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
+	cfg.DataObjTeeConfig.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
+	fs.Int64Var(&cfg.MaxDecompressedSize, "distributor.max-decompressed-size", 5000<<20, "The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
@@ -128,6 +133,13 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
 		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
+	}
+	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
+		return err
+	}
+	// Set default maxDecompressedSize if not configured (50x maxRecvMsgSize)
+	if cfg.MaxDecompressedSize == 0 && cfg.MaxRecvMsgSize > 0 {
+		cfg.MaxDecompressedSize = int64(cfg.MaxRecvMsgSize) * 50
 	}
 	return nil
 }
@@ -203,6 +215,11 @@ type Distributor struct {
 	// are consumed.
 	numMetadataPartitions int
 
+	// inflightBytes keeps track of the total number of bytes for all in-flight
+	// push requests.
+	inflightBytes      *atomic.Uint64
+	inflightBytesGauge prometheus.Gauge
+
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
 	kafkaWriteBytesTotal   prometheus.Counter
@@ -226,6 +243,7 @@ func New(
 	limitsFrontendCfg limits_frontend_client.Config,
 	limitsFrontendRing ring.ReadRing,
 	numMetadataPartitions int,
+	dataObjConsumerPartitionRing ring.PartitionRingReader,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
@@ -276,6 +294,8 @@ func New(
 		return nil, fmt.Errorf("partition ring is required for kafka writes")
 	}
 
+	ingestLimits := newIngestLimits(limitsFrontendClient, registerer)
+
 	var kafkaWriter KafkaProducer
 	if cfg.KafkaEnabled {
 		kafkaClient, err := kafka_client.NewWriterClient("distributor", cfg.KafkaConfig, 20, logger, registerer)
@@ -283,7 +303,35 @@ func New(
 			return nil, fmt.Errorf("failed to start kafka client: %w", err)
 		}
 		kafkaWriter = kafka_client.NewProducer("distributor", kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
-			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+			prometheus.WrapRegistererWithPrefix("loki_", registerer),
+			kafka_client.WithRecordsInterceptor(validation.IngestionPoliciesKafkaProducerInterceptor),
+		)
+
+		if cfg.DataObjTeeConfig.Enabled {
+			resolver := NewSegmentationPartitionResolver(
+				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
+				dataObjConsumerPartitionRing,
+				registerer,
+				logger,
+			)
+			dataObjTee, err := NewDataObjTee(
+				&cfg.DataObjTeeConfig,
+				resolver,
+				ingestLimits,
+				overrides,
+				kafkaClient,
+				logger,
+				registerer,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create data object tee: %w", err)
+			}
+			tee = WrapTee(tee, dataObjTee)
+
+			if rateBatcher := dataObjTee.RateBatcher(); rateBatcher != nil {
+				servs = append(servs, rateBatcher)
+			}
+		}
 	}
 
 	d := &Distributor{
@@ -356,8 +404,14 @@ func New(
 		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:           kafkaWriter,
 		partitionRing:         partitionRing,
-		ingestLimits:          newIngestLimits(limitsFrontendClient, registerer),
+		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
+		inflightBytes:         atomic.NewUint64(0),
+		inflightBytesGauge: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_inflight_bytes",
+			Help:      "The number of bytes currently inflight.",
+		}),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -443,6 +497,7 @@ type KeyedStream struct {
 	HashKey        uint32
 	HashKeyNoShard uint64
 	Stream         logproto.Stream
+	Policy         string
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
@@ -455,7 +510,7 @@ type streamTracker struct {
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-type pushTracker struct {
+type PushTracker struct {
 	streamsPending atomic.Int32
 	streamsFailed  atomic.Int32
 	done           chan struct{}
@@ -465,7 +520,7 @@ type pushTracker struct {
 // doneWithResult records the result of a stream push.
 // If err is nil, the stream push is considered successful.
 // If err is not nil, the stream push is considered failed.
-func (p *pushTracker) doneWithResult(err error) {
+func (p *PushTracker) doneWithResult(err error) {
 	if err == nil {
 		if p.streamsPending.Dec() == 0 {
 			p.done <- struct{}{}
@@ -505,6 +560,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // Push a set of streams.
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
+	requestSizeBytes := uint64(req.Size())
+	d.inflightBytes.Add(requestSizeBytes)
+	d.inflightBytesGauge.Add(float64(requestSizeBytes))
+	defer func() {
+		d.inflightBytes.Sub(requestSizeBytes)
+		d.inflightBytesGauge.Sub(float64(requestSizeBytes))
+	}()
+
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -532,37 +595,39 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()
 
 	shardStreamsCfg := d.validator.ShardStreams(tenantID)
-	maybeShardByRate := func(stream logproto.Stream, pushSize int) {
+	maybeShardByRate := func(stream logproto.Stream, pushSize int, policy string) {
 		if shardStreamsCfg.Enabled {
-			streams = append(streams, d.shardStream(stream, pushSize, tenantID)...)
+			streams = append(streams, d.shardStream(stream, pushSize, tenantID, policy)...)
 			return
 		}
 		streams = append(streams, KeyedStream{
 			HashKey:        lokiring.TokenFor(tenantID, stream.Labels),
 			HashKeyNoShard: stream.Hash,
 			Stream:         stream,
+			Policy:         policy,
 		})
 	}
 
-	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int) {
+	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int, policy string) {
 		if !shardStreamsCfg.TimeShardingEnabled {
-			maybeShardByRate(stream, pushSize)
+			maybeShardByRate(stream, pushSize, policy)
 			return
 		}
 
 		ignoreRecentFrom := now.Add(-shardStreamsCfg.TimeShardingIgnoreRecent)
 		streamsByTime, ok := shardStreamByTime(stream, labels, d.ingesterCfg.MaxChunkAge/2, ignoreRecentFrom)
 		if !ok {
-			maybeShardByRate(stream, pushSize)
+			maybeShardByRate(stream, pushSize, policy)
 			return
 		}
 
 		for _, ts := range streamsByTime {
-			maybeShardByRate(ts.Stream, ts.linesTotalLen)
+			maybeShardByRate(ts.Stream, ts.linesTotalLen, policy)
 		}
 	}
 
 	var ingestionBlockedError error
+	var totalEntriesSize, totalLineCount int
 
 	err = func() error {
 		sp := trace.SpanFromContext(ctx)
@@ -580,7 +645,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 			var lbs labels.Labels
 			var retentionHours, policy string
-			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver, format)
+			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -591,7 +656,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 			if !d.validator.IsInternalStream(lbs) {
 				if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
-					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels)
+					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, policy)
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					discardedBytes := util.EntriesTotalSize(stream.Entries)
@@ -618,8 +683,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			}
 
 			n := 0
-			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
+			streamEntriesSize := 0
 
 			labelNamer := otlptranslator.LabelNamer{}
 			for _, entry := range stream.Entries {
@@ -693,8 +758,10 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				}
 
 				n++
-				validationContext.validationMetrics.compute(entry, retentionHours, policy)
-				pushSize += len(entry.Line)
+				entrySize := util.EntryTotalSize(&entry)
+				totalEntriesSize += entrySize
+				streamEntriesSize += entrySize
+				totalLineCount++
 			}
 			stream.Entries = stream.Entries[:n]
 			if len(stream.Entries) == 0 {
@@ -702,7 +769,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				continue
 			}
 
-			maybeShardStreams(stream, lbs, pushSize)
+			maybeShardStreams(stream, lbs, streamEntriesSize, policy)
 		}
 		return nil
 	}()
@@ -723,10 +790,10 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver, format)
+	if !d.ingestionRateLimiter.AllowN(now, tenantID, totalEntriesSize) {
+		d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format)
 
-		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.aggregatedPushStats.lineCount, validationContext.validationMetrics.aggregatedPushStats.lineSize)
+		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), totalLineCount, totalEntriesSize)
 		d.writeFailuresManager.Log(tenantID, err)
 		// Return a 429 to indicate to the client they are being rate limited
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
@@ -735,29 +802,40 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	// These limits are checked after the ingestion rate limit as this
 	// is how it works in ingesters.
 	if d.cfg.IngestLimitsEnabled {
-		accepted, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
+		accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
 		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
-			if len(accepted) == 0 {
-				// All streams were rejected, the request should be failed.
-				return nil, httpgrpc.Error(http.StatusTooManyRequests, "request exceeded limits")
+			if len(rejected) > 0 {
+				discardedStreams := make([]logproto.Stream, 0, len(rejected))
+				for _, stream := range rejected {
+					discardedStreams = append(discardedStreams, stream.Stream)
+				}
+				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format)
+
+				// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
+				// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
+				// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
+				// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
+				err = fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Stream.Labels, tenantID)
+				d.writeFailuresManager.Log(tenantID, err)
+				// Set the validation error to the stream limit error so it is returned to the client.
+				validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
+				// If none of the streams were accepted, return early.
+				if len(accepted) == 0 {
+					return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+				}
 			}
 			streams = accepted
 		}
 	}
 
-	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
-	// function calls that cannot be inlined.
-	if d.tee != nil {
-		d.tee.Duplicate(tenantID, streams)
+	tracker := PushTracker{
+		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
+		err:  make(chan error, 1),
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
-	tracker := pushTracker{
-		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
-		err:  make(chan error, 1),
-	}
 	streamsToWrite := 0
 	if d.cfg.IngesterEnabled {
 		streamsToWrite += len(streams)
@@ -765,8 +843,19 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	if d.cfg.KafkaEnabled {
 		streamsToWrite += len(streams)
 	}
+
 	// We must correctly set streamsPending before beginning any writes to ensure we don't have a race between finishing all of one path before starting the other.
-	tracker.streamsPending.Store(int32(streamsToWrite))
+	if d.tee != nil {
+		// Call register for the tee to allow them to register their pending streams.
+		d.tee.Register(ctx, tenantID, streams, &tracker)
+	}
+	tracker.streamsPending.Add(int32(streamsToWrite))
+
+	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
+	// function calls that cannot be inlined.
+	if d.tee != nil {
+		d.tee.Duplicate(context.WithoutCancel(ctx), tenantID, streams, &tracker)
+	}
 
 	if d.cfg.KafkaEnabled {
 		subring, err := d.partitionRing.PartitionRing().ShuffleShard(tenantID, d.validator.IngestionPartitionsTenantShardSize(tenantID))
@@ -877,33 +966,24 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, 
 
 func (d *Distributor) trackDiscardedData(
 	ctx context.Context,
-	req *logproto.PushRequest,
+	streams []logproto.Stream,
 	validationContext validationContext,
 	tenantID string,
-	validationMetrics validationMetrics,
 	reason string,
 	streamResolver push.StreamResolver,
 	format string,
 ) {
-	for policy, retentionToStats := range validationMetrics.policyPushStats {
-		for retentionHours, stats := range retentionToStats {
-			validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(stats.lineCount))
-			validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(stats.lineSize))
+	for _, stream := range streams {
+		lbs, _, _, retentionHours, policy, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
+		if err != nil {
+			level.Warn(d.logger).Log("msg", "failed to parse stream labels when tracking discarded samples and bytes, this data will not be tracked", "error", err, "stream", stream.Labels)
+			continue
 		}
-	}
-
-	if d.usageTracker != nil {
-		for _, stream := range req.Streams {
-			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver, format)
-			if err != nil {
-				continue
-			}
-
-			discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
-
-			if d.usageTracker != nil {
-				d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes), format)
-			}
+		discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
+		validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(len(stream.Entries)))
+		validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(discardedStreamBytes))
+		if d.usageTracker != nil {
+			d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes), format)
 		}
 	}
 }
@@ -997,13 +1077,13 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 // streams and their associated keys for hashing to ingesters.
 //
 // The number of shards is limited by the number of entries.
-func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string) []KeyedStream {
+func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string, policy string) []KeyedStream {
 	shardStreamsCfg := d.validator.ShardStreams(tenantID)
 	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
-		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashKeyNoShard: stream.Hash, Stream: stream}}
+		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashKeyNoShard: stream.Hash, Stream: stream, Policy: policy}}
 	}
 
 	d.streamShardCount.Inc()
@@ -1011,11 +1091,11 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 		level.Info(logger).Log("msg", "sharding request", "shard_count", shardCount)
 	}
 
-	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream)
+	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream, policy)
 }
 
-func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.Stream) []KeyedStream {
-	derivedStreams := d.createShards(stream, totalShards, tenantID, shardStreamsCfg)
+func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.Stream, policy string) []KeyedStream {
+	derivedStreams := d.createShards(stream, totalShards, tenantID, shardStreamsCfg, policy)
 
 	for i := 0; i < len(stream.Entries); i++ {
 		streamIndex := i % len(derivedStreams)
@@ -1026,7 +1106,7 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards in
 	return derivedStreams
 }
 
-func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg shardstreams.Config) []KeyedStream {
+func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg shardstreams.Config, policy string) []KeyedStream {
 	var (
 		streamLabels   = labelTemplate(stream.Labels, d.logger)
 		streamPattern  = streamLabels.String()
@@ -1050,6 +1130,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 			HashKey:        lokiring.TokenFor(tenantID, shard.Labels),
 			HashKeyNoShard: stream.Hash,
 			Stream:         shard,
+			Policy:         policy,
 		})
 
 		if shardStreamsCfg.LoggingEnabled {
@@ -1098,15 +1179,6 @@ func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shar
 	}
 }
 
-// maxT returns the highest between two given timestamps.
-func maxT(t1, t2 time.Time) time.Time {
-	if t1.Before(t2) {
-		return t2
-	}
-
-	return t1
-}
-
 func (d *Distributor) truncateLines(vContext validationContext, stream *logproto.Stream) {
 	if !vContext.maxLineSizeTruncate {
 		return
@@ -1135,7 +1207,7 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 
 type pushIngesterTask struct {
 	streamTracker []*streamTracker
-	pushTracker   *pushTracker
+	pushTracker   *PushTracker
 	ingester      ring.InstanceDesc
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -1209,7 +1281,7 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	return err
 }
 
-func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker *pushTracker, subring *ring.PartitionRing) {
+func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker *PushTracker, subring *ring.PartitionRing) {
 	for _, s := range streams {
 		go func(s KeyedStream) {
 			err := d.sendStreamToKafka(ctx, s, tenant, subring)
@@ -1288,10 +1360,10 @@ type labelData struct {
 }
 
 // parseStreamLabels parses stream labels using a request-scoped policy resolver
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, streamResolver push.StreamResolver, format string) (labels.Labels, string, uint64, string, string, error) {
+func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.Stream, streamResolver push.StreamResolver, format string) (labels.Labels, string, uint64, string, string, error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := streamResolver.RetentionHoursFor(val.ls)
-		policy := streamResolver.PolicyFor(val.ls)
+		policy := streamResolver.PolicyFor(ctx, val.ls)
 		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
 	}
 
@@ -1302,7 +1374,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 		return labels.EmptyLabels(), "", 0, retentionHours, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	policy := streamResolver.PolicyFor(ls)
+	policy := streamResolver.PolicyFor(ctx, ls)
 	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
 
 	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy, format); err != nil {
@@ -1433,8 +1505,8 @@ func (r requestScopedStreamResolver) RetentionHoursFor(lbs labels.Labels) string
 	return r.retention.RetentionHoursFor(lbs)
 }
 
-func (r requestScopedStreamResolver) PolicyFor(lbs labels.Labels) string {
-	policies := r.policyStreamMappings.PolicyFor(lbs)
+func (r requestScopedStreamResolver) PolicyFor(ctx context.Context, lbs labels.Labels) string {
+	policies := r.policyStreamMappings.PolicyFor(ctx, lbs)
 
 	var policy string
 	if len(policies) > 0 {

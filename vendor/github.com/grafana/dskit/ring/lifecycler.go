@@ -55,8 +55,8 @@ type LifecyclerConfig struct {
 
 	// Injected internally
 	ListenPort int `yaml:"-"`
-	// HideTokensInStatusPage allows tokens to be hidden from management tools e.g. the status page, for use in contexts which do not utilize tokens.
-	HideTokensInStatusPage bool `yaml:"-"`
+
+	StatusPageConfig StatusPageConfig `yaml:"-"`
 
 	// If set, specifies the TokenGenerator implementation that will be used for generating tokens.
 	// Default value is nil, which means that RandomTokenGenerator is used.
@@ -81,8 +81,8 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	}
 
 	f.IntVar(&cfg.NumTokens, prefix+"num-tokens", 128, "Number of tokens for each ingester.")
-	f.DurationVar(&cfg.HeartbeatPeriod, prefix+"heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul. 0 = disabled.")
-	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"heartbeat-timeout", 1*time.Minute, "Heartbeat timeout after which instance is assumed to be unhealthy. 0 = disabled.")
+	f.DurationVar(&cfg.HeartbeatPeriod, prefix+"heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
+	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"heartbeat-timeout", 1*time.Minute, "Heartbeat timeout after which instance is assumed to be unhealthy.")
 	f.DurationVar(&cfg.JoinAfter, prefix+"join-after", 0*time.Second, "Period to wait for a claim from another member; will join automatically after this.")
 	f.DurationVar(&cfg.ObservePeriod, prefix+"observe-period", 0*time.Second, "Observe tokens after generating to resolve collisions. Useful when using gossiping ring.")
 	f.DurationVar(&cfg.MinReadyDuration, prefix+"min-ready-duration", 15*time.Second, "Minimum duration to wait after the internal readiness checks have passed but before succeeding the readiness endpoint. This is used to slowdown deployment controllers (eg. Kubernetes) after an instance is ready and before they proceed with a rolling update, to give the rest of the cluster instances enough time to receive ring updates.")
@@ -114,6 +114,12 @@ func (cfg *LifecyclerConfig) Validate() error {
 		if cfg.TokensFilePath != "" {
 			return errors.New("you can't configure the tokens file path when using the spread minimizing token strategy. Please set the tokens file path to an empty string")
 		}
+	}
+	if cfg.HeartbeatPeriod == 0 {
+		return errors.New("heartbeat period must be greater than 0")
+	}
+	if cfg.HeartbeatTimeout == 0 {
+		return errors.New("heartbeat timeout must be greater than 0")
 	}
 	return nil
 }
@@ -535,7 +541,7 @@ func (i *Lifecycler) Zones() []string {
 func (i *Lifecycler) loop(ctx context.Context) error {
 	// First, see if we exist in the cluster, update our state to match if we do,
 	// and add ourselves (without tokens) if we don't.
-	if err := i.initRing(context.Background()); err != nil {
+	if err := i.initRing(ctx); err != nil {
 		return errors.Wrapf(err, "failed to join the ring %s", i.RingName)
 	}
 
@@ -558,14 +564,14 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 				if i.cfg.ObservePeriod > 0 {
 					// let's observe the ring. By using JOINING state, this ingester will be ignored by LEAVING
 					// ingesters, but we also signal that it is not fully functional yet.
-					if err := i.autoJoin(context.Background(), JOINING); err != nil {
+					if err := i.autoJoin(ctx, JOINING); err != nil {
 						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
 					}
 
 					level.Info(i.logger).Log("msg", "observing tokens before going ACTIVE", "ring", i.RingName)
 					observeChan = time.After(i.cfg.ObservePeriod)
 				} else {
-					if err := i.autoJoin(context.Background(), ACTIVE); err != nil {
+					if err := i.autoJoin(ctx, ACTIVE); err != nil {
 						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
 					}
 				}
@@ -580,10 +586,10 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 				level.Error(i.logger).Log("msg", "unexpected state while observing tokens", "state", s, "ring", i.RingName)
 			}
 
-			if i.verifyTokens(context.Background()) {
+			if i.verifyTokens(ctx) {
 				level.Info(i.logger).Log("msg", "token verification successful", "ring", i.RingName)
 
-				err := i.changeState(context.Background(), ACTIVE)
+				err := i.changeState(ctx, ACTIVE)
 				if err != nil {
 					level.Error(i.logger).Log("msg", "failed to set state to ACTIVE", "ring", i.RingName, "err", err)
 				}
@@ -595,7 +601,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 
 		case <-heartbeatTickerChan:
 			i.lifecyclerMetrics.consulHeartbeats.Inc()
-			if err := i.updateConsul(context.Background()); err != nil {
+			if err := i.updateConsul(ctx); err != nil {
 				level.Error(i.logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
 			}
 
@@ -617,7 +623,8 @@ func (i *Lifecycler) stopping(runningError error) error {
 	if runningError != nil {
 		// previously lifecycler just called os.Exit (from loop method)...
 		// now it stops more gracefully, but also without doing any cleanup
-		return nil
+		level.Error(i.logger).Log("msg", "lifecycler loop() exited with error", "err", runningError)
+		return runningError
 	}
 
 	heartbeatTickerStop, heartbeatTickerChan := newDisableableTicker(i.cfg.HeartbeatPeriod)
@@ -705,7 +712,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 					i.setState(ACTIVE)
 				}
 				ro, rots := i.GetReadOnlyState()
-				ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokensFromFile, i.GetState(), i.getRegisteredAt(), ro, rots)
+				ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokensFromFile, i.GetState(), i.getRegisteredAt(), ro, rots, nil)
 				i.setTokens(tokensFromFile)
 				return ringDesc, true, nil
 			}
@@ -713,7 +720,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(i.logger).Log("msg", "instance not found in ring, adding with no tokens", "ring", i.RingName)
 			ro, rots := i.GetReadOnlyState()
-			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, []uint32{}, i.GetState(), i.getRegisteredAt(), ro, rots)
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, []uint32{}, i.GetState(), i.getRegisteredAt(), ro, rots, nil)
 			return ringDesc, true, nil
 		}
 
@@ -817,7 +824,7 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 			sort.Sort(ringTokens)
 
 			ro, rots := i.GetReadOnlyState()
-			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, ringTokens, i.GetState(), i.getRegisteredAt(), ro, rots)
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, ringTokens, i.GetState(), i.getRegisteredAt(), ro, rots, nil)
 
 			i.setTokens(ringTokens)
 
@@ -926,7 +933,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 		i.setTokens(myTokens)
 
 		ro, rots := i.GetReadOnlyState()
-		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt(), ro, rots)
+		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt(), ro, rots, nil)
 		return ringDesc, true, nil
 	})
 
@@ -961,7 +968,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		}
 
 		ro, rots := i.GetReadOnlyState()
-		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokens, i.GetState(), i.getRegisteredAt(), ro, rots)
+		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokens, i.GetState(), i.getRegisteredAt(), ro, rots, nil)
 		return ringDesc, true, nil
 	})
 
@@ -1108,7 +1115,7 @@ func (i *Lifecycler) getRing(ctx context.Context) (*Desc, error) {
 }
 
 func (i *Lifecycler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	newRingPageHandler(i, i.cfg.HeartbeatTimeout, i.cfg.HideTokensInStatusPage).handle(w, req)
+	newRingPageHandler(i, i.cfg.HeartbeatTimeout, i.cfg.StatusPageConfig).handle(w, req)
 }
 
 // unregister removes our entry from consul.

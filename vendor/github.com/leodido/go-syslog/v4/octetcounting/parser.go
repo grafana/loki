@@ -1,6 +1,8 @@
 package octetcounting
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 
@@ -9,16 +11,20 @@ import (
 	"github.com/leodido/go-syslog/v4/rfc5424"
 )
 
+// DefaultMaxSize as per RFC5425#section-4.3.1
+const DefaultMaxSize = 8192
+
 // parser is capable to parse the input stream containing syslog messages with octetcounting framing.
 //
 // Use NewParser function to instantiate one.
 type parser struct {
 	maxMessageLength int
 	s                Scanner
+	bestEffort       bool
 	internal         syslog.Machine
+	internalOpts     []syslog.MachineOption
 	last             Token
 	stepback         bool // Wheter to retrieve the last token or not
-	bestEffort       bool // Best effort mode flag
 	emit             syslog.ParserListener
 }
 
@@ -26,19 +32,20 @@ type parser struct {
 func NewParser(opts ...syslog.ParserOption) syslog.Parser {
 	p := &parser{
 		emit:             func(*syslog.Result) { /* noop */ },
-		maxMessageLength: 8192, // size as per RFC5425#section-4.3.1
+		maxMessageLength: DefaultMaxSize,
 	}
 
 	for _, opt := range opts {
 		p = opt(p).(*parser)
 	}
 
-	// Create internal parser depending on options
+	// If bestEffort flag was set, add it to options
 	if p.bestEffort {
-		p.internal = rfc5424.NewMachine(rfc5424.WithBestEffort())
-	} else {
-		p.internal = rfc5424.NewMachine()
+		p.internalOpts = append(p.internalOpts, rfc5424.WithBestEffort())
 	}
+
+	// Create internal parser with options
+	p.internal = rfc5424.NewMachine(p.internalOpts...)
 
 	return p
 }
@@ -46,37 +53,41 @@ func NewParser(opts ...syslog.ParserOption) syslog.Parser {
 func NewParserRFC3164(opts ...syslog.ParserOption) syslog.Parser {
 	p := &parser{
 		emit:             func(*syslog.Result) { /* noop */ },
-		maxMessageLength: 1024,
+		maxMessageLength: DefaultMaxSize,
 	}
 
 	for _, opt := range opts {
 		p = opt(p).(*parser)
 	}
 
-	// Create internal parser depending on options
+	// If bestEffort flag was set, add it to options
 	if p.bestEffort {
-		p.internal = rfc3164.NewMachine(rfc3164.WithBestEffort())
-	} else {
-		p.internal = rfc3164.NewMachine()
+		p.internalOpts = append(p.internalOpts, rfc3164.WithBestEffort())
 	}
+
+	// Create internal parser with machine options
+	p.internal = rfc3164.NewMachine(p.internalOpts...)
 
 	return p
 }
 
-func (p *parser) WithMaxMessageLength(length int) {
-	p.maxMessageLength = length
+// WithBestEffort implements the syslog.BestEfforter interface.
+func (p *parser) WithBestEffort() {
+	p.bestEffort = true
 }
 
 // HasBestEffort tells whether the receiving parser has best effort mode on or off.
 func (p *parser) HasBestEffort() bool {
-	return p.bestEffort
+	return p.internal.HasBestEffort()
 }
 
-// WithBestEffort implements the syslog.BestEfforter interface.
-//
-// The generic options uses it.
-func (p *parser) WithBestEffort() {
-	p.bestEffort = true
+// WithMachineOptions configures options for the underlying parsing machine.
+func (p *parser) WithMachineOptions(opts ...syslog.MachineOption) {
+	p.internalOpts = append(p.internalOpts, opts...)
+}
+
+func (p *parser) WithMaxMessageLength(length int) {
+	p.maxMessageLength = length
 }
 
 // WithListener implements the syslog.Parser interface.
@@ -101,15 +112,28 @@ func (p *parser) run() {
 
 		// First token MUST be a MSGLEN
 		if tok = p.scan(); tok.typ != MSGLEN {
+			if tok.typ == ILLEGAL {
+				if bytes.Equal(tok.lit, ErrMsgInvalidLength) {
+					p.emit(&syslog.Result{
+						Error: errors.New(string(ErrMsgInvalidLength)),
+					})
+					break
+				} else if bytes.Equal(tok.lit, ErrMsgTooLarge) {
+					p.emit(&syslog.Result{
+						Error: fmt.Errorf(string(ErrMsgTooLarge), p.s.msglen, p.maxMessageLength),
+					})
+					break
+				} else if bytes.Equal(tok.lit, ErrMsgExceedsIntLimit) {
+					p.emit(&syslog.Result{
+						Error: errors.New(string(ErrMsgExceedsIntLimit)),
+					})
+					break
+				}
+			}
+
+			// Default error case
 			p.emit(&syslog.Result{
 				Error: fmt.Errorf("found %s, expecting a %s", tok, MSGLEN),
-			})
-			break
-		}
-
-		if int(p.s.msglen) > p.maxMessageLength {
-			p.emit(&syslog.Result{
-				Error: fmt.Errorf("message too long to parse. was size %d, max length %d", p.s.msglen, p.maxMessageLength),
 			})
 			break
 		}
@@ -126,7 +150,7 @@ func (p *parser) run() {
 		if tok = p.scan(); tok.typ != SYSLOGMSG {
 			e := fmt.Errorf(`found %s after "%s", expecting a %s containing %d octets`, tok, tok.lit, SYSLOGMSG, p.s.msglen)
 			// Underflow case
-			if len(tok.lit) < int(p.s.msglen) && p.bestEffort {
+			if len(tok.lit) < int(p.s.msglen) && p.internal.HasBestEffort() {
 				// Though MSGLEN was not respected, we try to parse the existing SYSLOGMSG as a RFC5424 syslog message
 				result := p.parse(tok.lit)
 				if result.Error == nil {
@@ -144,10 +168,10 @@ func (p *parser) run() {
 
 		// Parse the SYSLOGMSG literal pretending it is a RFC5424 syslog message
 		result := p.parse(tok.lit)
-		if p.bestEffort || result.Error == nil {
+		if p.internal.HasBestEffort() || result.Error == nil {
 			p.emit(result)
 		}
-		if !p.bestEffort && result.Error != nil {
+		if !p.internal.HasBestEffort() && result.Error != nil {
 			p.emit(&syslog.Result{Error: result.Error})
 			break
 		}

@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net"
@@ -26,7 +27,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -1725,6 +1725,10 @@ func (r *readRingMock) InstancesWithTokensInZoneCount(_ string) int {
 
 func (r *readRingMock) ZonesCount() int {
 	return 1
+}
+
+func (r *readRingMock) Zones() []string {
+	return []string{"zone1"}
 }
 
 func (r *readRingMock) HealthyInstancesInZoneCount() int {

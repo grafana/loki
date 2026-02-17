@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/testutils"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -90,7 +91,7 @@ func TestPushTarget(t *testing.T) {
 				Labels: model.LabelSet{
 					"job": "some_job_name",
 				},
-				RelabelConfigs: []*relabel.Config{
+				RelabelConfigs: testutils.ValidateRelabelConfig(t, []*relabel.Config{
 					{
 						SourceLabels: model.LabelNames{"__gcp_attributes_logging_googleapis_com_timestamp"},
 						Regex:        relabel.MustNewRegexp("(.*)"),
@@ -134,7 +135,7 @@ func TestPushTarget(t *testing.T) {
 						TargetLabel:  "cluster",
 						Action:       relabel.Replace,
 					},
-				},
+				}),
 			},
 			expectedEntries: []expectedEntry{
 				{
@@ -276,7 +277,7 @@ func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
-	tenantIDRelabelConfig := []*relabel.Config{
+	tenantIDRelabelConfig := testutils.ValidateRelabelConfig(t, []*relabel.Config{
 		{
 			SourceLabels: model.LabelNames{"__tenant_id__"},
 			Regex:        relabel.MustNewRegexp("(.*)"),
@@ -284,7 +285,7 @@ func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 			TargetLabel:  "tenant_id",
 			Action:       relabel.Replace,
 		},
-	}
+	})
 	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, tenantIDRelabelConfig, t.Name()+"_test_job", config)
 	require.NoError(t, err)
 	defer func() {
@@ -410,7 +411,7 @@ func TestPushTarget_UsePushTimeout(t *testing.T) {
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	metrics := gcplog.NewMetrics(prometheus.DefaultRegisterer)
-	tenantIDRelabelConfig := []*relabel.Config{
+	tenantIDRelabelConfig := testutils.ValidateRelabelConfig(t, []*relabel.Config{
 		{
 			SourceLabels: model.LabelNames{"__tenant_id__"},
 			Regex:        relabel.MustNewRegexp("(.*)"),
@@ -418,7 +419,7 @@ func TestPushTarget_UsePushTimeout(t *testing.T) {
 			TargetLabel:  "tenant_id",
 			Action:       relabel.Replace,
 		},
-	}
+	})
 	pt, err := gcplog.NewGCPLogTarget(metrics, logger, eh, tenantIDRelabelConfig, t.Name()+"_test_job", config)
 	require.NoError(t, err)
 	defer func() {

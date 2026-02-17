@@ -19,10 +19,14 @@ import (
 	"bytes"
 	"slices"
 	"strings"
+	"unique"
 	"unsafe"
 
 	"github.com/cespare/xxhash/v2"
 )
+
+// ImplementationName is the name of the labels implementation.
+const ImplementationName = "slicelabels"
 
 // Labels is a sorted set of labels. Order has to be guaranteed upon
 // instantiation.
@@ -252,7 +256,7 @@ func (ls Labels) WithoutEmpty() Labels {
 // the two string headers size for name and value.
 // Slice header size is ignored because it should be amortized to zero.
 func (ls Labels) ByteSize() uint64 {
-	var size uint64 = 0
+	var size uint64
 	for _, l := range ls {
 		size += uint64(len(l.Name)+len(l.Value)) + 2*uint64(unsafe.Sizeof(""))
 	}
@@ -296,12 +300,9 @@ func FromStrings(ss ...string) Labels {
 // Compare compares the two label sets.
 // The result will be 0 if a==b, <0 if a < b, and >0 if a > b.
 func Compare(a, b Labels) int {
-	l := len(a)
-	if len(b) < l {
-		l = len(b)
-	}
+	l := min(len(b), len(a))
 
-	for i := 0; i < l; i++ {
+	for i := range l {
 		if a[i].Name != b[i].Name {
 			if a[i].Name < b[i].Name {
 				return -1
@@ -348,6 +349,7 @@ func (ls Labels) Validate(f func(l Label) error) error {
 }
 
 // DropMetricName returns Labels with the "__name__" removed.
+//
 // Deprecated: Use DropReserved instead.
 func (ls Labels) DropMetricName() Labels {
 	return ls.DropReserved(func(n string) bool { return n == MetricName })
@@ -417,10 +419,7 @@ func (b *Builder) Labels() Labels {
 		return b.base
 	}
 
-	expectedSize := len(b.base) + len(b.add) - len(b.del)
-	if expectedSize < 1 {
-		expectedSize = 1
-	}
+	expectedSize := max(len(b.base)+len(b.add)-len(b.del), 1)
 	res := make(Labels, 0, expectedSize)
 	for _, l := range b.base {
 		if slices.Contains(b.del, l.Name) || contains(b.add, l.Name) {
@@ -437,7 +436,8 @@ func (b *Builder) Labels() Labels {
 
 // ScratchBuilder allows efficient construction of a Labels from scratch.
 type ScratchBuilder struct {
-	add Labels
+	add       Labels
+	unsafeAdd bool
 }
 
 // SymbolTable is no-op, just for api parity with dedupelabels.
@@ -445,7 +445,7 @@ type SymbolTable struct{}
 
 func NewSymbolTable() *SymbolTable { return nil }
 
-func (t *SymbolTable) Len() int { return 0 }
+func (*SymbolTable) Len() int { return 0 }
 
 // NewScratchBuilder creates a ScratchBuilder initialized for Labels with n entries.
 func NewScratchBuilder(n int) ScratchBuilder {
@@ -462,8 +462,17 @@ func NewScratchBuilderWithSymbolTable(_ *SymbolTable, n int) ScratchBuilder {
 	return NewScratchBuilder(n)
 }
 
-func (b *ScratchBuilder) SetSymbolTable(*SymbolTable) {
+func (*ScratchBuilder) SetSymbolTable(*SymbolTable) {
 	// no-op
+}
+
+// SetUnsafeAdd allows turning on/off the assumptions that added strings are unsafe
+// for reuse. ScratchBuilder implementations that do reuse strings, must clone
+// the strings.
+//
+// SliceLabels will clone all added strings when this option is true.
+func (b *ScratchBuilder) SetUnsafeAdd(unsafeAdd bool) {
+	b.unsafeAdd = unsafeAdd
 }
 
 func (b *ScratchBuilder) Reset() {
@@ -472,15 +481,15 @@ func (b *ScratchBuilder) Reset() {
 
 // Add a name/value pair.
 // Note if you Add the same name twice you will get a duplicate label, which is invalid.
+// If SetUnsafeAdd was set to false, the values must remain live until Labels() is called.
 func (b *ScratchBuilder) Add(name, value string) {
+	if b.unsafeAdd {
+		// Underlying label structure for slicelabels shares memory, so we need to
+		// copy it if the input is unsafe.
+		name = unique.Make(name).Value()
+		value = unique.Make(value).Value()
+	}
 	b.add = append(b.add, Label{Name: name, Value: value})
-}
-
-// UnsafeAddBytes adds a name/value pair, using []byte instead of string.
-// The default version of this function is unsafe, hence the name.
-// This version is safe - it copies the strings immediately - but we keep the same name so everything compiles.
-func (b *ScratchBuilder) UnsafeAddBytes(name, value []byte) {
-	b.add = append(b.add, Label{Name: string(name), Value: string(value)})
 }
 
 // Sort the labels added so far by name.

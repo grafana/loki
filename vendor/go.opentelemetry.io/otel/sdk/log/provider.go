@@ -27,11 +27,11 @@ const (
 )
 
 type providerConfig struct {
-	resource       *resource.Resource
-	processors     []Processor
-	fltrProcessors []FilterProcessor
-	attrCntLim     setting[int]
-	attrValLenLim  setting[int]
+	resource      *resource.Resource
+	processors    []Processor
+	attrCntLim    setting[int]
+	attrValLenLim setting[int]
+	allowDupKeys  setting[bool]
 }
 
 func newProviderConfig(opts []LoggerProviderOption) providerConfig {
@@ -64,9 +64,9 @@ type LoggerProvider struct {
 
 	resource                  *resource.Resource
 	processors                []Processor
-	fltrProcessors            []FilterProcessor
 	attributeCountLimit       int
 	attributeValueLengthLimit int
+	allowDupKeys              bool
 
 	loggersMu sync.Mutex
 	loggers   map[instrumentation.Scope]*logger
@@ -90,9 +90,9 @@ func NewLoggerProvider(opts ...LoggerProviderOption) *LoggerProvider {
 	return &LoggerProvider{
 		resource:                  cfg.resource,
 		processors:                cfg.processors,
-		fltrProcessors:            cfg.fltrProcessors,
 		attributeCountLimit:       cfg.attrCntLim.Value,
 		attributeValueLengthLimit: cfg.attrValLenLim.Value,
+		allowDupKeys:              cfg.allowDupKeys.Value,
 	}
 }
 
@@ -205,14 +205,9 @@ func WithResource(res *resource.Resource) LoggerProviderOption {
 //
 // For production, use [NewBatchProcessor] to batch log records before they are exported.
 // For testing and debugging, use [NewSimpleProcessor] to synchronously export log records.
-//
-// See [FilterProcessor] for information about how a Processor can support filtering.
 func WithProcessor(processor Processor) LoggerProviderOption {
 	return loggerProviderOptionFunc(func(cfg providerConfig) providerConfig {
 		cfg.processors = append(cfg.processors, processor)
-		if f, ok := processor.(FilterProcessor); ok {
-			cfg.fltrProcessors = append(cfg.fltrProcessors, f)
-		}
 		return cfg
 	})
 }
@@ -251,6 +246,24 @@ func WithAttributeCountLimit(limit int) LoggerProviderOption {
 func WithAttributeValueLengthLimit(limit int) LoggerProviderOption {
 	return loggerProviderOptionFunc(func(cfg providerConfig) providerConfig {
 		cfg.attrValLenLim = newSetting(limit)
+		return cfg
+	})
+}
+
+// WithAllowKeyDuplication sets whether deduplication is skipped for log attributes or other key-value collections.
+//
+// By default, the key-value collections within a log record are deduplicated to comply with the OpenTelemetry Specification.
+// Deduplication means that if multiple key–value pairs with the same key are present, only a single pair
+// is retained and others are discarded.
+//
+// Disabling deduplication with this option can improve performance e.g. of adding attributes to the log record.
+//
+// Note that if you disable deduplication, you are responsible for ensuring that duplicate
+// key-value pairs within in a single collection are not emitted,
+// or that the telemetry receiver can handle such duplicates.
+func WithAllowKeyDuplication() LoggerProviderOption {
+	return loggerProviderOptionFunc(func(cfg providerConfig) providerConfig {
+		cfg.allowDupKeys = newSetting(true)
 		return cfg
 	})
 }

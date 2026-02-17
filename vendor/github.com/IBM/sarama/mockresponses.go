@@ -1029,8 +1029,8 @@ func (mr *MockIncrementalAlterConfigsResponseWithErrorCode) For(reqBody versione
 		res.Resources = append(res.Resources, &AlterConfigsResourceResponse{
 			Name:      r.Name,
 			Type:      r.Type,
-			ErrorCode: 83,
-			ErrorMsg:  "",
+			ErrorCode: int16(ErrInvalidConfig),
+			ErrorMsg:  "Invalid value xyz for configuration retention.ms: Not a number of type LONG",
 		})
 	}
 	return res

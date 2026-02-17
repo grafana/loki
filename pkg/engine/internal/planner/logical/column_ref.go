@@ -1,13 +1,14 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // A ColumnRef referenes a column within a table relation. ColumnRef only
 // implements [Value].
 type ColumnRef struct {
+	b baseNode
+
 	Ref types.ColumnRef
 }
 
@@ -26,14 +27,14 @@ func (c *ColumnRef) String() string {
 	return c.Ref.String()
 }
 
-// Schema returns the schema of the column being referenced.
-func (c *ColumnRef) Schema() *schema.Schema {
-	// TODO(rfratto): Update *schema.Schema to allow representing a single
-	// column.
-	return nil
-}
+// Referrers returns a list of instructions that reference c.
+//
+// The list of instructions can be modified to update the reference list, such
+// as when modifying the plan.
+func (c *ColumnRef) Referrers() *[]Instruction { return &c.b.referrers }
 
-func (c *ColumnRef) isValue() {}
+func (c *ColumnRef) base() *baseNode { return &c.b }
+func (c *ColumnRef) isValue()        {}
 
 func NewColumnRef(name string, ty types.ColumnType) *ColumnRef {
 	return &ColumnRef{

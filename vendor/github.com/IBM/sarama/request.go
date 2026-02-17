@@ -40,6 +40,7 @@ func (r *request) encode(pe packetEncoder) error {
 		// we don't use tag headers at the moment so we just put an array length of 0
 		pe.putUVarint(0)
 	}
+	pe = prepareFlexibleEncoder(pe, r.body)
 
 	err := r.body.encode(pe)
 	if err != nil {
@@ -83,6 +84,9 @@ func (r *request) decode(pd packetDecoder) (err error) {
 		}
 	}
 
+	if decoder, ok := pd.(*realDecoder); ok {
+		pd = prepareFlexibleDecoder(decoder, r.body, version)
+	}
 	return r.body.decode(pd, version)
 }
 
@@ -92,8 +96,8 @@ func decodeRequest(r io.Reader) (*request, int, error) {
 		lengthBytes = make([]byte, 4)
 	)
 
-	if _, err := io.ReadFull(r, lengthBytes); err != nil {
-		return nil, bytesRead, err
+	if n, err := io.ReadFull(r, lengthBytes); err != nil {
+		return nil, n, err
 	}
 
 	bytesRead += len(lengthBytes)
@@ -104,8 +108,8 @@ func decodeRequest(r io.Reader) (*request, int, error) {
 	}
 
 	encodedReq := make([]byte, length)
-	if _, err := io.ReadFull(r, encodedReq); err != nil {
-		return nil, bytesRead, err
+	if n, err := io.ReadFull(r, encodedReq); err != nil {
+		return nil, bytesRead + n, err
 	}
 
 	bytesRead += len(encodedReq)

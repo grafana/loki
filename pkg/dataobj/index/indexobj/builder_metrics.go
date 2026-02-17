@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -116,7 +117,7 @@ func newBuilderMetrics() *builderMetrics {
 }
 
 // ObserveConfig updates config metrics based on the provided [BuilderConfig].
-func (m *builderMetrics) ObserveConfig(cfg BuilderConfig) {
+func (m *builderMetrics) ObserveConfig(cfg logsobj.BuilderBaseConfig) {
 	m.targetPageSize.Set(float64(cfg.TargetPageSize))
 	m.targetObjectSize.Set(float64(cfg.TargetObjectSize))
 }

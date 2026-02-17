@@ -204,7 +204,7 @@ serviceaccount/loki-gcp-ksa created
 ### Add IAM Policy to Buckets
 
 {{< admonition type="note" >}}
-The [pre-defined `role/storage.objectUser` role](https://cloud.google.com/storage/docs/access-control/iam-roles) is sufficient for Loki to
+The [pre-defined `roles/storage.objectUser` role](https://cloud.google.com/storage/docs/access-control/iam-roles#storage.objectUser) is sufficient for Loki to
  operate. See [IAM permissions for Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-permissions) for details about each individual
  permission. You can use this predefined role or create your own with matching permissions.
 {{< /admonition >}}
@@ -213,7 +213,7 @@ Create an IAM policy binding on the buckets using the KSA created previously and
 
 ```bash
 gcloud storage buckets add-iam-policy-binding gs://<BUCKET_NAME> \
- --role=roles/storage.objectAdmin \
+ --role=roles/storage.objectUser \
   --member=principal://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<PROJECT_ID>.svc.id.goog/subject/ns/<NAMESPACE>/sa/<KSA_NAME> \
   --condition=None
 ```
@@ -227,7 +227,7 @@ Examples:
 
 ```bash
 gcloud storage buckets add-iam-policy-binding gs://loki-gcp-chunks \
-  --role=roles/storage.objectAdmin \
+  --role=roles/storage.objectUser \
   --member=principal://iam.googleapis.com/projects/12345678901/locations/global/workloadIdentityPools/my-project-123456.svc.id.goog/subject/ns/loki/sa/loki-gcp-ksa \
   --condition=None
 ```
@@ -236,7 +236,7 @@ and
 
 ```bash
 gcloud storage buckets add-iam-policy-binding gs://loki-gcp-ruler \
-  --role=roles/storage.objectAdmin \
+  --role=roles/storage.objectUser \
   --member=principal://iam.googleapis.com/projects/12345678901/locations/global/workloadIdentityPools/my-project-123456.svc.id.goog/subject/ns/loki/sa/loki-gcp-ksa \
   --condition=None
 ```
@@ -261,7 +261,7 @@ bindings:
   role: roles/storage.legacyObjectReader
 - members:
   - principal://iam.googleapis.com/projects/12345678901/locations/global/workloadIdentityPools/my-project-123456.svc.id.goog/subject/ns/loki/sa/loki-gcp-ksa
-  role: roles/storage.objectViewer
+  role: roles/storage.objectUser
 etag: CAI=
 kind: storage#policy
 resourceId: projects/_/buckets/loki-gcp-chunks
@@ -461,7 +461,7 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
 
 - **Storage:**
   - Defines where the Helm chart stores data.
-  - Set the type to `GCS` since we are using Amazon GCS.
+  - Set the type to `GCS` since we are using Google Cloud Storage.
   - Configure the bucket names for the chunks and ruler to match the buckets created earlier.
   - The `GCS` section specifies the region of the bucket.
 

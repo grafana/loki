@@ -3,6 +3,7 @@ package dag_test
 import (
 	"testing"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
@@ -14,14 +15,14 @@ func TestGraph_Walk(t *testing.T) {
 	var g dag.Graph[*testNode]
 
 	var (
-		limit1  = g.Add(&testNode{id: "limit1"})
-		sort1   = g.Add(&testNode{id: "sort1"})
-		filter1 = g.Add(&testNode{id: "filter1"})
-		sort2   = g.Add(&testNode{id: "sort2"})
-		proj1   = g.Add(&testNode{id: "projection1"})
-		proj2   = g.Add(&testNode{id: "projection2"})
-		proj3   = g.Add(&testNode{id: "projection3"})
-		scan1   = g.Add(&testNode{id: "scan1"})
+		limit1  = g.Add(&testNode{id: ulid.Make()})
+		sort1   = g.Add(&testNode{id: ulid.Make()})
+		filter1 = g.Add(&testNode{id: ulid.Make()})
+		sort2   = g.Add(&testNode{id: ulid.Make()})
+		proj1   = g.Add(&testNode{id: ulid.Make()})
+		proj2   = g.Add(&testNode{id: ulid.Make()})
+		proj3   = g.Add(&testNode{id: ulid.Make()})
+		scan1   = g.Add(&testNode{id: ulid.Make()})
 	)
 
 	_ = g.AddEdge(dag.Edge[*testNode]{Parent: limit1, Child: sort1})
@@ -39,9 +40,9 @@ func TestGraph_Walk(t *testing.T) {
 	require.Len(t, roots, 1)
 
 	t.Run("pre-order", func(t *testing.T) {
-		expect := []string{"limit1", "sort1", "filter1", "projection1", "scan1", "sort2", "projection2", "projection3"}
+		expect := []ulid.ULID{limit1.ID(), sort1.ID(), filter1.ID(), proj1.ID(), scan1.ID(), sort2.ID(), proj2.ID(), proj3.ID()}
 
-		var actual []string
+		var actual []ulid.ULID
 		walker := func(n *testNode) error {
 			actual = append(actual, n.ID())
 			return nil
@@ -53,9 +54,9 @@ func TestGraph_Walk(t *testing.T) {
 	})
 
 	t.Run("post-order", func(t *testing.T) {
-		expect := []string{"scan1", "projection1", "filter1", "projection2", "sort2", "projection3", "sort1", "limit1"}
+		expect := []ulid.ULID{scan1.ID(), proj1.ID(), filter1.ID(), proj2.ID(), sort2.ID(), proj3.ID(), sort1.ID(), limit1.ID()}
 
-		var actual []string
+		var actual []ulid.ULID
 		walker := func(n *testNode) error {
 			actual = append(actual, n.ID())
 			return nil

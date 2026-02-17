@@ -2250,14 +2250,6 @@ __3:
 	return Xtolower(tls, int32(*(*uint8)(unsafe.Pointer(l)))) - Xtolower(tls, int32(*(*uint8)(unsafe.Pointer(r))))
 }
 
-func X__isfinite(tls *TLS, d float64) int32 {
-	if !math.IsInf(d, 0) && !math.IsNaN(d) {
-		return 1
-	}
-
-	return 0
-}
-
 func X__signbit(tls *TLS, x float64) (r int32) {
 	return int32(math.Float64bits(x) >> 63)
 }

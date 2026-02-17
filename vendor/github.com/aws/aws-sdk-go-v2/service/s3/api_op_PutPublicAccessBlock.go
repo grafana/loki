@@ -15,7 +15,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// This operation is not supported by directory buckets.
+// This operation is not supported for directory buckets.
 //
 // Creates or modifies the PublicAccessBlock configuration for an Amazon S3
 // bucket. To use this operation, you must have the s3:PutBucketPublicAccessBlock
@@ -23,10 +23,11 @@ import (
 //
 // When Amazon S3 evaluates the PublicAccessBlock configuration for a bucket or an
 // object, it checks the PublicAccessBlock configuration for both the bucket (or
-// the bucket that contains the object) and the bucket owner's account. If the
-// PublicAccessBlock configurations are different between the bucket and the
-// account, Amazon S3 uses the most restrictive combination of the bucket-level and
-// account-level settings.
+// the bucket that contains the object) and the bucket owner's account.
+// Account-level settings automatically inherit from organization-level policies
+// when present. If the PublicAccessBlock configurations are different between the
+// bucket and the account, Amazon S3 uses the most restrictive combination of the
+// bucket-level and account-level settings.
 //
 // For more information about when Amazon S3 considers a bucket or an object
 // public, see [The Meaning of "Public"].
@@ -40,6 +41,10 @@ import (
 // [GetBucketPolicyStatus]
 //
 // [Using Amazon S3 Block Public Access]
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // [GetPublicAccessBlock]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetPublicAccessBlock.html
 // [DeletePublicAccessBlock]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeletePublicAccessBlock.html
@@ -163,6 +168,9 @@ func (c *Client) addOperationPutPublicAccessBlockMiddlewares(stack *middleware.S
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -185,6 +193,12 @@ func (c *Client) addOperationPutPublicAccessBlockMiddlewares(stack *middleware.S
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
+		return err
+	}
+	if err = addRequestChecksumMetricsTracking(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpPutPublicAccessBlockValidationMiddleware(stack); err != nil {
@@ -226,6 +240,15 @@ func (c *Client) addOperationPutPublicAccessBlockMiddlewares(stack *middleware.S
 	if err = s3cust.AddExpressDefaultChecksumMiddleware(stack); err != nil {
 		return err
 	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -255,9 +278,10 @@ func getPutPublicAccessBlockRequestAlgorithmMember(input interface{}) (string, b
 }
 
 func addPutPublicAccessBlockInputChecksumMiddlewares(stack *middleware.Stack, options Options) error {
-	return internalChecksum.AddInputMiddleware(stack, internalChecksum.InputMiddlewareOptions{
+	return addInputChecksumMiddleware(stack, internalChecksum.InputMiddlewareOptions{
 		GetAlgorithm:                     getPutPublicAccessBlockRequestAlgorithmMember,
 		RequireChecksum:                  true,
+		RequestChecksumCalculation:       options.RequestChecksumCalculation,
 		EnableTrailingChecksum:           false,
 		EnableComputeSHA256PayloadHash:   true,
 		EnableDecodedContentLengthHeader: true,

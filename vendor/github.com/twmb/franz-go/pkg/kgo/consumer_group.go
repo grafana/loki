@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -25,7 +26,7 @@ type groupConsumer struct {
 	cancel     func()
 	manageDone chan struct{} // closed once when the manage goroutine quits
 
-	cooperative atomicBool // true if the group balancer chosen during Join is cooperative
+	cooperative atomic.Bool // true if the group balancer chosen during Join is cooperative
 
 	// The data for topics that the user assigned. Metadata updates the
 	// atomic.Value in each pointer atomically.
@@ -92,7 +93,7 @@ type groupConsumer struct {
 	//  - set to false at the beginning of a join group session
 	//  - set to true if join group response indicates we are leader
 	//  - read on metadata updates in findNewAssignments
-	leader atomicBool
+	leader atomic.Bool
 
 	// Set to true when ending a transaction committing transaction
 	// offsets, and then set to false immediately after before calling
@@ -314,20 +315,20 @@ func (c *consumer) initGroup() {
 		left: make(chan struct{}),
 	}
 	c.g = g
-	if !g.cfg.setCommitCallback {
+	if g.cfg.commitCallback == nil {
 		g.cfg.commitCallback = g.defaultCommitCallback
 	}
 
 	if g.cfg.txnID == nil {
 		// We only override revoked / lost if they were not explicitly
 		// set by options.
-		if !g.cfg.setRevoked {
+		if g.cfg.onRevoked == nil {
 			g.cfg.onRevoked = g.defaultRevoke
 		}
 		// For onLost, we do not want to commit in onLost, so we
 		// explicitly set onLost to an empty function to avoid the
 		// fallback to onRevoked.
-		if !g.cfg.setLost {
+		if g.cfg.onLost == nil {
 			g.cfg.onLost = func(context.Context, *Client, map[string][]int32) {}
 		}
 	} else {
@@ -359,7 +360,7 @@ func (c *consumer) initGroup() {
 			if user != nil {
 				dup := make(map[string][]int32)
 				for k, vs := range m {
-					dup[k] = append([]int32(nil), vs...)
+					dup[k] = slices.Clone(vs)
 				}
 				user(ctx, cl, dup)
 			}
@@ -1277,7 +1278,7 @@ func (g *groupConsumer) handleJoinResp(resp *kmsg.JoinGroupResponse) (restart bo
 			g.cfg.logger.Log(LogLevelInfo, "join returned UnknownMemberID, rejoining without a member id", "group", g.cfg.group)
 			return true, "", nil, nil
 		}
-		return // Request retries as necessary, so this must be a failure
+		return restart, protocol, plan, err // Request retries as necessary, so this must be a failure
 	}
 	g.memberGen.store(resp.MemberID, resp.Generation)
 
@@ -1353,7 +1354,7 @@ func (g *groupConsumer) handleJoinResp(resp *kmsg.JoinGroupResponse) (restart bo
 			"leader", false,
 		)
 	}
-	return
+	return restart, protocol, plan, err
 }
 
 type strptr struct {
@@ -1381,7 +1382,7 @@ func (s strptr) String() string {
 // the rejoin status.
 type groupExternal struct {
 	tps    atomic.Value // map[string]int32
-	rejoin atomicBool
+	rejoin atomic.Bool
 }
 
 func (g *groupConsumer) loadExternal() *groupExternal {
@@ -1503,14 +1504,14 @@ func (g *groupConsumer) joinGroupProtocols() []kmsg.JoinGroupRequestProtocol {
 	}
 	lastDup := make(map[string][]int32, len(g.lastAssigned))
 	for t, ps := range g.lastAssigned {
-		lastDup[t] = append([]int32(nil), ps...) // deep copy to allow modifications
+		lastDup[t] = slices.Clone(ps) // deep copy to allow modifications
 	}
 
 	g.mu.Unlock()
 
 	sort.Strings(topics) // we guarantee to JoinGroupMetadata that the input strings are sorted
 	for _, partitions := range lastDup {
-		sort.Slice(partitions, func(i, j int) bool { return partitions[i] < partitions[j] }) // same for partitions
+		slices.Sort(partitions) // same for partitions
 	}
 
 	gen := g.memberGen.generation()
@@ -1877,7 +1878,8 @@ type EpochOffset struct {
 // than the other if this one's epoch is less, or the epoch's are equal and
 // this one's offset is less.
 func (e EpochOffset) Less(o EpochOffset) bool {
-	return e.Epoch < o.Epoch || e.Epoch == o.Epoch && e.Offset < o.Offset
+	ee, oe := max(e.Epoch, -1), max(o.Epoch, -1)
+	return ee < oe || ee == oe && e.Offset < o.Offset
 }
 
 type uncommitted map[string]map[int32]uncommit
@@ -1924,13 +1926,18 @@ func (g *groupConsumer) updateUncommitted(fetches Fetches) {
 					final.LeaderEpoch, // -1 if old message / unknown
 					final.Offset + 1,
 				}
-				prior := topicOffsets[partition.Partition]
+				prior, ok := topicOffsets[partition.Partition]
+				if !ok {
+					uninit := EpochOffset{-1, 0}
+					uncommit := uncommit{uninit, uninit, uninit}
+					prior, topicOffsets[partition.Partition] = uncommit, uncommit
+				}
 
 				if debug {
 					if setHead {
-						fmt.Fprintf(&b, "%d{%d=>%d r%d}, ", partition.Partition, prior.head.Offset, set.Offset, len(partition.Records))
+						fmt.Fprintf(&b, "%d{%d=>%d r%d e%d}, ", partition.Partition, prior.head.Offset, set.Offset, len(partition.Records), set.Epoch)
 					} else {
-						fmt.Fprintf(&b, "%d{%d=>%d=>%d r%d}, ", partition.Partition, prior.head.Offset, prior.dirty.Offset, set.Offset, len(partition.Records))
+						fmt.Fprintf(&b, "%d{%d=>%d=>%d r%d e%d}, ", partition.Partition, prior.head.Offset, prior.dirty.Offset, set.Offset, len(partition.Records), set.Epoch)
 					}
 				}
 
@@ -2028,9 +2035,11 @@ func (g *groupConsumer) updateCommitted(
 	for i := range resp.Topics {
 		reqTopic := &req.Topics[i]
 		respTopic := &resp.Topics[i]
-		topic := g.uncommitted[respTopic.Topic]
-		if topic == nil || // just in case
-			reqTopic.Topic != respTopic.Topic || // bad kafka
+		topic, exists := g.uncommitted[respTopic.Topic]
+		if !exists {
+			continue // just in case; concurrent rebalance lost the topic while commit was in flight
+		}
+		if reqTopic.Topic != respTopic.Topic || // bad kafka
 			len(reqTopic.Partitions) != len(respTopic.Partitions) { // same
 			g.cfg.logger.Log(LogLevelError, fmt.Sprintf("broker replied to our OffsetCommitRequest incorrectly! Topic at request index %d: %s, reply at index: %s; num partitions on request topic: %d, in reply: %d, we cannot handle this!", i, reqTopic.Topic, respTopic.Topic, len(reqTopic.Partitions), len(respTopic.Partitions)), "group", g.cfg.group)
 			continue
@@ -2397,15 +2406,18 @@ func (cl *Client) CommitRecords(ctx context.Context, rs ...*Record) error {
 			offsets[r.Topic] = toffsets
 		}
 
-		if at, exists := toffsets[r.Partition]; exists {
-			if at.Epoch > r.LeaderEpoch || at.Epoch == r.LeaderEpoch && at.Offset > r.Offset {
-				continue
-			}
-		}
-		toffsets[r.Partition] = EpochOffset{
+		set := EpochOffset{
 			r.LeaderEpoch,
 			r.Offset + 1, // need to advice to next offset to move forward
 		}
+
+		if at, exists := toffsets[r.Partition]; exists {
+			if set.Less(at) {
+				continue
+			}
+		}
+
+		toffsets[r.Partition] = set
 	}
 
 	var rerr error // return error
@@ -2466,11 +2478,11 @@ func (cl *Client) MarkCommitRecords(rs ...*Record) {
 			curTopic = r.Topic
 		}
 
-		current := curPartitions[r.Partition]
+		current, ok := curPartitions[r.Partition]
 		if newHead := (EpochOffset{
 			r.LeaderEpoch,
 			r.Offset + 1,
-		}); current.head.Less(newHead) {
+		}); !ok || current.head.Less(newHead) {
 			curPartitions[r.Partition] = uncommit{
 				dirty:     current.dirty,
 				committed: current.committed,
@@ -2506,8 +2518,8 @@ func (cl *Client) MarkCommitOffsets(unmarked map[string]map[int32]EpochOffset) {
 		}
 
 		for partition, newHead := range partitions {
-			current := curPartitions[partition]
-			if current.head.Less(newHead) {
+			current, ok := curPartitions[partition]
+			if !ok || current.head.Less(newHead) {
 				curPartitions[partition] = uncommit{
 					dirty:     current.dirty,
 					committed: current.committed,
@@ -2832,9 +2844,7 @@ func (g *groupConsumer) commit(
 			}
 			dupPs := make(map[int32]EpochOffset, len(ps))
 			dup[t] = dupPs
-			for p, eo := range ps {
-				dupPs[p] = eo
-			}
+			maps.Copy(dupPs, ps)
 		}
 		uncommitted = dup
 	}

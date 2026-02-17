@@ -90,6 +90,9 @@ type indexerMetrics struct {
 
 	// Queue metrics
 	queueDepth prometheus.Gauge
+
+	// End-to-end processing time metric
+	endToEndProcessingTime prometheus.Gauge
 }
 
 func newIndexerMetrics() *indexerMetrics {
@@ -110,6 +113,10 @@ func newIndexerMetrics() *indexerMetrics {
 			Name: "loki_index_builder_queue_depth",
 			Help: "Current depth of the build request queue",
 		}),
+		endToEndProcessingTime: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingest_end_to_end_processing_time_seconds",
+			Help: "Time between a log line being written to kafka by the distributors and the index-builder making it available for querying in seconds",
+		}),
 	}
 
 	return m
@@ -121,6 +128,7 @@ func (m *indexerMetrics) register(reg prometheus.Registerer) error {
 		m.totalBuilds,
 		m.buildTimeSeconds,
 		m.queueDepth,
+		m.endToEndProcessingTime,
 	}
 
 	for _, collector := range collectors {
@@ -139,6 +147,7 @@ func (m *indexerMetrics) unregister(reg prometheus.Registerer) {
 		m.totalBuilds,
 		m.buildTimeSeconds,
 		m.queueDepth,
+		m.endToEndProcessingTime,
 	}
 
 	for _, collector := range collectors {
@@ -160,4 +169,8 @@ func (m *indexerMetrics) setBuildTime(duration time.Duration) {
 
 func (m *indexerMetrics) setQueueDepth(depth int) {
 	m.queueDepth.Set(float64(depth))
+}
+
+func (m *indexerMetrics) setEndToEndProcessingTime(duration time.Duration) {
+	m.endToEndProcessingTime.Set(duration.Seconds())
 }

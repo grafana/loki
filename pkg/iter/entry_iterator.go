@@ -368,7 +368,9 @@ func NewQueryClientIterator(client logproto.Querier_QueryClient, direction logpr
 func (i *queryClientIterator) Next() bool {
 	ctx := i.client.Context()
 	for i.curr == nil || !i.curr.Next() {
+		start := time.Now()
 		batch, err := i.client.Recv()
+		stats.FromContext(ctx).AddIngesterRecvWait(time.Since(start))
 		if err == io.EOF {
 			return false
 		} else if err != nil {

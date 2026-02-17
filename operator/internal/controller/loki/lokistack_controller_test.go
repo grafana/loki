@@ -87,70 +87,77 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		{
 			obj:           &corev1.ConfigMap{},
 			index:         0,
-			ownCallsCount: 11,
+			ownCallsCount: 12,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &corev1.Secret{},
 			index:         1,
-			ownCallsCount: 11,
+			ownCallsCount: 12,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &corev1.ServiceAccount{},
 			index:         2,
-			ownCallsCount: 11,
+			ownCallsCount: 12,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &corev1.Service{},
 			index:         3,
-			ownCallsCount: 11,
+			ownCallsCount: 12,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &appsv1.Deployment{},
 			index:         4,
-			ownCallsCount: 11,
+			ownCallsCount: 12,
 			pred:          updateOrDeleteWithStatusPred,
 		},
 		{
 			obj:           &appsv1.StatefulSet{},
 			index:         5,
-			ownCallsCount: 11,
+			ownCallsCount: 12,
 			pred:          updateOrDeleteWithStatusPred,
 		},
 		{
 			obj:           &rbacv1.ClusterRole{},
 			index:         6,
-			ownCallsCount: 11,
+			ownCallsCount: 12,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &rbacv1.ClusterRoleBinding{},
 			index:         7,
-			ownCallsCount: 11,
+			ownCallsCount: 12,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &rbacv1.Role{},
 			index:         8,
-			ownCallsCount: 11,
+			ownCallsCount: 12,
 			pred:          updateOrDeleteOnlyPred,
 		},
 		{
 			obj:           &rbacv1.RoleBinding{},
 			index:         9,
-			ownCallsCount: 11,
+			ownCallsCount: 12,
 			pred:          updateOrDeleteOnlyPred,
 		},
+		{
+			obj:           &networkingv1.NetworkPolicy{},
+			index:         10,
+			ownCallsCount: 12,
+			pred:          updateOrDeleteOnlyPred,
+		},
+
 		// The next two share the same index, because the
 		// controller either reconciles an Ingress (i.e. Kubernetes)
 		// or a Route (i.e. OpenShift).
 		{
 			obj:           &networkingv1.Ingress{},
-			index:         10,
-			ownCallsCount: 11,
+			index:         11,
+			ownCallsCount: 12,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					Enabled: false,
@@ -160,8 +167,8 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		},
 		{
 			obj:           &routev1.Route{},
-			index:         10,
-			ownCallsCount: 11,
+			index:         11,
+			ownCallsCount: 12,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					Enabled: true,
@@ -171,8 +178,8 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		},
 		{
 			obj:           &cloudcredentialv1.CredentialsRequest{},
-			index:         11,
-			ownCallsCount: 12,
+			index:         12,
+			ownCallsCount: 13,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					Enabled:         true,
@@ -193,7 +200,7 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		require.NoError(t, err)
 
 		// Require Owns-Calls for all owned resources
-		require.Equal(t, tst.ownCallsCount, b.OwnsCallCount())
+		require.Equal(t, tst.ownCallsCount, b.OwnsCallCount(), "index: %d", tst.index)
 
 		// Require Owns-call options to have delete predicate only
 		obj, opts := b.OwnsArgsForCall(tst.index)

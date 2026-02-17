@@ -51,6 +51,7 @@ package publicsuffix // import "golang.org/x/net/publicsuffix"
 import (
 	"fmt"
 	"net/http/cookiejar"
+	"net/netip"
 	"strings"
 )
 
@@ -84,6 +85,10 @@ func (list) String() string {
 // domains like "foo.appspot.com" can be found at
 // https://wiki.mozilla.org/Public_Suffix_List/Use_Cases
 func PublicSuffix(domain string) (publicSuffix string, icann bool) {
+	if _, err := netip.ParseAddr(domain); err == nil {
+		return domain, false
+	}
+
 	lo, hi := uint32(0), uint32(numTLD)
 	s, suffix, icannNode, wildcard := domain, len(domain), false, false
 loop:

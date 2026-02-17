@@ -13,22 +13,28 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 )
 
 func initAndFeedMarkerProcessor(t *testing.T, deleteWorkerCount int) *markerProcessor {
 	t.Helper()
 	minListMarkDelay = time.Second
 	dir := t.TempDir()
-	p, err := newMarkerStorageReader(dir, deleteWorkerCount, time.Second, sweepMetrics)
+
+	markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: dir})
+	require.NoError(t, err)
+
+	p, err := newMarkerReader(markerStorageClient, deleteWorkerCount, time.Second, sweepMetrics)
 	require.NoError(t, err)
 	go func() {
-		w, err := NewMarkerStorageWriter(dir)
+		w, err := NewMarkerWriter(markerStorageClient)
 		require.NoError(t, err)
 
 		require.NoError(t, w.Put([]byte("1")))
 		require.NoError(t, w.Put([]byte("2")))
 		require.NoError(t, w.Close())
-		w, err = NewMarkerStorageWriter(dir)
+		w, err = NewMarkerWriter(markerStorageClient)
 		require.NoError(t, err)
 		require.NoError(t, w.Put([]byte("3")))
 		require.NoError(t, w.Put([]byte("4")))
@@ -37,25 +43,31 @@ func initAndFeedMarkerProcessor(t *testing.T, deleteWorkerCount int) *markerProc
 	return p
 }
 
-func Test_marlkerProcessor_Deadlock(t *testing.T) {
+func Test_markerProcessor_Deadlock(t *testing.T) {
 	dir := t.TempDir()
-	p, err := newMarkerStorageReader(dir, 150, 0, sweepMetrics)
+
+	markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: dir})
 	require.NoError(t, err)
-	w, err := NewMarkerStorageWriter(dir)
+
+	p, err := newMarkerReader(markerStorageClient, 150, 0, sweepMetrics)
+	require.NoError(t, err)
+	w, err := NewMarkerWriter(markerStorageClient)
 	require.NoError(t, err)
 	for i := 0; i <= 2000; i++ {
 		require.NoError(t, w.Put([]byte(fmt.Sprintf("%d", i))))
 	}
 	require.NoError(t, w.Close())
-	paths, _, err := p.availablePath()
+	names, _, err := p.availableFiles()
 	require.NoError(t, err)
-	for _, path := range paths {
-		require.NoError(t, p.processPath(path, func(_ context.Context, _ []byte) error { return nil }))
-		require.NoError(t, p.deleteEmptyMarks(path))
+	for _, name := range names {
+		allChunksDeleted, err := p.processFile(name, func(_ context.Context, _ []byte) error { return nil })
+		require.NoError(t, err)
+		require.True(t, allChunksDeleted)
+		require.NoError(t, p.deleteMarksFile(name))
 	}
-	paths, _, err = p.availablePath()
+	names, _, err = p.availableFiles()
 	require.NoError(t, err)
-	require.Len(t, paths, 0)
+	require.Len(t, names, 0)
 }
 
 func Test_markerProcessor_StartRetryKey(t *testing.T) {
@@ -136,9 +148,9 @@ func Test_markerProcessor_availablePath(t *testing.T) {
 			_, _ = os.Create(filepath.Join(dir, fmt.Sprintf("%d", now.Add(-2*time.Hour).UnixNano())))
 			_, _ = os.Create(filepath.Join(dir, fmt.Sprintf("%d", now.Add(-48*time.Hour).UnixNano())))
 			return []string{
-					filepath.Join(dir, fmt.Sprintf("%d", now.Add(-48*time.Hour).UnixNano())), // oldest should be first
-					filepath.Join(dir, fmt.Sprintf("%d", now.Add(-3*time.Hour).UnixNano())),
-					filepath.Join(dir, fmt.Sprintf("%d", now.Add(-2*time.Hour).UnixNano())),
+					fmt.Sprintf("%d", now.Add(-48*time.Hour).UnixNano()), // oldest should be first
+					fmt.Sprintf("%d", now.Add(-3*time.Hour).UnixNano()),
+					fmt.Sprintf("%d", now.Add(-2*time.Hour).UnixNano()),
 				}, []time.Time{
 					time.Unix(0, now.Add(-48*time.Hour).UnixNano()),
 					time.Unix(0, now.Add(-3*time.Hour).UnixNano()),
@@ -148,12 +160,16 @@ func Test_markerProcessor_availablePath(t *testing.T) {
 	} {
 		t.Run("", func(t *testing.T) {
 			dir := t.TempDir()
-			p, err := newMarkerStorageReader(dir, 5, 2*time.Hour, sweepMetrics)
 
-			expectedPath, expectedTimes := tt.expected(p.folder)
+			markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: dir})
+			require.NoError(t, err)
+
+			p, err := newMarkerReader(markerStorageClient, 5, 2*time.Hour, sweepMetrics)
+
+			expectedPath, expectedTimes := tt.expected(dir)
 
 			require.NoError(t, err)
-			paths, times, err := p.availablePath()
+			paths, times, err := p.availableFiles()
 			require.Nil(t, err)
 			require.Equal(t, expectedPath, paths)
 			require.Equal(t, expectedTimes, times)
@@ -163,16 +179,20 @@ func Test_markerProcessor_availablePath(t *testing.T) {
 
 func Test_MarkFileRotation(t *testing.T) {
 	dir := t.TempDir()
-	p, err := newMarkerStorageReader(dir, 150, 0, sweepMetrics)
+
+	markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: dir})
 	require.NoError(t, err)
-	w, err := NewMarkerStorageWriter(dir)
+
+	p, err := newMarkerReader(markerStorageClient, 150, 0, sweepMetrics)
+	require.NoError(t, err)
+	w, err := NewMarkerWriter(markerStorageClient)
 	require.NoError(t, err)
 	totalMarks := int64(2 * int(maxMarkPerFile))
 	for i := int64(0); i < totalMarks; i++ {
 		require.NoError(t, w.Put([]byte(fmt.Sprintf("%d", i))))
 	}
 	require.NoError(t, w.Close())
-	paths, _, err := p.availablePath()
+	paths, _, err := p.availableFiles()
 	require.NoError(t, err)
 
 	require.Len(t, paths, 2)

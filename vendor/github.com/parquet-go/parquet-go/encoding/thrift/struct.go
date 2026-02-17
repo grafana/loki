@@ -10,17 +10,18 @@ import (
 type flags int16
 
 const (
-	enum     flags = 1 << 0
-	union    flags = 1 << 1
-	required flags = 1 << 2
-	optional flags = 1 << 3
-	strict   flags = 1 << 4
+	enum      flags = 1 << 0
+	union     flags = 1 << 1
+	required  flags = 1 << 2
+	optional  flags = 1 << 3
+	strict    flags = 1 << 4
+	writeZero flags = 1 << 5
 
 	featuresBitOffset  = 8
 	useDeltaEncoding   = flags(UseDeltaEncoding) << featuresBitOffset
 	coalesceBoolFields = flags(CoalesceBoolFields) << featuresBitOffset
 
-	structFlags   flags = enum | union | required | optional
+	structFlags   flags = enum | union | required | optional | writeZero
 	encodeFlags   flags = strict | protocolFlags
 	decodeFlags   flags = strict | protocolFlags
 	protocolFlags flags = useDeltaEncoding | coalesceBoolFields
@@ -90,6 +91,8 @@ func forEachStructField(t reflect.Type, index []int, do func(structField)) {
 				flags = flags.with(required)
 			case "optional":
 				flags = flags.with(optional)
+			case "writezero":
+				flags = flags.with(writeZero)
 			default:
 				panic(fmt.Errorf("thrift struct field contains an unknown tag option %q in `thrift:\"%s\"`", opt, tag))
 			}

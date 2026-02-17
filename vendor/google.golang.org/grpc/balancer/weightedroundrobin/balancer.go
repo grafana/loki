@@ -38,7 +38,7 @@ import (
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/endpointsharding"
-	"google.golang.org/grpc/balancer/pickfirst/pickfirstleaf"
+	"google.golang.org/grpc/balancer/pickfirst"
 	"google.golang.org/grpc/balancer/weightedroundrobin/internal"
 	"google.golang.org/grpc/balancer/weightedtarget"
 	"google.golang.org/grpc/connectivity"
@@ -62,7 +62,7 @@ var (
 		Description:    "EXPERIMENTAL. Number of scheduler updates in which there were not enough endpoints with valid weight, which caused the WRR policy to fall back to RR behavior.",
 		Unit:           "{update}",
 		Labels:         []string{"grpc.target"},
-		OptionalLabels: []string{"grpc.lb.locality"},
+		OptionalLabels: []string{"grpc.lb.locality", "grpc.lb.backend_service"},
 		Default:        false,
 	})
 
@@ -71,7 +71,7 @@ var (
 		Description:    "EXPERIMENTAL. Number of endpoints from each scheduler update that don't yet have usable weight information (i.e., either the load report has not yet been received, or it is within the blackout period).",
 		Unit:           "{endpoint}",
 		Labels:         []string{"grpc.target"},
-		OptionalLabels: []string{"grpc.lb.locality"},
+		OptionalLabels: []string{"grpc.lb.locality", "grpc.lb.backend_service"},
 		Default:        false,
 	})
 
@@ -80,7 +80,7 @@ var (
 		Description:    "EXPERIMENTAL. Number of endpoints from each scheduler update whose latest weight is older than the expiration period.",
 		Unit:           "{endpoint}",
 		Labels:         []string{"grpc.target"},
-		OptionalLabels: []string{"grpc.lb.locality"},
+		OptionalLabels: []string{"grpc.lb.locality", "grpc.lb.backend_service"},
 		Default:        false,
 	})
 	endpointWeightsMetric = estats.RegisterFloat64Histo(estats.MetricDescriptor{
@@ -88,7 +88,7 @@ var (
 		Description:    "EXPERIMENTAL. Weight of each endpoint, recorded on every scheduler update. Endpoints without usable weights will be recorded as weight 0.",
 		Unit:           "{endpoint}",
 		Labels:         []string{"grpc.target"},
-		OptionalLabels: []string{"grpc.lb.locality"},
+		OptionalLabels: []string{"grpc.lb.locality", "grpc.lb.backend_service"},
 		Default:        false,
 	})
 )
@@ -109,7 +109,7 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		scToWeight:       make(map[balancer.SubConn]*endpointWeight),
 	}
 
-	b.child = endpointsharding.NewBalancer(b, bOpts, balancer.Get(pickfirstleaf.Name).Build, endpointsharding.Options{})
+	b.child = endpointsharding.NewBalancer(b, bOpts, balancer.Get(pickfirst.Name).Build, endpointsharding.Options{})
 	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
 	return b
@@ -173,6 +173,7 @@ func (b *wrrBalancer) updateEndpointsLocked(endpoints []resolver.Endpoint) {
 				metricsRecorder: b.metricsRecorder,
 				target:          b.target,
 				locality:        b.locality,
+				clusterName:     b.clusterName,
 			}
 			for _, addr := range endpoint.Addresses {
 				b.addressWeights.Set(addr, ew)
@@ -211,6 +212,7 @@ type wrrBalancer struct {
 	mu               sync.Mutex
 	cfg              *lbConfig // active config
 	locality         string
+	clusterName      string
 	stopPicker       *grpcsync.Event
 	addressWeights   *resolver.AddressMapV2[*endpointWeight]
 	endpointToWeight *resolver.EndpointMap[*endpointWeight]
@@ -231,6 +233,7 @@ func (b *wrrBalancer) UpdateClientConnState(ccs balancer.ClientConnState) error 
 	b.mu.Lock()
 	b.cfg = cfg
 	b.locality = weightedtarget.LocalityFromResolverState(ccs.ResolverState)
+	b.clusterName = backendServiceFromState(ccs.ResolverState)
 	b.updateEndpointsLocked(ccs.ResolverState.Endpoints)
 	b.mu.Unlock()
 
@@ -239,7 +242,7 @@ func (b *wrrBalancer) UpdateClientConnState(ccs balancer.ClientConnState) error 
 	return b.child.UpdateClientConnState(balancer.ClientConnState{
 		// Make pickfirst children use health listeners for outlier detection to
 		// work.
-		ResolverState: pickfirstleaf.EnableHealthListener(ccs.ResolverState),
+		ResolverState: pickfirst.EnableHealthListener(ccs.ResolverState),
 	})
 }
 
@@ -288,6 +291,7 @@ func (b *wrrBalancer) UpdateState(state balancer.State) {
 		metricsRecorder: b.metricsRecorder,
 		locality:        b.locality,
 		target:          b.target,
+		clusterName:     b.clusterName,
 	}
 
 	b.stopPicker = grpcsync.NewEvent()
@@ -420,6 +424,7 @@ type picker struct {
 	// The following fields are immutable.
 	target          string
 	locality        string
+	clusterName     string
 	metricsRecorder estats.MetricsRecorder
 }
 
@@ -499,6 +504,7 @@ type endpointWeight struct {
 	target          string
 	metricsRecorder estats.MetricsRecorder
 	locality        string
+	clusterName     string
 
 	// The following fields are only accessed on calls into the LB policy, and
 	// do not need a mutex.
@@ -602,14 +608,14 @@ func (w *endpointWeight) weight(now time.Time, weightExpirationPeriod, blackoutP
 
 	if recordMetrics {
 		defer func() {
-			endpointWeightsMetric.Record(w.metricsRecorder, weight, w.target, w.locality)
+			endpointWeightsMetric.Record(w.metricsRecorder, weight, w.target, w.locality, w.clusterName)
 		}()
 	}
 
 	// The endpoint has not received a load report (i.e. just turned READY with
 	// no load report).
 	if w.lastUpdated.Equal(time.Time{}) {
-		endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality)
+		endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality, w.clusterName)
 		return 0
 	}
 
@@ -618,7 +624,7 @@ func (w *endpointWeight) weight(now time.Time, weightExpirationPeriod, blackoutP
 	// start getting data again in the future, and return 0.
 	if now.Sub(w.lastUpdated) >= weightExpirationPeriod {
 		if recordMetrics {
-			endpointWeightStaleMetric.Record(w.metricsRecorder, 1, w.target, w.locality)
+			endpointWeightStaleMetric.Record(w.metricsRecorder, 1, w.target, w.locality, w.clusterName)
 		}
 		w.nonEmptySince = time.Time{}
 		return 0
@@ -627,10 +633,27 @@ func (w *endpointWeight) weight(now time.Time, weightExpirationPeriod, blackoutP
 	// If we don't have at least blackoutPeriod worth of data, return 0.
 	if blackoutPeriod != 0 && (w.nonEmptySince.Equal(time.Time{}) || now.Sub(w.nonEmptySince) < blackoutPeriod) {
 		if recordMetrics {
-			endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality)
+			endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality, w.clusterName)
 		}
 		return 0
 	}
 
 	return w.weightVal
+}
+
+type backendServiceKey struct{}
+
+// SetBackendService stores the backendService on the resolver state so
+// that it can be used later as a label in wrr metrics.
+func SetBackendService(state resolver.State, backendService string) resolver.State {
+	state.Attributes = state.Attributes.WithValue(backendServiceKey{}, backendService)
+	return state
+}
+
+// getBackendServiceFromState retrieves the cluster name stored as an attribute
+// in the resolver state.
+func backendServiceFromState(state resolver.State) string {
+	v := state.Attributes.Value(backendServiceKey{})
+	name, _ := v.(string)
+	return name
 }

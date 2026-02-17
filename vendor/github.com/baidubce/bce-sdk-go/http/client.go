@@ -22,11 +22,14 @@ package http
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/baidubce/bce-sdk-go/util/log"
 )
 
 var (
@@ -39,6 +42,7 @@ var (
 	defaultTLSHandshakeTimeout   = 10 * time.Second
 	defaultIdleConnTimeout       = 90 * time.Second
 	defaultHTTPClientTimeout     = 1200 * time.Second
+	NilHTTPClient                = fmt.Errorf("custom HTTP Client is nil")
 )
 
 // The httpClient is the global variable to send the request and get response
@@ -48,10 +52,17 @@ var (
 	transport  *http.Transport
 )
 
+var defaultHTTPClient = &http.Client{
+	Timeout:   defaultHTTPClientTimeout,
+	Transport: NewTransportCustom(&DefaultClientConfig),
+}
+
 type Dialer struct {
 	net.Dialer
 	ReadTimeout  *time.Duration
 	WriteTimeout *time.Duration
+	postRead     []func(n int, err error)
+	postWrite    []func(n int, err error)
 }
 
 func NewDialer(config *ClientConfig) *Dialer {
@@ -62,6 +73,8 @@ func NewDialer(config *ClientConfig) *Dialer {
 		},
 		ReadTimeout:  config.ReadTimeout,
 		WriteTimeout: config.WriteTimeout,
+		postRead:     config.PostRead,
+		postWrite:    config.PostWrite,
 	}
 	return dialer
 }
@@ -81,6 +94,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 		largeInterval: defaultLargeInterval,
 		readTimeout:   d.ReadTimeout,
 		writeTimeout:  d.WriteTimeout,
+		dialer:        d,
 	}
 	if tc.readTimeout != nil {
 		err = tc.SetReadDeadline(time.Now().Add(*tc.readTimeout))
@@ -107,6 +121,7 @@ type timeoutConn struct {
 	largeInterval time.Duration
 	readTimeout   *time.Duration
 	writeTimeout  *time.Duration
+	dialer        *Dialer
 }
 
 func (c *timeoutConn) Read(b []byte) (n int, err error) {
@@ -125,6 +140,11 @@ func (c *timeoutConn) Read(b []byte) (n int, err error) {
 	} else {
 		err = c.SetReadDeadline(time.Now().Add(*c.readTimeout))
 	}
+	if c.dialer != nil {
+		for _, fn := range c.dialer.postRead {
+			fn(n, err)
+		}
+	}
 	return n, err
 }
 func (c *timeoutConn) Write(b []byte) (n int, err error) {
@@ -142,6 +162,11 @@ func (c *timeoutConn) Write(b []byte) (n int, err error) {
 		err = c.SetWriteDeadline(time.Now().Add(c.largeInterval))
 	} else {
 		err = c.SetWriteDeadline(time.Now().Add(*c.writeTimeout))
+	}
+	if c.dialer != nil {
+		for _, fn := range c.dialer.postWrite {
+			fn(n, err)
+		}
 	}
 	return n, err
 }
@@ -164,7 +189,8 @@ type ClientConfig struct {
 	IdleConnectionTimeout *time.Duration
 	ResponseHeaderTimeout *time.Duration
 	HTTPClientTimeout     *time.Duration
-	HTTPClient            *http.Client
+	PostRead              []func(n int, err error)
+	PostWrite             []func(n int, err error)
 }
 
 var DefaultClientConfig = ClientConfig{
@@ -207,6 +233,12 @@ func (cfg *ClientConfig) Copy(src *ClientConfig) {
 	}
 	if src.HTTPClientTimeout != nil {
 		cfg.HTTPClientTimeout = src.HTTPClientTimeout
+	}
+	if len(src.PostRead) > 0 {
+		cfg.PostRead = append(cfg.PostRead, src.PostRead...)
+	}
+	if len(src.PostWrite) > 0 {
+		cfg.PostWrite = append(cfg.PostWrite, src.PostWrite...)
 	}
 }
 
@@ -276,12 +308,38 @@ func NewTransportCustom(config *ClientConfig) *http.Transport {
 	return transport
 }
 
+func InitWithSpecifiedClient(customHTTPClient *http.Client) error {
+	if customHTTPClient == nil {
+		log.Warnf("customized HTTP Client is nil")
+		return NilHTTPClient
+	}
+	if customHTTPClient.Transport == nil {
+		log.Infof("transport is nil")
+		return nil
+	}
+	if customTransport, ok := customHTTPClient.Transport.(*http.Transport); ok {
+		transport = customTransport
+	}
+	return nil
+}
+
+func InitExclusiveHTTPClient(config *ClientConfig) *http.Client {
+	config = MergeWithDefaultConfig(config)
+	transport = NewTransportCustom(config)
+	myHTTPClient := &http.Client{
+		Timeout:   *config.HTTPClientTimeout,
+		Transport: transport,
+	}
+	if config.RedirectDisabled {
+		myHTTPClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+	return myHTTPClient
+}
+
 func InitClientWithTimeout(config *ClientConfig) {
 	customizeInit.Do(func() {
-		if config.HTTPClient != nil {
-			httpClient = config.HTTPClient
-			return
-		}
 		config = MergeWithDefaultConfig(config)
 		transport = NewTransportCustom(config)
 		httpClient = &http.Client{
@@ -312,11 +370,21 @@ func Execute(request *Request) (*Response, error) {
 		ProtoMinor: 1,
 	}
 
+	// get http client
+	curHTTPClient := httpClient
+	if request.HTTPClient() != nil {
+		curHTTPClient = request.HTTPClient()
+	}
+	if curHTTPClient == nil {
+		log.Infof("use default http client to execute request")
+		curHTTPClient = defaultHTTPClient
+	}
+
 	if request.Context() != nil {
 		httpRequest = httpRequest.WithContext(request.Context())
 	} else {
 		// Set the connection timeout for current request
-		httpClient.Timeout = time.Duration(request.Timeout()) * time.Second
+		curHTTPClient.Timeout = time.Duration(request.Timeout()) * time.Second
 	}
 
 	// Set the request method
@@ -350,7 +418,7 @@ func Execute(request *Request) (*Response, error) {
 	}
 
 	// Set the proxy setting if needed
-	if len(request.ProxyUrl()) != 0 {
+	if len(request.ProxyUrl()) != 0 && transport != nil {
 		transport.Proxy = func(_ *http.Request) (*url.URL, error) {
 			return url.Parse(request.ProxyUrl())
 		}
@@ -361,14 +429,15 @@ func Execute(request *Request) (*Response, error) {
 	// that may continue sending request's data subsequently.
 	start := time.Now()
 
-	httpResponse, err := httpClient.Do(httpRequest)
-
+	httpResponse, err := curHTTPClient.Do(httpRequest)
 	end := time.Now()
 	if err != nil {
-		transport.CloseIdleConnections()
+		if transport != nil {
+			transport.CloseIdleConnections()
+		}
 		return nil, err
 	}
-	if httpResponse.StatusCode >= 400 &&
+	if transport != nil && httpResponse.StatusCode >= 400 &&
 		(httpRequest.Method == PUT || httpRequest.Method == POST) {
 		transport.CloseIdleConnections()
 	}

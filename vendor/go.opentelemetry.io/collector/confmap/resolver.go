@@ -13,15 +13,7 @@ import (
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
-	"go.opentelemetry.io/collector/featuregate"
-)
-
-var enableMergeAppendOption = featuregate.GlobalRegistry().MustRegister(
-	"confmap.enableMergeAppendOption",
-	featuregate.StageAlpha,
-	featuregate.WithRegisterFromVersion("v0.120.0"),
-	featuregate.WithRegisterDescription("Combines lists when resolving configs from different sources. This feature gate will not be stabilized 'as is'; the current behavior will remain the default."),
-	featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector/issues/8754"),
+	"go.opentelemetry.io/collector/confmap/internal"
 )
 
 // follows drive-letter specification:
@@ -191,7 +183,8 @@ func (mr *Resolver) Resolve(ctx context.Context) (*Conf, error) {
 
 	cfgMap := make(map[string]any)
 	for _, k := range retMap.AllKeys() {
-		val, err := mr.expandValueRecursively(ctx, retMap.unsanitizedGet(k))
+		ug := internal.UnsanitizedGetter{Conf: retMap}
+		val, err := mr.expandValueRecursively(ctx, ug.UnsanitizedGet(k))
 		if err != nil {
 			return nil, err
 		}
@@ -213,7 +206,7 @@ func escapeDollarSigns(val any) any {
 	switch v := val.(type) {
 	case string:
 		return strings.ReplaceAll(v, "$$", "$")
-	case expandedValue:
+	case internal.ExpandedValue:
 		v.Original = strings.ReplaceAll(v.Original, "$$", "$")
 		v.Value = escapeDollarSigns(v.Value)
 		return v
@@ -250,13 +243,13 @@ func (mr *Resolver) Watch() <-chan error {
 //
 // Should never be called concurrently with itself or Get.
 func (mr *Resolver) Shutdown(ctx context.Context) error {
-	close(mr.watcher)
-
 	var errs error
 	errs = multierr.Append(errs, mr.closeIfNeeded(ctx))
 	for _, p := range mr.providers {
 		errs = multierr.Append(errs, p.Shutdown(ctx))
 	}
+
+	close(mr.watcher)
 
 	return errs
 }

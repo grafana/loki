@@ -63,7 +63,7 @@ type downloadedObject struct {
 }
 
 const (
-	indexConsumerGroup = "index-builder"
+	defaultIndexConsumerGroup = "index-builder"
 )
 
 // An interface for the methods needed from a calculator. Useful for testing.
@@ -72,6 +72,7 @@ type calculator interface {
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRanges() []multitenancy.TimeRange
 	Reset()
+	IsFull() bool
 }
 
 // An interface for the methods needed from a kafka client. Useful for testing.
@@ -134,7 +135,7 @@ func NewIndexBuilder(
 	}
 
 	// Create index building dependencies
-	builder, err := indexobj.NewBuilder(cfg.BuilderConfig, scratchStore)
+	builder, err := indexobj.NewBuilder(cfg.BuilderBaseConfig, scratchStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index builder: %w", err)
 	}
@@ -166,6 +167,11 @@ func NewIndexBuilder(
 		indexerConfig{QueueSize: 64},
 	)
 
+	consumerGroup := defaultIndexConsumerGroup
+	if kafkaCfg.ConsumerGroup != "" {
+		consumerGroup = kafkaCfg.ConsumerGroup
+	}
+
 	kafkaCfg.AutoCreateTopicEnabled = true
 	eventConsumerClient, err := client.NewReaderClient(
 		"index_builder",
@@ -175,18 +181,20 @@ func NewIndexBuilder(
 		kgo.ConsumeTopics(kafkaCfg.Topic),
 		kgo.InstanceID(instanceID),
 		kgo.SessionTimeout(3*time.Minute),
-		kgo.ConsumerGroup(indexConsumerGroup),
+		kgo.ConsumerGroup(consumerGroup),
+		kgo.Balancers(kgo.RoundRobinBalancer()),
 		kgo.RebalanceTimeout(5*time.Minute),
 		kgo.DisableAutoCommit(),
-		kgo.OnPartitionsRevoked(s.handlePartitionsRevoked),
 		kgo.OnPartitionsAssigned(s.handlePartitionsAssigned),
+		kgo.OnPartitionsRevoked(s.handlePartitionsRevoked),
+		kgo.OnPartitionsLost(s.handlePartitionsLost),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka consumer client: %w", err)
 	}
 	s.client = eventConsumerClient
 
-	s.Service = services.NewBasicService(nil, s.running, s.stopping)
+	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 
 	return s, nil
 }
@@ -224,21 +232,20 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 	}
 }
 
-func (p *Builder) running(ctx context.Context) error {
+func (p *Builder) handlePartitionsLost(ctx context.Context, client *kgo.Client, topics map[string][]int32) {
+	p.handlePartitionsRevoked(ctx, client, topics)
+}
+
+func (p *Builder) starting(ctx context.Context) error {
 	// Start indexer service first
-	if err := p.indexer.StartAsync(ctx); err != nil {
+	if err := services.StartAndAwaitRunning(ctx, p.indexer); err != nil {
 		return fmt.Errorf("failed to start indexer service: %w", err)
-	}
-	if err := p.indexer.AwaitRunning(ctx); err != nil {
-		return fmt.Errorf("indexer service failed to start: %w", err)
 	}
 
 	// Start flush worker if configured
 	if p.cfg.FlushInterval > 0 {
 		p.flushTicker = time.NewTicker(p.cfg.FlushInterval)
-		p.wg.Add(1)
-		go func() {
-			defer p.wg.Done()
+		p.wg.Go(func() {
 			defer p.flushTicker.Stop()
 
 			for {
@@ -249,11 +256,14 @@ func (p *Builder) running(ctx context.Context) error {
 					return
 				}
 			}
-		}()
+		})
 	}
 
 	level.Info(p.logger).Log("msg", "started index builder service")
+	return nil
+}
 
+func (p *Builder) running(ctx context.Context) error {
 	// Main Kafka processing loop
 	for {
 		select {
@@ -286,10 +296,10 @@ func (p *Builder) running(ctx context.Context) error {
 }
 
 func (p *Builder) stopping(failureCase error) error {
-	// Stop indexer service first - this handles calculation cleanup via context cancellation
-	p.indexer.StopAsync()
-	if err := p.indexer.AwaitTerminated(context.Background()); err != nil {
-		level.Error(p.logger).Log("msg", "failed to stop indexer service", "err", err)
+	// Stop indexer service first - this handles calculation cleanup via context cancelation.
+	ctx := context.TODO()
+	if err := services.StopAndAwaitTerminated(ctx, p.indexer); err != nil {
+		level.Error(p.logger).Log("msg", "failed to stop indexer", "err", err)
 	}
 
 	// Stop other components
@@ -330,6 +340,7 @@ func (p *Builder) processRecord(ctx context.Context, record *kgo.Record) {
 		level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "partition", record.Partition)
 		return
 	}
+	p.markEventsCompleted(record.Partition, len(records))
 }
 
 // Appends a record and returns a slice of buffered events to index. The slice will be empty if no indexing is required.
@@ -360,10 +371,20 @@ func (p *Builder) cleanupPartition(partition int32) {
 
 	if state, ok := p.partitionStates[partition]; ok {
 		// Clear processed events and reset processing flag
-		state.events = state.events[:0]
 		state.isProcessing = false
 		state.lastActivity = time.Now()
 	}
+}
+
+func (p *Builder) markEventsCompleted(partition int32, eventsProcessed int) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	state, ok := p.partitionStates[partition]
+	if !ok {
+		return
+	}
+	state.events = state.events[eventsProcessed:]
 }
 
 func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {

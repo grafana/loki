@@ -30,9 +30,18 @@ package logical
 import (
 	"fmt"
 	"strings"
-
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
+
+// Node is a node in the logical plan. Every type that implements Node is either
+// a [Value], [Instruction], or both.
+//
+// Node contains the common methods to Value and Instruction.
+type Node interface {
+	String() string
+
+	// base returns the [baseNode] for a Node.
+	base() *baseNode
+}
 
 // An Instruction is an SSA instruction that computes a new [Value] or has some
 // effect.
@@ -40,9 +49,18 @@ import (
 // Instructions that define a value (e.g., BinOp) also implement the Value
 // interface; an Instruction that only has an effect (e.g., Return) does not.
 type Instruction interface {
+	Node
+
 	// String returns the disassembled SSA form of the Instruction. This does not
 	// include the name of the Value if the Instruction also implements [Value].
 	String() string
+
+	// Operands appends Instruction's operands to buf and returns the resulting
+	// slice.
+	//
+	// Operands are represented as pointers to permit updating an Instruction to
+	// use different operands.
+	Operands(buf []*Value) []*Value
 
 	// isInstruction is a marker method to prevent external implementations.
 	isInstruction()
@@ -50,6 +68,8 @@ type Instruction interface {
 
 // A Value is an SSA value that can be referenced by an [Instruction].
 type Value interface {
+	Node
+
 	// Name returns an identifier for this Value (such as "%1"), which is used
 	// when this Value appears as an operand of an Instruction.
 	//
@@ -62,8 +82,12 @@ type Value interface {
 	// Instruction as documented by [Instruction.String].
 	String() string
 
-	// Schema returns the type of this Value.
-	Schema() *schema.Schema
+	// Referrers returns a list of instructions that reference this Value.
+	//
+	// Referrers may be mutated to update the reference list. Care should be
+	// taken to only perform modifications that preserve the validity of the
+	// reference list.
+	Referrers() *[]Instruction
 
 	// isValue is a marker method to prevent external implementations.
 	isValue()

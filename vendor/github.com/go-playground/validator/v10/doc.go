@@ -188,7 +188,7 @@ Same as structonly tag except that any struct level validations will not run.
 
 # Omit Empty
 
-Allows conditional validation, for example if a field is not set with
+Allows conditional validation, for example, if a field is not set with
 a value (Determined by the "required" validator) then other validation
 such as min or max won't run, but if a value is set validation will run.
 
@@ -264,6 +264,7 @@ The field under validation must be present and not empty only if all
 the other specified fields are equal to the value following the specified
 field. For strings ensures value is not "". For slices, maps, pointers,
 interfaces, channels and functions ensures the value is not nil. For structs ensures value is not the zero value.
+Using the same field name multiple times in the parameters will result in a panic at runtime.
 
 	Usage: required_if
 
@@ -756,11 +757,31 @@ in a field of the struct specified via a parameter.
 	// For slices of struct:
 	Usage: unique=field
 
+# ValidateFn
+
+This validates that an object responds to a method that can return error or bool.
+By default it expects an interface `Validate() error` and check that the method
+does not return an error. Other methods can be specified using two signatures:
+If the method returns an error, it check if the return value is nil.
+If the method returns a boolean, it checks if the value is true.
+
+	// to use the default method Validate() error
+	Usage: validateFn
+
+	// to use the custom method IsValid() bool (or error)
+	Usage: validateFn=IsValid
+
 # Alpha Only
 
 This validates that a string value contains ASCII alpha characters only
 
 	Usage: alpha
+
+# Alpha Space
+
+This validates that a string value contains ASCII alpha characters and spaces only
+
+	Usage: alphaspace
 
 # Alphanumeric
 
@@ -1315,6 +1336,12 @@ This validates that a string value contains a valid DNS hostname and port that
 can be used to validate fields typically passed to sockets and connections.
 
 	Usage: hostname_port
+
+# Port
+
+This validates that the value falls within the valid port number range of 1 to 65,535.
+
+	Usage: port
 
 # Datetime
 

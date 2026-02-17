@@ -20,11 +20,22 @@ import (
 	"io"
 )
 
-// This operation is not supported by directory buckets.
+// Using the GetBucketLocation operation is no longer a best practice. To return
+// the Region that a bucket resides in, we recommend that you use the [HeadBucket]operation
+// instead. For backward compatibility, Amazon S3 continues to support the
+// GetBucketLocation operation.
 //
 // Returns the Region the bucket resides in. You set the bucket's Region using the
 // LocationConstraint request parameter in a CreateBucket request. For more
 // information, see [CreateBucket].
+//
+// In a bucket's home Region, calls to the GetBucketLocation operation are
+// governed by the bucket's policy. In other Regions, the bucket policy doesn't
+// apply, which means that cross-account access won't be authorized. However, calls
+// to the HeadBucket operation always return the bucket’s location through an HTTP
+// response header, whether access to the bucket is authorized or not. Therefore,
+// we recommend using the HeadBucket operation for bucket Region discovery and to
+// avoid using the GetBucketLocation operation.
 //
 // When you use this API operation with an access point, provide the alias of the
 // access point in place of the bucket name.
@@ -35,14 +46,17 @@ import (
 // InvalidAccessPointAliasError is returned. For more information about
 // InvalidAccessPointAliasError , see [List of Error Codes].
 //
-// We recommend that you use [HeadBucket] to return the Region that a bucket resides in. For
-// backward compatibility, Amazon S3 continues to support GetBucketLocation.
+// This operation is not supported for directory buckets.
 //
 // The following operations are related to GetBucketLocation :
 //
 // [GetObject]
 //
 // [CreateBucket]
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // [List of Error Codes]: https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList
 // [CreateBucket]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html
@@ -98,8 +112,10 @@ func (in *GetBucketLocationInput) bindEndpointParams(p *EndpointParameters) {
 type GetBucketLocationOutput struct {
 
 	// Specifies the Region where the bucket resides. For a list of all the Amazon S3
-	// supported location constraints by Region, see [Regions and Endpoints]. Buckets in Region us-east-1
-	// have a LocationConstraint of null .
+	// supported location constraints by Region, see [Regions and Endpoints].
+	//
+	// Buckets in Region us-east-1 have a LocationConstraint of null . Buckets with a
+	// LocationConstraint of EU reside in eu-west-1 .
 	//
 	// [Regions and Endpoints]: https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
 	LocationConstraint types.BucketLocationConstraint
@@ -153,6 +169,9 @@ func (c *Client) addOperationGetBucketLocationMiddlewares(stack *middleware.Stac
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -178,6 +197,9 @@ func (c *Client) addOperationGetBucketLocationMiddlewares(stack *middleware.Stac
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetBucketLocationValidationMiddleware(stack); err != nil {
@@ -211,6 +233,15 @@ func (c *Client) addOperationGetBucketLocationMiddlewares(stack *middleware.Stac
 		return err
 	}
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

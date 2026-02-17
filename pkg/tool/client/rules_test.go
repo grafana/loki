@@ -36,31 +36,31 @@ func TestLokiClient(t *testing.T) {
 			test:       "regular-characters",
 			namespace:  "my-namespace",
 			name:       "my-name",
-			expURLPath: "/api/v1/rules/my-namespace/my-name",
+			expURLPath: "/loki/api/v1/rules/my-namespace/my-name",
 		},
 		{
 			test:       "special-characters-spaces",
 			namespace:  "My: Namespace",
 			name:       "My: Name",
-			expURLPath: "/api/v1/rules/My:%20Namespace/My:%20Name",
+			expURLPath: "/loki/api/v1/rules/My:%20Namespace/My:%20Name",
 		},
 		{
 			test:       "special-characters-slashes",
 			namespace:  "My/Namespace",
 			name:       "My/Name",
-			expURLPath: "/api/v1/rules/My%2FNamespace/My%2FName",
+			expURLPath: "/loki/api/v1/rules/My%2FNamespace/My%2FName",
 		},
 		{
 			test:       "special-characters-slash-first",
 			namespace:  "My/Namespace",
 			name:       "/first-char-slash",
-			expURLPath: "/api/v1/rules/My%2FNamespace/%2Ffirst-char-slash",
+			expURLPath: "/loki/api/v1/rules/My%2FNamespace/%2Ffirst-char-slash",
 		},
 		{
 			test:       "special-characters-slash-first",
 			namespace:  "My/Namespace",
 			name:       "last-char-slash/",
-			expURLPath: "/api/v1/rules/My%2FNamespace/last-char-slash%2F",
+			expURLPath: "/loki/api/v1/rules/My%2FNamespace/last-char-slash%2F",
 		},
 	} {
 		t.Run(tc.test, func(t *testing.T) {

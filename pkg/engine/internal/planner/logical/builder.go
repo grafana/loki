@@ -3,7 +3,7 @@ package logical
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -40,13 +40,52 @@ func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
 }
 
 // Parse applies a [Parse] operation to the Builder.
-func (b *Builder) Parse(kind ParserKind) *Builder {
-	return &Builder{
-		val: &Parse{
-			Table: b.val,
-			Kind:  kind,
+func (b *Builder) Parse(op types.VariadicOp, strict bool, keepEmpty bool) *Builder {
+	val := &FunctionOp{
+		Op: op,
+		Values: []Value{
+			// source column
+			&ColumnRef{
+				Ref: semconv.ColumnIdentMessage.ColumnRef(),
+			},
+			// nil for requested keys (to be filled in by projection pushdown optimizer)
+			NewLiteral([]string{}),
+			NewLiteral(strict),
+			NewLiteral(keepEmpty),
 		},
 	}
+	return b.ProjectExpand(val)
+}
+
+// ParseRegexp applies a regex [Parse] operation to the Builder.
+// The pattern must contain at least one named capture group like (?P<name>...).
+func (b *Builder) ParseRegexp(pattern string) *Builder {
+	val := &FunctionOp{
+		Op: types.VariadicOpParseRegexp,
+		Values: []Value{
+			// source column
+			&ColumnRef{
+				Ref: semconv.ColumnIdentMessage.ColumnRef(),
+			},
+			// regex pattern
+			NewLiteral(pattern),
+		},
+	}
+	return b.ProjectExpand(val)
+}
+
+// Cast applies an [Projection] operation, with an [UnaryOp] cast operation, to the Builder.
+func (b *Builder) Cast(identifier string, op types.UnaryOp) *Builder {
+	val := &UnaryOp{
+		Op: op,
+		Value: &ColumnRef{
+			Ref: types.ColumnRef{
+				Column: identifier,
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		},
+	}
+	return b.ProjectExpand(val)
 }
 
 // Sort applies a [Sort] operation to the Builder.
@@ -62,9 +101,45 @@ func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 	}
 }
 
+// TopK applies a [TopK] operation to the Builder.
+func (b *Builder) TopK(sortBy *ColumnRef, K int, ascending, nullsFirst bool) *Builder {
+	return &Builder{
+		val: &TopK{
+			Table: b.val,
+
+			SortBy:     sortBy,
+			Ascending:  ascending,
+			NullsFirst: nullsFirst,
+			K:          K,
+		},
+	}
+}
+
+// BinOpRight adds a binary arithmetic operation with a given right value
+func (b *Builder) BinOpRight(op types.BinaryOp, right Value) *Builder {
+	return &Builder{
+		val: &BinOp{
+			Left:  b.val,
+			Right: right,
+			Op:    op,
+		},
+	}
+}
+
+// BinOpLeft adds a binary arithmetic operation with a given left value
+func (b *Builder) BinOpLeft(op types.BinaryOp, left Value) *Builder {
+	return &Builder{
+		val: &BinOp{
+			Left:  left,
+			Right: b.val,
+			Op:    op,
+		},
+	}
+}
+
 // RangeAggregation applies a [RangeAggregation] operation to the Builder.
 func (b *Builder) RangeAggregation(
-	partitionBy []ColumnRef,
+	grouping Grouping,
 	operation types.RangeAggregationType,
 	startTS, endTS time.Time,
 	step time.Duration,
@@ -75,7 +150,7 @@ func (b *Builder) RangeAggregation(
 			Table: b.val,
 
 			Operation:     operation,
-			PartitionBy:   partitionBy,
+			Grouping:      grouping,
 			Start:         startTS,
 			End:           endTS,
 			Step:          step,
@@ -86,13 +161,13 @@ func (b *Builder) RangeAggregation(
 
 // VectorAggregation applies a [VectorAggregation] operation to the Builder.
 func (b *Builder) VectorAggregation(
-	groupBy []ColumnRef,
+	grouping Grouping,
 	operation types.VectorAggregationType,
 ) *Builder {
 	return &Builder{
 		val: &VectorAggregation{
 			Table:     b.val,
-			GroupBy:   groupBy,
+			Grouping:  grouping,
 			Operation: operation,
 		},
 	}
@@ -110,9 +185,28 @@ func (b *Builder) Compat(logqlCompatibility bool) *Builder {
 	return b
 }
 
-// Schema returns the schema of the data that will be produced by this Builder.
-func (b *Builder) Schema() *schema.Schema {
-	return b.val.Schema()
+func (b *Builder) Project(all, expand, drop bool, expr ...Value) *Builder {
+	return &Builder{
+		val: &Projection{
+			Relation:    b.val,
+			All:         all,
+			Expand:      expand,
+			Drop:        drop,
+			Expressions: expr,
+		},
+	}
+}
+
+func (b *Builder) ProjectAll(expand, drop bool, expr ...Value) *Builder {
+	return b.Project(true, expand, drop, expr...)
+}
+
+func (b *Builder) ProjectDrop(expr ...Value) *Builder {
+	return b.ProjectAll(false, true, expr...)
+}
+
+func (b *Builder) ProjectExpand(expr ...Value) *Builder {
+	return b.ProjectAll(true, false, expr...)
 }
 
 // Value returns the underlying [Value]. This is useful when you need to access
@@ -122,5 +216,10 @@ func (b *Builder) Value() Value { return b.val }
 
 // ToPlan converts the Builder to a Plan.
 func (b *Builder) ToPlan() (*Plan, error) {
-	return convertToPlan(b.val)
+	p, err := convertToPlan(b.val)
+	if err != nil {
+		return nil, err
+	}
+	buildReferrers(p.Instructions...)
+	return p, nil
 }

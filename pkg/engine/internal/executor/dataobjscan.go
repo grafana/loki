@@ -28,8 +28,6 @@ type dataobjScanOptions struct {
 	Predicates     []logs.Predicate            // Predicate to apply to the logs.
 	Projections    []physical.ColumnExpression // Columns to include. An empty slice means all columns.
 
-	Allocator memory.Allocator // Allocator to use for reading sections and building records.
-
 	BatchSize int64 // The buffer size for reading rows, derived from the engine batch size.
 }
 
@@ -48,29 +46,29 @@ type dataobjScan struct {
 var _ Pipeline = (*dataobjScan)(nil)
 
 // newDataobjScanPipeline creates a new Pipeline which emits a single
-// [arrow.Record] composed of the requested log section in a data object. Rows
+// [arrow.RecordBatch] composed of the requested log section in a data object. Rows
 // in the returned record are ordered by timestamp in the direction specified
 // by opts.Direction.
 func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobjScan {
-	if opts.Allocator == nil {
-		opts.Allocator = memory.DefaultAllocator
-	}
-
 	return &dataobjScan{
 		opts:   opts,
 		logger: logger,
 	}
 }
 
-func (s *dataobjScan) Read(ctx context.Context) (arrow.Record, error) {
-	if err := s.init(); err != nil {
-		return nil, err
+func (s *dataobjScan) Open(ctx context.Context) error {
+	return s.init(ctx)
+}
+
+func (s *dataobjScan) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	if !s.initialized {
+		return nil, errPipelineNotOpen
 	}
 
 	return s.read(ctx)
 }
 
-func (s *dataobjScan) init() error {
+func (s *dataobjScan) init(ctx context.Context) error {
 	if s.initialized {
 		return nil
 	}
@@ -78,9 +76,9 @@ func (s *dataobjScan) init() error {
 	// [dataobjScan.initLogs] depends on the result of [dataobjScan.initStreams]
 	// (to know whether label columns are needed), so we must initialize streams
 	// first.
-	if err := s.initStreams(); err != nil {
+	if err := s.initStreams(ctx); err != nil {
 		return fmt.Errorf("initializing streams: %w", err)
-	} else if err := s.initLogs(); err != nil {
+	} else if err := s.initLogs(ctx); err != nil {
 		return fmt.Errorf("initializing logs: %w", err)
 	}
 
@@ -89,7 +87,7 @@ func (s *dataobjScan) init() error {
 	return nil
 }
 
-func (s *dataobjScan) initStreams() error {
+func (s *dataobjScan) initStreams(ctx context.Context) error {
 	if s.opts.StreamsSection == nil {
 		return fmt.Errorf("no streams section provided")
 	}
@@ -106,8 +104,11 @@ func (s *dataobjScan) initStreams() error {
 		LabelColumns: columnsToRead,
 		BatchSize:    int(s.opts.BatchSize),
 	})
+	if err := s.streams.Open(ctx); err != nil {
+		return fmt.Errorf("opening streams view: %w", err)
+	}
 
-	s.streamsInjector = newStreamInjector(s.opts.Allocator, s.streams)
+	s.streamsInjector = newStreamInjector(s.streams)
 	return nil
 }
 
@@ -145,7 +146,7 @@ func projectedLabelColumns(sec *streams.Section, projections []physical.ColumnEx
 			panic("invalid projection type, expected *physical.ColumnExpr")
 		}
 
-		// We're loading the sterams section for joining stream labels into
+		// We're loading the streams section for joining stream labels into
 		// records, so we only need to consider label and ambiguous columns here.
 		if expr.Ref.Type != types.ColumnTypeLabel && expr.Ref.Type != types.ColumnTypeAmbiguous {
 			continue
@@ -166,7 +167,7 @@ func projectedLabelColumns(sec *streams.Section, projections []physical.ColumnEx
 	return found
 }
 
-func (s *dataobjScan) initLogs() error {
+func (s *dataobjScan) initLogs(ctx context.Context) error {
 	if s.opts.LogsSection == nil {
 		return fmt.Errorf("no logs section provided")
 	}
@@ -210,8 +211,11 @@ func (s *dataobjScan) initLogs() error {
 		Columns: columnsToRead,
 
 		Predicates: predicates,
-		Allocator:  s.opts.Allocator,
+		Allocator:  memory.DefaultAllocator,
 	})
+	if err := s.reader.Open(ctx); err != nil {
+		return fmt.Errorf("opening logs reader: %w", err)
+	}
 
 	// Create the engine-compatible expected schema for the logs section.
 	origSchema := s.reader.Schema()
@@ -349,30 +353,29 @@ NextProjection:
 	return found
 }
 
-// read reads the entire section into memory and generates an [arrow.Record]
+// read reads the entire section into memory and generates an [arrow.RecordBatch]
 // from the data. It returns an error if reading a section resulted in an
 // error.
-func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
+func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 	rec, err := s.reader.Read(ctx, int(s.opts.BatchSize))
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
 	} else if (rec == nil || rec.NumRows() == 0) && errors.Is(err, io.EOF) {
 		return nil, EOF
 	}
-	defer rec.Release()
+
+	if rec.NumRows() == 0 {
+		return rec, nil
+	}
 
 	// Update the schema of the record to match the schema the engine expects.
 	rec, err = changeSchema(rec, s.desiredSchema)
 	if err != nil {
 		return nil, fmt.Errorf("changing schema: %w", err)
 	}
-	defer rec.Release()
 
 	if s.streamsInjector == nil {
 		// No streams injector needed, so we return the record as-is.
-		// We add an extra retain to counteract the Release() call above (for ease
-		// of readability).
-		rec.Retain()
 		return rec, nil
 	}
 
@@ -381,11 +384,6 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
-	if s.reader != nil {
-		// TODO(ashwanth): remove this once we have stats collection via executor
-		s.reader.Stats().LogSummary(s.logger, time.Since(s.initializedAt))
-	}
-
 	if s.streams != nil {
 		s.streams.Close()
 	}

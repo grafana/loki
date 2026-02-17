@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"gopkg.in/yaml.v2"
 
@@ -68,10 +69,20 @@ func (c *RemoteWriteConfig) Validate() error {
 		return errors.New("remote-write enabled but no clients URL are configured")
 	}
 
+	if c.Client != nil {
+		if err := c.Client.Validate(model.UTF8Validation); err != nil {
+			return fmt.Errorf("invalid remote write client: %w", err)
+		}
+	}
+
 	if len(c.Clients) > 0 {
 		for id, clt := range c.Clients {
 			if clt.URL == nil {
 				return fmt.Errorf("remote-write enabled but client '%s' URL for tenant %s is not configured", clt.Name, id)
+			}
+
+			if err := clt.Validate(model.UTF8Validation); err != nil {
+				return fmt.Errorf("invalid remote write client for tenant %q: %w", id, err)
 			}
 		}
 	}

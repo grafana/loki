@@ -13,14 +13,16 @@ func (r *ListPartitionReassignmentsRequest) setVersion(v int16) {
 func (r *ListPartitionReassignmentsRequest) encode(pe packetEncoder) error {
 	pe.putInt32(r.TimeoutMs)
 
-	pe.putCompactArrayLength(len(r.blocks))
+	if err := pe.putArrayLength(len(r.blocks)); err != nil {
+		return err
+	}
 
 	for topic, partitions := range r.blocks {
-		if err := pe.putCompactString(topic); err != nil {
+		if err := pe.putString(topic); err != nil {
 			return err
 		}
 
-		if err := pe.putCompactInt32Array(partitions); err != nil {
+		if err := pe.putInt32Array(partitions); err != nil {
 			return err
 		}
 
@@ -39,18 +41,18 @@ func (r *ListPartitionReassignmentsRequest) decode(pd packetDecoder, version int
 		return err
 	}
 
-	topicCount, err := pd.getCompactArrayLength()
+	topicCount, err := pd.getArrayLength()
 	if err != nil {
 		return err
 	}
 	if topicCount > 0 {
 		r.blocks = make(map[string][]int32)
 		for i := 0; i < topicCount; i++ {
-			topic, err := pd.getCompactString()
+			topic, err := pd.getString()
 			if err != nil {
 				return err
 			}
-			partitionCount, err := pd.getCompactArrayLength()
+			partitionCount, err := pd.getArrayLength()
 			if err != nil {
 				return err
 			}
@@ -68,11 +70,8 @@ func (r *ListPartitionReassignmentsRequest) decode(pd packetDecoder, version int
 		}
 	}
 
-	if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
-		return err
-	}
-
-	return
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *ListPartitionReassignmentsRequest) key() int16 {
@@ -89,6 +88,14 @@ func (r *ListPartitionReassignmentsRequest) headerVersion() int16 {
 
 func (r *ListPartitionReassignmentsRequest) isValidVersion() bool {
 	return r.Version == 0
+}
+
+func (r *ListPartitionReassignmentsRequest) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *ListPartitionReassignmentsRequest) isFlexibleVersion(version int16) bool {
+	return version >= 0
 }
 
 func (r *ListPartitionReassignmentsRequest) requiredVersion() KafkaVersion {

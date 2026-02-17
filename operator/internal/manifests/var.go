@@ -39,6 +39,7 @@ const (
 	gatewayContainerName    = "gateway"
 	gatewayHTTPPort         = 8080
 	gatewayInternalPort     = 8081
+	gatewayInternalOPAPort  = 8083
 	gatewayHTTPPortName     = "public"
 	gatewayInternalPortName = "metrics"
 
@@ -60,7 +61,7 @@ const (
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:3.5.5"
+	DefaultContainerImage = "docker.io/grafana/loki:3.6.5"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"

@@ -918,8 +918,13 @@ func (c *MemChunk) reorder() error {
 	// Otherwise, we need to rebuild the blocks
 	from, to := c.Bounds()
 
-	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
-	itr, err := c.Iterator(context.Background(), from, to.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+	// The iterator we use is the same used for queries, when reordering we do not need to
+	// appy any kind of query pipeline processing, even though we use a NoopPipeline here,
+	// there is still a lot of label parsing and associated allocations that take place in the
+	// noop pipeline. So we bypass processing by using a context with the processing disabled hint.
+	// We add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
+	ctx := processingDisabledContext(context.Background())
+	itr, err := c.Iterator(ctx, from, to.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	if err != nil {
 		return err
 	}
@@ -1469,6 +1474,21 @@ type bufferedIterator struct {
 	closed bool
 }
 
+// processingDisabledKey is used to mark contexts where log line processing should be bypassed.
+type processingDisabledKey struct{}
+
+// processingDisabledContext returns a child context with processing disabled hint.
+func processingDisabledContext(parent context.Context) context.Context {
+	return context.WithValue(parent, processingDisabledKey{}, true)
+}
+
+// isProcessingDisabled returns true if the context carries the disable-processing hint.
+func isProcessingDisabled(ctx context.Context) bool {
+	v := ctx.Value(processingDisabledKey{})
+	disabled, _ := v.(bool)
+	return disabled
+}
+
 func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, symbolizer *symbolizer) *bufferedIterator {
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
@@ -1735,11 +1755,19 @@ func (si *bufferedIterator) close() {
 }
 
 func newEntryIterator(ctx context.Context, pool compression.ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.EntryIterator {
-	return &entryBufferedIterator{
+	skipProcessing := isProcessingDisabled(ctx)
+	e := &entryBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		pipeline:         pipeline,
 		stats:            stats.FromContext(ctx),
+		skipProcessing:   skipProcessing,
 	}
+	// if processing is disabled the labels will not change.
+	if skipProcessing {
+		e.currLabels = pipeline.BaseLabels()
+	}
+	return e
+
 }
 
 type entryBufferedIterator struct {
@@ -1749,6 +1777,8 @@ type entryBufferedIterator struct {
 
 	cur        logproto.Entry
 	currLabels log.LabelsResult
+
+	skipProcessing bool
 }
 
 func (e *entryBufferedIterator) At() logproto.Entry {
@@ -1761,6 +1791,19 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
+		// If processing is disabled via context, bypass processing
+		// this is used to skip processing when reordering chunks when they are flushed
+		if e.skipProcessing {
+			e.cur.Timestamp = time.Unix(0, e.currTs)
+			// E.Welch it's likely possible to avoid the copy here however
+			// there is always risk with unsafe copies and this bypass already goes
+			// a long way to reduce the work we used to do when processing
+			// structured meatdata in the previous NoOpPipeline
+			e.cur.Line = string(e.currLine)
+			e.cur.StructuredMetadata = logproto.FromLabelsToLabelAdapters(e.currStructuredMetadata)
+			return true
+		}
+
 		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 		if !matches {
 			continue

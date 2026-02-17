@@ -16,7 +16,7 @@ func (c *CreatePartitionsResponse) setVersion(v int16) {
 }
 
 func (c *CreatePartitionsResponse) encode(pe packetEncoder) error {
-	pe.putInt32(int32(c.ThrottleTime / time.Millisecond))
+	pe.putDurationMs(c.ThrottleTime)
 	if err := pe.putArrayLength(len(c.TopicPartitionErrors)); err != nil {
 		return err
 	}
@@ -34,11 +34,9 @@ func (c *CreatePartitionsResponse) encode(pe packetEncoder) error {
 }
 
 func (c *CreatePartitionsResponse) decode(pd packetDecoder, version int16) (err error) {
-	throttleTime, err := pd.getInt32()
-	if err != nil {
+	if c.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
-	c.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
 	n, err := pd.getArrayLength()
 	if err != nil {
@@ -109,7 +107,7 @@ func (t *TopicPartitionError) Unwrap() error {
 }
 
 func (t *TopicPartitionError) encode(pe packetEncoder) error {
-	pe.putInt16(int16(t.Err))
+	pe.putKError(t.Err)
 
 	if err := pe.putNullableString(t.ErrMsg); err != nil {
 		return err
@@ -119,11 +117,10 @@ func (t *TopicPartitionError) encode(pe packetEncoder) error {
 }
 
 func (t *TopicPartitionError) decode(pd packetDecoder, version int16) (err error) {
-	kerr, err := pd.getInt16()
+	t.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	t.Err = KError(kerr)
 
 	if t.ErrMsg, err = pd.getNullableString(); err != nil {
 		return err

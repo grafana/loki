@@ -213,41 +213,46 @@ type DiscoveryRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// The version_info provided in the request messages will be the version_info
+	// The “version_info“ provided in the request messages will be the “version_info“
 	// received with the most recent successfully processed response or empty on
 	// the first request. It is expected that no new request is sent after a
 	// response is received until the Envoy instance is ready to ACK/NACK the new
 	// configuration. ACK/NACK takes place by returning the new API config version
-	// as applied or the previous API config version respectively. Each type_url
+	// as applied or the previous API config version respectively. Each “type_url“
 	// (see below) has an independent version associated with it.
 	VersionInfo string `protobuf:"bytes,1,opt,name=version_info,json=versionInfo,proto3" json:"version_info,omitempty"`
 	// The node making the request.
 	Node *v3.Node `protobuf:"bytes,2,opt,name=node,proto3" json:"node,omitempty"`
 	// List of resources to subscribe to, e.g. list of cluster names or a route
 	// configuration name. If this is empty, all resources for the API are
-	// returned. LDS/CDS may have empty resource_names, which will cause all
+	// returned. LDS/CDS may have empty “resource_names“, which will cause all
 	// resources for the Envoy instance to be returned. The LDS and CDS responses
 	// will then imply a number of resources that need to be fetched via EDS/RDS,
-	// which will be explicitly enumerated in resource_names.
+	// which will be explicitly enumerated in “resource_names“.
 	ResourceNames []string `protobuf:"bytes,3,rep,name=resource_names,json=resourceNames,proto3" json:"resource_names,omitempty"`
 	// [#not-implemented-hide:]
 	// Alternative to “resource_names“ field that allows specifying dynamic
 	// parameters along with each resource name. Clients that populate this
 	// field must be able to handle responses from the server where resources
 	// are wrapped in a Resource message.
-	// Note that it is legal for a request to have some resources listed
-	// in “resource_names“ and others in “resource_locators“.
+	//
+	// .. note::
+	//
+	//	It is legal for a request to have some resources listed
+	//	in ``resource_names`` and others in ``resource_locators``.
 	ResourceLocators []*ResourceLocator `protobuf:"bytes,7,rep,name=resource_locators,json=resourceLocators,proto3" json:"resource_locators,omitempty"`
 	// Type of the resource that is being requested, e.g.
-	// "type.googleapis.com/envoy.api.v2.ClusterLoadAssignment". This is implicit
+	// “type.googleapis.com/envoy.api.v2.ClusterLoadAssignment“. This is implicit
 	// in requests made via singleton xDS APIs such as CDS, LDS, etc. but is
 	// required for ADS.
 	TypeUrl string `protobuf:"bytes,4,opt,name=type_url,json=typeUrl,proto3" json:"type_url,omitempty"`
-	// nonce corresponding to DiscoveryResponse being ACK/NACKed. See above
-	// discussion on version_info and the DiscoveryResponse nonce comment. This
-	// may be empty only if 1) this is a non-persistent-stream xDS such as HTTP,
-	// or 2) the client has not yet accepted an update in this xDS stream (unlike
-	// delta, where it is populated only for new explicit ACKs).
+	// nonce corresponding to “DiscoveryResponse“ being ACK/NACKed. See above
+	// discussion on “version_info“ and the “DiscoveryResponse“ nonce comment. This
+	// may be empty only if:
+	//
+	//   - This is a non-persistent-stream xDS such as HTTP, or
+	//   - The client has not yet accepted an update in this xDS stream (unlike
+	//     delta, where it is populated only for new explicit ACKs).
 	ResponseNonce string `protobuf:"bytes,5,opt,name=response_nonce,json=responseNonce,proto3" json:"response_nonce,omitempty"`
 	// This is populated when the previous :ref:`DiscoveryResponse <envoy_v3_api_msg_service.discovery.v3.DiscoveryResponse>`
 	// failed to update configuration. The “message“ field in “error_details“ provides the Envoy
@@ -350,28 +355,33 @@ type DiscoveryResponse struct {
 	// [#not-implemented-hide:]
 	// Canary is used to support two Envoy command line flags:
 	//
-	//   - --terminate-on-canary-transition-failure. When set, Envoy is able to
+	//   - “--terminate-on-canary-transition-failure“. When set, Envoy is able to
 	//     terminate if it detects that configuration is stuck at canary. Consider
 	//     this example sequence of updates:
+	//
 	//   - Management server applies a canary config successfully.
+	//
 	//   - Management server rolls back to a production config.
+	//
 	//   - Envoy rejects the new production config.
+	//
 	//     Since there is no sensible way to continue receiving configuration
 	//     updates, Envoy will then terminate and apply production config from a
 	//     clean slate.
-	//   - --dry-run-canary. When set, a canary response will never be applied, only
+	//
+	//   - “--dry-run-canary“. When set, a canary response will never be applied, only
 	//     validated via a dry run.
 	Canary bool `protobuf:"varint,3,opt,name=canary,proto3" json:"canary,omitempty"`
 	// Type URL for resources. Identifies the xDS API when muxing over ADS.
-	// Must be consistent with the type_url in the 'resources' repeated Any (if non-empty).
+	// Must be consistent with the “type_url“ in the 'resources' repeated Any (if non-empty).
 	TypeUrl string `protobuf:"bytes,4,opt,name=type_url,json=typeUrl,proto3" json:"type_url,omitempty"`
 	// For gRPC based subscriptions, the nonce provides a way to explicitly ack a
-	// specific DiscoveryResponse in a following DiscoveryRequest. Additional
+	// specific “DiscoveryResponse“ in a following “DiscoveryRequest“. Additional
 	// messages may have been sent by Envoy to the management server for the
-	// previous version on the stream prior to this DiscoveryResponse, that were
+	// previous version on the stream prior to this “DiscoveryResponse“, that were
 	// unprocessed at response send time. The nonce allows the management server
-	// to ignore any further DiscoveryRequests for the previous version until a
-	// DiscoveryRequest bearing the nonce. The nonce is optional and is not
+	// to ignore any further “DiscoveryRequests“ for the previous version until a
+	// “DiscoveryRequest“ bearing the nonce. The nonce is optional and is not
 	// required for non-stream based xDS implementations.
 	Nonce string `protobuf:"bytes,5,opt,name=nonce,proto3" json:"nonce,omitempty"`
 	// The control plane instance that sent the response.
@@ -478,25 +488,28 @@ func (x *DiscoveryResponse) GetResourceErrors() []*ResourceError {
 // connected to it.
 //
 // In Delta xDS the nonce field is required and used to pair
-// DeltaDiscoveryResponse to a DeltaDiscoveryRequest ACK or NACK.
-// Optionally, a response message level system_version_info is present for
+// “DeltaDiscoveryResponse“ to a “DeltaDiscoveryRequest“ ACK or NACK.
+// Optionally, a response message level “system_version_info“ is present for
 // debugging purposes only.
 //
-// DeltaDiscoveryRequest plays two independent roles. Any DeltaDiscoveryRequest
-// can be either or both of: [1] informing the server of what resources the
-// client has gained/lost interest in (using resource_names_subscribe and
-// resource_names_unsubscribe), or [2] (N)ACKing an earlier resource update from
-// the server (using response_nonce, with presence of error_detail making it a NACK).
-// Additionally, the first message (for a given type_url) of a reconnected gRPC stream
+// “DeltaDiscoveryRequest“ plays two independent roles. Any “DeltaDiscoveryRequest“
+// can be either or both of:
+//
+//   - Informing the server of what resources the client has gained/lost interest in
+//     (using “resource_names_subscribe“ and “resource_names_unsubscribe“), or
+//   - (N)ACKing an earlier resource update from the server (using “response_nonce“,
+//     with presence of “error_detail“ making it a NACK).
+//
+// Additionally, the first message (for a given “type_url“) of a reconnected gRPC stream
 // has a third role: informing the server of the resources (and their versions)
-// that the client already possesses, using the initial_resource_versions field.
+// that the client already possesses, using the “initial_resource_versions“ field.
 //
 // As with state-of-the-world, when multiple resource types are multiplexed (ADS),
-// all requests/acknowledgments/updates are logically walled off by type_url:
+// all requests/acknowledgments/updates are logically walled off by “type_url“:
 // a Cluster ACK exists in a completely separate world from a prior Route NACK.
-// In particular, initial_resource_versions being sent at the "start" of every
-// gRPC stream actually entails a message for each type_url, each with its own
-// initial_resource_versions.
+// In particular, “initial_resource_versions“ being sent at the "start" of every
+// gRPC stream actually entails a message for each “type_url“, each with its own
+// “initial_resource_versions“.
 // [#next-free-field: 10]
 type DeltaDiscoveryRequest struct {
 	state         protoimpl.MessageState
@@ -512,23 +525,25 @@ type DeltaDiscoveryRequest struct {
 	TypeUrl string `protobuf:"bytes,2,opt,name=type_url,json=typeUrl,proto3" json:"type_url,omitempty"`
 	// DeltaDiscoveryRequests allow the client to add or remove individual
 	// resources to the set of tracked resources in the context of a stream.
-	// All resource names in the resource_names_subscribe list are added to the
-	// set of tracked resources and all resource names in the resource_names_unsubscribe
+	// All resource names in the “resource_names_subscribe“ list are added to the
+	// set of tracked resources and all resource names in the “resource_names_unsubscribe“
 	// list are removed from the set of tracked resources.
 	//
-	// *Unlike* state-of-the-world xDS, an empty resource_names_subscribe or
-	// resource_names_unsubscribe list simply means that no resources are to be
+	// *Unlike* state-of-the-world xDS, an empty “resource_names_subscribe“ or
+	// “resource_names_unsubscribe“ list simply means that no resources are to be
 	// added or removed to the resource list.
 	// *Like* state-of-the-world xDS, the server must send updates for all tracked
 	// resources, but can also send updates for resources the client has not subscribed to.
 	//
-	// NOTE: the server must respond with all resources listed in resource_names_subscribe,
-	// even if it believes the client has the most recent version of them. The reason:
-	// the client may have dropped them, but then regained interest before it had a chance
-	// to send the unsubscribe message. See DeltaSubscriptionStateTest.RemoveThenAdd.
+	// .. note::
 	//
-	// These two fields can be set in any DeltaDiscoveryRequest, including ACKs
-	// and initial_resource_versions.
+	//	The server must respond with all resources listed in ``resource_names_subscribe``,
+	//	even if it believes the client has the most recent version of them. The reason:
+	//	the client may have dropped them, but then regained interest before it had a chance
+	//	to send the unsubscribe message. See DeltaSubscriptionStateTest.RemoveThenAdd.
+	//
+	// These two fields can be set in any “DeltaDiscoveryRequest“, including ACKs
+	// and “initial_resource_versions“.
 	//
 	// A list of Resource names to add to the list of tracked resources.
 	ResourceNamesSubscribe []string `protobuf:"bytes,3,rep,name=resource_names_subscribe,json=resourceNamesSubscribe,proto3" json:"resource_names_subscribe,omitempty"`
@@ -537,28 +552,37 @@ type DeltaDiscoveryRequest struct {
 	// [#not-implemented-hide:]
 	// Alternative to “resource_names_subscribe“ field that allows specifying dynamic parameters
 	// along with each resource name.
-	// Note that it is legal for a request to have some resources listed
-	// in “resource_names_subscribe“ and others in “resource_locators_subscribe“.
+	//
+	// .. note::
+	//
+	//	It is legal for a request to have some resources listed
+	//	in ``resource_names_subscribe`` and others in ``resource_locators_subscribe``.
 	ResourceLocatorsSubscribe []*ResourceLocator `protobuf:"bytes,8,rep,name=resource_locators_subscribe,json=resourceLocatorsSubscribe,proto3" json:"resource_locators_subscribe,omitempty"`
 	// [#not-implemented-hide:]
 	// Alternative to “resource_names_unsubscribe“ field that allows specifying dynamic parameters
 	// along with each resource name.
-	// Note that it is legal for a request to have some resources listed
-	// in “resource_names_unsubscribe“ and others in “resource_locators_unsubscribe“.
+	//
+	// .. note::
+	//
+	//	It is legal for a request to have some resources listed
+	//	in ``resource_names_unsubscribe`` and others in ``resource_locators_unsubscribe``.
 	ResourceLocatorsUnsubscribe []*ResourceLocator `protobuf:"bytes,9,rep,name=resource_locators_unsubscribe,json=resourceLocatorsUnsubscribe,proto3" json:"resource_locators_unsubscribe,omitempty"`
 	// Informs the server of the versions of the resources the xDS client knows of, to enable the
 	// client to continue the same logical xDS session even in the face of gRPC stream reconnection.
-	// It will not be populated: [1] in the very first stream of a session, since the client will
-	// not yet have any resources,  [2] in any message after the first in a stream (for a given
-	// type_url), since the server will already be correctly tracking the client's state.
-	// (In ADS, the first message *of each type_url* of a reconnected stream populates this map.)
+	// It will not be populated:
+	//
+	//   - In the very first stream of a session, since the client will not yet have any resources.
+	//   - In any message after the first in a stream (for a given “type_url“), since the server will
+	//     already be correctly tracking the client's state.
+	//
+	// (In ADS, the first message “of each type_url“ of a reconnected stream populates this map.)
 	// The map's keys are names of xDS resources known to the xDS client.
 	// The map's values are opaque resource versions.
 	InitialResourceVersions map[string]string `protobuf:"bytes,5,rep,name=initial_resource_versions,json=initialResourceVersions,proto3" json:"initial_resource_versions,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
-	// When the DeltaDiscoveryRequest is a ACK or NACK message in response
-	// to a previous DeltaDiscoveryResponse, the response_nonce must be the
-	// nonce in the DeltaDiscoveryResponse.
-	// Otherwise (unlike in DiscoveryRequest) response_nonce must be omitted.
+	// When the “DeltaDiscoveryRequest“ is a ACK or NACK message in response
+	// to a previous “DeltaDiscoveryResponse“, the “response_nonce“ must be the
+	// nonce in the “DeltaDiscoveryResponse“.
+	// Otherwise (unlike in “DiscoveryRequest“) “response_nonce“ must be omitted.
 	ResponseNonce string `protobuf:"bytes,6,opt,name=response_nonce,json=responseNonce,proto3" json:"response_nonce,omitempty"`
 	// This is populated when the previous :ref:`DiscoveryResponse <envoy_v3_api_msg_service.discovery.v3.DiscoveryResponse>`
 	// failed to update configuration. The “message“ field in “error_details“
@@ -670,29 +694,31 @@ type DeltaDiscoveryResponse struct {
 	// The version of the response data (used for debugging).
 	SystemVersionInfo string `protobuf:"bytes,1,opt,name=system_version_info,json=systemVersionInfo,proto3" json:"system_version_info,omitempty"`
 	// The response resources. These are typed resources, whose types must match
-	// the type_url field.
+	// the “type_url“ field.
 	Resources []*Resource `protobuf:"bytes,2,rep,name=resources,proto3" json:"resources,omitempty"`
 	// Type URL for resources. Identifies the xDS API when muxing over ADS.
-	// Must be consistent with the type_url in the Any within 'resources' if 'resources' is non-empty.
+	// Must be consistent with the “type_url“ in the Any within 'resources' if 'resources' is non-empty.
 	TypeUrl string `protobuf:"bytes,4,opt,name=type_url,json=typeUrl,proto3" json:"type_url,omitempty"`
-	// Resources names of resources that have be deleted and to be removed from the xDS Client.
+	// Resource names of resources that have been deleted and to be removed from the xDS Client.
 	// Removed resources for missing resources can be ignored.
 	RemovedResources []string `protobuf:"bytes,6,rep,name=removed_resources,json=removedResources,proto3" json:"removed_resources,omitempty"`
-	// Alternative to removed_resources that allows specifying which variant of
+	// Alternative to “removed_resources“ that allows specifying which variant of
 	// a resource is being removed. This variant must be used for any resource
 	// for which dynamic parameter constraints were sent to the client.
 	RemovedResourceNames []*ResourceName `protobuf:"bytes,8,rep,name=removed_resource_names,json=removedResourceNames,proto3" json:"removed_resource_names,omitempty"`
-	// The nonce provides a way for DeltaDiscoveryRequests to uniquely
-	// reference a DeltaDiscoveryResponse when (N)ACKing. The nonce is required.
+	// The nonce provides a way for “DeltaDiscoveryRequests“ to uniquely
+	// reference a “DeltaDiscoveryResponse“ when (N)ACKing. The nonce is required.
 	Nonce string `protobuf:"bytes,5,opt,name=nonce,proto3" json:"nonce,omitempty"`
 	// [#not-implemented-hide:]
 	// The control plane instance that sent the response.
 	ControlPlane *v3.ControlPlane `protobuf:"bytes,7,opt,name=control_plane,json=controlPlane,proto3" json:"control_plane,omitempty"`
 	// [#not-implemented-hide:]
-	// Errors associated with specific resources. Note that a resource in
-	// this field with a status of NOT_FOUND should be treated the same as
-	// a resource listed in the 'removed_resources' or 'removed_resource_names'
-	// fields.
+	// Errors associated with specific resources.
+	//
+	// .. note::
+	//
+	//	A resource in this field with a status of NOT_FOUND should be treated the same as
+	//	a resource listed in the ``removed_resources`` or ``removed_resource_names`` fields.
 	ResourceErrors []*ResourceError `protobuf:"bytes,9,rep,name=resource_errors,json=resourceErrors,proto3" json:"resource_errors,omitempty"`
 }
 
@@ -787,7 +813,7 @@ func (x *DeltaDiscoveryResponse) GetResourceErrors() []*ResourceError {
 // A set of dynamic parameter constraints associated with a variant of an individual xDS resource.
 // These constraints determine whether the resource matches a subscription based on the set of
 // dynamic parameters in the subscription, as specified in the
-// :ref:`ResourceLocator.dynamic_parameters<envoy_v3_api_field_service.discovery.v3.ResourceLocator.dynamic_parameters>`
+// :ref:`ResourceLocator.dynamic_parameters <envoy_v3_api_field_service.discovery.v3.ResourceLocator.dynamic_parameters>`
 // field. This allows xDS implementations (clients, servers, and caching proxies) to determine
 // which variant of a resource is appropriate for a given client.
 type DynamicParameterConstraints struct {
@@ -931,7 +957,7 @@ type Resource struct {
 	// configuration for the resource will be removed.
 	//
 	// The TTL can be refreshed or changed by sending a response that doesn't change the resource
-	// version. In this case the resource field does not need to be populated, which allows for
+	// version. In this case the “resource“ field does not need to be populated, which allows for
 	// light-weight "heartbeat" updates to keep a resource with a TTL alive.
 	//
 	// The TTL feature is meant to support configurations that should be removed in the event of
@@ -1226,8 +1252,11 @@ type Resource_CacheControl struct {
 	unknownFields protoimpl.UnknownFields
 
 	// If true, xDS proxies may not cache this resource.
-	// Note that this does not apply to clients other than xDS proxies, which must cache resources
-	// for their own use, regardless of the value of this field.
+	//
+	// .. note::
+	//
+	//	This does not apply to clients other than xDS proxies, which must cache resources
+	//	for their own use, regardless of the value of this field.
 	DoNotCache bool `protobuf:"varint,1,opt,name=do_not_cache,json=doNotCache,proto3" json:"do_not_cache,omitempty"`
 }
 

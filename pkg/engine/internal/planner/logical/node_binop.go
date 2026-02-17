@@ -3,14 +3,13 @@ package logical
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // The BinOp instruction yields the result of binary operation Left Op Right.
 // BinOp implements both [Instruction] and [Value].
 type BinOp struct {
-	id string
+	b baseNode
 
 	Left, Right Value
 	Op          types.BinaryOp
@@ -22,24 +21,25 @@ var (
 )
 
 // Name returns an identifier for the BinOp operation.
-func (b *BinOp) Name() string {
-	if b.id != "" {
-		return b.id
-	}
-	return fmt.Sprintf("%p", b)
-}
+func (b *BinOp) Name() string { return b.b.Name() }
 
 // String returns the disassembled SSA form of the BinOp instruction.
 func (b *BinOp) String() string {
 	return fmt.Sprintf("%s %s %s", b.Op, b.Left.Name(), b.Right.Name())
 }
 
-// Schema returns the schema of the BinOp operation.
-func (b *BinOp) Schema() *schema.Schema {
-	// TODO(rfratto): What should be returned here? Should the schema of BinOp
-	// take on the schema of its LHS or RHS? Does it depend on the operation?
-	return nil
+// Operands appends the operands of b to the provided slice. The pointers may
+// be modified to change operands of b.
+func (b *BinOp) Operands(buf []*Value) []*Value {
+	return append(buf, &b.Left, &b.Right)
 }
 
-func (b *BinOp) isValue()       {}
-func (b *BinOp) isInstruction() {}
+// Referrers returns a list of instructions that reference the BinOp.
+//
+// The list of instructions can be modified to update the reference list, such
+// as when modifying the plan.
+func (b *BinOp) Referrers() *[]Instruction { return &b.b.referrers }
+
+func (b *BinOp) base() *baseNode { return &b.b }
+func (b *BinOp) isValue()        {}
+func (b *BinOp) isInstruction()  {}

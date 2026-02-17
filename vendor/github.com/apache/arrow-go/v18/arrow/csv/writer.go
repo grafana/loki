@@ -25,7 +25,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
-// Writer wraps encoding/csv.Writer and writes arrow.Record based on a schema.
+// Writer wraps encoding/csv.Writer and writes arrow.RecordBatch based on a schema.
 type Writer struct {
 	boolFormatter       func(bool) string
 	header              bool
@@ -37,7 +37,7 @@ type Writer struct {
 	w                   *csv.Writer
 }
 
-// NewWriter returns a writer that writes arrow.Records to the CSV file
+// NewWriter returns a writer that writes arrow.RecordBatches to the CSV file
 // with the given schema.
 //
 // NewWriter panics if the given schema contains fields that have types that are not
@@ -63,7 +63,7 @@ func NewWriter(w io.Writer, schema *arrow.Schema, opts ...Option) *Writer {
 func (w *Writer) Schema() *arrow.Schema { return w.schema }
 
 // Write writes a single Record as one row to the CSV file
-func (w *Writer) Write(record arrow.Record) error {
+func (w *Writer) Write(record arrow.RecordBatch) error {
 	if !record.Schema().Equal(w.schema) {
 		return ErrMismatchFields
 	}

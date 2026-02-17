@@ -74,13 +74,20 @@ func newMapping(schema *arrow.Schema, to []arrow.Field) *mapping {
 		checked: make(map[*arrow.Schema]struct{}),
 	}
 
-	for i, field := range to {
+	for i, target := range to {
 		// Default to -1 for fields that are not found in the schema.
 		mapping.lookups[i] = -1
 
-		for j, schemaField := range schema.Fields() {
-			if field.Equal(schemaField) {
-				mapping.lookups[i] = j
+		fieldIdxs := schema.FieldIndices(target.Name)
+		if len(fieldIdxs) == 0 {
+			continue
+		}
+
+		// Multiple parsers (e.g., logfmt and json) can create duplicate field names.
+		// Find the first field that matches the target exactly.
+		for _, idx := range fieldIdxs {
+			if schema.Field(idx).Equal(target) {
+				mapping.lookups[i] = idx
 				break
 			}
 		}

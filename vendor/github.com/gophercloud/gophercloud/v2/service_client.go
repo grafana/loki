@@ -130,6 +130,9 @@ func (client *ServiceClient) setMicroversionHeader(opts *RequestOpts) {
 		opts.MoreHeaders["X-OpenStack-Ironic-API-Version"] = client.Microversion
 	case "baremetal-introspection":
 		opts.MoreHeaders["X-OpenStack-Ironic-Inspector-API-Version"] = client.Microversion
+	case "container-infrastructure-management", "container-infrastructure", "container-infra":
+		// magnum should accept container-infrastructure-management but (as of Epoxy) does not
+		serviceType = "container-infra"
 	}
 
 	if client.Type != "" {

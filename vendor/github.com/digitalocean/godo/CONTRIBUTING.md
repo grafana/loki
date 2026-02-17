@@ -29,44 +29,35 @@ version number. Any code merged to main is subject to release.
 
 ## Releasing
 
-Releasing a new version of godo is currently a manual process.
+The repo uses GitHub workflows to publish a draft release when a new tag is
+pushed. We use [semver](https://semver.org/#summary) to determine the version
+number for the tag.
 
-Submit a separate pull request for the version change from the pull
-request with your changes.
+1. Run `make changes` to review the merged PRs since last release and decide what kind of release you are doing (bugfix, feature or breaking).
+    * Review the tags on each PR and make sure they are categorized
+      appropriately.
 
-1. Update the `CHANGELOG.md` with your changes. If a version header
-   for the next (unreleased) version does not exist, create one.
-   Include one bullet point for each piece of new functionality in the
-   release, including the pull request ID, description, and author(s).
-   For example:
+2. Run `BUMP=(bugfix|feature|breaking) make bump_version` to update the `godo`
+   version.  
+   `BUMP` also accepts `(patch|minor|major)`
 
-```
-## [v1.8.0] - 2019-03-13
+   Command example:
 
-- #210 - @jcodybaker - Expose tags on storage volume create/list/get.
-- #123 - @digitalocean - Update test dependencies
-```
+   ```bash
+   make BUMP=minor bump_version
+   ```
 
-   To generate a list of changes since the previous release in the correct
-   format, you can use [github-changelog-generator](https://github.com/digitalocean/github-changelog-generator).
-   It can be installed from source by running:
+3. Update the godo version in `godo.go` and add changelog generator logs in `CHANGELOG.md` file. Create a separate PR with only these changes.
 
-```
-go get -u github.com/digitalocean/github-changelog-generator
-```
+4. Once the commit has been pushed, tag the commit to trigger the
+   release workflow: run `make tag` to tag the latest commit and push the tag to ORIGIN.
 
-   Next, list the changes by running:
+   Notes:
+   * To tag an earlier commit, run `COMMIT=${commit} make tag`.
+   * To push the tag to a different remote, run `ORIGIN=${REMOTE} make tag`.
 
-```
-github-changelog-generator -org digitalocean -repo godo
-```
-
-2. Update the `libraryVersion` number in `godo.go`.
-3. Make a pull request with these changes.  This PR should be separate from the PR containing the godo changes.
-4. Once the pull request has been merged, [draft a new release](https://github.com/digitalocean/godo/releases/new).
-5. Update the `Tag version` and `Release title` field with the new godo version.  Be sure the version has a `v` prefixed in both places. Ex `v1.8.0`.
-6. Copy the changelog bullet points to the description field.
-7. Publish the release.
+5. Once the release process completes, review the draft release for correctness and publish the release.  
+   Ensure the release has been marked `Latest`.
 
 ## Go Version Support
 

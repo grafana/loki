@@ -61,13 +61,9 @@ type validationContext struct {
 	enforcedLabels           []string
 
 	userID string
-
-	validationMetrics validationMetrics
 }
 
 func (v Validator) getValidationContextForTime(now time.Time, userID string) validationContext {
-	retentionHours := util.RetentionHours(v.RetentionPeriod(userID))
-
 	return validationContext{
 		userID:                        userID,
 		rejectOldSample:               v.RejectOldSamples(userID),
@@ -91,7 +87,6 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		blockIngestionUntil:           v.BlockIngestionUntil(userID),
 		blockIngestionStatusCode:      v.BlockIngestionStatusCode(userID),
 		enforcedLabels:                v.EnforcedLabels(userID),
-		validationMetrics:             newValidationMetrics(retentionHours),
 	}
 }
 
@@ -224,7 +219,7 @@ func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time, po
 	}
 
 	if block, until, code := v.shouldBlockPolicy(ctx, policy, now); block {
-		err := fmt.Errorf(validation.BlockedIngestionPolicyErrorMsg, ctx.userID, until.Format(time.RFC3339), code)
+		err := fmt.Errorf(validation.BlockedIngestionPolicyErrorMsg, ctx.userID, policy, until.Format(time.RFC3339), code)
 		return true, code, validation.BlockedIngestionPolicy, err
 	}
 

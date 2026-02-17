@@ -2,6 +2,7 @@ package godo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,17 +11,25 @@ import (
 const (
 	genAIBasePath                = "/v2/gen-ai/agents"
 	agentModelBasePath           = "/v2/gen-ai/models"
+	datacenterRegionsPath        = "/v2/gen-ai/regions"
 	agentRouteBasePath           = genAIBasePath + "/%s/child_agents/%s"
 	KnowledgeBasePath            = "/v2/gen-ai/knowledge_bases"
+	functionRouteBasePath        = genAIBasePath + "/%s/functions"
 	KnowledgeBaseDataSourcesPath = KnowledgeBasePath + "/%s/data_sources"
 	GetKnowledgeBaseByIDPath     = KnowledgeBasePath + "/%s"
 	UpdateKnowledgeBaseByIDPath  = KnowledgeBasePath + "/%s"
 	DeleteKnowledgeBaseByIDPath  = KnowledgeBasePath + "/%s"
 	AgentKnowledgeBasePath       = "/v2/gen-ai/agents" + "/%s/knowledge_bases/%s"
 	DeleteDataSourcePath         = KnowledgeBasePath + "/%s/data_sources/%s"
+	IndexingJobsPath             = "/v2/gen-ai/indexing_jobs"
+	IndexingJobByIDPath          = IndexingJobsPath + "/%s"
+	IndexingJobCancelPath        = IndexingJobsPath + "/%s/cancel"
+	IndexingJobDataSourcesPath   = IndexingJobsPath + "/%s/data_sources"
 	AnthropicAPIKeysPath         = "/v2/gen-ai/anthropic/keys"
 	AnthropicAPIKeyByIDPath      = AnthropicAPIKeysPath + "/%s"
 	OpenAIAPIKeysPath            = "/v2/gen-ai/openai/keys"
+	UpdateFunctionRoutePath      = functionRouteBasePath + "/%s"
+	DeleteFunctionRoutePath      = functionRouteBasePath + "/%s"
 )
 
 // GenAIService is an interface for interfacing with the Gen AI Agent endpoints
@@ -38,7 +47,6 @@ type GenAIService interface {
 	UpdateAgent(context.Context, string, *AgentUpdateRequest) (*Agent, *Response, error)
 	DeleteAgent(context.Context, string) (*Agent, *Response, error)
 	UpdateAgentVisibility(context.Context, string, *AgentVisibilityUpdateRequest) (*Agent, *Response, error)
-	ListModels(context.Context, *ListOptions) ([]*Model, *Response, error)
 	ListKnowledgeBases(ctx context.Context, opt *ListOptions) ([]KnowledgeBase, *Response, error)
 	CreateKnowledgeBase(ctx context.Context, knowledgeBaseCreate *KnowledgeBaseCreateRequest) (*KnowledgeBase, *Response, error)
 	ListKnowledgeBaseDataSources(ctx context.Context, knowledgeBaseID string, opt *ListOptions) ([]KnowledgeBaseDataSource, *Response, error)
@@ -47,6 +55,10 @@ type GenAIService interface {
 	GetKnowledgeBase(ctx context.Context, knowledgeBaseID string) (*KnowledgeBase, string, *Response, error)
 	UpdateKnowledgeBase(ctx context.Context, knowledgeBaseID string, update *UpdateKnowledgeBaseRequest) (*KnowledgeBase, *Response, error)
 	DeleteKnowledgeBase(ctx context.Context, knowledgeBaseID string) (string, *Response, error)
+	ListIndexingJobs(ctx context.Context, opt *ListOptions) (*IndexingJobsResponse, *Response, error)
+	GetIndexingJob(ctx context.Context, indexingJobUUID string) (*IndexingJobResponse, *Response, error)
+	CancelIndexingJob(ctx context.Context, indexingJobUUID string) (*IndexingJobResponse, *Response, error)
+	ListIndexingJobDataSources(ctx context.Context, indexingJobUUID string) (*IndexingJobDataSourcesResponse, *Response, error)
 	AttachKnowledgeBaseToAgent(ctx context.Context, agentID string, knowledgeBaseID string) (*Agent, *Response, error)
 	DetachKnowledgeBaseToAgent(ctx context.Context, agentID string, knowledgeBaseID string) (*Agent, *Response, error)
 	AddAgentRoute(context.Context, string, string, *AgentRouteCreateRequest) (*AgentRouteResponse, *Response, error)
@@ -66,6 +78,11 @@ type GenAIService interface {
 	UpdateOpenAIAPIKey(ctx context.Context, openaiApiKeyId string, openaiAPIKeyUpdate *OpenAIAPIKeyUpdateRequest) (*OpenAiApiKey, *Response, error)
 	DeleteOpenAIAPIKey(ctx context.Context, openaiApiKeyId string) (*OpenAiApiKey, *Response, error)
 	ListAgentsByOpenAIAPIKey(ctx context.Context, openaiApiKeyId string, opt *ListOptions) ([]*Agent, *Response, error)
+	CreateFunctionRoute(context.Context, string, *FunctionRouteCreateRequest) (*Agent, *Response, error)
+	DeleteFunctionRoute(context.Context, string, string) (*Agent, *Response, error)
+	UpdateFunctionRoute(context.Context, string, string, *FunctionRouteUpdateRequest) (*Agent, *Response, error)
+	ListAvailableModels(context.Context, *ListOptions) ([]*Model, *Response, error)
+	ListDatacenterRegions(context.Context, *bool, *bool) ([]*DatacenterRegions, *Response, error)
 }
 
 var _ GenAIService = &GenAIServiceOp{}
@@ -128,41 +145,47 @@ type openaiAPIKeyRoot struct {
 
 // Agent represents a Gen AI Agent
 type Agent struct {
-	AnthropicApiKey    *AnthropicApiKeyInfo      `json:"anthropic_api_key,omitempty"`
-	ApiKeyInfos        []*ApiKeyInfo             `json:"api_key_infos,omitempty"`
-	ApiKeys            []*ApiKey                 `json:"api_keys,omitempty"`
-	ChatBot            *ChatBot                  `json:"chatbot,omitempty"`
-	ChatbotIdentifiers []*AgentChatbotIdentifier `json:"chatbot_identifiers,omitempty"`
-	CreatedAt          *Timestamp                `json:"created_at,omitempty"`
-	ChildAgents        []*Agent                  `json:"child_agents,omitempty"`
-	Deployment         *AgentDeployment          `json:"deployment,omitempty"`
-	Description        string                    `json:"description,omitempty"`
-	UpdatedAt          *Timestamp                `json:"updated_at,omitempty"`
-	Functions          []*AgentFunction          `json:"functions,omitempty"`
-	Guardrails         []*AgentGuardrail         `json:"guardrails,omitempty"`
-	IfCase             string                    `json:"if_case,omitempty"`
-	Instruction        string                    `json:"instruction,omitempty"`
-	K                  int                       `json:"k,omitempty"`
-	KnowledgeBases     []*KnowledgeBase          `json:"knowledge_bases,omitempty"`
-	MaxTokens          int                       `json:"max_tokens,omitempty"`
-	Model              *Model                    `json:"model,omitempty"`
-	Name               string                    `json:"name,omitempty"`
-	OpenAiApiKey       *OpenAiApiKey             `json:"open_ai_api_key,omitempty"`
-	ParentAgents       []*Agent                  `json:"parent_agents,omitempty"`
-	ProjectId          string                    `json:"project_id,omitempty"`
-	Region             string                    `json:"region,omitempty"`
-	RetrievalMethod    string                    `json:"retrieval_method,omitempty"`
-	RouteCreatedAt     *Timestamp                `json:"route_created_at,omitempty"`
-	RouteCreatedBy     string                    `json:"route_created_by,omitempty"`
-	RouteUuid          string                    `json:"route_uuid,omitempty"`
-	RouteName          string                    `json:"route_name,omitempty"`
-	Tags               []string                  `json:"tags,omitempty"`
-	Template           *AgentTemplate            `json:"template,omitempty"`
-	Temperature        float64                   `json:"temperature,omitempty"`
-	TopP               float64                   `json:"top_p,omitempty"`
-	Url                string                    `json:"url,omitempty"`
-	UserId             string                    `json:"user_id,omitempty"`
-	Uuid               string                    `json:"uuid,omitempty"`
+	AnthropicApiKey         *AnthropicApiKeyInfo      `json:"anthropic_api_key,omitempty"`
+	ApiKeyInfos             []*ApiKeyInfo             `json:"api_key_infos,omitempty"`
+	ApiKeys                 []*ApiKey                 `json:"api_keys,omitempty"`
+	ChatBot                 *ChatBot                  `json:"chatbot,omitempty"`
+	ChatbotIdentifiers      []*AgentChatbotIdentifier `json:"chatbot_identifiers,omitempty"`
+	CreatedAt               *Timestamp                `json:"created_at,omitempty"`
+	ChildAgents             []*Agent                  `json:"child_agents,omitempty"`
+	ConversationLogsEnabled bool                      `json:"conversation_logs_enabled,omitempty"`
+	Deployment              *AgentDeployment          `json:"deployment,omitempty"`
+	Description             string                    `json:"description,omitempty"`
+	Functions               []*AgentFunction          `json:"functions,omitempty"`
+	Guardrails              []*AgentGuardrail         `json:"guardrails,omitempty"`
+	IfCase                  string                    `json:"if_case,omitempty"`
+	Instruction             string                    `json:"instruction,omitempty"`
+	K                       int                       `json:"k,omitempty"`
+	KnowledgeBases          []*KnowledgeBase          `json:"knowledge_bases,omitempty"`
+	MaxTokens               int                       `json:"max_tokens,omitempty"`
+	Model                   *Model                    `json:"model,omitempty"`
+	Name                    string                    `json:"name,omitempty"`
+	OpenAiApiKey            *OpenAiApiKey             `json:"open_ai_api_key,omitempty"`
+	ParentAgents            []*Agent                  `json:"parent_agents,omitempty"`
+	ProjectId               string                    `json:"project_id,omitempty"`
+	ProvideCitations        bool                      `json:"provide_citations,omitempty"`
+	Region                  string                    `json:"region,omitempty"`
+	RetrievalMethod         string                    `json:"retrieval_method,omitempty"`
+	RouteCreatedAt          *Timestamp                `json:"route_created_at,omitempty"`
+	RouteCreatedBy          string                    `json:"route_created_by,omitempty"`
+	RouteUuid               string                    `json:"route_uuid,omitempty"`
+	RouteName               string                    `json:"route_name,omitempty"`
+	Tags                    []string                  `json:"tags,omitempty"`
+	Template                *AgentTemplate            `json:"template,omitempty"`
+	Temperature             float64                   `json:"temperature,omitempty"`
+	TopP                    float64                   `json:"top_p,omitempty"`
+	UpdatedAt               *Timestamp                `json:"updated_at,omitempty"`
+	Url                     string                    `json:"url,omitempty"`
+	UserId                  string                    `json:"user_id,omitempty"`
+	Uuid                    string                    `json:"uuid,omitempty"`
+	VersionHash             string                    `json:"version_hash,omitempty"`
+	VPCEgressIPs            []string                  `json:"vpc_egress_ips,omitempty"`
+	VPCUuid                 string                    `json:"vpc_uuid,omitempty"`
+	Workspace               Workspace                 `json:"workspace,omitempty"`
 }
 
 // AgentVersion represents a version of a Gen AI Agent
@@ -311,6 +334,106 @@ type AgentTemplate struct {
 	Uuid           string           `json:"uuid,omitempty"`
 }
 
+// EvaluationMetricType represents the type of evaluation metric.
+type EvaluationMetricType string
+
+const (
+	MetricTypeUnspecified    EvaluationMetricType = "METRIC_TYPE_UNSPECIFIED"
+	MetricTypeGeneralQuality EvaluationMetricType = "METRIC_TYPE_GENERAL_QUALITY"
+	MetricTypeRAGAndTool     EvaluationMetricType = "METRIC_TYPE_RAG_AND_TOOL"
+)
+
+// EvaluationMetricValueType represents the value type of an evaluation metric.
+type EvaluationMetricValueType string
+
+const (
+	MetricValueTypeUnspecified EvaluationMetricValueType = "METRIC_VALUE_TYPE_UNSPECIFIED"
+	MetricValueTypeNumber      EvaluationMetricValueType = "METRIC_VALUE_TYPE_NUMBER"
+	MetricValueTypeString      EvaluationMetricValueType = "METRIC_VALUE_TYPE_STRING"
+	MetricValueTypePercentage  EvaluationMetricValueType = "METRIC_VALUE_TYPE_PERCENTAGE"
+)
+
+// EvaluationMetricCategory represents the category of an evaluation metric.
+type EvaluationMetricCategory string
+
+const (
+	MetricCategoryUnspecified       EvaluationMetricCategory = "METRIC_CATEGORY_UNSPECIFIED"
+	MetricCategoryCorrectness       EvaluationMetricCategory = "METRIC_CATEGORY_CORRECTNESS"
+	MetricCategoryUserOutcomes      EvaluationMetricCategory = "METRIC_CATEGORY_USER_OUTCOMES"
+	MetricCategorySafetyAndSecurity EvaluationMetricCategory = "METRIC_CATEGORY_SAFETY_AND_SECURITY"
+	MetricCategoryContextQuality    EvaluationMetricCategory = "METRIC_CATEGORY_CONTEXT_QUALITY"
+	MetricCategoryModelFit          EvaluationMetricCategory = "METRIC_CATEGORY_MODEL_FIT"
+)
+
+// Workspace represents a workspace containing agents and evaluation test cases.
+type Workspace struct {
+	UUID                string                `json:"uuid,omitempty"`
+	Name                string                `json:"name,omitempty"`
+	Description         string                `json:"description,omitempty"`
+	CreatedByEmail      string                `json:"created_by_email,omitempty"`
+	CreatedBy           uint64                `json:"created_by,omitempty"`
+	CreatedAt           *Timestamp            `json:"created_at,omitempty"`
+	UpdatedAt           *Timestamp            `json:"updated_at,omitempty"`
+	DeletedAt           *Timestamp            `json:"deleted_at,omitempty"`
+	Agents              []*Agent              `json:"agents,omitempty"`
+	EvaluationTestCases []*EvaluationTestCase `json:"evaluation_test_cases,omitempty"`
+}
+
+// EvaluationTestCase represents an evaluation test case configuration.
+type EvaluationTestCase struct {
+	TestCaseUUID              string              `json:"test_case_uuid,omitempty"`
+	Name                      string              `json:"name,omitempty"`
+	Description               string              `json:"description,omitempty"`
+	Version                   uint32              `json:"version,omitempty"`
+	DatasetUUID               string              `json:"dataset_uuid,omitempty"` // Deprecated
+	DatasetName               string              `json:"dataset_name,omitempty"` // Deprecated
+	Metrics                   []*EvaluationMetric `json:"metrics,omitempty"`
+	StarMetric                *StarMetric         `json:"star_metric,omitempty"`
+	TotalRuns                 int32               `json:"total_runs,omitempty"`
+	LatestVersionNumberOfRuns int32               `json:"latest_version_number_of_runs,omitempty"`
+	UpdatedByUserID           uint64              `json:"updated_by_user_id,omitempty"`
+	UpdatedByUserEmail        string              `json:"updated_by_user_email,omitempty"`
+	CreatedByUserEmail        string              `json:"created_by_user_email,omitempty"`
+	CreatedByUserID           uint64              `json:"created_by_user_id,omitempty"`
+	CreatedAt                 *Timestamp          `json:"created_at,omitempty"`
+	UpdatedAt                 *Timestamp          `json:"updated_at,omitempty"`
+	ArchivedAt                *Timestamp          `json:"archived_at,omitempty"`
+	Dataset                   *EvaluationDataset  `json:"dataset,omitempty"`
+}
+
+// EvaluationMetric represents an evaluation metric definition.
+type EvaluationMetric struct {
+	MetricUUID      string                    `json:"metric_uuid,omitempty"`
+	MetricName      string                    `json:"metric_name,omitempty"`
+	Description     string                    `json:"description,omitempty"`
+	MetricType      EvaluationMetricType      `json:"metric_type,omitempty"`
+	MetricValueType EvaluationMetricValueType `json:"metric_value_type,omitempty"`
+	RangeMin        float32                   `json:"range_min,omitempty"`
+	RangeMax        float32                   `json:"range_max,omitempty"`
+	Inverted        bool                      `json:"inverted,omitempty"`
+	Category        EvaluationMetricCategory  `json:"category,omitempty"`
+	IsMetricGoal    bool                      `json:"is_metric_goal,omitempty"`
+	MetricRank      uint32                    `json:"metric_rank,omitempty"`
+}
+
+// EvaluationDataset represents the dataset information for an evaluation.
+type EvaluationDataset struct {
+	DatasetUUID    string     `json:"dataset_uuid,omitempty"`
+	DatasetName    string     `json:"dataset_name,omitempty"`
+	RowCount       uint32     `json:"row_count,omitempty"`
+	HasGroundTruth bool       `json:"has_ground_truth,omitempty"`
+	FileSize       uint64     `json:"file_size,omitempty"`
+	CreatedAt      *Timestamp `json:"created_at,omitempty"`
+}
+
+// StarMetric represents a star metric configuration.
+type StarMetric struct {
+	MetricUUID          string   `json:"metric_uuid,omitempty"`
+	Name                string   `json:"name,omitempty"`
+	SuccessThresholdPct *int32   `json:"success_threshold_pct,omitempty"` // Deprecated
+	SuccessThreshold    *float32 `json:"success_threshold,omitempty"`
+}
+
 // KnowledgeBase represents a Gen AI Knowledge Base
 type KnowledgeBase struct {
 	AddedToAgentAt     *Timestamp       `json:"added_to_agent_at,omitempty"`
@@ -338,10 +461,54 @@ type LastIndexingJob struct {
 	KnowledgeBaseUuid    string     `json:"knowledge_base_uuid,omitempty"`
 	Phase                string     `json:"phase,omitempty"`
 	StartedAt            *Timestamp `json:"started_at,omitempty"`
+	Status               string     `json:"status,omitempty"`
 	Tokens               int        `json:"tokens,omitempty"`
 	TotalDatasources     int        `json:"total_datasources,omitempty"`
+	TotalItemsFailed     string     `json:"total_items_failed,omitempty"`
+	TotalItemsIndexed    string     `json:"total_items_indexed,omitempty"`
+	TotalItemsSkipped    string     `json:"total_items_skipped,omitempty"`
 	UpdatedAt            *Timestamp `json:"updated_at,omitempty"`
 	Uuid                 string     `json:"uuid,omitempty"`
+}
+
+// IndexingJobsResponse represents the response from listing indexing jobs
+type IndexingJobsResponse struct {
+	Jobs  []LastIndexingJob `json:"jobs"`
+	Links *Links            `json:"links,omitempty"`
+	Meta  *Meta             `json:"meta,omitempty"`
+}
+
+// IndexingJobResponse represents the response from retrieving a single indexing job
+type IndexingJobResponse struct {
+	Job LastIndexingJob `json:"job"`
+}
+
+// CancelIndexingJobRequest represents the request payload for cancelling an indexing job
+type CancelIndexingJobRequest struct {
+	UUID string `json:"uuid"`
+}
+
+// IndexedDataSource represents a data source within an indexing job
+type IndexedDataSource struct {
+	CompletedAt       *Timestamp `json:"completed_at,omitempty"`
+	DataSourceUuid    string     `json:"data_source_uuid,omitempty"`
+	ErrorDetails      string     `json:"error_details,omitempty"`
+	ErrorMsg          string     `json:"error_msg,omitempty"`
+	FailedItemCount   string     `json:"failed_item_count,omitempty"`
+	IndexedFileCount  string     `json:"indexed_file_count,omitempty"`
+	IndexedItemCount  string     `json:"indexed_item_count,omitempty"`
+	RemovedItemCount  string     `json:"removed_item_count,omitempty"`
+	SkippedItemCount  string     `json:"skipped_item_count,omitempty"`
+	StartedAt         *Timestamp `json:"started_at,omitempty"`
+	Status            string     `json:"status,omitempty"`
+	TotalBytes        string     `json:"total_bytes,omitempty"`
+	TotalBytesIndexed string     `json:"total_bytes_indexed,omitempty"`
+	TotalFileCount    string     `json:"total_file_count,omitempty"`
+}
+
+// IndexingJobDataSourcesResponse represents the response from listing data sources for an indexing job
+type IndexingJobDataSourcesResponse struct {
+	IndexedDataSources []IndexedDataSource `json:"indexed_data_sources"`
 }
 
 type AgentChatbotIdentifier struct {
@@ -403,16 +570,18 @@ type ModelVersion struct {
 
 // AgentCreateRequest represents the request to create a new Gen AI Agent
 type AgentCreateRequest struct {
-	AnthropicKeyUuid  string   `json:"anthropic_key_uuid,omitempty"`
-	Description       string   `json:"description,omitempty"`
-	Instruction       string   `json:"instruction,omitempty"`
-	KnowledgeBaseUuid []string `json:"knowledge_base_uuid,omitempty"`
-	ModelUuid         string   `json:"model_uuid,omitempty"`
-	Name              string   `json:"name,omitempty"`
-	OpenAiKeyUuid     string   `json:"open_ai_key_uuid,omitempty"`
-	ProjectId         string   `json:"project_id,omitempty"`
-	Region            string   `json:"region,omitempty"`
-	Tags              []string `json:"tags,omitempty"`
+	AnthropicKeyUuid     string   `json:"anthropic_key_uuid,omitempty"`
+	Description          string   `json:"description,omitempty"`
+	Instruction          string   `json:"instruction,omitempty"`
+	KnowledgeBaseUuid    []string `json:"knowledge_base_uuid,omitempty"`
+	ModelProviderKeyUuid string   `json:"model_provider_key_uuid,omitempty"`
+	ModelUuid            string   `json:"model_uuid,omitempty"`
+	Name                 string   `json:"name,omitempty"`
+	OpenAiKeyUuid        string   `json:"open_ai_key_uuid,omitempty"`
+	ProjectId            string   `json:"project_id,omitempty"`
+	Region               string   `json:"region,omitempty"`
+	Tags                 []string `json:"tags,omitempty"`
+	WorkspaceUuid        string   `json:"workspace_uuid,omitempty"`
 }
 
 // AgentAPIKeyCreateRequest represents the request to create a new Gen AI Agent API Key
@@ -529,6 +698,12 @@ type knowledgebasesRoot struct {
 	Meta           *Meta           `json:"meta"`
 }
 
+type indexingJobsRoot struct {
+	Jobs  []LastIndexingJob `json:"jobs"`
+	Links *Links            `json:"links"`
+	Meta  *Meta             `json:"meta"`
+}
+
 type knowledgebaseRoot struct {
 	KnowledgeBase  *KnowledgeBase `json:"knowledge_base"`
 	DatabaseStatus string         `json:"database_status,omitempty"`
@@ -585,6 +760,59 @@ type AgentRouteUpdateRequest struct {
 	ParentAgentUuid string `json:"parent_agent_uuid,omitempty"`
 	RouteName       string `json:"route_name,omitempty"`
 	UUID            string `json:"uuid,omitempty"`
+}
+
+type NestedSchema struct {
+	Type        string                   `json:"type" validate:"required,oneof=string boolean number integer array object"`
+	Items       *NestedSchema            `json:"items,omitempty"`
+	Properties  map[string]*NestedSchema `json:"properties,omitempty"`
+	Enum        []string                 `json:"enum,omitempty"`
+	Description string                   `json:"description,omitempty"`
+}
+
+type OpenAPIParameterSchema struct {
+	Name        string       `json:"name" validate:"required"`
+	In          string       `json:"in" validate:"omitempty,oneof=query header path cookie"`
+	Schema      NestedSchema `json:"schema" validate:"required"`
+	Description string       `json:"description,omitempty"`
+	Required    bool         `json:"required,omitempty"`
+}
+
+type FunctionInputSchema struct {
+	Parameters []OpenAPIParameterSchema `json:"parameters" validate:"required,min=1,dive"`
+}
+
+type FunctionRouteCreateRequest struct {
+	AgentUuid     string              `json:"agent_uuid,omitempty"`
+	Description   string              `json:"description,omitempty"`
+	FaasName      string              `json:"faas_name,omitempty"`
+	FaasNamespace string              `json:"faas_namespace,omitempty"`
+	FunctionName  string              `json:"function_name,omitempty"`
+	InputSchema   FunctionInputSchema `json:"input_schema,omitempty"`
+	OutputSchema  json.RawMessage     `json:"output_schema,omitempty"`
+}
+
+type FunctionRouteUpdateRequest struct {
+	AgentUuid     string              `json:"agent_uuid,omitempty"`
+	Description   string              `json:"description,omitempty"`
+	FaasName      string              `json:"faas_name,omitempty"`
+	FaasNamespace string              `json:"faas_namespace,omitempty"`
+	FunctionName  string              `json:"function_name,omitempty"`
+	FunctionUuid  string              `json:"function_uuid,omitempty"`
+	InputSchema   FunctionInputSchema `json:"input_schema,omitempty"`
+	OutputSchema  json.RawMessage     `json:"output_schema,omitempty"`
+}
+
+type DatacenterRegions struct {
+	Region             string `json:"region"`
+	InferenceUrl       string `json:"inference_url"`
+	ServesBatch        bool   `json:"serves_batch"`
+	ServesInference    bool   `json:"serves_inference"`
+	StreamInferenceUrl string `json:"stream_inference_url"`
+}
+
+type datacenterRegionsRoot struct {
+	DatacenterRegions []*DatacenterRegions `json:"regions"`
 }
 
 type genAIAgentKBRoot struct {
@@ -819,29 +1047,6 @@ func (s *GenAIServiceOp) UpdateAgentVisibility(ctx context.Context, id string, u
 	return root.Agent, resp, nil
 }
 
-// ListModels function returns a list of Gen AI Models
-func (s *GenAIServiceOp) ListModels(ctx context.Context, opt *ListOptions) ([]*Model, *Response, error) {
-	path, err := addOptions(agentModelBasePath, opt)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	root := new(genAIModelsRoot)
-	resp, err := s.client.Do(ctx, req, root)
-	if err != nil {
-		return nil, resp, err
-	}
-	if l := root.Links; l != nil {
-		resp.Links = l
-	}
-
-	return root.Models, resp, nil
-}
-
 // List all knowledge bases
 func (s *GenAIServiceOp) ListKnowledgeBases(ctx context.Context, opt *ListOptions) ([]KnowledgeBase, *Response, error) {
 
@@ -868,6 +1073,97 @@ func (s *GenAIServiceOp) ListKnowledgeBases(ctx context.Context, opt *ListOption
 		resp.Meta = m
 	}
 	return root.KnowledgeBases, resp, err
+}
+
+// ListIndexingJobs returns a list of all indexing jobs for knowledge bases
+func (s *GenAIServiceOp) ListIndexingJobs(ctx context.Context, opt *ListOptions) (*IndexingJobsResponse, *Response, error) {
+	path := IndexingJobsPath
+	path, err := addOptions(path, opt)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(indexingJobsRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	if l := root.Links; l != nil {
+		resp.Links = l
+	}
+	if m := root.Meta; m != nil {
+		resp.Meta = m
+	}
+
+	result := &IndexingJobsResponse{
+		Jobs:  root.Jobs,
+		Links: root.Links,
+		Meta:  root.Meta,
+	}
+
+	return result, resp, err
+}
+
+// ListIndexingJobDataSources returns the data sources for a specific indexing job
+func (s *GenAIServiceOp) ListIndexingJobDataSources(ctx context.Context, indexingJobUUID string) (*IndexingJobDataSourcesResponse, *Response, error) {
+	path := fmt.Sprintf(IndexingJobDataSourcesPath, indexingJobUUID)
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	result := new(IndexingJobDataSourcesResponse)
+	resp, err := s.client.Do(ctx, req, result)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return result, resp, err
+}
+
+// GetIndexingJob retrieves the status of a specific indexing job for a knowledge base
+func (s *GenAIServiceOp) GetIndexingJob(ctx context.Context, indexingJobUUID string) (*IndexingJobResponse, *Response, error) {
+	path := fmt.Sprintf(IndexingJobByIDPath, indexingJobUUID)
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	result := new(IndexingJobResponse)
+	resp, err := s.client.Do(ctx, req, result)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return result, resp, err
+}
+
+// CancelIndexingJob cancels a specific indexing job for a knowledge base
+func (s *GenAIServiceOp) CancelIndexingJob(ctx context.Context, indexingJobUUID string) (*IndexingJobResponse, *Response, error) {
+	path := fmt.Sprintf(IndexingJobCancelPath, indexingJobUUID)
+
+	// Create the request payload
+	cancelRequest := &CancelIndexingJobRequest{
+		UUID: indexingJobUUID,
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodPut, path, cancelRequest)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	result := new(IndexingJobResponse)
+	resp, err := s.client.Do(ctx, req, result)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return result, resp, err
 }
 
 // Create a knowledge base
@@ -1111,6 +1407,7 @@ func (s *GenAIServiceOp) DeleteAgentRoute(ctx context.Context, parentId string, 
 	return root, resp, nil
 }
 
+// ListAgentVersions retrieves a list of versions for the specified GenAI agent
 func (s *GenAIServiceOp) ListAgentVersions(ctx context.Context, agentId string, opt *ListOptions) ([]*AgentVersion, *Response, error) {
 	path := fmt.Sprintf("%s/%s/versions", genAIBasePath, agentId)
 	path, err := addOptions(path, opt)
@@ -1417,6 +1714,131 @@ func (s *GenAIServiceOp) ListAgentsByOpenAIAPIKey(ctx context.Context, openaiApi
 	return root.Agents, resp, nil
 }
 
+// Attaches a functionroute to an agent.
+func (g *GenAIServiceOp) CreateFunctionRoute(ctx context.Context, id string, create *FunctionRouteCreateRequest) (*Agent, *Response, error) {
+	path := fmt.Sprintf(functionRouteBasePath, id)
+
+	if create.AgentUuid == "" {
+		return nil, nil, fmt.Errorf("AgentUuid is required")
+	}
+	if create.Description == "" {
+		return nil, nil, fmt.Errorf("Description is required")
+	}
+	if create.FaasName == "" {
+		return nil, nil, fmt.Errorf("FaasName is required")
+	}
+	if create.FaasNamespace == "" {
+		return nil, nil, fmt.Errorf("FaasNamespace is required")
+	}
+	if create.FunctionName == "" {
+		return nil, nil, fmt.Errorf("FunctionName is required")
+	}
+	if len(create.InputSchema.Parameters) == 0 {
+		return nil, nil, fmt.Errorf("InputSchema is required")
+	}
+
+	req, err := g.client.NewRequest(ctx, http.MethodPost, path, create)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(genAIAgentRoot)
+	resp, err := g.client.Do(ctx, req, root)
+
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.Agent, resp, nil
+}
+
+// Deletes a functionroute to an agent.
+func (g *GenAIServiceOp) DeleteFunctionRoute(ctx context.Context, agent_id string, function_id string) (*Agent, *Response, error) {
+	path := fmt.Sprintf(UpdateFunctionRoutePath, agent_id, function_id)
+	req, err := g.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(genAIAgentRoot)
+	resp, err := g.client.Do(ctx, req, root)
+
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.Agent, resp, nil
+}
+
+// Updates a functionroute to an agent.
+func (g *GenAIServiceOp) UpdateFunctionRoute(ctx context.Context, agent_id string, function_id string, update *FunctionRouteUpdateRequest) (*Agent, *Response, error) {
+	path := fmt.Sprintf(UpdateFunctionRoutePath, agent_id, function_id)
+	req, err := g.client.NewRequest(ctx, http.MethodPut, path, update)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(genAIAgentRoot)
+	resp, err := g.client.Do(ctx, req, root)
+
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.Agent, resp, nil
+}
+
+// ListAvailableModels returns a list of available Gen AI models
+func (g *GenAIServiceOp) ListAvailableModels(ctx context.Context, opt *ListOptions) ([]*Model, *Response, error) {
+	path, err := addOptions(agentModelBasePath, opt)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req, err := g.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(genAIModelsRoot)
+	resp, err := g.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	if l := root.Links; l != nil {
+		resp.Links = l
+	}
+
+	return root.Models, resp, nil
+}
+
+// ListDatacenterRegions returns a list of available datacenter regions for Gen AI services
+func (g *GenAIServiceOp) ListDatacenterRegions(ctx context.Context, servesInference, servesBatch *bool) ([]*DatacenterRegions, *Response, error) {
+	path := datacenterRegionsPath
+
+	var params []string
+	if servesInference != nil {
+		params = append(params, fmt.Sprintf("serves_inference=%t", *servesInference))
+	}
+	if servesBatch != nil {
+		params = append(params, fmt.Sprintf("serves_batch=%t", *servesBatch))
+	}
+	if len(params) > 0 {
+		path = path + "?" + strings.Join(params, "&")
+	}
+
+	req, err := g.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(datacenterRegionsRoot)
+	resp, err := g.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.DatacenterRegions, resp, nil
+}
+
 func (a Agent) String() string {
 	return Stringify(a)
 }
@@ -1442,5 +1864,13 @@ func (a AgentRouteResponse) String() string {
 }
 
 func (a AgentVersion) String() string {
+	return Stringify(a)
+}
+
+func (a IndexingJobResponse) String() string {
+	return Stringify(a)
+}
+
+func (a IndexingJobDataSourcesResponse) String() string {
 	return Stringify(a)
 }

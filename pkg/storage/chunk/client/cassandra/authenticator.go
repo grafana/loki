@@ -3,7 +3,7 @@ package cassandra
 import (
 	"fmt"
 
-	"github.com/gocql/gocql"
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
 
 // CustomPasswordAuthenticator provides the default behaviour for Username/Password authentication with

@@ -39,7 +39,8 @@ spec:
         - --oidc.client-id=$(OIDC_CLIENT_ID)
         - --oidc.client-secret=$(OIDC_CLIENT_SECRET)
         - --oidc.issuer-url=$(OIDC_ISSUER_URL)
-        - --url=http://lokistack-dev-gateway-http.default.svc:8080
+        - --url=https://lokistack-dev-gateway-http.default.svc:8080
+        - --upstream.ca-file=/etc/certs/service-ca.crt
         env:
         - name: OIDC_AUDIENCE
           valueFrom:
@@ -61,13 +62,20 @@ spec:
             secretKeyRef:
               key: issuerUrl
               name: token-refresher-oidc
-        image: quay.io/observatorium/token-refresher:master-2021-03-05-b34376b
+        image: quay.io/observatorium/token-refresher:master-2024-12-11-08b888a
         name: token-refresher
         ports:
         - containerPort: 8081
           name: internal
         - containerPort: 8080
           name: web
+        volumeMounts:
+        - mountPath: /etc/certs
+          name: certificates
+      volumes:
+      - name: certificates
+        configMap:
+          name: lokistack-dev-gateway-ca-bundle
 ---
 apiVersion: v1
 kind: Service

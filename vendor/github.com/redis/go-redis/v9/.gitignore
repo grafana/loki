@@ -9,3 +9,7 @@ coverage.txt
 **/coverage.txt
 .vscode
 tmp/*
+*.test
+
+# maintenanceNotifications upgrade documentation (temporary)
+maintenanceNotifications/docs/

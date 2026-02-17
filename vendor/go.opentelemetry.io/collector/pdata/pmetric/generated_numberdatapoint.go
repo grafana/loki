@@ -8,7 +8,6 @@ package pmetric
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -20,11 +19,11 @@ import (
 // Must use NewNumberDataPoint function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type NumberDataPoint struct {
-	orig  *otlpmetrics.NumberDataPoint
+	orig  *internal.NumberDataPoint
 	state *internal.State
 }
 
-func newNumberDataPoint(orig *otlpmetrics.NumberDataPoint, state *internal.State) NumberDataPoint {
+func newNumberDataPoint(orig *internal.NumberDataPoint, state *internal.State) NumberDataPoint {
 	return NumberDataPoint{orig: orig, state: state}
 }
 
@@ -33,7 +32,7 @@ func newNumberDataPoint(orig *otlpmetrics.NumberDataPoint, state *internal.State
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewNumberDataPoint() NumberDataPoint {
-	return newNumberDataPoint(internal.NewOrigNumberDataPoint(), internal.NewState())
+	return newNumberDataPoint(internal.NewNumberDataPoint(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -45,13 +44,13 @@ func (ms NumberDataPoint) MoveTo(dest NumberDataPoint) {
 	if ms.orig == dest.orig {
 		return
 	}
-	internal.DeleteOrigNumberDataPoint(dest.orig, false)
+	internal.DeleteNumberDataPoint(dest.orig, false)
 	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Attributes returns the Attributes associated with this NumberDataPoint.
 func (ms NumberDataPoint) Attributes() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.Attributes, ms.state))
+	return pcommon.Map(internal.NewMapWrapper(&ms.orig.Attributes, ms.state))
 }
 
 // StartTimestamp returns the starttimestamp associated with this NumberDataPoint.
@@ -80,9 +79,9 @@ func (ms NumberDataPoint) SetTimestamp(v pcommon.Timestamp) {
 // Calling this function on zero-initialized NumberDataPoint will cause a panic.
 func (ms NumberDataPoint) ValueType() NumberDataPointValueType {
 	switch ms.orig.Value.(type) {
-	case *otlpmetrics.NumberDataPoint_AsDouble:
+	case *internal.NumberDataPoint_AsDouble:
 		return NumberDataPointValueTypeDouble
-	case *otlpmetrics.NumberDataPoint_AsInt:
+	case *internal.NumberDataPoint_AsInt:
 		return NumberDataPointValueTypeInt
 	}
 	return NumberDataPointValueTypeEmpty
@@ -96,17 +95,15 @@ func (ms NumberDataPoint) DoubleValue() float64 {
 // SetDoubleValue replaces the double associated with this NumberDataPoint.
 func (ms NumberDataPoint) SetDoubleValue(v float64) {
 	ms.state.AssertMutable()
-	var ov *otlpmetrics.NumberDataPoint_AsDouble
+	var ov *internal.NumberDataPoint_AsDouble
 	if !internal.UseProtoPooling.IsEnabled() {
-		ov = &otlpmetrics.NumberDataPoint_AsDouble{}
+		ov = &internal.NumberDataPoint_AsDouble{}
 	} else {
-		ov = internal.ProtoPoolNumberDataPoint_AsDouble.Get().(*otlpmetrics.NumberDataPoint_AsDouble)
+		ov = internal.ProtoPoolNumberDataPoint_AsDouble.Get().(*internal.NumberDataPoint_AsDouble)
 	}
 	ov.AsDouble = v
 	ms.orig.Value = ov
-}
-
-// IntValue returns the int associated with this NumberDataPoint.
+} // IntValue returns the int associated with this NumberDataPoint.
 func (ms NumberDataPoint) IntValue() int64 {
 	return ms.orig.GetAsInt()
 }
@@ -114,11 +111,11 @@ func (ms NumberDataPoint) IntValue() int64 {
 // SetIntValue replaces the int associated with this NumberDataPoint.
 func (ms NumberDataPoint) SetIntValue(v int64) {
 	ms.state.AssertMutable()
-	var ov *otlpmetrics.NumberDataPoint_AsInt
+	var ov *internal.NumberDataPoint_AsInt
 	if !internal.UseProtoPooling.IsEnabled() {
-		ov = &otlpmetrics.NumberDataPoint_AsInt{}
+		ov = &internal.NumberDataPoint_AsInt{}
 	} else {
-		ov = internal.ProtoPoolNumberDataPoint_AsInt.Get().(*otlpmetrics.NumberDataPoint_AsInt)
+		ov = internal.ProtoPoolNumberDataPoint_AsInt.Get().(*internal.NumberDataPoint_AsInt)
 	}
 	ov.AsInt = v
 	ms.orig.Value = ov
@@ -143,5 +140,5 @@ func (ms NumberDataPoint) SetFlags(v DataPointFlags) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms NumberDataPoint) CopyTo(dest NumberDataPoint) {
 	dest.state.AssertMutable()
-	internal.CopyOrigNumberDataPoint(dest.orig, ms.orig)
+	internal.CopyNumberDataPoint(dest.orig, ms.orig)
 }

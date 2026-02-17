@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
@@ -75,5 +76,62 @@ func TestReplayController(t *testing.T) {
 		"WithBackPressure", // add 50, total 50
 	}
 	require.Equal(t, expected, ops)
+}
 
+// Test to ensure only one flush happens at a time when multiple goroutines call WithBackPressure
+func TestReplayControllerConcurrentFlushes(t *testing.T) {
+	t.Run("multiple goroutines wait for single flush", func(t *testing.T) {
+		var rc *replayController
+
+		var flushesStarted atomic.Int32
+		var flushInProgress atomic.Bool
+
+		flusher := newDumbFlusher(func() {
+			// Check if a flush is already in progress, fail if there is one.
+			if !flushInProgress.CompareAndSwap(false, true) {
+				t.Error("Multiple flushes running concurrently!")
+			}
+
+			flushesStarted.Add(1)
+
+			time.Sleep(100 * time.Millisecond) // Simulate a slow flush
+
+			rc.Sub(200)
+
+			flushInProgress.Store(false)
+		})
+
+		rc = newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 100}, flusher)
+
+		// Fill to trigger flush condition (90% of 100 = 90 bytes threshold)
+		rc.Add(95)
+
+		// Launch multiple goroutines simultaneously
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		numGoroutines := 5
+
+		for i := 0; i < numGoroutines; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+
+				err := rc.WithBackPressure(func() error {
+					rc.Add(20) // Each would trigger flush condition
+					return nil
+				})
+				require.NoError(t, err)
+			}()
+		}
+
+		// Start all goroutines at the same time
+		close(start)
+
+		wg.Wait()
+
+		// All goroutines should have shared a single flush
+		require.Equal(t, int32(1), flushesStarted.Load(),
+			"Singleflight should coalesce all flush requests into one")
+	})
 }

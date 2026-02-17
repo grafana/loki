@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -115,6 +115,10 @@ func (m *mockBuilder) GetEstimatedSize() int {
 	return m.builder.GetEstimatedSize()
 }
 
+func (m *mockBuilder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
+	return m.builder.CopyAndSort(ctx, obj)
+}
+
 func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 	if err := m.nextErr; err != nil {
 		m.nextErr = nil
@@ -127,19 +131,31 @@ func (m *mockBuilder) TimeRanges() []multitenancy.TimeRange {
 	return m.builder.TimeRanges()
 }
 
-func (m *mockBuilder) UnregisterMetrics(r prometheus.Registerer) {
-	m.builder.UnregisterMetrics(r)
-}
-
 // A mockCommitter implements the committer interface for tests.
 type mockCommitter struct {
-	// We will need to change this when we add support for other methods like
-	// CommitOffsets and CommitOffsetsSync.
-	records []*kgo.Record
+	offsets []int64
 }
 
-func (m *mockCommitter) CommitRecords(_ context.Context, records ...*kgo.Record) error {
-	m.records = append(m.records, records...)
+func (m *mockCommitter) Commit(_ context.Context, _ int32, offset int64) error {
+	m.offsets = append(m.offsets, offset)
+	return nil
+}
+
+type mockFlusher struct {
+	flushes int
+}
+
+func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (string, error) {
+	m.flushes++
+	return "", nil
+}
+
+type mockFlushManager struct {
+	flushes int
+}
+
+func (m *mockFlushManager) Flush(_ context.Context, _ builder, _ string, _ int64, _ time.Time) error {
+	m.flushes++
 	return nil
 }
 
@@ -198,91 +214,23 @@ func (m *mockKafka) ProduceSync(_ context.Context, rs ...*kgo.Record) kgo.Produc
 	return kgo.ProduceResults{{Err: nil}}
 }
 
-// mockPartitionProcessor mocks a [partitionProcessor].
-type mockPartitionProcessor struct {
-	records          []*kgo.Record
-	started, stopped bool
+type mockSorter struct{}
+
+func (m *mockSorter) Sort(_ context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
+	return obj, io.NopCloser(nil), nil
 }
 
-func (m *mockPartitionProcessor) Append(records []*kgo.Record) bool {
-	m.records = append(m.records, records...)
-	return true
+type mockUploader struct {
+	uploaded []*dataobj.Object
+	mtx      sync.Mutex
 }
 
-func (m *mockPartitionProcessor) start() {
-	m.started = true
+func (m *mockUploader) Upload(_ context.Context, obj *dataobj.Object) (string, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.uploaded = append(m.uploaded, obj)
+	return fmt.Sprintf("object_%03d", len(m.uploaded)), nil
 }
-
-func (m *mockPartitionProcessor) stop() {
-	m.stopped = true
-}
-
-// mockPartitionProcessorFactory mocks a [partitionProcessorFactory].
-type mockPartitionProcessorFactory struct {
-	calls int
-}
-
-func (m *mockPartitionProcessorFactory) New(_ context.Context, _ *kgo.Client, _ string, _ int32) processor {
-	m.calls++
-	return &mockPartitionProcessor{}
-}
-
-type mockPartitionProcessorListener struct {
-	processors map[string]map[int32]processor
-}
-
-func (m *mockPartitionProcessorListener) OnRegister(topic string, partition int32, p processor) {
-	if m.processors == nil {
-		m.processors = make(map[string]map[int32]processor)
-	}
-	processorsByTopic, ok := m.processors[topic]
-	if !ok {
-		processorsByTopic = make(map[int32]processor)
-		m.processors[topic] = processorsByTopic
-	}
-	processorsByTopic[partition] = p
-}
-func (m *mockPartitionProcessorListener) OnDeregister(topic string, partition int32) {
-	processorsByTopic, ok := m.processors[topic]
-	if !ok {
-		return
-	}
-	delete(processorsByTopic, partition)
-	if len(processorsByTopic) == 0 {
-		delete(m.processors, topic)
-	}
-}
-
-// mockPartitionProcessorLifecycler mocks a [partitionProcessorLifecycler].
-type mockPartitionProcessorLifecycler struct {
-	processors map[string]map[int32]struct{}
-}
-
-func (m *mockPartitionProcessorLifecycler) Register(_ context.Context, _ *kgo.Client, topic string, partition int32) {
-	if m.processors == nil {
-		m.processors = make(map[string]map[int32]struct{})
-	}
-	processorsByTopic, ok := m.processors[topic]
-	if !ok {
-		processorsByTopic = make(map[int32]struct{})
-		m.processors[topic] = processorsByTopic
-	}
-	processorsByTopic[partition] = struct{}{}
-}
-func (m *mockPartitionProcessorLifecycler) Deregister(_ context.Context, topic string, partition int32) {
-	if m.processors == nil {
-		return
-	}
-	processorsByTopic, ok := m.processors[topic]
-	if !ok {
-		return
-	}
-	delete(processorsByTopic, partition)
-	if len(processorsByTopic) == 0 {
-		delete(m.processors, topic)
-	}
-}
-func (m *mockPartitionProcessorLifecycler) Stop(_ context.Context) {}
 
 type recordedTocEntry struct {
 	DataObjectPath string

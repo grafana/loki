@@ -76,6 +76,10 @@ type AppsService interface {
 	)
 
 	GetAppInstances(ctx context.Context, appID string, opts *GetAppInstancesOpts) ([]*AppInstance, *Response, error)
+
+	ListJobInvocations(ctx context.Context, appID string, opts *ListJobInvocationsOptions) ([]*JobInvocation, *Response, error)
+	GetJobInvocation(ctx context.Context, appID string, jobInvocationId string, opts *GetJobInvocationOptions) (*JobInvocation, *Response, error)
+	GetJobInvocationLogs(ctx context.Context, appID, jobInvocationId string, opts *GetJobInvocationLogsOptions) (*AppLogs, *Response, error)
 }
 
 // AppLogs represent app logs.
@@ -102,6 +106,30 @@ type AppGetExecOptions struct {
 	// InstanceName is the unique name of the instance to connect to. It is an optional parameter.
 	// If not provided, the first available instance will be used.
 	InstanceName string `json:"instance_name,omitempty"`
+}
+
+type GetJobInvocationLogsOptions struct {
+	// JobName is the name of the job to retrieve logs for.
+	JobName string
+	// Follow indicates whether to stream the logs.
+	Follow bool
+	// TailLines is the number of lines from the end of the logs to retrieve.
+	TailLines int
+}
+
+type GetJobInvocationOptions struct {
+	JobName string `url:"job_name,omitempty"`
+}
+
+type ListJobInvocationsOptions struct {
+	// For paginated result sets, page of results to retrieve.
+	Page int `url:"page,omitempty"`
+	// For paginated result sets, the number of results to include per page.
+	PerPage int `url:"per_page,omitempty"`
+	// DeploymentID is an optional paramerter. This is used to filter job invocations to a specific deployment.
+	DeploymentID string `url:"deployment_id,omitempty"`
+	// JobNames is an optional parameter. This is used to filter job invocations by job names.
+	JobNames []string `url:"job_names,omitempty"`
 }
 
 // DeploymentCreateRequest represents a request to create a deployment.
@@ -154,6 +182,16 @@ type deploymentsRoot struct {
 	Deployments []*Deployment `json:"deployments"`
 	Links       *Links        `json:"links"`
 	Meta        *Meta         `json:"meta"`
+}
+
+type jobInvocationRoot struct {
+	JobInvocation *JobInvocation `json:"job_invocation,omitempty"`
+}
+
+type jobInvocationsRoot struct {
+	JobInvocations []*JobInvocation `json:"job_invocations"`
+	Links          *Links           `json:"links"`
+	Meta           *Meta            `json:"meta"`
 }
 
 type appTierRoot struct {
@@ -405,6 +443,80 @@ func (s *AppsServiceOp) CreateDeployment(ctx context.Context, appID string, crea
 		return nil, resp, err
 	}
 	return root.Deployment, resp, nil
+}
+
+// ListJobInvocations lists all job invocations for a given app.
+func (s *AppsServiceOp) ListJobInvocations(ctx context.Context, appID string, opts *ListJobInvocationsOptions) ([]*JobInvocation, *Response, error) {
+	path := fmt.Sprintf("%s/%s/job-invocations", appsBasePath, appID)
+
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(jobInvocationsRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	if l := root.Links; l != nil {
+		resp.Links = l
+	}
+
+	if m := root.Meta; m != nil {
+		resp.Meta = m
+	}
+	return root.JobInvocations, resp, nil
+}
+
+// GetJobInvocation gets a specific job invocation for a given app.
+func (s *AppsServiceOp) GetJobInvocation(ctx context.Context, appID string, jobInvocationId string, opts *GetJobInvocationOptions) (*JobInvocation, *Response, error) {
+	url := fmt.Sprintf("%s/%s/job-invocations/%s", appsBasePath, appID, jobInvocationId)
+
+	url, err := addOptions(url, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(jobInvocationRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.JobInvocation, resp, nil
+}
+
+// GetJobInvocationLogs retrieves job invocation logs.
+func (s *AppsServiceOp) GetJobInvocationLogs(ctx context.Context, appID, jobInvocationId string, opts *GetJobInvocationLogsOptions) (*AppLogs, *Response, error) {
+	url := fmt.Sprintf("%s/%s/jobs/%s/invocations/%s/logs?type=JOB_INVOCATION", appsBasePath, appID, opts.JobName, jobInvocationId)
+
+	if opts.Follow {
+		url += fmt.Sprintf("&follow=%t", opts.Follow)
+	}
+	if opts.TailLines > 0 {
+		url += fmt.Sprintf("&tail_lines=%d", opts.TailLines)
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	logs := new(AppLogs)
+	resp, err := s.client.Do(ctx, req, logs)
+	if err != nil {
+		return nil, resp, err
+	}
+	return logs, resp, nil
 }
 
 // GetLogs retrieves app logs.

@@ -269,6 +269,11 @@ func (b *LabelsBuilder) HasErrorDetails() bool {
 	return b.errDetails != ""
 }
 
+// HasInCategory returns whether the builder has the given key in the specified category.
+func (b *LabelsBuilder) HasInCategory(key string, category LabelCategory) bool {
+	return labelsContain(b.add[category], key)
+}
+
 // BaseHas returns the base labels have the given key
 func (b *LabelsBuilder) BaseHas(key string) bool {
 	return b.base.Has(key)

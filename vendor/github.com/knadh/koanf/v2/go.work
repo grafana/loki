@@ -1,6 +1,6 @@
-go 1.24
+go 1.24.4
 
-toolchain go1.24.2
+toolchain go1.24.5
 
 use (
 	.
@@ -9,6 +9,7 @@ use (
 	./parsers/dotenv
 	./parsers/hcl
 	./parsers/hjson
+	./parsers/huml
 	./parsers/json
 	./parsers/kdl
 	./parsers/nestedtext

@@ -80,7 +80,7 @@ func (i *Identifier) ShortName() string {
 // String returns the string representation of the column.
 // This must not be used as name for [arrow.Field].
 func (i *Identifier) String() string {
-	return fmt.Sprintf("%s[%s]", i.SemName(), i.columnType)
+	return fmt.Sprintf("%s[%s]", i.SemName(), i.dataType)
 }
 
 // FQN returns the fully qualified name of the identifier.
@@ -91,7 +91,7 @@ func (i *Identifier) FQN() string {
 	return i.fqn
 }
 
-// Equal checks equality of of the identifier against a second identifier.
+// Equal checks equality of the identifier against a second identifier.
 func (i *Identifier) Equal(other *Identifier) bool {
 	if i == nil || other == nil {
 		return false
@@ -99,6 +99,13 @@ func (i *Identifier) Equal(other *Identifier) bool {
 	return i.columnName == other.columnName &&
 		i.columnType == other.columnType &&
 		i.dataType == other.dataType
+}
+
+func (i *Identifier) ColumnRef() types.ColumnRef {
+	return types.ColumnRef{
+		Column: i.ShortName(),
+		Type:   i.columnType,
+	}
 }
 
 // FQN returns a fully qualified name for a column by given name, column type, and data type.

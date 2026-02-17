@@ -1118,7 +1118,7 @@ const (
 
 var (
 	labelsForDummyChunks = labels.New(
-		labels.Label{Name: labels.MetricName, Value: "foo"},
+		labels.Label{Name: model.MetricNameLabel, Value: "foo"},
 		labels.Label{Name: "bar", Value: "baz"},
 		labels.Label{Name: "toms", Value: "code"},
 	)

@@ -61,7 +61,7 @@ spec:
       {{- end }}
       {{- include "loki.querierPriorityClassName" . | nindent 6 }}
       securityContext:
-        {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.querier.terminationGracePeriodSeconds }}
       {{- with .Values.querier.initContainers }}
       initContainers:
@@ -110,6 +110,10 @@ spec:
           {{- end }}
           {{- with .Values.loki.readinessProbe }}
           readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.loki.startupProbe }}
+          startupProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
@@ -19,7 +20,7 @@ func TestGraph(t *testing.T) {
 
 	t.Run("adding a single node makes it both root and leave node", func(t *testing.T) {
 		var g dag.Graph[*testNode]
-		g.Add(&testNode{id: "scan"})
+		g.Add(&testNode{id: ulid.Make()})
 
 		require.Len(t, g.Roots(), 1)
 		require.Len(t, g.Leaves(), 1)
@@ -29,10 +30,10 @@ func TestGraph(t *testing.T) {
 		var g dag.Graph[*testNode]
 
 		err := g.AddEdge(dag.Edge[*testNode]{
-			Parent: &testNode{id: "sort"},
-			Child:  &testNode{id: "scan"},
+			Parent: &testNode{id: ulid.Make()},
+			Child:  &testNode{id: ulid.Make()},
 		})
-		require.ErrorContains(t, err, "node sort does not exist in graph")
+		require.ErrorContains(t, err, "does not exist in graph")
 	})
 
 	t.Run("adding an edge for zero value nodes fails", func(t *testing.T) {
@@ -46,9 +47,9 @@ func TestGraph(t *testing.T) {
 		var g dag.Graph[*testNode]
 
 		var (
-			scan1 = g.Add(&testNode{id: "scan1"})
-			scan2 = g.Add(&testNode{id: "scan2"})
-			merge = g.Add(&testNode{id: "sort"})
+			scan1 = g.Add(&testNode{id: ulid.Make()})
+			scan2 = g.Add(&testNode{id: ulid.Make()})
+			merge = g.Add(&testNode{id: ulid.Make()})
 		)
 
 		_ = g.AddEdge(dag.Edge[*testNode]{Parent: merge, Child: scan1})
@@ -63,9 +64,9 @@ func TestGraph(t *testing.T) {
 		var g dag.Graph[*testNode]
 
 		var (
-			parent = g.Add(&testNode{id: "parent"})
-			child1 = g.Add(&testNode{id: "child1"})
-			child2 = g.Add(&testNode{id: "child2"})
+			parent = g.Add(&testNode{id: ulid.Make()})
+			child1 = g.Add(&testNode{id: ulid.Make()})
+			child2 = g.Add(&testNode{id: ulid.Make()})
 		)
 
 		require.NoError(t, g.AddEdge(dag.Edge[*testNode]{Parent: parent, Child: child1}))
@@ -77,10 +78,10 @@ func TestGraph(t *testing.T) {
 		var g dag.Graph[*testNode]
 
 		var (
-			parent = g.Add(&testNode{id: "parent"})
-			middle = g.Add(&testNode{id: "middle"})
-			child1 = g.Add(&testNode{id: "child1"})
-			child2 = g.Add(&testNode{id: "child2"})
+			parent = g.Add(&testNode{id: ulid.Make()})
+			middle = g.Add(&testNode{id: ulid.Make()})
+			child1 = g.Add(&testNode{id: ulid.Make()})
+			child2 = g.Add(&testNode{id: ulid.Make()})
 		)
 
 		_ = g.AddEdge(dag.Edge[*testNode]{Parent: parent, Child: middle})
@@ -104,15 +105,15 @@ func TestGraph(t *testing.T) {
 		var g dag.Graph[*testNode]
 
 		var (
-			parent = g.Add(&testNode{id: "parent"})
-			child1 = g.Add(&testNode{id: "child1"})
-			child2 = g.Add(&testNode{id: "child2"})
+			parent = g.Add(&testNode{id: ulid.Make()})
+			child1 = g.Add(&testNode{id: ulid.Make()})
+			child2 = g.Add(&testNode{id: ulid.Make()})
 		)
 
 		_ = g.AddEdge(dag.Edge[*testNode]{Parent: parent, Child: child1})
 		_ = g.AddEdge(dag.Edge[*testNode]{Parent: parent, Child: child2})
 
-		newNode := g.Inject(parent, &testNode{id: "injected"})
+		newNode := g.Inject(parent, &testNode{id: ulid.Make()})
 
 		require.Equal(t, g.Len(), 4)
 		require.Equal(t, g.Parents(newNode), []*testNode{parent})
@@ -126,8 +127,8 @@ func TestGraph(t *testing.T) {
 		var g dag.Graph[*testNode]
 
 		var (
-			parent   = g.Add(&testNode{id: "parent"})
-			existing = g.Add(&testNode{id: "existing"})
+			parent   = g.Add(&testNode{id: ulid.Make()})
+			existing = g.Add(&testNode{id: ulid.Make()})
 		)
 
 		require.Panics(t, func() { g.Inject(parent, existing) })
@@ -142,8 +143,8 @@ func TestGraph(t *testing.T) {
 
 	t.Run("test root returns error for multiple roots", func(t *testing.T) {
 		var g dag.Graph[*testNode]
-		g.Add(&testNode{id: "root1"})
-		g.Add(&testNode{id: "root2"})
+		g.Add(&testNode{id: ulid.Make()})
+		g.Add(&testNode{id: ulid.Make()})
 
 		_, err := g.Root()
 		require.ErrorContains(t, err, "plan has multiple root nodes")
@@ -153,8 +154,8 @@ func TestGraph(t *testing.T) {
 		var g dag.Graph[*testNode]
 
 		var (
-			root  = g.Add(&testNode{id: "root"})
-			child = g.Add(&testNode{id: "child"})
+			root  = g.Add(&testNode{id: ulid.Make()})
+			child = g.Add(&testNode{id: ulid.Make()})
 		)
 		_ = g.AddEdge(dag.Edge[*testNode]{Parent: root, Child: child})
 
@@ -172,7 +173,7 @@ func TestGraph(t *testing.T) {
 
 	t.Run("parent and children methods handle missing nodes", func(t *testing.T) {
 		var g dag.Graph[*testNode]
-		nonExistent := &testNode{id: "nonexistent"}
+		nonExistent := &testNode{id: ulid.Make()}
 
 		require.Nil(t, g.Parents(nonExistent))
 		require.Nil(t, g.Children(nonExistent))
@@ -182,8 +183,8 @@ func TestGraph(t *testing.T) {
 		var g dag.Graph[*testNode]
 
 		var (
-			root  = g.Add(&testNode{id: "root"})
-			child = g.Add(&testNode{id: "child"})
+			root  = g.Add(&testNode{id: ulid.Make()})
+			child = g.Add(&testNode{id: ulid.Make()})
 		)
 		_ = g.AddEdge(dag.Edge[*testNode]{Parent: root, Child: child})
 
@@ -194,6 +195,6 @@ func TestGraph(t *testing.T) {
 }
 
 // testNode is a simple implementation of the Node interface for testing.
-type testNode struct{ id string }
+type testNode struct{ id ulid.ULID }
 
-func (n *testNode) ID() string { return n.id }
+func (n *testNode) ID() ulid.ULID { return n.id }

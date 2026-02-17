@@ -33,8 +33,9 @@ func NewCreateTopicsRequest(
 	}
 	switch {
 	case version.IsAtLeast(V2_4_0_0):
+		// Version 5 is the first flexible version
 		// Version 4 makes partitions/replicationFactor optional even when assignments are not present (KIP-464)
-		r.Version = 4
+		r.Version = 5
 	case version.IsAtLeast(V2_0_0_0):
 		// Version 3 is the same as version 2 (brokers response before throttling)
 		r.Version = 3
@@ -67,6 +68,7 @@ func (c *CreateTopicsRequest) encode(pe packetEncoder) error {
 		pe.putBool(c.ValidateOnly)
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -103,8 +105,8 @@ func (c *CreateTopicsRequest) decode(pd packetDecoder, version int16) (err error
 
 		c.Version = version
 	}
-
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (c *CreateTopicsRequest) key() int16 {
@@ -116,15 +118,28 @@ func (c *CreateTopicsRequest) version() int16 {
 }
 
 func (c *CreateTopicsRequest) headerVersion() int16 {
+	if c.Version >= 5 {
+		return 2
+	}
 	return 1
 }
 
+func (c *CreateTopicsRequest) isFlexible() bool {
+	return c.isFlexibleVersion(c.Version)
+}
+
+func (c *CreateTopicsRequest) isFlexibleVersion(version int16) bool {
+	return version >= 5
+}
+
 func (c *CreateTopicsRequest) isValidVersion() bool {
-	return c.Version >= 0 && c.Version <= 4
+	return c.Version >= 0 && c.Version <= 5
 }
 
 func (c *CreateTopicsRequest) requiredVersion() KafkaVersion {
 	switch c.Version {
+	case 5:
+		return V2_4_0_0
 	case 4:
 		return V2_4_0_0
 	case 3:
@@ -168,6 +183,7 @@ func (t *TopicDetail) encode(pe packetEncoder) error {
 		if err := pe.putInt32Array(assignment); err != nil {
 			return err
 		}
+		pe.putEmptyTaggedFieldArray()
 	}
 
 	if err := pe.putArrayLength(len(t.ConfigEntries)); err != nil {
@@ -180,8 +196,10 @@ func (t *TopicDetail) encode(pe packetEncoder) error {
 		if err := pe.putNullableString(configValue); err != nil {
 			return err
 		}
+		pe.putEmptyTaggedFieldArray()
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -208,6 +226,9 @@ func (t *TopicDetail) decode(pd packetDecoder, version int16) (err error) {
 			if t.ReplicaAssignment[replica], err = pd.getInt32Array(); err != nil {
 				return err
 			}
+			if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -226,8 +247,12 @@ func (t *TopicDetail) decode(pd packetDecoder, version int16) (err error) {
 			if t.ConfigEntries[configKey], err = pd.getNullableString(); err != nil {
 				return err
 			}
+			if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
+				return err
+			}
 		}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }

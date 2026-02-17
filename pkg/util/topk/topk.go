@@ -67,6 +67,17 @@ func (h *Heap[T]) Pop() (T, bool) {
 	return heap.Pop(heapImpl[T]{h}).(T), true
 }
 
+// Peek returns the minimum element from the heap without removing it. Peek returns the
+// zero value for T and false if the heap is empty.
+func (h *Heap[T]) Peek() (T, bool) {
+	if len(h.values) == 0 {
+		var zero T
+		return zero, false
+	}
+
+	return h.values[0], true
+}
+
 // Len returns the current number of elements in the heap.
 func (h *Heap[T]) Len() int { return len(h.values) }
 

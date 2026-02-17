@@ -9,6 +9,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -24,14 +25,15 @@ import (
 )
 
 const (
-	DefaultUserAgent    = "goswift/1.0"         // Default user agent
-	DefaultRetries      = 3                     // Default number of retries on token expiry
-	TimeFormat          = "2006-01-02T15:04:05" // Python date format for json replies parsed as UTC
-	UploadTar           = "tar"                 // Data format specifier for Connection.BulkUpload().
-	UploadTarGzip       = "tar.gz"              // Data format specifier for Connection.BulkUpload().
-	UploadTarBzip2      = "tar.bz2"             // Data format specifier for Connection.BulkUpload().
-	allContainersLimit  = 10000                 // Number of containers to fetch at once
-	allObjectsChanLimit = 1000                  // Number objects to fetch when fetching to a channel
+	DefaultUserAgent     = "goswift/1.0"         // Default user agent
+	DefaultRetries       = 3                     // Default number of retries on token expiry
+	TimeFormat           = "2006-01-02T15:04:05" // Python date format for json replies parsed as UTC
+	UploadTar            = "tar"                 // Data format specifier for Connection.BulkUpload().
+	UploadTarGzip        = "tar.gz"              // Data format specifier for Connection.BulkUpload().
+	UploadTarBzip2       = "tar.bz2"             // Data format specifier for Connection.BulkUpload().
+	allContainersLimit   = 10000                 // Number of containers to fetch at once
+	allObjectsChanLimit  = 1000                  // Number objects to fetch when fetching to a channel
+	respBodyErrSizeLimit = 1024                  // Maximum size of response body to read when appending to error messages
 )
 
 // ObjectType is the type of the swift object, regular, static large,
@@ -372,20 +374,63 @@ func drainAndClose(rd io.ReadCloser, err *error) {
 }
 
 // parseHeaders checks a response for errors and translates into
-// standard errors if necessary. If an error is returned, resp.Body
+// standard errors if necessary. If an error message is present in the response body,
+// it will be included in the error. If an error is returned, resp.Body
 // has been drained and closed.
 func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error {
 	if errorMap != nil {
 		if err, ok := errorMap[resp.StatusCode]; ok {
+			err = appendResponseBodyToError(resp, err)
 			drainAndClose(resp.Body, nil)
 			return err
 		}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		var err error = newErrorf(resp.StatusCode, "HTTP Error: %d: %s", resp.StatusCode, resp.Status)
+		err = appendResponseBodyToError(resp, err)
 		drainAndClose(resp.Body, nil)
-		return newErrorf(resp.StatusCode, "HTTP Error: %d: %s", resp.StatusCode, resp.Status)
+		return err
 	}
 	return nil
+}
+
+// appendResponseBodyToError tries to append the response body to the error message.
+func appendResponseBodyToError(resp *http.Response, err error) error {
+	if resp == nil || resp.Body == nil || err == nil {
+		return err
+	}
+
+	if resp.Header.Get("Content-Length") == "0" {
+		return err
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" {
+		return err
+	}
+
+	lowerCT := strings.ToLower(ct)
+	if !(strings.Contains(lowerCT, "text") ||
+		strings.Contains(lowerCT, "json") ||
+		strings.Contains(lowerCT, "xml") ||
+		strings.Contains(lowerCT, "html") ||
+		strings.Contains(lowerCT, "plain")) {
+		return err
+	}
+
+	buf := make([]byte, respBodyErrSizeLimit)
+	limitedReader := io.LimitReader(resp.Body, respBodyErrSizeLimit)
+	n, readErr := limitedReader.Read(buf)
+	if readErr != nil || n == 0 {
+		return err
+	}
+
+	trimmed := strings.TrimSpace(string(buf[:n]))
+	if trimmed == "" {
+		return err
+	}
+
+	return fmt.Errorf("%w: %s", err, trimmed)
 }
 
 // readHeaders returns a Headers object from the http.Response.
@@ -519,7 +564,7 @@ again:
 			// Try again for a limited number of times on
 			// AuthorizationFailed or BadRequest. This allows us
 			// to try some alternate forms of the request
-			if (err == AuthorizationFailed || err == BadRequest) && retries > 0 {
+			if (errors.Is(err, AuthorizationFailed) || errors.Is(err, BadRequest)) && retries > 0 {
 				retries--
 				goto again
 			}

@@ -21,10 +21,12 @@ import (
 type cacheEntry struct {
 	Endpoints             authority.Endpoints
 	ValidForDomainsInList map[string]bool
+	// Aliases stores host aliases from instance discovery for quick lookup
+	Aliases map[string]bool
 }
 
 func createcacheEntry(endpoints authority.Endpoints) cacheEntry {
-	return cacheEntry{endpoints, map[string]bool{}}
+	return cacheEntry{endpoints, map[string]bool{}, map[string]bool{}}
 }
 
 // AuthorityEndpoint retrieves endpoints from an authority for auth and token acquisition.
@@ -71,10 +73,15 @@ func (m *authorityEndpoint) ResolveEndpoints(ctx context.Context, authorityInfo 
 
 	m.addCachedEndpoints(authorityInfo, userPrincipalName, endpoints)
 
+	if err := resp.ValidateIssuerMatchesAuthority(authorityInfo.CanonicalAuthorityURI,
+		m.cache[authorityInfo.CanonicalAuthorityURI].Aliases); err != nil {
+		return authority.Endpoints{}, fmt.Errorf("ResolveEndpoints(): %w", err)
+	}
+
 	return endpoints, nil
 }
 
-// cachedEndpoints returns a the cached endpoints if they exists. If not, we return false.
+// cachedEndpoints returns the cached endpoints if they exist. If not, we return false.
 func (m *authorityEndpoint) cachedEndpoints(authorityInfo authority.Info, userPrincipalName string) (authority.Endpoints, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -113,6 +120,13 @@ func (m *authorityEndpoint) addCachedEndpoints(authorityInfo authority.Info, use
 		}
 	}
 
+	// Extract aliases from instance discovery metadata and add to cache
+	for _, metadata := range authorityInfo.InstanceDiscoveryMetadata {
+		for _, alias := range metadata.Aliases {
+			updatedCacheEntry.Aliases[alias] = true
+		}
+	}
+
 	m.cache[authorityInfo.CanonicalAuthorityURI] = updatedCacheEntry
 }
 
@@ -127,12 +141,14 @@ func (m *authorityEndpoint) openIDConfigurationEndpoint(ctx context.Context, aut
 		if err != nil {
 			return "", err
 		}
+		authorityInfo.InstanceDiscoveryMetadata = resp.Metadata
 		return resp.TenantDiscoveryEndpoint, nil
 	} else if authorityInfo.Region != "" {
 		resp, err := m.rest.Authority().AADInstanceDiscovery(ctx, authorityInfo)
 		if err != nil {
 			return "", err
 		}
+		authorityInfo.InstanceDiscoveryMetadata = resp.Metadata
 		return resp.TenantDiscoveryEndpoint, nil
 	}
 

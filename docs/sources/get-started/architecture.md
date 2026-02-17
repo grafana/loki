@@ -1,6 +1,6 @@
 ---
 title: Loki architecture
-menutitle: Architecture
+menuTitle: Architecture
 description: Describes the Grafana Loki architecture.
 weight: 400
 aliases:

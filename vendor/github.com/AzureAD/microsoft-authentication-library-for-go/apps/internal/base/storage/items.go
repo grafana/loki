@@ -79,6 +79,7 @@ type AccessToken struct {
 	UserAssertionHash string            `json:"user_assertion_hash,omitempty"`
 	TokenType         string            `json:"token_type,omitempty"`
 	AuthnSchemeKeyID  string            `json:"keyid,omitempty"`
+	ExtCacheKey       string            `json:"ext_cache_key,omitempty"`
 
 	AdditionalFields map[string]interface{}
 }
@@ -105,15 +106,21 @@ func NewAccessToken(homeID, env, realm, clientID string, cachedAt, refreshOn, ex
 // Key outputs the key that can be used to uniquely look up this entry in a map.
 func (a AccessToken) Key() string {
 	ks := []string{a.HomeAccountID, a.Environment, a.CredentialType, a.ClientID, a.Realm, a.Scopes}
+
+	// add token type to key for new access tokens types. skip for bearer token type to
+	// preserve fwd and back compat between a common cache and msal clients
+	if !strings.EqualFold(a.TokenType, authority.AccessTokenTypeBearer) {
+		ks = append(ks, a.TokenType)
+	}
+	// add extra body param hash to key if present
+	if a.ExtCacheKey != "" {
+		ks[2] = "atext" // if the there is extra cache we add "atext" to the key replacing accesstoken
+		ks = append(ks, a.ExtCacheKey)
+	}
 	key := strings.Join(
 		ks,
 		shared.CacheKeySeparator,
 	)
-	// add token type to key for new access tokens types. skip for bearer token type to
-	// preserve fwd and back compat between a common cache and msal clients
-	if !strings.EqualFold(a.TokenType, authority.AccessTokenTypeBearer) {
-		key = strings.Join([]string{key, a.TokenType}, shared.CacheKeySeparator)
-	}
 	return strings.ToLower(key)
 }
 

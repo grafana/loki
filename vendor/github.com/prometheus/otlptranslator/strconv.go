@@ -25,18 +25,92 @@ import (
 
 // sanitizeLabelName replaces any characters not valid according to the
 // classical Prometheus label naming scheme with an underscore.
-// Note: this does not handle all Prometheus label name restrictions (such as
-// not starting with a digit 0-9), and hence should only be used if the label
-// name is prefixed with a known valid string.
-func sanitizeLabelName(name string) string {
+// When preserveMultipleUnderscores is true, multiple consecutive underscores are preserved.
+// When false, multiple consecutive underscores are collapsed to a single underscore.
+func sanitizeLabelName(name string, preserveMultipleUnderscores bool) string {
+	nameLength := len(name)
+
+	if preserveMultipleUnderscores {
+		// Simple case: just replace invalid characters, preserve multiple underscores
+		var b strings.Builder
+		b.Grow(nameLength)
+		for _, r := range name {
+			if isValidCompliantLabelChar(r) {
+				b.WriteRune(r)
+			} else {
+				b.WriteRune('_')
+			}
+		}
+		return b.String()
+	}
+
+	isReserved, labelName := isReservedLabel(name)
+	if isReserved {
+		name = labelName
+	}
+
+	// Collapse multiple underscores while replacing invalid characters.
 	var b strings.Builder
-	b.Grow(len(name))
+	b.Grow(nameLength)
+	prevWasUnderscore := false
+
 	for _, r := range name {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+		if isValidCompliantLabelChar(r) {
 			b.WriteRune(r)
-		} else {
+			prevWasUnderscore = false
+		} else if !prevWasUnderscore {
+			// Invalid character - replace with underscore.
 			b.WriteRune('_')
+			prevWasUnderscore = true
 		}
 	}
+	if isReserved {
+		return "__" + b.String() + "__"
+	}
+	return b.String()
+}
+
+// isValidCompliantLabelChar checks if a rune is a valid label name character (a-z, A-Z, 0-9).
+func isValidCompliantLabelChar(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+}
+
+// isReservedLabel checks if a label is a reserved label.
+// Reserved labels are labels that start and end with exactly __.
+// The returned label name is the label name without the __ prefix and suffix.
+func isReservedLabel(name string) (bool, string) {
+	if len(name) < 4 {
+		return false, ""
+	}
+	if !strings.HasPrefix(name, "__") || !strings.HasSuffix(name, "__") {
+		return false, ""
+	}
+	return true, name[2 : len(name)-2]
+}
+
+// collapseMultipleUnderscores replaces multiple consecutive underscores with a single underscore.
+// This is equivalent to regexp.MustCompile(`__+`).ReplaceAllString(s, "_") but without using regex.
+func collapseMultipleUnderscores(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+
+	var b strings.Builder
+	b.Grow(len(s))
+	prevWasUnderscore := false
+
+	for _, r := range s {
+		if r == '_' {
+			if !prevWasUnderscore {
+				b.WriteRune('_')
+				prevWasUnderscore = true
+			}
+			// Skip consecutive underscores
+		} else {
+			b.WriteRune(r)
+			prevWasUnderscore = false
+		}
+	}
+
 	return b.String()
 }

@@ -1,3 +1,84 @@
+## v2.10.0 (2026-01-05)
+
+* [GH-3569](https://github.com/gophercloud/gophercloud/pull/3569) identity/role: restore backward compatibility for description
+* [GH-3570](https://github.com/gophercloud/gophercloud/pull/3570) [v2] identityv3/service: add `name` and `description` fields
+* [GH-3577](https://github.com/gophercloud/gophercloud/pull/3577) [v2] add: description field to identity.v3.Endpoint
+* [GH-3580](https://github.com/gophercloud/gophercloud/pull/3580) [v2] keystone: add support for per page limit
+* [GH-3582](https://github.com/gophercloud/gophercloud/pull/3582) [v2] network.v2.Port: add support for update mac_address
+* [GH-3585](https://github.com/gophercloud/gophercloud/pull/3585) [v2] identity.v3.Endpoint: add enabled field on creation and on update
+* [GH-3590](https://github.com/gophercloud/gophercloud/pull/3590) [v2] fix (image/v2/images): image v2 unmarshal issue
+* [GH-3594](https://github.com/gophercloud/gophercloud/pull/3594) [v2] Add new fields for ListOpts volumetypes
+* [GH-3595](https://github.com/gophercloud/gophercloud/pull/3595) [v2] identity.v3.Endpoint: make name as optional on creation
+
+## v2.9.0 (2025-11-17)
+
+* [GH-3508](https://github.com/gophercloud/gophercloud/pull/3508) [v2] Trigger "hold" workflow on merge groups
+* [GH-3511](https://github.com/gophercloud/gophercloud/pull/3511) [v2] Closes #2321 - Fix TestRolesCRUD by including DomainID to TestRolesCRUD
+* [GH-3513](https://github.com/gophercloud/gophercloud/pull/3513) [v2] build(deps): bump actions/labeler from 5 to 6
+* [GH-3516](https://github.com/gophercloud/gophercloud/pull/3516) [v2] refactor: Trivial fixes
+* [GH-3524](https://github.com/gophercloud/gophercloud/pull/3524) [v2] [glance]: Add 'uploading' status
+* [GH-3525](https://github.com/gophercloud/gophercloud/pull/3525) [v2] compute: Add host aggregate uuid field
+* [GH-3526](https://github.com/gophercloud/gophercloud/pull/3526) [v2] Enable deletion for network and loadbalancer quotas
+* [GH-3541](https://github.com/gophercloud/gophercloud/pull/3541) [v2] docs: Document tested releases for acceptance tests
+* [GH-3544](https://github.com/gophercloud/gophercloud/pull/3544) [v2] Identity V3: Add Options field to roles.
+* [GH-3547](https://github.com/gophercloud/gophercloud/pull/3547) [v2] Add config_drive to server struct
+* [GH-3548](https://github.com/gophercloud/gophercloud/pull/3548) [v2] Identity: Add description field to roles
+* [GH-3549](https://github.com/gophercloud/gophercloud/pull/3549) [v2] compute: add cpu info topology cells entry
+* [GH-3550](https://github.com/gophercloud/gophercloud/pull/3550) [v2] Migrate epoxy jobs to Ubuntu 24.04 (Noble), drop caracal jobs
+* [GH-3551](https://github.com/gophercloud/gophercloud/pull/3551) [v2] build(deps): bump github/codeql-action from 3 to 4
+* [GH-3557](https://github.com/gophercloud/gophercloud/pull/3557) [v2] Fix EC2 authentication to work with new Keystone auth requirement
+* [GH-3558](https://github.com/gophercloud/gophercloud/pull/3558) [v2] identity/services: add omitempty to the `type` field
+* [GH-3559](https://github.com/gophercloud/gophercloud/pull/3559) [v2] fix: handle Nova create image response for microversion 2.45 and above
+
+## v2.8.0 (2025-08-18)
+
+* [GH-3348](https://github.com/gophercloud/gophercloud/pull/3348) [v2] [networking] add ExtractRoutersInto func helper to routers
+* [GH-3354](https://github.com/gophercloud/gophercloud/pull/3354) [v2] Fix a small typo
+* [GH-3358](https://github.com/gophercloud/gophercloud/pull/3358) [v2] tests: fix devstack master branch tests
+* [GH-3361](https://github.com/gophercloud/gophercloud/pull/3361) [v2] octavia: fix http_version type to float
+* [GH-3362](https://github.com/gophercloud/gophercloud/pull/3362) [v2] tests: fix containerinfra template creation
+* [GH-3367](https://github.com/gophercloud/gophercloud/pull/3367) [v2] Use Makefile for CI jobs
+* [GH-3375](https://github.com/gophercloud/gophercloud/pull/3375) [v2] core: add missing Builder interfaces
+* [GH-3378](https://github.com/gophercloud/gophercloud/pull/3378) [v2] tests: fix failing rabbitmq service
+* [GH-3379](https://github.com/gophercloud/gophercloud/pull/3379) [v2] CI: Remove Bobcat
+* [GH-3384](https://github.com/gophercloud/gophercloud/pull/3384) [v2] Move master CI jobs to Ubuntu 24.04
+* [GH-3386](https://github.com/gophercloud/gophercloud/pull/3386) [v2] tests: Fix TestBGPAgentCRUD
+* [GH-3387](https://github.com/gophercloud/gophercloud/pull/3387) [v2] Update the doc of openstack.AuthOptionsFromEnv function
+* [GH-3389](https://github.com/gophercloud/gophercloud/pull/3389) [v2] networking: add constants for statuses
+* [GH-3391](https://github.com/gophercloud/gophercloud/pull/3391) [v2] CI: Add Epoxy
+* [GH-3393](https://github.com/gophercloud/gophercloud/pull/3393) [v2] dns: implement shared zones list
+* [GH-3394](https://github.com/gophercloud/gophercloud/pull/3394) [v2] acceptance: Prevent 409 when bulk-creating secgroup rules
+* [GH-3396](https://github.com/gophercloud/gophercloud/pull/3396) [v2] identity: add support for string boolean in users' enabled member
+* [GH-3397](https://github.com/gophercloud/gophercloud/pull/3397) [v2] Adjust List func to accept a Builder in tenants, routers and security groups packages
+* [GH-3399](https://github.com/gophercloud/gophercloud/pull/3399) [v2] blockstorage: add manage-existing and unmanage api call
+* [GH-3401](https://github.com/gophercloud/gophercloud/pull/3401) [v2] Added address groups to Networking extensions, with tests.
+* [GH-3407](https://github.com/gophercloud/gophercloud/pull/3407) [v2] neutron: add segment_id support to subnets
+* [GH-3413](https://github.com/gophercloud/gophercloud/pull/3413) [v2] build(deps): bump joelanford/go-apidiff from 0.8.2 to 0.8.3
+* [GH-3416](https://github.com/gophercloud/gophercloud/pull/3416) [v2] tests: bump devstack-action
+* [GH-3422](https://github.com/gophercloud/gophercloud/pull/3422) [v2] Fix documentation for gateway_ip in subnet update
+* [GH-3431](https://github.com/gophercloud/gophercloud/pull/3431) [v2] Use container-infra for OpenStack-API-Version
+* [GH-3433](https://github.com/gophercloud/gophercloud/pull/3433) [v2] make: Use fixed version of gotestsum
+* [GH-3434](https://github.com/gophercloud/gophercloud/pull/3434) [v2] Randomize test order for unit tests
+* [GH-3435](https://github.com/gophercloud/gophercloud/pull/3435) [v2] Add versioned endpoint discovery
+* [GH-3438](https://github.com/gophercloud/gophercloud/pull/3438) [v2] dns: add support for /v2/quotas
+* [GH-3439](https://github.com/gophercloud/gophercloud/pull/3439) [v2] neutron: add segments extension package
+* [GH-3446](https://github.com/gophercloud/gophercloud/pull/3446) nova: add support for hostname updates
+* [GH-3452](https://github.com/gophercloud/gophercloud/pull/3452) [v2] neutron: allow omission of subnet_id for IP address
+* [GH-3454](https://github.com/gophercloud/gophercloud/pull/3454) [v2] blockstorage: add isPublic query option for volume types
+* [GH-3458](https://github.com/gophercloud/gophercloud/pull/3458) [v2] Fix pagination for messaging client
+* [GH-3465](https://github.com/gophercloud/gophercloud/pull/3465) [v2] tests: Fix TestVLANTransparentCRUD test
+* [GH-3466](https://github.com/gophercloud/gophercloud/pull/3466) [v2] tests: fix tests for recent PR backports
+* [GH-3469](https://github.com/gophercloud/gophercloud/pull/3469) [v2] tests: shorten GH-A job names
+* [GH-3473](https://github.com/gophercloud/gophercloud/pull/3473) [v2] core: clone service type aliases instead of referencing global slice
+* [GH-3475](https://github.com/gophercloud/gophercloud/pull/3475) [v2] Implement update & delete traits on resource provider
+* [GH-3476](https://github.com/gophercloud/gophercloud/pull/3476) [v2] tests: fix volumetypes unit tests
+* [GH-3477](https://github.com/gophercloud/gophercloud/pull/3477) [v2] script: Improve getenvvar helper
+* [GH-3481](https://github.com/gophercloud/gophercloud/pull/3481) [v2] Implement hypervisors.GetExt: Get with Query parameter
+* [GH-3487](https://github.com/gophercloud/gophercloud/pull/3487) [v2] Add networking taas tapmirror suite
+* [GH-3489](https://github.com/gophercloud/gophercloud/pull/3489) [v2] Fix incorrect ICMP field description in PortRangeMax comment
+* [GH-3494](https://github.com/gophercloud/gophercloud/pull/3494) [v2] Networking v2: Support two time formats for subnet, router, SG rule (#3492)
+* [GH-3495](https://github.com/gophercloud/gophercloud/pull/3495) [v2] build(deps): bump actions/checkout from 4 to 5
+
 ## v2.7.0 (2025-04-03)
 
 * [GH-3306](https://github.com/gophercloud/gophercloud/pull/3306) [v2] identity: Add Get endpoint by ID

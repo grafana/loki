@@ -52,6 +52,28 @@ type OffsetRequest struct {
 	blocks         map[string]map[int32]*offsetRequestBlock
 }
 
+func NewOffsetRequest(version KafkaVersion) *OffsetRequest {
+	request := &OffsetRequest{}
+	if version.IsAtLeast(V2_2_0_0) {
+		// Version 5 adds a new error code, OFFSET_NOT_AVAILABLE.
+		request.Version = 5
+	} else if version.IsAtLeast(V2_1_0_0) {
+		// Version 4 adds the current leader epoch, which is used for fencing.
+		request.Version = 4
+	} else if version.IsAtLeast(V2_0_0_0) {
+		// Version 3 is the same as version 2.
+		request.Version = 3
+	} else if version.IsAtLeast(V0_11_0_0) {
+		// Version 2 adds the isolation level, which is used for transactional reads.
+		request.Version = 2
+	} else if version.IsAtLeast(V0_10_1_0) {
+		// Version 1 removes MaxNumOffsets.  From this version forward, only a single
+		// offset can be returned.
+		request.Version = 1
+	}
+	return request
+}
+
 func (r *OffsetRequest) setVersion(v int16) {
 	r.Version = v
 }
@@ -160,11 +182,13 @@ func (r *OffsetRequest) headerVersion() int16 {
 }
 
 func (r *OffsetRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 4
+	return r.Version >= 0 && r.Version <= 5
 }
 
 func (r *OffsetRequest) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 5:
+		return V2_2_0_0
 	case 4:
 		return V2_1_0_0
 	case 3:

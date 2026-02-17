@@ -39,9 +39,10 @@ type StringMatcher struct {
 	//	*StringMatcher_Contains
 	//	*StringMatcher_Custom
 	MatchPattern isStringMatcher_MatchPattern `protobuf_oneof:"match_pattern"`
-	// If true, indicates the exact/prefix/suffix/contains matching should be case insensitive. This
-	// has no effect for the safe_regex match.
-	// For example, the matcher “data“ will match both input string “Data“ and “data“ if set to true.
+	// If “true“, indicates the exact/prefix/suffix/contains matching should be case insensitive. This
+	// has no effect for the “safe_regex“ match.
+	// For example, the matcher “data“ will match both input string “Data“ and “data“ if this option
+	// is set to “true“.
 	IgnoreCase bool `protobuf:"varint,6,opt,name=ignore_case,json=ignoreCase,proto3" json:"ignore_case,omitempty"`
 }
 
@@ -148,7 +149,10 @@ type StringMatcher_Exact struct {
 
 type StringMatcher_Prefix struct {
 	// The input string must have the prefix specified here.
-	// Note: empty prefix is not allowed, please use regex instead.
+	//
+	// .. note::
+	//
+	//	Empty prefix match is not allowed, please use ``safe_regex`` instead.
 	//
 	// Examples:
 	//
@@ -158,7 +162,10 @@ type StringMatcher_Prefix struct {
 
 type StringMatcher_Suffix struct {
 	// The input string must have the suffix specified here.
-	// Note: empty prefix is not allowed, please use regex instead.
+	//
+	// .. note::
+	//
+	//	Empty suffix match is not allowed, please use ``safe_regex`` instead.
 	//
 	// Examples:
 	//
@@ -173,7 +180,10 @@ type StringMatcher_SafeRegex struct {
 
 type StringMatcher_Contains struct {
 	// The input string must have the substring specified here.
-	// Note: empty contains match is not allowed, please use regex instead.
+	//
+	// .. note::
+	//
+	//	Empty contains match is not allowed, please use ``safe_regex`` instead.
 	//
 	// Examples:
 	//

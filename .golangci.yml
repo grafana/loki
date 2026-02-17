@@ -47,6 +47,8 @@ linters:
           deny:
             - pkg: github.com/go-kit/kit/log
               desc: Use github.com/go-kit/log instead of github.com/go-kit/kit/log
+    goconst:
+      min-occurrences: 5
     misspell:
       ignore-rules:
         - strat
@@ -59,7 +61,7 @@ linters:
       - std-error-handling
     rules:
       - path: pkg/scheduler/scheduler.go
-        text: 'SA1019: msg.GetHttpRequest is deprecated: Do not use'
+        text: "SA1019: msg.GetHttpRequest is deprecated: Do not use"
       - linters:
           - goconst
         path: (.+)_test\.go

@@ -261,21 +261,6 @@ func unpackHeadChunkRef(ref chunks.ChunkRef) (seriesID chunks.HeadSeriesRef, chu
 	return sid, (cid & (oooChunkIDMask - 1)), (cid & oooChunkIDMask) != 0
 }
 
-// LabelValueFor returns label value for the given label name in the series referred to by ID.
-func (h *headIndexReader) LabelValueFor(_ context.Context, id storage.SeriesRef, label string) (string, error) {
-	memSeries := h.head.series.getByID(chunks.HeadSeriesRef(id))
-	if memSeries == nil {
-		return "", storage.ErrNotFound
-	}
-
-	value := memSeries.labels().Get(label)
-	if value == "" {
-		return "", storage.ErrNotFound
-	}
-
-	return value, nil
-}
-
 // LabelNamesFor returns all the label names for the series referred to by the postings.
 // The names returned are sorted.
 func (h *headIndexReader) LabelNamesFor(ctx context.Context, series index.Postings) ([]string, error) {
@@ -560,7 +545,7 @@ func (s *memSeries) iterator(id chunks.HeadChunkID, c chunkenc.Chunk, isoState *
 		// Iterate over the appendIDs, find the first one that the isolation state says not
 		// to return.
 		it := s.txs.iterator()
-		for index := 0; index < appendIDsToConsider; index++ {
+		for index := range appendIDsToConsider {
 			appendID := it.At()
 			if appendID <= isoState.maxAppendID { // Easy check first.
 				if _, ok := isoState.incompleteAppends[appendID]; !ok {

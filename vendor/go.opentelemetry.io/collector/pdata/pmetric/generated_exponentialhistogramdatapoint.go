@@ -8,7 +8,6 @@ package pmetric
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -23,11 +22,11 @@ import (
 // Must use NewExponentialHistogramDataPoint function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ExponentialHistogramDataPoint struct {
-	orig  *otlpmetrics.ExponentialHistogramDataPoint
+	orig  *internal.ExponentialHistogramDataPoint
 	state *internal.State
 }
 
-func newExponentialHistogramDataPoint(orig *otlpmetrics.ExponentialHistogramDataPoint, state *internal.State) ExponentialHistogramDataPoint {
+func newExponentialHistogramDataPoint(orig *internal.ExponentialHistogramDataPoint, state *internal.State) ExponentialHistogramDataPoint {
 	return ExponentialHistogramDataPoint{orig: orig, state: state}
 }
 
@@ -36,7 +35,7 @@ func newExponentialHistogramDataPoint(orig *otlpmetrics.ExponentialHistogramData
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewExponentialHistogramDataPoint() ExponentialHistogramDataPoint {
-	return newExponentialHistogramDataPoint(internal.NewOrigExponentialHistogramDataPoint(), internal.NewState())
+	return newExponentialHistogramDataPoint(internal.NewExponentialHistogramDataPoint(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -48,13 +47,13 @@ func (ms ExponentialHistogramDataPoint) MoveTo(dest ExponentialHistogramDataPoin
 	if ms.orig == dest.orig {
 		return
 	}
-	internal.DeleteOrigExponentialHistogramDataPoint(dest.orig, false)
+	internal.DeleteExponentialHistogramDataPoint(dest.orig, false)
 	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Attributes returns the Attributes associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) Attributes() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.Attributes, ms.state))
+	return pcommon.Map(internal.NewMapWrapper(&ms.orig.Attributes, ms.state))
 }
 
 // StartTimestamp returns the starttimestamp associated with this ExponentialHistogramDataPoint.
@@ -92,25 +91,25 @@ func (ms ExponentialHistogramDataPoint) SetCount(v uint64) {
 
 // Sum returns the sum associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) Sum() float64 {
-	return ms.orig.GetSum()
+	return ms.orig.Sum
 }
 
 // HasSum returns true if the ExponentialHistogramDataPoint contains a
 // Sum value otherwise.
 func (ms ExponentialHistogramDataPoint) HasSum() bool {
-	return ms.orig.Sum_ != nil
+	return ms.orig.HasSum()
 }
 
 // SetSum replaces the sum associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) SetSum(v float64) {
 	ms.state.AssertMutable()
-	ms.orig.Sum_ = &otlpmetrics.ExponentialHistogramDataPoint_Sum{Sum: v}
+	ms.orig.SetSum(v)
 }
 
 // RemoveSum removes the sum associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) RemoveSum() {
 	ms.state.AssertMutable()
-	ms.orig.Sum_ = nil
+	ms.orig.RemoveSum()
 }
 
 // Scale returns the scale associated with this ExponentialHistogramDataPoint.
@@ -163,48 +162,48 @@ func (ms ExponentialHistogramDataPoint) Exemplars() ExemplarSlice {
 
 // Min returns the min associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) Min() float64 {
-	return ms.orig.GetMin()
+	return ms.orig.Min
 }
 
 // HasMin returns true if the ExponentialHistogramDataPoint contains a
 // Min value otherwise.
 func (ms ExponentialHistogramDataPoint) HasMin() bool {
-	return ms.orig.Min_ != nil
+	return ms.orig.HasMin()
 }
 
 // SetMin replaces the min associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) SetMin(v float64) {
 	ms.state.AssertMutable()
-	ms.orig.Min_ = &otlpmetrics.ExponentialHistogramDataPoint_Min{Min: v}
+	ms.orig.SetMin(v)
 }
 
 // RemoveMin removes the min associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) RemoveMin() {
 	ms.state.AssertMutable()
-	ms.orig.Min_ = nil
+	ms.orig.RemoveMin()
 }
 
 // Max returns the max associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) Max() float64 {
-	return ms.orig.GetMax()
+	return ms.orig.Max
 }
 
 // HasMax returns true if the ExponentialHistogramDataPoint contains a
 // Max value otherwise.
 func (ms ExponentialHistogramDataPoint) HasMax() bool {
-	return ms.orig.Max_ != nil
+	return ms.orig.HasMax()
 }
 
 // SetMax replaces the max associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) SetMax(v float64) {
 	ms.state.AssertMutable()
-	ms.orig.Max_ = &otlpmetrics.ExponentialHistogramDataPoint_Max{Max: v}
+	ms.orig.SetMax(v)
 }
 
 // RemoveMax removes the max associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) RemoveMax() {
 	ms.state.AssertMutable()
-	ms.orig.Max_ = nil
+	ms.orig.RemoveMax()
 }
 
 // ZeroThreshold returns the zerothreshold associated with this ExponentialHistogramDataPoint.
@@ -221,5 +220,5 @@ func (ms ExponentialHistogramDataPoint) SetZeroThreshold(v float64) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ExponentialHistogramDataPoint) CopyTo(dest ExponentialHistogramDataPoint) {
 	dest.state.AssertMutable()
-	internal.CopyOrigExponentialHistogramDataPoint(dest.orig, ms.orig)
+	internal.CopyExponentialHistogramDataPoint(dest.orig, ms.orig)
 }

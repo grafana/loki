@@ -3,6 +3,7 @@ package push
 import (
 	"compress/flate"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"mime"
@@ -78,6 +79,12 @@ const (
 	applicationJSON  = "application/json"
 	LabelServiceName = "service_name"
 	ServiceUnknown   = "unknown_service"
+
+	// maxStreamLabelsSize is the maximum allowed size of a single stream's labels string.
+	// Prometheus' label parser panics when encoding labels that exceed 16MB (2^24 bytes).
+	// We check the total labels string size per stream before parsing to prevent this panic.
+	// See: https://github.com/prometheus/prometheus/issues/17993
+	maxStreamLabelsSize = 1 << 24 // 16MB
 )
 
 var (
@@ -113,11 +120,11 @@ func (EmptyLimits) PolicyFor(_ string, _ labels.Labels) string {
 type StreamResolver interface {
 	RetentionPeriodFor(lbs labels.Labels) time.Duration
 	RetentionHoursFor(lbs labels.Labels) string
-	PolicyFor(lbs labels.Labels) string
+	PolicyFor(ctx context.Context, lbs labels.Labels) string
 }
 
 type (
-	RequestParser        func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error)
+	RequestParser        func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
 	ErrorWriter          func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
@@ -170,8 +177,8 @@ type Stats struct {
 	HasInternalStreams bool // True if any of the streams has aggregated metrics or is a pattern stream
 }
 
-func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
-	req, pushStats, err := pushRequestParser(userID, r, limits, tenantConfigs, maxRecvMsgSize, tracker, streamResolver, logger)
+func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecompressedSize int64, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
+	req, pushStats, err := pushRequestParser(userID, r, limits, tenantConfigs, maxRecvMsgSize, maxDecompressedSize, tracker, streamResolver, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		if errors.Is(err, util.ErrMessageSizeTooLarge) {
 			return nil, nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
@@ -303,31 +310,46 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 
 // parsePushRequestBody returns logproto.PushRequest from http.Request body, deserialized according to specified content type.
 // It also modifies pushStats.
-func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (*logproto.PushRequest, error) {
+func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64, pushStats *Stats) (*logproto.PushRequest, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
 	bodySize := util.NewSizeReader(r.Body)
+
+	// Apply compressed size limit
+	body = bodySize
+	if maxRecvMsgSize > 0 {
+		body = io.LimitReader(body, int64(maxRecvMsgSize)+1)
+	}
+
 	contentEncoding := r.Header.Get(contentEnc)
 	switch contentEncoding {
 	case "":
-		body = bodySize
 	case "snappy":
-		// Snappy-decoding is done by `util.ParseProtoReader(..., util.RawSnappy)` below.
+		// Snappy-decoding is done by `util.ParseProtoReaderWithLimits(..., util.RawSnappy)` below.
 		// Pass on body bytes. Note: HTTP clients do not need to set this header,
 		// but they sometimes do. See #3407.
-		body = bodySize
 	case "gzip":
-		gzipReader, err := gzip.NewReader(bodySize)
+		gzipReader, err := gzip.NewReader(body)
 		if err != nil {
 			return nil, err
 		}
-		defer gzipReader.Close()
+		defer func(gzipReader *gzip.Reader) {
+			_ = gzipReader.Close()
+		}(gzipReader)
 		body = gzipReader
+		if maxDecompressedSize > 0 {
+			body = io.LimitReader(body, maxDecompressedSize+1)
+		}
 	case "deflate":
-		flateReader := flate.NewReader(bodySize)
-		defer flateReader.Close()
+		flateReader := flate.NewReader(body)
+		defer func(flateReader io.ReadCloser) {
+			_ = flateReader.Close()
+		}(flateReader)
 		body = flateReader
+		if maxDecompressedSize > 0 {
+			body = io.LimitReader(body, maxDecompressedSize+1)
+		}
 	default:
 		return nil, fmt.Errorf("Content-Encoding %q not supported", contentEncoding)
 	}
@@ -360,7 +382,7 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, pushStats *Stats)
 	default:
 		// When no content-type header is set or when it is set to
 		// `application/x-protobuf`: expect snappy compression.
-		if err := util.ParseProtoReader(r.Context(), body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy); err != nil {
+		if err := util.ParseProtoReaderWithLimits(r.Context(), body, int(r.ContentLength), maxRecvMsgSize, maxDecompressedSize, &req, util.RawSnappy); err != nil {
 			return nil, err
 		}
 	}
@@ -369,13 +391,16 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, pushStats *Stats)
 	pushStats.ContentType = contentType
 	pushStats.ContentEncoding = contentEncoding
 
+	if size := bodySize.Size(); size > int64(maxRecvMsgSize) && maxRecvMsgSize > 0 {
+		return nil, fmt.Errorf("compressed message size %d exceeds limit %d", size, maxRecvMsgSize)
+	}
 	return &req, nil
 }
 
-func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	pushStats := NewPushStats()
 
-	req, err := parsePushRequestBody(r, maxRecvMsgSize, pushStats)
+	req, err := parsePushRequestBody(r, maxRecvMsgSize, maxDecompressedSize, pushStats)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -389,6 +414,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 
 	for i := range req.Streams {
 		s := req.Streams[i]
+
+		if len(s.Labels) > maxStreamLabelsSize {
+			return nil, nil, fmt.Errorf("%w: stream labels size %s exceeds limit of %s", ErrRequestBodyTooLarge, humanize.Bytes(uint64(len(s.Labels))), humanize.Bytes(maxStreamLabelsSize))
+		}
 
 		lbs, err := syntax.ParseLabels(s.Labels)
 		if err != nil {
@@ -443,7 +472,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		req.Streams[i] = s
 	}
 
-	err = CalculateStreamsStats(userID, req, streamResolver, tenantConfigs, pushStats)
+	err = CalculateStreamsStats(r.Context(), userID, req, streamResolver, tenantConfigs, pushStats)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -452,7 +481,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 }
 
 // CalculateStreamsStats modifies pushStats with statistics about all the streams from req.
-func CalculateStreamsStats(userID string, req *logproto.PushRequest, streamResolver StreamResolver, tenantConfigs *runtime.TenantConfigs, pushStats *Stats) error {
+func CalculateStreamsStats(ctx context.Context, userID string, req *logproto.PushRequest, streamResolver StreamResolver, tenantConfigs *runtime.TenantConfigs, pushStats *Stats) error {
 	logPushRequestStreams := false
 	if tenantConfigs != nil {
 		logPushRequestStreams = tenantConfigs.LogPushRequestStreams(userID)
@@ -471,7 +500,7 @@ func CalculateStreamsStats(userID string, req *logproto.PushRequest, streamResol
 		var policy string
 		if streamResolver != nil {
 			retentionPeriod = streamResolver.RetentionPeriodFor(lbs)
-			policy = streamResolver.PolicyFor(lbs)
+			policy = streamResolver.PolicyFor(ctx, lbs)
 		}
 
 		if _, ok := pushStats.LogLinesBytes[policy]; !ok {

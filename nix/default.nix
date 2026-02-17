@@ -32,7 +32,8 @@ let
 
   loki-helm-test = pkgs.callPackage ../production/helm/loki/src/helm-test {
     inherit pkgs;
-    inherit (pkgs) lib buildGoModule dockerTools;
+    inherit (pkgs) lib dockerTools;
+    buildGoModule = pkgs.buildGo125Module;
     rev = gitRevision;
   };
 in

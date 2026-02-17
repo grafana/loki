@@ -2,11 +2,12 @@ package gcplog
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"time"
 
-	"cloud.google.com/go/pubsub"
+	"cloud.google.com/go/pubsub/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -86,7 +87,7 @@ func newPullTarget(
 		ctx:           ctx,
 		cancel:        cancel,
 		ps:            ps,
-		sub:           ps.SubscriptionInProject(config.Subscription, config.ProjectID),
+		sub:           ps.Subscriber(fmt.Sprintf("projects/%s/subscriptions/%s", config.ProjectID, config.Subscription)),
 		backoff:       backoff.New(ctx, defaultBackoff),
 		msgs:          make(chan *pubsub.Message),
 	}

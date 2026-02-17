@@ -2,14 +2,12 @@ package logical
 
 import (
 	"fmt"
-
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
 // The Limit instruction limits the number of rows from a table relation. Limit
 // implements [Instruction] and [Value].
 type Limit struct {
-	id string
+	b baseNode
 
 	Table Value // Table relation to limit.
 
@@ -28,12 +26,7 @@ var (
 )
 
 // Name returns an identifier for the Limit operation.
-func (l *Limit) Name() string {
-	if l.id != "" {
-		return l.id
-	}
-	return fmt.Sprintf("%p", l)
-}
+func (l *Limit) Name() string { return l.b.Name() }
 
 // String returns the disassembled SSA form of the Limit instruction.
 func (l *Limit) String() string {
@@ -42,12 +35,18 @@ func (l *Limit) String() string {
 	return fmt.Sprintf("LIMIT %v [skip=%d, fetch=%d]", l.Table.Name(), l.Skip, l.Fetch)
 }
 
-// Schema returns the schema of the limit operation.
-func (l *Limit) Schema() *schema.Schema {
-	// The schema is the same as the input plan's schema since limiting
-	// only affects the number of rows, not their structure.
-	return l.Table.Schema()
+// Operands appends the operands of l to the provided slice. The pointers may
+// be modified to change operands of l.
+func (l *Limit) Operands(buf []*Value) []*Value {
+	return append(buf, &l.Table)
 }
 
-func (l *Limit) isInstruction() {}
-func (l *Limit) isValue()       {}
+// Referrers returns a list of instructions that reference the Limit.
+//
+// The list of instructions can be modified to update the reference list, such
+// as when modifying the plan.
+func (l *Limit) Referrers() *[]Instruction { return &l.b.referrers }
+
+func (l *Limit) base() *baseNode { return &l.b }
+func (l *Limit) isInstruction()  {}
+func (l *Limit) isValue()        {}

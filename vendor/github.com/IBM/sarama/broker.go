@@ -223,9 +223,21 @@ func (b *Broker) Open(conf *Config) error {
 		if conf.ApiVersionsRequest {
 			apiVersionsResponse, err := b.sendAndReceiveApiVersions(3)
 			if err != nil {
-				Logger.Printf("Error while sending ApiVersionsRequest to broker %s: %s\n", b.addr, err)
-				// send a v0 request in case remote cluster is < 2.4.0.0
-				apiVersionsResponse, _ = b.sendAndReceiveApiVersions(0)
+				Logger.Printf("Error while sending ApiVersionsRequest V3 to broker %s: %s\n", b.addr, err)
+				// send a lower version request in case remote cluster is <= 2.4.0.0
+				maxVersion := int16(0)
+				if apiVersionsResponse != nil {
+					for _, k := range apiVersionsResponse.ApiKeys {
+						if k.ApiKey == apiKeyApiVersions {
+							maxVersion = k.MaxVersion
+							break
+						}
+					}
+				}
+				apiVersionsResponse, err = b.sendAndReceiveApiVersions(maxVersion)
+				if err != nil {
+					Logger.Printf("Error while sending ApiVersionsRequest V%d to broker %s: %s\n", maxVersion, b.addr, err)
+				}
 			}
 			if apiVersionsResponse != nil {
 				b.brokerAPIVersions = make(apiVersionMap, len(apiVersionsResponse.ApiKeys))
@@ -1111,12 +1123,7 @@ func (b *Broker) decode(pd packetDecoder, version int16) (err error) {
 		return err
 	}
 
-	var host string
-	if version < 9 {
-		host, err = pd.getString()
-	} else {
-		host, err = pd.getCompactString()
-	}
+	host, err := pd.getString()
 	if err != nil {
 		return err
 	}
@@ -1126,13 +1133,11 @@ func (b *Broker) decode(pd packetDecoder, version int16) (err error) {
 		return err
 	}
 
-	if version >= 1 && version < 9 {
+	if version >= 1 {
 		b.rack, err = pd.getNullableString()
-	} else if version >= 9 {
-		b.rack, err = pd.getCompactNullableString()
-	}
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
 	}
 
 	b.addr = net.JoinHostPort(host, fmt.Sprint(port))
@@ -1140,14 +1145,8 @@ func (b *Broker) decode(pd packetDecoder, version int16) (err error) {
 		return err
 	}
 
-	if version >= 9 {
-		_, err := pd.getEmptyTaggedFieldArray()
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (b *Broker) encode(pe packetEncoder, version int16) (err error) {
@@ -1163,11 +1162,7 @@ func (b *Broker) encode(pe packetEncoder, version int16) (err error) {
 
 	pe.putInt32(b.id)
 
-	if version < 9 {
-		err = pe.putString(host)
-	} else {
-		err = pe.putCompactString(host)
-	}
+	err = pe.putString(host)
 	if err != nil {
 		return err
 	}
@@ -1175,20 +1170,13 @@ func (b *Broker) encode(pe packetEncoder, version int16) (err error) {
 	pe.putInt32(int32(port))
 
 	if version >= 1 {
-		if version < 9 {
-			err = pe.putNullableString(b.rack)
-		} else {
-			err = pe.putNullableCompactString(b.rack)
-		}
+		err = pe.putNullableString(b.rack)
 		if err != nil {
 			return err
 		}
 	}
 
-	if version >= 9 {
-		pe.putEmptyTaggedFieldArray()
-	}
-
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -1276,7 +1264,7 @@ func (b *Broker) sendAndReceiveApiVersions(v int16) (*ApiVersionsResponse, error
 	b.updateOutgoingCommunicationMetrics(bytes)
 	if err != nil {
 		b.addRequestInFlightMetrics(-1)
-		Logger.Printf("Failed to send ApiVersions request to %s: %s\n", b.addr, err)
+		Logger.Printf("Failed to send ApiVersionsRequest V%d to %s: %s\n", v, b.addr, err)
 		return nil, err
 	}
 	b.correlationID++
@@ -1288,7 +1276,7 @@ func (b *Broker) sendAndReceiveApiVersions(v int16) (*ApiVersionsResponse, error
 	_, err = b.readFull(header)
 	if err != nil {
 		b.addRequestInFlightMetrics(-1)
-		Logger.Printf("Failed to read ApiVersions response header from %s: %s\n", b.addr, err)
+		Logger.Printf("Failed to read ApiVersionsResponse V%d header from %s: %s\n", v, b.addr, err)
 		return nil, err
 	}
 
@@ -1300,20 +1288,24 @@ func (b *Broker) sendAndReceiveApiVersions(v int16) (*ApiVersionsResponse, error
 	n, err := b.readFull(payload)
 	if err != nil {
 		b.addRequestInFlightMetrics(-1)
-		Logger.Printf("Failed to read ApiVersions response payload from %s: %s\n", b.addr, err)
+		Logger.Printf("Failed to read ApiVersionsResponse V%d payload from %s: %s\n", v, b.addr, err)
 		return nil, err
 	}
 
 	b.updateIncomingCommunicationMetrics(n+8, time.Since(requestTime))
-	res := &ApiVersionsResponse{}
-
+	res := &ApiVersionsResponse{Version: rb.version()}
 	err = versionedDecode(payload, res, rb.version(), b.metricRegistry)
 	if err != nil {
-		Logger.Printf("Failed to parse ApiVersions response from %s: %s\n", b.addr, err)
+		Logger.Printf("Failed to parse ApiVersionsResponse V%d from %s: %s\n", v, b.addr, err)
 		return nil, err
 	}
 
-	DebugLogger.Printf("Completed ApiVersions request to %s. Broker supports %d APIs\n", b.addr, len(res.ApiKeys))
+	kerr := KError(res.ErrorCode)
+	if kerr != ErrNoError {
+		return res, fmt.Errorf("Error in ApiVersionsResponse V%d from %s: %w", res.Version, b.addr, kerr)
+	}
+
+	DebugLogger.Printf("Completed ApiVersionsRequest V%d to %s. Broker supports %d APIs\n", v, b.addr, len(res.ApiKeys))
 	return res, nil
 }
 

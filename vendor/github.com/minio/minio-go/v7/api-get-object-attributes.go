@@ -127,7 +127,7 @@ func (o *ObjectAttributes) parseResponse(resp *http.Response) (err error) {
 	}
 	o.ObjectAttributesResponse = *response
 
-	return
+	return err
 }
 
 // GetObjectAttributes API combines HeadObject and ListParts.

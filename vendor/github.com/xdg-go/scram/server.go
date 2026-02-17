@@ -48,3 +48,62 @@ func (s *Server) NewConversation() *ServerConversation {
 		credentialCB: s.credentialCB,
 	}
 }
+
+// NewConversationWithChannelBinding constructs a server-side authentication
+// conversation with channel binding for SCRAM-PLUS authentication.
+//
+// This signals that the server advertised PLUS mechanism variants (e.g.,
+// SCRAM-SHA-256-PLUS) during SASL negotiation, but channel binding is NOT required.
+// Clients may authenticate using either the base mechanism (e.g., SCRAM-SHA-256)
+// or the PLUS variant (e.g., SCRAM-SHA-256-PLUS).
+//
+// The server will:
+//   - Accept clients without channel binding support (using "n" flag)
+//   - Accept clients with matching channel binding (using "p" flag)
+//   - Reject downgrade attacks (clients using "y" flag when PLUS was advertised)
+//
+// Channel binding is connection-specific, so a new conversation should be
+// created for each connection being authenticated.
+// Conversations cannot be reused, so this must be called for each new
+// authentication attempt.
+func (s *Server) NewConversationWithChannelBinding(cb ChannelBinding) *ServerConversation {
+	s.RLock()
+	defer s.RUnlock()
+	return &ServerConversation{
+		nonceGen:       s.nonceGen,
+		hashGen:        s.hashGen,
+		credentialCB:   s.credentialCB,
+		channelBinding: cb,
+	}
+}
+
+// NewConversationWithChannelBindingRequired constructs a server-side authentication
+// conversation with mandatory channel binding for SCRAM-PLUS authentication.
+//
+// This signals that the server advertised ONLY SCRAM-PLUS mechanism variants
+// (e.g., only SCRAM-SHA-256-PLUS, not the base SCRAM-SHA-256) during SASL negotiation.
+// Channel binding is required for all authentication attempts.
+//
+// The server will:
+//   - Accept only clients with matching channel binding (using "p" flag)
+//   - Reject clients without channel binding support (using "n" flag)
+//   - Reject downgrade attacks (clients using "y" flag when PLUS was advertised)
+//
+// This is intended for high-security deployments that advertise only SCRAM-PLUS
+// variants and want to enforce channel binding as mandatory.
+//
+// Channel binding is connection-specific, so a new conversation should be
+// created for each connection being authenticated.
+// Conversations cannot be reused, so this must be called for each new
+// authentication attempt.
+func (s *Server) NewConversationWithChannelBindingRequired(cb ChannelBinding) *ServerConversation {
+	s.RLock()
+	defer s.RUnlock()
+	return &ServerConversation{
+		nonceGen:              s.nonceGen,
+		hashGen:               s.hashGen,
+		credentialCB:          s.credentialCB,
+		channelBinding:        cb,
+		requireChannelBinding: true,
+	}
+}

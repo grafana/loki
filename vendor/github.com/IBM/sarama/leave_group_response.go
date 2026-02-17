@@ -22,7 +22,7 @@ func (r *LeaveGroupResponse) encode(pe packetEncoder) error {
 	if r.Version >= 1 {
 		pe.putInt32(r.ThrottleTime)
 	}
-	pe.putInt16(int16(r.Err))
+	pe.putKError(r.Err)
 	if r.Version >= 3 {
 		if err := pe.putArrayLength(len(r.Members)); err != nil {
 			return err
@@ -34,9 +34,11 @@ func (r *LeaveGroupResponse) encode(pe packetEncoder) error {
 			if err := pe.putNullableString(member.GroupInstanceId); err != nil {
 				return err
 			}
-			pe.putInt16(int16(member.Err))
+			pe.putKError(member.Err)
+			pe.putEmptyTaggedFieldArray()
 		}
 	}
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -47,11 +49,10 @@ func (r *LeaveGroupResponse) decode(pd packetDecoder, version int16) (err error)
 			return err
 		}
 	}
-	kerr, err := pd.getInt16()
+	r.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	r.Err = KError(kerr)
 
 	if r.Version >= 3 {
 		membersLen, err := pd.getArrayLength()
@@ -66,15 +67,17 @@ func (r *LeaveGroupResponse) decode(pd packetDecoder, version int16) (err error)
 			if r.Members[i].GroupInstanceId, err = pd.getNullableString(); err != nil {
 				return err
 			}
-			if memberErr, err := pd.getInt16(); err != nil {
+			if r.Members[i].Err, err = pd.getKError(); err != nil {
 				return err
-			} else {
-				r.Members[i].Err = KError(memberErr)
+			}
+			if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
+				return err
 			}
 		}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *LeaveGroupResponse) key() int16 {
@@ -86,15 +89,28 @@ func (r *LeaveGroupResponse) version() int16 {
 }
 
 func (r *LeaveGroupResponse) headerVersion() int16 {
+	if r.Version >= 4 {
+		return 1
+	}
 	return 0
 }
 
 func (r *LeaveGroupResponse) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 3
+	return r.Version >= 0 && r.Version <= 4
+}
+
+func (r *LeaveGroupResponse) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *LeaveGroupResponse) isFlexibleVersion(version int16) bool {
+	return version >= 4
 }
 
 func (r *LeaveGroupResponse) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 4:
+		return V2_4_0_0
 	case 3:
 		return V2_4_0_0
 	case 2:

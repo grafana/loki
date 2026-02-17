@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	log "github.com/sirupsen/logrus"
@@ -245,7 +246,7 @@ func ValidateRuleGroup(g rwrulefmt.RuleGroup) []error {
 			Alert:  yaml.Node{Value: r.Alert},
 			Expr:   yaml.Node{Value: r.Expr},
 		}
-		for _, err := range r.Validate(ruleNode) {
+		for _, err := range r.Validate(ruleNode, model.UTF8Validation) {
 			var ruleName string
 			if r.Alert != "" {
 				ruleName = r.Alert

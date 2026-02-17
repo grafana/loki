@@ -22,13 +22,17 @@ import (
 	"time"
 
 	"go.uber.org/atomic"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v2"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 )
+
+// ErrDuplicateRecordingLabelSet is returned when a recording rule evaluation produces
+// metrics with identical labelsets after applying rule labels.
+var ErrDuplicateRecordingLabelSet = errors.New("vector contains metrics with the same labelset after applying rule labels")
 
 // A RecordingRule records its vector expression into new timeseries.
 type RecordingRule struct {
@@ -104,7 +108,7 @@ func (rule *RecordingRule) Eval(ctx context.Context, queryOffset time.Duration, 
 	// Check that the rule does not produce identical metrics after applying
 	// labels.
 	if vector.ContainsSameLabelset() {
-		return nil, errors.New("vector contains metrics with the same labelset after applying rule labels")
+		return nil, ErrDuplicateRecordingLabelSet
 	}
 
 	numSeries := len(vector)

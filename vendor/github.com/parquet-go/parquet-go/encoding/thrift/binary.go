@@ -8,7 +8,7 @@ import (
 	"io"
 	"math"
 
-	"github.com/parquet-go/parquet-go/internal/unsafecast"
+	"github.com/parquet-go/bitpack/unsafecast"
 )
 
 // BinaryProtocol is a Protocol implementation for the binary thrift protocol.

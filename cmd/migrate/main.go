@@ -144,7 +144,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
+	nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "logs")
 	if err != nil {
 		log.Println("Failed to create label matcher:", err)
 		os.Exit(1)

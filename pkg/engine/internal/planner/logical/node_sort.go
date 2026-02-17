@@ -2,8 +2,6 @@ package logical
 
 import (
 	"fmt"
-
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
 // Sort represents a plan node that sorts rows based on sort expressions.
@@ -13,7 +11,7 @@ import (
 // The Sort instruction sorts rows from a table relation. Sort implements both
 // [Instruction] and [Value].
 type Sort struct {
-	id string
+	b baseNode
 
 	Table Value // The table relation to sort.
 
@@ -28,12 +26,7 @@ var (
 )
 
 // Name returns an identifier for the Sort operation.
-func (s *Sort) Name() string {
-	if s.id != "" {
-		return s.id
-	}
-	return fmt.Sprintf("%p", s)
-}
+func (s *Sort) Name() string { return s.b.Name() }
 
 // String returns the disassembled SSA form of the Sort instruction.
 func (s *Sort) String() string {
@@ -46,12 +39,20 @@ func (s *Sort) String() string {
 	)
 }
 
-// Schema returns the schema of the sort plan.
-func (s *Sort) Schema() *schema.Schema {
-	// The schema is the same as the input plan's schema since sorting only
-	// affects the order of rows, not their structure.
-	return s.Table.Schema()
+// Operands appends the operands of s to the provided slice. The pointers may
+// be modified to change operands of s.
+func (s *Sort) Operands(buf []*Value) []*Value {
+	// NOTE(rfratto): Only fields of type Value are considered operands, so
+	// r.Column is ignored here. Should that change?
+	return append(buf, &s.Table)
 }
 
-func (s *Sort) isInstruction() {}
-func (s *Sort) isValue()       {}
+// Referrers returns a list of instructions that reference the Sort.
+//
+// The list of instructions can be modified to update the reference list, such
+// as when modifying the plan.
+func (s *Sort) Referrers() *[]Instruction { return &s.b.referrers }
+
+func (s *Sort) base() *baseNode { return &s.b }
+func (s *Sort) isInstruction()  {}
+func (s *Sort) isValue()        {}

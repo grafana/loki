@@ -4,38 +4,38 @@
 package plog // import "go.opentelemetry.io/collector/pdata/plog"
 
 import (
-	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
+	"go.opentelemetry.io/collector/pdata/internal"
 )
 
 // SeverityNumber represents severity number of a log record.
 type SeverityNumber int32
 
 const (
-	SeverityNumberUnspecified = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_UNSPECIFIED)
-	SeverityNumberTrace       = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_TRACE)
-	SeverityNumberTrace2      = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_TRACE2)
-	SeverityNumberTrace3      = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_TRACE3)
-	SeverityNumberTrace4      = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_TRACE4)
-	SeverityNumberDebug       = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_DEBUG)
-	SeverityNumberDebug2      = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_DEBUG2)
-	SeverityNumberDebug3      = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_DEBUG3)
-	SeverityNumberDebug4      = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_DEBUG4)
-	SeverityNumberInfo        = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_INFO)
-	SeverityNumberInfo2       = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_INFO2)
-	SeverityNumberInfo3       = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_INFO3)
-	SeverityNumberInfo4       = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_INFO4)
-	SeverityNumberWarn        = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_WARN)
-	SeverityNumberWarn2       = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_WARN2)
-	SeverityNumberWarn3       = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_WARN3)
-	SeverityNumberWarn4       = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_WARN4)
-	SeverityNumberError       = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_ERROR)
-	SeverityNumberError2      = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_ERROR2)
-	SeverityNumberError3      = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_ERROR3)
-	SeverityNumberError4      = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_ERROR4)
-	SeverityNumberFatal       = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_FATAL)
-	SeverityNumberFatal2      = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_FATAL2)
-	SeverityNumberFatal3      = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_FATAL3)
-	SeverityNumberFatal4      = SeverityNumber(otlplogs.SeverityNumber_SEVERITY_NUMBER_FATAL4)
+	SeverityNumberUnspecified = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_UNSPECIFIED)
+	SeverityNumberTrace       = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_TRACE)
+	SeverityNumberTrace2      = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_TRACE2)
+	SeverityNumberTrace3      = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_TRACE3)
+	SeverityNumberTrace4      = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_TRACE4)
+	SeverityNumberDebug       = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_DEBUG)
+	SeverityNumberDebug2      = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_DEBUG2)
+	SeverityNumberDebug3      = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_DEBUG3)
+	SeverityNumberDebug4      = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_DEBUG4)
+	SeverityNumberInfo        = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_INFO)
+	SeverityNumberInfo2       = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_INFO2)
+	SeverityNumberInfo3       = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_INFO3)
+	SeverityNumberInfo4       = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_INFO4)
+	SeverityNumberWarn        = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_WARN)
+	SeverityNumberWarn2       = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_WARN2)
+	SeverityNumberWarn3       = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_WARN3)
+	SeverityNumberWarn4       = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_WARN4)
+	SeverityNumberError       = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_ERROR)
+	SeverityNumberError2      = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_ERROR2)
+	SeverityNumberError3      = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_ERROR3)
+	SeverityNumberError4      = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_ERROR4)
+	SeverityNumberFatal       = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_FATAL)
+	SeverityNumberFatal2      = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_FATAL2)
+	SeverityNumberFatal3      = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_FATAL3)
+	SeverityNumberFatal4      = SeverityNumber(internal.SeverityNumber_SEVERITY_NUMBER_FATAL4)
 )
 
 // String returns the string representation of the SeverityNumber.

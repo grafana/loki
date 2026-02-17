@@ -341,6 +341,10 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 			}
 		}
 
+		if err := clt.Validate(model.UTF8Validation); err != nil {
+			return nil, fmt.Errorf("invalid remote write config for tenant %q: %w", clt.Name, err)
+		}
+
 		overrides.Clients[id] = clt
 	}
 
@@ -367,6 +371,11 @@ func (r *walRegistry) createRelabelConfigs(tenant string) ([]*relabel.Config, er
 
 		var rc relabel.Config
 		if err = yaml.Unmarshal(out, &rc); err != nil {
+			return nil, err
+		}
+
+		// Validate the relabel config to catch invalid configurations
+		if err := rc.Validate(model.UTF8Validation); err != nil {
 			return nil, err
 		}
 
@@ -398,6 +407,12 @@ func (n notReadyAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Label
 func (n notReadyAppender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	return 0, errNotReady
 }
+func (n notReadyAppender) AppendHistogramSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, errNotReady
+}
+func (n notReadyAppender) AppendSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
+	return 0, errNotReady
+}
 func (n notReadyAppender) SetOptions(_ *storage.AppendOptions) {}
 func (n notReadyAppender) Commit() error                       { return errNotReady }
 func (n notReadyAppender) Rollback() error                     { return errNotReady }
@@ -420,6 +435,12 @@ func (n discardingAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Lab
 	return 0, nil
 }
 func (n discardingAppender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, nil
+}
+func (n discardingAppender) AppendHistogramSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, nil
+}
+func (n discardingAppender) AppendSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	return 0, nil
 }
 func (n discardingAppender) SetOptions(_ *storage.AppendOptions) {}

@@ -25,7 +25,7 @@ func validateLabelStaticConfig(c StaticLabelConfig) error {
 		return errors.New(ErrEmptyStaticLabelStageConfig)
 	}
 	for labelName := range c {
-		if !model.LabelName(labelName).IsValid() {
+		if !model.UTF8Validation.IsValidLabelName(labelName) {
 			return fmt.Errorf(ErrInvalidLabelName, labelName)
 		}
 	}

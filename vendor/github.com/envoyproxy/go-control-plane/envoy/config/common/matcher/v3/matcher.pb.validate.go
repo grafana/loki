@@ -1086,6 +1086,8 @@ func (m *Matcher_OnMatch) validate(all bool) error {
 
 	var errors []error
 
+	// no validation rules for KeepMatching
+
 	oneofOnMatchPresent := false
 	switch v := m.OnMatch.(type) {
 	case *Matcher_OnMatch_Matcher:

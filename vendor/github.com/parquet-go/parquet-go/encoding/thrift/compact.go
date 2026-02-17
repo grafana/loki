@@ -8,7 +8,7 @@ import (
 	"io"
 	"math"
 
-	"github.com/parquet-go/parquet-go/internal/unsafecast"
+	"github.com/parquet-go/bitpack/unsafecast"
 )
 
 // CompactProtocol is a Protocol implementation for the compact thrift protocol.
@@ -64,7 +64,11 @@ func (r *compactReader) ReadInt64() (int64, error) {
 }
 
 func (r *compactReader) ReadFloat64() (float64, error) {
-	return r.binary.ReadFloat64()
+	b, err := r.binary.read(8)
+	if len(b) < 8 {
+		return 0, err
+	}
+	return math.Float64frombits(binary.LittleEndian.Uint64(b)), nil
 }
 
 func (r *compactReader) ReadBytes() ([]byte, error) {
@@ -263,7 +267,8 @@ func (w *compactWriter) WriteInt64(v int64) error {
 }
 
 func (w *compactWriter) WriteFloat64(v float64) error {
-	return w.binary.WriteFloat64(v)
+	binary.LittleEndian.PutUint64(w.binary.b[:8], math.Float64bits(v))
+	return w.binary.write(w.binary.b[:8])
 }
 
 func (w *compactWriter) WriteBytes(v []byte) error {

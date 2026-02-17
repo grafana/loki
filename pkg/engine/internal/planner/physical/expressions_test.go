@@ -52,7 +52,6 @@ func TestExpressionTypes(t *testing.T) {
 }
 
 func TestLiteralExpr(t *testing.T) {
-
 	t.Run("boolean", func(t *testing.T) {
 		var expr Expression = NewLiteral(true)
 		require.Equal(t, ExprTypeLiteral, expr.Type())

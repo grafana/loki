@@ -3,13 +3,22 @@ default: fmt get update test lint
 GO       := go
 GOBIN    := $(shell pwd)/bin
 GOBUILD  := CGO_ENABLED=0 $(GO) build $(BUILD_FLAG)
-GOTEST   := $(GO) test -v -race -coverprofile=profile.out -covermode=atomic
 
-FILES    := $(shell find . -name '*.go' -type f -not -name '*.pb.go' -not -name '*_generated.go' -not -name '*_test.go')
-TESTS    := $(shell find . -name '*.go' -type f -not -name '*.pb.go' -not -name '*_generated.go' -name '*_test.go')
+GOTESTSUM         := $(GOBIN)/gotestsum
+# renovate: datasource=github-releases depName=gotestyourself/gotestsum
+GOTESTSUM_VERSION := v1.13.0
+$(GOTESTSUM):
+	GOBIN=$(GOBIN) go install gotest.tools/gotestsum@$(GOTESTSUM_VERSION)
 
-$(GOBIN)/tparse:
-	GOBIN=$(GOBIN) go install github.com/mfridman/tparse@v0.16.0
+TESTSTAT         := $(GOBIN)/teststat
+# renovate: datasource=github-releases depName=vearutop/teststat
+TESTSTAT_VERSION := v0.1.27
+$(TESTSTAT):
+	GOBIN=$(GOBIN) go install github.com/vearutop/teststat@$(TESTSTAT_VERSION)
+
+FILES := $(shell find . -name '*.go' -type f -not -name '*.pb.go' -not -name '*_generated.go' -not -name '*_test.go')
+TESTS := $(shell find . -name '*.go' -type f -not -name '*.pb.go' -not -name '*_generated.go' -name '*_test.go')
+
 get:
 	$(GO) get ./...
 	$(GO) mod verify
@@ -26,14 +35,15 @@ fmt:
 lint:
 	GOFLAGS="-tags=functional" golangci-lint run
 
-test: $(GOBIN)/tparse
-	$(GOTEST) -timeout 2m -json ./... \
-		| tee output.json | $(GOBIN)/tparse -follow -all
-	[ -z "$${GITHUB_STEP_SUMMARY}" ] \
-		|| NO_COLOR=1 $(GOBIN)/tparse -format markdown -file output.json -all >"$${GITHUB_STEP_SUMMARY:-/dev/null}"
+test: $(GOTESTSUM) $(TESTSTAT) $(TPARSE)
+	@$(GOTESTSUM) $(if ${CI},--format github-actions,--format testdox) --jsonfile _test/unittests.json --junitfile _test/unittests.xml \
+		--rerun-fails --packages="./..." \
+		-- -v -race -coverprofile=profile.out -covermode=atomic -timeout 2m
+	@$(TESTSTAT) _test/unittests.json
+
 .PHONY: test_functional
-test_functional: $(GOBIN)/tparse
-	$(GOTEST) -timeout 15m -tags=functional -json ./... \
-		| tee output.json | $(GOBIN)/tparse -follow -all
-	[ -z "$${GITHUB_STEP_SUMMARY:-}" ] \
-		|| NO_COLOR=1 $(GOBIN)/tparse -format markdown -file output.json -all >"$${GITHUB_STEP_SUMMARY:-/dev/null}"
+test_functional: $(GOTESTSUM) $(TESTSTAT) $(TPARSE)
+	@$(GOTESTSUM) $(if ${CI},--format github-actions,--format testdox) --jsonfile _test/fvt.json --junitfile _test/fvt.xml \
+		--rerun-fails --packages="./..." \
+		-- -v -race -coverprofile=profile.out -covermode=atomic -timeout 15m -tags=functional
+	@$(TESTSTAT) _test/fvt.json

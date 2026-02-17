@@ -18,13 +18,8 @@ type catalog struct {
 }
 
 // ResolveShardDescriptors implements Catalog.
-func (c *catalog) ResolveShardDescriptors(e Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
-	return c.ResolveShardDescriptorsWithShard(e, nil, noShard, from, through)
-}
-
-// ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveShardDescriptorsWithShard(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]FilteredShardDescriptor, error) {
-	return filterDescriptorsForShard(shard, c.sectionDescriptors)
+func (c *catalog) ResolveDataObjSections(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]DataObjSections, error) {
+	return filterForShard(shard, c.sectionDescriptors)
 }
 
 var _ Catalog = (*catalog)(nil)
@@ -43,11 +38,11 @@ func TestMockCatalog(t *testing.T) {
 	}
 	for _, tt := range []struct {
 		shard          ShardInfo
-		expDescriptors []FilteredShardDescriptor
+		expDescriptors []DataObjSections
 	}{
 		{
 			shard: ShardInfo{0, 1},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
@@ -57,74 +52,66 @@ func TestMockCatalog(t *testing.T) {
 		},
 		{
 			shard: ShardInfo{0, 4},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 			},
 		},
 		{
 			shard: ShardInfo{1, 4},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 			},
 		},
 		{
 			shard:          ShardInfo{2, 4},
-			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
+			expDescriptors: []DataObjSections{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
 		},
 		{
 			shard:          ShardInfo{3, 4},
-			expDescriptors: []FilteredShardDescriptor{},
+			expDescriptors: []DataObjSections{},
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
-			filteredShardDescriptors, err := catalog.ResolveShardDescriptorsWithShard(nil, nil, tt.shard, timeStart, timeEnd)
+			filteredShardDescriptors, err := catalog.ResolveDataObjSections(nil, nil, tt.shard, timeStart, timeEnd)
 			require.Nil(t, err)
 			require.ElementsMatch(t, tt.expDescriptors, filteredShardDescriptors)
 		})
 	}
 }
 
-func locations(t *testing.T, plan *Plan, nodes []Node) []string {
-	res := make([]string, 0, len(nodes))
-
-	visitor := &nodeCollectVisitor{
-		onVisitScanSet: func(set *ScanSet) error {
-			for _, target := range set.Targets {
+func locations(plan *Plan, node Node) []string {
+	res := make([]string, 0)
+	_ = plan.DFSWalk(node, func(n Node) error {
+		switch node := n.(type) {
+		case *ScanSet:
+			for _, target := range node.Targets {
 				switch target.Type {
 				case ScanTypeDataObject:
 					res = append(res, string(target.DataObject.Location))
 				}
 			}
-			return nil
-		},
-	}
-
-	for _, n := range nodes {
-		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
-	}
+		}
+		return nil
+	}, dag.PreOrderWalk)
 	return res
 }
 
-func sections(t *testing.T, plan *Plan, nodes []Node) [][]int {
-	res := make([][]int, 0, len(nodes))
-
-	visitor := &nodeCollectVisitor{
-		onVisitScanSet: func(set *ScanSet) error {
-			for _, target := range set.Targets {
+func sections(plan *Plan, node Node) [][]int {
+	res := make([][]int, 0)
+	_ = plan.DFSWalk(node, func(n Node) error {
+		switch node := n.(type) {
+		case *ScanSet:
+			for _, target := range node.Targets {
 				switch target.Type {
 				case ScanTypeDataObject:
 					res = append(res, []int{target.DataObject.Section})
 				}
 			}
-			return nil
-		},
-	}
-
-	for _, n := range nodes {
-		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
-	}
+		}
+		return nil
+	}, dag.PreOrderWalk)
 	return res
 }
 
@@ -204,10 +191,10 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 				Shard:    tt.shard,
 			}
 			planner.reset()
-			nodes, err := planner.processMakeTable(relation, NewContext(timeStart, timeEnd))
+			node, err := planner.processMakeTable(relation, NewContext(timeStart, timeEnd))
 			require.NoError(t, err)
-			require.ElementsMatch(t, tt.expPaths, locations(t, planner.plan, nodes))
-			require.ElementsMatch(t, tt.expSections, sections(t, planner.plan, nodes))
+			require.ElementsMatch(t, tt.expPaths, locations(planner.plan, node))
+			require.ElementsMatch(t, tt.expSections, sections(planner.plan, node))
 		})
 	}
 }
@@ -278,7 +265,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			logical.ParserLogfmt,
+			types.VariadicOpParseLogfmt, false, false,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
@@ -298,7 +285,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
 
 		physicalPlan, err := planner.Build(logicalPlan)
-		t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+		t.Logf("\nPhysical plan\n%s\n", PrintAsTree(physicalPlan))
 		require.NoError(t, err)
 
 		// Verify ParseNode exists in correct position
@@ -314,22 +301,35 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 
 		compatNode, ok := children[0].(*ColumnCompat)
 		require.True(t, ok, "Filter's child should be ColumnCompat")
-		require.Equal(t, types.ColumnTypeParsed, compatNode.Source)
-
 		children = physicalPlan.Children(compatNode)
-		require.Len(t, children, 1)
 
-		parseNode, ok := children[0].(*ParseNode)
-		require.True(t, ok, "ColumnCompat's child should be ParseNode")
-		require.Equal(t, ParserLogfmt, parseNode.Kind)
-		require.Empty(t, parseNode.RequestedKeys)
+		projectionNode, ok := children[0].(*Projection)
+		require.True(t, ok, "ColumnCompat's child should be Projection")
+		require.Len(t, projectionNode.Expressions, 1)
+
+		expr, ok := projectionNode.Expressions[0].(*VariadicExpr)
+		require.True(t, ok)
+		require.Equal(t, types.VariadicOpParseLogfmt, expr.Op)
+
+		funcArgs := expr.Expressions
+		require.Len(t, funcArgs, 4)
+
+		sourcCol, ok := funcArgs[0].(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnNameBuiltinMessage, sourcCol.Ref.Column)
+		require.Equal(t, types.ColumnTypeBuiltin, sourcCol.Ref.Type)
 
 		physicalPlan, err = planner.Optimize(physicalPlan)
-		t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+		t.Logf("\nOptimized plan\n%s\n", PrintAsTree(physicalPlan))
 		require.NoError(t, err)
 
-		// For log queries, parse nodes should request all keys (nil)
-		require.Nil(t, parseNode.RequestedKeys)
+		funcArgs = expr.Expressions
+		require.Len(t, funcArgs, 4)
+
+		sourcCol, ok = funcArgs[0].(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnNameBuiltinMessage, sourcCol.Ref.Column)
+		require.Equal(t, types.ColumnTypeBuiltin, sourcCol.Ref.Type)
 	})
 
 	t.Run("Build a query plan for a metric query with Parse", func(t *testing.T) {
@@ -348,7 +348,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			logical.ParserLogfmt,
+			types.VariadicOpParseLogfmt, false, false,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
@@ -356,7 +356,10 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Op:    types.BinaryOpEq,
 			},
 		).RangeAggregation(
-			[]logical.ColumnRef{*logical.NewColumnRef("level", types.ColumnTypeAmbiguous)},
+			logical.Grouping{
+				Columns: []logical.ColumnRef{*logical.NewColumnRef("level", types.ColumnTypeAmbiguous)},
+				Without: false,
+			},
 			types.RangeAggregationTypeCount,
 			start,         // Start time
 			end,           // End time
@@ -375,32 +378,110 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		planner := NewPlanner(NewContext(start, end), catalog)
 
 		physicalPlan, err := planner.Build(logicalPlan)
+		t.Logf("\nPhysical plan\n%s\n", PrintAsTree(physicalPlan))
+		require.NoError(t, err)
+
+		// Verify ParseNode exists in correct position
+		root, err := physicalPlan.Root()
+		require.NoError(t, err)
+
+		// Physical plan is built bottom up, so it should be RangeAggregation -> Filter -> Projection -> ...
+		rangeAgg, ok := root.(*RangeAggregation)
+		require.True(t, ok, "Root should be RangeAggregation")
+
+		children := physicalPlan.Children(rangeAgg)
+		require.Len(t, children, 1)
+
+		filterNode, ok := children[0].(*Filter)
+		require.True(t, ok, "RangeAggregation's child should be Filter")
+
+		children = physicalPlan.Children(filterNode)
+		require.Len(t, children, 1)
+
+		compatNode, ok := children[0].(*ColumnCompat)
+		require.True(t, ok, "Filter's child should be ColumnCompat")
+		children = physicalPlan.Children(compatNode)
+
+		projectionNode, ok := children[0].(*Projection)
+		require.True(t, ok, "ColumnCompat's child should be Projection")
+		require.Len(t, projectionNode.Expressions, 1)
+
+		expr, ok := projectionNode.Expressions[0].(*VariadicExpr)
+		require.True(t, ok)
+		require.Equal(t, types.VariadicOpParseLogfmt, expr.Op)
+
+		funcArgs := expr.Expressions
+		require.Len(t, funcArgs, 4)
+
+		sourcCol, ok := funcArgs[0].(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnNameBuiltinMessage, sourcCol.Ref.Column)
+		require.Equal(t, types.ColumnTypeBuiltin, sourcCol.Ref.Type)
+
+		physicalPlan, err = planner.Optimize(physicalPlan)
+		t.Logf("\nOptimized plan\n%s\n", PrintAsTree(physicalPlan))
+		require.NoError(t, err)
+
+		funcArgs = expr.Expressions
+		require.Len(t, funcArgs, 4)
+
+		sourcCol, ok = funcArgs[0].(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnNameBuiltinMessage, sourcCol.Ref.Column)
+		require.Equal(t, types.ColumnTypeBuiltin, sourcCol.Ref.Type)
+
+		reqKeys, ok := funcArgs[1].(*LiteralExpr)
+		require.True(t, ok)
+
+		keys, ok := reqKeys.Literal().(types.StringListLiteral)
+		require.True(t, ok)
+		require.Equal(t, []string{"level"}, keys.Value())
+	})
+}
+
+func TestPlanner_Convert_WithCastProjection(t *testing.T) {
+	t.Run("Build a query plan for a log query with unwrap", func(t *testing.T) {
+		// Build a query plan with unwrap:
+		// { app="users" } | unwrap duration(request_duration)
+		b := logical.NewBuilder(
+			&logical.MakeTable{
+				Selector: &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("users"),
+					Op:    types.BinaryOpEq,
+				},
+				Shard: logical.NewShard(0, 1),
+			},
+		).Cast(
+			"request_duration", types.UnaryOpCastDuration,
+		).Compat(true)
+
+		logicalPlan, err := b.ToPlan()
+		require.NoError(t, err)
+
+		catalog := &catalog{
+			sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+				{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0}, StreamIDs: []int64{1, 2}, Start: time.Now(), End: time.Now().Add(time.Second * 10)},
+			},
+		}
+		planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
+
+		physicalPlan, err := planner.Build(logicalPlan)
 		t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
 		require.NoError(t, err)
 
-		// Find ParseNode in the plan
-		var parseNode *ParseNode
-		visitor := &nodeCollectVisitor{
-			onVisitParse: func(node *ParseNode) error {
-				parseNode = node
-				return nil
-			},
-		}
+		// Verify Projection node exists at root (unwrap is now implemented as projection)
 		root, err := physicalPlan.Root()
 		require.NoError(t, err)
-		err = physicalPlan.DFSWalk(root, visitor, PreOrderWalk)
-		require.NoError(t, err)
-		require.NotNil(t, parseNode, "ParseNode should exist in the plan")
 
-		require.Equal(t, ParserLogfmt, parseNode.Kind)
-		require.Empty(t, parseNode.RequestedKeys) // Before optimization
+		// Root should be a Projection node with the unwrap cast operation
+		projectionNode, ok := root.(*Projection)
+		require.True(t, ok, "Root should be Projection")
+		require.NotEmpty(t, projectionNode.Expressions, "Projection should have expressions")
 
 		physicalPlan, err = planner.Optimize(physicalPlan)
 		t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
 		require.NoError(t, err)
-
-		// For metric queries, parse nodes should request specific keys used in aggregations
-		require.Equal(t, []string{"level"}, parseNode.RequestedKeys)
 	})
 }
 
@@ -428,7 +509,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{*logical.NewColumnRef("label1", types.ColumnTypeAmbiguous), *logical.NewColumnRef("label2", types.ColumnTypeMetadata)},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -456,6 +537,464 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 	physicalPlan, err = planner.Optimize(physicalPlan)
 	require.NoError(t, err)
 	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+}
+
+func TestPlanner_Convert_Rate(t *testing.T) {
+	// logical plan for rate({ app="users" } | age > 21[5m])
+	b := logical.NewBuilder(
+		&logical.MakeTable{
+			Selector: &logical.BinOp{
+				Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+				Right: logical.NewLiteral("users"),
+				Op:    types.BinaryOpEq,
+			},
+			Shard: logical.NewShard(0, 1), // no sharding
+		},
+	).Select(
+		&logical.BinOp{
+			Left:  logical.NewColumnRef("age", types.ColumnTypeMetadata),
+			Right: logical.NewLiteral(int64(21)),
+			Op:    types.BinaryOpGt,
+		},
+	).Select(
+		&logical.BinOp{
+			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
+			Right: logical.NewLiteral(types.Timestamp(1742826126000000000)),
+			Op:    types.BinaryOpLt,
+		},
+	).RangeAggregation(
+		logical.NoGrouping,
+		types.RangeAggregationTypeCount,
+		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
+		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
+		0,             // Step
+		time.Minute*5, // Range
+	).BinOpRight(
+		types.BinaryOpDiv, logical.NewLiteral(int64(300)),
+	)
+
+	logicalPlan, err := b.ToPlan()
+	require.NoError(t, err)
+
+	timeStart := time.Now()
+	timeEnd := timeStart.Add(time.Second * 10)
+	catalog := &catalog{
+		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 3}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
+		},
+	}
+	planner := NewPlanner(NewContext(timeStart, timeEnd), catalog)
+
+	physicalPlan, err := planner.Build(logicalPlan)
+	require.NoError(t, err)
+	t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+
+	physicalPlan, err = planner.Optimize(physicalPlan)
+	require.NoError(t, err)
+	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+}
+
+func TestPlanner_BuildMathExpressions(t *testing.T) {
+	// logical plan for (rate({ app="users" }[5m]) * 40) ^ 2
+	b := logical.NewBuilder(
+		&logical.MakeTable{
+			Selector: &logical.BinOp{
+				Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+				Right: logical.NewLiteral("users"),
+				Op:    types.BinaryOpEq,
+			},
+			Shard: logical.NewShard(0, 1), // no sharding
+		},
+	).Select(
+		&logical.BinOp{
+			Left:  logical.NewColumnRef("age", types.ColumnTypeMetadata),
+			Right: logical.NewLiteral(int64(21)),
+			Op:    types.BinaryOpGt,
+		},
+	).Select(
+		&logical.BinOp{
+			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
+			Right: logical.NewLiteral(types.Timestamp(1742826126000000000)),
+			Op:    types.BinaryOpLt,
+		},
+	).RangeAggregation(
+		logical.NoGrouping,
+		types.RangeAggregationTypeCount,
+		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
+		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
+		0,             // Step
+		time.Minute*5, // Range
+	).BinOpRight(
+		types.BinaryOpDiv, logical.NewLiteral(int64(300)),
+	).BinOpRight(
+		types.BinaryOpMul, logical.NewLiteral(int64(40)),
+	).BinOpRight(
+		types.BinaryOpPow, logical.NewLiteral(int64(2)),
+	)
+
+	logicalPlan, err := b.ToPlan()
+	require.NoError(t, err)
+
+	timeStart := time.Now()
+	timeEnd := timeStart.Add(time.Second * 10)
+	catalog := &catalog{
+		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 3}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
+		},
+	}
+	planner := NewPlanner(NewContext(timeStart, timeEnd), catalog)
+
+	physicalPlan, err := planner.Build(logicalPlan)
+	require.NoError(t, err)
+	t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+
+	physicalPlan, err = planner.Optimize(physicalPlan)
+	require.NoError(t, err)
+	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+}
+
+func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
+	// logical plan for rate({ env="prod", app="users" }[5m])) / rate({ env="prod" }[5m]))
+	b1 := logical.NewBuilder(
+		&logical.MakeTable{
+			Selector: &logical.BinOp{
+				Left:  logical.NewColumnRef("env", types.ColumnTypeLabel),
+				Right: logical.NewLiteral("prod"),
+				Op:    types.BinaryOpEq,
+			},
+			Shard: logical.NewShard(0, 1), // no sharding
+		},
+	).Select(
+		&logical.BinOp{
+			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
+			Right: logical.NewLiteral(types.Timestamp(1742826126000000000)),
+			Op:    types.BinaryOpLt,
+		},
+	).RangeAggregation(
+		logical.NoGrouping,
+		types.RangeAggregationTypeCount,
+		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
+		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
+		0,             // Step
+		time.Minute*5, // Range
+	).BinOpRight(
+		types.BinaryOpDiv, logical.NewLiteral(float64(300)),
+	)
+	b2 := logical.NewBuilder(
+		&logical.MakeTable{
+			Selector: &logical.BinOp{
+				Op: types.BinaryOpAnd,
+				Left: &logical.BinOp{
+					Left:  logical.NewColumnRef("env", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("prod"),
+					Op:    types.BinaryOpEq,
+				},
+				Right: &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("users"),
+					Op:    types.BinaryOpEq,
+				},
+			},
+			Shard: logical.NewShard(0, 1), // no sharding
+		},
+	).Select(
+		&logical.BinOp{
+			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
+			Right: logical.NewLiteral(types.Timestamp(1742826126000000000)),
+			Op:    types.BinaryOpLt,
+		},
+	).RangeAggregation(
+		logical.NoGrouping,
+		types.RangeAggregationTypeCount,
+		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
+		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
+		0,             // Step
+		time.Minute*5, // Range
+	).BinOpRight(
+		types.BinaryOpDiv, logical.NewLiteral(float64(300)),
+	).BinOpRight(
+		types.BinaryOpDiv, b1.Value(),
+	)
+
+	logicalPlan, err := b2.ToPlan()
+	require.NoError(t, err)
+
+	timeStart := time.Now()
+	timeEnd := timeStart.Add(time.Second * 10)
+	catalog := &catalog{
+		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 3}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
+		},
+	}
+	planner := NewPlanner(NewContext(timeStart, timeEnd), catalog)
+
+	physicalPlan, err := planner.Build(logicalPlan)
+	require.NoError(t, err)
+	t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+
+	physicalPlan, err = planner.Optimize(physicalPlan)
+	require.NoError(t, err)
+	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+}
+
+func TestDisambiguateExpression(t *testing.T) {
+	labels := []string{"app", "env"}
+
+	t.Run("resolves ambiguous column to metadata when not in set", func(t *testing.T) {
+		expr := &ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "trace_id",
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		}
+		result, changed := disambiguateExpression(expr, labels)
+		require.True(t, changed)
+		colExpr, ok := result.(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, "trace_id", colExpr.Ref.Column)
+		require.Equal(t, types.ColumnTypeMetadata, colExpr.Ref.Type)
+	})
+
+	t.Run("leaves non-ambiguous columns unchanged", func(t *testing.T) {
+		expr := &ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "app",
+				Type:   types.ColumnTypeLabel,
+			},
+		}
+		result, changed := disambiguateExpression(expr, labels)
+		require.False(t, changed)
+		colExpr, ok := result.(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, "app", colExpr.Ref.Column)
+		require.Equal(t, types.ColumnTypeLabel, colExpr.Ref.Type)
+	})
+
+	t.Run("recursively resolves binary expressions", func(t *testing.T) {
+		expr := &BinaryExpr{
+			Left: &ColumnExpr{
+				Ref: types.ColumnRef{Column: "trace_id", Type: types.ColumnTypeAmbiguous},
+			},
+			Right: NewLiteral("abc123"),
+			Op:    types.BinaryOpEq,
+		}
+		result, changed := disambiguateExpression(expr, labels)
+		require.True(t, changed)
+		binExpr, ok := result.(*BinaryExpr)
+		require.True(t, ok)
+
+		leftCol, ok := binExpr.Left.(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnTypeMetadata, leftCol.Ref.Type)
+	})
+
+	t.Run("handles nil expression", func(t *testing.T) {
+		result, changed := disambiguateExpression(nil, labels)
+		require.False(t, changed)
+		require.Nil(t, result)
+	})
+
+	t.Run("handles nested AND expressions", func(t *testing.T) {
+		expr := &BinaryExpr{
+			Left: &BinaryExpr{
+				Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "trace_id", Type: types.ColumnTypeAmbiguous}},
+				Right: NewLiteral("abc"),
+				Op:    types.BinaryOpEq,
+			},
+			Right: &BinaryExpr{
+				Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "request_id", Type: types.ColumnTypeAmbiguous}},
+				Right: NewLiteral("123"),
+				Op:    types.BinaryOpEq,
+			},
+			Op: types.BinaryOpAnd,
+		}
+		result, changed := disambiguateExpression(expr, labels)
+		require.True(t, changed)
+		binExpr, ok := result.(*BinaryExpr)
+		require.True(t, ok)
+
+		leftBin, ok := binExpr.Left.(*BinaryExpr)
+		require.True(t, ok)
+		leftCol, ok := leftBin.Left.(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnTypeMetadata, leftCol.Ref.Type)
+
+		rightBin, ok := binExpr.Right.(*BinaryExpr)
+		require.True(t, ok)
+		rightCol, ok := rightBin.Left.(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnTypeMetadata, rightCol.Ref.Type)
+	})
+}
+
+func TestPlanner_MetadataColumnResolution(t *testing.T) {
+	timeStart := time.Now()
+	timeEnd := timeStart.Add(time.Second * 10)
+
+	findDataObjTargetPredicates := func(plan *Plan) []Expression {
+		var predicates []Expression
+		for node := range plan.graph.Nodes() {
+			if scanSet, ok := node.(*ScanSet); ok {
+				for _, target := range scanSet.Targets {
+					if target.Type == ScanTypeDataObject && target.DataObject != nil {
+						predicates = append(predicates, target.DataObject.Predicates...)
+					}
+				}
+			}
+		}
+		return predicates
+	}
+
+	findFilterPredicates := func(plan *Plan) []Expression {
+		var predicates []Expression
+		for node := range plan.graph.Nodes() {
+			if filter, ok := node.(*Filter); ok {
+				predicates = append(predicates, filter.Predicates...)
+			}
+		}
+		return predicates
+	}
+
+	var hasColumnType func(expr Expression, colName string, colType types.ColumnType) bool
+	hasColumnType = func(expr Expression, colName string, colType types.ColumnType) bool {
+		switch e := expr.(type) {
+		case *BinaryExpr:
+			return hasColumnType(e.Left, colName, colType) || hasColumnType(e.Right, colName, colType)
+		case *ColumnExpr:
+			return e.Ref.Column == colName && e.Ref.Type == colType
+		}
+		return false
+	}
+
+	t.Run("resolves ambiguous column type to metadata in predicates", func(t *testing.T) {
+		cat := &catalog{
+			sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+				{
+					SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0},
+					StreamIDs:  []int64{1, 2},
+					Start:      timeStart,
+					End:        timeEnd,
+					AmbiguousPredicatesByStream: map[int64][]string{
+						1: {"app", "foo"},
+						2: {"app", "bar"},
+					},
+				},
+			},
+		}
+
+		// Build a query: {app="users"} | trace_id="abc123"
+		// The trace_id filter is ambiguous but should be resolved to metadata when present
+		b := logical.NewBuilder(
+			&logical.MakeTable{
+				Selector: &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("users"),
+					Op:    types.BinaryOpEq,
+				},
+				Predicates: []logical.Value{
+					&logical.BinOp{
+						Left:  logical.NewColumnRef("trace_id", types.ColumnTypeAmbiguous),
+						Right: logical.NewLiteral("abc123"),
+						Op:    types.BinaryOpEq,
+					},
+				},
+				Shard: logical.NewShard(0, 1),
+			},
+		).Select(
+			&logical.BinOp{
+				Left:  logical.NewColumnRef("trace_id", types.ColumnTypeAmbiguous),
+				Right: logical.NewLiteral("abc123"),
+				Op:    types.BinaryOpEq,
+			},
+		)
+
+		logicalPlan, err := b.ToPlan()
+		require.NoError(t, err)
+
+		planner := NewPlanner(NewContext(timeStart, timeEnd), cat)
+		physicalPlan, err := planner.Build(logicalPlan)
+		require.NoError(t, err)
+
+		// After optimization, the metadata predicate should be pushed down to DataObjScan
+		optimizedPlan, err := planner.Optimize(physicalPlan)
+		require.NoError(t, err)
+
+		targetPredicates := findDataObjTargetPredicates(optimizedPlan)
+		require.NotEmpty(t, targetPredicates, "predicate should be pushed to ScanSet after resolution to metadata")
+
+		// Verify the pushed predicate has the column resolved to metadata type
+		foundTraceID := false
+		for _, pred := range targetPredicates {
+			if hasColumnType(pred, "trace_id", types.ColumnTypeMetadata) {
+				foundTraceID = true
+				break
+			}
+		}
+		require.True(t, foundTraceID, "trace_id should be resolved to ColumnTypeMetadata in pushed predicate")
+	})
+
+	t.Run("handles empty labels gracefully", func(t *testing.T) {
+		cat := &catalog{
+			sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+				{
+					SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0},
+					StreamIDs:  []int64{1, 2},
+					Start:      timeStart,
+					End:        timeEnd,
+				},
+			},
+		}
+
+		b := logical.NewBuilder(
+			&logical.MakeTable{
+				Selector: &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("users"),
+					Op:    types.BinaryOpEq,
+				},
+				Predicates: []logical.Value{
+					&logical.BinOp{
+						Left:  logical.NewColumnRef("trace_id", types.ColumnTypeAmbiguous),
+						Right: logical.NewLiteral("abc"),
+						Op:    types.BinaryOpEq,
+					},
+				},
+				Shard: logical.NewShard(0, 1),
+			},
+		).Select(
+			&logical.BinOp{
+				Left:  logical.NewColumnRef("trace_id", types.ColumnTypeAmbiguous),
+				Right: logical.NewLiteral("abc"),
+				Op:    types.BinaryOpEq,
+			},
+		)
+
+		logicalPlan, err := b.ToPlan()
+		require.NoError(t, err)
+
+		planner := NewPlanner(NewContext(timeStart, timeEnd), cat)
+		physicalPlan, err := planner.Build(logicalPlan)
+		require.NoError(t, err)
+
+		optimizedPlan, err := planner.Optimize(physicalPlan)
+		require.NoError(t, err)
+
+		// With no metadata columns, nothing should be resolved and predicate stays in Filter
+		filterPredicates := findFilterPredicates(optimizedPlan)
+		require.NotEmpty(t, filterPredicates, "predicate should stay in Filter when no metadata columns")
+
+		found := false
+		for _, pred := range filterPredicates {
+			if hasColumnType(pred, "trace_id", types.ColumnTypeAmbiguous) {
+				found = true
+				break
+			}
+		}
+		require.True(t, found, "trace_id should remain ColumnTypeAmbiguous when not in metadata")
+	})
 }
 
 func TestPlanner_MakeTable_Ordering(t *testing.T) {
@@ -486,23 +1025,29 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("ascending", func(t *testing.T) {
-		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(ASC), catalog)
+		planner := NewPlanner(NewContext(now, now.Add(time.Minute)).WithDirection(ASC), catalog)
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
 		expectedPlan := &Plan{}
-		parallelize := expectedPlan.graph.Add(&Parallelize{id: "parallelize"})
-		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
+		parallelize := expectedPlan.graph.Add(&Parallelize{})
+		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collisions: []types.ColumnType{types.ColumnTypeLabel}})
 		scanSet := expectedPlan.graph.Add(&ScanSet{
-			id: "scanset",
-
 			// Targets should be added in the order of the scan timestamps
 			// ASC => oldest to newest
 			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, MaxTimeRange: TimeRange{Start: now.Add(-2 * time.Minute), End: now.Add(-45 * time.Second)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, MaxTimeRange: TimeRange{Start: now.Add(-time.Minute), End: now.Add(-30 * time.Second)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, MaxTimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, MaxTimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
 			},
 		})
 
@@ -520,22 +1065,28 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	})
 
 	t.Run("descending", func(t *testing.T) {
-		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(DESC), catalog)
+		planner := NewPlanner(NewContext(now, now.Add(time.Minute)).WithDirection(DESC), catalog)
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
 		expectedPlan := &Plan{}
-		parallelize := expectedPlan.graph.Add(&Parallelize{id: "parallelize"})
-		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
+		parallelize := expectedPlan.graph.Add(&Parallelize{})
+		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collisions: []types.ColumnType{types.ColumnTypeLabel}})
 		scanSet := expectedPlan.graph.Add(&ScanSet{
-			id: "scanset",
-
 			// Targets should be added in the order of the scan timestamps
 			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, MaxTimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, MaxTimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, MaxTimeRange: TimeRange{Start: now.Add(-time.Minute), End: now.Add(-30 * time.Second)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, MaxTimeRange: TimeRange{Start: now.Add(-2 * time.Minute), End: now.Add(-45 * time.Second)},
+				}},
 			},
 		})
 

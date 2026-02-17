@@ -22,38 +22,38 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / ----------------------------------------------------------------------
-// / EXPERIMENTAL: Data structures for sparse tensors
-// / Coordinate (COO) format of sparse tensor index.
-// /
-// / COO's index list are represented as a NxM matrix,
-// / where N is the number of non-zero values,
-// / and M is the number of dimensions of a sparse tensor.
-// /
-// / indicesBuffer stores the location and size of the data of this indices
-// / matrix.  The value type and the stride of the indices matrix is
-// / specified in indicesType and indicesStrides fields.
-// /
-// / For example, let X be a 2x3x4x5 tensor, and it has the following
-// / 6 non-zero values:
-// / ```text
-// /   X[0, 1, 2, 0] := 1
-// /   X[1, 1, 2, 3] := 2
-// /   X[0, 2, 1, 0] := 3
-// /   X[0, 1, 3, 0] := 4
-// /   X[0, 1, 2, 1] := 5
-// /   X[1, 2, 0, 4] := 6
-// / ```
-// / In COO format, the index matrix of X is the following 4x6 matrix:
-// / ```text
-// /   [[0, 0, 0, 0, 1, 1],
-// /    [1, 1, 1, 2, 1, 2],
-// /    [2, 2, 3, 1, 2, 0],
-// /    [0, 1, 0, 0, 3, 4]]
-// / ```
-// / When isCanonical is true, the indices is sorted in lexicographical order
-// / (row-major order), and it does not have duplicated entries.  Otherwise,
-// / the indices may not be sorted, or may have duplicated entries.
+/// ----------------------------------------------------------------------
+/// EXPERIMENTAL: Data structures for sparse tensors
+/// Coordinate (COO) format of sparse tensor index.
+///
+/// COO's index list are represented as a NxM matrix,
+/// where N is the number of non-zero values,
+/// and M is the number of dimensions of a sparse tensor.
+///
+/// indicesBuffer stores the location and size of the data of this indices
+/// matrix.  The value type and the stride of the indices matrix is
+/// specified in indicesType and indicesStrides fields.
+///
+/// For example, let X be a 2x3x4x5 tensor, and it has the following
+/// 6 non-zero values:
+/// ```text
+///   X[0, 1, 2, 0] := 1
+///   X[1, 1, 2, 3] := 2
+///   X[0, 2, 1, 0] := 3
+///   X[0, 1, 3, 0] := 4
+///   X[0, 1, 2, 1] := 5
+///   X[1, 2, 0, 4] := 6
+/// ```
+/// In COO format, the index matrix of X is the following 4x6 matrix:
+/// ```text
+///   [[0, 0, 0, 0, 1, 1],
+///    [1, 1, 1, 2, 1, 2],
+///    [2, 2, 3, 1, 2, 0],
+///    [0, 1, 0, 0, 3, 4]]
+/// ```
+/// When isCanonical is true, the indices is sorted in lexicographical order
+/// (row-major order), and it does not have duplicated entries.  Otherwise,
+/// the indices may not be sorted, or may have duplicated entries.
 type SparseTensorIndexCOO struct {
 	_tab flatbuffers.Table
 }
@@ -65,6 +65,21 @@ func GetRootAsSparseTensorIndexCOO(buf []byte, offset flatbuffers.UOffsetT) *Spa
 	return x
 }
 
+func FinishSparseTensorIndexCOOBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsSparseTensorIndexCOO(buf []byte, offset flatbuffers.UOffsetT) *SparseTensorIndexCOO {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &SparseTensorIndexCOO{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedSparseTensorIndexCOOBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
+}
+
 func (rcv *SparseTensorIndexCOO) Init(buf []byte, i flatbuffers.UOffsetT) {
 	rcv._tab.Bytes = buf
 	rcv._tab.Pos = i
@@ -74,7 +89,7 @@ func (rcv *SparseTensorIndexCOO) Table() flatbuffers.Table {
 	return rcv._tab
 }
 
-// / The type of values in indicesBuffer
+/// The type of values in indicesBuffer
 func (rcv *SparseTensorIndexCOO) IndicesType(obj *Int) *Int {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
 	if o != 0 {
@@ -88,9 +103,9 @@ func (rcv *SparseTensorIndexCOO) IndicesType(obj *Int) *Int {
 	return nil
 }
 
-// / The type of values in indicesBuffer
-// / Non-negative byte offsets to advance one value cell along each dimension
-// / If omitted, default to row-major order (C-like).
+/// The type of values in indicesBuffer
+/// Non-negative byte offsets to advance one value cell along each dimension
+/// If omitted, default to row-major order (C-like).
 func (rcv *SparseTensorIndexCOO) IndicesStrides(j int) int64 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
@@ -108,8 +123,8 @@ func (rcv *SparseTensorIndexCOO) IndicesStridesLength() int {
 	return 0
 }
 
-// / Non-negative byte offsets to advance one value cell along each dimension
-// / If omitted, default to row-major order (C-like).
+/// Non-negative byte offsets to advance one value cell along each dimension
+/// If omitted, default to row-major order (C-like).
 func (rcv *SparseTensorIndexCOO) MutateIndicesStrides(j int, n int64) bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
@@ -119,7 +134,7 @@ func (rcv *SparseTensorIndexCOO) MutateIndicesStrides(j int, n int64) bool {
 	return false
 }
 
-// / The location and size of the indices matrix's data
+/// The location and size of the indices matrix's data
 func (rcv *SparseTensorIndexCOO) IndicesBuffer(obj *Buffer) *Buffer {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
 	if o != 0 {
@@ -133,12 +148,12 @@ func (rcv *SparseTensorIndexCOO) IndicesBuffer(obj *Buffer) *Buffer {
 	return nil
 }
 
-// / The location and size of the indices matrix's data
-// / This flag is true if and only if the indices matrix is sorted in
-// / row-major order, and does not have duplicated entries.
-// / This sort order is the same as of Tensorflow's SparseTensor,
-// / but it is inverse order of SciPy's canonical coo_matrix
-// / (SciPy employs column-major order for its coo_matrix).
+/// The location and size of the indices matrix's data
+/// This flag is true if and only if the indices matrix is sorted in
+/// row-major order, and does not have duplicated entries.
+/// This sort order is the same as of Tensorflow's SparseTensor,
+/// but it is inverse order of SciPy's canonical coo_matrix
+/// (SciPy employs column-major order for its coo_matrix).
 func (rcv *SparseTensorIndexCOO) IsCanonical() bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(10))
 	if o != 0 {
@@ -147,11 +162,11 @@ func (rcv *SparseTensorIndexCOO) IsCanonical() bool {
 	return false
 }
 
-// / This flag is true if and only if the indices matrix is sorted in
-// / row-major order, and does not have duplicated entries.
-// / This sort order is the same as of Tensorflow's SparseTensor,
-// / but it is inverse order of SciPy's canonical coo_matrix
-// / (SciPy employs column-major order for its coo_matrix).
+/// This flag is true if and only if the indices matrix is sorted in
+/// row-major order, and does not have duplicated entries.
+/// This sort order is the same as of Tensorflow's SparseTensor,
+/// but it is inverse order of SciPy's canonical coo_matrix
+/// (SciPy employs column-major order for its coo_matrix).
 func (rcv *SparseTensorIndexCOO) MutateIsCanonical(n bool) bool {
 	return rcv._tab.MutateBoolSlot(10, n)
 }

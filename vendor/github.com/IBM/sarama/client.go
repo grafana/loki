@@ -866,22 +866,7 @@ func (client *client) getOffset(topic string, partitionID int32, timestamp int64
 		return -1, err
 	}
 
-	request := &OffsetRequest{}
-	if client.conf.Version.IsAtLeast(V2_1_0_0) {
-		// Version 4 adds the current leader epoch, which is used for fencing.
-		request.Version = 4
-	} else if client.conf.Version.IsAtLeast(V2_0_0_0) {
-		// Version 3 is the same as version 2.
-		request.Version = 3
-	} else if client.conf.Version.IsAtLeast(V0_11_0_0) {
-		// Version 2 adds the isolation level, which is used for transactional reads.
-		request.Version = 2
-	} else if client.conf.Version.IsAtLeast(V0_10_1_0) {
-		// Version 1 removes MaxNumOffsets.  From this version forward, only a single
-		// offset can be returned.
-		request.Version = 1
-	}
-
+	request := NewOffsetRequest(client.conf.Version)
 	request.AddBlock(topic, partitionID, timestamp, 1)
 
 	response, err := broker.GetAvailableOffsets(request)

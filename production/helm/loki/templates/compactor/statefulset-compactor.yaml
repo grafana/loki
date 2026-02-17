@@ -69,7 +69,7 @@ spec:
       {{- end }}
       {{- include "loki.compactorPriorityClassName" . | nindent 6 }}
       securityContext:
-        {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.compactor.terminationGracePeriodSeconds }}
       {{- with .Values.compactor.initContainers }}
       initContainers:
@@ -111,6 +111,7 @@ spec:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           {{- include "loki.compactor.readinessProbe" . | nindent 10 }}
           {{- include "loki.compactor.livenessProbe" . | nindent 10 }}
+          {{- include "loki.compactor.startupProbe" . | nindent 10 }}
           volumeMounts:
             - name: temp
               mountPath: /tmp
@@ -194,6 +195,9 @@ spec:
           {{- toYaml .accessModes | nindent 10 }}
         {{- with .storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        {{- with .volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
         {{- end }}
         resources:
           requests:

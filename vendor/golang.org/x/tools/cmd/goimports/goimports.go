@@ -20,6 +20,7 @@ import (
 	"runtime/pprof"
 	"strings"
 
+	"golang.org/x/telemetry/counter"
 	"golang.org/x/tools/internal/gocommand"
 	"golang.org/x/tools/internal/imports"
 )
@@ -198,6 +199,9 @@ func walkDir(path string) {
 }
 
 func main() {
+	// is anyone using this command?
+	counter.Open()
+	counter.Inc("tools/cmd:goimports")
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	// call gofmtMain in a separate function

@@ -1,6 +1,6 @@
 Package validator
 =================
-<img align="right" src="logo.png">![Project status](https://img.shields.io/badge/version-10.25.0-green.svg)
+<img align="right" src="logo.png">[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/go-playground/validator)](https://github.com/go-playground/validator/releases)
 [![Build Status](https://github.com/go-playground/validator/actions/workflows/workflow.yml/badge.svg)](https://github.com/go-playground/validator/actions)
 [![Coverage Status](https://coveralls.io/repos/go-playground/validator/badge.svg?branch=master&service=github)](https://coveralls.io/github/go-playground/validator?branch=master)
 [![Go Report Card](https://goreportcard.com/badge/github.com/go-playground/validator)](https://goreportcard.com/report/github.com/go-playground/validator)
@@ -106,8 +106,9 @@ validate := validator.New(validator.WithRequiredStructEnabled())
 | datauri | Data URL |
 | fqdn | Full Qualified Domain Name (FQDN) |
 | hostname | Hostname RFC 952 |
-| hostname_port | HostPort |
 | hostname_rfc1123 | Hostname RFC 1123 |
+| hostname_port | HostPort |
+| port | Port number |
 | ip | Internet Protocol Address IP |
 | ip4_addr | Internet Protocol Address IPv4 |
 | ip6_addr | Internet Protocol Address IPv6 |
@@ -124,7 +125,8 @@ validate := validator.New(validator.WithRequiredStructEnabled())
 | unix_addr | Unix domain socket end point Address |
 | uri | URI String |
 | url | URL String |
-| http_url | HTTP URL String |
+| http_url | HTTP(s) URL String |
+| https_url | HTTPS-only URL String |
 | url_encoded | URL Encoded |
 | urn_rfc2141 | Urn RFC 2141 String |
 
@@ -133,6 +135,7 @@ validate := validator.New(validator.WithRequiredStructEnabled())
 | Tag | Description |
 | - | - |
 | alpha | Alpha Only |
+| alphaspace | Alpha Space |
 | alphanum | Alphanumeric |
 | alphanumunicode | Alphanumeric Unicode |
 | alphaunicode | Alpha Unicode |
@@ -262,6 +265,8 @@ validate := validator.New(validator.WithRequiredStructEnabled())
 | excluded_without | Excluded Without |
 | excluded_without_all | Excluded Without All |
 | unique | Unique |
+| validateFn | Verify if the method `Validate() error` does not return an error (or any specified method) |
+
 
 #### Aliases:
 | Tag | Description |

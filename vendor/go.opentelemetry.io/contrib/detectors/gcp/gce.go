@@ -11,10 +11,9 @@ import (
 	"strings"
 
 	"cloud.google.com/go/compute/metadata"
-
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 // GCE collects resource information of GCE computing instances.
@@ -26,7 +25,7 @@ type GCE struct{}
 var _ resource.Detector = (*GCE)(nil)
 
 // Detect detects associated resources when running on GCE hosts.
-func (gce *GCE) Detect(ctx context.Context) (*resource.Resource, error) {
+func (*GCE) Detect(ctx context.Context) (*resource.Resource, error) {
 	if !metadata.OnGCE() {
 		return nil, nil
 	}

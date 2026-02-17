@@ -1,6 +1,10 @@
 package sarama
 
-import "github.com/rcrowley/go-metrics"
+import (
+	"time"
+
+	"github.com/rcrowley/go-metrics"
+)
 
 // PacketEncoder is the interface providing helpers for writing with Kafka's encoding rules.
 // Types implementing Encoder only need to worry about calling methods like PutString,
@@ -14,24 +18,21 @@ type packetEncoder interface {
 	putVarint(in int64)
 	putUVarint(in uint64)
 	putFloat64(in float64)
-	putCompactArrayLength(in int)
 	putArrayLength(in int) error
 	putBool(in bool)
+	putKError(in KError)
+	putDurationMs(in time.Duration)
 
 	// Collections
 	putBytes(in []byte) error
 	putVarintBytes(in []byte) error
-	putCompactBytes(in []byte) error
 	putRawBytes(in []byte) error
-	putCompactString(in string) error
-	putNullableCompactString(in *string) error
 	putString(in string) error
 	putNullableString(in *string) error
 	putStringArray(in []string) error
-	putCompactInt32Array(in []int32) error
-	putNullableCompactInt32Array(in []int32) error
 	putInt32Array(in []int32) error
 	putInt64Array(in []int64) error
+	putNullableInt32Array(in []int32) error
 	putEmptyTaggedFieldArray()
 
 	// Provide the current offset to record the batch size metric

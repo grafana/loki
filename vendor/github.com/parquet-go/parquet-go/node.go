@@ -491,14 +491,33 @@ func fieldByName(node Node, name string) Field {
 	return nil
 }
 
+// findByPath navigates the node tree to find the node at the given path.
+// Returns nil if the path doesn't exist.
+// The path is a sequence of field names to traverse.
+func findByPath(node Node, path []string) Node {
+	for _, name := range path {
+		field := fieldByName(node, name)
+		if field == nil {
+			return nil
+		}
+		node = field
+	}
+	return node
+}
+
 // EqualNodes returns true if node1 and node2 are equal.
 //
-// Nodes that are not of the same repetition type (optional, required, repeated) or
-// of the same hierarchical type (leaf, group) are considered not equal.
+// Nodes that are not of the same repetition type (optional, required, repeated)
+// or of the same hierarchical type (leaf, group) are considered not equal.
 // Leaf nodes are considered equal if they are of the same data type.
-// Group nodes are considered equal if their fields have the same names and are recursively equal.
 //
-// Note that the encoding and compression of the nodes are not considered by this function.
+// Groups are compared recursively, taking the order of fields into account
+// (because it influences the column index of each leaf node), and comparing
+// their logical types: for example, a MAP node is not equal to a GROUP node
+// with the same fields, because MAP nodes have a specific logical type.
+//
+// Note that the encoding and compression of the nodes are not considered by this
+// function.
 func EqualNodes(node1, node2 Node) bool {
 	if node1.Leaf() {
 		return node2.Leaf() && leafNodesAreEqual(node1, node2)
@@ -507,10 +526,20 @@ func EqualNodes(node1, node2 Node) bool {
 	}
 }
 
-func typesAreEqual(type1, type2 Type) bool {
-	return type1.Kind() == type2.Kind() &&
-		type1.Length() == type2.Length() &&
-		reflect.DeepEqual(type1.LogicalType(), type2.LogicalType())
+// SameNodes returns true if node1 and node2 are equivalent, ignoring field order.
+//
+// Unlike EqualNodes, this function considers nodes with the same fields in different
+// orders as equivalent. This is useful when comparing schemas that may have been
+// reordered by operations like MergeNodes.
+//
+// For leaf nodes, this behaves identically to EqualNodes.
+// For group nodes, this compares fields by name rather than position.
+func SameNodes(node1, node2 Node) bool {
+	if node1.Leaf() {
+		return node2.Leaf() && leafNodesAreEqual(node1, node2)
+	} else {
+		return !node2.Leaf() && groupNodesAreSame(node1, node2)
+	}
 }
 
 func repetitionsAreEqual(node1, node2 Node) bool {
@@ -518,33 +547,72 @@ func repetitionsAreEqual(node1, node2 Node) bool {
 }
 
 func leafNodesAreEqual(node1, node2 Node) bool {
-	return typesAreEqual(node1.Type(), node2.Type()) && repetitionsAreEqual(node1, node2)
+	return EqualTypes(node1.Type(), node2.Type()) && repetitionsAreEqual(node1, node2)
 }
 
 func groupNodesAreEqual(node1, node2 Node) bool {
 	fields1 := node1.Fields()
 	fields2 := node2.Fields()
-
 	if len(fields1) != len(fields2) {
 		return false
 	}
-
 	if !repetitionsAreEqual(node1, node2) {
 		return false
 	}
+	if !fieldsAreEqual(fields1, fields2, EqualNodes) {
+		return false
+	}
+	return equalLogicalTypes(node1.Type(), node2.Type())
+}
 
+func groupNodesAreSame(node1, node2 Node) bool {
+	fields1 := node1.Fields()
+	fields2 := node2.Fields()
+	if len(fields1) != len(fields2) {
+		return false
+	}
+	if !repetitionsAreEqual(node1, node2) {
+		return false
+	}
+	if !fieldsAreSorted(fields1) {
+		fields1 = slices.Clone(fields1)
+		sortFields(fields1)
+	}
+	if !fieldsAreSorted(fields2) {
+		fields2 = slices.Clone(fields2)
+		sortFields(fields2)
+	}
+	if !fieldsAreEqual(fields1, fields2, SameNodes) {
+		return false
+	}
+	return equalLogicalTypes(node1.Type(), node2.Type())
+}
+
+func fieldsAreEqual(fields1, fields2 []Field, equal func(Node, Node) bool) bool {
+	if len(fields1) != len(fields2) {
+		return false
+	}
 	for i := range fields1 {
-		f1 := fields1[i]
-		f2 := fields2[i]
-
-		if f1.Name() != f2.Name() {
-			return false
-		}
-
-		if !EqualNodes(f1, f2) {
+		if fields1[i].Name() != fields2[i].Name() {
 			return false
 		}
 	}
-
+	for i := range fields1 {
+		if !equal(fields1[i], fields2[i]) {
+			return false
+		}
+	}
 	return true
+}
+
+func fieldsAreSorted(fields []Field) bool {
+	return slices.IsSortedFunc(fields, compareFields)
+}
+
+func sortFields(fields []Field) {
+	slices.SortFunc(fields, compareFields)
+}
+
+func compareFields(a, b Field) int {
+	return strings.Compare(a.Name(), b.Name())
 }

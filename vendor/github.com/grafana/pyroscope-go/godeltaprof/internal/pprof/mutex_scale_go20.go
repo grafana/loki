@@ -12,6 +12,6 @@ func ScaleMutexProfile(_ MutexProfileScaler, cnt int64, ns float64) (int64, floa
 	return cnt, ns
 }
 
-var ScalerMutexProfile = MutexProfileScaler{}
+var ScalerMutexProfile = MutexProfileScaler{} //nolint:gochecknoglobals
 
-var ScalerBlockProfile = MutexProfileScaler{}
+var ScalerBlockProfile = MutexProfileScaler{} //nolint:gochecknoglobals

@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
@@ -76,15 +77,17 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 		logger,
 	)
 	// Set up the assigned partitions cache.
-	var assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
 	if cfg.AssignedPartitionsCacheTTL == 0 {
 		// When the TTL is 0, the cache is disabled.
-		assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
+		f.assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
 	} else {
-		assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
+		f.assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
 	}
-	f.assignedPartitionsCache = assignedPartitionsCache
-	f.limitsClient = newRingLimitsClient(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger, reg)
+	// Set up the limits client.
+	f.limitsClient = newRingLimitsClient(limitsRing, clientPool, cfg.NumPartitions, f.assignedPartitionsCache, logger, reg)
+	if cfg.CacheTTL > 0 {
+		f.limitsClient = newCacheLimitsClient(cfg.CacheTTL, cfg.CacheTTLJitter, bloom.NewWithEstimates(1000000, 0.01), f.limitsClient)
+	}
 	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
@@ -135,6 +138,25 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 		}
 	}
 	return &proto.ExceedsLimitsResponse{Results: results}, nil
+}
+
+func (f *Frontend) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
+	results := make([]*proto.UpdateRatesResult, 0, len(req.Streams))
+	resps, err := f.limitsClient.UpdateRates(ctx, req)
+	if err != nil {
+		// If the entire call failed, then all streams failed.
+		for _, stream := range req.Streams {
+			results = append(results, &proto.UpdateRatesResult{
+				StreamHash: stream.StreamHash,
+				Rate:       0,
+			})
+		}
+	} else {
+		for _, resp := range resps {
+			results = append(results, resp.Results...)
+		}
+	}
+	return &proto.UpdateRatesResponse{Results: results}, nil
 }
 
 func (f *Frontend) CheckReady(ctx context.Context) error {

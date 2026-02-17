@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -185,9 +186,9 @@ func (b *Client) GetProperties(ctx context.Context, options *GetPropertiesOption
 
 // SetHTTPHeaders changes a blob's HTTP headers.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/set-blob-properties.
-func (b *Client) SetHTTPHeaders(ctx context.Context, HTTPHeaders HTTPHeaders, o *SetHTTPHeadersOptions) (SetHTTPHeadersResponse, error) {
+func (b *Client) SetHTTPHeaders(ctx context.Context, httpHeaders HTTPHeaders, o *SetHTTPHeadersOptions) (SetHTTPHeadersResponse, error) {
 	opts, leaseAccessConditions, modifiedAccessConditions := o.format()
-	resp, err := b.generated().SetHTTPHeaders(ctx, opts, &HTTPHeaders, leaseAccessConditions, modifiedAccessConditions)
+	resp, err := b.generated().SetHTTPHeaders(ctx, opts, &httpHeaders, leaseAccessConditions, modifiedAccessConditions)
 	return resp, err
 }
 
@@ -334,7 +335,8 @@ func (b *Client) downloadBuffer(ctx context.Context, writer io.WriterAt, o downl
 	if o.BlockSize == 0 {
 		o.BlockSize = DefaultDownloadBlockSize
 	}
-
+	dataDownloaded := int64(0)
+	computeReadLength := true
 	count := o.Range.Count
 	if count == CountToEnd { // If size not specified, calculate it
 		// If we don't have the length at all, get it
@@ -343,6 +345,8 @@ func (b *Client) downloadBuffer(ctx context.Context, writer io.WriterAt, o downl
 			return 0, err
 		}
 		count = *gr.ContentLength - o.Range.Offset
+		dataDownloaded = count
+		computeReadLength = false
 	}
 
 	if count <= 0 {
@@ -387,6 +391,9 @@ func (b *Client) downloadBuffer(ctx context.Context, writer io.WriterAt, o downl
 			if err != nil {
 				return err
 			}
+			if computeReadLength {
+				atomic.AddInt64(&dataDownloaded, *dr.ContentLength)
+			}
 			err = body.Close()
 			return err
 		},
@@ -394,7 +401,7 @@ func (b *Client) downloadBuffer(ctx context.Context, writer io.WriterAt, o downl
 	if err != nil {
 		return 0, err
 	}
-	return count, nil
+	return dataDownloaded, nil
 }
 
 // DownloadStream reads a range of bytes from a blob. The response also includes the blob's properties and metadata.
@@ -448,6 +455,7 @@ func (b *Client) DownloadFile(ctx context.Context, file *os.File, o *DownloadFil
 			return 0, err
 		}
 		size = *props.ContentLength - do.Range.Offset
+		do.Range.Count = size
 	} else {
 		size = count
 	}

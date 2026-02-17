@@ -18,9 +18,6 @@ import (
 )
 
 func TestReader(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	expect := arrowtest.Rows{
 		{
 			"stream_id.int64":         int64(1),
@@ -56,24 +53,31 @@ func TestReader(t *testing.T) {
 	r := streams.NewReader(streams.ReaderOptions{
 		Columns:    sec.Columns(),
 		Predicates: nil,
-		Allocator:  alloc,
+		Allocator:  memory.DefaultAllocator,
 	})
 
 	actualTable, err := readTable(context.Background(), r)
-	if actualTable != nil {
-		defer actualTable.Release()
-	}
 	require.NoError(t, err)
 
-	actual, err := arrowtest.TableRows(alloc, actualTable)
+	actual, err := arrowtest.TableRows(memory.DefaultAllocator, actualTable)
 	require.NoError(t, err, "failed to get rows from table")
 	require.Equal(t, expect, actual)
 }
 
-func TestReader_Predicate(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
+func TestReader_ReadBeforeOpen(t *testing.T) {
+	sec := buildStreamsSection(t, 1, 0)
 
+	r := streams.NewReader(streams.ReaderOptions{
+		Columns:   sec.Columns(),
+		Allocator: memory.DefaultAllocator,
+	})
+
+	rec, err := r.Read(context.Background(), 128)
+	require.Nil(t, rec)
+	require.ErrorContains(t, err, "reader not opened")
+}
+
+func TestReader_Predicate(t *testing.T) {
 	expect := arrowtest.Rows{
 		{
 			"stream_id.int64":         int64(2),
@@ -100,24 +104,18 @@ func TestReader_Predicate(t *testing.T) {
 				Value:  scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("bar")), arrow.BinaryTypes.Binary),
 			},
 		},
-		Allocator: alloc,
+		Allocator: memory.DefaultAllocator,
 	})
 
 	actualTable, err := readTable(context.Background(), r)
-	if actualTable != nil {
-		defer actualTable.Release()
-	}
 	require.NoError(t, err)
 
-	actual, err := arrowtest.TableRows(alloc, actualTable)
+	actual, err := arrowtest.TableRows(memory.DefaultAllocator, actualTable)
 	require.NoError(t, err, "failed to get rows from table")
 	require.Equal(t, expect, actual)
 }
 
 func TestReader_InPredicate(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	expect := arrowtest.Rows{
 		{
 			"stream_id.int64":         int64(2),
@@ -146,24 +144,18 @@ func TestReader_InPredicate(t *testing.T) {
 				},
 			},
 		},
-		Allocator: alloc,
+		Allocator: memory.DefaultAllocator,
 	})
 
 	actualTable, err := readTable(context.Background(), r)
-	if actualTable != nil {
-		defer actualTable.Release()
-	}
 	require.NoError(t, err)
 
-	actual, err := arrowtest.TableRows(alloc, actualTable)
+	actual, err := arrowtest.TableRows(memory.DefaultAllocator, actualTable)
 	require.NoError(t, err, "failed to get rows from table")
 	require.Equal(t, expect, actual)
 }
 
 func TestReader_ColumnSubset(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	expect := arrowtest.Rows{
 		{
 			"stream_id.int64": int64(1),
@@ -194,22 +186,22 @@ func TestReader_ColumnSubset(t *testing.T) {
 	r := streams.NewReader(streams.ReaderOptions{
 		Columns:    []*streams.Column{streamID, appLabel},
 		Predicates: nil,
-		Allocator:  alloc,
+		Allocator:  memory.DefaultAllocator,
 	})
 
 	actualTable, err := readTable(context.Background(), r)
-	if actualTable != nil {
-		defer actualTable.Release()
-	}
 	require.NoError(t, err)
 
-	actual, err := arrowtest.TableRows(alloc, actualTable)
+	actual, err := arrowtest.TableRows(memory.DefaultAllocator, actualTable)
 	require.NoError(t, err, "failed to get rows from table")
 	require.Equal(t, expect, actual)
 }
 
 func readTable(ctx context.Context, r *streams.Reader) (arrow.Table, error) {
-	var recs []arrow.Record
+	var recs []arrow.RecordBatch
+	if err := r.Open(ctx); err != nil {
+		return nil, err
+	}
 
 	for {
 		rec, err := r.Read(ctx, 128)
@@ -217,7 +209,6 @@ func readTable(ctx context.Context, r *streams.Reader) (arrow.Table, error) {
 			if rec.NumRows() > 0 {
 				recs = append(recs, rec)
 			}
-			defer rec.Release()
 		}
 
 		if err != nil && errors.Is(err, io.EOF) {

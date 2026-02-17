@@ -388,7 +388,7 @@ type HookFetchRecordBuffered interface {
 //
 // Note that this hook may slow down high-volume consuming a bit.
 type HookFetchRecordUnbuffered interface {
-	// OnFetchRecordUnbuffered is passwed a record that is being
+	// OnFetchRecordUnbuffered is passed a record that is being
 	// "unbuffered" within the client, and whether the record is being
 	// returned from polling.
 	OnFetchRecordUnbuffered(r *Record, polled bool)

@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/testutils"
+
 	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
 )
 
@@ -159,7 +161,7 @@ func Test_TargetRun(t *testing.T) {
 					closed = true
 				},
 			)
-			tg := NewTarget(nil, session, claim, tt.inDiscoveredLS, tt.inLS, tt.relabels, fc, true, messageParser{})
+			tg := NewTarget(nil, session, claim, tt.inDiscoveredLS, tt.inLS, testutils.ValidateRelabelConfig(t, tt.relabels), fc, true, messageParser{})
 
 			var wg sync.WaitGroup
 			wg.Add(1)

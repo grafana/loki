@@ -8,6 +8,13 @@ type responseHeader struct {
 }
 
 func (r *responseHeader) decode(pd packetDecoder, version int16) (err error) {
+	if version >= 1 {
+		if decoder, ok := pd.(*realDecoder); ok {
+			pd = &realFlexibleDecoder{decoder}
+		} else {
+			return PacketDecodingError{"failed to instantiate flexible decoder"}
+		}
+	}
 	r.length, err = pd.getInt32()
 	if err != nil {
 		return err
@@ -17,12 +24,10 @@ func (r *responseHeader) decode(pd packetDecoder, version int16) (err error) {
 	}
 
 	r.correlationID, err = pd.getInt32()
-
-	if version >= 1 {
-		if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
-			return err
-		}
+	if err != nil {
+		return err
 	}
 
+	_, err = pd.getEmptyTaggedFieldArray()
 	return err
 }

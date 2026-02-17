@@ -20,7 +20,7 @@ import (
 // tables are open at a time.
 //
 // mergeTablesIncremental panics if maxMergeSize is less than 2.
-func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table, maxMergeSize int, sort SortOrder) (*table, error) {
+func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, maxMergeSize int, sort SortOrder) (*table, error) {
 	if maxMergeSize < 2 {
 		panic("mergeTablesIncremental: merge size must be at least 2, got " + fmt.Sprint(maxMergeSize))
 	}
@@ -53,7 +53,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 
 // mergeTables merges the provided sorted tables into a new single sorted table
 // using k-way merge.
-func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table, sort SortOrder) (*table, error) {
+func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, sort SortOrder) (*table, error) {
 	buf.Reset()
 
 	var (
@@ -69,13 +69,16 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts d
 			return nil, err
 		}
 
-		r := dataset.NewReader(dataset.ReaderOptions{
+		r := dataset.NewRowReader(dataset.RowReaderOptions{
 			Dataset: t,
 			Columns: dsetColumns,
 
 			// The table is in memory, so don't prefetch.
 			Prefetch: false,
 		})
+		if err := r.Open(context.Background()); err != nil {
+			return nil, fmt.Errorf("opening dataset row reader: %w", err)
+		}
 
 		tableSequences = append(tableSequences, &tableSequence{
 			columns:         dsetColumns,
@@ -150,7 +153,7 @@ var _ loser.Sequence = (*tableSequence)(nil)
 func tableSequenceAt(seq *tableSequence) result.Result[dataset.Row] { return seq.At() }
 func tableSequenceClose(seq *tableSequence)                         { seq.Close() }
 
-func NewDatasetSequence(r *dataset.Reader, bufferSize int) DatasetSequence {
+func NewDatasetSequence(r *dataset.RowReader, bufferSize int) DatasetSequence {
 	return DatasetSequence{
 		r:   r,
 		buf: make([]dataset.Row, bufferSize),
@@ -160,7 +163,7 @@ func NewDatasetSequence(r *dataset.Reader, bufferSize int) DatasetSequence {
 type DatasetSequence struct {
 	curValue result.Result[dataset.Row]
 
-	r *dataset.Reader
+	r *dataset.RowReader
 
 	buf  []dataset.Row
 	off  int // Offset into buf

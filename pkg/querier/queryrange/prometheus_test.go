@@ -14,8 +14,11 @@ import (
 
 var emptyStats = `"stats": {
 	"index": {
+		"bloomFilterTime": 0,
+		"chunkRefsLookupTime": 0,
 		"postFilterChunks": 0,
 		"totalChunks": 0,
+		"totalStreams": 0,
 		"shardsDuration": 0,
 		"usedBloomFilters": false
 	},
@@ -62,6 +65,7 @@ var emptyStats = `"stats": {
 		"totalReached": 0
 	},
 	"querier": {
+		"querierExecTime": 0,
 		"store": {
 			"chunksDownloadTime": 0,
 			"congestionControlLatency": 0,

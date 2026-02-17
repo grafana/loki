@@ -374,7 +374,7 @@ func (w *Storage) Truncate(mint int64) error {
 		return nil
 	}
 
-	keep := func(id chunks.HeadSeriesRef, _ int) bool {
+	keep := func(id chunks.HeadSeriesRef) bool {
 		if w.series.getByID(id) != nil {
 			return true
 		}
@@ -668,6 +668,16 @@ func (a *appender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64
 
 func (a *appender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	// TODO: support histogram created timestamps
+	return 0, nil
+}
+
+func (a *appender) AppendHistogramSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	// TODO: support histogram start timestamps
+	return 0, nil
+}
+
+func (a *appender) AppendSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
+	// TODO: support start timestamps
 	return 0, nil
 }
 

@@ -8,8 +8,6 @@ package pmetric
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	"go.opentelemetry.io/collector/pdata/internal/data"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -24,11 +22,11 @@ import (
 // Must use NewExemplar function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type Exemplar struct {
-	orig  *otlpmetrics.Exemplar
+	orig  *internal.Exemplar
 	state *internal.State
 }
 
-func newExemplar(orig *otlpmetrics.Exemplar, state *internal.State) Exemplar {
+func newExemplar(orig *internal.Exemplar, state *internal.State) Exemplar {
 	return Exemplar{orig: orig, state: state}
 }
 
@@ -37,7 +35,7 @@ func newExemplar(orig *otlpmetrics.Exemplar, state *internal.State) Exemplar {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewExemplar() Exemplar {
-	return newExemplar(internal.NewOrigExemplar(), internal.NewState())
+	return newExemplar(internal.NewExemplar(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -49,13 +47,13 @@ func (ms Exemplar) MoveTo(dest Exemplar) {
 	if ms.orig == dest.orig {
 		return
 	}
-	internal.DeleteOrigExemplar(dest.orig, false)
+	internal.DeleteExemplar(dest.orig, false)
 	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // FilteredAttributes returns the FilteredAttributes associated with this Exemplar.
 func (ms Exemplar) FilteredAttributes() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.FilteredAttributes, ms.state))
+	return pcommon.Map(internal.NewMapWrapper(&ms.orig.FilteredAttributes, ms.state))
 }
 
 // Timestamp returns the timestamp associated with this Exemplar.
@@ -73,9 +71,9 @@ func (ms Exemplar) SetTimestamp(v pcommon.Timestamp) {
 // Calling this function on zero-initialized Exemplar will cause a panic.
 func (ms Exemplar) ValueType() ExemplarValueType {
 	switch ms.orig.Value.(type) {
-	case *otlpmetrics.Exemplar_AsDouble:
+	case *internal.Exemplar_AsDouble:
 		return ExemplarValueTypeDouble
-	case *otlpmetrics.Exemplar_AsInt:
+	case *internal.Exemplar_AsInt:
 		return ExemplarValueTypeInt
 	}
 	return ExemplarValueTypeEmpty
@@ -89,17 +87,15 @@ func (ms Exemplar) DoubleValue() float64 {
 // SetDoubleValue replaces the double associated with this Exemplar.
 func (ms Exemplar) SetDoubleValue(v float64) {
 	ms.state.AssertMutable()
-	var ov *otlpmetrics.Exemplar_AsDouble
+	var ov *internal.Exemplar_AsDouble
 	if !internal.UseProtoPooling.IsEnabled() {
-		ov = &otlpmetrics.Exemplar_AsDouble{}
+		ov = &internal.Exemplar_AsDouble{}
 	} else {
-		ov = internal.ProtoPoolExemplar_AsDouble.Get().(*otlpmetrics.Exemplar_AsDouble)
+		ov = internal.ProtoPoolExemplar_AsDouble.Get().(*internal.Exemplar_AsDouble)
 	}
 	ov.AsDouble = v
 	ms.orig.Value = ov
-}
-
-// IntValue returns the int associated with this Exemplar.
+} // IntValue returns the int associated with this Exemplar.
 func (ms Exemplar) IntValue() int64 {
 	return ms.orig.GetAsInt()
 }
@@ -107,25 +103,14 @@ func (ms Exemplar) IntValue() int64 {
 // SetIntValue replaces the int associated with this Exemplar.
 func (ms Exemplar) SetIntValue(v int64) {
 	ms.state.AssertMutable()
-	var ov *otlpmetrics.Exemplar_AsInt
+	var ov *internal.Exemplar_AsInt
 	if !internal.UseProtoPooling.IsEnabled() {
-		ov = &otlpmetrics.Exemplar_AsInt{}
+		ov = &internal.Exemplar_AsInt{}
 	} else {
-		ov = internal.ProtoPoolExemplar_AsInt.Get().(*otlpmetrics.Exemplar_AsInt)
+		ov = internal.ProtoPoolExemplar_AsInt.Get().(*internal.Exemplar_AsInt)
 	}
 	ov.AsInt = v
 	ms.orig.Value = ov
-}
-
-// SpanID returns the spanid associated with this Exemplar.
-func (ms Exemplar) SpanID() pcommon.SpanID {
-	return pcommon.SpanID(ms.orig.SpanId)
-}
-
-// SetSpanID replaces the spanid associated with this Exemplar.
-func (ms Exemplar) SetSpanID(v pcommon.SpanID) {
-	ms.state.AssertMutable()
-	ms.orig.SpanId = data.SpanID(v)
 }
 
 // TraceID returns the traceid associated with this Exemplar.
@@ -136,11 +121,22 @@ func (ms Exemplar) TraceID() pcommon.TraceID {
 // SetTraceID replaces the traceid associated with this Exemplar.
 func (ms Exemplar) SetTraceID(v pcommon.TraceID) {
 	ms.state.AssertMutable()
-	ms.orig.TraceId = data.TraceID(v)
+	ms.orig.TraceId = internal.TraceID(v)
+}
+
+// SpanID returns the spanid associated with this Exemplar.
+func (ms Exemplar) SpanID() pcommon.SpanID {
+	return pcommon.SpanID(ms.orig.SpanId)
+}
+
+// SetSpanID replaces the spanid associated with this Exemplar.
+func (ms Exemplar) SetSpanID(v pcommon.SpanID) {
+	ms.state.AssertMutable()
+	ms.orig.SpanId = internal.SpanID(v)
 }
 
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Exemplar) CopyTo(dest Exemplar) {
 	dest.state.AssertMutable()
-	internal.CopyOrigExemplar(dest.orig, ms.orig)
+	internal.CopyExemplar(dest.orig, ms.orig)
 }

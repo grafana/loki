@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/kv"
@@ -83,6 +84,8 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 							Store: "inmemory",
 						},
 					},
+					HeartbeatPeriod:  time.Millisecond,
+					HeartbeatTimeout: time.Millisecond,
 				},
 			}, "test", readRing, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)

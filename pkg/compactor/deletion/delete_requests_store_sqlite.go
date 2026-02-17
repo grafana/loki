@@ -76,8 +76,12 @@ const (
 	// while listing requests for query-time filtering, consider only the requests which are unprocessed or
 	// a specific duration has elapsed since they completed, to let the index updates get propagated.
 	sqlSelectUserRequestsForQueryTimeFiltering = `SELECT * FROM requests WHERE user_id = ? AND (completed_at IS NULL OR completed_at > ?);`
-	sqlSelectCacheGen                          = `SELECT gen_num FROM cache_gen WHERE user_id = ?;`
-	sqlGetUnprocessedShards                    = `SELECT dr.id, dr.user_id, dr.created_at, sh.start_time, sh.end_time, dr.query
+	// Get all delete requests for a user that overlap with the given time range, regardless of status.
+	sqlSelectUserRequestsForTimeRange = `SELECT * FROM requests WHERE user_id = ? AND start_time <= ? AND end_time >= ?;`
+	// Combine query-time filtering with time range overlap filtering.
+	sqlSelectUserRequestsForQueryTimeFilteringWithTimeRange = `SELECT * FROM requests WHERE user_id = ? AND (completed_at IS NULL OR completed_at > ?) AND start_time <= ? AND end_time >= ?;`
+	sqlSelectCacheGen                                       = `SELECT gen_num FROM cache_gen WHERE user_id = ?;`
+	sqlGetUnprocessedShards                                 = `SELECT dr.id, dr.user_id, dr.created_at, sh.start_time, sh.end_time, dr.query
                               FROM shards sh
                               JOIN requests dr ON sh.id = dr.id`
 	sqlCountDeleteRequests   = `SELECT COUNT(*) FROM requests;`
@@ -431,10 +435,24 @@ func (ds *deleteRequestsStoreSQLite) GetAllRequests(ctx context.Context) ([]dele
 }
 
 // GetAllDeleteRequestsForUser returns all delete requests for a user.
-func (ds *deleteRequestsStoreSQLite) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool) ([]deletionproto.DeleteRequest, error) {
+func (ds *deleteRequestsStoreSQLite) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error) {
+	if timeRange != nil {
+		if forQuerytimeFiltering {
+			return ds.queryDeleteRequests(ctx, sqlSelectUserRequestsForQueryTimeFilteringWithTimeRange, []any{
+				userID,
+				model.Now().Add(-ds.indexUpdatePropagationMaxDelay),
+				timeRange.End,
+				timeRange.Start,
+			})
+		}
+
+		return ds.queryDeleteRequests(ctx, sqlSelectUserRequestsForTimeRange, []any{userID, timeRange.End, timeRange.Start})
+	}
+
 	if !forQuerytimeFiltering {
 		return ds.queryDeleteRequests(ctx, sqlSelectRequestsForUser, []any{userID})
 	}
+
 	// for time elapsed since the requests got processed, consider the given index update propagation delay
 	return ds.queryDeleteRequests(ctx, sqlSelectUserRequestsForQueryTimeFiltering, []any{userID, model.Now().Add(-ds.indexUpdatePropagationMaxDelay)})
 }
