@@ -422,7 +422,7 @@ func (t *indexSet) downloadFileFromStorage(ctx context.Context, fileName, folder
 	decompress := storage.IsCompressedFile(fileName)
 	dst := filepath.Join(folderPathForTable, fileName)
 	if decompress {
-		dst = strings.Trim(dst, gzipExtension)
+		dst = strings.TrimSuffix(dst, gzipExtension)
 	}
 	return filepath.Base(dst), storage.DownloadFileFromStorage(
 		dst,
