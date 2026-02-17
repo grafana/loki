@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -40,6 +41,8 @@ type Service struct {
 	lifecycler                  *ring.Lifecycler
 	partitionInstanceLifecycler *ring.PartitionInstanceLifecycler
 	consumer                    *kafkav2.SinglePartitionConsumer
+	offsetReader                *kafkav2.OffsetReader
+	partition                   int32
 	processor                   *processor
 	flusher                     *flusherImpl
 	downscalePermitted          downscalePermittedFunc
@@ -96,6 +99,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract partition ID from lifecycler configuration: %w", err)
 	}
+	s.partition = partitionID
 	// The mock KV is used in tests. If this is not a test then we must initialize
 	// a real kv.
 	partitionRingKV := cfg.PartitionRingConfig.KVStore.Mock
@@ -128,24 +132,14 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		return nil, fmt.Errorf("failed to create client for data topic: %w", err)
 	}
 
-	offsetReader := kafkav2.NewOffsetReader(readerClient, cfg.Topic, instanceID, logger)
-	// Since dataobj consumers do not group consume, we need to fetch the initial
-	// offset ourselves.
-	resumeOffsetCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	initialOffset, err := offsetReader.ResumeOffset(resumeOffsetCtx, partitionID)
-	if err != nil {
-		// TODO(grobinson): We need to use a backoff retry mechanism in case we cannot
-		// fetch offsets on the first attempt.
-		return nil, fmt.Errorf("failed to fetch resume offset: %w", err)
-	}
+	s.offsetReader = kafkav2.NewOffsetReader(readerClient, cfg.Topic, instanceID, logger)
 	committer := kafkav2.NewGroupCommitter(kadm.NewClient(readerClient), cfg.Topic, instanceID)
 	records := make(chan *kgo.Record)
 	s.consumer = kafkav2.NewSinglePartitionConsumer(
 		readerClient,
 		cfg.Topic,
 		partitionID,
-		initialOffset,
+		kafkav2.OffsetStart, // We fetch the real initial offset before starting the service.
 		records,
 		logger,
 		prometheus.WrapRegistererWithPrefix("loki_dataobj_consumer_", reg),
@@ -181,7 +175,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		logger,
 		wrapped,
 	)
-	s.downscalePermitted = newOffsetCommittedDownscaleFunc(offsetReader, partitionID, logger)
+	s.downscalePermitted = newOffsetCommittedDownscaleFunc(s.offsetReader, partitionID, logger)
 
 	watcher := services.NewFailureWatcher()
 	watcher.WatchService(lifecycler)
@@ -195,6 +189,9 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 // starting implements the Service interface's starting method.
 func (s *Service) starting(ctx context.Context) error {
 	level.Info(s.logger).Log("msg", "starting")
+	if err := s.initResumeOffset(ctx); err != nil {
+		return fmt.Errorf("failed to initialize offset for consumer: %w", err)
+	}
 	if err := services.StartAndAwaitRunning(ctx, s.lifecycler); err != nil {
 		return fmt.Errorf("failed to start lifecycler: %w", err)
 	}
@@ -243,4 +240,25 @@ func (s *Service) Flush() {}
 // TransferOut implements the [ring.FlushTransferer] interface.
 func (s *Service) TransferOut(_ context.Context) error {
 	return nil
+}
+
+// initResumeOffset fetches and sets the resume offset (often the last committed
+// offset) for the consumer. It must be called before starting the consumer.
+func (s *Service) initResumeOffset(ctx context.Context) error {
+	b := backoff.New(ctx, backoff.Config{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 10 * time.Second,
+		MaxRetries: 3,
+	})
+	var lastErr error
+	for b.Ongoing() {
+		initialOffset, err := s.offsetReader.ResumeOffset(ctx, s.partition)
+		if err == nil {
+			lastErr = s.consumer.SetInitialOffset(initialOffset)
+			break
+		}
+		lastErr = fmt.Errorf("failed to fetch resume offset: %w", err)
+		b.Wait()
+	}
+	return lastErr
 }

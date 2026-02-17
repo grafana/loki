@@ -261,6 +261,11 @@ func readAllSectionPointers(t *testing.T, bucket objstore.Bucket) []pointers.Sec
 			}
 
 			reader.Reset(sec)
+
+			if err := reader.Open(context.Background()); err != nil {
+				return fmt.Errorf("opening section reader: %w", err)
+			}
+
 			for {
 				num, err := reader.Read(context.Background(), buf)
 				if err != nil && err != io.EOF {

@@ -37,6 +37,9 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, sort lo
 			Columns:  columns,
 			Prefetch: true,
 		})
+		if err := r.Open(ctx); err != nil {
+			return nil, fmt.Errorf("opening dataset row reader: %w", err)
+		}
 
 		sequences = append(sequences, &sectionSequence{
 			section:         sec,

@@ -30,6 +30,15 @@ func Test_Reader_ReadAll(t *testing.T) {
 	require.Equal(t, basicReaderTestData, convertToTestPersons(actualRows))
 }
 
+func Test_Reader_ReadBeforeOpen(t *testing.T) {
+	dset, columns := buildTestDataset(t)
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns})
+	defer r.Close()
+
+	_, err := r.Read(context.Background(), make([]Row, 1))
+	require.ErrorIs(t, err, errRowReaderNotOpen)
+}
+
 func Test_Reader_ReadWithPredicate(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
@@ -300,6 +309,9 @@ func readDatasetWithContext(ctx context.Context, br *RowReader, batchSize int) (
 
 		batch = make([]Row, batchSize)
 	)
+	if err := br.Open(ctx); err != nil {
+		return nil, err
+	}
 
 	for {
 		// Clear the batch for each read, to ensure that any memory in Row and
@@ -556,6 +568,8 @@ func BenchmarkReader(b *testing.B) {
 			batch := make([]Row, rp.batchSize)
 			for b.Loop() {
 				reader := NewRowReader(opts)
+				require.NoError(b, reader.Open(context.Background()))
+
 				var rowsRead int
 				for {
 					n, err := reader.Read(context.Background(), batch)
@@ -613,6 +627,7 @@ func BenchmarkPredicateExecution(b *testing.B) {
 		Dataset: ds,
 		Columns: cols,
 	})
+	require.NoError(b, reader.Open(context.Background()))
 
 	for {
 		n, err := reader.Read(context.Background(), batch)
@@ -693,6 +708,7 @@ func BenchmarkPredicateExecution(b *testing.B) {
 					Columns:    cols,
 					Predicates: pp.predicates,
 				})
+				require.NoError(b, reader.Open(context.Background()))
 
 				batch := make([]Row, 10000)
 
@@ -909,12 +925,15 @@ func Test_Reader_Stats(t *testing.T) {
 	defer r.Close()
 
 	ctx, _ := xcap.NewCapture(context.Background(), nil)
+	ctx, region := xcap.StartRegion(ctx, "logs.Reader")
+	defer region.End()
+
 	_, err := readDatasetWithContext(ctx, r, 3)
 	require.NoError(t, err)
 
-	require.NotNil(t, r.region, "region should be available after reading")
+	require.NotNil(t, region, "region should be available after reading")
 
-	observations := r.region.Observations()
+	observations := region.Observations()
 	obsMap := make(map[string]int64)
 	for _, obs := range observations {
 		obsMap[obs.Statistic.Name()] = obs.Value.(int64)

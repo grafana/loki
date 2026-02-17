@@ -113,6 +113,8 @@ func Test_mergeTables(t *testing.T) {
 				Dataset: mergedTable,
 				Columns: mergedColumns,
 			})
+			t.Cleanup(func() { _ = r.Close() })
+			require.NoError(t, r.Open(context.Background()))
 
 			rows := make([]dataset.Row, pageSize)
 
@@ -159,6 +161,8 @@ func Test_table_backfillMetadata(t *testing.T) {
 		Dataset: table,
 		Columns: columns,
 	})
+	t.Cleanup(func() { _ = r.Close() })
+	require.NoError(t, r.Open(context.Background()))
 
 	rows := make([]dataset.Row, expectedRows)
 	n, err := r.Read(context.Background(), rows)

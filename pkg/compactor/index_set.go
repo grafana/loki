@@ -130,7 +130,7 @@ func (is *indexSet) GetSourceFile(indexFile storage.IndexFile) (string, error) {
 	decompress := storage.IsCompressedFile(indexFile.Name)
 	dst := filepath.Join(is.workingDir, indexFile.Name)
 	if decompress {
-		dst = strings.Trim(dst, gzipExtension)
+		dst = strings.TrimSuffix(dst, gzipExtension)
 	}
 
 	err := storage.DownloadFileFromStorage(dst, storage.IsCompressedFile(indexFile.Name),

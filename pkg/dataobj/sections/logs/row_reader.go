@@ -33,11 +33,31 @@ type RowReader struct {
 	symbols *symbolizer.Symbolizer
 }
 
-// NewRowReader creates a new WowReader that reads from the provided [Section].
+var errRowReaderNotOpen = errors.New("row reader not opened")
+
+// NewRowReader creates a new RowReader that reads from the provided [Section].
+//
+// Call [RowReader.Open] before calling [RowReader.Read].
 func NewRowReader(sec *Section) *RowReader {
 	var lr RowReader
 	lr.Reset(sec)
 	return &lr
+}
+
+// Open initializes RowReader resources.
+//
+// Open must be called before [RowReader.Read]. Open is safe to call multiple
+// times. Open is a no-op when the reader has no section.
+func (r *RowReader) Open(ctx context.Context) error {
+	if r.sec == nil || r.ready {
+		return nil
+	}
+
+	if err := r.initReader(ctx); err != nil {
+		_ = r.Close()
+		return fmt.Errorf("initializing row reader: %w", err)
+	}
+	return nil
 }
 
 // MatchStreams provides a sequence of stream IDs for the logs reader to match.
@@ -84,10 +104,7 @@ func (r *RowReader) Read(ctx context.Context, s []Record) (int, error) {
 	}
 
 	if !r.ready {
-		err := r.initReader()
-		if err != nil {
-			return 0, err
-		}
+		return 0, errRowReaderNotOpen
 	}
 
 	r.buf = slicegrow.GrowToCap(r.buf, len(s))
@@ -121,7 +138,7 @@ func unsafeString(data []byte) string {
 	return unsafe.String(unsafe.SliceData(data), len(data))
 }
 
-func (r *RowReader) initReader() error {
+func (r *RowReader) initReader(ctx context.Context) error {
 	dset, err := columnar.MakeDataset(r.sec.inner, r.sec.inner.Columns())
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
@@ -152,6 +169,9 @@ func (r *RowReader) initReader() error {
 		r.reader = dataset.NewRowReader(readerOpts)
 	} else {
 		r.reader.Reset(readerOpts)
+	}
+	if err := r.reader.Open(ctx); err != nil {
+		return fmt.Errorf("opening row reader: %w", err)
 	}
 
 	if r.symbols == nil {
@@ -186,7 +206,7 @@ func (r *RowReader) Reset(sec *Section) {
 	}
 
 	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first
-	// call to Read.
+	// call to Open.
 }
 
 // Close closes the RowReader and releases any resources it holds. Closed

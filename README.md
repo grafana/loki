@@ -123,6 +123,15 @@ $ make loki
 $ ./cmd/loki/loki -config.file=./cmd/loki/loki-local-config.yaml
 ```
 
+To run multiple Loki tenants locally, ensure that auth_enabled is set to true and provide a runtime config with any tenant specific overrides.
+```bash
+# Build binary
+$ make loki
+
+# Run executable
+./loki -config.file=./cmd/loki/loki-local-multi-tenant-config.yaml -runtime-config.file=./cmd/loki/loki-overrides.yaml
+```
+
 To build Promtail on non-Linux platforms, use the following command:
 
 ```bash
