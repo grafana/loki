@@ -741,17 +741,293 @@ A delete request was submitted for a tenant that does not have deletion enabled.
 - Configurable per tenant: Yes
 
 
-
-
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
-
 ## Storage backend errors
 
+Storage backend errors occur when Loki cannot communicate with or properly configure object storage (Amazon S3, Google Cloud Services, Microsoft Azure, Swift, or filesystem).
 
+### Error: Unsupported storage backend
+
+**Error message:**
+
+```text
+unsupported storage backend
+```
+
+**Cause:**
+
+The specified storage backend type is not recognized. This typically occurs when a typo exists in the storage type configuration.
+
+**Resolution:**
+
+1. **Use a valid storage backend type**:
+
+   - `s3` - Amazon S3 or S3-compatible storage
+   - `gcs` - Google Cloud Storage
+   - `azure` - Azure Blob Storage
+   - `swift` - OpenStack Swift
+   - `filesystem` - Local filesystem
+   - `bos` - Baidu Object Storage
+
+   ```yaml
+   storage_config:
+     boltdb_shipper:
+       shared_store: s3  # Must be one of the valid types
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Invalid characters in storage prefix
+
+**Error message:**
+
+```text
+storage prefix contains invalid characters, it may only contain digits, English alphabet letters and dashes
+```
+
+**Cause:**
+
+The storage path prefix contains invalid characters. Only alphanumeric characters and dashes are allowed.
+
+**Resolution:**
+
+1. **Use valid characters** in your storage prefix:
+
+   ```yaml
+   storage_config:
+     # Invalid: prefix_with_underscore_or/special chars
+     # Valid: my-loki-data or lokilogs123
+     aws:
+       s3: s3://my-bucket/my-loki-data
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Unsupported S3 SSE type
+
+**Error message:**
+
+```text
+unsupported S3 SSE type
+```
+
+**Cause:**
+
+The S3 server-side encryption (SSE) type is not supported. Loki supports specific SSE types.
+
+**Resolution:**
+
+1. **Use a supported SSE type**:
+
+   ```yaml
+   storage_config:
+     aws:
+       sse:
+         type: SSE-S3    # Or SSE-KMS
+   ```
+
+   Supported types:
+   - `SSE-S3` - Server-side encryption with Amazon S3-managed keys
+   - `SSE-KMS` - Server-side encryption with AWS KMS-managed keys
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Invalid S3 SSE encryption context
+
+**Error message:**
+
+```text
+invalid S3 SSE encryption context
+```
+
+**Cause:**
+
+The SSE-KMS encryption context is malformed and cannot be parsed as valid JSON.
+
+**Resolution:**
+
+1. **Provide valid JSON** for the encryption context:
+
+   ```yaml
+   storage_config:
+     aws:
+       sse:
+         type: SSE-KMS
+         kms_key_id: alias/my-key
+         kms_encryption_context: '{"key": "value"}'  # Valid JSON
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Invalid S3 endpoint prefix
+
+**Error message:**
+
+```text
+the endpoint must not prefixed with the bucket name
+```
+
+**Cause:**
+
+The S3 endpoint incorrectly includes the bucket name as a prefix. This can cause path-style vs virtual-hosted-style URL issues.
+
+**Resolution:**
+
+1. **Remove the bucket name** from the endpoint and configure it separately:
+
+   ```yaml
+   storage_config:
+     aws:
+       # Incorrect:
+       # endpoint: my-bucket.s3.amazonaws.com
+       
+       # Correct:
+       endpoint: s3.amazonaws.com
+       bucketnames: my-bucket
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Invalid STS endpoint
+
+**Error message:**
+
+```text
+sts-endpoint must be a valid url
+```
+
+**Cause:**
+
+The AWS STS (Security Token Service) endpoint URL is malformed or invalid.
+
+**Resolution:**
+
+1. **Provide a valid URL** for the STS endpoint:
+
+   ```yaml
+   storage_config:
+     aws:
+       sts_endpoint: https://sts.us-east-1.amazonaws.com
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Azure connection string malformed
+
+**Error message:**
+
+```text
+connection string is either blank or malformed. The expected connection string should contain key value pairs separated by semicolons
+```
+
+**Cause:**
+
+The Azure storage connection string is missing or doesn't follow the expected format.
+
+**Resolution:**
+
+1. **Use a valid connection string format**:
+
+   ```yaml
+   storage_config:
+     azure:
+       # Use account credentials:
+       account_name: myaccount
+       account_key: mykey
+       
+       # Or connection string:
+       connection_string: "DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=mykey;EndpointSuffix=core.windows.net"
+   ```
+
+1. **Verify the connection string** in Azure Portal under Storage Account > Access Keys.
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Unrecognized named storage config
+
+**Error message:**
+
+```text
+unrecognized named storage config <name>
+```
+
+Or for specific backends:
+
+```text
+unrecognized named s3 storage config <name>
+unrecognized named gcs storage config <name>
+unrecognized named azure storage config <name>
+```
+
+**Cause:**
+
+A named storage configuration referenced in the schema config doesn't exist in the named stores configuration.
+
+**Resolution:**
+
+1. **Define the named store** in your configuration:
+
+   ```yaml
+   storage_config:
+     named_stores:
+       aws:
+         my-s3-store:  # This name must match the reference
+           endpoint: s3.amazonaws.com
+           bucketnames: my-bucket
+   
+   schema_config:
+     configs:
+       - from: 2024-01-01
+         store: tsdb
+         object_store: my-s3-store  # References the named store above
+   ```
+
+1. **Check spelling** of the store name in both the definition and reference.
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
 
 ## Cache errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Ring and cluster communication errors
 
