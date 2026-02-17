@@ -36,13 +36,18 @@ const (
 )
 
 type ChunkStore struct {
-	store     *storage.LokiStore
-	periodCfg config.PeriodConfig
-	chunks    map[string]*chunkenc.MemChunk
-	tenantID  string
+	store         *storage.LokiStore
+	periodCfg     config.PeriodConfig
+	chunks        map[string]*chunkenc.MemChunk
+	tenantID      string
+	clientMetrics storage.ClientMetrics
 }
 
 func NewChunkStore(dir, tenantID string) (*ChunkStore, error) {
+	return NewChunkStoreWithRegisterer(dir, tenantID, prometheus.DefaultRegisterer)
+}
+
+func NewChunkStoreWithRegisterer(dir, tenantID string, reg prometheus.Registerer) (*ChunkStore, error) {
 	storageDir := filepath.Join(dir, storageDir)
 	workingDir := filepath.Join(dir, workingDir)
 
@@ -96,15 +101,16 @@ func NewChunkStore(dir, tenantID string) (*ChunkStore, error) {
 	flagext.DefaultValues(&limits)
 	overrides, _ := validation.NewOverrides(limits, nil)
 
-	store, err := storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, overrides, cm, prometheus.DefaultRegisterer, util_log.Logger, "cortex")
+	store, err := storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, overrides, cm, reg, util_log.Logger, "cortex")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}
 	return &ChunkStore{
-		store:     store,
-		periodCfg: period,
-		tenantID:  tenantID,
-		chunks:    make(map[string]*chunkenc.MemChunk),
+		store:         store,
+		periodCfg:     period,
+		tenantID:      tenantID,
+		chunks:        make(map[string]*chunkenc.MemChunk),
+		clientMetrics: cm,
 	}, nil
 }
 
@@ -177,6 +183,8 @@ func (s *ChunkStore) Close() error {
 	}
 	clear(s.chunks)
 	s.store.Stop()
+	// Unregister metrics to avoid conflicts in tests
+	s.clientMetrics.Unregister()
 	return nil
 }
 
