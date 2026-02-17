@@ -30,8 +30,14 @@ type nodeSource struct {
 
 var _ executor.Pipeline = (*nodeSource)(nil)
 
+func newNodeSource(recordsBufferSize int) *nodeSource {
+	return &nodeSource{
+		closed:  make(chan struct{}),
+		records: make(chan arrow.RecordBatch, recordsBufferSize),
+	}
+}
+
 func (src *nodeSource) Open(_ context.Context) error {
-	src.lazyInit()
 	return nil
 }
 
@@ -44,30 +50,20 @@ func (src *nodeSource) Read(ctx context.Context) (arrow.RecordBatch, error) {
 		region.Record(xcap.TaskRecvDuration.Observe(time.Since(startRecv).Seconds()))
 	}()
 
-	src.lazyInit()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-src.closed:
-		return nil, executor.EOF
-	case rec := <-src.records:
+	case rec, ok := <-src.records:
+		if !ok {
+			return nil, executor.EOF
+		}
 		return rec, nil
 	}
-}
-
-func (src *nodeSource) lazyInit() {
-	src.initOnce.Do(func() {
-		src.closed = make(chan struct{})
-		src.records = make(chan arrow.RecordBatch)
-	})
 }
 
 // Write writes a record to the read end of the node source. Write blocks until
 // the record has been read or the context is canceled.
 func (src *nodeSource) Write(ctx context.Context, rec arrow.RecordBatch) error {
-	src.lazyInit()
-
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -82,8 +78,6 @@ func (src *nodeSource) Write(ctx context.Context, rec arrow.RecordBatch) error {
 // counter. If the counter becomes zero, the source is automatically closed. If
 // the counter goes negative, Add panics.
 func (src *nodeSource) Add(delta int64) {
-	src.lazyInit()
-
 	newValue := src.streamCount.Add(delta)
 	if newValue == 0 {
 		src.Close()
@@ -92,10 +86,11 @@ func (src *nodeSource) Add(delta int64) {
 	}
 }
 
-// Close closes the source. All future Reads and Write calls will return
-// [executor.EOF].
+// Close closes the source. All future Write calls will return [executor.EOF].
+// Future Read calls will return records until the channel is drained, and then [executor.EOF].
 func (src *nodeSource) Close() {
-	src.lazyInit()
-
-	src.closeOnce.Do(func() { close(src.closed) })
+	src.closeOnce.Do(func() {
+		close(src.closed)
+		close(src.records)
+	})
 }
