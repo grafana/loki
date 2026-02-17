@@ -57,19 +57,19 @@ func computeValidityAAA(alloc *memory.Allocator, left memory.Bitmap, right memor
 // validity bitmaps. The result is a logical AND of the validity; a slot is only
 // valid if both inputs are valid.
 func computeValidityAA(alloc *memory.Allocator, left, right memory.Bitmap) (memory.Bitmap, error) {
+	leftHasNulls, rightHasNulls := left.ClearCount() > 0, right.ClearCount() > 0
 	leftLen, rightLen := left.Len(), right.Len()
-	outLen := max(leftLen, rightLen)
 
 	// A validity bitmap can have a length of zero to indicate that all values
 	// are valid. We only want to validate the length of two non-empty bitmaps.
 	if leftLen > 0 && rightLen > 0 && leftLen != rightLen {
-		return memory.Bitmap{}, fmt.Errorf("validity bitmap length mismatch: %d != %d", left.Len(), right.Len())
+		return memory.Bitmap{}, fmt.Errorf("validity bitmap length mismatch: %d != %d", leftLen, rightLen)
 	}
 
 	switch {
-	case leftLen > 0 && rightLen > 0:
-		validity := memory.NewBitmap(alloc, outLen)
-		validity.Resize(outLen)
+	case leftHasNulls && rightHasNulls:
+		validity := memory.NewBitmap(alloc, leftLen)
+		validity.Resize(leftLen)
 
 		var (
 			leftBytes, leftOffset   = left.Bytes()
@@ -84,24 +84,20 @@ func computeValidityAA(alloc *memory.Allocator, left, right memory.Bitmap) (memo
 			int64(rightOffset),
 			outBytes,
 			int64(outOffset),
-			int64(outLen), /* num values */
+			int64(leftLen), /* num values */
 		)
 
 		return validity, nil
 
-	case leftLen > 0:
+	case leftHasNulls:
 		// Make a copy of the left validity; everything from right is valid.
-		validity := memory.NewBitmap(alloc, left.Len())
-		validity.AppendBitmap(left)
-		return validity, nil
+		return left.Clone(alloc), nil
 
-	case rightLen > 0:
+	case rightHasNulls:
 		// Make a copy of the right validity; everything from left is valid.
-		validity := memory.NewBitmap(alloc, right.Len())
-		validity.AppendBitmap(right)
-		return validity, nil
+		return right.Clone(alloc), nil
 
-	case leftLen == 0 && rightLen == 0:
+	case !leftHasNulls && !rightHasNulls:
 		return memory.Bitmap{}, nil
 	}
 
