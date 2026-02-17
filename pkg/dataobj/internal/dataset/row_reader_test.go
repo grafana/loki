@@ -925,12 +925,15 @@ func Test_Reader_Stats(t *testing.T) {
 	defer r.Close()
 
 	ctx, _ := xcap.NewCapture(context.Background(), nil)
+	ctx, region := xcap.StartRegion(ctx, "logs.Reader")
+	defer region.End()
+
 	_, err := readDatasetWithContext(ctx, r, 3)
 	require.NoError(t, err)
 
-	require.NotNil(t, r.region, "region should be available after reading")
+	require.NotNil(t, region, "region should be available after reading")
 
-	observations := r.region.Observations()
+	observations := region.Observations()
 	obsMap := make(map[string]int64)
 	for _, obs := range observations {
 		obsMap[obs.Statistic.Name()] = obs.Value.(int64)

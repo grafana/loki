@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type topkOptions struct {
@@ -32,9 +31,6 @@ type topkOptions struct {
 	// After the number of unused rows exceeds this value, retained records are
 	// compacted into a new record only containing the current used rows.
 	MaxUnused int
-
-	// Region is the xcap region for this node.
-	Region *xcap.Region
 }
 
 // topkPipeline performs a topk (SORT + LIMIT) operation across several input
@@ -47,8 +43,7 @@ type topkPipeline struct {
 	sortByTime bool
 	callbacks  []ContributingTimeRangeChangedHandler
 
-	batch  *topkBatch
-	region *xcap.Region
+	batch *topkBatch
 
 	computed bool
 }
@@ -81,7 +76,6 @@ func newTopkPipeline(opts topkOptions) (*topkPipeline, error) {
 			K:          opts.K,
 			MaxUnused:  opts.MaxUnused,
 		},
-		region: opts.Region,
 	}, nil
 }
 
@@ -199,18 +193,10 @@ NextInput:
 
 // Close closes the resources of the pipeline.
 func (p *topkPipeline) Close() {
-	if p.region != nil {
-		p.region.End()
-	}
 	p.batch.Reset()
 	for _, in := range p.inputs {
 		in.Close()
 	}
-}
-
-// Region implements RegionProvider.
-func (p *topkPipeline) Region() *xcap.Region {
-	return p.region
 }
 
 // SubscribeToTimeRangeChanges implements ContributingTimeRangeChangedNotifier

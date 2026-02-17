@@ -6,8 +6,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type Metastore interface {
@@ -48,7 +46,6 @@ type GetIndexesResponse struct {
 
 type IndexSectionsReaderRequest struct {
 	IndexPath       string
-	Region          *xcap.Region
 	SectionsRequest SectionsRequest
 }
 
