@@ -190,16 +190,25 @@ func (s *Service) ExceedsLimits(
 
 // UpdateRates implements the [proto.IngestLimitsServer] interface.
 func (s *Service) UpdateRates(
-	_ context.Context,
+	ctx context.Context,
 	req *proto.UpdateRatesRequest,
 ) (*proto.UpdateRatesResponse, error) {
-	// We do not replicate data to Kafka here as we really need to figure out
-	// how to reduce the volume during replay (the reason we added
-	// LastProducedAt for streams).
-	updated, err := s.usage.UpdateRates(req.Tenant, req.Streams, s.clock.Now())
+	// Replicate rate bucket data to Kafka for multi-AZ support.
+	// We throttle production using LastProducedAt (hard-coded 1 minute cutoff)
+	// to reduce the volume during replay.
+	toProduce, updated, err := s.usage.UpdateRates(req.Tenant, req.Streams, s.clock.Now())
 	if err != nil {
 		return nil, err
 	}
+
+	// Produce records to Kafka for multi-AZ replication
+	for _, stream := range toProduce {
+		err := s.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
+		if err != nil {
+			level.Error(s.logger).Log("msg", "failed to produce rate bucket update", "error", err)
+		}
+	}
+
 	resp := proto.UpdateRatesResponse{
 		Results: make([]*proto.UpdateRatesResult, len(updated)),
 	}
