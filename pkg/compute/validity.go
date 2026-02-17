@@ -14,62 +14,43 @@ func computeValiditySS(leftNull, rightNull bool) bool {
 	return !leftNull && !rightNull
 }
 
-// computeValiditySA determines an output validity bitmap from a null check and
-// a validity bitmap.
-func computeValiditySA(alloc *memory.Allocator, leftNull bool, right memory.Bitmap) memory.Bitmap {
-	// Even if right.Len is empty, we may still need up to one element depending
-	// on the value of leftNull.
-	//
-	// The only case where we can return an empty bitmap is if left is not null
-	// and right is empty.
-	maxSize := max(1, right.Len())
+// computeValiditySAA determines an output validity bitmap from a null check, a validity bitmap, and a selection vector.
+func computeValiditySAA(alloc *memory.Allocator, leftNull bool, right memory.Bitmap, selection memory.Bitmap) (memory.Bitmap, error) {
+	if right.ClearCount() > 0 && selection.ClearCount() > 0 && right.Len() != selection.Len() {
+		return memory.Bitmap{}, fmt.Errorf("validity bitmap and selection length mismatch")
+	}
 
 	switch {
 	case leftNull:
 		// If the scalar value is null, everything is null.
+		maxSize := max(1, right.Len(), selection.Len())
 		validity := memory.NewBitmap(alloc, maxSize)
 		validity.AppendCount(false, maxSize)
-		return validity
-
-	case right.Len() == 0:
-		// We don't have an input bitmap, meaning everything is valid.
-		return memory.Bitmap{}
+		return validity, nil
 
 	default:
-		// left is valid, so the final bitmap depends on the values from right.
-		validity := memory.NewBitmap(alloc, maxSize)
-		validity.AppendBitmap(right)
-		return validity
+		return computeValidityAA(alloc, right, selection)
 	}
 }
 
-// computeValidityAS determines an output validity bitmap from a validity bitmap
-// and a null check.
-func computeValidityAS(alloc *memory.Allocator, left memory.Bitmap, rightNull bool) memory.Bitmap {
-	// Even if left.Len is empty, we may still need up to one element depending
-	// on the value of rightNull.
-	//
-	// The only case where we can return an empty bitmap is if left is empty and
-	// right is not null.
-	maxSize := max(1, left.Len())
+// computeValidityASA determines an output validity bitmap from a validity bitmap, a null check, and a selection vector.
+func computeValidityASA(alloc *memory.Allocator, left memory.Bitmap, rightNull bool, selection memory.Bitmap) (memory.Bitmap, error) {
+	return computeValiditySAA(alloc, rightNull, left, selection)
+}
 
-	switch {
-	case rightNull:
-		// If the scalar value is null, everything is null.
-		validity := memory.NewBitmap(alloc, maxSize)
-		validity.AppendCount(false, maxSize)
-		return validity
-
-	case left.Len() == 0:
-		// We don't have an input bitmap, meaning everything is valid.
-		return memory.Bitmap{}
-
-	default:
-		// right is valid, so the final bitmap depends on the values from left.
-		validity := memory.NewBitmap(alloc, maxSize)
-		validity.AppendBitmap(left)
-		return validity
+// computeValidityAAA determines an output validity bitmap from two input validity bitmaps and a selection vector.
+// The result is a logical AND of all three bitmaps.
+func computeValidityAAA(alloc *memory.Allocator, left memory.Bitmap, right memory.Bitmap, selection memory.Bitmap) (memory.Bitmap, error) {
+	validity, err := computeValidityAA(alloc, left, right)
+	if err != nil {
+		return memory.Bitmap{}, err
 	}
+	validity, err = computeValidityAA(alloc, validity, selection)
+	if err != nil {
+		return memory.Bitmap{}, fmt.Errorf("selection: %w", err)
+	}
+
+	return validity, nil
 }
 
 // computeValidityAA determines an output validity bitmap from two input

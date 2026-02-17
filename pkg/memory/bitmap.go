@@ -204,7 +204,7 @@ func (bmap *Bitmap) ClearCount() int {
 //
 // If bmap is an unaligned slice, the cloned bitmap will be normalized to remove
 // offsets. See [Bitmap.Bytes] for more information on aligned slices.
-func (bmap *Bitmap) Clone(alloc *Allocator) *Bitmap {
+func (bmap *Bitmap) Clone(alloc *Allocator) Bitmap {
 	newData := allocBitmapData(alloc, words(bmap.len))
 
 	if bmap.off != 0 {
@@ -214,7 +214,7 @@ func (bmap *Bitmap) Clone(alloc *Allocator) *Bitmap {
 		copy(newData, bmap.data)
 	}
 
-	return &Bitmap{
+	return Bitmap{
 		alloc: alloc,
 
 		data: newData,
