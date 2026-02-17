@@ -1966,11 +1966,59 @@ The TLS configuration is invalid. This can happen when:
 
 ## DNS resolution errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+DNS errors occur when Loki cannot resolve hostnames for service discovery or backend connections.
+
+### Error: DNS lookup timeout
+
+**Error message:**
+
+```text
+DNS lookup timeout: <hostname>
+```
+
+Or:
+
+```text
+failed to resolve server addresses
+```
+
+**Cause:**
+
+DNS resolution timed out or failed when trying to resolve hostnames for Loki service discovery or backend connections.
+
+**Resolution:**
+
+1. **Check DNS server availability** and configuration.
+1. **Verify hostname resolution**:
+
+   ```bash
+   nslookup <hostname>
+   dig <hostname>
+   ```
+
+1. **Use IP addresses** as a workaround if DNS is unreliable:
+
+   ```yaml
+   # Instead of dns+hostname:port
+   memberlist:
+     join_members:
+       - 10.0.0.1:7946
+       - 10.0.0.2:7946
+   ```
+
+1. **For Kubernetes**, ensure CoreDNS is healthy and headless services are configured correctly.
+
+**Properties:**
+
+- Enforced by: DNS resolver
+- Retryable: Yes (DNS may recover)
+- HTTP status: N/A (connectivity failure)
+- Configurable per tenant: No
+>>>>>>> 7317369389 (docs: Troubleshoot DNS)
 
 ## Scheduler and frontend errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Index gateway errors
 
