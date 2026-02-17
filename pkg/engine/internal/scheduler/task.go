@@ -6,17 +6,20 @@ import (
 	"slices"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // task wraps a [workflow.Task] with its handler.
 type task struct {
+	createTime time.Time // Time when task was created.
 	assignTime time.Time // Time when task was assigned to a worker.
 	queueTime  time.Time // Time when task was enqueued.
 
 	inner   *workflow.Task
 	handler workflow.TaskEventHandler
+	scope   fair.Scope // Queue scope this task belongs to.
 
 	// metadata holds additional metadata associated with the task.
 	// This can be used to stortracing and other information that

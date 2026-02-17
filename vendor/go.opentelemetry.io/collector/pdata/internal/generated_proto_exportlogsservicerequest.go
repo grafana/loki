@@ -44,11 +44,9 @@ func DeleteExportLogsServiceRequest(orig *ExportLogsServiceRequest, nullable boo
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.ResourceLogs {
 		DeleteResourceLogs(orig.ResourceLogs[i], true)
 	}
-
 	orig.Reset()
 	if nullable {
 		protoPoolExportLogsServiceRequest.Put(orig)

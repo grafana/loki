@@ -124,6 +124,15 @@ type CreateVpcInput struct {
 	// The tags to assign to the VPC.
 	TagSpecifications []types.TagSpecification
 
+	// Specifies the encryption control configuration to apply to the VPC during
+	// creation. VPC Encryption Control enables you to enforce encryption for all data
+	// in transit within and between VPCs to meet compliance requirements.
+	//
+	// For more information, see [Enforce VPC encryption in transit] in the Amazon VPC User Guide.
+	//
+	// [Enforce VPC encryption in transit]: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-encryption-controls.html
+	VpcEncryptionControl *types.VpcEncryptionControlConfiguration
+
 	noSmithyDocumentSerde
 }
 
@@ -205,6 +214,9 @@ func (c *Client) addOperationCreateVpcMiddlewares(stack *middleware.Stack, optio
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
+	if err = addOpCreateVpcValidationMiddleware(stack); err != nil {
+		return err
+	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opCreateVpc(options.Region), middleware.Before); err != nil {
 		return err
 	}
@@ -229,40 +241,7 @@ func (c *Client) addOperationCreateVpcMiddlewares(stack *middleware.Stack, optio
 	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptExecution(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptTransmit(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

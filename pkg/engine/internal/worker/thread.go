@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/pprof"
 	"sync"
 	"time"
 
@@ -11,6 +12,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
@@ -35,6 +39,10 @@ const (
 	threadStateBusy
 )
 
+var (
+	tracer = otel.Tracer("pkg/engine/internal/worker")
+)
+
 func (s threadState) String() string {
 	switch s {
 	case threadStateIdle:
@@ -50,10 +58,11 @@ func (s threadState) String() string {
 
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
-	BatchSize int64
-	Bucket    objstore.Bucket
-	Metastore metastore.Metastore
-	Logger    log.Logger
+	BatchSize      int64
+	Bucket         objstore.Bucket
+	Metastore      metastore.Metastore
+	Logger         log.Logger
+	StreamFilterer executor.RequestStreamFilterer
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -100,13 +109,26 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	logger := log.With(t.Logger, "task_id", job.Task.ULID)
 	logger = utillog.WithContext(ctx, logger) // Extract trace ID
 
+	root, err := job.Task.Fragment.Root()
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to get root node", "err", err)
+		return
+	}
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("node_type", root.Type().String()))
+	pprof.SetGoroutineLabels(ctx)
+
 	startTime := time.Now()
-	level.Info(logger).Log("msg", "starting task")
+	level.Info(logger).Log(
+		"msg", "starting task",
+		"plan", physical.PrintAsTree(job.Task.Fragment),
+	)
 
 	cfg := executor.Config{
-		BatchSize: t.BatchSize,
-		Bucket:    bucket.NewXCapBucket(t.Bucket),
-		Metastore: t.Metastore,
+		BatchSize:      t.BatchSize,
+		Bucket:         bucket.NewXCapBucket(t.Bucket),
+		Metastore:      t.Metastore,
+		StreamFilterer: t.StreamFilterer,
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
@@ -147,7 +169,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 				return []executor.Pipeline{errorPipeline(errs)}
 			}
 
-			return []executor.Pipeline{input}
+			return []executor.Pipeline{executor.NewObservedPipeline("nodeSource", nil, input)}
 		},
 	}
 
@@ -155,6 +177,11 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 
 	ctx, capture := xcap.NewCapture(ctx, nil)
 	defer capture.End()
+
+	ctx, span := xcap.StartSpan(ctx, tracer, "thread.runJob",
+		trace.WithAttributes(attribute.Stringer("task_id", job.Task.ULID)),
+	)
+	defer span.End()
 
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
 
@@ -181,7 +208,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		})
 	}
 
-	err := job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
+	err = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
 		Status: workflow.TaskStatus{State: workflow.TaskStateRunning},
 	})
@@ -218,10 +245,18 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	pipeline.Close()
 	// Explicitly call End() here (even though we have a defer statement)
 	// to finalize the capture before it's included in the TaskStatusMessage.
+	span.End()
 	capture.End()
 
 	duration := time.Since(startTime)
-	level.Info(logger).Log("msg", "task completed", "duration", duration)
+
+	logValues := []any{
+		"msg", "task completed",
+		"duration", duration,
+	}
+	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
+
+	level.Info(logger).Log(logValues...)
 	t.Metrics.taskExecSeconds.Observe(duration.Seconds())
 
 	// Wait for the scheduler to confirm the task has completed before
@@ -237,6 +272,12 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 }
 
 func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, job *threadJob, logger log.Logger) (int, error) {
+	region := xcap.RegionFromContext(ctx)
+
+	if err := pipeline.Open(ctx); err != nil {
+		return 0, err
+	}
+
 	var totalRows int
 	for {
 		rec, err := pipeline.Read(ctx)
@@ -253,6 +294,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			continue
 		}
 
+		startSend := time.Now()
 		for _, sink := range job.Sinks {
 			err := sink.Send(ctx, rec)
 			if err != nil {
@@ -264,6 +306,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 				continue
 			}
 		}
+		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
 	}
 
 	return totalRows, nil

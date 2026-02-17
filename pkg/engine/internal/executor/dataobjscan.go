@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type dataobjScanOptions struct {
@@ -35,7 +34,6 @@ type dataobjScanOptions struct {
 type dataobjScan struct {
 	opts   dataobjScanOptions
 	logger log.Logger
-	region *xcap.Region
 
 	initialized     bool
 	initializedAt   time.Time
@@ -51,23 +49,26 @@ var _ Pipeline = (*dataobjScan)(nil)
 // [arrow.RecordBatch] composed of the requested log section in a data object. Rows
 // in the returned record are ordered by timestamp in the direction specified
 // by opts.Direction.
-func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger, region *xcap.Region) *dataobjScan {
+func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobjScan {
 	return &dataobjScan{
 		opts:   opts,
 		logger: logger,
-		region: region,
 	}
+}
+
+func (s *dataobjScan) Open(ctx context.Context) error {
+	return s.init(ctx)
 }
 
 func (s *dataobjScan) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	if err := s.init(); err != nil {
-		return nil, err
+	if !s.initialized {
+		return nil, errPipelineNotOpen
 	}
 
-	return s.read(xcap.ContextWithRegion(ctx, s.region))
+	return s.read(ctx)
 }
 
-func (s *dataobjScan) init() error {
+func (s *dataobjScan) init(ctx context.Context) error {
 	if s.initialized {
 		return nil
 	}
@@ -75,9 +76,9 @@ func (s *dataobjScan) init() error {
 	// [dataobjScan.initLogs] depends on the result of [dataobjScan.initStreams]
 	// (to know whether label columns are needed), so we must initialize streams
 	// first.
-	if err := s.initStreams(); err != nil {
+	if err := s.initStreams(ctx); err != nil {
 		return fmt.Errorf("initializing streams: %w", err)
-	} else if err := s.initLogs(); err != nil {
+	} else if err := s.initLogs(ctx); err != nil {
 		return fmt.Errorf("initializing logs: %w", err)
 	}
 
@@ -86,7 +87,7 @@ func (s *dataobjScan) init() error {
 	return nil
 }
 
-func (s *dataobjScan) initStreams() error {
+func (s *dataobjScan) initStreams(ctx context.Context) error {
 	if s.opts.StreamsSection == nil {
 		return fmt.Errorf("no streams section provided")
 	}
@@ -103,6 +104,9 @@ func (s *dataobjScan) initStreams() error {
 		LabelColumns: columnsToRead,
 		BatchSize:    int(s.opts.BatchSize),
 	})
+	if err := s.streams.Open(ctx); err != nil {
+		return fmt.Errorf("opening streams view: %w", err)
+	}
 
 	s.streamsInjector = newStreamInjector(s.streams)
 	return nil
@@ -142,7 +146,7 @@ func projectedLabelColumns(sec *streams.Section, projections []physical.ColumnEx
 			panic("invalid projection type, expected *physical.ColumnExpr")
 		}
 
-		// We're loading the sterams section for joining stream labels into
+		// We're loading the streams section for joining stream labels into
 		// records, so we only need to consider label and ambiguous columns here.
 		if expr.Ref.Type != types.ColumnTypeLabel && expr.Ref.Type != types.ColumnTypeAmbiguous {
 			continue
@@ -163,7 +167,7 @@ func projectedLabelColumns(sec *streams.Section, projections []physical.ColumnEx
 	return found
 }
 
-func (s *dataobjScan) initLogs() error {
+func (s *dataobjScan) initLogs(ctx context.Context) error {
 	if s.opts.LogsSection == nil {
 		return fmt.Errorf("no logs section provided")
 	}
@@ -209,6 +213,9 @@ func (s *dataobjScan) initLogs() error {
 		Predicates: predicates,
 		Allocator:  memory.DefaultAllocator,
 	})
+	if err := s.reader.Open(ctx); err != nil {
+		return fmt.Errorf("opening logs reader: %w", err)
+	}
 
 	// Create the engine-compatible expected schema for the logs section.
 	origSchema := s.reader.Schema()
@@ -357,6 +364,10 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 		return nil, EOF
 	}
 
+	if rec.NumRows() == 0 {
+		return rec, nil
+	}
+
 	// Update the schema of the record to match the schema the engine expects.
 	rec, err = changeSchema(rec, s.desiredSchema)
 	if err != nil {
@@ -373,9 +384,6 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
-	if s.region != nil {
-		s.region.End()
-	}
 	if s.streams != nil {
 		s.streams.Close()
 	}
@@ -387,10 +395,4 @@ func (s *dataobjScan) Close() {
 	s.streams = nil
 	s.streamsInjector = nil
 	s.reader = nil
-	s.region = nil
-}
-
-// Region implements RegionProvider.
-func (s *dataobjScan) Region() *xcap.Region {
-	return s.region
 }

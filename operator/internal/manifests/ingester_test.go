@@ -1,7 +1,6 @@
 package manifests
 
 import (
-	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,7 +11,6 @@ import (
 
 	v1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
@@ -108,18 +106,27 @@ func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
 func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 	for _, tc := range []struct {
 		Name                 string
-		PDBMinAvailable      int
+		Replicas             int
 		ExpectedMinAvailable int
+		Size                 lokiv1.LokiStackSizeType
 	}{
 		{
-			Name:                 "Small stack",
-			PDBMinAvailable:      1,
+			Name:                 "replication factor = replicas",
+			Size:                 lokiv1.SizeOneXExtraSmall,
+			Replicas:             2,
 			ExpectedMinAvailable: 1,
 		},
 		{
-			Name:                 "Medium stack",
-			PDBMinAvailable:      2,
+			Name:                 "replication factor < replicas",
+			Size:                 lokiv1.SizeOneXMedium,
+			Replicas:             3,
 			ExpectedMinAvailable: 2,
+		},
+		{
+			Name:                 "replication factor > replicas",
+			Size:                 lokiv1.SizeOneXDemo,
+			Replicas:             1,
+			ExpectedMinAvailable: 1,
 		},
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -127,15 +134,11 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 				Name:      "abcd",
 				Namespace: "efgh",
 				Gates:     v1.FeatureGates{},
-				ResourceRequirements: internal.ComponentResources{
-					Ingester: internal.ResourceRequirements{
-						PDBMinAvailable: tc.PDBMinAvailable,
-					},
-				},
 				Stack: lokiv1.LokiStackSpec{
+					Size: tc.Size,
 					Template: &lokiv1.LokiTemplateSpec{
 						Ingester: &lokiv1.LokiComponentSpec{
-							Replicas: rand.Int31(),
+							Replicas: int32(tc.Replicas),
 						},
 					},
 					Tenants: &lokiv1.TenantsSpec{
@@ -163,6 +166,7 @@ func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXDemo,
 			Template: &lokiv1.LokiTemplateSpec{
 				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,

@@ -16,13 +16,17 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
+
+var tracer = otel.Tracer("pkg/util/rangeio")
 
 // Range represents a range of data to be read.
 type Range struct {
@@ -164,30 +168,23 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	// We store our own start time so we can calculate read throughput at the
 	// end.
 	startTime := time.Now()
+	ctx, span := xcap.StartSpan(ctx, tracer, "ReadRanges")
+	defer span.End()
 
 	cfg := configFromContext(ctx)
 	if cfg == nil {
 		cfg = &DefaultConfig
+		span.SetAttributes(attribute.Bool("config.default", true))
 	}
-
-	ctx, region := xcap.StartRegion(ctx, "ReadRanges", xcap.WithRegionAttributes(
-		attribute.Bool("config.default", cfg == nil),
-		attribute.Int("config.max_paralleism", cfg.MaxParallelism),
-		attribute.Stringer("config.coalesce_size", bytesStringer(uint64(cfg.CoalesceSize))),
-		attribute.Stringer("config.max_range_size", bytesStringer(uint64(cfg.MaxRangeSize))),
-		attribute.Stringer("config.min_range_size", bytesStringer(uint64(cfg.MinRangeSize))),
-		attribute.Int("config.effective_parlalelism", cfg.effectiveParallelism()),
-	))
-	defer region.End()
 
 	optimized, releaseBuffers := optimizeRanges(cfg, ranges)
 	defer releaseBuffers()
 
-	region.AddEvent("optimized ranges")
+	span.AddEvent("optimized ranges")
 
-	// Once we optimized the ranges we can record observations.
-	recordRangeStats(ranges, optimized, region)
-	defer recordThroughputStat(region, startTime, optimized)
+	// Once we optimized the ranges we can set up the rest of our attributes.
+	span.SetAttributes(readRangesAttributes(cfg, ranges, optimized)...)
+	defer injectThroughputAttribute(span, startTime, optimized)
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(cfg.effectiveParallelism())
@@ -223,11 +220,11 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	}
 
 	if err := g.Wait(); err != nil {
-		region.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 
-	region.AddEvent("finished reading ranges")
+	span.AddEvent("finished reading ranges")
 
 	// Now that we read the ranges, we can copy the data back into the original
 	// slice.
@@ -264,8 +261,8 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 		}
 	}
 
-	region.AddEvent("copied data to inputs")
-	region.SetStatus(codes.Ok, "") // Even if we got [io.EOF], we treat the operation as successful here.
+	span.AddEvent("copied data to inputs")
+	span.SetStatus(codes.Ok, "") // Even if we got [io.EOF], we treat the operation as successful here.
 
 	if gotEOF.Load() {
 		return io.EOF
@@ -424,21 +421,31 @@ func rangesSize(ranges []Range) uint64 {
 	return total
 }
 
-// readRangesAttributes records observations about [ReadRanges] to xcap region.
-func recordRangeStats(ranges, optimizedRanges []Range, region *xcap.Region) {
+// readRangesAttributes retrieves attributes about [ReadRanges] to be injected in spans.
+func readRangesAttributes(cfg *Config, ranges, optimizedRanges []Range) []attribute.KeyValue {
 	origSize := rangesSize(ranges)
 	optimizedSize := rangesSize(optimizedRanges)
 
-	region.Record(xcap.StatRangeIOInputCount.Observe(int64(len(ranges))))
-	region.Record(xcap.StatRangeIOInputSize.Observe(int64(origSize)))
-	region.Record(xcap.StatRangeIOOptimizedCount.Observe(int64(len(optimizedRanges))))
-	region.Record(xcap.StatRangeIOOptimizedSize.Observe(int64(optimizedSize)))
+	return []attribute.KeyValue{
+		attribute.Int("config.max_paralleism", cfg.MaxParallelism),
+		attribute.Stringer("config.coalesce_size", bytesStringer(uint64(cfg.CoalesceSize))),
+		attribute.Stringer("config.max_range_size", bytesStringer(uint64(cfg.MaxRangeSize))),
+		attribute.Stringer("config.min_range_size", bytesStringer(uint64(cfg.MinRangeSize))),
+		attribute.Int("config.effective_parlalelism", cfg.effectiveParallelism()),
+
+		attribute.Int("input.ranges.count", len(ranges)),
+		attribute.Stringer("input.ranges.size", bytesStringer(origSize)),
+
+		attribute.Int("optimized.ranges.count", len(optimizedRanges)),
+		attribute.Stringer("optimized.ranges.size", bytesStringer(optimizedSize)),
+	}
 }
 
-func recordThroughputStat(region *xcap.Region, startTime time.Time, optimizedRanges []Range) {
+func injectThroughputAttribute(span trace.Span, startTime time.Time, optimizedRanges []Range) {
 	size := rangesSize(optimizedRanges)
+
 	bytesPerSec := float64(size) / time.Since(startTime).Seconds()
-	region.Record(xcap.StatRangeIOThroughput.Observe(bytesPerSec))
+	span.SetAttributes(attribute.Stringer("optimized.ranges.throughput", bytesStringer(uint64(bytesPerSec))))
 }
 
 type bytesStringer uint64
@@ -454,19 +461,20 @@ type tracedReader struct {
 
 func (tr tracedReader) ReadRange(ctx context.Context, r Range) (int, error) {
 	start := time.Now()
+	span := trace.SpanFromContext(ctx)
+
 	n, err := tr.inner.ReadRange(ctx, r)
 
-	region := xcap.RegionFromContext(ctx)
-	if region != nil {
+	if span.IsRecording() {
 		bytesPerSec := float64(r.Len()) / time.Since(start).Seconds()
 
-		region.AddEvent("read optimized range",
+		span.AddEvent("read optimized range", trace.WithAttributes(
 			attribute.Int64("offset", r.Offset),
 			attribute.Int64("len", r.Len()),
 			attribute.Int("read.size", n),
 			attribute.Stringer("read.duration", time.Since(start)),
 			attribute.Stringer("read.throughput", bytesStringer(uint64(bytesPerSec))),
-		)
+		))
 	}
 
 	return n, err

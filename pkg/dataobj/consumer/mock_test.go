@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -115,8 +115,8 @@ func (m *mockBuilder) GetEstimatedSize() int {
 	return m.builder.GetEstimatedSize()
 }
 
-func (m *mockBuilder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	return m.builder.CopyAndSort(obj)
+func (m *mockBuilder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
+	return m.builder.CopyAndSort(ctx, obj)
 }
 
 func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
@@ -131,17 +131,31 @@ func (m *mockBuilder) TimeRanges() []multitenancy.TimeRange {
 	return m.builder.TimeRanges()
 }
 
-func (m *mockBuilder) UnregisterMetrics(r prometheus.Registerer) {
-	m.builder.UnregisterMetrics(r)
-}
-
 // A mockCommitter implements the committer interface for tests.
 type mockCommitter struct {
 	offsets []int64
 }
 
-func (m *mockCommitter) Commit(_ context.Context, offset int64) error {
+func (m *mockCommitter) Commit(_ context.Context, _ int32, offset int64) error {
 	m.offsets = append(m.offsets, offset)
+	return nil
+}
+
+type mockFlusher struct {
+	flushes int
+}
+
+func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (string, error) {
+	m.flushes++
+	return "", nil
+}
+
+type mockFlushManager struct {
+	flushes int
+}
+
+func (m *mockFlushManager) Flush(_ context.Context, _ builder, _ string, _ int64, _ time.Time) error {
+	m.flushes++
 	return nil
 }
 
@@ -198,6 +212,24 @@ func (m *mockKafka) Produce(
 func (m *mockKafka) ProduceSync(_ context.Context, rs ...*kgo.Record) kgo.ProduceResults {
 	m.produced = append(m.produced, rs...)
 	return kgo.ProduceResults{{Err: nil}}
+}
+
+type mockSorter struct{}
+
+func (m *mockSorter) Sort(_ context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
+	return obj, io.NopCloser(nil), nil
+}
+
+type mockUploader struct {
+	uploaded []*dataobj.Object
+	mtx      sync.Mutex
+}
+
+func (m *mockUploader) Upload(_ context.Context, obj *dataobj.Object) (string, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.uploaded = append(m.uploaded, obj)
+	return fmt.Sprintf("object_%03d", len(m.uploaded)), nil
 }
 
 type recordedTocEntry struct {

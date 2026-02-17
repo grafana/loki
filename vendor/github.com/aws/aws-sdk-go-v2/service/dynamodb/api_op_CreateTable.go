@@ -46,10 +46,78 @@ func (c *Client) CreateTable(ctx context.Context, params *CreateTableInput, optF
 // Represents the input of a CreateTable operation.
 type CreateTableInput struct {
 
-	// An array of attributes that describe the key schema for the table and indexes.
+	// The name of the table to create. You can also provide the Amazon Resource Name
+	// (ARN) of the table in this parameter.
 	//
 	// This member is required.
+	TableName *string
+
+	// An array of attributes that describe the key schema for the table and indexes.
 	AttributeDefinitions []types.AttributeDefinition
+
+	// Controls how you are charged for read and write throughput and how you manage
+	// capacity. This setting can be changed later.
+	//
+	//   - PAY_PER_REQUEST - We recommend using PAY_PER_REQUEST for most DynamoDB
+	//   workloads. PAY_PER_REQUEST sets the billing mode to [On-demand capacity mode].
+	//
+	//   - PROVISIONED - We recommend using PROVISIONED for steady workloads with
+	//   predictable growth where capacity requirements can be reliably forecasted.
+	//   PROVISIONED sets the billing mode to [Provisioned capacity mode].
+	//
+	// [Provisioned capacity mode]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/provisioned-capacity-mode.html
+	// [On-demand capacity mode]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/on-demand-capacity-mode.html
+	BillingMode types.BillingMode
+
+	// Indicates whether deletion protection is to be enabled (true) or disabled
+	// (false) on the table.
+	DeletionProtectionEnabled *bool
+
+	// One or more global secondary indexes (the maximum is 20) to be created on the
+	// table. Each global secondary index in the array includes the following:
+	//
+	//   - IndexName - The name of the global secondary index. Must be unique only for
+	//   this table.
+	//
+	//   - KeySchema - Specifies the key schema for the global secondary index. Each
+	//   global secondary index supports up to 4 partition keys and up to 4 sort keys.
+	//
+	//   - Projection - Specifies attributes that are copied (projected) from the table
+	//   into the index. These are in addition to the primary key attributes and index
+	//   key attributes, which are automatically projected. Each attribute specification
+	//   is composed of:
+	//
+	//   - ProjectionType - One of the following:
+	//
+	//   - KEYS_ONLY - Only the index and primary keys are projected into the index.
+	//
+	//   - INCLUDE - Only the specified table attributes are projected into the index.
+	//   The list of projected attributes is in NonKeyAttributes .
+	//
+	//   - ALL - All of the table attributes are projected into the index.
+	//
+	//   - NonKeyAttributes - A list of one or more non-key attribute names that are
+	//   projected into the secondary index. The total count of attributes provided in
+	//   NonKeyAttributes , summed across all of the secondary indexes, must not exceed
+	//   100. If you project the same attribute into two different indexes, this counts
+	//   as two distinct attributes when determining the total. This limit only applies
+	//   when you specify the ProjectionType of INCLUDE . You still can specify the
+	//   ProjectionType of ALL to project all attributes from the source table, even if
+	//   the table has more than 100 attributes.
+	//
+	//   - ProvisionedThroughput - The provisioned throughput settings for the global
+	//   secondary index, consisting of read and write capacity units.
+	GlobalSecondaryIndexes []types.GlobalSecondaryIndex
+
+	// Controls the settings synchronization mode for the global table. For
+	// multi-account global tables, this parameter is required and the only supported
+	// value is ENABLED. For same-account global tables, this parameter is set to
+	// ENABLED_WITH_OVERRIDES.
+	GlobalTableSettingsReplicationMode types.GlobalTableSettingsReplicationMode
+
+	// The Amazon Resource Name (ARN) of the source table used for the creation of a
+	// multi-account global table.
+	GlobalTableSourceArn *string
 
 	// Specifies the attributes that make up the primary key for a table or an index.
 	// The attributes in KeySchema must also be defined in the AttributeDefinitions
@@ -85,68 +153,7 @@ type CreateTableInput struct {
 	//
 	// [Data Model]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DataModel.html
 	// [Working with Tables]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/WorkingWithTables.html#WorkingWithTables.primary.key
-	//
-	// This member is required.
 	KeySchema []types.KeySchemaElement
-
-	// The name of the table to create. You can also provide the Amazon Resource Name
-	// (ARN) of the table in this parameter.
-	//
-	// This member is required.
-	TableName *string
-
-	// Controls how you are charged for read and write throughput and how you manage
-	// capacity. This setting can be changed later.
-	//
-	//   - PAY_PER_REQUEST - We recommend using PAY_PER_REQUEST for most DynamoDB
-	//   workloads. PAY_PER_REQUEST sets the billing mode to [On-demand capacity mode].
-	//
-	//   - PROVISIONED - We recommend using PROVISIONED for steady workloads with
-	//   predictable growth where capacity requirements can be reliably forecasted.
-	//   PROVISIONED sets the billing mode to [Provisioned capacity mode].
-	//
-	// [Provisioned capacity mode]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/provisioned-capacity-mode.html
-	// [On-demand capacity mode]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/on-demand-capacity-mode.html
-	BillingMode types.BillingMode
-
-	// Indicates whether deletion protection is to be enabled (true) or disabled
-	// (false) on the table.
-	DeletionProtectionEnabled *bool
-
-	// One or more global secondary indexes (the maximum is 20) to be created on the
-	// table. Each global secondary index in the array includes the following:
-	//
-	//   - IndexName - The name of the global secondary index. Must be unique only for
-	//   this table.
-	//
-	//   - KeySchema - Specifies the key schema for the global secondary index.
-	//
-	//   - Projection - Specifies attributes that are copied (projected) from the table
-	//   into the index. These are in addition to the primary key attributes and index
-	//   key attributes, which are automatically projected. Each attribute specification
-	//   is composed of:
-	//
-	//   - ProjectionType - One of the following:
-	//
-	//   - KEYS_ONLY - Only the index and primary keys are projected into the index.
-	//
-	//   - INCLUDE - Only the specified table attributes are projected into the index.
-	//   The list of projected attributes is in NonKeyAttributes .
-	//
-	//   - ALL - All of the table attributes are projected into the index.
-	//
-	//   - NonKeyAttributes - A list of one or more non-key attribute names that are
-	//   projected into the secondary index. The total count of attributes provided in
-	//   NonKeyAttributes , summed across all of the secondary indexes, must not exceed
-	//   100. If you project the same attribute into two different indexes, this counts
-	//   as two distinct attributes when determining the total. This limit only applies
-	//   when you specify the ProjectionType of INCLUDE . You still can specify the
-	//   ProjectionType of ALL to project all attributes from the source table, even if
-	//   the table has more than 100 attributes.
-	//
-	//   - ProvisionedThroughput - The provisioned throughput settings for the global
-	//   secondary index, consisting of read and write capacity units.
-	GlobalSecondaryIndexes []types.GlobalSecondaryIndex
 
 	// One or more local secondary indexes (the maximum is 5) to be created on the
 	// table. Each index is scoped to a given partition key value. There is a 10 GB

@@ -38,7 +38,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, nil)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, e)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -76,7 +76,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, nil)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, e)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -120,7 +120,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, nil)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, e)
 		require.NoError(t, err)
 
 		// Create expected output also split across multiple records
@@ -225,7 +225,7 @@ Dave,40
 					All:         true,
 					Drop:        true,
 				}
-				pipeline, err := NewProjectPipeline(input, proj, &expressionEvaluator{}, nil)
+				pipeline, err := NewProjectPipeline(input, proj, newExpressionEvaluator())
 				require.NoError(t, err)
 
 				ctx := t.Context()
@@ -372,8 +372,8 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 			expectedOutput: arrowtest.Rows{
 				{"utf8.builtin.message": "valid numeric", "utf8.parsed.mixed_values": "42.5",
 					"float64.generated.value":          42.5,
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil},
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""},
 				{"utf8.builtin.message": "invalid numeric", "utf8.parsed.mixed_values": "not_a_number",
 					"float64.generated.value":          0.0,
 					"utf8.generated.__error__":         types.SampleExtractionErrorType,
@@ -390,6 +390,36 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 					"float64.generated.value":          0.0,
 					"utf8.generated.__error__":         types.SampleExtractionErrorType,
 					"utf8.generated.__error_details__": `strconv.ParseFloat: parsing "": invalid syntax`}, // empty string gets error from previous parsing
+			},
+		},
+		{
+			name: "existing error columns - last error wins",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
+				semconv.FieldFromFQN("utf8.parsed.mixed_values", true),
+				semconv.FieldFromIdent(semconv.ColumnIdentError, false),
+				semconv.FieldFromIdent(semconv.ColumnIdentErrorDetails, false),
+			}, nil),
+			input: arrowtest.Rows{
+				{"utf8.builtin.message": "valid numeric", "utf8.parsed.mixed_values": "42.5", "utf8.generated.__error__": "", "utf8.generated.__error_details__": ""},
+				{"utf8.builtin.message": "invalid numeric", "utf8.parsed.mixed_values": "not_a_number", "utf8.generated.__error__": "My error", "utf8.generated.__error_details__": "Some error"},
+			},
+			columnExprs: []physical.Expression{
+				&physical.UnaryExpr{
+					Op:   types.UnaryOpCastFloat,
+					Left: &physical.ColumnExpr{Ref: createAmbiguousColumnRef("mixed_values")},
+				},
+			},
+			expectedFields: 5,
+			expectedOutput: arrowtest.Rows{
+				{"utf8.builtin.message": "valid numeric", "utf8.parsed.mixed_values": "42.5",
+					"float64.generated.value":          42.5,
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""},
+				{"utf8.builtin.message": "invalid numeric", "utf8.parsed.mixed_values": "not_a_number",
+					"float64.generated.value":          0.0,
+					"utf8.generated.__error__":         types.SampleExtractionErrorType,
+					"utf8.generated.__error_details__": `strconv.ParseFloat: parsing "not_a_number": invalid syntax`},
 			},
 		},
 		{
@@ -415,13 +445,13 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 				{"utf8.builtin.message": "scientific notation",
 					"utf8.parsed.edge_values":          "1.23e+02",
 					"float64.generated.value":          123.0,
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil}, // empty string gets error from previous parsing
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""}, // empty string gets error from previous parsing
 				{"utf8.builtin.message": "negative number",
 					"utf8.parsed.edge_values":          "-456.78",
 					"float64.generated.value":          -456.78,
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil}, // empty string gets error from previous parsing
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""}, // empty string gets error from previous parsing
 				{"utf8.builtin.message": "only whitespace", "utf8.parsed.edge_values": "   ",
 					"float64.generated.value":          0.0,
 					"utf8.generated.__error__":         types.SampleExtractionErrorType,
@@ -456,18 +486,18 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 				{"utf8.builtin.message": "negative duration",
 					"utf8.parsed.duration_values":      "-5s",
 					"float64.generated.value":          -5.0,
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil},
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""},
 				{"utf8.builtin.message": "zero duration",
 					"utf8.parsed.duration_values":      "0s",
 					"float64.generated.value":          0.0,
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil},
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""},
 				{"utf8.builtin.message": "fractional duration",
 					"utf8.parsed.duration_values":      "1.5s",
 					"float64.generated.value":          1.5,
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil},
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""},
 				{"utf8.builtin.message": "invalid duration",
 					"utf8.parsed.duration_values":      "5 seconds",
 					"float64.generated.value":          0.0,
@@ -491,8 +521,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 					Expand:      true,
 					All:         true,
 				},
-				&e,
-				nil)
+				e)
 			require.NoError(t, err)
 			defer pipeline.Close()
 
@@ -555,7 +584,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, nil)
+		pipeline, err := NewProjectPipeline(input1, projection, newExpressionEvaluator())
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -625,7 +654,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, nil)
+		pipeline, err := NewProjectPipeline(input1, projection, newExpressionEvaluator())
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -695,7 +724,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, nil)
+		pipeline, err := NewProjectPipeline(input1, projection, newExpressionEvaluator())
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -731,4 +760,193 @@ func createAmbiguousColumnRef(name string) types.ColumnRef {
 		Column: name,
 		Type:   types.ColumnTypeAmbiguous,
 	}
+}
+
+func TestNewProjectPipeline_DuplicateColumnPanic(t *testing.T) {
+	t.Run("duplicate columns from mixed json and logfmt parsers", func(t *testing.T) {
+		schema := arrow.NewSchema([]arrow.Field{
+			semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
+			semconv.FieldFromFQN("utf8.parsed.status", true),
+		}, nil)
+
+		// Simulate output from JSON parser that extracted "status" field
+		rows := arrowtest.Rows{
+			// Row 1: JSON line that was parsed and extracted "status"
+			{
+				"utf8.builtin.message": `{"level":"info","status":200}`,
+				"utf8.parsed.status":   "200",
+			},
+			// Row 2: Logfmt line that will also parse and extract "status"
+			{
+				"utf8.builtin.message":                `level=info status=404 method=GET`,
+				"utf8.parsed.status":                  nil,
+				semconv.ColumnIdentError.FQN():        "error message",
+				semconv.ColumnIdentErrorDetails.FQN(): "error details",
+			},
+			// Row 3: Another JSON line with status
+			{
+				"utf8.builtin.message": `{"level":"error","status":500}`,
+				"utf8.parsed.status":   "500",
+			},
+			// Row 4: Logfmt line that will not parse and extract "status"
+			{
+				"utf8.builtin.message":                `level=info method=GET`,
+				"utf8.parsed.status":                  nil,
+				semconv.ColumnIdentError.FQN():        "error message",
+				semconv.ColumnIdentErrorDetails.FQN(): "error details",
+			},
+		}
+
+		input := NewArrowtestPipeline(schema, rows)
+
+		// Create an expression that parses logfmt from message, which will also extract "status"
+		// This simulates a query like: | json | logfmt
+		// where both parsers extract the same field name
+		evaluator := newExpressionEvaluator()
+
+		parseExpr := &physical.VariadicExpr{
+			Op: types.VariadicOpParseLogfmt,
+			Expressions: []physical.Expression{
+				&physical.ColumnExpr{
+					Ref: types.ColumnRef{
+						Column: "message",
+						Type:   types.ColumnTypeBuiltin,
+					},
+				},
+				physical.NewLiteral([]string{}),
+				physical.NewLiteral(false),
+				physical.NewLiteral(false),
+			},
+		}
+
+		proj := &physical.Projection{
+			Expressions: []physical.Expression{parseExpr},
+			All:         true,
+			Expand:      true,
+		}
+
+		pipeline, err := NewProjectPipeline(input, proj, evaluator)
+		require.NoError(t, err)
+
+		ctx := t.Context()
+		record, err := pipeline.Read(ctx)
+		require.NoError(t, err)
+
+		expectedRows := arrowtest.Rows{
+			// Row 1: JSON parsed status="200", logfmt fails (null) → keep "200"
+			{
+				"utf8.builtin.message":             `{"level":"info","status":200}`,
+				"utf8.generated.__error__":         "LogfmtParserErr",
+				"utf8.generated.__error_details__": "logfmt syntax error at pos 2 : unexpected '\"'",
+				"utf8.parsed.level":                nil, // logfmt didn't parse, so null
+				"utf8.parsed.method":               nil,
+				"utf8.parsed.status":               "200", // Kept from original JSON parse
+			},
+			// Row 2: No previous status (null), logfmt parses status="404" → use "404"
+			{
+				"utf8.builtin.message":             `level=info status=404 method=GET`,
+				"utf8.generated.__error__":         "",
+				"utf8.generated.__error_details__": "",
+				"utf8.parsed.level":                "info",
+				"utf8.parsed.method":               "GET",
+				"utf8.parsed.status":               "404",
+			},
+			// Row 3: JSON parsed status="500", logfmt fails (null) → keep "500"
+			{
+				"utf8.builtin.message":             `{"level":"error","status":500}`,
+				"utf8.generated.__error__":         "LogfmtParserErr",
+				"utf8.generated.__error_details__": "logfmt syntax error at pos 2 : unexpected '\"'",
+				"utf8.parsed.level":                nil, // logfmt didn't parse, so null
+				"utf8.parsed.method":               nil,
+				"utf8.parsed.status":               "500", // Kept from original JSON parse
+			},
+			// Row 4: No previous status (null), logfmt also does't parse status
+			{
+				"utf8.builtin.message":             `level=info method=GET`,
+				"utf8.generated.__error__":         "",
+				"utf8.generated.__error_details__": "",
+				"utf8.parsed.level":                "info",
+				"utf8.parsed.method":               "GET",
+				"utf8.parsed.status":               nil,
+			},
+		}
+
+		actualRows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err)
+		require.Equal(t, expectedRows, actualRows)
+	})
+
+	t.Run("duplicate columns from same parser multiple times", func(t *testing.T) {
+		// Another scenario: a field already exists and gets parsed again
+		schema := arrow.NewSchema([]arrow.Field{
+			semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
+			semconv.FieldFromFQN("utf8.parsed.user", true),
+			semconv.FieldFromFQN("utf8.parsed.action", true),
+		}, nil)
+
+		rows := arrowtest.Rows{
+			{
+				"utf8.builtin.message": `{"user":"alice","action":"login","timestamp":"2024-01-01"}`,
+				"utf8.parsed.user":     "bob",
+				"utf8.parsed.action":   "logout",
+			},
+			{
+				"utf8.builtin.message": `{"action":"login","timestamp":"2024-01-01"}`,
+				"utf8.parsed.user":     "bob",
+				"utf8.parsed.action":   "logout",
+			},
+		}
+
+		input := NewArrowtestPipeline(schema, rows)
+
+		evaluator := newExpressionEvaluator()
+
+		// Parse JSON from message which will extract "user" and "action" again
+		parseExpr := &physical.VariadicExpr{
+			Op: types.VariadicOpParseJSON,
+			Expressions: []physical.Expression{
+				&physical.ColumnExpr{
+					Ref: types.ColumnRef{
+						Column: "message",
+						Type:   types.ColumnTypeBuiltin,
+					},
+				},
+				physical.NewLiteral([]string{}),
+				physical.NewLiteral(false),
+				physical.NewLiteral(false),
+			},
+		}
+
+		proj := &physical.Projection{
+			Expressions: []physical.Expression{parseExpr},
+			All:         true,
+			Expand:      true,
+		}
+
+		pipeline, err := NewProjectPipeline(input, proj, evaluator)
+		require.NoError(t, err)
+
+		ctx := t.Context()
+		record, err := pipeline.Read(ctx)
+		require.NoError(t, err)
+
+		expectedRows := arrowtest.Rows{
+			{
+				"utf8.builtin.message":  `{"user":"alice","action":"login","timestamp":"2024-01-01"}`,
+				"utf8.parsed.action":    "login",
+				"utf8.parsed.timestamp": "2024-01-01",
+				"utf8.parsed.user":      "alice",
+			},
+			{
+				"utf8.builtin.message":  `{"action":"login","timestamp":"2024-01-01"}`,
+				"utf8.parsed.action":    "login",
+				"utf8.parsed.timestamp": "2024-01-01",
+				"utf8.parsed.user":      "bob", //from first parse
+			},
+		}
+
+		actualRows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err)
+		require.Equal(t, expectedRows, actualRows)
+	})
 }
