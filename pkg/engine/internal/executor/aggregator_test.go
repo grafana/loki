@@ -14,12 +14,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
-var (
-	groupBy = []arrow.Field{
-		semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
-		semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
-	}
-)
+var groupBy = []arrow.Field{
+	semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
+	semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
+}
 
 func TestAggregator(t *testing.T) {
 	colTs := semconv.ColumnIdentTimestamp.FQN()
@@ -372,23 +370,27 @@ func TestAggregator(t *testing.T) {
 	})
 }
 
-func BenchmarkAggregator(b *testing.B) {
+func BenchmarkBuildRecord(b *testing.B) {
 	fields := []arrow.Field{
 		semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
 		semconv.FieldFromIdent(semconv.NewIdentifier("cluster", types.ColumnTypeLabel, types.Loki.String), true),
 		semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
 	}
 
-	agg := newAggregator(10, aggregationOperationSum)
+	agg := newAggregator(10000, aggregationOperationSum)
 	agg.AddLabels(fields)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; i < 10000; i++ {
 		ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Second)
 		env := fmt.Sprintf("env-%d", i%3)
 		cluster := fmt.Sprintf("cluster-%d", i%10)
 		service := fmt.Sprintf("service-%d", i%7)
 
-		_ = agg.Add(ts, 10, fields, []string{env, cluster, service})
+		_ = agg.Add(ts, float64(i), fields, []string{env, cluster, service})
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		agg.BuildRecord()
 	}
 }
