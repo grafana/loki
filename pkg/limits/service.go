@@ -194,8 +194,6 @@ func (s *Service) UpdateRates(
 	req *proto.UpdateRatesRequest,
 ) (*proto.UpdateRatesResponse, error) {
 	// Replicate rate bucket data to Kafka for multi-AZ support.
-	// UpdateRates is already infrequently called via the rate batcher
-	// (typically every 10-30 seconds per tenant), so we replicate every call.
 	toProduce, updated, err := s.usage.UpdateRates(req.Tenant, req.Streams, s.clock.Now())
 	if err != nil {
 		return nil, err
