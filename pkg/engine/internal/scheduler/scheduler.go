@@ -235,6 +235,12 @@ func (s *Scheduler) markWorkerReady(ctx context.Context, worker *workerConn) err
 
 	// Spawn a goroutine that assigns tasks to this worker by reading
 	// from the tasksCh. The goroutine exits on 429/error/disconnect.
+	//
+	// It's possible for this to launch multiple goroutines if the worker
+	// (incorrectly) sends more than one ready message. If this happens
+	// the worker basically gets a higher weight towards task assignment
+	// as more than a single routine is picking from the shared channel.
+	// But backpressure would still work as expected if worker can't keep up.
 	go s.workerLoop(ctx, worker)
 
 	// Wake [Scheduler.runAssignLoop] so it feeds tasks into tasksCh.
@@ -420,6 +426,11 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 // workerLoop assigns tasks to a single worker by reading from the
 // shared tasksCh. It continues assigning until the worker NACKs, an error
 // occurs, or the connection is closed.
+//
+// TODO(ashwanth): When there is only a single worker (say single-binary)
+// all assignments go through a single workerLoop. Because SendMessage blocks
+// until the worker ACKs, the per-task round-trip overhead adds up
+// when there are a large number of tasks, resulting in tail latencies.
 func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 	for {
 		var assignment taskAssignment
@@ -440,7 +451,6 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 		cancel()
 
 		if err != nil {
-			level.Warn(s.logger).Log("msg", "failed to assign task", "id", assignment.msg.Task.ULID, "conn", worker.RemoteAddr(), "err", err)
 			s.requeueTask(assignment.t, assignment.pos)
 
 			// if its 429, remove from ready workers and fire subscribe request.
@@ -455,6 +465,7 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 				return
 			}
 
+			level.Warn(s.logger).Log("msg", "failed to assign task", "id", assignment.msg.Task.ULID, "conn", worker.RemoteAddr(), "err", err)
 			// other errors are treated as transient, continue with next assignment.
 			// if the worker disconnected, the loop will exit on worker.done.
 			continue
