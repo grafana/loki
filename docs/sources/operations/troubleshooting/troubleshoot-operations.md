@@ -754,7 +754,7 @@ unsupported storage backend
 
 **Cause:**
 
-The specified storage backend type is not recognized. This typically occurs when a typo exists in the storage type configuration. 
+The specified storage backend type is not recognized. This typically occurs when a typo exists in the storage type configuration.
 
 **Resolution:**
 
@@ -1224,7 +1224,6 @@ A results cache is required for the query frontend but no cache configuration wa
 - HTTP status: N/A (startup failure)
 - Configurable per tenant: No
 
-
 ## Ring and cluster communication errors
 
 Ring errors occur when Loki components cannot properly communicate through the [hash ring](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/hash-rings/), which is used to distribute work across instances. The ring is fundamental to Loki's distributed operation.
@@ -1511,7 +1510,6 @@ After being disconnected from the memberlist cluster, the instance failed to rej
 - Retryable: Yes (automatic retries)
 - HTTP status: N/A (degraded operation)
 - Configurable per tenant: No
-
 
 ## Component readiness errors
 
