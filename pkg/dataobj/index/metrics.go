@@ -1,7 +1,7 @@
 package index
 
 import (
-	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -77,12 +77,12 @@ func (p *builderMetrics) incCommitsTotal() {
 func (p *builderMetrics) setProcessingDelay(partition int32, recordTimestamp time.Time) {
 	// Convert milliseconds to seconds and calculate delay
 	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.processingDelay.WithLabelValues(fmt.Sprintf("%d", partition)).Set(time.Since(recordTimestamp).Seconds())
+		p.processingDelay.WithLabelValues(strconv.Itoa(int(partition))).Set(time.Since(recordTimestamp).Seconds())
 	}
 }
 
 func (p *builderMetrics) setProcessingDelayToZero(partition int32) {
-	p.processingDelay.WithLabelValues(fmt.Sprintf("%d", partition)).Set(0)
+	p.processingDelay.WithLabelValues(strconv.Itoa(int(partition))).Set(0)
 }
 
 type indexerMetrics struct {
