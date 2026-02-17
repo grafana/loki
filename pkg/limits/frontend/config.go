@@ -17,13 +17,37 @@ type Config struct {
 	LifecyclerConfig           ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 	NumPartitions              int                   `yaml:"num_partitions"`
 	AssignedPartitionsCacheTTL time.Duration         `yaml:"assigned_partitions_cache_ttl"`
+	CacheTTL                   time.Duration         `yaml:"cache_ttl"`
+	CacheTTLJitter             time.Duration         `yaml:"cache_ttl_jitter"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientConfig.RegisterFlagsWithPrefix("ingest-limits-frontend", f)
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits-frontend.", f, util_log.Logger)
-	f.IntVar(&cfg.NumPartitions, "ingest-limits-frontend.num-partitions", 64, "The number of partitions to use for the ring.")
-	f.DurationVar(&cfg.AssignedPartitionsCacheTTL, "ingest-limits-frontend.assigned-partitions-cache-ttl", 1*time.Minute, "The TTL for the assigned partitions cache. 0 disables the cache.")
+	f.IntVar(
+		&cfg.NumPartitions,
+		"ingest-limits-frontend.num-partitions",
+		64,
+		"The number of partitions to use for the ring.",
+	)
+	f.DurationVar(
+		&cfg.AssignedPartitionsCacheTTL,
+		"ingest-limits-frontend.assigned-partitions-cache-ttl",
+		time.Minute,
+		"The TTL for the assigned partitions cache. 0 disables the cache.",
+	)
+	f.DurationVar(
+		&cfg.CacheTTL,
+		"ingest-limits-frontend.cache-ttl",
+		time.Minute,
+		"The TTL for the cache. 0 disables the cache.",
+	)
+	f.DurationVar(
+		&cfg.CacheTTLJitter,
+		"ingest-limits-frontend.cache-ttl-jitter",
+		15*time.Second,
+		"The jitter to add to the cache.",
+	)
 }
 
 func (cfg *Config) Validate() error {
