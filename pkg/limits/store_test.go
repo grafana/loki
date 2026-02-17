@@ -219,8 +219,8 @@ func TestUsageStore_RateBucketsAreNotUsed(t *testing.T) {
 	require.Nil(t, stream.rateBuckets)
 }
 
-// TestUsageStore_UpdateRates_Replication asserts that UpdateRates properly
-// throttles Kafka production using lastProducedAt.
+// TestUsageStore_UpdateRates_Replication asserts that UpdateRates produces to
+// Kafka for multi-AZ replication.
 func TestUsageStore_UpdateRates_Replication(t *testing.T) {
 	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)
@@ -239,26 +239,26 @@ func TestUsageStore_UpdateRates_Replication(t *testing.T) {
 	require.Equal(t, uint64(0x1), toProduce[0].StreamHash)
 	require.Len(t, rates, 1)
 
-	// Advance by 30 seconds (less than 1 minute cutoff)
+	// Advance by 30 seconds
 	clock.Advance(30 * time.Second)
 
-	// Second update should NOT produce to Kafka (within 1 minute)
+	// Second update should ALSO produce to Kafka (no throttling)
 	toProduce, rates, err = s.UpdateRates("tenant", metadata, clock.Now())
 	require.NoError(t, err)
-	require.Len(t, toProduce, 0, "should not produce within 1 minute window")
+	require.Len(t, toProduce, 1, "should produce every call")
+	require.Equal(t, uint64(0x1), toProduce[0].StreamHash)
 	require.Len(t, rates, 1)
 
-	// Advance by another 31 seconds (total 61 seconds, past 1 minute cutoff)
+	// Advance by another 31 seconds
 	clock.Advance(31 * time.Second)
 
-	// Third update should produce to Kafka again
+	// Third update should also produce to Kafka
 	toProduce, rates, err = s.UpdateRates("tenant", metadata, clock.Now())
 	require.NoError(t, err)
-	require.Len(t, toProduce, 1, "should produce after 1 minute")
+	require.Len(t, toProduce, 1, "should produce every call")
 	require.Equal(t, uint64(0x1), toProduce[0].StreamHash)
 	require.Len(t, rates, 1)
 }
-
 
 func TestUsageStore_UpdateCond(t *testing.T) {
 	tests := []struct {

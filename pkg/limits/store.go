@@ -274,11 +274,9 @@ func (s *usageStore) UpdateRates(tenant string, metadata []*proto.StreamMetadata
 		return nil, nil, errOutsideActiveWindow
 	}
 	var (
-		now           = s.clock.Now()
 		updatedList   = make([]streamUsage, 0, len(metadata))
 		toProduceList = make([]*proto.StreamMetadata, 0, len(metadata))
 		cutoff        = seenAt.Add(-s.activeWindow).UnixNano()
-		produceCutoff = now.Add(-time.Minute).UnixNano()
 	)
 	s.withLock(tenant, func(i int) {
 		for _, m := range metadata {
@@ -301,13 +299,7 @@ func (s *usageStore) UpdateRates(tenant string, metadata []*proto.StreamMetadata
 			got, _ := s.get(i, tenant, partition, m.StreamHash)
 			got.rateBuckets = getActiveRateBuckets(got.rateBuckets, s.withinRateWindow)
 			updatedList = append(updatedList, got)
-
-			// Replicate to Kafka if we haven't produced recently.
-			// This ensures multi-AZ replicas have rate bucket data.
-			if stream.lastProducedAt < produceCutoff {
-				s.setLastProducedAt(i, tenant, partition, m.StreamHash, noPolicy, now)
-				toProduceList = append(toProduceList, m)
-			}
+			toProduceList = append(toProduceList, m)
 		}
 	})
 	return toProduceList, updatedList, nil
