@@ -122,7 +122,20 @@ func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if p.read == nil {
 		return nil, EOF
 	}
-	return p.read(ctx, p.inputs)
+	rec, err := p.read(ctx, p.inputs)
+
+	if rec != nil {
+		fields := make(map[string]struct{})
+		for _, f := range rec.Schema().Fields() {
+			if _, ok := fields[f.Name]; !ok {
+				fields[f.Name] = struct{}{}
+			} else {
+				panic(fmt.Sprintf("duplicate field name %s", f.Name))
+			}
+		}
+	}
+
+	return rec, err
 }
 
 // Close implements Pipeline.
@@ -415,6 +428,17 @@ func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 		}
 
 		p.region.Record(xcap.StatPipelineReadDuration.Observe(time.Since(start).Seconds()))
+	}
+
+	if rec != nil {
+		fields := make(map[string]struct{})
+		for _, f := range rec.Schema().Fields() {
+			if _, ok := fields[f.Name]; !ok {
+				fields[f.Name] = struct{}{}
+			} else {
+				panic(fmt.Sprintf("duplicate field name %s", f.Name))
+			}
+		}
 	}
 
 	return rec, err
