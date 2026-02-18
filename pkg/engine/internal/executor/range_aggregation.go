@@ -269,6 +269,11 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 			}
 
 			for row := range int(record.NumRows()) {
+				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
+				if len(windows) == 0 {
+					continue // out of range, skip this row
+				}
+
 				var value float64
 				if r.opts.operation != types.RangeAggregationTypeCount {
 					if valArr.IsNull(row) {
@@ -276,11 +281,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 					}
 
 					value = valArr.Value(row)
-				}
-
-				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
-				if len(windows) == 0 {
-					continue // out of range, skip this row
 				}
 
 				labelValues := labelValuesCache.getLabelValues(arrays, row)
