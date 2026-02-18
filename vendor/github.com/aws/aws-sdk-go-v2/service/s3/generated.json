@@ -117,6 +117,7 @@
         "api_op_SelectObjectContent.go",
         "api_op_UpdateBucketMetadataInventoryTableConfiguration.go",
         "api_op_UpdateBucketMetadataJournalTableConfiguration.go",
+        "api_op_UpdateObjectEncryption.go",
         "api_op_UploadPart.go",
         "api_op_UploadPartCopy.go",
         "api_op_WriteGetObjectResponse.go",

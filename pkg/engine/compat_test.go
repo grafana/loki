@@ -473,11 +473,12 @@ func TestStreamsResultBuilder(t *testing.T) {
 		}
 		require.Equal(t, expected, streams)
 	})
-	t.Run("categorize labels does not consider metadata when building output streams", func(t *testing.T) {
+	t.Run("categorize labels does not consider metadata or parsed keys when building output streams", func(t *testing.T) {
 		colTs := semconv.ColumnIdentTimestamp
 		colMsg := semconv.ColumnIdentMessage
 		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
 		colMetadata := semconv.NewIdentifier("metadata", types.ColumnTypeMetadata, types.Loki.String)
+		colParsed := semconv.NewIdentifier("parsed", types.ColumnTypeParsed, types.Loki.String)
 
 		schema := arrow.NewSchema(
 			[]arrow.Field{
@@ -485,12 +486,13 @@ func TestStreamsResultBuilder(t *testing.T) {
 				semconv.FieldFromIdent(colMsg, false),
 				semconv.FieldFromIdent(colEnv, false),
 				semconv.FieldFromIdent(colMetadata, false),
+				semconv.FieldFromIdent(colParsed, false),
 			},
 			nil,
 		)
 		rows := arrowtest.Rows{
-			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colMsg.FQN(): "log line", colEnv.FQN(): "prod", colMetadata.FQN(): "a md value"},
-			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colMsg.FQN(): "log line", colEnv.FQN(): "prod", colMetadata.FQN(): "another md value"},
+			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colMsg.FQN(): "log line", colEnv.FQN(): "prod", colMetadata.FQN(): "a md value", colParsed.FQN(): "a parsed value"},
+			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colMsg.FQN(): "log line", colEnv.FQN(): "prod", colMetadata.FQN(): "another md value", colParsed.FQN(): "another parsed value"},
 		}
 
 		record := rows.Record(memory.DefaultAllocator, schema)
@@ -508,8 +510,8 @@ func TestStreamsResultBuilder(t *testing.T) {
 			push.Stream{
 				Labels: labels.FromStrings("env", "prod").String(),
 				Entries: []logproto.Entry{
-					{Line: "log line", Timestamp: time.Unix(0, 1620000000000000000), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("metadata", "a md value")), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
-					{Line: "log line", Timestamp: time.Unix(0, 1620000000000000000), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("metadata", "another md value")), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
+					{Line: "log line", Timestamp: time.Unix(0, 1620000000000000000), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("metadata", "a md value")), Parsed: logproto.FromLabelsToLabelAdapters(labels.FromStrings("parsed", "a parsed value"))},
+					{Line: "log line", Timestamp: time.Unix(0, 1620000000000000000), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("metadata", "another md value")), Parsed: logproto.FromLabelsToLabelAdapters(labels.FromStrings("parsed", "another parsed value"))},
 				},
 			},
 		}

@@ -10,6 +10,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
+// A producer allows mocking of certain [kgo.Client] methods in tests.
+type producer interface {
+	ProduceSync(ctx context.Context, records ...*kgo.Record) kgo.ProduceResults
+}
+
 // metastoreEvents emits events to the metastore Kafka topic.
 type metastoreEvents struct {
 	producer       producer

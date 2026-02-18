@@ -123,7 +123,7 @@ func TestMigrateTables(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, indexFiles, 1)
 
-				dst := filepath.Join(t.TempDir(), strings.Trim(indexFiles[0].Name, gzipExtension))
+				dst := filepath.Join(t.TempDir(), strings.TrimSuffix(indexFiles[0].Name, gzipExtension))
 				err = shipperstorage.DownloadFileFromStorage(
 					dst,
 					true,

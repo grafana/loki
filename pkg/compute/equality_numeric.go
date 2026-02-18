@@ -7,7 +7,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-func dispatchNumericEquality[T columnar.Numeric](alloc *memory.Allocator, kernel numericEqualityKernel[T], left, right columnar.Datum) (columnar.Datum, error) {
+func dispatchNumericEquality[T columnar.Numeric](alloc *memory.Allocator, kernel numericEqualityKernel[T], left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	_, leftScalar := left.(columnar.Scalar)
 	_, rightScalar := right.(columnar.Scalar)
 
@@ -15,11 +15,17 @@ func dispatchNumericEquality[T columnar.Numeric](alloc *memory.Allocator, kernel
 	case leftScalar && rightScalar:
 		return numericEqualitySS(kernel, left.(*columnar.NumberScalar[T]), right.(*columnar.NumberScalar[T])), nil
 	case leftScalar && !rightScalar:
-		return numericEqualitySA(alloc, kernel, left.(*columnar.NumberScalar[T]), right.(*columnar.Number[T])), nil
+		out := numericEqualitySA(alloc, kernel, left.(*columnar.NumberScalar[T]), right.(*columnar.Number[T]))
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && rightScalar:
-		return numericEqualityAS(alloc, kernel, left.(*columnar.Number[T]), right.(*columnar.NumberScalar[T])), nil
+		out := numericEqualityAS(alloc, kernel, left.(*columnar.Number[T]), right.(*columnar.NumberScalar[T]))
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && !rightScalar:
-		return numericEqualityAA(alloc, kernel, left.(*columnar.Number[T]), right.(*columnar.Number[T]))
+		out, err := numericEqualityAA(alloc, kernel, left.(*columnar.Number[T]), right.(*columnar.Number[T]))
+		if err != nil {
+			return nil, err
+		}
+		return applySelectionToBoolArray(alloc, out, selection)
 	}
 
 	panic("unreachable")

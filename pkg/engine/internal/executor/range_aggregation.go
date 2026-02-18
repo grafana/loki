@@ -72,16 +72,14 @@ type rangeAggregationPipeline struct {
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
 	evaluator           *expressionEvaluator         // used to evaluate column expressions
 	opts                rangeAggregationOptions
-	region              *xcap.Region
 	identCache          *semconv.IdentifierCache
 }
 
-func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
 		opts:       opts,
-		region:     region,
 		identCache: semconv.NewIdentifierCache(),
 	}
 	r.init()
@@ -112,6 +110,16 @@ func (r *rangeAggregationPipeline) init() {
 
 	r.aggregator = newAggregator(len(windows), op)
 	r.aggregator.SetMaxSeries(r.opts.maxQuerySeries)
+}
+
+// Open opens all input pipelines.
+func (r *rangeAggregationPipeline) Open(ctx context.Context) error {
+	for _, input := range r.inputs {
+		if err := input.Open(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Read reads the next value into its state.
@@ -168,12 +176,12 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				return nil, err
 			}
 
+			inputsExhausted = false
+
 			if record.NumRows() == 0 {
 				// Nothing to process
 				continue
 			}
-
-			inputsExhausted = false
 
 			// extract all the columns that are used for grouping
 			var arrays []*array.String
@@ -289,9 +297,9 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 
 	r.inputsExhausted = true
 
-	if r.region != nil {
+	if region := xcap.RegionFromContext(ctx); region != nil {
 		computeTime := time.Since(startedAt) - inputReadTime
-		r.region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
+		region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
 	}
 
 	return r.aggregator.BuildRecord()
@@ -301,18 +309,9 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 // The implementation must close all the of the pipeline's inputs.
 func (r *rangeAggregationPipeline) Close() {
 	r.aggregator.Reset()
-
-	if r.region != nil {
-		r.region.End()
-	}
 	for _, input := range r.inputs {
 		input.Close()
 	}
-}
-
-// Region implements RegionProvider.
-func (r *rangeAggregationPipeline) Region() *xcap.Region {
-	return r.region
 }
 
 func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {

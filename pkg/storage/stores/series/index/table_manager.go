@@ -18,7 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -476,24 +475,24 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []confi
 
 func (m *TableManager) createTables(ctx context.Context, descriptions []config.TableDesc) error {
 	numFailures := 0
-	merr := tsdb_errors.NewMulti()
+	var errs []error
 
 	for _, desc := range descriptions {
 		level.Debug(m.logger).Log("msg", "creating table", "table", desc.Name)
 		err := m.client.CreateTable(ctx, desc)
 		if err != nil {
 			numFailures++
-			merr.Add(err)
+			errs = append(errs, err)
 		}
 	}
 
 	m.metrics.createFailures.Set(float64(numFailures))
-	return merr.Err()
+	return errors.Join(errs...)
 }
 
 func (m *TableManager) deleteTables(ctx context.Context, descriptions []config.TableDesc) error {
 	numFailures := 0
-	merr := tsdb_errors.NewMulti()
+	var errs []error
 
 	for _, desc := range descriptions {
 		level.Info(m.logger).Log("msg", "table has exceeded the retention period", "table", desc.Name)
@@ -505,12 +504,12 @@ func (m *TableManager) deleteTables(ctx context.Context, descriptions []config.T
 		err := m.client.DeleteTable(ctx, desc.Name)
 		if err != nil {
 			numFailures++
-			merr.Add(err)
+			errs = append(errs, err)
 		}
 	}
 
 	m.metrics.deleteFailures.Set(float64(numFailures))
-	return merr.Err()
+	return errors.Join(errs...)
 }
 
 func (m *TableManager) updateTables(ctx context.Context, descriptions []config.TableDesc) error {

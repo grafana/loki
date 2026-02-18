@@ -7,7 +7,6 @@ import (
 	"context"
 	"slices"
 	"sort"
-	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -43,7 +42,6 @@ var _ Reservoir = &HistogramReservoir{}
 type HistogramReservoir struct {
 	reservoir.ConcurrentSafe
 	*storage
-	mu sync.Mutex
 
 	// bounds are bucket bounds in ascending order.
 	bounds []float64
@@ -72,18 +70,13 @@ func (r *HistogramReservoir) Offer(ctx context.Context, t time.Time, v Value, a 
 	}
 
 	idx := sort.SearchFloat64s(r.bounds, n)
-	m := newMeasurement(ctx, t, v, a)
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.store(idx, m)
+	r.store(ctx, idx, t, v, a)
 }
 
 // Collect returns all the held exemplars.
 //
 // The Reservoir state is preserved after this call.
 func (r *HistogramReservoir) Collect(dest *[]Exemplar) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.storage.Collect(dest)
 }

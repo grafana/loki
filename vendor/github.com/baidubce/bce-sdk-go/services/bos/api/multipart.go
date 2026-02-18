@@ -50,6 +50,9 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 	if len(contentType) == 0 {
 		contentType = RAW_CONTENT_TYPE
 	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	req.SetHeader(http.CONTENT_TYPE, contentType)
 	// Joiner for generate the user id list string for grant acl header
 	joiner := func(ids []string) string {
@@ -312,6 +315,9 @@ func UploadPartCopy(cli bce.Client, bucket, object, source, uploadId string, par
 	if len(source) == 0 {
 		return nil, bce.NewBceClientError("upload part copy source should not be empty")
 	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	req.SetHeader(http.BCE_COPY_SOURCE, util.UriEncode(source, false))
 
 	// Optional arguments settings
@@ -495,6 +501,9 @@ func ListParts(cli bce.Client, bucket, object, uploadId string, args *ListPartsA
 	req.SetMethod(http.GET)
 	req.SetParam("uploadId", uploadId)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// Optional arguments settings
 	if args != nil {
 		if len(args.PartNumberMarker) > 0 {
@@ -540,7 +549,9 @@ func ListMultipartUploads(cli bce.Client, bucket string, args *ListMultipartUplo
 	req.SetMethod(http.GET)
 	req.SetParam("uploads", "")
 	req.SetBucket(bucket)
-
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// Optional arguments settings
 	if args != nil {
 		if len(args.Delimiter) > 0 {
