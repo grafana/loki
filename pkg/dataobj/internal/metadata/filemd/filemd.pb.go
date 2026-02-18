@@ -380,7 +380,7 @@ func (m *SectionLayout) GetMetadata() *Region {
 
 // Region describes a contiguous range of bytes within a data object.
 type Region struct {
-	// Byte offset of the region from the start of the data object.
+	// Byte offset of the region relative to the end of the header.
 	Offset uint64 `protobuf:"varint,1,opt,name=offset,proto3" json:"offset,omitempty"`
 	// Length of the region in bytes.
 	Length uint64 `protobuf:"varint,2,opt,name=length,proto3" json:"length,omitempty"`

@@ -14,8 +14,9 @@ import (
 const optimisticReadBytes = 16 * 1024
 
 type decoder struct {
-	rr   rangeReader
-	size int64
+	rr       rangeReader
+	size     int64
+	startOff int64
 }
 
 func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
@@ -27,15 +28,17 @@ func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	}
 
 	header, err := d.header(buf)
-	if errors.Is(err, errLegacyMagic) {
+	if err != nil && errors.Is(err, errLegacyMagic) {
 		// Fall back to legacy metadata.
 		return d.legacyMetadata(ctx)
 	}
 
+	d.startOff = int64(8) + int64(header.MetadataSize)
+
 	if header.MetadataSize+8 <= uint64(buf.Len()) {
 		// Optimistic read was successful, so we can decode the metadata from
 		// the buffer.
-		rc := bytes.NewReader(buf.Bytes()[buf.Len()-int(header.MetadataSize)-8 : buf.Len()-8])
+		rc := bytes.NewReader(buf.Bytes()[8:])
 		return decodeFileMetadata(rc)
 	}
 
@@ -177,7 +180,15 @@ func (d *decoder) tailer(ctx context.Context, tailData *bytes.Buffer) (tailer, e
 }
 
 func (d *decoder) SectionReader(metadata *filemd.Metadata, section *filemd.SectionInfo, extensionData []byte) SectionReader {
-	return &sectionReader{rr: d.rr, md: metadata, sec: section, extensionData: extensionData}
+	return &sectionReader{
+		rr:  d.rr,
+		md:  metadata,
+		sec: section,
+
+		startOff: d.startOff,
+
+		extensionData: extensionData,
+	}
 }
 
 var errMissingSectionType = errors.New("missing section type")

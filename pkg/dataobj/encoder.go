@@ -27,8 +27,7 @@ const (
 // encoder encodes a data object. Data objects are hierarchical, split into
 // distinct sections that contain their own hierarchy.
 type encoder struct {
-	startOffset int // Byte offset in the file where data starts after the header.
-	totalBytes  int // Total bytes buffered in store so far.
+	totalBytes int // Total bytes buffered in store so far.
 
 	store    scratch.Store
 	sections []sectionInfo // Sections buffered in store.
@@ -57,8 +56,7 @@ type sectionInfo struct {
 // writer.
 func newEncoder(store scratch.Store) *encoder {
 	return &encoder{
-		startOffset: len(legacyMagic),
-		store:       store,
+		store: store,
 	}
 }
 
@@ -151,21 +149,26 @@ func (enc *encoder) getDictionaryKey(text string) uint32 {
 func (enc *encoder) Metadata() (*filemd.Metadata, error) {
 	enc.initDictionary()
 
-	offset := enc.startOffset
+	// relativeOffset is the offset where regions are written relative to the
+	// "body" of the file (e.g., after the header).
+	//
+	// Decoders use the known header size to reinterpret the offset into an
+	// absolute offset.
+	relativeOffset := 0
 
-	// The data regions and metadata regions of all sections are encoded
+	// The metadata regions and data regions of all sections are encoded
 	// contiguously. To represent this in the SectionInfo headers, we update
 	// them in two passes, once for the data and once for the metadata.
 	sections := make([]*filemd.SectionInfo, len(enc.sections))
 
-	// Determine data region locations.
+	// Determine metadata region location.
 	for i, info := range enc.sections {
 		sections[i] = &filemd.SectionInfo{
 			TypeRef: enc.getTypeRef(info.Type),
 			Layout: &filemd.SectionLayout{
-				Data: &filemd.Region{
-					Offset: uint64(offset),
-					Length: uint64(info.Data.Size),
+				Metadata: &filemd.Region{
+					Offset: uint64(relativeOffset),
+					Length: uint64(info.Metadata.Size),
 				},
 			},
 
@@ -173,19 +176,19 @@ func (enc *encoder) Metadata() (*filemd.Metadata, error) {
 			TenantRef:     enc.getDictionaryKey(info.Tenant),
 		}
 
-		offset += info.Data.Size
+		relativeOffset += info.Metadata.Size
 	}
 
-	// Determine metadta region location.
+	// Determine data region locations.
 	for i, info := range enc.sections {
 		// sections[i] is initialized in the previous loop, so we can directly
-		// update the layout to include the metadata region.
-		sections[i].Layout.Metadata = &filemd.Region{
-			Offset: uint64(offset),
-			Length: uint64(info.Metadata.Size),
+		// update the layout to include the data region.
+		sections[i].Layout.Data = &filemd.Region{
+			Offset: uint64(relativeOffset),
+			Length: uint64(info.Data.Size),
 		}
 
-		offset += info.Metadata.Size
+		relativeOffset += info.Data.Size
 	}
 
 	md := &filemd.Metadata{
@@ -220,7 +223,7 @@ func (enc *encoder) encodeSize(computedMetadata *filemd.Metadata) int64 {
 }
 
 // Bytes returns the total number of bytes appended to the data object.
-func (enc *encoder) Bytes() int { return enc.startOffset + enc.totalBytes }
+func (enc *encoder) Bytes() int { return enc.totalBytes }
 
 // Flush converts all accumulated data into a [snapshot], allowing for streaming
 // encoded bytes. [snapshot.Close] should be called when the snapshot is no
@@ -238,49 +241,57 @@ func (enc *encoder) Flush() (*snapshot, error) {
 	//
 	// header:
 	//  [magic]
-	// body:
-	//  [section data + metadata]
-	// tailer:
+	//  [file metadata size (32 bits), including version]
 	//  [file metadata version]
 	//  [file metadata]
-	//  [file metadata size (32 bits)]
+	// body:
+	//  [metadata regions]
+	//  [data regions]
+	// tailer:
 	//  [magic]
 	//
 	// The file metadata size *must not* be varint since we need the last 8 bytes
 	// of the file to consistently retrieve the tailer.
 
-	var tailerBuffer bytes.Buffer
+	var headerBuffer bytes.Buffer
 
 	metadata, err := enc.Metadata()
 	if err != nil {
 		return nil, fmt.Errorf("building metadata: %w", err)
-	} else if err := streamio.WriteUvarint(&tailerBuffer, fileFormatVersion); err != nil {
-		return nil, err
-	} else if err := protocodec.Encode(&tailerBuffer, metadata); err != nil {
-		return nil, err
-	} else if err := binary.Write(&tailerBuffer, binary.LittleEndian, uint32(tailerBuffer.Len())); err != nil {
+	} else if _, err := headerBuffer.Write(magic); err != nil {
+		return nil, fmt.Errorf("writing magic header: %w", err)
+	}
+
+	metadataSize := streamio.UvarintSize(fileFormatVersion) + protocodec.Size(metadata)
+
+	if err := binary.Write(&headerBuffer, binary.LittleEndian, uint32(metadataSize)); err != nil {
 		return nil, fmt.Errorf("writing metadata size: %w", err)
-	} else if _, err := tailerBuffer.Write(legacyMagic); err != nil {
-		return nil, fmt.Errorf("writing magic tailer: %w", err)
+	} else if err := streamio.WriteUvarint(&headerBuffer, fileFormatVersion); err != nil {
+		return nil, err
+	} else if err := protocodec.Encode(&headerBuffer, metadata); err != nil {
+		return nil, err
 	}
 
 	// Convert our sections into regions for the snapshot to use. The order of
 	// regions *must* match the order of offset+length written in
-	// [encoder.Metadata]: all the data regions, followed by all the metadata
+	// [encoder.Metadata]: all the metadata regions, followed by all the data
 	// regions.
+	//
+	// We encode metadata regions first to allow a single prefetch of the start
+	// of the file to also prefetch metadata regions.
 	regions := make([]sectionRegion, 0, len(enc.sections)*2)
 	for _, sec := range enc.sections {
-		regions = append(regions, sec.Data)
+		regions = append(regions, sec.Metadata)
 	}
 	for _, sec := range enc.sections {
-		regions = append(regions, sec.Metadata)
+		regions = append(regions, sec.Data)
 	}
 
 	snapshot, err := newSnapshot(
 		enc.store,
-		legacyMagic, // header
+		headerBuffer.Bytes(), // header
 		regions,
-		tailerBuffer.Bytes(), // tailer
+		magic, // tailer
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating snapshot: %w", err)
@@ -290,7 +301,6 @@ func (enc *encoder) Flush() (*snapshot, error) {
 
 // Reset resets the Encoder to a fresh state.
 func (enc *encoder) Reset() {
-	enc.startOffset = len(legacyMagic)
 	enc.totalBytes = 0
 
 	enc.sections = nil

@@ -126,7 +126,7 @@ message SectionLayout {
 
 // Region describes a contiguous range of bytes within a data object.
 message Region {
-  // Byte offset of the region from the start of the data object.
+  // Byte offset of the region relative to the end of the header.
   uint64 offset = 1;
 
   // Length of the region in bytes.
