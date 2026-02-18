@@ -535,6 +535,10 @@ func (r *indexSectionsReader) Close() {
 	closeAll(r.streamsReaders)
 	closeAll(r.pointersReaders)
 	closeAll(r.bloomReaders)
+
+	if r.readSpan != nil {
+		r.readSpan.End()
+	}
 }
 
 func (r *indexSectionsReader) addLabelNamesForStream(streamID int64, names []string) {
