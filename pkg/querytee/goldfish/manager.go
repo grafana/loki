@@ -72,11 +72,12 @@ type manager struct {
 }
 
 type metrics struct {
-	sampledQueries     prometheus.Counter
-	comparisonResults  *prometheus.CounterVec
-	samplingDecisions  *prometheus.CounterVec
-	storageOperations  *prometheus.CounterVec
-	comparisonDuration prometheus.Histogram
+	sampledQueries          prometheus.Counter
+	comparisonResults       *prometheus.CounterVec
+	comparisonMismatchCause *prometheus.CounterVec
+	samplingDecisions       *prometheus.CounterVec
+	storageOperations       *prometheus.CounterVec
+	comparisonDuration      prometheus.Histogram
 }
 
 // NewManager creates a new Goldfish manager with the provided configuration.
@@ -101,6 +102,10 @@ func NewManager(config Config, storage goldfish.Storage, resultStore ResultStore
 				Name: "goldfish_comparison_results_total",
 				Help: "Total number of comparison results by status and query type",
 			}, []string{"status", "query_type"}),
+			comparisonMismatchCause: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+				Name: "goldfish_comparison_mismatch_cause_total",
+				Help: "Total number of comparison mismatches by query type and cause",
+			}, []string{"query_type", "cause"}),
 			samplingDecisions: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 				Name: "goldfish_sampling_decisions_total",
 				Help: "Total number of sampling decisions",
@@ -244,6 +249,13 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 
 	m.metrics.comparisonDuration.Observe(time.Since(comparisonStart).Seconds())
 	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus), queryType).Inc()
+	if result.ComparisonStatus == goldfish.ComparisonStatusMismatch {
+		mismatchCause := comparator.CauseUnknown
+		if result.MismatchCause != "" {
+			mismatchCause = result.MismatchCause
+		}
+		m.metrics.comparisonMismatchCause.WithLabelValues(queryType, mismatchCause).Inc()
+	}
 
 	// Persist raw payloads when configured
 	var persistedA, persistedB *StoredResult

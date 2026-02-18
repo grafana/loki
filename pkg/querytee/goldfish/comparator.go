@@ -13,7 +13,7 @@ import (
 )
 
 // CompareResponses compares performance statistics and hashes from QuerySample
-func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *ResponseData, performanceTolerance float64, comparator comparator.ResponsesComparator, logger logger.Logger) goldfish.ComparisonResult {
+func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *ResponseData, performanceTolerance float64, respComparator comparator.ResponsesComparator, logger logger.Logger) goldfish.ComparisonResult {
 	result := goldfish.ComparisonResult{
 		CorrelationID:     sample.CorrelationID,
 		DifferenceDetails: make(map[string]any),
@@ -39,6 +39,7 @@ func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *Respon
 	case sample.CellAStatusCode != sample.CellBStatusCode:
 		// Different status codes always indicate a mismatch
 		result.ComparisonStatus = goldfish.ComparisonStatusMismatch
+		result.MismatchCause = comparator.CauseStatusMismatch
 		result.DifferenceDetails["status_code"] = map[string]any{
 			"cell_a": sample.CellAStatusCode,
 			"cell_b": sample.CellBStatusCode,
@@ -62,16 +63,21 @@ func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *Respon
 		result.ComparisonStatus = goldfish.ComparisonStatusMismatch
 
 		// compare metric query responses with tolerance if comparator is provided
-		if comparator != nil {
+		if respComparator != nil {
 			if cellAResp == nil || cellBResp == nil {
 				_ = level.Warn(logger).Log(
 					"msg", "unable to perform tolerance comparison due to missing responses",
 					"correlation_id", sample.CorrelationID,
 				)
 			} else if rt := cellAResp.ResultType; rt != loghttp.ResultTypeStream { // skip stream result.
-				_, err := comparator.Compare(cellAResp.Body, cellBResp.Body, sample.SampledAt)
+				summary, err := respComparator.Compare(cellAResp.Body, cellBResp.Body, sample.SampledAt)
 				if err == nil {
 					result.MatchWithinTolerance = true
+				} else {
+					if summary != nil && summary.MismatchCause != "" {
+						result.MismatchCause = summary.MismatchCause
+					}
+					level.Error(logger).Log("msg", "response comparison of samples query failed", "err", err)
 				}
 			}
 		}

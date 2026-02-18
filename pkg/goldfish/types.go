@@ -70,6 +70,7 @@ type ComparisonResult struct {
 	CorrelationID        string
 	ComparisonStatus     ComparisonStatus
 	MatchWithinTolerance bool
+	MismatchCause        string
 	DifferenceDetails    map[string]any
 	PerformanceMetrics   PerformanceMetrics
 	ComparedAt           time.Time
