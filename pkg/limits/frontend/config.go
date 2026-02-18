@@ -72,23 +72,23 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	)
 }
 
-func (c *Config) Validate() error {
-	if err := c.ClientConfig.GRPCClientConfig.Validate(); err != nil {
+func (cfg *Config) Validate() error {
+	if err := cfg.ClientConfig.GRPCClientConfig.Validate(); err != nil {
 		return fmt.Errorf("invalid gRPC client config: %w", err)
 	}
-	if c.AssignedPartitionsCacheEnabled {
-		if c.AssignedPartitionsCacheTTL <= 0 {
+	if cfg.AssignedPartitionsCacheEnabled {
+		if cfg.AssignedPartitionsCacheTTL <= 0 {
 			return errors.New("assigned partitions cache TTL must be a positive number, or the cache must be disabled")
 		}
 	}
-	if c.AcceptedStreamsCacheEnabled {
-		if c.AcceptedStreamsCacheTTL <= 0 {
+	if cfg.AcceptedStreamsCacheEnabled {
+		if cfg.AcceptedStreamsCacheTTL <= 0 {
 			return errors.New("accepted streams cache TTL must be a positive number, or the cache must be disabled")
 		}
-		if c.AcceptedStreamsCacheTTLJitter <= 0 {
+		if cfg.AcceptedStreamsCacheTTLJitter <= 0 {
 			return errors.New("accepted streams cache TTL jitter must be a positive number, or the cache must be disabled")
 		}
-		if c.AcceptedStreamsCacheSize <= 0 {
+		if cfg.AcceptedStreamsCacheSize <= 0 {
 			return errors.New("accepted streams cache size must be a positive number, or the cache must be disabled")
 		}
 	}
