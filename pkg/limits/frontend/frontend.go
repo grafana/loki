@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
@@ -86,7 +85,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 	// Set up the limits client.
 	f.limitsClient = newRingLimitsClient(limitsRing, clientPool, cfg.NumPartitions, f.assignedPartitionsCache, logger, reg)
 	if cfg.CacheTTL > 0 {
-		f.limitsClient = newCacheLimitsClient(cfg.CacheTTL, cfg.CacheTTLJitter, bloom.NewWithEstimates(1000000, 0.01), f.limitsClient)
+		f.limitsClient = newCacheLimitsClient(newAcceptedStreamsCache(cfg.CacheTTL, cfg.CacheTTLJitter, 1000000, reg), f.limitsClient)
 	}
 	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
 	if err != nil {

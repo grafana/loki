@@ -20,6 +20,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
@@ -131,38 +132,104 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		predicateKeys[predicate.Name] = struct{}{}
 	}
 
-	for _, section := range r.obj.Sections().Filter(streams.CheckSection) {
+	var (
+		unopenedStreams  []*dataobj.Section
+		unopenedPointers []*dataobj.Section
+	)
+
+	for _, section := range r.obj.Sections() {
 		if section.Tenant != targetTenant {
 			continue
 		}
 
-		sec, err := streams.Open(ctx, section)
-		if err != nil {
-			return fmt.Errorf("opening streams section: %w", err)
-		} else if err := r.openStreamsReader(ctx, sec, sStart, sEnd, predicateKeys); err != nil {
-			return err
+		switch {
+		case streams.CheckSection(section):
+			unopenedStreams = append(unopenedStreams, section)
+		case pointers.CheckSection(section):
+			unopenedPointers = append(unopenedPointers, section)
 		}
 	}
 
-	for _, section := range r.obj.Sections().Filter(pointers.CheckSection) {
-		if section.Tenant != targetTenant {
-			continue
-		}
+	r.streamsReaders = make([]*streams.Reader, len(unopenedStreams))
+	r.pointersReaders = make([]*pointers.Reader, len(unopenedPointers))
+	r.bloomReaders = make([]*pointers.Reader, len(unopenedPointers))
 
-		sec, err := pointers.Open(ctx, section)
-		if err != nil {
-			return fmt.Errorf("opening pointers section: %w", err)
-		}
+	g, ctx := errgroup.WithContext(ctx)
 
-		if err := r.openStreamPointersReader(ctx, sec, sStart, sEnd); err != nil {
-			return err
-		}
-		if err := r.openBloomPointersReader(ctx, sec); err != nil {
-			return err
-		}
+	for i, section := range unopenedStreams {
+		g.Go(func() error {
+			sec, err := streams.Open(ctx, section)
+			if err != nil {
+				return fmt.Errorf("opening streams section: %w", err)
+			}
+
+			reader, err := r.openStreamsReader(ctx, sec, sStart, sEnd, predicateKeys)
+			if err != nil {
+				return err
+			}
+
+			r.streamsReaders[i] = reader
+			return nil
+		})
+	}
+
+	for i, section := range unopenedPointers {
+		g.Go(func() error {
+			sec, err := pointers.Open(ctx, section)
+			if err != nil {
+				return fmt.Errorf("opening pointers section: %w", err)
+			}
+
+			sg, ctx := errgroup.WithContext(ctx)
+
+			sg.Go(func() error {
+				pointersReader, err := r.openStreamPointersReader(ctx, sec, sStart, sEnd)
+				if err != nil {
+					return err
+				}
+
+				r.pointersReaders[i] = pointersReader
+				return nil
+			})
+
+			sg.Go(func() error {
+				bloomReader, err := r.openBloomPointersReader(ctx, sec)
+				if err != nil {
+					return err
+				}
+
+				r.bloomReaders[i] = bloomReader
+				return nil
+			})
+
+			return sg.Wait()
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		closeAll(r.streamsReaders)
+		closeAll(r.pointersReaders)
+		closeAll(r.bloomReaders)
+		return err
 	}
 
 	return nil
+}
+
+type closable interface {
+	comparable
+	io.Closer
+}
+
+func closeAll[C closable](cs []C) {
+	var zero C
+
+	for _, c := range cs {
+		if c == zero {
+			continue
+		}
+		_ = c.Close()
+	}
 }
 
 func (r *indexSectionsReader) scalarTimestamps() (*scalar.Timestamp, *scalar.Timestamp) {
@@ -176,10 +243,10 @@ func (r *indexSectionsReader) openStreamsReader(
 	sec *streams.Section,
 	sStart, sEnd *scalar.Timestamp,
 	predicateKeys map[string]struct{},
-) error {
+) (*streams.Reader, error) {
 	predicates, err := buildStreamReaderPredicate(sec, sStart, sEnd, r.matchers)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	targetColumns := make([]*streams.Column, 0, len(sec.Columns()))
@@ -198,18 +265,17 @@ func (r *indexSectionsReader) openStreamsReader(
 		Allocator:  memory.DefaultAllocator,
 	})
 	if err := reader.Open(ctx); err != nil {
-		return fmt.Errorf("opening streams reader: %w", err)
+		return nil, fmt.Errorf("opening streams reader: %w", err)
 	}
 
-	r.streamsReaders = append(r.streamsReaders, reader)
-	return nil
+	return reader, nil
 }
 
 func (r *indexSectionsReader) openStreamPointersReader(
 	ctx context.Context,
 	sec *pointers.Section,
 	sStart, sEnd *scalar.Timestamp,
-) error {
+) (*pointers.Reader, error) {
 	cols, err := findPointersColumnsByTypes(
 		sec.Columns(),
 		pointers.ColumnTypePath,
@@ -223,7 +289,7 @@ func (r *indexSectionsReader) openStreamPointersReader(
 		pointers.ColumnTypeUncompressedSize,
 	)
 	if err != nil {
-		return fmt.Errorf("finding pointers columns: %w", err)
+		return nil, fmt.Errorf("finding pointers columns: %w", err)
 	}
 
 	var (
@@ -247,7 +313,7 @@ func (r *indexSectionsReader) openStreamPointersReader(
 
 	if colStreamID == nil || colMinTimestamp == nil || colMaxTimestamp == nil || colPointerKind == nil {
 		// Section has no rows with stream-based indices, skip it
-		return nil
+		return nil, nil
 	}
 
 	reader := pointers.NewReader(pointers.ReaderOptions{
@@ -263,16 +329,15 @@ func (r *indexSectionsReader) openStreamPointersReader(
 		StreamIDToLabelNames: r.labelNamesByStream,
 	})
 	if err := reader.Open(ctx); err != nil {
-		return fmt.Errorf("opening pointers reader: %w", err)
+		return nil, fmt.Errorf("opening pointers reader: %w", err)
 	}
 
-	r.pointersReaders = append(r.pointersReaders, reader)
-	return nil
+	return reader, nil
 }
 
-func (r *indexSectionsReader) openBloomPointersReader(ctx context.Context, sec *pointers.Section) error {
+func (r *indexSectionsReader) openBloomPointersReader(ctx context.Context, sec *pointers.Section) (*pointers.Reader, error) {
 	if len(r.predicates) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	pointerCols, err := findPointersColumnsByTypes(
@@ -284,7 +349,7 @@ func (r *indexSectionsReader) openBloomPointersReader(ctx context.Context, sec *
 		pointers.ColumnTypeValuesBloomFilter,
 	)
 	if err != nil {
-		return fmt.Errorf("finding bloom pointers columns: %w", err)
+		return nil, fmt.Errorf("finding bloom pointers columns: %w", err)
 	}
 
 	var (
@@ -312,7 +377,7 @@ func (r *indexSectionsReader) openBloomPointersReader(ctx context.Context, sec *
 
 	if colPath == nil || colSection == nil || colColumnName == nil || colBloom == nil || colPointerKind == nil {
 		// The section has no rows for blooms and can be ignored completely
-		return nil
+		return nil, nil
 	}
 
 	// Because a row only contains a bloom filter for one column, we must use OR
@@ -349,11 +414,10 @@ func (r *indexSectionsReader) openBloomPointersReader(ctx context.Context, sec *
 		Allocator: memory.DefaultAllocator,
 	})
 	if err := reader.Open(ctx); err != nil {
-		return fmt.Errorf("opening bloom pointers reader: %w", err)
+		return nil, fmt.Errorf("opening bloom pointers reader: %w", err)
 	}
 
-	r.bloomReaders = append(r.bloomReaders, reader)
-	return nil
+	return reader, nil
 }
 
 func (r *indexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, error) {
@@ -468,14 +532,12 @@ func (r *indexSectionsReader) allLabelNames() []string {
 }
 
 func (r *indexSectionsReader) Close() {
-	for _, sr := range r.streamsReaders {
-		_ = sr.Close()
-	}
-	for _, pr := range r.pointersReaders {
-		_ = pr.Close()
-	}
-	for _, br := range r.bloomReaders {
-		_ = br.Close()
+	closeAll(r.streamsReaders)
+	closeAll(r.pointersReaders)
+	closeAll(r.bloomReaders)
+
+	if r.readSpan != nil {
+		r.readSpan.End()
 	}
 }
 
@@ -706,6 +768,12 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 	sectionMatches := make(map[SectionKey]map[int]struct{})
 
 	for _, br := range r.bloomReaders {
+		if br == nil {
+			// We can have nil readers when a section was skipped due to not
+			// having relevant data.
+			continue
+		}
+
 		var (
 			pathColumnIndex       = slices.IndexFunc(br.Columns(), func(c *pointers.Column) bool { return c.Type == pointers.ColumnTypePath })
 			sectionColumnIndex    = slices.IndexFunc(br.Columns(), func(c *pointers.Column) bool { return c.Type == pointers.ColumnTypeSection })
