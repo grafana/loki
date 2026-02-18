@@ -52,12 +52,12 @@ func TestThread_drainPipeline(t *testing.T) {
 	}, nil)
 
 	tests := []struct {
-		name              string
-		batchSizeRecords  int64
-		inputs            []recordInput
-		wantTotalRows     int
-		checkSends        func(t *testing.T, sendCount int, totalRows int64)
-		checkFieldNames   func(t *testing.T, fieldNames [][]string)
+		name             string
+		batchSizeRecords int64
+		inputs           []recordInput
+		wantTotalRows    int
+		checkSends       func(t *testing.T, sendCount int, totalRows int64)
+		checkFieldNames  func(t *testing.T, fieldNames [][]string)
 	}{
 		{
 			name:             "batchSizeRecords=0 sink receives one send per record",
