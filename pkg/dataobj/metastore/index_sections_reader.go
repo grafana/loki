@@ -174,8 +174,6 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	}
 
 	for i, section := range unopenedPointers {
-		i := i
-
 		g.Go(func() error {
 			sec, err := pointers.Open(ctx, section)
 			if err != nil {
