@@ -313,8 +313,8 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 	}
 
 	var totalRows int
-	var batch []arrow.RecordBatch
 	var currentBatchSize int
+	batchAggregator := arrowagg.NewRecords(memory.DefaultAllocator)
 
 	// When recordBatchSize <= 0, "batch full" is always true so each record is sent alone (no batching).
 	flush := func(toSend arrow.RecordBatch) {
@@ -335,27 +335,24 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
 	}
 
-	// flushBatch flushes the current batch (aggregate with schema reconciliation and send). It always clears batch and currentBatchSize.
+	// flushBatch flushes the compactor's accumulated records (aggregate with schema reconciliation and send), then resets it.
 	flushBatch := func() {
-		if len(batch) == 0 {
+		if currentBatchSize == 0 {
 			return
 		}
 
-		compactor := arrowagg.NewRecords(memory.DefaultAllocator)
-		for _, rec := range batch {
-			compactor.Append(rec)
-		}
+		combined, err := batchAggregator.Aggregate()
 
-		batch = nil
+		// Regardless of errors, reset the aggregator to prepare for the next batch.
+		batchAggregator.Reset()
 		currentBatchSize = 0
 
-		combined, err := compactor.Aggregate()
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to aggregate record batch", "err", err)
 			return
 		}
-		region.Record(xcap.TaskDrainBatchesProduced.Observe(1))
 
+		region.Record(xcap.TaskDrainBatchesProduced.Observe(1))
 		flush(combined)
 	}
 
@@ -377,7 +374,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 
 		// If we have a batch in progress and the new record would make it too large, flush the batch.
 		recSize := recordSizeBytes(rec)
-		if len(batch) > 0 && currentBatchSize+recSize > recordBatchSizeBytes {
+		if currentBatchSize+recSize > recordBatchSizeBytes {
 			flushBatch()
 		}
 
@@ -388,8 +385,8 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			continue
 		}
 
-		// Otherwise, add the record to the batch.
-		batch = append(batch, rec)
+		// Otherwise, add the record to the batch aggregator.
+		batchAggregator.Append(rec)
 		currentBatchSize += recSize
 		region.Record(xcap.TaskDrainRecordsSizeBytes.Observe(int64(recSize)))
 	}
