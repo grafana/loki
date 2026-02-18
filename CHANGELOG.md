@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.6](https://github.com/grafana/loki/compare/v3.6.5...v3.6.6) (2026-02-18)
+
+
+### Bug Fixes
+
+* **deps:** update alpine docker tag to v3.23.3 (main) ([#20630](https://github.com/grafana/loki/issues/20630)) ([#20832](https://github.com/grafana/loki/issues/20832)) ([fb20246](https://github.com/grafana/loki/commit/fb202465c6e9fdda198e06d6588de8381ded79e7))
+
 ## [3.6.5](https://github.com/grafana/loki/compare/v3.6.4...v3.6.5) (2026-02-06)
 
 
