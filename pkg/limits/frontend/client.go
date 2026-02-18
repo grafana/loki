@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/bits-and-blooms/bloom/v3"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
@@ -26,24 +28,40 @@ type limitsClient interface {
 type cacheLimitsClient struct {
 	ttl    time.Duration
 	onMiss limitsClient
+
 	// The fields below MUST NOT be used without mtx.
-	mtx          sync.RWMutex
-	knownStreams *bloom.BloomFilter
-	lastExpired  time.Time
+	mtx                  sync.RWMutex
+	acceptedStreamsCache *bloom.BloomFilter
+	lastExpired          time.Time
+
+	// Metrics.
+	acceptedStreamsCacheSize         prometheus.Gauge
+	acceptedStreamsCacheSizeEstimate prometheus.Gauge
 }
 
 // newCacheLimitsClient returns a new cache limits client.
 func newCacheLimitsClient(
 	ttl, maxJitter time.Duration,
-	knownStreams *bloom.BloomFilter,
+	acceptedStreamsCache *bloom.BloomFilter,
 	onMiss limitsClient,
+	r prometheus.Registerer,
 ) *cacheLimitsClient {
-	return &cacheLimitsClient{
-		ttl:          ttl,
-		knownStreams: knownStreams,
-		lastExpired:  time.Now().Add(randDuration(maxJitter)),
-		onMiss:       onMiss,
+	c := &cacheLimitsClient{
+		ttl:                  ttl,
+		acceptedStreamsCache: acceptedStreamsCache,
+		lastExpired:          time.Now().Add(randDuration(maxJitter)),
+		onMiss:               onMiss,
+		acceptedStreamsCacheSize: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingest_limits_frontend_accepted_streams_cache_size",
+			Help: "Max size of the accepted streams cache.",
+		}),
+		acceptedStreamsCacheSizeEstimate: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingest_limits_frontend_accepted_streams_cache_size_estimate",
+			Help: "Estimate size of the accepted streams cache.",
+		}),
 	}
+	c.acceptedStreamsCacheSize.Set(float64(acceptedStreamsCache.Cap()))
+	return c
 }
 
 // ExceedsLimits implements the [limitsClient] interface.
@@ -51,7 +69,7 @@ func (c *cacheLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceed
 	c.expireTTL()
 	// If the exact same request has been seen before, and all streams were
 	// accepted, we can assume it will continue to be accepted.
-	if c.hasKnownStreams(req) {
+	if c.hasAcceptedStreams(req) {
 		return []*proto.ExceedsLimitsResponse{}, nil
 	}
 	// Need to check with the limits service.
@@ -74,9 +92,10 @@ func (c *cacheLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceed
 		if _, ok := rejected[s.StreamHash]; !ok {
 			b := bytes.Buffer{}
 			encodeStreamToBuf(&b, req.Tenant, s)
-			c.knownStreams.Add(b.Bytes())
+			c.acceptedStreamsCache.Add(b.Bytes())
 		}
 	}
+	c.acceptedStreamsCacheSizeEstimate.Set(float64(c.acceptedStreamsCache.ApproximatedSize()))
 	return resps, nil
 }
 
@@ -100,13 +119,13 @@ func (c *cacheLimitsClient) expireTTL() {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	if time.Since(c.lastExpired) > c.ttl {
-		c.knownStreams.ClearAll()
+		c.acceptedStreamsCache.ClearAll()
 		c.lastExpired = time.Now()
 	}
 }
 
-// hasKnownStreams returns true if all streams in req are known streams.
-func (c *cacheLimitsClient) hasKnownStreams(req *proto.ExceedsLimitsRequest) bool {
+// hasAcceptedStreams returns true if all streams are in the accepted streams cache.
+func (c *cacheLimitsClient) hasAcceptedStreams(req *proto.ExceedsLimitsRequest) bool {
 	// b is re-used. The data built from it MUST NOT escape this function.
 	b := bytes.Buffer{}
 	c.mtx.RLock()
@@ -114,7 +133,7 @@ func (c *cacheLimitsClient) hasKnownStreams(req *proto.ExceedsLimitsRequest) boo
 	for _, s := range req.Streams {
 		b.Reset()
 		encodeStreamToBuf(&b, req.Tenant, s)
-		if !c.knownStreams.Test(b.Bytes()) {
+		if !c.acceptedStreamsCache.Test(b.Bytes()) {
 			return false
 		}
 	}

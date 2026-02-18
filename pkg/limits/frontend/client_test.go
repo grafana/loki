@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bits-and-blooms/bloom/v3"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/limits"
@@ -16,9 +17,9 @@ import (
 
 func TestCacheLimitsClient(t *testing.T) {
 	t.Run("streams accepted", func(t *testing.T) {
-		// When a stream is accepted, it should be inserted into known streams.
+		// When a stream is accepted, it should be inserted into the cache.
 		// We will assert this behavior later.
-		knownStreams := bloom.NewWithEstimates(10, 0.01)
+		acceptedStreamsCache := bloom.NewWithEstimates(10, 0.01)
 		onMiss := &mockLimitsClient{
 			t: t,
 			// Expect one stream 0x1 from the tenant "test".
@@ -29,7 +30,7 @@ func TestCacheLimitsClient(t *testing.T) {
 			// All streams accepted.
 			exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{},
 		}
-		client := newCacheLimitsClient(time.Minute, 15*time.Second, knownStreams, onMiss)
+		client := newCacheLimitsClient(time.Minute, 15*time.Second, acceptedStreamsCache, onMiss, prometheus.NewRegistry())
 		resps, err := client.ExceedsLimits(t.Context(), &proto.ExceedsLimitsRequest{
 			Tenant:  "test",
 			Streams: []*proto.StreamMetadata{{StreamHash: 0x1}},
@@ -42,12 +43,12 @@ func TestCacheLimitsClient(t *testing.T) {
 		b := bytes.Buffer{}
 		b.Write([]byte("test"))
 		_ = binary.Write(&b, binary.LittleEndian, uint64(1))
-		require.True(t, knownStreams.Test(b.Bytes()))
+		require.True(t, acceptedStreamsCache.Test(b.Bytes()))
 	})
 
 	t.Run("streams rejected", func(t *testing.T) {
 		// When a stream is rejected, it should not be cached.
-		knownStreams := bloom.NewWithEstimates(10, 0.01)
+		acceptedStreamsCache := bloom.NewWithEstimates(10, 0.01)
 		onMiss := &mockLimitsClient{
 			t: t,
 			// Expect one stream 0x1 from the tenant "test".
@@ -63,7 +64,7 @@ func TestCacheLimitsClient(t *testing.T) {
 				}},
 			}},
 		}
-		client := newCacheLimitsClient(time.Minute, 15*time.Second, knownStreams, onMiss)
+		client := newCacheLimitsClient(time.Minute, 15*time.Second, acceptedStreamsCache, onMiss, prometheus.NewRegistry())
 		resps, err := client.ExceedsLimits(t.Context(), &proto.ExceedsLimitsRequest{
 			Tenant:  "test",
 			Streams: []*proto.StreamMetadata{{StreamHash: 0x1}},
@@ -71,20 +72,20 @@ func TestCacheLimitsClient(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, resps, 1)
 		// No bits should have been set.
-		require.Equal(t, uint(0), knownStreams.BitSet().Count())
+		require.Equal(t, uint(0), acceptedStreamsCache.BitSet().Count())
 	})
 
 	t.Run("cache is expired after TTL", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
-			knownStreams := bloom.NewWithEstimates(10, 0.01)
-			client := newCacheLimitsClient(time.Minute, 15*time.Second, knownStreams, &mockLimitsClient{})
+			acceptedStreamsCache := bloom.NewWithEstimates(10, 0.01)
+			client := newCacheLimitsClient(time.Minute, 15*time.Second, acceptedStreamsCache, &mockLimitsClient{}, prometheus.NewRegistry())
 			// Remove jitter for tests.
 			client.lastExpired = time.Now()
 
 			now := time.Now()
 			require.Equal(t, now, client.lastExpired)
 			// No bits should have been set.
-			require.Equal(t, uint(0), knownStreams.BitSet().Count())
+			require.Equal(t, uint(0), acceptedStreamsCache.BitSet().Count())
 
 			// Advance the clock, no reset should happen.
 			time.Sleep(time.Second)
@@ -92,8 +93,8 @@ func TestCacheLimitsClient(t *testing.T) {
 			require.Equal(t, now, client.lastExpired)
 
 			// Add some data to the cache.
-			knownStreams.Add([]byte("test"))
-			require.Greater(t, knownStreams.BitSet().Count(), uint(0))
+			acceptedStreamsCache.Add([]byte("test"))
+			require.Greater(t, acceptedStreamsCache.BitSet().Count(), uint(0))
 
 			// Advance the clock past the TTL (include the jitter).
 			time.Sleep(time.Minute + (5 * time.Second))
@@ -101,7 +102,7 @@ func TestCacheLimitsClient(t *testing.T) {
 			client.expireTTL()
 			require.Equal(t, now, client.lastExpired)
 			// The bits should have been reset.
-			require.Equal(t, uint(0), knownStreams.BitSet().Count())
+			require.Equal(t, uint(0), acceptedStreamsCache.BitSet().Count())
 		})
 	})
 }
