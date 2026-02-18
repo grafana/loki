@@ -3,6 +3,7 @@ package networkpolicy
 import (
 	"context"
 	"errors"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -48,7 +49,7 @@ func ServicePortToPodPort(ctx context.Context, log logr.Logger, k k8s.Client, ob
 	}
 
 	if len(endpointSlices.Items) == 0 {
-		log.Error(errMissingEndpointSlices, "service", serviceName, "namespace", namespace)
+		log.Error(errMissingEndpointSlices, "found no endpoint slices for service", "service", serviceName, "namespace", namespace)
 		return []int32{}, errMissingEndpointSlices
 	}
 
@@ -127,12 +128,9 @@ func parseServiceEndpoint(endpoint string) (string, string, int32, bool) {
 	} else {
 		// Bare hostname:port format
 		host = endpoint
-		if idx := strings.LastIndex(endpoint, ":"); idx != -1 {
-			possiblePort := endpoint[idx+1:]
-			if _, err := strconv.Atoi(possiblePort); err == nil {
-				host = endpoint[:idx]
-				portStr = possiblePort
-			}
+		sHost, sPort, err := net.SplitHostPort(endpoint)
+		if err == nil {
+			host, portStr = sHost, sPort
 		}
 	}
 

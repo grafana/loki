@@ -1,29 +1,21 @@
 #!/usr/bin/env bash
 #
-# usage: deploy-aws-storage-secret.sh <bucket-name> (<role_arn>)
+# usage: deploy-aws-storage-secret.sh <bucket-claim-name>
 #
 # This scripts deploys a LokiStack Secret resource holding the
-# authentication credentials to access AWS S3. It supports three
-# modes: static authentication, managed with custom role_arn and
-# fully managed by OpeShift's Cloud-Credentials-Operator. To use
-# one of the managed you need to pass the environment variable
-# STS=true. If you pass the second optional argument you can set
-# your custom managed role_arn.
+# authentication credentials to access NooBaa S3 bucket provided by the bucket 
+# claim name.
 #
-# bucket_name is the name of the bucket to be used in the LokiStack
-# object storage secret.
-#
-# role_arn is the ARN value of the upfront manually provisioned AWS
-# Role that grants access to the <bucket_name> and it's object on
-# AWS S3.
-#
+# bucket_claim_name is the name of the bucket claim to be used by this script to
+# fetch the credentials to access the bucket.
+
 
 set -euo pipefail
 
 readonly bucket_claim_name=${1-}
 
 if [[ -z "${bucket_claim_name}" ]]; then
-    echo "Provide a bucket name"
+    echo "Provide a bucket claim name"
     exit 1
 fi
 
