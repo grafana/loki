@@ -340,6 +340,21 @@ func createInt64Gauge(setOfMetrics map[string]bool, metricName string, meter ote
 	return ret
 }
 
+// createInt64ObservableGauge initializes an OTel Int64ObservableGauge if the metric is enabled.
+func createInt64ObservableGauge(setOfMetrics map[string]bool, metricName string, meter otelmetric.Meter, options ...otelmetric.Int64ObservableGaugeOption) otelmetric.Int64ObservableGauge {
+	if _, ok := setOfMetrics[metricName]; !ok {
+		n, _ := noop.NewMeterProvider().Meter("noop").Int64ObservableGauge("noop")
+		return n
+	}
+	ret, err := meter.Int64ObservableGauge(metricName, options...)
+	if err != nil {
+		logger.Errorf("failed to register metric %q, will not record: %v", metricName, err)
+		n, _ := noop.NewMeterProvider().Meter("noop").Int64ObservableGauge("noop")
+		return n
+	}
+	return ret
+}
+
 func optionFromLabels(labelKeys []string, optionalLabelKeys []string, optionalLabels []string, labelVals ...string) otelmetric.MeasurementOption {
 	var attributes []otelattribute.KeyValue
 
@@ -362,6 +377,7 @@ func optionFromLabels(labelKeys []string, optionalLabelKeys []string, optionalLa
 // registryMetrics implements MetricsRecorder for the client and server stats
 // handlers.
 type registryMetrics struct {
+	internal.EnforceMetricsRecorderEmbedding
 	intCounts       map[*estats.MetricDescriptor]otelmetric.Int64Counter
 	floatCounts     map[*estats.MetricDescriptor]otelmetric.Float64Counter
 	intHistos       map[*estats.MetricDescriptor]otelmetric.Int64Histogram
@@ -369,16 +385,22 @@ type registryMetrics struct {
 	intGauges       map[*estats.MetricDescriptor]otelmetric.Int64Gauge
 	intUpDownCounts map[*estats.MetricDescriptor]otelmetric.Int64UpDownCounter
 
+	// Asynchronous (Observable) Instruments
+	intObservableGauges map[*estats.MetricDescriptor]otelmetric.Int64ObservableGauge
+
+	meter          otelmetric.Meter
 	optionalLabels []string
 }
 
 func (rm *registryMetrics) registerMetrics(metrics *stats.MetricSet, meter otelmetric.Meter) {
+	rm.meter = meter
 	rm.intCounts = make(map[*estats.MetricDescriptor]otelmetric.Int64Counter)
 	rm.floatCounts = make(map[*estats.MetricDescriptor]otelmetric.Float64Counter)
 	rm.intHistos = make(map[*estats.MetricDescriptor]otelmetric.Int64Histogram)
 	rm.floatHistos = make(map[*estats.MetricDescriptor]otelmetric.Float64Histogram)
 	rm.intGauges = make(map[*estats.MetricDescriptor]otelmetric.Int64Gauge)
 	rm.intUpDownCounts = make(map[*estats.MetricDescriptor]otelmetric.Int64UpDownCounter)
+	rm.intObservableGauges = make(map[*estats.MetricDescriptor]otelmetric.Int64ObservableGauge)
 
 	for metric := range metrics.Metrics() {
 		desc := estats.DescriptorForMetric(metric)
@@ -401,6 +423,8 @@ func (rm *registryMetrics) registerMetrics(metrics *stats.MetricSet, meter otelm
 			rm.intGauges[desc] = createInt64Gauge(metrics.Metrics(), desc.Name, meter, otelmetric.WithUnit(desc.Unit), otelmetric.WithDescription(desc.Description))
 		case estats.MetricTypeIntUpDownCount:
 			rm.intUpDownCounts[desc] = createInt64UpDownCounter(metrics.Metrics(), desc.Name, meter, otelmetric.WithUnit(desc.Unit), otelmetric.WithDescription(desc.Description))
+		case estats.MetricTypeIntAsyncGauge:
+			rm.intObservableGauges[desc] = createInt64ObservableGauge(metrics.Metrics(), desc.Name, meter, otelmetric.WithUnit(desc.Unit), otelmetric.WithDescription(desc.Description))
 		}
 	}
 }
@@ -453,6 +477,55 @@ func (rm *registryMetrics) RecordInt64Gauge(handle *estats.Int64GaugeHandle, inc
 	}
 }
 
+// RegisterAsyncReporter will register a callback with the underlying OpenTelemetry
+// Meter for the provided descriptors.
+//
+// It will map the provided descriptors to their corresponding OTel Observable
+// instruments. If no instruments match the descriptors, registration is
+// skipped.
+//
+// The returned cleanup function unregisters the callback from the Meter.
+// RegisterAsyncReporter registers a callback with the OpenTelemetry Meter.
+func (rm *registryMetrics) RegisterAsyncReporter(reporter estats.AsyncMetricReporter, metrics ...estats.AsyncMetric) func() {
+	observables := make([]otelmetric.Observable, 0, len(metrics))
+	observableMap := make(map[*estats.MetricDescriptor]otelmetric.Observable, len(metrics))
+
+	for _, m := range metrics {
+		d := m.Descriptor()
+		if inst, ok := rm.intObservableGauges[d]; ok {
+			observables = append(observables, inst)
+			observableMap[d] = inst
+		}
+	}
+
+	if len(observables) == 0 {
+		return func() {}
+	}
+
+	cbWrapper := func(_ context.Context, o otelmetric.Observer) error {
+		adapter := &observerAdapter{
+			observableMap:  observableMap,
+			optionalLabels: rm.optionalLabels,
+			delegate:       o,
+		}
+		reporter.Report(adapter)
+		return nil
+	}
+
+	reg, err := rm.meter.RegisterCallback(cbWrapper, observables...)
+	if err != nil {
+		logger.Warningf("grpc: failed to register callback for async metrics: %v", err)
+		return func() {}
+	}
+
+	return func() {
+		err = reg.Unregister()
+		if err != nil {
+			logger.Errorf("grpc: failed to unregister callback for async metrics: %v", err)
+		}
+	}
+}
+
 // Users of this component should use these bucket boundaries as part of their
 // SDK MeterProvider passed in. This component sends this as "advice" to the
 // API, which works, however this stability is not guaranteed, so for safety the
@@ -472,4 +545,28 @@ var (
 // This should only be invoked after init time.
 func DefaultMetrics() *stats.MetricSet {
 	return defaultPerCallMetrics.Join(estats.DefaultMetrics)
+}
+
+type observerAdapter struct {
+	observableMap  map[*estats.MetricDescriptor]otelmetric.Observable
+	optionalLabels []string
+	delegate       otelmetric.Observer
+}
+
+// RecordInt64AsyncGauge records the measurement alongside labels on the int
+// gauge associated with the provided handle.
+func (a *observerAdapter) RecordInt64AsyncGauge(handle *estats.Int64AsyncGaugeHandle, val int64, labels ...string) {
+	desc := handle.Descriptor()
+	observable, ok := a.observableMap[desc]
+	if !ok {
+		return
+	}
+
+	ao := optionFromLabels(desc.Labels, desc.OptionalLabels, a.optionalLabels, labels...)
+
+	switch obs := observable.(type) {
+	case otelmetric.Int64ObservableGauge:
+		a.delegate.ObserveInt64(obs, val, ao)
+	default:
+	}
 }

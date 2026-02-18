@@ -4,9 +4,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi/parser"
-	"github.com/clipperhouse/displaywidth"
 	"github.com/clipperhouse/uax29/v2/graphemes"
-	"github.com/mattn/go-runewidth"
 )
 
 // State represents the state of the ANSI escape sequence parser used by
@@ -439,15 +437,15 @@ func FirstGraphemeCluster[T string | []byte](b T, m Method) (T, int) {
 	case string:
 		cluster := graphemes.FromString(b).First()
 		if m == WcWidth {
-			return T(cluster), runewidth.StringWidth(cluster)
+			return T(cluster), wcOptions.StringWidth(cluster)
 		}
-		return T(cluster), displaywidth.String(cluster)
+		return T(cluster), dwOptions.String(cluster)
 	case []byte:
 		cluster := graphemes.FromBytes(b).First()
 		if m == WcWidth {
-			return T(cluster), runewidth.StringWidth(string(cluster))
+			return T(cluster), wcOptions.StringWidth(string(cluster))
 		}
-		return T(cluster), displaywidth.Bytes(cluster)
+		return T(cluster), dwOptions.Bytes(cluster)
 	}
 	panic("unreachable")
 }

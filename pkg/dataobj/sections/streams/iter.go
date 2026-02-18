@@ -99,6 +99,10 @@ func iterSection(ctx context.Context, section *Section, cfg iterConfig) result.S
 		})
 		defer r.Close()
 
+		if err := r.Open(ctx); err != nil {
+			return err
+		}
+
 		var rows [1024]dataset.Row
 		labelBuilder := labels.NewScratchBuilder(8)
 

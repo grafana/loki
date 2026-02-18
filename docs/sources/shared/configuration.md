@@ -1869,6 +1869,14 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-ttl
   [assigned_partitions_cache_ttl: <duration> | default = 1m]
 
+  # The TTL for the cache. 0 disables the cache.
+  # CLI flag: -ingest-limits-frontend.cache-ttl
+  [cache_ttl: <duration> | default = 1m]
+
+  # The jitter to add to the cache.
+  # CLI flag: -ingest-limits-frontend.cache-ttl-jitter
+  [cache_ttl_jitter: <duration> | default = 15s]
+
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
   # The CLI flags prefix for this block configuration is:
@@ -3318,6 +3326,11 @@ dataobj_tee:
   # Enables optional debug metrics.
   # CLI flag: -distributor.dataobj-tee.debug-metrics-enabled
   [debug_metrics_enabled: <boolean> | default = false]
+
+  # Duration to accumulate rate updates before sending to limits frontend. Set
+  # to 0 to disable batching.
+  # CLI flag: -distributor.dataobj-tee.rate-batch-window
+  [rate_batch_window: <duration> | default = 0s]
 ```
 
 ### etcd

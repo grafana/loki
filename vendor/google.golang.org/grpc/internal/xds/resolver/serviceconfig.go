@@ -199,7 +199,9 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 
 	lbCtx := clustermanager.SetPickedCluster(rpcInfo.Context, cluster.name)
 	lbCtx = iringhash.SetXDSRequestHash(lbCtx, cs.generateHash(rpcInfo, rt.hashPolicies))
-	lbCtx = clusterimpl.SetAutoHostRewrite(lbCtx, rt.autoHostRewrite)
+	if rt.autoHostRewrite {
+		lbCtx = clusterimpl.EnableAutoHostRewrite(lbCtx)
+	}
 
 	config := &iresolver.RPCConfig{
 		// Communicate to the LB policy the chosen cluster and request hash, if Ring Hash LB policy.

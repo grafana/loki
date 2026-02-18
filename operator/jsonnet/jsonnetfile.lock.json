@@ -18,8 +18,8 @@
           "subdir": "grafana-builder"
         }
       },
-      "version": "e10cd2ae1352eaba653b52f7004e2e4a1354b014",
-      "sum": "G7B6E5sqWirDbMWRhifbLRfGgRFbIh9WCYa6X3kMh6g="
+      "version": "5a573cd6b179ac3ce46bcf74db290a941f6f5f0d",
+      "sum": "YPaA+KJ6JBW9QpxNvl0iAxnC7gL4jRRvulNl6QRkPU0="
     },
     {
       "source": {
@@ -28,8 +28,8 @@
           "subdir": "mixin-utils"
         }
       },
-      "version": "e10cd2ae1352eaba653b52f7004e2e4a1354b014",
-      "sum": "VAik6Sh5MD5H1Km1gSIXG4rwQ4m4zyw7odP5TKu3bGo="
+      "version": "5a573cd6b179ac3ce46bcf74db290a941f6f5f0d",
+      "sum": "kgoIxOkFlpadoT9+HnMZ4LMdaS1HJsAAUQEe1eUg22E="
     },
     {
       "source": {
@@ -38,8 +38,8 @@
           "subdir": "production/loki-mixin"
         }
       },
-      "version": "5aa8bd27946a1ce5267790ebe9210f93cd7111b2",
-      "sum": "1J1lnLL4+TE+/rD5OTGUEhK8Kmn3Fm+qE/L1oLeN5e8="
+      "version": "1967a6a3fd5589f0f1e9be14cdd5637ecf0b65d3",
+      "sum": "eWbTcw/pDtp0PmKktHzTxMH4uS+7UwDmbKOypRyxlCM="
     },
     {
       "source": {
@@ -48,8 +48,18 @@
           "subdir": "operations/mimir-mixin"
         }
       },
-      "version": "00b427a42176ce1fc452697adf94a94d85c7c20c",
-      "sum": "O49yoZx8Pg6HLQqNSpkpVE+12qB0k841LXpsDaDSZEU="
+      "version": "34b078fbd5e790f27796430d3c498e9b07bc0532",
+      "sum": "otMM8BRbzTMcedkpqaxPqTxLFh3kE3WBYRs9+a8QLPs="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/rollout-operator.git",
+          "subdir": "operations/rollout-operator-mixin"
+        }
+      },
+      "version": "ee4822b061cb7497b7e8a716161dfa0e3230c0ca",
+      "sum": "zz2Sep/VbyrGcKKa3wy0oGIwMq2qEqBiLTVEVmqDMDE="
     },
     {
       "source": {
@@ -58,7 +68,7 @@
           "subdir": "jsonnet/kube-prometheus/lib"
         }
       },
-      "version": "94a390f5986dc34af181c03673ef3aa84ae50dba",
+      "version": "110c59d94ccff6f3e894c55247df6c218ef6cd7a",
       "sum": "QKRgrgEZ3k9nLmLCrDBaeIGVqQZf+AvZTcnhdLk3TrA="
     }
   ],

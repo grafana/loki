@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
@@ -49,14 +50,6 @@ func Unwrap(p Pipeline) Pipeline {
 	}
 }
 
-// RegionProvider is an optional interface that pipelines can implement
-// to expose their associated xcap region for statistics collection.
-type RegionProvider interface {
-	// Region returns the xcap region associated with this pipeline node, if any.
-	// Returns nil if no region is associated with this pipeline.
-	Region() *xcap.Region
-}
-
 // Contributing time range would be anything less than `ts` if `lessThan` is true, or greater
 // than `ts` otherwise.
 type ContributingTimeRangeChangedHandler = func(ts time.Time, lessThan bool)
@@ -84,7 +77,6 @@ type readFunc func(context.Context, []Pipeline) (arrow.RecordBatch, error)
 type GenericPipeline struct {
 	inputs []Pipeline
 	read   readFunc
-	region *xcap.Region
 }
 
 func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
@@ -94,18 +86,7 @@ func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
 	}
 }
 
-func newGenericPipelineWithRegion(read readFunc, region *xcap.Region, inputs ...Pipeline) *GenericPipeline {
-	return &GenericPipeline{
-		read:   read,
-		inputs: inputs,
-		region: region,
-	}
-}
-
-var (
-	_ Pipeline       = (*GenericPipeline)(nil)
-	_ RegionProvider = (*GenericPipeline)(nil)
-)
+var _ Pipeline = (*GenericPipeline)(nil)
 
 // Open implements Pipeline.
 func (p *GenericPipeline) Open(ctx context.Context) error {
@@ -127,17 +108,9 @@ func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 
 // Close implements Pipeline.
 func (p *GenericPipeline) Close() {
-	if p.region != nil {
-		p.region.End()
-	}
 	for _, inp := range p.inputs {
 		inp.Close()
 	}
-}
-
-// Region implements RegionProvider.
-func (p *GenericPipeline) Region() *xcap.Region {
-	return p.region
 }
 
 func errorPipeline(ctx context.Context, err error) Pipeline {
@@ -150,26 +123,10 @@ func errorPipeline(ctx context.Context, err error) Pipeline {
 	})
 }
 
-func errorPipelineWithRegion(ctx context.Context, err error, region *xcap.Region) Pipeline {
-	span := trace.SpanFromContext(ctx)
-	span.RecordError(err)
-	span.SetStatus(codes.Error, err.Error())
-
-	return newGenericPipelineWithRegion(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
-		return nil, fmt.Errorf("failed to execute pipeline: %w", err)
-	}, region)
-}
-
 func emptyPipeline() Pipeline {
 	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
 		return nil, EOF
 	})
-}
-
-func emptyPipelineWithRegion(region *xcap.Region) Pipeline {
-	return newGenericPipelineWithRegion(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
-		return nil, EOF
-	}, region)
 }
 
 // prefetchWrapper wraps a [Pipeline] with pre-fetching capability,
@@ -278,47 +235,6 @@ func (p *prefetchWrapper) Close() {
 	p.Pipeline.Close()
 }
 
-// Region implements RegionProvider.
-func (p *prefetchWrapper) Region() *xcap.Region {
-	if provider, ok := p.Pipeline.(RegionProvider); ok {
-		return provider.Region()
-	}
-	return nil
-}
-
-type tracedPipeline struct {
-	name  string
-	inner Pipeline
-}
-
-var _ Pipeline = (*tracedPipeline)(nil)
-
-// tracePipeline wraps a [Pipeline] to record each call to Read with a span.
-func tracePipeline(name string, pipeline Pipeline) *tracedPipeline {
-	return &tracedPipeline{
-		name:  name,
-		inner: pipeline,
-	}
-}
-
-func (p *tracedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	ctx, span := tracer.Start(ctx, p.name+".Read")
-	defer span.End()
-
-	res, err := p.inner.Read(ctx)
-	if err != nil && !errors.Is(err, EOF) {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-	} else {
-		span.SetStatus(codes.Ok, "")
-	}
-	return res, err
-}
-
-func (p *tracedPipeline) Open(ctx context.Context) error { return p.inner.Open(ctx) }
-
-func (p *tracedPipeline) Close() { p.inner.Close() }
-
 type lazyPipeline struct {
 	ctor func(ctx context.Context, inputs []Pipeline) Pipeline
 
@@ -366,62 +282,67 @@ func (lp *lazyPipeline) Close() {
 	lp.built = nil
 }
 
-// Region implements RegionProvider.
-func (lp *lazyPipeline) Region() *xcap.Region {
-	if lp.built != nil {
-		if provider, ok := lp.built.(RegionProvider); ok {
-			return provider.Region()
-		}
-	}
-	return nil
-}
-
-// observedPipeline wraps a Pipeline to automatically collect common statistics
-// and record them to the pipeline's region.
+// observedPipeline wraps a Pipeline to automatically collect common statistics.
+//
+// It creates an [xcap.Span] paired with a [xcap.Region] for the given
+// physical plan node. On each Read call it injects both into the caller's
+// context via [xcap.ContextWithSpan], so inner pipelines can retrieve them
+// via [trace.SpanFromContext] and [xcap.RegionFromContext] while still
+// respecting the caller's cancellation and deadline. The span (and its
+// linked region) are injected this way to avoid creating a new span for
+// the same node on each Read call.
+//
+// On Close, it ends the xcap span (which flushes region observations as
+// span attributes) after closing the inner pipeline.
 type observedPipeline struct {
-	inner  Pipeline
-	region *xcap.Region
+	inner    Pipeline
+	name     string
+	attrs    []attribute.KeyValue
+	readSpan *xcap.Span
+	ready    bool
 }
 
 var _ Pipeline = (*observedPipeline)(nil)
 
-// newObservedPipeline wraps a pipeline to automatically collect common statistics.
-// If the pipeline has a region, statistics will be recorded to it.
-func newObservedPipeline(inner Pipeline) *observedPipeline {
-	p := &observedPipeline{
-		inner: inner,
-	}
+// NewObservedPipeline wraps a pipeline to automatically collect common
+// statistics. The xcap span and region are not created here; they are
+// deferred to the first [Read] call so the span inherits its parent
+// from the caller's context.
+func NewObservedPipeline(name string, attrs []attribute.KeyValue, inner Pipeline) Pipeline {
+	return &observedPipeline{name: name, attrs: attrs, inner: inner}
+}
 
-	if provider, ok := inner.(RegionProvider); ok {
-		p.region = provider.Region()
-	}
-
-	return p
+func (p *observedPipeline) init(ctx context.Context) {
+	_, p.readSpan = xcap.StartSpan(ctx, tracer, p.name+".Read")
+	p.ready = true
 }
 
 // Read implements Pipeline.
 func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	start := time.Now()
-
-	if p.region != nil {
-		p.region.Record(xcap.StatPipelineReadCalls.Observe(1))
+	if !p.ready {
+		p.init(ctx)
 	}
+
+	start := time.Now()
+	p.readSpan.Record(xcap.StatPipelineReadCalls.Observe(1))
+
+	// Inject the span (implicitly links the associated region) into ctx.
+	ctx = xcap.ContextWithSpan(ctx, p.readSpan)
 
 	rec, err := p.inner.Read(ctx)
-
-	if p.region != nil {
-		if rec != nil {
-			p.region.Record(xcap.StatPipelineRowsOut.Observe(rec.NumRows()))
-		}
-
-		p.region.Record(xcap.StatPipelineReadDuration.Observe(time.Since(start).Seconds()))
+	if rec != nil {
+		p.readSpan.Record(xcap.StatPipelineRowsOut.Observe(rec.NumRows()))
 	}
+	p.readSpan.Record(xcap.StatPipelineReadDuration.Observe(time.Since(start).Seconds()))
 
 	return rec, err
 }
 
 // Open implements Pipeline.
 func (p *observedPipeline) Open(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, p.name+".Open", trace.WithAttributes(p.attrs...))
+	defer span.End()
+
 	return p.inner.Open(ctx)
 }
 
@@ -433,4 +354,7 @@ func (p *observedPipeline) Unwrap() Pipeline {
 // Close implements Pipeline.
 func (p *observedPipeline) Close() {
 	p.inner.Close()
+	if p.readSpan != nil {
+		p.readSpan.End()
+	}
 }
