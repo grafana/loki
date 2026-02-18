@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"runtime/pprof"
 	"sync"
 	"time"
@@ -23,7 +22,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
-	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -73,7 +71,6 @@ func (s threadState) String() string {
 type thread struct {
 	BatchSize          int64
 	MergePrefetchCount int
-	Limits             logql.Limits
 	Bucket             objstore.Bucket
 	Metastore          metastore.Metastore
 	Logger             log.Logger
@@ -248,11 +245,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
 	}
 
-	recordBatchSize := 0
-	if t.Limits != nil {
-		recordBatchSize = t.Limits.RecordBatchSize(job.Task.TenantID)
-	}
-	_, err = t.drainPipeline(ctx, pipeline, sinksForJob(job), recordBatchSize, logger)
+	_, err = t.drainPipeline(ctx, pipeline, sinksForJob(job), t.BatchSize, logger)
 	if err != nil {
 		level.Warn(logger).Log("msg", "task failed", "err", err)
 		_ = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
@@ -305,7 +298,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	}
 }
 
-func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []RecordSink, recordBatchSizeBytes int, logger log.Logger) (int, error) {
+func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []RecordSink, batchSizeRecords int64, logger log.Logger) (int, error) {
 	region := xcap.RegionFromContext(ctx)
 
 	if err := pipeline.Open(ctx); err != nil {
@@ -313,10 +306,10 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 	}
 
 	var totalRows int
-	var currentBatchSize int
+	var currentBatchRecordCount int
 	batchAggregator := arrowagg.NewRecords(memory.DefaultAllocator)
 
-	// When recordBatchSize <= 0, "batch full" is always true so each record is sent alone (no batching).
+	// When batchSizeRecords <= 0, no batching: each record is sent alone.
 	flush := func(toSend arrow.RecordBatch) {
 		startSend := time.Now()
 		for _, sink := range sinks {
@@ -335,9 +328,9 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
 	}
 
-	// flushBatch flushes the compactor's accumulated records (aggregate with schema reconciliation and send), then resets it.
+	// flushBatch flushes the batch aggregator's accumulated records (aggregate with schema reconciliation and send), then resets it.
 	flushBatch := func() {
-		if currentBatchSize == 0 {
+		if currentBatchRecordCount == 0 {
 			return
 		}
 
@@ -345,7 +338,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 
 		// Regardless of errors, reset the aggregator to prepare for the next batch.
 		batchAggregator.Reset()
-		currentBatchSize = 0
+		currentBatchRecordCount = 0
 
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to aggregate record batch", "err", err)
@@ -372,44 +365,24 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			continue
 		}
 
-		// If we have a batch in progress and the new record would make it too large, flush the batch.
-		recSize := recordSizeBytes(rec)
-		if currentBatchSize+recSize > recordBatchSizeBytes {
-			flushBatch()
-		}
-
-		// If batching is disabled, or the new record is too large for a single batch,
-		// Flush this record alone.
-		if recordBatchSizeBytes <= 0 || recSize > recordBatchSizeBytes {
+		// If batching is disabled, send this record alone.
+		if batchSizeRecords <= 0 {
 			flush(rec)
 			continue
 		}
 
+		// If we have a full batch (number of records reached limit), flush before adding the next.
+		if currentBatchRecordCount > 0 && int64(currentBatchRecordCount) >= batchSizeRecords {
+			flushBatch()
+		}
+
 		// Otherwise, add the record to the batch aggregator.
 		batchAggregator.Append(rec)
-		currentBatchSize += recSize
-		region.Record(xcap.TaskDrainRecordsSizeBytes.Observe(int64(recSize)))
+		currentBatchRecordCount++
 	}
 
 	// Flush any remaining batch.
 	flushBatch()
 
 	return totalRows, nil
-}
-
-// recordSizeBytes returns the approximate size in bytes of the record batch,
-// by summing the size of all column data (including nested buffers).
-// It is used to decide when to flush batched records in drainPipeline.
-func recordSizeBytes(rec arrow.RecordBatch) int {
-	if rec == nil {
-		return 0
-	}
-	var n uint64
-	for i := 0; i < int(rec.NumCols()); i++ {
-		n += rec.Column(i).Data().SizeInBytes()
-	}
-	if n > math.MaxInt {
-		return math.MaxInt
-	}
-	return int(n)
 }

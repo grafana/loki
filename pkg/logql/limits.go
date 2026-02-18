@@ -27,7 +27,6 @@ type Limits interface {
 	MaxScanTaskParallelism(string) int
 	DebugEngineTasks(string) bool
 	DebugEngineStreams(string) bool
-	RecordBatchSize(string) int
 }
 
 type fakeLimits struct {
@@ -42,7 +41,6 @@ type fakeLimits struct {
 	maxScanTaskParallelism int
 	debugEngineTasks       bool
 	debugEngineStreams     bool
-	recordBatchSize        int
 }
 
 func (f fakeLimits) MaxQuerySeries(_ context.Context, _ string) int {
@@ -79,8 +77,4 @@ func (f fakeLimits) DebugEngineTasks(_ string) bool {
 
 func (f fakeLimits) DebugEngineStreams(_ string) bool {
 	return f.debugEngineStreams
-}
-
-func (f fakeLimits) RecordBatchSize(_ string) int {
-	return f.recordBatchSize
 }

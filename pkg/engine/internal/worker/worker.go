@@ -27,7 +27,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
-	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -65,7 +64,7 @@ type Config struct {
 	SchedulerLookupInterval time.Duration
 
 	// BatchSize specifies the maximum number of rows to retrieve in a single
-	// read call of a task pipeline.
+	// read call of a task pipeline, or to send in a single message to a peer (sink).
 	BatchSize int64
 
 	// NumThreads is the number of worker threads to spawn. The number of
@@ -107,7 +106,6 @@ type readyResponse struct {
 // by other [Worker] instances or the scheduler.
 type Worker struct {
 	config     Config
-	limits     logql.Limits
 	logger     log.Logger
 	numThreads int
 
@@ -134,8 +132,7 @@ type Worker struct {
 // the lifecycle of the returned worker.
 //
 // New returns an error if the provided config is invalid.
-// limits is used for per-tenant limits (e.g. RecordBatchSize); if nil, default limits apply.
-func New(config Config, limits logql.Limits) (*Worker, error) {
+func New(config Config) (*Worker, error) {
 	if config.Logger == nil {
 		config.Logger = log.NewNopLogger()
 	}
@@ -156,7 +153,6 @@ func New(config Config, limits logql.Limits) (*Worker, error) {
 
 	return &Worker{
 		config:      config,
-		limits:      limits,
 		logger:      config.Logger,
 		wireMetrics: wire.NewMetrics(),
 		numThreads:  numThreads,
@@ -195,7 +191,6 @@ func (w *Worker) run(ctx context.Context) error {
 	for i := range w.numThreads {
 		t := &thread{
 			BatchSize:      w.config.BatchSize,
-			Limits:         w.limits,
 			Logger:         log.With(w.logger, "thread", i),
 			Bucket:         w.config.Bucket,
 			Metastore:      w.config.Metastore,
