@@ -373,7 +373,7 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 					},
 				},
 			},
-			expectedPorts: []int32{443},
+			expectedPorts: []int32{5000, 443},
 		},
 		{
 			name: "Swift endpoint with OpenStack OpenShift default SSL port",
@@ -392,7 +392,7 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 					},
 				},
 			},
-			expectedPorts: []int32{13808},
+			expectedPorts: []int32{5000, 13808},
 		},
 		{
 			name: "AlibabaCloud endpoint with custom port",
