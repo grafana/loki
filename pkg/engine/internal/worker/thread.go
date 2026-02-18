@@ -213,8 +213,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	)
 	defer span.End()
 
-	region.Record(xcap.TaskExternalSourcesCount.Observe(int64(countSources)))
-	region.Record(xcap.TaskExternalSinksCount.Observe(int64(countSinks)))
+	span.Record(xcap.TaskExternalSourcesCount.Observe(int64(countSources)))
+	span.Record(xcap.TaskExternalSinksCount.Observe(int64(countSinks)))
 
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
 
