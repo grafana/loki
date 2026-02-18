@@ -69,6 +69,7 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("end", false, node.End.Format(time.RFC3339Nano)),
 			tree.NewProperty("step", false, node.Step),
 			tree.NewProperty("range", false, node.Range),
+			tree.NewProperty("columnar", false, node.Columnar),
 		}
 
 		if node.Grouping.Without {

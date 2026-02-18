@@ -1175,3 +1175,136 @@ func Test_canShardAggregation(t *testing.T) {
 		})
 	})
 }
+
+func TestColumnarPromotion(t *testing.T) {
+	t.Run("aligned windows with by() grouping", func(t *testing.T) {
+		plan := &Plan{}
+		scanSet := plan.graph.Add(&ScanSet{
+			Targets:    []*ScanTarget{{Type: ScanTypeDataObject, DataObject: &DataObjScan{}}},
+			Predicates: []Expression{},
+		})
+		rangeAgg := plan.graph.Add(&RangeAggregation{
+			Operation: types.RangeAggregationTypeCount,
+			Step:      time.Minute,
+			Range:     time.Minute,
+			Grouping: Grouping{
+				Columns: []ColumnExpression{
+					&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+				},
+			},
+		})
+		require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet}))
+
+		o := newOptimizer(plan, []*optimization{
+			newOptimization("ColumnarPromotion", plan).withRules(&columnarPromotion{plan: plan}),
+		})
+		o.optimize(plan.Roots()[0])
+
+		ra := rangeAgg.(*RangeAggregation)
+		require.True(t, ra.Columnar)
+	})
+
+	t.Run("misaligned windows (step != range)", func(t *testing.T) {
+		plan := &Plan{}
+		scanSet := plan.graph.Add(&ScanSet{
+			Targets:    []*ScanTarget{{Type: ScanTypeDataObject, DataObject: &DataObjScan{}}},
+			Predicates: []Expression{},
+		})
+		rangeAgg := plan.graph.Add(&RangeAggregation{
+			Operation: types.RangeAggregationTypeCount,
+			Step:      30 * time.Second,
+			Range:     time.Minute,
+			Grouping: Grouping{
+				Columns: []ColumnExpression{
+					&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+				},
+			},
+		})
+		require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet}))
+
+		o := newOptimizer(plan, []*optimization{
+			newOptimization("ColumnarPromotion", plan).withRules(&columnarPromotion{plan: plan}),
+		})
+		o.optimize(plan.Roots()[0])
+
+		ra := rangeAgg.(*RangeAggregation)
+		require.False(t, ra.Columnar)
+	})
+
+	t.Run("without() grouping", func(t *testing.T) {
+		plan := &Plan{}
+		scanSet := plan.graph.Add(&ScanSet{
+			Targets:    []*ScanTarget{{Type: ScanTypeDataObject, DataObject: &DataObjScan{}}},
+			Predicates: []Expression{},
+		})
+		rangeAgg := plan.graph.Add(&RangeAggregation{
+			Operation: types.RangeAggregationTypeCount,
+			Step:      time.Minute,
+			Range:     time.Minute,
+			Grouping: Grouping{
+				Columns: []ColumnExpression{
+					&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+				},
+				Without: true,
+			},
+		})
+		require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet}))
+
+		o := newOptimizer(plan, []*optimization{
+			newOptimization("ColumnarPromotion", plan).withRules(&columnarPromotion{plan: plan}),
+		})
+		o.optimize(plan.Roots()[0])
+
+		ra := rangeAgg.(*RangeAggregation)
+		require.False(t, ra.Columnar)
+	})
+
+	t.Run("empty grouping (no pushdown)", func(t *testing.T) {
+		plan := &Plan{}
+		scanSet := plan.graph.Add(&ScanSet{
+			Targets:    []*ScanTarget{{Type: ScanTypeDataObject, DataObject: &DataObjScan{}}},
+			Predicates: []Expression{},
+		})
+		rangeAgg := plan.graph.Add(&RangeAggregation{
+			Operation: types.RangeAggregationTypeCount,
+			Step:      time.Minute,
+			Range:     time.Minute,
+		})
+		require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet}))
+
+		o := newOptimizer(plan, []*optimization{
+			newOptimization("ColumnarPromotion", plan).withRules(&columnarPromotion{plan: plan}),
+		})
+		o.optimize(plan.Roots()[0])
+
+		ra := rangeAgg.(*RangeAggregation)
+		require.False(t, ra.Columnar)
+	})
+
+	t.Run("instant query (step == 0)", func(t *testing.T) {
+		plan := &Plan{}
+		scanSet := plan.graph.Add(&ScanSet{
+			Targets:    []*ScanTarget{{Type: ScanTypeDataObject, DataObject: &DataObjScan{}}},
+			Predicates: []Expression{},
+		})
+		rangeAgg := plan.graph.Add(&RangeAggregation{
+			Operation: types.RangeAggregationTypeCount,
+			Step:      0,
+			Range:     time.Minute,
+			Grouping: Grouping{
+				Columns: []ColumnExpression{
+					&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+				},
+			},
+		})
+		require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet}))
+
+		o := newOptimizer(plan, []*optimization{
+			newOptimization("ColumnarPromotion", plan).withRules(&columnarPromotion{plan: plan}),
+		})
+		o.optimize(plan.Roots()[0])
+
+		ra := rangeAgg.(*RangeAggregation)
+		require.False(t, ra.Columnar)
+	})
+}

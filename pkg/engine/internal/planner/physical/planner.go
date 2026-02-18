@@ -761,6 +761,9 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("GroupByPushdown", plan).withRules(
 				&groupByPushdown{plan: plan},
 			),
+			newOptimization("ColumnarPromotion", plan).withRules(
+				&columnarPromotion{plan: plan},
+			),
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
