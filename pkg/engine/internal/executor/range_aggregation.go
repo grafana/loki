@@ -29,6 +29,10 @@ type rangeAggregationOptions struct {
 	step           time.Duration // step used for range queries
 	operation      types.RangeAggregationType
 	maxQuerySeries int // maximum number of unique series allowed
+
+	// columnar enables the batch (columnar) execution path using
+	// columnarAggregator.AddBatch instead of per-row aggregation.
+	columnar bool
 }
 
 var (
@@ -70,6 +74,7 @@ type rangeAggregationPipeline struct {
 	inputsExhausted bool // indicates if all inputs are exhausted
 
 	aggregator          *aggregator
+	columnarAgg         *columnarAggregator
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
 	evaluator           *expressionEvaluator         // used to evaluate column expressions
 	opts                rangeAggregationOptions
@@ -101,14 +106,25 @@ func (r *rangeAggregationPipeline) init() {
 		cur = cur.Add(r.opts.step)
 	}
 
-	f := newMatcherFactoryFromOpts(r.opts)
-	r.windowsForTimestamp = f.createMatcher(windows)
-
 	op, ok := rangeAggregationOperations[r.opts.operation]
 	if !ok {
 		panic(fmt.Sprintf("unknown range aggregation operation: %v", r.opts.operation))
 	}
 
+	f := newMatcherFactoryFromOpts(r.opts)
+	if r.opts.columnar {
+		matchFunc := f.createBatchMatcher(windows)
+		fields := generateGroupingFields(r.opts.grouping.Columns)
+		r.columnarAgg = newColumnarAggregator(len(windows), columnarAggregatorOpts{
+			operation:     op,
+			groupByLabels: fields,
+			matchWindows:  matchFunc,
+			maxSeries:     r.opts.maxQuerySeries,
+		})
+		return
+	}
+
+	r.windowsForTimestamp = f.createMatcher(windows)
 	r.aggregator = newAggregator(len(windows), op)
 	r.aggregator.SetMaxSeries(r.opts.maxQuerySeries)
 }
@@ -124,6 +140,10 @@ func (r *rangeAggregationPipeline) Open(ctx context.Context) error {
 func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if r.inputsExhausted {
 		return nil, EOF
+	}
+
+	if r.opts.columnar {
+		return r.readColumnar(ctx)
 	}
 
 	rec, err := r.read(ctx)
@@ -228,7 +248,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 			} else {
 				groupingFields = make([]arrow.Field, 0, len(r.opts.grouping.Columns))
 
-				// Gouping by a label set. Take only labels from that set.
+				// Grouping by a label set. Take only labels from that set.
 				for _, columnExpr := range r.opts.grouping.Columns {
 					vec, err := r.evaluator.eval(columnExpr, record)
 					if err != nil {
@@ -309,10 +329,97 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 	return rec, err
 }
 
+// readColumnar uses the [columnarAggregator] for batch processing.
+func (r *rangeAggregationPipeline) readColumnar(ctx context.Context) (arrow.RecordBatch, error) {
+	var (
+		tsColumnExpr = &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: types.ColumnNameBuiltinTimestamp,
+				Type:   types.ColumnTypeBuiltin,
+			},
+		}
+
+		valColumnExpr = &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: types.ColumnNameGeneratedValue,
+				Type:   types.ColumnTypeGenerated,
+			},
+		}
+
+		startedAt     = time.Now()
+		inputReadTime time.Duration
+	)
+
+	r.columnarAgg.Reset()
+	inputsExhausted := false
+	for !inputsExhausted {
+		inputsExhausted = true
+
+		for _, input := range r.inputs {
+			inputStart := time.Now()
+			record, err := input.Read(ctx)
+			inputReadTime += time.Since(inputStart)
+
+			if err != nil {
+				if errors.Is(err, EOF) {
+					continue
+				}
+				return nil, err
+			}
+
+			inputsExhausted = false
+
+			if record.NumRows() == 0 {
+				continue
+			}
+
+			assertions.CheckLabelValuesDuplicates(record)
+
+			arrays, err := evalGroupByColumns(r.evaluator, r.opts.grouping.Columns, record)
+			if err != nil {
+				return nil, err
+			}
+
+			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
+			if err != nil {
+				return nil, err
+			}
+			tsCol := tsVec.(*array.Timestamp)
+
+			var valArr *array.Float64
+			if r.opts.operation != types.RangeAggregationTypeCount {
+				valVec, err := r.evaluator.eval(valColumnExpr, record)
+				if err != nil {
+					return nil, err
+				}
+				valArr = valVec.(*array.Float64)
+			}
+
+			if err := r.columnarAgg.AddBatch(tsCol, valArr, arrays); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	r.inputsExhausted = true
+	rec, err := r.columnarAgg.BuildRecord()
+	if region := xcap.RegionFromContext(ctx); region != nil {
+		computeTime := time.Since(startedAt) - inputReadTime
+		region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
+	}
+
+	return rec, err
+}
+
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
 func (r *rangeAggregationPipeline) Close() {
-	r.aggregator.Reset()
+	if r.columnarAgg != nil {
+		r.columnarAgg.Reset()
+	}
+	if r.aggregator != nil {
+		r.aggregator.Reset()
+	}
 	for _, input := range r.inputs {
 		input.Close()
 	}
@@ -470,4 +577,76 @@ func (f *matcherFactory) createOverlappingMatcher(windows []window) timestampMat
 
 		return result
 	}
+}
+
+// createBatchMatcher creates a windowMatchFunc optimized for batch processing.
+func (f *matcherFactory) createBatchMatcher(windows []window) windowMatchFunc {
+	if f.step != f.interval {
+		panic(fmt.Sprintf("batch window matching only supports aligned windows (step == interval), got step=%v interval=%v", f.step, f.interval))
+	}
+
+	return f.createAlignedBatchMatcher(windows)
+}
+
+// createAlignedBatchMatcher is batch version of createAlignedMatcher.
+func (f *matcherFactory) createAlignedBatchMatcher(windows []window) windowMatchFunc {
+	startNs := f.start.UnixNano()
+	stepNs := f.step.Nanoseconds()
+
+	boundsStartNs := f.bounds.start.UnixNano()
+	boundsEndNs := f.bounds.end.UnixNano()
+
+	return func(inputTs, outTs []int64, validMask []bool, numRows int) {
+		for i := range numRows {
+			if !validMask[i] {
+				continue
+			}
+
+			ts := inputTs[i]
+			// The window start is exclusive, the window end is inclusive.
+			if ts <= boundsStartNs || ts > boundsEndNs {
+				validMask[i] = false
+				continue
+			}
+
+			idx := (ts - startNs + stepNs - 1) / stepNs
+			outTs[i] = windows[idx].end.UnixNano()
+		}
+	}
+}
+
+// generateGroupingFields generates arrow.Field descriptors from
+// physical plan column expressions.
+func generateGroupingFields(columns []physical.ColumnExpression) []arrow.Field {
+	fields := make([]arrow.Field, 0, len(columns))
+	for _, columnExpr := range columns {
+		colExpr, ok := columnExpr.(*physical.ColumnExpr)
+		if !ok {
+			panic(fmt.Sprintf("unknown column expression %v", columnExpr))
+		}
+
+		ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
+		fields = append(fields, semconv.FieldFromIdent(ident, true))
+	}
+
+	return fields
+}
+
+// evalGroupByColumns evaluates the known group-by column expressions against
+// a record and returns the data arrays.
+func evalGroupByColumns(evaluator *expressionEvaluator, columns []physical.ColumnExpression, record arrow.RecordBatch) ([]*array.String, error) {
+	arrays := make([]*array.String, 0, len(columns))
+	for _, columnExpr := range columns {
+		vec, err := evaluator.eval(columnExpr, record)
+		if err != nil {
+			return nil, err
+		}
+
+		if vec.DataType().ID() != types.Arrow.String.ID() {
+			return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.DataType())
+		}
+
+		arrays = append(arrays, vec.(*array.String))
+	}
+	return arrays, nil
 }

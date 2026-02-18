@@ -125,6 +125,7 @@ func (n *AggregateRange) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error
 		Step:           n.Step,
 		Range:          n.Range,
 		MaxQuerySeries: int(n.MaxQuerySeries),
+		Columnar:       n.Columnar,
 	}, nil
 }
 

@@ -398,7 +398,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 		return emptyPipeline()
 	}
 
-	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
+	opts := rangeAggregationOptions{
 		grouping:       plan.Grouping,
 		startTs:        plan.Start,
 		endTs:          plan.End,
@@ -406,7 +406,10 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 		step:           plan.Step,
 		operation:      plan.Operation,
 		maxQuerySeries: plan.MaxQuerySeries,
-	})
+		columnar:       plan.Columnar,
+	}
+
+	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, opts)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -570,6 +573,7 @@ func nodeAttributes(n physical.Node) []attribute.KeyValue {
 			attribute.Int64("step", int64(n.Step)),
 			attribute.Int("num_grouping", len(n.Grouping.Columns)),
 			attribute.Bool("grouping_without", n.Grouping.Without),
+			attribute.Bool("columnar", n.Columnar),
 		)
 
 	case *physical.VectorAggregation:

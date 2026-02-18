@@ -830,6 +830,40 @@ func addUniqueColumnExpr(projections []ColumnExpression, colExpr *ColumnExpr) ([
 	return append(projections, colExpr), true
 }
 
+var _ rule = (*columnarPromotion)(nil)
+
+// columnarPromotion promotes eligible RangeAggregation nodes to use the
+// columnar (batch) execution path. A node is eligible when:
+//   - Grouping labels are known upfront (by-clause, not without)
+//   - Windows are aligned (Step == Range) and Step > 0
+type columnarPromotion struct {
+	plan *Plan
+}
+
+func (r *columnarPromotion) apply(root Node) bool {
+	nodes := findMatchingNodes(r.plan, root, func(n Node) bool {
+		_, ok := n.(*RangeAggregation)
+		return ok
+	})
+
+	var changed bool
+	for _, n := range nodes {
+		ra := n.(*RangeAggregation)
+		if ra.Columnar {
+			continue
+		}
+		if ra.Grouping.Without || len(ra.Grouping.Columns) == 0 {
+			continue
+		}
+		if ra.Step <= 0 || ra.Step != ra.Range {
+			continue
+		}
+		ra.Columnar = true
+		changed = true
+	}
+	return changed
+}
+
 // findMatchingNodes finds all nodes in the plan tree that match the given matchFn.
 func findMatchingNodes(plan *Plan, root Node, matchFn func(Node) bool) []Node {
 	var result []Node
