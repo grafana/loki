@@ -478,7 +478,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 			}
 
 			// Create compatibility pipeline
-			pipeline := newColumnCompatibilityPipeline(tt.compat, input, nil)
+			pipeline := newColumnCompatibilityPipeline(tt.compat, input)
 			defer pipeline.Close()
 
 			if tt.expectError {
@@ -544,7 +544,7 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 			{"invalid-field-name": "test"},
 		})
 
-		pipeline := newColumnCompatibilityPipeline(compat, input, nil)
+		pipeline := newColumnCompatibilityPipeline(compat, input)
 		defer pipeline.Close()
 
 		_, err := pipeline.Read(t.Context())
@@ -563,7 +563,7 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 		expectedErr := errors.New("test error")
 		input := errorPipeline(t.Context(), expectedErr)
 
-		pipeline := newColumnCompatibilityPipeline(compat, input, nil)
+		pipeline := newColumnCompatibilityPipeline(compat, input)
 		defer pipeline.Close()
 
 		_, err := pipeline.Read(t.Context())
@@ -588,7 +588,7 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 			{"utf8.label.status": "200", "int64.metadata.status": int64(200)},
 		})
 
-		pipeline := newColumnCompatibilityPipeline(compat, input, nil)
+		pipeline := newColumnCompatibilityPipeline(compat, input)
 		defer pipeline.Close()
 
 		// This should panic with "invalid column type: only string columns can be checked for collisions"
@@ -646,7 +646,7 @@ func TestMultipleColumnCompatPreservesValues(t *testing.T) {
 	})
 
 	// Step 2: Run second ColumnCompat (simulating logfmt parser's ColumnCompat)
-	pipeline := newColumnCompatibilityPipeline(compat, inputAfterFirstCompat, nil)
+	pipeline := newColumnCompatibilityPipeline(compat, inputAfterFirstCompat)
 	defer pipeline.Close()
 
 	batch, err := pipeline.Read(t.Context())
