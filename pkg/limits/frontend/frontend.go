@@ -77,9 +77,9 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 	)
 	// Set up the assigned partitions cache.
 	if cfg.AssignedPartitionsCacheEnabled {
-		f.assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
-	} else {
 		f.assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
+	} else {
+		f.assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
 	}
 	// Set up the limits client.
 	f.limitsClient = newRingLimitsClient(limitsRing, clientPool, cfg.NumPartitions, f.assignedPartitionsCache, logger, reg)
