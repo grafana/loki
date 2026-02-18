@@ -45,7 +45,6 @@ images:
 # the following config is for teaching kustomize how to do var substitution
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER' prefix.
 patches:
-- path: manager_auth_proxy_patch.yaml
 - path: manager_related_image_patch.yaml
 - path: manager_resource_reqs_patch.yaml
 - path: manager_run_flags_patch.yaml
