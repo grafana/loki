@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-// RowReaderOptions configures how a [RowReader] will read [Row]s.
+// ReaderOptions configures how a [Reader] will read data.
 type ReaderOptions struct {
 	// Columns to read from the Dataset. It is invalid to provide a Column that
 	// is not in Dataset.
@@ -26,11 +26,12 @@ type ReaderOptions struct {
 	// Holds a list of predicates that can be sequentially applied to the dataset.
 	Predicates []Predicate
 
-	// BatchSize is the number of rows to read in a single batch.
-	// A higher batch size will reduce the number of calls to the decoders, but will also increase the memory usage.
+	// BatchSize is the number of rows to buffer in memory for future calls to Read.
+	// A higher batch size will improve performance by reducing the number of calls to the decoders, but will also increase the memory usage.
 	BatchSize int
 
-	// Allocator to use for the lifetime of the reader, until reset. If nil, a new allocator will be created.
+	// Allocator is used to allocate memory for the Reader, retained between Read calls.
+	// A reader must not be used after it's allocator is freed or reclaimed until Reset is called.
 	Allocator *memory.Allocator
 }
 
@@ -48,18 +49,14 @@ type Reader struct {
 	schema        *columnar.Schema
 }
 
-/*
-dataset.Reader maintains two buffers, both sized to the configured batch_size :
-As before, dataset.Reader wraps around column readers for each column referenced in
-the output schema or by predicates. These column readers may have their own buffers
-not described above.
-*/
+// NewReader creates a new dataset Reader with the given options.
 func NewReader(opts ReaderOptions) *Reader {
 	r := Reader{opts: opts}
 	r.Reset(opts)
 	return &r
 }
 
+// Reset resets the Reader with the given options so it is ready to be re-used.
 func (r *Reader) Reset(opts ReaderOptions) {
 	r.opts = opts
 	r.columnReaders = sliceclear.Clear(r.columnReaders)
@@ -70,6 +67,7 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	r.ready = false
 }
 
+// Open initializes the Reader so it is ready to be used. Open must be called before Read.
 func (r *Reader) Open(ctx context.Context) error {
 	if r.ready {
 		return nil
@@ -111,6 +109,8 @@ func validateOpts(opts ReaderOptions) error {
 	return nil
 }
 
+// Read reads up to count rows from the dataset.
+// Read may buffer up to opts.BatchSize rows in memory for future calls to Read.
 func (r *Reader) Read(ctx context.Context, alloc *memory.Allocator, count int) (*columnar.RecordBatch, error) {
 	if !r.ready {
 		return nil, errors.New("reader not initialized")
@@ -144,14 +144,13 @@ func (r *Reader) Read(ctx context.Context, alloc *memory.Allocator, count int) (
 	selectionVector := memory.NewBitmap(tempAlloc, int(readSize))
 	selectionVector.AppendCount(true, int(readSize))
 
-	// TODO: Apply selection vector
+	// TODO: Implement selection vectors
 	_ = applySelectionVector(tempAlloc, selectionVector)
 
-	// Read rows into pending buffer
-	r.pendingRow = r.row
-
-	// We use the semi-permanent allocator here because the pending buffer is retained beyond the lifetime of the read. It is tied to the lifetime of the Reader so it is used after Reset.
+	// The pending allocator is used here because the pending buffer is retained beyond the lifetime of the read.
+	// Instead, it is tied to the lifetime of the Reader.
 	arrs := memory.NewBuffer[columnar.Array](r.pendingAllocator, len(r.columnReaders))
+	r.pendingRow = r.row
 	for _, column := range r.columnReaders {
 		arr, err := column.Read(ctx, r.pendingAllocator, count)
 		if err != nil && !errors.Is(err, io.EOF) {

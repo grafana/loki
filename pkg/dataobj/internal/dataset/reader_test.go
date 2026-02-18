@@ -266,7 +266,6 @@ func BenchmarkReader_Read(b *testing.B) {
 
 	readerAlloc := memory.NewAllocator(alloc)
 	for b.Loop() {
-		alloc.Reclaim()
 		r.Reset(ReaderOptions{
 			Columns:   []Column{col},
 			BatchSize: totalValues / 2,
