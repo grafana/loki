@@ -13,7 +13,11 @@ import (
 )
 
 var (
-	magic = []byte("THOR")
+	magic = []byte("DOBJ")
+
+	// legacyMagic is the magic bytes used in the original dataobj format where
+	// file metadata was kept at the bottom of the file.
+	legacyMagic = []byte("THOR")
 )
 
 const (
@@ -53,7 +57,7 @@ type sectionInfo struct {
 // writer.
 func newEncoder(store scratch.Store) *encoder {
 	return &encoder{
-		startOffset: len(magic),
+		startOffset: len(legacyMagic),
 		store:       store,
 	}
 }
@@ -196,7 +200,7 @@ func (enc *encoder) Metadata() (*filemd.Metadata, error) {
 func (enc *encoder) encodeSize(computedMetadata *filemd.Metadata) int64 {
 	var size int64
 
-	size += int64(len(magic)) // header
+	size += int64(len(legacyMagic)) // header
 
 	// body
 	for _, sec := range enc.sections {
@@ -210,7 +214,7 @@ func (enc *encoder) encodeSize(computedMetadata *filemd.Metadata) int64 {
 
 	// tailer
 	size += int64(4) // file metadata size (32 bits)
-	size += int64(len(magic))
+	size += int64(len(legacyMagic))
 
 	return size
 }
@@ -256,7 +260,7 @@ func (enc *encoder) Flush() (*snapshot, error) {
 		return nil, err
 	} else if err := binary.Write(&tailerBuffer, binary.LittleEndian, uint32(tailerBuffer.Len())); err != nil {
 		return nil, fmt.Errorf("writing metadata size: %w", err)
-	} else if _, err := tailerBuffer.Write(magic); err != nil {
+	} else if _, err := tailerBuffer.Write(legacyMagic); err != nil {
 		return nil, fmt.Errorf("writing magic tailer: %w", err)
 	}
 
@@ -274,7 +278,7 @@ func (enc *encoder) Flush() (*snapshot, error) {
 
 	snapshot, err := newSnapshot(
 		enc.store,
-		magic, // header
+		legacyMagic, // header
 		regions,
 		tailerBuffer.Bytes(), // tailer
 	)
@@ -286,7 +290,7 @@ func (enc *encoder) Flush() (*snapshot, error) {
 
 // Reset resets the Encoder to a fresh state.
 func (enc *encoder) Reset() {
-	enc.startOffset = len(magic)
+	enc.startOffset = len(legacyMagic)
 	enc.totalBytes = 0
 
 	enc.sections = nil
