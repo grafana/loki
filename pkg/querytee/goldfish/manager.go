@@ -276,6 +276,8 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 		"cell_b_exec_time_ms", sample.CellBStats.ExecTimeMs,
 		"cell_a_bytes_processed", sample.CellAStats.BytesProcessed,
 		"cell_b_bytes_processed", sample.CellBStats.BytesProcessed,
+		"cell_a_lines_processed", sample.CellAStats.LinesProcessed,
+		"cell_b_lines_processed", sample.CellBStats.LinesProcessed,
 		"cell_a_entries_returned", sample.CellAStats.TotalEntriesReturned,
 		"cell_b_entries_returned", sample.CellBStats.TotalEntriesReturned,
 	}
