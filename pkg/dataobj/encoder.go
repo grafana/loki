@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"math"
 	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
@@ -189,13 +188,7 @@ func (enc *encoder) Metadata() (*filemd.Metadata, error) {
 		Sections:   sections,
 		Dictionary: enc.dictionary,
 		Types:      enc.rawTypes,
-
-		// We need to temporarily set ObjectSize to a non-zero value to ensure
-		// that the field is included when we compute the total object size.
-		ObjectSize: math.MinInt64,
 	}
-
-	md.ObjectSize = enc.encodeSize(md)
 	return md, nil
 }
 
@@ -287,8 +280,6 @@ func (enc *encoder) Flush() (*snapshot, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating snapshot: %w", err)
-	} else if snapshot.Size() != metadata.ObjectSize {
-		panic(fmt.Sprintf("snapshot size %d does not match computed metadata size %d", snapshot.Size(), metadata.ObjectSize))
 	}
 	return snapshot, nil
 }
