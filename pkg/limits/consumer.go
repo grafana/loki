@@ -177,7 +177,6 @@ func (c *consumer) processRecord(_ context.Context, state partitionState, r *kgo
 		return nil
 	}
 	// Use UpdateRates to ensure rate bucket data from other zones is replicated.
-	// We ignore the toProduce return value since the consumer doesn't produce to Kafka.
 	_, _, err := c.usage.UpdateRates(s.Tenant, []*proto.StreamMetadata{s.Metadata}, r.Timestamp)
 	if err != nil {
 		if errors.Is(err, errOutsideActiveWindow) {
