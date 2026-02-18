@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
@@ -170,7 +171,7 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 	sample := storage.samples[0]
 	assert.Equal(t, "tenant1", sample.TenantID)
 	assert.Equal(t, "count_over_time({job=\"test\"}[5m])", sample.Query)
-	assert.Equal(t, "query_range", sample.QueryType)
+	assert.Equal(t, logql.QueryTypeMetric, sample.QueryType)
 	assert.Equal(t, 200, sample.CellAStatusCode)
 	assert.Equal(t, 200, sample.CellBStatusCode)
 	assert.Equal(t, int64(100), sample.CellAStats.ExecTimeMs)

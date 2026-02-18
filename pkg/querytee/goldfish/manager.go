@@ -17,18 +17,35 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
-
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 const (
-	unknownUser      = "unknown"
-	unknownQueryType = "unknown"
+	unknown = "unknown"
+
+	// Loki API v1 routes
+	routeLokiQueryRange       = "/loki/api/v1/query_range"
+	routeLokiQuery            = "/loki/api/v1/query"
+	routeLokiSeries           = "/loki/api/v1/series"
+	routeLokiLabels           = "/loki/api/v1/labels"
+	routeLokiLabelValues      = "/loki/api/v1/label"
+	routeLokiIndexStats       = "/loki/api/v1/index/stats"
+	routeLokiIndexShards      = "/loki/api/v1/index/shards"
+	routeLokiIndexVolume      = "/loki/api/v1/index/volume"
+	routeLokiIndexVolumeRange = "/loki/api/v1/index/volume_range"
+
+	// Prometheus-compatible API routes (legacy /api/prom/).
+	routePromQuery       = "/api/prom/query"
+	routePromLabel       = "/api/prom/label"
+	routePromLabelValues = "/api/prom/label/" // prefix for /api/prom/label/{name}/values
+	routePromLabelSuffix = "/values"
+	routePromSeries      = "/api/prom/series"
 )
 
 // Manager defines the interface for Goldfish manager operations.
@@ -81,8 +98,8 @@ func NewManager(config Config, storage goldfish.Storage, resultStore ResultStore
 			}),
 			comparisonResults: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 				Name: "goldfish_comparison_results_total",
-				Help: "Total number of comparison results by status",
-			}, []string{"status"}),
+				Help: "Total number of comparison results by status and query type",
+			}, []string{"status", "query_type"}),
 			samplingDecisions: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 				Name: "goldfish_sampling_decisions_total",
 				Help: "Total number of sampling decisions",
@@ -169,15 +186,15 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 
 	correlationID := uuid.New().String()
 	tenantID := extractTenant(req)
-	queryType := getQueryType(req.URL.Path)
+	queryType := getQueryType(req.URL.Path, req.FormValue("query"))
 
 	level.Info(m.logger).Log("msg", "Processing query pair in Goldfish",
 		"correlation_id", correlationID,
 		"tenant", tenantID,
 		"query_type", queryType)
 
-	startTime := parseTime(req.URL.Query().Get("start"))
-	endTime := parseTime(req.URL.Query().Get("end"))
+	startTime := parseTime(req.FormValue("start"))
+	endTime := parseTime(req.FormValue("end"))
 
 	// If we couldn't parse the times, use current time as a fallback for MySQL compatibility
 	if startTime.IsZero() {
@@ -195,11 +212,11 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 		User:               ExtractUserFromQueryTags(req),
 		Issuer:             detectIssuer(req),
 		IsLogsDrilldown:    isLogsDrilldownRequest(req),
-		Query:              req.URL.Query().Get("query"),
+		Query:              req.FormValue("query"),
 		QueryType:          queryType,
 		StartTime:          startTime,
 		EndTime:            endTime,
-		Step:               parseDuration(req.URL.Query().Get("step")),
+		Step:               parseDuration(req.FormValue("step")),
 		CellAStats:         cellAResp.Stats,
 		CellBStats:         cellBResp.Stats,
 		CellAResponseHash:  cellAResp.Hash,
@@ -223,7 +240,7 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 	result := CompareResponses(sample, cellAResp, cellBResp, m.config.PerformanceTolerance, m.responseComparator, m.logger)
 
 	m.metrics.comparisonDuration.Observe(time.Since(comparisonStart).Seconds())
-	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus)).Inc()
+	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus), queryType).Inc()
 
 	// Persist raw payloads when configured
 	var persistedA, persistedB *StoredResult
@@ -256,7 +273,7 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 
 	// Log user extraction debug info
 	user := sample.User
-	if user != "" && user != unknownUser {
+	if user != "" && user != unknown {
 		level.Info(m.logger).Log("msg", "captured user info", "correlation_id", correlationID, "user", user)
 	}
 
@@ -494,21 +511,41 @@ func extractTenant(r *http.Request) string {
 	return tenant
 }
 
-func getQueryType(path string) string {
-	switch path {
-	case "/loki/api/v1/query_range":
-		return "query_range"
-	case "/loki/api/v1/query":
-		return "query"
-	case "/loki/api/v1/series":
-		return "series"
-	case "/loki/api/v1/labels":
-		return "labels"
-	case "/loki/api/v1/label":
-		return "label_values"
-	default:
-		return unknownQueryType
+func getQueryType(path, query string) string {
+	isQueryRoute := path == routeLokiQueryRange || path == routeLokiQuery || path == routePromQuery
+	if isQueryRoute {
+		if query == "" {
+			return unknown
+		}
+		expr, err := syntax.ParseExpr(query)
+		if err != nil {
+			return unknown
+		}
+		qt, err := logql.QueryType(expr)
+		if err != nil || qt == "" {
+			return unknown
+		}
+		return qt
 	}
+	if path == routeLokiSeries || path == routePromSeries {
+		return logql.QueryTypeSeries
+	}
+	if path == routeLokiLabels || path == routeLokiLabelValues || path == routePromLabel {
+		return logql.QueryTypeLabels
+	}
+	if strings.HasPrefix(path, routePromLabelValues) && strings.HasSuffix(path, routePromLabelSuffix) {
+		return logql.QueryTypeLabels
+	}
+	if path == routeLokiIndexStats {
+		return logql.QueryTypeStats
+	}
+	if path == routeLokiIndexShards {
+		return logql.QueryTypeShards
+	}
+	if path == routeLokiIndexVolume || path == routeLokiIndexVolumeRange {
+		return logql.QueryTypeVolume
+	}
+	return unknown
 }
 
 func parseTime(s string) time.Time {
@@ -564,7 +601,7 @@ func ExtractUserFromQueryTags(req *http.Request) string {
 		return grafanaUser
 	}
 
-	return unknownUser
+	return unknown
 }
 
 // detectIssuer determines the source of the query based on the User-Agent header
@@ -572,7 +609,7 @@ func detectIssuer(req *http.Request) string {
 	if strings.HasPrefix(req.Header.Get("User-Agent"), "loki-canary") {
 		return "loki-canary"
 	}
-	return "unknown"
+	return unknown
 }
 
 // isLogsDrilldownRequest checks if the request comes from Logs Drilldown by examining the X-Query-Tags header

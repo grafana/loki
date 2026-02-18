@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/logql"
 )
 
 func TestGoldfishEndToEnd(t *testing.T) {
@@ -132,7 +133,7 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	sample := storage.samples[0]
 	assert.Equal(t, "tenant1", sample.TenantID)
 	assert.Equal(t, "{job=\"test\"}", sample.Query)
-	assert.Equal(t, "query_range", sample.QueryType)
+	assert.Equal(t, logql.QueryTypeLimited, sample.QueryType)
 	assert.Equal(t, 200, sample.CellAStatusCode)
 	assert.Equal(t, 200, sample.CellBStatusCode)
 	assert.Equal(t, int64(50), sample.CellAStats.ExecTimeMs)
