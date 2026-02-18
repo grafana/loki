@@ -81,7 +81,7 @@ func (pr *pageReader) skipUnwantedRows(alloc *memory.Allocator) error {
 	defer tempAlloc.Free()
 
 	readCount := int(pr.nextRow - pr.pageRow)
-	_, err := pr.readColumnar(alloc, readCount, true)
+	_, err := pr.readColumnar(tempAlloc, readCount, true)
 	return err
 }
 
