@@ -31,11 +31,11 @@ readonly namespace=${NAMESPACE:-openshift-logging}
 readonly region
 
 # static authentication from the current select AWS CLI profile.
-bucket_name=${BUCKET_NAME:-$(oc -n $namespace get configmap $bucket_claim_name -o json | jq -r '.data.BUCKET_NAME')}
+bucket_name=${BUCKET_NAME:-$(oc -n "${namespace}" get configmap "${bucket_claim_name}" -o json | jq -r '.data.BUCKET_NAME')}
 readonly bucket_name
-access_key_id=${ACCESS_KEY_ID:-$(oc -n $namespace get secret $bucket_claim_name -o json | jq -r '.data.AWS_ACCESS_KEY_ID' | base64 -d)}
+access_key_id=${ACCESS_KEY_ID:-$(oc -n "${namespace}" get secret "${bucket_claim_name}" -o json | jq -r '.data.AWS_ACCESS_KEY_ID' | base64 -d)}
 readonly access_key_id
-secret_access_key=${SECRET_ACCESS_KEY:-$( oc -n $namespace get secret $bucket_claim_name -o json | jq -r '.data.AWS_SECRET_ACCESS_KEY' | base64 -d)}
+secret_access_key=${SECRET_ACCESS_KEY:-$( oc -n "${namespace}" get secret "${bucket_claim_name}" -o json | jq -r '.data.AWS_SECRET_ACCESS_KEY' | base64 -d)}
 readonly secret_access_key
 
 
