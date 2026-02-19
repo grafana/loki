@@ -1875,7 +1875,7 @@ ingest_limits_frontend:
 
   # Enable the accepted streams cache.
   # CLI flag: -ingest-limits-frontend.accepted-streams-cache-enabled
-  [accepted_streams_cache_enabled: <boolean> | default = true]
+  [accepted_streams_cache_enabled: <boolean> | default = false]
 
   # The TTL for the accepted streams cache.
   # CLI flag: -ingest-limits-frontend.accepted-streams-cache-ttl
