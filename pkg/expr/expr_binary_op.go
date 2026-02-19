@@ -68,6 +68,41 @@ const (
 	// arguments are scalars, otherwise the result is a bool array.
 	BinaryOpOR
 
+	// BinaryOpMatchRegex performs a regex match of the left and right expressions.
+	//
+	// The left expression denotes the datum to search, and must be a UTF8
+	// scalar or array. The right expression denotes the regular expression to
+	// match with, and must be a [Regexp]. If the expression matches the UTF8
+	// value, the result is true.
+	//
+	// The result is a bool datum, which is either a bool scalar if both
+	// arguments are scalars, otherwise the result is a bool array.
+	BinaryOpMatchRegex
+
+	// BinaryOpIn performs a membership check of the left and right expressions.
+	//
+	// The left expression denotes the datum to search. The right
+	// expression denotes the set of values to search for, and must
+	// be a [ValueSet] matching the left datum's type.
+	//
+	// If the value is found in the set, the result is true.
+	//
+	// The result is a bool datum, which is either a bool scalar if the
+	// left datum is a scalar, otherwise the result is a bool array.
+	BinaryOpIn
+
+	// BinaryOpHasSubstr performs a case-sensitive substring check of the left
+	// and right expressions.
+	//
+	// The left expression denotes the "haystack" to search, and must be a UTF8
+	// scalar or array. The right expression denotes the "needle" to search
+	// with, and must be a UTF8 scalar. If the needle is found in the haystack,
+	// the result is true.
+	//
+	// The result is a bool datum, which is either a bool scalar if both
+	// arguments are scalars, otherwise the result is a bool array.
+	BinaryOpHasSubstr
+
 	// BinaryOpHasSubstrIgnoreCase performs a case-insensitive substring check
 	// of the left and right expressions.
 	//
@@ -94,6 +129,8 @@ var binaryOpStrings = [...]string{
 	BinaryOpAND: "AND",
 	BinaryOpOR:  "OR",
 
+	BinaryOpMatchRegex:          "MATCH_REGEX",
+	BinaryOpHasSubstr:           "HAS_SUBSTR",
 	BinaryOpHasSubstrIgnoreCase: "HAS_SUBSTR_IGNORECASE",
 }
 

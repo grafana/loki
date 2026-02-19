@@ -7,7 +7,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-func dispatchUTF8Equality(alloc *memory.Allocator, kernel utf8EqualityKernel, left, right columnar.Datum) (columnar.Datum, error) {
+func dispatchUTF8Equality(alloc *memory.Allocator, kernel utf8EqualityKernel, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	_, leftScalar := left.(columnar.Scalar)
 	_, rightScalar := right.(columnar.Scalar)
 
@@ -15,11 +15,17 @@ func dispatchUTF8Equality(alloc *memory.Allocator, kernel utf8EqualityKernel, le
 	case leftScalar && rightScalar:
 		return utf8EqualitySS(kernel, left.(*columnar.UTF8Scalar), right.(*columnar.UTF8Scalar)), nil
 	case leftScalar && !rightScalar:
-		return utf8EqualitySA(alloc, kernel, left.(*columnar.UTF8Scalar), right.(*columnar.UTF8)), nil
+		out := utf8EqualitySA(alloc, kernel, left.(*columnar.UTF8Scalar), right.(*columnar.UTF8))
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && rightScalar:
-		return utf8EqualityAS(alloc, kernel, left.(*columnar.UTF8), right.(*columnar.UTF8Scalar)), nil
+		out := utf8EqualityAS(alloc, kernel, left.(*columnar.UTF8), right.(*columnar.UTF8Scalar))
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && !rightScalar:
-		return utf8EqualityAA(alloc, kernel, left.(*columnar.UTF8), right.(*columnar.UTF8))
+		out, err := utf8EqualityAA(alloc, kernel, left.(*columnar.UTF8), right.(*columnar.UTF8))
+		if err != nil {
+			return nil, err
+		}
+		return applySelectionToBoolArray(alloc, out, selection)
 	}
 
 	panic("unreachable")

@@ -22,14 +22,14 @@ type ReaderAdapter struct {
 }
 
 // NewReaderAdapter creates a ReaderAdapter with the provided dataset reader options.
-func NewReaderAdapter(innerOpts dataset.ReaderOptions) *ReaderAdapter {
+func NewReaderAdapter(innerOpts dataset.RowReaderOptions) *ReaderAdapter {
 	r := &ReaderAdapter{inner: dataset.NewRowReader(innerOpts)}
 	r.Reset(innerOpts)
 	return r
 }
 
 // Reset reinitializes the adapter with new reader options.
-func (r *ReaderAdapter) Reset(opts dataset.ReaderOptions) {
+func (r *ReaderAdapter) Reset(opts dataset.RowReaderOptions) {
 	r.inner.Reset(opts)
 
 	slicegrow.GrowToCap(r.colTypes, len(opts.Columns))
@@ -37,6 +37,11 @@ func (r *ReaderAdapter) Reset(opts dataset.ReaderOptions) {
 	for _, col := range opts.Columns {
 		r.colTypes = append(r.colTypes, col.ColumnDesc().Type.Physical)
 	}
+}
+
+// Open initializes the underlying dataset row reader.
+func (r *ReaderAdapter) Open(ctx context.Context) error {
+	return r.inner.Open(ctx)
 }
 
 // Close closes the underlying reader.

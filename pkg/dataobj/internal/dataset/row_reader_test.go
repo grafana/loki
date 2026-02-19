@@ -16,12 +16,13 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func Test_Reader_ReadAll(t *testing.T) {
 	dset, columns := buildTestDataset(t)
-	r := NewRowReader(ReaderOptions{Dataset: dset, Columns: columns})
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns})
 	defer r.Close()
 
 	actualRows, err := readDataset(r, 3)
@@ -29,11 +30,20 @@ func Test_Reader_ReadAll(t *testing.T) {
 	require.Equal(t, basicReaderTestData, convertToTestPersons(actualRows))
 }
 
+func Test_Reader_ReadBeforeOpen(t *testing.T) {
+	dset, columns := buildTestDataset(t)
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns})
+	defer r.Close()
+
+	_, err := r.Read(context.Background(), make([]Row, 1))
+	require.ErrorIs(t, err, errRowReaderNotOpen)
+}
+
 func Test_Reader_ReadWithPredicate(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
 	// Create a predicate that only returns people born after 1985
-	r := NewRowReader(ReaderOptions{
+	r := NewRowReader(RowReaderOptions{
 		Dataset: dset,
 		Columns: columns,
 		Predicates: []Predicate{
@@ -63,7 +73,7 @@ func Test_Reader_ReadWithPredicate(t *testing.T) {
 func TestRowReader_ReadWithPageFiltering(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
-	r := NewRowReader(ReaderOptions{
+	r := NewRowReader(RowReaderOptions{
 		Dataset: dset,
 		Columns: columns,
 
@@ -118,7 +128,7 @@ func TestRowReader_ReadWithPageFilteringOnEmptyPredicate(t *testing.T) {
 	cols, err := result.Collect(dset.ListColumns(context.Background()))
 	require.NoError(t, err)
 
-	r := NewRowReader(ReaderOptions{
+	r := NewRowReader(RowReaderOptions{
 		Dataset: dset,
 		Columns: cols,
 
@@ -160,7 +170,7 @@ func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
 	// Create a predicate that only returns people born after 1985
-	r := NewRowReader(ReaderOptions{
+	r := NewRowReader(RowReaderOptions{
 		Dataset: dset,
 		Columns: []Column{columns[3]},
 		Predicates: []Predicate{
@@ -192,7 +202,7 @@ func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {
 
 func Test_Reader_Reset(t *testing.T) {
 	dset, columns := buildTestDataset(t)
-	r := NewRowReader(ReaderOptions{Dataset: dset, Columns: columns})
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns})
 	defer r.Close()
 
 	// First read everything
@@ -200,7 +210,7 @@ func Test_Reader_Reset(t *testing.T) {
 	require.NoError(t, err)
 
 	// Reset and read again
-	r.Reset(ReaderOptions{Dataset: dset, Columns: columns})
+	r.Reset(RowReaderOptions{Dataset: dset, Columns: columns})
 
 	actualRows, err := readDataset(r, 3)
 	require.NoError(t, err)
@@ -210,51 +220,56 @@ func Test_Reader_Reset(t *testing.T) {
 func Test_buildMask(t *testing.T) {
 	tt := []struct {
 		name      string
-		fullRange rowRange
+		fullRange rangeset.Range
 		rows      []Row
-		expect    []rowRange
+		expect    []rangeset.Range
 	}{
 		{
 			name:      "no rows",
-			fullRange: rowRange{1, 10},
+			fullRange: rangeset.Range{Start: 1, End: 10},
 			rows:      nil,
-			expect:    []rowRange{{1, 10}},
+			expect:    []rangeset.Range{{Start: 1, End: 10}},
 		},
 		{
 			name:      "full coverage",
-			fullRange: rowRange{1, 10},
+			fullRange: rangeset.Range{Start: 1, End: 10},
 			rows:      makeRows(1, 10, 1),
 			expect:    nil,
 		},
 		{
 			name:      "full coverage - split",
-			fullRange: rowRange{1, 10},
-			rows:      mergeRows(makeRows(1, 5, 1), makeRows(6, 10, 1)),
+			fullRange: rangeset.Range{Start: 1, End: 10},
+			rows:      mergeRows(makeRows(1, 5, 1), makeRows(5, 10, 1)),
 			expect:    nil,
 		},
 		{
 			name:      "partial coverage - front",
-			fullRange: rowRange{1, 10},
+			fullRange: rangeset.Range{Start: 1, End: 10},
 			rows:      makeRows(1, 5, 1),
-			expect:    []rowRange{{6, 10}},
+			expect:    []rangeset.Range{{Start: 5, End: 10}},
 		},
 		{
 			name:      "partial coverage - middle",
-			fullRange: rowRange{1, 10},
-			rows:      makeRows(5, 7, 1),
-			expect:    []rowRange{{1, 4}, {8, 10}},
+			fullRange: rangeset.Range{Start: 1, End: 10},
+			rows:      makeRows(5, 8, 1),
+			expect:    []rangeset.Range{{Start: 1, End: 5}, {Start: 8, End: 10}},
 		},
 		{
 			name:      "partial coverage - end",
-			fullRange: rowRange{1, 10},
+			fullRange: rangeset.Range{Start: 1, End: 10},
 			rows:      makeRows(6, 10, 1),
-			expect:    []rowRange{{1, 5}},
+			expect:    []rangeset.Range{{Start: 1, End: 6}},
 		},
 		{
 			name:      "partial coverage - gaps",
-			fullRange: rowRange{1, 10},
+			fullRange: rangeset.Range{Start: 1, End: 10},
 			rows:      []Row{{Index: 3}, {Index: 5}, {Index: 7}, {Index: 9}},
-			expect:    []rowRange{{1, 2}, {4, 4}, {6, 6}, {8, 8}, {10, 10}},
+			expect: []rangeset.Range{
+				{Start: 1, End: 3},
+				{Start: 4, End: 5},
+				{Start: 6, End: 7},
+				{Start: 8, End: 9},
+			},
 		},
 	}
 
@@ -268,7 +283,7 @@ func Test_buildMask(t *testing.T) {
 
 func makeRows(from, to, inc int) []Row {
 	var rows []Row
-	for i := from; i <= to; i += inc {
+	for i := from; i < to; i += inc {
 		rows = append(rows, Row{Index: i})
 	}
 	return rows
@@ -294,6 +309,9 @@ func readDatasetWithContext(ctx context.Context, br *RowReader, batchSize int) (
 
 		batch = make([]Row, batchSize)
 	)
+	if err := br.Open(ctx); err != nil {
+		return nil, err
+	}
 
 	for {
 		// Clear the batch for each read, to ensure that any memory in Row and
@@ -316,32 +334,32 @@ func Test_BuildPredicateRanges(t *testing.T) {
 	tt := []struct {
 		name      string
 		predicate Predicate
-		want      rowRanges
+		want      rangeset.Set
 	}{
 		{
 			name:      "nil predicate returns full range",
 			predicate: nil,
-			want:      rowRanges{{Start: 0, End: 999}}, // Full dataset range
+			want:      rangeset.From(rangeset.Range{Start: 0, End: 1000}), // Full dataset range
 		},
 		{
 			name:      "equal predicate in range",
 			predicate: EqualPredicate{Column: cols[1], Value: Int64Value(50)},
-			want:      rowRanges{{Start: 0, End: 249}}, // Page 1 of Timestamp column
+			want:      rangeset.From(rangeset.Range{Start: 0, End: 250}), // Page 1 of Timestamp column
 		},
 		{
 			name:      "equal predicate not in any range",
 			predicate: EqualPredicate{Column: cols[1], Value: Int64Value(1500)},
-			want:      nil, // No ranges should match
+			want:      rangeset.Set{}, // No ranges should match
 		},
 		{
 			name:      "greater than predicate",
 			predicate: GreaterThanPredicate{Column: cols[1], Value: Int64Value(400)},
-			want:      rowRanges{{Start: 250, End: 749}, {Start: 750, End: 999}}, // Pages 2 and 3 of Timestamp column
+			want:      rangeset.From(rangeset.Range{Start: 250, End: 1000}), // Pages 2 and 3 of Timestamp column
 		},
 		{
 			name:      "less than predicate",
 			predicate: LessThanPredicate{Column: cols[1], Value: Int64Value(300)},
-			want:      rowRanges{{Start: 0, End: 249}, {Start: 250, End: 749}}, // Pages 1 and 2 of Timestamp column
+			want:      rangeset.From(rangeset.Range{Start: 0, End: 750}), // Pages 1 and 2 of Timestamp column
 		},
 		{
 			name: "and predicate",
@@ -349,7 +367,7 @@ func Test_BuildPredicateRanges(t *testing.T) {
 				Left:  EqualPredicate{Column: cols[0], Value: Int64Value(1)},      // Rows 0 - 299 of stream column
 				Right: LessThanPredicate{Column: cols[1], Value: Int64Value(600)}, // Rows 0 - 249, 250 - 749 of timestamp column
 			},
-			want: rowRanges{{Start: 0, End: 249}, {Start: 250, End: 299}},
+			want: rangeset.From(rangeset.Range{Start: 0, End: 300}),
 		},
 		{
 			name: "or predicate",
@@ -357,7 +375,7 @@ func Test_BuildPredicateRanges(t *testing.T) {
 				Left:  EqualPredicate{Column: cols[0], Value: Int64Value(1)},         // Rows 0 - 299 of stream column
 				Right: GreaterThanPredicate{Column: cols[1], Value: Int64Value(800)}, // Rows 750 - 999 of timestamp column
 			},
-			want: rowRanges{{Start: 0, End: 299}, {Start: 750, End: 999}}, // Rows 0 - 299, 750 - 999
+			want: rangeset.From(rangeset.Range{Start: 0, End: 300}, rangeset.Range{Start: 750, End: 1000}), // [0, 300), [750, 1000)
 		},
 		{
 			name: "InPredicate with values inside and outside page ranges",
@@ -370,10 +388,7 @@ func Test_BuildPredicateRanges(t *testing.T) {
 					Int64Value(600),
 				}), // 2 values in range. ~200 matching rows
 			},
-			want: rowRanges{
-				{Start: 0, End: 249},   // Page 1: contains 50
-				{Start: 250, End: 749}, // Page 2: contains 300
-			},
+			want: rangeset.From(rangeset.Range{Start: 0, End: 750}), // Page 1 + 2
 		},
 		{
 			name: "InPredicate with values all outside page ranges",
@@ -384,14 +399,14 @@ func Test_BuildPredicateRanges(t *testing.T) {
 					Int64Value(600), // Outside all pages
 				}),
 			},
-			want: nil, // No pages should be included
+			want: rangeset.Set{}, // No pages should be included
 		},
 	}
 
 	ctx := context.Background()
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			r := NewRowReader(ReaderOptions{
+			r := NewRowReader(RowReaderOptions{
 				Dataset:    ds,
 				Columns:    cols,
 				Predicates: []Predicate{tc.predicate},
@@ -540,7 +555,7 @@ func BenchmarkReader(b *testing.B) {
 
 	// Generate dataset once per case
 	ds, cols := generator.Build(b, rand.Int63())
-	opts := ReaderOptions{
+	opts := RowReaderOptions{
 		Dataset: ds,
 		Columns: cols,
 	}
@@ -553,6 +568,8 @@ func BenchmarkReader(b *testing.B) {
 			batch := make([]Row, rp.batchSize)
 			for b.Loop() {
 				reader := NewRowReader(opts)
+				require.NoError(b, reader.Open(context.Background()))
+
 				var rowsRead int
 				for {
 					n, err := reader.Read(context.Background(), batch)
@@ -606,10 +623,11 @@ func BenchmarkPredicateExecution(b *testing.B) {
 	currentPos := 0
 	batch := make([]Row, 1000)
 	// read the dataset once to pick a random row for predicate generation
-	reader := NewRowReader(ReaderOptions{
+	reader := NewRowReader(RowReaderOptions{
 		Dataset: ds,
 		Columns: cols,
 	})
+	require.NoError(b, reader.Open(context.Background()))
 
 	for {
 		n, err := reader.Read(context.Background(), batch)
@@ -685,11 +703,12 @@ func BenchmarkPredicateExecution(b *testing.B) {
 			b.ReportAllocs()
 
 			for b.Loop() {
-				reader := NewRowReader(ReaderOptions{
+				reader := NewRowReader(RowReaderOptions{
 					Dataset:    ds,
 					Columns:    cols,
 					Predicates: pp.predicates,
 				})
+				require.NoError(b, reader.Open(context.Background()))
 
 				batch := make([]Row, 10000)
 
@@ -889,7 +908,7 @@ func Test_DatasetGenerator(t *testing.T) {
 func Test_Reader_Stats(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
-	r := NewRowReader(ReaderOptions{
+	r := NewRowReader(RowReaderOptions{
 		Dataset: dset,
 		Columns: columns,
 		Predicates: []Predicate{
@@ -906,12 +925,15 @@ func Test_Reader_Stats(t *testing.T) {
 	defer r.Close()
 
 	ctx, _ := xcap.NewCapture(context.Background(), nil)
+	ctx, region := xcap.StartRegion(ctx, "logs.Reader")
+	defer region.End()
+
 	_, err := readDatasetWithContext(ctx, r, 3)
 	require.NoError(t, err)
 
-	require.NotNil(t, r.region, "region should be available after reading")
+	require.NotNil(t, region, "region should be available after reading")
 
-	observations := r.region.Observations()
+	observations := region.Observations()
 	obsMap := make(map[string]int64)
 	for _, obs := range observations {
 		obsMap[obs.Statistic.Name()] = obs.Value.(int64)

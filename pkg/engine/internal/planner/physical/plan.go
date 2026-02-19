@@ -9,32 +9,31 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
+// NodeType represents the type of a node in the physical execution plan.
 type NodeType uint32
 
 const (
-	NodeTypeDataObjScan NodeType = iota
-	NodeTypeSortMerge
-	NodeTypeProjection
-	NodeTypeFilter
-	NodeTypeLimit
-	NodeTypeRangeAggregation
-	NodeTypeVectorAggregation
-	NodeTypeMerge
-	NodeTypeParse
-	NodeTypeCompat
-	NodeTypeTopK
-	NodeTypeParallelize
-	NodeTypeScanSet
-	NodeTypeJoin
-	NodeTypePointersScan
+	NodeTypeInvalid           NodeType = iota // NodeTypeInvalid is an illegal NodeType.
+	NodeTypeDataObjScan                       // NodeTypeDataObjScan represents a [DataObjScan].
+	NodeTypeProjection                        // NodeTypeProjection represents a [Projection].
+	NodeTypeFilter                            // NodeTypeFilter represents a [Filter].
+	NodeTypeLimit                             // NodeTypeLimit represents a [Limit].
+	NodeTypeRangeAggregation                  // NodeTypeRangeAggregation represents a [RangeAggregation].
+	NodeTypeVectorAggregation                 // NodeTypeVectorAggregation represents a [VectorAggregation].
+	NodeTypeMerge                             // NodeTypeMerge represents a [Merge].
+	NodeTypeCompat                            // NodeTypeCompat represents a [ColumnCompat].
+	NodeTypeTopK                              // NodeTypeTopK represents a [TopK].
+	NodeTypeParallelize                       // NodeTypeParallelize represents a [Parallelize].
+	NodeTypeScanSet                           // NodeTypeScanSet represents a [ScanSet].
+	NodeTypeJoin                              // NodeTypeJoin represents a [Join].
+	NodeTypePointersScan                      // NodeTypePointersScan represents a [PointersScan].
 )
 
+// String returns a string representation of the NodeType.
 func (t NodeType) String() string {
 	switch t {
 	case NodeTypeDataObjScan:
 		return "DataObjScan"
-	case NodeTypeSortMerge:
-		return "SortMerge"
 	case NodeTypeMerge:
 		return "Merge"
 	case NodeTypeProjection:
@@ -47,8 +46,6 @@ func (t NodeType) String() string {
 		return "RangeAggregation"
 	case NodeTypeVectorAggregation:
 		return "VectorAggregation"
-	case NodeTypeParse:
-		return "Parse"
 	case NodeTypeCompat:
 		return "Compat"
 	case NodeTypeTopK:
@@ -62,7 +59,7 @@ func (t NodeType) String() string {
 	case NodeTypePointersScan:
 		return "PointersScan"
 	default:
-		return "Undefined"
+		return "Invalid"
 	}
 }
 
@@ -144,6 +141,8 @@ func FromGraph(graph dag.Graph[Node]) *Plan {
 	return &Plan{graph: graph}
 }
 
+// String returns a string representation of the plan. It is a convenience
+// method for calling [PrintAsTree].
 func (p *Plan) String() string {
 	return PrintAsTree(p)
 }

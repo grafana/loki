@@ -77,7 +77,7 @@ func NewMySQLStorage(config StorageConfig, logger log.Logger) (*MySQLStorage, er
 func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample, comparison *ComparisonResult) error {
 	query := `
 		INSERT INTO sampled_queries (
-			correlation_id, tenant_id, user, is_logs_drilldown, query, query_type,
+			correlation_id, tenant_id, user, issuer, is_logs_drilldown, query, query_type,
 			start_time, end_time, step_duration,
 			cell_a_exec_time_ms, cell_b_exec_time_ms,
 			cell_a_queue_time_ms, cell_b_queue_time_ms,
@@ -100,7 +100,7 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 			sampled_at,
 			comparison_status,
 			match_within_tolerance
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Convert empty span IDs to NULL for database storage
@@ -135,6 +135,7 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		sample.CorrelationID,
 		sample.TenantID,
 		sample.User,
+		sample.Issuer,
 		sample.IsLogsDrilldown,
 		sample.Query,
 		sample.QueryType,
@@ -240,7 +241,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 
 	query := `
 		SELECT
-			correlation_id, tenant_id, user, query, query_type, start_time, end_time, step_duration,
+			correlation_id, tenant_id, user, issuer, query, query_type, start_time, end_time, step_duration,
 			cell_a_exec_time_ms, cell_b_exec_time_ms, cell_a_queue_time_ms, cell_b_queue_time_ms,
 			cell_a_bytes_processed, cell_b_bytes_processed, cell_a_lines_processed, cell_b_lines_processed,
 			cell_a_bytes_per_second, cell_b_bytes_per_second, cell_a_lines_per_second, cell_b_lines_per_second,
@@ -287,7 +288,8 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 		var cellAResultSize, cellBResultSize sql.NullInt64
 
 		err := rows.Scan(
-			&q.CorrelationID, &q.TenantID, &q.User, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
+
+			&q.CorrelationID, &q.TenantID, &q.User, &q.Issuer, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
 			&q.CellAStats.ExecTimeMs, &q.CellBStats.ExecTimeMs, &q.CellAStats.QueueTimeMs, &q.CellBStats.QueueTimeMs,
 			&q.CellAStats.BytesProcessed, &q.CellBStats.BytesProcessed, &q.CellAStats.LinesProcessed, &q.CellBStats.LinesProcessed,
 			&q.CellAStats.BytesPerSecond, &q.CellBStats.BytesPerSecond, &q.CellAStats.LinesPerSecond, &q.CellBStats.LinesPerSecond,
@@ -363,7 +365,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationID string) (*QuerySample, error) {
 	query := `
 		SELECT
-			correlation_id, tenant_id, user, query, query_type, start_time, end_time, step_duration,
+			correlation_id, tenant_id, user, issuer, query, query_type, start_time, end_time, step_duration,
 			cell_a_exec_time_ms, cell_b_exec_time_ms, cell_a_queue_time_ms, cell_b_queue_time_ms,
 			cell_a_bytes_processed, cell_b_bytes_processed, cell_a_lines_processed, cell_b_lines_processed,
 			cell_a_bytes_per_second, cell_b_bytes_per_second, cell_a_lines_per_second, cell_b_lines_per_second,
@@ -390,7 +392,7 @@ func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationI
 	var cellAResultSize, cellBResultSize sql.NullInt64
 
 	err := s.db.QueryRowContext(ctx, query, correlationID).Scan(
-		&q.CorrelationID, &q.TenantID, &q.User, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
+		&q.CorrelationID, &q.TenantID, &q.User, &q.Issuer, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
 		&q.CellAStats.ExecTimeMs, &q.CellBStats.ExecTimeMs, &q.CellAStats.QueueTimeMs, &q.CellBStats.QueueTimeMs,
 		&q.CellAStats.BytesProcessed, &q.CellBStats.BytesProcessed, &q.CellAStats.LinesProcessed, &q.CellBStats.LinesProcessed,
 		&q.CellAStats.BytesPerSecond, &q.CellBStats.BytesPerSecond, &q.CellAStats.LinesPerSecond, &q.CellBStats.LinesPerSecond,
