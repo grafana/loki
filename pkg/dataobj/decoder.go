@@ -149,7 +149,7 @@ func (d *decoder) header(headData *bytes.Buffer) (header, error) {
 
 	metadataSize, err := decodeHeader(br)
 	if err != nil {
-		return header{}, fmt.Errorf("scanning tailer: %w", err)
+		return header{}, fmt.Errorf("scanning header: %w", err)
 	}
 
 	return header{MetadataSize: uint64(metadataSize)}, nil

@@ -241,7 +241,7 @@ func (enc *encoder) Flush() (*snapshot, error) {
 	//
 	// header:
 	//  [magic]
-	//  [file metadata size (32 bits), including version]
+	//  [file metadata + version size (32 bits)]
 	//  [file metadata version]
 	//  [file metadata]
 	// body:
@@ -249,9 +249,6 @@ func (enc *encoder) Flush() (*snapshot, error) {
 	//  [data regions]
 	// tailer:
 	//  [magic]
-	//
-	// The file metadata size *must not* be varint since we need the last 8 bytes
-	// of the file to consistently retrieve the tailer.
 
 	var headerBuffer bytes.Buffer
 
