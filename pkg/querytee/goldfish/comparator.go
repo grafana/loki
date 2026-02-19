@@ -83,6 +83,7 @@ func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *Respon
 					level.Error(logger).Log("msg", "response comparison failed", "err", err)
 				} else {
 					result.MatchWithinTolerance = true
+					result.ComparisonStatus = goldfish.ComparisonStatusMatchWithinTolerance
 				}
 			}
 		}

@@ -642,7 +642,7 @@ func TestManager_StoreQuerySample_UsesComparatorResult(t *testing.T) {
 			cellAHash:                    "hash1",
 			cellBHash:                    "hash2",
 			comparatorMatch:              true,
-			expectedStatus:               goldfish.ComparisonStatusMismatch,
+			expectedStatus:               goldfish.ComparisonStatusMatchWithinTolerance,
 			expectedMatchWithinTolerance: true,
 		},
 		{

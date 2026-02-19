@@ -80,10 +80,11 @@ type ComparisonResult struct {
 type ComparisonStatus string
 
 const (
-	ComparisonStatusMatch    ComparisonStatus = "match"
-	ComparisonStatusMismatch ComparisonStatus = "mismatch"
-	ComparisonStatusError    ComparisonStatus = "error"
-	ComparisonStatusPartial  ComparisonStatus = "partial"
+	ComparisonStatusMatch                ComparisonStatus = "match"
+	ComparisonStatusMismatch             ComparisonStatus = "mismatch"
+	ComparisonStatusError                ComparisonStatus = "error"
+	ComparisonStatusPartial              ComparisonStatus = "partial"
+	ComparisonStatusMatchWithinTolerance ComparisonStatus = "match_within_tolerance"
 )
 
 // IsValid checks if the ComparisonStatus value is valid
