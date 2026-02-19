@@ -86,7 +86,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.67.5
-	github.com/prometheus/prometheus v0.309.2-0.20260219114400-b2e63376da74
+	github.com/prometheus/prometheus/v2 v2.35.0-retract
 	github.com/redis/go-redis/v9 v9.17.3
 	github.com/segmentio/fasthash v1.0.3
 	github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c
