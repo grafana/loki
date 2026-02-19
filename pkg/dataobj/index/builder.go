@@ -221,8 +221,7 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 
 	for _, partitions := range topics {
 		for _, partition := range partitions {
-			// Report 0 lag for revoked partition, then delete to prevent cardinality growth
-			p.metrics.setProcessingDelayToZero(partition)
+			// Delete partition metrics to prevent cardinality growth
 			p.metrics.deletePartitionMetrics(partition)
 
 			delete(p.partitionStates, partition)

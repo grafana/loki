@@ -131,10 +131,6 @@ func (p *builderMetrics) setProcessingDelay(partition int32, recordTimestamp tim
 	}
 }
 
-func (p *builderMetrics) setProcessingDelayToZero(partition int32) {
-	p.processingDelay.set(partition, 0)
-}
-
 func (p *builderMetrics) deletePartitionMetrics(partition int32) {
 	p.processingDelay.delete(partition)
 }
