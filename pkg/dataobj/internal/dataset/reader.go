@@ -59,6 +59,9 @@ func NewReader(opts ReaderOptions) *Reader {
 // Reset resets the Reader with the given options so it is ready to be re-used.
 func (r *Reader) Reset(opts ReaderOptions) {
 	r.opts = opts
+	for _, columnReader := range r.columnReaders {
+		_ = columnReader.Close()
+	}
 	r.columnReaders = sliceclear.Clear(r.columnReaders)
 	r.pending = nil
 	r.pendingAllocator = memory.NewAllocator(r.opts.Allocator)
