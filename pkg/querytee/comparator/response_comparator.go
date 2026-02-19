@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/labels"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -23,20 +24,24 @@ var ErrComparisonMismatch = errors.New("comparison mismatch")
 
 // Mismatch cause constants for categorising comparison failures.
 const (
-	CauseNoMismatch               = ""
-	CauseStatusMismatch           = "status_mismatch"
-	CauseResultTypeMismatch       = "result_type_mismatch"
-	CauseMetricCountMismatch      = "metric_count_mismatch"
-	CauseMetricMissing            = "metric_missing"
-	CauseSampleCountMismatch      = "sample_count_mismatch"
-	CauseSampleValueMismatch      = "sample_value_mismatch"
-	CauseSampleTimestampMismatch  = "sample_timestamp_mismatch"
-	CauseStreamCountMismatch      = "stream_count_mismatch"
-	CauseStreamMissing            = "stream_missing"
-	CauseStreamEntryCountMismatch = "stream_entry_count_mismatch"
-	CauseStreamTimestampMismatch  = "stream_timestamp_mismatch"
-	CauseStreamLineMismatch       = "stream_line_mismatch"
-	CauseUnknown                  = "unknown"
+	CauseNoMismatch                      = ""
+	CauseStatusMismatch                  = "status_mismatch"
+	CauseResultTypeMismatch              = "result_type_mismatch"
+	CauseMetricCountMismatch             = "metric_count_mismatch"
+	CauseMetricMissing                   = "metric_missing"
+	CauseSampleCountMismatch             = "sample_count_mismatch"
+	CauseSampleValueMismatch             = "sample_value_mismatch"
+	CauseSampleTimestampMismatch         = "sample_timestamp_mismatch"
+	CauseStreamCountMismatch             = "stream_count_mismatch"
+	CauseStreamMissing                   = "stream_missing"
+	CauseStreamEntryCountMismatch        = "stream_entry_count_mismatch"
+	CauseStreamTimestampMismatch         = "stream_timestamp_mismatch"
+	CauseStreamLineMismatch              = "stream_line_mismatch"
+	CauseStructuredMetadataCountMismatch = "structured_metadata_count_mismatch"
+	CauseStructuredMetadataMismatch      = "structured_metadata_mismatch"
+	CauseParsedLabelsCountMismatch       = "parsed_labels_count_mismatch"
+	CauseParsedLabelsMismatch            = "parsed_labels_mismatch"
+	CauseUnknown                         = "unknown"
 )
 
 type ResponsesComparator interface {
@@ -441,6 +446,22 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 			if expectedSamplePair.Line != actualSamplePair.Line {
 				return &ComparisonSummary{MismatchCause: CauseStreamLineMismatch}, fmt.Errorf("expected line %s for timestamp %v but got %s for stream %s: %w", expectedSamplePair.Line,
 					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Line, expectedStream.Labels, ErrComparisonMismatch)
+			}
+			if expectedSamplePair.StructuredMetadata.Len() != actualSamplePair.StructuredMetadata.Len() {
+				return &ComparisonSummary{MismatchCause: CauseStructuredMetadataCountMismatch}, fmt.Errorf("expected %d metadata pairs for timestamp %v but got %d pairs for stream %s: %w", expectedSamplePair.StructuredMetadata.Len(),
+					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.StructuredMetadata.Len(), expectedStream.Labels, ErrComparisonMismatch)
+			}
+			if !labels.Equal(expectedSamplePair.StructuredMetadata, actualSamplePair.StructuredMetadata) {
+				return &ComparisonSummary{MismatchCause: CauseStructuredMetadataMismatch}, fmt.Errorf("expected metadata %v for timestamp %v but got %v for stream %s: %w", expectedSamplePair.StructuredMetadata.String(),
+					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.StructuredMetadata.String(), expectedStream.Labels, ErrComparisonMismatch)
+			}
+			if expectedSamplePair.Parsed.Len() != actualSamplePair.Parsed.Len() {
+				return &ComparisonSummary{MismatchCause: CauseParsedLabelsCountMismatch}, fmt.Errorf("expected %d parsed label pairs for timestamp %v but got %d pairs for stream %s: %w", expectedSamplePair.Parsed.Len(),
+					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Parsed.Len(), expectedStream.Labels, ErrComparisonMismatch)
+			}
+			if !labels.Equal(expectedSamplePair.StructuredMetadata, actualSamplePair.StructuredMetadata) {
+				return &ComparisonSummary{MismatchCause: CauseParsedLabelsMismatch}, fmt.Errorf("expected parsed labels %v for timestamp %v but got %v for stream %s: %w", expectedSamplePair.Parsed.String(),
+					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Parsed.String(), expectedStream.Labels, ErrComparisonMismatch)
 			}
 		}
 	}
