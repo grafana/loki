@@ -87,7 +87,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.67.5
 	github.com/prometheus/prometheus v0.309.2-0.20260219114400-b2e63376da74
-	github.com/redis/go-redis/v9 v9.17.3
+	github.com/redis/go-redis/v9 v9.18.0
 	github.com/segmentio/fasthash v1.0.3
 	github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c
 	github.com/shurcooL/vfsgen v0.0.0-20230704071429-0000e147ea92
