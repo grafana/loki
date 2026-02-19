@@ -35,7 +35,7 @@ func buildReaderTestColumn(t testing.TB, name string, values []string) *MemColum
 	t.Helper()
 
 	builder, err := NewColumnBuilder("", BuilderOptions{
-		PageSizeHint: 2 * 1024 * 1024,
+		PageSizeHint: 1024 * 1024,
 		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: name},
 		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
