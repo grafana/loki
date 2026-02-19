@@ -65,16 +65,15 @@ func (*DataObjScan) Type() NodeType {
 	return NodeTypeDataObjScan
 }
 
-// TaskCacheID returns a content-based identifier for this scan task. The same
-// Location, Section, StreamIDs, Predicates, Projections, and MaxTimeRange
-// produce the same ID across plan instances, enabling statistics on repeated
-// operations.
+// TaskCacheID returns a deterministic, readable cache key string for this scan task.
+// The same Location, Section, StreamIDs, Predicates, Projections, and MaxTimeRange
+// produce the same key across plan instances. Callers should hash this for actual cache storage (e.g. cache.HashKey).
 func (s *DataObjScan) TaskCacheID() string {
-	return hashDataObjScan(s, nil)
+	return cacheKeyStringDataObjScan(s, nil)
 }
 
 // TaskCacheIDWithLogger is like TaskCacheID but logs when timestamp predicates
 // are clamped to the scan's max_time_range. Use from the executor to observe clamping.
 func (s *DataObjScan) TaskCacheIDWithLogger(logger log.Logger) string {
-	return hashDataObjScan(s, logger)
+	return cacheKeyStringDataObjScan(s, logger)
 }

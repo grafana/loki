@@ -335,19 +335,22 @@ func (c *Context) filterStreamsByLabels(ctx context.Context, streamIDs []int64, 
 }
 
 // logTaskCacheResult checks the given task cache for key (fetch, store on miss) and logs hit or miss.
+// key is the readable task cache key string; the cache backend is called with cache.HashKey(key).
 func (c *Context) logTaskCacheResult(ctx context.Context, logger log.Logger, key string, taskCache cache.Cache) {
 	result := "miss"
+	var cacheKey string
 	if taskCache != nil {
-		found, _, missing, fetchErr := taskCache.Fetch(ctx, []string{key})
+		cacheKey = cache.HashKey(key)
+		found, _, missing, fetchErr := taskCache.Fetch(ctx, []string{cacheKey})
 		if fetchErr != nil {
 			level.Warn(logger).Log("msg", "task_cache_id mock fetch failed", "err", fetchErr)
 		} else if len(found) > 0 {
 			result = "hit"
 		} else if len(missing) > 0 {
-			_ = taskCache.Store(ctx, []string{key}, [][]byte{{}})
+			_ = taskCache.Store(ctx, []string{cacheKey}, [][]byte{{}})
 		}
 	}
-	level.Info(logger).Log("msg", "result from task cache", "result", result)
+	level.Info(logger).Log("msg", "result from task cache", "result", result, "cache_key", cacheKey, "key", key)
 }
 
 func (c *Context) executePointersScan(ctx context.Context, node *physical.PointersScan) Pipeline {

@@ -101,11 +101,11 @@ func TestTaskCacheIDMock_MissThenHit(t *testing.T) {
 	}
 	// First call: cache miss, then store.
 	c.executePointersScan(ctx, node)
-	require.Contains(t, logBuf.String(), "task_cache_mock=miss", "first call should log miss")
+	require.Contains(t, logBuf.String(), "result=miss", "first call should log miss")
 	logBuf.Reset()
 	// Second call: same task_cache_id -> cache hit.
 	c.executePointersScan(ctx, node)
-	require.Contains(t, logBuf.String(), "task_cache_mock=hit", "second call should log hit")
+	require.Contains(t, logBuf.String(), "result=hit", "second call should log hit")
 }
 
 func TestTaskCacheIDMock_NilCache_DefaultsToMiss(t *testing.T) {
@@ -125,7 +125,7 @@ func TestTaskCacheIDMock_NilCache_DefaultsToMiss(t *testing.T) {
 	c.executePointersScan(ctx, node)
 	out := logBuf.String()
 	require.Contains(t, out, "pointersscan pipeline ready")
-	require.Contains(t, out, "task_cache_mock=miss", "when cache is nil default is miss")
+	require.Contains(t, out, "result=miss", "when cache is nil default is miss")
 }
 
 func TestTaskCacheIDMock_NilSelector_NoPanic(t *testing.T) {

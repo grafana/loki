@@ -3,9 +3,10 @@ package physical
 import (
 	"fmt"
 	"slices"
+	"sort"
+	"strings"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
@@ -13,9 +14,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
-// hashUint64 returns the 16-character hex representation of a uint64 for use as a task cache ID.
-func hashUint64(h uint64) string {
-	return fmt.Sprintf("%016x", h)
+// cacheKeyListJoin joins sorted items with "|" for use in readable cache keys.
+func cacheKeyListJoin(items []string) string {
+	if len(items) == 0 {
+		return ""
+	}
+	return strings.Join(items, "|")
 }
 
 // expressionStrings returns sorted string representations of expressions for deterministic hashing.
@@ -31,31 +35,6 @@ func expressionStrings(exprs []Expression) []string {
 	}
 	slices.Sort(out)
 	return out
-}
-
-// hashStrings writes a sorted slice of strings into the digest with a separator.
-func hashStrings(d *xxhash.Digest, strs []string) {
-	for _, s := range strs {
-		_, _ = d.WriteString(s)
-		_, _ = d.Write([]byte{0})
-	}
-}
-
-// hashInt64Slice writes a sorted slice of int64s into the digest.
-func hashInt64Slice(d *xxhash.Digest, vals []int64) {
-	sorted := slices.Clone(vals)
-	slices.Sort(sorted)
-	for _, v := range sorted {
-		_, _ = d.WriteString(fmt.Sprintf("%d", v))
-		_, _ = d.Write([]byte{0})
-	}
-}
-
-// hashTimeRange writes start and end Unix nano times into the digest.
-func hashTimeRange(d *xxhash.Digest, start, end time.Time) {
-	_, _ = d.WriteString(fmt.Sprintf("%d", start.UnixNano()))
-	_, _ = d.Write([]byte{0})
-	_, _ = d.WriteString(fmt.Sprintf("%d", end.UnixNano()))
 }
 
 // predicateStringForHash returns the string to use when hashing a predicate, clamping
@@ -122,19 +101,26 @@ func dataObjScanPredicateStrings(predicates []Expression, maxRange TimeRange, lo
 	return out
 }
 
-// hashDataObjScan computes a content-based hash of a DataObjScan for task cache identification.
+// cacheKeyStringDataObjScan returns a deterministic, readable cache key string for a DataObjScan.
 // If logger is non-nil, logs when any timestamp predicate is clamped to max_time_range.
-func hashDataObjScan(s *DataObjScan, logger log.Logger) string {
-	d := xxhash.New()
-	_, _ = d.WriteString(string(s.Location))
-	_, _ = d.Write([]byte{0})
-	_, _ = d.WriteString(fmt.Sprintf("%d", s.Section))
-	_, _ = d.Write([]byte{0})
-	hashInt64Slice(d, s.StreamIDs)
-	hashStrings(d, expressionStrings(exprSliceToExpression(s.Projections)))
-	hashStrings(d, dataObjScanPredicateStrings(s.Predicates, s.MaxTimeRange, logger))
-	hashTimeRange(d, s.MaxTimeRange.Start, s.MaxTimeRange.End)
-	return hashUint64(d.Sum64())
+func cacheKeyStringDataObjScan(s *DataObjScan, logger log.Logger) string {
+	streamIDs := slices.Clone(s.StreamIDs)
+	sort.Slice(streamIDs, func(i, j int) bool { return streamIDs[i] < streamIDs[j] })
+	streamParts := make([]string, len(streamIDs))
+	for i, id := range streamIDs {
+		streamParts[i] = fmt.Sprintf("%d", id)
+	}
+	predStrs := dataObjScanPredicateStrings(s.Predicates, s.MaxTimeRange, logger)
+	projStrs := expressionStrings(exprSliceToExpression(s.Projections))
+	return fmt.Sprintf("DataObjScan location=%s section=%d streams=%s predicates=%s projections=%s max_start=%s max_end=%s",
+		string(s.Location),
+		s.Section,
+		strings.Join(streamParts, ","),
+		cacheKeyListJoin(predStrs),
+		cacheKeyListJoin(projStrs),
+		util.FormatTimeRFC3339Nano(s.MaxTimeRange.Start),
+		util.FormatTimeRFC3339Nano(s.MaxTimeRange.End),
+	)
 }
 
 // exprSliceToExpression converts []ColumnExpression to []Expression for expressionStrings.
@@ -149,18 +135,18 @@ func exprSliceToExpression(ce []ColumnExpression) []Expression {
 	return out
 }
 
-// hashPointersScan computes a content-based hash of a PointersScan for task cache identification.
-func hashPointersScan(s *PointersScan) string {
-	d := xxhash.New()
-	_, _ = d.WriteString(string(s.Location))
-	_, _ = d.Write([]byte{0})
+// cacheKeyStringPointersScan returns a deterministic, readable cache key string for a PointersScan.
+func cacheKeyStringPointersScan(s *PointersScan) string {
 	selectorStr := ""
 	if s.Selector != nil {
 		selectorStr = s.Selector.String()
 	}
-	_, _ = d.WriteString(selectorStr)
-	_, _ = d.Write([]byte{0})
-	hashStrings(d, expressionStrings(s.Predicates))
-	hashTimeRange(d, s.Start, s.End)
-	return hashUint64(d.Sum64())
+	predStrs := expressionStrings(s.Predicates)
+	return fmt.Sprintf("PointersScan location=%s selector=%s start=%s end=%s predicates=%s",
+		string(s.Location),
+		selectorStr,
+		util.FormatTimeRFC3339Nano(s.Start),
+		util.FormatTimeRFC3339Nano(s.End),
+		cacheKeyListJoin(predStrs),
+	)
 }

@@ -43,9 +43,9 @@ func (s *PointersScan) Type() NodeType {
 	return NodeTypePointersScan
 }
 
-// TaskCacheID returns a content-based identifier for this scan task. The same
-// Location, Selector, Predicates, and time range produce the same ID across
-// plan instances, enabling statistics on repeated operations.
+// TaskCacheID returns a deterministic, readable cache key string for this scan task.
+// The same Location, Selector, Predicates, and time range produce the same key across
+// plan instances. Callers should hash this for actual cache storage (e.g. cache.HashKey).
 func (s *PointersScan) TaskCacheID() string {
-	return hashPointersScan(s)
+	return cacheKeyStringPointersScan(s)
 }
