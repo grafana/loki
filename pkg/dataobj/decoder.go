@@ -25,7 +25,7 @@ func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	buf := bufpool.Get(int(optimisticReadBytes))
 	defer bufpool.Put(buf)
 
-	g, ctx := errgroup.WithContext(ctx)
+	g, _ := errgroup.WithContext(ctx)
 
 	// We launch a separate goroutine to cache the object size in the background
 	// as we read the header.
