@@ -88,7 +88,6 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 			newAcceptedStreamsCache(
 				cfg.AcceptedStreamsCacheTTL,
 				cfg.AcceptedStreamsCacheTTLJitter,
-				cfg.AcceptedStreamsCacheSize,
 				reg,
 			),
 			f.limitsClient,
