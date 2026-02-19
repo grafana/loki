@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
@@ -23,8 +25,31 @@ func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	buf := bufpool.Get(int(optimisticReadBytes))
 	defer bufpool.Put(buf)
 
-	if err := d.readFirstBytes(ctx, optimisticReadBytes, buf); err != nil {
-		return nil, fmt.Errorf("reading first %d bytes: %w", optimisticReadBytes, err)
+	g, ctx := errgroup.WithContext(ctx)
+
+	// We launch a separate goroutine to cache the object size in the background
+	// as we read the header.
+	//
+	// This lowers the cost of the fallback case (one fewer round trip), and
+	// allows [Object.Size] to work.
+	if d.size == 0 {
+		g.Go(func() error {
+			if _, err := d.objectSize(ctx); err != nil {
+				return fmt.Errorf("fetching object size: %w", err)
+			}
+			return nil
+		})
+	}
+
+	g.Go(func() error {
+		if err := d.readFirstBytes(ctx, optimisticReadBytes, buf); err != nil {
+			return fmt.Errorf("reading first %d bytes: %w", optimisticReadBytes, err)
+		}
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	header, err := d.header(buf)
