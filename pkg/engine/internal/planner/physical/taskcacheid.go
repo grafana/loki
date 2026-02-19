@@ -6,6 +6,9 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
 // hashUint64 returns the 16-character hex representation of a uint64 for use as a task cache ID.
@@ -53,6 +56,57 @@ func hashTimeRange(d *xxhash.Digest, start, end time.Time) {
 	_, _ = d.WriteString(fmt.Sprintf("%d", end.UnixNano()))
 }
 
+// predicateStringForHash returns the string to use when hashing a predicate, clamping
+// timestamp bounds to maxRange so that queries spanning the full data object share the same key.
+func predicateStringForHash(expr Expression, maxRange TimeRange) string {
+	bin, ok := expr.(*BinaryExpr)
+	if !ok {
+		return expr.String()
+	}
+	col, ok := bin.Left.(*ColumnExpr)
+	if !ok || col.Ref.Column != types.ColumnNameBuiltinTimestamp || col.Ref.Type != types.ColumnTypeBuiltin {
+		return expr.String()
+	}
+	lit, ok := bin.Right.(*LiteralExpr)
+	if !ok || lit.ValueType() != types.Loki.Timestamp {
+		return expr.String()
+	}
+	ts, ok := lit.Value().(types.Timestamp)
+	if !ok {
+		return expr.String()
+	}
+	t := time.Unix(0, int64(ts))
+	clamped := t
+	switch bin.Op {
+	case types.BinaryOpGte, types.BinaryOpGt:
+		if t.Before(maxRange.Start) {
+			clamped = maxRange.Start
+		}
+	case types.BinaryOpLt, types.BinaryOpLte:
+		if t.After(maxRange.End) {
+			clamped = maxRange.End
+		}
+	default:
+		return expr.String()
+	}
+	return fmt.Sprintf("%s(%s, %s)", bin.Op, bin.Left, util.FormatTimeRFC3339Nano(clamped))
+}
+
+// dataObjScanPredicateStrings returns sorted predicate strings for hashing, with timestamp bounds clamped to maxRange.
+func dataObjScanPredicateStrings(predicates []Expression, maxRange TimeRange) []string {
+	if len(predicates) == 0 {
+		return nil
+	}
+	out := make([]string, len(predicates))
+	for i, e := range predicates {
+		if e != nil {
+			out[i] = predicateStringForHash(e, maxRange)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 // hashDataObjScan computes a content-based hash of a DataObjScan for task cache identification.
 func hashDataObjScan(s *DataObjScan) string {
 	d := xxhash.New()
@@ -62,7 +116,7 @@ func hashDataObjScan(s *DataObjScan) string {
 	_, _ = d.Write([]byte{0})
 	hashInt64Slice(d, s.StreamIDs)
 	hashStrings(d, expressionStrings(exprSliceToExpression(s.Projections)))
-	hashStrings(d, expressionStrings(s.Predicates))
+	hashStrings(d, dataObjScanPredicateStrings(s.Predicates, s.MaxTimeRange))
 	hashTimeRange(d, s.MaxTimeRange.Start, s.MaxTimeRange.End)
 	return hashUint64(d.Sum64())
 }

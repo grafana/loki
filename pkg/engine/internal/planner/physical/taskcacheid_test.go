@@ -20,7 +20,7 @@ func TestDataObjScan_TaskCacheID_SameInputsSameID(t *testing.T) {
 	scan1 := &DataObjScan{
 		NodeID:       ulid.Make(),
 		Location:     "obj/loc",
-		Section:     1,
+		Section:      1,
 		StreamIDs:    []int64{10, 20},
 		Predicates:   []Expression{pred},
 		Projections:  []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}}},
@@ -29,7 +29,7 @@ func TestDataObjScan_TaskCacheID_SameInputsSameID(t *testing.T) {
 	scan2 := &DataObjScan{
 		NodeID:       ulid.Make(), // different NodeID
 		Location:     "obj/loc",
-		Section:     1,
+		Section:      1,
 		StreamIDs:    []int64{10, 20},
 		Predicates:   []Expression{pred.Clone()},
 		Projections:  []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}}},
@@ -42,7 +42,7 @@ func TestDataObjScan_TaskCacheID_DifferentInputsDifferentID(t *testing.T) {
 	base := &DataObjScan{
 		NodeID:       ulid.Make(),
 		Location:     "obj/loc",
-		Section:     0,
+		Section:      0,
 		StreamIDs:    []int64{1},
 		Predicates:   nil,
 		Projections:  nil,
@@ -86,7 +86,7 @@ func TestDataObjScan_TaskCacheID_ClonePreservesID(t *testing.T) {
 	scan := &DataObjScan{
 		NodeID:       ulid.Make(),
 		Location:     "obj/loc",
-		Section:     0,
+		Section:      0,
 		StreamIDs:    []int64{1, 2, 3},
 		Predicates:   []Expression{NewLiteral("a")},
 		Projections:  nil,
@@ -107,7 +107,7 @@ func TestDataObjScan_TaskCacheID_DeterminismReordering(t *testing.T) {
 	scan1 := &DataObjScan{
 		NodeID:       ulid.Make(),
 		Location:     "loc",
-		Section:     0,
+		Section:      0,
 		StreamIDs:    []int64{3, 1, 2},
 		Predicates:   []Expression{predA, predB},
 		Projections:  []ColumnExpression{projA, projB},
@@ -116,13 +116,81 @@ func TestDataObjScan_TaskCacheID_DeterminismReordering(t *testing.T) {
 	scan2 := &DataObjScan{
 		NodeID:       ulid.Make(),
 		Location:     "loc",
-		Section:     0,
-		StreamIDs:    []int64{1, 2, 3}, // different order
-		Predicates:   []Expression{predB, predA}, // different order
+		Section:      0,
+		StreamIDs:    []int64{1, 2, 3},                 // different order
+		Predicates:   []Expression{predB, predA},       // different order
 		Projections:  []ColumnExpression{projB, projA}, // different order
 		MaxTimeRange: TimeRange{Start: time.Unix(0, 0), End: time.Unix(3600, 0)},
 	}
 	require.Equal(t, scan1.TaskCacheID(), scan2.TaskCacheID(), "reordering slices must yield same task cache ID")
+}
+
+func TestDataObjScan_TaskCacheID_Clamping_SameIDWhenSpanningFullDO(t *testing.T) {
+	// MaxTimeRange of the data object (e.g. 1000–2000).
+	doStart := time.Unix(1000, 0)
+	doEnd := time.Unix(2000, 0)
+	maxRange := TimeRange{Start: doStart, End: doEnd}
+	tsCol := &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
+
+	// Scan1: GTE(ts, 0) LT(ts, 3000) — both bounds outside DO → clamp to doStart, doEnd.
+	scan1 := &DataObjScan{
+		NodeID:       ulid.Make(),
+		Location:     "obj/loc",
+		Section:      0,
+		StreamIDs:    []int64{1},
+		Projections:  nil,
+		MaxTimeRange: maxRange,
+		Predicates: []Expression{
+			&BinaryExpr{Op: types.BinaryOpGte, Left: tsCol, Right: NewLiteral(types.Timestamp(0))},
+			&BinaryExpr{Op: types.BinaryOpLt, Left: tsCol.Clone().(*ColumnExpr), Right: NewLiteral(types.Timestamp(3000 * 1e9))},
+		},
+	}
+	// Scan2: GTE(ts, 500) LT(ts, 2500) — also outside DO → clamp to same doStart, doEnd.
+	scan2 := &DataObjScan{
+		NodeID:       ulid.Make(),
+		Location:     "obj/loc",
+		Section:      0,
+		StreamIDs:    []int64{1},
+		Projections:  nil,
+		MaxTimeRange: maxRange,
+		Predicates: []Expression{
+			&BinaryExpr{Op: types.BinaryOpGte, Left: tsCol.Clone().(*ColumnExpr), Right: NewLiteral(types.Timestamp(500 * 1e9))},
+			&BinaryExpr{Op: types.BinaryOpLt, Left: tsCol.Clone().(*ColumnExpr), Right: NewLiteral(types.Timestamp(2500 * 1e9))},
+		},
+	}
+	require.Equal(t, scan1.TaskCacheID(), scan2.TaskCacheID(), "queries spanning full DO should get same task cache ID after clamping")
+}
+
+func TestDataObjScan_TaskCacheID_Clamping_DifferentIDWhenPredicateInsideRange(t *testing.T) {
+	// MaxTimeRange 0–3600; predicates fully inside → no clamping, different times → different IDs.
+	maxRange := TimeRange{Start: time.Unix(0, 0), End: time.Unix(3600, 0)}
+	tsCol := &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
+
+	scan1 := &DataObjScan{
+		NodeID:       ulid.Make(),
+		Location:     "obj/loc",
+		Section:      0,
+		StreamIDs:    []int64{1},
+		Projections:  nil,
+		MaxTimeRange: maxRange,
+		Predicates: []Expression{
+			&BinaryExpr{Op: types.BinaryOpGte, Left: tsCol, Right: NewLiteral(types.Timestamp(100 * 1e9))},
+			&BinaryExpr{Op: types.BinaryOpLt, Left: tsCol.Clone().(*ColumnExpr), Right: NewLiteral(types.Timestamp(500 * 1e9))},
+		},
+	}
+	scan2 := &DataObjScan{
+		NodeID:       ulid.Make(),
+		Location:     "obj/loc",
+		Section:      0,
+		StreamIDs:    []int64{1},
+		Projections:  nil,
+		MaxTimeRange: maxRange,
+		Predicates: []Expression{
+			&BinaryExpr{Op: types.BinaryOpGte, Left: tsCol.Clone().(*ColumnExpr), Right: NewLiteral(types.Timestamp(200 * 1e9))},
+			&BinaryExpr{Op: types.BinaryOpLt, Left: tsCol.Clone().(*ColumnExpr), Right: NewLiteral(types.Timestamp(600 * 1e9))},
+		},
+	}
+	require.NotEqual(t, scan1.TaskCacheID(), scan2.TaskCacheID(), "queries with different predicate times inside range should get different task cache IDs")
 }
 
 func TestPointersScan_TaskCacheID_SameInputsSameID(t *testing.T) {
