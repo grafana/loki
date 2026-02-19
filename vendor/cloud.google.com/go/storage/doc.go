@@ -407,9 +407,14 @@ roles which must be enabled in order to do the export successfully. To
 disable this export, you can use the [WithDisabledClientMetrics] client
 option.
 
-The gRPC client automatically computes and sends CRC32C checksums for uploads using [Writer],
-which provides an additional layer of data integrity validation when compared to the HTTP client.
-This behavior can optionally be disabled by using [Writer.DisableAutoChecksum].
+The client automatically computes and sends CRC32C checksums for uploads using [Writer],
+providing an additional layer of data integrity validation with a slight CPU overhead.
+
+Note: With a chunk size of 0 (no buffering) in JSON uploads, an auto-calculated checksum mismatch
+returns an error but may leave corrupt data on the server, requiring manual cleanup. This risk does not
+apply to single-shot uploads when user-provided checksum is provided.
+
+Automatic checksumming can be disabled using [Writer.DisableAutoChecksum].
 
 # Storage Control API
 
