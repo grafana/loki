@@ -47,32 +47,35 @@ type Writer struct {
 	// It is necessary to set this field to true in addition to setting the
 	// Writer's CRC32C field because zero is a valid CRC.
 	//
-	// When using gRPC, the client automatically calculates and sends checksums
-	// per-chunk and for the full object. However, A user-provided checksum takes
-	// precedence over the auto-calculated checksum for full object.
-	// To disable auto checksum behavior, see DisableAutoChecksum.
+	// By default, the client automatically calculates and sends checksums.
+	// When using gRPC, checksums are sent for both individual chunks and the full object.
+	// When using JSON, checksums are sent only for the full object.
+	// However, a user-provided checksum takes precedence over the auto-calculated checksum
+	// for the full object.
 	//
 	// Note: SendCRC32C must be set before the first call to Writer.Write().
 	SendCRC32C bool
 
 	// DisableAutoChecksum disables automatic CRC32C checksum calculation and
-	// validation in gRPC Writer. By default when using gRPC, the Writer
-	// automatically performs checksum validation for both individual chunks and
-	// the entire object. Setting this to true disables this behavior. This flag
-	// is ignored when not using gRPC.
+	// validation in the Writer. By default, the Writer automatically performs
+	// checksum validation. Setting this to true disables this behavior.
 	//
 	// Disabling automatic checksumming does not prevent a user-provided checksum
 	// from being sent. If SendCRC32C is true and the Writer's CRC32C field is
 	// populated, that checksum will still be sent to GCS for validation.
 	//
+	// For single-shot JSON uploads, a mismatch in the auto-calculated checksum returns
+	// an error but may leave data on the server. This issue does not apply when
+	// user-provided checksum is used. Callers relying on auto-checksum should handle the
+	// error by removing the object or restoring a previous version.
+	//
 	// Automatic CRC32C checksum calculation introduces increased CPU overhead
-	// because of checksum computation in gRPC writes. Use this field to disable
+	// because of checksum computation in writes. Use this field to disable
 	// it if needed.
 	//
 	// Note: DisableAutoChecksum must be set before the first call to
-	// Writer.Write(). Automatic checksumming is not enabled for writes
-	// using the HTTP client or for full object checksums for unfinalized writes to
-	// appendable objects in gRPC.
+	// Writer.Write(). Automatic checksumming is not enabled for full object
+	// checksums for unfinalized writes to appendable objects in gRPC.
 	DisableAutoChecksum bool
 
 	// ChunkSize controls the maximum number of bytes of the object that the

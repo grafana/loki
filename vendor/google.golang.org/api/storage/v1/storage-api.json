@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"38343338383939303739323735363535323137\"",
+  "etag": "\"3130353639373731363639313032363439383430\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -2779,6 +2779,12 @@
               "location": "query",
               "type": "string"
             },
+            "dropContextGroups": {
+              "description": "Specifies which groups of Object Contexts from the source object(s) should be dropped from the destination object.",
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
             "ifGenerationMatch": {
               "description": "Makes the operation conditional on whether the object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
               "format": "int64",
@@ -3749,6 +3755,12 @@
               "location": "query",
               "type": "string"
             },
+            "dropContextGroups": {
+              "description": "Specifies which groups of Object Contexts from the source object should be dropped from the destination object.",
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
             "ifGenerationMatch": {
               "description": "Makes the operation conditional on whether the object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
               "format": "int64",
@@ -4549,7 +4561,7 @@
       }
     }
   },
-  "revision": "20260111",
+  "revision": "20260131",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
