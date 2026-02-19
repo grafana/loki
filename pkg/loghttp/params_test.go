@@ -359,3 +359,37 @@ func Test_determineBounds(t *testing.T) {
 		})
 	}
 }
+
+func TestParseUint32(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		value   string
+		def     uint32
+		want    uint32
+		wantErr bool
+	}{
+		{"empty uses default", "", 42, 42, false},
+		{"valid value", "100", 0, 100, false},
+		{"zero", "0", 1, 0, false},
+		{"max uint32", "4294967295", 0, 4294967295, false},
+		{"overflow uint32", "4294967296", 0, 0, true},
+		{"large overflow", "4294967297", 0, 0, true},
+		{"negative value", "-1", 0, 0, true},
+		{"non-numeric", "abc", 0, 0, true},
+		{"float value", "1.5", 0, 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseUint32(tt.value, tt.def)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
+}

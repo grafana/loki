@@ -25,25 +25,25 @@ const (
 )
 
 func limit(r *http.Request) (uint32, error) {
-	l, err := parseInt(r.Form.Get("limit"), defaultQueryLimit)
+	l, err := parseUint32(r.Form.Get("limit"), defaultQueryLimit)
 	if err != nil {
 		return 0, err
 	}
-	if l <= 0 {
+	if l == 0 {
 		return 0, errors.New("limit must be a positive value")
 	}
-	return uint32(l), nil
+	return l, nil
 }
 
 func lineLimit(r *http.Request) (uint32, error) {
-	l, err := parseInt(r.Form.Get("line_limit"), defaultQueryLimit)
+	l, err := parseUint32(r.Form.Get("line_limit"), defaultQueryLimit)
 	if err != nil {
 		return 0, err
 	}
-	if l <= 0 {
+	if l == 0 {
 		return 0, errors.New("limit must be a positive value")
 	}
-	return uint32(l), nil
+	return l, nil
 }
 
 func detectedFieldsLimit(r *http.Request) (uint32, error) {
@@ -53,15 +53,15 @@ func detectedFieldsLimit(r *http.Request) (uint32, error) {
 		limit = r.Form.Get("field_limit")
 	}
 
-	l, err := parseInt(limit, defaultLimit)
+	l, err := parseUint32(limit, defaultLimit)
 	if err != nil {
 		return 0, err
 	}
 
-	if l <= 0 {
+	if l == 0 {
 		return 0, errors.New("limit must be a positive value")
 	}
-	return uint32(l), nil
+	return l, nil
 }
 
 func query(r *http.Request) string {
@@ -142,11 +142,7 @@ func defaultQueryRangeStep(start time.Time, end time.Time) int {
 }
 
 func tailDelay(r *http.Request) (uint32, error) {
-	l, err := parseInt(r.Form.Get("delay_for"), 0)
-	if err != nil {
-		return 0, err
-	}
-	return uint32(l), nil
+	return parseUint32(r.Form.Get("delay_for"), 0)
 }
 
 // parseInt parses an int from a string
@@ -156,6 +152,20 @@ func parseInt(value string, def int) (int, error) {
 		return def, nil
 	}
 	return strconv.Atoi(value)
+}
+
+// parseUint32 parses a uint32 from a string.
+// If the value is empty it returns a default value passed as second parameter.
+// It returns an error if the value is negative or exceeds math.MaxUint32.
+func parseUint32(value string, def uint32) (uint32, error) {
+	if value == "" {
+		return def, nil
+	}
+	v, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return uint32(v), nil
 }
 
 // parseTimestamp parses a ns unix timestamp from a string

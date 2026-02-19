@@ -721,18 +721,13 @@ func targetLabels(r *http.Request) []string {
 }
 
 func volumeLimit(r *http.Request) error {
-	l, err := parseInt(r.Form.Get("limit"), seriesvolume.DefaultLimit)
+	l, err := parseUint32(r.Form.Get("limit"), uint32(seriesvolume.DefaultLimit))
 	if err != nil {
 		return err
 	}
 
 	if l == 0 {
 		r.Form.Set("limit", fmt.Sprint(seriesvolume.DefaultLimit))
-		return nil
-	}
-
-	if l <= 0 {
-		return errors.New("limit must be a positive value")
 	}
 
 	return nil
