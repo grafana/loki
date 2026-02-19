@@ -70,7 +70,10 @@ type GetIpamPolicyOrganizationTargetsOutput struct {
 	// The token to use to retrieve the next page of results.
 	NextToken *string
 
-	// The Amazon Web Services Organizations targets for an IPAM policy.
+	// The IDs of the Amazon Web Services Organizations targets.
+	//
+	// A target can be an individual Amazon Web Services account or an entity within
+	// an Amazon Web Services Organization to which an IPAM policy can be applied.
 	OrganizationTargets []types.IpamPolicyOrganizationTarget
 
 	// Metadata pertaining to the operation's result.

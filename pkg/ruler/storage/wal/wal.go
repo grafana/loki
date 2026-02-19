@@ -328,6 +328,30 @@ func (w *Storage) Appender(_ context.Context) storage.Appender {
 	return w.appenderPool.Get().(storage.Appender)
 }
 
+// AppenderV2 returns a new AppenderV2 against the storage.
+func (w *Storage) AppenderV2(ctx context.Context) storage.AppenderV2 {
+	return &appenderV2Adapter{inner: w.Appender(ctx)}
+}
+
+// appenderV2Adapter wraps a v1 Appender to satisfy the AppenderV2 interface.
+type appenderV2Adapter struct {
+	inner storage.Appender
+}
+
+func (a *appenderV2Adapter) Append(ref storage.SeriesRef, ls labels.Labels, _, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, _ storage.AppendV2Options) (storage.SeriesRef, error) {
+	switch {
+	case fh != nil:
+		return a.inner.AppendHistogram(ref, ls, t, nil, fh)
+	case h != nil:
+		return a.inner.AppendHistogram(ref, ls, t, h, nil)
+	default:
+		return a.inner.Append(ref, ls, t, v)
+	}
+}
+
+func (a *appenderV2Adapter) Commit() error   { return a.inner.Commit() }
+func (a *appenderV2Adapter) Rollback() error { return a.inner.Rollback() }
+
 // StartTime always returns 0, nil. It is implemented for compatibility with
 // Prometheus, but is unused in the agent.
 func (*Storage) StartTime() (int64, error) {

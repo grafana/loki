@@ -70,12 +70,12 @@ func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.L
 		lbs.Set("__gcp_labels_"+convertToLokiCompatibleLabel(k), v)
 	}
 
-	var processed labels.Labels
 	if len(relabelConfig) > 0 {
-		processed, _ = relabel.Process(lbs.Labels(), relabelConfig...)
-	} else {
-		processed = lbs.Labels()
+		if keep := relabel.ProcessBuilder(lbs, relabelConfig...); !keep {
+			return api.Entry{}, nil
+		}
 	}
+	processed := lbs.Labels()
 
 	// final labelset that will be sent to loki
 	final := make(model.LabelSet)

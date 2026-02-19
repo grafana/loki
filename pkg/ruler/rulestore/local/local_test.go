@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 )

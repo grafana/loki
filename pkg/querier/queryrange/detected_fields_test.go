@@ -54,7 +54,7 @@ func Test_parseDetectedFields(t *testing.T) {
 		}
 
 		rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler"}`
-		rulerMetric, err := parser.ParseMetric(rulerLbls)
+		rulerMetric, err := parser.NewParser(parser.Options{}).ParseMetric(rulerLbls)
 		require.NoError(t, err)
 
 		rulerStream := push.Stream{
@@ -89,7 +89,7 @@ func Test_parseDetectedFields(t *testing.T) {
 		}
 
 		nginxLbls := `{ cluster="eu-west-1", level="debug", namespace="gateway", pod="nginx-json-oghco", service_name="nginx-json" }`
-		nginxMetric, err := parser.ParseMetric(nginxLbls)
+		nginxMetric, err := parser.NewParser(parser.Options{}).ParseMetric(nginxLbls)
 		require.NoError(t, err)
 
 		nginxStream := push.Stream{
@@ -185,7 +185,7 @@ func Test_parseDetectedFields(t *testing.T) {
 
 		t.Run("correctly applies _extracted for a single stream", func(t *testing.T) {
 			rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house"}`
-			rulerMetric, err := parser.ParseMetric(rulerLbls)
+			rulerMetric, err := parser.NewParser(parser.Options{}).ParseMetric(rulerLbls)
 			require.NoError(t, err)
 
 			rulerStream := push.Stream{
@@ -214,7 +214,7 @@ func Test_parseDetectedFields(t *testing.T) {
 
 		t.Run("correctly applies _extracted for multiple streams", func(t *testing.T) {
 			rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house"}`
-			rulerMetric, err := parser.ParseMetric(rulerLbls)
+			rulerMetric, err := parser.NewParser(parser.Options{}).ParseMetric(rulerLbls)
 			require.NoError(t, err)
 
 			rulerStream := push.Stream{
@@ -224,7 +224,7 @@ func Test_parseDetectedFields(t *testing.T) {
 			}
 
 			nginxLbls := `{ cluster="eu-west-1", level="debug", namespace="gateway", pod="nginx-json-oghco", service_name="nginx-json", host="localhost"}`
-			nginxMetric, err := parser.ParseMetric(nginxLbls)
+			nginxMetric, err := parser.NewParser(parser.Options{}).ParseMetric(nginxLbls)
 			require.NoError(t, err)
 
 			nginxStream := push.Stream{
@@ -616,7 +616,7 @@ func Test_parseDetectedFields(t *testing.T) {
 
 		t.Run("correctly applies _extracted for a single stream", func(t *testing.T) {
 			rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house"}`
-			rulerMetric, err := parser.ParseMetric(rulerLbls)
+			rulerMetric, err := parser.NewParser(parser.Options{}).ParseMetric(rulerLbls)
 			require.NoError(t, err)
 
 			rulerStream := push.Stream{
@@ -681,7 +681,7 @@ func Test_parseDetectedFields(t *testing.T) {
 
 		t.Run("correctly applies _extracted for multiple streams", func(t *testing.T) {
 			rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house"}`
-			rulerMetric, err := parser.ParseMetric(rulerLbls)
+			rulerMetric, err := parser.NewParser(parser.Options{}).ParseMetric(rulerLbls)
 			require.NoError(t, err)
 
 			rulerStream := push.Stream{
@@ -727,7 +727,7 @@ func Test_parseDetectedFields(t *testing.T) {
 			}
 
 			nginxLbls := `{ cluster="eu-west-1", level="debug", namespace="gateway", pod="nginx-json-oghco", service_name="nginx-json", host="localhost"}`
-			nginxMetric, err := parser.ParseMetric(nginxLbls)
+			nginxMetric, err := parser.NewParser(parser.Options{}).ParseMetric(nginxLbls)
 			require.NoError(t, err)
 
 			nginxStream := push.Stream{
@@ -822,7 +822,7 @@ func Test_parseDetectedFields(t *testing.T) {
 
 	t.Run("handles level in all the places", func(t *testing.T) {
 		rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house", level="debug"}`
-		rulerMetric, err := parser.ParseMetric(rulerLbls)
+		rulerMetric, err := parser.NewParser(parser.Options{}).ParseMetric(rulerLbls)
 		require.NoError(t, err)
 
 		rulerStream := push.Stream{
@@ -1321,7 +1321,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 
 	t.Run("correctly formats bytes values for detected fields", func(t *testing.T) {
 		lbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler"}`
-		metric, err := parser.ParseMetric(lbls)
+		metric, err := parser.NewParser(parser.Options{}).ParseMetric(lbls)
 		require.NoError(t, err)
 		now := time.Now()
 
@@ -1498,7 +1498,7 @@ func TestNestedJSONFieldDetection(t *testing.T) {
 		}
 
 		nestedJSONLbls := `{cluster="test-cluster", job="json-test"}`
-		nestedJSONMetric, err := parser.ParseMetric(nestedJSONLbls)
+		nestedJSONMetric, err := parser.NewParser(parser.Options{}).ParseMetric(nestedJSONLbls)
 		require.NoError(t, err)
 
 		nestedJSONStream := push.Stream{
@@ -1596,7 +1596,7 @@ func TestNestedJSONFieldDetection(t *testing.T) {
 		}
 
 		nestedJSONLbls := `{cluster="test-cluster", job="json-test"}`
-		nestedJSONMetric, err := parser.ParseMetric(nestedJSONLbls)
+		nestedJSONMetric, err := parser.NewParser(parser.Options{}).ParseMetric(nestedJSONLbls)
 		require.NoError(t, err)
 
 		nestedJSONStream := push.Stream{
