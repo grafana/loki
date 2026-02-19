@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
@@ -58,7 +60,8 @@ func hashTimeRange(d *xxhash.Digest, start, end time.Time) {
 
 // predicateStringForHash returns the string to use when hashing a predicate, clamping
 // timestamp bounds to maxRange so that queries spanning the full data object share the same key.
-func predicateStringForHash(expr Expression, maxRange TimeRange) string {
+// If logger is non-nil, logs when a timestamp predicate is clamped.
+func predicateStringForHash(expr Expression, maxRange TimeRange, logger log.Logger) string {
 	bin, ok := expr.(*BinaryExpr)
 	if !ok {
 		return expr.String()
@@ -89,18 +92,30 @@ func predicateStringForHash(expr Expression, maxRange TimeRange) string {
 	default:
 		return expr.String()
 	}
+	if logger != nil && clamped != t {
+		level.Info(logger).Log(
+			"msg", "task_cache_id: clamped timestamp predicate to max_time_range",
+			"op", bin.Op.String(),
+			"original_ts", util.FormatTimeRFC3339Nano(t),
+			"clamped_ts", util.FormatTimeRFC3339Nano(clamped),
+			"original_expr", expr.String(),
+			"max_time_range_start", util.FormatTimeRFC3339Nano(maxRange.Start),
+			"max_time_range_end", util.FormatTimeRFC3339Nano(maxRange.End),
+		)
+	}
 	return fmt.Sprintf("%s(%s, %s)", bin.Op, bin.Left, util.FormatTimeRFC3339Nano(clamped))
 }
 
 // dataObjScanPredicateStrings returns sorted predicate strings for hashing, with timestamp bounds clamped to maxRange.
-func dataObjScanPredicateStrings(predicates []Expression, maxRange TimeRange) []string {
+// If logger is non-nil, logs when any predicate is clamped.
+func dataObjScanPredicateStrings(predicates []Expression, maxRange TimeRange, logger log.Logger) []string {
 	if len(predicates) == 0 {
 		return nil
 	}
 	out := make([]string, len(predicates))
 	for i, e := range predicates {
 		if e != nil {
-			out[i] = predicateStringForHash(e, maxRange)
+			out[i] = predicateStringForHash(e, maxRange, logger)
 		}
 	}
 	slices.Sort(out)
@@ -108,7 +123,8 @@ func dataObjScanPredicateStrings(predicates []Expression, maxRange TimeRange) []
 }
 
 // hashDataObjScan computes a content-based hash of a DataObjScan for task cache identification.
-func hashDataObjScan(s *DataObjScan) string {
+// If logger is non-nil, logs when any timestamp predicate is clamped to max_time_range.
+func hashDataObjScan(s *DataObjScan, logger log.Logger) string {
 	d := xxhash.New()
 	_, _ = d.WriteString(string(s.Location))
 	_, _ = d.Write([]byte{0})
@@ -116,7 +132,7 @@ func hashDataObjScan(s *DataObjScan) string {
 	_, _ = d.Write([]byte{0})
 	hashInt64Slice(d, s.StreamIDs)
 	hashStrings(d, expressionStrings(exprSliceToExpression(s.Projections)))
-	hashStrings(d, dataObjScanPredicateStrings(s.Predicates, s.MaxTimeRange))
+	hashStrings(d, dataObjScanPredicateStrings(s.Predicates, s.MaxTimeRange, logger))
 	hashTimeRange(d, s.MaxTimeRange.Start, s.MaxTimeRange.End)
 	return hashUint64(d.Sum64())
 }

@@ -3,6 +3,7 @@ package physical
 import (
 	"slices"
 
+	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -69,5 +70,11 @@ func (*DataObjScan) Type() NodeType {
 // produce the same ID across plan instances, enabling statistics on repeated
 // operations.
 func (s *DataObjScan) TaskCacheID() string {
-	return hashDataObjScan(s)
+	return hashDataObjScan(s, nil)
+}
+
+// TaskCacheIDWithLogger is like TaskCacheID but logs when timestamp predicates
+// are clamped to the scan's max_time_range. Use from the executor to observe clamping.
+func (s *DataObjScan) TaskCacheIDWithLogger(logger log.Logger) string {
+	return hashDataObjScan(s, logger)
 }

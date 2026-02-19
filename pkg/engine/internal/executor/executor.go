@@ -256,18 +256,20 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	}
 	span.AddEvent("constructed predicate")
 
+	taskCacheID := node.TaskCacheIDWithLogger(c.logger)
 	logger := log.With(
 		c.logger,
+		"node_type", "DataObjScan",
 		"location", string(node.Location),
 		"section", node.Section,
-		"task_cache_id", node.TaskCacheID(),
+		"task_cache_id", taskCacheID,
 		"start_ts", node.MaxTimeRange.Start.Format(time.RFC3339Nano),
 		"end_ts", node.MaxTimeRange.End.Format(time.RFC3339Nano),
 		"num_predicates", len(node.Predicates),
 		"num_projections", len(node.Projections),
 		"num_stream_ids", len(streamsToMatch),
 	)
-	c.logTaskCacheResult(ctx, logger, node.TaskCacheID(), c.taskCacheIDCacheDataObj)
+	c.logTaskCacheResult(ctx, logger, taskCacheID, c.taskCacheIDCacheDataObj)
 
 	var pipeline Pipeline = newDataobjScanPipeline(dataobjScanOptions{
 		// TODO(rfratto): passing the streams section means that each DataObjScan
@@ -355,6 +357,7 @@ func (c *Context) executePointersScan(ctx context.Context, node *physical.Pointe
 	}
 	logger := log.With(
 		c.logger,
+		"node_type", "PointersScan",
 		"location", string(node.Location),
 		"selector", selectorStr,
 		"start_ts", node.Start.Format(time.RFC3339Nano),
