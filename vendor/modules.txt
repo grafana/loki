@@ -1365,8 +1365,8 @@ github.com/huandu/xstrings
 # github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 ## explicit; go 1.13
 github.com/influxdata/tdigest
-# github.com/influxdata/telegraf v1.37.1
-## explicit; go 1.25.3
+# github.com/influxdata/telegraf v1.37.2
+## explicit; go 1.25.5
 github.com/influxdata/telegraf
 github.com/influxdata/telegraf/plugins/inputs
 # github.com/jaegertracing/jaeger-idl v0.6.0
@@ -1616,7 +1616,7 @@ github.com/munnerz/goautoneg
 # github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 ## explicit
 github.com/mwitkow/go-conntrack
-# github.com/ncruces/go-strftime v0.1.9
+# github.com/ncruces/go-strftime v1.0.0
 ## explicit; go 1.17
 github.com/ncruces/go-strftime
 # github.com/ncw/swift v1.0.53
@@ -2198,7 +2198,7 @@ go.etcd.io/etcd/client/v3
 go.etcd.io/etcd/client/v3/credentials
 go.etcd.io/etcd/client/v3/internal/endpoint
 go.etcd.io/etcd/client/v3/internal/resolver
-# go.mongodb.org/mongo-driver v1.17.6
+# go.mongodb.org/mongo-driver v1.17.7
 ## explicit; go 1.18
 go.mongodb.org/mongo-driver/bson
 go.mongodb.org/mongo-driver/bson/bsoncodec
@@ -3202,8 +3202,8 @@ k8s.io/utils/keymutex
 k8s.io/utils/net
 k8s.io/utils/ptr
 k8s.io/utils/trace
-# modernc.org/libc v1.66.10
-## explicit; go 1.23.0
+# modernc.org/libc v1.67.6
+## explicit; go 1.24.0
 modernc.org/libc
 modernc.org/libc/errno
 modernc.org/libc/fcntl
@@ -3236,7 +3236,7 @@ modernc.org/mathutil
 # modernc.org/memory v1.11.0
 ## explicit; go 1.23.0
 modernc.org/memory
-# modernc.org/sqlite v1.42.2
+# modernc.org/sqlite v1.44.3
 ## explicit; go 1.24.0
 modernc.org/sqlite/lib
 # rsc.io/binaryregexp v0.2.0
