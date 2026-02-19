@@ -338,15 +338,30 @@ type appenderV2Adapter struct {
 	inner storage.Appender
 }
 
-func (a *appenderV2Adapter) Append(ref storage.SeriesRef, ls labels.Labels, _, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, _ storage.AppendV2Options) (storage.SeriesRef, error) {
+func (a *appenderV2Adapter) Append(ref storage.SeriesRef, ls labels.Labels, _, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, opts storage.AppendV2Options) (storage.SeriesRef, error) {
+	var sRef storage.SeriesRef
+	var err error
+
 	switch {
 	case fh != nil:
-		return a.inner.AppendHistogram(ref, ls, t, nil, fh)
+		sRef, err = a.inner.AppendHistogram(ref, ls, t, nil, fh)
 	case h != nil:
-		return a.inner.AppendHistogram(ref, ls, t, h, nil)
+		sRef, err = a.inner.AppendHistogram(ref, ls, t, h, nil)
 	default:
-		return a.inner.Append(ref, ls, t, v)
+		sRef, err = a.inner.Append(ref, ls, t, v)
 	}
+	if err != nil {
+		return 0, err
+	}
+
+	// Forward exemplars to the inner appender per the AppenderV2 contract.
+	var pErr storage.AppendPartialError
+	for _, e := range opts.Exemplars {
+		if _, exemplarErr := a.inner.AppendExemplar(sRef, ls, e); exemplarErr != nil {
+			pErr.ExemplarErrors = append(pErr.ExemplarErrors, exemplarErr)
+		}
+	}
+	return sRef, pErr.ToError()
 }
 
 func (a *appenderV2Adapter) Commit() error   { return a.inner.Commit() }
