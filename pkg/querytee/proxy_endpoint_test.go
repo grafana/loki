@@ -25,11 +25,11 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
-	"github.com/grafana/loki/v3/pkg/querytee/comparator"
-	querytee_goldfish "github.com/grafana/loki/v3/pkg/querytee/goldfish"
-
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
+	querytee_goldfish "github.com/grafana/loki/v3/pkg/querytee/goldfish"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // createTestEndpoint creates a ProxyEndpoint with properly initialized handler pipeline
@@ -225,7 +225,7 @@ func Test_ProxyEndpoint_QueryRequests(t *testing.T) {
 	require.NoError(t, err)
 	backends := []*ProxyBackend{
 		proxyBackend1,
-		proxyBackend2.WithFilter(regexp.MustCompile("/loki/api/v1/query_range")),
+		proxyBackend2.WithFilter(regexp.MustCompile(regexp.QuoteMeta(constants.PathLokiQueryRange))),
 	}
 	endpoint := createTestEndpoint(t, backends, "test", nil, false)
 
@@ -238,7 +238,7 @@ func Test_ProxyEndpoint_QueryRequests(t *testing.T) {
 		{
 			name: "GET-request",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("GET", "http://test/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)
+				r, err := http.NewRequest("GET", "http://test"+constants.PathLokiQueryRange+"?query={job=\"test\"}&start=1&end=2", nil)
 				r.Header["test-X"] = []string{"test-X-value"}
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
@@ -255,7 +255,7 @@ func Test_ProxyEndpoint_QueryRequests(t *testing.T) {
 		{
 			name: "GET-filter-accept-encoding",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("GET", "http://test/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)
+				r, err := http.NewRequest("GET", "http://test"+constants.PathLokiQueryRange+"?query={job=\"test\"}&start=1&end=2", nil)
 				r.Header.Set("Accept-Encoding", "gzip")
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
@@ -272,7 +272,7 @@ func Test_ProxyEndpoint_QueryRequests(t *testing.T) {
 		{
 			name: "GET-filtered",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("GET", "http://test/loki/api/v1/query?query={job=\"test\"}", nil)
+				r, err := http.NewRequest("GET", "http://test"+constants.PathLokiQuery+"?query={job=\"test\"}", nil)
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
 				return r
@@ -348,7 +348,7 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 	require.NoError(t, err)
 	backends := []*ProxyBackend{
 		proxyBackend1,
-		proxyBackend2.WithFilter(regexp.MustCompile("/loki/api/v1/push")),
+		proxyBackend2.WithFilter(regexp.MustCompile(regexp.QuoteMeta(constants.PathLokiPush))),
 	}
 	// endpoint := createTestEndpoint(backends, "test", nil, false)
 	metrics := NewProxyMetrics(nil)
@@ -364,7 +364,7 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 		{
 			name: "POST-request",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("POST", "http://test/loki/api/v1/push", strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+				r, err := http.NewRequest("POST", "http://test"+constants.PathLokiPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
 				r.Header.Set("test-X", "test-X-value")
 				r.Header["Content-Type"] = []string{"application/json"}
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
@@ -382,7 +382,7 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 		{
 			name: "POST-filter-accept-encoding",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("POST", "http://test/loki/api/v1/push", strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+				r, err := http.NewRequest("POST", "http://test"+constants.PathLokiPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
 				r.Header["Content-Type"] = []string{"application/json"}
 				r.Header.Set("Accept-Encoding", "gzip")
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
@@ -400,7 +400,7 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 		{
 			name: "POST-filtered",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("POST", "http://test/loki/api/prom/push", strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+				r, err := http.NewRequest("POST", "http://test"+constants.PathPromPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
 				r.Header["Content-Type"] = []string{"application/json"}
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
@@ -492,7 +492,7 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 		{
 			name: "missing-metrics-series",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("GET", "http://test/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)
+				r, err := http.NewRequest("GET", "http://test"+constants.PathLokiQueryRange+"?query={job=\"test\"}&start=1&end=2", nil)
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
 				return r
@@ -679,7 +679,7 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 	endpoint := createTestEndpointWithGoldfish(t, backends, "test", goldfishManager)
 
 	// Create request that triggers goldfish sampling
-	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000", nil)
+	req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000", nil)
 	req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 	// Add trace context to the request (this would normally be done by tracing middleware)
@@ -832,7 +832,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// Query from threshold+1h to threshold+2h (all recent)
 		start := threshold.Add(time.Hour)
 		end := threshold.Add(2 * time.Hour)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
+		req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
@@ -850,7 +850,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// Query from threshold-2h to threshold-1h (all old)
 		start := threshold.Add(-2 * time.Hour)
 		end := threshold.Add(-time.Hour)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
+		req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
@@ -871,7 +871,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// Query from threshold-1h to threshold+1h (spans threshold)
 		start := threshold.Add(-time.Hour)
 		end := threshold.Add(time.Hour)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
+		req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
@@ -947,7 +947,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		start := threshold.Add(-time.Hour)
 		end := threshold.Add(time.Hour)
 		metricQuery := url.QueryEscape(`sum by (job) (count_over_time({foo="bar"}[5m]))`)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query="+metricQuery+"&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
+		req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query="+metricQuery+"&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
@@ -1053,7 +1053,7 @@ func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
 	backends := []*ProxyBackend{backend1}
 
 	recorder := httptest.NewRecorder()
-	fakeReq := httptest.NewRequestWithContext(context.Background(), "GET", "/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)
+	fakeReq := httptest.NewRequestWithContext(context.Background(), "GET", constants.PathLokiQueryRange+"?query={job=\"test\"}&start=1&end=2", nil)
 	fakeReq.Header.Set("X-Scope-OrgID", "test-tenant")
 
 	endpoint := createTestEndpoint(t, backends, "test", nil, false)

@@ -27,27 +27,7 @@ import (
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-const (
-	unknown = "unknown"
-
-	// Loki API v1 routes
-	routeLokiQueryRange       = "/loki/api/v1/query_range"
-	routeLokiQuery            = "/loki/api/v1/query"
-	routeLokiSeries           = "/loki/api/v1/series"
-	routeLokiLabels           = "/loki/api/v1/labels"
-	routeLokiLabelValues      = "/loki/api/v1/label"
-	routeLokiIndexStats       = "/loki/api/v1/index/stats"
-	routeLokiIndexShards      = "/loki/api/v1/index/shards"
-	routeLokiIndexVolume      = "/loki/api/v1/index/volume"
-	routeLokiIndexVolumeRange = "/loki/api/v1/index/volume_range"
-
-	// Prometheus-compatible API routes (legacy /api/prom/).
-	routePromQuery       = "/api/prom/query"
-	routePromLabel       = "/api/prom/label"
-	routePromLabelValues = "/api/prom/label/" // prefix for /api/prom/label/{name}/values
-	routePromLabelSuffix = "/values"
-	routePromSeries      = "/api/prom/series"
-)
+const unknown = "unknown"
 
 // Manager defines the interface for Goldfish manager operations.
 type Manager interface {
@@ -527,7 +507,7 @@ func extractTenant(r *http.Request) string {
 }
 
 func getQueryType(path, query string) string {
-	isQueryRoute := path == routeLokiQueryRange || path == routeLokiQuery || path == routePromQuery
+	isQueryRoute := path == constants.PathLokiQueryRange || path == constants.PathLokiQuery || path == constants.PathPromQuery
 	if isQueryRoute {
 		if query == "" {
 			return unknown
@@ -542,22 +522,22 @@ func getQueryType(path, query string) string {
 		}
 		return qt
 	}
-	if path == routeLokiSeries || path == routePromSeries {
+	if path == constants.PathLokiSeries || path == constants.PathPromSeries {
 		return logql.QueryTypeSeries
 	}
-	if path == routeLokiLabels || path == routeLokiLabelValues || path == routePromLabel {
+	if path == constants.PathLokiLabels || path == constants.PathLokiLabel || path == constants.PathPromLabel {
 		return logql.QueryTypeLabels
 	}
-	if strings.HasPrefix(path, routePromLabelValues) && strings.HasSuffix(path, routePromLabelSuffix) {
+	if strings.HasPrefix(path, constants.PathPromLabelPrefix) && strings.HasSuffix(path, constants.PathPromLabelSuffix) {
 		return logql.QueryTypeLabels
 	}
-	if path == routeLokiIndexStats {
+	if path == constants.PathLokiIndexStats {
 		return logql.QueryTypeStats
 	}
-	if path == routeLokiIndexShards {
+	if path == constants.PathLokiIndexShards {
 		return logql.QueryTypeShards
 	}
-	if path == routeLokiIndexVolume || path == routeLokiIndexVolumeRange {
+	if path == constants.PathLokiIndexVolume || path == constants.PathLokiIndexVolumeRange {
 		return logql.QueryTypeVolume
 	}
 	return unknown

@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func TestGoldfishEndToEnd(t *testing.T) {
@@ -43,7 +44,7 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	assert.True(t, manager.ShouldSample("tenant3")) // Uses default rate
 
 	// Create test HTTP request
-	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}&start=1700000000&end=1700001000", nil)
+	req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}&start=1700000000&end=1700001000", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
 	// Simulate responses from Cell A and Cell B
@@ -170,7 +171,7 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 	require.NoError(t, err)
 	defer manager.Close()
 
-	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}", nil)
+	req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
 	// Different log lines between cells - this will produce different hashes
@@ -266,7 +267,7 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 	require.NoError(t, err)
 	defer manager.Close()
 
-	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}", nil)
+	req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
 	// Different log lines between cells - this will produce different hashes
@@ -358,7 +359,7 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 	require.NoError(t, err)
 	defer manager.Close()
 
-	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}", nil)
+	req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
 	// Cell A response with new engine warning

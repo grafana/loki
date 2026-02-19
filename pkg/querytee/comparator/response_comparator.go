@@ -23,6 +23,7 @@ var ErrComparisonMismatch = errors.New("comparison mismatch")
 
 // Mismatch cause constants for categorising comparison failures.
 const (
+	CauseNoMismatch               = ""
 	CauseStatusMismatch           = "status_mismatch"
 	CauseResultTypeMismatch       = "result_type_mismatch"
 	CauseMetricCountMismatch      = "metric_count_mismatch"
@@ -209,7 +210,7 @@ func compareMatrixSamples(expected, actual *model.SampleStream, opts SampleCompa
 		}
 	}
 
-	return "", nil
+	return CauseNoMismatch, nil
 }
 
 func filterSamplesOutsideWindow(matrix model.Matrix, skipSample func(time.Time) bool) model.Matrix {
@@ -352,7 +353,7 @@ func compareSamplePair(expected, actual model.SamplePair, opts SampleComparisonO
 		return CauseSampleValueMismatch, fmt.Errorf("expected value %s for timestamp %v but got %s: %w", expected.Value, expected.Timestamp, actual.Value, ErrComparisonMismatch)
 	}
 
-	return "", nil
+	return CauseNoMismatch, nil
 }
 
 func compareSampleValue(first, second model.SampleValue, opts SampleComparisonOptions) bool {
