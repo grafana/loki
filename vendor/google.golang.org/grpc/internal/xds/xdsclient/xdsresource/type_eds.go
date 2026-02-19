@@ -19,6 +19,7 @@ package xdsresource
 
 import (
 	"google.golang.org/grpc/internal/xds/clients"
+	"google.golang.org/grpc/resolver"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
@@ -48,13 +49,12 @@ const (
 )
 
 // Endpoint contains information of an endpoint.
+// TODO(i/8757) : Replace Endpoint with resolver.Endpoint struct.
 type Endpoint struct {
-	Addresses    []string
-	HealthStatus EndpointHealthStatus
-	Weight       uint32
-	HashKey      string
-	Metadata     map[string]any
-	Hostname     string
+	ResolverEndpoint resolver.Endpoint
+	HealthStatus     EndpointHealthStatus
+	Weight           uint32
+	Metadata         map[string]any
 }
 
 // Locality contains information of a locality.
