@@ -1873,7 +1873,7 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-ttl
   [assigned_partitions_cache_ttl: <duration> | default = 1m]
 
-  # Enable the accepted streams cache.
+  # [Experimental]: Enable the accepted streams cache.
   # CLI flag: -ingest-limits-frontend.accepted-streams-cache-enabled
   [accepted_streams_cache_enabled: <boolean> | default = false]
 
