@@ -27,6 +27,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -81,6 +84,13 @@ type Config struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
+
+	// TaskCacheIDCacheConfig configures the cache used for task_cache_id mock (hit/miss logging).
+	// Supports memcached, redis, or embedded cache. When configured and Registerer is set, the worker creates the cache in New.
+	TaskCacheIDCacheConfig cache.Config `yaml:"-"`
+
+	// Registerer is used to register cache metrics when creating the task cache. Can be nil.
+	Registerer prometheus.Registerer `yaml:"-"`
 }
 
 // readyRequest is a message sent from a thread to notify the worker that it's
@@ -126,6 +136,10 @@ type Worker struct {
 
 	// jobManager used to manage task assignments.
 	jobManager *jobManager
+
+	// taskCacheIDCacheDataObj and taskCacheIDCachePointers are created in New when TaskCacheIDCacheConfig is enabled; passed to threads.
+	taskCacheIDCacheDataObj   cache.Cache
+	taskCacheIDCachePointers  cache.Cache
 }
 
 // New creates a new instance of a worker. Use [Worker.Service] to manage
@@ -151,6 +165,37 @@ func New(config Config) (*Worker, error) {
 		numThreads = runtime.GOMAXPROCS(0)
 	}
 
+	var taskCacheIDCacheDataObj, taskCacheIDCachePointers cache.Cache
+	if cache.IsCacheConfigured(config.TaskCacheIDCacheConfig) && config.Registerer != nil {
+		cfgDataObj := config.TaskCacheIDCacheConfig
+		cfgDataObj.Prefix = cfgDataObj.Prefix + "dataobj."
+		cacheDataObj, err := cache.New(
+			cfgDataObj,
+			config.Registerer,
+			config.Logger,
+			stats.TaskCacheIDDataObjCache,
+			constants.Loki,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create task cache ID dataobj cache: %w", err)
+		}
+		taskCacheIDCacheDataObj = cacheDataObj
+
+		cfgPointers := config.TaskCacheIDCacheConfig
+		cfgPointers.Prefix = cfgPointers.Prefix + "pointers."
+		cachePointers, err := cache.New(
+			cfgPointers,
+			config.Registerer,
+			config.Logger,
+			stats.TaskCacheIDPointersCache,
+			constants.Loki,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create task cache ID pointers cache: %w", err)
+		}
+		taskCacheIDCachePointers = cachePointers
+	}
+
 	return &Worker{
 		config:      config,
 		logger:      config.Logger,
@@ -167,7 +212,9 @@ func New(config Config) (*Worker, error) {
 		metrics:   newMetrics(),
 		collector: newCollector(),
 
-		jobManager: newJobManager(),
+		jobManager:               newJobManager(),
+		taskCacheIDCacheDataObj:   taskCacheIDCacheDataObj,
+		taskCacheIDCachePointers:  taskCacheIDCachePointers,
 	}, nil
 }
 
@@ -190,11 +237,13 @@ func (w *Worker) run(ctx context.Context) error {
 	var threads []*thread
 	for i := range w.numThreads {
 		t := &thread{
-			BatchSize:      w.config.BatchSize,
-			Logger:         log.With(w.logger, "thread", i),
-			Bucket:         w.config.Bucket,
-			Metastore:      w.config.Metastore,
-			StreamFilterer: w.config.StreamFilterer,
+			BatchSize:                 w.config.BatchSize,
+			Logger:                    log.With(w.logger, "thread", i),
+			Bucket:                    w.config.Bucket,
+			Metastore:                 w.config.Metastore,
+			StreamFilterer:            w.config.StreamFilterer,
+			TaskCacheIDCacheDataObj:   w.taskCacheIDCacheDataObj,
+			TaskCacheIDCachePointers:  w.taskCacheIDCachePointers,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,

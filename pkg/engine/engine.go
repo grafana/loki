@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -71,12 +72,17 @@ type ExecutorConfig struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
+
+	// TaskCacheIDCacheConfig configures the cache for task_cache_id mock (hit/miss logging) in the worker.
+	// Supports memcached, redis, or embedded cache. When configured and a Registerer is passed, the cache is created and used for PointersScan.
+	TaskCacheIDCacheConfig cache.Config `yaml:"task_cache_id_cache"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
+	cfg.TaskCacheIDCacheConfig.RegisterFlagsWithPrefix(prefix+"task-cache-id.", "Experimental: Task cache ID mock (hit/miss logging).", f)
 }
 
 // Params holds parameters for constructing a new [Engine].

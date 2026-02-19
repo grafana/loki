@@ -1537,8 +1537,9 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "query-engine-worker")
 
 	worker, err := engine_v2.NewWorker(engine_v2.WorkerParams{
-		Logger: logger,
-		Bucket: store,
+		Logger:     logger,
+		Bucket:     store,
+		Registerer: prometheus.DefaultRegisterer,
 
 		Config:   t.Cfg.QueryEngine.Worker,
 		Executor: t.Cfg.QueryEngine.Executor,

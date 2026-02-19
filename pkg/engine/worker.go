@@ -36,9 +36,10 @@ func (cfg *WorkerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet)
 
 // WorkerParams holds parameters for constructing a new [Worker].
 type WorkerParams struct {
-	Logger    log.Logger          // Logger for optional log messages.
-	Bucket    objstore.Bucket     // Bucket to read stored data from.
-	Metastore metastore.Metastore // Metastore to access indexes.
+	Logger     log.Logger            // Logger for optional log messages.
+	Bucket     objstore.Bucket       // Bucket to read stored data from.
+	Metastore  metastore.Metastore   // Metastore to access indexes.
+	Registerer prometheus.Registerer // Registerer for metrics (e.g. task cache); optional.
 
 	Config   WorkerConfig   // Configuration for the worker.
 	Executor ExecutorConfig // Configuration for task execution.
@@ -127,6 +128,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		Logger:    params.Logger,
 		Bucket:    params.Bucket,
 		Metastore: params.Metastore,
+		Registerer: params.Registerer,
 
 		Dialer:   dialer,
 		Listener: listener,
@@ -140,7 +142,8 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 
 		Endpoint: params.Endpoint,
 
-		StreamFilterer: params.StreamFilterer,
+		StreamFilterer:           params.StreamFilterer,
+		TaskCacheIDCacheConfig:   params.Executor.TaskCacheIDCacheConfig,
 	})
 	if err != nil {
 		return nil, err

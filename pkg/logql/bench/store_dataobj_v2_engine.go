@@ -135,6 +135,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		Logger:         log.With(logger, "component", "worker"),
 		AdvertiseAddr:  workerAdvertiseAddr,
 		Bucket:         bucketClient,
+		Registerer:     registerer,
 		LocalScheduler: sched,
 		Config: engine.WorkerConfig{
 			SchedulerLookupAddress:  schedLookupAddr,

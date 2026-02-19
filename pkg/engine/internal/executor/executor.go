@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
@@ -52,19 +53,27 @@ type Config struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer RequestStreamFilterer `yaml:"-"`
+
+	// TaskCacheIDCacheDataObj is an optional cache used to log task_cache_id hit/miss for DataObjScan.
+	// TaskCacheIDCachePointers is an optional cache used to log task_cache_id hit/miss for PointersScan.
+	// When set, each scan does a fetch (log hit/miss) and on miss stores the task_cache_id. No real data is cached.
+	TaskCacheIDCacheDataObj  cache.Cache `yaml:"-"`
+	TaskCacheIDCachePointers cache.Cache `yaml:"-"`
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
-		plan:               plan,
-		batchSize:          cfg.BatchSize,
-		mergePrefetchCount: cfg.MergePrefetchCount,
-		bucket:             cfg.Bucket,
-		metastore:          cfg.Metastore,
-		logger:             logger,
-		evaluator:          newExpressionEvaluator(),
-		getExternalInputs:  cfg.GetExternalInputs,
-		streamFilterer:     cfg.StreamFilterer,
+		plan:                     plan,
+		batchSize:                cfg.BatchSize,
+		mergePrefetchCount:       cfg.MergePrefetchCount,
+		bucket:                   cfg.Bucket,
+		metastore:                cfg.Metastore,
+		logger:                   logger,
+		evaluator:                newExpressionEvaluator(),
+		getExternalInputs:        cfg.GetExternalInputs,
+		streamFilterer:           cfg.StreamFilterer,
+		taskCacheIDCacheDataObj:  cfg.TaskCacheIDCacheDataObj,
+		taskCacheIDCachePointers: cfg.TaskCacheIDCachePointers,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -92,6 +101,9 @@ type Context struct {
 	mergePrefetchCount int
 
 	streamFilterer RequestStreamFilterer
+
+	taskCacheIDCacheDataObj  cache.Cache
+	taskCacheIDCachePointers cache.Cache
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -255,6 +267,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		"num_projections", len(node.Projections),
 		"num_stream_ids", len(streamsToMatch),
 	)
+	c.logTaskCacheResult(ctx, logger, node.TaskCacheID(), c.taskCacheIDCacheDataObj)
 
 	var pipeline Pipeline = newDataobjScanPipeline(dataobjScanOptions{
 		// TODO(rfratto): passing the streams section means that each DataObjScan
@@ -319,16 +332,38 @@ func (c *Context) filterStreamsByLabels(ctx context.Context, streamIDs []int64, 
 	return filtered
 }
 
+// logTaskCacheResult checks the given task cache for key (fetch, store on miss) and logs hit or miss.
+func (c *Context) logTaskCacheResult(ctx context.Context, logger log.Logger, key string, taskCache cache.Cache) {
+	result := "miss"
+	if taskCache != nil {
+		found, _, missing, fetchErr := taskCache.Fetch(ctx, []string{key})
+		if fetchErr != nil {
+			level.Warn(logger).Log("msg", "task_cache_id mock fetch failed", "err", fetchErr)
+		} else if len(found) > 0 {
+			result = "hit"
+		} else if len(missing) > 0 {
+			_ = taskCache.Store(ctx, []string{key}, [][]byte{{}})
+		}
+	}
+	level.Info(logger).Log("msg", "result from task cache", "result", result)
+}
+
 func (c *Context) executePointersScan(ctx context.Context, node *physical.PointersScan) Pipeline {
+	selectorStr := ""
+	if node.Selector != nil {
+		selectorStr = node.Selector.String()
+	}
 	logger := log.With(
 		c.logger,
 		"location", string(node.Location),
-		"selector", node.Selector.String(),
+		"selector", selectorStr,
 		"start_ts", node.Start.Format(time.RFC3339Nano),
 		"end_ts", node.End.Format(time.RFC3339Nano),
 		"num_predicates", len(node.Predicates),
 		"task_cache_id", node.TaskCacheID(),
 	)
+
+	c.logTaskCacheResult(ctx, logger, node.TaskCacheID(), c.taskCacheIDCachePointers)
 
 	if c.metastore == nil {
 		return errorPipeline(ctx, errors.New("no metastore configured"))

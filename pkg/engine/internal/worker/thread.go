@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -58,11 +59,13 @@ func (s threadState) String() string {
 
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
-	BatchSize      int64
-	Bucket         objstore.Bucket
-	Metastore      metastore.Metastore
-	Logger         log.Logger
-	StreamFilterer executor.RequestStreamFilterer
+	BatchSize        int64
+	Bucket           objstore.Bucket
+	Metastore        metastore.Metastore
+	Logger           log.Logger
+	StreamFilterer            executor.RequestStreamFilterer
+	TaskCacheIDCacheDataObj   cache.Cache
+	TaskCacheIDCachePointers  cache.Cache
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -125,10 +128,12 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	)
 
 	cfg := executor.Config{
-		BatchSize:      t.BatchSize,
-		Bucket:         bucket.NewXCapBucket(t.Bucket),
-		Metastore:      t.Metastore,
-		StreamFilterer: t.StreamFilterer,
+		BatchSize:                 t.BatchSize,
+		Bucket:                    bucket.NewXCapBucket(t.Bucket),
+		Metastore:                 t.Metastore,
+		StreamFilterer:             t.StreamFilterer,
+		TaskCacheIDCacheDataObj:   t.TaskCacheIDCacheDataObj,
+		TaskCacheIDCachePointers:  t.TaskCacheIDCachePointers,
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
