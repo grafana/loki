@@ -9919,6 +9919,14 @@ func (c *ObjectsComposeCall) DestinationPredefinedAcl(destinationPredefinedAcl s
 	return c
 }
 
+// DropContextGroups sets the optional parameter "dropContextGroups": Specifies
+// which groups of Object Contexts from the source object(s) should be dropped
+// from the destination object.
+func (c *ObjectsComposeCall) DropContextGroups(dropContextGroups ...string) *ObjectsComposeCall {
+	c.urlParams_.SetMulti("dropContextGroups", append([]string{}, dropContextGroups...))
+	return c
+}
+
 // IfGenerationMatch sets the optional parameter "ifGenerationMatch": Makes the
 // operation conditional on whether the object's current generation matches the
 // given value. Setting to 0 makes the operation succeed only if there are no
@@ -12020,6 +12028,14 @@ func (c *ObjectsRewriteCall) DestinationKmsKeyName(destinationKmsKeyName string)
 // access.
 func (c *ObjectsRewriteCall) DestinationPredefinedAcl(destinationPredefinedAcl string) *ObjectsRewriteCall {
 	c.urlParams_.Set("destinationPredefinedAcl", destinationPredefinedAcl)
+	return c
+}
+
+// DropContextGroups sets the optional parameter "dropContextGroups": Specifies
+// which groups of Object Contexts from the source object should be dropped
+// from the destination object.
+func (c *ObjectsRewriteCall) DropContextGroups(dropContextGroups ...string) *ObjectsRewriteCall {
+	c.urlParams_.SetMulti("dropContextGroups", append([]string{}, dropContextGroups...))
 	return c
 }
 
