@@ -39,27 +39,27 @@ func TestServicePortToPodPort(t *testing.T) {
 			endpoint:     "minio.test.svc.cluster.local",
 			expectedPort: 8080,
 		},
-		// {
-		// 	name:         "https shortest svc endpoint",
-		// 	endpoint:     "https://minio.test.svc",
-		// 	expectedPort: 6443,
-		// },
-		// {
-		// 	name:         "https svc endpoint with port",
-		// 	endpoint:     "https://minio.test.svc.cluster.local:443",
-		// 	expectedPort: 6443,
-		// },
-		// {
-		// 	name:         "https svc endpoint with name",
-		// 	endpoint:     "https://minio.test.svc.cluster.local:444",
-		// 	expectedPort: 6443,
-		// },
-		// {
-		// 	name:          "https svc endpoint with invalid port",
-		// 	endpoint:      "https://minio.test.svc.cluster.local:9999",
-		// 	expectedPort:  9999,
-		// 	expectedError: true,
-		// },
+		{
+			name:         "https shortest svc endpoint",
+			endpoint:     "https://minio.test.svc",
+			expectedPort: 6443,
+		},
+		{
+			name:         "https svc endpoint with port",
+			endpoint:     "https://minio.test.svc.cluster.local:443",
+			expectedPort: 6443,
+		},
+		{
+			name:         "https svc endpoint with name",
+			endpoint:     "https://minio.test.svc.cluster.local:444",
+			expectedPort: 6443,
+		},
+		{
+			name:          "https svc endpoint with invalid port",
+			endpoint:      "https://minio.test.svc.cluster.local:9999",
+			expectedPort:  9999,
+			expectedError: true,
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			service := &corev1.Service{
@@ -117,7 +117,7 @@ func TestServicePortToPodPort(t *testing.T) {
 				WithScheme(scheme.Scheme).
 				Build()
 
-			gotPorts, err := ServicePortToPodPort(context.TODO(), logr.Discard(), k, storage.Options{
+			gotPorts, err := ServicePortToPodPort(context.Background(), logr.Discard(), k, storage.Options{
 				S3: &storage.S3StorageConfig{
 					Endpoint: tt.endpoint,
 				},
@@ -208,98 +208,158 @@ func TestParseServiceEndpoint(t *testing.T) {
 	}
 }
 
-func TestResolveServicePortToTarget(t *testing.T) {
+func TestResolveTargetPort(t *testing.T) {
 	for _, tt := range []struct {
 		name         string
-		slices       []discoveryv1.EndpointSlice
-		servicePort  corev1.ServicePort
+		service      *corev1.Service
+		slices       *discoveryv1.EndpointSliceList
+		endpointPort int32
 		expectedPort int32
 	}{
 		{
 			name: "simple matching port",
-			slices: []discoveryv1.EndpointSlice{
-				{
-					Ports: []discoveryv1.EndpointPort{
+			service: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Ports: []corev1.ServicePort{
 						{
-							Port: ptr.To(int32(80)),
+							Port: 80,
+							TargetPort: intstr.IntOrString{
+								Type:   intstr.Int,
+								IntVal: 80,
+							},
 						},
 					},
 				},
 			},
-			servicePort: corev1.ServicePort{
-				Port: 80,
-				TargetPort: intstr.IntOrString{
-					Type:   intstr.Int,
-					IntVal: 80,
+			slices: &discoveryv1.EndpointSliceList{
+				Items: []discoveryv1.EndpointSlice{
+					{
+						Ports: []discoveryv1.EndpointPort{
+							{Port: ptr.To(int32(80))},
+						},
+					},
 				},
 			},
+			endpointPort: 80,
 			expectedPort: 80,
 		},
 		{
 			name: "targetPort diff from svc port but matching port",
-			slices: []discoveryv1.EndpointSlice{
-				{
-					Ports: []discoveryv1.EndpointPort{
+			service: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Ports: []corev1.ServicePort{
 						{
-							Port: ptr.To(int32(8080)),
+							Port: 80,
+							TargetPort: intstr.IntOrString{
+								Type:   intstr.Int,
+								IntVal: 8080,
+							},
 						},
 					},
 				},
 			},
-			servicePort: corev1.ServicePort{
-				Port: 80,
-				TargetPort: intstr.IntOrString{
-					Type:   intstr.Int,
-					IntVal: 8080,
+			slices: &discoveryv1.EndpointSliceList{
+				Items: []discoveryv1.EndpointSlice{
+					{
+						Ports: []discoveryv1.EndpointPort{
+							{Port: ptr.To(int32(8080))},
+						},
+					},
 				},
 			},
+			endpointPort: 80,
 			expectedPort: 8080,
 		},
 		{
 			name: "targetPort diff from svc port but matching name",
-			slices: []discoveryv1.EndpointSlice{
-				{
-					Ports: []discoveryv1.EndpointPort{
+			service: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Ports: []corev1.ServicePort{
 						{
-							Port: ptr.To(int32(8080)),
-							Name: ptr.To("http"),
+							Port: 80,
+							TargetPort: intstr.IntOrString{
+								Type:   intstr.String,
+								StrVal: "http",
+							},
 						},
 					},
 				},
 			},
-			servicePort: corev1.ServicePort{
-				Port: 80,
-				TargetPort: intstr.IntOrString{
-					Type:   intstr.String,
-					StrVal: "http",
+			slices: &discoveryv1.EndpointSliceList{
+				Items: []discoveryv1.EndpointSlice{
+					{
+						Ports: []discoveryv1.EndpointPort{
+							{
+								Port: ptr.To(int32(8080)),
+								Name: ptr.To("http"),
+							},
+						},
+					},
 				},
 			},
+			endpointPort: 80,
 			expectedPort: 8080,
 		},
 		{
 			name: "no matching port or name",
-			slices: []discoveryv1.EndpointSlice{
-				{
-					Ports: []discoveryv1.EndpointPort{
+			service: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Ports: []corev1.ServicePort{
 						{
-							Port: ptr.To(int32(8080)),
-							Name: ptr.To("http"),
+							Port: 80,
+							TargetPort: intstr.IntOrString{
+								Type:   intstr.Int,
+								IntVal: 443,
+							},
 						},
 					},
 				},
 			},
-			servicePort: corev1.ServicePort{
-				Port: 80,
-				TargetPort: intstr.IntOrString{
-					Type:   intstr.Int,
-					IntVal: 443,
+			slices: &discoveryv1.EndpointSliceList{
+				Items: []discoveryv1.EndpointSlice{
+					{
+						Ports: []discoveryv1.EndpointPort{
+							{
+								Port: ptr.To(int32(8080)),
+								Name: ptr.To("http"),
+							},
+						},
+					},
 				},
 			},
+			endpointPort: 80,
+			expectedPort: 0,
+		},
+		{
+			name: "no matching service port",
+			service: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Ports: []corev1.ServicePort{
+						{
+							Port: 443,
+							TargetPort: intstr.IntOrString{
+								Type:   intstr.Int,
+								IntVal: 6443,
+							},
+						},
+					},
+				},
+			},
+			slices: &discoveryv1.EndpointSliceList{
+				Items: []discoveryv1.EndpointSlice{
+					{
+						Ports: []discoveryv1.EndpointPort{
+							{Port: ptr.To(int32(6443))},
+						},
+					},
+				},
+			},
+			endpointPort: 80,
 			expectedPort: 0,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolveServicePortToTarget(tt.slices, tt.servicePort)
+			got := resolveTargetPort(tt.service, tt.slices, tt.endpointPort)
 			require.Equal(t, tt.expectedPort, got)
 		})
 	}

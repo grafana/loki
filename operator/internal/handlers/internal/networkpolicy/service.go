@@ -19,10 +19,8 @@ import (
 )
 
 var (
-	errInvalidServiceEndpoint = errors.New("couldn't parse target object storage service endpoint")
-	errMissingEndpointSlices  = errors.New("no endpoint slices found for target object storage service")
-	errMissingTargetPort      = errors.New("couldn't resolve target object storage service port to target Pod port")
-	errMissingDefaultPort     = errors.New("couldn't resolve default ports to target ports")
+	errMissingEndpointSlices = errors.New("no endpoint slices found for target object storage service")
+	errMissingWantedPort     = errors.New("couldn't resolve object storage service port to target Pod port")
 )
 
 func ServicePortToPodPort(ctx context.Context, log logr.Logger, k k8s.Client, objStore storage.Options) ([]int32, error) {
@@ -31,14 +29,20 @@ func ServicePortToPodPort(ctx context.Context, log logr.Logger, k k8s.Client, ob
 	}
 	endpoint := objStore.S3.Endpoint
 
-	// Check if endpoint contains a Kubernetes Service DNS pattern
+	// Check if endpoint is a Kubernetes Service DNS name
 	if !strings.Contains(endpoint, ".svc") {
 		return []int32{}, nil
 	}
 
 	serviceName, namespace, endpointPort, https := parseServiceEndpoint(endpoint)
 	if serviceName == "" || namespace == "" {
-		return []int32{}, errInvalidServiceEndpoint
+		return []int32{}, nil // We do not error as the endpoint might not point to a Kubernetes Service
+	}
+
+	service := &corev1.Service{}
+	if err := k.Get(ctx, client.ObjectKey{Name: serviceName, Namespace: namespace}, service); err != nil {
+		log.Error(err, "failed to get target object storage service", "service", serviceName, "namespace", namespace)
+		return []int32{}, err
 	}
 
 	// List EndpointSlices for the service using the standard label
@@ -53,64 +57,29 @@ func ServicePortToPodPort(ctx context.Context, log logr.Logger, k k8s.Client, ob
 		return []int32{}, errMissingEndpointSlices
 	}
 
-	// Case 1: Port specified in URL
+	var targetPort int32
+	wantedPort := int32(80)
+	if https {
+		wantedPort = int32(443)
+	}
+
 	if endpointPort > 0 {
-		// If SVC and Pod have the same port then we can return it directly
+		wantedPort = endpointPort // Override the wantedPort if specified in the endpoint
 		for _, slice := range endpointSlices.Items {
 			for _, p := range slice.Ports {
 				if p.Port != nil && *p.Port == endpointPort {
-					return []int32{*p.Port}, nil
+					return []int32{*p.Port}, nil // If svc and pod have the same port then return it directly
 				}
 			}
 		}
-
-		// Port not in EndpointSlices - it's likely a service port, need to resolve via Service
-		service := &corev1.Service{}
-		if err := k.Get(ctx, client.ObjectKey{Name: serviceName, Namespace: namespace}, service); err != nil {
-			log.Error(err, "failed to get target object storage service", "service", serviceName, "namespace", namespace)
-			return []int32{}, err
-		}
-
-		var targetPort int32
-		for _, sp := range service.Spec.Ports {
-			if sp.Port == endpointPort {
-				targetPort = resolveServicePortToTarget(endpointSlices.Items, sp)
-				if targetPort != 0 {
-					break
-				}
-			}
-		}
-
-		if targetPort == 0 {
-			return []int32{}, errMissingTargetPort
-		}
-
-		return []int32{targetPort}, nil
 	}
 
-	// Case 2: No port specified - default to 443/80 and resolve their target ports
-	service := &corev1.Service{}
-	if err := k.Get(ctx, client.ObjectKey{Name: serviceName, Namespace: namespace}, service); err != nil {
-		log.Error(err, "failed to get service for default port resolution", "service", serviceName, "namespace", namespace)
-		return []int32{}, err
+	targetPort = resolveTargetPort(service, endpointSlices, wantedPort)
+	if targetPort == 0 {
+		return []int32{}, errMissingWantedPort
 	}
 
-	defaultPort := int32(80)
-	if https {
-		defaultPort = int32(443)
-	}
-
-	for _, sp := range service.Spec.Ports {
-		if sp.Port == defaultPort {
-			targetPort := resolveServicePortToTarget(endpointSlices.Items, sp)
-			if targetPort == 0 {
-				return []int32{}, errMissingDefaultPort
-			}
-			return []int32{targetPort}, nil
-		}
-	}
-
-	return []int32{}, errMissingDefaultPort
+	return []int32{targetPort}, nil
 }
 
 func parseServiceEndpoint(endpoint string) (string, string, int32, bool) {
@@ -144,7 +113,7 @@ func parseServiceEndpoint(endpoint string) (string, string, int32, bool) {
 
 	var port int32
 	if portStr != "" {
-		p, err := strconv.Atoi(portStr)
+		p, err := strconv.ParseUint(portStr, 10, 16)
 		if err != nil {
 			return "", "", 0, false
 		}
@@ -154,19 +123,24 @@ func parseServiceEndpoint(endpoint string) (string, string, int32, bool) {
 	return serviceName, namespace, port, https
 }
 
-func resolveServicePortToTarget(slices []discoveryv1.EndpointSlice, servicePort corev1.ServicePort) int32 {
-	for _, slice := range slices {
-		for _, p := range slice.Ports {
-			switch servicePort.TargetPort.Type {
-			case intstr.Int:
-				if p.Port != nil && *p.Port == servicePort.TargetPort.IntVal {
-					return *p.Port
-				}
-			case intstr.String:
-				if p.Name != nil && *p.Name == servicePort.TargetPort.StrVal {
-					return *p.Port
+func resolveTargetPort(service *corev1.Service, endpointSlices *discoveryv1.EndpointSliceList, endpointPort int32) int32 {
+	for _, svcPort := range service.Spec.Ports {
+		if svcPort.Port == endpointPort {
+			for _, slice := range endpointSlices.Items {
+				for _, p := range slice.Ports {
+					switch svcPort.TargetPort.Type {
+					case intstr.Int:
+						if p.Port != nil && *p.Port == svcPort.TargetPort.IntVal {
+							return *p.Port
+						}
+					case intstr.String:
+						if p.Name != nil && *p.Name == svcPort.TargetPort.StrVal {
+							return *p.Port
+						}
+					}
 				}
 			}
+			return 0
 		}
 	}
 	return 0
