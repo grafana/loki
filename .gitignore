@@ -21,6 +21,8 @@ clients/cmd/fluent-bit/out_grafana_loki.so
 clients/cmd/fluent-bit/out_grafana_loki.h
 cmd/migrate/migrate
 cmd/querytee/querytee
+tools/goldfish-mcp/goldfish-mcp
+/goldfish-mcp
 /loki
 /promtail
 /logcli
