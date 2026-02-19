@@ -1,4 +1,4 @@
-module github.com/grafana/loki/cmd/index
+module github.com/grafana/loki/cmd/dataobj-inspect
 
 go 1.25.5
 
@@ -6,7 +6,7 @@ require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.18.0
-	github.com/grafana/loki/v3 v3.6.4
+	github.com/grafana/loki/v3 v3.6.5
 	github.com/prometheus/prometheus v0.309.1
 )
 

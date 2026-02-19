@@ -140,22 +140,22 @@ func TestToStatsSummary(t *testing.T) {
 		require.Equal(t, int64(0), result.Querier.Store.Dataobj.PostFilterRows)
 	})
 
-	t.Run("computes bytes and lines from DataObjScan regions", func(t *testing.T) {
+	t.Run("computes bytes and lines from logs.Reader regions", func(t *testing.T) {
 		ctx, capture := NewCapture(context.Background(), nil)
 
 		// Create DataObjScan regions with observations using registry stats
-		_, region1 := StartRegion(ctx, "DataObjScan")
+		_, region1 := StartRegion(ctx, "logs.Reader.Read")
 		region1.Record(StatDatasetPrimaryRowBytes.Observe(1000))
 		region1.Record(StatDatasetSecondaryRowBytes.Observe(500))
 		region1.Record(StatDatasetPrimaryRowsRead.Observe(100))
-		region1.Record(StatPipelineRowsOut.Observe(80))
+		region1.Record(StatDatasetSecondaryRowsRead.Observe(80))
 		region1.End()
 
-		_, region2 := StartRegion(ctx, "DataObjScan")
+		_, region2 := StartRegion(ctx, "logs.Reader.Read")
 		region2.Record(StatDatasetPrimaryRowBytes.Observe(2000))
 		region2.Record(StatDatasetSecondaryRowBytes.Observe(1000))
 		region2.Record(StatDatasetPrimaryRowsRead.Observe(200))
-		region2.Record(StatPipelineRowsOut.Observe(150))
+		region2.Record(StatDatasetSecondaryRowsRead.Observe(150))
 		region2.End()
 
 		// Other region - should be ignored
@@ -185,7 +185,7 @@ func TestToStatsSummary(t *testing.T) {
 		ctx, capture := NewCapture(context.Background(), nil)
 
 		// Only record some statistics
-		_, region := StartRegion(ctx, "DataObjScan")
+		_, region := StartRegion(ctx, "logs.Reader.Read")
 		region.Record(StatDatasetPrimaryRowBytes.Observe(1000))
 		region.End()
 		capture.End()
@@ -198,26 +198,5 @@ func TestToStatsSummary(t *testing.T) {
 		require.Equal(t, int64(1000), result.Querier.Store.Dataobj.PrePredicateDecompressedBytes)
 		require.Equal(t, int64(0), result.Querier.Store.Dataobj.PostPredicateDecompressedBytes)
 		require.Equal(t, int64(0), result.Querier.Store.Dataobj.PostFilterRows)
-	})
-
-	t.Run("rolls up child region observations into DataObjScan", func(t *testing.T) {
-		ctx, capture := NewCapture(context.Background(), nil)
-
-		// Parent DataObjScan region
-		ctx, parent := StartRegion(ctx, "DataObjScan")
-		parent.Record(StatDatasetPrimaryRowBytes.Observe(500))
-
-		// Child region (should be rolled up into parent)
-		_, child := StartRegion(ctx, "child_operation")
-		child.Record(StatDatasetPrimaryRowBytes.Observe(300))
-		child.End()
-
-		parent.End()
-		capture.End()
-
-		result := capture.ToStatsSummary(time.Second, 0, 0)
-
-		// Child observations rolled up into DataObjScan: 500 + 300 = 800
-		require.Equal(t, int64(800), result.Querier.Store.Dataobj.PrePredicateDecompressedBytes)
 	})
 }

@@ -113,16 +113,9 @@ type AddrInfo struct {
 	LocalityWeight uint32
 }
 
-// SetAddrInfo returns a copy of addr in which the BalancerAttributes field is
+// SetAddrInfo returns a copy of endpoint in which the Attributes field is
 // updated with AddrInfo.
-func SetAddrInfo(addr resolver.Address, addrInfo AddrInfo) resolver.Address {
-	addr.BalancerAttributes = addr.BalancerAttributes.WithValue(attributeKey{}, addrInfo)
-	return addr
-}
-
-// SetAddrInfoInEndpoint returns a copy of endpoint in which the Attributes
-// field is updated with AddrInfo.
-func SetAddrInfoInEndpoint(endpoint resolver.Endpoint, addrInfo AddrInfo) resolver.Endpoint {
+func SetAddrInfo(endpoint resolver.Endpoint, addrInfo AddrInfo) resolver.Endpoint {
 	endpoint.Attributes = endpoint.Attributes.WithValue(attributeKey{}, addrInfo)
 	return endpoint
 }
@@ -131,10 +124,10 @@ func (a AddrInfo) String() string {
 	return fmt.Sprintf("Locality Weight: %d", a.LocalityWeight)
 }
 
-// getAddrInfo returns the AddrInfo stored in the BalancerAttributes field of
-// addr. Returns false if no AddrInfo found.
-func getAddrInfo(addr resolver.Address) (AddrInfo, bool) {
-	v := addr.BalancerAttributes.Value(attributeKey{})
+// getAddrInfo returns the AddrInfo stored in the Attributes field of
+// ep. Returns false if no AddrInfo found.
+func getAddrInfo(ep resolver.Endpoint) (AddrInfo, bool) {
+	v := ep.Attributes.Value(attributeKey{})
 	ai, ok := v.(AddrInfo)
 	return ai, ok
 }
@@ -166,15 +159,15 @@ func (b *wrrLocalityBalancer) UpdateClientConnState(s balancer.ClientConnState) 
 	}
 
 	weightedTargets := make(map[string]weightedtarget.Target)
-	for _, addr := range s.ResolverState.Addresses {
+	for _, ep := range s.ResolverState.Endpoints {
 		// This get of LocalityID could potentially return a zero value. This
 		// shouldn't happen though (this attribute that is set actually gets
 		// used to build localities in the first place), and thus don't error
 		// out, and just build a weighted target with undefined behavior.
-		locality := xdsinternal.LocalityString(xdsinternal.GetLocalityID(addr))
-		ai, ok := getAddrInfo(addr)
+		locality := xdsinternal.LocalityString(xdsinternal.LocalityIDFromEndpoint(ep))
+		ai, ok := getAddrInfo(ep)
 		if !ok {
-			return fmt.Errorf("xds_wrr_locality: missing locality weight information in address %q", addr)
+			return fmt.Errorf("xds_wrr_locality: missing locality weight information in endpoint %q", ep)
 		}
 		weightedTargets[locality] = weightedtarget.Target{Weight: ai.LocalityWeight, ChildPolicy: lbCfg.ChildPolicy}
 	}

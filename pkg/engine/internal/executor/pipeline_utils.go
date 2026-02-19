@@ -22,6 +22,9 @@ func NewBufferedPipeline(records ...arrow.RecordBatch) *BufferedPipeline {
 	}
 }
 
+// Open implements Pipeline.
+func (p *BufferedPipeline) Open(_ context.Context) error { return nil }
+
 // Read implements Pipeline.
 // It advances to the next record and returns EOF when all records have been read.
 func (p *BufferedPipeline) Read(_ context.Context) (arrow.RecordBatch, error) {

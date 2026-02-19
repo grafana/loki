@@ -719,6 +719,7 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 			})
 			require.NoError(t, err)
 			t.Cleanup(resp.Reader.Close)
+			require.NoError(t, resp.Reader.Open(ctx))
 
 			// Read all records from the reader
 			var totalRows int64

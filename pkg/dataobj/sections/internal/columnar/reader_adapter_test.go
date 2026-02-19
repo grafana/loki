@@ -30,11 +30,12 @@ func TestReaderAdapter_ReadPreservesUTF8Nulls(t *testing.T) {
 	require.NoError(t, err)
 
 	dset := dataset.FromMemory([]*dataset.MemColumn{col})
-	reader := NewReaderAdapter(dataset.ReaderOptions{
+	reader := NewReaderAdapter(dataset.RowReaderOptions{
 		Dataset: dset,
 		Columns: []dataset.Column{col},
 	})
 	t.Cleanup(func() { require.NoError(t, reader.Close()) })
+	require.NoError(t, reader.Open(context.Background()))
 
 	alloc := memory.NewAllocator(nil)
 	defer alloc.Reclaim()

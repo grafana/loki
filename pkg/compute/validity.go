@@ -2,6 +2,7 @@ package compute
 
 import (
 	"fmt"
+	"iter"
 
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
 
@@ -89,12 +90,19 @@ func computeValidityAA(alloc *memory.Allocator, left, right memory.Bitmap) (memo
 		validity := memory.NewBitmap(alloc, outLen)
 		validity.Resize(outLen)
 
+		var (
+			leftBytes, leftOffset   = left.Bytes()
+			rightBytes, rightOffset = right.Bytes()
+			outBytes, outOffset     = validity.Bytes()
+		)
+
 		bitutil.BitmapAnd(
-			left.Bytes(),
-			right.Bytes(),
-			0 /* left offset */, 0, /* right offset */
-			validity.Bytes(),
-			0,             /* out offset */
+			leftBytes,
+			rightBytes,
+			int64(leftOffset),
+			int64(rightOffset),
+			outBytes,
+			int64(outOffset),
 			int64(outLen), /* num values */
 		)
 
@@ -117,4 +125,19 @@ func computeValidityAA(alloc *memory.Allocator, left, right memory.Bitmap) (memo
 	}
 
 	panic("unreachable")
+}
+
+// iterTrue returns an iterator that provides indices of the set bits in provided [bitmap].
+// If all bits are set (bitmap.Len() == 0) it fallbacks to a simple iterator over
+// all the elements.
+func iterTrue(bitmap memory.Bitmap, bitmapLen int) iter.Seq[int] {
+	if bitmap.Len() == 0 {
+		return func(yield func(int) bool) {
+			for i := range bitmapLen {
+				yield(i)
+			}
+		}
+	}
+
+	return bitmap.IterValues(true)
 }

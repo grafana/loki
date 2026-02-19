@@ -134,7 +134,7 @@ func newRowReaderDownloader(dset Dataset) *rowReaderDownloader {
 // before the downloader is used.
 //
 // AddColumn must be called matching the order of columns in
-// [ReaderOptions.Columns].
+// [RowReaderOptions.Columns].
 func (dl *rowReaderDownloader) AddColumn(col Column, primary bool) {
 	wrappedCol := newReaderColumn(dl, col, primary)
 

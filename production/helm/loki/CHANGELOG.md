@@ -15,6 +15,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Ignore dots in the image repository after first path segment when detecting image registry
 
+## 6.53.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.5
+
 ## 6.52.0
 
 - [BREAKING] DEPRECATION NOTICE - The simple scalable mode (SSD) is deprecated and will be removed in a future version of the Loki Helm charts.  

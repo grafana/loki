@@ -559,19 +559,46 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 		maxZones     = r.cfg.ReplicationFactor
 		maxInstances = len(r.ringDesc.Ingesters)
 
-		// We use a slice instead of a map because it's faster to search within a
-		// slice than lookup a map for a very low number of items, we only expect
-		// to have low single-digit number of hosts.
-		distinctHosts = bufHosts[:0]
+		// distinctHosts tracks which instances we've already examined.
+		distinctHosts = newStringSet(bufHosts)
 
-		examinedHostsPerZone = make(map[string]int)
-		foundHostsPerZone    = make(map[string]int)
+		// Fixed-size buffers for zone tracking slices. Using arrays with a fixed size allows
+		// the compiler to allocate them on the stack, avoiding heap allocations. The size of 5
+		// is chosen as a reasonable upper bound for zones (most deployments use 3).
+		totalHostsPerZoneBuf    [5]int
+		examinedHostsPerZoneBuf [5]int
+		foundHostsPerZoneBuf    [5]int
+
+		// These slices are indexed by the zone index, that is the index of a zone in r.ringZones.
+		// We use this technique – instead of a map – to optimize the lookup of the number of hosts by zones.
+		totalHostsPerZone    []int
+		examinedHostsPerZone []int
+		foundHostsPerZone    []int
 		targetHostsPerZone   = max(1, replicationFactor/maxZones)
 	)
 
-	for i := start; len(distinctHosts) < min(maxInstances, n) && iterations < len(r.ringTokens); i++ {
+	if r.cfg.ZoneAwarenessEnabled {
+		// Initialize the per-zone hosts counters only if zone-awareness is enabled.
+		// If zone-awareness is disabled and these slices get used by mistake, the code will intentionally panic.
+		if numZones := len(r.ringZones); numZones <= len(totalHostsPerZoneBuf) {
+			totalHostsPerZone = totalHostsPerZoneBuf[:numZones]
+			examinedHostsPerZone = examinedHostsPerZoneBuf[:numZones]
+			foundHostsPerZone = foundHostsPerZoneBuf[:numZones]
+		} else {
+			totalHostsPerZone = make([]int, numZones)
+			examinedHostsPerZone = make([]int, numZones)
+			foundHostsPerZone = make([]int, numZones)
+		}
+
+		// Pre-populate the total number of hosts per zone.
+		for zoneIndex, zone := range r.ringZones {
+			totalHostsPerZone[zoneIndex] = r.instancesCountPerZone[zone]
+		}
+	}
+
+	for i := start; distinctHosts.len() < min(maxInstances, n) && iterations < len(r.ringTokens); i++ {
 		// If we have the target number of instances or have looked at all instances in each zone, stop looking
-		if r.cfg.ZoneAwarenessEnabled && r.canStopLooking(foundHostsPerZone, examinedHostsPerZone, targetHostsPerZone) {
+		if r.cfg.ZoneAwarenessEnabled && r.canStopLooking(totalHostsPerZone, foundHostsPerZone, examinedHostsPerZone, targetHostsPerZone) {
 			break
 		}
 
@@ -587,23 +614,34 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 		}
 
 		// We want n *distinct* instances && distinct zones.
-		if slices.Contains(distinctHosts, info.InstanceID) {
+		if distinctHosts.contains(info.InstanceID) {
 			continue
+		}
+
+		// Look for the zone index. We only need it if zone-awareness is enabled. If zone-awareness
+		// is disabled, we intentionally use a negative value so that if the index is used unintentionally,
+		// the code will panic.
+		zoneIndex := -1
+		if r.cfg.ZoneAwarenessEnabled {
+			zoneIndex = slices.Index(r.ringZones, info.Zone)
+			if zoneIndex == -1 {
+				return nil, errors.Wrapf(ErrInconsistentTokensInfo, "the zone %q is not present in the ring zones %v", info.Zone, r.ringZones)
+			}
 		}
 
 		if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
 			// If we already have the required number of instances for this zone, skip.
-			if foundHostsPerZone[info.Zone] >= targetHostsPerZone {
+			if foundHostsPerZone[zoneIndex] >= targetHostsPerZone {
 				continue
 			}
 
 			// Keep track of the number of hosts we have examined in each zone. Once we've looked
 			// at every host in a zone, we can stop looking at each token: we won't find any more
 			// hosts to add to the replication set.
-			examinedHostsPerZone[info.Zone]++
+			examinedHostsPerZone[zoneIndex]++
 		}
 
-		distinctHosts = append(distinctHosts, info.InstanceID)
+		distinctHosts.add(info.InstanceID)
 		instance := r.ringDesc.Ingesters[info.InstanceID]
 
 		// Check whether the replica set should be extended given we're including
@@ -613,7 +651,7 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 		} else if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
 			// We should only increment the count for this zone if we are not going to
 			// extend, as we want to extend the instance in the same AZ.
-			foundHostsPerZone[info.Zone]++
+			foundHostsPerZone[zoneIndex]++
 		}
 
 		include, keepGoing := true, true
@@ -633,9 +671,12 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 // canStopLooking returns true if we have enough hosts for the replication factor
 // or if we have looked at all hosts, for all zones. This method assumes that the
 // lock for ring state is held.
-func (r *Ring) canStopLooking(foundPerZone map[string]int, examinedPerZone map[string]int, targetPerZone int) bool {
-	for zone, total := range r.instancesCountPerZone {
-		zoneOk := foundPerZone[zone] >= targetPerZone || examinedPerZone[zone] >= total
+//
+// All input slices must have consistent zone indexes. It means that the index 0
+// of each slice must correspond to the same zone, and the same for all other indexes.
+func (r *Ring) canStopLooking(totalHostsPerZone []int, foundHostsPerZone []int, examinedHostsPerZone []int, targetPerZone int) bool {
+	for zoneIndex, total := range totalHostsPerZone {
+		zoneOk := foundHostsPerZone[zoneIndex] >= targetPerZone || examinedHostsPerZone[zoneIndex] >= total
 		if !zoneOk {
 			return false
 		}

@@ -1,3 +1,7 @@
+# v1.55.0 (2026-02-03)
+
+* **Feature**: This change supports the creation of multi-account global tables. It adds two new arguments to CreateTable, GlobalTableSourceArn and GlobalTableSettingsReplicationMode. DescribeTable is also updated to include information about GlobalTableSettingsReplicationMode.
+
 # v1.54.0 (2026-01-22)
 
 * **Feature**: Adds additional waiters to Amazon DynamoDB.
