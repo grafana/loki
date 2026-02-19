@@ -35,7 +35,7 @@ func buildReaderTestColumn(t testing.TB, name string, values []string) *MemColum
 	t.Helper()
 
 	builder, err := NewColumnBuilder("", BuilderOptions{
-		PageSizeHint: 128,
+		PageSizeHint: 2 * 1024 * 1024,
 		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: name},
 		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
@@ -249,7 +249,7 @@ func TestReader_ReadEOFOnEmpty(t *testing.T) {
 }
 
 func BenchmarkReader_Read(b *testing.B) {
-	totalValues := 16 * 1024
+	totalValues := 64 * 1024
 	values := make([]string, totalValues)
 	for i := range values {
 		values[i] = fmt.Sprintf("value %d [%s]", i, strings.Repeat("A", 100))
@@ -273,12 +273,13 @@ func BenchmarkReader_Read(b *testing.B) {
 		})
 		r.Open(context.Background())
 		for {
-			_, err := r.Read(context.Background(), readerAlloc, 256)
+			_, err := r.Read(context.Background(), readerAlloc, 8192)
 			if err == io.EOF {
 				break
 			}
 			readerAlloc.Reclaim()
 		}
+		alloc.Reclaim()
 	}
 	b.SetBytes(int64(col.Desc.UncompressedSize))
 	b.ReportMetric(float64(totalValues*b.N)/b.Elapsed().Seconds(), "values/s")
