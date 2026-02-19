@@ -1,6 +1,7 @@
 package gcplog
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,6 +15,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
+
+// errEntryDropped is returned when a log entry is dropped by relabeling rules.
+var errEntryDropped = errors.New("entry dropped by relabeling")
 
 // GCPLogEntry that will be written to the pubsub topic.
 // According to the following spec.
@@ -72,7 +76,7 @@ func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.L
 
 	if len(relabelConfig) > 0 {
 		if keep := relabel.ProcessBuilder(lbs, relabelConfig...); !keep {
-			return api.Entry{}, nil
+			return api.Entry{}, errEntryDropped
 		}
 	}
 	processed := lbs.Labels()
