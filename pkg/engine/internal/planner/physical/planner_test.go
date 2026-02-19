@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"fmt"
 	"regexp"
 	"testing"
 	"time"
@@ -537,6 +538,71 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 	physicalPlan, err = planner.Optimize(physicalPlan)
 	require.NoError(t, err)
 	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+}
+
+// TestPlanner_PhysicalPlanAfterMetastoreResolution builds the physical plan for
+// count_over_time({job="api"} |= "level=error" [1h]) using a catalog that
+// simulates the result of the metastore workflow (section descriptors). This
+// shows what the main query's physical plan looks like after section resolution.
+func TestPlanner_PhysicalPlanAfterMetastoreResolution(t *testing.T) {
+	start := time.Unix(0, 0)
+	end := time.Unix(7200, 0) // 2h
+	rangeInterval := time.Hour
+
+	lineFilter := &logical.BinOp{
+		Left:  logical.NewColumnRef(types.ColumnNameBuiltinMessage, types.ColumnTypeBuiltin),
+		Right: logical.NewLiteral("level=error"),
+		Op:    types.BinaryOpMatchSubstr,
+	}
+	tsGte := &logical.BinOp{
+		Left:  logical.NewColumnRef(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+		Right: logical.NewLiteral(types.Timestamp(start.Add(-rangeInterval).UTC().UnixNano())),
+		Op:    types.BinaryOpGte,
+	}
+	tsLt := &logical.BinOp{
+		Left:  logical.NewColumnRef(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+		Right: logical.NewLiteral(types.Timestamp(end.UTC().UnixNano())),
+		Op:    types.BinaryOpLt,
+	}
+
+	b := logical.NewBuilder(&logical.MakeTable{
+		Selector: &logical.BinOp{
+			Left:  logical.NewColumnRef("job", types.ColumnTypeLabel),
+			Right: logical.NewLiteral("api"),
+			Op:    types.BinaryOpEq,
+		},
+		Predicates: []logical.Value{lineFilter},
+		Shard:      logical.NewShard(0, 1),
+	}).Select(tsGte).Select(tsLt).Select(lineFilter).RangeAggregation(
+		logical.Grouping{Without: true},
+		types.RangeAggregationTypeCount,
+		start, end, 15*time.Second, rangeInterval,
+	).Compat(true)
+
+	logicalPlan, err := b.ToPlan()
+	require.NoError(t, err)
+
+	// Catalog filled with section descriptors as if returned by the metastore workflow
+	// (e.g. two index scans produced section list → filtered to two objects, 2 sections each).
+	catalog := &catalog{
+		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+			{SectionKey: metastore.SectionKey{ObjectPath: "data/01HQXYZ", SectionIdx: 0}, StreamIDs: []int64{100, 101}, Start: start, End: end},
+			{SectionKey: metastore.SectionKey{ObjectPath: "data/01HQXYZ", SectionIdx: 1}, StreamIDs: []int64{100, 101}, Start: start, End: end},
+			{SectionKey: metastore.SectionKey{ObjectPath: "data/01HQXZ0", SectionIdx: 0}, StreamIDs: []int64{102, 103}, Start: start, End: end},
+			{SectionKey: metastore.SectionKey{ObjectPath: "data/01HQXZ0", SectionIdx: 1}, StreamIDs: []int64{102, 103}, Start: start, End: end},
+		},
+	}
+	planner := NewPlanner(NewContext(start, end).WithRangeInterval(rangeInterval), catalog)
+
+	physicalPlan, err := planner.Build(logicalPlan)
+	require.NoError(t, err)
+	fmt.Println("Physical plan for count_over_time({job=\"api\"} |= \"level=error\" [1h]) after metastore resolution:")
+	fmt.Println(PrintAsTree(physicalPlan))
+
+	physicalPlan, err = planner.Optimize(physicalPlan)
+	require.NoError(t, err)
+	fmt.Println("After optimization:")
+	fmt.Println(PrintAsTree(physicalPlan))
 }
 
 func TestPlanner_Convert_Rate(t *testing.T) {

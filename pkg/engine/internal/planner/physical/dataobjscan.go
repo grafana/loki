@@ -63,3 +63,11 @@ func (s *DataObjScan) Clone() Node {
 func (*DataObjScan) Type() NodeType {
 	return NodeTypeDataObjScan
 }
+
+// TaskCacheID returns a content-based identifier for this scan task. The same
+// Location, Section, StreamIDs, Predicates, Projections, and MaxTimeRange
+// produce the same ID across plan instances, enabling statistics on repeated
+// operations.
+func (s *DataObjScan) TaskCacheID() string {
+	return hashDataObjScan(s)
+}

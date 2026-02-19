@@ -82,6 +82,24 @@ func (q *query) Step() time.Duration {
 
 var _ logql.Params = (*query)(nil)
 
+// TestCountOverTimeLogicalPlan builds and prints the logical plan for
+// count_over_time({job="api"} |= "level=error" [1h]) for documentation/debugging.
+func TestCountOverTimeLogicalPlan(t *testing.T) {
+	q := &query{
+		statement: `count_over_time({job="api"} |= "level=error" [1h])`,
+		start:     0,
+		end:       7200, // 2h in seconds
+		step:      15 * time.Second,
+		interval:  time.Hour, // [1h] range
+		direction: logproto.BACKWARD,
+		limit:     1000,
+	}
+	plan, err := BuildPlan(t.Context(), q)
+	require.NoError(t, err)
+	fmt.Println("Logical plan for: count_over_time({job=\"api\"} |= \"level=error\" [1h])")
+	fmt.Println(plan.String())
+}
+
 func TestConvertAST_Success(t *testing.T) {
 	q := &query{
 		statement: `{cluster="prod", namespace=~"loki-.*"} | foo="bar" or bar="baz" |= "metric.go" |= "foo" or "bar" !~ "(a|b|c)" `,

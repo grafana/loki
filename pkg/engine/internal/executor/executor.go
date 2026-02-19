@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -243,6 +244,18 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	}
 	span.AddEvent("constructed predicate")
 
+	logger := log.With(
+		c.logger,
+		"location", string(node.Location),
+		"section", node.Section,
+		"task_cache_id", node.TaskCacheID(),
+		"start_ts", node.MaxTimeRange.Start.Format(time.RFC3339Nano),
+		"end_ts", node.MaxTimeRange.End.Format(time.RFC3339Nano),
+		"num_predicates", len(node.Predicates),
+		"num_projections", len(node.Projections),
+		"num_stream_ids", len(streamsToMatch),
+	)
+
 	var pipeline Pipeline = newDataobjScanPipeline(dataobjScanOptions{
 		// TODO(rfratto): passing the streams section means that each DataObjScan
 		// will read the entire streams section (for IDs being loaded), which is
@@ -259,8 +272,9 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		Projections: node.Projections,
 
 		BatchSize: c.batchSize,
-	}, log.With(c.logger, "location", string(node.Location), "section", node.Section))
+	}, logger)
 
+	level.Info(logger).Log("msg", "dataobjscan pipeline ready")
 	return pipeline
 }
 
@@ -306,6 +320,16 @@ func (c *Context) filterStreamsByLabels(ctx context.Context, streamIDs []int64, 
 }
 
 func (c *Context) executePointersScan(ctx context.Context, node *physical.PointersScan) Pipeline {
+	logger := log.With(
+		c.logger,
+		"location", string(node.Location),
+		"selector", node.Selector.String(),
+		"start_ts", node.Start.Format(time.RFC3339Nano),
+		"end_ts", node.End.Format(time.RFC3339Nano),
+		"num_predicates", len(node.Predicates),
+		"task_cache_id", node.TaskCacheID(),
+	)
+
 	if c.metastore == nil {
 		return errorPipeline(ctx, errors.New("no metastore configured"))
 	}
@@ -314,6 +338,8 @@ func (c *Context) executePointersScan(ctx context.Context, node *physical.Pointe
 	if err != nil {
 		return errorPipeline(ctx, fmt.Errorf("convert catalog request to metastore request: %w", err))
 	}
+
+	level.Info(logger).Log("msg", "pointersscan pipeline ready")
 
 	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
 		pipeline, err := newScanPointersPipeline(ctx, scanPointersOptions{
@@ -524,12 +550,19 @@ func nodeAttributes(n physical.Node) []attribute.KeyValue {
 			attribute.Int("num_stream_ids", len(n.StreamIDs)),
 			attribute.Int("num_predicates", len(n.Predicates)),
 			attribute.Int("num_projections", len(n.Projections)),
+			attribute.String("start_ts", n.MaxTimeRange.Start.Format(time.RFC3339Nano)),
+			attribute.String("end_ts", n.MaxTimeRange.End.Format(time.RFC3339Nano)),
+			attribute.String("task_cache_id", n.TaskCacheID()),
 		)
 
 	case *physical.PointersScan:
 		attrs = append(attrs,
 			attribute.String("location", string(n.Location)),
+			attribute.String("selector", n.Selector.String()),
 			attribute.Int("num_predicates", len(n.Predicates)),
+			attribute.String("start_ts", n.Start.Format(time.RFC3339Nano)),
+			attribute.String("end_ts", n.End.Format(time.RFC3339Nano)),
+			attribute.String("task_cache_id", n.TaskCacheID()),
 		)
 
 	case *physical.TopK:

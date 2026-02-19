@@ -2,6 +2,7 @@ package physical
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 type fakeMetastoreIndexes struct {
@@ -65,4 +67,38 @@ func TestMetastorePlanner_Plan_UsesMergeRootAndPointersTargets(t *testing.T) {
 		require.Equal(t, start, target.Pointers.Start)
 		require.Equal(t, end, target.Pointers.End)
 	}
+}
+
+// TestMetastorePlanner_Plan_Example prints the physical plan created for the metastore
+// when resolving sections (e.g. for count_over_time({job="api"} |= "level=error" [1h])).
+// This is the plan that gets run as a workflow to produce section descriptors.
+func TestMetastorePlanner_Plan_Example(t *testing.T) {
+	ms := fakeMetastoreIndexes{
+		indexPaths: []string{"index/01HQXYZ", "index/01HQXZ0"},
+	}
+	start := time.Unix(0, 0)
+	end := time.Unix(7200, 0) // 2h
+
+	// Selector: job="api" (stream matcher)
+	selector := &BinaryExpr{
+		Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "job", Type: types.ColumnTypeLabel}},
+		Right: NewLiteral("api"),
+		Op:    types.BinaryOpEq,
+	}
+	// Predicate: |= "level=error" (line filter)
+	predicates := []Expression{
+		&BinaryExpr{
+			Left:  &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinMessage, Type: types.ColumnTypeBuiltin}},
+			Right: NewLiteral("level=error"),
+			Op:    types.BinaryOpMatchSubstr,
+		},
+	}
+
+	p := NewMetastorePlanner(ms)
+	plan, err := p.Plan(context.Background(), selector, predicates, start, end)
+	require.NoError(t, err)
+
+	fmt.Println("Physical plan for metastore (section resolution):")
+	fmt.Println("Selector: job=\"api\", Predicates: |= \"level=error\", Start:", start.Format(time.RFC3339), "End:", end.Format(time.RFC3339))
+	fmt.Println(PrintAsTree(plan))
 }

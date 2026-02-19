@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -323,6 +324,77 @@ func Test_planWorkflow(t *testing.T) {
 		actualOutput := Sprint(&Workflow{graph: graph})
 		require.Equal(t, strings.TrimSpace(expectOuptut), strings.TrimSpace(actualOutput))
 	})
+}
+
+// Test_planWorkflow_CountOverTimeTasks builds the physical plan for
+// count_over_time({job="api"} |= "level=error" [1h]) after metastore resolution
+// (RangeAggregation -> Parallelize -> Compat -> ScanSet with 4 DataObjScan targets)
+// and prints the tasks that would be created. ScanSet.Predicates are the
+// pushed-down filters (time range + line filter); Shards() merges them onto
+// each task's DataObjScan. Run with -v to see output.
+func Test_planWorkflow_CountOverTimeTasks(t *testing.T) {
+	start := time.Unix(0, 0).UTC()
+	end := time.Unix(7200, 0).UTC() // 2h
+	rangeInterval := time.Hour
+
+	// Predicates pushed down to ScanSet (same as optimized physical plan):
+	// time >= start-1h, time < end, message contains "level=error"
+	scanSetPredicates := []physical.Expression{
+		&physical.BinaryExpr{
+			Left:  &physical.ColumnExpr{Ref: semconv.ColumnIdentTimestamp.ColumnRef()},
+			Right: physical.NewLiteral(types.Timestamp(start.Add(-rangeInterval).UnixNano())),
+			Op:    types.BinaryOpGte,
+		},
+		&physical.BinaryExpr{
+			Left:  &physical.ColumnExpr{Ref: semconv.ColumnIdentTimestamp.ColumnRef()},
+			Right: physical.NewLiteral(types.Timestamp(end.UnixNano())),
+			Op:    types.BinaryOpLt,
+		},
+		&physical.BinaryExpr{
+			Left:  &physical.ColumnExpr{Ref: semconv.ColumnIdentMessage.ColumnRef()},
+			Right: physical.NewLiteral("level=error"),
+			Op:    types.BinaryOpMatchSubstr,
+		},
+	}
+
+	var physicalGraph dag.Graph[physical.Node]
+
+	rangeAgg := physicalGraph.Add(&physical.RangeAggregation{
+		Operation: types.RangeAggregationTypeCount,
+		Start:     start,
+		End:       end,
+		Step:      15 * time.Second,
+		Range:     time.Hour,
+	})
+	parallelize := physicalGraph.Add(&physical.Parallelize{})
+	compat := physicalGraph.Add(&physical.ColumnCompat{
+		NodeID:      ulid.Make(),
+		Source:      types.ColumnTypeMetadata,
+		Destination: types.ColumnTypeMetadata,
+		Collisions:  []types.ColumnType{types.ColumnTypeLabel},
+	})
+	scanSet := physicalGraph.Add(&physical.ScanSet{
+		Predicates: scanSetPredicates,
+		Targets: []*physical.ScanTarget{
+			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{NodeID: ulid.Make(), Location: "data/01HQXYZ", StreamIDs: []int64{100, 101}, Section: 0, MaxTimeRange: physical.TimeRange{Start: start, End: end}}},
+			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{NodeID: ulid.Make(), Location: "data/01HQXYZ", StreamIDs: []int64{100, 101}, Section: 1, MaxTimeRange: physical.TimeRange{Start: start, End: end}}},
+			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{NodeID: ulid.Make(), Location: "data/01HQXZ0", StreamIDs: []int64{102, 103}, Section: 0, MaxTimeRange: physical.TimeRange{Start: start, End: end}}},
+			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{NodeID: ulid.Make(), Location: "data/01HQXZ0", StreamIDs: []int64{102, 103}, Section: 1, MaxTimeRange: physical.TimeRange{Start: start, End: end}}},
+		},
+	})
+
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: parallelize})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: compat})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: compat, Child: scanSet})
+
+	physicalPlan := physical.FromGraph(physicalGraph)
+
+	graph, err := planWorkflow("tenant", physicalPlan)
+	require.NoError(t, err)
+
+	fmt.Println("Tasks for count_over_time({job=\"api\"} |= \"level=error\" [1h]) after metastore resolution:")
+	fmt.Println(Sprint(&Workflow{graph: graph}))
+	require.Equal(t, 5, graph.Len(), "expected 1 root task (RangeAggregation) + 4 scan tasks")
 }
 
 // requireUniqueStreams asserts that for each stream found in g, that stream has
