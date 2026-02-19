@@ -67,7 +67,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(
 		&cfg.AcceptedStreamsCacheSize,
 		"ingest-limits-frontend.accepted-streams-cache-size",
-		10000,
+		1000000,
 		"The maximum number of streams that can be stored in the cache without false positives.",
 	)
 }

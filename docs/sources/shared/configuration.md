@@ -1888,7 +1888,7 @@ ingest_limits_frontend:
   # The maximum number of streams that can be stored in the cache without false
   # positives.
   # CLI flag: -ingest-limits-frontend.accepted-streams-cache-size
-  [accepted_streams_cache_size: <int> | default = 10000]
+  [accepted_streams_cache_size: <int> | default = 1000000]
 
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
