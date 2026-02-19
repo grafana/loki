@@ -1865,17 +1865,30 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.num-partitions
   [num_partitions: <int> | default = 64]
 
-  # The TTL for the assigned partitions cache. 0 disables the cache.
+  # Enable the assigned partitions cache.
+  # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-enabled
+  [assigned_partitions_cache_enabled: <boolean> | default = true]
+
+  # The TTL for the assigned partitions cache.
   # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-ttl
   [assigned_partitions_cache_ttl: <duration> | default = 1m]
 
-  # The TTL for the cache. 0 disables the cache.
-  # CLI flag: -ingest-limits-frontend.cache-ttl
-  [cache_ttl: <duration> | default = 1m]
+  # Enable the accepted streams cache.
+  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-enabled
+  [accepted_streams_cache_enabled: <boolean> | default = true]
 
-  # The jitter to add to the cache.
-  # CLI flag: -ingest-limits-frontend.cache-ttl-jitter
-  [cache_ttl_jitter: <duration> | default = 15s]
+  # The TTL for the accepted streams cache.
+  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-ttl
+  [accepted_streams_cache_ttl: <duration> | default = 1m]
+
+  # The jitter to add to the accepted streams cache.
+  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-ttl-jitter
+  [accepted_streams_cache_ttl_jitter: <duration> | default = 15s]
+
+  # The maximum number of streams that can be stored in the cache without false
+  # positives.
+  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-size
+  [accepted_streams_cache_size: <int> | default = 1000000]
 
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
