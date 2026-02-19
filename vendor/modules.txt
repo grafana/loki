@@ -60,7 +60,7 @@ cloud.google.com/go/longrunning/autogen/longrunningpb
 cloud.google.com/go/monitoring/apiv3/v2
 cloud.google.com/go/monitoring/apiv3/v2/monitoringpb
 cloud.google.com/go/monitoring/internal
-# cloud.google.com/go/pubsub/v2 v2.3.0
+# cloud.google.com/go/pubsub/v2 v2.4.0
 ## explicit; go 1.24.0
 cloud.google.com/go/pubsub/v2
 cloud.google.com/go/pubsub/v2/apiv1
