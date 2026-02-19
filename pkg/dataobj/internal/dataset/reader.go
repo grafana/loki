@@ -71,7 +71,7 @@ func (r *Reader) Reset(opts ReaderOptions) {
 }
 
 // Open initializes the Reader so it is ready to be used. Open must be called before Read.
-func (r *Reader) Open(ctx context.Context) error {
+func (r *Reader) Open(_ context.Context) error {
 	if r.ready {
 		return nil
 	}
@@ -124,7 +124,7 @@ func (r *Reader) Read(ctx context.Context, alloc *memory.Allocator, count int) (
 		// Drain the pending buffer to the output until it's empty.
 		// We read pending until it is completely empty, which may result in a small read at the end of the batch.
 		output := r.pending.Slice(int(r.row-r.pendingRow), int(r.row-r.pendingRow+int64(readCount)))
-		r.row += int64(output.NumRows())
+		r.row += output.NumRows()
 		return output, nil
 	}
 
@@ -133,7 +133,7 @@ func (r *Reader) Read(ctx context.Context, alloc *memory.Allocator, count int) (
 	r.pendingAllocator.Reclaim()
 
 	// We also create a temporary allocator for this Read which we can use to allocate any intermediate arrays.
-	tempAlloc := memory.NewAllocator(r.pendingAllocator)
+	tempAlloc := memory.NewAllocator(alloc)
 	defer tempAlloc.Free()
 
 	// Check the first column to see how many rows are remaining. They should all be the same so this is OK.
@@ -173,9 +173,9 @@ func (r *Reader) Read(ctx context.Context, alloc *memory.Allocator, count int) (
 	r.pending = columnar.NewRecordBatch(r.schema, int64(arrs.Get(0).Len()), arrs.Data())
 
 	readCount := min(arrs.Get(0).Len(), count)
-	output := r.pending.Slice(0, int(readCount))
+	output := r.pending.Slice(0, readCount)
 
-	r.row += int64(output.NumRows())
+	r.row += output.NumRows()
 	return output, nil
 }
 

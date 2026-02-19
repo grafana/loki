@@ -271,7 +271,7 @@ func BenchmarkReader_Read(b *testing.B) {
 			BatchSize: totalValues / 2,
 			Allocator: alloc,
 		})
-		r.Open(context.Background())
+		_ = r.Open(context.Background())
 		for {
 			_, err := r.Read(context.Background(), readerAlloc, 8192)
 			if err == io.EOF {
