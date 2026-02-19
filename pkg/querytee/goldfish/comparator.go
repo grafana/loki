@@ -6,11 +6,11 @@ import (
 
 	logger "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-
 	"github.com/grafana/loki/v3/pkg/goldfish"
-	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 )
+
+const mismatchCauseMissingResponse = "missing_response"
 
 // CompareResponses compares performance statistics and hashes from QuerySample
 func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *ResponseData, performanceTolerance float64, respComparator comparator.ResponsesComparator, logger logger.Logger) goldfish.ComparisonResult {
@@ -69,15 +69,19 @@ func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *Respon
 					"msg", "unable to perform tolerance comparison due to missing responses",
 					"correlation_id", sample.CorrelationID,
 				)
-			} else if rt := cellAResp.ResultType; rt != loghttp.ResultTypeStream { // skip stream result.
+				result.MismatchCause = mismatchCauseMissingResponse
+			} else {
+				// Compare the query responses to try to detect the cause of the mismatch.
+				// While comparing sample query responses, the comparator allows drifts in floating-point values for samples up to the configured tolerance.
+				// Sample values with drift upto the allowed tolerance are treated as a match.
 				summary, err := respComparator.Compare(cellAResp.Body, cellBResp.Body, sample.SampledAt)
-				if err == nil {
-					result.MatchWithinTolerance = true
-				} else {
+				if err != nil {
 					if summary != nil && summary.MismatchCause != "" {
 						result.MismatchCause = summary.MismatchCause
 					}
-					level.Error(logger).Log("msg", "response comparison of samples query failed", "err", err)
+					level.Error(logger).Log("msg", "response comparison failed", "err", err)
+				} else {
+					result.MatchWithinTolerance = true
 				}
 			}
 		}
