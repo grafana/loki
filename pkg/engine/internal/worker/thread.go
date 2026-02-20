@@ -59,6 +59,7 @@ func (s threadState) String() string {
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
 	BatchSize      int64
+	PrefetchBytes  int64
 	Bucket         objstore.Bucket
 	Metastore      metastore.Metastore
 	Logger         log.Logger
@@ -126,6 +127,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 
 	cfg := executor.Config{
 		BatchSize:      t.BatchSize,
+		PrefetchBytes:  t.PrefetchBytes,
 		Bucket:         bucket.NewXCapBucket(t.Bucket),
 		Metastore:      t.Metastore,
 		StreamFilterer: t.StreamFilterer,

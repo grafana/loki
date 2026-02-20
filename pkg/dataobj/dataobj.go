@@ -96,10 +96,10 @@ type Object struct {
 // FromBucket opens an Object from the given storage bucket and path.
 // FromBucket returns an error if the metadata of the Object cannot be read or
 // if the provided ctx times out.
-func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string) (*Object, error) {
+func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, prefetchBytes int64) (*Object, error) {
 	rr := &bucketRangeReader{bucket: bucket, path: path}
 
-	dec := &decoder{rr: rr}
+	dec := &decoder{rr: rr, prefetchBytes: prefetchBytes}
 	obj := &Object{rr: rr, dec: dec}
 	if err := obj.init(ctx); err != nil {
 		return nil, err

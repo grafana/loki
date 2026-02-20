@@ -32,13 +32,15 @@ type scanPointersOptions struct {
 	metastore metastore.Metastore
 	req       metastore.SectionsRequest
 
-	location string
+	location      string
+	prefetchBytes int64
 }
 
 func newScanPointersPipeline(ctx context.Context, opts scanPointersOptions) (*metastorePipeline, error) {
 	resp, err := opts.metastore.IndexSectionsReader(ctx, metastore.IndexSectionsReaderRequest{
 		IndexPath:       opts.location,
 		SectionsRequest: opts.req,
+		PrefetchBytes:   opts.prefetchBytes,
 	})
 	if err != nil {
 		return nil, translateEOF(err, true)

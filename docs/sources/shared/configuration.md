@@ -312,6 +312,11 @@ query_engine:
   # CLI flag: -query-engine.batch-size
   [batch_size: <int> | default = 100]
 
+  # Experimental: Number of bytes to prefetch when opening a data object for
+  # decoding metadata and overlapping section reads. Clamps to at least 16KiB.
+  # CLI flag: -query-engine.prefetch-bytes
+  [prefetch_bytes: <int> | default = 16KiB]
+
   # Experimental: The number of inputs that are prefetched simultaneously by any
   # Merge node. A value of 0 means that only the currently processed input is
   # prefetched, 1 means that only the next input is prefetched, and so on. A

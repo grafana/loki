@@ -67,6 +67,10 @@ type Config struct {
 	// read call of a task pipeline.
 	BatchSize int64
 
+	// PrefetchBytes controls the number of bytes prefetched when opening a
+	// data object in scan tasks.
+	PrefetchBytes int64
+
 	// NumThreads is the number of worker threads to spawn. The number of
 	// threads corresponds to the number of tasks that can be executed
 	// concurrently.
@@ -191,6 +195,7 @@ func (w *Worker) run(ctx context.Context) error {
 	for i := range w.numThreads {
 		t := &thread{
 			BatchSize:      w.config.BatchSize,
+			PrefetchBytes:  w.config.PrefetchBytes,
 			Logger:         log.With(w.logger, "thread", i),
 			Bucket:         w.config.Bucket,
 			Metastore:      w.config.Metastore,
