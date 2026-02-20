@@ -208,14 +208,12 @@ queries:
       unwrappable_fields:
         - ttl
   - description: HTTP status code distribution
-    query: sum by (status) (count_over_time(${SELECTOR} | json | unwrap status [${RANGE}]))
+    query: sum by (level) (count_over_time(${SELECTOR} | json [${RANGE}]))
     kind: metric
-    skip: true # empty results
     time_range:
       length: 24h
       step: 1m
     tags:
-      - unwrap
       - count_over_time
       - json
       - status-field
@@ -223,5 +221,5 @@ queries:
     notes: Count of requests by status code
     requires:
       log_format: json
-      unwrappable_fields:
-        - status
+      detected_fields:
+        - level

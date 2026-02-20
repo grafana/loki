@@ -32,9 +32,11 @@ import (
 )
 
 var (
-	slowTests  = flag.Bool("slow-tests", false, "run slow tests")
-	benchSuite = flag.String("bench-suite", "fast", "benchmark suite to run: fast, regression, or exhaustive")
-	rangeType  = flag.String("range-type", "range", "query range type: instant or range (only affects metric queries)")
+	slowTests      = flag.Bool("slow-tests", false, "run slow tests")
+	benchSuite     = flag.String("bench-suite", "fast", "benchmark suite to run: fast, regression, or exhaustive")
+	rangeType      = flag.String("range-type", "range", "query range type: instant or range (only affects metric queries)")
+	queryFilter    = flag.String("query-filter", "", "regex filter for queries by description, file:line, or file")
+	includeSkipped = flag.Bool("include-skipped", false, "include skipped queries in test execution")
 )
 
 const testTenant = "test-tenant"
@@ -79,6 +81,17 @@ func loadTestCases(tb testing.TB, config *GeneratorConfig) []TestCase {
 
 	queryDefs := registry.GetQueries(suites...)
 
+	// Filter out skipped queries unless -include-skipped is set
+	if !*includeSkipped {
+		filtered := queryDefs[:0]
+		for _, def := range queryDefs {
+			if !def.Skip {
+				filtered = append(filtered, def)
+			}
+		}
+		queryDefs = filtered
+	}
+
 	metadata, err := LoadMetadata(DefaultDataDir)
 	if err != nil {
 		tb.Fatalf("failed to load dataset metadata: %v", err)
@@ -94,6 +107,26 @@ func loadTestCases(tb testing.TB, config *GeneratorConfig) []TestCase {
 			tb.Fatalf("failed to expand query %q: %v", def.Description, err)
 		}
 		cases = append(cases, expanded...)
+	}
+
+	// Apply query filter if specified
+	if *queryFilter != "" {
+		filterRegex, err := regexp.Compile(*queryFilter)
+		if err != nil {
+			tb.Fatalf("invalid query-filter regex: %v", err)
+		}
+
+		filtered := cases[:0]
+		for _, tc := range cases {
+			// Check if the filter matches:
+			// 1. Test case description (from QueryDefinition.Description)
+			// 2. Test case source location (format: suite/file.yaml:line or suite/file.yaml)
+			if filterRegex.MatchString(tc.QueryDesc) || filterRegex.MatchString(tc.Source) {
+				filtered = append(filtered, tc)
+			}
+		}
+		cases = filtered
+		tb.Logf("Applied filter %q: %d test cases matched", *queryFilter, len(cases))
 	}
 
 	// Filter and adjust test cases based on range type

@@ -128,10 +128,6 @@ func (r *QueryRegistry) Load(suites ...Suite) error {
 			}
 
 			for _, query := range queries {
-				if query.Skip {
-					continue
-				}
-
 				r.queries[suite] = append(r.queries[suite], query)
 			}
 		}
@@ -326,6 +322,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 			Direction: logproto.FORWARD,
 			Step:      step,
 			Source:    def.Source,
+			QueryDesc: def.Description,
 		}
 		cases = append(cases, tc)
 	} else {
@@ -338,6 +335,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 				End:       end,
 				Direction: logproto.FORWARD,
 				Source:    def.Source,
+				QueryDesc: def.Description,
 			})
 		case DirectionBackward:
 			cases = append(cases, TestCase{
@@ -346,6 +344,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 				End:       end,
 				Direction: logproto.BACKWARD,
 				Source:    def.Source,
+				QueryDesc: def.Description,
 			})
 		case DirectionBoth:
 			cases = append(cases,
@@ -355,6 +354,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 					End:       end,
 					Direction: logproto.FORWARD,
 					Source:    def.Source,
+					QueryDesc: def.Description,
 				},
 				TestCase{
 					Query:     resolvedQuery,
@@ -362,6 +362,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 					End:       end,
 					Direction: logproto.BACKWARD,
 					Source:    def.Source,
+					QueryDesc: def.Description,
 				},
 			)
 		}

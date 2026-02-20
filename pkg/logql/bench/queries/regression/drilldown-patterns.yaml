@@ -52,7 +52,6 @@ queries:
       structured_metadata:
         - detected_level
   - description: Drilldown count with complex filters
-    skip: true  # Returns empty results: dual parsers (json|logfmt) fail on unstructured syslog data, drop __error__ removes all logs
     query: sum by (detected_level) (count_over_time(${SELECTOR} | detected_level="debug" or detected_level="info" or detected_level="warn" |~ "(?i)(?i)duration" | json | logfmt | drop __error__, __error_details__ | level=~"(?i)INFO" [${RANGE}]))
     kind: metric
     time_range:
@@ -67,5 +66,10 @@ queries:
 
       "
     requires:
+      log_format: json
+      detected_fields:
+        - level
       structured_metadata:
         - detected_level
+      keywords:
+        - duration
