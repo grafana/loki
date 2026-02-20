@@ -115,11 +115,11 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 					// But save a reference to their data so we can preserve values
 					existingDestCols[ident.ShortName()] = batch.Column(oldIdx).(*array.String)
 					continue
-				} else {
-					// Existing _extracted columns of lower priority (parsed > metadata > label)
-					// should be preserved and processed separately.
-					existingLowerPriorityDestCols[ident.ShortName()] = oldIdx
 				}
+
+				// Existing _extracted columns of lower priority (parsed > metadata > label)
+				// should be preserved and processed separately.
+				existingLowerPriorityDestCols[ident.ShortName()] = oldIdx
 			}
 
 			oldFieldToNewIdx[oldIdx] = len(newFields)
