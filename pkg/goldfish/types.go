@@ -48,6 +48,7 @@ type QuerySample struct {
 	// Comparison outcome
 	ComparisonStatus     ComparisonStatus `json:"comparisonStatus"`
 	MatchWithinTolerance bool             `json:"matchWithinTolerance"`
+	MismatchCause        string           `json:"mismatchCause,omitempty"` // Set when ComparisonStatus is mismatch
 
 	SampledAt time.Time `json:"sampledAt"`
 }
