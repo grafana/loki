@@ -21,9 +21,6 @@ import (
 func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[TenantIndexPointer] {
 	return result.Iter(func(yield func(pointer TenantIndexPointer) bool) error {
 		for i, section := range obj.Sections().Filter(CheckSection) {
-			if section.Tenant != "29" {
-				continue
-			}
 			pointersSection, err := Open(ctx, section)
 			if err != nil {
 				return fmt.Errorf("opening section %d: %w", i, err)
