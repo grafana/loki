@@ -389,13 +389,14 @@ func (n *PointersScan) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) 
 		return nil, err
 	}
 
-	return &physical.PointersScan{
-		NodeID: nodeID,
-
+	ps := &physical.PointersScan{
+		NodeID:     nodeID,
 		Location:   physical.DataObjLocation(n.Location),
 		Selector:   selector,
 		Predicates: marshalExpressions(n.Predicates),
 		Start:      n.Start,
 		End:        n.End,
-	}, nil
+	}
+	ps.SetMaxTimeRange(marshalTimeRange(n.MaxTimeRange))
+	return ps, nil
 }

@@ -39,9 +39,16 @@ type GetIndexesRequest struct {
 	End   time.Time
 }
 
+// IndexPathWithRange holds an index path and its time range from the index pointer.
+type IndexPathWithRange struct {
+	Path  string
+	Start time.Time
+	End   time.Time
+}
+
 type GetIndexesResponse struct {
 	TableOfContentsPaths []string
-	IndexesPaths         []string
+	Indexes              []IndexPathWithRange
 }
 
 type IndexSectionsReaderRequest struct {

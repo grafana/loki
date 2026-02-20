@@ -381,9 +381,9 @@ func (c *Context) logTaskCacheResult(ctx context.Context, logger log.Logger, key
 	if dataObjScanKeyHasBothTsClamped(key) {
 		kvs = append(kvs, "both_ts_clamped", "true")
 	}
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		kvs = append(kvs, "context_canceled", ctxErr, "context_cause", context.Cause(ctx))
-	}
+	// if ctxErr := ctx.Err(); ctxErr != nil {
+	// 	kvs = append(kvs, "context_canceled", ctxErr, "context_cause", context.Cause(ctx))
+	// }
 	if err != nil {
 		kvs = append(kvs, "err", err)
 	}
@@ -402,6 +402,8 @@ func (c *Context) executePointersScan(ctx context.Context, node *physical.Pointe
 		"selector", selectorStr,
 		"start_ts", node.Start.Format(time.RFC3339Nano),
 		"end_ts", node.End.Format(time.RFC3339Nano),
+		"max_time_range_start", node.GetMaxTimeRange().Start.Format(time.RFC3339Nano),
+		"max_time_range_end", node.GetMaxTimeRange().End.Format(time.RFC3339Nano),
 		"num_predicates", len(node.Predicates),
 		"task_cache_id", node.TaskCacheID(),
 	)

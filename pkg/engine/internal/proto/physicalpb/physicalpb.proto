@@ -277,6 +277,9 @@ message PointersScan {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
+
+  // Maximum time boundary of the index (from the index pointer).
+  TimeRange max_time_range = 6;
 }
 
 // Join represents a join operation in the physical plan.

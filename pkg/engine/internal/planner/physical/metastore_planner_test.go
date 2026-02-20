@@ -18,8 +18,12 @@ type fakeMetastoreIndexes struct {
 	indexPaths []string
 }
 
-func (f fakeMetastoreIndexes) GetIndexes(_ context.Context, _ metastore.GetIndexesRequest) (metastore.GetIndexesResponse, error) {
-	return metastore.GetIndexesResponse{IndexesPaths: f.indexPaths}, nil
+func (f fakeMetastoreIndexes) GetIndexes(_ context.Context, req metastore.GetIndexesRequest) (metastore.GetIndexesResponse, error) {
+	indexes := make([]metastore.IndexPathWithRange, len(f.indexPaths))
+	for i, p := range f.indexPaths {
+		indexes[i] = metastore.IndexPathWithRange{Path: p, Start: req.Start, End: req.End}
+	}
+	return metastore.GetIndexesResponse{Indexes: indexes}, nil
 }
 
 func TestPointersScan_Clone_AllowsNilSelector(t *testing.T) {
@@ -66,6 +70,7 @@ func TestMetastorePlanner_Plan_UsesMergeRootAndPointersTargets(t *testing.T) {
 		require.Equal(t, DataObjLocation(ms.indexPaths[i]), target.Pointers.Location)
 		require.Equal(t, start, target.Pointers.Start)
 		require.Equal(t, end, target.Pointers.End)
+		require.Equal(t, TimeRange{Start: start, End: end}, target.Pointers.GetMaxTimeRange())
 	}
 }
 

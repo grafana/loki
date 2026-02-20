@@ -49,18 +49,19 @@ func (p MetastorePlanner) Plan(ctx context.Context, selector Expression, predica
 	}
 	plan.graph.Add(scanSet)
 
-	for _, indexPath := range indexesResp.IndexesPaths {
+	for _, entry := range indexesResp.Indexes {
 		scanSet.Targets = append(scanSet.Targets, &ScanTarget{
 			Type: ScanTypePointers,
 			Pointers: &PointersScan{
 				NodeID:   ulid.Make(),
-				Location: DataObjLocation(indexPath),
+				Location: DataObjLocation(entry.Path),
 
 				Selector:   selector,
 				Predicates: predicates,
 
-				Start: start,
-				End:   end,
+				Start:        start,
+				End:          end,
+				maxTimeRange: TimeRange{Start: entry.Start, End: entry.End},
 			},
 		})
 	}

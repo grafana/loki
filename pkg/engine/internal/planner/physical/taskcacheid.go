@@ -136,17 +136,25 @@ func exprSliceToExpression(ce []ColumnExpression) []Expression {
 }
 
 // cacheKeyStringPointersScan returns a deterministic, readable cache key string for a PointersScan.
+// Start/End are clamped to MaxTimeRange only when the query range fully covers the index range
+// (query start <= max start and query end >= max end), so that queries spanning the full index share the same key.
 func cacheKeyStringPointersScan(s *PointersScan) string {
 	selectorStr := ""
 	if s.Selector != nil {
 		selectorStr = s.Selector.String()
 	}
 	predStrs := expressionStrings(s.Predicates)
+	idxRng := s.GetMaxTimeRange()
+	queryStart, queryEnd := s.Start, s.End
+	if !idxRng.IsZero() && queryStart.Before(idxRng.Start) && queryEnd.After(idxRng.End) {
+		// Query fully covers the index range; use index range in key for cache reuse
+		queryStart, queryEnd = idxRng.Start, idxRng.End
+	}
 	return fmt.Sprintf("PointersScan location=%s selector=%s start=%s end=%s predicates=%s",
 		string(s.Location),
 		selectorStr,
-		util.FormatTimeRFC3339Nano(s.Start),
-		util.FormatTimeRFC3339Nano(s.End),
+		util.FormatTimeRFC3339Nano(queryStart),
+		util.FormatTimeRFC3339Nano(queryEnd),
 		cacheKeyListJoin(predStrs),
 	)
 }

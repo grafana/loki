@@ -516,11 +516,12 @@ func (n *PointersScan) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = PointersScan{
-		Location:   string(scan.Location),
-		Selector:   selector,
-		Predicates: predicates,
-		Start:      scan.Start,
-		End:        scan.End,
+		Location:     string(scan.Location),
+		Selector:     selector,
+		Predicates:   predicates,
+		Start:        scan.Start,
+		End:          scan.End,
+		MaxTimeRange: unmarshalTimeRange(scan.GetMaxTimeRange()),
 	}
 	return nil
 }

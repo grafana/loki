@@ -16,8 +16,12 @@ type fakeMetastoreIndexes struct {
 	indexPaths []string
 }
 
-func (f fakeMetastoreIndexes) GetIndexes(_ context.Context, _ metastore.GetIndexesRequest) (metastore.GetIndexesResponse, error) {
-	return metastore.GetIndexesResponse{IndexesPaths: f.indexPaths}, nil
+func (f fakeMetastoreIndexes) GetIndexes(_ context.Context, req metastore.GetIndexesRequest) (metastore.GetIndexesResponse, error) {
+	indexes := make([]metastore.IndexPathWithRange, len(f.indexPaths))
+	for i, p := range f.indexPaths {
+		indexes[i] = metastore.IndexPathWithRange{Path: p, Start: req.Start, End: req.End}
+	}
+	return metastore.GetIndexesResponse{Indexes: indexes}, nil
 }
 
 func TestPlanWorkflow_MetastorePlan_UsesMergeRootAndPointersPartitions(t *testing.T) {
