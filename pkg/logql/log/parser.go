@@ -436,6 +436,10 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 	if l.strict && l.dec.Err() != nil {
 		addErrLabel(errLogfmt, l.dec.Err(), lbs)
+
+		if !parserHints.ShouldContinueParsingLine(logqlmodel.ErrorLabel, lbs) {
+			return line, false
+		}
 		return line, true
 	}
 
