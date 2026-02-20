@@ -54,6 +54,7 @@ import (
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
+	indexcompactor "github.com/grafana/loki/v3/pkg/index-compactor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/limits"
@@ -159,6 +160,7 @@ const (
 	DataObjConsumerRing          = "dataobj-consumer-ring"
 	DataObjConsumerPartitionRing = "dataobj-consumer-partition-ring"
 	DataObjIndexBuilder          = "dataobj-index-builder"
+	DataObjIndexCompactor        = "dataobj-index-compactor"
 	ScratchStore                 = "scratch-store"
 	UIRing                       = "ui-ring"
 	UI                           = "ui"
@@ -2476,6 +2478,26 @@ func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
 	)
 
 	return t.dataObjIndexBuilder, err
+}
+
+func (t *Loki) initDataObjIndexCompactor() (services.Service, error) {
+	store, err := t.getDataObjBucket("dataobj-index-compactor")
+	if err != nil {
+		return nil, err
+	}
+
+	t.Cfg.IndexCompactor.BuilderConfig.TargetPageSize = 2 * 1024 * 1024          // 2MB
+	t.Cfg.IndexCompactor.BuilderConfig.TargetObjectSize = 1 * 1024 * 1024 * 1024 // 1GB
+	t.Cfg.IndexCompactor.BuilderConfig.TargetSectionSize = 512 * 1024 * 1024     // 512MB
+	t.Cfg.IndexCompactor.BuilderConfig.BufferSize = 64 * 1024 * 1024             // 64MB
+
+	logger := log.With(util_log.Logger, "component", "index-compactor")
+	t.dataObjIndexCompactor, err = indexcompactor.NewCompactor(t.Cfg.IndexCompactor, store, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	return t.dataObjIndexCompactor, nil
 }
 
 func (t *Loki) initScratchStore() (services.Service, error) {

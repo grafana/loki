@@ -222,12 +222,36 @@ func (b *Builder) getPointersBuilderForTenant(tenantID string) *pointers.Builder
 	return tenantPointers
 }
 
-// Append buffers a stream to be written to a data object. Append returns an
-// error if the stream labels cannot be parsed or [ErrBuilderFull] if the
-// builder is full.
-//
-// Once a Builder is full, call [Builder.Flush] to flush the buffered data,
-// then call Append again with the same entry.
+// AppendStreamPointer adds a pre-aggregated stream pointer to the index object.
+// Unlike ObserveLogLine which accumulates statistics per observation, this writes
+// the pointer directly with the provided aggregated values.
+func (b *Builder) AppendStreamPointer(tenantID string, path string, section int64, streamIDInIndex int64, streamIDInObject int64, startTs, endTs time.Time, lineCount, uncompressedSize int64) error {
+	newEntrySize := 8
+
+	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
+		b.builderFull = true
+	}
+
+	tenantPointers := b.getPointersBuilderForTenant(tenantID)
+	preAppendSizeEstimate := tenantPointers.EstimatedSize()
+
+	tenantPointers.RecordStreamPointer(path, section, streamIDInIndex, streamIDInObject, startTs, endTs, lineCount, uncompressedSize)
+
+	postAppendSizeEstimate := tenantPointers.EstimatedSize()
+	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
+
+	if postAppendSizeEstimate > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantPointers); err != nil {
+			return err
+		}
+	}
+
+	b.currentSizeEstimate = b.estimatedSize()
+	b.state = builderStateDirty
+	return nil
+}
+
+// ObserveLogLine accumulates per-line statistics for stream and column pointers.
 func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, streamIDInObject int64, streamIDInIndex int64, ts time.Time, uncompressedSize int64) error {
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.

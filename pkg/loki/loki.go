@@ -38,6 +38,7 @@ import (
 	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
+	indexcompactor "github.com/grafana/loki/v3/pkg/index-compactor"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/engine"
@@ -116,6 +117,7 @@ type Config struct {
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
 	DataObj             dataobjconfig.Config       `yaml:"dataobj,omitempty" category:"experimental"`
+	IndexCompactor      indexcompactor.Config       `yaml:"index_compactor,omitempty" category:"experimental"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
 	IngestLimitsFrontend       limits_frontend.Config        `yaml:"ingest_limits_frontend,omitempty" category:"experimental"`
@@ -236,6 +238,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.IngestLimitsFrontendClient.RegisterFlags(f)
 	c.UI.RegisterFlags(f)
 	c.DataObj.RegisterFlags(f)
+	c.IndexCompactor.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -451,6 +454,7 @@ type Loki struct {
 	dataObjConsumerPartitionRing        *ring.PartitionInstanceRing
 	DataObjConsumerPartitionRingWatcher *ring.PartitionRingWatcher
 	dataObjIndexBuilder                 *dataobjindex.Builder
+	dataObjIndexCompactor               *indexcompactor.Compactor
 	scratchStore                        scratch.Store
 	queryEngineV2                       *engine.Engine
 	queryEngineV2Scheduler              *engine.Scheduler
@@ -802,6 +806,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjConsumerPartitionRing, t.initDataObjConsumerPartitionRing)
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
+	mm.RegisterModule(DataObjIndexCompactor, t.initDataObjIndexCompactor)
 	mm.RegisterModule(ScratchStore, t.initScratchStore)
 
 	mm.RegisterModule(All, nil)
@@ -854,7 +859,8 @@ func (t *Loki) setupModuleManager() error {
 		DataObjConsumerPartitionRing: {MemberlistKV, Server, Ring},
 		DataObjConsumer:              {MemberlistKV, ScratchStore, PartitionRing, Server, UI},
 		DataObjIndexBuilder:          {ScratchStore, Server, UIRing},
-		ScratchStore:                 {},
+		DataObjIndexCompactor:       {Server},
+		ScratchStore:                {},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},
