@@ -3,7 +3,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: loki-operator/loki-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   creationTimestamp: null
   labels:
     app.kubernetes.io/instance: loki-operator-v0.9.0
@@ -515,7 +515,6 @@ spec:
                               items:
                                 description: BlockedQuerySpec defines the rule spec
                                   for queries to be blocked.
-                                minProperties: 1
                                 properties:
                                   hash:
                                     description: Hash is a 32-bit FNV-1 hash of the
@@ -545,6 +544,11 @@ spec:
                                       type: string
                                     type: array
                                 type: object
+                                x-kubernetes-validations:
+                                - message: at least one of the fields in [Hash Pattern]
+                                    must be set
+                                  rule: '[has(self.Hash),has(self.Pattern)].filter(x,x==true).size()
+                                    >= 1'
                               type: array
                             cardinalityLimit:
                               description: CardinalityLimit defines the cardinality
