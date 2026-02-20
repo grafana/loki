@@ -150,6 +150,24 @@ func (b *Builder) ObserveStream(path string, section int64, idInObject int64, id
 	b.streamLookup[b.key] = newPointer
 }
 
+// RecordStreamPointer adds a pre-aggregated stream pointer directly, bypassing
+// the observation-based aggregation of ObserveStream. This is used when merging
+// index objects that already contain fully-aggregated pointer data.
+func (b *Builder) RecordStreamPointer(path string, section int64, streamIDInIndex int64, streamIDInObject int64, startTs, endTs time.Time, lineCount, uncompressedSize int64) {
+	newPointer := &SectionPointer{
+		Path:             path,
+		Section:          section,
+		PointerKind:      PointerKindStreamIndex,
+		StreamID:         streamIDInIndex,
+		StreamIDRef:      streamIDInObject,
+		StartTs:          startTs,
+		EndTs:            endTs,
+		LineCount:        lineCount,
+		UncompressedSize: uncompressedSize,
+	}
+	b.pointers = append(b.pointers, newPointer)
+}
+
 func (b *Builder) RecordColumnIndex(path string, section int64, columnName string, columnIndex int64, valuesBloomFilter []byte) {
 	newPointer := &SectionPointer{
 		Path:              path,
