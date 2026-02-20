@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: "read"
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         persist-credentials: false
     - name: Set up Go 1.x
@@ -36,7 +36,7 @@ jobs:
     permissions:
       contents: "read"
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         persist-credentials: false
     - name: Set up Go 1.x
@@ -45,9 +45,9 @@ jobs:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum
     - name: Lint
-      uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
+      uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2
       with:
-        version: v2.3.0
+        version: v2.10.1
         args: --timeout=5m
         working-directory: ./operator
     - name: Check prometheus rules
@@ -60,7 +60,7 @@ jobs:
     permissions:
       contents: "read"
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         persist-credentials: false
     - name: Set up Go 1.x
@@ -80,7 +80,7 @@ jobs:
     permissions:
       contents: "read"
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         persist-credentials: false
     - name: Set up Go 1.x
@@ -99,7 +99,7 @@ jobs:
     permissions:
       contents: "read"
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         persist-credentials: false
     - name: Set up Go 1.x
@@ -118,5 +118,5 @@ jobs:
       with:
         working-directory: ./operator
         path-to-profile: profile.cov
-        flag-name: Go-1.23
+        flag-name: Go-1.25
         shallow: true
