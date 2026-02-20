@@ -77,6 +77,18 @@ func (b *Builder) Generate(ctx context.Context, targetSize int64) error {
 	}
 
 	fmt.Printf("Generated 100%% (%s/%s)\n", formatBytes(totalSize), formatBytes(targetSize))
+
+	// Generate and save dataset metadata
+	fmt.Println("Generating dataset metadata...")
+	metadata := BuildMetadata(&b.gen.config, b.gen.StreamsMeta)
+	if err := SaveMetadata(b.dir, metadata); err != nil {
+		return fmt.Errorf("failed to save metadata: %w", err)
+	}
+	fmt.Printf("Saved metadata: %d streams, %d formats, %d applications\n",
+		metadata.Statistics.TotalStreams,
+		len(metadata.ByFormat),
+		len(metadata.ByServiceName))
+
 	return nil
 }
 

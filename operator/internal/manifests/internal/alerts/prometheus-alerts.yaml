@@ -236,7 +236,7 @@ groups:
     expr: |
       sum (
         label_replace(
-          lokistack_status_condition{reason="ReadyComponents", status="false"},
+          lokistack_status_condition{condition="Ready", status="false"},
           "namespace", "$1", "stack_namespace", "(.+)"
         )
       ) by (stack_name, namespace)

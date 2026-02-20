@@ -1,5 +1,16 @@
 # Change Log
 
+## [1.173.0] - 2026-01-22
+
+- #942 - @anup-deka - Fix data type
+- #941 - @v-amanjain-afk - removed deprecated region from nfs api
+
+## [1.172.0] - 2026-01-13
+
+- #932 - @fumblehool - APPS-12654: Add CancelJobInvocation API
+- #939 - @anup-deka - Rebranding GenAI to Gradient AI
+- #914 - @brianteeman - Typo cannnot/cannot
+
 ## [1.171.0] - 2025-12-17
 
 - #936 - @dillonledoux - Add fields to AgentCreateRequest for Gradient Agents

@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
@@ -156,6 +157,8 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// This pain point will eventually go away as remaining usages of
 	// [logql.Engine] disappear.
 
+	// Starts the execution capture for the query.
+	// All recorded observations will be captured to it.
 	ctx, capture := xcap.NewCapture(ctx, nil)
 	defer capture.End()
 	startTime := time.Now()
@@ -165,16 +168,18 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		return logqlmodel.Result{}, httpgrpc.Error(http.StatusBadRequest, err.Error())
 	}
 
-	ctx, region := xcap.StartRegion(ctx, "Engine.Execute", xcap.WithRegionAttributes(
-		attribute.String("type", string(logql.GetRangeType(params))),
-		attribute.String("query", params.QueryString()),
-		attribute.Stringer("start", params.Start()),
-		attribute.Stringer("end", params.End()),
-		attribute.Stringer("step", params.Step()),
-		attribute.Stringer("length", params.End().Sub(params.Start())),
-		attribute.StringSlice("shards", params.Shards()),
-	))
-	defer region.End()
+	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.Execute",
+		trace.WithAttributes(
+			attribute.String("type", string(logql.GetRangeType(params))),
+			attribute.String("query", params.QueryString()),
+			attribute.Stringer("start", params.Start()),
+			attribute.Stringer("end", params.End()),
+			attribute.Stringer("step", params.Step()),
+			attribute.Stringer("length", params.End().Sub(params.Start())),
+			attribute.StringSlice("shards", params.Shards()),
+		),
+	)
+	defer span.End()
 
 	ctx = e.buildContext(ctx)
 	logger := util_log.WithContext(ctx, e.logger)
@@ -186,21 +191,21 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	logicalPlan, durLogicalPlanning, err := e.buildLogicalPlan(ctx, logger, params)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
-		region.SetStatus(codes.Error, "failed to create logical plan")
+		span.SetStatus(codes.Error, "failed to create logical plan")
 		return logqlmodel.Result{}, ErrNotSupported
 	}
 
 	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, tenantID, logger, params, logicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		region.SetStatus(codes.Error, "failed to create physical plan")
+		span.SetStatus(codes.Error, "failed to create physical plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 
 	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		region.SetStatus(codes.Error, "failed to create execution plan")
+		span.SetStatus(codes.Error, "failed to create execution plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 	defer wf.Close()
@@ -210,7 +215,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		level.Error(logger).Log("msg", "failed to execute query", "err", err)
 
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		region.SetStatus(codes.Error, "failed to execute query")
+		span.SetStatus(codes.Error, "failed to execute query")
 		return logqlmodel.Result{}, ErrSchedulingFailed
 	}
 	defer pipeline.Close()
@@ -218,7 +223,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	builder, durExecution, err := e.collectResult(ctx, logger, params, pipeline)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		region.SetStatus(codes.Error, "error during query execution")
+		span.SetStatus(codes.Error, "error during query execution")
 		return logqlmodel.Result{}, err
 	}
 
@@ -238,14 +243,13 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// Close the pipeline to calculate the stats.
 	pipeline.Close()
 
-	region.SetStatus(codes.Ok, "")
+	span.SetStatus(codes.Ok, "")
 
 	// explicitly call End() before exporting even though we have a defer above.
 	// It is safe to call End() multiple times.
-	region.End()
+	span.End()
 	capture.End()
 
-	xcap.ExportTrace(ctx, capture, logger)
 	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
 	level.Info(logger).Log(
 		logValues...,
@@ -285,7 +289,7 @@ func injectQueryTags(ctx context.Context, logger log.Logger) log.Logger {
 
 // buildLogicalPlan builds a logical plan from the given params.
 func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params logql.Params) (*logical.Plan, time.Duration, error) {
-	region := xcap.RegionFromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.logicalPlanning)
 
 	var deleteReqs []*deletion.Request
@@ -300,13 +304,13 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 	logicalPlan, err := logical.BuildPlanWithDeletes(ctx, params, deleteReqs)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
-		region.RecordError(err)
+		span.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
 	if err := logical.Optimize(logicalPlan); err != nil {
 		level.Warn(logger).Log("msg", "failed to optimize logical plan", "err", err)
-		region.RecordError(err)
+		span.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
@@ -317,16 +321,18 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 		"duration", duration.String(),
 	)
 
-	region.AddEvent("finished logical planning",
-		attribute.Stringer("plan", logicalPlan),
-		attribute.Stringer("duration", duration),
+	span.AddEvent("finished logical planning",
+		trace.WithAttributes(
+			attribute.Stringer("plan", logicalPlan),
+			attribute.Stringer("duration", duration),
+		),
 	)
 	return logicalPlan, duration, nil
 }
 
 // buildPhysicalPlan builds a physical plan from the given logical plan.
 func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) (*physical.Plan, time.Duration, error) {
-	region := xcap.RegionFromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
 	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID))
@@ -345,14 +351,14 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	physicalPlan, err := planner.Build(logicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
-		region.RecordError(err)
+		span.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
 	physicalPlan, err = planner.Optimize(physicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
-		region.RecordError(err)
+		span.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
@@ -363,15 +369,15 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 		"duration", duration.String(),
 	)
 
-	region.AddEvent("finished physical planning", attribute.Stringer("duration", duration))
+	span.AddEvent("finished physical planning", trace.WithAttributes(attribute.Stringer("duration", duration)))
 	return physicalPlan, duration, nil
 }
 
 func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string) physical.MetastoreSectionsResolver {
 	planner := physical.NewMetastorePlanner(e.metastore)
 	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
-		ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
-		defer region.End()
+		ctx, span := xcap.StartSpan(ctx, tracer, "engine.metastoreResolver")
+		defer span.End()
 
 		plan, err := planner.Plan(ctx, selector, predicates, start, end)
 		if err != nil {
@@ -412,7 +418,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 
 // buildWorkflow builds a workflow from the given physical plan.
 func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.Logger, physicalPlan *physical.Plan) (*workflow.Workflow, time.Duration, error) {
-	region := xcap.RegionFromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
 
 	opts := workflow.Options{
@@ -428,7 +434,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 	wf, err := workflow.New(opts, logger, e.scheduler.inner, physicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create workflow", "err", err)
-		region.RecordError(err)
+		span.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
@@ -446,13 +452,13 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 		"tasks", wf.Len(),
 	)
 
-	region.AddEvent("finished execution planning", attribute.Stringer("duration", duration))
+	span.AddEvent("finished execution planning", trace.WithAttributes(attribute.Stringer("duration", duration)))
 	return wf, duration, nil
 }
 
 // collectResult processes the results of the execution plan.
 func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params logql.Params, pipeline executor.Pipeline) (ResultBuilder, time.Duration, error) {
-	region := xcap.RegionFromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.execution)
 	encodingFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx)
 
@@ -498,8 +504,8 @@ func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params lo
 
 	// We don't log an event here because a final event will be logged by the
 	// caller noting that execution completed.
-	region.AddEvent("finished execution",
-		attribute.Stringer("duration", duration),
+	span.AddEvent("finished execution",
+		trace.WithAttributes(attribute.Stringer("duration", duration)),
 	)
 	return builder, duration, nil
 }

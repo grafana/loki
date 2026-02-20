@@ -15,12 +15,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline, region *xcap.Region) Pipeline {
+func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline) Pipeline {
 	const extracted = "_extracted"
 
 	identCache := semconv.NewIdentifierCache()
 
-	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
@@ -83,7 +83,9 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			return cmp.Compare(a.name, b.name)
 		})
 
-		region.Record(xcap.StatCompatCollisionFound.Observe(true))
+		if region := xcap.RegionFromContext(ctx); region != nil {
+			region.Record(xcap.StatCompatCollisionFound.Observe(true))
+		}
 
 		// Next, update the schema with the new columns that have the _extracted suffix.
 		oldSchema := batch.Schema()
@@ -217,7 +219,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		}
 
 		return array.NewRecordBatch(newSchema, newSchemaColumns, batch.NumRows()), nil
-	}, region, input)
+	}, input)
 }
 
 // allColumnsNull returns true if all columns are null or invalid at the given row index.

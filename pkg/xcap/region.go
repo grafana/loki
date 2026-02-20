@@ -2,80 +2,33 @@ package xcap
 
 import (
 	"context"
+	"fmt"
 	"sync"
-	"time"
 
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
-// RegionOption applies options to a Region.
-type RegionOption interface {
-	apply(*regionConfig)
-}
-
-type regionConfig struct {
-	attributes []attribute.KeyValue
-}
-
-type regionOptionFunc func(*regionConfig)
-
-func (f regionOptionFunc) apply(cfg *regionConfig) {
-	f(cfg)
-}
-
-// WithRegionAttributes adds attributes related to the region.
-func WithRegionAttributes(attrs ...attribute.KeyValue) RegionOption {
-	return regionOptionFunc(func(cfg *regionConfig) {
-		cfg.attributes = append(cfg.attributes, attrs...)
-	})
-}
-
-// Event represents a time-stamped event within a region.
-type Event struct {
-	Name       string
-	Timestamp  time.Time
-	Attributes []attribute.KeyValue
-}
-
-// Status represents the status of a region's operation.
-type Status struct {
-	Code    codes.Code
-	Message string
-}
-
 // Region captures the lifetime of a specific operation within a capture.
+//
+// A Region may be created standalone (via [StartRegion]) for observation
+// collection only, or paired with an OTel span via [Tracer.Start].
 type Region struct {
 	// name is the name of the region.
 	name string
 
-	// identifier of the region.
+	// id is the unique identifier of the region.
 	id identifier
 
 	// parentID is the ID of the parent region. Set to zero value if root region.
 	parentID identifier
 
-	// attributes are the attributes associated with this region.
-	attributes []attribute.KeyValue
-
-	// startTime is when the region was created.
-	startTime time.Time
-
 	// mu protects the fields below.
 	mu sync.RWMutex
-
-	// endTime is when the region ended. Zero if not ended.
-	endTime time.Time
 
 	// observations are all observations recorded in this region.
 	// Map from statistic key to aggregated observation value.
 	observations map[StatisticKey]*AggregatedObservation
-
-	// events are timestamped events recorded in this region.
-	events []Event
-
-	// status is the status of the region's operation.
-	status Status
 
 	// ended indicates whether End() has been called.
 	ended bool
@@ -84,28 +37,20 @@ type Region struct {
 // StartRegion creates a new Region to record observations for a specific operation.
 // It returns the new Region and a context containing the Region.
 //
-// It adds the region to the Capture found in the context. If no Capture
-// is found, it returns the original context and a nil region.
+// The Region is registered with the [Capture] found in the context.
+// If no Capture is found, it returns the original context and a nil region.
 //
-// If the passed ctx contains a Region, the new Region will be a child of that Region.
-func StartRegion(ctx context.Context, name string, opts ...RegionOption) (context.Context, *Region) {
+// StartRegion does not create an OTel span. Use [Tracer.Start] when both
+// a span and observation aggregation are needed.
+func StartRegion(ctx context.Context, name string) (context.Context, *Region) {
 	capture := CaptureFromContext(ctx)
 	if capture == nil {
-		// TODO: return noop Region instead of nil?
 		return ctx, nil
 	}
 
-	// Apply options
-	cfg := &regionConfig{}
-	for _, opt := range opts {
-		opt.apply(cfg)
-	}
-
 	r := &Region{
-		id:           NewID(),
+		id:           newID(),
 		name:         name,
-		attributes:   cfg.attributes,
-		startTime:    time.Now(),
 		observations: make(map[StatisticKey]*AggregatedObservation),
 	}
 
@@ -152,65 +97,6 @@ func (r *Region) Record(o Observation) {
 	agg.Record(o)
 }
 
-// AddEvent adds a timestamped event to the region.
-func (r *Region) AddEvent(name string, attrs ...attribute.KeyValue) {
-	if r == nil {
-		return
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.ended {
-		return
-	}
-
-	r.events = append(r.events, Event{
-		Name:       name,
-		Timestamp:  time.Now(),
-		Attributes: attrs,
-	})
-}
-
-// SetStatus sets the status of the region.
-func (r *Region) SetStatus(code codes.Code, message string) {
-	if r == nil {
-		return
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.ended {
-		return
-	}
-
-	r.status = Status{Code: code, Message: message}
-}
-
-// RecordError records an error as an event and sets the status to Error.
-func (r *Region) RecordError(err error) {
-	if r == nil || err == nil {
-		return
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.ended {
-		return
-	}
-
-	r.events = append(r.events, Event{
-		Name:      "exception",
-		Timestamp: time.Now(),
-		Attributes: []attribute.KeyValue{
-			attribute.String("exception.message", err.Error()),
-		},
-	})
-	r.status = Status{Code: codes.Error, Message: err.Error()}
-}
-
 // Observations returns all aggregated observations recorded in the region.
 func (r *Region) Observations() []AggregatedObservation {
 	r.mu.RLock()
@@ -224,8 +110,24 @@ func (r *Region) Observations() []AggregatedObservation {
 	return observations
 }
 
-// End completes the Region. Updates to the Region are ignored after calling End.
+// End completes the Region. Updates to the Region are ignored after
+// calling End.
 func (r *Region) End() {
+	if r == nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.ended = true
+}
+
+// flushToSpan converts aggregated observations to OTel span attributes
+// and sets them on the provided span. It also marks the region as ended.
+//
+// This is called by [Span.End].
+func (r *Region) flushToSpan(span trace.Span) {
 	if r == nil {
 		return
 	}
@@ -237,29 +139,38 @@ func (r *Region) End() {
 		return
 	}
 
-	r.endTime = time.Now()
+	attrs := make([]attribute.KeyValue, 0, len(r.observations))
+	for key, obs := range r.observations {
+		attrs = append(attrs, observationToAttribute(key, obs))
+	}
+	if len(attrs) > 0 {
+		span.SetAttributes(attrs...)
+	}
+
 	r.ended = true
 }
 
-func (r *Region) getAttribute(key string) attribute.KeyValue {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+// observationToAttribute converts an aggregated observation to an
+// OpenTelemetry span attribute. The attribute key is the statistic name
+// and the value type matches the statistic's data type.
+func observationToAttribute(key StatisticKey, obs *AggregatedObservation) attribute.KeyValue {
+	attrKey := attribute.Key(key.Name)
 
-	for _, kv := range r.attributes {
-		if string(kv.Key) == key {
-			return kv
+	switch key.DataType {
+	case DataTypeInt64:
+		if val, ok := obs.Value.(int64); ok {
+			return attrKey.Int64(val)
+		}
+	case DataTypeFloat64:
+		if val, ok := obs.Value.(float64); ok {
+			return attrKey.Float64(val)
+		}
+	case DataTypeBool:
+		if val, ok := obs.Value.(bool); ok {
+			return attrKey.Bool(val)
 		}
 	}
 
-	return attribute.KeyValue{}
-}
-
-// StartTime returns the time when the region was created.
-func (r *Region) StartTime() time.Time {
-	if r == nil {
-		return time.Time{}
-	}
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.startTime
+	// Fallback: convert to string.
+	return attrKey.String(fmt.Sprintf("%v", obs.Value))
 }
