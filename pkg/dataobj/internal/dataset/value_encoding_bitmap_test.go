@@ -242,10 +242,10 @@ func benchmarkBitmapEncoder(b *testing.B, width int) {
 		})
 	}
 
-	runBenchmark(b, "variance=none", width, func(i, width int) uint64 { return 1 })
+	runBenchmark(b, "variance=none", width, func(_, _ int) uint64 { return 1 })
 	runBenchmark(b, "variance=alternating", width, func(i, width int) uint64 { return uint64(i % width) })
 	rnd := rand.New(rand.NewSource(0))
-	runBenchmark(b, "variance=random", width, func(i, width int) uint64 { return uint64(rnd.Int63()) % uint64(width) })
+	runBenchmark(b, "variance=random", width, func(_, width int) uint64 { return uint64(rnd.Int63()) % uint64(width) })
 }
 
 func Benchmark_bitmapDecoder_DecodeBatches(b *testing.B) {
