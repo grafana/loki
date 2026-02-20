@@ -70,6 +70,10 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 					name:          sourceName,
 					collisionIdxs: collisionIdxs,
 					sourceIdx:     sourceFieldIndices[i],
+
+					// Indicates that there are no existing _extracted columns of lower priority found yet
+					lowerExtractedSourceIdx:      -1,
+					lowerExtractedDestinationIdx: -1,
 				})
 			}
 		}
@@ -139,10 +143,6 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 				// Store old and new indices for lower priority _extracted columns
 				duplicates[i].lowerExtractedSourceIdx = lowerIdx
 				duplicates[i].lowerExtractedDestinationIdx = oldFieldToNewIdx[lowerIdx]
-			} else {
-				// There are no existing _extracted columns of lower priority
-				duplicates[i].lowerExtractedSourceIdx = -1
-				duplicates[i].lowerExtractedDestinationIdx = -1
 			}
 
 			destinationIdent := semconv.NewIdentifier(sourceIdent.ShortName()+extracted, compat.Destination, sourceIdent.DataType())
