@@ -297,6 +297,10 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 		"cell_b_entries_returned", sample.CellBStats.TotalEntriesReturned,
 	}
 
+	if result.ComparisonStatus == goldfish.ComparisonStatusMismatch && result.MismatchCause != "" {
+		logFields = append(logFields, "mismatch_cause", result.MismatchCause)
+	}
+
 	if persistedA != nil {
 		logFields = append(logFields, "cell_a_result_uri", persistedA.URI, "cell_a_result_size", persistedA.Size)
 	}
