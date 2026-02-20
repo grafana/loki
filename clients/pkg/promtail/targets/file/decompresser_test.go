@@ -3,13 +3,13 @@ package file
 import (
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
@@ -63,7 +63,7 @@ func BenchmarkReadlines(b *testing.B) {
 		b.Run(tc.name, func(b *testing.B) {
 			decBase := &decompressor{
 				logger:  log.NewNopLogger(),
-				running: atomic.NewBool(false),
+				running: (&atomic.Bool{}),
 				handler: entryHandler,
 				path:    tc.file,
 				cfg:     &scrapeconfig.DecompressionConfig{InitialDelay: 0, Format: "gz"},
@@ -86,7 +86,7 @@ func TestGigantiqueGunzipFile(t *testing.T) {
 
 	d := &decompressor{
 		logger:  log.NewNopLogger(),
-		running: atomic.NewBool(false),
+		running: (&atomic.Bool{}),
 		handler: handler,
 		path:    file,
 		done:    make(chan struct{}),
@@ -115,7 +115,7 @@ func TestOnelineFiles(t *testing.T) {
 
 		d := &decompressor{
 			logger:  log.NewNopLogger(),
-			running: atomic.NewBool(false),
+			running: (&atomic.Bool{}),
 			handler: handler,
 			path:    file,
 			done:    make(chan struct{}),
@@ -139,7 +139,7 @@ func TestOnelineFiles(t *testing.T) {
 
 		d := &decompressor{
 			logger:  log.NewNopLogger(),
-			running: atomic.NewBool(false),
+			running: (&atomic.Bool{}),
 			handler: handler,
 			path:    file,
 			done:    make(chan struct{}),
@@ -163,7 +163,7 @@ func TestOnelineFiles(t *testing.T) {
 
 		d := &decompressor{
 			logger:  log.NewNopLogger(),
-			running: atomic.NewBool(false),
+			running: (&atomic.Bool{}),
 			handler: handler,
 			path:    file,
 			done:    make(chan struct{}),

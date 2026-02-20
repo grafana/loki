@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -38,7 +39,6 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
 
@@ -180,7 +180,7 @@ type mockRulerClient struct {
 }
 
 func (c *mockRulerClient) Rules(ctx context.Context, in *RulesRequest, _ ...grpc.CallOption) (*RulesResponse, error) {
-	c.numberOfCalls.Inc()
+	c.numberOfCalls.Add(1)
 	return c.ruler.Rules(ctx, in)
 }
 

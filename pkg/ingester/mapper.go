@@ -5,11 +5,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"go.uber.org/atomic"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -128,7 +128,7 @@ func (m *FpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric labels.
 }
 
 func (m *FpMapper) nextMappedFP() model.Fingerprint {
-	mappedFP := model.Fingerprint(m.highestMappedFP.Inc())
+	mappedFP := model.Fingerprint(m.highestMappedFP.Add(1))
 	if mappedFP > maxMappedFP {
 		panic(fmt.Errorf("more than %v fingerprints mapped in collision detection", maxMappedFP))
 	}

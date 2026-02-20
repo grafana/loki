@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -9,7 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
@@ -29,13 +29,14 @@ type deleteRequest struct {
 	timeInterval    *timeInterval          `json:"-"`
 
 	TotalLinesDeletedMetric *prometheus.CounterVec `json:"-"`
-	DeletedLines            atomic.Int32           `json:"-"`
+	DeletedLines            *atomic.Int32          `json:"-"`
 }
 
 func newDeleteRequest(protoReq deletionproto.DeleteRequest, totalLinesDeletedMetric *prometheus.CounterVec) (*deleteRequest, error) {
 	d := deleteRequest{
 		DeleteRequest:           protoReq,
 		TotalLinesDeletedMetric: totalLinesDeletedMetric,
+		DeletedLines:            &atomic.Int32{},
 	}
 
 	if err := d.SetQuery(d.Query); err != nil {
