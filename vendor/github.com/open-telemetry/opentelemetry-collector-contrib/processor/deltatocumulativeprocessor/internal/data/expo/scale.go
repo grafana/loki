@@ -73,26 +73,19 @@ func Downscale(bs Buckets, from, to Scale) {
 // area at a later time.
 func Collapse(bs Buckets) {
 	counts := bs.BucketCounts()
-
-	offsetWasOdd := bs.Offset()%2 != 0
-	shift := 0
-	if offsetWasOdd {
-		shift--
-	}
-
 	size := counts.Len() / 2
-	if counts.Len()%2 != 0 || offsetWasOdd {
+	if counts.Len()%2 != 0 || bs.Offset()%2 != 0 {
 		size++
 	}
 
-	if offsetWasOdd {
+	// merging needs to happen in pairs aligned to i=0. if offset is non-even,
+	// we need to shift the whole merging by one to make above condition true.
+	shift := 0
+	if bs.Offset()%2 != 0 {
 		bs.SetOffset(bs.Offset() - 1)
+		shift--
 	}
 	bs.SetOffset(bs.Offset() / 2)
-
-	if counts.Len() == 0 {
-		return
-	}
 
 	for i := 0; i < size; i++ {
 		// size is ~half of len. we add two buckets per iteration.

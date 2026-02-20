@@ -1,7 +1,0 @@
-type: object
-properties:
-  max_stale:
-    type: string
-    format: duration
-  max_streams:
-    type: integer

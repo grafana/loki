@@ -20,10 +20,8 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.yaml.in/yaml/v3"
 	"golang.org/x/net/context/ctxhttp"
-
-	"github.com/prometheus/prometheus/promql/parser"
+	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 )
@@ -309,7 +307,7 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 			Alert:  yaml.Node{Value: r.Alert},
 			Expr:   yaml.Node{Value: r.Expr},
 		}
-		for _, err := range r.Validate(ruleNode, model.UTF8Validation, parser.NewParser(parser.Options{})) {
+		for _, err := range r.Validate(ruleNode, model.UTF8Validation) {
 			var ruleName string
 			if r.Alert != "" {
 				ruleName = r.Alert

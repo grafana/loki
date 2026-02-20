@@ -1,4 +1,4 @@
-// Copyright The Prometheus Authors
+// Copyright 2021 The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -111,7 +111,10 @@ func newChunkWriteQueue(reg prometheus.Registerer, size int, writeChunk writeChu
 }
 
 func (c *chunkWriteQueue) start() {
-	c.workerWg.Go(func() {
+	c.workerWg.Add(1)
+	go func() {
+		defer c.workerWg.Done()
+
 		for {
 			job, ok := c.jobs.pop()
 			if !ok {
@@ -120,7 +123,7 @@ func (c *chunkWriteQueue) start() {
 
 			c.processJob(job)
 		}
-	})
+	}()
 
 	c.isRunningMtx.Lock()
 	c.isRunning = true

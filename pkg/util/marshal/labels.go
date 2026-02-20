@@ -9,7 +9,7 @@ import (
 
 // NewLabelSet constructs a Labelset from a promql metric list as a string
 func NewLabelSet(s string) (loghttp.LabelSet, error) {
-	lbls, err := parser.NewParser(parser.Options{}).ParseMetric(s)
+	lbls, err := parser.ParseMetric(s)
 	if err != nil {
 		return nil, err
 	}

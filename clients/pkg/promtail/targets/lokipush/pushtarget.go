@@ -123,7 +123,7 @@ func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 	}
 	var lastErr error
 	for _, stream := range req.Streams {
-		ls, err := promql_parser.NewParser(promql_parser.Options{}).ParseMetric(stream.Labels)
+		ls, err := promql_parser.ParseMetric(stream.Labels)
 		if err != nil {
 			lastErr = err
 			continue
@@ -137,8 +137,7 @@ func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Apply relabeling
-		keep := relabel.ProcessBuilder(lb, t.relabelConfig...)
-		processed := lb.Labels()
+		processed, keep := relabel.Process(lb.Labels(), t.relabelConfig...)
 		if !keep || processed.IsEmpty() {
 			w.WriteHeader(http.StatusNoContent)
 			return

@@ -14,13 +14,12 @@ func format(lbs labels.Labels, cfg []*relabel.Config) model.LabelSet {
 	if lbs.IsEmpty() {
 		return nil
 	}
-	lb := labels.NewBuilder(lbs)
+	var processed labels.Labels
 	if len(cfg) > 0 {
-		if keep := relabel.ProcessBuilder(lb, cfg...); !keep {
-			return nil
-		}
+		processed, _ = relabel.Process(lbs, cfg...)
+	} else {
+		processed = lbs
 	}
-	processed := lb.Labels()
 	labelOut := model.LabelSet(util.LabelsToMetric(processed))
 	for k := range labelOut {
 		if strings.HasPrefix(string(k), "__") {

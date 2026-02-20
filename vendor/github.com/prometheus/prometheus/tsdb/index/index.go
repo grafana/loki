@@ -1,4 +1,4 @@
-// Copyright The Prometheus Authors
+// Copyright 2017 The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,7 +17,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
@@ -33,6 +32,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/encoding"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 )
 
@@ -93,16 +93,6 @@ func (s indexWriterStage) String() string {
 	}
 	return "<unknown>"
 }
-
-// ErrPostingsOffsetTableTooLarge is returned when the postings offset table length
-// would exceed 4 bytes (table would exceed the 4GB limit).
-var ErrPostingsOffsetTableTooLarge = errors.New("length size exceeds 4 bytes")
-
-// ErrIndexExceeds64GiB is returned when the index file would exceed the 64GiB limit.
-var ErrIndexExceeds64GiB = errors.New("exceeding max size of 64GiB")
-
-// ErrSymbolTableTooLarge is returned when the symbol table size exceeds 4 bytes (4GiB limit).
-var ErrSymbolTableTooLarge = fmt.Errorf("symbol table size exceeds %d bytes", uint32(math.MaxUint32))
 
 // The table gets initialized with sync.Once but may still cause a race
 // with any other use of the crc32 package anywhere. Thus we initialize it
@@ -313,7 +303,7 @@ func (fw *FileWriter) Write(bufs ...[]byte) error {
 		// Once we move to compressed/varint representations in those areas, this limitation
 		// can be lifted.
 		if fw.pos > 16*math.MaxUint32 {
-			return fmt.Errorf("%q %w", fw.name, ErrIndexExceeds64GiB)
+			return fmt.Errorf("%q exceeding max size of 64GiB", fw.name)
 		}
 	}
 	return nil
@@ -553,7 +543,7 @@ func (w *Writer) finishSymbols() error {
 	symbolTableSize := w.f.pos - w.toc.Symbols - 4
 	// The symbol table's <len> part is 4 bytes. So the total symbol table size must be less than or equal to 2^32-1
 	if symbolTableSize > math.MaxUint32 {
-		return fmt.Errorf("%w: %d", ErrSymbolTableTooLarge, symbolTableSize)
+		return fmt.Errorf("symbol table size exceeds %d bytes: %d", uint32(math.MaxUint32), symbolTableSize)
 	}
 
 	// Write out the length and symbol count.
@@ -670,7 +660,7 @@ func (w *Writer) writeLengthAndHash(startPos uint64) error {
 	w.buf1.Reset()
 	l := w.f.pos - startPos - 4
 	if l > math.MaxUint32 {
-		return fmt.Errorf("%w: %d", ErrPostingsOffsetTableTooLarge, l)
+		return fmt.Errorf("length size exceeds 4 bytes: %d", l)
 	}
 	w.buf1.PutBE32int(int(l))
 	if err := w.writeAt(w.buf1.Get(), startPos); err != nil {
@@ -1009,10 +999,10 @@ func NewFileReader(path string, decoder PostingsDecoder) (*Reader, error) {
 	}
 	r, err := newReader(realByteSlice(f.Bytes()), f, decoder)
 	if err != nil {
-		return nil, errors.Join(
+		return nil, tsdb_errors.NewMulti(
 			err,
 			f.Close(),
-		)
+		).Err()
 	}
 
 	return r, nil

@@ -31,18 +31,6 @@ func WithIgnoreUnused() UnmarshalOption {
 	})
 }
 
-// WithForceUnmarshaler sets an option to run a top-level Unmarshal method,
-// even if the Conf being unmarshaled is already a parameter from an Unmarshal method.
-// To avoid infinite recursion, this should only be used when unmarshaling into
-// a different type from the current Unmarshaler.
-// For instance, this should be used in wrapper types such as configoptional.Optional
-// to ensure the inner type's Unmarshal method is called.
-func WithForceUnmarshaler() UnmarshalOption {
-	return UnmarshalOptionFunc(func(uo *UnmarshalOptions) {
-		uo.ForceUnmarshaler = true
-	})
-}
-
 // Decode decodes the contents of the Conf into the result argument, using a
 // mapstructure decoder with the following notable behaviors. Ensures that maps whose
 // values are nil pointer structs resolved to the zero value of the target struct (see
@@ -65,7 +53,7 @@ func Decode(input, result any, settings UnmarshalOptions, skipTopLevelUnmarshale
 			mapKeyStringToMapKeyTextUnmarshalerHookFunc(),
 			mapstructure.StringToTimeDurationHookFunc(),
 			mapstructure.TextUnmarshallerHookFunc(),
-			unmarshalerHookFunc(result, skipTopLevelUnmarshaler && !settings.ForceUnmarshaler),
+			unmarshalerHookFunc(result, skipTopLevelUnmarshaler),
 			// after the main unmarshaler hook is called,
 			// we unmarshal the embedded structs if present to merge with the result:
 			unmarshalerEmbeddedStructsHookFunc(settings),
@@ -105,17 +93,14 @@ func useExpandValue() mapstructure.DecodeHookFuncType {
 			return v, nil
 		}
 
-		if !NewExpandedValueSanitizer.IsEnabled() {
-			switch to.Kind() {
-			case reflect.Array, reflect.Slice, reflect.Map:
-				if isStringyStructure(to) {
-					// If the target field is a stringy structure, sanitize to use the original string value everywhere.
-					return sanitizeToStr(data), nil
-				}
-
-				// Otherwise, sanitize to use the parsed value everywhere.
-				return sanitize(data), nil
+		switch to.Kind() {
+		case reflect.Array, reflect.Slice, reflect.Map:
+			if isStringyStructure(to) {
+				// If the target field is a stringy structure, sanitize to use the original string value everywhere.
+				return sanitizeToStr(data), nil
 			}
+			// Otherwise, sanitize to use the parsed value everywhere.
+			return sanitize(data), nil
 		}
 		return data, nil
 	}

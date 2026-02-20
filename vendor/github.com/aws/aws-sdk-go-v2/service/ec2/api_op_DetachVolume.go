@@ -96,10 +96,6 @@ type DetachVolumeOutput struct {
 	// parameter returns null .
 	Device *string
 
-	// The index of the EBS card. Some instance types support multiple EBS cards. The
-	// default EBS card index is 0.
-	EbsCardIndex *int32
-
 	// The ID of the instance.
 	//
 	// If the volume is attached to an Amazon Web Services-managed resource, this

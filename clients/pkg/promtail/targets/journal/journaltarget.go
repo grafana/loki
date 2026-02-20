@@ -312,11 +312,7 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 		entryLabels[string(k)] = string(v)
 	}
 
-	lb := labels.NewBuilder(labels.FromMap(entryLabels))
-	if keep := relabel.ProcessBuilder(lb, t.relabelConfig...); !keep {
-		return journalEmptyStr, nil
-	}
-	processedLabels := lb.Labels()
+	processedLabels, _ := relabel.Process(labels.FromMap(entryLabels), t.relabelConfig...)
 
 	processedLabelsMap := processedLabels.Map()
 	labels := make(model.LabelSet, len(processedLabelsMap))

@@ -1,4 +1,4 @@
-// Copyright The Prometheus Authors
+// Copyright 2018 The Prometheus Authors
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"log/slog"
 	"math"
 	"os"
@@ -29,10 +28,10 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
-	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 )
 
 // CheckpointStats returns stats about a created checkpoint.
@@ -72,26 +71,18 @@ func DeleteCheckpoints(dir string, maxIndex int) error {
 		return err
 	}
 
-	var errs []error
+	errs := tsdb_errors.NewMulti()
 	for _, checkpoint := range checkpoints {
 		if checkpoint.index >= maxIndex {
 			break
 		}
-		errs = append(errs, os.RemoveAll(filepath.Join(dir, checkpoint.name)))
+		errs.Add(os.RemoveAll(filepath.Join(dir, checkpoint.name)))
 	}
-	return errors.Join(errs...)
+	return errs.Err()
 }
 
-// checkpointTempFileSuffix is the suffix used when creating temporary checkpoint files.
-const checkpointTempFileSuffix = ".tmp"
-
-// DeleteTempCheckpoints deletes all temporary checkpoint directories in the given directory.
-func DeleteTempCheckpoints(logger *slog.Logger, dir string) error {
-	if err := tsdbutil.RemoveTmpDirs(logger, dir, isTempDir); err != nil {
-		return fmt.Errorf("remove previous temporary checkpoint dirs: %w", err)
-	}
-	return nil
-}
+// CheckpointPrefix is the prefix used for checkpoint files.
+const CheckpointPrefix = "checkpoint."
 
 // Checkpoint creates a compacted checkpoint of segments in range [from, to] in the given WAL.
 // It includes the most recent checkpoint if it exists.
@@ -133,12 +124,12 @@ func Checkpoint(logger *slog.Logger, w *WL, from, to int, keep func(id chunks.He
 		defer sgmReader.Close()
 	}
 
-	if err := DeleteTempCheckpoints(logger, w.Dir()); err != nil {
-		return nil, err
-	}
-
 	cpdir := checkpointDir(w.Dir(), to)
-	cpdirtmp := cpdir + checkpointTempFileSuffix
+	cpdirtmp := cpdir + ".tmp"
+
+	if err := os.RemoveAll(cpdirtmp); err != nil {
+		return nil, fmt.Errorf("remove previous temporary checkpoint dir: %w", err)
+	}
 
 	if err := os.MkdirAll(cpdirtmp, 0o777); err != nil {
 		return nil, fmt.Errorf("create checkpoint dir: %w", err)
@@ -404,11 +395,8 @@ func Checkpoint(logger *slog.Logger, w *WL, from, to int, keep func(id chunks.He
 	return stats, nil
 }
 
-// checkpointPrefix is the prefix used for checkpoint files.
-const checkpointPrefix = "checkpoint."
-
 func checkpointDir(dir string, i int) string {
-	return filepath.Join(dir, fmt.Sprintf(checkpointPrefix+"%08d", i))
+	return filepath.Join(dir, fmt.Sprintf(CheckpointPrefix+"%08d", i))
 }
 
 type checkpointRef struct {
@@ -424,13 +412,13 @@ func listCheckpoints(dir string) (refs []checkpointRef, err error) {
 
 	for i := range files {
 		fi := files[i]
-		if !strings.HasPrefix(fi.Name(), checkpointPrefix) {
+		if !strings.HasPrefix(fi.Name(), CheckpointPrefix) {
 			continue
 		}
 		if !fi.IsDir() {
 			return nil, fmt.Errorf("checkpoint %s is not a directory", fi.Name())
 		}
-		idx, err := strconv.Atoi(fi.Name()[len(checkpointPrefix):])
+		idx, err := strconv.Atoi(fi.Name()[len(CheckpointPrefix):])
 		if err != nil {
 			continue
 		}
@@ -443,8 +431,4 @@ func listCheckpoints(dir string) (refs []checkpointRef, err error) {
 	})
 
 	return refs, nil
-}
-
-func isTempDir(fi fs.DirEntry) bool {
-	return strings.HasPrefix(fi.Name(), checkpointPrefix) && strings.HasSuffix(fi.Name(), checkpointTempFileSuffix)
 }

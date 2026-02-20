@@ -1,3 +1,6 @@
+//go:build go1.18
+// +build go1.18
+
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -125,11 +128,10 @@ func (p *Poller[T]) Result(ctx context.Context, out *T) error {
 	}
 	var req *exported.Request
 	var err error
-	switch p.Method {
-	case http.MethodPatch, http.MethodPut:
+	if p.Method == http.MethodPatch || p.Method == http.MethodPut {
 		// for PATCH and PUT, the final GET is on the original resource URL
 		req, err = exported.NewRequest(ctx, http.MethodGet, p.OrigURL)
-	case http.MethodPost:
+	} else if p.Method == http.MethodPost {
 		if p.FinalState == pollers.FinalStateViaAzureAsyncOp {
 			// no final GET required
 		} else if p.FinalState == pollers.FinalStateViaOriginalURI {

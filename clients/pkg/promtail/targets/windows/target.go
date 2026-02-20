@@ -141,8 +141,8 @@ func (t *Target) loop() {
 // renderEntries renders Loki entries from windows event logs
 func (t *Target) renderEntries(events []win_eventlog.Event) []api.Entry {
 	res := make([]api.Entry, 0, len(events))
+	lbs := labels.NewBuilder(labels.EmptyLabels())
 	for _, event := range events {
-		lbs := labels.NewBuilder(labels.EmptyLabels())
 		entry := api.Entry{
 			Labels: make(model.LabelSet),
 		}
@@ -168,10 +168,7 @@ func (t *Target) renderEntries(events []win_eventlog.Event) []api.Entry {
 			lbs.Set("computer", event.Computer)
 		}
 		// apply relabelings.
-		if keep := relabel.ProcessBuilder(lbs, t.relabelConfig...); !keep {
-			continue
-		}
-		processed := lbs.Labels()
+		processed, _ := relabel.Process(lbs.Labels(), t.relabelConfig...)
 
 		processed.Range(func(lbl labels.Label) {
 			if strings.HasPrefix(lbl.Name, "__") {

@@ -10,8 +10,7 @@ type UnmarshalOption interface {
 // UnmarshalOptions is used by (*Conf).Unmarshal to toggle unmarshaling settings.
 // It is in the `internal` package so experimental options can be added in xconfmap.
 type UnmarshalOptions struct {
-	IgnoreUnused     bool
-	ForceUnmarshaler bool
+	IgnoreUnused bool
 }
 
 type UnmarshalOptionFunc func(*UnmarshalOptions)

@@ -1,4 +1,4 @@
-// Copyright The Prometheus Authors
+// Copyright 2013 The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -24,13 +24,17 @@ type alertMetrics struct {
 	latencyHistogram        *prometheus.HistogramVec
 	errors                  *prometheus.CounterVec
 	sent                    *prometheus.CounterVec
-	dropped                 *prometheus.CounterVec
-	queueLength             *prometheus.GaugeVec
+	dropped                 prometheus.Counter
+	queueLength             prometheus.GaugeFunc
 	queueCapacity           prometheus.Gauge
 	alertmanagersDiscovered prometheus.GaugeFunc
 }
 
-func newAlertMetrics(r prometheus.Registerer, alertmanagersDiscovered func() float64) *alertMetrics {
+func newAlertMetrics(
+	r prometheus.Registerer,
+	queueCap int,
+	queueLen, alertmanagersDiscovered func() float64,
+) *alertMetrics {
 	m := &alertMetrics{
 		latencySummary: prometheus.NewSummaryVec(prometheus.SummaryOpts{
 			Namespace:  namespace,
@@ -70,18 +74,18 @@ func newAlertMetrics(r prometheus.Registerer, alertmanagersDiscovered func() flo
 		},
 			[]string{alertmanagerLabel},
 		),
-		dropped: prometheus.NewCounterVec(prometheus.CounterOpts{
+		dropped: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "dropped_total",
 			Help:      "Total number of alerts dropped due to errors when sending to Alertmanager.",
-		}, []string{alertmanagerLabel}),
-		queueLength: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		}),
+		queueLength: prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "queue_length",
 			Help:      "The number of alert notifications in the queue.",
-		}, []string{alertmanagerLabel}),
+		}, queueLen),
 		queueCapacity: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
@@ -93,6 +97,8 @@ func newAlertMetrics(r prometheus.Registerer, alertmanagersDiscovered func() flo
 			Help: "The number of alertmanagers discovered and active.",
 		}, alertmanagersDiscovered),
 	}
+
+	m.queueCapacity.Set(float64(queueCap))
 
 	if r != nil {
 		r.MustRegister(

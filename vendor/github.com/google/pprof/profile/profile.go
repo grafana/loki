@@ -278,7 +278,7 @@ func (p *Profile) massageMappings() {
 
 	// Use heuristics to identify main binary and move it to the top of the list of mappings
 	for i, m := range p.Mapping {
-		file := strings.TrimSpace(strings.ReplaceAll(m.File, "(deleted)", ""))
+		file := strings.TrimSpace(strings.Replace(m.File, "(deleted)", "", -1))
 		if len(file) == 0 {
 			continue
 		}

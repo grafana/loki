@@ -8,8 +8,8 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
-	"go.opentelemetry.io/collector/internal/componentalias"
 	"go.opentelemetry.io/collector/pipeline"
+	"go.opentelemetry.io/collector/processor/internal"
 )
 
 // Traces is a processor that can consume traces.
@@ -99,7 +99,6 @@ func (f factoryOptionFunc) applyOption(o *factory) {
 type factory struct {
 	cfgType component.Type
 	component.CreateDefaultConfigFunc
-	componentalias.TypeAliasHolder
 	createTracesFunc      CreateTracesFunc
 	tracesStabilityLevel  component.StabilityLevel
 	createMetricsFunc     CreateMetricsFunc
@@ -131,8 +130,8 @@ func (f *factory) CreateTraces(ctx context.Context, set Settings, cfg component.
 		return nil, pipeline.ErrSignalNotSupported
 	}
 
-	if err := componentalias.ValidateComponentType(f, set.ID); err != nil {
-		return nil, err
+	if set.ID.Type() != f.Type() {
+		return nil, internal.ErrIDMismatch(set.ID, f.Type())
 	}
 
 	return f.createTracesFunc(ctx, set, cfg, next)
@@ -143,8 +142,8 @@ func (f *factory) CreateMetrics(ctx context.Context, set Settings, cfg component
 		return nil, pipeline.ErrSignalNotSupported
 	}
 
-	if err := componentalias.ValidateComponentType(f, set.ID); err != nil {
-		return nil, err
+	if set.ID.Type() != f.Type() {
+		return nil, internal.ErrIDMismatch(set.ID, f.Type())
 	}
 
 	return f.createMetricsFunc(ctx, set, cfg, next)
@@ -155,8 +154,8 @@ func (f *factory) CreateLogs(ctx context.Context, set Settings, cfg component.Co
 		return nil, pipeline.ErrSignalNotSupported
 	}
 
-	if err := componentalias.ValidateComponentType(f, set.ID); err != nil {
-		return nil, err
+	if set.ID.Type() != f.Type() {
+		return nil, internal.ErrIDMismatch(set.ID, f.Type())
 	}
 
 	return f.createLogsFunc(ctx, set, cfg, next)
@@ -200,7 +199,6 @@ func NewFactory(cfgType component.Type, createDefaultConfig component.CreateDefa
 	f := &factory{
 		cfgType:                 cfgType,
 		CreateDefaultConfigFunc: createDefaultConfig,
-		TypeAliasHolder:         componentalias.NewTypeAliasHolder(),
 	}
 	for _, opt := range options {
 		opt.applyOption(f)

@@ -54478,11 +54478,6 @@ func awsEc2query_serializeDocumentEbsBlockDevice(v *types.EbsBlockDevice, value 
 		objectKey.Boolean(*v.DeleteOnTermination)
 	}
 
-	if v.EbsCardIndex != nil {
-		objectKey := object.Key("EbsCardIndex")
-		objectKey.Integer(*v.EbsCardIndex)
-	}
-
 	if v.Encrypted != nil {
 		objectKey := object.Key("Encrypted")
 		objectKey.Boolean(*v.Encrypted)
@@ -57558,11 +57553,6 @@ func awsEc2query_serializeDocumentLaunchTemplateEbsBlockDeviceRequest(v *types.L
 	if v.DeleteOnTermination != nil {
 		objectKey := object.Key("DeleteOnTermination")
 		objectKey.Boolean(*v.DeleteOnTermination)
-	}
-
-	if v.EbsCardIndex != nil {
-		objectKey := object.Key("EbsCardIndex")
-		objectKey.Integer(*v.EbsCardIndex)
 	}
 
 	if v.Encrypted != nil {
@@ -65220,11 +65210,6 @@ func awsEc2query_serializeOpDocumentAttachVolumeInput(v *AttachVolumeInput, valu
 	if v.DryRun != nil {
 		objectKey := object.Key("DryRun")
 		objectKey.Boolean(*v.DryRun)
-	}
-
-	if v.EbsCardIndex != nil {
-		objectKey := object.Key("EbsCardIndex")
-		objectKey.Integer(*v.EbsCardIndex)
 	}
 
 	if v.InstanceId != nil {
@@ -87743,11 +87728,6 @@ func awsEc2query_serializeOpDocumentSearchTransitGatewayRoutesInput(v *SearchTra
 	if v.MaxResults != nil {
 		objectKey := object.Key("MaxResults")
 		objectKey.Integer(*v.MaxResults)
-	}
-
-	if v.NextToken != nil {
-		objectKey := object.Key("NextToken")
-		objectKey.String(*v.NextToken)
 	}
 
 	if v.TransitGatewayRouteTableId != nil {

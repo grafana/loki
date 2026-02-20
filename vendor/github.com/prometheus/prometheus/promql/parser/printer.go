@@ -1,4 +1,4 @@
-// Copyright The Prometheus Authors
+// Copyright 2015 The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -38,7 +38,7 @@ func tree(node Node, level string) string {
 	typs := strings.Split(fmt.Sprintf("%T", node), ".")[1]
 
 	var t strings.Builder
-	fmt.Fprintf(&t, "%s |---- %s :: %s\n", level, typs, node)
+	t.WriteString(fmt.Sprintf("%s |---- %s :: %s\n", level, typs, node))
 
 	level += " · · ·"
 
@@ -109,7 +109,7 @@ func writeLabels(b *bytes.Buffer, ss []string) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		if !model.LegacyValidation.IsValidLabelName(s) {
+		if !model.LegacyValidation.IsValidMetricName(s) {
 			b.Write(strconv.AppendQuote(b.AvailableBuffer(), s))
 		} else {
 			b.WriteString(s)
@@ -147,7 +147,6 @@ func (node *BinaryExpr) ShortString() string {
 
 func (node *BinaryExpr) getMatchingStr() string {
 	matching := ""
-	var b bytes.Buffer
 	vm := node.VectorMatching
 	if vm != nil {
 		if len(vm.MatchingLabels) > 0 || vm.On || vm.Card == CardManyToOne || vm.Card == CardOneToMany {
@@ -155,10 +154,7 @@ func (node *BinaryExpr) getMatchingStr() string {
 			if vm.On {
 				vmTag = "on"
 			}
-			b.WriteString(" " + vmTag + " (")
-			writeLabels(&b, vm.MatchingLabels)
-			b.WriteString(")")
-			matching = b.String()
+			matching = fmt.Sprintf(" %s (%s)", vmTag, strings.Join(vm.MatchingLabels, ", "))
 		}
 
 		if vm.Card == CardManyToOne || vm.Card == CardOneToMany {
@@ -166,24 +162,7 @@ func (node *BinaryExpr) getMatchingStr() string {
 			if vm.Card == CardManyToOne {
 				vmCard = "left"
 			}
-			b.Reset()
-			b.WriteString(" group_" + vmCard + " (")
-			writeLabels(&b, vm.Include)
-			b.WriteString(")")
-			matching += b.String()
-		}
-
-		if vm.FillValues.LHS != nil || vm.FillValues.RHS != nil {
-			if vm.FillValues.LHS == vm.FillValues.RHS {
-				matching += fmt.Sprintf(" fill (%v)", *vm.FillValues.LHS)
-			} else {
-				if vm.FillValues.LHS != nil {
-					matching += fmt.Sprintf(" fill_left (%v)", *vm.FillValues.LHS)
-				}
-				if vm.FillValues.RHS != nil {
-					matching += fmt.Sprintf(" fill_right (%v)", *vm.FillValues.RHS)
-				}
-			}
+			matching += fmt.Sprintf(" group_%s (%s)", vmCard, strings.Join(vm.Include, ", "))
 		}
 	}
 	return matching
@@ -203,8 +182,6 @@ func (node *DurationExpr) writeTo(b *bytes.Buffer) {
 	switch {
 	case node.Op == STEP:
 		b.WriteString("step()")
-	case node.Op == RANGE:
-		b.WriteString("range()")
 	case node.Op == MIN:
 		b.WriteString("min(")
 		b.WriteString(node.LHS.String())

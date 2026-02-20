@@ -1,10 +1,6 @@
+/.devenv/
+/.direnv/
+/.pre-commit-config.yaml
 /bin/
 /build/
 /var/
-
-# Devenv
-.devenv*
-devenv.local.nix
-devenv.local.yaml
-.direnv
-.pre-commit-config.yaml

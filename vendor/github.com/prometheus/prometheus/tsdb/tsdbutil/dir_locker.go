@@ -1,4 +1,4 @@
-// Copyright The Prometheus Authors
+// Copyright 2021 The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -22,6 +22,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 )
 
@@ -93,9 +94,10 @@ func (l *DirLocker) Release() error {
 		return nil
 	}
 
-	releaserErr := l.releaser.Release()
-	removeErr := os.Remove(l.path)
+	errs := tsdb_errors.NewMulti()
+	errs.Add(l.releaser.Release())
+	errs.Add(os.Remove(l.path))
 
 	l.releaser = nil
-	return errors.Join(releaserErr, removeErr)
+	return errs.Err()
 }
