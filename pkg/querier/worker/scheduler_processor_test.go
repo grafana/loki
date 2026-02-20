@@ -4,6 +4,7 @@ package worker
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -54,10 +54,10 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 	t.Run("should wait until inflight query execution is completed before returning when worker context is canceled", func(t *testing.T) {
 		sp, loopClient, requestHandler := prepareSchedulerProcessor()
 
-		recvCount := atomic.NewInt64(0)
+		recvCount := (&atomic.Int64{})
 
 		loopClient.On("Recv").Return(func() (*schedulerpb.SchedulerToQuerier, error) {
-			switch recvCount.Inc() {
+			switch recvCount.Add(1) {
 			case 1:
 				return &schedulerpb.SchedulerToQuerier{
 					QueryID: 1,

@@ -2,9 +2,10 @@ package bloomgateway
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
-	"go.uber.org/atomic"
+	"github.com/grafana/loki/v3/pkg/util/atomicutil"
 )
 
 type Stats struct {
@@ -12,10 +13,10 @@ type Stats struct {
 	NumTasks, NumMatchers               int
 	ChunksRequested, ChunksFiltered     int
 	SeriesRequested, SeriesFiltered     int
-	QueueTime                           *atomic.Duration
-	BlocksFetchTime                     *atomic.Duration
-	ProcessingTime, TotalProcessingTime *atomic.Duration
-	PostProcessingTime                  *atomic.Duration
+	QueueTime                           *atomicutil.Duration
+	BlocksFetchTime                     *atomicutil.Duration
+	ProcessingTime, TotalProcessingTime *atomicutil.Duration
+	PostProcessingTime                  *atomicutil.Duration
 	SkippedBlocks                       *atomic.Int32 // blocks skipped because they were not available (yet)
 	ProcessedBlocks                     *atomic.Int32 // blocks processed for this specific request
 	ProcessedBlocksTotal                *atomic.Int32 // blocks processed for multiplexed request
@@ -29,14 +30,14 @@ var ctxKey = statsKey(0)
 func ContextWithEmptyStats(ctx context.Context) (*Stats, context.Context) {
 	stats := &Stats{
 		Status:               "unknown",
-		SkippedBlocks:        atomic.NewInt32(0),
-		ProcessedBlocks:      atomic.NewInt32(0),
-		ProcessedBlocksTotal: atomic.NewInt32(0),
-		QueueTime:            atomic.NewDuration(0),
-		BlocksFetchTime:      atomic.NewDuration(0),
-		ProcessingTime:       atomic.NewDuration(0),
-		TotalProcessingTime:  atomic.NewDuration(0),
-		PostProcessingTime:   atomic.NewDuration(0),
+		SkippedBlocks:        &atomic.Int32{},
+		ProcessedBlocks:      &atomic.Int32{},
+		ProcessedBlocksTotal: &atomic.Int32{},
+		QueueTime:            atomicutil.NewDuration(0),
+		BlocksFetchTime:      atomicutil.NewDuration(0),
+		ProcessingTime:       atomicutil.NewDuration(0),
+		TotalProcessingTime:  atomicutil.NewDuration(0),
+		PostProcessingTime:   atomicutil.NewDuration(0),
 	}
 	ctx = context.WithValue(ctx, ctxKey, stats)
 	return stats, ctx
@@ -129,14 +130,14 @@ func (s *Stats) IncSkippedBlocks() {
 	if s == nil {
 		return
 	}
-	s.SkippedBlocks.Inc()
+	s.SkippedBlocks.Add(1)
 }
 
 func (s *Stats) IncProcessedBlocks() {
 	if s == nil {
 		return
 	}
-	s.ProcessedBlocks.Inc()
+	s.ProcessedBlocks.Add(1)
 }
 
 func (s *Stats) AddProcessedBlocksTotal(delta int) {

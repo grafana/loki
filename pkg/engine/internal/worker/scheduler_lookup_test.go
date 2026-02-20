@@ -4,13 +4,13 @@ import (
 	"context"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 )
 
 func Test_schedulerLookup(t *testing.T) {
@@ -45,8 +45,8 @@ func Test_schedulerLookup(t *testing.T) {
 
 		wg.Go(func() {
 			_ = disc.Run(lookupContext, func(ctx context.Context, _ net.Addr) {
-				context.AfterFunc(ctx, func() { handlers.Dec() })
-				handlers.Inc()
+				context.AfterFunc(ctx, func() { handlers.Add(-1) })
+				handlers.Add(1)
 			})
 		})
 

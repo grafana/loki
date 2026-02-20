@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/user"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 	grpc_metadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -305,7 +305,7 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		cnt := atomic.NewInt32(0)
+		cnt := (&atomic.Int32{})
 
 		t.Run(testName, func(t *testing.T) {
 			cnt.Store(0)
@@ -404,7 +404,7 @@ func TestIngesterQuerier_QueriesSameIngestersWithPartitionContext(t *testing.T) 
 	}
 
 	for testName, testData := range tests {
-		cnt := atomic.NewInt32(0)
+		cnt := (&atomic.Int32{})
 		ctx := NewPartitionContext(testCtx)
 
 		t.Run(testName, func(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -16,7 +17,6 @@ import (
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/jsonparser"
 	"github.com/prometheus/common/model"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
@@ -91,7 +91,7 @@ func NewTarget(
 		cancel:  cancel,
 		client:  client,
 		to:      to,
-		running: atomic.NewBool(false),
+		running: (&atomic.Bool{}),
 	}
 	t.start()
 	return t, nil

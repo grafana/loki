@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -20,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/atomic"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -302,7 +302,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	task.enqueueTime = time.Now()
 	if err := g.queue.Enqueue(tenantID, nil, task, func() {
 		// When enqueuing, we also add the task to the pending tasks
-		_ = g.pendingTasks.Inc()
+		_ = g.pendingTasks.Add(1)
 	}); err != nil {
 		stats.Status = labelFailure
 		return nil, errors.Wrap(err, "failed to enqueue task")

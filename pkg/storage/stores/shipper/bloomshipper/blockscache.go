@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -13,7 +14,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -87,8 +87,8 @@ func newBlocksCacheMetrics(reg prometheus.Registerer, namespace, subsystem strin
 			Help:      "The current size of entries managed by the cache in bytes",
 		}),
 
-		hits:   atomic.NewInt64(0),
-		misses: atomic.NewInt64(0),
+		hits:   (&atomic.Int64{}),
+		misses: (&atomic.Int64{}),
 	}
 }
 
@@ -180,7 +180,7 @@ func (c *BlocksCache) PutInc(ctx context.Context, key string, value BlockDirecto
 		return err
 	}
 
-	entry.refCount.Inc()
+	entry.refCount.Add(1)
 	return nil
 }
 
@@ -213,7 +213,7 @@ func (c *BlocksCache) put(key string, value BlockDirectory) (*Entry, error) {
 		Key:      key,
 		Value:    value,
 		created:  time.Now(),
-		refCount: atomic.NewInt32(0),
+		refCount: (&atomic.Int32{}),
 	}
 	size := entry.Value.Size()
 
@@ -330,18 +330,18 @@ func (c *BlocksCache) get(key string, opt *cacheGetOptions) *Entry {
 	element, exists := c.entries[key]
 	if !exists {
 		if opt.ReportHitMiss {
-			c.metrics.misses.Inc()
+			c.metrics.misses.Add(1)
 		}
 		return nil
 	}
 
 	entry := element.Value.(*Entry)
-	entry.refCount.Inc()
+	entry.refCount.Add(1)
 
 	c.lru.MoveToFront(element)
 
 	if opt.ReportHitMiss {
-		c.metrics.hits.Inc()
+		c.metrics.hits.Add(1)
 	}
 
 	return entry
@@ -364,7 +364,7 @@ func (c *BlocksCache) Release(ctx context.Context, key string) error {
 	}
 
 	entry := element.Value.(*Entry)
-	entry.refCount.Dec()
+	entry.refCount.Add(-1)
 	return nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
@@ -143,14 +143,14 @@ func Test_Hedging(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			count := atomic.NewInt32(0)
+			count := (&atomic.Int32{})
 			// hijack the client to count the number of calls
 			defaultClientFactory = func() *http.Client {
 				return &http.Client{
 					Transport: RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 						// blocklist is a call that can be fired by the SDK after PUT but is not guaranteed.
 						if !strings.Contains(req.URL.String(), "blocklist") {
-							count.Inc()
+							count.Add(1)
 							time.Sleep(50 * time.Millisecond)
 						}
 						return nil, http.ErrNotSupported

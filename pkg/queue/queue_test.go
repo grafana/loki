@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -461,7 +461,7 @@ func Test_Queue_DequeueMany(t *testing.T) {
 
 			mtx := &sync.Mutex{}
 			receivedTasksPerTenant := make(map[string]int, tt.tenantsCount)
-			receivedTasksCount := atomic.NewInt32(0)
+			receivedTasksCount := (&atomic.Int32{})
 			for i := 0; i < tt.consumersCount; i++ {
 				consumer := createConsumerName(i)
 				wg.Go(func() error {

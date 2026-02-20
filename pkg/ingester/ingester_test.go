@@ -9,10 +9,9 @@ import (
 	"net/http/httptest"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
-
-	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -1683,11 +1682,13 @@ func (r *readRingMock) GetWithOptions(_ uint32, _ ring.Operation, _ ...ring.Opti
 }
 
 func (r *readRingMock) ShuffleShard(_ string, size int) ring.ReadRing {
-	// pass by value to copy
-	return func(r readRingMock) *readRingMock {
-		r.replicationSet.Instances = r.replicationSet.Instances[:size]
-		return &r
-	}(*r)
+	return &readRingMock{
+		replicationSet: ring.ReplicationSet{
+			Instances: r.replicationSet.Instances[:size],
+			MaxErrors: r.replicationSet.MaxErrors,
+		},
+		tokenRangesByIngester: r.tokenRangesByIngester,
+	}
 }
 
 func (r *readRingMock) BatchGet(_ []uint32, _ ring.Operation) ([]ring.ReplicationSet, error) {

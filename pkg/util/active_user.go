@@ -3,10 +3,10 @@ package util //nolint:revive
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/grafana/dskit/services"
-	"go.uber.org/atomic"
 )
 
 // ActiveUsers keeps track of latest user's activity timestamp,
@@ -33,7 +33,8 @@ func (m *ActiveUsers) UpdateUserTimestamp(userID string, ts int64) {
 	}
 
 	// Pre-allocate new atomic to avoid doing allocation with lock held.
-	newAtomic := atomic.NewInt64(ts)
+	newAtomic := &atomic.Int64{}
+	newAtomic.Store(ts)
 
 	// We need RW lock to create new entry.
 	m.mu.Lock()

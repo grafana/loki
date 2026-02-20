@@ -5,11 +5,11 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 )
 
 func TestActiveUser(t *testing.T) {
@@ -34,9 +34,9 @@ func TestActiveUserConcurrentUpdateAndPurge(t *testing.T) {
 	as := NewActiveUsers()
 
 	done := sync.WaitGroup{}
-	stop := atomic.NewBool(false)
+	stop := (&atomic.Bool{})
 
-	latestTS := atomic.NewInt64(0)
+	latestTS := (&atomic.Int64{})
 
 	for j := 0; j < count; j++ {
 		done.Add(1)
@@ -45,7 +45,7 @@ func TestActiveUserConcurrentUpdateAndPurge(t *testing.T) {
 			defer done.Done()
 
 			for !stop.Load() {
-				ts := latestTS.Inc()
+				ts := latestTS.Add(1)
 
 				// In each cycle, we update different user.
 				as.UpdateUserTimestamp(fmt.Sprintf("%d", ts), ts)
@@ -110,7 +110,7 @@ func BenchmarkActiveUsers_Purge(b *testing.B) {
 
 func startGoroutinesDoingUpdates(b *testing.B, count int, as *ActiveUsers) {
 	done := sync.WaitGroup{}
-	stop := atomic.NewBool(false)
+	stop := (&atomic.Bool{})
 
 	started := sync.WaitGroup{}
 	for j := 0; j < count; j++ {

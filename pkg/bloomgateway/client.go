@@ -6,6 +6,7 @@ import (
 	"io"
 	"slices"
 	"sort"
+	"sync/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -15,7 +16,6 @@ import (
 	ringclient "github.com/grafana/dskit/ring/client"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -237,7 +237,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval blo
 	}
 
 	results := make([][]*logproto.GroupedChunkRefs, len(servers))
-	count := atomic.NewInt64(0)
+	count := (&atomic.Int64{})
 	err := concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
 		rs := servers[i]
 

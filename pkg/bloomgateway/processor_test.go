@@ -3,6 +3,7 @@ package bloomgateway
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -150,14 +150,14 @@ func TestProcessor(t *testing.T) {
 		task := newTask(ctx, "fake", swb, matchers, nil)
 		tasks := []Task{task}
 
-		results := atomic.NewInt64(0)
+		results := (&atomic.Int64{})
 		var wg sync.WaitGroup
 		for i := range tasks {
 			wg.Add(1)
 			go func(ta Task) {
 				defer wg.Done()
 				for range ta.resCh {
-					results.Inc()
+					results.Add(1)
 				}
 				t.Log("done", results.Load())
 			}(tasks[i])
@@ -200,14 +200,14 @@ func TestProcessor(t *testing.T) {
 		task := newTask(ctx, "fake", swb, matchers, blocks)
 		tasks := []Task{task}
 
-		results := atomic.NewInt64(0)
+		results := (&atomic.Int64{})
 		var wg sync.WaitGroup
 		for i := range tasks {
 			wg.Add(1)
 			go func(ta Task) {
 				defer wg.Done()
 				for range ta.resCh {
-					results.Inc()
+					results.Add(1)
 				}
 				t.Log("done", results.Load())
 			}(tasks[i])
@@ -247,14 +247,14 @@ func TestProcessor(t *testing.T) {
 		task := newTask(ctx, "fake", swb, matchers, nil)
 		tasks := []Task{task}
 
-		results := atomic.NewInt64(0)
+		results := (&atomic.Int64{})
 		var wg sync.WaitGroup
 		for i := range tasks {
 			wg.Add(1)
 			go func(ta Task) {
 				defer wg.Done()
 				for range ta.resCh {
-					results.Inc()
+					results.Add(1)
 				}
 				t.Log("done", results.Load())
 			}(tasks[i])

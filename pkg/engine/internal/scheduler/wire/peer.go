@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"reflect"
 	"sync"
+	"sync/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -234,7 +234,7 @@ type request struct {
 func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 	p.lazyInit()
 
-	reqID := p.requestID.Inc()
+	reqID := p.requestID.Add(1)
 	req := &request{
 		result: make(chan error, 1),
 	}
@@ -269,7 +269,7 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
 	p.lazyInit()
 
-	reqID := p.requestID.Inc()
+	reqID := p.requestID.Add(1)
 	p.Metrics.incMessageSent()
 	return p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message})
 }

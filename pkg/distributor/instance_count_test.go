@@ -1,19 +1,19 @@
 package distributor
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func TestInstanceCountDelegateCounting(t *testing.T) {
-	counter := atomic.NewUint32(0)
+	counter := (&atomic.Uint32{})
 
 	var delegate ring.BasicLifecyclerDelegate
 	delegate = ring.NewInstanceRegisterDelegate(ring.ACTIVE, 1 /* tokenCount */)
@@ -90,7 +90,7 @@ func (s *sentryDelegate) OnRingInstanceStopping(lifecycler *ring.BasicLifecycler
 }
 
 func TestInstanceCountDelegate_CorrectlyInvokesOtherDelegates(t *testing.T) {
-	counter := atomic.NewUint32(0)
+	counter := (&atomic.Uint32{})
 
 	sentry1 := map[string]int{}
 	sentry2 := map[string]int{}

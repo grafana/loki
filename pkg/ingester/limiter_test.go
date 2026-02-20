@@ -3,13 +3,13 @@ package ingester
 import (
 	"fmt"
 	"math"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/ring"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -128,9 +128,13 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
+			fixedLimitVal := &atomic.Int32{}
+			fixedLimitVal.Store(testData.fixedLimit)
+			ownedStreamCountVal := &atomic.Int64{}
+			ownedStreamCountVal.Store(int64(testData.ownedStreamCount))
 			ownedStreamSvc := &ownedStreamService{
-				fixedLimit:       atomic.NewInt32(testData.fixedLimit),
-				ownedStreamCount: atomic.NewInt64(int64(testData.ownedStreamCount)),
+				fixedLimit:       fixedLimitVal,
+				ownedStreamCount: ownedStreamCountVal,
 			}
 			strategy := &fixedStrategy{localLimit: testData.calculatedLocalLimit}
 			limiter := NewLimiter(limits, NilMetrics, strategy, &TenantBasedStrategy{limits: limits})

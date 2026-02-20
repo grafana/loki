@@ -4,13 +4,13 @@ import (
 	"context"
 	"flag"
 	"sync"
+	"sync/atomic"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	attribute "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
@@ -152,7 +152,7 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 		newSize := c.size.Add(int64(size))
 		if newSize > int64(c.sizeLimit) {
 			// subtract it since we've exceeded the limit
-			c.size.Sub(int64(size))
+			c.size.Add(-int64(size))
 			c.failStore(ctx, size, num, "queue at byte size limit")
 			return nil
 		}
@@ -192,7 +192,7 @@ func (c *backgroundCache) writeBackLoop() {
 			if !ok {
 				return
 			}
-			c.size.Sub(int64(bgWrite.size()))
+			c.size.Add(-int64(bgWrite.size()))
 
 			c.queueLength.Sub(float64(len(bgWrite.keys)))
 			c.queueBytes.Set(float64(c.size.Load()))

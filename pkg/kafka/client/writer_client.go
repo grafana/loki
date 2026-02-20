@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -18,7 +19,6 @@ import (
 	"github.com/twmb/franz-go/plugin/kprom"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
@@ -260,7 +260,7 @@ func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, r
 
 	producer := &Producer{
 		Client:           client,
-		bufferedBytes:    atomic.NewInt64(0),
+		bufferedBytes:    (&atomic.Int64{}),
 		maxBufferedBytes: maxBufferedBytes,
 
 		// Metrics.
@@ -315,7 +315,7 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 	}
 
 	var (
-		remaining = atomic.NewInt64(int64(len(records)))
+		remaining = func() *atomic.Int64 { v := &atomic.Int64{}; v.Store(int64(len(records))); return v }()
 		done      = make(chan struct{})
 		resMx     sync.Mutex
 		res       = make(kgo.ProduceResults, 0, len(records))
@@ -339,7 +339,7 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		// In case of error we'll wait for all responses anyway before returning from produceSync().
 		// It allows us to keep code easier, given we don't expect this function to be frequently
 		// called with multiple records.
-		if remaining.Dec() == 0 {
+		if remaining.Add(-1) == 0 {
 			close(done)
 		}
 	}

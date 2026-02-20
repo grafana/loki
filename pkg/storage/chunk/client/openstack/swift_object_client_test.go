@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/dskit/flagext"
 
@@ -60,7 +60,7 @@ func Test_Hedging(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			count := atomic.NewInt32(0)
+			count := (&atomic.Int32{})
 			// hijack the transport to count the number of calls
 			transportCounter := RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				// fake auth
@@ -81,7 +81,7 @@ func Test_Hedging(t *testing.T) {
 						Body:       http.NoBody,
 					}, nil
 				}
-				count.Inc()
+				count.Add(1)
 				time.Sleep(200 * time.Millisecond)
 				return &http.Response{
 					StatusCode: http.StatusOK,

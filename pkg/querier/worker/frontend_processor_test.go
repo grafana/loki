@@ -3,13 +3,13 @@ package worker
 import (
 	"context"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -36,7 +36,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 
 	cfg := Config{}
 	mgr := newFrontendProcessor(cfg, nil, log.NewNopLogger(), queryrange.DefaultCodec)
-	running := atomic.NewBool(false)
+	running := (&atomic.Bool{})
 	go func() {
 		running.Store(true)
 		defer running.Store(false)

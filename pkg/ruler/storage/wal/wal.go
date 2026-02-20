@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -29,7 +30,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	"github.com/prometheus/prometheus/util/compression"
-	"go.uber.org/atomic"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -83,7 +83,7 @@ func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Regis
 		deleted: map[chunks.HeadSeriesRef]int{},
 		series:  newStripeSeries(),
 		metrics: metrics,
-		ref:     atomic.NewUint64(0),
+		ref:     (&atomic.Uint64{}),
 	}
 
 	storage.bufPool.New = func() interface{} {
@@ -651,7 +651,7 @@ func (a *appender) getOrCreate(l labels.Labels) (series *memSeries, created bool
 		return series, false
 	}
 
-	series = &memSeries{ref: chunks.HeadSeriesRef(a.w.ref.Inc()), lset: l}
+	series = &memSeries{ref: chunks.HeadSeriesRef(a.w.ref.Add(1)), lset: l}
 	a.w.series.set(labels.StableHash(l), series)
 	return series, true
 }

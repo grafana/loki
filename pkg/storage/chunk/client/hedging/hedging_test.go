@@ -3,13 +3,13 @@ package hedging
 import (
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 )
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
@@ -34,10 +34,10 @@ func TestHedging(t *testing.T) {
 		UpTo:         3,
 		MaxPerSecond: 1000,
 	}
-	count := atomic.NewInt32(0)
+	count := (&atomic.Int32{})
 	client, err := cfg.ClientWithRegisterer(&http.Client{
 		Transport: RoundTripperFunc(func(_ *http.Request) (*http.Response, error) {
-			count.Inc()
+			count.Add(1)
 			time.Sleep(200 * time.Millisecond)
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -69,10 +69,10 @@ func TestHedgingRateLimit(t *testing.T) {
 		UpTo:         20,
 		MaxPerSecond: 1,
 	}
-	count := atomic.NewInt32(0)
+	count := (&atomic.Int32{})
 	client, err := cfg.ClientWithRegisterer(&http.Client{
 		Transport: RoundTripperFunc(func(_ *http.Request) (*http.Response, error) {
-			count.Inc()
+			count.Add(1)
 			time.Sleep(200 * time.Millisecond)
 			return &http.Response{
 				StatusCode: http.StatusOK,

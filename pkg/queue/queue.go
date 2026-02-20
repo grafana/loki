@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
-	"go.uber.org/atomic"
 )
 
 const (
@@ -72,7 +72,7 @@ type RequestQueue struct {
 func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, limits Limits, metrics *Metrics) *RequestQueue {
 	q := &RequestQueue{
 		queues:             newTenantQueues(maxOutstandingPerTenant, forgetDelay, limits),
-		connectedConsumers: atomic.NewInt32(0),
+		connectedConsumers: (&atomic.Int32{}),
 		metrics:            metrics,
 		pool:               NewSlicePool[Request](1<<6, 1<<10, 2), // Buckets are [64, 128, 256, 512, 1024].
 	}
@@ -274,7 +274,7 @@ func (q *RequestQueue) stopping(_ error) error {
 }
 
 func (q *RequestQueue) RegisterConsumerConnection(querier string) {
-	q.connectedConsumers.Inc()
+	q.connectedConsumers.Add(1)
 
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
@@ -282,7 +282,7 @@ func (q *RequestQueue) RegisterConsumerConnection(querier string) {
 }
 
 func (q *RequestQueue) UnregisterConsumerConnection(querier string) {
-	q.connectedConsumers.Dec()
+	q.connectedConsumers.Add(-1)
 
 	q.mtx.Lock()
 	defer q.mtx.Unlock()

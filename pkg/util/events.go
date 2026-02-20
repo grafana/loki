@@ -2,9 +2,9 @@ package util //nolint:revive
 
 import (
 	"os"
+	"sync/atomic"
 
 	"github.com/go-kit/log"
-	"go.uber.org/atomic"
 )
 
 // Provide an "event" interface for observability
@@ -47,7 +47,7 @@ type samplingFilter struct {
 }
 
 func (e *samplingFilter) Log(keyvals ...interface{}) error {
-	count := e.count.Inc()
+	count := e.count.Add(1)
 	if count%int64(e.freq) == 0 {
 		return e.next.Log(keyvals...)
 	}

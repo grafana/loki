@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	"github.com/go-kit/log"
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -30,7 +30,7 @@ func TestRetry(t *testing.T) {
 		{
 			name: "retry failures",
 			handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
-				if try.Inc() == 5 {
+				if try.Add(1) == 5 {
 					return &PrometheusResponse{Status: "Hello World"}, nil
 				}
 				return nil, fmt.Errorf("fail")
@@ -41,7 +41,7 @@ func TestRetry(t *testing.T) {
 		{
 			name: "don't retry 400s",
 			handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
-				try.Inc()
+				try.Add(1)
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, "Bad Request")
 			}),
 			err:           httpgrpc.Errorf(http.StatusBadRequest, "Bad Request"),
@@ -50,7 +50,7 @@ func TestRetry(t *testing.T) {
 		{
 			name: "retry 500s",
 			handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
-				try.Inc()
+				try.Add(1)
 				return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Internal Server Error")
 			}),
 			err:           httpgrpc.Errorf(http.StatusInternalServerError, "Internal Server Error"),
@@ -59,7 +59,7 @@ func TestRetry(t *testing.T) {
 		{
 			name: "last error",
 			handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
-				if try.Inc() == 5 {
+				if try.Add(1) == 5 {
 					return nil, httpgrpc.Errorf(http.StatusBadRequest, "Bad Request")
 				}
 				return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Internal Server Error")
@@ -72,7 +72,7 @@ func TestRetry(t *testing.T) {
 		{
 			name: "protobuf enc don't retry 400s",
 			handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
-				try.Inc()
+				try.Add(1)
 				return nil, status.New(codes.Code(http.StatusBadRequest), "Bad Request").Err()
 			}),
 			err:           status.New(codes.Code(http.StatusBadRequest), "Bad Request").Err(),
@@ -81,7 +81,7 @@ func TestRetry(t *testing.T) {
 		{
 			name: "protobuf enc retry 500s",
 			handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
-				try.Inc()
+				try.Add(1)
 				return nil, status.New(codes.Code(http.StatusInternalServerError), "Internal Server Error").Err()
 			}),
 			err:           status.New(codes.Code(http.StatusInternalServerError), "Internal Server Error").Err(),
@@ -112,7 +112,7 @@ func Test_RetryMiddlewareCancel(t *testing.T) {
 	cancel()
 	_, err := NewRetryMiddleware(log.NewNopLogger(), 5, nil, constants.Loki).Wrap(
 		HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
-			try.Inc()
+			try.Add(1)
 			return nil, ctx.Err()
 		}),
 	).Do(ctx, req)
@@ -122,7 +122,7 @@ func Test_RetryMiddlewareCancel(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	_, err = NewRetryMiddleware(log.NewNopLogger(), 5, nil, constants.Loki).Wrap(
 		HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
-			try.Inc()
+			try.Add(1)
 			cancel()
 			return nil, errors.New("failed")
 		}),

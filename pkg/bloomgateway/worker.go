@@ -2,13 +2,13 @@ package bloomgateway
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/queue"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -97,7 +97,7 @@ func (w *worker) running(_ context.Context) error {
 				w.queue.ReleaseRequests(items)
 				return errors.Errorf("failed to cast dequeued item to Task: %v", item)
 			}
-			_ = w.pending.Dec()
+			_ = w.pending.Add(-1)
 			w.metrics.queueDuration.WithLabelValues(w.id).Observe(time.Since(task.enqueueTime).Seconds())
 			FromContext(task.ctx).AddQueueTime(time.Since(task.enqueueTime))
 			tasks = append(tasks, task)

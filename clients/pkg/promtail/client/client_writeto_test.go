@@ -5,10 +5,9 @@ import (
 	"math/rand"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
-
-	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -167,7 +166,7 @@ func bench(numWriters, totalLines int, b *testing.B) {
 		defer readerWG.Done()
 		// discard received entries
 		for range ch {
-			totalReceived.Inc()
+			totalReceived.Add(1)
 		}
 	}()
 

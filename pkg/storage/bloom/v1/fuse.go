@@ -2,13 +2,13 @@ package v1
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"go.uber.org/atomic"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
@@ -28,15 +28,15 @@ func NewBloomRecorder(ctx context.Context, id string) *BloomRecorder {
 	return &BloomRecorder{
 		ctx:            ctx,
 		id:             id,
-		seriesFound:    atomic.NewInt64(0),
-		chunksFound:    atomic.NewInt64(0),
-		seriesSkipped:  atomic.NewInt64(0),
-		chunksSkipped:  atomic.NewInt64(0),
-		seriesMissed:   atomic.NewInt64(0),
-		chunksMissed:   atomic.NewInt64(0),
-		seriesEmpty:    atomic.NewInt64(0),
-		chunksEmpty:    atomic.NewInt64(0),
-		chunksFiltered: atomic.NewInt64(0),
+		seriesFound:    (&atomic.Int64{}),
+		chunksFound:    (&atomic.Int64{}),
+		seriesSkipped:  (&atomic.Int64{}),
+		chunksSkipped:  (&atomic.Int64{}),
+		seriesMissed:   (&atomic.Int64{}),
+		chunksMissed:   (&atomic.Int64{}),
+		seriesEmpty:    (&atomic.Int64{}),
+		chunksEmpty:    (&atomic.Int64{}),
+		chunksFiltered: (&atomic.Int64{}),
 	}
 }
 
