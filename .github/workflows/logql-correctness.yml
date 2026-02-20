@@ -97,9 +97,9 @@ jobs:
         run: |
           go test \
             -o results/bench.test \
-            -v -slow-tests -bench-suite=regression -remote-transport=${{ matrix.remote_transport }} -timeout=60m \
+            -v -slow-tests -remote-transport=${{ matrix.remote_transport }} -timeout=60m \
             -cpuprofile=results/cpu.pprof -memprofile=results/mem.pprof \
-            -run=TestStorageEquality/query=.+/kind=.+/store=${{ matrix.store }}$ \
+            -run='TestStorageEquality/(fast|regression)/.*/kind=.+/store=${{ matrix.store }}$' \
             ${{ matrix.range_type == 'instant' && '-range-type=instant' || '' }} \
             ${{ inputs.failfast == true && '-failfast' || '' }} \
           | tee results/results.txt
