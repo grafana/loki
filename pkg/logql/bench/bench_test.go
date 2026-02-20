@@ -162,9 +162,9 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 // return the same query result.
 func TestStorageEquality(t *testing.T) {
 
-	//if !*slowTests {
-	//	t.Skip("test skipped because -slow-tests flag is not set")
-	//}
+	if !*slowTests {
+		t.Skip("test skipped because -slow-tests flag is not set")
+	}
 
 	type store struct {
 		Name   string
