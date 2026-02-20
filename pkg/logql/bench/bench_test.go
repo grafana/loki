@@ -47,6 +47,10 @@ var allStores = []string{StoreDataObjV2Engine, StoreChunk}
 
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
 
+func init() {
+	engine.EnableParanoidMode()
+}
+
 // setupBenchmarkWithStore sets up the benchmark environment with the specified store type
 // and returns the necessary components
 func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
@@ -112,7 +116,7 @@ func TestStorageEquality(t *testing.T) {
 		).Generate()
 		return &store{
 			Name:   name,
-			Cases:  cases[:20],
+			Cases:  cases,
 			Engine: engine,
 		}
 	}
