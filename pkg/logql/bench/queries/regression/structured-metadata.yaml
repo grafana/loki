@@ -1,0 +1,84 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  - description: Combined line and metadata filter
+    query: ${SELECTOR} |~ "error|exception" | detected_level="error"
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags:
+      - structured-metadata
+      - line-filter
+      - combined
+    requires:
+      structured_metadata:
+        - detected_level
+  - description: JSON parsing with duration filter and structured metadata
+    query: ${SELECTOR} | json | duration_seconds > 0.1 | detected_level!="debug"
+    time_range:
+      length: 24h
+    directions: both
+    tags:
+      - structured-metadata
+      - json
+      - filter
+      - parser
+    requires:
+      log_format: json
+      structured_metadata:
+        - detected_level
+  - description: Logfmt parsing with level filter
+    query: ${SELECTOR} | logfmt | level="error" | detected_level="error"
+    time_range:
+      length: 24h
+    directions: both
+    tags:
+      - structured-metadata
+      - logfmt
+      - parser
+    requires:
+      log_format: logfmt
+      structured_metadata:
+        - detected_level
+  - description: Drilldown pattern with case-insensitive error search
+    query: ${SELECTOR} |~ "(?i)error" | json | logfmt | drop __error__, __error_details__ | status_code >= 500
+    time_range:
+      length: 24h
+    directions: both
+    tags:
+      - drilldown
+      - json
+      - logfmt
+      - complex
+    notes: "Common pattern from Logs Drilldown UI with multiple parsing stages
+
+      "
+  - description: Drilldown with failed search and error level
+    query: ${SELECTOR} | detected_level="error" |~ "(?i)failed"
+    time_range:
+      length: 24h
+    directions: both
+    tags:
+      - drilldown
+      - structured-metadata
+      - regex
+    requires:
+      structured_metadata:
+        - detected_level
+      keywords:
+        - failed
+  - description: Drilldown with error/warn level and refused search
+    query: ${SELECTOR} | detected_level=~"error|warn" |~ "(?i)refused"
+    time_range:
+      length: 24h
+    directions: both
+    tags:
+      - drilldown
+      - structured-metadata
+      - regex
+    requires:
+      structured_metadata:
+        - detected_level
+      keywords:
+        - refused

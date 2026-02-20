@@ -9,9 +9,9 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
-	promRules "github.com/prometheus/prometheus/rules"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 )
@@ -66,7 +66,7 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 
 	client, err := NewLocalRulesClient(Config{
 		Directory: dir,
-	}, promRules.FileLoader{})
+	}, testFileLoader{})
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -82,4 +82,14 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 		require.Equal(t, rulespb.ToProto(u, namespace1, ruleGroups.Groups[0]), actual[0])
 		require.Equal(t, rulespb.ToProto(u, namespace2, ruleGroups.Groups[0]), actual[1])
 	}
+}
+
+type testFileLoader struct{}
+
+func (testFileLoader) Load(identifier string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
+	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, parser.NewParser(parser.Options{}))
+}
+
+func (testFileLoader) Parse(query string) (parser.Expr, error) {
+	return parser.NewParser(parser.Options{}).ParseExpr(query)
 }

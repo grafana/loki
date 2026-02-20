@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
@@ -14,11 +16,86 @@ import (
 const optimisticReadBytes = 16 * 1024
 
 type decoder struct {
-	rr   rangeReader
-	size int64
+	rr       rangeReader
+	size     int64
+	startOff int64
 }
 
 func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
+	buf := bufpool.Get(int(optimisticReadBytes))
+	defer bufpool.Put(buf)
+
+	g, _ := errgroup.WithContext(ctx)
+
+	// We launch a separate goroutine to cache the object size in the background
+	// as we read the header.
+	//
+	// This lowers the cost of the fallback case (one fewer round trip), and
+	// allows [Object.Size] to work.
+	if d.size == 0 {
+		g.Go(func() error {
+			if _, err := d.objectSize(ctx); err != nil {
+				return fmt.Errorf("fetching object size: %w", err)
+			}
+			return nil
+		})
+	}
+
+	g.Go(func() error {
+		if err := d.readFirstBytes(ctx, optimisticReadBytes, buf); err != nil {
+			return fmt.Errorf("reading first %d bytes: %w", optimisticReadBytes, err)
+		}
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	header, err := d.header(buf)
+	if err != nil && errors.Is(err, errLegacyMagic) {
+		// Fall back to legacy metadata.
+		return d.legacyMetadata(ctx)
+	}
+
+	d.startOff = int64(8) + int64(header.MetadataSize)
+
+	if header.MetadataSize+8 <= uint64(buf.Len()) {
+		// Optimistic read was successful, so we can decode the metadata from
+		// the buffer.
+		rc := bytes.NewReader(buf.Bytes()[8:])
+		return decodeFileMetadata(rc)
+	}
+
+	// Optimistic read was too small, so we need to read the metadata fully.
+	rc, err := d.rr.ReadRange(ctx, int64(8), int64(header.MetadataSize))
+	if err != nil {
+		return nil, fmt.Errorf("getting metadata: %w", err)
+	}
+	defer rc.Close()
+
+	br := bufpool.GetReader(rc)
+	defer bufpool.PutReader(br)
+
+	return decodeFileMetadata(br)
+}
+
+func (d *decoder) readFirstBytes(ctx context.Context, readSize int64, buf *bytes.Buffer) error {
+	rc, err := d.rr.ReadRange(ctx, 0, readSize)
+	if err != nil {
+		return fmt.Errorf("reading data: %w", err)
+	}
+	defer rc.Close()
+
+	// readSize may be bigger than the actual file, but we'll read as much as
+	// possible and let the decoders decide if the file is missing data.
+	if _, err := io.Copy(buf, rc); err != nil {
+		return fmt.Errorf("copying data: %w", err)
+	}
+	return nil
+}
+
+func (d *decoder) legacyMetadata(ctx context.Context) (*filemd.Metadata, error) {
 	objectSize, err := d.objectSize(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading object size: %w", err)
@@ -86,6 +163,23 @@ func (d *decoder) objectSize(ctx context.Context) (int64, error) {
 	return d.size, nil
 }
 
+type header struct {
+	MetadataSize uint64
+}
+
+func (d *decoder) header(headData *bytes.Buffer) (header, error) {
+	off := min(int64(headData.Len()), 8)
+
+	br := bytes.NewReader(headData.Bytes()[:off])
+
+	metadataSize, err := decodeHeader(br)
+	if err != nil {
+		return header{}, fmt.Errorf("scanning header: %w", err)
+	}
+
+	return header{MetadataSize: uint64(metadataSize)}, nil
+}
+
 type tailer struct {
 	MetadataSize uint64
 	FileSize     uint64
@@ -111,7 +205,15 @@ func (d *decoder) tailer(ctx context.Context, tailData *bytes.Buffer) (tailer, e
 }
 
 func (d *decoder) SectionReader(metadata *filemd.Metadata, section *filemd.SectionInfo, extensionData []byte) SectionReader {
-	return &sectionReader{rr: d.rr, md: metadata, sec: section, extensionData: extensionData}
+	return &sectionReader{
+		rr:  d.rr,
+		md:  metadata,
+		sec: section,
+
+		startOff: d.startOff,
+
+		extensionData: extensionData,
+	}
 }
 
 var errMissingSectionType = errors.New("missing section type")

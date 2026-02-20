@@ -72,8 +72,7 @@ type NfsDetachParams struct {
 // Resize an NFS share
 func (s *NfsActionsServiceOp) Resize(ctx context.Context, nfsShareId string, size uint64, region string) (*NfsAction, *Response, error) {
 	request := &NfsActionRequest{
-		Type:   "resize",
-		Region: region,
+		Type: "resize",
 		Params: &NfsResizeParams{
 			SizeGib: size,
 		},
@@ -85,8 +84,7 @@ func (s *NfsActionsServiceOp) Resize(ctx context.Context, nfsShareId string, siz
 // Snapshot an NFS share
 func (s *NfsActionsServiceOp) Snapshot(ctx context.Context, nfsShareId, nfsSnapshotName, region string) (*NfsAction, *Response, error) {
 	request := &NfsActionRequest{
-		Type:   "snapshot",
-		Region: region,
+		Type: "snapshot",
 		Params: &NfsSnapshotParams{
 			Name: nfsSnapshotName,
 		},
@@ -98,8 +96,7 @@ func (s *NfsActionsServiceOp) Snapshot(ctx context.Context, nfsShareId, nfsSnaps
 // Attach an NFS share
 func (s *NfsActionsServiceOp) Attach(ctx context.Context, nfsShareId, vpcID, region string) (*NfsAction, *Response, error) {
 	request := &NfsActionRequest{
-		Type:   "attach",
-		Region: region,
+		Type: "attach",
 		Params: &NfsAttachParams{
 			VpcID: vpcID,
 		},
@@ -111,8 +108,7 @@ func (s *NfsActionsServiceOp) Attach(ctx context.Context, nfsShareId, vpcID, reg
 // Detach an NFS share
 func (s *NfsActionsServiceOp) Detach(ctx context.Context, nfsShareId, vpcID, region string) (*NfsAction, *Response, error) {
 	request := &NfsActionRequest{
-		Type:   "detach",
-		Region: region,
+		Type: "detach",
 		Params: &NfsAttachParams{
 			VpcID: vpcID,
 		},

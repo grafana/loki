@@ -21,13 +21,12 @@ In `go-redis` we are aiming to support the last three releases of Redis. Current
 - [Redis 8.2](https://raw.githubusercontent.com/redis/redis/8.2/00-RELEASENOTES) - using Redis CE 8.2 
 - [Redis 8.4](https://raw.githubusercontent.com/redis/redis/8.4/00-RELEASENOTES) - using Redis CE 8.4
 
-Although the `go.mod` states it requires at minimum `go 1.18`, our CI is configured to run the tests against all three
-versions of Redis and latest two versions of Go ([1.23](https://go.dev/doc/devel/release#go1.23.0),
-[1.24](https://go.dev/doc/devel/release#go1.24.0)). We observe that some modules related test may not pass with
+Although the `go.mod` states it requires at minimum `go 1.21`, our CI is configured to run the tests against all three
+versions of Redis and multiple versions of Go ([1.21](https://go.dev/doc/devel/release#go1.21.0),
+[1.23](https://go.dev/doc/devel/release#go1.23.0), oldstable, and stable). We observe that some modules related test may not pass with
 Redis Stack 7.2 and some commands are changed with Redis CE 8.0.
 Although it is not officially supported, `go-redis/v9`  should be able to work with any Redis 7.0+.
-Please do refer to the documentation and the tests if you experience any issues. We do plan to update the go version
-in the `go.mod` to `go 1.24` in one of the next releases.
+Please do refer to the documentation and the tests if you experience any issues.
 
 ## How do I Redis?
 
@@ -111,6 +110,7 @@ func ExampleClient() {
         Password: "", // no password set
         DB:       0,  // use default DB
     })
+    defer rdb.Close()
 
     err := rdb.Set(ctx, "key", "value", 0).Err()
     if err != nil {

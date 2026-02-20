@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  - description: Basic drilldown with json and logfmt parsing
+    query: ${SELECTOR} | json | logfmt | drop __error__, __error_details__
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags:
+      - drilldown
+      - parser
+      - json
+      - logfmt
+  - description: Drilldown with error level filter
+    query: ${SELECTOR} | json | logfmt | drop __error__, __error_details__ | level="error"
+    time_range:
+      length: 24h
+    directions: both
+    tags:
+      - drilldown
+      - parser
+      - filter
+  - description: Drilldown with error or warn level filter
+    query: ${SELECTOR} | json | logfmt | drop __error__, __error_details__ | level="error" or level="warn"
+    time_range:
+      length: 24h
+    directions: both
+    tags:
+      - drilldown
+      - parser
+      - filter
+      - or-expression
+  - description: Drilldown unwrap query with detected_level grouping
+    query: sum by (detected_level) (avg_over_time(${SELECTOR} | json | logfmt | duration != "" | drop __error__, __error_details__ | unwrap duration_seconds(duration) [${RANGE}]))
+    kind: metric
+    skip: true # getting pipeline error: 'SampleExtractionErr' for series: '{__error__="SampleExtractionErr", __error_details__="time: missing unit in duration \"301\"", client_ip="137.149.25.103", cluster="cluster-4", container="container-1", datacenter="dc1", detected_level="info", duration="301", env="staging", level="info", level_extracted="info", method="POST", msg="HTTP request", namespace="namespace-34", path="/api/v1/users", pod="pod-1874", region="eu-west-1", resource_deployment_environment="production", resource_service_name="web-server", resource_service_namespace="default", resource_service_version="1.0.0", resource_telemetry_sdk_language="go", resource_telemetry_sdk_name="opentelemetry", service="service-175", service_name="web-server", status="400", ts="2024-01-01T23:59:09Z", user_agent="python-requests/2.26.0"}'.
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - drilldown
+      - unwrap
+      - aggregation
+      - parser
+    notes: "Common pattern from drilldown fields tab when analyzing duration metrics
+
+      "
+    requires:
+      unwrappable_fields:
+        - duration
+      structured_metadata:
+        - detected_level
+  - description: Drilldown count with complex filters
+    skip: true  # Returns empty results: dual parsers (json|logfmt) fail on unstructured syslog data, drop __error__ removes all logs
+    query: sum by (detected_level) (count_over_time(${SELECTOR} | detected_level="debug" or detected_level="info" or detected_level="warn" |~ "(?i)(?i)duration" | json | logfmt | drop __error__, __error_details__ | level=~"(?i)INFO" [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - drilldown
+      - count
+      - complex
+      - parser
+    notes: "Complex drilldown pattern with multiple filters and case-insensitive matching
+
+      "
+    requires:
+      structured_metadata:
+        - detected_level
