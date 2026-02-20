@@ -67,18 +67,7 @@ func loadTestCases(tb testing.TB, config *GeneratorConfig) []TestCase {
 		tb.Fatalf("failed to load query registry: %v", err)
 	}
 
-	queryDefs := registry.GetQueries(suites...)
-
-	// Filter out skipped queries unless -include-skipped is set
-	if !*includeSkipped {
-		filtered := queryDefs[:0]
-		for _, def := range queryDefs {
-			if !def.Skip {
-				filtered = append(filtered, def)
-			}
-		}
-		queryDefs = filtered
-	}
+	queryDefs := registry.GetQueries(*includeSkipped, suites...)
 
 	metadata, err := LoadMetadata(DefaultDataDir)
 	if err != nil {
@@ -448,7 +437,7 @@ func TestPrintBenchmarkQueries(t *testing.T) {
 		t.Fatalf("failed to load query registry: %v", err)
 	}
 
-	queryDefs := registry.GetQueries(suites...)
+	queryDefs := registry.GetQueries(false, suites...)
 	resolver := NewMetadataVariableResolver(metadata, defaultGeneratorConfig.Seed)
 
 	var cases []TestCase

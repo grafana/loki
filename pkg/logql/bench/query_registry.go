@@ -270,20 +270,32 @@ func extractQueryLineNumbers(rootNode *yaml.Node) []int {
 
 // GetQueries returns all loaded queries for the specified suites
 // If suites is empty, returns all queries
-func (r *QueryRegistry) GetQueries(suites ...Suite) []QueryDefinition {
+// If includeSkipped is false, skipped queries are filtered out
+func (r *QueryRegistry) GetQueries(includeSkipped bool, suites ...Suite) []QueryDefinition {
+	var result []QueryDefinition
+
 	if len(suites) == 0 {
 		// Return all queries
-		var all []QueryDefinition
 		for _, queries := range r.queries {
-			all = append(all, queries...)
+			result = append(result, queries...)
 		}
-		return all
+	} else {
+		for _, suite := range suites {
+			result = append(result, r.queries[suite]...)
+		}
 	}
 
-	var result []QueryDefinition
-	for _, suite := range suites {
-		result = append(result, r.queries[suite]...)
+	// Filter out skipped queries if requested
+	if !includeSkipped {
+		filtered := result[:0]
+		for _, def := range result {
+			if !def.Skip {
+				filtered = append(filtered, def)
+			}
+		}
+		result = filtered
 	}
+
 	return result
 }
 
