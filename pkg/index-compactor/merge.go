@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -465,18 +466,41 @@ func mergeIndexObjects(
 		return fmt.Errorf("gather phase: %w", err)
 	}
 
-	if err := writeTocFiles(ctx, logger, writeBkt, allTocEntries, cfg.BuilderConfig); err != nil {
+	// Identify which of the processed paths are prior compaction outputs being
+	// re-compacted. Only those get their TOC entries removed and objects deleted.
+	recompacted := intersect(cp.ProcessedPaths, cp.OutputPaths)
+
+	if err := writeTocFiles(ctx, logger, writeBkt, allTocEntries, recompacted, cfg.BuilderConfig); err != nil {
 		return fmt.Errorf("writing TOC files: %w", err)
 	}
 
-	// Promote processed paths into the permanent compacted set and reset
-	// run-specific state for the next run.
-	cp.finalizeRun()
+	// Collect output paths produced by this run.
+	newOutputPaths := make(map[string]struct{})
+	for _, e := range allTocEntries {
+		newOutputPaths[e.path] = struct{}{}
+	}
+
+	// Delete re-compacted output objects (prior compaction outputs now superseded).
+	if err := deleteObjects(ctx, logger, writeBkt, recompacted); err != nil {
+		return fmt.Errorf("deleting re-compacted outputs: %w", err)
+	}
+
+	// Clean up intermediate objects from the scatter phase.
+	if err := deleteIntermediates(ctx, logger, writeBkt, intermediates); err != nil {
+		return fmt.Errorf("deleting intermediates: %w", err)
+	}
+
+	cp.finalizeRun(newOutputPaths, recompacted)
 	if err := saveCheckpoint(ctx, writeBkt, cp); err != nil {
 		return fmt.Errorf("saving finalized checkpoint: %w", err)
 	}
 
-	level.Info(logger).Log("msg", "compaction run complete", "compacted_total", len(cp.CompactedPaths), "output_entries", len(allTocEntries))
+	level.Info(logger).Log("msg", "compaction run complete",
+		"compacted_total", len(cp.CompactedPaths),
+		"output_total", len(cp.OutputPaths),
+		"recompacted", len(recompacted),
+		"output_entries", len(allTocEntries),
+	)
 
 	return nil
 }
@@ -767,7 +791,7 @@ func tocPath(prefix string, window time.Time) string {
 	return prefix + name + ".toc"
 }
 
-func writeTocFiles(ctx context.Context, logger log.Logger, bkt objstore.Bucket, allTocEntries []tocEntry, cfg logsobj.BuilderBaseConfig) error {
+func writeTocFiles(ctx context.Context, logger log.Logger, bkt objstore.Bucket, allTocEntries []tocEntry, removePaths map[string]struct{}, cfg logsobj.BuilderBaseConfig) error {
 	tocWindowEntries := make(map[time.Time][]tocEntry)
 	for _, entry := range allTocEntries {
 		minW := entry.minTime.Truncate(tocWindowSize).UTC()
@@ -778,38 +802,116 @@ func writeTocFiles(ctx context.Context, logger log.Logger, bkt objstore.Bucket, 
 	}
 
 	for window, entries := range tocWindowEntries {
-		tocBuilder, err := indexobj.NewBuilder(cfg, scratch.NewMemory())
-		if err != nil {
-			return fmt.Errorf("creating TOC builder: %w", err)
-		}
-
-		for _, entry := range entries {
-			if err := tocBuilder.AppendIndexPointer(entry.tenant, entry.path, entry.minTime, entry.maxTime); err != nil {
-				return fmt.Errorf("appending index pointer: %w", err)
-			}
-		}
-
-		tocObj, tocCloser, err := tocBuilder.Flush()
-		if err != nil {
-			return fmt.Errorf("flushing TOC builder: %w", err)
-		}
-
 		tocRelPath := tocPath(metastore.TocPrefix, window)
-		if err := writeObject(ctx, bkt, tocRelPath, tocObj); err != nil {
-			tocCloser.Close()
-			return fmt.Errorf("writing TOC: %w", err)
+
+		err := bkt.GetAndReplace(ctx, tocRelPath, func(existing io.ReadCloser) (io.ReadCloser, error) {
+			if existing != nil {
+				defer existing.Close()
+			}
+
+			tocBuilder, err := indexobj.NewBuilder(cfg, scratch.NewMemory())
+			if err != nil {
+				return nil, fmt.Errorf("creating TOC builder: %w", err)
+			}
+
+			if existing != nil {
+				data, readErr := io.ReadAll(existing)
+				if readErr != nil {
+					return nil, fmt.Errorf("reading existing TOC: %w", readErr)
+				}
+				obj, parseErr := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))
+				if parseErr != nil {
+					return nil, fmt.Errorf("parsing existing TOC: %w", parseErr)
+				}
+				if replayErr := replayTocEntries(ctx, obj, tocBuilder, removePaths); replayErr != nil {
+					return nil, fmt.Errorf("replaying existing TOC: %w", replayErr)
+				}
+			}
+
+			for _, entry := range entries {
+				if appendErr := tocBuilder.AppendIndexPointer(entry.tenant, entry.path, entry.minTime, entry.maxTime); appendErr != nil {
+					return nil, fmt.Errorf("appending index pointer: %w", appendErr)
+				}
+			}
+
+			tocObj, closer, flushErr := tocBuilder.Flush()
+			if flushErr != nil {
+				return nil, fmt.Errorf("flushing TOC builder: %w", flushErr)
+			}
+
+			reader, readerErr := tocObj.Reader(ctx)
+			if readerErr != nil {
+				closer.Close()
+				return nil, fmt.Errorf("getting TOC reader: %w", readerErr)
+			}
+
+			return &mergeReadCloser{
+				ReadCloser: reader,
+				extra:      closer,
+			}, nil
+		})
+		if err != nil {
+			return fmt.Errorf("merging TOC %s: %w", tocRelPath, err)
 		}
-		tocCloser.Close()
 
 		level.Info(logger).Log(
-			"msg", "wrote TOC file",
+			"msg", "merged TOC file",
 			"key", tocRelPath,
-			"entries", len(entries),
-			"size", humanize.Bytes(uint64(tocObj.Size())),
+			"new_entries", len(entries),
 		)
 	}
 
 	return nil
+}
+
+// replayTocEntries copies index pointers from an existing TOC object into the
+// builder, skipping any whose path is in the exclude set.
+func replayTocEntries(ctx context.Context, obj *dataobj.Object, builder *indexobj.Builder, exclude map[string]struct{}) error {
+	var reader indexpointers.RowReader
+	defer reader.Close()
+
+	buf := make([]indexpointers.IndexPointer, 256)
+
+	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
+		sec, err := indexpointers.Open(ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening section: %w", err)
+		}
+		tenantID := section.Tenant
+		reader.Reset(sec)
+		if err := reader.Open(ctx); err != nil {
+			return fmt.Errorf("opening index pointers reader: %w", err)
+		}
+		for {
+			n, readErr := reader.Read(ctx, buf)
+			for _, ptr := range buf[:n] {
+				if _, skip := exclude[ptr.Path]; skip {
+					continue
+				}
+				if appendErr := builder.AppendIndexPointer(tenantID, ptr.Path, ptr.StartTs, ptr.EndTs); appendErr != nil {
+					return fmt.Errorf("replaying index pointer: %w", appendErr)
+				}
+			}
+			if readErr != nil {
+				if errors.Is(readErr, io.EOF) {
+					break
+				}
+				return fmt.Errorf("reading index pointers: %w", readErr)
+			}
+		}
+	}
+	return nil
+}
+
+// mergeReadCloser wraps an io.ReadCloser and also closes an extra io.Closer
+// (the dataobj closer) when done.
+type mergeReadCloser struct {
+	io.ReadCloser
+	extra io.Closer
+}
+
+func (m *mergeReadCloser) Close() error {
+	return errors.Join(m.ReadCloser.Close(), m.extra.Close())
 }
 
 func writeObject(ctx context.Context, bucket objstore.Bucket, key string, obj *dataobj.Object) error {
@@ -837,4 +939,46 @@ func downloadObject(ctx context.Context, bucket objstore.BucketReader, path stri
 	}
 	defer r.Close()
 	return io.ReadAll(r)
+}
+
+func intersect(a, b map[string]struct{}) map[string]struct{} {
+	result := make(map[string]struct{})
+	for k := range a {
+		if _, ok := b[k]; ok {
+			result[k] = struct{}{}
+		}
+	}
+	return result
+}
+
+func deleteObjects(ctx context.Context, logger log.Logger, bucket objstore.Bucket, paths map[string]struct{}) error {
+	for p := range paths {
+		if err := bucket.Delete(ctx, p); err != nil {
+			if bucket.IsObjNotFoundErr(err) {
+				level.Debug(logger).Log("msg", "object already deleted", "path", p)
+				continue
+			}
+			return fmt.Errorf("deleting %s: %w", p, err)
+		}
+		level.Debug(logger).Log("msg", "deleted object", "path", p)
+	}
+	return nil
+}
+
+func deleteIntermediates(ctx context.Context, logger log.Logger, bucket objstore.Bucket, intermediates []intermediateInfo) error {
+	seen := make(map[string]struct{})
+	for _, info := range intermediates {
+		if _, ok := seen[info.key]; ok {
+			continue
+		}
+		seen[info.key] = struct{}{}
+		if err := bucket.Delete(ctx, intermediatePrefix+info.key); err != nil {
+			if bucket.IsObjNotFoundErr(err) {
+				continue
+			}
+			return fmt.Errorf("deleting intermediate %s: %w", info.key, err)
+		}
+		level.Debug(logger).Log("msg", "deleted intermediate", "key", info.key)
+	}
+	return nil
 }

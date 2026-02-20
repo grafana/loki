@@ -13,12 +13,20 @@ import (
 
 const checkpointKey = ".checkpoint.json"
 
-// Checkpoint tracks compaction state across runs. CompactedPaths is the
-// cumulative set of all source paths successfully compacted in prior runs.
+// Checkpoint tracks compaction state across runs.
+//
+// CompactedPaths is the cumulative set of all source paths successfully
+// compacted in prior runs, used to avoid re-processing the same sources.
+//
+// OutputPaths is the set of object paths produced by prior compaction runs.
+// When one of these appears as input to a new run (re-compaction), the old
+// output is deleted and its TOC entries are removed.
+//
 // The remaining fields track progress within the current run for crash
 // recovery.
 type Checkpoint struct {
 	CompactedPaths map[string]struct{} `json:"compacted_paths"`
+	OutputPaths    map[string]struct{} `json:"output_paths"`
 
 	ProcessedPaths  map[string]struct{}  `json:"processed_paths"`
 	Intermediates   []IntermediateRecord `json:"intermediates"`
@@ -41,15 +49,22 @@ type TOCRecord struct {
 func newCheckpoint() *Checkpoint {
 	return &Checkpoint{
 		CompactedPaths: make(map[string]struct{}),
+		OutputPaths:    make(map[string]struct{}),
 		ProcessedPaths: make(map[string]struct{}),
 	}
 }
 
 // finalizeRun promotes the current run's processed paths into the permanent
-// compacted set and resets run-specific state so the next run starts fresh.
-func (cp *Checkpoint) finalizeRun() {
+// compacted set, updates the output paths, and resets run-specific state.
+func (cp *Checkpoint) finalizeRun(newOutputPaths, recompactedOutputs map[string]struct{}) {
 	for p := range cp.ProcessedPaths {
 		cp.CompactedPaths[p] = struct{}{}
+	}
+	for p := range recompactedOutputs {
+		delete(cp.OutputPaths, p)
+	}
+	for p := range newOutputPaths {
+		cp.OutputPaths[p] = struct{}{}
 	}
 	cp.ProcessedPaths = make(map[string]struct{})
 	cp.Intermediates = nil
@@ -79,6 +94,9 @@ func loadCheckpoint(ctx context.Context, bucket objstore.Bucket) (*Checkpoint, e
 	}
 	if cp.CompactedPaths == nil {
 		cp.CompactedPaths = make(map[string]struct{})
+	}
+	if cp.OutputPaths == nil {
+		cp.OutputPaths = make(map[string]struct{})
 	}
 	if cp.ProcessedPaths == nil {
 		cp.ProcessedPaths = make(map[string]struct{})
