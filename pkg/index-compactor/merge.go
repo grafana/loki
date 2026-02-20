@@ -696,7 +696,7 @@ func gatherPhase(
 
 		for _, info := range chunkInfos {
 			g.Go(func() error {
-				data, err := downloadObject(gCtx, readBkt, intermediatePrefix+info.key)
+				data, err := downloadObject(gCtx, writeBkt, intermediatePrefix+info.key)
 				if err != nil {
 					return fmt.Errorf("reading intermediate %s: %w", info.key, err)
 				}
