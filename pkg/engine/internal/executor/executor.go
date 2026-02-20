@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -256,19 +257,21 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	}
 	span.AddEvent("constructed predicate")
 
-	taskCacheID := node.TaskCacheIDWithLogger(c.logger)
 	logger := log.With(
 		c.logger,
 		"node_type", "DataObjScan",
 		"location", string(node.Location),
 		"section", node.Section,
-		"task_cache_id", taskCacheID,
 		"start_ts", node.MaxTimeRange.Start.Format(time.RFC3339Nano),
 		"end_ts", node.MaxTimeRange.End.Format(time.RFC3339Nano),
 		"num_predicates", len(node.Predicates),
 		"num_projections", len(node.Projections),
 		"num_stream_ids", len(streamsToMatch),
 	)
+	logger = log.With(logger, "msg", "dataobjscan computing cache key")
+
+	taskCacheID := node.TaskCacheIDWithLogger(logger)
+	log.With(logger, "task_cache_id", taskCacheID)
 	c.logTaskCacheResult(ctx, logger, taskCacheID, c.taskCacheIDCacheDataObj)
 
 	var pipeline Pipeline = newDataobjScanPipeline(dataobjScanOptions{
@@ -334,23 +337,57 @@ func (c *Context) filterStreamsByLabels(ctx context.Context, streamIDs []int64, 
 	return filtered
 }
 
+// rfc3339NanoInKey matches RFC3339Nano-style timestamps in cache key strings (e.g. 2026-02-19T07:15:30Z or with subsecond).
+var rfc3339NanoInKey = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z`)
+
+// dataObjScanKeyHasBothTsClamped returns true when key is a DataObjScan cache key and all
+// timestamps in the key are the same (1 distinct) or only max_start and max_end (2 distinct).
+// Used as a heuristic: both GTE and LT predicates were clamped to max_time_range.
+func dataObjScanKeyHasBothTsClamped(key string) bool {
+	if !strings.HasPrefix(key, "DataObjScan ") {
+		return false
+	}
+	seen := make(map[string]struct{})
+	for _, m := range rfc3339NanoInKey.FindAllString(key, -1) {
+		seen[m] = struct{}{}
+	}
+	return len(seen) == 1 || len(seen) == 2
+}
+
 // logTaskCacheResult checks the given task cache for key (fetch, store on miss) and logs hit or miss.
 // key is the readable task cache key string; the cache backend is called with cache.HashKey(key).
 func (c *Context) logTaskCacheResult(ctx context.Context, logger log.Logger, key string, taskCache cache.Cache) {
 	result := "miss"
+	var err error
 	var cacheKey string
 	if taskCache != nil {
 		cacheKey = cache.HashKey(key)
+		// For some reason looks like all DOs ctx are cancelled here. I'm using a background context to avoid the issue.
+		ctx := context.Background()
 		found, _, missing, fetchErr := taskCache.Fetch(ctx, []string{cacheKey})
 		if fetchErr != nil {
+			err = fetchErr
 			level.Warn(logger).Log("msg", "task_cache_id mock fetch failed", "err", fetchErr)
 		} else if len(found) > 0 {
 			result = "hit"
 		} else if len(missing) > 0 {
-			_ = taskCache.Store(ctx, []string{cacheKey}, [][]byte{{}})
+			err = taskCache.Store(ctx, []string{cacheKey}, [][]byte{{}})
+			if err != nil {
+				level.Warn(logger).Log("msg", "task_cache_id mock store failed", "err", err)
+			}
 		}
 	}
-	level.Info(logger).Log("msg", "result from task cache", "result", result, "cache_key", cacheKey, "key", key)
+	kvs := []any{"msg", "result from task cache", "result", result, "cache_key", cacheKey, "key", key}
+	if dataObjScanKeyHasBothTsClamped(key) {
+		kvs = append(kvs, "both_ts_clamped", "true")
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		kvs = append(kvs, "context_canceled", ctxErr, "context_cause", context.Cause(ctx))
+	}
+	if err != nil {
+		kvs = append(kvs, "err", err)
+	}
+	level.Info(logger).Log(kvs...)
 }
 
 func (c *Context) executePointersScan(ctx context.Context, node *physical.PointersScan) Pipeline {

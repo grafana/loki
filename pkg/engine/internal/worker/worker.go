@@ -138,8 +138,8 @@ type Worker struct {
 	jobManager *jobManager
 
 	// taskCacheIDCacheDataObj and taskCacheIDCachePointers are created in New when TaskCacheIDCacheConfig is enabled; passed to threads.
-	taskCacheIDCacheDataObj   cache.Cache
-	taskCacheIDCachePointers  cache.Cache
+	taskCacheIDCacheDataObj  cache.Cache
+	taskCacheIDCachePointers cache.Cache
 }
 
 // New creates a new instance of a worker. Use [Worker.Service] to manage
@@ -213,8 +213,8 @@ func New(config Config) (*Worker, error) {
 		collector: newCollector(),
 
 		jobManager:               newJobManager(),
-		taskCacheIDCacheDataObj:   taskCacheIDCacheDataObj,
-		taskCacheIDCachePointers:  taskCacheIDCachePointers,
+		taskCacheIDCacheDataObj:  taskCacheIDCacheDataObj,
+		taskCacheIDCachePointers: taskCacheIDCachePointers,
 	}, nil
 }
 
@@ -237,13 +237,13 @@ func (w *Worker) run(ctx context.Context) error {
 	var threads []*thread
 	for i := range w.numThreads {
 		t := &thread{
-			BatchSize:                 w.config.BatchSize,
-			Logger:                    log.With(w.logger, "thread", i),
-			Bucket:                    w.config.Bucket,
-			Metastore:                 w.config.Metastore,
-			StreamFilterer:            w.config.StreamFilterer,
-			TaskCacheIDCacheDataObj:   w.taskCacheIDCacheDataObj,
-			TaskCacheIDCachePointers:  w.taskCacheIDCachePointers,
+			BatchSize:                w.config.BatchSize,
+			Logger:                   log.With(w.logger, "thread", i),
+			Bucket:                   w.config.Bucket,
+			Metastore:                w.config.Metastore,
+			StreamFilterer:           w.config.StreamFilterer,
+			TaskCacheIDCacheDataObj:  w.taskCacheIDCacheDataObj,
+			TaskCacheIDCachePointers: w.taskCacheIDCachePointers,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,
@@ -589,7 +589,7 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 	// and copied to task metadata by the scheduler.
 	ctx = httpreq.InjectAllHeaders(ctx, msg.Metadata)
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 
 	job = &threadJob{
 		Context: ctx,
@@ -633,7 +633,8 @@ func (w *Worker) handleCancelMessage(msg wire.TaskCancelMessage) error {
 		return fmt.Errorf("task %s not found", msg.ID)
 	}
 
-	job.Cancel()
+	level.Debug(w.logger).Log("msg", "Received cancel message, cancelling job", "job_id", msg.ID)
+	job.Cancel(fmt.Errorf("task cancelled by scheduler: task_id=%s", msg.ID))
 	return nil
 }
 

@@ -18,7 +18,7 @@ var errNoReadyThreads = errors.New("no ready threads")
 // threadJob is an individual task to run.
 type threadJob struct {
 	Context context.Context
-	Cancel  context.CancelFunc
+	Cancel  context.CancelCauseFunc
 
 	Scheduler *wire.Peer     // Scheduler which owns the task.
 	Task      *workflow.Task // Task to execute.
