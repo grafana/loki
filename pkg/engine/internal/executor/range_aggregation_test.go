@@ -642,20 +642,6 @@ func TestMatcher(t *testing.T) {
 	})
 }
 
-// TestRangeAggregationPipeline_StepAlignment verifies that the pipeline aligns evaluation
-// timestamps to the step grid anchored at the Unix epoch, matching Prometheus's (and Loki's
-// old engine's) standard behaviour.
-//
-// Background: a range query like `count_over_time({...}[30m])` is evaluated at a series of
-// timestamps spaced `step` apart.  Prometheus defines those timestamps as multiples of `step`
-// relative to the Unix epoch (floor(start / step) * step, floor(start/step)*step + step, …).
-// If the engine instead starts from the raw `startTs` without alignment, the lookback windows
-// are shifted by `start % step`, causing them to cover slightly different log entries and
-// producing counts that diverge from the old engine.
-//
-// The test uses a deliberately non-aligned start time (start=50s, step=100s → offset=50s) and
-// verifies that the output timestamps are epoch-aligned multiples of the step (100s, 200s, …)
-// rather than the raw-start multiples (150s, 250s, …).
 func TestRangeAggregationPipeline_StepAlignment(t *testing.T) {
 	fields := []arrow.Field{
 		semconv.FieldFromFQN(colTs, false),
