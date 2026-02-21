@@ -642,6 +642,80 @@ func TestMatcher(t *testing.T) {
 	})
 }
 
+// TestRangeAggregationPipeline_StepAlignment verifies that the pipeline aligns evaluation
+// timestamps to the step grid anchored at the Unix epoch, matching Prometheus's (and Loki's
+// old engine's) standard behaviour.
+//
+// Background: a range query like `count_over_time({...}[30m])` is evaluated at a series of
+// timestamps spaced `step` apart.  Prometheus defines those timestamps as multiples of `step`
+// relative to the Unix epoch (floor(start / step) * step, floor(start/step)*step + step, …).
+// If the engine instead starts from the raw `startTs` without alignment, the lookback windows
+// are shifted by `start % step`, causing them to cover slightly different log entries and
+// producing counts that diverge from the old engine.
+//
+// The test uses a deliberately non-aligned start time (start=50s, step=100s → offset=50s) and
+// verifies that the output timestamps are epoch-aligned multiples of the step (100s, 200s, …)
+// rather than the raw-start multiples (150s, 250s, …).
+func TestRangeAggregationPipeline_StepAlignment(t *testing.T) {
+	fields := []arrow.Field{
+		semconv.FieldFromFQN(colTs, false),
+		semconv.FieldFromFQN(colSvc, false),
+	}
+	schema := arrow.NewSchema(fields, nil)
+
+	// Two entries whose correct placement depends on epoch-aligned evaluation timestamps.
+	//
+	// Entry at t=75s: lies in the aligned window (0s, 100s].
+	//   With alignment   → counted at eval timestamp t=100s.
+	//   Without alignment (bug) → falls in window (50s, 150s], counted at t=150s instead.
+	//
+	// Entry at t=125s: lies in the aligned window (100s, 200s].
+	//   With alignment   → counted at eval timestamp t=200s.
+	//   Without alignment (bug) → falls in window (150s, 250s], counted at t=250s instead.
+	rows := []arrowtest.Rows{
+		{
+			{colTs: time.Unix(75, 0).UTC(), colSvc: "app1"},
+			{colTs: time.Unix(125, 0).UTC(), colSvc: "app1"},
+		},
+	}
+
+	opts := rangeAggregationOptions{
+		grouping: physical.Grouping{
+			Columns: []physical.ColumnExpression{
+				&physical.ColumnExpr{
+					Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeAmbiguous},
+				},
+			},
+		},
+		// start=50s is intentionally NOT a multiple of step=100s.
+		// The aligned first evaluation point must be 0s (floor(50/100)*100).
+		startTs:       time.Unix(50, 0),
+		endTs:         time.Unix(250, 0),
+		rangeInterval: 100 * time.Second,
+		step:          100 * time.Second,
+		operation:     types.RangeAggregationTypeCount,
+	}
+
+	input := NewArrowtestPipeline(schema, rows...)
+	pipeline, err := newRangeAggregationPipeline([]Pipeline{input}, newExpressionEvaluator(), opts)
+	require.NoError(t, err)
+	defer pipeline.Close()
+
+	record, err := pipeline.Read(t.Context())
+	require.NoError(t, err)
+
+	rows2, err := arrowtest.RecordRows(record)
+	require.NoError(t, err)
+
+	// Expected output: evaluation timestamps must be epoch-aligned (100s, 200s),
+	// NOT the raw-start multiples (150s, 250s) that the bug would have produced.
+	expect := arrowtest.Rows{
+		{colTs: time.Unix(100, 0).UTC(), "utf8.ambiguous.service": "app1", colVal: float64(1)},
+		{colTs: time.Unix(200, 0).UTC(), "utf8.ambiguous.service": "app1", colVal: float64(1)},
+	}
+	require.ElementsMatch(t, expect, rows2)
+}
+
 // requireEqualWindows asserts that two slices of window structs contain the same elements.
 func requireEqualWindows(t *testing.T, expected, actual []window) {
 	t.Helper()
