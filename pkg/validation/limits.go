@@ -163,7 +163,7 @@ type Limits struct {
 	// Ruler defaults and limits.
 	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int                              `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
-	RulerAlertManagerConfig     *ruler_config.AlertManagerConfig `yaml:"ruler_alertmanager_config" json:"ruler_alertmanager_config" doc:"hidden"`
+	RulerAlertManagerConfig     *ruler_config.AlertManagerConfig `yaml:"ruler_alertmanager_config" json:"ruler_alertmanager_config" doc:"description=Override the alertmanagerconfiguration for the ruler"`
 	RulerTenantShardSize        int                              `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
 	RulerEnableWALReplay        bool                             `yaml:"ruler_enable_wal_replay" json:"ruler_enable_wal_replay" doc:"description=Enable WAL replay on ruler startup. Disabling this can reduce memory usage on startup at the cost of not recovering in-memory WAL metrics on restart."`
 
