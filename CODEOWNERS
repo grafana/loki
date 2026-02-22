@@ -18,3 +18,11 @@ flake.nix @trevorwhitney
 
 # No owners - allows sub-maintainers to merge changes.
 CHANGELOG.md
+
+# Mixins
+/production/loki-mixin/ @cstyan
+
+# Helm and compiled Mixins
+/production/helm/ @trevorwhitney
+/production/loki-mixin-compiled/ @trevorwhitney
+/production/loki-mixin-compiled-ssh/ @trevorwhitney
