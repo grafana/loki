@@ -36,3 +36,8 @@ func (o RawOutput) WithWriter(w io.Writer) LogOutput {
 		options: o.options,
 	}
 }
+
+// GetWriter returns the internal writer of the output
+func (o RawOutput) GetWriter() io.Writer {
+	return o.w
+}
