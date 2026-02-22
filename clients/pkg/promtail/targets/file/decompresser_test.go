@@ -182,4 +182,28 @@ func TestOnelineFiles(t *testing.T) {
 		require.Contains(t, firstEntry.Line, "onelinelog.log") // contains .tar.gz headers
 		require.Contains(t, firstEntry.Line, `5.202.214.160 - - [26/Jan/2019:19:45:25 +0330] "GET / HTTP/1.1" 200 30975 "https://www.zanbil.ir/" "Mozilla/5.0 (Windows NT 6.2; WOW64; rv:21.0) Gecko/20100101 Firefox/21.0" "-"`)
 	})
+
+	t.Run("zip file", func(t *testing.T) {
+		file := "test_fixtures/onelinelog.log.zip"
+		handler := fake.New(func() {})
+
+		d := &decompressor{
+			logger:  log.NewNopLogger(),
+			running: atomic.NewBool(false),
+			handler: handler,
+			path:    file,
+			done:    make(chan struct{}),
+			metrics: NewMetrics(prometheus.NewRegistry()),
+			cfg:     &scrapeconfig.DecompressionConfig{InitialDelay: 0, Format: "zip"},
+		}
+
+		d.readLines()
+
+		<-d.done
+		time.Sleep(time.Millisecond * 200)
+
+		entries := handler.Received()
+		require.Equal(t, 1, len(entries))
+		require.Equal(t, string(fileContent), entries[0].Line)
+	})
 }
