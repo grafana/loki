@@ -115,6 +115,8 @@ func benchmarkRowReader(b *testing.B, params readerBenchParams) {
 
 		err = reader.SetPredicate(predicate)
 		require.NoError(b, err)
+		err = reader.Open(ctx)
+		require.NoError(b, err)
 
 		buf := make([]pointers.SectionPointer, 128)
 		totalRead := 0
@@ -210,6 +212,8 @@ func benchmarkReader(b *testing.B, params readerBenchParams) {
 
 	for range b.N {
 		reader.Reset(opts)
+		err := reader.Open(ctx)
+		require.NoError(b, err)
 		totalRows := int64(0)
 
 		for {

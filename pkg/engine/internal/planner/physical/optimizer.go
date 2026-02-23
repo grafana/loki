@@ -583,7 +583,7 @@ func (p *parallelPushdown) applyParallelization(node Node) bool {
 	//
 	// There can be additional special cases, such as parallelizing an `avg` by
 	// pushing down a `sum` and `count` into the Parallelize.
-	switch node.(type) {
+	switch node := node.(type) {
 	case *Projection, *Filter, *ColumnCompat: // Catchall for shifting nodes
 		for _, parallelize := range p.plan.Children(node) {
 			p.plan.graph.Inject(parallelize, node.Clone())
@@ -592,12 +592,30 @@ func (p *parallelPushdown) applyParallelization(node Node) bool {
 		p.pushed[node] = struct{}{}
 		return true
 
-	case *TopK: // Catchall for sharding nodes
-		// TODO: Add Range aggregation as a sharding node
-
+	case *TopK: // shard TopK
 		for _, parallelize := range p.plan.Children(node) {
 			p.plan.graph.Inject(parallelize, node.Clone())
 		}
+		p.pushed[node] = struct{}{}
+		return true
+
+	case *RangeAggregation:
+		vecAgg := p.findParentVectorAggregation(node)
+		if vecAgg == nil {
+			return false // No VectorAgg parent - don't shift
+		}
+
+		// RangeAggregation can be parallelized only when the operation
+		// is associative and commutative with the parent vector aggregation.
+		if !canShardAggregation(vecAgg, node) {
+			return false
+		}
+
+		// Shift: move RangeAgg into Parallelize, eliminate original
+		for _, parallelize := range p.plan.Children(node) {
+			p.plan.graph.Inject(parallelize, node.Clone())
+		}
+		p.plan.graph.Eliminate(node)
 		p.pushed[node] = struct{}{}
 		return true
 	}
@@ -620,6 +638,65 @@ func (p *parallelPushdown) canPushdown(node Node) bool {
 		return n.Type() != NodeTypeParallelize
 	})
 	return !foundNonParallelize
+}
+
+// findParentVectorAggregation finds the VectorAggregation node that is a parent
+// of the given node (typically a RangeAggregation). Returns nil if no parent
+// VectorAggregation exists.
+func (p *parallelPushdown) findParentVectorAggregation(node Node) *VectorAggregation {
+	for _, parent := range p.plan.Parent(node) {
+		if vecAgg, ok := parent.(*VectorAggregation); ok {
+			return vecAgg
+		}
+	}
+	return nil
+}
+
+// canShardAggregation returns true if the combination of vector and
+// range aggregation operations can be safely parallelized.
+//
+// This is valid for aggregate functions that are both associative and commutative.
+//
+// Supported combinations:
+//   - sum over sum/count: additive operations can be summed across partitions
+//   - max over max: max of local maxes equals global max
+//   - min over min: min of loca mins equals global min
+func canShardAggregation(vec *VectorAggregation, rng *RangeAggregation) bool {
+	// without grouping is not pushed down.
+	if vec.Grouping.Without || rng.Grouping.Without {
+		return false
+	}
+
+	// range aggregation's grouping must preserve all labels that the
+	// vector aggregation needs. Currently we require exact match as
+	// a conservative simplification.
+	if len(vec.Grouping.Columns) != len(rng.Grouping.Columns) {
+		return false
+	}
+
+	for i, vecCol := range vec.Grouping.Columns {
+		rngCol := rng.Grouping.Columns[i]
+
+		colExprA, okA := vecCol.(*ColumnExpr)
+		colExprB, okB := rngCol.(*ColumnExpr)
+		if !okA || !okB {
+			return false
+		}
+
+		if colExprA.Ref.Column != colExprB.Ref.Column {
+			return false
+		}
+	}
+
+	switch vec.Operation {
+	case types.VectorAggregationTypeSum:
+		return rng.Operation == types.RangeAggregationTypeSum || rng.Operation == types.RangeAggregationTypeCount
+	case types.VectorAggregationTypeMax:
+		return rng.Operation == types.RangeAggregationTypeMax
+	case types.VectorAggregationTypeMin:
+		return rng.Operation == types.RangeAggregationTypeMin
+	}
+	return false
 }
 
 // optimization represents a single optimization pass and can hold multiple rules.

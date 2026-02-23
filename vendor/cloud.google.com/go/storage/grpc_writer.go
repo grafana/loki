@@ -215,10 +215,18 @@ func (c *grpcStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 		}
 		w.streamSender = w.pickBufferSender()
 
+		// Writer does not use maxRetryDuration from retryConfig to maintain
+		// consistency with HTTP client behavior. Writers should use
+		// ChunkRetryDeadline for per-chunk timeouts and context for overall timeouts.
+		writerRetry := w.settings.retry
+		if writerRetry != nil {
+			writerRetry = writerRetry.clone()
+			writerRetry.maxRetryDuration = 0
+		}
 		w.streamResult = checkCanceled(run(w.preRunCtx, func(ctx context.Context) error {
 			w.lastErr = w.writeLoop(ctx)
 			return w.lastErr
-		}, w.settings.retry, w.settings.idempotent))
+		}, writerRetry, w.settings.idempotent))
 		w.setError(w.streamResult)
 		close(w.donec)
 	}()

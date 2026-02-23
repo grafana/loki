@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=../schema.json
+---
+# Basic label selector queries
+# These are the fastest queries and run on every test
+queries:
+  - description: "Basic label selector"
+    query: "${SELECTOR}"
+    kind: log
+    time_range:
+      length: "24h"
+    directions: both
+    tags:
+      - "baseline"
+      - "selector"
+
+  - description: "Label selector with line filter"
+    query: '${SELECTOR} |= "level"'
+    time_range:
+      length: "24h"
+    directions: both
+    requires:
+      keywords: ["level"]
+    tags:
+      - "line-filter"
+      - "text-search"
+
+  - description: "Label selector with regex line filter (case-insensitive)"
+    query: '${SELECTOR} |~ "(?i)error"'
+    time_range:
+      length: "24h"
+    directions: both
+    requires:
+      keywords: ["error"]
+    tags:
+      - "line-filter"
+      - "regex"
+      - "case-insensitive"
+
+  - description: "Label selector with negative regex filter"
+    query: '${SELECTOR} !~ "(?i)debug"'
+    time_range:
+      length: "24h"
+    directions: both
+    requires:
+      keywords: ["debug"]
+    tags:
+      - "line-filter"
+      - "regex"
+      - "negative-filter"
+
+  - description: "Label filter expression outside stream selector"
+    query: '${SELECTOR} | ${LABEL_NAME} = "${LABEL_VALUE}"'
+    time_range:
+      length: "24h"
+    directions: both
+    requires:
+      labels: ["env", "region", "cluster"]
+    tags:
+      - "line-filter"
+      - "label-filter"
+    notes: "Tests indexed label filtering using | label=value syntax. Requires streams with multiple labels."

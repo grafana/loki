@@ -372,12 +372,18 @@ const (
 
 // FTHybridVectorExpression represents a vector expression in hybrid search
 type FTHybridVectorExpression struct {
-	VectorField  string
-	VectorData   Vector
-	Method       FTHybridVectorMethod
-	MethodParams []interface{}
-	Filter       string
-	YieldScoreAs string
+	VectorField string
+	VectorData  Vector
+	// VectorParamName specifies the parameter name for passing vector data via PARAMS mechanism.
+	// REQUIRED for Redis 8.6+ (inline vector blobs are not supported in 8.6+).
+	// Optional for Redis 8.4-8.5 (both inline and PARAMS are supported).
+	// When set, the vector blob will be passed as: VSIM @field $VectorParamName PARAMS ... VectorParamName <blob>
+	// When empty, the vector blob will be inlined: VSIM @field <blob> (fails on Redis 8.6+)
+	VectorParamName string
+	Method          FTHybridVectorMethod
+	MethodParams    []interface{}
+	Filter          string
+	YieldScoreAs    string
 }
 
 // FTHybridCombineOptions represents options for result fusion
@@ -768,8 +774,9 @@ func ProcessAggregateResult(data []interface{}) (*FTAggregateResult, error) {
 func NewAggregateCmd(ctx context.Context, args ...interface{}) *AggregateCmd {
 	return &AggregateCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeAggregate,
 		},
 	}
 }
@@ -808,6 +815,31 @@ func (cmd *AggregateCmd) readReply(rd *proto.Reader) (err error) {
 		return err
 	}
 	return nil
+}
+
+func (cmd *AggregateCmd) Clone() Cmder {
+	var val *FTAggregateResult
+	if cmd.val != nil {
+		val = &FTAggregateResult{
+			Total: cmd.val.Total,
+		}
+		if cmd.val.Rows != nil {
+			val.Rows = make([]AggregateRow, len(cmd.val.Rows))
+			for i, row := range cmd.val.Rows {
+				val.Rows[i] = AggregateRow{}
+				if row.Fields != nil {
+					val.Rows[i].Fields = make(map[string]interface{}, len(row.Fields))
+					for k, v := range row.Fields {
+						val.Rows[i].Fields[k] = v
+					}
+				}
+			}
+		}
+	}
+	return &AggregateCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     val,
+	}
 }
 
 // FTAggregateWithArgs - Performs a search query on an index and applies a series of aggregate transformations to the result.
@@ -1597,8 +1629,9 @@ type FTInfoCmd struct {
 func newFTInfoCmd(ctx context.Context, args ...interface{}) *FTInfoCmd {
 	return &FTInfoCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeFTInfo,
 		},
 	}
 }
@@ -1660,6 +1693,68 @@ func (cmd *FTInfoCmd) readReply(rd *proto.Reader) (err error) {
 	return nil
 }
 
+func (cmd *FTInfoCmd) Clone() Cmder {
+	val := FTInfoResult{
+		IndexErrors:              cmd.val.IndexErrors,
+		BytesPerRecordAvg:        cmd.val.BytesPerRecordAvg,
+		Cleaning:                 cmd.val.Cleaning,
+		CursorStats:              cmd.val.CursorStats,
+		DocTableSizeMB:           cmd.val.DocTableSizeMB,
+		GCStats:                  cmd.val.GCStats,
+		GeoshapesSzMB:            cmd.val.GeoshapesSzMB,
+		HashIndexingFailures:     cmd.val.HashIndexingFailures,
+		IndexDefinition:          cmd.val.IndexDefinition,
+		IndexName:                cmd.val.IndexName,
+		Indexing:                 cmd.val.Indexing,
+		InvertedSzMB:             cmd.val.InvertedSzMB,
+		KeyTableSizeMB:           cmd.val.KeyTableSizeMB,
+		MaxDocID:                 cmd.val.MaxDocID,
+		NumDocs:                  cmd.val.NumDocs,
+		NumRecords:               cmd.val.NumRecords,
+		NumTerms:                 cmd.val.NumTerms,
+		NumberOfUses:             cmd.val.NumberOfUses,
+		OffsetBitsPerRecordAvg:   cmd.val.OffsetBitsPerRecordAvg,
+		OffsetVectorsSzMB:        cmd.val.OffsetVectorsSzMB,
+		OffsetsPerTermAvg:        cmd.val.OffsetsPerTermAvg,
+		PercentIndexed:           cmd.val.PercentIndexed,
+		RecordsPerDocAvg:         cmd.val.RecordsPerDocAvg,
+		SortableValuesSizeMB:     cmd.val.SortableValuesSizeMB,
+		TagOverheadSzMB:          cmd.val.TagOverheadSzMB,
+		TextOverheadSzMB:         cmd.val.TextOverheadSzMB,
+		TotalIndexMemorySzMB:     cmd.val.TotalIndexMemorySzMB,
+		TotalIndexingTime:        cmd.val.TotalIndexingTime,
+		TotalInvertedIndexBlocks: cmd.val.TotalInvertedIndexBlocks,
+		VectorIndexSzMB:          cmd.val.VectorIndexSzMB,
+	}
+	// Clone slices and maps
+	if cmd.val.Attributes != nil {
+		val.Attributes = make([]FTAttribute, len(cmd.val.Attributes))
+		copy(val.Attributes, cmd.val.Attributes)
+	}
+	if cmd.val.DialectStats != nil {
+		val.DialectStats = make(map[string]int, len(cmd.val.DialectStats))
+		for k, v := range cmd.val.DialectStats {
+			val.DialectStats[k] = v
+		}
+	}
+	if cmd.val.FieldStatistics != nil {
+		val.FieldStatistics = make([]FieldStatistic, len(cmd.val.FieldStatistics))
+		copy(val.FieldStatistics, cmd.val.FieldStatistics)
+	}
+	if cmd.val.IndexOptions != nil {
+		val.IndexOptions = make([]string, len(cmd.val.IndexOptions))
+		copy(val.IndexOptions, cmd.val.IndexOptions)
+	}
+	if cmd.val.IndexDefinition.Prefixes != nil {
+		val.IndexDefinition.Prefixes = make([]string, len(cmd.val.IndexDefinition.Prefixes))
+		copy(val.IndexDefinition.Prefixes, cmd.val.IndexDefinition.Prefixes)
+	}
+	return &FTInfoCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     val,
+	}
+}
+
 // FTInfo - Retrieves information about an index.
 // The 'index' parameter specifies the index to retrieve information about.
 // For more information, please refer to the Redis documentation:
@@ -1716,8 +1811,9 @@ type FTSpellCheckCmd struct {
 func newFTSpellCheckCmd(ctx context.Context, args ...interface{}) *FTSpellCheckCmd {
 	return &FTSpellCheckCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeFTSpellCheck,
 		},
 	}
 }
@@ -1811,6 +1907,26 @@ func parseFTSpellCheck(data []interface{}) ([]SpellCheckResult, error) {
 	}
 
 	return results, nil
+}
+
+func (cmd *FTSpellCheckCmd) Clone() Cmder {
+	var val []SpellCheckResult
+	if cmd.val != nil {
+		val = make([]SpellCheckResult, len(cmd.val))
+		for i, result := range cmd.val {
+			val[i] = SpellCheckResult{
+				Term: result.Term,
+			}
+			if result.Suggestions != nil {
+				val[i].Suggestions = make([]SpellCheckSuggestion, len(result.Suggestions))
+				copy(val[i].Suggestions, result.Suggestions)
+			}
+		}
+	}
+	return &FTSpellCheckCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     val,
+	}
 }
 
 func parseFTSearch(data []interface{}, noContent, withScores, withPayloads, withSortKeys bool) (FTSearchResult, error) {
@@ -1909,8 +2025,9 @@ type FTSearchCmd struct {
 func newFTSearchCmd(ctx context.Context, options *FTSearchOptions, args ...interface{}) *FTSearchCmd {
 	return &FTSearchCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeFTSearch,
 		},
 		options: options,
 	}
@@ -1950,6 +2067,89 @@ func (cmd *FTSearchCmd) readReply(rd *proto.Reader) (err error) {
 		return err
 	}
 	return nil
+}
+
+func (cmd *FTSearchCmd) Clone() Cmder {
+	val := FTSearchResult{
+		Total: cmd.val.Total,
+	}
+	if cmd.val.Docs != nil {
+		val.Docs = make([]Document, len(cmd.val.Docs))
+		for i, doc := range cmd.val.Docs {
+			val.Docs[i] = Document{
+				ID:      doc.ID,
+				Score:   doc.Score,
+				Payload: doc.Payload,
+				SortKey: doc.SortKey,
+			}
+			if doc.Fields != nil {
+				val.Docs[i].Fields = make(map[string]string, len(doc.Fields))
+				for k, v := range doc.Fields {
+					val.Docs[i].Fields[k] = v
+				}
+			}
+		}
+	}
+	var options *FTSearchOptions
+	if cmd.options != nil {
+		options = &FTSearchOptions{
+			NoContent:       cmd.options.NoContent,
+			Verbatim:        cmd.options.Verbatim,
+			NoStopWords:     cmd.options.NoStopWords,
+			WithScores:      cmd.options.WithScores,
+			WithPayloads:    cmd.options.WithPayloads,
+			WithSortKeys:    cmd.options.WithSortKeys,
+			Slop:            cmd.options.Slop,
+			Timeout:         cmd.options.Timeout,
+			InOrder:         cmd.options.InOrder,
+			Language:        cmd.options.Language,
+			Expander:        cmd.options.Expander,
+			Scorer:          cmd.options.Scorer,
+			ExplainScore:    cmd.options.ExplainScore,
+			Payload:         cmd.options.Payload,
+			SortByWithCount: cmd.options.SortByWithCount,
+			LimitOffset:     cmd.options.LimitOffset,
+			Limit:           cmd.options.Limit,
+			CountOnly:       cmd.options.CountOnly,
+			DialectVersion:  cmd.options.DialectVersion,
+		}
+		// Clone slices and maps
+		if cmd.options.Filters != nil {
+			options.Filters = make([]FTSearchFilter, len(cmd.options.Filters))
+			copy(options.Filters, cmd.options.Filters)
+		}
+		if cmd.options.GeoFilter != nil {
+			options.GeoFilter = make([]FTSearchGeoFilter, len(cmd.options.GeoFilter))
+			copy(options.GeoFilter, cmd.options.GeoFilter)
+		}
+		if cmd.options.InKeys != nil {
+			options.InKeys = make([]interface{}, len(cmd.options.InKeys))
+			copy(options.InKeys, cmd.options.InKeys)
+		}
+		if cmd.options.InFields != nil {
+			options.InFields = make([]interface{}, len(cmd.options.InFields))
+			copy(options.InFields, cmd.options.InFields)
+		}
+		if cmd.options.Return != nil {
+			options.Return = make([]FTSearchReturn, len(cmd.options.Return))
+			copy(options.Return, cmd.options.Return)
+		}
+		if cmd.options.SortBy != nil {
+			options.SortBy = make([]FTSearchSortBy, len(cmd.options.SortBy))
+			copy(options.SortBy, cmd.options.SortBy)
+		}
+		if cmd.options.Params != nil {
+			options.Params = make(map[string]interface{}, len(cmd.options.Params))
+			for k, v := range cmd.options.Params {
+				options.Params[k] = v
+			}
+		}
+	}
+	return &FTSearchCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     val,
+		options: options,
+	}
 }
 
 // FTHybridResult represents the result of a hybrid search operation
@@ -2151,6 +2351,111 @@ func (cmd *FTHybridCmd) readReply(rd *proto.Reader) (err error) {
 		cmd.val = result
 	}
 	return nil
+}
+
+func (cmd *FTHybridCmd) Clone() Cmder {
+	val := FTHybridResult{
+		TotalResults:  cmd.val.TotalResults,
+		ExecutionTime: cmd.val.ExecutionTime,
+	}
+	if cmd.val.Results != nil {
+		val.Results = make([]map[string]interface{}, len(cmd.val.Results))
+		for i, result := range cmd.val.Results {
+			val.Results[i] = make(map[string]interface{}, len(result))
+			for k, v := range result {
+				val.Results[i][k] = v
+			}
+		}
+	}
+	if cmd.val.Warnings != nil {
+		val.Warnings = make([]string, len(cmd.val.Warnings))
+		copy(val.Warnings, cmd.val.Warnings)
+	}
+
+	var cursorVal *FTHybridCursorResult
+	if cmd.cursorVal != nil {
+		cursorVal = &FTHybridCursorResult{
+			SearchCursorID: cmd.cursorVal.SearchCursorID,
+			VsimCursorID:   cmd.cursorVal.VsimCursorID,
+		}
+	}
+
+	var options *FTHybridOptions
+	if cmd.options != nil {
+		options = &FTHybridOptions{
+			CountExpressions: cmd.options.CountExpressions,
+			Load:             cmd.options.Load,
+			Filter:           cmd.options.Filter,
+			LimitOffset:      cmd.options.LimitOffset,
+			Limit:            cmd.options.Limit,
+			ExplainScore:     cmd.options.ExplainScore,
+			Timeout:          cmd.options.Timeout,
+			WithCursor:       cmd.options.WithCursor,
+		}
+		// Clone slices and maps
+		if cmd.options.SearchExpressions != nil {
+			options.SearchExpressions = make([]FTHybridSearchExpression, len(cmd.options.SearchExpressions))
+			copy(options.SearchExpressions, cmd.options.SearchExpressions)
+		}
+		if cmd.options.VectorExpressions != nil {
+			options.VectorExpressions = make([]FTHybridVectorExpression, len(cmd.options.VectorExpressions))
+			copy(options.VectorExpressions, cmd.options.VectorExpressions)
+		}
+		if cmd.options.Combine != nil {
+			options.Combine = &FTHybridCombineOptions{
+				Method:       cmd.options.Combine.Method,
+				Count:        cmd.options.Combine.Count,
+				Window:       cmd.options.Combine.Window,
+				Constant:     cmd.options.Combine.Constant,
+				Alpha:        cmd.options.Combine.Alpha,
+				Beta:         cmd.options.Combine.Beta,
+				YieldScoreAs: cmd.options.Combine.YieldScoreAs,
+			}
+		}
+		if cmd.options.GroupBy != nil {
+			options.GroupBy = &FTHybridGroupBy{
+				Count:       cmd.options.GroupBy.Count,
+				ReduceFunc:  cmd.options.GroupBy.ReduceFunc,
+				ReduceCount: cmd.options.GroupBy.ReduceCount,
+			}
+			if cmd.options.GroupBy.Fields != nil {
+				options.GroupBy.Fields = make([]string, len(cmd.options.GroupBy.Fields))
+				copy(options.GroupBy.Fields, cmd.options.GroupBy.Fields)
+			}
+			if cmd.options.GroupBy.ReduceParams != nil {
+				options.GroupBy.ReduceParams = make([]interface{}, len(cmd.options.GroupBy.ReduceParams))
+				copy(options.GroupBy.ReduceParams, cmd.options.GroupBy.ReduceParams)
+			}
+		}
+		if cmd.options.Apply != nil {
+			options.Apply = make([]FTHybridApply, len(cmd.options.Apply))
+			copy(options.Apply, cmd.options.Apply)
+		}
+		if cmd.options.SortBy != nil {
+			options.SortBy = make([]FTSearchSortBy, len(cmd.options.SortBy))
+			copy(options.SortBy, cmd.options.SortBy)
+		}
+		if cmd.options.Params != nil {
+			options.Params = make(map[string]interface{}, len(cmd.options.Params))
+			for k, v := range cmd.options.Params {
+				options.Params[k] = v
+			}
+		}
+		if cmd.options.WithCursorOptions != nil {
+			options.WithCursorOptions = &FTHybridWithCursor{
+				MaxIdle: cmd.options.WithCursorOptions.MaxIdle,
+				Count:   cmd.options.WithCursorOptions.Count,
+			}
+		}
+	}
+
+	return &FTHybridCmd{
+		baseCmd:    cmd.cloneBaseCmd(),
+		val:        val,
+		cursorVal:  cursorVal,
+		options:    options,
+		withCursor: cmd.withCursor,
+	}
 }
 
 // FTSearch - Executes a search query on an index.
@@ -2412,8 +2717,9 @@ func (c cmdable) FTSearchWithArgs(ctx context.Context, index string, query strin
 func NewFTSynDumpCmd(ctx context.Context, args ...interface{}) *FTSynDumpCmd {
 	return &FTSynDumpCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeFTSynDump,
 		},
 	}
 }
@@ -2477,6 +2783,26 @@ func (cmd *FTSynDumpCmd) readReply(rd *proto.Reader) error {
 
 	cmd.val = results
 	return nil
+}
+
+func (cmd *FTSynDumpCmd) Clone() Cmder {
+	var val []FTSynDumpResult
+	if cmd.val != nil {
+		val = make([]FTSynDumpResult, len(cmd.val))
+		for i, result := range cmd.val {
+			val[i] = FTSynDumpResult{
+				Term: result.Term,
+			}
+			if result.Synonyms != nil {
+				val[i].Synonyms = make([]string, len(result.Synonyms))
+				copy(val[i].Synonyms, result.Synonyms)
+			}
+		}
+	}
+	return &FTSynDumpCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     val,
+	}
 }
 
 // FTSynDump - Dumps the contents of a synonym group.
@@ -2572,12 +2898,27 @@ func (c cmdable) FTHybridWithArgs(ctx context.Context, index string, options *FT
 			// For FT.HYBRID, we need to send just the raw vector bytes, not the Value() format
 			// Value() returns [format, data] but FT.HYBRID expects just the blob
 			vectorValue := vectorExpr.VectorData.Value()
+			var vectorBlob interface{}
 			if len(vectorValue) >= 2 {
 				// vectorValue is [format, data, ...] - we only want the data part
-				args = append(args, vectorValue[1])
+				vectorBlob = vectorValue[1]
 			} else {
 				// Fallback for unexpected format
-				args = append(args, vectorValue...)
+				vectorBlob = vectorValue
+			}
+
+			// If VectorParamName is provided, use PARAMS mechanism (required for Redis 8.6+)
+			// If not provided, inline the vector blob (works on Redis 8.4/8.5, fails on 8.6+)
+			if vectorExpr.VectorParamName != "" {
+				// Use PARAMS mechanism
+				args = append(args, "$"+vectorExpr.VectorParamName)
+				if options.Params == nil {
+					options.Params = make(map[string]interface{})
+				}
+				options.Params[vectorExpr.VectorParamName] = vectorBlob
+			} else {
+				// Inline the vector blob (deprecated in Redis 8.6+)
+				args = append(args, vectorBlob)
 			}
 
 			if vectorExpr.Method != "" {

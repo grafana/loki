@@ -17,7 +17,7 @@ permissions:
 env:
   BUILD_TIMEOUT: 60
   IMAGE_PREFIX: grafana
-  GO_VERSION: "1.25.5"
+  GO_VERSION: "1.25.7"
 
 jobs:
   loki-query-tee-image:

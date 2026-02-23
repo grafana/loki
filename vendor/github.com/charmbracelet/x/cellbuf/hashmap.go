@@ -15,7 +15,7 @@ func hash(l Line) (h uint64) {
 		}
 		h += (h << 5) + uint64(r)
 	}
-	return
+	return h
 }
 
 // hashmap represents a single [Line] hash.
@@ -33,7 +33,7 @@ func (s *Screen) updateHashmap() {
 	height := s.newbuf.Height()
 	if len(s.oldhash) >= height && len(s.newhash) >= height {
 		// rehash changed lines
-		for i := 0; i < height; i++ {
+		for i := range height {
 			_, ok := s.touch[i]
 			if ok {
 				s.oldhash[i] = hash(s.curbuf.Line(i))
@@ -48,14 +48,14 @@ func (s *Screen) updateHashmap() {
 		if len(s.newhash) != height {
 			s.newhash = make([]uint64, height)
 		}
-		for i := 0; i < height; i++ {
+		for i := range height {
 			s.oldhash[i] = hash(s.curbuf.Line(i))
 			s.newhash[i] = hash(s.newbuf.Line(i))
 		}
 	}
 
 	s.hashtab = make([]hashmap, height*2)
-	for i := 0; i < height; i++ {
+	for i := range height {
 		hashval := s.oldhash[i]
 
 		// Find matching hash or empty slot
@@ -71,7 +71,7 @@ func (s *Screen) updateHashmap() {
 		s.hashtab[idx].oldcount++
 		s.hashtab[idx].oldindex = i
 	}
-	for i := 0; i < height; i++ {
+	for i := range height {
 		hashval := s.newhash[i]
 
 		// Find matching hash or empty slot
@@ -130,7 +130,7 @@ func (s *Screen) updateHashmap() {
 	s.growHunks()
 }
 
-// scrollOldhash
+// scrollOldhash.
 func (s *Screen) scrollOldhash(n, top, bot int) {
 	if len(s.oldhash) == 0 {
 		return
@@ -287,7 +287,7 @@ func (s *Screen) updateCost(from, to Line) (cost int) {
 			cost++
 		}
 	}
-	return
+	return cost
 }
 
 func (s *Screen) updateCostBlank(to Line) (cost int) {
@@ -297,5 +297,5 @@ func (s *Screen) updateCostBlank(to Line) (cost int) {
 			cost++
 		}
 	}
-	return
+	return cost
 }

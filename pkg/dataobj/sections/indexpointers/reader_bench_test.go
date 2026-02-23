@@ -58,6 +58,7 @@ func benchmarkReaderRead(b *testing.B, params readerBenchParams) {
 
 	for b.Loop() {
 		reader.Reset(opts)
+		require.NoError(b, reader.Open(ctx))
 		totalRows := int64(0)
 
 		for {

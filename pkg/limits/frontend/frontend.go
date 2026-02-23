@@ -76,15 +76,23 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 		logger,
 	)
 	// Set up the assigned partitions cache.
-	var assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
-	if cfg.AssignedPartitionsCacheTTL == 0 {
-		// When the TTL is 0, the cache is disabled.
-		assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
+	if cfg.AssignedPartitionsCacheEnabled {
+		f.assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
 	} else {
-		assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
+		f.assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
 	}
-	f.assignedPartitionsCache = assignedPartitionsCache
-	f.limitsClient = newRingLimitsClient(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger, reg)
+	// Set up the limits client.
+	f.limitsClient = newRingLimitsClient(limitsRing, clientPool, cfg.NumPartitions, f.assignedPartitionsCache, logger, reg)
+	if cfg.AcceptedStreamsCacheEnabled {
+		f.limitsClient = newCacheLimitsClient(
+			newAcceptedStreamsCache(
+				cfg.AcceptedStreamsCacheTTL,
+				cfg.AcceptedStreamsCacheTTLJitter,
+				reg,
+			),
+			f.limitsClient,
+		)
+	}
 	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)

@@ -181,6 +181,7 @@ func newObservationCollector(capture *Capture) *observationCollector {
 // fromRegions collects observations from regions with the given name.
 // If rollUp is true, each region's stats include all its descendant stats
 // aggregated according to each stat's aggregation type.
+// excluded names are skipped when rolling up children.
 func (c *observationCollector) fromRegions(name string, rollUp bool, excluded ...string) *observations {
 	result := newObservations()
 
@@ -205,7 +206,6 @@ func (c *observationCollector) fromRegions(name string, rollUp bool, excluded ..
 		} else {
 			obs = c.getRegionObservations(region)
 		}
-
 		result.merge(obs)
 	}
 
@@ -242,9 +242,6 @@ func (c *observationCollector) rollUpObservations(region *Region, excludedSet ma
 	return result
 }
 
-// Region name for data object scan operations.
-const regionNameDataObjScan = "DataObjScan"
-
 // ToStatsSummary computes a stats.Result from observations in the capture.
 func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntriesReturned int) stats.Result {
 	result := stats.Result{
@@ -260,12 +257,12 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 		return result
 	}
 
-	// Collect observations from DataObjScan as the summary stats mainly relate to log lines.
+	// Collect observations from logs reader as the summary stats mainly relate to log lines.
 	// In practice, new engine would process more bytes while scanning metastore objects and stream sections.
 	collector := newObservationCollector(c)
-	observations := collector.fromRegions(regionNameDataObjScan, true).filter(
-		StatPipelineRowsOut.Key(),
+	observations := collector.fromRegions("logs.Reader.Read", false).filter(
 		StatDatasetPrimaryRowsRead.Key(),
+		StatDatasetSecondaryRowsRead.Key(),
 		StatDatasetPrimaryRowBytes.Key(),
 		StatDatasetSecondaryRowBytes.Key(),
 	)
@@ -277,7 +274,7 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	// TotalPostFilterLines: rows output after filtering
 	// TODO: this will report the wrong value if the plan has a filter stage.
 	// pick the min of row_out from filter and scan nodes.
-	result.Querier.Store.Dataobj.PostFilterRows = readInt64(observations, StatPipelineRowsOut.Key())
+	result.Querier.Store.Dataobj.PostFilterRows = readInt64(observations, StatDatasetSecondaryRowsRead.Key())
 
 	result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
 	return result
@@ -295,4 +292,145 @@ func readInt64(o *observations, key StatisticKey) int64 {
 		}
 	}
 	return 0
+}
+
+// summarizeObservations collects and summarizes observations from the capture.
+func summarizeObservations(capture *Capture) *observations {
+	if capture == nil {
+		return nil
+	}
+
+	collect := newObservationCollector(capture)
+	result := newObservations()
+
+	// collect observations from all logs.Reader regions.
+	result.merge(
+		collect.fromRegions("DataObjScan.Read", true).
+			filter(
+				// object store calls
+				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
+				// dataset reader stats
+				StatDatasetReadCalls.Key(),
+				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
+				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
+				StatDatasetPrimaryRowsRead.Key(), StatDatasetSecondaryRowsRead.Key(),
+				StatDatasetPrimaryRowBytes.Key(), StatDatasetSecondaryRowBytes.Key(),
+				StatDatasetPagesScanned.Key(), StatDatasetPagesFoundInCache.Key(),
+				StatDatasetPageDownloadRequests.Key(), StatDatasetPageDownloadTime.Key(),
+			).
+			prefix("logs_dataset_").
+			normalizeKeys(),
+	)
+
+	result.merge(
+		collect.fromRegions("logs.Reader.Open", false).
+			filter(
+				StatDatasetMaxRows.Key(), StatDatasetRowsAfterPruning.Key(),
+			).
+			prefix("logs_dataset_").
+			normalizeKeys(),
+	)
+
+	// range aggregation stats
+	result.merge(
+		collect.fromRegions("RangeAggregation.Read", false).
+			filter(
+				StatPipelineReadDuration.Key(),
+				StatPipelineExecDuration.Key(),
+			).
+			prefix("range_aggregation_").
+			normalizeKeys(),
+	)
+
+	// vector aggregation stats
+	result.merge(
+		collect.fromRegions("VectorAggregation.Read", false).
+			filter(
+				StatPipelineReadDuration.Key(),
+				StatPipelineExecDuration.Key(),
+			).
+			prefix("vector_aggregation_").
+			normalizeKeys(),
+	)
+
+	// metastore index and resolved section stats
+	result.merge(
+		collect.fromRegions("engine.metastoreResolver", false).
+			filter(StatMetastoreSectionsResolved.Key()).
+			normalizeKeys(),
+	)
+
+	result.merge(
+		collect.fromRegions("metastore.GetIndexes", false).
+			filter(StatMetastoreIndexObjects.Key()).
+			normalizeKeys(),
+	)
+
+	// metastore streams and pointers scan stats
+	result.merge(
+		collect.fromRegions("metastore.indexSectionsReader.Open", false).
+			filter(
+				StatMetastoreStreamsRead.Key(),
+			).
+			normalizeKeys(),
+	)
+
+	// metastore streams and pointers scan stats
+	result.merge(
+		collect.fromRegions("metastore.indexSectionsReader.Read", false).
+			filter(
+				StatMetastoreSectionPointersRead.Key(),
+			).
+			normalizeKeys(),
+	)
+
+	// metastore dataset reader and task stats (rollUp to include children)
+	result.merge(
+		collect.fromRegions("engine.metastoreResolver", true).
+			filter(
+				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
+				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
+				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
+				// physical planning task information (from wf.runner under metastore, if any)
+				StatTaskCount.Key(),
+				StatTaskAdmissionWaitDuration.Key(), StatTaskAssignmentTailDuration.Key(),
+				StatTaskMaxQueueDuration.Key(),
+			).
+			prefix("metastore_").
+			normalizeKeys(),
+	)
+
+	// streamsView bucket and dataset reader stats
+	result.merge(
+		collect.fromRegions("streams.Reader.Read", false).
+			filter(
+				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
+				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
+				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
+			).
+			prefix("streams_").
+			normalizeKeys(),
+	)
+
+	// task scheduling (Engine.Execute and its wf.runner child)
+	result.merge(
+		collect.fromRegions("Engine.Execute", true).
+			filter(
+				StatTaskCount.Key(),
+				StatTaskAdmissionWaitDuration.Key(), StatTaskAssignmentTailDuration.Key(),
+				StatTaskMaxQueueDuration.Key(),
+			).
+			normalizeKeys(),
+	)
+
+	return result
+}
+
+// SummaryLogValues exports a Capture as a structured log line with aggregated statistics.
+func SummaryLogValues(capture *Capture) []any {
+	if capture == nil {
+		return nil
+	}
+
+	return summarizeObservations(capture).toLogValues()
 }

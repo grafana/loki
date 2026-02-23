@@ -274,7 +274,7 @@ func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
 
 // ParseLabels parses labels from a string using logql parser.
 func ParseLabels(lbs string) (labels.Labels, error) {
-	ls, err := promql_parser.ParseMetric(lbs)
+	ls, err := promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
 	if err != nil {
 		return labels.EmptyLabels(), err
 	}

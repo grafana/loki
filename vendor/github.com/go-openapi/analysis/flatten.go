@@ -21,7 +21,7 @@ import (
 
 const definitionsPath = "#/definitions"
 
-// newRef stores information about refs created during the flattening process
+// newRef stores information about refs created during the flattening process.
 type newRef struct {
 	key      string
 	newName  string
@@ -32,7 +32,7 @@ type newRef struct {
 	parents  []string
 }
 
-// context stores intermediary results from flatten
+// context stores intermediary results from flatten.
 type context struct {
 	newRefs  map[string]*newRef
 	warnings []string
@@ -169,7 +169,7 @@ func expand(opts *FlattenOpts) error {
 }
 
 // normalizeRef strips the current file from any absolute file $ref. This works around issue go-openapi/spec#76:
-// leading absolute file in $ref is stripped
+// leading absolute file in $ref is stripped.
 func normalizeRef(opts *FlattenOpts) error {
 	debugLog("normalizeRef")
 
@@ -521,7 +521,7 @@ func stripOAIGen(opts *FlattenOpts) (bool, error) {
 	return replacedWithComplex, nil
 }
 
-// updateRefParents updates all parents of an updated $ref
+// updateRefParents updates all parents of an updated $ref.
 func updateRefParents(allRefs map[string]spec.Ref, r *newRef) {
 	if !r.isOAIGen || r.resolved { // bail on already resolved entries (avoid looping)
 		return

@@ -148,14 +148,10 @@ func TestConvertAST_MetricQuery_Success(t *testing.T) {
 %8 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %9 = SELECT %7 [predicate=%8]
 %10 = SELECT %9 [predicate=%4]
-%11 = EQ generated.__error__ ""
-%12 = EQ generated.__error_details__ ""
-%13 = AND %11 %12
-%14 = SELECT %10 [predicate=%13]
-%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.level)]
-%17 = LOGQL_COMPAT %16
-RETURN %17
+%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.level)]
+%13 = LOGQL_COMPAT %12
+RETURN %13
 `
 
 		require.Equal(t, expected, logicalPlan.String())
@@ -186,15 +182,11 @@ RETURN %17
 %6 = SELECT %4 [predicate=%5]
 %7 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %8 = SELECT %6 [predicate=%7]
-%9 = EQ generated.__error__ ""
-%10 = EQ generated.__error_details__ ""
-%11 = AND %9 %10
-%12 = SELECT %8 [predicate=%11]
-%13 = RANGE_AGGREGATION %12 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%14 = DIV %13 300
-%15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.level)]
-%16 = LOGQL_COMPAT %15
-RETURN %16
+%9 = RANGE_AGGREGATION %8 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%10 = DIV %9 300
+%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
+%12 = LOGQL_COMPAT %11
+RETURN %12
 `
 
 		require.Equal(t, expected, logicalPlan.String())
@@ -223,17 +215,13 @@ RETURN %16
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = EQ generated.__error__ ""
-%8 = EQ generated.__error_details__ ""
-%9 = AND %7 %8
-%10 = SELECT %6 [predicate=%9]
-%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%12 = DIV %11 300
-%13 = SUB %12 100
-%14 = POW %13 2
-%15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.level)]
-%16 = LOGQL_COMPAT %15
-RETURN %16
+%7 = RANGE_AGGREGATION %6 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%8 = DIV %7 300
+%9 = SUB %8 100
+%10 = POW %9 2
+%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
+%12 = LOGQL_COMPAT %11
+RETURN %12
 `
 
 		require.Equal(t, expected, logicalPlan.String())
@@ -497,6 +485,7 @@ func TestPlannerCreatesCastOperationForUnwrap(t *testing.T) {
 
 		// Assert against the correct SSA representation
 		// The UNWRAP should appear after SELECT operations but before RANGE_AGGREGATION
+		// Error filtering is added after unwrap to exclude rows with invalid numeric values
 		expected := `%1 = EQ label.app "api"
 %2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
 %3 = GTE builtin.timestamp 1970-01-01T00:55:00Z
@@ -545,14 +534,10 @@ func TestPlannerCreatesProjectionWithParseOperation(t *testing.T) {
 %8 = PROJECT %6 [mode=*E, expr=%7]
 %9 = EQ ambiguous.level "error"
 %10 = SELECT %8 [predicate=%9]
-%11 = EQ generated.__error__ ""
-%12 = EQ generated.__error_details__ ""
-%13 = AND %11 %12
-%14 = SELECT %10 [predicate=%13]
-%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.level)]
-%17 = LOGQL_COMPAT %16
-RETURN %17
+%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.level)]
+%13 = LOGQL_COMPAT %12
+RETURN %13
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -612,14 +597,10 @@ RETURN %12
 %8 = PROJECT %6 [mode=*E, expr=%7]
 %9 = EQ ambiguous.level "error"
 %10 = SELECT %8 [predicate=%9]
-%11 = EQ generated.__error__ ""
-%12 = EQ generated.__error_details__ ""
-%13 = AND %11 %12
-%14 = SELECT %10 [predicate=%13]
-%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.level)]
-%17 = LOGQL_COMPAT %16
-RETURN %17
+%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.level)]
+%13 = LOGQL_COMPAT %12
+RETURN %13
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -679,14 +660,10 @@ RETURN %12
 %8 = PROJECT %6 [mode=*E, expr=%7]
 %9 = EQ ambiguous.foo "bar"
 %10 = SELECT %8 [predicate=%9]
-%11 = EQ generated.__error__ ""
-%12 = EQ generated.__error_details__ ""
-%13 = AND %11 %12
-%14 = SELECT %10 [predicate=%13]
-%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.foo)]
-%17 = LOGQL_COMPAT %16
-RETURN %17
+%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.foo)]
+%13 = LOGQL_COMPAT %12
+RETURN %13
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -809,14 +786,10 @@ RETURN %16
 %12 = PROJECT %10 [mode=*E, expr=%11]
 %13 = EQ ambiguous.level "debug"
 %14 = SELECT %12 [predicate=%13]
-%15 = EQ generated.__error__ ""
-%16 = EQ generated.__error_details__ ""
-%17 = AND %15 %16
-%18 = SELECT %14 [predicate=%17]
-%19 = RANGE_AGGREGATION %18 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%20 = VECTOR_AGGREGATION %19 [operation=sum, group_by=(ambiguous.level)]
-%21 = LOGQL_COMPAT %20
-RETURN %21
+%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.level)]
+%17 = LOGQL_COMPAT %16
+RETURN %17
 `, "{PARSE_STATEMENT}", statement, 1)
 
 			require.Equal(t, expected, plan.String(), "Metric query should preserve operation order: filters before parse, then parse, then filters after parse")
@@ -1112,6 +1085,77 @@ RETURN %22
 			require.Equal(t, strings.TrimSpace(tt.expectedPlan), strings.TrimSpace(actualPlan))
 		})
 	}
+}
+
+func TestAlignStartToStepGrid(t *testing.T) {
+	tests := []struct {
+		name  string
+		start time.Time
+		step  time.Duration
+		want  time.Time
+	}{
+		{
+			name:  "zero step returns original start (instant query)",
+			start: time.Unix(50, 0),
+			step:  0,
+			want:  time.Unix(50, 0),
+		},
+		{
+			name:  "already aligned start is unchanged",
+			start: time.Unix(100, 0),
+			step:  100 * time.Second,
+			want:  time.Unix(100, 0),
+		},
+		{
+			name:  "non-aligned start is floored to step boundary",
+			start: time.Unix(50, 0),
+			step:  100 * time.Second,
+			want:  time.Unix(0, 0),
+		},
+		{
+			name:  "start just past a step boundary",
+			start: time.Unix(101, 0),
+			step:  100 * time.Second,
+			want:  time.Unix(100, 0),
+		},
+		{
+			name:  "sub-second step alignment",
+			start: time.Unix(0, 750_000_000), // 750ms
+			step:  500 * time.Millisecond,
+			want:  time.Unix(0, 500_000_000), // 500ms
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := alignStartToStepGrid(tc.start, tc.step)
+			require.Equal(t, tc.want.UnixNano(), got.UnixNano())
+		})
+	}
+}
+
+// TestRangeAggregationStepAlignment verifies that the logical planner aligns
+// the start timestamp of a RangeAggregation node to the step grid, matching
+// Prometheus's standard behaviour for range queries.
+func TestRangeAggregationStepAlignment(t *testing.T) {
+	// start=50s, step=100s → aligned start = 0s (floor(50/100)*100)
+	q := &query{
+		statement: `count_over_time({app="test"}[100s])`,
+		start:     50,
+		end:       250,
+		step:      100 * time.Second,
+		direction: logproto.BACKWARD,
+		limit:     1000,
+	}
+	plan, err := BuildPlan(context.Background(), q)
+	require.NoError(t, err)
+
+	planStr := plan.String()
+	// The RANGE_AGGREGATION node must show the aligned start (epoch 0 = 1970-01-01T00:00:00Z),
+	// not the raw start (50s = 1970-01-01T00:00:50Z).
+	require.Contains(t, planStr, "start_ts=1970-01-01T00:00:00Z",
+		"RangeAggregation start should be aligned to step grid; plan:\n%s", planStr)
+	require.Contains(t, planStr, "step=1m40s",
+		"step should be preserved in the plan; plan:\n%s", planStr)
 }
 
 // Helper to build a plan from predicates and return the SSA string

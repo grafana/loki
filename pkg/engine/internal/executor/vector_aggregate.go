@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -34,7 +35,6 @@ type vectorAggregationPipeline struct {
 	evaluator  *expressionEvaluator
 	grouping   physical.Grouping
 	opts       vectorAggregationOptions
-	region     *xcap.Region
 
 	tsEval    evalFunc // used to evaluate the timestamp column
 	valueEval evalFunc // used to evaluate the value column
@@ -52,7 +52,7 @@ var (
 	}
 )
 
-func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts vectorAggregationOptions, region *xcap.Region) (*vectorAggregationPipeline, error) {
+func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts vectorAggregationOptions) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
@@ -71,7 +71,6 @@ func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvalua
 		grouping:   opts.grouping,
 		opts:       opts,
 		aggregator: agg,
-		region:     region,
 		tsEval: evaluator.newFunc(&physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: types.ColumnNameBuiltinTimestamp,
@@ -88,12 +87,22 @@ func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvalua
 	}, nil
 }
 
+// Open opens all input pipelines.
+func (v *vectorAggregationPipeline) Open(ctx context.Context) error {
+	return openInputsConcurrently(ctx, v.inputs)
+}
+
 // Read reads the next value into its state.
 func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if v.inputsExhausted {
 		return nil, EOF
 	}
-	return v.read(ctx)
+	rec, err := v.read(ctx)
+
+	assertions.CheckColumnDuplicates(rec)
+	assertions.CheckLabelValuesDuplicates(rec)
+
+	return rec, err
 }
 
 func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
@@ -122,12 +131,13 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 				return nil, err
 			}
 
+			inputsExhausted = false
 			if record.NumRows() == 0 {
 				// Nothing to process
 				continue
 			}
 
-			inputsExhausted = false
+			assertions.CheckLabelValuesDuplicates(record)
 
 			// extract timestamp column
 			tsVec, err := v.tsEval(record)
@@ -227,9 +237,9 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 
 	v.inputsExhausted = true
 
-	if v.region != nil {
+	if region := xcap.RegionFromContext(ctx); region != nil {
 		computeTime := time.Since(startedAt) - inputReadTime
-		v.region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
+		region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
 	}
 
 	return v.aggregator.BuildRecord()
@@ -238,15 +248,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 // Close closes the resources of the pipeline.
 func (v *vectorAggregationPipeline) Close() {
 	v.aggregator.Reset()
-	if v.region != nil {
-		v.region.End()
-	}
 	for _, input := range v.inputs {
 		input.Close()
 	}
-}
-
-// Region implements RegionProvider.
-func (v *vectorAggregationPipeline) Region() *xcap.Region {
-	return v.region
 }

@@ -35,6 +35,9 @@ type Config struct {
 	// Logger for optional log messages.
 	Logger log.Logger
 
+	// Metrics for the worker's wire connections.
+	WireMetrics *wire.Metrics
+
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
 
@@ -117,8 +120,9 @@ type Worker struct {
 	sinks        map[ulid.ULID]*streamSink
 	jobs         map[ulid.ULID]*threadJob
 
-	metrics   *metrics
-	collector *collector
+	wireMetrics *wire.Metrics
+	metrics     *metrics
+	collector   *collector
 
 	// jobManager used to manage task assignments.
 	jobManager *jobManager
@@ -148,9 +152,10 @@ func New(config Config) (*Worker, error) {
 	}
 
 	return &Worker{
-		config:     config,
-		logger:     config.Logger,
-		numThreads: numThreads,
+		config:      config,
+		logger:      config.Logger,
+		wireMetrics: wire.NewMetrics(),
+		numThreads:  numThreads,
 
 		dialer:   config.Dialer,
 		listener: config.Listener,
@@ -280,8 +285,9 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 	level.Info(logger).Log("msg", "handling connection")
 
 	peer := &wire.Peer{
-		Logger: logger,
-		Conn:   conn,
+		Logger:  logger,
+		Metrics: w.wireMetrics,
+		Conn:    conn,
 
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
@@ -347,11 +353,9 @@ func (w *Worker) dial(ctx context.Context, addr net.Addr) (wire.Conn, error) {
 func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, conn wire.Conn) error {
 	level.Info(logger).Log("msg", "connected to scheduler")
 
-	var (
-		// waitReady is used to signal that the scheduler should be told when
-		// there's a ready thread.
-		waitReady = make(chan struct{}, 1)
-	)
+	// waitReady is used to signal that the scheduler should be told when
+	// there's a ready thread.
+	waitReady := make(chan struct{}, 1)
 
 	handleWorkerSubscribe := func() error {
 		select {
@@ -379,8 +383,9 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 	}
 
 	peer := &wire.Peer{
-		Logger: logger,
-		Conn:   conn,
+		Logger:  logger,
+		Metrics: w.wireMetrics,
+		Conn:    conn,
 
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
@@ -510,10 +515,11 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 	for _, taskSinks := range msg.Task.Sinks {
 		for _, taskSink := range taskSinks {
 			sink := &streamSink{
-				Logger:    log.With(logger, "stream", taskSink.ULID),
-				Scheduler: scheduler,
-				Stream:    taskSink,
-				Dialer:    w.dial,
+				Logger:      log.With(logger, "stream", taskSink.ULID),
+				WireMetrics: w.wireMetrics,
+				Scheduler:   scheduler,
+				Stream:      taskSink,
+				Dialer:      w.dial,
 			}
 
 			if _, exist := w.sinks[taskSink.ULID]; exist {
@@ -626,6 +632,7 @@ func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
 
 	errs = append(errs, reg.Register(w.collector))
 	errs = append(errs, w.metrics.Register(reg))
+	errs = append(errs, w.wireMetrics.Register(reg))
 
 	return errors.Join(errs...)
 }
@@ -634,4 +641,5 @@ func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
 func (w *Worker) UnregisterMetrics(reg prometheus.Registerer) {
 	reg.Unregister(w.collector)
 	w.metrics.Unregister(reg)
+	w.wireMetrics.Unregister(reg)
 }
