@@ -57,13 +57,16 @@ func mergeOptionsFromFile(o manager.Options, cfg *configv1.ProjectConfig) manage
 	if o.Metrics.BindAddress == "" && cfg.Metrics.BindAddress != "" {
 		o.Metrics.BindAddress = cfg.Metrics.BindAddress
 
-		disableHTTP2 := func(c *tls.Config) {
-			c.NextProtos = []string{"http/1.1"}
-		}
+		// Only enable Secure Serving when explicitly configured
+		if cfg.Metrics.Secure {
+			disableHTTP2 := func(c *tls.Config) {
+				c.NextProtos = []string{"http/1.1"}
+			}
 
-		o.Metrics.SecureServing = true
-		o.Metrics.TLSOpts = []func(*tls.Config){disableHTTP2}
-		o.Metrics.FilterProvider = filters.WithAuthenticationAndAuthorization
+			o.Metrics.SecureServing = true
+			o.Metrics.TLSOpts = []func(*tls.Config){disableHTTP2}
+			o.Metrics.FilterProvider = filters.WithAuthenticationAndAuthorization
+		}
 
 		endpoints := map[string]http.HandlerFunc{
 			"/debug/pprof/":        pprof.Index,

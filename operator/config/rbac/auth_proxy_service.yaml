@@ -9,6 +9,6 @@ spec:
   - name: https
     port: 8443
     protocol: TCP
-    targetPort: 8443
+    targetPort: metrics
   selector:
     name: loki-operator-controller-manager

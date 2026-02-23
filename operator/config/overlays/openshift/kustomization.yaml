@@ -45,6 +45,7 @@ images:
 
 patches:
 - path: auth_proxy_service_annotations_patch.yaml
+- path: manager_auth_proxy_patch.yaml
 - path: manager_related_image_patch.yaml
 - path: manager_run_flags_patch.yaml
 - path: manager_security_context_patch.yaml

@@ -50,6 +50,7 @@ patches:
 - path: manager_run_flags_patch.yaml
 - path: manager_webhook_patch.yaml
 - path: webhookcainjection_patch.yaml
+- path: manager_metrics_port_patch.yaml
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER' prefix.
 # Uncomment the following replacements to add the cert-manager CA injection annotations
 replacements:
