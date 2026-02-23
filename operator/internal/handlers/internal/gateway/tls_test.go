@@ -210,7 +210,7 @@ func TestValidateTLSConfig(t *testing.T) {
 				},
 			},
 			expError: &status.DegradedError{
-				Message: `Missing secret for field "key" in gateway TLS configuration: non-existent-key-secret`,
+				Message: `Missing secret for field "privateKey" in gateway TLS configuration: non-existent-key-secret`,
 				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
 				Requeue: false,
 			},
@@ -246,7 +246,7 @@ func TestValidateTLSConfig(t *testing.T) {
 				},
 			},
 			expError: &status.DegradedError{
-				Message: `Invalid secret tls-key-secret-invalid for field "key" in gateway TLS configuration, missing key: tls.key`,
+				Message: `Invalid secret tls-key-secret-invalid for field "privateKey" in gateway TLS configuration, missing key: tls.key`,
 				Reason:  lokiv1.ReasonInvalidGatewayTLSConfig,
 				Requeue: false,
 			},
