@@ -642,66 +642,6 @@ func TestMatcher(t *testing.T) {
 	})
 }
 
-func TestRangeAggregationPipeline_StepAlignment(t *testing.T) {
-	fields := []arrow.Field{
-		semconv.FieldFromFQN(colTs, false),
-		semconv.FieldFromFQN(colSvc, false),
-	}
-	schema := arrow.NewSchema(fields, nil)
-
-	// Two entries whose correct placement depends on epoch-aligned evaluation timestamps.
-	//
-	// Entry at t=75s: lies in the aligned window (0s, 100s].
-	//   With alignment   → counted at eval timestamp t=100s.
-	//   Without alignment (bug) → falls in window (50s, 150s], counted at t=150s instead.
-	//
-	// Entry at t=125s: lies in the aligned window (100s, 200s].
-	//   With alignment   → counted at eval timestamp t=200s.
-	//   Without alignment (bug) → falls in window (150s, 250s], counted at t=250s instead.
-	rows := []arrowtest.Rows{
-		{
-			{colTs: time.Unix(75, 0).UTC(), colSvc: "app1"},
-			{colTs: time.Unix(125, 0).UTC(), colSvc: "app1"},
-		},
-	}
-
-	opts := rangeAggregationOptions{
-		grouping: physical.Grouping{
-			Columns: []physical.ColumnExpression{
-				&physical.ColumnExpr{
-					Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeAmbiguous},
-				},
-			},
-		},
-		// start=50s is intentionally NOT a multiple of step=100s.
-		// The aligned first evaluation point must be 0s (floor(50/100)*100).
-		startTs:       time.Unix(50, 0),
-		endTs:         time.Unix(250, 0),
-		rangeInterval: 100 * time.Second,
-		step:          100 * time.Second,
-		operation:     types.RangeAggregationTypeCount,
-	}
-
-	input := NewArrowtestPipeline(schema, rows...)
-	pipeline, err := newRangeAggregationPipeline([]Pipeline{input}, newExpressionEvaluator(), opts)
-	require.NoError(t, err)
-	defer pipeline.Close()
-
-	record, err := pipeline.Read(t.Context())
-	require.NoError(t, err)
-
-	rows2, err := arrowtest.RecordRows(record)
-	require.NoError(t, err)
-
-	// Expected output: evaluation timestamps must be epoch-aligned (100s, 200s),
-	// NOT the raw-start multiples (150s, 250s) that the bug would have produced.
-	expect := arrowtest.Rows{
-		{colTs: time.Unix(100, 0).UTC(), "utf8.ambiguous.service": "app1", colVal: float64(1)},
-		{colTs: time.Unix(200, 0).UTC(), "utf8.ambiguous.service": "app1", colVal: float64(1)},
-	}
-	require.ElementsMatch(t, expect, rows2)
-}
-
 // requireEqualWindows asserts that two slices of window structs contain the same elements.
 func requireEqualWindows(t *testing.T, expected, actual []window) {
 	t.Helper()

@@ -88,21 +88,7 @@ func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluat
 
 func (r *rangeAggregationPipeline) init() {
 	windows := []window{}
-
-	// For range queries (step > 0) align the first evaluation timestamp to the
-	// step grid, matching Prometheus's standard behaviour.
 	cur := r.opts.startTs
-	if r.opts.step > 0 {
-		stepNs := r.opts.step.Nanoseconds()
-		startNs := cur.UnixNano()
-		if rem := startNs % stepNs; rem != 0 {
-			cur = time.Unix(0, startNs-rem)
-			// Keep opts in sync: the matcher factory uses opts.startTs for its index
-			// arithmetic, so it must see the same aligned start that the windows use.
-			r.opts.startTs = cur
-		}
-	}
-
 	for cur.Compare(r.opts.endTs) <= 0 {
 		windows = append(windows, window{start: cur.Add(-r.opts.rangeInterval), end: cur})
 
