@@ -326,9 +326,13 @@ func buildLokiAllowGatewayIngress(opts Options) *networkingv1.NetworkPolicy {
 // components that need to access object storage to object storage
 func buildLokiAllowBucketEgress(opts Options) *networkingv1.NetworkPolicy {
 	objstorePort := []int32{443} // Default HTTPS port
-
-	if ports := getEndpointPort(opts.ObjectStorage, opts.Gates.OpenShift.Enabled); len(ports) > 0 {
-		objstorePort = ports
+	switch {
+	case len(opts.NetworkPolicyObjStorePorts) > 0:
+		objstorePort = opts.NetworkPolicyObjStorePorts
+	default:
+		if ports := getEndpointPort(opts.ObjectStorage, opts.Gates.OpenShift.Enabled); len(ports) > 0 {
+			objstorePort = ports
+		}
 	}
 
 	if opts.Stack.Proxy != nil {
