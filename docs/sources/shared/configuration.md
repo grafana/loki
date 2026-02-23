@@ -1885,11 +1885,6 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.accepted-streams-cache-ttl-jitter
   [accepted_streams_cache_ttl_jitter: <duration> | default = 15s]
 
-  # The maximum number of streams that can be stored in the cache without false
-  # positives.
-  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-size
-  [accepted_streams_cache_size: <int> | default = 1000000]
-
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
   # The CLI flags prefix for this block configuration is:
