@@ -13,6 +13,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcutil"
@@ -24,6 +25,7 @@ import (
 	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/signals"
+	"github.com/grafana/loki/v3/pkg/labelaccess"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
@@ -49,9 +51,9 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/loki/codec"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/lokifrontend"
-	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/v3/pkg/pattern"
 	"github.com/grafana/loki/v3/pkg/querier"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -74,6 +76,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/fakeauth"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
+
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -84,6 +87,7 @@ import (
 type Config struct {
 	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
 	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
+	LBACEnabled  bool                   `yaml:"lbac_enabled,omitempty"`
 	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
@@ -393,12 +397,6 @@ type Frontend interface {
 	CheckReady(_ context.Context) error
 }
 
-// Codec defines methods to encode and decode requests from HTTP, httpgrpc and Protobuf.
-type Codec interface {
-	transport.Codec
-	worker.RequestCodec
-}
-
 // Loki is the root datastructure for Loki.
 type Loki struct {
 	Cfg Config
@@ -465,7 +463,7 @@ type Loki struct {
 	PushParserWrapper  push.RequestParserWrapper
 	HTTPAuthMiddleware middleware.Interface
 
-	Codec   Codec
+	Codec   codec.Codec
 	Metrics *server.Metrics
 
 	UsageTracker push.UsageTracker
@@ -485,11 +483,236 @@ func New(cfg Config) (*Loki, error) {
 	analytics.Edition("oss")
 	loki.setupAuthMiddleware()
 	loki.setupGRPCRecoveryMiddleware()
+
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
 
+	loki.Codec = labelaccess.NewCodec(loki.Codec)
+
+	// this can move into setupModuleManager once we know it works
+	loki.ModuleManager.RegisterModule(AuthMiddleware, loki.initAuthMiddleware, modules.UserInvisibleModule)
+	err := loki.ModuleManager.AddDependency(AuthMiddleware, Server) // Auth Injection has to be started after the server so it can access the server
+	if err != nil {
+		return nil, err
+	}
+
+	err = loki.ModuleManager.AddDependency(Distributor, AuthMiddleware)
+	if err != nil {
+		return nil, err
+	}
+
+	err = loki.ModuleManager.AddDependency(QueryFrontend, AuthMiddleware)
+	if err != nil {
+		return nil, err
+	}
+
+	err = loki.ModuleManager.AddDependency(Querier, AuthMiddleware)
+	if err != nil {
+		return nil, err
+	}
+
+	err = loki.ModuleManager.AddDependency(Compactor, AuthMiddleware)
+	if err != nil {
+		return nil, err
+	}
+
+	// QueryEngine must depend on AuthMiddleware so that LabelAccessMiddleware is initialized
+	// before the V2 engine registers its HTTP handlers. This also enables LBAC enforcement for
+	// aggregated metrics queries via ModifyAggregatedMetricsQuery.
+	err = loki.ModuleManager.AddDependency(QueryEngine, AuthMiddleware)
+	if err != nil {
+		return nil, err
+	}
+
+	// more setup which needs a better home (based on addNewModules from enterprise_logs)
+	//_ = level.Debug(util_log.Logger).Log("msg", "Registering store chunk filterer")
+	loki.ModuleManager.RegisterModule(LabelAccess, loki.initStoreChunkFilterer)
+	err = loki.ModuleManager.AddDependency(LabelAccess, Store)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := loki.ModuleManager.AddDependency(Querier, LabelAccess); err != nil {
+		return nil, err
+	}
+	_ = loki.ModuleManager.AddDependency(IndexGateway, LabelAccess)
+
+	_ = level.Debug(util_log.Logger).Log("msg", "Registering label access store wrapper")
+	loki.ModuleManager.RegisterModule(LabelAccessStoreWrapper, loki.initLabelAccessStoreWrapper, modules.UserInvisibleModule)
+
+	err = loki.ModuleManager.AddDependency(LabelAccessStoreWrapper, Store)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ingester must use the wrapped store.
+	err = loki.ModuleManager.AddDependency(Ingester, LabelAccessStoreWrapper)
+	if err != nil {
+		return nil, err
+	}
+	//
+	_ = loki.ModuleManager.AddDependency(Querier, LabelAccessStoreWrapper)
+	//}
+	//
+	//func (l *LokiEnterprise) addLabelAccessIngesterWrapperModule() error {
+	_ = level.Debug(util_log.Logger).Log("msg", "Overriding ingester with wrapped version")
+	loki.ModuleManager.RegisterModule(LabelAccessIngesterWrapper, loki.initLabelAccessIngesterWrapper)
+
+	_ = loki.ModuleManager.AddDependency(Ingester, LabelAccessIngesterWrapper)
+
+	_ = level.Debug(util_log.Logger).Log("msg", "Registering LBAC support for V2 query engine")
+	loki.ModuleManager.RegisterModule(LabelAccessV2Engine, loki.initLabelAccessV2Engine, modules.UserInvisibleModule) // LBAC support be initialized before the QueryEngine module so the configs are set
+	_ = loki.ModuleManager.AddDependency(QueryEngine, LabelAccessV2Engine)
+
+	_ = level.Debug(util_log.Logger).Log("msg", "Registering label access interceptors")
+	loki.ModuleManager.RegisterModule(LabelAccessInterceptors, loki.initLabelAccessInterceptors, modules.UserInvisibleModule)
+
+	_ = loki.ModuleManager.AddDependency(Server, LabelAccessInterceptors)
+
+	_ = level.Debug(util_log.Logger).Log("msg", "Registering label access tripperware")
+	loki.ModuleManager.RegisterModule(LabelAccessTripperware, loki.initLabelAccessMiddleware, modules.UserInvisibleModule)
+
+	err = loki.ModuleManager.AddDependency(QueryFrontend, LabelAccessTripperware)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = level.Debug(util_log.Logger).Log("msg", "Registering filterers")
+	loki.ModuleManager.RegisterModule(Filterers, loki.initFilterers, modules.UserInvisibleModule)
+
+	err = loki.ModuleManager.AddDependency(Ingester, Filterers)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = level.Info(util_log.Logger).Log("msg", "Registering user ID transformer")
+	loki.ModuleManager.RegisterModule(LabelAccessUserIDTransformer, loki.initLabelAccessUserIDTransformer, modules.UserInvisibleModule)
+	_ = loki.ModuleManager.AddDependency(Server, LabelAccessUserIDTransformer)
+
+	_ = loki.ModuleManager.AddDependency(LabelAccessTripperware, AuthTripperware)
+
+	_ = level.Debug(util_log.Logger).Log("msg", "Registering auth tripperware")
+	loki.ModuleManager.RegisterModule(AuthTripperware, loki.initAuthTripperware, modules.UserInvisibleModule)
+	_ = loki.ModuleManager.AddDependency(AuthTripperware, QueryFrontendTripperware)
+
 	return loki, nil
+
+}
+
+func (l *Loki) initAuthMiddleware() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing the auth middleware")
+
+	l.HTTPAuthMiddleware = middleware.Merge(
+		l.HTTPAuthMiddleware,
+		labelaccess.NewLabelAccessMiddleware(
+			log.With(util_log.Logger, "component", "label_access_middleware"),
+		),
+	)
+
+	//if l.Cfg.CompactorConfig.RetentionEnabled {
+	//	l.additionalRoutes = append(l.additionalRoutes,
+	//		ent_gateway.NewRoute("/loki/api/v1/delete", []string{"GET", "POST", "PUT", "DELETE"}, types.SCOPE_LOGS_DELETE),
+	//	)
+	//}
+
+	//authMiddleware, err := factory.NewAuthMiddleware(
+	//	l.Cfg.Auth,
+	//	l.AdminClient,
+	//	l.LicenseManager.GetClusterName,
+	//	prometheus.DefaultRegisterer,
+	//	util_log.Logger,
+	//	factory.AuthMiddlewareAddAdditionalRoutes(l.additionalRoutes),
+	//)
+	//if err != nil {
+	//	return nil, fmt.Errorf("initializing auth middleware: %v", err)
+	//}
+	//
+	//if authMiddleware != nil {
+	//	l.Server.HTTP.Use(authMiddleware.Wrap)
+	//}
+
+	return nil, nil
+}
+
+func (l *Loki) initFilterers() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing label access filterers")
+	filterer := labelaccess.RequestChunkFilterer{}
+	l.Cfg.Ingester.ChunkFilterer = &filterer
+
+	return nil, nil
+}
+
+func (l *Loki) initLabelAccessUserIDTransformer() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing label access id transformer")
+	l.Cfg.QueryRange.Transformer = labelaccess.UserIDTransformer
+
+	return nil, nil
+}
+
+func (l *Loki) initLabelAccessStoreWrapper() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing store wrapper")
+	l.Store = labelaccess.WrapStore(l.Store)
+
+	return nil, nil
+}
+
+func (l *Loki) initLabelAccessV2Engine() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing LBAC support for V2 query engine")
+
+	// Set the StreamFilterer for filtering streams based on LBAC policies.
+	// LBAC policies are propagated via HTTP headers using PropagateAllHeadersMiddleware
+	// and httpreq.InjectHeader, then extracted at the worker via httpreq.ExtractAllHeaders.
+	streamFilterer := &labelaccess.RequestStreamFilterer{}
+	l.Cfg.QueryEngine.Executor.StreamFilterer = streamFilterer
+
+	return nil, nil
+}
+
+func (l *Loki) initLabelAccessIngesterWrapper() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing ingester wrapper")
+	l.Cfg.Ingester.Wrapper = &labelaccess.IngesterWrapper{}
+
+	return nil, nil
+}
+
+func (l *Loki) initStoreChunkFilterer() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing store chunk filterer")
+	filterer := labelaccess.RequestChunkFilterer{}
+	l.Store.SetChunkFilterer(&filterer)
+	return nil, nil
+}
+
+func (l *Loki) initAuthTripperware() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing auth tripperware")
+	return nil, nil
+}
+
+func (l *Loki) initLabelAccessInterceptors() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing label access interceptors")
+	// Add server GRPC interceptors to the Ingester
+	l.Cfg.Server.GRPCMiddleware = append(l.Cfg.Server.GRPCMiddleware, labelaccess.ServerLBACInterceptor)
+	l.Cfg.Server.GRPCStreamMiddleware = append(l.Cfg.Server.GRPCStreamMiddleware, labelaccess.StreamServerLBACInterceptor)
+
+	// Add client GRPC interceptors to the IngesterClient
+	l.Cfg.IngesterClient.GRPCUnaryClientInterceptors = append(l.Cfg.IngesterClient.GRPCUnaryClientInterceptors, labelaccess.ClientLBACInterceptor)
+	l.Cfg.IngesterClient.GRCPStreamClientInterceptors = append(l.Cfg.IngesterClient.GRCPStreamClientInterceptors, labelaccess.StreamClientLBACInterceptor)
+
+	// Add client GRPC interceptors to the IndexGateway client
+	l.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.GRPCUnaryClientInterceptors = append(l.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.GRPCUnaryClientInterceptors, labelaccess.ClientLBACInterceptor)
+	l.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.GRCPStreamClientInterceptors = append(l.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.GRCPStreamClientInterceptors, labelaccess.StreamClientLBACInterceptor)
+
+	return nil, nil
+}
+
+func (l *Loki) initLabelAccessMiddleware() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing label access middleware")
+	l.QueryFrontEndMiddleware = queryrangebase.MergeMiddlewares(
+		labelaccess.NewMiddleware(),
+		l.QueryFrontEndMiddleware,
+	)
+
+	return nil, nil
 }
 
 func (t *Loki) setupAuthMiddleware() {
@@ -506,6 +729,16 @@ func (t *Loki) setupAuthMiddleware() {
 			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
 			"/grpc.JobQueue/Loop",
 		})
+
+	if t.Cfg.LBACEnabled {
+		level.Info(util_log.Logger).Log("msg", "LBAC enabled")
+		t.HTTPAuthMiddleware = middleware.Merge(
+			t.HTTPAuthMiddleware,
+			labelaccess.NewLabelAccessMiddleware(
+				log.With(util_log.Logger, "component", "label_access_middleware"),
+			),
+		)
+	}
 }
 
 func (t *Loki) setupGRPCRecoveryMiddleware() {
@@ -544,6 +777,7 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 // dependencies
 func (t *Loki) ListTargets() {
 	green := color.New(color.FgGreen, color.Bold)
+	red := color.New(color.FgRed)
 	if rt.GOOS == "windows" {
 		green.DisableColor()
 	}
@@ -553,6 +787,8 @@ func (t *Loki) ListTargets() {
 		for _, n := range t.ModuleManager.DependenciesForModule(m) {
 			if t.ModuleManager.IsUserVisibleModule(n) {
 				fmt.Fprintln(os.Stdout, " ", n)
+			} else {
+				fmt.Fprintln(os.Stdout, " ", red.Sprint(n))
 			}
 		}
 	}

@@ -10,17 +10,17 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 
-	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/loki/codec"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type Codec struct {
-	loki.Codec
+	codec.Codec
 }
 
-func NewCodec(original loki.Codec) *Codec {
+func NewCodec(original codec.Codec) *Codec {
 	return &Codec{
 		original,
 	}
