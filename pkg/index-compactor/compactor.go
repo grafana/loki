@@ -22,21 +22,21 @@ import (
 type Compactor struct {
 	services.Service
 
-	cfg      Config
-	readBkt  objstore.BucketReader
-	writeBkt objstore.Bucket
-	logger   log.Logger
+	cfg       Config
+	sourceBkt objstore.BucketReader
+	destBkt   objstore.Bucket
+	logger    log.Logger
 }
 
 func NewCompactor(cfg Config, bucket objstore.Bucket, logger log.Logger) (*Compactor, error) {
-	readBkt := objstore.NewPrefixedBucket(bucket, "index/v0")
-	writeBkt := objstore.NewPrefixedBucket(bucket, "index/v0-compacted-test")
+	sourceBkt := objstore.NewPrefixedBucket(bucket, cfg.SourcePrefix)
+	destBkt := objstore.NewPrefixedBucket(bucket, cfg.OutputPrefix)
 
 	c := &Compactor{
-		cfg:      cfg,
-		readBkt:  readBkt,
-		writeBkt: writeBkt,
-		logger:   logger,
+		cfg:       cfg,
+		sourceBkt: sourceBkt,
+		destBkt:   destBkt,
+		logger:    logger,
 	}
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping).WithName("index-compactor")
 	return c, nil
@@ -98,7 +98,7 @@ func (c *Compactor) compactOnce(ctx context.Context) error {
 
 	level.Info(c.logger).Log("msg", "discovered index objects", "count", len(paths))
 
-	return mergeIndexObjects(ctx, c.logger, c.readBkt, c.writeBkt, paths, c.cfg)
+	return mergeIndexObjects(ctx, c.logger, c.sourceBkt, c.destBkt, paths, c.cfg)
 }
 
 // discoverPaths reads TOC entries from the bucket for the given time range
@@ -111,9 +111,9 @@ func (c *Compactor) discoverPaths(ctx context.Context, start, end time.Time) ([]
 
 	seen := make(map[string]struct{})
 	for _, tp := range tocPaths {
-		obj, err := readSmallObject(ctx, c.readBkt, tp)
+		obj, err := readSmallObject(ctx, c.sourceBkt, tp)
 		if err != nil {
-			if c.readBkt.IsObjNotFoundErr(err) {
+			if c.sourceBkt.IsObjNotFoundErr(err) {
 				level.Debug(c.logger).Log("msg", "TOC not found, skipping", "path", tp)
 				continue
 			}
@@ -153,7 +153,7 @@ func tocPathsForRange(prefix string, start, end time.Time) []string {
 // prior run that crashed after the gather phase but before cleanup.
 func (c *Compactor) cleanStaleIntermediates(ctx context.Context) error {
 	var stale []string
-	err := c.writeBkt.Iter(ctx, intermediatePrefix, func(name string) error {
+	err := c.destBkt.Iter(ctx, intermediatePrefix, func(name string) error {
 		stale = append(stale, name)
 		return nil
 	}, objstore.WithRecursiveIter())
@@ -166,7 +166,7 @@ func (c *Compactor) cleanStaleIntermediates(ctx context.Context) error {
 
 	level.Info(c.logger).Log("msg", "cleaning stale intermediates", "count", len(stale))
 	for _, name := range stale {
-		if err := c.writeBkt.Delete(ctx, name); err != nil && !c.writeBkt.IsObjNotFoundErr(err) {
+		if err := c.destBkt.Delete(ctx, name); err != nil && !c.destBkt.IsObjNotFoundErr(err) {
 			return fmt.Errorf("deleting stale intermediate %s: %w", name, err)
 		}
 	}

@@ -398,18 +398,18 @@ type intermediateInfo struct {
 func mergeIndexObjects(
 	ctx context.Context,
 	logger log.Logger,
-	readBkt objstore.BucketReader,
-	writeBkt objstore.Bucket,
+	sourceBkt objstore.BucketReader,
+	destBkt objstore.Bucket,
 	paths []string,
 	cfg Config,
 ) error {
-	cp, err := loadCheckpoint(ctx, writeBkt)
+	cp, err := loadCheckpoint(ctx, destBkt)
 	if err != nil {
 		return fmt.Errorf("loading checkpoint: %w", err)
 	}
 	if cp == nil {
 		cp = newCheckpoint()
-		err := saveCheckpoint(ctx, writeBkt, cp)
+		err := saveCheckpoint(ctx, destBkt, cp)
 		if err != nil {
 			return fmt.Errorf("saving initial checkpoint: %w", err)
 		}
@@ -440,7 +440,7 @@ func mergeIndexObjects(
 			return nil
 		}
 
-		if err := saveCheckpoint(ctx, writeBkt, cp); err != nil {
+		if err := saveCheckpoint(ctx, destBkt, cp); err != nil {
 			return fmt.Errorf("saving initial checkpoint: %w", err)
 		}
 
@@ -448,7 +448,7 @@ func mergeIndexObjects(
 		// appends to cp.Intermediates, to avoid double-counting.
 		priorIntermediates := checkpointToIntermediates(cp.Intermediates)
 
-		scatteredIntermediates, err := scatterPhase(ctx, logger, readBkt, writeBkt, remaining, cfg.WindowSize, cfg.BatchSize, cfg.BuilderConfig, cp)
+		scatteredIntermediates, err := scatterPhase(ctx, logger, sourceBkt, destBkt, remaining, cfg.WindowSize, cfg.BatchSize, cfg.BuilderConfig, cp)
 		if err != nil {
 			return fmt.Errorf("scatter phase: %w", err)
 		}
@@ -457,14 +457,14 @@ func mergeIndexObjects(
 
 		cp.ScatterComplete = true
 		cp.Intermediates = intermediatesToCheckpoint(intermediates)
-		if err := saveCheckpoint(ctx, writeBkt, cp); err != nil {
+		if err := saveCheckpoint(ctx, destBkt, cp); err != nil {
 			return fmt.Errorf("saving scatter-complete checkpoint: %w", err)
 		}
 
 		level.Info(logger).Log("msg", "scatter complete", "intermediates", len(intermediates))
 	}
 
-	allTocEntries, err := gatherPhase(ctx, logger, readBkt, writeBkt, intermediates, cfg.WindowSize, cfg.BuilderConfig)
+	allTocEntries, err := gatherPhase(ctx, logger, sourceBkt, destBkt, intermediates, cfg.WindowSize, cfg.BuilderConfig)
 	if err != nil {
 		return fmt.Errorf("gather phase: %w", err)
 	}
@@ -473,7 +473,7 @@ func mergeIndexObjects(
 	// re-compacted. Only those get their TOC entries removed and objects deleted.
 	recompacted := intersect(cp.ProcessedPaths, cp.OutputPaths)
 
-	if err := writeTocFiles(ctx, logger, writeBkt, allTocEntries, recompacted, cfg.BuilderConfig); err != nil {
+	if err := writeTocFiles(ctx, logger, destBkt, allTocEntries, recompacted, cfg.BuilderConfig); err != nil {
 		return fmt.Errorf("writing TOC files: %w", err)
 	}
 
@@ -484,17 +484,17 @@ func mergeIndexObjects(
 	}
 
 	// Delete re-compacted output objects (prior compaction outputs now superseded).
-	if err := deleteObjects(ctx, logger, writeBkt, recompacted); err != nil {
+	if err := deleteObjects(ctx, logger, destBkt, recompacted); err != nil {
 		return fmt.Errorf("deleting re-compacted outputs: %w", err)
 	}
 
 	// Clean up intermediate objects from the scatter phase.
-	if err := deleteIntermediates(ctx, logger, writeBkt, intermediates); err != nil {
+	if err := deleteIntermediates(ctx, logger, destBkt, intermediates); err != nil {
 		return fmt.Errorf("deleting intermediates: %w", err)
 	}
 
 	cp.finalizeRun(newOutputPaths, recompacted)
-	if err := saveCheckpoint(ctx, writeBkt, cp); err != nil {
+	if err := saveCheckpoint(ctx, destBkt, cp); err != nil {
 		return fmt.Errorf("saving finalized checkpoint: %w", err)
 	}
 
