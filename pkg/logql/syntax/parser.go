@@ -17,6 +17,9 @@ const (
 	EmptyMatchers = "{}"
 
 	errAtleastOneEqualityMatcherRequired = "queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~\".*\" does not meet this requirement, but app=~\".+\" will"
+
+	// Prometheus internal data structure panics if given more than this.
+	maxStreamLabelsSize = 1<<24 - 1 // 16MB
 )
 
 var parserPool = sync.Pool{
@@ -274,6 +277,9 @@ func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
 
 // ParseLabels parses labels from a string using logql parser.
 func ParseLabels(lbs string) (labels.Labels, error) {
+	if len(lbs) > maxStreamLabelsSize {
+		return labels.EmptyLabels(), fmt.Errorf("labels size %d MiB exceeds limit of %d", len(lbs)>>20, maxStreamLabelsSize>>20)
+	}
 	ls, err := promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
 	if err != nil {
 		return labels.EmptyLabels(), err
