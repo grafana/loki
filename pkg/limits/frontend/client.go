@@ -1,14 +1,13 @@
 package frontend
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"math/rand"
 	"sync"
 	"time"
 
-	"github.com/bits-and-blooms/bloom/v3"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
@@ -22,61 +21,59 @@ type limitsClient interface {
 	UpdateRates(context.Context, *proto.UpdateRatesRequest) ([]*proto.UpdateRatesResponse, error)
 }
 
-// A cacheLimitsClient uses a cache to reduce the load on limits backends.
+// A cacheLimitsClient uses caches to reduce the load on limits backends.
 type cacheLimitsClient struct {
-	ttl    time.Duration
-	onMiss limitsClient
-	// The fields below MUST NOT be used without mtx.
-	mtx          sync.RWMutex
-	knownStreams *bloom.BloomFilter
-	lastExpired  time.Time
+	acceptedStreamsCache *acceptedStreamsCache
+	onMiss               limitsClient
 }
 
 // newCacheLimitsClient returns a new cache limits client.
-func newCacheLimitsClient(
-	ttl, maxJitter time.Duration,
-	knownStreams *bloom.BloomFilter,
-	onMiss limitsClient,
-) *cacheLimitsClient {
+func newCacheLimitsClient(acceptedStreamsCache *acceptedStreamsCache, onMiss limitsClient) *cacheLimitsClient {
 	return &cacheLimitsClient{
-		ttl:          ttl,
-		knownStreams: knownStreams,
-		lastExpired:  time.Now().Add(randDuration(maxJitter)),
-		onMiss:       onMiss,
+		acceptedStreamsCache: acceptedStreamsCache,
+		onMiss:               onMiss,
 	}
 }
 
 // ExceedsLimits implements the [limitsClient] interface.
 func (c *cacheLimitsClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
-	c.expireTTL()
-	// If the exact same request has been seen before, and all streams were
-	// accepted, we can assume it will continue to be accepted.
-	if c.hasKnownStreams(req) {
+	c.acceptedStreamsCache.ExpireTTL()
+	// Remove streams that have been accepted from the request. This means
+	// we just check streams we haven't seen before, which reduces the
+	// number of requests we need to make to the limits backends.
+	c.acceptedStreamsCache.FilterInPlace(req)
+	if len(req.Streams) == 0 {
 		return []*proto.ExceedsLimitsResponse{}, nil
 	}
-	// Need to check with the limits service.
+	// Need to check remaining streams with the limits service.
 	resps, err := c.onMiss.ExceedsLimits(ctx, req)
 	if err != nil {
-		return resps, err
+		return nil, err
 	}
-	// We do not cache rejected streams at this time, so rejections must be
-	// filtered out before updating the cache.
+	numRejected := 0
+	for _, resp := range resps {
+		numRejected += len(resp.Results)
+	}
+	// Fast path, all streams rejected.
+	if numRejected == len(req.Streams) {
+		return resps, nil
+	}
+	// There are some accepted streams we haven't seen before, so add them
+	// to the cache. We do not cache rejected streams at this time, so
+	// rejections must be filtered out before updating the cache.
 	rejected := make(map[uint64]struct{})
 	for _, resp := range resps {
 		for _, res := range resp.Results {
 			rejected[res.StreamHash] = struct{}{}
 		}
 	}
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
+	accepted := make([]*proto.StreamMetadata, 0, len(req.Streams))
 	for _, s := range req.Streams {
-		// If the stream was not rejected, add it to the cache.
 		if _, ok := rejected[s.StreamHash]; !ok {
-			b := bytes.Buffer{}
-			encodeStreamToBuf(&b, req.Tenant, s)
-			c.knownStreams.Add(b.Bytes())
+			accepted = append(accepted, s)
 		}
 	}
+	c.acceptedStreamsCache.Update(req.Tenant, accepted)
 	return resps, nil
 }
 
@@ -85,8 +82,38 @@ func (c *cacheLimitsClient) UpdateRates(ctx context.Context, req *proto.UpdateRa
 	return c.onMiss.UpdateRates(ctx, req)
 }
 
-// expireTTL expires the caches if the TTL has been exceeded.
-func (c *cacheLimitsClient) expireTTL() {
+type acceptedStreamsCache struct {
+	ttl time.Duration
+
+	// The fields below MUST NOT be used without mtx.
+	mtx         sync.RWMutex
+	entries     map[string]map[uint64]struct{}
+	entriesSize int
+	lastExpired time.Time
+
+	// Metrics.
+	cacheSize prometheus.GaugeFunc
+}
+
+func newAcceptedStreamsCache(ttl, maxJitter time.Duration, r prometheus.Registerer) *acceptedStreamsCache {
+	c := &acceptedStreamsCache{
+		ttl:         ttl,
+		entries:     make(map[string]map[uint64]struct{}, 4096),
+		lastExpired: time.Now().Add(randDuration(maxJitter)),
+	}
+	c.cacheSize = promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "loki_ingest_limits_frontend_accepted_streams_cache_size",
+		Help: "Current size of the accepted streams cache.",
+	}, func() float64 {
+		c.mtx.RLock()
+		defer c.mtx.RUnlock()
+		return float64(c.entriesSize)
+	})
+	return c
+}
+
+// ExpireTTL expires the caches if the TTL has been exceeded.
+func (c *acceptedStreamsCache) ExpireTTL() {
 	// Fast path, first check the TTL with a read lock.
 	c.mtx.RLock()
 	lastExpired := c.lastExpired
@@ -100,35 +127,47 @@ func (c *cacheLimitsClient) expireTTL() {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	if time.Since(c.lastExpired) > c.ttl {
-		c.knownStreams.ClearAll()
+		clear(c.entries)
+		c.entriesSize = 0
 		c.lastExpired = time.Now()
 	}
 }
 
-// hasKnownStreams returns true if all streams in req are known streams.
-func (c *cacheLimitsClient) hasKnownStreams(req *proto.ExceedsLimitsRequest) bool {
-	// b is re-used. The data built from it MUST NOT escape this function.
-	b := bytes.Buffer{}
+// FilterInPlace removes streams that are present in the cache.
+func (c *acceptedStreamsCache) FilterInPlace(req *proto.ExceedsLimitsRequest) {
 	c.mtx.RLock()
 	defer c.mtx.RUnlock()
+	tenantEntries, ok := c.entries[req.Tenant]
+	if !ok {
+		return
+	}
+	// See https://go.dev/wiki/SliceTricks.
+	filtered := req.Streams[:0]
 	for _, s := range req.Streams {
-		b.Reset()
-		encodeStreamToBuf(&b, req.Tenant, s)
-		if !c.knownStreams.Test(b.Bytes()) {
-			return false
+		if _, found := tenantEntries[s.StreamHash]; !found {
+			filtered = append(filtered, s)
 		}
 	}
-	return true
+	req.Streams = filtered
+}
+
+func (c *acceptedStreamsCache) Update(tenant string, streams []*proto.StreamMetadata) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	tenantEntries, ok := c.entries[tenant]
+	if !ok {
+		tenantEntries = make(map[uint64]struct{}, 64)
+	}
+	for _, s := range streams {
+		if _, ok := tenantEntries[s.StreamHash]; !ok {
+			tenantEntries[s.StreamHash] = struct{}{}
+			c.entriesSize++
+		}
+	}
+	c.entries[tenant] = tenantEntries
 }
 
 // randDuration returns a random duration between [0, d].
 func randDuration(d time.Duration) time.Duration {
 	return time.Duration(rand.Int63n(d.Nanoseconds()))
-}
-
-// encodeStreamToBuf encodes the stream to the buffer.
-func encodeStreamToBuf(b *bytes.Buffer, tenant string, s *proto.StreamMetadata) {
-	b.Write([]byte(tenant))
-	// [bytes.Buffer] never return an error, it will panic instead.
-	_ = binary.Write(b, binary.LittleEndian, s.StreamHash)
 }

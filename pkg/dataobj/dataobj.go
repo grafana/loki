@@ -85,9 +85,8 @@ import (
 
 // An Object is a representation of a data object.
 type Object struct {
-	rr   rangeReader
-	dec  *decoder
-	size int64
+	rr  rangeReader
+	dec *decoder
 
 	metadata *filemd.Metadata
 	sections []*Section
@@ -99,13 +98,9 @@ type Object struct {
 // if the provided ctx times out.
 func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string) (*Object, error) {
 	rr := &bucketRangeReader{bucket: bucket, path: path}
-	size, err := rr.Size(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getting size: %w", err)
-	}
 
-	dec := &decoder{rr: rr, size: size}
-	obj := &Object{rr: rr, dec: dec, size: size}
+	dec := &decoder{rr: rr}
+	obj := &Object{rr: rr, dec: dec}
 	if err := obj.init(ctx); err != nil {
 		return nil, err
 	}
@@ -118,7 +113,7 @@ func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string) 
 func FromReaderAt(r io.ReaderAt, size int64) (*Object, error) {
 	rr := &readerAtRangeReader{size: size, r: r}
 	dec := &decoder{rr: rr, size: size}
-	obj := &Object{rr: rr, dec: dec, size: size}
+	obj := &Object{rr: rr, dec: dec}
 	if err := obj.init(context.Background()); err != nil {
 		return nil, err
 	}
@@ -160,7 +155,17 @@ func (o *Object) init(ctx context.Context) error {
 }
 
 // Size returns the size of the data object in bytes.
-func (o *Object) Size() int64 { return o.size }
+func (o *Object) Size() int64 {
+	// By the time Size is called, objectSize would already be using a cached
+	// value (by opening the object). The call shouldn't fail, since if
+	// we couldn't retrieve the size, the open would've already failed and not
+	// returned an object.
+	sz, err := o.dec.objectSize(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	return sz
+}
 
 // Sections returns the list of sections available in the Object. The slice of
 // returned sections must not be mutated.
