@@ -528,13 +528,13 @@ func (s *usageStore) newRateWindowFunc(now time.Time) func(t int64) bool {
 // the stripe lock for i.
 func (s *usageStore) checkInitMap(i int, tenant string, partition int32, policy string) {
 	if _, ok := s.stripes[i][tenant]; !ok {
-		s.stripes[i][tenant] = make(tenantUsage)
+		s.stripes[i][tenant] = make(tenantUsage, 64)
 	}
 	if _, ok := s.stripes[i][tenant][partition]; !ok {
-		s.stripes[i][tenant][partition] = make(map[string]map[uint64]streamUsage)
+		s.stripes[i][tenant][partition] = make(map[string]map[uint64]streamUsage, 2)
 	}
 	if _, ok := s.stripes[i][tenant][partition][policy]; !ok {
-		s.stripes[i][tenant][partition][policy] = make(map[uint64]streamUsage)
+		s.stripes[i][tenant][partition][policy] = make(map[uint64]streamUsage, 1024)
 	}
 }
 
