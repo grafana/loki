@@ -18,11 +18,13 @@ import (
 
 // Push notification type constants for maintenance
 const (
-	NotificationMoving      = "MOVING"
-	NotificationMigrating   = "MIGRATING"
-	NotificationMigrated    = "MIGRATED"
-	NotificationFailingOver = "FAILING_OVER"
-	NotificationFailedOver  = "FAILED_OVER"
+	NotificationMoving      = "MOVING"       // Per-connection handoff notification
+	NotificationMigrating   = "MIGRATING"    // Per-connection migration start notification - relaxes timeouts
+	NotificationMigrated    = "MIGRATED"     // Per-connection migration complete notification - clears relaxed timeouts
+	NotificationFailingOver = "FAILING_OVER" // Per-connection failover start notification - relaxes timeouts
+	NotificationFailedOver  = "FAILED_OVER"  // Per-connection failover complete notification - clears relaxed timeouts
+	NotificationSMigrating  = "SMIGRATING"   // Cluster slot migrating notification - relaxes timeouts
+	NotificationSMigrated   = "SMIGRATED"    // Cluster slot migrated notification -  unrelaxes timeouts and triggers cluster state reload
 )
 
 // maintenanceNotificationTypes contains all notification types that maintenance handles
@@ -32,6 +34,8 @@ var maintenanceNotificationTypes = []string{
 	NotificationMigrated,
 	NotificationFailingOver,
 	NotificationFailedOver,
+	NotificationSMigrating,
+	NotificationSMigrated,
 }
 
 // NotificationHook is called before and after notification processing
@@ -65,6 +69,10 @@ type Manager struct {
 	// MOVING operation tracking - using sync.Map for better concurrent performance
 	activeMovingOps sync.Map // map[MovingOperationKey]*MovingOperation
 
+	// SMIGRATED notification deduplication - tracks processed SeqIDs
+	// Multiple connections may receive the same SMIGRATED notification
+	processedSMigratedSeqIDs sync.Map // map[int64]bool
+
 	// Atomic state tracking - no locks needed for state queries
 	activeOperationCount atomic.Int64 // Number of active operations
 	closed               atomic.Bool  // Manager closed state
@@ -73,6 +81,9 @@ type Manager struct {
 	hooks        []NotificationHook
 	hooksMu      sync.RWMutex // Protects hooks slice
 	poolHooksRef *PoolHook
+
+	// Cluster state reload callback for SMIGRATED notifications
+	clusterStateReloadCallback ClusterStateReloadCallback
 }
 
 // MovingOperation tracks an active MOVING operation.
@@ -82,6 +93,14 @@ type MovingOperation struct {
 	StartTime   time.Time
 	Deadline    time.Time
 }
+
+// ClusterStateReloadCallback is a callback function that triggers cluster state reload.
+// This is used by node clients to notify their parent ClusterClient about SMIGRATED notifications.
+// The hostPort parameter indicates the destination node (e.g., "127.0.0.1:6379").
+// The slotRanges parameter contains the migrated slots (e.g., ["1234", "5000-6000"]).
+// Currently, implementations typically reload the entire cluster state, but in the future
+// this could be optimized to reload only the specific slots.
+type ClusterStateReloadCallback func(ctx context.Context, hostPort string, slotRanges []string)
 
 // NewManager creates a new simplified manager.
 func NewManager(client interfaces.ClientInterface, pool pool.Pooler, config *Config) (*Manager, error) {
@@ -223,6 +242,15 @@ func (hm *Manager) GetActiveOperationCount() int64 {
 	return hm.activeOperationCount.Load()
 }
 
+// MarkSMigratedSeqIDProcessed attempts to mark a SMIGRATED SeqID as processed.
+// Returns true if this is the first time processing this SeqID (should process),
+// false if it was already processed (should skip).
+// This prevents duplicate processing when multiple connections receive the same notification.
+func (hm *Manager) MarkSMigratedSeqIDProcessed(seqID int64) bool {
+	_, alreadyProcessed := hm.processedSMigratedSeqIDs.LoadOrStore(seqID, true)
+	return !alreadyProcessed // Return true if NOT already processed
+}
+
 // Close closes the manager.
 func (hm *Manager) Close() error {
 	// Use atomic operation for thread-safe close check
@@ -317,4 +345,18 @@ func (hm *Manager) AddNotificationHook(notificationHook NotificationHook) {
 	hm.hooksMu.Lock()
 	defer hm.hooksMu.Unlock()
 	hm.hooks = append(hm.hooks, notificationHook)
+}
+
+// SetClusterStateReloadCallback sets the callback function that will be called when a SMIGRATED notification is received.
+// This allows node clients to notify their parent ClusterClient to reload cluster state.
+func (hm *Manager) SetClusterStateReloadCallback(callback ClusterStateReloadCallback) {
+	hm.clusterStateReloadCallback = callback
+}
+
+// TriggerClusterStateReload calls the cluster state reload callback if it's set.
+// This is called when a SMIGRATED notification is received.
+func (hm *Manager) TriggerClusterStateReload(ctx context.Context, hostPort string, slotRanges []string) {
+	if hm.clusterStateReloadCallback != nil {
+		hm.clusterStateReloadCallback(ctx, hostPort, slotRanges)
+	}
 }

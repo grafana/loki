@@ -21,6 +21,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	ipubsub "cloud.google.com/go/internal/pubsub"
@@ -118,6 +119,8 @@ type messageIterator struct {
 	// Active ackIDs in this map should also exist 1:1 with ids in keepAliveDeadlines.
 	// Elements are removed when messages are acked, nacked, or expired in iterator.handleKeepAlives()
 	activeSpans sync.Map
+
+	nackImmediatelyShutdownInProgress atomic.Bool
 }
 
 // newMessageIterator starts and returns a new messageIterator.
@@ -337,7 +340,7 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 				),
 			)
 			_, span := startSpan(ctx, subscribeSpanName, it.subID, opts...)
-			// Always store the subscribe span, even if sampling isn't enabled.
+			// Store the subscribe span even if sampling isn't enabled.
 			// This is useful since we need to propagate the sampling flag
 			// to the callback in Receive, so traces have an unbroken sampling decision.
 			it.activeSpans.Store(ackID, span)
@@ -572,6 +575,13 @@ func (it *messageIterator) sendAckWithFunc(ctx context.Context, m map[string]*Ac
 	batches := makeBatches(ackIDs, ackIDBatchSize)
 	wg := sync.WaitGroup{}
 
+	if exactlyOnceDelivery && it.nackImmediatelyShutdownInProgress.Load() {
+		for _, ar := range m {
+			ipubsub.SetAckResult(ar, AcknowledgeStatusOther, errors.New("shutdown initiated, already nacked"))
+		}
+		return
+	}
+
 	for _, batch := range batches {
 		wg.Add(1)
 		go func(toSend []string) {
@@ -658,7 +668,6 @@ func (it *messageIterator) sendAck(m map[string]*AckResult) {
 	}, it.retryAcks, func(ctx context.Context, toSend []string) {
 		recordStat(it.ctx, AckCount, int64(len(toSend)))
 		addAcks(toSend)
-
 	})
 }
 
@@ -1028,8 +1037,12 @@ func (it *messageIterator) nackInventory(ctx context.Context) {
 
 	toNack := make(map[string]*ipubsub.AckResult)
 	for ackID := range it.keepAliveDeadlines {
-		// Use a dummy AckResult since we don't propagate nacks back to the user.
+		// Use a dummy AckResult here since this isn't being propagated to the user.
 		toNack[ackID] = newSuccessAckResult()
 	}
 	it.sendModAck(ctx, toNack, 0, false, false)
+	// Only mark this true after the entire inventory has been nacked.
+	// Otherwise, the above sendModAck function will be shortcircuited and
+	// no messages will be nacked.
+	it.nackImmediatelyShutdownInProgress.Store(true)
 }

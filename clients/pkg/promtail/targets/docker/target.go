@@ -244,7 +244,10 @@ func (t *Target) handleOutput(logStream string, ts time.Time, payload string) {
 		lb.Set(string(k), string(v))
 	}
 	lb.Set(dockerLabelLogStream, logStream)
-	processed, _ := relabel.Process(lb.Labels(), t.relabelConfig...)
+	if keep := relabel.ProcessBuilder(lb, t.relabelConfig...); !keep {
+		return
+	}
+	processed := lb.Labels()
 
 	filtered := make(model.LabelSet)
 	processed.Range(func(lbl labels.Label) {

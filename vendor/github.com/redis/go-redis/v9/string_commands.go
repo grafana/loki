@@ -143,6 +143,9 @@ func (c cmdable) GetRange(ctx context.Context, key string, start, end int64) *St
 	return cmd
 }
 
+// GetSet returns the old value stored at key and sets it to the new value.
+//
+// Deprecated: Use SetArgs with Get option instead as of Redis 6.2.0.
 func (c cmdable) GetSet(ctx context.Context, key string, value interface{}) *StringCmd {
 	cmd := NewStringCmd(ctx, "getset", key, value)
 	_ = c(ctx, cmd)
@@ -415,14 +418,18 @@ func (c cmdable) SetArgs(ctx context.Context, key string, value interface{}, a S
 	return cmd
 }
 
-// SetEx Redis `SETEx key expiration value` command.
+// SetEx sets the value and expiration of a key.
+//
+// Deprecated: Use Set with expiration instead as of Redis 2.6.12.
 func (c cmdable) SetEx(ctx context.Context, key string, value interface{}, expiration time.Duration) *StatusCmd {
 	cmd := NewStatusCmd(ctx, "setex", key, formatSec(ctx, expiration), value)
 	_ = c(ctx, cmd)
 	return cmd
 }
 
-// SetNX Redis `SET key value [expiration] NX` command.
+// SetNX sets the value of a key only if the key does not exist.
+//
+// Deprecated: Use Set with NX option instead as of Redis 2.6.12.
 //
 // Zero expiration means the key has no expiration time.
 // KeepTTL is a Redis KEEPTTL option to keep existing TTL, it requires your redis-server version >= 6.0,

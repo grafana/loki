@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
@@ -77,16 +76,22 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 		logger,
 	)
 	// Set up the assigned partitions cache.
-	if cfg.AssignedPartitionsCacheTTL == 0 {
-		// When the TTL is 0, the cache is disabled.
-		f.assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
-	} else {
+	if cfg.AssignedPartitionsCacheEnabled {
 		f.assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
+	} else {
+		f.assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
 	}
 	// Set up the limits client.
 	f.limitsClient = newRingLimitsClient(limitsRing, clientPool, cfg.NumPartitions, f.assignedPartitionsCache, logger, reg)
-	if cfg.CacheTTL > 0 {
-		f.limitsClient = newCacheLimitsClient(cfg.CacheTTL, cfg.CacheTTLJitter, bloom.NewWithEstimates(1000000, 0.01), f.limitsClient)
+	if cfg.AcceptedStreamsCacheEnabled {
+		f.limitsClient = newCacheLimitsClient(
+			newAcceptedStreamsCache(
+				cfg.AcceptedStreamsCacheTTL,
+				cfg.AcceptedStreamsCacheTTLJitter,
+				reg,
+			),
+			f.limitsClient,
+		)
 	}
 	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
 	if err != nil {

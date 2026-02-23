@@ -1087,6 +1087,77 @@ RETURN %22
 	}
 }
 
+func TestAlignStartToStepGrid(t *testing.T) {
+	tests := []struct {
+		name  string
+		start time.Time
+		step  time.Duration
+		want  time.Time
+	}{
+		{
+			name:  "zero step returns original start (instant query)",
+			start: time.Unix(50, 0),
+			step:  0,
+			want:  time.Unix(50, 0),
+		},
+		{
+			name:  "already aligned start is unchanged",
+			start: time.Unix(100, 0),
+			step:  100 * time.Second,
+			want:  time.Unix(100, 0),
+		},
+		{
+			name:  "non-aligned start is floored to step boundary",
+			start: time.Unix(50, 0),
+			step:  100 * time.Second,
+			want:  time.Unix(0, 0),
+		},
+		{
+			name:  "start just past a step boundary",
+			start: time.Unix(101, 0),
+			step:  100 * time.Second,
+			want:  time.Unix(100, 0),
+		},
+		{
+			name:  "sub-second step alignment",
+			start: time.Unix(0, 750_000_000), // 750ms
+			step:  500 * time.Millisecond,
+			want:  time.Unix(0, 500_000_000), // 500ms
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := alignStartToStepGrid(tc.start, tc.step)
+			require.Equal(t, tc.want.UnixNano(), got.UnixNano())
+		})
+	}
+}
+
+// TestRangeAggregationStepAlignment verifies that the logical planner aligns
+// the start timestamp of a RangeAggregation node to the step grid, matching
+// Prometheus's standard behaviour for range queries.
+func TestRangeAggregationStepAlignment(t *testing.T) {
+	// start=50s, step=100s → aligned start = 0s (floor(50/100)*100)
+	q := &query{
+		statement: `count_over_time({app="test"}[100s])`,
+		start:     50,
+		end:       250,
+		step:      100 * time.Second,
+		direction: logproto.BACKWARD,
+		limit:     1000,
+	}
+	plan, err := BuildPlan(context.Background(), q)
+	require.NoError(t, err)
+
+	planStr := plan.String()
+	// The RANGE_AGGREGATION node must show the aligned start (epoch 0 = 1970-01-01T00:00:00Z),
+	// not the raw start (50s = 1970-01-01T00:00:50Z).
+	require.Contains(t, planStr, "start_ts=1970-01-01T00:00:00Z",
+		"RangeAggregation start should be aligned to step grid; plan:\n%s", planStr)
+	require.Contains(t, planStr, "step=1m40s",
+		"step should be preserved in the plan; plan:\n%s", planStr)
+}
+
 // Helper to build a plan from predicates and return the SSA string
 func buildPlanFromPredicates(t *testing.T, predicates []Value, selector Value) string {
 	t.Helper()

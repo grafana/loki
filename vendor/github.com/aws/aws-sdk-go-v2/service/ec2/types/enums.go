@@ -4995,6 +4995,80 @@ const (
 	InstanceTypeC8a48xlarge        InstanceType = "c8a.48xlarge"
 	InstanceTypeC8aMetal24xl       InstanceType = "c8a.metal-24xl"
 	InstanceTypeC8aMetal48xl       InstanceType = "c8a.metal-48xl"
+	InstanceTypeC8gb12xlarge       InstanceType = "c8gb.12xlarge"
+	InstanceTypeC8gb16xlarge       InstanceType = "c8gb.16xlarge"
+	InstanceTypeC8gb24xlarge       InstanceType = "c8gb.24xlarge"
+	InstanceTypeC8gb2xlarge        InstanceType = "c8gb.2xlarge"
+	InstanceTypeC8gb4xlarge        InstanceType = "c8gb.4xlarge"
+	InstanceTypeC8gb8xlarge        InstanceType = "c8gb.8xlarge"
+	InstanceTypeC8gbLarge          InstanceType = "c8gb.large"
+	InstanceTypeC8gbMedium         InstanceType = "c8gb.medium"
+	InstanceTypeC8gbMetal24xl      InstanceType = "c8gb.metal-24xl"
+	InstanceTypeC8gbXlarge         InstanceType = "c8gb.xlarge"
+	InstanceTypeC8gb48xlarge       InstanceType = "c8gb.48xlarge"
+	InstanceTypeC8gbMetal48xl      InstanceType = "c8gb.metal-48xl"
+	InstanceTypeM8gb12xlarge       InstanceType = "m8gb.12xlarge"
+	InstanceTypeM8gb16xlarge       InstanceType = "m8gb.16xlarge"
+	InstanceTypeM8gb24xlarge       InstanceType = "m8gb.24xlarge"
+	InstanceTypeM8gb2xlarge        InstanceType = "m8gb.2xlarge"
+	InstanceTypeM8gb4xlarge        InstanceType = "m8gb.4xlarge"
+	InstanceTypeM8gb8xlarge        InstanceType = "m8gb.8xlarge"
+	InstanceTypeM8gbLarge          InstanceType = "m8gb.large"
+	InstanceTypeM8gbMedium         InstanceType = "m8gb.medium"
+	InstanceTypeM8gbXlarge         InstanceType = "m8gb.xlarge"
+	InstanceTypeM8gb48xlarge       InstanceType = "m8gb.48xlarge"
+	InstanceTypeM8gbMetal24xl      InstanceType = "m8gb.metal-24xl"
+	InstanceTypeM8gbMetal48xl      InstanceType = "m8gb.metal-48xl"
+	InstanceTypeM8gn12xlarge       InstanceType = "m8gn.12xlarge"
+	InstanceTypeM8gn16xlarge       InstanceType = "m8gn.16xlarge"
+	InstanceTypeM8gn24xlarge       InstanceType = "m8gn.24xlarge"
+	InstanceTypeM8gn2xlarge        InstanceType = "m8gn.2xlarge"
+	InstanceTypeM8gn48xlarge       InstanceType = "m8gn.48xlarge"
+	InstanceTypeM8gn4xlarge        InstanceType = "m8gn.4xlarge"
+	InstanceTypeM8gn8xlarge        InstanceType = "m8gn.8xlarge"
+	InstanceTypeM8gnLarge          InstanceType = "m8gn.large"
+	InstanceTypeM8gnMedium         InstanceType = "m8gn.medium"
+	InstanceTypeM8gnXlarge         InstanceType = "m8gn.xlarge"
+	InstanceTypeM8gnMetal24xl      InstanceType = "m8gn.metal-24xl"
+	InstanceTypeM8gnMetal48xl      InstanceType = "m8gn.metal-48xl"
+	InstanceTypeX8aedz12xlarge     InstanceType = "x8aedz.12xlarge"
+	InstanceTypeX8aedz24xlarge     InstanceType = "x8aedz.24xlarge"
+	InstanceTypeX8aedz3xlarge      InstanceType = "x8aedz.3xlarge"
+	InstanceTypeX8aedz6xlarge      InstanceType = "x8aedz.6xlarge"
+	InstanceTypeX8aedzLarge        InstanceType = "x8aedz.large"
+	InstanceTypeX8aedzMetal12xl    InstanceType = "x8aedz.metal-12xl"
+	InstanceTypeX8aedzMetal24xl    InstanceType = "x8aedz.metal-24xl"
+	InstanceTypeX8aedzXlarge       InstanceType = "x8aedz.xlarge"
+	InstanceTypeM8aznMedium        InstanceType = "m8azn.medium"
+	InstanceTypeM8aznLarge         InstanceType = "m8azn.large"
+	InstanceTypeM8aznXlarge        InstanceType = "m8azn.xlarge"
+	InstanceTypeM8azn3xlarge       InstanceType = "m8azn.3xlarge"
+	InstanceTypeM8azn6xlarge       InstanceType = "m8azn.6xlarge"
+	InstanceTypeM8azn12xlarge      InstanceType = "m8azn.12xlarge"
+	InstanceTypeM8azn24xlarge      InstanceType = "m8azn.24xlarge"
+	InstanceTypeM8aznMetal12xl     InstanceType = "m8azn.metal-12xl"
+	InstanceTypeM8aznMetal24xl     InstanceType = "m8azn.metal-24xl"
+	InstanceTypeX8iLarge           InstanceType = "x8i.large"
+	InstanceTypeX8iXlarge          InstanceType = "x8i.xlarge"
+	InstanceTypeX8i2xlarge         InstanceType = "x8i.2xlarge"
+	InstanceTypeX8i4xlarge         InstanceType = "x8i.4xlarge"
+	InstanceTypeX8i8xlarge         InstanceType = "x8i.8xlarge"
+	InstanceTypeX8i12xlarge        InstanceType = "x8i.12xlarge"
+	InstanceTypeX8i16xlarge        InstanceType = "x8i.16xlarge"
+	InstanceTypeX8i24xlarge        InstanceType = "x8i.24xlarge"
+	InstanceTypeX8i32xlarge        InstanceType = "x8i.32xlarge"
+	InstanceTypeX8i48xlarge        InstanceType = "x8i.48xlarge"
+	InstanceTypeX8i64xlarge        InstanceType = "x8i.64xlarge"
+	InstanceTypeX8i96xlarge        InstanceType = "x8i.96xlarge"
+	InstanceTypeX8iMetal48xl       InstanceType = "x8i.metal-48xl"
+	InstanceTypeX8iMetal96xl       InstanceType = "x8i.metal-96xl"
+	InstanceTypeMacM4maxMetal      InstanceType = "mac-m4max.metal"
+	InstanceTypeG7e2xlarge         InstanceType = "g7e.2xlarge"
+	InstanceTypeG7e4xlarge         InstanceType = "g7e.4xlarge"
+	InstanceTypeG7e8xlarge         InstanceType = "g7e.8xlarge"
+	InstanceTypeG7e12xlarge        InstanceType = "g7e.12xlarge"
+	InstanceTypeG7e24xlarge        InstanceType = "g7e.24xlarge"
+	InstanceTypeG7e48xlarge        InstanceType = "g7e.48xlarge"
 )
 
 // Values returns all known values for InstanceType. Note that this can be
@@ -6101,6 +6175,80 @@ func (InstanceType) Values() []InstanceType {
 		"c8a.48xlarge",
 		"c8a.metal-24xl",
 		"c8a.metal-48xl",
+		"c8gb.12xlarge",
+		"c8gb.16xlarge",
+		"c8gb.24xlarge",
+		"c8gb.2xlarge",
+		"c8gb.4xlarge",
+		"c8gb.8xlarge",
+		"c8gb.large",
+		"c8gb.medium",
+		"c8gb.metal-24xl",
+		"c8gb.xlarge",
+		"c8gb.48xlarge",
+		"c8gb.metal-48xl",
+		"m8gb.12xlarge",
+		"m8gb.16xlarge",
+		"m8gb.24xlarge",
+		"m8gb.2xlarge",
+		"m8gb.4xlarge",
+		"m8gb.8xlarge",
+		"m8gb.large",
+		"m8gb.medium",
+		"m8gb.xlarge",
+		"m8gb.48xlarge",
+		"m8gb.metal-24xl",
+		"m8gb.metal-48xl",
+		"m8gn.12xlarge",
+		"m8gn.16xlarge",
+		"m8gn.24xlarge",
+		"m8gn.2xlarge",
+		"m8gn.48xlarge",
+		"m8gn.4xlarge",
+		"m8gn.8xlarge",
+		"m8gn.large",
+		"m8gn.medium",
+		"m8gn.xlarge",
+		"m8gn.metal-24xl",
+		"m8gn.metal-48xl",
+		"x8aedz.12xlarge",
+		"x8aedz.24xlarge",
+		"x8aedz.3xlarge",
+		"x8aedz.6xlarge",
+		"x8aedz.large",
+		"x8aedz.metal-12xl",
+		"x8aedz.metal-24xl",
+		"x8aedz.xlarge",
+		"m8azn.medium",
+		"m8azn.large",
+		"m8azn.xlarge",
+		"m8azn.3xlarge",
+		"m8azn.6xlarge",
+		"m8azn.12xlarge",
+		"m8azn.24xlarge",
+		"m8azn.metal-12xl",
+		"m8azn.metal-24xl",
+		"x8i.large",
+		"x8i.xlarge",
+		"x8i.2xlarge",
+		"x8i.4xlarge",
+		"x8i.8xlarge",
+		"x8i.12xlarge",
+		"x8i.16xlarge",
+		"x8i.24xlarge",
+		"x8i.32xlarge",
+		"x8i.48xlarge",
+		"x8i.64xlarge",
+		"x8i.96xlarge",
+		"x8i.metal-48xl",
+		"x8i.metal-96xl",
+		"mac-m4max.metal",
+		"g7e.2xlarge",
+		"g7e.4xlarge",
+		"g7e.8xlarge",
+		"g7e.12xlarge",
+		"g7e.24xlarge",
+		"g7e.48xlarge",
 	}
 }
 

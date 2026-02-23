@@ -182,16 +182,17 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
 `,
 		},
 		{
-			// This tests a bunch of optimistaion scearios:
+			// This tests a bunch of optimisation scenarios:
 			// - GroupBy pushdown from vector aggregation into range aggregation
 			// - Filter node pushdown blocked by parse
 			// - Projection pushdown with range aggregation, filter and unwrap as sources, scan and parse as sinks.
+			// - Aggregation parallelism: RangeAgg shifted into Parallelize
 			comment: "metric: parse, unwrap and aggregate",
 			query:   `sum by (bar) (sum_over_time({app="foo"} | logfmt | request_duration != "" | unwrap duration(request_duration)[1m]))`,
 			expected: `
 VectorAggregation operation=sum group_by=(ambiguous.bar)
-└── RangeAggregation operation=sum start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s group_by=(ambiguous.bar)
-    └── Parallelize
+└── Parallelize
+    └── RangeAggregation operation=sum start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s group_by=(ambiguous.bar)
         └── Filter predicate[0]=AND(EQ(generated.__error__, ""), EQ(generated.__error_details__, ""))
             └── Projection all=true drop=(ambiguous.request_duration)
                 └── Projection all=true expand=(CAST_DURATION(ambiguous.request_duration))
@@ -253,12 +254,13 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
 `,
 		},
 		{
+			// RangeAgg shifted into Parallelize (aggregation parallelism)
 			comment: "parse logfmt with grouping",
 			query:   `sum by (bar) (count_over_time({app="foo"} | logfmt[1m]))`,
 			expected: `
 VectorAggregation operation=sum group_by=(ambiguous.bar)
-└── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s group_by=(ambiguous.bar)
-    └── Parallelize
+└── Parallelize
+    └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s group_by=(ambiguous.bar)
         └── Compat src=parsed dst=parsed collisions=(label, metadata)
             └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [bar], false, false))
                 └── Compat src=metadata dst=metadata collisions=(label)

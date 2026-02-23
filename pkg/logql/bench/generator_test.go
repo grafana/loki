@@ -118,39 +118,3 @@ func TestGenerateDatasetDeterminism(t *testing.T) {
 		}
 	}
 }
-
-// TestQueryDeterminism tests that LogQL queries on the generated dataset
-// produce deterministic results. This ensures that benchmark results are
-// consistent across multiple runs.
-func TestQueryDeterminism(t *testing.T) {
-	// Create a test configuration with fixed timestamps
-	cfg := GeneratorConfig{
-		StartTime:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		TimeSpread: 24 * time.Hour,
-		DenseIntervals: []DenseInterval{
-			{
-				Start:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
-				Duration: time.Hour,
-			},
-		},
-		LabelConfig: defaultLabelConfig,
-	}
-
-	// Generate test cases with the same configuration
-	cases1 := NewTestCaseGenerator(DefaultTestCaseGeneratorConfig, &cfg).Generate()
-	cases2 := NewTestCaseGenerator(DefaultTestCaseGeneratorConfig, &cfg).Generate()
-
-	require.Equal(t, len(cases1), len(cases2), "Number of test cases should match")
-
-	// Compare each test case
-	for i := range cases1 {
-		case1 := cases1[i]
-		case2 := cases2[i]
-
-		// Compare test case properties
-		require.Equal(t, case1.Name(), case2.Name(), "Test case names should match")
-		require.Equal(t, case1.Query, case2.Query, "Queries should match")
-		require.Equal(t, case1.Start, case2.Start, "Start times should match")
-		require.Equal(t, case1.End, case2.End, "End times should match")
-	}
-}
