@@ -84,7 +84,7 @@ spec:
         certificate:
           secretName: my-tls-cert-secret
           key: tls.crt
-        key:
+        privateKey:
           secretName: my-tls-cert-secret
           key: tls.key
 ```

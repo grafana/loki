@@ -17,7 +17,7 @@ import (
 const (
 	fieldNameCA          = "ca"
 	fieldNameCertificate = "certificate"
-	fieldNameKey         = "key"
+	fieldNameKey         = "privateKey"
 )
 
 func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) error {
