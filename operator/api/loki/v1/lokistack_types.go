@@ -738,7 +738,7 @@ type BlockedQueryTypes []BlockedQueryType
 
 // BlockedQuerySpec defines the rule spec for queries to be blocked.
 //
-// +kubebuilder:validation:AtLeastOneOf=Hash;Pattern
+// +kubebuilder:validation:MinProperties:=1
 type BlockedQuerySpec struct {
 	// Hash is a 32-bit FNV-1 hash of the query string.
 	//
