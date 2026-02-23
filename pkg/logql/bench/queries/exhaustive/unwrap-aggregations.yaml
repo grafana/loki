@@ -632,7 +632,7 @@ queries:
       unwrappable_fields:
         - rows_affected
   - description: Unwrap with label filter after parsing
-    query: sum by (query_type) (sum_over_time(${SELECTOR} | json | query_type != "" | unwrap rows_affected [${RANGE}]))
+    query: sum by (level) (sum_over_time(${SELECTOR} | level != "" | json | unwrap rows_affected [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -649,4 +649,4 @@ queries:
       unwrappable_fields:
         - rows_affected
       detected_fields:
-        - query_type
+        - level
