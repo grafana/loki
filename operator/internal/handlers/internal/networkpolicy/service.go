@@ -41,8 +41,8 @@ func ServicePortToPodPort(ctx context.Context, log logr.Logger, k k8s.Client, ob
 
 	service := &corev1.Service{}
 	if err := k.Get(ctx, client.ObjectKey{Name: serviceName, Namespace: namespace}, service); err != nil {
-		log.Error(err, "failed to get target object storage service", "service", serviceName, "namespace", namespace)
-		return []int32{}, err
+		log.Info("failed to get Service for object storage", "service", serviceName, "namespace", namespace)
+		return []int32{}, nil
 	}
 
 	// List EndpointSlices for the service using the standard label
@@ -60,7 +60,7 @@ func ServicePortToPodPort(ctx context.Context, log logr.Logger, k k8s.Client, ob
 	var targetPort int32
 	wantedPort := int32(80)
 	if https {
-		wantedPort = int32(443)
+		wantedPort = 443
 	}
 
 	if endpointPort > 0 {

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# usage: deploy-aws-storage-secret.sh <bucket-claim-name>
+# usage: deploy-odf-storage-secret.sh <bucket-claim-name>
 #
 # This scripts deploys a LokiStack Secret resource holding the
-# authentication credentials to access NooBaa S3 bucket provided by the bucket 
+# authentication credentials to access ODF S3 bucket provided by the bucket 
 # claim name.
 #
 # bucket_claim_name is the name of the bucket claim to be used by this script to
@@ -20,7 +20,6 @@ if [[ -z "${bucket_claim_name}" ]]; then
 fi
 
 readonly namespace=${NAMESPACE:-openshift-logging}
-readonly region
 
 # static authentication from the current select AWS CLI profile.
 bucket_name=${BUCKET_NAME:-$(oc -n "${namespace}" get configmap "${bucket_claim_name}" -o json | jq -r '.data.BUCKET_NAME')}

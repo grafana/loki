@@ -138,9 +138,7 @@ func CreateOrUpdateLokiStack(
 		if optErr != nil {
 			return nil, optErr
 		}
-		if len(ports) > 0 {
-			opts.NetworkPolicyObjStorePorts = ports
-		}
+		opts.NetworkPolicyObjStorePorts = ports
 	}
 
 	tlsProfileType := configv1.TLSProfileType(fg.TLSProfile)
