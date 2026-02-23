@@ -59,13 +59,15 @@ func (s threadState) String() string {
 
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
-	BatchSize        int64
-	Bucket           objstore.Bucket
-	Metastore        metastore.Metastore
-	Logger           log.Logger
-	StreamFilterer            executor.RequestStreamFilterer
-	TaskCacheIDCacheDataObj   cache.Cache
-	TaskCacheIDCachePointers  cache.Cache
+	BatchSize                int64
+	Bucket                   objstore.Bucket
+	Metastore                metastore.Metastore
+	Logger                   log.Logger
+	StreamFilterer           executor.RequestStreamFilterer
+	TaskCacheIDCacheDataObj  cache.Cache
+	TaskCacheIDCachePointers cache.Cache
+	DataObjectLogsCache      cache.Cache
+	DataObjectPointersCache  cache.Cache
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -128,12 +130,14 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	)
 
 	cfg := executor.Config{
-		BatchSize:                 t.BatchSize,
-		Bucket:                    bucket.NewXCapBucket(t.Bucket),
-		Metastore:                 t.Metastore,
-		StreamFilterer:             t.StreamFilterer,
-		TaskCacheIDCacheDataObj:   t.TaskCacheIDCacheDataObj,
-		TaskCacheIDCachePointers:  t.TaskCacheIDCachePointers,
+		BatchSize:                t.BatchSize,
+		Bucket:                   bucket.NewXCapBucket(t.Bucket),
+		Metastore:                t.Metastore,
+		StreamFilterer:           t.StreamFilterer,
+		TaskCacheIDCacheDataObj:  t.TaskCacheIDCacheDataObj,
+		TaskCacheIDCachePointers: t.TaskCacheIDCachePointers,
+		DataObjectLogsCache:      t.DataObjectLogsCache,
+		DataObjectPointersCache:  t.DataObjectPointersCache,
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]

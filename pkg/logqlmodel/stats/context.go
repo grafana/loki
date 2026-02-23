@@ -68,20 +68,22 @@ type Context struct {
 type CacheType string
 
 const (
-	ChunkCache                CacheType = "chunk"                 //nolint:staticcheck
-	IndexCache                CacheType = "index"                 //nolint:staticcheck
-	ResultCache               CacheType = "result"                //nolint:staticcheck
-	StatsResultCache          CacheType = "stats-result"          //nolint:staticcheck
-	VolumeResultCache         CacheType = "volume-result"         //nolint:staticcheck
-	InstantMetricResultsCache CacheType = "instant-metric-result" // nolint:staticcheck
-	WriteDedupeCache          CacheType = "write-dedupe"          //nolint:staticcheck
-	SeriesResultCache         CacheType = "series-result"         //nolint:staticcheck
-	LabelResultCache          CacheType = "label-result"          //nolint:staticcheck
-	BloomFilterCache          CacheType = "bloom-filter"          //nolint:staticcheck
-	BloomBlocksCache          CacheType = "bloom-blocks"          //nolint:staticcheck
-	BloomMetasCache           CacheType = "bloom-metas"           //nolint:staticcheck
-	TaskCacheIDDataObjCache   CacheType = "task-cache-id-dataobj"   //nolint:staticcheck
-	TaskCacheIDPointersCache  CacheType = "task-cache-id-pointers"  //nolint:staticcheck
+	ChunkCache                  CacheType = "chunk"                     //nolint:staticcheck
+	IndexCache                  CacheType = "index"                     //nolint:staticcheck
+	ResultCache                 CacheType = "result"                    //nolint:staticcheck
+	StatsResultCache            CacheType = "stats-result"              //nolint:staticcheck
+	VolumeResultCache           CacheType = "volume-result"             //nolint:staticcheck
+	InstantMetricResultsCache   CacheType = "instant-metric-result"     // nolint:staticcheck
+	WriteDedupeCache            CacheType = "write-dedupe"              //nolint:staticcheck
+	SeriesResultCache           CacheType = "series-result"             //nolint:staticcheck
+	LabelResultCache            CacheType = "label-result"              //nolint:staticcheck
+	BloomFilterCache            CacheType = "bloom-filter"              //nolint:staticcheck
+	BloomBlocksCache            CacheType = "bloom-blocks"              //nolint:staticcheck
+	BloomMetasCache             CacheType = "bloom-metas"               //nolint:staticcheck
+	TaskCacheIDDataObjCache     CacheType = "task-cache-id-dataobj"     //nolint:staticcheck
+	TaskCacheIDPointersCache    CacheType = "task-cache-id-pointers"    //nolint:staticcheck
+	DataObjectLogsTaskCache     CacheType = "data-object-logs-task"     //nolint:staticcheck
+	DataObjectPointersTaskCache CacheType = "data-object-pointers-task" //nolint:staticcheck
 )
 
 // NewContext creates a new statistics context

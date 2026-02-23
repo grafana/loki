@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
@@ -57,9 +58,13 @@ type Config struct {
 
 	// TaskCacheIDCacheDataObj is an optional cache used to log task_cache_id hit/miss for DataObjScan.
 	// TaskCacheIDCachePointers is an optional cache used to log task_cache_id hit/miss for PointersScan.
-	// When set, each scan does a fetch (log hit/miss) and on miss stores the task_cache_id. No real data is cached.
+	// DataObjectLogsCache is an optional cache used to log data_object_cache_key hit/miss for DataObjScan.
+	// DataObjectPointersCache is an optional cache used to log data_object_cache_key hit/miss for PointersScan.
+	// When set, each scan does a fetch (log hit/miss) and on miss stores the key. No real data is cached.
 	TaskCacheIDCacheDataObj  cache.Cache `yaml:"-"`
 	TaskCacheIDCachePointers cache.Cache `yaml:"-"`
+	DataObjectLogsCache      cache.Cache `yaml:"-"`
+	DataObjectPointersCache  cache.Cache `yaml:"-"`
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
@@ -75,6 +80,8 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		streamFilterer:           cfg.StreamFilterer,
 		taskCacheIDCacheDataObj:  cfg.TaskCacheIDCacheDataObj,
 		taskCacheIDCachePointers: cfg.TaskCacheIDCachePointers,
+		dataObjectLogsCache:      cfg.DataObjectLogsCache,
+		dataObjectPointersCache:  cfg.DataObjectPointersCache,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -105,6 +112,8 @@ type Context struct {
 
 	taskCacheIDCacheDataObj  cache.Cache
 	taskCacheIDCachePointers cache.Cache
+	dataObjectLogsCache      cache.Cache
+	dataObjectPointersCache  cache.Cache
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -273,6 +282,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	taskCacheID := node.TaskCacheIDWithLogger(logger)
 	log.With(logger, "task_cache_id", taskCacheID)
 	c.logTaskCacheResult(ctx, logger, taskCacheID, c.taskCacheIDCacheDataObj)
+	c.logTaskCacheResult(ctx, logger, node.DataObjectCacheKey(), c.dataObjectLogsCache)
 
 	var pipeline Pipeline = newDataobjScanPipeline(dataobjScanOptions{
 		// TODO(rfratto): passing the streams section means that each DataObjScan
@@ -377,7 +387,11 @@ func (c *Context) logTaskCacheResult(ctx context.Context, logger log.Logger, key
 			}
 		}
 	}
-	kvs := []any{"msg", "result from task cache", "result", result, "cache_key", cacheKey, "key", key}
+	var cacheType stats.CacheType
+	if taskCache != nil {
+		cacheType = taskCache.GetCacheType()
+	}
+	kvs := []any{"msg", "result from task cache", "result", result, "cache", cacheType, "cache_key", cacheKey, "key", key}
 	if dataObjScanKeyHasBothTsClamped(key) {
 		kvs = append(kvs, "both_ts_clamped", "true")
 	}
@@ -409,6 +423,7 @@ func (c *Context) executePointersScan(ctx context.Context, node *physical.Pointe
 	)
 
 	c.logTaskCacheResult(ctx, logger, node.TaskCacheID(), c.taskCacheIDCachePointers)
+	c.logTaskCacheResult(ctx, logger, node.DataObjectCacheKey(), c.dataObjectPointersCache)
 
 	if c.metastore == nil {
 		return errorPipeline(ctx, errors.New("no metastore configured"))

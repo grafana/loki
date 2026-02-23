@@ -158,3 +158,8 @@ func cacheKeyStringPointersScan(s *PointersScan) string {
 		cacheKeyListJoin(predStrs),
 	)
 }
+
+// cacheKeyStringDataObject returns a deterministic cache key for a data object section.
+func cacheKeyStringDataObject(location DataObjLocation, section int) string {
+	return fmt.Sprintf("DataObject location=%s section=%d", string(location), section)
+}

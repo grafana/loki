@@ -108,6 +108,32 @@ func TestTaskCacheIDMock_MissThenHit(t *testing.T) {
 	require.Contains(t, logBuf.String(), "result=hit", "second call should log hit")
 }
 
+func TestDataObjectKeyMock_MissThenHit(t *testing.T) {
+	ctx := t.Context()
+	fake := newFakeTaskCache()
+	var logBuf bytes.Buffer
+	logger := log.NewLogfmtLogger(&logBuf)
+	c := &Context{
+		logger:                  logger,
+		metastore:               stubMetastore{},
+		dataObjectPointersCache: fake,
+	}
+	node := &physical.PointersScan{
+		Location: "index/0",
+		Start:    time.Unix(10, 0),
+		End:      time.Unix(3700, 0),
+	}
+	// First call: cache miss, then store.
+	c.executePointersScan(ctx, node)
+	require.Contains(t, logBuf.String(), "key=\"DataObject location=index/0 section=-1\"")
+	require.Contains(t, logBuf.String(), "result=miss", "first call should log miss")
+	logBuf.Reset()
+	// Second call: same data object cache key -> cache hit.
+	c.executePointersScan(ctx, node)
+	require.Contains(t, logBuf.String(), "key=\"DataObject location=index/0 section=-1\"")
+	require.Contains(t, logBuf.String(), "result=hit", "second call should log hit")
+}
+
 func TestTaskCacheIDMock_NilCache_DefaultsToMiss(t *testing.T) {
 	ctx := t.Context()
 	var logBuf bytes.Buffer

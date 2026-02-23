@@ -77,3 +77,8 @@ func (s *DataObjScan) TaskCacheID() string {
 func (s *DataObjScan) TaskCacheIDWithLogger(logger log.Logger) string {
 	return cacheKeyStringDataObjScan(s, logger)
 }
+
+// DataObjectCacheKey returns a deterministic cache key for this data object section.
+func (s *DataObjScan) DataObjectCacheKey() string {
+	return cacheKeyStringDataObject(s.Location, s.Section)
+}

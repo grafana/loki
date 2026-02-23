@@ -140,6 +140,8 @@ type Worker struct {
 	// taskCacheIDCacheDataObj and taskCacheIDCachePointers are created in New when TaskCacheIDCacheConfig is enabled; passed to threads.
 	taskCacheIDCacheDataObj  cache.Cache
 	taskCacheIDCachePointers cache.Cache
+	dataObjectLogsCache      cache.Cache
+	dataObjectPointersCache  cache.Cache
 }
 
 // New creates a new instance of a worker. Use [Worker.Service] to manage
@@ -165,7 +167,7 @@ func New(config Config) (*Worker, error) {
 		numThreads = runtime.GOMAXPROCS(0)
 	}
 
-	var taskCacheIDCacheDataObj, taskCacheIDCachePointers cache.Cache
+	var taskCacheIDCacheDataObj, taskCacheIDCachePointers, dataObjectLogsCache, dataObjectPointersCache cache.Cache
 	if cache.IsCacheConfigured(config.TaskCacheIDCacheConfig) && config.Registerer != nil {
 		cfgDataObj := config.TaskCacheIDCacheConfig
 		cfgDataObj.Prefix = cfgDataObj.Prefix + "dataobj."
@@ -194,6 +196,34 @@ func New(config Config) (*Worker, error) {
 			return nil, fmt.Errorf("create task cache ID pointers cache: %w", err)
 		}
 		taskCacheIDCachePointers = cachePointers
+
+		cfgDataObjectLogs := config.TaskCacheIDCacheConfig
+		cfgDataObjectLogs.Prefix = cfgDataObjectLogs.Prefix + "data-object-logs."
+		cacheDataObjectLogs, err := cache.New(
+			cfgDataObjectLogs,
+			config.Registerer,
+			config.Logger,
+			stats.DataObjectLogsTaskCache,
+			constants.Loki,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create data object logs task cache: %w", err)
+		}
+		dataObjectLogsCache = cacheDataObjectLogs
+
+		cfgDataObjectPointers := config.TaskCacheIDCacheConfig
+		cfgDataObjectPointers.Prefix = cfgDataObjectPointers.Prefix + "data-object-pointers."
+		cacheDataObjectPointers, err := cache.New(
+			cfgDataObjectPointers,
+			config.Registerer,
+			config.Logger,
+			stats.DataObjectPointersTaskCache,
+			constants.Loki,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create data object pointers task cache: %w", err)
+		}
+		dataObjectPointersCache = cacheDataObjectPointers
 	}
 
 	return &Worker{
@@ -215,6 +245,8 @@ func New(config Config) (*Worker, error) {
 		jobManager:               newJobManager(),
 		taskCacheIDCacheDataObj:  taskCacheIDCacheDataObj,
 		taskCacheIDCachePointers: taskCacheIDCachePointers,
+		dataObjectLogsCache:      dataObjectLogsCache,
+		dataObjectPointersCache:  dataObjectPointersCache,
 	}, nil
 }
 
@@ -244,6 +276,8 @@ func (w *Worker) run(ctx context.Context) error {
 			StreamFilterer:           w.config.StreamFilterer,
 			TaskCacheIDCacheDataObj:  w.taskCacheIDCacheDataObj,
 			TaskCacheIDCachePointers: w.taskCacheIDCachePointers,
+			DataObjectLogsCache:      w.dataObjectLogsCache,
+			DataObjectPointersCache:  w.dataObjectPointersCache,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,

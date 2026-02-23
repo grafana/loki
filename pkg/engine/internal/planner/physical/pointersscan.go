@@ -64,3 +64,9 @@ func (s *PointersScan) Type() NodeType {
 func (s *PointersScan) TaskCacheID() string {
 	return cacheKeyStringPointersScan(s)
 }
+
+// DataObjectCacheKey returns a deterministic key scoped to the scanned object location.
+// PointersScan does not carry a section index; section=-1 is used as a sentinel.
+func (s *PointersScan) DataObjectCacheKey() string {
+	return cacheKeyStringDataObject(s.Location, -1)
+}

@@ -38,6 +38,15 @@ func TestDataObjScan_TaskCacheID_SameInputsSameID(t *testing.T) {
 	require.Equal(t, scan1.TaskCacheID(), scan2.TaskCacheID(), "same content must produce same task cache ID")
 }
 
+func TestDataObjScan_DataObjectCacheKey(t *testing.T) {
+	scan := &DataObjScan{
+		NodeID:   ulid.Make(),
+		Location: "obj/loc",
+		Section:  7,
+	}
+	require.Equal(t, "DataObject location=obj/loc section=7", scan.DataObjectCacheKey())
+}
+
 func TestDataObjScan_TaskCacheID_DifferentInputsDifferentID(t *testing.T) {
 	base := &DataObjScan{
 		NodeID:       ulid.Make(),
@@ -216,6 +225,14 @@ func TestPointersScan_TaskCacheID_SameInputsSameID(t *testing.T) {
 		End:        end,
 	}
 	require.Equal(t, scan1.TaskCacheID(), scan2.TaskCacheID(), "same content must produce same task cache ID")
+}
+
+func TestPointersScan_DataObjectCacheKey(t *testing.T) {
+	scan := &PointersScan{
+		NodeID:   ulid.Make(),
+		Location: "index/0",
+	}
+	require.Equal(t, "DataObject location=index/0 section=-1", scan.DataObjectCacheKey())
 }
 
 func TestPointersScan_TaskCacheID_NilSelector(t *testing.T) {
