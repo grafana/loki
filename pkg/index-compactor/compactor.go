@@ -45,6 +45,10 @@ func NewCompactor(cfg Config, bucket objstore.Bucket, logger log.Logger) (*Compa
 func (c *Compactor) starting(ctx context.Context) error {
 	level.Info(c.logger).Log("msg", "index compactor starting")
 
+	if err := c.cleanStaleIntermediates(ctx); err != nil {
+		level.Warn(c.logger).Log("msg", "failed to clean stale intermediates", "err", err)
+	}
+
 	go func() {
 		err := c.compactOnce(ctx)
 		if err != nil {
@@ -143,6 +147,30 @@ func tocPathsForRange(prefix string, start, end time.Time) []string {
 		paths = append(paths, prefix+name+".toc")
 	}
 	return paths
+}
+
+// cleanStaleIntermediates removes any leftover .intermediate/ objects from a
+// prior run that crashed after the gather phase but before cleanup.
+func (c *Compactor) cleanStaleIntermediates(ctx context.Context) error {
+	var stale []string
+	err := c.writeBkt.Iter(ctx, intermediatePrefix, func(name string) error {
+		stale = append(stale, name)
+		return nil
+	}, objstore.WithRecursiveIter())
+	if err != nil {
+		return fmt.Errorf("listing stale intermediates: %w", err)
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+
+	level.Info(c.logger).Log("msg", "cleaning stale intermediates", "count", len(stale))
+	for _, name := range stale {
+		if err := c.writeBkt.Delete(ctx, name); err != nil && !c.writeBkt.IsObjNotFoundErr(err) {
+			return fmt.Errorf("deleting stale intermediate %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 func readSmallObject(ctx context.Context, bucket objstore.BucketReader, path string) (*dataobj.Object, error) {

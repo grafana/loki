@@ -432,8 +432,7 @@ func mergeIndexObjects(
 			"in_progress", len(cp.ProcessedPaths),
 			"remaining", len(remaining),
 			"batch_size", cfg.BatchSize,
-			"merge_window", cfg.MergeWindow,
-			"gather_stride", cfg.GatherStride,
+			"window_size", cfg.WindowSize,
 		)
 
 		if len(remaining) == 0 {
@@ -445,12 +444,16 @@ func mergeIndexObjects(
 			return fmt.Errorf("saving initial checkpoint: %w", err)
 		}
 
-		scatteredIntermediates, err := scatterPhase(ctx, logger, readBkt, writeBkt, remaining, cfg.MergeWindow, cfg.BatchSize, cfg.BuilderConfig, cp)
+		// Capture intermediates from a prior interrupted run before scatterPhase
+		// appends to cp.Intermediates, to avoid double-counting.
+		priorIntermediates := checkpointToIntermediates(cp.Intermediates)
+
+		scatteredIntermediates, err := scatterPhase(ctx, logger, readBkt, writeBkt, remaining, cfg.WindowSize, cfg.BatchSize, cfg.BuilderConfig, cp)
 		if err != nil {
 			return fmt.Errorf("scatter phase: %w", err)
 		}
 
-		intermediates = append(checkpointToIntermediates(cp.Intermediates), scatteredIntermediates...)
+		intermediates = append(priorIntermediates, scatteredIntermediates...)
 
 		cp.ScatterComplete = true
 		cp.Intermediates = intermediatesToCheckpoint(intermediates)
@@ -461,7 +464,7 @@ func mergeIndexObjects(
 		level.Info(logger).Log("msg", "scatter complete", "intermediates", len(intermediates))
 	}
 
-	allTocEntries, err := gatherPhase(ctx, logger, readBkt, writeBkt, intermediates, cfg.MergeWindow, cfg.GatherStride, cfg.BuilderConfig)
+	allTocEntries, err := gatherPhase(ctx, logger, readBkt, writeBkt, intermediates, cfg.WindowSize, cfg.BuilderConfig)
 	if err != nil {
 		return fmt.Errorf("gather phase: %w", err)
 	}
@@ -669,7 +672,6 @@ func gatherPhase(
 	writeBkt objstore.Bucket,
 	intermediates []intermediateInfo,
 	windowSize time.Duration,
-	gatherStride time.Duration,
 	cfg logsobj.BuilderBaseConfig,
 ) ([]tocEntry, error) {
 	byWindow := make(map[time.Time][]intermediateInfo)
@@ -687,14 +689,14 @@ func gatherPhase(
 		return nil, nil
 	}
 
-	globalMin := windows[0].Truncate(gatherStride)
+	globalMin := windows[0].Truncate(windowSize)
 	globalMax := windows[len(windows)-1].Add(windowSize)
 	numWorkers := runtime.GOMAXPROCS(0)
 
 	var allTocEntries []tocEntry
 
-	for chunkStart := globalMin; chunkStart.Before(globalMax); chunkStart = chunkStart.Add(gatherStride) {
-		chunkEnd := chunkStart.Add(gatherStride)
+	for chunkStart := globalMin; chunkStart.Before(globalMax); chunkStart = chunkStart.Add(windowSize) {
+		chunkEnd := chunkStart.Add(windowSize)
 
 		var chunkInfos []intermediateInfo
 		for _, w := range windows {
