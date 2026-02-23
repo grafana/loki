@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.7](https://github.com/grafana/loki/compare/v3.6.6...v3.6.7) (2026-02-23)
+
+
+### Bug Fixes
+
+* **alloc:** set a limit on preallocations (backport release-3.6.x) ([#20920](https://github.com/grafana/loki/issues/20920)) ([7e1daf3](https://github.com/grafana/loki/commit/7e1daf3a36f68639a5d06c1ac057a2fcbf0dce40))
+
 ## [3.6.6](https://github.com/grafana/loki/compare/v3.6.5...v3.6.6) (2026-02-18)
 
 
