@@ -39,7 +39,7 @@ func BuildPlanWithDeletes(ctx context.Context, params logql.Params, deletes []*d
 
 	switch e := params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		value, err = buildPlanForLogQuery(ctx, e, params, false, 0, deletes)
+		value, err = buildPlanForLogQuery(ctx, e, params, false, 0, params.Start(), deletes)
 	case syntax.SampleExpr:
 		value, err = buildPlanForSampleQuery(ctx, e, params, deletes)
 	default:
@@ -58,15 +58,33 @@ func BuildPlanWithDeletes(ctx context.Context, params logql.Params, deletes []*d
 	return builder.ToPlan()
 }
 
+// alignStartToStepGrid floors start to the nearest epoch-aligned step
+// boundary, matching Prometheus's standard behaviour for range queries.
+// If step is zero (instant query) the original start is returned unchanged.
+func alignStartToStepGrid(start time.Time, step time.Duration) time.Time {
+	if step <= 0 {
+		return start
+	}
+	stepNs := step.Nanoseconds()
+	startNs := start.UnixNano()
+	if rem := startNs % stepNs; rem != 0 {
+		return time.Unix(0, startNs-rem)
+	}
+	return start
+}
+
 // buildPlanForLogQuery builds logical plan operations by traversing [syntax.LogSelectorExpr]
 // isMetricQuery should be set to true if this expr is encountered when processing a [syntax.SampleExpr].
 // rangeInterval should be set to a non-zero value if the query contains [$range].
+// queryStart is the effective start time for the query; for range queries it
+// must already be aligned to the step grid via [alignStartToStepGrid].
 func buildPlanForLogQuery(
 	ctx context.Context,
 	expr syntax.LogSelectorExpr,
 	params logql.Params,
 	isMetricQuery bool,
 	rangeInterval time.Duration,
+	queryStart time.Time,
 	deletes []*deletion.Request,
 ) (Value, error) {
 	var (
@@ -149,7 +167,7 @@ func buildPlanForLogQuery(
 	}
 
 	// SELECT -> Filter
-	start := params.Start()
+	start := queryStart
 	end := params.End()
 	// extend search by rangeInterval to be able to include entries belonging to the [$range] interval.
 	for _, value := range convertQueryRangeToPredicates(start.Add(-rangeInterval), end) {
@@ -287,8 +305,9 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 	}
 
 	rangeInterval := e.Left.Interval
+	alignedStart := alignStartToStepGrid(wc.params.Start(), wc.params.Step())
 
-	logQuery, err := buildPlanForLogQuery(wc.ctx, logSelectorExpr, wc.params, true, rangeInterval, wc.deletes)
+	logQuery, err := buildPlanForLogQuery(wc.ctx, logSelectorExpr, wc.params, true, rangeInterval, alignedStart, wc.deletes)
 	if err != nil {
 		return nil, err
 	}
@@ -365,7 +384,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 	}
 
 	builder = builder.RangeAggregation(
-		convertGrouping(e.Grouping), rangeAggType, wc.params.Start(), wc.params.End(), wc.params.Step(), rangeInterval,
+		convertGrouping(e.Grouping), rangeAggType, alignedStart, wc.params.End(), wc.params.Step(), rangeInterval,
 	)
 
 	switch e.Operation {
