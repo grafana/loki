@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -69,6 +70,10 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 					name:          sourceName,
 					collisionIdxs: collisionIdxs,
 					sourceIdx:     sourceFieldIndices[i],
+
+					// Indicates that there are no existing _extracted columns of lower priority found yet
+					lowerExtractedSourceIdx:      -1,
+					lowerExtractedDestinationIdx: -1,
 				})
 			}
 		}
@@ -98,6 +103,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		newFields := make([]arrow.Field, 0, oldSchema.NumFields()+len(duplicates))
 		oldFieldToNewIdx := make(map[int]int, oldSchema.NumFields())
 		existingDestCols := make(map[string]*array.String, len(duplicates))
+		existingLowerPriorityDestCols := make(map[string]int, len(duplicates))
 
 		for oldIdx, field := range oldSchema.Fields() {
 			ident, err := identCache.ParseFQN(field.Name)
@@ -107,11 +113,17 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 				continue
 			}
 
-			// Skip existing _extracted columns that we're going to recreate
-			// But save a reference to their data so we can preserve values
-			if ident.ColumnType() == compat.Destination && destinationNames[ident.ShortName()] {
-				existingDestCols[ident.ShortName()] = batch.Column(oldIdx).(*array.String)
-				continue
+			if destinationNames[ident.ShortName()] {
+				if ident.ColumnType() == compat.Destination {
+					// Skip existing _extracted columns that we're going to recreate
+					// But save a reference to their data so we can preserve values
+					existingDestCols[ident.ShortName()] = batch.Column(oldIdx).(*array.String)
+					continue
+				}
+
+				// Existing _extracted columns of lower priority (parsed > metadata > label)
+				// should be preserved and processed separately.
+				existingLowerPriorityDestCols[ident.ShortName()] = oldIdx
 			}
 
 			oldFieldToNewIdx[oldIdx] = len(newFields)
@@ -125,6 +137,12 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			sourceIdent, err := identCache.ParseFQN(sourceField.Name)
 			if err != nil {
 				return nil, err
+			}
+
+			if lowerIdx, ok := existingLowerPriorityDestCols[sourceIdent.ShortName()+extracted]; ok {
+				// Store old and new indices for lower priority _extracted columns
+				duplicates[i].lowerExtractedSourceIdx = lowerIdx
+				duplicates[i].lowerExtractedDestinationIdx = oldFieldToNewIdx[lowerIdx]
 			}
 
 			destinationIdent := semconv.NewIdentifier(sourceIdent.ShortName()+extracted, compat.Destination, sourceIdent.DataType())
@@ -146,7 +164,13 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		for oldIdx := range oldSchema.NumFields() {
 			col := batch.Column(oldIdx)
 
-			duplicateIdx := slices.IndexFunc(duplicates, func(d duplicateColumn) bool { return d.sourceIdx == oldIdx })
+			duplicateIdx := slices.IndexFunc(duplicates, func(d duplicateColumn) bool { return d.lowerExtractedSourceIdx == oldIdx })
+			if duplicateIdx != -1 {
+				// Skip _extracted columns of lower priority because they will be processed together with duplicates sources
+				continue
+			}
+
+			duplicateIdx = slices.IndexFunc(duplicates, func(d duplicateColumn) bool { return d.sourceIdx == oldIdx })
 
 			// If not a colliding column, just copy over the column data of the original record.
 			if duplicateIdx < 0 {
@@ -170,8 +194,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			// Get the new index for this source field
 			sourceNewIdx, ok := oldFieldToNewIdx[oldIdx]
 			if !ok {
-				// This shouldn't happen, but handle it gracefully
-				continue
+				panic("sourceNewIdx not foud")
 			}
 
 			switch sourceFieldBuilder := builder.Field(sourceNewIdx).(type) {
@@ -182,43 +205,85 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 				// This happens when multiple ColumnCompat nodes run sequentially (e.g., | json | logfmt |)
 				existingDestCol := existingDestCols[duplicate.name+extracted]
 
+				var (
+					lowerDestFieldBuilder *array.StringBuilder
+					lowerDestCol          *array.String
+				)
+
+				if duplicate.lowerExtractedDestinationIdx != -1 {
+					lowerDestFieldBuilder = builder.Field(duplicate.lowerExtractedDestinationIdx).(*array.StringBuilder)
+					lowerDestCol = batch.Column(duplicate.lowerExtractedSourceIdx).(*array.String)
+				}
+
 				for i := range int(batch.NumRows()) {
 					// Preserve existing values over adding null
 					if existingDestCol != nil && !existingDestCol.IsNull(i) && existingDestCol.Value(i) != "" {
-						if col.IsNull(i) || !col.IsValid(i) {
-							sourceFieldBuilder.AppendNull() // append NULL to original column
-						} else {
-							sourceFieldBuilder.Append(col.(*array.String).Value(i)) // append value to original column
-						}
-
 						existingVal := existingDestCol.Value(i)
-						destinationFieldBuilder.Append(existingVal) // append value to _extracted column
+						if col.IsNull(i) || !col.IsValid(i) {
+							sourceFieldBuilder.AppendNull()             // append NULL to original column
+							destinationFieldBuilder.Append(existingVal) // append old value to _extracted column
+						} else {
+							if allColumnsNull(collisionCols, i) {
+								sourceFieldBuilder.Append(col.(*array.String).Value(i)) // append value to original column
+								destinationFieldBuilder.AppendNull()                    // append NULL to _extracted column
+							} else {
+								sourceFieldBuilder.AppendNull()                              // append NULL to original column
+								destinationFieldBuilder.Append(col.(*array.String).Value(i)) // append new value to _extracted column
+							}
+						}
+						if lowerDestFieldBuilder != nil {
+							lowerDestFieldBuilder.AppendNull() // append new value to the lower priority _extracted column
+						}
 					} else if col.IsNull(i) || !col.IsValid(i) {
 						sourceFieldBuilder.AppendNull()      // append NULL to original column
 						destinationFieldBuilder.AppendNull() // append NULL to _extracted column
+						if lowerDestFieldBuilder != nil {
+							// preserve the current value of the lower prioity _extracted column
+							if !lowerDestCol.IsNull(i) && lowerDestCol.IsValid(i) {
+								lowerDestFieldBuilder.Append(lowerDestCol.Value(i))
+							} else {
+								lowerDestFieldBuilder.AppendNull()
+							}
+						}
 					} else if allColumnsNull(collisionCols, i) {
 						// All collision columns are null for this row, keep value in source column
 						v := col.(*array.String).Value(i)
 						sourceFieldBuilder.Append(v)         // append value to original column
 						destinationFieldBuilder.AppendNull() // append NULL to _extracted column
+						if lowerDestFieldBuilder != nil {
+							// preserve the current value of the lower prioity _extracted column
+							if !lowerDestCol.IsNull(i) && lowerDestCol.IsValid(i) {
+								lowerDestFieldBuilder.Append(lowerDestCol.Value(i))
+							} else {
+								lowerDestFieldBuilder.AppendNull()
+							}
+						}
 					} else {
 						sourceFieldBuilder.AppendNull() // append NULL to original column
 						v := col.(*array.String).Value(i)
 						destinationFieldBuilder.Append(v) // append value to _extracted column
+						if lowerDestFieldBuilder != nil {
+							lowerDestFieldBuilder.AppendNull() // append new value to the lower priority _extracted column
+						}
 					}
 				}
 
-				sourceCol := sourceFieldBuilder.NewArray()
-				newSchemaColumns[sourceNewIdx] = sourceCol
+				newSchemaColumns[sourceNewIdx] = sourceFieldBuilder.NewArray()
+				newSchemaColumns[duplicate.destinationIdx] = destinationFieldBuilder.NewArray()
 
-				destinationCol := destinationFieldBuilder.NewArray()
-				newSchemaColumns[duplicate.destinationIdx] = destinationCol
+				if lowerDestFieldBuilder != nil {
+					newSchemaColumns[duplicate.lowerExtractedDestinationIdx] = lowerDestFieldBuilder.NewArray()
+				}
 			default:
 				panic("invalid source column type: only string columns can be checked for collisions")
 			}
 		}
 
-		return array.NewRecordBatch(newSchema, newSchemaColumns, batch.NumRows()), nil
+		rec := array.NewRecordBatch(newSchema, newSchemaColumns, batch.NumRows())
+
+		assertions.CheckLabelValuesDuplicates(rec)
+
+		return rec, nil
 	}, input)
 }
 
@@ -243,4 +308,8 @@ type duplicateColumn struct {
 	sourceIdx int
 	// destinationIdx is the index of the destination column
 	destinationIdx int
+	// lowerExtractedDestinationIdx is the new index of the _extracted column with lower priority (from earlier compats)
+	lowerExtractedDestinationIdx int
+	// lowerExtractedSourceIdx is the old index of the _extracted column with lower priority (from earlier compats)
+	lowerExtractedSourceIdx int
 }

@@ -111,16 +111,21 @@ func (c *GeneratorConfig) NewRand() *rand.Rand {
 
 // StreamMetadata holds the consistent properties of a stream
 type StreamMetadata struct {
-	Labels string
-	App    Application
+	Labels  string
+	Service Service
+	Format  LogFormat // Log format for this stream
+	// MinRange is the minimum lookback range for range queries to capture multiple samples
+	MinRange time.Duration
+	// MinInstantRange is the minimum lookback range for instant queries to capture logs at a single sampling point
+	MinInstantRange time.Duration
 }
 
 // Generator represents a log generator with configuration
 type Generator struct {
 	config      GeneratorConfig
 	rnd         *rand.Rand
-	streamsMeta []StreamMetadata       // Pre-generated stream metadata used across batches
-	apps        map[string]Application // Map of available applications by name
+	StreamsMeta []StreamMetadata   // Pre-generated stream metadata used across batches
+	services    map[string]Service // Map of available applications by name
 }
 
 // Opt represents configuration options for the generator
@@ -205,13 +210,13 @@ func NewGenerator(opt Opt) *Generator {
 			NumStreams:     opt.numStreams,
 			Seed:           opt.seed,
 		},
-		rnd:  rand.New(rand.NewSource(opt.seed)),
-		apps: make(map[string]Application),
+		rnd:      rand.New(rand.NewSource(opt.seed)),
+		services: make(map[string]Service),
 	}
 
 	// Initialize available applications
 	for _, app := range defaultApplications {
-		g.apps[app.Name] = app
+		g.services[app.Name] = app
 	}
 
 	return g
@@ -224,11 +229,13 @@ func (g *Generator) generateStreamMetadata() {
 		numStreams = defaultGeneratorConfig.NumStreams
 	}
 
-	g.streamsMeta = make([]StreamMetadata, numStreams)
+	g.StreamsMeta = make([]StreamMetadata, numStreams)
+
+	minRange, minInstantRange := CalculateMinRanges(&g.config)
 
 	// Create slice of available app names for random selection
 	var appNames []string
-	for name := range g.apps {
+	for name := range g.services {
 		appNames = append(appNames, name)
 	}
 
@@ -238,9 +245,9 @@ func (g *Generator) generateStreamMetadata() {
 	// For each stream, generate consistent metadata
 	for i := 0; i < numStreams; i++ {
 		// Pick a deterministic application based on stream index
-		appIndex := i % len(g.apps)
+		appIndex := i % len(g.services)
 		appName := appNames[appIndex]
-		app := g.apps[appName]
+		app := g.services[appName]
 
 		// Generate deterministic labels for this stream
 		cluster := fmt.Sprintf("cluster-%d", g.rnd.Intn(g.config.LabelConfig.Clusters))
@@ -258,9 +265,12 @@ func (g *Generator) generateStreamMetadata() {
 			cluster, namespace, service, pod, container, env, region, dc, app.Name,
 		)
 
-		g.streamsMeta[i] = StreamMetadata{
-			Labels: labels,
-			App:    app,
+		g.StreamsMeta[i] = StreamMetadata{
+			Labels:          labels,
+			Service:         app,
+			Format:          app.Format,
+			MinRange:        minRange,
+			MinInstantRange: minInstantRange,
 		}
 	}
 }
@@ -274,9 +284,9 @@ func (g *Generator) Batches() iter.Seq[*Batch] {
 	return func(yield func(*Batch) bool) {
 		for {
 			// Generate streams for this batch using the same metadata but new entries
-			streams := make([]logproto.Stream, len(g.streamsMeta))
+			streams := make([]logproto.Stream, len(g.StreamsMeta))
 			for j := range streams {
-				meta := g.streamsMeta[j]
+				meta := g.StreamsMeta[j]
 
 				// Generate entries specific to this stream's application and format
 				entries := g.generateEntriesForStream(meta)
@@ -297,7 +307,7 @@ func (g *Generator) Batches() iter.Seq[*Batch] {
 // generateEntriesForStream creates log entries for a specific stream
 // using the application and format from the stream metadata
 func (g *Generator) generateEntriesForStream(meta StreamMetadata) []logproto.Entry {
-	app := meta.App
+	app := meta.Service
 	faker := NewFaker(g.rnd)
 
 	// Calculate how many entries to generate based on time spread

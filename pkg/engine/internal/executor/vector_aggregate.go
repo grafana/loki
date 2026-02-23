@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -96,7 +97,12 @@ func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch
 	if v.inputsExhausted {
 		return nil, EOF
 	}
-	return v.read(ctx)
+	rec, err := v.read(ctx)
+
+	assertions.CheckColumnDuplicates(rec)
+	assertions.CheckLabelValuesDuplicates(rec)
+
+	return rec, err
 }
 
 func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
@@ -130,6 +136,8 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 				// Nothing to process
 				continue
 			}
+
+			assertions.CheckLabelValuesDuplicates(record)
 
 			// extract timestamp column
 			tsVec, err := v.tsEval(record)

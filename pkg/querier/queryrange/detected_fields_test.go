@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	runtime "runtime"
 	"slices"
 	"testing"
 	"time"
@@ -115,6 +116,27 @@ func Test_parseDetectedFields(t *testing.T) {
 
 				require.Len(t, parsers, 0)
 			}
+		})
+
+		t.Run("detects fields with huge limit doesn't explode memory", func(t *testing.T) {
+			runtime.GC()
+			var before runtime.MemStats
+			runtime.ReadMemStats(&before)
+
+			df := parseDetectedFields(1000000, logqlmodel.Streams([]push.Stream{rulerStream}))
+			require.True(t, len(df) > 0)
+
+			runtime.GC()
+			var after runtime.MemStats
+			runtime.ReadMemStats(&after)
+
+			delta := int64(after.TotalAlloc) - int64(before.TotalAlloc)
+			// 10 MB
+			if delta > 10*1024*1024 {
+				t.Fatalf("heap grew too much: %d MB", delta/1024/1024)
+			}
+
+			runtime.KeepAlive(df)
 		})
 
 		t.Run("detects json fields", func(t *testing.T) {

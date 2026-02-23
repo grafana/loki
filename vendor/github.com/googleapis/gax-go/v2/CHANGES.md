@@ -1,5 +1,11 @@
 # Changes
 
+## [2.17.0](https://github.com/googleapis/google-cloud-go/releases/tag/v2.17.0) (2026-02-03)
+
+### Features
+
+* update Invoke to add retry count to context (#462) ([ea7096d](https://github.com/googleapis/google-cloud-go/commit/ea7096d50d665064dbfeffd7d93fa13d810ad4e4))
+
 ## [2.16.0](https://github.com/googleapis/google-cloud-go/releases/tag/v2.16.0) (2025-12-17)
 
 ### Features

@@ -11,6 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -125,7 +126,12 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch,
 		return nil, EOF
 	}
 
-	return r.read(ctx)
+	rec, err := r.read(ctx)
+
+	assertions.CheckColumnDuplicates(rec)
+	assertions.CheckLabelValuesDuplicates(rec)
+
+	return rec, err
 }
 
 // TODOs:
@@ -176,6 +182,8 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				// Nothing to process
 				continue
 			}
+
+			assertions.CheckLabelValuesDuplicates(record)
 
 			// extract all the columns that are used for grouping
 			var arrays []*array.String
@@ -263,6 +271,11 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 			}
 
 			for row := range int(record.NumRows()) {
+				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
+				if len(windows) == 0 {
+					continue // out of range, skip this row
+				}
+
 				var value float64
 				if r.opts.operation != types.RangeAggregationTypeCount {
 					if valArr.IsNull(row) {
@@ -270,11 +283,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 					}
 
 					value = valArr.Value(row)
-				}
-
-				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
-				if len(windows) == 0 {
-					continue // out of range, skip this row
 				}
 
 				labelValues := labelValuesCache.getLabelValues(arrays, row)
