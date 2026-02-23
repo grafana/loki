@@ -132,6 +132,22 @@ queries:
       labels:
         - cluster
         - namespace
+  - description: Count aggregated by env and component
+    query: sum by (env, component) (count_over_time(${SELECTOR}[${RANGE}]))
+    kind: metric
+    skip: true # component label not available in test data
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - aggregation
+      - count
+      - grouping
+      - multi-dimension
+    requires:
+      labels:
+        - env
+        - component
   - description: Database rows affected by level
     query: sum by (level) (sum_over_time(${SELECTOR} | json | unwrap rows_affected [${RANGE}]))
     kind: metric

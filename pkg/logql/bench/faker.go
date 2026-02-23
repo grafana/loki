@@ -559,7 +559,7 @@ var defaultApplications = []Service{
 
 			// Add error for error level logs
 			if level == errorLevel {
-				baseJSON += fmt.Sprintf(`,"error":"%s"`, f.ErrorMessage())
+				baseJSON += fmt.Sprintf(`,"error":"%s"`, f.DBError())
 			}
 
 			return baseJSON + "}"
@@ -588,9 +588,9 @@ var defaultApplications = []Service{
 				baseJSON += fmt.Sprintf(`,"request_id":"%s"`, f.TraceID())
 			}
 
-			// Sometimes add latency
+			// Sometimes add duration
 			if f.rnd.Float32() < 0.7 {
-				baseJSON += fmt.Sprintf(`,"latency":"%s"`, f.Duration())
+				baseJSON += fmt.Sprintf(`,"duration":"%s"`, f.Duration())
 			}
 
 			// Add error for error level logs
@@ -747,6 +747,11 @@ var defaultApplications = []Service{
 				baseLogfmt += fmt.Sprintf(` trace_id=%s span_id=%s`, f.TraceID(), f.SpanID())
 			}
 
+			// Add metrics for some logs
+			if f.rnd.Float32() < 0.5 {
+				baseLogfmt += fmt.Sprintf(` streams=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
+			}
+
 			// Add error for error level logs
 			if level == errorLevel {
 				baseLogfmt += fmt.Sprintf(` error="failed to %s: %s"`, f.GRPCMethod(), f.ErrorMessage())
@@ -861,7 +866,7 @@ var defaultApplications = []Service{
 	},
 	{
 		Name:   "kubernetes",
-		Format: LogFormatJSON,
+		Format: LogFormatUnstructured,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// Kubernetes log format (mix of structured and unstructured)
 			component := f.K8sComponent()

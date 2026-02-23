@@ -634,6 +634,7 @@ queries:
   - description: Unwrap with label filter after parsing
     query: sum by (level) (sum_over_time(${SELECTOR} | level != "" | json | unwrap rows_affected [${RANGE}]))
     kind: metric
+    skip: true # query_type field not available in test data
     time_range:
       length: 24h
       step: 1m
