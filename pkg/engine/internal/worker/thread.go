@@ -312,7 +312,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 	}
 
 	var totalRows int
-	var currentBatchRecordCount int
+	var currentBatchRecordCount int64
 	batchAggregator := arrowagg.NewRecords(memory.DefaultAllocator)
 
 	// When batchSizeRecords <= 0, no batching: each record is sent alone.
@@ -377,14 +377,14 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			continue
 		}
 
-		// If we have a full batch (number of records reached limit), flush before adding the next.
-		if currentBatchRecordCount > 0 && int64(currentBatchRecordCount) >= batchSizeRecords {
+		// If adding this record would exceed the batch size, flush before the next iteration.
+		if currentBatchRecordCount+rec.NumRows() > batchSizeRecords {
 			flushBatch()
 		}
 
-		// Otherwise, add the record to the batch aggregator.
+		// Add the record to the batch aggregator.
 		batchAggregator.Append(rec)
-		currentBatchRecordCount++
+		currentBatchRecordCount += rec.NumRows()
 	}
 
 	// Flush any remaining batch.
