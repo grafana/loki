@@ -13,6 +13,12 @@ import (
 )
 
 func Test_lineFormatter_Format(t *testing.T) {
+	origLocal := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() {
+		time.Local = origLocal
+	})
+
 	tests := []struct {
 		name  string
 		fmter *LineFormatter
