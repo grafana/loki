@@ -30,13 +30,13 @@ import (
 )
 
 // RecordSink sends record batches to a destination. Used by drainPipeline so callers can inject mocks in tests.
-type RecordSink interface {
+type recordSink interface {
 	Send(ctx context.Context, rec arrow.RecordBatch) error
 }
 
 // sinksForJob returns the job's sinks as a slice for use with drainPipeline.
-func sinksForJob(job *threadJob) []RecordSink {
-	sinks := make([]RecordSink, 0, len(job.Sinks))
+func sinksForJob(job *threadJob) []recordSink {
+	sinks := make([]recordSink, 0, len(job.Sinks))
 	for _, s := range job.Sinks {
 		sinks = append(sinks, s)
 	}
@@ -304,7 +304,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	}
 }
 
-func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []RecordSink, batchSizeRecords int64, logger log.Logger) (int, error) {
+func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []recordSink, batchSizeRecords int64, logger log.Logger) (int, error) {
 	region := xcap.RegionFromContext(ctx)
 
 	if err := pipeline.Open(ctx); err != nil {
