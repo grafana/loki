@@ -384,6 +384,8 @@ func (c *Context) logTaskCacheResult(ctx context.Context, logger log.Logger, key
 			err = taskCache.Store(ctx, []string{cacheKey}, [][]byte{{}})
 			if err != nil {
 				level.Warn(logger).Log("msg", "task_cache_id mock store failed", "err", err)
+			} else {
+				level.Debug(logger).Log("msg", "stored in task cache", "cache", taskCache.GetCacheType(), "cache_key", cacheKey)
 			}
 		}
 	}
