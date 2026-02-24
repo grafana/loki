@@ -75,13 +75,12 @@ func (s threadState) String() string {
 
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
-	BatchSize          int64
-	MergePrefetchCount int
-	PrefetchBytes      int64
-	Bucket             objstore.Bucket
-	Metastore          metastore.Metastore
-	Logger             log.Logger
-	StreamFilterer     executor.RequestStreamFilterer
+	BatchSize      int64
+	PrefetchBytes  int64
+	Bucket         objstore.Bucket
+	Metastore      metastore.Metastore
+	Logger         log.Logger
+	StreamFilterer executor.RequestStreamFilterer
 
 	Metrics    *metrics
 	JobManager *jobManager
