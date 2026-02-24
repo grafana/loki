@@ -118,16 +118,6 @@ func CreateOrUpdateLokiStack(
 
 	ll.Info("begin building manifests")
 
-	// nolint:staticcheck
-	// Handle the deprecated field opt.Stack.ReplicationFactor.
-	if (opts.Stack.Replication == nil || opts.Stack.Replication.Factor == 0) && opts.Stack.ReplicationFactor > 0 {
-		if opts.Stack.Replication == nil {
-			opts.Stack.Replication = &lokiv1.ReplicationSpec{}
-		}
-
-		opts.Stack.Replication.Factor = opts.Stack.ReplicationFactor
-	}
-
 	if optErr := manifests.ApplyDefaultSettings(&opts); optErr != nil {
 		ll.Error(optErr, "failed to conform options to build settings")
 		return nil, optErr
