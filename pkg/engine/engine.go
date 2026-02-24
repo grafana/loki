@@ -435,11 +435,9 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
 
 	maxRunningScanTasks := 0
-	maxRunningOtherTasks := 0
 	// Set max running tasks limits on when admission lanes are enabled
 	if useAdmissionLanes {
 		maxRunningScanTasks = e.limits.MaxScanTaskParallelism(tenantID)
-		// maxRunningOtherTasks := e.limits.MaxOtherTaskParallelism(tenantID)
 	}
 
 	opts := workflow.Options{
@@ -447,7 +445,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 		Actor:  httpreq.ExtractActorPath(ctx),
 
 		MaxRunningScanTasks:  maxRunningScanTasks,
-		MaxRunningOtherTasks: maxRunningOtherTasks,
+		MaxRunningOtherTasks: 0,
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),
