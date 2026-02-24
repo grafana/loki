@@ -441,6 +441,7 @@ func (c *Context) executePointersScan(ctx context.Context, node *physical.Pointe
 			metastore: c.metastore,
 			location:  string(node.Location),
 			req:       req,
+			logger:    logger,
 		})
 		if err != nil {
 			return errorPipeline(ctx, err)

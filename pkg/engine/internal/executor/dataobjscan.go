@@ -13,6 +13,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -38,6 +39,7 @@ type dataobjScan struct {
 
 	initialized     bool
 	initializedAt   time.Time
+	bytesRead       int64
 	streams         *streamsView
 	streamsInjector *streamInjector
 	reader          *logs.Reader
@@ -73,6 +75,7 @@ func (s *dataobjScan) init(ctx context.Context) error {
 	if s.initialized {
 		return nil
 	}
+	s.bytesRead = 0
 
 	columnsToRead := projectedLabelColumns(s.opts.StreamsSection, s.opts.Projections)
 	includeStreamID := len(columnsToRead) > 0 || len(s.opts.StreamIDs) > 0
@@ -386,6 +389,7 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
 	} else if (rec == nil || rec.NumRows() == 0) && errors.Is(err, io.EOF) {
+		level.Debug(s.logger).Log("msg", "dataobjscan exhausted", "bytes_read", s.bytesRead)
 		return nil, EOF
 	}
 
@@ -401,10 +405,16 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 
 	if s.streamsInjector == nil {
 		// No streams injector needed, so we return the record as-is.
+		s.bytesRead += RecordSizeBytes(rec)
 		return rec, nil
 	}
 
-	return s.streamsInjector.Inject(ctx, rec)
+	rec, err = s.streamsInjector.Inject(ctx, rec)
+	if err != nil {
+		return nil, err
+	}
+	s.bytesRead += RecordSizeBytes(rec)
+	return rec, nil
 }
 
 // Close closes s and releases all resources.

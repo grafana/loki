@@ -133,6 +133,20 @@ func emptyPipeline() Pipeline {
 	})
 }
 
+// RecordSizeBytes returns the total number of bytes across all column buffers
+// in the given record batch.
+func RecordSizeBytes(rec arrow.RecordBatch) int64 {
+	var total int64
+	for i := 0; i < int(rec.NumCols()); i++ {
+		for _, buf := range rec.Column(i).Data().Buffers() {
+			if buf != nil {
+				total += int64(buf.Len())
+			}
+		}
+	}
+	return total
+}
+
 // prefetchWrapper wraps a [Pipeline] with pre-fetching capability,
 // reading data in a separate goroutine to enable concurrent processing.
 type prefetchWrapper struct {

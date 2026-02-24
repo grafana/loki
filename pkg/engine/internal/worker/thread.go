@@ -119,6 +119,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		level.Error(logger).Log("msg", "failed to get root node", "err", err)
 		return
 	}
+	logger = log.With(logger, "node_type", scanType(job.Task.Fragment))
 	defer pprof.SetGoroutineLabels(ctx)
 	ctx = pprof.WithLabels(ctx, pprof.Labels("node_type", root.Type().String()))
 	pprof.SetGoroutineLabels(ctx)
@@ -288,6 +289,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 	}
 
 	var totalRows int
+	var totalBytes int64
 	for {
 		rec, err := pipeline.Read(ctx)
 		if err != nil && errors.Is(err, executor.EOF) {
@@ -297,6 +299,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		}
 
 		totalRows += int(rec.NumRows())
+		totalBytes += executor.RecordSizeBytes(rec)
 
 		// Don't bother writing empty records to our peers.
 		if rec.NumRows() == 0 {
@@ -318,5 +321,21 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
 	}
 
+	level.Debug(logger).Log("msg", "pipeline drained", "total_rows", totalRows, "total_bytes", totalBytes)
 	return totalRows, nil
+}
+
+// scanType returns the scan node type found in fragment: "PointersScan",
+// "DataObjScan", or "other" for tasks that contain no scan node (e.g. outer
+// aggregation tasks that consume from other tasks).
+func scanType(fragment *physical.Plan) string {
+	for node := range fragment.Graph().Nodes() {
+		switch node.Type() {
+		case physical.NodeTypePointersScan:
+			return physical.NodeTypePointersScan.String()
+		case physical.NodeTypeDataObjScan:
+			return physical.NodeTypeDataObjScan.String()
+		}
+	}
+	return "other"
 }
