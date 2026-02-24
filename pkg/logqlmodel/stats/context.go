@@ -80,12 +80,12 @@ const (
 	BloomFilterCache            CacheType = "bloom-filter"              //nolint:staticcheck
 	BloomBlocksCache            CacheType = "bloom-blocks"              //nolint:staticcheck
 	BloomMetasCache             CacheType = "bloom-metas"               //nolint:staticcheck
-	TaskCacheIDDataObjCache     CacheType = "task-cache-id-dataobj"     //nolint:staticcheck
-	TaskCacheIDPointersCache    CacheType = "task-cache-id-pointers"    //nolint:staticcheck
-	DataObjectLogsTaskCache     CacheType = "data-object-logs-task"     //nolint:staticcheck
-	DataObjectPointersTaskCache CacheType = "data-object-pointers-task" //nolint:staticcheck
-	TaskResultDataObjCache      CacheType = "task-result-dataobj"       //nolint:staticcheck
-	TaskResultPointersCache     CacheType = "task-result-pointers"      //nolint:staticcheck
+	TaskCacheIDDataObjCache     CacheType = "TaskWithDataObjScan"  //nolint:staticcheck
+	TaskCacheIDPointersCache    CacheType = "TaskWithPointersScan" //nolint:staticcheck
+	DataObjectLogsTaskCache     CacheType = "DataObjectSection"    //nolint:staticcheck
+	DataObjectPointersTaskCache CacheType = "PointersScanSection"  //nolint:staticcheck
+	TaskResultDataObjCache      CacheType = "DataObjectScan"       //nolint:staticcheck
+	TaskResultPointersCache     CacheType = "PointersScan"         //nolint:staticcheck
 )
 
 // NewContext creates a new statistics context
