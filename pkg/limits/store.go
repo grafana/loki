@@ -269,13 +269,14 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 	return toProduce, accepted, rejected, nil
 }
 
-func (s *usageStore) UpdateRates(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time) ([]streamUsage, error) {
+func (s *usageStore) UpdateRates(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time) (toProduce []*proto.StreamMetadata, updated []streamUsage, err error) {
 	if !s.withinActiveWindow(seenAt.UnixNano()) {
-		return nil, errOutsideActiveWindow
+		return nil, nil, errOutsideActiveWindow
 	}
 	var (
-		updated = make([]streamUsage, 0, len(metadata))
-		cutoff  = seenAt.Add(-s.activeWindow).UnixNano()
+		updatedList   = make([]streamUsage, 0, len(metadata))
+		toProduceList = make([]*proto.StreamMetadata, 0, len(metadata))
+		cutoff        = seenAt.Add(-s.activeWindow).UnixNano()
 	)
 	s.withLock(tenant, func(i int) {
 		for _, m := range metadata {
@@ -297,10 +298,11 @@ func (s *usageStore) UpdateRates(tenant string, metadata []*proto.StreamMetadata
 			s.updateWithBuckets(i, tenant, partition, noPolicy, m, seenAt)
 			got, _ := s.get(i, tenant, partition, m.StreamHash)
 			got.rateBuckets = getActiveRateBuckets(got.rateBuckets, s.withinRateWindow)
-			updated = append(updated, got)
+			updatedList = append(updatedList, got)
+			toProduceList = append(toProduceList, m)
 		}
 	})
-	return updated, nil
+	return toProduceList, updatedList, nil
 }
 
 // Evict evicts all streams that have not been seen within the window.
@@ -418,6 +420,11 @@ func (s *usageStore) updateWithBuckets(i int, tenant string, partition int32, po
 		stream.hash = streamHash
 		stream.totalSize = 0
 		stream.policy = policyBucket
+		stream.rateBuckets = make([]rateBucket, s.numBuckets)
+	} else if len(stream.rateBuckets) == 0 {
+		// If the stream exists but rateBuckets is not initialized (e.g., created via Update()),
+		// initialize it now. This can happen when ExceedsLimits creates a stream, then
+		// UpdateRates is called for the same stream.
 		stream.rateBuckets = make([]rateBucket, s.numBuckets)
 	}
 	seenAtUnixNano := seenAt.UnixNano()
