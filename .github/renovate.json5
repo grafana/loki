@@ -189,6 +189,15 @@
       allowedVersions: '~1.2.0',
       enabled: true,
     },
+    {
+      // Track prometheus via pseudo-versions only (closest to main); do not switch to a tagged release and stick to that major.
+      matchPackageNames: ['github.com/prometheus/prometheus'],
+      allowedVersions: '/^v[0-9]+\\.[0-9]+\\.[0-9]+-0\\.\\d{14}-[a-f0-9]+$/',
+      enabled: true,
+      digest: {
+        enabled: true,
+      },
+    },
   ],
   digest: {
     enabled: false,
