@@ -10,23 +10,23 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 type ObjectClientAdapter struct {
-	bucket, hedgedBucket objstore.Bucket
-	logger               log.Logger
-	supportsUpdatedAt    bool
-	isRetryableErr       func(err error) bool
+	bucket            objstore.Bucket
+	logger            log.Logger
+	supportsUpdatedAt bool
+	isRetryableErr    func(err error) bool
 }
 
-func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, hedgingCfg hedging.Config, disableRetries bool, logger log.Logger) (*ObjectClientAdapter, error) {
+var _ client.ObjectClient = (*ObjectClientAdapter)(nil)
+
+func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, disableRetries bool, logger log.Logger) (*ObjectClientAdapter, error) {
 	var (
 		storeType = backend
 		storeCfg  = cfg.Config
@@ -51,26 +51,8 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 		return nil, fmt.Errorf("create bucket: %w", err)
 	}
 
-	hedgedBucket := bucket
-	if hedgingCfg.At != 0 {
-		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
-		if err != nil {
-			return nil, fmt.Errorf("create hedged transport: %w", err)
-		}
-
-		if err := storeCfg.configureTransport(storeType, hedgedTrasport); err != nil {
-			return nil, fmt.Errorf("create hedged bucket: %w", err)
-		}
-
-		hedgedBucket, err = NewClient(ctx, storeType, storeCfg, component, logger)
-		if err != nil {
-			return nil, fmt.Errorf("create hedged bucket: %w", err)
-		}
-	}
-
 	o := &ObjectClientAdapter{
 		bucket:            bucket,
-		hedgedBucket:      hedgedBucket,
 		logger:            log.With(logger, "component", "bucket_to_object_client_adapter"),
 		supportsUpdatedAt: slices.Contains(bucket.SupportedIterOptions(), objstore.UpdatedAt),
 		// default to no retryable errors. Override with WithRetryableErrFunc
@@ -100,7 +82,7 @@ func (o *ObjectClientAdapter) ObjectExists(ctx context.Context, objectKey string
 // GetAttributes returns the attributes of the specified object key from the configured bucket.
 func (o *ObjectClientAdapter) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
 	attr := client.ObjectAttributes{}
-	thanosAttr, err := o.hedgedBucket.Attributes(ctx, objectKey)
+	thanosAttr, err := o.bucket.Attributes(ctx, objectKey)
 	if err != nil {
 		return attr, err
 	}
@@ -117,7 +99,7 @@ func (o *ObjectClientAdapter) PutObject(ctx context.Context, objectKey string, o
 // GetObject returns a reader and the size for the specified object key from the configured bucket.
 // size is set to -1 if it cannot be succefully determined, it is up to the caller to check this value before using it.
 func (o *ObjectClientAdapter) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
-	reader, err := o.hedgedBucket.Get(ctx, objectKey)
+	reader, err := o.bucket.Get(ctx, objectKey)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -132,7 +114,7 @@ func (o *ObjectClientAdapter) GetObject(ctx context.Context, objectKey string) (
 }
 
 func (o *ObjectClientAdapter) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
-	return o.hedgedBucket.GetRange(ctx, objectKey, offset, length)
+	return o.bucket.GetRange(ctx, objectKey, offset, length)
 }
 
 // List objects with given prefix.
