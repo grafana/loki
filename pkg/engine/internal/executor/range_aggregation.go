@@ -299,12 +299,14 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 
 	r.inputsExhausted = true
 
+	rec, err := r.aggregator.BuildRecord()
+
 	if region := xcap.RegionFromContext(ctx); region != nil {
 		computeTime := time.Since(startedAt) - inputReadTime
 		region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
 	}
 
-	return r.aggregator.BuildRecord()
+	return rec, err
 }
 
 // Close closes the resources of the pipeline.
