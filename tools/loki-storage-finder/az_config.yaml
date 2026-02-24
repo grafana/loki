@@ -1,0 +1,20 @@
+schema_config:
+  configs:
+    - from: "2024-01-01"
+      store: tsdb
+      object_store: azure
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
+
+storage_config:
+  azure:
+    container_name: dev-eu-west-2-loki-dev-009-data-new
+    account_name: lokidev009new
+    # endpoint_suffix: blob.core.windows.net  # optional, defaults to blob.core.windows.net
+    # No credentials needed — uses Azure DefaultAzureCredential:
+    #   1. Environment variables (AZURE_CLIENT_ID, etc.)
+    #   2. Workload Identity
+    #   3. Managed Identity
+    #   4. Azure CLI (az login)

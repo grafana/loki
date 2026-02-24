@@ -1,0 +1,74 @@
+# loki-storage-finder
+
+Find and download TSDB index and chunk files from any Loki storage backend (S3, GCS, Azure, filesystem).
+
+Designed to be run locally, depends on the gloud specific auth mechanism - running ./setup-context in 
+deployment tools is a good idea. Currently only tested against Loki running in Dev.
+
+
+## Build
+
+```
+go build ./tools/loki-storage-finder/
+```
+
+## Usage
+
+Generate a config template, then edit it with your storage details:
+
+```
+./loki-storage-finder --gen-config=gcs > config.yaml
+```
+
+It must contain the correct information to access the storage bucket used by Loki!
+
+Next, identify the tenant_id in question from gcom - this example uses 29 which is the ID for dev.
+
+This finds the index and chunk files for this tenant and time range:
+
+```
+./loki-storage-finder \
+  --config.file=config.yaml \
+  --tenant=29 \
+  --start=2025-02-20T00:00:00Z \
+  --end=2025-02-21T00:00:00Z
+```
+
+TAKE NOTE OF THE INDEX PREFIX, IS NEEDED FOR LATER!!
+
+
+Download the files for local playback:
+
+```
+./loki-storage-finder \
+  --config.file=config.yaml \
+  --tenant=29 \
+  --start=2025-02-20T00:00:00Z \
+  --end=2025-02-21T00:00:00Z \
+  --download /tmp/loki
+```
+
+Downloaded chunk files are automatically normalized (base64-encoded filenames, `:` delimiters) so a local Loki instance can read them directly. Use `--no-normalize-for-filesystem` to preserve the original cloud key format (may differ depending on the cloud provider).
+
+## Local playback
+
+First edit `loki-config.yaml` to specify the index prefix that you got above (it is used to name the index files, they are of this form `/tmp/loki/index/${PREFIX}_{NUMBER}`)
+
+Run a local Loki instance against the downloaded files:
+
+```
+docker run --rm \
+  --name loki \
+  -p 3100:3100 \
+  --mount type=bind,source="$PWD/loki-config.yaml",target="/etc/loki/local-config.yaml" \
+  --mount type=bind,source="/tmp/loki",target="/loki/chunks" \
+  grafana/loki:latest
+```
+
+Query with the matching tenant ID:
+
+```
+curl -s -H "X-Scope-OrgID: 29" 'http://localhost:3100/loki/api/v1/label' | jq .
+```
+
+
