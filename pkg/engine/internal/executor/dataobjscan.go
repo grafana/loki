@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -10,10 +11,12 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/ipc"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/golang/snappy"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -37,13 +40,14 @@ type dataobjScan struct {
 	opts   dataobjScanOptions
 	logger log.Logger
 
-	initialized     bool
-	initializedAt   time.Time
-	bytesRead       int64
-	streams         *streamsView
-	streamsInjector *streamInjector
-	reader          *logs.Reader
-	desiredSchema   *arrow.Schema
+	initialized         bool
+	initializedAt       time.Time
+	bytesRead           int64
+	compressedBytesRead int64
+	streams             *streamsView
+	streamsInjector     *streamInjector
+	reader              *logs.Reader
+	desiredSchema       *arrow.Schema
 }
 
 var _ Pipeline = (*dataobjScan)(nil)
@@ -76,6 +80,7 @@ func (s *dataobjScan) init(ctx context.Context) error {
 		return nil
 	}
 	s.bytesRead = 0
+	s.compressedBytesRead = 0
 
 	columnsToRead := projectedLabelColumns(s.opts.StreamsSection, s.opts.Projections)
 	includeStreamID := len(columnsToRead) > 0 || len(s.opts.StreamIDs) > 0
@@ -389,7 +394,7 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
 	} else if (rec == nil || rec.NumRows() == 0) && errors.Is(err, io.EOF) {
-		level.Debug(s.logger).Log("msg", "dataobjscan exhausted", "bytes_read", s.bytesRead)
+		level.Debug(s.logger).Log("msg", "dataobjscan exhausted", "bytes_read", s.bytesRead, "compressed_bytes_read", s.compressedBytesRead)
 		return nil, EOF
 	}
 
@@ -406,6 +411,7 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 	if s.streamsInjector == nil {
 		// No streams injector needed, so we return the record as-is.
 		s.bytesRead += RecordSizeBytes(rec)
+		s.compressedBytesRead += compressedRecordSize(rec)
 		return rec, nil
 	}
 
@@ -414,7 +420,20 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 		return nil, err
 	}
 	s.bytesRead += RecordSizeBytes(rec)
+	s.compressedBytesRead += compressedRecordSize(rec)
 	return rec, nil
+}
+
+// compressedRecordSize returns the snappy-compressed size of rec serialized
+// as Arrow IPC. Returns 0 on any error so it never disrupts the read path.
+func compressedRecordSize(rec arrow.RecordBatch) int64 {
+	var buf bytes.Buffer
+	w := ipc.NewWriter(&buf, ipc.WithSchema(rec.Schema()))
+	if err := w.Write(rec); err != nil {
+		return 0
+	}
+	_ = w.Close()
+	return int64(len(snappy.Encode(nil, buf.Bytes())))
 }
 
 // Close closes s and releases all resources.
