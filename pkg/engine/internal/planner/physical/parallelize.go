@@ -21,3 +21,5 @@ func (p *Parallelize) Clone() Node {
 
 // Type returns [NodeTypeParallelize].
 func (p *Parallelize) Type() NodeType { return NodeTypeParallelize }
+
+func (p *Parallelize) CacheableKey() string { return "" }

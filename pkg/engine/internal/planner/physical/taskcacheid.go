@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
 // cacheKeyListJoin joins sorted items with "|" for use in readable cache keys.
@@ -162,4 +163,29 @@ func cacheKeyStringPointersScan(s *PointersScan) string {
 // cacheKeyStringDataObject returns a deterministic cache key for a data object section.
 func cacheKeyStringDataObject(location DataObjLocation, section int) string {
 	return fmt.Sprintf("DataObject location=%s section=%d", string(location), section)
+}
+
+// PlanCacheKey returns a deterministic cache key for the entire plan by
+// concatenating the CacheableKey() of all nodes in DFS post-order (scan nodes
+// first, root last). Returns ("", false) if the plan contains no scan nodes
+// (e.g. outer aggregation tasks that consume from other tasks).
+func PlanCacheKey(plan *Plan) (string, bool) {
+	hasScan := false
+	var parts []string
+	for _, root := range plan.Roots() {
+		_ = plan.DFSWalk(root, func(n Node) error {
+			switch n.Type() {
+			case NodeTypeDataObjScan, NodeTypePointersScan:
+				hasScan = true
+			}
+			if k := n.CacheableKey(); k != "" {
+				parts = append(parts, k)
+			}
+			return nil
+		}, dag.PostOrderWalk)
+	}
+	if !hasScan {
+		return "", false
+	}
+	return strings.Join(parts, "|"), true
 }

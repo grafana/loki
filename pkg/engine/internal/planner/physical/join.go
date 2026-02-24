@@ -24,3 +24,5 @@ func (f *Join) Clone() Node {
 func (*Join) Type() NodeType {
 	return NodeTypeJoin
 }
+
+func (*Join) CacheableKey() string { return "" }

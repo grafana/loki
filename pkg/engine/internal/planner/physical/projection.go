@@ -1,6 +1,10 @@
 package physical
 
-import "github.com/oklog/ulid/v2"
+import (
+	"fmt"
+
+	"github.com/oklog/ulid/v2"
+)
 
 // Projection represents a column selection operation in the physical plan.
 // It contains a list of columns (column expressions) that are later
@@ -39,4 +43,10 @@ func (p *Projection) Clone() Node {
 // Returns the type of the node.
 func (*Projection) Type() NodeType {
 	return NodeTypeProjection
+}
+
+func (p *Projection) CacheableKey() string {
+	exprs := expressionStrings(p.Expressions)
+	return fmt.Sprintf("Projection exprs=%s all=%v expand=%v drop=%v",
+		cacheKeyListJoin(exprs), p.All, p.Expand, p.Drop)
 }

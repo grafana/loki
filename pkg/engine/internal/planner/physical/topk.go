@@ -1,6 +1,10 @@
 package physical
 
-import "github.com/oklog/ulid/v2"
+import (
+	"fmt"
+
+	"github.com/oklog/ulid/v2"
+)
 
 // TopK represents a physical plan node that performs topK operation.
 // It ranks rows based on sort expressions and limits the result to the top K rows.
@@ -35,4 +39,9 @@ func (t *TopK) Clone() Node {
 // Returns the type of the node.
 func (*TopK) Type() NodeType {
 	return NodeTypeTopK
+}
+
+func (t *TopK) CacheableKey() string {
+	return fmt.Sprintf("TopK sortby=%s asc=%v nulls_first=%v k=%d",
+		t.SortBy.String(), t.Ascending, t.NullsFirst, t.K)
 }

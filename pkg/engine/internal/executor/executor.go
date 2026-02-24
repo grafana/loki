@@ -65,6 +65,11 @@ type Config struct {
 	TaskCacheIDCachePointers cache.Cache `yaml:"-"`
 	DataObjectLogsCache      cache.Cache `yaml:"-"`
 	DataObjectPointersCache  cache.Cache `yaml:"-"`
+
+	// TaskResultCache is an optional cache used to log hit/miss for whole task pipelines
+	// containing scan operations, keyed by the concatenation of all node cache keys.
+	// No real data is cached; only tasks with scan nodes are eligible.
+	TaskResultCache cache.Cache `yaml:"-"`
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
@@ -82,9 +87,13 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		taskCacheIDCachePointers: cfg.TaskCacheIDCachePointers,
 		dataObjectLogsCache:      cfg.DataObjectLogsCache,
 		dataObjectPointersCache:  cfg.DataObjectPointersCache,
+		taskResultCache:          cfg.TaskResultCache,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
+	}
+	if key, ok := physical.PlanCacheKey(plan); ok {
+		c.logTaskCacheResult(ctx, logger, key, c.taskResultCache)
 	}
 	node, err := plan.Root()
 	if err != nil {
@@ -114,6 +123,7 @@ type Context struct {
 	taskCacheIDCachePointers cache.Cache
 	dataObjectLogsCache      cache.Cache
 	dataObjectPointersCache  cache.Cache
+	taskResultCache          cache.Cache
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {

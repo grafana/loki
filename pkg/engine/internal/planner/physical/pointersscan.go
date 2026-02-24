@@ -70,3 +70,5 @@ func (s *PointersScan) TaskCacheID() string {
 func (s *PointersScan) DataObjectCacheKey() string {
 	return cacheKeyStringDataObject(s.Location, -1)
 }
+
+func (s *PointersScan) CacheableKey() string { return s.TaskCacheID() }

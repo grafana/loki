@@ -1,6 +1,10 @@
 package physical
 
-import "github.com/oklog/ulid/v2"
+import (
+	"fmt"
+
+	"github.com/oklog/ulid/v2"
+)
 
 // Filter represents a filtering operation in the physical plan.
 // It contains a list of predicates (conditional expressions) that are later
@@ -32,4 +36,8 @@ func (f *Filter) Clone() Node {
 // Returns the type of the node.
 func (*Filter) Type() NodeType {
 	return NodeTypeFilter
+}
+
+func (f *Filter) CacheableKey() string {
+	return fmt.Sprintf("Filter predicates=%s", cacheKeyListJoin(expressionStrings(f.Predicates)))
 }

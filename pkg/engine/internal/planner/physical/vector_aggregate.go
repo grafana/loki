@@ -1,6 +1,8 @@
 package physical
 
 import (
+	"fmt"
+
 	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -43,4 +45,10 @@ func (v *VectorAggregation) Clone() Node {
 // Returns the type of the node.
 func (*VectorAggregation) Type() NodeType {
 	return NodeTypeVectorAggregation
+}
+
+func (v *VectorAggregation) CacheableKey() string {
+	groupCols := expressionStrings(exprSliceToExpression(v.Grouping.Columns))
+	return fmt.Sprintf("VectorAgg op=%s grouping(without=%v cols=%s) max_series=%d",
+		v.Operation, v.Grouping.Without, cacheKeyListJoin(groupCols), v.MaxQuerySeries)
 }

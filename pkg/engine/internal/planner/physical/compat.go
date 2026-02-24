@@ -1,7 +1,9 @@
 package physical
 
 import (
+	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/oklog/ulid/v2"
 
@@ -38,4 +40,13 @@ func (m *ColumnCompat) Clone() Node {
 // Returns the type of the node.
 func (m *ColumnCompat) Type() NodeType {
 	return NodeTypeCompat
+}
+
+func (m *ColumnCompat) CacheableKey() string {
+	cols := make([]string, len(m.Collisions))
+	for i, c := range m.Collisions {
+		cols[i] = c.String()
+	}
+	slices.Sort(cols)
+	return fmt.Sprintf("ColumnCompat src=%s dst=%s collisions=%s", m.Source, m.Destination, strings.Join(cols, ","))
 }

@@ -1,11 +1,13 @@
 package physical
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
 // TODO: Rename based on the actual implementation.
@@ -44,4 +46,13 @@ func (r *RangeAggregation) Clone() Node {
 
 func (r *RangeAggregation) Type() NodeType {
 	return NodeTypeRangeAggregation
+}
+
+func (r *RangeAggregation) CacheableKey() string {
+	groupCols := expressionStrings(exprSliceToExpression(r.Grouping.Columns))
+	return fmt.Sprintf("RangeAgg op=%s grouping(without=%v cols=%s) start=%s end=%s step=%s range=%s max_series=%d",
+		r.Operation,
+		r.Grouping.Without, cacheKeyListJoin(groupCols),
+		util.FormatTimeRFC3339Nano(r.Start), util.FormatTimeRFC3339Nano(r.End),
+		r.Step, r.Range, r.MaxQuerySeries)
 }

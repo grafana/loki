@@ -20,3 +20,5 @@ func (m *Merge) Clone() Node {
 }
 
 func (m *Merge) Type() NodeType { return NodeTypeMerge }
+
+func (m *Merge) CacheableKey() string { return "" }

@@ -77,6 +77,10 @@ type Node interface {
 	// Clone creates a deep copy of the Node. Cloned nodes do not retain the
 	// same ID.
 	Clone() Node
+	// CacheableKey returns a deterministic string that identifies this node's
+	// operation for cache key purposes. Returns "" for nodes that should be
+	// excluded from the cache key (e.g. structural-only nodes like Merge).
+	CacheableKey() string
 	// isNode is a marker interface to denote a node, and only allows it to be
 	// implemented within this package
 	isNode()
