@@ -143,10 +143,18 @@
       automerge: false,
     },
     {
+      // Disable all updates for pkg/push/go.mod
+      matchFileNames: ['pkg/push/go.mod'],
+      enabled: false,
+      autoApprove: false,
+      automerge: false,
+    },
+    {
       // Enable all other updates, and auto-merge minor and patch updates
       matchFileNames: [
         '!operator/go.mod',
         '!operator/api/loki/go.mod',
+        '!pkg/push/go.mod',
       ],
       groupName: '{{packageName}}',
       enabled: true,
@@ -162,6 +170,7 @@
       matchFileNames: [
         '!operator/go.mod',
         '!operator/api/loki/go.mod',
+        '!pkg/push/go.mod',
       ],
       groupName: '{{packageName}}',
       enabled: true,
