@@ -22,7 +22,7 @@ type fakeLimits struct {
 	parallelism int
 }
 
-func (l *fakeLimits) MaxScanTaskParallelism(tenantID string) int {
+func (l *fakeLimits) MaxScanTaskParallelism(_ string) int {
 	return l.parallelism
 }
 
