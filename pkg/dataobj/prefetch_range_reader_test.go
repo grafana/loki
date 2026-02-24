@@ -35,6 +35,12 @@ func Test_prefetchedRangeReader_ReadRange(t *testing.T) {
 			wantString: "89UVW",
 		},
 		{
+			name:       "partial overlap on trailing end combines prefetched and backend bytes",
+			offset:     14,
+			length:     5,
+			wantString: "YZghi",
+		},
+		{
 			name:       "no overlap returns backend bytes",
 			offset:     0,
 			length:     4,
