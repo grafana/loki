@@ -335,9 +335,6 @@ type EngineOpts struct {
 
 	// FeatureRegistry is the registry for tracking enabled/disabled features.
 	FeatureRegistry features.Collector
-
-	// Parser is the PromQL parser instance used for parsing expressions.
-	Parser parser.Parser
 }
 
 // Engine handles the lifetime of queries from beginning to end.
@@ -357,7 +354,6 @@ type Engine struct {
 	enablePerStepStats       bool
 	enableDelayedNameRemoval bool
 	enableTypeAndUnitLabels  bool
-	parser                   parser.Parser
 }
 
 // NewEngine returns a new engine.
@@ -436,10 +432,6 @@ func NewEngine(opts EngineOpts) *Engine {
 		metrics.maxConcurrentQueries.Set(-1)
 	}
 
-	if opts.Parser == nil {
-		opts.Parser = parser.NewParser(parser.Options{})
-	}
-
 	if opts.LookbackDelta == 0 {
 		opts.LookbackDelta = defaultLookbackDelta
 		if l := opts.Logger; l != nil {
@@ -468,9 +460,7 @@ func NewEngine(opts EngineOpts) *Engine {
 		r.Enable(features.PromQL, "per_query_lookback_delta")
 		r.Enable(features.PromQL, "subqueries")
 
-		if opts.Parser != nil {
-			opts.Parser.RegisterFeatures(r)
-		}
+		parser.RegisterFeatures(r)
 	}
 
 	return &Engine{
@@ -486,7 +476,6 @@ func NewEngine(opts EngineOpts) *Engine {
 		enablePerStepStats:       opts.EnablePerStepStats,
 		enableDelayedNameRemoval: opts.EnableDelayedNameRemoval,
 		enableTypeAndUnitLabels:  opts.EnableTypeAndUnitLabels,
-		parser:                   opts.Parser,
 	}
 }
 
@@ -535,7 +524,7 @@ func (ng *Engine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts
 		return nil, err
 	}
 	defer finishQueue()
-	expr, err := ng.parser.ParseExpr(qs)
+	expr, err := parser.ParseExpr(qs)
 	if err != nil {
 		return nil, err
 	}
@@ -556,7 +545,7 @@ func (ng *Engine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts Q
 		return nil, err
 	}
 	defer finishQueue()
-	expr, err := ng.parser.ParseExpr(qs)
+	expr, err := parser.ParseExpr(qs)
 	if err != nil {
 		return nil, err
 	}
@@ -1214,9 +1203,6 @@ type EvalNodeHelper struct {
 	// funcHistogramQuantile and funcHistogramFraction for classic histograms.
 	signatureToMetricWithBuckets map[string]*metricWithBuckets
 	nativeHistogramSamples       []Sample
-	// funcHistogramQuantiles for histograms.
-	quantileStrs                  map[float64]string
-	signatureToLabelsWithQuantile map[string]map[float64]labels.Labels
 
 	lb           *labels.Builder
 	lblBuf       []byte
@@ -1306,35 +1292,6 @@ func (enh *EvalNodeHelper) resetHistograms(inVec Vector, arg parser.Expr) annota
 		}
 	}
 	return annos
-}
-
-func (enh *EvalNodeHelper) getOrCreateLblsWithQuantile(lbls labels.Labels, quantileLabel string, q float64) labels.Labels {
-	if enh.signatureToLabelsWithQuantile == nil {
-		enh.signatureToLabelsWithQuantile = make(map[string]map[float64]labels.Labels)
-	}
-
-	enh.lblBuf = lbls.Bytes(enh.lblBuf)
-	cachedLbls, ok := enh.signatureToLabelsWithQuantile[string(enh.lblBuf)]
-	if !ok {
-		cachedLbls = make(map[float64]labels.Labels, len(enh.quantileStrs))
-		enh.signatureToLabelsWithQuantile[string(enh.lblBuf)] = cachedLbls
-	}
-
-	cachedLblsWithQuantile, ok := cachedLbls[q]
-	if !ok {
-		quantileStr := "NaN"
-		if !math.IsNaN(q) {
-			// Cannot do map lookup by NaN key.
-			quantileStr = enh.quantileStrs[q]
-		}
-		cachedLblsWithQuantile = labels.NewBuilder(lbls).
-			Set(quantileLabel, quantileStr).
-			Labels()
-
-		cachedLbls[q] = cachedLblsWithQuantile
-	}
-
-	return cachedLblsWithQuantile
 }
 
 // rangeEval evaluates the given expressions, and then for each step calls
@@ -4352,7 +4309,7 @@ func detectHistogramStatsDecoding(expr parser.Expr) {
 				// further up (the latter wouldn't make sense,
 				// but no harm in detecting it).
 				n.SkipHistogramBuckets = true
-			case "histogram_quantile", "histogram_quantiles", "histogram_fraction":
+			case "histogram_quantile", "histogram_fraction":
 				// If we ever see a function that needs the
 				// whole histogram, we will not skip the
 				// buckets.

@@ -265,7 +265,8 @@ func (tc *ZookeeperTreeCache) recursiveNodeUpdate(path string, node *zookeeperTr
 		}
 	}
 
-	tc.wg.Go(func() {
+	tc.wg.Add(1)
+	go func() {
 		numWatchers.Inc()
 		// Pass up zookeeper events, until the node is deleted.
 		select {
@@ -276,7 +277,8 @@ func (tc *ZookeeperTreeCache) recursiveNodeUpdate(path string, node *zookeeperTr
 		case <-node.done:
 		}
 		numWatchers.Dec()
-	})
+		tc.wg.Done()
+	}()
 	return nil
 }
 

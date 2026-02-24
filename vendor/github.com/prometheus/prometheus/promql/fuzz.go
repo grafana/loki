@@ -60,8 +60,6 @@ const (
 // Use package-scope symbol table to avoid memory allocation on every fuzzing operation.
 var symbolTable = labels.NewSymbolTable()
 
-var fuzzParser = parser.NewParser(parser.Options{})
-
 func fuzzParseMetricWithContentType(in []byte, contentType string) int {
 	p, warning := textparse.New(in, contentType, symbolTable, textparse.ParserOptions{})
 	if p == nil || warning != nil {
@@ -105,7 +103,7 @@ func FuzzParseMetricSelector(in []byte) int {
 	if len(in) > maxInputSize {
 		return fuzzMeh
 	}
-	_, err := fuzzParser.ParseMetricSelector(string(in))
+	_, err := parser.ParseMetricSelector(string(in))
 	if err == nil {
 		return fuzzInteresting
 	}
@@ -118,7 +116,7 @@ func FuzzParseExpr(in []byte) int {
 	if len(in) > maxInputSize {
 		return fuzzMeh
 	}
-	_, err := fuzzParser.ParseExpr(string(in))
+	_, err := parser.ParseExpr(string(in))
 	if err == nil {
 		return fuzzInteresting
 	}
