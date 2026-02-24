@@ -66,10 +66,12 @@ type Config struct {
 	DataObjectLogsCache      cache.Cache `yaml:"-"`
 	DataObjectPointersCache  cache.Cache `yaml:"-"`
 
-	// TaskResultCache is an optional cache used to log hit/miss for whole task pipelines
-	// containing scan operations, keyed by the concatenation of all node cache keys.
-	// No real data is cached; only tasks with scan nodes are eligible.
-	TaskResultCache cache.Cache `yaml:"-"`
+	// TaskResultCacheDataObj and TaskResultCachePointers are optional caches used to log
+	// hit/miss for whole task pipelines keyed by the concatenation of all node cache keys.
+	// DataObj is used for tasks containing a DataObjScan; Pointers for tasks containing a
+	// PointersScan. No real data is cached; only tasks with scan nodes are eligible.
+	TaskResultCacheDataObj  cache.Cache `yaml:"-"`
+	TaskResultCachePointers cache.Cache `yaml:"-"`
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
@@ -87,13 +89,18 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		taskCacheIDCachePointers: cfg.TaskCacheIDCachePointers,
 		dataObjectLogsCache:      cfg.DataObjectLogsCache,
 		dataObjectPointersCache:  cfg.DataObjectPointersCache,
-		taskResultCache:          cfg.TaskResultCache,
+		taskResultCacheDataObj:  cfg.TaskResultCacheDataObj,
+		taskResultCachePointers: cfg.TaskResultCachePointers,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
 	}
-	if key, ok := physical.PlanCacheKey(plan); ok {
-		c.logTaskCacheResult(ctx, logger, key, c.taskResultCache)
+	if key, scanType, ok := physical.PlanCacheKey(plan); ok {
+		if scanType == physical.NodeTypePointersScan {
+			c.logTaskCacheResult(ctx, logger, key, c.taskResultCachePointers)
+		} else {
+			c.logTaskCacheResult(ctx, logger, key, c.taskResultCacheDataObj)
+		}
 	}
 	node, err := plan.Root()
 	if err != nil {
@@ -123,7 +130,8 @@ type Context struct {
 	taskCacheIDCachePointers cache.Cache
 	dataObjectLogsCache      cache.Cache
 	dataObjectPointersCache  cache.Cache
-	taskResultCache          cache.Cache
+	taskResultCacheDataObj  cache.Cache
+	taskResultCachePointers cache.Cache
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {

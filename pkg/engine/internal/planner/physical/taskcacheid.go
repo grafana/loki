@@ -167,16 +167,17 @@ func cacheKeyStringDataObject(location DataObjLocation, section int) string {
 
 // PlanCacheKey returns a deterministic cache key for the entire plan by
 // concatenating the CacheableKey() of all nodes in DFS post-order (scan nodes
-// first, root last). Returns ("", false) if the plan contains no scan nodes
-// (e.g. outer aggregation tasks that consume from other tasks).
-func PlanCacheKey(plan *Plan) (string, bool) {
-	hasScan := false
+// first, root last). It also returns the dominant scan node type
+// (NodeTypeDataObjScan or NodeTypePointersScan) so callers can route to the
+// appropriate cache. Returns ("", NodeTypeInvalid, false) if the plan contains
+// no scan nodes (e.g. outer aggregation tasks that consume from other tasks).
+func PlanCacheKey(plan *Plan) (key string, scanType NodeType, ok bool) {
 	var parts []string
 	for _, root := range plan.Roots() {
 		_ = plan.DFSWalk(root, func(n Node) error {
 			switch n.Type() {
 			case NodeTypeDataObjScan, NodeTypePointersScan:
-				hasScan = true
+				scanType = n.Type()
 			}
 			if k := n.CacheableKey(); k != "" {
 				parts = append(parts, k)
@@ -184,8 +185,8 @@ func PlanCacheKey(plan *Plan) (string, bool) {
 			return nil
 		}, dag.PostOrderWalk)
 	}
-	if !hasScan {
-		return "", false
+	if scanType == NodeTypeInvalid {
+		return "", NodeTypeInvalid, false
 	}
-	return strings.Join(parts, "|"), true
+	return strings.Join(parts, "|"), scanType, true
 }

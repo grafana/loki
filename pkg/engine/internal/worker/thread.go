@@ -68,7 +68,8 @@ type thread struct {
 	TaskCacheIDCachePointers cache.Cache
 	DataObjectLogsCache      cache.Cache
 	DataObjectPointersCache  cache.Cache
-	TaskResultCache          cache.Cache
+	TaskResultCacheDataObj  cache.Cache
+	TaskResultCachePointers cache.Cache
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -139,7 +140,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		TaskCacheIDCacheDataObj:  t.TaskCacheIDCacheDataObj,
 		TaskCacheIDCachePointers: t.TaskCacheIDCachePointers,
 		DataObjectLogsCache:      t.DataObjectLogsCache,
-		TaskResultCache:          t.TaskResultCache,
+		TaskResultCacheDataObj:  t.TaskResultCacheDataObj,
+		TaskResultCachePointers: t.TaskResultCachePointers,
 		DataObjectPointersCache:  t.DataObjectPointersCache,
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
