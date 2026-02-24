@@ -35,7 +35,7 @@ Grafana Logs Drilldown lets you automatically visualize and explore logs. Logs D
 Starting with Grafana v11.3, the plugin for the Logs Drilldown app is installed in Grafana by default.
 {{< /admonition >}}
 
-{{< docs/learning-journeys title="Explore logs using Logs Drilldown" url="https://grafana.com/docs/learning-journeys/drilldown-logs/" >}}
+{{< docs/learning-paths title="Explore logs using Logs Drilldown" url="https://grafana.com/docs/learning-paths/drilldown-logs/" >}}
 
 {{< admonition type="tip" >}}
 There is a link to Grafana Explore available on every panel in Logs Drilldown. Click the menu icon (three stacked dots) to access the link to Explore.  
@@ -78,4 +78,4 @@ To configure Loki as a data source via provisioning, refer to the documentation 
 
 Read more about how to build Grafana Dashboards in [build your first dashboard](https://grafana.com/docs/grafana/latest/getting-started/build-first-dashboard/).
 
-{{< docs/learning-journeys title="Visualize logs in a Grafana Cloud dashboard" url="https://grafana.com/docs/learning-journeys/visualization-logs/" >}}
+{{< docs/learning-paths title="Visualize logs in a Grafana Cloud dashboard" url="https://grafana.com/docs/learning-paths/visualization-logs/" >}}

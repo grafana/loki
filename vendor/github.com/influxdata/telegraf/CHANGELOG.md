@@ -1,6 +1,49 @@
 <!-- markdownlint-disable MD013 MD024 -->
 # Changelog
 
+## v1.37.2 [2026-02-02]
+
+### Bugfixes
+
+- [#18254](https://github.com/influxdata/telegraf/pull/18254) `inputs.cisco_telemetry_mdt` Handle DME events correctly
+- [#18177](https://github.com/influxdata/telegraf/pull/18177) `inputs.nftables` Handle named counter references in JSON output
+- [#18233](https://github.com/influxdata/telegraf/pull/18233) `inputs.procstat` Handle newer versions of systemd correctly
+- [#18225](https://github.com/influxdata/telegraf/pull/18225) `inputs.statsd` Handle negative lengths
+- [#18278](https://github.com/influxdata/telegraf/pull/18278) `parsers.dropwizard` Correct sample config setting name for tag path
+
+### Dependency Updates
+
+- [#18204](https://github.com/influxdata/telegraf/pull/18204) `deps` Bump aws-sdk-go-v2 group with 11 updates
+- [#18260](https://github.com/influxdata/telegraf/pull/18260) `deps` Bump aws-sdk-go-v2 group with 2 updates
+- [#18265](https://github.com/influxdata/telegraf/pull/18265) `deps` Bump cloud.google.com/go/auth from 0.18.0 to 0.18.1
+- [#18212](https://github.com/influxdata/telegraf/pull/18212) `deps` Bump cloud.google.com/go/storage from 1.58.0 to 1.59.0
+- [#18243](https://github.com/influxdata/telegraf/pull/18243) `deps` Bump cloud.google.com/go/storage from 1.59.0 to 1.59.1
+- [#18237](https://github.com/influxdata/telegraf/pull/18237) `deps` Bump github.com/Azure/azure-sdk-for-go/sdk/azcore from 1.20.0 to 1.21.0
+- [#18216](https://github.com/influxdata/telegraf/pull/18216) `deps` Bump github.com/SAP/go-hdb from 1.14.16 to 1.14.17
+- [#18236](https://github.com/influxdata/telegraf/pull/18236) `deps` Bump github.com/SAP/go-hdb from 1.14.17 to 1.14.18
+- [#18270](https://github.com/influxdata/telegraf/pull/18270) `deps` Bump github.com/apache/arrow-go/v18 from 18.5.0 to 18.5.1
+- [#18235](https://github.com/influxdata/telegraf/pull/18235) `deps` Bump github.com/aws/aws-sdk-go-v2/service/ec2 from 1.279.1 to 1.279.2
+- [#18206](https://github.com/influxdata/telegraf/pull/18206) `deps` Bump github.com/gosnmp/gosnmp from 1.43.1 to 1.43.2
+- [#18240](https://github.com/influxdata/telegraf/pull/18240) `deps` Bump github.com/hashicorp/consul/api from 1.33.0 to 1.33.2
+- [#18242](https://github.com/influxdata/telegraf/pull/18242) `deps` Bump github.com/klauspost/compress from 1.18.2 to 1.18.3
+- [#18266](https://github.com/influxdata/telegraf/pull/18266) `deps` Bump github.com/linkedin/goavro/v2 from 2.14.1 to 2.15.0
+- [#18239](https://github.com/influxdata/telegraf/pull/18239) `deps` Bump github.com/microsoft/go-mssqldb from 1.9.5 to 1.9.6
+- [#18210](https://github.com/influxdata/telegraf/pull/18210) `deps` Bump github.com/miekg/dns from 1.1.69 to 1.1.70
+- [#18264](https://github.com/influxdata/telegraf/pull/18264) `deps` Bump github.com/miekg/dns from 1.1.70 to 1.1.72
+- [#18271](https://github.com/influxdata/telegraf/pull/18271) `deps` Bump github.com/redis/go-redis/v9 from 9.17.2 to 9.17.3
+- [#18244](https://github.com/influxdata/telegraf/pull/18244) `deps` Bump github.com/sirupsen/logrus from 1.9.3 to 1.9.4
+- [#18262](https://github.com/influxdata/telegraf/pull/18262) `deps` Bump github.com/tdrn-org/go-tr064 from 0.2.2 to 0.2.3
+- [#18267](https://github.com/influxdata/telegraf/pull/18267) `deps` Bump go.mongodb.org/mongo-driver from 1.17.6 to 1.17.7
+- [#18269](https://github.com/influxdata/telegraf/pull/18269) `deps` Bump go.step.sm/crypto from 0.75.0 to 0.76.0
+- [#18215](https://github.com/influxdata/telegraf/pull/18215) `deps` Bump golang.org/x/crypto from 0.46.0 to 0.47.0
+- [#18208](https://github.com/influxdata/telegraf/pull/18208) `deps` Bump golang.org/x/mod from 0.31.0 to 0.32.0
+- [#18207](https://github.com/influxdata/telegraf/pull/18207) `deps` Bump golang.org/x/net from 0.48.0 to 0.49.0
+- [#18217](https://github.com/influxdata/telegraf/pull/18217) `deps` Bump gonum.org/v1/gonum from 0.16.0 to 0.17.0
+- [#18261](https://github.com/influxdata/telegraf/pull/18261) `deps` Bump google.golang.org/api from 0.257.0 to 0.262.0
+- [#18213](https://github.com/influxdata/telegraf/pull/18213) `deps` Bump modernc.org/sqlite from 1.42.2 to 1.43.0
+- [#18241](https://github.com/influxdata/telegraf/pull/18241) `deps` Bump modernc.org/sqlite from 1.43.0 to 1.44.2
+- [#18263](https://github.com/influxdata/telegraf/pull/18263) `deps` Bump modernc.org/sqlite from 1.44.2 to 1.44.3
+
 ## v1.37.1 [2026-01-12]
 
 ### Bugfixes

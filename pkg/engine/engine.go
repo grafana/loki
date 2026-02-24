@@ -10,8 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alecthomas/units"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
@@ -62,6 +64,10 @@ type ExecutorConfig struct {
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
 
+	// PrefetchBytes controls the number of bytes read ahead from a data object
+	// when opening it.
+	PrefetchBytes flagext.Bytes `yaml:"prefetch_bytes" category:"experimental"`
+
 	// MergePrefetchCount controls the number of inputs that are prefetched simultaneously by any Merge node.
 	MergePrefetchCount int `yaml:"merge_prefetch_count" category:"experimental"`
 
@@ -74,7 +80,10 @@ type ExecutorConfig struct {
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.PrefetchBytes = flagext.Bytes(16 * units.KiB)
+
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
+	f.Var(&cfg.PrefetchBytes, prefix+"prefetch-bytes", "Experimental: Number of bytes to prefetch when opening a data object for decoding metadata and overlapping section reads. Clamps to at least 16KiB.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
 }
@@ -202,7 +211,10 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 
-	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan)
+	// Enable admission lanes only for log queries
+	useAdmissionLanes := !isMetricQuery(params.GetExpression())
+
+	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan, useAdmissionLanes)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		span.SetStatus(codes.Error, "failed to create execution plan")
@@ -285,6 +297,13 @@ func injectQueryTags(ctx context.Context, logger log.Logger) log.Logger {
 		return logger
 	}
 	return log.With(logger, httpreq.TagsToKeyValues(tags)...)
+}
+
+// isMetricQuery returns true if the given expression is a metric query,
+// false if it is a log query.
+func isMetricQuery(expr syntax.Expr) bool {
+	_, ok := expr.(syntax.SampleExpr)
+	return ok
 }
 
 // buildLogicalPlan builds a logical plan from the given params.
@@ -384,7 +403,10 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 			return nil, fmt.Errorf("metastore: build plan: %w", err)
 		}
 
-		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan)
+		// Disable admission lanes for metastore queries
+		useAdmissionLanes := false
+
+		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan, useAdmissionLanes)
 		if err != nil {
 			return nil, fmt.Errorf("metastore: build workflow: %w", err)
 		}
@@ -417,15 +439,21 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 }
 
 // buildWorkflow builds a workflow from the given physical plan.
-func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.Logger, physicalPlan *physical.Plan) (*workflow.Workflow, time.Duration, error) {
+func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.Logger, physicalPlan *physical.Plan, useAdmissionLanes bool) (*workflow.Workflow, time.Duration, error) {
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
+
+	maxRunningScanTasks := 0
+	// Set max running tasks limits on when admission lanes are enabled
+	if useAdmissionLanes {
+		maxRunningScanTasks = e.limits.MaxScanTaskParallelism(tenantID)
+	}
 
 	opts := workflow.Options{
 		Tenant: tenantID,
 		Actor:  httpreq.ExtractActorPath(ctx),
 
-		MaxRunningScanTasks:  e.limits.MaxScanTaskParallelism(tenantID),
+		MaxRunningScanTasks:  maxRunningScanTasks,
 		MaxRunningOtherTasks: 0,
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),

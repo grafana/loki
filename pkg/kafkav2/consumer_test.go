@@ -125,7 +125,7 @@ func TestSinglePartitionConsumer_SetInitialOffset(t *testing.T) {
 
 	// The consumer should have the initial offset of OffsetStart, and allow us
 	// to change the initial offset until the service is started.
-	require.Equal(t, services.New, consumer.BasicService.State())
+	require.Equal(t, services.New, consumer.State())
 	require.Equal(t, OffsetStart, consumer.GetInitialOffset())
 	require.NoError(t, consumer.SetInitialOffset(OffsetEnd))
 	require.Equal(t, OffsetEnd, consumer.GetInitialOffset())

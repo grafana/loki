@@ -3370,6 +3370,35 @@ type InstanceLaunchTemplate struct {
 	// This member is required.
 	NetworkConfiguration *ManagedInstancesNetworkConfiguration
 
+	// The capacity option type. This determines whether Amazon ECS launches On-Demand
+	// or Spot Instances for your managed instance capacity provider.
+	//
+	// Valid values are:
+	//
+	//   - ON_DEMAND - Launches standard On-Demand Instances. On-Demand Instances
+	//   provide predictable pricing and availability.
+	//
+	//   - SPOT - Launches Spot Instances that use spare Amazon EC2 capacity at reduced
+	//   cost. Spot Instances can be interrupted by Amazon EC2 with a two-minute
+	//   notification when the capacity is needed back.
+	//
+	// The default is On-Demand
+	//
+	// For more information about Amazon EC2 capacity options, see [Instance purchasing options] in the Amazon EC2
+	// User Guide.
+	//
+	// [Instance purchasing options]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-purchasing-options.html
+	CapacityOptionType CapacityOptionType
+
+	// Determines whether to enable FIPS 140-2 validated cryptographic modules on EC2
+	// instances launched by the capacity provider. If true , instances use
+	// FIPS-compliant cryptographic algorithms and modules for enhanced security
+	// compliance. If false , instances use standard cryptographic implementations.
+	//
+	// If not specified, instances are launched with FIPS enabled in AWS GovCloud (US)
+	// regions and FIPS disabled in other regions.
+	FipsEnabled *bool
+
 	// The instance requirements. You can specify:
 	//
 	//   - The instance types

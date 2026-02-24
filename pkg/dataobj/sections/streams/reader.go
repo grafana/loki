@@ -424,6 +424,7 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	}
 	r.opts = opts
 	r.schema = columnsSchema(opts.Columns)
+	r.readSpan = nil
 
 	r.ready = false
 
