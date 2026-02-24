@@ -395,7 +395,9 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 		}
 
 		// Disable admission lanes for metastore queries
-		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan, false)
+		useAdmissionLanes := false
+
+		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan, useAdmissionLanes)
 		if err != nil {
 			return nil, fmt.Errorf("metastore: build workflow: %w", err)
 		}
