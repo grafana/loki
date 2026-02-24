@@ -1,7 +1,6 @@
 package config
 
 import (
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
@@ -59,12 +58,7 @@ func mergeOptionsFromFile(o manager.Options, cfg *configv1.ProjectConfig) manage
 
 		// Only enable Secure Serving when explicitly configured
 		if cfg.Metrics.Secure {
-			disableHTTP2 := func(c *tls.Config) {
-				c.NextProtos = []string{"http/1.1"}
-			}
-
 			o.Metrics.SecureServing = true
-			o.Metrics.TLSOpts = []func(*tls.Config){disableHTTP2}
 			o.Metrics.FilterProvider = filters.WithAuthenticationAndAuthorization
 		}
 

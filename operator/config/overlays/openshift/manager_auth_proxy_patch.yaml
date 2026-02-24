@@ -10,6 +10,10 @@ spec:
         ports:
         - containerPort: 8443
           name: metrics
+        volumeMounts:
+        - name: loki-operator-metrics-cert
+          mountPath: /tmp/k8s-metrics-server/serving-certs
+          readOnly: true
       volumes:
       - name: loki-operator-metrics-cert
         secret:
