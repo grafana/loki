@@ -202,7 +202,10 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 
-	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan, !isMetricQuery(params.GetExpression()))
+	// Enable admission lanes only for log queries
+	useAdmissionLanes := !isMetricQuery(params.GetExpression())
+
+	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan, useAdmissionLanes)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		span.SetStatus(codes.Error, "failed to create execution plan")
@@ -430,6 +433,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 
 	maxRunningScanTasks := 0
 	maxRunningOtherTasks := 0
+	// Set max running tasks limits on when admission lanes are enabled
 	if useAdmissionLanes {
 		maxRunningScanTasks = e.limits.MaxScanTaskParallelism(tenantID)
 		// maxRunningOtherTasks := e.limits.MaxOtherTaskParallelism(tenantID)
