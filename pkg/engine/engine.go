@@ -202,7 +202,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 
-	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan)
+	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan, !isMetricQuery(params.GetExpression()))
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		span.SetStatus(codes.Error, "failed to create execution plan")
@@ -285,6 +285,13 @@ func injectQueryTags(ctx context.Context, logger log.Logger) log.Logger {
 		return logger
 	}
 	return log.With(logger, httpreq.TagsToKeyValues(tags)...)
+}
+
+// isMetricQuery returns true if the given expression is a metric query,
+// false if it is a log query.
+func isMetricQuery(expr syntax.Expr) bool {
+	_, ok := expr.(syntax.SampleExpr)
+	return ok
 }
 
 // buildLogicalPlan builds a logical plan from the given params.
@@ -384,7 +391,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 			return nil, fmt.Errorf("metastore: build plan: %w", err)
 		}
 
-		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan)
+		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan, false)
 		if err != nil {
 			return nil, fmt.Errorf("metastore: build workflow: %w", err)
 		}
@@ -417,16 +424,23 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 }
 
 // buildWorkflow builds a workflow from the given physical plan.
-func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.Logger, physicalPlan *physical.Plan) (*workflow.Workflow, time.Duration, error) {
+func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.Logger, physicalPlan *physical.Plan, useAdmissionLanes bool) (*workflow.Workflow, time.Duration, error) {
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
+
+	maxRunningScanTasks := 0
+	maxRunningOtherTasks := 0
+	if useAdmissionLanes {
+		maxRunningScanTasks = e.limits.MaxScanTaskParallelism(tenantID)
+		// maxRunningOtherTasks := e.limits.MaxOtherTaskParallelism(tenantID)
+	}
 
 	opts := workflow.Options{
 		Tenant: tenantID,
 		Actor:  httpreq.ExtractActorPath(ctx),
 
-		MaxRunningScanTasks:  e.limits.MaxScanTaskParallelism(tenantID),
-		MaxRunningOtherTasks: 0,
+		MaxRunningScanTasks:  maxRunningScanTasks,
+		MaxRunningOtherTasks: maxRunningOtherTasks,
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),
