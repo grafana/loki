@@ -142,6 +142,8 @@ type Worker struct {
 	taskCacheIDCachePointers cache.Cache
 	dataObjectLogsCache      cache.Cache
 	dataObjectPointersCache  cache.Cache
+	taskResultCacheDataObj   cache.Cache
+	taskResultCachePointers  cache.Cache
 }
 
 // New creates a new instance of a worker. Use [Worker.Service] to manage
@@ -167,7 +169,7 @@ func New(config Config) (*Worker, error) {
 		numThreads = runtime.GOMAXPROCS(0)
 	}
 
-	var taskCacheIDCacheDataObj, taskCacheIDCachePointers, dataObjectLogsCache, dataObjectPointersCache cache.Cache
+	var taskCacheIDCacheDataObj, taskCacheIDCachePointers, dataObjectLogsCache, dataObjectPointersCache, taskResultCacheDataObj, taskResultCachePointers cache.Cache
 	if cache.IsCacheConfigured(config.TaskCacheIDCacheConfig) && config.Registerer != nil {
 		cfgDataObj := config.TaskCacheIDCacheConfig
 		cfgDataObj.Prefix = cfgDataObj.Prefix + "dataobj."
@@ -224,6 +226,34 @@ func New(config Config) (*Worker, error) {
 			return nil, fmt.Errorf("create data object pointers task cache: %w", err)
 		}
 		dataObjectPointersCache = cacheDataObjectPointers
+
+		cfgTaskResultDataObj := config.TaskCacheIDCacheConfig
+		cfgTaskResultDataObj.Prefix = cfgTaskResultDataObj.Prefix + "task-result-dataobj."
+		cacheTaskResultDataObj, err := cache.New(
+			cfgTaskResultDataObj,
+			config.Registerer,
+			config.Logger,
+			stats.TaskResultDataObjCache,
+			constants.Loki,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create task result dataobj cache: %w", err)
+		}
+		taskResultCacheDataObj = cacheTaskResultDataObj
+
+		cfgTaskResultPointers := config.TaskCacheIDCacheConfig
+		cfgTaskResultPointers.Prefix = cfgTaskResultPointers.Prefix + "task-result-pointers."
+		cacheTaskResultPointers, err := cache.New(
+			cfgTaskResultPointers,
+			config.Registerer,
+			config.Logger,
+			stats.TaskResultPointersCache,
+			constants.Loki,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create task result pointers cache: %w", err)
+		}
+		taskResultCachePointers = cacheTaskResultPointers
 	}
 
 	return &Worker{
@@ -247,6 +277,8 @@ func New(config Config) (*Worker, error) {
 		taskCacheIDCachePointers: taskCacheIDCachePointers,
 		dataObjectLogsCache:      dataObjectLogsCache,
 		dataObjectPointersCache:  dataObjectPointersCache,
+		taskResultCacheDataObj:   taskResultCacheDataObj,
+		taskResultCachePointers:  taskResultCachePointers,
 	}, nil
 }
 
@@ -278,6 +310,8 @@ func (w *Worker) run(ctx context.Context) error {
 			TaskCacheIDCachePointers: w.taskCacheIDCachePointers,
 			DataObjectLogsCache:      w.dataObjectLogsCache,
 			DataObjectPointersCache:  w.dataObjectPointersCache,
+			TaskResultCacheDataObj:   w.taskResultCacheDataObj,
+			TaskResultCachePointers:  w.taskResultCachePointers,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,

@@ -84,6 +84,8 @@ const (
 	TaskCacheIDPointersCache    CacheType = "task-cache-id-pointers"    //nolint:staticcheck
 	DataObjectLogsTaskCache     CacheType = "data-object-logs-task"     //nolint:staticcheck
 	DataObjectPointersTaskCache CacheType = "data-object-pointers-task" //nolint:staticcheck
+	TaskResultDataObjCache      CacheType = "task-result-dataobj"       //nolint:staticcheck
+	TaskResultPointersCache     CacheType = "task-result-pointers"      //nolint:staticcheck
 )
 
 // NewContext creates a new statistics context
