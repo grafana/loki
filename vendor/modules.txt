@@ -2240,14 +2240,14 @@ go.opentelemetry.io/collector/confmap/xconfmap
 ## explicit; go 1.24.0
 go.opentelemetry.io/collector/consumer
 go.opentelemetry.io/collector/consumer/internal
-# go.opentelemetry.io/collector/featuregate v1.51.0
-## explicit; go 1.24.0
+# go.opentelemetry.io/collector/featuregate v1.52.0
+## explicit; go 1.25.0
 go.opentelemetry.io/collector/featuregate
 # go.opentelemetry.io/collector/internal/componentalias v0.145.0
 ## explicit; go 1.24.0
 go.opentelemetry.io/collector/internal/componentalias
-# go.opentelemetry.io/collector/pdata v1.51.0
-## explicit; go 1.24.0
+# go.opentelemetry.io/collector/pdata v1.52.0
+## explicit; go 1.25.0
 go.opentelemetry.io/collector/pdata/internal
 go.opentelemetry.io/collector/pdata/internal/json
 go.opentelemetry.io/collector/pdata/internal/otelgrpc
