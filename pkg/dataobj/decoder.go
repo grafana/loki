@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"golang.org/x/sync/errgroup"
 
@@ -29,8 +30,10 @@ type decoder struct {
 func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	prefetchBytes := d.effectivePrefetchBytes()
 
-	buf := bufpool.Get(int(prefetchBytes))
-	defer bufpool.Put(buf)
+	// TODO(rfratto): If there was a Close method on [Object], we could use a
+	// pool here to reduce allocations and return it to the pool when the object
+	// is closed.
+	buf := make([]byte, prefetchBytes)
 
 	g, gctx := errgroup.WithContext(ctx)
 
@@ -49,9 +52,12 @@ func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	}
 
 	g.Go(func() error {
-		if err := d.readFirstBytes(gctx, prefetchBytes, buf); err != nil {
+		n, err := d.readFirstBytes(gctx, prefetchBytes, buf)
+		if err != nil {
 			return fmt.Errorf("reading first %d bytes: %w", prefetchBytes, err)
 		}
+
+		buf = buf[:n]
 		return nil
 	})
 
@@ -59,20 +65,21 @@ func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 		return nil, err
 	}
 
-	d.setPrefetchedBytes(0, buf.Bytes())
-
 	header, err := d.header(buf)
 	if err != nil && errors.Is(err, errLegacyMagic) {
-		// Fall back to legacy metadata.
-		return d.legacyMetadata(ctx)
+		// Fall back to legacy metadata, reusing the same prefetch buffer we
+		// allocated already.
+		buf = buf[:0]
+		return d.legacyMetadata(ctx, buf)
 	}
 
+	d.setPrefetchedBytes(0, buf)
 	d.startOff = int64(8) + int64(header.MetadataSize)
 
-	if header.MetadataSize+8 <= uint64(buf.Len()) {
+	if header.MetadataSize+8 <= uint64(len(buf)) {
 		// Optimistic read was successful, so we can decode the metadata from
 		// the buffer.
-		rc := bytes.NewReader(buf.Bytes()[8:])
+		rc := bytes.NewReader(buf[8:])
 		return decodeFileMetadata(rc)
 	}
 
@@ -89,44 +96,48 @@ func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	return decodeFileMetadata(br)
 }
 
-func (d *decoder) readFirstBytes(ctx context.Context, readSize int64, buf *bytes.Buffer) error {
+func (d *decoder) readFirstBytes(ctx context.Context, readSize int64, buf []byte) (int, error) {
 	rc, err := d.rr.ReadRange(ctx, 0, readSize)
 	if err != nil {
-		return fmt.Errorf("reading data: %w", err)
+		return 0, fmt.Errorf("reading data: %w", err)
 	}
 	defer rc.Close()
 
 	// readSize may be bigger than the actual file, but we'll read as much as
 	// possible and let the decoders decide if the file is missing data.
-	if _, err := io.Copy(buf, rc); err != nil {
-		return fmt.Errorf("copying data: %w", err)
+	n, err := io.ReadAtLeast(rc, buf, int(readSize))
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return n, err
 	}
-	return nil
+	return n, nil
 }
 
-func (d *decoder) legacyMetadata(ctx context.Context) (*filemd.Metadata, error) {
+func (d *decoder) legacyMetadata(ctx context.Context, buf []byte) (*filemd.Metadata, error) {
 	objectSize, err := d.objectSize(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading object size: %w", err)
 	}
 
 	readSize := min(objectSize, d.effectivePrefetchBytes())
-	buf := bufpool.Get(int(readSize))
-	defer bufpool.Put(buf)
+	buf = slices.Grow(buf, int(readSize))
+	buf = buf[:readSize]
 
-	if err := d.readLastBytes(ctx, readSize, buf); err != nil {
-		return nil, fmt.Errorf("reading last bytes: %w", err)
+	n, err := d.readLastBytes(ctx, readSize, buf)
+	if err != nil {
+		return nil, fmt.Errorf("reading last %d bytes: %w", readSize, err)
 	}
-	d.setPrefetchedBytes(objectSize-readSize, buf.Bytes())
+	buf = buf[:n]
+
+	d.setPrefetchedBytes(objectSize-readSize, buf)
 
 	tailer, err := d.tailer(ctx, buf)
 	if err != nil {
 		return nil, fmt.Errorf("reading tailer: %w", err)
 	}
 
-	if tailer.MetadataSize+8 <= uint64(buf.Len()) {
+	if tailer.MetadataSize+8 <= uint64(len(buf)) {
 		// Optimistic read was successful, so we can decode the metadata from the buffer
-		rc := bytes.NewReader(buf.Bytes()[buf.Len()-int(tailer.MetadataSize)-8 : buf.Len()-8])
+		rc := bytes.NewReader(buf[len(buf)-int(tailer.MetadataSize)-8 : len(buf)-8])
 		return decodeFileMetadata(rc)
 	}
 
@@ -143,23 +154,22 @@ func (d *decoder) legacyMetadata(ctx context.Context) (*filemd.Metadata, error) 
 	return decodeFileMetadata(br)
 }
 
-func (d *decoder) readLastBytes(ctx context.Context, readSize int64, buf *bytes.Buffer) error {
+func (d *decoder) readLastBytes(ctx context.Context, readSize int64, buf []byte) (int, error) {
 	objectSize, err := d.objectSize(ctx)
 	if err != nil {
-		return fmt.Errorf("reading object size: %w", err)
+		return 0, fmt.Errorf("reading object size: %w", err)
 	}
+
+	// Truncate readSize to the object size so the range doesn't go negative.
+	readSize = min(readSize, objectSize)
 
 	rc, err := d.rr.ReadRange(ctx, objectSize-readSize, readSize)
 	if err != nil {
-		return fmt.Errorf("reading last %d bytes: %w", readSize, err)
+		return 0, fmt.Errorf("reading last %d bytes: %w", readSize, err)
 	}
 	defer rc.Close()
 
-	_, err = io.CopyN(buf, rc, readSize)
-	if err != nil {
-		return fmt.Errorf("copying last %d bytes: %w", readSize, err)
-	}
-	return nil
+	return io.ReadAtLeast(rc, buf, int(readSize))
 }
 
 func (d *decoder) objectSize(ctx context.Context) (int64, error) {
@@ -177,10 +187,10 @@ type header struct {
 	MetadataSize uint64
 }
 
-func (d *decoder) header(headData *bytes.Buffer) (header, error) {
-	off := min(int64(headData.Len()), 8)
+func (d *decoder) header(headData []byte) (header, error) {
+	off := min(int64(len(headData)), 8)
 
-	br := bytes.NewReader(headData.Bytes()[:off])
+	br := bytes.NewReader(headData[:off])
 
 	metadataSize, err := decodeHeader(br)
 	if err != nil {
@@ -195,13 +205,13 @@ type tailer struct {
 	FileSize     uint64
 }
 
-func (d *decoder) tailer(ctx context.Context, tailData *bytes.Buffer) (tailer, error) {
+func (d *decoder) tailer(ctx context.Context, tailData []byte) (tailer, error) {
 	objectSize, err := d.objectSize(ctx)
 	if err != nil {
 		return tailer{}, fmt.Errorf("reading object size: %w", err)
 	}
 
-	br := bytes.NewReader(tailData.Bytes()[tailData.Len()-8:])
+	br := bytes.NewReader(tailData[len(tailData)-8:])
 
 	metadataSize, err := decodeTailer(br)
 	if err != nil {
@@ -240,11 +250,10 @@ func (d *decoder) setPrefetchedBytes(offset int64, data []byte) {
 		return
 	}
 
-	copied := append([]byte(nil), data...)
 	d.prefetchedRangeReader = &prefetchedRangeReader{
 		inner:          d.rr,
 		prefetchOffset: offset,
-		prefetched:     copied,
+		prefetched:     data,
 	}
 }
 
