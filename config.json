@@ -1,0 +1,12 @@
+[
+  {
+    "tenants": ["tenant1", "tenant2"],
+    "serialNumber": ["01:23:45:67:89:ab:cd:ef"]
+  },
+  {
+    "tenants": ["tenant3"],
+    "serialNumber": ["fe:dc:ba:98:76:54:32:10"]
+  }
+]
+
+

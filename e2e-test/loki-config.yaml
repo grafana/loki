@@ -1,0 +1,53 @@
+auth_enabled: true
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+frontend:
+  authz_enabled: false
+  rate_limit:
+    enable: true
+    redis_address: "redis:6379"
+    default_request_limit: 10
+    default_byte_limit: 10485760
+    default_window: 60s
+    rate_limit_by_tenant: true
+    fallback_to_ip: true
+
+ingester:
+  wal:
+    replay_memory_ceiling: 256MB
+    flush_on_shutdown: true
+
+limits_config:
+  allow_structured_metadata: true
+  volume_enabled: true
+
+ruler:
+  alertmanager_url: http://localhost:9093
+
+analytics:
+  reporting_enabled: false

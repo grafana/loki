@@ -3,13 +3,18 @@ package transport
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
@@ -48,6 +53,9 @@ type HandlerConfig struct {
 	LogQueryRequestHeaders flagext.StringSliceCSV `yaml:"log_query_request_headers"`
 	MaxBodySize            int64                  `yaml:"max_body_size"`
 	QueryStatsEnabled      bool                   `yaml:"query_stats_enabled"`
+	AuthZEnabled           bool                   `yaml:"authz_enabled"`
+	AuthZConfigPath        string                 `yaml:"authz_config_path"`
+	AuthZReloadInterval    time.Duration          `yaml:"authz_reload_interval"`
 }
 
 func (cfg *HandlerConfig) RegisterFlags(f *flag.FlagSet) {
@@ -55,14 +63,18 @@ func (cfg *HandlerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.LogQueryRequestHeaders, "frontend.log-query-request-headers", "Comma-separated list of request header names to include in query logs. Applies to both query stats and slow queries logs.")
 	f.Int64Var(&cfg.MaxBodySize, "frontend.max-body-size", 10*1024*1024, "Max body size for downstream prometheus.")
 	f.BoolVar(&cfg.QueryStatsEnabled, "frontend.query-stats-enabled", false, "True to enable query statistics tracking. When enabled, a message with some statistics is logged for every query.")
+	f.BoolVar(&cfg.AuthZEnabled, "frontend.authz-enabled", false, "True to enable TLS certificate-based authorization.")
+	f.StringVar(&cfg.AuthZConfigPath, "frontend.authz-config-path", "config.json", "Path to the authorization configuration file.")
+	f.DurationVar(&cfg.AuthZReloadInterval, "frontend.authz-reload-interval", 5*time.Minute, "Interval at which to reload the authorization configuration.")
 }
 
 // Handler accepts queries and forwards them to RoundTripper. It can log slow queries,
 // but all other logic is inside the RoundTripper.
 type Handler struct {
-	cfg          HandlerConfig
-	log          log.Logger
-	roundTripper http.RoundTripper
+	cfg              HandlerConfig
+	log              log.Logger
+	roundTripper     http.RoundTripper
+	rateLimitAdapter *RateLimitAdapter
 
 	// Metrics.
 	querySeconds *prometheus.CounterVec
@@ -73,10 +85,16 @@ type Handler struct {
 
 // NewHandler creates a new frontend handler.
 func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer, metricsNamespace string) http.Handler {
+	return NewHandlerWithRateLimit(cfg, roundTripper, log, reg, metricsNamespace, nil)
+}
+
+// NewHandlerWithRateLimit creates a new frontend handler with optional rate limiting.
+func NewHandlerWithRateLimit(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer, metricsNamespace string, rateLimitAdapter *RateLimitAdapter) http.Handler {
 	h := &Handler{
-		cfg:          cfg,
-		log:          log,
-		roundTripper: roundTripper,
+		cfg:              cfg,
+		log:              log,
+		roundTripper:     roundTripper,
+		rateLimitAdapter: rateLimitAdapter,
 	}
 
 	if cfg.QueryStatsEnabled {
@@ -107,15 +125,218 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 		_ = h.activeUsers.StartAsync(context.Background())
 	}
 
+	// Load the initial configuration and start the reload goroutine if authorization is enabled
+	if cfg.AuthZEnabled {
+		level.Info(log).Log("msg", "TLS certificate-based authorization is enabled")
+
+		if cfg.AuthZConfigPath != "" {
+			// Load initial config
+			initialConfig, err := LoadConfig(cfg.AuthZConfigPath)
+			if err != nil {
+				level.Warn(log).Log("msg", "Failed to load initial auth config", "path", cfg.AuthZConfigPath, "err", err)
+			} else {
+				configLock.Lock()
+				authZconfigMap = initialConfig
+				configLock.Unlock()
+				level.Info(log).Log("msg", "Initial authorization configuration loaded successfully", "path", cfg.AuthZConfigPath)
+			}
+
+			// Start the reload goroutine
+			if cfg.AuthZReloadInterval > 0 {
+				go ReloadConfig(cfg.AuthZConfigPath, cfg.AuthZReloadInterval)
+				level.Info(log).Log("msg", "Started authorization config reload goroutine", "interval", cfg.AuthZReloadInterval)
+			}
+		} else {
+			level.Warn(log).Log("msg", "Authorization is enabled but no config path is specified")
+		}
+	} else {
+		level.Info(log).Log("msg", "TLS certificate-based authorization is disabled")
+	}
+
 	return h
 }
 
+type AuthZConfigEntry struct {
+	Tenants      []string `json:"tenants"`
+	SerialNumber []string `json:"serialNumber"`
+}
+
+var (
+	authZconfigMap map[string][]string
+	configLock     sync.RWMutex
+	enableBuckets  bool
+)
+
+func parseSubject(subject string) (commonName, orgUnit, ouQualifier string) {
+	parts := strings.Split(subject, ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+
+		if strings.HasPrefix(part, "CN=") {
+			commonName = strings.TrimPrefix(part, "CN=")
+		} else if strings.HasPrefix(part, "OU=") {
+			// Handle format like: OU=unit:qualifier
+			ouValue := strings.TrimPrefix(part, "OU=")
+			subParts := strings.SplitN(ouValue, ":", 2)
+			orgUnit = subParts[0]
+			if len(subParts) == 2 {
+				ouQualifier = subParts[1]
+			}
+		}
+	}
+	return
+}
+
+// formatSerialNumber formats a byte slice into a colon-separated hex string
+func formatSerialNumber(bytes []byte) string {
+	parts := make([]string, len(bytes))
+	for i, b := range bytes {
+		parts[i] = fmt.Sprintf("%02x", b)
+	}
+	return strings.Join(parts, ":")
+}
+
+func LoadConfig(path string) (map[string][]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []AuthZConfigEntry
+	err = json.Unmarshal(data, &entries)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build the config map.
+	newConfigMap := make(map[string][]string)
+	for _, entry := range entries {
+		for _, serialNumber := range entry.SerialNumber {
+			if _, exists := newConfigMap[serialNumber]; exists {
+				newConfigMap[serialNumber] = append(newConfigMap[serialNumber], entry.Tenants...)
+			} else {
+				newConfigMap[serialNumber] = entry.Tenants
+			}
+		}
+	}
+	return newConfigMap, nil
+}
+
+func ReloadConfig(configPath string, interval time.Duration) {
+	logger := util_log.Logger
+	for {
+		// Load the new configuration
+		newConfig, err := LoadConfig(configPath)
+		if err != nil {
+			level.Warn(logger).Log("msg", "Error loading config", "err", err, "path", configPath)
+			time.Sleep(interval) // Sleep before trying again
+			continue
+		}
+
+		// Safely update the global config map
+		configLock.Lock()
+		authZconfigMap = newConfig
+		configLock.Unlock()
+		level.Info(logger).Log("msg", "Authorization configuration reloaded successfully", "path", configPath)
+
+		// Wait for the next reload cycle
+		time.Sleep(interval)
+	}
+}
+
+func GetConfig(serialNumber string) ([]string, bool) {
+	configLock.RLock()
+	defer configLock.RUnlock()
+	serialNumbers, exists := authZconfigMap[serialNumber]
+	return serialNumbers, exists
+}
+
+
 func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Apply rate limiting if configured
+	if f.rateLimitAdapter != nil {
+		middleware := f.rateLimitAdapter.QueryAPIMiddleware()
+		handler := middleware(http.HandlerFunc(f.handleRequest))
+		handler.ServeHTTP(w, r)
+		return
+	}
+
+	// If no rate limiting, handle request directly
+	f.handleRequest(w, r)
+}
+
+func (f *Handler) handleRequest(w http.ResponseWriter, r *http.Request) {
 	var (
 		stats       *querier_stats.Stats
 		queryString url.Values
 	)
+	xScopeOrgID := r.Header.Get("X-Scope-OrgID")
 
+	// Only perform authorization check if it's enabled
+	if f.cfg.AuthZEnabled {
+		var certTenantID string
+		var tenantIDs []string
+		if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+			var found bool
+
+			for _, cert := range r.TLS.PeerCertificates {
+				cn, ou, qualifier := parseSubject(cert.Issuer.String())
+				if cn != "" && ou != "" && qualifier != "" {
+					tenantIDs = append(tenantIDs, cn)
+					level.Debug(f.log).Log("msg", "Added issuer tenant ID", "tenantID", cn)
+				} else {
+					level.Debug(f.log).Log("msg", "Skipped issuer - incomplete values", "cn", cn, "ou", ou, "qualifier", qualifier)
+				}
+
+				cn1, ou1, qualifier1 := parseSubject(cert.Subject.String())
+				if cn1 != "" && ou1 != "" && qualifier1 != "" {
+					tenantIDs = append(tenantIDs, cn1)
+					level.Debug(f.log).Log("msg", "Added subject tenant ID", "tenantID", cn1)
+				} else {
+					level.Debug(f.log).Log("msg", "Skipped subject - incomplete values", "cn", cn1, "ou", ou1, "qualifier", qualifier1)
+				}
+
+				serialNumber := formatSerialNumber(cert.SerialNumber.Bytes())
+				if allowedTenants, exists := GetConfig(serialNumber); exists {
+					for _, tid := range tenantIDs {
+						if slices.Contains(allowedTenants, tid) {
+							certTenantID = tid
+							found = true
+							break
+						}
+						if found {
+							break
+						}
+					}
+				}
+			}
+		}
+
+		// Log when tenant IDs were extracted but no match found in config
+		if len(tenantIDs) > 0 && certTenantID == "" {
+			level.Debug(f.log).Log("msg", "No matching tenant found in config map", "extractedTenants", fmt.Sprintf("%v", tenantIDs), "xScopeOrgID", xScopeOrgID)
+		}
+
+		if certTenantID != "" && xScopeOrgID != certTenantID {
+			server.WriteError(fmt.Errorf("unauthorized"), w)
+			level.Debug(f.log).Log("msg", "Authorization failed - tenant mismatch", "certTenantID", certTenantID, "requestedTenant", xScopeOrgID)
+			return
+		}
+		if certTenantID == "" {
+			// No valid authorization found
+			server.WriteError(fmt.Errorf("unauthorized: no valid certificate authorization"), w)
+			level.Debug(f.log).Log("msg", "Authorization failed - no valid certificate authorization found", "xScopeOrgID", xScopeOrgID)
+			return
+		}
+
+		level.Debug(f.log).Log("msg", "Authorization check passed", "tenant", xScopeOrgID, "certTenantID", certTenantID)
+	}
 	// Initialise the stats in the context and make sure it's propagated
 	// down the request chain.
 	if f.cfg.QueryStatsEnabled {
