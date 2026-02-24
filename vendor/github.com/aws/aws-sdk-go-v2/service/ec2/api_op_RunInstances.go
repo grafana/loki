@@ -346,6 +346,9 @@ type RunInstancesInput struct {
 	// [PV-GRUB]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/UserProvidedkernels.html
 	RamdiskId *string
 
+	// The secondary interfaces to associate with the instance.
+	SecondaryInterfaces []types.InstanceSecondaryInterfaceSpecificationRequest
+
 	// The IDs of the security groups.
 	//
 	// If you specify a network interface, you must specify any security groups as
