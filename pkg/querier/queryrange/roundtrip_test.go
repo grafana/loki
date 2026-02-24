@@ -1549,6 +1549,10 @@ func (f fakeLimits) DebugEngineStreams(_ string) bool {
 	return false
 }
 
+func (f fakeLimits) MetastorePointersScansPerTask(_ string) int {
+	return 0
+}
+
 type ingesterQueryOpts struct {
 	queryStoreOnly       bool
 	queryIngestersWithin time.Duration

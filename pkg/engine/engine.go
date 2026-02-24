@@ -393,7 +393,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 }
 
 func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string) physical.MetastoreSectionsResolver {
-	planner := physical.NewMetastorePlanner(e.metastore)
+	planner := physical.NewMetastorePlanner(e.metastore, e.limits.MetastorePointersScansPerTask(tenantID))
 	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
 		ctx, span := xcap.StartSpan(ctx, tracer, "engine.metastoreResolver")
 		defer span.End()

@@ -109,3 +109,7 @@ func (m *MockLimits) DebugEngineStreams(_ string) bool {
 func (m *MockLimits) DebugEngineTasks(_ string) bool {
 	return false
 }
+
+func (m *MockLimits) MetastorePointersScansPerTask(_ string) int {
+	return 0
+}

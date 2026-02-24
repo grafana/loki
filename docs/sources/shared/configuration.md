@@ -4966,6 +4966,11 @@ otlp_config:
 # engine.
 # CLI flag: -limits.debug-engine-streams
 [debug_engine_streams: <boolean> | default = false]
+
+# Experimental: Number of PointersScan targets to batch per task at the workflow
+# level. 0 = one task per path.
+# CLI flag: -limits.metastore-pointers-scans-per-task
+[metastore_pointers_scans_per_task: <int> | default = 0]
 ```
 
 ### local_storage_config
