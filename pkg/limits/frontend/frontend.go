@@ -119,7 +119,9 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 	resp, err := f.limitsClient.ExceedsLimits(ctx, req)
 	if err != nil {
 		// If the entire call failed, then all streams failed.
-		resp = &proto.ExceedsLimitsResponse{}
+		resp = &proto.ExceedsLimitsResponse{
+			Results: make([]*proto.ExceedsLimitsResult, 0, len(req.Streams)),
+		}
 		for _, stream := range req.Streams {
 			resp.Results = append(resp.Results, &proto.ExceedsLimitsResult{
 				StreamHash: stream.StreamHash,
@@ -146,7 +148,9 @@ func (f *Frontend) UpdateRates(ctx context.Context, req *proto.UpdateRatesReques
 	resp, err := f.limitsClient.UpdateRates(ctx, req)
 	if err != nil {
 		// If the entire call failed, then all streams failed.
-		resp = &proto.UpdateRatesResponse{}
+		resp = &proto.UpdateRatesResponse{
+			Results: make([]*proto.UpdateRatesResult, 0, len(req.Streams)),
+		}
 		for _, stream := range req.Streams {
 			resp.Results = append(resp.Results, &proto.UpdateRatesResult{
 				StreamHash: stream.StreamHash,
