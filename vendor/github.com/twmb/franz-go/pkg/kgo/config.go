@@ -303,8 +303,8 @@ func (cfg *cfg) validate() error {
 		{name: "request timeout max overhead", v: int64(cfg.requestTimeoutOverhead), allowed: int64(15 * time.Minute), badcmp: i64gt, durs: true},
 		{name: "request timeout min overhead", v: int64(cfg.requestTimeoutOverhead), allowed: int64(100 * time.Millisecond), badcmp: i64lt, durs: true},
 
-		// 1s <= conn idle <= 15m
-		{name: "conn min idle timeout", v: int64(cfg.connIdleTimeout), allowed: int64(time.Second), badcmp: i64lt, durs: true},
+		// 100ms <= conn idle <= 15m
+		{name: "conn min idle timeout", v: int64(cfg.connIdleTimeout), allowed: int64(100 * time.Millisecond), badcmp: i64lt, durs: true},
 		{name: "conn max idle timeout", v: int64(cfg.connIdleTimeout), allowed: int64(15 * time.Minute), badcmp: i64gt, durs: true},
 
 		// 10ms <= metadata <= 1hr
@@ -501,7 +501,7 @@ func defaultCfg() cfg {
 
 		dialTimeout:            10 * time.Second,
 		requestTimeoutOverhead: 10 * time.Second,
-		connIdleTimeout:        20 * time.Second,
+		connIdleTimeout:        30 * time.Second,
 
 		softwareName:    "kgo",
 		softwareVersion: softwareVersion(),
@@ -662,12 +662,12 @@ func RequestTimeoutOverhead(overhead time.Duration) Opt {
 	return clientOpt{func(cfg *cfg) { cfg.requestTimeoutOverhead = overhead }}
 }
 
-// ConnIdleTimeout is a rough amount of time to allow connections to idle
-// before they are closed, overriding the default 20s.
+// ConnIdleTimeout sets the amount of time after which an idle connection will
+// not be reused, overriding the default 30s. The connection may be closed after
+// this timeout.
 //
 // In the worst case, a connection can be allowed to idle for up to 2x this
-// time, while the average is expected to be 1.5x (essentially, a uniform
-// distribution from this interval to 2x the interval).
+// time before being closed.
 //
 // It is possible that a connection can be reaped just as it is about to be
 // written to, but the client internally retries in these cases.
@@ -818,7 +818,7 @@ func RetryTimeout(t time.Duration) Opt {
 //
 // The function is called with the request key that is being retried. While it
 // is not expected that the request key will be used, including it gives users
-// the opportinuty to have different retry timeouts for different keys.
+// the opportunity to have different retry timeouts for different keys.
 //
 // If the function returns zero, there is no retry timeout.
 //
@@ -838,7 +838,7 @@ func AllowAutoTopicCreation() Opt {
 // BrokerMaxWriteBytes upper bounds the number of bytes written to a broker
 // connection in a single write, overriding the default 100MiB.
 //
-// This number corresponds to the a broker's socket.request.max.bytes, which
+// This number corresponds to the broker's socket.request.max.bytes, which
 // defaults to 100MiB.
 //
 // The only Kafka request that could come reasonable close to hitting this
@@ -1397,8 +1397,8 @@ func MaxConcurrentFetches(n int) ConsumerOpt {
 //
 //	at start?                         => start at the log start offset
 //	at end?                           => start at the log end offset
-//	at exact?                         => start at the an exact offset (3 means offset 3)
-//	relative?                         => start at the the above, + / - the relative amount
+//	at exact?                         => start at an exact offset (3 means offset 3)
+//	relative?                         => start at the above, + / - the relative amount
 //	exact/relative are out of bounds? => start at the nearest boundary (start or end)
 //	after millisec?                   => start at first offset after millisec if one exists, else log end offset
 //
@@ -1440,8 +1440,8 @@ func ConsumeStartOffset(offset Offset) ConsumerOpt {
 //
 //	at start?                         => reset to the log start offset
 //	at end?                           => reset to the log end offset
-//	at exact?                         => reset to the an exact offset (3 means offset 3)
-//	relative?                         => reset to the the above, + / - the relative amount
+//	at exact?                         => reset to an exact offset (3 means offset 3)
+//	relative?                         => reset to the above, + / - the relative amount
 //	exact/relative are out of bounds? => reset to the nearest boundary (start or end)
 //	after millisec?                   => reset to the first offset after millisec if one exists, else the log end offset
 //
@@ -1544,6 +1544,13 @@ func ConsumeRegex() ConsumerOpt {
 //
 // Topics matching any of the provided regular expressions will be excluded from
 // consumption, even if they match patterns provided to ConsumeTopics.
+//
+// When using the next-gen consumer group protocol (not yet enabled by default),
+// the heartbeat's SubscribedTopicRegex field is include-only with no exclude
+// counterpart. If exclude topics are configured, the client resolves regex
+// matching locally and sends explicit topic names instead. This means new
+// topics matching the include regex are discovered on the next metadata
+// refresh rather than immediately by the broker.
 func ConsumeExcludeTopics(topics ...string) ConsumerOpt {
 	return consumerOpt{func(cfg *cfg) {
 		if cfg.excludeTopics == nil {
@@ -1744,10 +1751,11 @@ func RequireStableFetchOffsets() GroupOpt {
 }
 
 // BlockRebalanceOnPoll switches the client to block rebalances whenever you
-// poll until you explicitly call AllowRebalance. This option also ensures that
-// any OnPartitions{Assigned,Revoked,Lost} callbacks are only called when you
-// allow rebalances; they cannot be called if you have polled and are
-// processing records.
+// receive a non-empty result from polling until you explicitly call
+// AllowRebalance. This option also ensures that any
+// OnPartitions{Assigned,Revoked,Lost} callbacks are only called when you allow
+// rebalances; they cannot be called if you have polled and are processing
+// records.
 //
 // By default, a consumer group is managed completely independently of
 // consuming. A rebalance may occur at any moment. If you poll records, and
