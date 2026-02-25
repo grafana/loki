@@ -2255,7 +2255,7 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 	nMarkers := d.Uvarint()
 
 	relevantPages := chunkPageMarkersPool.Get(nMarkers)
-	defer chunkPageMarkersPool.Put(relevantPages)
+	defer func() { chunkPageMarkersPool.Put(relevantPages) }()
 	for i := 0; i < nMarkers; i++ {
 		var marker chunkPageMarker
 		marker.decode(d)
@@ -2351,7 +2351,7 @@ func (dec *Decoder) accumulateChunkStats(d *encoding.Decbuf, nChunks int, from, 
 func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (res ChunkStats, err error) {
 	// prior to v3, chunks needed iteration for stats aggregation
 	chks := ChunkMetasPool.Get()
-	defer ChunkMetasPool.Put(chks)
+	defer func() { ChunkMetasPool.Put(chks) }()
 	err = dec.readChunks(FormatV2, d, seriesRef, from, through, &chks)
 	if err != nil {
 		return ChunkStats{}, err

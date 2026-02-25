@@ -166,7 +166,7 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.Fing
 
 	var ls labels.Labels
 	chks := ChunkMetasPool.Get()
-	defer ChunkMetasPool.Put(chks)
+	defer func() { ChunkMetasPool.Put(chks) }()
 
 	var filterer chunk.Filterer
 	if i.chunkFilter != nil {
