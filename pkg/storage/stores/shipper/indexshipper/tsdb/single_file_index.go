@@ -162,16 +162,19 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 // Accepts a userID argument in order to implement `Index` interface, but since this is a single tenant index,
 // it is ignored (it's enforced elsewhere in index selection)
 func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+	var filterer chunk.Filterer
+	if i.chunkFilter != nil {
+		filterer = i.chunkFilter.ForRequest(ctx)
+	}
+	return i.forSeriesAndLabels(ctx, fpFilter, filterer, from, through, fn, matchers...)
+}
+
+func (i *TSDBIndex) forSeriesAndLabels(ctx context.Context, fpFilter index.FingerprintFilter, filterer chunk.Filterer, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
 	// TODO(owen-d): use pool
 
 	var ls labels.Labels
 	chks := ChunkMetasPool.Get()
 	defer ChunkMetasPool.Put(chks)
-
-	var filterer chunk.Filterer
-	if i.chunkFilter != nil {
-		filterer = i.chunkFilter.ForRequest(ctx)
-	}
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		for p.Next() {
@@ -198,6 +201,31 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.Fing
 
 }
 
+// Same as ForSeries, but the callback fn does not take a Labels parameter.
+func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+	chks := ChunkMetasPool.Get()
+	defer ChunkMetasPool.Put(chks)
+
+	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
+		for p.Next() {
+			hash, err := i.reader.Series(p.At(), int64(from), int64(through), nil, &chks)
+			if err != nil {
+				return err
+			}
+
+			// skip series that belong to different shards
+			if fpFilter != nil && !fpFilter.Match(model.Fingerprint(hash)) {
+				continue
+			}
+
+			if stop := fn(model.Fingerprint(hash), chks); stop {
+				break
+			}
+		}
+		return p.Err()
+	})
+}
+
 func (i *TSDBIndex) forPostings(
 	_ context.Context,
 	fpFilter index.FingerprintFilter,
@@ -218,7 +246,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 	}
 	res = res[:0]
 
-	if err := i.ForSeries(ctx, "", fpFilter, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+	addChunksToResult := func(fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 		for _, chk := range chks {
 			res = append(res, logproto.ChunkRefWithSizingInfo{
 				ChunkRef: logproto.ChunkRef{
@@ -233,11 +261,22 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 			})
 		}
 		return false
-	}, matchers...); err != nil {
-		return nil, err
 	}
 
-	return res, nil
+	var filterer chunk.Filterer
+	if i.chunkFilter != nil {
+		filterer = i.chunkFilter.ForRequest(ctx)
+	}
+	var err error
+	if filterer != nil {
+		// We need to fetch labels to pass to the filterer, even though we don't look at them in the callback.
+		err = i.forSeriesAndLabels(ctx, fpFilter, filterer, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+			return addChunksToResult(fp, chks)
+		}, matchers...)
+	} else {
+		err = i.forSeriesNoLabels(ctx, fpFilter, from, through, addChunksToResult, matchers...)
+	}
+	return res, err
 }
 
 func (i *TSDBIndex) Series(ctx context.Context, _ string, from, through model.Time, res []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
