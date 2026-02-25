@@ -134,12 +134,8 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 			shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails):
 			parsedCol := col.(*array.String)
 
-			// TODO: keep errors if --strict is set
-			// These are reserved column names used to track parsing errors. We are dropping them until
-			// we add support for --strict parsing.
-			if shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails {
-				continue
-			}
+			isErrorColumn := ident.ColumnType() == types.ColumnTypeGenerated &&
+				shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails
 
 			forEachNotNullRowColValue(numRows, parsedCol, func(rowIdx int) {
 				parsedVal := parsedCol.Value(rowIdx)
@@ -155,7 +151,7 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 					b.rowBuilders[rowIdx].metadataBuilder.Del(shortName)
 				}
 				// If the parsed value is empty, the builder won't accept it as it's not a valid Prometheus-style label. We must add it later for LogQL compatibility.
-				if parsedVal == "" {
+				if parsedVal == "" && !isErrorColumn {
 					b.rowBuilders[rowIdx].parsedEmptyKeys = append(b.rowBuilders[rowIdx].parsedEmptyKeys, shortName)
 				}
 			})
@@ -167,8 +163,8 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 		lbs := b.rowBuilders[rowIdx].lbsBuilder.Labels()
 		ts := b.rowBuilders[rowIdx].timestamp
 		line := b.rowBuilders[rowIdx].line
-		// Ignore rows that don't have stream labels, log line, or timestamp
-		if line == "" || ts.IsZero() || lbs.IsEmpty() {
+		// Ignore rows that don't have stream labels, or timestamp
+		if ts.IsZero() || lbs.IsEmpty() {
 			b.resetRowBuilder(rowIdx)
 			continue
 		}
