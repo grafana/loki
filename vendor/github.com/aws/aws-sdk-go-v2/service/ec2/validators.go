@@ -2150,6 +2150,46 @@ func (m *validateOpCreateRouteTable) HandleInitialize(ctx context.Context, in mi
 	return next.HandleInitialize(ctx, in)
 }
 
+type validateOpCreateSecondaryNetwork struct {
+}
+
+func (*validateOpCreateSecondaryNetwork) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpCreateSecondaryNetwork) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*CreateSecondaryNetworkInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpCreateSecondaryNetworkInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
+type validateOpCreateSecondarySubnet struct {
+}
+
+func (*validateOpCreateSecondarySubnet) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpCreateSecondarySubnet) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*CreateSecondarySubnetInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpCreateSecondarySubnetInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
 type validateOpCreateSecurityGroup struct {
 }
 
@@ -3825,6 +3865,46 @@ func (m *validateOpDeleteRouteTable) HandleInitialize(ctx context.Context, in mi
 		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
 	}
 	if err := validateOpDeleteRouteTableInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
+type validateOpDeleteSecondaryNetwork struct {
+}
+
+func (*validateOpDeleteSecondaryNetwork) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpDeleteSecondaryNetwork) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*DeleteSecondaryNetworkInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpDeleteSecondaryNetworkInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
+type validateOpDeleteSecondarySubnet struct {
+}
+
+func (*validateOpDeleteSecondarySubnet) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpDeleteSecondarySubnet) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*DeleteSecondarySubnetInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpDeleteSecondarySubnetInput(input); err != nil {
 		return out, metadata, err
 	}
 	return next.HandleInitialize(ctx, in)
@@ -10938,6 +11018,14 @@ func addOpCreateRouteTableValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpCreateRouteTable{}, middleware.After)
 }
 
+func addOpCreateSecondaryNetworkValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpCreateSecondaryNetwork{}, middleware.After)
+}
+
+func addOpCreateSecondarySubnetValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpCreateSecondarySubnet{}, middleware.After)
+}
+
 func addOpCreateSecurityGroupValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpCreateSecurityGroup{}, middleware.After)
 }
@@ -11272,6 +11360,14 @@ func addOpDeleteRouteServerPeerValidationMiddleware(stack *middleware.Stack) err
 
 func addOpDeleteRouteTableValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpDeleteRouteTable{}, middleware.After)
+}
+
+func addOpDeleteSecondaryNetworkValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpDeleteSecondaryNetwork{}, middleware.After)
+}
+
+func addOpDeleteSecondarySubnetValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpDeleteSecondarySubnet{}, middleware.After)
 }
 
 func addOpDeleteSnapshotValidationMiddleware(stack *middleware.Stack) error {
@@ -13048,6 +13144,72 @@ func validateInstanceRequirementsWithMetadataRequest(v *types.InstanceRequiremen
 	if v.InstanceRequirements != nil {
 		if err := validateInstanceRequirementsRequest(v.InstanceRequirements); err != nil {
 			invalidParams.AddNested("InstanceRequirements", err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateInstanceSecondaryInterfacePrivateIpAddressListRequest(v []types.InstanceSecondaryInterfacePrivateIpAddressRequest) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "InstanceSecondaryInterfacePrivateIpAddressListRequest"}
+	for i := range v {
+		if err := validateInstanceSecondaryInterfacePrivateIpAddressRequest(&v[i]); err != nil {
+			invalidParams.AddNested(fmt.Sprintf("[%d]", i), err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateInstanceSecondaryInterfacePrivateIpAddressRequest(v *types.InstanceSecondaryInterfacePrivateIpAddressRequest) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "InstanceSecondaryInterfacePrivateIpAddressRequest"}
+	if v.PrivateIpAddress == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("PrivateIpAddress"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateInstanceSecondaryInterfaceSpecificationListRequest(v []types.InstanceSecondaryInterfaceSpecificationRequest) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "InstanceSecondaryInterfaceSpecificationListRequest"}
+	for i := range v {
+		if err := validateInstanceSecondaryInterfaceSpecificationRequest(&v[i]); err != nil {
+			invalidParams.AddNested(fmt.Sprintf("[%d]", i), err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateInstanceSecondaryInterfaceSpecificationRequest(v *types.InstanceSecondaryInterfaceSpecificationRequest) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "InstanceSecondaryInterfaceSpecificationRequest"}
+	if v.PrivateIpAddresses != nil {
+		if err := validateInstanceSecondaryInterfacePrivateIpAddressListRequest(v.PrivateIpAddresses); err != nil {
+			invalidParams.AddNested("PrivateIpAddresses", err.(smithy.InvalidParamsError))
 		}
 	}
 	if invalidParams.Len() > 0 {
@@ -15490,6 +15652,42 @@ func validateOpCreateRouteTableInput(v *CreateRouteTableInput) error {
 	}
 }
 
+func validateOpCreateSecondaryNetworkInput(v *CreateSecondaryNetworkInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "CreateSecondaryNetworkInput"}
+	if v.Ipv4CidrBlock == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("Ipv4CidrBlock"))
+	}
+	if len(v.NetworkType) == 0 {
+		invalidParams.Add(smithy.NewErrParamRequired("NetworkType"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpCreateSecondarySubnetInput(v *CreateSecondarySubnetInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "CreateSecondarySubnetInput"}
+	if v.Ipv4CidrBlock == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("Ipv4CidrBlock"))
+	}
+	if v.SecondaryNetworkId == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("SecondaryNetworkId"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
 func validateOpCreateSecurityGroupInput(v *CreateSecurityGroupInput) error {
 	if v == nil {
 		return nil
@@ -16863,6 +17061,36 @@ func validateOpDeleteRouteTableInput(v *DeleteRouteTableInput) error {
 	invalidParams := smithy.InvalidParamsError{Context: "DeleteRouteTableInput"}
 	if v.RouteTableId == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("RouteTableId"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpDeleteSecondaryNetworkInput(v *DeleteSecondaryNetworkInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "DeleteSecondaryNetworkInput"}
+	if v.SecondaryNetworkId == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("SecondaryNetworkId"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpDeleteSecondarySubnetInput(v *DeleteSecondarySubnetInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "DeleteSecondarySubnetInput"}
+	if v.SecondarySubnetId == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("SecondarySubnetId"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
@@ -20209,12 +20437,6 @@ func validateOpModifyInstanceCpuOptionsInput(v *ModifyInstanceCpuOptionsInput) e
 	if v.InstanceId == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("InstanceId"))
 	}
-	if v.CoreCount == nil {
-		invalidParams.Add(smithy.NewErrParamRequired("CoreCount"))
-	}
-	if v.ThreadsPerCore == nil {
-		invalidParams.Add(smithy.NewErrParamRequired("ThreadsPerCore"))
-	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
 	} else {
@@ -22067,6 +22289,11 @@ func validateOpRunInstancesInput(v *RunInstancesInput) error {
 	if v.CreditSpecification != nil {
 		if err := validateCreditSpecificationRequest(v.CreditSpecification); err != nil {
 			invalidParams.AddNested("CreditSpecification", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.SecondaryInterfaces != nil {
+		if err := validateInstanceSecondaryInterfaceSpecificationListRequest(v.SecondaryInterfaces); err != nil {
+			invalidParams.AddNested("SecondaryInterfaces", err.(smithy.InvalidParamsError))
 		}
 	}
 	if invalidParams.Len() > 0 {

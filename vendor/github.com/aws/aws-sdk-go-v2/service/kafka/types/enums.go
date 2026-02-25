@@ -174,6 +174,25 @@ func (KafkaVersionStatus) Values() []KafkaVersionStatus {
 	}
 }
 
+type NetworkType string
+
+// Enum values for NetworkType
+const (
+	NetworkTypeIpv4 NetworkType = "IPV4"
+	NetworkTypeDual NetworkType = "DUAL"
+)
+
+// Values returns all known values for NetworkType. Note that this can be expanded
+// in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (NetworkType) Values() []NetworkType {
+	return []NetworkType{
+		"IPV4",
+		"DUAL",
+	}
+}
+
 type NodeType string
 
 // Enum values for NodeType

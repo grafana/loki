@@ -36,6 +36,34 @@ func (e *BadRequestException) ErrorCode() string {
 func (e *BadRequestException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // Returns information about an error.
+type ClusterConnectivityException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	InvalidParameter *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *ClusterConnectivityException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *ClusterConnectivityException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *ClusterConnectivityException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "ClusterConnectivityException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *ClusterConnectivityException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// Returns information about an error.
 type ConflictException struct {
 	Message *string
 
@@ -62,6 +90,34 @@ func (e *ConflictException) ErrorCode() string {
 	return *e.ErrorCodeOverride
 }
 func (e *ConflictException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// Returns information about an error.
+type ControllerMovedException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	InvalidParameter *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *ControllerMovedException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *ControllerMovedException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *ControllerMovedException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "ControllerMovedException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *ControllerMovedException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // Returns information about an error.
 type ForbiddenException struct {
@@ -92,6 +148,34 @@ func (e *ForbiddenException) ErrorCode() string {
 func (e *ForbiddenException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // Returns information about an error.
+type GroupSubscribedToTopicException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	InvalidParameter *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *GroupSubscribedToTopicException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *GroupSubscribedToTopicException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *GroupSubscribedToTopicException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "GroupSubscribedToTopicException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *GroupSubscribedToTopicException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// Returns information about an error.
 type InternalServerErrorException struct {
 	Message *string
 
@@ -120,6 +204,90 @@ func (e *InternalServerErrorException) ErrorCode() string {
 func (e *InternalServerErrorException) ErrorFault() smithy.ErrorFault { return smithy.FaultServer }
 
 // Returns information about an error.
+type KafkaRequestException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	InvalidParameter *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *KafkaRequestException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *KafkaRequestException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *KafkaRequestException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "KafkaRequestException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *KafkaRequestException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// Returns information about an error.
+type KafkaTimeoutException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	InvalidParameter *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *KafkaTimeoutException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *KafkaTimeoutException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *KafkaTimeoutException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "KafkaTimeoutException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *KafkaTimeoutException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// Returns information about an error.
+type NotControllerException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	InvalidParameter *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *NotControllerException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *NotControllerException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *NotControllerException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "NotControllerException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *NotControllerException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// Returns information about an error.
 type NotFoundException struct {
 	Message *string
 
@@ -146,6 +314,34 @@ func (e *NotFoundException) ErrorCode() string {
 	return *e.ErrorCodeOverride
 }
 func (e *NotFoundException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// Returns information about an error.
+type ReassignmentInProgressException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	InvalidParameter *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *ReassignmentInProgressException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *ReassignmentInProgressException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *ReassignmentInProgressException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "ReassignmentInProgressException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *ReassignmentInProgressException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // Returns information about an error.
 type ServiceUnavailableException struct {
@@ -204,6 +400,34 @@ func (e *TooManyRequestsException) ErrorCode() string {
 func (e *TooManyRequestsException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // Returns information about an error.
+type TopicExistsException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	InvalidParameter *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *TopicExistsException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *TopicExistsException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *TopicExistsException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "TopicExistsException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *TopicExistsException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// Returns information about an error.
 type UnauthorizedException struct {
 	Message *string
 
@@ -230,3 +454,31 @@ func (e *UnauthorizedException) ErrorCode() string {
 	return *e.ErrorCodeOverride
 }
 func (e *UnauthorizedException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// Returns information about an error.
+type UnknownTopicOrPartitionException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	InvalidParameter *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *UnknownTopicOrPartitionException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *UnknownTopicOrPartitionException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *UnknownTopicOrPartitionException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "UnknownTopicOrPartitionException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *UnknownTopicOrPartitionException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
