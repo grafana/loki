@@ -2176,6 +2176,24 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]stru
 	// Commit built labels.
 	builder.Sort()
 	*lbls = builder.Labels()
+	return &d, fprint, nil
+}
+
+// skipSeriesLabels reads past the label section in buffer b, ready to read chunks after that.
+func (dec *Decoder) skipSeriesLabels(b []byte) (*encoding.Decbuf, uint64, error) {
+	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
+
+	fprint := d.Be64()
+	k := d.Uvarint()
+
+	for range k {
+		_ = d.Uvarint()
+		_ = d.Uvarint()
+
+		if d.Err() != nil {
+			return nil, 0, errors.Wrap(d.Err(), "read series label offsets")
+		}
+	}
 
 	return &d, fprint, nil
 }
@@ -2323,9 +2341,15 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 	return res, nil
 }
 
-// Series decodes a series entry from the given byte slice into lset and chks.
-func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
-	d, fprint, err := dec.prepSeries(b, lbls, nil)
+// Series decodes a series entry from the given byte slice into lbls and chks.
+// lbls can be nil, indicating the caller only wants the chunks.
+func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (fprint uint64, err error) {
+	var d *encoding.Decbuf
+	if lbls == nil {
+		d, fprint, err = dec.skipSeriesLabels(b)
+	} else {
+		d, fprint, err = dec.prepSeries(b, lbls, nil)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -2333,6 +2357,9 @@ func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, f
 	*chks = (*chks)[:0]
 	// read chunks based on fmt
 	if err := dec.readChunks(version, d, seriesRef, from, through, chks); err != nil {
+		if lbls == nil {
+			return 0, errors.Wrapf(err, "series footprint %x", fprint)
+		}
 		return 0, errors.Wrapf(err, "series %s", lbls.String())
 	}
 	return fprint, nil
