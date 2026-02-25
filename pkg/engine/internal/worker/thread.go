@@ -209,7 +209,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	ctx, capture := xcap.NewCapture(ctx, nil)
 	defer capture.End()
 
-	ctx, span := xcap.StartSpan(ctx, tracer, "thread.runJob",
+	ctx, span := xcap.StartSpan(ctx, tracer, runJobSpanName(job.Task.Fragment),
 		trace.WithAttributes(attribute.Stringer("task_id", job.Task.ULID)),
 	)
 	defer span.End()
@@ -303,6 +303,14 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
 	}
+}
+
+func runJobSpanName(plan *physical.Plan) string {
+	root, err := plan.Root()
+	if err != nil { // No root or multiple roots.
+		return "thread.runJob"
+	}
+	return "thread.runJob " + root.Type().String()
 }
 
 func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []recordSink, batchSizeRecords int64, logger log.Logger) (int, error) {
