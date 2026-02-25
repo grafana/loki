@@ -202,12 +202,20 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.Excee
 // updated rates for all streams. Any streams that could not have rates updated
 // have a rate of zero.
 func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams []SegmentedStream) ([]*proto.UpdateRatesResult, error) {
-	l.requests.WithLabelValues("UpdateRates").Inc()
 	req, err := newUpdateRatesRequest(tenant, streams)
 	if err != nil {
+		// We update `UpdateRates` here because we have clients directly calling `UpdateRatesRaw`.
+		l.requests.WithLabelValues("UpdateRates").Inc()
 		l.requestsFailed.WithLabelValues("UpdateRates").Inc()
 		return nil, err
 	}
+	return l.UpdateRatesRaw(ctx, req)
+}
+
+// UpdateRatesRaw sends a pre-built UpdateRatesRequest to the frontend.
+// This is used by the rate batcher which accumulates stream data over time.
+func (l *ingestLimits) UpdateRatesRaw(ctx context.Context, req *proto.UpdateRatesRequest) ([]*proto.UpdateRatesResult, error) {
+	l.requests.WithLabelValues("UpdateRates").Inc()
 	resp, err := l.client.UpdateRates(ctx, req)
 	if err != nil {
 		l.requestsFailed.WithLabelValues("UpdateRates").Inc()

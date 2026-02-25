@@ -1,6 +1,21 @@
 ## Changelog
 
 
+## v2.36.1
+- support CLUSTER SHARDS (thanks @dadrus)
+
+
+## v2.36.0
+
+- return actual server address by CLUSTER NODES (thanks @nastik-kum)
+- support DUMP and RESTORE (thanks @alyssaruth)
+- support EVALRO (thanks @max-frank)
+- add WAIT command as no-op (thanks @aroullet)
+- support info stats (thanks @destinyoooo)
+- add "<timestamp>-*" keys
+- compare against Redis 8.4.0
+
+
 ## v2.35.0
 
 - add Lua redis.setresp({2,3})

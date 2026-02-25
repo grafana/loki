@@ -265,6 +265,7 @@ func (v *Point) MultiScalarMult(scalars []*Scalar, points []*Point) *Point {
 	tmp1 := &projP1xP1{}
 	tmp2 := &projP2{}
 	// Lookup-and-add the appropriate multiple of each input point
+	v.Set(NewIdentityPoint())
 	for j := range tables {
 		tables[j].SelectInto(multiple, digits[j][63])
 		tmp1.Add(v, multiple) // tmp1 = v + x_(j,63)*Q in P1xP1 coords

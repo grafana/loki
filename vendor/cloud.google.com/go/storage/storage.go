@@ -1210,8 +1210,6 @@ func (o *ObjectHandle) Restore(ctx context.Context, opts *RestoreOptions) (*Obje
 // Any preconditions set on the ObjectHandle will be applied for the source
 // object. Set preconditions on the destination object using
 // [MoveObjectDestination.Conditions].
-//
-// This API is in preview and is not yet publicly available.
 func (o *ObjectHandle) Move(ctx context.Context, destination MoveObjectDestination) (*ObjectAttrs, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
@@ -2499,6 +2497,33 @@ func (wb *withMaxAttempts) apply(config *retryConfig) {
 	config.maxAttempts = &wb.maxAttempts
 }
 
+// WithMaxRetryDuration configures the maximum duration for which requests can be retried.
+// Once this deadline is reached, no further retry attempts will be made, and the last
+// error will be returned.
+// For example, if you set WithMaxRetryDuration(10*time.Second), retries will stop after
+// 10 seconds even if the maximum number of attempts hasn't been reached.
+// Without this setting, operations will continue retrying until either the maximum
+// number of attempts is exhausted or the passed context is terminated by cancellation
+// or timeout.
+// A value of 0 allows infinite retries (subject to other constraints).
+//
+// Note: This does not apply to Writer operations. For Writer operations,
+// use Writer.ChunkRetryDeadline to control per-chunk retry timeouts, and use
+// context timeout or cancellation to control the overall upload timeout.
+func WithMaxRetryDuration(maxRetryDuration time.Duration) RetryOption {
+	return &withMaxRetryDuration{
+		maxRetryDuration: maxRetryDuration,
+	}
+}
+
+type withMaxRetryDuration struct {
+	maxRetryDuration time.Duration
+}
+
+func (wb *withMaxRetryDuration) apply(config *retryConfig) {
+	config.maxRetryDuration = wb.maxRetryDuration
+}
+
 // RetryPolicy describes the available policies for which operations should be
 // retried. The default is `RetryIdempotent`.
 type RetryPolicy int
@@ -2574,7 +2599,6 @@ type retryConfig struct {
 	maxAttempts *int
 	// maxRetryDuration, if set, specifies a deadline after which the request
 	// will no longer be retried. A value of 0 allows infinite retries.
-	// maxRetryDuration is currently only set by Writer.ChunkRetryDeadline.
 	maxRetryDuration time.Duration
 }
 

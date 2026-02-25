@@ -43,6 +43,11 @@ func newTestHandler(cfg Config, exec queryExecutor, limits querier_limits.Limits
 	}
 }
 
+type mockLimits struct {
+	querier_limits.Limits
+	RetentionLimits
+}
+
 func TestHandler(t *testing.T) {
 	cfg := Config{
 		Executor: ExecutorConfig{
@@ -52,7 +57,7 @@ func TestHandler(t *testing.T) {
 	}
 	logger := log.NewNopLogger()
 	eng := &mockEngine{}
-	limits := &querytest.MockLimits{}
+	limits := &mockLimits{}
 
 	handler := executorHandler(cfg, logger, eng, limits)
 	require.NotNil(t, handler)
@@ -523,4 +528,476 @@ func TestQueryHandler_ValidateMaxEntriesLimits(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, int32(http.StatusBadRequest), httpErr.Code)
 	})
+}
+
+func TestQueryHandler_ValidateRequest(t *testing.T) {
+	now := time.Now()
+
+	cfg := Config{
+		Executor: ExecutorConfig{
+			BatchSize:          100,
+			MergePrefetchCount: 0,
+		},
+	}
+
+	tests := []struct {
+		name           string
+		query          string
+		limit          uint32
+		startTs        time.Time
+		endTs          time.Time
+		limits         *querytest.MockLimits
+		expectError    bool
+		expectedStatus int32
+		errorContains  string
+	}{
+		// MaxQueryLookback tests
+		{
+			name:    "query within lookback period is allowed",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryLookbackVal:        24 * time.Hour,
+			},
+			expectError: false,
+		},
+		{
+			name:    "query start time before lookback period is clamped",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-3 * time.Hour), // Start is outside lookback
+			endTs:   now,                     // End is within lookback
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryLookbackVal:        1 * time.Hour,
+			},
+			expectError: false, // Should succeed with clamped start time
+		},
+		{
+			name:    "query end time before lookback period returns error",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-3 * time.Hour),
+			endTs:   now.Add(-2 * time.Hour),
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryLookbackVal:        1 * time.Hour,
+			},
+			expectError:    true,
+			expectedStatus: http.StatusBadRequest,
+			errorContains:  "outside the allowed lookback period",
+		},
+		{
+			name:    "no lookback limit allows all queries",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-720 * time.Hour), // 30 days ago
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryLookbackVal:        0, // No limit
+			},
+			expectError: false,
+		},
+		// MaxQueryLength tests
+		{
+			name:    "query within max length is allowed",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryLengthVal:          24 * time.Hour,
+			},
+			expectError: false,
+		},
+		{
+			name:    "query exceeding max length returns error",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-2 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryLengthVal:          1 * time.Hour,
+			},
+			expectError:    true,
+			expectedStatus: http.StatusBadRequest,
+			errorContains:  "the query time range exceeds the limit",
+		},
+		{
+			name:    "no max length allows all queries",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-720 * time.Hour), // 30 days
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryLengthVal:          0, // No limit
+			},
+			expectError: false,
+		},
+		// MaxQueryRange tests
+		{
+			name:    "metric query with range within limit is allowed",
+			query:   `rate({app="test"}[5m])`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryRangeVal:           1 * time.Hour,
+			},
+			expectError: false,
+		},
+		{
+			name:    "metric query with range exceeding limit returns error",
+			query:   `rate({app="test"}[5m])`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryRangeVal:           1 * time.Minute,
+			},
+			expectError:    true,
+			expectedStatus: http.StatusBadRequest,
+			errorContains:  "[interval] value exceeds limit",
+		},
+		{
+			name:    "log query ignores max query range",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryRangeVal:           1 * time.Minute,
+			},
+			expectError: false,
+		},
+		// RequiredLabels tests
+		{
+			name:    "query with required labels is allowed",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				RequiredLabelsVal:          []string{"app"},
+			},
+			expectError: false,
+		},
+		{
+			name:    "query missing required labels returns error",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				RequiredLabelsVal:          []string{"namespace"},
+			},
+			expectError:    true,
+			expectedStatus: http.StatusBadRequest,
+			errorContains:  "missing required matchers",
+		},
+		{
+			name:    "query with multiple required labels",
+			query:   `{app="test", namespace="prod"}`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				RequiredLabelsVal:          []string{"app", "namespace"},
+			},
+			expectError: false,
+		},
+		{
+			name:    "no required labels allows all queries",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				RequiredLabelsVal:          nil,
+			},
+			expectError: false,
+		},
+		// RequiredNumberLabels tests
+		{
+			name:    "query with enough labels is allowed",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				RequiredNumberLabelsVal:    1,
+			},
+			expectError: false,
+		},
+		{
+			name:    "query with too few labels returns error",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				RequiredNumberLabelsVal:    2,
+			},
+			expectError:    true,
+			expectedStatus: http.StatusBadRequest,
+			errorContains:  "less label matchers than required",
+		},
+		{
+			name:    "no required number allows all queries",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				RequiredNumberLabelsVal:    0,
+			},
+			expectError: false,
+		},
+		// MaxEntriesLimit tests
+		{
+			name:    "exceeds max entries limit",
+			query:   `{app="test"}`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 50,
+			},
+			expectError:    true,
+			expectedStatus: http.StatusBadRequest,
+			errorContains:  "max entries limit per query exceeded",
+		},
+		{
+			name:    "metric query ignores entry limit",
+			query:   `rate({app="test"}[5m])`,
+			limit:   100,
+			startTs: now.Add(-1 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 50,
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			eng := &mockEngine{
+				executeFunc: func(_ context.Context, _ logql.Params) (logqlmodel.Result, error) {
+					return logqlmodel.Result{
+						Data: logqlmodel.Streams{},
+					}, nil
+				},
+			}
+
+			handler := newTestHandler(cfg, eng, tt.limits)
+
+			expr, err := syntax.ParseExpr(tt.query)
+			require.NoError(t, err)
+
+			req := &queryrange.LokiRequest{
+				Query:     tt.query,
+				Limit:     tt.limit,
+				StartTs:   tt.startTs,
+				EndTs:     tt.endTs,
+				Direction: 0,
+				Plan: &plan.QueryPlan{
+					AST: expr,
+				},
+			}
+
+			ctx := user.InjectOrgID(t.Context(), "fake")
+			_, err = handler.Do(ctx, req)
+
+			if tt.expectError {
+				require.Error(t, err)
+				httpErr, ok := httpgrpc.HTTPResponseFromError(err)
+				require.True(t, ok)
+				require.Equal(t, tt.expectedStatus, httpErr.Code)
+				require.Contains(t, string(httpErr.Body), tt.errorContains)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestQueryHandler_ValidateInstantRequest(t *testing.T) {
+	now := time.Now()
+
+	cfg := Config{
+		Executor: ExecutorConfig{
+			BatchSize:          100,
+			MergePrefetchCount: 0,
+		},
+	}
+
+	tests := []struct {
+		name           string
+		query          string
+		limit          uint32
+		timeTs         time.Time
+		limits         *querytest.MockLimits
+		expectError    bool
+		expectedStatus int32
+		errorContains  string
+	}{
+		// RequiredLabels tests
+		{
+			name:   "instant query with required labels is allowed",
+			query:  `rate({app="test"}[5m])`,
+			limit:  100,
+			timeTs: now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				RequiredLabelsVal:          []string{"app"},
+			},
+			expectError: false,
+		},
+		{
+			name:   "instant query missing required labels returns error",
+			query:  `rate({app="test"}[5m])`,
+			limit:  100,
+			timeTs: now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				RequiredLabelsVal:          []string{"namespace"},
+			},
+			expectError:    true,
+			expectedStatus: http.StatusBadRequest,
+			errorContains:  "missing required matchers",
+		},
+		// MaxQueryRange tests
+		{
+			name:   "instant query with range within limit is allowed",
+			query:  `rate({app="test"}[5m])`,
+			limit:  100,
+			timeTs: now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryRangeVal:           1 * time.Hour,
+			},
+			expectError: false,
+		},
+		{
+			name:   "instant query exceeding max query range returns error",
+			query:  `rate({app="test"}[5m])`,
+			limit:  100,
+			timeTs: now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryRangeVal:           1 * time.Minute,
+			},
+			expectError:    true,
+			expectedStatus: http.StatusBadRequest,
+			errorContains:  "[interval] value exceeds limit",
+		},
+		// MaxQueryLookback tests
+		{
+			name:   "instant query within lookback period is allowed",
+			query:  `rate({app="test"}[5m])`,
+			limit:  100,
+			timeTs: now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryLookbackVal:        1 * time.Hour,
+			},
+			expectError: false,
+		},
+		{
+			name:   "instant query outside lookback period returns error",
+			query:  `rate({app="test"}[5m])`,
+			limit:  100,
+			timeTs: now.Add(-2 * time.Hour), // 2 hours ago, outside 1h lookback
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryLookbackVal:        1 * time.Hour,
+			},
+			expectError:    true,
+			expectedStatus: http.StatusBadRequest,
+			errorContains:  "outside the allowed lookback period",
+		},
+		// RequiredNumberLabels tests
+		{
+			name:   "instant query with enough labels is allowed",
+			query:  `rate({app="test", namespace="prod"}[5m])`,
+			limit:  100,
+			timeTs: now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				RequiredNumberLabelsVal:    2,
+			},
+			expectError: false,
+		},
+		{
+			name:   "instant query with too few labels returns error",
+			query:  `rate({app="test"}[5m])`,
+			limit:  100,
+			timeTs: now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				RequiredNumberLabelsVal:    2,
+			},
+			expectError:    true,
+			expectedStatus: http.StatusBadRequest,
+			errorContains:  "less label matchers than required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			eng := &mockEngine{
+				executeFunc: func(_ context.Context, _ logql.Params) (logqlmodel.Result, error) {
+					return logqlmodel.Result{
+						Data: logqlmodel.Streams{},
+					}, nil
+				},
+			}
+
+			handler := newTestHandler(cfg, eng, tt.limits)
+
+			expr, err := syntax.ParseExpr(tt.query)
+			require.NoError(t, err)
+
+			req := &queryrange.LokiInstantRequest{
+				Query:     tt.query,
+				Limit:     tt.limit,
+				TimeTs:    tt.timeTs,
+				Direction: 0,
+				Plan: &plan.QueryPlan{
+					AST: expr,
+				},
+			}
+
+			ctx := user.InjectOrgID(t.Context(), "fake")
+			_, err = handler.Do(ctx, req)
+
+			if tt.expectError {
+				require.Error(t, err)
+				httpErr, ok := httpgrpc.HTTPResponseFromError(err)
+				require.True(t, ok)
+				require.Equal(t, tt.expectedStatus, httpErr.Code)
+				require.Contains(t, string(httpErr.Body), tt.errorContains)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }

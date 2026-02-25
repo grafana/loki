@@ -17,6 +17,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/grafana/dskit/flagext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/yaml.v2"
@@ -43,36 +44,36 @@ func IsRequestBodyTooLarge(err error) bool {
 
 // BasicAuth configures basic authentication for HTTP clients.
 type BasicAuth struct {
-	Username string `yaml:"basic_auth_username"`
-	Password string `yaml:"basic_auth_password"`
+	Username string         `yaml:"basic_auth_username"`
+	Password flagext.Secret `yaml:"basic_auth_password"`
 }
 
 func (b *BasicAuth) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&b.Username, prefix+"basic-auth-username", "", "HTTP Basic authentication username. It overrides the username set in the URL (if any).")
-	f.StringVar(&b.Password, prefix+"basic-auth-password", "", "HTTP Basic authentication password. It overrides the password set in the URL (if any).")
+	f.Var(&b.Password, prefix+"basic-auth-password", "HTTP Basic authentication password. It overrides the password set in the URL (if any).")
 }
 
 // IsEnabled returns false if basic authentication isn't enabled.
 func (b BasicAuth) IsEnabled() bool {
-	return b.Username != "" || b.Password != ""
+	return b.Username != "" || b.Password.String() != ""
 }
 
 // HeaderAuth condigures header based authorization for HTTP clients.
 type HeaderAuth struct {
-	Type            string `yaml:"type,omitempty"`
-	Credentials     string `yaml:"credentials,omitempty"`
-	CredentialsFile string `yaml:"credentials_file,omitempty"`
+	Type            string         `yaml:"type,omitempty"`
+	Credentials     flagext.Secret `yaml:"credentials,omitempty"`
+	CredentialsFile string         `yaml:"credentials_file,omitempty"`
 }
 
 func (h *HeaderAuth) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&h.Type, prefix+"type", "Bearer", "HTTP Header authorization type (default: Bearer).")
-	f.StringVar(&h.Credentials, prefix+"credentials", "", "HTTP Header authorization credentials.")
+	f.Var(&h.Credentials, prefix+"credentials", "HTTP Header authorization credentials.")
 	f.StringVar(&h.CredentialsFile, prefix+"credentials-file", "", "HTTP Header authorization credentials file.")
 }
 
 // IsEnabled returns false if header authorization isn't enabled.
 func (h HeaderAuth) IsEnabled() bool {
-	return h.Credentials != "" || h.CredentialsFile != ""
+	return h.Credentials.String() != "" || h.CredentialsFile != ""
 }
 
 // WriteJSONResponse writes some JSON as a HTTP response.
@@ -169,12 +170,12 @@ const (
 // ParseProtoReader parses a compressed proto from an io.Reader.
 // Deprecated: Use ParseProtoReaderWithLimits for separate compressed/decompressed limits.
 func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSize int, req proto.Message, compression CompressionType) error {
-	return ParseProtoReaderWithLimits(ctx, reader, expectedSize, maxSize, maxSize, req, compression)
+	return ParseProtoReaderWithLimits(ctx, reader, expectedSize, maxSize, int64(maxSize), req, compression)
 }
 
 // ParseProtoReaderWithLimits parses a compressed proto from an io.Reader with separate size limits.
 // maxCompressedSize limits the compressed input size, maxDecompressedSize limits the decompressed output size.
-func ParseProtoReaderWithLimits(ctx context.Context, reader io.Reader, expectedSize, maxCompressedSize, maxDecompressedSize int, req proto.Message, compression CompressionType) error {
+func ParseProtoReaderWithLimits(ctx context.Context, reader io.Reader, expectedSize, maxCompressedSize int, maxDecompressedSize int64, req proto.Message, compression CompressionType) error {
 	sp := trace.SpanFromContext(ctx)
 	sp.AddEvent("util.ParseProtoRequest[start reading]")
 	body, err := decompressRequest(reader, expectedSize, maxCompressedSize, maxDecompressedSize, compression, sp)
@@ -199,9 +200,9 @@ func ParseProtoReaderWithLimits(ctx context.Context, reader io.Reader, expectedS
 	return nil
 }
 
-func decompressRequest(reader io.Reader, expectedSize, maxCompressedSize, maxDecompressedSize int, compression CompressionType, sp trace.Span) (body []byte, err error) {
+func decompressRequest(reader io.Reader, expectedSize, maxCompressedSize int, maxDecompressedSize int64, compression CompressionType, sp trace.Span) (body []byte, err error) {
 	defer func() {
-		if err != nil && maxDecompressedSize > 0 && len(body) > maxDecompressedSize {
+		if err != nil && maxDecompressedSize > 0 && int64(len(body)) > maxDecompressedSize {
 			err = fmt.Errorf(messageSizeLargerErrFmt, ErrMessageDecompressedSizeTooLarge, len(body), maxDecompressedSize)
 		}
 	}()
@@ -217,7 +218,7 @@ func decompressRequest(reader io.Reader, expectedSize, maxCompressedSize, maxDec
 	return
 }
 
-func decompressFromReader(reader io.Reader, expectedSize, maxCompressedSize, maxDecompressedSize int, compression CompressionType, sp trace.Span) ([]byte, error) {
+func decompressFromReader(reader io.Reader, expectedSize, maxCompressedSize int, maxDecompressedSize int64, compression CompressionType, sp trace.Span) ([]byte, error) {
 	var (
 		buf  bytes.Buffer
 		body []byte
@@ -243,7 +244,7 @@ func decompressFromReader(reader io.Reader, expectedSize, maxCompressedSize, max
 	return body, err
 }
 
-func decompressFromBuffer(buffer *bytes.Buffer, maxCompressedSize, maxDecompressedSize int, compression CompressionType, sp trace.Span) ([]byte, error) {
+func decompressFromBuffer(buffer *bytes.Buffer, maxCompressedSize int, maxDecompressedSize int64, compression CompressionType, sp trace.Span) ([]byte, error) {
 	bufBytes := buffer.Bytes()
 	// Check compressed size
 	if len(bufBytes) > maxCompressedSize {
@@ -261,7 +262,7 @@ func decompressFromBuffer(buffer *bytes.Buffer, maxCompressedSize, maxDecompress
 			return nil, err
 		}
 		// Check decompressed size (only if limit is set)
-		if maxDecompressedSize > 0 && size > maxDecompressedSize {
+		if maxDecompressedSize > 0 && int64(size) > maxDecompressedSize {
 			return nil, fmt.Errorf(messageSizeLargerErrFmt, ErrMessageDecompressedSizeTooLarge, size, maxDecompressedSize)
 		}
 		body, err := snappy.Decode(nil, bufBytes)

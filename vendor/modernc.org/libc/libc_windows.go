@@ -1681,11 +1681,15 @@ func Xdlsym(t *TLS, handle, symbol uintptr) uintptr {
 }
 
 // void perror(const char *s);
-func Xperror(t *TLS, s uintptr) {
+func Xperror(tls *TLS, msg uintptr) {
 	if __ccgo_strace {
-		trc("t=%v s=%v, (%v:)", t, s, origin(2))
+		trc("tls=%v msg=%v, (%v:)", tls, msg, origin(2))
 	}
-	panic(todo(""))
+	if msg != 0 && *(*int8)(unsafe.Pointer(msg)) != 0 {
+		fmt.Fprintf(os.Stderr, "%s: ", GoString(msg))
+	}
+	errstr := Xstrerror(tls, *(*int32)(unsafe.Pointer(X__errno_location(tls))))
+	fmt.Fprintf(os.Stderr, "%s\n", GoString(errstr))
 }
 
 // int pclose(FILE *stream);
@@ -6032,7 +6036,10 @@ func Xputchar(t *TLS, c int32) int32 {
 	if __ccgo_strace {
 		trc("t=%v c=%v, (%v:)", t, c, origin(2))
 	}
-	panic(todo(""))
+	if _, err := fwrite(unistd.STDOUT_FILENO, []byte{byte(c)}); err != nil {
+		return -1
+	}
+	return int32(byte(c))
 }
 
 // void _assert(

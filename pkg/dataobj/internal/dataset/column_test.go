@@ -10,7 +10,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 func TestColumnBuilder_ReadWrite(t *testing.T) {
@@ -64,25 +66,26 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 
 	var actual [][]byte
 
+	var alloc memory.Allocator
+
 	r := newColumnReader(col)
 	for {
-		var values [1]Value
-		n, err := r.Read(context.Background(), values[:])
+		arr, err := r.Read(context.Background(), &alloc, 1)
 		if err != nil && !errors.Is(err, io.EOF) {
 			require.NoError(t, err)
-		} else if n == 0 && errors.Is(err, io.EOF) {
+		} else if arr == nil && errors.Is(err, io.EOF) {
 			break
-		} else if n == 0 {
+		} else if arr == nil {
 			continue
 		}
 
-		val := values[0]
-		if val.IsNil() || val.IsZero() {
-			actual = append(actual, []byte{})
-		} else {
-			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, val.Type())
-			actual = append(actual, val.Binary())
+		data := arr.(*columnar.UTF8).Get(0)
+		if data == nil {
+			// Force to an empty non-nil slice, since that's what the test
+			// expects.
+			data = []byte("")
 		}
+		actual = append(actual, data)
 	}
 
 	require.Equal(t, in, actual)

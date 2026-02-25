@@ -96,7 +96,7 @@ func (c *Cell) Clear() bool {
 func (c *Cell) Clone() (n *Cell) {
 	n = new(Cell)
 	*n = *c
-	return
+	return n
 }
 
 // Blank makes the cell a blank cell by setting the rune to a space, comb to
@@ -154,17 +154,22 @@ const (
 	ResetAttr AttrMask = 0
 )
 
+// Contains returns whether the attribute mask contains the attribute.
+func (a AttrMask) Contains(attr AttrMask) bool {
+	return a&attr == attr
+}
+
 // UnderlineStyle is the style of underline to use for text.
 type UnderlineStyle = ansi.UnderlineStyle
 
 // These are the available underline styles.
 const (
-	NoUnderline     = ansi.NoUnderlineStyle
-	SingleUnderline = ansi.SingleUnderlineStyle
-	DoubleUnderline = ansi.DoubleUnderlineStyle
-	CurlyUnderline  = ansi.CurlyUnderlineStyle
-	DottedUnderline = ansi.DottedUnderlineStyle
-	DashedUnderline = ansi.DashedUnderlineStyle
+	NoUnderline     = ansi.UnderlineStyleNone
+	SingleUnderline = ansi.UnderlineStyleSingle
+	DoubleUnderline = ansi.UnderlineStyleDouble
+	CurlyUnderline  = ansi.UnderlineStyleCurly
+	DottedUnderline = ansi.UnderlineStyleDotted
+	DashedUnderline = ansi.UnderlineStyleDashed
 )
 
 // Style represents the Style of a cell.
@@ -184,7 +189,7 @@ func (s Style) Sequence() string {
 
 	var b ansi.Style
 
-	if s.Attrs != 0 {
+	if s.Attrs != 0 { //nolint:nestif
 		if s.Attrs&BoldAttr != 0 {
 			b = b.Bold()
 		}
@@ -192,36 +197,31 @@ func (s Style) Sequence() string {
 			b = b.Faint()
 		}
 		if s.Attrs&ItalicAttr != 0 {
-			b = b.Italic()
+			b = b.Italic(true)
 		}
 		if s.Attrs&SlowBlinkAttr != 0 {
-			b = b.SlowBlink()
+			b = b.Blink(true)
 		}
 		if s.Attrs&RapidBlinkAttr != 0 {
-			b = b.RapidBlink()
+			b = b.RapidBlink(true)
 		}
 		if s.Attrs&ReverseAttr != 0 {
-			b = b.Reverse()
+			b = b.Reverse(true)
 		}
 		if s.Attrs&ConcealAttr != 0 {
-			b = b.Conceal()
+			b = b.Conceal(true)
 		}
 		if s.Attrs&StrikethroughAttr != 0 {
-			b = b.Strikethrough()
+			b = b.Strikethrough(true)
 		}
 	}
 	if s.UlStyle != NoUnderline {
-		switch s.UlStyle {
-		case SingleUnderline:
-			b = b.Underline()
-		case DoubleUnderline:
-			b = b.DoubleUnderline()
-		case CurlyUnderline:
-			b = b.CurlyUnderline()
-		case DottedUnderline:
-			b = b.DottedUnderline()
-		case DashedUnderline:
-			b = b.DashedUnderline()
+		switch u := s.UlStyle; u {
+		case NoUnderline:
+			b = b.Underline(false)
+		default:
+			b = b.Underline(true)
+			b = b.UnderlineStyle(u)
 		}
 	}
 	if s.Fg != nil {
@@ -263,64 +263,48 @@ func (s Style) DiffSequence(o Style) string {
 		isNormal bool
 	)
 
-	if s.Attrs != o.Attrs {
+	if s.Attrs != o.Attrs { //nolint:nestif
 		if s.Attrs&BoldAttr != o.Attrs&BoldAttr {
 			if s.Attrs&BoldAttr != 0 {
 				b = b.Bold()
 			} else if !isNormal {
 				isNormal = true
-				b = b.NormalIntensity()
+				b = b.Normal()
 			}
 		}
 		if s.Attrs&FaintAttr != o.Attrs&FaintAttr {
 			if s.Attrs&FaintAttr != 0 {
 				b = b.Faint()
 			} else if !isNormal {
-				b = b.NormalIntensity()
+				b = b.Normal()
 			}
 		}
 		if s.Attrs&ItalicAttr != o.Attrs&ItalicAttr {
-			if s.Attrs&ItalicAttr != 0 {
-				b = b.Italic()
-			} else {
-				b = b.NoItalic()
-			}
+			b = b.Italic(s.Attrs&ItalicAttr != 0)
 		}
 		if s.Attrs&SlowBlinkAttr != o.Attrs&SlowBlinkAttr {
 			if s.Attrs&SlowBlinkAttr != 0 {
-				b = b.SlowBlink()
+				b = b.Blink(true)
 			} else if !noBlink {
 				noBlink = true
-				b = b.NoBlink()
+				b = b.Blink(false)
 			}
 		}
 		if s.Attrs&RapidBlinkAttr != o.Attrs&RapidBlinkAttr {
 			if s.Attrs&RapidBlinkAttr != 0 {
-				b = b.RapidBlink()
+				b = b.RapidBlink(true)
 			} else if !noBlink {
-				b = b.NoBlink()
+				b = b.Blink(false)
 			}
 		}
 		if s.Attrs&ReverseAttr != o.Attrs&ReverseAttr {
-			if s.Attrs&ReverseAttr != 0 {
-				b = b.Reverse()
-			} else {
-				b = b.NoReverse()
-			}
+			b = b.Reverse(s.Attrs&ReverseAttr != 0)
 		}
 		if s.Attrs&ConcealAttr != o.Attrs&ConcealAttr {
-			if s.Attrs&ConcealAttr != 0 {
-				b = b.Conceal()
-			} else {
-				b = b.NoConceal()
-			}
+			b = b.Conceal(s.Attrs&ConcealAttr != 0)
 		}
 		if s.Attrs&StrikethroughAttr != o.Attrs&StrikethroughAttr {
-			if s.Attrs&StrikethroughAttr != 0 {
-				b = b.Strikethrough()
-			} else {
-				b = b.NoStrikethrough()
-			}
+			b = b.Strikethrough(s.Attrs&StrikethroughAttr != 0)
 		}
 	}
 

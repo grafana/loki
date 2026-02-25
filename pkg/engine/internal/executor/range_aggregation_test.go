@@ -8,6 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -23,6 +24,10 @@ var (
 	colLvl = "utf8.metadata.severity"
 	colVal = "float64.generated.value"
 )
+
+func init() {
+	assertions.Enabled = true
+}
 
 func TestRangeAggregationPipeline_instant(t *testing.T) {
 	// input schema with timestamp, partition-by columns and non-partition columns
@@ -81,7 +86,7 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 
 	inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
 	inputB := NewArrowtestPipeline(schema, rowsPipelineB...)
-	pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, nil)
+	pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
 	require.NoError(t, err)
 	defer pipeline.Close()
 
@@ -171,7 +176,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, nil)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -221,7 +226,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, nil)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -285,7 +290,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, nil)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 

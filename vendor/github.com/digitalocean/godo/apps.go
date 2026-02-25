@@ -80,6 +80,7 @@ type AppsService interface {
 	ListJobInvocations(ctx context.Context, appID string, opts *ListJobInvocationsOptions) ([]*JobInvocation, *Response, error)
 	GetJobInvocation(ctx context.Context, appID string, jobInvocationId string, opts *GetJobInvocationOptions) (*JobInvocation, *Response, error)
 	GetJobInvocationLogs(ctx context.Context, appID, jobInvocationId string, opts *GetJobInvocationLogsOptions) (*AppLogs, *Response, error)
+	CancelJobInvocation(ctx context.Context, appID, jobInvocationID string, opts *CancelJobInvocationOptions) (*JobInvocation, *Response, error)
 }
 
 // AppLogs represent app logs.
@@ -130,6 +131,10 @@ type ListJobInvocationsOptions struct {
 	DeploymentID string `url:"deployment_id,omitempty"`
 	// JobNames is an optional parameter. This is used to filter job invocations by job names.
 	JobNames []string `url:"job_names,omitempty"`
+}
+
+type CancelJobInvocationOptions struct {
+	JobName string `url:"job_name,omitempty"`
 }
 
 // DeploymentCreateRequest represents a request to create a deployment.
@@ -517,6 +522,28 @@ func (s *AppsServiceOp) GetJobInvocationLogs(ctx context.Context, appID, jobInvo
 		return nil, resp, err
 	}
 	return logs, resp, nil
+}
+
+// CancelJobInvocation cancels a specific job invocation for a given app.
+func (s *AppsServiceOp) CancelJobInvocation(ctx context.Context, appID string, jobInvocationId string, opts *CancelJobInvocationOptions) (*JobInvocation, *Response, error) {
+	url := fmt.Sprintf("%s/%s/job-invocations/%s/cancel", appsBasePath, appID, jobInvocationId)
+
+	url, err := addOptions(url, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(jobInvocationRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.JobInvocation, resp, nil
 }
 
 // GetLogs retrieves app logs.

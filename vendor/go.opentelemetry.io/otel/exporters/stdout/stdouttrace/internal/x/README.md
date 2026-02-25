@@ -8,13 +8,13 @@ See the [Compatibility and Stability](#compatibility-and-stability) section for 
 
 ## Features
 
-- [Self-Observability](#self-observability)
+- [Observability](#observability)
 
-### Self-Observability
+### Observability
 
-The `stdouttrace` exporter provides a self-observability feature that allows you to monitor the SDK itself.
+The `stdouttrace` exporter can be configured to provide observability about itself using OpenTelemetry metrics.
 
-To opt-in, set the environment variable `OTEL_GO_X_SELF_OBSERVABILITY` to `true`.
+To opt-in, set the environment variable `OTEL_GO_X_OBSERVABILITY` to `true`.
 
 When enabled, the SDK will create the following metrics using the global `MeterProvider`:
 

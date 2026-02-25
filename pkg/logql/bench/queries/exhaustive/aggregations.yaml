@@ -1,0 +1,288 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  - description: Average over time with unwrap - no grouping
+    query: sum(avg_over_time(${SELECTOR} | json | unwrap rows_affected [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - aggregation
+      - avg
+    requires:
+      log_format: json
+      unwrappable_fields:
+        - rows_affected
+  - description: Average over time with line filter and unwrap
+    query: sum(avg_over_time(${SELECTOR} |= "level" | json | unwrap rows_affected [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - aggregation
+      - avg
+      - line-filter
+    requires:
+      log_format: json
+      unwrappable_fields:
+        - rows_affected
+      keywords:
+        - level
+  - description: Min over time with unwrap
+    query: sum(min_over_time(${SELECTOR} |= "level" | json | unwrap rows_affected [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - aggregation
+      - min
+    requires:
+      log_format: json
+      unwrappable_fields:
+        - rows_affected
+      keywords:
+        - level
+  - description: Max over time with unwrap
+    query: sum(max_over_time(${SELECTOR} |= "level" | json | unwrap rows_affected [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - aggregation
+      - max
+    requires:
+      log_format: json
+      unwrappable_fields:
+        - rows_affected
+      keywords:
+        - level
+  - description: Count aggregated by pod
+    query: sum by (pod) (count_over_time(${SELECTOR}[${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - aggregation
+      - count
+      - grouping
+    requires:
+      labels:
+        - pod
+  - description: Count aggregated by namespace
+    query: sum by (namespace) (count_over_time(${SELECTOR}[${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - aggregation
+      - count
+      - grouping
+    requires:
+      labels:
+        - namespace
+  - description: Count aggregated by env
+    query: sum by (env) (count_over_time(${SELECTOR}[${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - aggregation
+      - count
+      - grouping
+    requires:
+      labels:
+        - env
+  - description: Count aggregated by detected_level
+    query: sum by (detected_level) (count_over_time(${SELECTOR}[${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - aggregation
+      - count
+      - grouping
+      - structured-metadata
+    requires:
+      structured_metadata:
+        - detected_level
+  - description: Count aggregated by cluster and namespace
+    query: sum by (cluster, namespace) (count_over_time(${SELECTOR}[${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - aggregation
+      - count
+      - grouping
+      - multi-dimension
+    requires:
+      labels:
+        - cluster
+        - namespace
+  - description: Count aggregated by env and component
+    query: sum by (env, component) (count_over_time(${SELECTOR}[${RANGE}]))
+    kind: metric
+    skip: true # component label not available in test data
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - aggregation
+      - count
+      - grouping
+      - multi-dimension
+    requires:
+      labels:
+        - env
+        - component
+  - description: Database rows affected by level
+    query: sum by (level) (sum_over_time(${SELECTOR} | json | unwrap rows_affected [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - aggregation
+      - sum
+      - grouping
+    requires:
+      log_format: json
+      unwrappable_fields:
+        - rows_affected
+      detected_fields:
+        - level
+  - description: Loki duration unwrap with logfmt
+    query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - aggregation
+      - logfmt
+      - conversion
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+      detected_fields:
+        - level
+  - description: Max of min duration by level
+    query: max by (level) (min_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - aggregation
+      - nested
+      - logfmt
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+      detected_fields:
+        - level
+  - description: Avg duration by level
+    query: avg by (level) (avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - aggregation
+      - avg
+      - logfmt
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+      detected_fields:
+        - level
+  - description: Max avg duration without grouping
+    query: max by () (avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - aggregation
+      - logfmt
+      - empty-grouping
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+  - description: Max avg duration by level without service_name
+    query: max by (level) (avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]) without (service_name))
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - aggregation
+      - without
+      - logfmt
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+      detected_fields:
+        - level
+      labels:
+        - service_name
+  - description: Max sum without grouping modifier
+    query: max without () (sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - aggregation
+      - without
+      - logfmt
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+  - description: Avg duration without grouping
+    query: avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}])
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - aggregation
+      - logfmt
+      - no-outer-aggregation
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+  - description: Sum rows affected without outer aggregation
+    query: sum_over_time(${SELECTOR} | json | unwrap rows_affected [${RANGE}])
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - aggregation
+      - no-outer-aggregation
+    requires:
+      log_format: json
+      unwrappable_fields:
+        - rows_affected

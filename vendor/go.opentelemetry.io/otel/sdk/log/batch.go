@@ -184,6 +184,11 @@ func (b *BatchProcessor) poll(interval time.Duration) (done chan struct{}) {
 	return done
 }
 
+// Enabled returns true, indicating this Processor will process all records.
+func (*BatchProcessor) Enabled(context.Context, EnabledParameters) bool {
+	return true
+}
+
 // OnEmit batches provided log record.
 func (b *BatchProcessor) OnEmit(_ context.Context, r *Record) error {
 	if b.stopped.Load() || b.q == nil {
@@ -375,25 +380,25 @@ func newBatchConfig(options []BatchProcessorOption) batchConfig {
 	c.maxQSize = c.maxQSize.Resolve(
 		clearLessThanOne[int](),
 		getenv[int](envarMaxQSize),
-		clearLessThanOne[int](),
+		clearLessThanOne[int](), // nolint:gocritic // the function argument is duplicated on purpose
 		fallback[int](dfltMaxQSize),
 	)
 	c.expInterval = c.expInterval.Resolve(
 		clearLessThanOne[time.Duration](),
 		getenv[time.Duration](envarExpInterval),
-		clearLessThanOne[time.Duration](),
+		clearLessThanOne[time.Duration](), // nolint:gocritic // the function argument is duplicated on purpose
 		fallback[time.Duration](dfltExpInterval),
 	)
 	c.expTimeout = c.expTimeout.Resolve(
 		clearLessThanOne[time.Duration](),
 		getenv[time.Duration](envarExpTimeout),
-		clearLessThanOne[time.Duration](),
+		clearLessThanOne[time.Duration](), // nolint:gocritic // the function argument is duplicated on purpose
 		fallback[time.Duration](dfltExpTimeout),
 	)
 	c.expMaxBatchSize = c.expMaxBatchSize.Resolve(
 		clearLessThanOne[int](),
 		getenv[int](envarExpMaxBatchSize),
-		clearLessThanOne[int](),
+		clearLessThanOne[int](), // nolint:gocritic // the function argument is duplicated on purpose
 		clampMax[int](c.maxQSize.Value),
 		fallback[int](dfltExpMaxBatchSize),
 	)

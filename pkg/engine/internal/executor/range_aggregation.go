@@ -11,6 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -22,11 +23,12 @@ type rangeAggregationOptions struct {
 	grouping physical.Grouping
 
 	// start and end timestamps are equal for instant queries.
-	startTs       time.Time     // start timestamp of the query
-	endTs         time.Time     // end timestamp of the query
-	rangeInterval time.Duration // range interval
-	step          time.Duration // step used for range queries
-	operation     types.RangeAggregationType
+	startTs        time.Time     // start timestamp of the query
+	endTs          time.Time     // end timestamp of the query
+	rangeInterval  time.Duration // range interval
+	step           time.Duration // step used for range queries
+	operation      types.RangeAggregationType
+	maxQuerySeries int // maximum number of unique series allowed
 }
 
 var (
@@ -36,6 +38,7 @@ var (
 		types.RangeAggregationTypeCount: aggregationOperationCount,
 		types.RangeAggregationTypeMax:   aggregationOperationMax,
 		types.RangeAggregationTypeMin:   aggregationOperationMin,
+		types.RangeAggregationTypeAvg:   aggregationOperationAvg,
 	}
 )
 
@@ -68,17 +71,17 @@ type rangeAggregationPipeline struct {
 
 	aggregator          *aggregator
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
-	evaluator           expressionEvaluator          // used to evaluate column expressions
+	evaluator           *expressionEvaluator         // used to evaluate column expressions
 	opts                rangeAggregationOptions
-	region              *xcap.Region
+	identCache          *semconv.IdentifierCache
 }
 
-func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
-		inputs:    inputs,
-		evaluator: evaluator,
-		opts:      opts,
-		region:    region,
+		inputs:     inputs,
+		evaluator:  evaluator,
+		opts:       opts,
+		identCache: semconv.NewIdentifierCache(),
 	}
 	r.init()
 	return r, nil
@@ -107,6 +110,12 @@ func (r *rangeAggregationPipeline) init() {
 	}
 
 	r.aggregator = newAggregator(len(windows), op)
+	r.aggregator.SetMaxSeries(r.opts.maxQuerySeries)
+}
+
+// Open opens all input pipelines.
+func (r *rangeAggregationPipeline) Open(ctx context.Context) error {
+	return openInputsConcurrently(ctx, r.inputs)
 }
 
 // Read reads the next value into its state.
@@ -117,7 +126,12 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch,
 		return nil, EOF
 	}
 
-	return r.read(ctx)
+	rec, err := r.read(ctx)
+
+	assertions.CheckColumnDuplicates(rec)
+	assertions.CheckLabelValuesDuplicates(rec)
+
+	return rec, err
 }
 
 // TODOs:
@@ -138,7 +152,13 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				Type:   types.ColumnTypeGenerated,
 			},
 		} // value column expression
+
+		startedAt     = time.Now()
+		inputReadTime time.Duration
 	)
+
+	labelValuesCache := newLabelValuesCache()
+	fieldsCache := newFieldsCache()
 
 	r.aggregator.Reset() // reset before reading new inputs
 	inputsExhausted := false
@@ -146,7 +166,10 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 		inputsExhausted = true
 
 		for _, input := range r.inputs {
+			inputStart := time.Now()
 			record, err := input.Read(ctx)
+			inputReadTime += time.Since(inputStart)
+
 			if err != nil {
 				if errors.Is(err, EOF) {
 					continue
@@ -155,15 +178,21 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 			}
 
 			inputsExhausted = false
+			if record.NumRows() == 0 {
+				// Nothing to process
+				continue
+			}
+
+			assertions.CheckLabelValuesDuplicates(record)
 
 			// extract all the columns that are used for grouping
 			var arrays []*array.String
-			var fields []arrow.Field
+			var groupingFields []arrow.Field
 			if r.opts.grouping.Without {
 				// Grouping without a lable set. Exclude lables from that set.
 				schema := record.Schema()
 				for i, field := range schema.Fields() {
-					ident, err := semconv.ParseFQN(field.Name)
+					ident, err := r.identCache.ParseFQN(field.Name)
 					if err != nil {
 						return nil, err
 					}
@@ -192,11 +221,13 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 						}
 						if !found {
 							arrays = append(arrays, record.Column(i).(*array.String))
-							fields = append(fields, field)
+							groupingFields = append(groupingFields, field)
 						}
 					}
 				}
 			} else {
+				groupingFields = make([]arrow.Field, 0, len(r.opts.grouping.Columns))
+
 				// Gouping by a label set. Take only labels from that set.
 				for _, columnExpr := range r.opts.grouping.Columns {
 					vec, err := r.evaluator.eval(columnExpr, record)
@@ -216,11 +247,11 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
 					}
 					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
-					fields = append(fields, semconv.FieldFromIdent(ident, true))
+					groupingFields = append(groupingFields, semconv.FieldFromIdent(ident, true))
 				}
 			}
 
-			r.aggregator.AddLabels(fields)
+			r.aggregator.AddLabels(groupingFields)
 
 			// extract timestamp column to check if the entry is in range
 			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
@@ -239,9 +270,12 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				valArr = valVec.(*array.Float64)
 			}
 
-			labelsCache := newLabelsCache()
-
 			for row := range int(record.NumRows()) {
+				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
+				if len(windows) == 0 {
+					continue // out of range, skip this row
+				}
+
 				var value float64
 				if r.opts.operation != types.RangeAggregationTypeCount {
 					if valArr.IsNull(row) {
@@ -251,38 +285,37 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 					value = valArr.Value(row)
 				}
 
-				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
-				if len(windows) == 0 {
-					continue // out of range, skip this row
-				}
-
-				labels, labelValues := labelsCache.getLabels(arrays, fields, row)
+				labelValues := labelValuesCache.getLabelValues(arrays, row)
+				labels := fieldsCache.getFields(arrays, groupingFields, row)
 
 				for _, w := range windows {
-					r.aggregator.Add(w.end, value, labels, labelValues)
+					if err := r.aggregator.Add(w.end, value, labels, labelValues); err != nil {
+						return nil, err
+					}
 				}
 			}
 		}
 	}
 
 	r.inputsExhausted = true
-	return r.aggregator.BuildRecord()
+
+	rec, err := r.aggregator.BuildRecord()
+
+	if region := xcap.RegionFromContext(ctx); region != nil {
+		computeTime := time.Since(startedAt) - inputReadTime
+		region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
+	}
+
+	return rec, err
 }
 
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
 func (r *rangeAggregationPipeline) Close() {
-	if r.region != nil {
-		r.region.End()
-	}
+	r.aggregator.Reset()
 	for _, input := range r.inputs {
 		input.Close()
 	}
-}
-
-// Region implements RegionProvider.
-func (r *rangeAggregationPipeline) Region() *xcap.Region {
-	return r.region
 }
 
 func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {

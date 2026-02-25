@@ -14,6 +14,7 @@ type NfsActionsService interface {
 	Snapshot(ctx context.Context, nfsShareId string, nfsSnapshotName string, region string) (*NfsAction, *Response, error)
 	Attach(ctx context.Context, nfsShareId string, vpcID string, region string) (*NfsAction, *Response, error)
 	Detach(ctx context.Context, nfsShareId string, vpcID string, region string) (*NfsAction, *Response, error)
+	SwitchPerformanceTier(ctx context.Context, nfsShareId string, tier string) (*NfsAction, *Response, error)
 }
 
 // NfsActionsServiceOp handles communication with the NFS action related
@@ -69,11 +70,15 @@ type NfsDetachParams struct {
 	VpcID string `json:"vpc_id"`
 }
 
+// NfsSwitchPerformanceTierParams represents parameters to switch the performance tier of an NFS share.
+type NfsSwitchPerformanceTierParams struct {
+	PerformanceTier string `json:"performance_tier"`
+}
+
 // Resize an NFS share
 func (s *NfsActionsServiceOp) Resize(ctx context.Context, nfsShareId string, size uint64, region string) (*NfsAction, *Response, error) {
 	request := &NfsActionRequest{
-		Type:   "resize",
-		Region: region,
+		Type: "resize",
 		Params: &NfsResizeParams{
 			SizeGib: size,
 		},
@@ -85,8 +90,7 @@ func (s *NfsActionsServiceOp) Resize(ctx context.Context, nfsShareId string, siz
 // Snapshot an NFS share
 func (s *NfsActionsServiceOp) Snapshot(ctx context.Context, nfsShareId, nfsSnapshotName, region string) (*NfsAction, *Response, error) {
 	request := &NfsActionRequest{
-		Type:   "snapshot",
-		Region: region,
+		Type: "snapshot",
 		Params: &NfsSnapshotParams{
 			Name: nfsSnapshotName,
 		},
@@ -98,8 +102,7 @@ func (s *NfsActionsServiceOp) Snapshot(ctx context.Context, nfsShareId, nfsSnaps
 // Attach an NFS share
 func (s *NfsActionsServiceOp) Attach(ctx context.Context, nfsShareId, vpcID, region string) (*NfsAction, *Response, error) {
 	request := &NfsActionRequest{
-		Type:   "attach",
-		Region: region,
+		Type: "attach",
 		Params: &NfsAttachParams{
 			VpcID: vpcID,
 		},
@@ -111,8 +114,7 @@ func (s *NfsActionsServiceOp) Attach(ctx context.Context, nfsShareId, vpcID, reg
 // Detach an NFS share
 func (s *NfsActionsServiceOp) Detach(ctx context.Context, nfsShareId, vpcID, region string) (*NfsAction, *Response, error) {
 	request := &NfsActionRequest{
-		Type:   "detach",
-		Region: region,
+		Type: "detach",
 		Params: &NfsAttachParams{
 			VpcID: vpcID,
 		},
@@ -121,6 +123,17 @@ func (s *NfsActionsServiceOp) Detach(ctx context.Context, nfsShareId, vpcID, reg
 	return s.doAction(ctx, nfsShareId, request)
 }
 
+// Switch performance tier of an NFS share
+func (s *NfsActionsServiceOp) SwitchPerformanceTier(ctx context.Context, nfsShareId string, tier string) (*NfsAction, *Response, error) {
+	request := &NfsActionRequest{
+		Type: "switch_performance_tier",
+		Params: &NfsSwitchPerformanceTierParams{
+			PerformanceTier: tier,
+		},
+	}
+
+	return s.doAction(ctx, nfsShareId, request)
+}
 func (s *NfsActionsServiceOp) doAction(ctx context.Context, nfsShareId string, request *NfsActionRequest) (*NfsAction, *Response, error) {
 	if request == nil {
 		return nil, nil, NewArgError("request", "request can't be nil")

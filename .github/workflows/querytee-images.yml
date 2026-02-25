@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "cmd/querytee/**"
-      - "tools/querytee/**"
+      - "pkg/querytee/**"
       - ".github/workflows/querytee-images.yml"
   workflow_dispatch:
 
@@ -17,7 +17,7 @@ permissions:
 env:
   BUILD_TIMEOUT: 60
   IMAGE_PREFIX: grafana
-  GO_VERSION: "1.25.5"
+  GO_VERSION: "1.25.7"
 
 jobs:
   loki-query-tee-image:

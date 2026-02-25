@@ -52,13 +52,13 @@ func (c *protobufCodec) EncodeTo(w io.Writer, frame Frame) error {
 	// Convert wire.Frame to protobuf
 	pbFrame, err := c.frameToPbFrame(frame)
 	if err != nil {
-		return fmt.Errorf("failed to convert frame to protobuf: %w", err)
+		panic(fmt.Errorf("failed to convert frame to protobuf: %w", err))
 	}
 
 	// Marshal to bytes
 	data, err := proto.Marshal(pbFrame)
 	if err != nil {
-		return fmt.Errorf("failed to marshal protobuf: %w", err)
+		panic(fmt.Errorf("failed to marshal protobuf: %w", err))
 	}
 
 	// Write length prefix (uvarint)
@@ -441,7 +441,7 @@ func (c *protobufCodec) frameToPbFrame(from Frame) (*wirepb.Frame, error) {
 		f.Kind = &wirepb.Frame_Message{Message: mf}
 
 	default:
-		return nil, fmt.Errorf("unknown frame type: %T", v)
+		panic(fmt.Errorf("unknown frame type: %T", v))
 	}
 
 	return f, nil
@@ -558,7 +558,7 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 		}
 
 	default:
-		return nil, fmt.Errorf("unknown message type: %T", v)
+		panic(fmt.Errorf("unknown message type: %T", v))
 	}
 
 	return mf, nil

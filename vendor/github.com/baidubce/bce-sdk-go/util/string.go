@@ -127,3 +127,17 @@ func NewUUID() string {
 func NewRequestId() string {
 	return NewUUID()
 }
+
+func StringValue(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+func PtrInt32(v int32) *int32       { return &v }
+func PtrInt64(v int64) *int64       { return &v }
+func PtrFloat32(v float32) *float32 { return &v }
+func PtrFloat64(v float64) *float64 { return &v }
+func PtrBool(v bool) *bool          { return &v }
+func PtrString(v string) *string    { return &v }

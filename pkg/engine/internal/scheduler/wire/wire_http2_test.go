@@ -92,21 +92,14 @@ func TestHTTP2WithPeers(t *testing.T) {
 	addr := listener.Addr().String()
 	t.Logf("Server listening on %s", addr)
 
-	// Track received messages
-	var (
-		serverReceivedMu sync.Mutex
-		serverReceived   []wire.Message
-		clientReceivedMu sync.Mutex
-		clientReceived   []wire.Message
-	)
+	// Channels to signal message receipt
+	serverReceived := make(chan wire.Message, 1)
+	clientReceived := make(chan wire.Message, 1)
 
 	// Server handler
 	serverHandler := func(ctx context.Context, peer *wire.Peer, message wire.Message) error {
-		serverReceivedMu.Lock()
-		serverReceived = append(serverReceived, message)
-		serverReceivedMu.Unlock()
-
 		t.Logf("Server received: %T %+v", message, message)
+		serverReceived <- message
 
 		// Echo back a WorkerReadyMessage
 		if _, ok := message.(wire.TaskStatusMessage); ok {
@@ -117,11 +110,8 @@ func TestHTTP2WithPeers(t *testing.T) {
 
 	// Client handler
 	clientHandler := func(_ context.Context, _ *wire.Peer, message wire.Message) error {
-		clientReceivedMu.Lock()
-		clientReceived = append(clientReceived, message)
-		clientReceivedMu.Unlock()
-
 		t.Logf("Client received: %T %+v", message, message)
+		clientReceived <- message
 		return nil
 	}
 
@@ -147,6 +137,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	// Create server peer
 	serverPeer := &wire.Peer{
 		Logger:  log.NewNopLogger(),
+		Metrics: wire.NewMetrics(),
 		Conn:    serverConn,
 		Handler: serverHandler,
 		Buffer:  10,
@@ -155,6 +146,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	// Create client peer
 	clientPeer := &wire.Peer{
 		Logger:  log.NewNopLogger(),
+		Metrics: wire.NewMetrics(),
 		Conn:    clientConn,
 		Handler: clientHandler,
 		Buffer:  10,
@@ -177,38 +169,25 @@ func TestHTTP2WithPeers(t *testing.T) {
 		_ = clientPeer.Serve(peerCtx)
 	}()
 
-	// Give peers time to start
-	time.Sleep(100 * time.Millisecond)
-
 	// Send message from client to server (synchronous)
 	err = clientPeer.SendMessage(ctx, wire.TaskStatusMessage{})
 	require.NoError(t, err)
 
-	// Wait for message to be processed
-	require.Eventually(t, func() bool {
-		serverReceivedMu.Lock()
-		defer serverReceivedMu.Unlock()
-		return len(serverReceived) > 0
-	}, 2*time.Second, 50*time.Millisecond)
+	// Wait for server to receive the message
+	select {
+	case msg := <-serverReceived:
+		require.IsType(t, wire.TaskStatusMessage{}, msg)
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for server to receive message")
+	}
 
-	// Verify server received the message
-	serverReceivedMu.Lock()
-	require.Len(t, serverReceived, 1)
-	require.IsType(t, wire.TaskStatusMessage{}, serverReceived[0])
-	serverReceivedMu.Unlock()
-
-	// Wait for echo response
-	require.Eventually(t, func() bool {
-		clientReceivedMu.Lock()
-		defer clientReceivedMu.Unlock()
-		return len(clientReceived) > 0
-	}, 2*time.Second, 50*time.Millisecond)
-
-	// Verify client received the echo
-	clientReceivedMu.Lock()
-	require.Len(t, clientReceived, 1)
-	require.IsType(t, wire.WorkerReadyMessage{}, clientReceived[0])
-	clientReceivedMu.Unlock()
+	// Wait for client to receive the echo
+	select {
+	case msg := <-clientReceived:
+		require.IsType(t, wire.WorkerReadyMessage{}, msg)
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for client to receive echo")
+	}
 
 	// Clean shutdown
 	peerCancel()
@@ -269,6 +248,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 
 			peer := &wire.Peer{
 				Logger:  log.NewNopLogger(),
+				Metrics: wire.NewMetrics(),
 				Conn:    conn,
 				Handler: serverHandler,
 				Buffer:  10,
@@ -305,6 +285,9 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			}
 			defer conn.Close()
 
+			// Channel to signal when this client has received all responses
+			clientDone := make(chan struct{})
+
 			// Handler to count received messages
 			handler := func(_ context.Context, _ *wire.Peer, message wire.Message) error {
 				clientReceivedMu.Lock()
@@ -313,11 +296,16 @@ func TestHTTP2MultipleClients(t *testing.T) {
 				clientReceivedMu.Unlock()
 
 				t.Logf("Client %d received: %T (total: %d)", clientIdx, message, count)
+
+				if count == 3 {
+					close(clientDone)
+				}
 				return nil
 			}
 
 			peer := &wire.Peer{
 				Logger:  log.NewNopLogger(),
+				Metrics: wire.NewMetrics(),
 				Conn:    conn,
 				Handler: handler,
 				Buffer:  10,
@@ -334,9 +322,6 @@ func TestHTTP2MultipleClients(t *testing.T) {
 				_ = peer.Serve(peerDoneCtx)
 			}()
 
-			// Give peer time to start
-			time.Sleep(100 * time.Millisecond)
-
 			// Send messages
 			for j := 0; j < 3; j++ {
 				msg := wire.TaskStatusMessage{}
@@ -348,8 +333,12 @@ func TestHTTP2MultipleClients(t *testing.T) {
 				t.Logf("Client %d sent message %d", clientIdx, j+1)
 			}
 
-			// Wait a bit for responses
-			time.Sleep(500 * time.Millisecond)
+			// Wait for all responses
+			select {
+			case <-clientDone:
+			case <-ctx.Done():
+				t.Errorf("Client %d timeout waiting for responses", clientIdx)
+			}
 
 			peerDone()
 			peerWg.Wait()
@@ -419,6 +408,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	// Create peers
 	serverPeer := &wire.Peer{
 		Logger:  log.NewNopLogger(),
+		Metrics: wire.NewMetrics(),
 		Conn:    serverConn,
 		Handler: errorHandler,
 		Buffer:  10,
@@ -426,6 +416,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 
 	clientPeer := &wire.Peer{
 		Logger:  log.NewNopLogger(),
+		Metrics: wire.NewMetrics(),
 		Conn:    clientConn,
 		Handler: func(_ context.Context, _ *wire.Peer, _ wire.Message) error { return nil },
 		Buffer:  10,
@@ -447,9 +438,6 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 		defer wg.Done()
 		_ = clientPeer.Serve(peerCtx)
 	}()
-
-	// Give peers time to start
-	time.Sleep(100 * time.Millisecond)
 
 	// Send message that will trigger error
 	err = clientPeer.SendMessage(ctx, wire.WorkerReadyMessage{})
@@ -559,7 +547,6 @@ func prepareHTTP2Listener(t *testing.T) (*wire.HTTP2Listener, func()) {
 
 	listener := wire.NewHTTP2Listener(
 		l.Addr(),
-		wire.WithHTTP2ListenerMaxPendingConns(1),
 		wire.WithHTTP2ListenerLogger(log.NewNopLogger()),
 	)
 

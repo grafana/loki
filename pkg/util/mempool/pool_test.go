@@ -109,7 +109,7 @@ func TestMemPool(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				for i := 0; i < n; i++ {
-					s := 2 << rand.Intn(5)
+					s := (2 << rand.Intn(5)) << 10 // 2KB, 4KB, 8KB, 16KB, or 32KB
 					buf1, err1 := pool.Get(s)
 					buf2, err2 := pool.Get(s)
 					if err2 == nil {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
@@ -78,6 +79,11 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		return nil, errors.New("scheduler lookup interval must be non-zero when a scheduler lookup address is provided")
 	}
 
+	if params.Config.SchedulerLookupInterval < time.Second {
+		level.Warn(params.Logger).Log("msg", "scheduler lookup interval is configured to be less than 1 second, overriding to 1 second")
+		params.Config.SchedulerLookupInterval = time.Second
+	}
+
 	if params.Endpoint == "" {
 		params.Endpoint = "/api/v2/frame"
 	}
@@ -97,7 +103,6 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		remoteListener := wire.NewHTTP2Listener(
 			params.AdvertiseAddr,
 			wire.WithHTTP2ListenerLogger(params.Logger),
-			wire.WithHTTP2ListenerMaxPendingConns(10),
 		)
 		listener, handler = remoteListener, remoteListener
 		dialer = wire.NewHTTP2Dialer(params.Endpoint)
@@ -130,8 +135,9 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
 		SchedulerLookupInterval: params.Config.SchedulerLookupInterval,
 
-		BatchSize:  int64(params.Executor.BatchSize),
-		NumThreads: params.Config.WorkerThreads,
+		BatchSize:     int64(params.Executor.BatchSize),
+		PrefetchBytes: int64(params.Executor.PrefetchBytes),
+		NumThreads:    params.Config.WorkerThreads,
 
 		Endpoint: params.Endpoint,
 

@@ -100,14 +100,41 @@ func newBigtableClientMonitoredResource(ctx context.Context, project, appProfile
 
 	smr.clientProject = getAttribute(s, "cloud.account.id", unKnownAtttr)
 	smr.cloudPlatform = getAttribute(s, "cloud.platform", unKnownAtttr)
-	smr.hostName = getAttribute(s, "host.name", unKnownAtttr)
+
+	smr.hostName = getAttribute(s, "host.name", "")
+	// See https://opentelemetry.io/docs/specs/semconv/resource/k8s/#pod
+	if smr.hostName == "" {
+		smr.hostName = getAttribute(s, "k8s.pod.name", "")
+	}
+	// Fallback https://opentelemetry.io/docs/specs/semconv/resource/k8s/#pod
+	if smr.hostName == "" {
+		// Fallback to Node name if pod name is missing, add unknown
+		smr.hostName = getAttribute(s, "k8s.node.name", unKnownAtttr)
+	}
+
 	smr.hostID = getAttribute(s, "host.id", unKnownAtttr)
 	if smr.hostID == "unknown" {
 		// cloud run / cloud functions have faas.id instead of host.id
 
 		smr.hostID = getAttribute(s, "faas.id", unKnownAtttr)
 	}
-	smr.region = getAttribute(s, "cloud.region", "global")
+
+	// See https://opentelemetry.io/docs/specs/semconv/resource/cloud/
+	smr.region = getAttribute(s, "cloud.region", "")
+	if smr.region == "" {
+		zone := getAttribute(s, "cloud.availability_zone", "")
+		if zone != "" && zone != unKnownAtttr {
+			// handle for only gce zones.
+			if lastDash := strings.LastIndex(zone, "-"); lastDash > 0 {
+				smr.region = zone[:lastDash]
+			}
+		}
+	}
+
+	if smr.region == "" {
+		smr.region = "global"
+	}
+
 	smr.resource, err = resource.New(ctx, resource.WithAttributes([]attribute.KeyValue{
 		{Key: "gcp.resource_type", Value: attribute.StringValue(bigtableClientMonitoredResourceName)},
 		{Key: "project_id", Value: attribute.StringValue(project)},
@@ -127,11 +154,11 @@ func newBigtableClientMonitoredResource(ctx context.Context, project, appProfile
 	return smr, nil
 }
 
-type metricsContext struct {
+type otelMetricsContext struct {
 	// client options passed to gRPC channels
 	clientOpts []option.ClientOption
 	// instance of metric reader used by gRPC client-side metrics
-	provider *metric.MeterProvider
+	otelMeterProvider *metric.MeterProvider
 	// clean func to call when closing gRPC client
 	close func()
 }
@@ -149,7 +176,7 @@ type metricsConfig struct {
 	resourceOpts    []resource.Option    // used by tests
 }
 
-func newOtelMetricsContext(ctx context.Context, cfg metricsConfig) (*metricsContext, error) {
+func newOtelMetricsContext(ctx context.Context, cfg metricsConfig) (*otelMetricsContext, error) {
 	var exporter metric.Exporter
 	meterOpts := []metric.Option{}
 	if cfg.customExporter == nil {
@@ -187,9 +214,9 @@ func newOtelMetricsContext(ctx context.Context, cfg metricsConfig) (*metricsCont
 		meterOpts = append(meterOpts, metric.WithReader(
 			metric.NewPeriodicReader(&exporterLogSuppressor{Exporter: exporter}, metric.WithInterval(interval))))
 	}
-	provider := metric.NewMeterProvider(meterOpts...)
+	otelMeterProvider := metric.NewMeterProvider(meterOpts...)
 	mo := opentelemetry.MetricsOptions{
-		MeterProvider: provider,
+		MeterProvider: otelMeterProvider,
 		Metrics: stats.NewMetricSet(
 			"grpc.client.attempt.duration",
 			"grpc.lb.rls.default_target_picks",
@@ -206,11 +233,11 @@ func newOtelMetricsContext(ctx context.Context, cfg metricsConfig) (*metricsCont
 		option.WithGRPCDialOption(
 			grpc.WithDefaultCallOptions(grpc.StaticMethodCallOption{})),
 	}
-	return &metricsContext{
-		clientOpts: opts,
-		provider:   provider,
+	return &otelMetricsContext{
+		clientOpts:        opts,
+		otelMeterProvider: otelMeterProvider,
 		close: func() {
-			provider.Shutdown(ctx)
+			otelMeterProvider.Shutdown(ctx)
 		},
 	}, nil
 }

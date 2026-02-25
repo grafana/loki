@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -14,12 +16,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var (
 	errUnimplemented     = errors.New("query contains unimplemented features")
 	unimplementedFeature = func(s string) error { return fmt.Errorf("%w: %s", errUnimplemented, s) }
+
+	tracer = otel.Tracer("pkg/engine/internal/planner/logical")
 )
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
@@ -36,7 +39,7 @@ func BuildPlanWithDeletes(ctx context.Context, params logql.Params, deletes []*d
 
 	switch e := params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		value, err = buildPlanForLogQuery(ctx, e, params, false, 0, deletes)
+		value, err = buildPlanForLogQuery(ctx, e, params, false, 0, params.Start(), deletes)
 	case syntax.SampleExpr:
 		value, err = buildPlanForSampleQuery(ctx, e, params, deletes)
 	default:
@@ -55,42 +58,52 @@ func BuildPlanWithDeletes(ctx context.Context, params logql.Params, deletes []*d
 	return builder.ToPlan()
 }
 
+// alignStartToStepGrid floors start to the nearest epoch-aligned step
+// boundary, matching Prometheus's standard behaviour for range queries.
+// If step is zero (instant query) the original start is returned unchanged.
+func alignStartToStepGrid(start time.Time, step time.Duration) time.Time {
+	if step <= 0 {
+		return start
+	}
+	stepNs := step.Nanoseconds()
+	startNs := start.UnixNano()
+	if rem := startNs % stepNs; rem != 0 {
+		return time.Unix(0, startNs-rem)
+	}
+	return start
+}
+
 // buildPlanForLogQuery builds logical plan operations by traversing [syntax.LogSelectorExpr]
 // isMetricQuery should be set to true if this expr is encountered when processing a [syntax.SampleExpr].
 // rangeInterval should be set to a non-zero value if the query contains [$range].
+// queryStart is the effective start time for the query; for range queries it
+// must already be aligned to the step grid via [alignStartToStepGrid].
 func buildPlanForLogQuery(
 	ctx context.Context,
 	expr syntax.LogSelectorExpr,
 	params logql.Params,
 	isMetricQuery bool,
 	rangeInterval time.Duration,
+	queryStart time.Time,
 	deletes []*deletion.Request,
 ) (Value, error) {
 	var (
 		err      error
 		selector Value
 
-		dropCols []Value
-
 		// parse statements in LogQL introduce additional ambiguouity, requiring post
 		// parse filters to be tracked separately, and not included in maketable predicates
-		predicates          []Value
-		deletePredicates    []Value
-		postParsePredicates []Value
-		hasLogfmtParser     bool
-		logfmtStrict        bool
-		logfmtKeepEmpty     bool
-		hasJSONParser       bool
-		hasRegexParser      bool
-		regexpPattern       string
+		predicates       []Value
+		deletePredicates []Value
+		hasLogfmtParser  bool
+		hasJSONParser    bool
+		hasRegexParser   bool
 	)
 
-	// TODO(chaudum): Implement a Walk function that can return an error
+	// Do the first pass to collect the stream selector, line filters, and predicates. Only predicates listed
+	// before any parse node are considered here. Position of line filters does not matter, they are all collected.
 	expr.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
-		case *syntax.PipelineExpr:
-			// [PipelineExpr] is a container for other expressions, nothing to do here.
-			return true
 		case *syntax.MatchersExpr:
 			selector = convertLabelMatchers(e.Matchers())
 			return true
@@ -101,9 +114,7 @@ func buildPlanForLogQuery(
 			return false // do not traverse children
 		case *syntax.LogfmtParserExpr:
 			hasLogfmtParser = true
-			logfmtStrict = e.Strict
-			logfmtKeepEmpty = e.KeepEmpty
-			return true // continue traversing to find label filters
+			return true
 		case *syntax.LineParserExpr:
 			switch e.Op {
 			case syntax.OpParserTypeJSON:
@@ -111,54 +122,23 @@ func buildPlanForLogQuery(
 				return true
 			case syntax.OpParserTypeRegexp:
 				hasRegexParser = true
-				regexpPattern = e.Param
 				return true
-			case syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
-				// keeping these as a distinct cases so we remember to implement them later
-				err = errUnimplemented
-				return false
-			default:
-				err = errUnimplemented
-				return false
 			}
 		case *syntax.LabelFilterExpr:
-			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
-				err = innerErr
-			} else {
-				if !hasLogfmtParser && !hasJSONParser && !hasRegexParser {
-					predicates = append(predicates, val)
-				} else {
-					postParsePredicates = append(postParsePredicates, val)
+			// Collect following filters only before we met any parse stage.
+			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser {
+				val, innerErr := convertLabelFilter(e.LabelFilterer)
+				if innerErr != nil {
+					err = innerErr
+					return false
 				}
+
+				predicates = append(predicates, val)
 			}
+
 			return true
-		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
-			err = errUnimplemented
-			return false // do not traverse children
-		case *syntax.LineFmtExpr:
-			err = unimplementedFeature("line_format")
-			return false // do not traverse children
-		case *syntax.LabelFmtExpr:
-			err = unimplementedFeature("label_format")
-			return false // do not traverse children
-		case *syntax.KeepLabelsExpr:
-			err = unimplementedFeature("keep")
-			return false // do not traverse children
-		case *syntax.DropLabelsExpr:
-			if e.HasNamedMatchers() {
-				// Example: `| drop __error__=~"Unknown Error: .*"`
-				err = unimplementedFeature("drop with named matchers")
-				return false // do not traverse children
-			}
-			for _, name := range e.Names() {
-				value := NewColumnRef(name, types.ColumnTypeAmbiguous)
-				dropCols = append(dropCols, value)
-			}
-			return true
-		default:
-			err = errUnimplemented
-			return false // do not traverse children
 		}
+		return true
 	})
 	if err != nil {
 		return nil, err
@@ -167,12 +147,6 @@ func buildPlanForLogQuery(
 	shard, err := parseShards(params.Shards())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse shard: %w", err)
-	}
-
-	// it should be safe to append this to MakeTable predicates?
-	deletePredicates, err = buildDeletePredicates(ctx, deletes, params, rangeInterval)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build delete predicates: %w", err)
 	}
 
 	// MAKETABLE -> DataObjScan
@@ -193,44 +167,120 @@ func buildPlanForLogQuery(
 	}
 
 	// SELECT -> Filter
-	start := params.Start()
+	start := queryStart
 	end := params.End()
 	// extend search by rangeInterval to be able to include entries belonging to the [$range] interval.
 	for _, value := range convertQueryRangeToPredicates(start.Add(-rangeInterval), end) {
 		builder = builder.Select(value)
 	}
 
+	// Add all predicates as Select nodes.
 	for _, value := range predicates {
 		builder = builder.Select(value)
 	}
 
-	// adding this earlier in the pipeline to avoid expensive operations on lines that will be deleted anyway.
+	// It should be safe to append this to MakeTable predicates?
+	deletePredicates, err = buildDeletePredicates(ctx, deletes, params, rangeInterval)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build delete predicates: %w", err)
+	}
+
+	// Adding this earlier in the pipeline to avoid expensive operations on lines that will be deleted anyway.
 	for _, value := range deletePredicates {
 		builder = builder.Select(value)
 	}
 
-	// TODO: there's a subtle bug here, as it is actually possible to have both a logfmt parser and a json parser
-	// for example, the query `{app="foo"} | json | line_format "{{.nested_json}}" | json ` is valid, and will need
-	// multiple parse stages. We will handle this in a future PR.
-	if hasLogfmtParser {
-		builder = builder.Parse(types.VariadicOpParseLogfmt, logfmtStrict, logfmtKeepEmpty)
-	}
-	if hasJSONParser {
-		// JSON has no parameters
-		builder = builder.Parse(types.VariadicOpParseJSON, false, false)
-	}
-	if hasRegexParser {
-		_ = regexpPattern
-		builder = builder.ParseRegexp(regexpPattern)
-	}
+	// Reset flags before the second pass
+	hasLogfmtParser = false
+	hasJSONParser = false
+	hasRegexParser = false
 
-	for _, value := range postParsePredicates {
-		builder = builder.Select(value)
-	}
+	// TODO(chaudum): Implement a Walk function that can return an error
+	expr.Walk(func(e syntax.Expr) bool {
+		switch e := e.(type) {
+		case *syntax.PipelineExpr:
+			// [PipelineExpr] is a container for other expressions, nothing to do here.
+			return true
+		case *syntax.MatchersExpr:
+			return true
+		case *syntax.LineFilterExpr:
+			return false // do not traverse children
+		case *syntax.LogfmtParserExpr:
+			hasLogfmtParser = true
 
-	// TODO(chaudum): Drop stages can happen throughout the pipeline
-	if len(dropCols) > 0 {
-		builder = builder.ProjectDrop(dropCols...)
+			builder = builder.Parse(types.VariadicOpParseLogfmt, e.Strict, e.KeepEmpty)
+
+			return true // continue traversing to find label filters
+		case *syntax.LineParserExpr:
+			switch e.Op {
+			case syntax.OpParserTypeJSON:
+				hasJSONParser = true
+
+				// JSON has no parameters
+				builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+
+				return true
+			case syntax.OpParserTypeRegexp:
+				hasRegexParser = true
+
+				builder = builder.ParseRegexp(e.Param)
+
+				return true
+			case syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
+				// keeping these as a distinct cases so we remember to implement them later
+				err = errUnimplemented
+				return false
+			default:
+				err = errUnimplemented
+				return false
+			}
+		case *syntax.LabelFilterExpr:
+			// Add following filters only after we met any parse stage.
+			if hasLogfmtParser || hasJSONParser || hasRegexParser {
+				val, innerErr := convertLabelFilter(e.LabelFilterer)
+				if innerErr != nil {
+					err = innerErr
+					return false
+				}
+
+				builder = builder.Select(val)
+			}
+			return true
+		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
+			err = errUnimplemented
+			return false // do not traverse children
+		case *syntax.LineFmtExpr:
+			err = unimplementedFeature("line_format")
+			return false // do not traverse children
+		case *syntax.LabelFmtExpr:
+			err = unimplementedFeature("label_format")
+			return false // do not traverse children
+		case *syntax.KeepLabelsExpr:
+			err = unimplementedFeature("keep")
+			return false // do not traverse children
+		case *syntax.DropLabelsExpr:
+			if e.HasNamedMatchers() {
+				// Example: `| drop __error__=~"Unknown Error: .*"`
+				err = unimplementedFeature("drop with named matchers")
+				return false // do not traverse children
+			}
+
+			dropCols := make([]Value, 0, len(e.Names()))
+			for _, name := range e.Names() {
+				value := NewColumnRef(name, types.ColumnTypeAmbiguous)
+				dropCols = append(dropCols, value)
+			}
+
+			builder = builder.ProjectDrop(dropCols...)
+
+			return true
+		default:
+			err = errUnimplemented
+			return false // do not traverse children
+		}
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Metric queries do not apply a limit.
@@ -255,8 +305,9 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 	}
 
 	rangeInterval := e.Left.Interval
+	alignedStart := alignStartToStepGrid(wc.params.Start(), wc.params.Step())
 
-	logQuery, err := buildPlanForLogQuery(wc.ctx, logSelectorExpr, wc.params, true, rangeInterval, wc.deletes)
+	logQuery, err := buildPlanForLogQuery(wc.ctx, logSelectorExpr, wc.params, true, rangeInterval, alignedStart, wc.deletes)
 	if err != nil {
 		return nil, err
 	}
@@ -289,6 +340,23 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 					Type:   types.ColumnTypeAmbiguous,
 				},
 			})
+
+		// Filter out rows with any errors because rows with errors have invalid numeric values.
+		builder = builder.Select(
+			&BinOp{
+				Left: &BinOp{
+					Left:  NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated),
+					Right: NewLiteral(""),
+					Op:    types.BinaryOpEq,
+				},
+				Right: &BinOp{
+					Left:  NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated),
+					Right: NewLiteral(""),
+					Op:    types.BinaryOpEq,
+				},
+				Op: types.BinaryOpAnd,
+			},
+		)
 	}
 
 	var rangeAggType types.RangeAggregationType
@@ -301,6 +369,8 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 		rangeAggType = types.RangeAggregationTypeMax
 	case syntax.OpRangeTypeMin:
 		rangeAggType = types.RangeAggregationTypeMin
+	case syntax.OpRangeTypeAvg:
+		rangeAggType = types.RangeAggregationTypeAvg
 	// case syntax.OpRangeTypeBytesRate:
 	//	rangeAggType = types.RangeAggregationTypeBytes // bytes_rate is implemented as bytes_over_time/$interval
 	case syntax.OpRangeTypeRate:
@@ -313,25 +383,8 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 		return nil, errUnimplemented
 	}
 
-	// Filter out rows with any errors from parsing or unwrap stages.
-	builder = builder.Select(
-		&BinOp{
-			Left: &BinOp{
-				Left:  NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated),
-				Right: NewLiteral(""),
-				Op:    types.BinaryOpEq,
-			},
-			Right: &BinOp{
-				Left:  NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated),
-				Right: NewLiteral(""),
-				Op:    types.BinaryOpEq,
-			},
-			Op: types.BinaryOpAnd,
-		},
-	)
-
 	builder = builder.RangeAggregation(
-		convertGrouping(e.Grouping), rangeAggType, wc.params.Start(), wc.params.End(), wc.params.Step(), rangeInterval,
+		convertGrouping(e.Grouping), rangeAggType, alignedStart, wc.params.End(), wc.params.Step(), rangeInterval,
 	)
 
 	switch e.Operation {
@@ -434,31 +487,11 @@ func walk(e syntax.Expr, wc *walkContext) (Value, error) {
 }
 
 func buildPlanForSampleQuery(ctx context.Context, e syntax.SampleExpr, params logql.Params, deletes []*deletion.Request) (Value, error) {
-	val, err := walk(e, &walkContext{
+	return walk(e, &walkContext{
 		ctx:     ctx,
 		params:  params,
 		deletes: deletes,
 	})
-
-	// this is to check that there are both range and vector aggregations, otherwise it is not implemented yet.
-	// TODO remove when all permutations of vector aggregations and range aggregations are implemented.
-	hasRangeAgg := false
-	hasVecAgg := false
-	e.Walk(func(e syntax.Expr) bool {
-		switch e.(type) {
-		case *syntax.RangeAggregationExpr:
-			hasRangeAgg = true
-			return false
-		case *syntax.VectorAggregationExpr:
-			hasVecAgg = true
-		}
-		return true
-	})
-	if !hasRangeAgg || !hasVecAgg {
-		return nil, errUnimplemented
-	}
-
-	return val, err
 }
 
 func convertLabelMatchers(matchers []*labels.Matcher) Value {
@@ -488,12 +521,14 @@ func convertVectorAggregationType(op string) types.VectorAggregationType {
 	switch op {
 	case syntax.OpTypeSum:
 		return types.VectorAggregationTypeSum
-	//case syntax.OpTypeCount:
-	//	return types.VectorAggregationTypeCount
+	case syntax.OpTypeCount:
+		return types.VectorAggregationTypeCount
 	case syntax.OpTypeMax:
 		return types.VectorAggregationTypeMax
 	case syntax.OpTypeMin:
 		return types.VectorAggregationTypeMin
+	case syntax.OpTypeAvg:
+		return types.VectorAggregationTypeAvg
 	default:
 		return types.VectorAggregationTypeInvalid
 	}
@@ -707,8 +742,8 @@ func parseShards(shards []string) (*ShardInfo, error) {
 // There is not need to explicitly signal the optimizer to not push these predicates down,
 // canApplyPredicate already correctly handles this by returning an error if there is a label column ref.
 func buildDeletePredicates(ctx context.Context, deletes []*deletion.Request, params logql.Params, rangeInterval time.Duration) ([]Value, error) {
-	_, region := xcap.StartRegion(ctx, "buildDeletePredicates")
-	defer region.End()
+	_, span := tracer.Start(ctx, "logical.buildDeletePredicates")
+	defer span.End()
 
 	var predicates []Value
 
@@ -855,6 +890,9 @@ func buildDeletePredicates(ctx context.Context, deletes []*deletion.Request, par
 		predicates = append(predicates, p)
 	}
 
-	region.Record(xcap.StatDeletePredicates.Observe(int64(len(predicates))))
+	span.SetAttributes(
+		attribute.Int("predicates", len(predicates)),
+	)
+
 	return predicates, nil
 }

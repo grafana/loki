@@ -296,6 +296,44 @@ func TestResult_Merge(t *testing.T) {
 	}, res)
 }
 
+func TestResult_Merge_TotalEntriesReturned(t *testing.T) {
+	t.Run("accumulates TotalEntriesReturned across merges", func(t *testing.T) {
+		var res Result
+
+		// First split returns 100 entries
+		res.ComputeSummary(1*time.Second, 0, 100)
+		require.Equal(t, int64(100), res.Summary.TotalEntriesReturned)
+
+		// Merge second split with 150 entries
+		toMerge := Result{}
+		toMerge.ComputeSummary(1*time.Second, 0, 150)
+		res.Merge(toMerge)
+		require.Equal(t, int64(250), res.Summary.TotalEntriesReturned,
+			"TotalEntriesReturned should be 100+150=250")
+
+		// Merge third split with 50 entries
+		toMerge2 := Result{}
+		toMerge2.ComputeSummary(1*time.Second, 0, 50)
+		res.Merge(toMerge2)
+		require.Equal(t, int64(300), res.Summary.TotalEntriesReturned,
+			"TotalEntriesReturned should be 100+150+50=300")
+	})
+
+	t.Run("MergeSplit preserves totalEntriesReturned", func(t *testing.T) {
+		var res Result
+		res.ComputeSummary(1*time.Second, 0, 100)
+
+		toMerge := Result{}
+		toMerge.ComputeSummary(1*time.Second, 0, 200)
+
+		res.MergeSplit(toMerge)
+
+		require.Equal(t, int64(1), res.Summary.Splits)
+		require.Equal(t, int64(300), res.Summary.TotalEntriesReturned,
+			"MergeSplit should accumulate entries: 100+200=300")
+	})
+}
+
 func TestReset(t *testing.T) {
 	statsCtx, ctx := NewContext(context.Background())
 	fakeIngesterQuery(ctx)

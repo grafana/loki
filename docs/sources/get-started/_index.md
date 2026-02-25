@@ -23,7 +23,7 @@ To collect logs and view your log data generally involves the following steps:
 
 ![Loki implementation steps](loki-install.png)
 
-1. Install Loki on Kubernetes in simple scalable mode, using the recommended [Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-scalable/).
+1. Install Loki on Kubernetes in monolithic (single-binary) mode, using the recommended [Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-monolithic/).
    Supply the Helm chart with your object storage authentication details.
    - [Storage options](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/)
    - [Configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/)

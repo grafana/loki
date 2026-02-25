@@ -1,0 +1,64 @@
+#
+# ISMEMBER (compute.IsMember) - UTF8
+#
+
+ISMEMBER  utf8:["test1" "test2" "test3"]  utf8:["test1" "test2" "test3"]  -> bool:[true true true]
+ISMEMBER  utf8:["test1" "test2" "test3"]  utf8:["test1" "test2" "test4"]  -> bool:[true true false]
+ISMEMBER  utf8:["test1" "test2" "test3"]  utf8:["test4" "test5" "test6"]  -> bool:[false false false]
+ISMEMBER  utf8:[]                         utf8:["test1" "test2" "test3"]  -> bool:[]
+ISMEMBER  utf8:["test1" "test2" "test3"]  utf8:[]                         -> bool:[false false false]
+ISMEMBER  utf8:[null]                     utf8:["test1" "test2" "test3"]  -> bool:[null]
+ISMEMBER  utf8:[null]                     utf8:[]                         -> bool:[null]
+
+#
+# ISMEMBER (compute.IsMember) - int64
+#
+
+ISMEMBER  int64:[1 2 3]  int64:[1 2 3]  -> bool:[true true true]
+ISMEMBER  int64:[1 2 3]  int64:[1 2 4]  -> bool:[true true false]
+ISMEMBER  int64:[1 2 3]  int64:[4 5 6]  -> bool:[false false false]
+ISMEMBER  int64:[]       int64:[1 2 3]  -> bool:[]
+ISMEMBER  int64:[1 2 3]  int64:[]       -> bool:[false false false]
+ISMEMBER  int64:[null]   int64:[1 2 3]  -> bool:[null]
+ISMEMBER  int64:[null]   int64:[]       -> bool:[null]
+
+#
+# ISMEMBER (compute.IsMember) - uint64
+#
+
+ISMEMBER  uint64:[1 2 3]  uint64:[1 2 3]  -> bool:[true true true]
+ISMEMBER  uint64:[1 2 3]  uint64:[1 2 4]  -> bool:[true true false]
+ISMEMBER  uint64:[1 2 3]  uint64:[4 5 6]  -> bool:[false false false]
+ISMEMBER  uint64:[]       uint64:[1 2 3]  -> bool:[]
+ISMEMBER  uint64:[1 2 3]  uint64:[]       -> bool:[false false false]
+ISMEMBER  uint64:[null]   uint64:[1 2 3]  -> bool:[null]
+ISMEMBER  uint64:[null]   uint64:[]       -> bool:[null]
+
+#
+# Tests with selection vectors
+#
+
+# ISMEMBER with selection - UTF8
+ISMEMBER  utf8:["test1" "test2" "test3" "test4"]                utf8:["test1" "test3"]                select:[true false true false]           -> bool:[true null true null]       # Partial
+ISMEMBER  utf8:["test1" "test2" "test3" "test4"]                utf8:["test1" "test3"]                select:[true true true true]             -> bool:[true false true false]     # Full selection
+ISMEMBER  utf8:["test1" "test2" "test3"]                        utf8:["test1" "test3"]                select:[false false false]               -> bool:[null null null]            # No selection
+ISMEMBER  utf8:["apple" "banana" "cherry" "date"]               utf8:["apple" "cherry"]               select:[true true true true]             -> bool:[true false true false]
+ISMEMBER  utf8:["apple" "banana" "cherry" "date" "elderberry"]  utf8:["apple" "cherry" "elderberry"]  select:[true false true false true]      -> bool:[true null true null true]
+ISMEMBER  utf8:["apple" "banana" "cherry" "date" "elderberry"]  utf8:["cherry"]                       select:[false false true false false]    -> bool:[null null true null null]
+ISMEMBER  utf8:["apple" null "cherry" null]                     utf8:["apple" "cherry"]               select:[true true true true]             -> bool:[true null true null]
+ISMEMBER  utf8:["apple" null "cherry" null]                     utf8:["apple" "cherry"]               select:[true false true false]           -> bool:[true null true null]
+ISMEMBER  utf8:[null "banana" null "date" null "fig"]           utf8:["banana" "fig"]                 select:[true true true true false false] -> bool:[null true null false null null]
+
+# ISMEMBER with selection - int64
+ISMEMBER  int64:[1 2 3 4]          int64:[1 3]    select:[true false true false] -> bool:[true null true null]   # Partial
+ISMEMBER  int64:[1 2 3 4]          int64:[1 3]    select:[true true true true]   -> bool:[true false true false] # Full selection
+ISMEMBER  int64:[10 20 30 40]      int64:[10 30]  select:[true true true true]   -> bool:[true false true false]
+ISMEMBER  int64:[10 null 30 null]  int64:[10 30]  select:[true true true true]   -> bool:[true null true null]
+ISMEMBER  int64:[10 null 30 null]  int64:[10 30]  select:[true false true false] -> bool:[true null true null]
+
+# ISMEMBER with selection - uint64
+ISMEMBER  uint64:[1 2 3 4]          uint64:[1 3]    select:[true false true false]  -> bool:[true null true null]   # Partial
+ISMEMBER  uint64:[1 2 3 4]          uint64:[1 3]    select:[true true true true]    -> bool:[true false true false] # Full selection
+ISMEMBER  uint64:[10 20 30 40]      uint64:[10 30]  select:[true true true true]    -> bool:[true false true false]
+ISMEMBER  uint64:[10 null 30 null]  uint64:[10 30]  select:[true true true true]    -> bool:[true null true null]
+ISMEMBER  uint64:[10 null 30 null]  uint64:[10 30]  select:[true false true false]  -> bool:[true null true null]

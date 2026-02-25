@@ -58,37 +58,6 @@ func Test_plainBytesEncoder(t *testing.T) {
 	require.Equal(t, testStrings, out)
 }
 
-func Test_plainBytesDecoder_adapter(t *testing.T) {
-	var buf bytes.Buffer
-
-	enc := newPlainBytesEncoder(&buf)
-	for _, v := range testStrings {
-		require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
-	}
-
-	dec := valueDecoderAdapter{
-		Alloc: new(memory.Allocator),
-		Inner: newPlainBytesDecoder(buf.Bytes()),
-	}
-
-	var out []string
-	decBuf := make([]Value, batchSize)
-	for {
-		n, err := dec.Decode(decBuf[:batchSize])
-		if n == 0 && errors.Is(err, io.EOF) {
-			break
-		} else if err != nil && !errors.Is(err, io.EOF) {
-			t.Fatal(err)
-		}
-
-		for _, v := range decBuf[:n] {
-			out = append(out, string(v.Binary()))
-		}
-	}
-
-	require.Equal(t, testStrings, out)
-}
-
 func Benchmark_plainBytesEncoder_Append(b *testing.B) {
 	enc := newPlainBytesEncoder(streamio.Discard)
 

@@ -947,7 +947,8 @@ type CreateGlobalSecondaryIndexAction struct {
 	// This member is required.
 	IndexName *string
 
-	// The key schema for the global secondary index.
+	// The key schema for the global secondary index. Global secondary index supports
+	// up to 4 partition and up to 4 sort keys.
 	//
 	// This member is required.
 	KeySchema []KeySchemaElement
@@ -2622,6 +2623,19 @@ type ReplicaDescription struct {
 	// Replica-specific global secondary index settings.
 	GlobalSecondaryIndexes []ReplicaGlobalSecondaryIndexDescription
 
+	// Indicates one of the settings synchronization modes for the global table
+	// replica:
+	//
+	//   - ENABLED : Indicates that the settings synchronization mode for the global
+	//   table replica is enabled.
+	//
+	//   - DISABLED : Indicates that the settings synchronization mode for the global
+	//   table replica is disabled.
+	//
+	//   - ENABLED_WITH_OVERRIDES : This mode is set by default for a same account
+	//   global table. Indicates that certain global table settings can be overridden.
+	GlobalTableSettingsReplicationMode GlobalTableSettingsReplicationMode
+
 	// The KMS key of the replica that will be used for KMS encryption.
 	KMSMasterKeyId *string
 
@@ -3336,6 +3350,18 @@ type TableDescription struct {
 	// If the table is in the DELETING state, no information about indexes will be
 	// returned.
 	GlobalSecondaryIndexes []GlobalSecondaryIndexDescription
+
+	// Indicates one of the settings synchronization modes for the global table:
+	//
+	//   - ENABLED : Indicates that the settings synchronization mode for the global
+	//   table is enabled.
+	//
+	//   - DISABLED : Indicates that the settings synchronization mode for the global
+	//   table is disabled.
+	//
+	//   - ENABLED_WITH_OVERRIDES : This mode is set by default for a same account
+	//   global table. Indicates that certain global table settings can be overridden.
+	GlobalTableSettingsReplicationMode GlobalTableSettingsReplicationMode
 
 	// Represents the version of [global tables] in use, if the table is replicated across Amazon Web
 	// Services Regions.

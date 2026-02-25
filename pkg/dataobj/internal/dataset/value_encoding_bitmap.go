@@ -577,11 +577,11 @@ func (dec *bitmapDecoder) EncodingType() datasetmd.EncodingType {
 // of decoded values is bm.Len(). At the end of the stream, Decode returns
 // any decoded values along with [io.EOF].
 func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
-	bm := memory.MakeBitmap(alloc, count)
+	bm := memory.NewBitmap(alloc, count)
 	bm.Grow(count)
 
 	err := dec.DecodeTo(&bm, count)
-	return columnar.MakeBool(bm, memory.Bitmap{}), err
+	return columnar.NewBool(bm, memory.Bitmap{}), err
 }
 
 func (dec *bitmapDecoder) DecodeTo(bm *memory.Bitmap, count int) error {

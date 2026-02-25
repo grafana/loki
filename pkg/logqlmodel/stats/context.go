@@ -346,7 +346,7 @@ func (r *Result) Merge(m Result) {
 	r.Index.Merge(m.Index)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
 		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime),
-		int(r.Summary.TotalEntriesReturned))
+		int(r.Summary.TotalEntriesReturned+m.Summary.TotalEntriesReturned))
 }
 
 // ConvertSecondsToNanoseconds converts time.Duration representation of seconds (float64)

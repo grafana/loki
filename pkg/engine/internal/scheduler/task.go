@@ -13,6 +13,7 @@ import (
 
 // task wraps a [workflow.Task] with its handler.
 type task struct {
+	createTime time.Time // Time when task was created.
 	assignTime time.Time // Time when task was assigned to a worker.
 	queueTime  time.Time // Time when task was enqueued.
 

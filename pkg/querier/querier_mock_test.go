@@ -538,6 +538,10 @@ func (r *readRingMock) GetSubringForOperationStates(_ ring.Operation) ring.ReadR
 	return r
 }
 
+func (r *readRingMock) Zones() []string {
+	return []string{"zone1"}
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},

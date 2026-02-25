@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/go-viper/mapstructure/v2"
-	yaml "go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v3"
 )
 
 const (

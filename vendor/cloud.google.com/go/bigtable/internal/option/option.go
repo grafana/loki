@@ -20,7 +20,9 @@ package option
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -47,6 +49,8 @@ const (
 	// BigtableConnectionPoolEnvVar is the env var for enabling Bigtable Connection Pool.
 	BigtableConnectionPoolEnvVar = "CBT_BIGTABLE_CONN_POOL"
 )
+
+var schemeRegexp = regexp.MustCompile("^(http://|https://|passthrough:///)")
 
 // mergeOutgoingMetadata returns a context populated by the existing outgoing
 // metadata merged with the provided mds.
@@ -107,7 +111,8 @@ func DefaultClientOptions(endpoint, mtlsEndpoint, scope, userAgent string) ([]op
 	// Check the environment variables for the bigtable emulator.
 	// Dial it directly and don't pass any credentials.
 	if addr := os.Getenv("BIGTABLE_EMULATOR_HOST"); addr != "" {
-		conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		schemeRemoved := schemeRegexp.ReplaceAllString(addr, "")
+		conn, err := grpc.Dial("passthrough:///"+schemeRemoved, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			return nil, fmt.Errorf("emulator grpc.Dial: %w", err)
 		}
@@ -200,4 +205,69 @@ func EnableBigtableConnectionPool() bool {
 		return false
 	}
 	return enableBigtableConnPool
+}
+
+// Logf logs the given message to the given logger, or the standard logger if
+// the given logger is nil.
+func logf(logger *log.Logger, format string, v ...interface{}) {
+	if logger == nil {
+		log.Printf(format, v...)
+	} else {
+		logger.Printf(format, v...)
+	}
+}
+
+var debug = os.Getenv("CBT_ENABLE_DEBUG") == "true"
+
+// Debugf logs the given message *only if* the global Debug flag is true.
+// It reuses Logf to handle the nil logger logic and prepends "DEBUG: "
+// to the message.
+func Debugf(logger *log.Logger, format string, v ...interface{}) {
+	// Only log if the Debug flag is set
+	if debug {
+		// Prepend "DEBUG: " to the format string
+		debugFormat := "DEBUG: " + format
+		logf(logger, debugFormat, v...)
+	}
+}
+
+// DynamicChannelPoolConfig holds the parameters for dynamic channel pool scaling.
+type DynamicChannelPoolConfig struct {
+	Enabled              bool          // Whether dynamic scaling is enabled.
+	MinConns             int           // Minimum conns allowed
+	MaxConns             int           // Maximum conns allowed.
+	AvgLoadHighThreshold float64       // Average weighted load per connection to trigger scale-up.
+	AvgLoadLowThreshold  float64       // Average weighted load per connection to trigger scale-down.
+	MinScalingInterval   time.Duration // Minimum time between scaling operations (both up and down).
+	CheckInterval        time.Duration // How often to check if scaling is needed.
+	MaxRemoveConns       int           // Maximum number of connections to remove at once.
+}
+
+// DefaultDynamicChannelPoolConfig is default settings for dynamic channel pool
+func DefaultDynamicChannelPoolConfig() DynamicChannelPoolConfig {
+	return DynamicChannelPoolConfig{
+		Enabled:              true, // Enabled by default
+		MinConns:             10,
+		MaxConns:             200,
+		AvgLoadHighThreshold: 50,
+		AvgLoadLowThreshold:  5,
+		MinScalingInterval:   1 * time.Minute,
+		CheckInterval:        30 * time.Second,
+		MaxRemoveConns:       2, // Only Cap for removals
+	}
+}
+
+// MetricsReporterConfig for periodic reporting
+// MetricsReporterConfig holds the parameters for metrics reporting.
+type MetricsReporterConfig struct {
+	Enabled           bool
+	ReportingInterval time.Duration
+}
+
+// DefaultMetricsReporterConfig with defaults used.
+func DefaultMetricsReporterConfig() MetricsReporterConfig {
+	return MetricsReporterConfig{
+		Enabled:           true,
+		ReportingInterval: 1 * time.Minute,
+	}
 }

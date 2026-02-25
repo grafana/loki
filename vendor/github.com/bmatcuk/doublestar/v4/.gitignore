@@ -29,4 +29,4 @@ _testmain.go
 *.prof
 
 # test directory
-test/
+testdata/

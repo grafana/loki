@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +13,26 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/bench"
 	"github.com/grafana/loki/v3/pkg/logql/bench/cmd/bench/views"
 )
+
+var (
+	suiteFlag = flag.String("suite", "fast", "benchmark suite to run: fast, regression, or exhaustive")
+)
+
+// parseSuiteFlag parses the suite flag and returns the appropriate Suite values to load
+func parseSuiteFlag() []bench.Suite {
+	switch *suiteFlag {
+	case "fast":
+		return []bench.Suite{bench.SuiteFast}
+	case "regression":
+		return []bench.Suite{bench.SuiteFast, bench.SuiteRegression}
+	case "exhaustive":
+		return []bench.Suite{bench.SuiteFast, bench.SuiteRegression, bench.SuiteExhaustive}
+	default:
+		fmt.Fprintf(os.Stderr, "Error: invalid suite %q (must be fast, regression, or exhaustive)\n", *suiteFlag)
+		os.Exit(1)
+		return nil
+	}
+}
 
 // mainModel represents the overall application state
 type mainModel struct {
@@ -127,21 +148,47 @@ func (m mainModel) View() string {
 
 // loadBenchmarks loads available benchmarks
 func loadBenchmarks() []string {
+	queriesDir := "./queries"
+	registry := bench.NewQueryRegistry(queriesDir)
+
+	suites := parseSuiteFlag()
+	if err := registry.Load(suites...); err != nil {
+		fmt.Printf("Error loading query registry: %v\n", err)
+		os.Exit(1)
+	}
+
+	metadata, err := bench.LoadMetadata(bench.DefaultDataDir)
+	if err != nil {
+		fmt.Printf("Error loading metadata: %v\n", err)
+		os.Exit(1)
+	}
+
 	config, err := bench.LoadConfig(bench.DefaultDataDir)
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
 	}
 
-	cases := bench.NewTestCaseGenerator(bench.DefaultTestCaseGeneratorConfig, config).Generate()
+	resolver := bench.NewMetadataVariableResolver(metadata, config.Seed)
+
+	queryDefs := registry.GetQueries(false, suites...)
 	var names []string
-	for _, c := range cases {
-		names = append(names, c.Name())
+	for _, def := range queryDefs {
+		expanded, err := registry.ExpandQuery(def, resolver, false)
+		if err != nil {
+			log.Fatalf("Error expanding query %q: %v", def.Description, err)
+		}
+		for _, c := range expanded {
+			names = append(names, c.Name())
+		}
 	}
 	return names
 }
 
 func main() {
+	// Parse flags before processing commands
+	flag.Parse()
+
 	if len(os.Getenv("DEBUG")) > 0 {
 		f, err := tea.LogToFile("debug.log", "debug")
 		if err != nil {
@@ -152,12 +199,17 @@ func main() {
 	} else {
 		log.SetOutput(io.Discard)
 	}
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: bench [list|run]")
+
+	// Get command from remaining args after flag parsing
+	args := flag.Args()
+	if len(args) < 1 {
+		fmt.Println("Usage: bench [flags] [list|run]")
+		fmt.Println("Flags:")
+		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
-	cmd := os.Args[1]
+	cmd := args[0]
 	switch cmd {
 	case "list":
 		listBenchmarks()
@@ -178,18 +230,37 @@ func main() {
 }
 
 func listBenchmarks() {
-	// Load the generator config
+	queriesDir := "./queries"
+	registry := bench.NewQueryRegistry(queriesDir)
+
+	suites := parseSuiteFlag()
+	if err := registry.Load(suites...); err != nil {
+		fmt.Printf("Error loading query registry: %v\n", err)
+		os.Exit(1)
+	}
+
+	metadata, err := bench.LoadMetadata(bench.DefaultDataDir)
+	if err != nil {
+		fmt.Printf("Error loading metadata: %v\n", err)
+		os.Exit(1)
+	}
+
 	config, err := bench.LoadConfig(bench.DefaultDataDir)
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Generate test cases
-	cases := bench.NewTestCaseGenerator(bench.DefaultTestCaseGeneratorConfig, config).Generate()
+	resolver := bench.NewMetadataVariableResolver(metadata, config.Seed)
 
-	// Print each benchmark name
-	for _, c := range cases {
-		fmt.Printf("BenchmarkLogQL/%s\n", c.Name())
+	queryDefs := registry.GetQueries(false, suites...)
+	for _, def := range queryDefs {
+		expanded, err := registry.ExpandQuery(def, resolver, false)
+		if err != nil {
+			log.Fatalf("Error expanding query %q: %v", def.Description, err)
+		}
+		for _, c := range expanded {
+			fmt.Printf("BenchmarkLogQL/%s\n", c.Name())
+		}
 	}
 }

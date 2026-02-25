@@ -689,7 +689,7 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 
 			byState := sm.ServicesByState()
 			for st, ls := range byState {
-				msg.WriteString(fmt.Sprintf("%v: %d\n", st, len(ls)))
+				fmt.Fprintf(&msg, "%v: %d\n", st, len(ls))
 			}
 
 			http.Error(w, msg.String(), http.StatusServiceUnavailable)

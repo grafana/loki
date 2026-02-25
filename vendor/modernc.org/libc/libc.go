@@ -1526,22 +1526,6 @@ func Xstrcmp(t *TLS, s1, s2 uintptr) int32 {
 	}
 }
 
-// size_t strlen(const char *s)
-func Xstrlen(t *TLS, s uintptr) (r types.Size_t) {
-	if __ccgo_strace {
-		trc("t=%v s=%v, (%v:)", t, s, origin(2))
-		defer func() { trc("-> %v", r) }()
-	}
-	if s == 0 {
-		return 0
-	}
-
-	for ; *(*int8)(unsafe.Pointer(s)) != 0; s++ {
-		r++
-	}
-	return r
-}
-
 // char *strcat(char *dest, const char *src)
 func Xstrcat(t *TLS, dest, src uintptr) (r uintptr) {
 	if __ccgo_strace {

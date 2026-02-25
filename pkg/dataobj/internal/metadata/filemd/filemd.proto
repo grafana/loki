@@ -21,6 +21,8 @@ message Metadata {
   // A list of types used by sections. The zero index is reserved for an
   // invalid type.
   repeated SectionType types = 3;
+
+  reserved 4; // Previously object_size (sfixed64)
 }
 
 // SectionType specifies a namespaced type of section within a data object.
@@ -124,7 +126,7 @@ message SectionLayout {
 
 // Region describes a contiguous range of bytes within a data object.
 message Region {
-  // Byte offset of the region from the start of the data object.
+  // Byte offset of the region relative to the end of the header.
   uint64 offset = 1;
 
   // Length of the region in bytes.

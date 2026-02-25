@@ -105,7 +105,7 @@ func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
 }
 
 func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string) FileMetadata {
-	obj, err := dataobj.FromBucket(ctx, bucket, path)
+	obj, err := dataobj.FromBucket(ctx, bucket, path, 0)
 	if err != nil {
 		return FileMetadata{
 			Error: fmt.Sprintf("failed to read sections: %v", err),

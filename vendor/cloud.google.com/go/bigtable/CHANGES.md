@@ -1,5 +1,25 @@
 # Changes
 
+## [1.42.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.42.0) (2026-02-04)
+
+### Features
+
+* add TieredStorageConfig to table admin api ([611f239](https://github.com/googleapis/google-cloud-go/commit/611f239219225fb03f6475c7238f497a349961e2))
+* add client startup time metrics.  (#13521) ([8f90da3](https://github.com/googleapis/google-cloud-go/commit/8f90da38abc674f23ad0d0289ece3b376caa8746))
+* add dynamic channel support (#2) (#13504) ([65a3c4e](https://github.com/googleapis/google-cloud-go/commit/65a3c4ec26fc3765f4665259226f93ee32abd054))
+* add ip protocol for bigtable connection (#13520) ([6f86983](https://github.com/googleapis/google-cloud-go/commit/6f86983e4b307d45397e36d1498635524ac7615e))
+* add metrics exporter for outstandingrpcs and perconnectionerror count  (#13510) ([7f1b36a](https://github.com/googleapis/google-cloud-go/commit/7f1b36acdf2fddb6bd7b41753a7244021686acf0))
+* introduce prime() method and load counting based on unary,streaming and ability to remove connection (#13419) ([c6773ce](https://github.com/googleapis/google-cloud-go/commit/c6773ceb279f2146eb13a6795d79a0415f71ea41))
+
+### Bug Fixes
+
+* fix a nil pointer deference in remove connections when… (#13535) ([9d2ba82](https://github.com/googleapis/google-cloud-go/commit/9d2ba82ecd770d3e3a18c79e2792ab7ac502240e))
+* handle client region and client host name based on ote… (#13752) ([0429170](https://github.com/googleapis/google-cloud-go/commit/0429170f45ddba05095ca3eedaec25675025fe22))
+
+### Performance Improvements
+
+* use passthrough with emulator endpoint (#13739) ([dafbca2](https://github.com/googleapis/google-cloud-go/commit/dafbca228eae9a07548996f925854d46e6a719e5))
+
 ## [1.41.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.41.0) (2025-12-15)
 
 ### Features

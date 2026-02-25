@@ -146,6 +146,42 @@ RETURN %13
 	require.Equal(t, expect, actual, "Actual plan:\n%s", actual)
 }
 
+func Test_simplifyRegexPass_CaseInsensitiveNegate(t *testing.T) {
+	params, err := logql.NewLiteralParams(
+		`{region="ap-southeast-1"} !~ "(?i)debug"`,
+		time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
+		0 /* step */, 0, /* duration */
+		logproto.BACKWARD,
+		1000,
+		[]string{"0_of_1"},
+		nil,
+	)
+	require.NoError(t, err)
+
+	expect := strings.TrimSpace(`
+%1 = EQ label.region "ap-southeast-1"
+%2 = MATCH_STR_CASE_INSENSITIVE builtin.message "DEBUG"
+%3 = NOT(%2)
+%4 = MAKETABLE [selector=%1, predicates=[%3], shard=0_of_1]
+%5 = GTE builtin.timestamp 2025-01-01T00:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = LT builtin.timestamp 2025-01-02T00:00:00Z
+%8 = SELECT %6 [predicate=%7]
+%9 = SELECT %8 [predicate=%3]
+%10 = TOPK %9 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%11 = LOGQL_COMPAT %10
+RETURN %11
+`)
+
+	p, err := BuildPlan(context.Background(), params)
+	require.NoError(t, err)
+	require.NoError(t, Optimize(p), "optimization should not panic on case-insensitive negated regex")
+
+	actual := strings.TrimSpace(p.String())
+	require.Equal(t, expect, actual, "Actual plan:\n%s", actual)
+}
+
 //go:embed testdata/simplifyRegexPass/*.txtar
 var simplifyRegexTests embed.FS
 

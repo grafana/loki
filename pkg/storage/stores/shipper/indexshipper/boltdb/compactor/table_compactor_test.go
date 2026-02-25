@@ -86,7 +86,7 @@ func (m *mockIndexSet) GetSourceFile(indexFile storage.IndexFile) (string, error
 	decompress := storage.IsCompressedFile(indexFile.Name)
 	dst := filepath.Join(m.workingDir, indexFile.Name)
 	if decompress {
-		dst = strings.Trim(dst, ".gz")
+		dst = strings.TrimSuffix(dst, ".gz")
 	}
 
 	err := storage.DownloadFileFromStorage(dst, storage.IsCompressedFile(indexFile.Name),

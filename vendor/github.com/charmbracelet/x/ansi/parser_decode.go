@@ -4,8 +4,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi/parser"
-	"github.com/mattn/go-runewidth"
-	"github.com/rivo/uniseg"
+	"github.com/clipperhouse/uax29/v2/graphemes"
 )
 
 // State represents the state of the ANSI escape sequence parser used by
@@ -176,10 +175,7 @@ func decodeSequence[T string | []byte](m Method, b T, state State, p *Parser) (s
 			}
 
 			if utf8.RuneStart(c) {
-				seq, _, width, _ = FirstGraphemeCluster(b, -1)
-				if m == WcWidth {
-					width = runewidth.StringWidth(string(seq))
-				}
+				seq, width = FirstGraphemeCluster(b, m)
 				i += len(seq)
 				return b[:i], width, i, NormalState
 			}
@@ -434,17 +430,22 @@ func HasEscPrefix[T string | []byte](b T) bool {
 	return len(b) > 0 && b[0] == ESC
 }
 
-// FirstGraphemeCluster returns the first grapheme cluster in the given string or byte slice.
-// This is a syntactic sugar function that wraps
-// uniseg.FirstGraphemeClusterInString and uniseg.FirstGraphemeCluster.
-func FirstGraphemeCluster[T string | []byte](b T, state int) (T, T, int, int) {
+// FirstGraphemeCluster returns the first grapheme cluster in the given string
+// or byte slice, and its monospace display width.
+func FirstGraphemeCluster[T string | []byte](b T, m Method) (T, int) {
 	switch b := any(b).(type) {
 	case string:
-		cluster, rest, width, newState := uniseg.FirstGraphemeClusterInString(b, state)
-		return T(cluster), T(rest), width, newState
+		cluster := graphemes.FromString(b).First()
+		if m == WcWidth {
+			return T(cluster), wcOptions.StringWidth(cluster)
+		}
+		return T(cluster), dwOptions.String(cluster)
 	case []byte:
-		cluster, rest, width, newState := uniseg.FirstGraphemeCluster(b, state)
-		return T(cluster), T(rest), width, newState
+		cluster := graphemes.FromBytes(b).First()
+		if m == WcWidth {
+			return T(cluster), wcOptions.StringWidth(string(cluster))
+		}
+		return T(cluster), dwOptions.Bytes(cluster)
 	}
 	panic("unreachable")
 }
@@ -490,7 +491,7 @@ func Command(prefix, inter, final byte) (c int) {
 	c = int(final)
 	c |= int(prefix) << parser.PrefixShift
 	c |= int(inter) << parser.IntermedShift
-	return
+	return c
 }
 
 // Param represents a sequence parameter. Sequence parameters with
@@ -520,5 +521,5 @@ func Parameter(p int, hasMore bool) (s int) {
 	if hasMore {
 		s |= parser.HasMoreFlag
 	}
-	return
+	return s
 }

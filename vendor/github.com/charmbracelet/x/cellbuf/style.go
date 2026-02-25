@@ -4,9 +4,9 @@ import (
 	"github.com/charmbracelet/colorprofile"
 )
 
-// Convert converts a style to respect the given color profile.
+// ConvertStyle converts a style to respect the given color profile.
 func ConvertStyle(s Style, p colorprofile.Profile) Style {
-	switch p {
+	switch p { //nolint:exhaustive
 	case colorprofile.TrueColor:
 		return s
 	case colorprofile.Ascii:

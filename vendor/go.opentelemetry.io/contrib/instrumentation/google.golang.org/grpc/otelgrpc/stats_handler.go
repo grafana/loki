@@ -12,8 +12,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
-	"go.opentelemetry.io/otel/semconv/v1.37.0/rpcconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
+	"go.opentelemetry.io/otel/semconv/v1.39.0/rpcconv"
 	"go.opentelemetry.io/otel/trace"
 	grpc_codes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
@@ -38,11 +38,9 @@ type serverHandler struct {
 
 	tracer trace.Tracer
 
-	duration rpcconv.ServerDuration
+	duration rpcconv.ServerCallDuration
 	inSize   int64Hist
 	outSize  int64Hist
-	inMsg    rpcconv.ServerRequestsPerRPC
-	outMsg   rpcconv.ServerResponsesPerRPC
 }
 
 // NewServerHandler creates a stats.Handler for a gRPC server.
@@ -52,17 +50,17 @@ func NewServerHandler(opts ...Option) stats.Handler {
 
 	h.tracer = c.TracerProvider.Tracer(
 		ScopeName,
-		trace.WithInstrumentationVersion(Version()),
+		trace.WithInstrumentationVersion(Version),
 	)
 
 	meter := c.MeterProvider.Meter(
 		ScopeName,
-		metric.WithInstrumentationVersion(Version()),
+		metric.WithInstrumentationVersion(Version),
 		metric.WithSchemaURL(semconv.SchemaURL),
 	)
 
 	var err error
-	h.duration, err = rpcconv.NewServerDuration(meter)
+	h.duration, err = rpcconv.NewServerCallDuration(meter)
 	if err != nil {
 		otel.Handle(err)
 	}
@@ -73,16 +71,6 @@ func NewServerHandler(opts ...Option) stats.Handler {
 	}
 
 	h.outSize, err = rpcconv.NewServerResponseSize(meter)
-	if err != nil {
-		otel.Handle(err)
-	}
-
-	h.inMsg, err = rpcconv.NewServerRequestsPerRPC(meter)
-	if err != nil {
-		otel.Handle(err)
-	}
-
-	h.outMsg, err = rpcconv.NewServerResponsesPerRPC(meter)
 	if err != nil {
 		otel.Handle(err)
 	}
@@ -104,7 +92,7 @@ func (h *serverHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 	ctx = extract(ctx, h.Propagators)
 
 	name, attrs := internal.ParseFullMethod(info.FullMethodName)
-	attrs = append(attrs, semconv.RPCSystemGRPC)
+	attrs = append(attrs, semconv.RPCSystemNameGRPC)
 
 	record := true
 	if h.Filter != nil {
@@ -137,6 +125,12 @@ func (h *serverHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 		metricAttrs: append(attrs, h.MetricAttributes...),
 		record:      record,
 	}
+
+	if h.MetricAttributesFn != nil {
+		extraAttrs := h.MetricAttributesFn(ctx)
+		gctx.metricAttrs = append(gctx.metricAttrs, extraAttrs...)
+	}
+
 	gctx.metricAttrSet = attribute.NewSet(gctx.metricAttrs...)
 
 	return context.WithValue(ctx, gRPCContextKey{}, &gctx)
@@ -150,8 +144,6 @@ func (h *serverHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 		h.duration.Inst(),
 		h.inSize,
 		h.outSize,
-		h.inMsg.Inst(),
-		h.outMsg.Inst(),
 		serverStatus,
 	)
 }
@@ -161,11 +153,9 @@ type clientHandler struct {
 
 	tracer trace.Tracer
 
-	duration rpcconv.ClientDuration
+	duration rpcconv.ClientCallDuration
 	inSize   int64Hist
 	outSize  int64Hist
-	inMsg    rpcconv.ClientResponsesPerRPC
-	outMsg   rpcconv.ClientRequestsPerRPC
 }
 
 // NewClientHandler creates a stats.Handler for a gRPC client.
@@ -175,17 +165,17 @@ func NewClientHandler(opts ...Option) stats.Handler {
 
 	h.tracer = c.TracerProvider.Tracer(
 		ScopeName,
-		trace.WithInstrumentationVersion(Version()),
+		trace.WithInstrumentationVersion(Version),
 	)
 
 	meter := c.MeterProvider.Meter(
 		ScopeName,
-		metric.WithInstrumentationVersion(Version()),
+		metric.WithInstrumentationVersion(Version),
 		metric.WithSchemaURL(semconv.SchemaURL),
 	)
 
 	var err error
-	h.duration, err = rpcconv.NewClientDuration(meter)
+	h.duration, err = rpcconv.NewClientCallDuration(meter)
 	if err != nil {
 		otel.Handle(err)
 	}
@@ -200,23 +190,13 @@ func NewClientHandler(opts ...Option) stats.Handler {
 		otel.Handle(err)
 	}
 
-	h.inMsg, err = rpcconv.NewClientResponsesPerRPC(meter)
-	if err != nil {
-		otel.Handle(err)
-	}
-
-	h.outMsg, err = rpcconv.NewClientRequestsPerRPC(meter)
-	if err != nil {
-		otel.Handle(err)
-	}
-
 	return h
 }
 
 // TagRPC can attach some information to the given context.
 func (h *clientHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) context.Context {
 	name, attrs := internal.ParseFullMethod(info.FullMethodName)
-	attrs = append(attrs, semconv.RPCSystemGRPC)
+	attrs = append(attrs, semconv.RPCSystemNameGRPC)
 
 	record := true
 	if h.Filter != nil {
@@ -239,6 +219,12 @@ func (h *clientHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 		metricAttrs: append(attrs, h.MetricAttributes...),
 		record:      record,
 	}
+
+	if h.MetricAttributesFn != nil {
+		extraAttrs := h.MetricAttributesFn(ctx)
+		gctx.metricAttrs = append(gctx.metricAttrs, extraAttrs...)
+	}
+
 	gctx.metricAttrSet = attribute.NewSet(gctx.metricAttrs...)
 
 	return inject(context.WithValue(ctx, gRPCContextKey{}, &gctx), h.Propagators)
@@ -252,8 +238,6 @@ func (h *clientHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 		h.duration.Inst(),
 		h.inSize,
 		h.outSize,
-		h.inMsg.Inst(),
-		h.outMsg.Inst(),
 		func(s *status.Status) (codes.Code, string) {
 			return codes.Error, s.Message()
 		},
@@ -279,7 +263,6 @@ func (c *config) handleRPC(
 	rs stats.RPCStats,
 	duration metric.Float64Histogram,
 	inSize, outSize int64Hist,
-	inMsg, outMsg metric.Int64Histogram,
 	recordStatus func(*status.Status) (codes.Code, string),
 ) {
 	gctx, _ := ctx.Value(gRPCContextKey{}).(*gRPCContext)
@@ -337,9 +320,9 @@ func (c *config) handleRPC(
 		var s *status.Status
 		if rs.Error != nil {
 			s, _ = status.FromError(rs.Error)
-			rpcStatusAttr = semconv.RPCGRPCStatusCodeKey.Int(int(s.Code()))
+			rpcStatusAttr = semconv.RPCResponseStatusCode(s.Code().String())
 		} else {
-			rpcStatusAttr = semconv.RPCGRPCStatusCodeKey.Int(int(grpc_codes.OK))
+			rpcStatusAttr = semconv.RPCResponseStatusCode(grpc_codes.OK.String())
 		}
 		if span.IsRecording() {
 			if s != nil {
@@ -367,10 +350,6 @@ func (c *config) handleRPC(
 		elapsedTime := float64(rs.EndTime.Sub(rs.BeginTime)) / float64(time.Millisecond)
 
 		duration.Record(ctx, elapsedTime, recordOpts...)
-		if gctx != nil {
-			inMsg.Record(ctx, atomic.LoadInt64(&gctx.inMessages), recordOpts...)
-			outMsg.Record(ctx, atomic.LoadInt64(&gctx.outMessages), recordOpts...)
-		}
 	default:
 		return
 	}

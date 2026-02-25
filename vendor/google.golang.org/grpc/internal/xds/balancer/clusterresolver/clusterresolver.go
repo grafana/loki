@@ -248,18 +248,10 @@ func (b *clusterResolverBalancer) updateChildConfig() {
 		b.logger.Infof("Built child policy config: %s", pretty.ToJSON(childCfg))
 	}
 
-	flattenedAddrs := make([]resolver.Address, len(endpoints))
 	for i := range endpoints {
 		for j := range endpoints[i].Addresses {
 			addr := endpoints[i].Addresses[j]
 			addr.BalancerAttributes = endpoints[i].Attributes
-			// If the endpoint has multiple addresses, only the first is added
-			// to the flattened address list. This ensures that LB policies
-			// that don't support endpoints create only one subchannel to a
-			// backend.
-			if j == 0 {
-				flattenedAddrs[i] = addr
-			}
 			// BalancerAttributes need to be present in endpoint addresses. This
 			// temporary workaround is required to make load reporting work
 			// with the old pickfirst policy which creates SubConns with multiple
@@ -274,7 +266,6 @@ func (b *clusterResolverBalancer) updateChildConfig() {
 	if err := b.child.UpdateClientConnState(balancer.ClientConnState{
 		ResolverState: resolver.State{
 			Endpoints:     endpoints,
-			Addresses:     flattenedAddrs,
 			ServiceConfig: b.configRaw,
 			Attributes:    b.attrsWithClient,
 		},

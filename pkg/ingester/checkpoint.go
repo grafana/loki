@@ -15,7 +15,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	"github.com/prometheus/prometheus/util/compression"
@@ -457,7 +456,7 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 		}
 	}()
 
-	errs := tsdb_errors.NewMulti()
+	var errs []error
 
 	files, err := os.ReadDir(w.segmentWAL.Dir())
 	if err != nil {
@@ -469,10 +468,10 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 			continue
 		}
 		if err := os.RemoveAll(filepath.Join(w.segmentWAL.Dir(), fi.Name())); err != nil {
-			errs.Add(err)
+			errs = append(errs, err)
 		}
 	}
-	return errs.Err()
+	return errors.Join(errs...)
 }
 
 // cleanupOldCheckpoints removes old checkpoints that have been superseded by a newer checkpoint.

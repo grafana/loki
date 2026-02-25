@@ -522,6 +522,7 @@ type walStorage interface {
 	WriteStalenessMarkers(remoteTsFunc func() int64) error
 	SetWriteNotified(wlog.WriteNotified)
 	Appender(context.Context) storage.Appender
+	AppenderV2(context.Context) storage.AppenderV2
 	Truncate(mint int64) error
 
 	Close() error
