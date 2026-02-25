@@ -142,11 +142,15 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch,
 		return nil, EOF
 	}
 
+	var (
+		rec arrow.RecordBatch
+		err error
+	)
 	if r.opts.columnar {
-		return r.readColumnar(ctx)
+		rec, err = r.readColumnar(ctx)
+	} else {
+		rec, err = r.read(ctx)
 	}
-
-	rec, err := r.read(ctx)
 
 	assertions.CheckColumnDuplicates(rec)
 	assertions.CheckLabelValuesDuplicates(rec)

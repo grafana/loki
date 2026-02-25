@@ -19,6 +19,10 @@ type VectorAggregation struct {
 
 	// MaxQuerySeries is the maximum number of unique series allowed (0 means no limit)
 	MaxQuerySeries int
+
+	// Columnar indicates that this node should use the columnar (batch)
+	// execution path.
+	Columnar bool
 }
 
 // ID implements the [Node] interface.
@@ -36,6 +40,7 @@ func (v *VectorAggregation) Clone() Node {
 		},
 		Operation:      v.Operation,
 		MaxQuerySeries: v.MaxQuerySeries,
+		Columnar:       v.Columnar,
 	}
 }
 

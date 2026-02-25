@@ -21,6 +21,10 @@ type vectorAggregationOptions struct {
 	grouping       physical.Grouping
 	operation      types.VectorAggregationType
 	maxQuerySeries int // maximum number of unique series allowed (0 means no limit)
+
+	// columnar enables the batch (columnar) execution path using
+	// columnarAggregator.AddBatch instead of per-row aggregation.
+	columnar bool
 }
 
 // vectorAggregationPipeline is a pipeline that performs vector aggregations.
@@ -31,10 +35,11 @@ type vectorAggregationPipeline struct {
 	inputs          []Pipeline
 	inputsExhausted bool // indicates if all inputs are exhausted
 
-	aggregator *aggregator
-	evaluator  *expressionEvaluator
-	grouping   physical.Grouping
-	opts       vectorAggregationOptions
+	aggregator  *aggregator
+	columnarAgg *columnarAggregator
+	evaluator   *expressionEvaluator
+	grouping    physical.Grouping
+	opts        vectorAggregationOptions
 
 	tsEval    evalFunc // used to evaluate the timestamp column
 	valueEval evalFunc // used to evaluate the value column
@@ -62,15 +67,11 @@ func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvalua
 		panic(fmt.Sprintf("unknown vector aggregation operation: %v", opts.operation))
 	}
 
-	agg := newAggregator(0, op)
-	agg.SetMaxSeries(opts.maxQuerySeries)
-
-	return &vectorAggregationPipeline{
-		inputs:     inputs,
-		evaluator:  evaluator,
-		grouping:   opts.grouping,
-		opts:       opts,
-		aggregator: agg,
+	v := &vectorAggregationPipeline{
+		inputs:    inputs,
+		evaluator: evaluator,
+		grouping:  opts.grouping,
+		opts:      opts,
 		tsEval: evaluator.newFunc(&physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: types.ColumnNameBuiltinTimestamp,
@@ -84,7 +85,23 @@ func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvalua
 			},
 		}),
 		identCache: semconv.NewIdentifierCache(),
-	}, nil
+	}
+
+	if opts.columnar {
+		fields := generateGroupingFields(opts.grouping.Columns)
+		v.columnarAgg = newColumnarAggregator(0, columnarAggregatorOpts{
+			operation:     op,
+			groupByLabels: fields,
+			matchWindows:  nil, // identity mode: output ts == input ts
+			maxSeries:     opts.maxQuerySeries,
+		})
+	} else {
+		agg := newAggregator(0, op)
+		agg.SetMaxSeries(opts.maxQuerySeries)
+		v.aggregator = agg
+	}
+
+	return v, nil
 }
 
 // Open opens all input pipelines.
@@ -97,7 +114,16 @@ func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch
 	if v.inputsExhausted {
 		return nil, EOF
 	}
-	rec, err := v.read(ctx)
+
+	var (
+		rec arrow.RecordBatch
+		err error
+	)
+	if v.opts.columnar {
+		rec, err = v.readColumnar(ctx)
+	} else {
+		rec, err = v.read(ctx)
+	}
 
 	assertions.CheckColumnDuplicates(rec)
 	assertions.CheckLabelValuesDuplicates(rec)
@@ -247,9 +273,78 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 	return rec, err
 }
 
+// readColumnar uses the [columnarAggregator] for batch processing.
+func (v *vectorAggregationPipeline) readColumnar(ctx context.Context) (arrow.RecordBatch, error) {
+	var (
+		startedAt     = time.Now()
+		inputReadTime time.Duration
+	)
+
+	v.columnarAgg.Reset()
+	inputsExhausted := false
+	for !inputsExhausted {
+		inputsExhausted = true
+
+		for _, input := range v.inputs {
+			inputStart := time.Now()
+			record, err := input.Read(ctx)
+			inputReadTime += time.Since(inputStart)
+
+			if err != nil {
+				if errors.Is(err, EOF) {
+					continue
+				}
+				return nil, err
+			}
+
+			inputsExhausted = false
+			if record.NumRows() == 0 {
+				continue
+			}
+
+			assertions.CheckLabelValuesDuplicates(record)
+
+			arrays, err := evalGroupByColumns(v.evaluator, v.opts.grouping.Columns, record)
+			if err != nil {
+				return nil, err
+			}
+
+			tsVec, err := v.tsEval(record)
+			if err != nil {
+				return nil, err
+			}
+			tsCol := tsVec.(*array.Timestamp)
+
+			valVec, err := v.valueEval(record)
+			if err != nil {
+				return nil, err
+			}
+			valArr := valVec.(*array.Float64)
+
+			if err := v.columnarAgg.AddBatch(tsCol, valArr, arrays); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	v.inputsExhausted = true
+	rec, err := v.columnarAgg.BuildRecord()
+	if region := xcap.RegionFromContext(ctx); region != nil {
+		computeTime := time.Since(startedAt) - inputReadTime
+		region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
+	}
+
+	return rec, err
+}
+
 // Close closes the resources of the pipeline.
 func (v *vectorAggregationPipeline) Close() {
-	v.aggregator.Reset()
+	if v.columnarAgg != nil {
+		v.columnarAgg.Reset()
+	}
+	if v.aggregator != nil {
+		v.aggregator.Reset()
+	}
 	for _, input := range v.inputs {
 		input.Close()
 	}

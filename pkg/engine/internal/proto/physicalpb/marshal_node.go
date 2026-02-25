@@ -175,6 +175,7 @@ func (n *AggregateVector) MarshalPhysical(nodeID ulid.ULID) (physical.Node, erro
 		Grouping:       grouping,
 		Operation:      operation,
 		MaxQuerySeries: int(n.MaxQuerySeries),
+		Columnar:       n.Columnar,
 	}, nil
 }
 

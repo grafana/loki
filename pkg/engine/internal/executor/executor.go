@@ -426,6 +426,7 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 		grouping:       plan.Grouping,
 		operation:      plan.Operation,
 		maxQuerySeries: plan.MaxQuerySeries,
+		columnar:       plan.Columnar,
 	})
 	if err != nil {
 		return errorPipeline(ctx, err)

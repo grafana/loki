@@ -22,8 +22,7 @@ type groupKey struct {
 // windowMatchFunc resolves output timestamps for an entire batch of
 // input timestamps. It reads validMask and sets validMask[i] = false for rows
 // that don't match any window. For matched rows, outTs[i] is written with the
-// resolved output timestamp (nanos). inputTs and outTs must have length >=
-// numRows. nil means identity mode: output timestamps equal input timestamps.
+// resolved output timestamp (nanos).
 type windowMatchFunc func(inputTs []int64, outTs []int64, validMask []bool, numRows int)
 
 type columnarAggregatorOpts struct {
@@ -65,10 +64,10 @@ type columnarAggregator struct {
 	labelValues map[string]string   // dedupe label values
 
 	// reusable buffers for batch processing
-	seriesHashes []uint64 // per-row series hashes
-	outTS        []int64  // per-row resolved output timestamps
-	groupIdx     []int    // per-row resolved group index, -1 = skip
-	validMask    []bool   // per-row null and out of bounds filtering mask
+	seriesHash []uint64 // per-row series hashes
+	outTS      []int64  // per-row resolved output timestamps
+	groupIdx   []int    // per-row resolved group index, -1 = skip
+	validMask  []bool   // per-row null and out of bounds filtering mask
 
 	columnValues []colBuffers // pre-fetched column offset/byte slices
 	hashBuffer   []byte       // scratch buffer for hash computation
@@ -156,11 +155,11 @@ func (a *columnarAggregator) AddBatch(
 // It accesses Arrow byte and offset buffers directly to avoid per-row
 // Value() overhead.
 func (a *columnarAggregator) computeHashes(arrays []*array.String, numRows int) {
-	if cap(a.seriesHashes) < numRows {
-		a.seriesHashes = a.seriesHashes[:0]
-		a.seriesHashes = slices.Grow(a.seriesHashes, numRows)
+	if cap(a.seriesHash) < numRows {
+		a.seriesHash = a.seriesHash[:0]
+		a.seriesHash = slices.Grow(a.seriesHash, numRows)
 	}
-	a.seriesHashes = a.seriesHashes[:numRows]
+	a.seriesHash = a.seriesHash[:numRows]
 
 	for i, arr := range arrays {
 		a.columnValues[i] = colBuffers{
@@ -175,7 +174,7 @@ func (a *columnarAggregator) computeHashes(arrays []*array.String, numRows int) 
 		bytes := a.columnValues[0].bytes
 
 		for row := range numRows {
-			a.seriesHashes[row] = xxhash.Sum64(bytes[offsets[row]:offsets[row+1]])
+			a.seriesHash[row] = xxhash.Sum64(bytes[offsets[row]:offsets[row+1]])
 		}
 
 		return
@@ -189,7 +188,7 @@ func (a *columnarAggregator) computeHashes(arrays []*array.String, numRows int) 
 			}
 			a.hashBuffer = append(a.hashBuffer, col.bytes[col.offsets[row]:col.offsets[row+1]]...)
 		}
-		a.seriesHashes[row] = xxhash.Sum64(a.hashBuffer)
+		a.seriesHash[row] = xxhash.Sum64(a.hashBuffer)
 	}
 }
 
@@ -262,7 +261,7 @@ func (a *columnarAggregator) resolveGroups(
 
 		key := groupKey{tsNano: a.outTS[row]}
 		if len(groupByColumns) > 0 {
-			key.seriesHash = a.seriesHashes[row]
+			key.seriesHash = a.seriesHash[row]
 		}
 
 		// this still uses row operations for reading column values

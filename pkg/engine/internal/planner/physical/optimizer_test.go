@@ -1176,7 +1176,7 @@ func Test_canShardAggregation(t *testing.T) {
 	})
 }
 
-func TestColumnarPromotion(t *testing.T) {
+func TestAggregateColumnarPromotion(t *testing.T) {
 	t.Run("aligned windows with by() grouping", func(t *testing.T) {
 		plan := &Plan{}
 		scanSet := plan.graph.Add(&ScanSet{
@@ -1196,7 +1196,7 @@ func TestColumnarPromotion(t *testing.T) {
 		require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet}))
 
 		o := newOptimizer(plan, []*optimization{
-			newOptimization("ColumnarPromotion", plan).withRules(&columnarPromotion{plan: plan}),
+			newOptimization("ColumnarPromotion", plan).withRules(&aggregatorColumnarPromotion{plan: plan}),
 		})
 		o.optimize(plan.Roots()[0])
 
@@ -1223,7 +1223,7 @@ func TestColumnarPromotion(t *testing.T) {
 		require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet}))
 
 		o := newOptimizer(plan, []*optimization{
-			newOptimization("ColumnarPromotion", plan).withRules(&columnarPromotion{plan: plan}),
+			newOptimization("ColumnarPromotion", plan).withRules(&aggregatorColumnarPromotion{plan: plan}),
 		})
 		o.optimize(plan.Roots()[0])
 
@@ -1251,7 +1251,7 @@ func TestColumnarPromotion(t *testing.T) {
 		require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet}))
 
 		o := newOptimizer(plan, []*optimization{
-			newOptimization("ColumnarPromotion", plan).withRules(&columnarPromotion{plan: plan}),
+			newOptimization("ColumnarPromotion", plan).withRules(&aggregatorColumnarPromotion{plan: plan}),
 		})
 		o.optimize(plan.Roots()[0])
 
@@ -1259,52 +1259,54 @@ func TestColumnarPromotion(t *testing.T) {
 		require.False(t, ra.Columnar)
 	})
 
-	t.Run("empty grouping (no pushdown)", func(t *testing.T) {
+	t.Run("vector aggregation with by() grouping", func(t *testing.T) {
 		plan := &Plan{}
 		scanSet := plan.graph.Add(&ScanSet{
 			Targets:    []*ScanTarget{{Type: ScanTypeDataObject, DataObject: &DataObjScan{}}},
 			Predicates: []Expression{},
 		})
-		rangeAgg := plan.graph.Add(&RangeAggregation{
-			Operation: types.RangeAggregationTypeCount,
-			Step:      time.Minute,
-			Range:     time.Minute,
-		})
-		require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet}))
-
-		o := newOptimizer(plan, []*optimization{
-			newOptimization("ColumnarPromotion", plan).withRules(&columnarPromotion{plan: plan}),
-		})
-		o.optimize(plan.Roots()[0])
-
-		ra := rangeAgg.(*RangeAggregation)
-		require.False(t, ra.Columnar)
-	})
-
-	t.Run("instant query (step == 0)", func(t *testing.T) {
-		plan := &Plan{}
-		scanSet := plan.graph.Add(&ScanSet{
-			Targets:    []*ScanTarget{{Type: ScanTypeDataObject, DataObject: &DataObjScan{}}},
-			Predicates: []Expression{},
-		})
-		rangeAgg := plan.graph.Add(&RangeAggregation{
-			Operation: types.RangeAggregationTypeCount,
-			Step:      0,
-			Range:     time.Minute,
+		vecAgg := plan.graph.Add(&VectorAggregation{
+			Operation: types.VectorAggregationTypeSum,
 			Grouping: Grouping{
 				Columns: []ColumnExpression{
 					&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
 				},
 			},
 		})
-		require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet}))
+		require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: scanSet}))
 
 		o := newOptimizer(plan, []*optimization{
-			newOptimization("ColumnarPromotion", plan).withRules(&columnarPromotion{plan: plan}),
+			newOptimization("ColumnarPromotion", plan).withRules(&aggregatorColumnarPromotion{plan: plan}),
 		})
 		o.optimize(plan.Roots()[0])
 
-		ra := rangeAgg.(*RangeAggregation)
-		require.False(t, ra.Columnar)
+		va := vecAgg.(*VectorAggregation)
+		require.True(t, va.Columnar)
+	})
+
+	t.Run("vector aggregation with without() grouping", func(t *testing.T) {
+		plan := &Plan{}
+		scanSet := plan.graph.Add(&ScanSet{
+			Targets:    []*ScanTarget{{Type: ScanTypeDataObject, DataObject: &DataObjScan{}}},
+			Predicates: []Expression{},
+		})
+		vecAgg := plan.graph.Add(&VectorAggregation{
+			Operation: types.VectorAggregationTypeSum,
+			Grouping: Grouping{
+				Columns: []ColumnExpression{
+					&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+				},
+				Without: true,
+			},
+		})
+		require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: scanSet}))
+
+		o := newOptimizer(plan, []*optimization{
+			newOptimization("ColumnarPromotion", plan).withRules(&aggregatorColumnarPromotion{plan: plan}),
+		})
+		o.optimize(plan.Roots()[0])
+
+		va := vecAgg.(*VectorAggregation)
+		require.False(t, va.Columnar)
 	})
 }

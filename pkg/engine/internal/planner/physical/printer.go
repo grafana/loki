@@ -82,6 +82,7 @@ func toTreeNode(n Node) *tree.Node {
 	case *VectorAggregation:
 		properties := []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
+			tree.NewProperty("columnar", false, node.Columnar),
 		}
 
 		if node.Grouping.Without {

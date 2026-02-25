@@ -161,55 +161,56 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		},
 	}
 
-	t.Run("aligned windows", func(t *testing.T) {
-		opts := rangeAggregationOptions{
-			grouping: physical.Grouping{
-				Columns: groupBy,
-				Without: false,
-			},
-			startTs:       time.Unix(10, 0),
-			endTs:         time.Unix(40, 0),
-			rangeInterval: 10 * time.Second,
-			step:          10 * time.Second,
-			operation:     types.RangeAggregationTypeCount,
-		}
+	expect := arrowtest.Rows{
+		// time.Unix(10, 0)
+		{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(3)},
+		{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(2)},
+		{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
-		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
-		inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
-		require.NoError(t, err)
-		defer pipeline.Close()
+		// time.Unix(20, 0)
+		{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(1)},
+		{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(1)},
+		{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
-		record, err := pipeline.Read(t.Context())
-		require.NoError(t, err)
+		// time.Unix(30, 0)
+		{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app2", colVal: float64(2)},
+		{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
+	}
 
-		expect := arrowtest.Rows{
-			// time.Unix(10, 0)
-			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(3)},
-			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(2)},
-			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
+	for name, columnar := range map[string]bool{
+		"aligned windows/row-based": false,
+		"aligned windows/columnar":  true,
+	} {
+		t.Run(name, func(t *testing.T) {
+			opts := rangeAggregationOptions{
+				grouping: physical.Grouping{
+					Columns: groupBy,
+					Without: false,
+				},
+				startTs:       time.Unix(10, 0),
+				endTs:         time.Unix(40, 0),
+				rangeInterval: 10 * time.Second,
+				step:          10 * time.Second,
+				operation:     types.RangeAggregationTypeCount,
+				columnar:      columnar,
+			}
 
-			// time.Unix(20, 0)
-			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(1)},
-			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(1)},
-			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
+			inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
+			inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
+			pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
+			require.NoError(t, err)
+			defer pipeline.Close()
 
-			// time.Unix(30, 0)
-			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app2", colVal: float64(2)},
-			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
-		}
+			record, err := pipeline.Read(t.Context())
+			require.NoError(t, err)
 
-		rows, err := arrowtest.RecordRows(record)
-		require.NoError(t, err, "should be able to convert record back to rows")
+			rows, err := arrowtest.RecordRows(record)
+			require.NoError(t, err, "should be able to convert record back to rows")
 
-		require.Equal(t, len(expect), len(rows), "number of rows should match")
-		// rows are expected to be sorted by timestamp.
-		// for a given timestamp, no ordering is enforced based on labels.
-		require.True(t, slices.IsSortedFunc(rows, func(a, b arrowtest.Row) int {
-			return a[colTs].(time.Time).Compare(b[colTs].(time.Time))
-		}))
-		require.ElementsMatch(t, expect, rows)
-	})
+			require.Equal(t, len(expect), len(rows), "number of rows should match")
+			require.ElementsMatch(t, expect, rows)
+		})
+	}
 
 	t.Run("overlapping windows", func(t *testing.T) {
 		opts := rangeAggregationOptions{

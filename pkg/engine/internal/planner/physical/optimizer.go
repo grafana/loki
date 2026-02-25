@@ -830,36 +830,50 @@ func addUniqueColumnExpr(projections []ColumnExpression, colExpr *ColumnExpr) ([
 	return append(projections, colExpr), true
 }
 
-var _ rule = (*columnarPromotion)(nil)
+var _ rule = (*aggregatorColumnarPromotion)(nil)
 
-// columnarPromotion promotes eligible RangeAggregation nodes to use the
-// columnar (batch) execution path. A node is eligible when:
-//   - Grouping labels are known upfront (by-clause, not without)
+// aggregatorColumnarPromotion promotes eligible RangeAggregation and
+// VectorAggregation nodes to use the columnar (batch) execution path.
+//
+// RangeAggregation is eligible when:
+//   - using group by labels, without is not supported
 //   - Windows are aligned (Step == Range) and Step > 0
-type columnarPromotion struct {
+//
+// VectorAggregation is eligible when:
+//   - using group by labels, without is not supported
+type aggregatorColumnarPromotion struct {
 	plan *Plan
 }
 
-func (r *columnarPromotion) apply(root Node) bool {
+func (r *aggregatorColumnarPromotion) apply(root Node) bool {
 	nodes := findMatchingNodes(r.plan, root, func(n Node) bool {
-		_, ok := n.(*RangeAggregation)
-		return ok
+		switch n.(type) {
+		case *RangeAggregation, *VectorAggregation:
+			return true
+		}
+		return false
 	})
 
 	var changed bool
 	for _, n := range nodes {
-		ra := n.(*RangeAggregation)
-		if ra.Columnar {
-			continue
+		switch n := n.(type) {
+		case *RangeAggregation:
+			if n.Columnar || n.Grouping.Without {
+				continue
+			}
+			if n.Step <= 0 || n.Step != n.Range {
+				continue
+			}
+			n.Columnar = true
+			changed = true
+
+		case *VectorAggregation:
+			if n.Columnar || n.Grouping.Without {
+				continue
+			}
+			n.Columnar = true
+			changed = true
 		}
-		if ra.Grouping.Without || len(ra.Grouping.Columns) == 0 {
-			continue
-		}
-		if ra.Step <= 0 || ra.Step != ra.Range {
-			continue
-		}
-		ra.Columnar = true
-		changed = true
 	}
 	return changed
 }

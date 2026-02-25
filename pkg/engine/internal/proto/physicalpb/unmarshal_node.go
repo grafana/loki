@@ -228,6 +228,7 @@ func (n *AggregateVector) UnmarshalPhysical(from physical.Node) error {
 		Grouping:       grouping,
 		Operation:      op,
 		MaxQuerySeries: int32(vectorAgg.MaxQuerySeries),
+		Columnar:       vectorAgg.Columnar,
 	}
 	return nil
 }

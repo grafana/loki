@@ -21,9 +21,7 @@ type RangeAggregation struct {
 	MaxQuerySeries int // maximum number of unique series allowed (0 means no limit)
 
 	// Columnar indicates that this node should use the columnar (batch)
-	// execution path. Set by the ColumnarPromotion optimizer when grouping
-	// labels are known (by-clause, not without) and windows are aligned
-	// (Step == Range).
+	// execution path.
 	Columnar bool
 }
 
