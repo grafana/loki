@@ -195,7 +195,15 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream SegmentedStream, rateBytes, tenantRateBytes uint64, pushTracker *PushTracker) {
 	t.streams.Inc()
 
-	partition, err := t.resolver.Resolve(ctx, tenant, stream.SegmentationKey, rateBytes, tenantRateBytes)
+	// Find the oldest entry in the stream.
+	var oldestEntry time.Time
+	for _, entry := range stream.Stream.Entries {
+		if oldestEntry.IsZero() || entry.Timestamp.Before(oldestEntry) {
+			oldestEntry = entry.Timestamp
+		}
+	}
+
+	partition, err := t.resolver.Resolve(ctx, tenant, stream.SegmentationKey, rateBytes, tenantRateBytes, oldestEntry)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to resolve partition", "err", err)
 		t.streamFailures.Inc()

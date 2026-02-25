@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
@@ -74,7 +75,7 @@ func NewSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader r
 	}
 }
 
-func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key SegmentationKey, rateBytes, tenantRateBytes uint64) (int32, error) {
+func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key SegmentationKey, rateBytes, tenantRateBytes uint64, oldestEntry time.Time) (int32, error) {
 	r.total.Inc()
 	// We use a snapshot of the partition ring to ensure resolving the
 	// partition for a segmentation key is determinstic even if the ring
@@ -87,6 +88,14 @@ func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 		r.failed.Inc()
 		return 0, errors.New("no active partitions")
 	}
+	// Send late data to dedicated "late" partitions.
+	since := time.Since(oldestEntry)
+	if since > 4*time.Hour {
+		return 0, nil
+	} else if since > time.Hour {
+		return 1, nil
+	}
+
 	// Get a subring for the tenant based on their ingestion rate limit.
 	// This ensures that streams are not only co-located within the same
 	// segmentation key, but also segmentation keys for a tenant are as
@@ -115,7 +124,7 @@ func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 	// Get a random partition from the subring.
 	activePartitionIDs := subring.ActivePartitionIDs()
 	idx := rand.Intn(len(activePartitionIDs))
-	return activePartitionIDs[idx], nil
+	return max(2, activePartitionIDs[idx]), nil
 }
 
 // getTenantRing returns a subring for the tenant based on their rate limit.
