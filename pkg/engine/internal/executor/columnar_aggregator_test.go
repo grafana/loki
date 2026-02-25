@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
@@ -438,16 +440,6 @@ type benchLabelConfig struct {
 	cardinality int
 }
 
-func benchFields(labels []benchLabelConfig) []arrow.Field {
-	fields := make([]arrow.Field, len(labels))
-	for i, l := range labels {
-		fields[i] = semconv.FieldFromIdent(
-			semconv.NewIdentifier(l.name, types.ColumnTypeLabel, types.Loki.String), true,
-		)
-	}
-	return fields
-}
-
 // benchBatch holds pre-built Arrow arrays for one batch in a benchmark scenario.
 type benchBatch struct {
 	ts   *array.Timestamp
@@ -463,17 +455,23 @@ func (bb benchBatch) Release() {
 	}
 }
 
-// benchRawData holds plain Go slices for the full dataset, used by the
-// row-based aggregator which does not operate on Arrow arrays.
-type benchRawData struct {
-	timestamps []int64
-	values     []float64
-	labels     [][]string // labels[colIdx][rowIdx]
-	rowLabels  [][]string // rowLabels[rowIdx][colIdx] — transposed for row-based Add()
-}
-
-func buildBenchBatches(mem memory.Allocator, totalRows, batchSize, numDistinctTs int, labels []benchLabelConfig) ([]benchBatch, benchRawData) {
+// buildBenchRecords builds proper arrow.RecordBatch objects with FQN column
+// names so the expressionEvaluator can resolve timestamp, value, and label
+// columns. The returned records are suitable for NewBufferedPipeline.
+func buildBenchRecords(mem memory.Allocator, totalRows, batchSize, numDistinctTs int, labels []benchLabelConfig) []arrow.RecordBatch {
 	const baseTs = int64(1704103200000000000)
+
+	fields := make([]arrow.Field, 0, 2+len(labels))
+	fields = append(fields, semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false))
+	fields = append(fields, semconv.FieldFromIdent(semconv.ColumnIdentValue, false))
+	for _, l := range labels {
+		fields = append(fields, semconv.FieldFromIdent(
+			semconv.NewIdentifier(l.name, types.ColumnTypeLabel, types.Loki.String), true,
+		))
+	}
+	schema := arrow.NewSchema(fields, nil)
+
+	tsType := types.Arrow.Timestamp.(*arrow.TimestampType)
 
 	timestamps := make([]int64, totalRows)
 	values := make([]float64, totalRows)
@@ -491,46 +489,52 @@ func buildBenchBatches(mem memory.Allocator, totalRows, batchSize, numDistinctTs
 		labelCols[c] = col
 	}
 
-	rowLabels := make([][]string, totalRows)
-	for row := range totalRows {
-		vals := make([]string, len(labels))
-		for c := range labels {
-			vals[c] = labelCols[c][row]
-		}
-		rowLabels[row] = vals
-	}
-
 	numBatches := (totalRows + batchSize - 1) / batchSize
-	batches := make([]benchBatch, numBatches)
+	records := make([]arrow.RecordBatch, numBatches)
 	for bi := range numBatches {
 		start := bi * batchSize
 		end := start + batchSize
 		if end > totalRows {
 			end = totalRows
 		}
-		arrCols := make([]*array.String, len(labels))
-		for c := range labels {
-			arrCols[c] = makeStringArray(mem, labelCols[c][start:end], nil)
-		}
-		batches[bi] = benchBatch{
-			ts:   makeTimestampArray(mem, timestamps[start:end]),
-			vals: makeFloat64Array(mem, values[start:end], nil),
-			cols: arrCols,
-		}
-	}
+		n := end - start
 
-	raw := benchRawData{
-		timestamps: timestamps,
-		values:     values,
-		labels:     labelCols,
-		rowLabels:  rowLabels,
+		tsBuilder := array.NewTimestampBuilder(mem, tsType)
+		for _, v := range timestamps[start:end] {
+			tsBuilder.Append(arrow.Timestamp(v))
+		}
+		tsArr := tsBuilder.NewTimestampArray()
+		tsBuilder.Release()
+
+		valArr := makeFloat64Array(mem, values[start:end], nil)
+
+		cols := make([]arrow.Array, 0, 2+len(labels))
+		cols = append(cols, tsArr, valArr)
+		for c := range labels {
+			cols = append(cols, makeStringArray(mem, labelCols[c][start:end], nil))
+		}
+
+		records[bi] = array.NewRecordBatch(schema, cols, int64(n))
 	}
-	return batches, raw
+	return records
 }
 
-// BenchmarkAggregatorAddBatch measures AddBatch throughput for
-// both the columnar and row-based aggregators using identical test data.
-func BenchmarkAggregatorAddBatch(b *testing.B) {
+func benchGroupByColumns(labels []benchLabelConfig) []physical.ColumnExpression {
+	cols := make([]physical.ColumnExpression, len(labels))
+	for i, l := range labels {
+		cols[i] = &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: l.name,
+				Type:   types.ColumnTypeLabel,
+			},
+		}
+	}
+	return cols
+}
+
+// BenchmarkAggregations measures end-to-end Read() throughput for aggregation
+// pipelines with varying input sizes, cardinality and aggregator types.
+func BenchmarkAggregations(b *testing.B) {
 	mem := memory.NewGoAllocator()
 
 	type benchCase struct {
@@ -568,7 +572,7 @@ func BenchmarkAggregatorAddBatch(b *testing.B) {
 	}{
 		{"cardinality=low", cardLow},
 		{"cardinality=medium", cardMedium},
-		{"cardinality=high_card", cardHigh},
+		{"cardinality=high", cardHigh},
 	}
 
 	var cases []benchCase
@@ -585,52 +589,125 @@ func BenchmarkAggregatorAddBatch(b *testing.B) {
 		}
 	}
 
-	const numDistinctTs = 100
+	const numDistinctTs = 1000
 
-	b.Run("aggregator=columnar", func(b *testing.B) {
-		for _, tc := range cases {
-			b.Run(tc.name, func(b *testing.B) {
-				fields := benchFields(tc.labels)
-				batches, _ := buildBenchBatches(mem, tc.totalRows, tc.batchSize, numDistinctTs, tc.labels)
-				defer func() {
-					for _, batch := range batches {
-						batch.Release()
-					}
-				}()
+	// baseTs must match the constant inside buildBenchRecords.
+	baseTs := time.Unix(0, 1704103200000000000)
+	rangeStep := 5 * time.Second
+	numWindows := numDistinctTs / int(rangeStep.Seconds())
 
-				b.ReportAllocs()
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					agg := newColumnarAggregator(100, columnarAggregatorOpts{
-						operation:     aggregationOperationSum,
-						groupByLabels: fields,
-					})
-					for _, batch := range batches {
-						_ = agg.AddBatch(batch.ts, batch.vals, batch.cols)
-					}
-				}
-				b.ReportMetric(float64(tc.totalRows)*float64(b.N)/b.Elapsed().Seconds(), "rows/s")
-			})
+	ctx := context.Background()
+
+	for _, columnar := range []bool{true, false} {
+		aggregator := "columnar"
+		if !columnar {
+			aggregator = "row_based"
 		}
-	})
 
-	b.Run("aggregator=row_based", func(b *testing.B) {
-		for _, tc := range cases {
-			b.Run(tc.name, func(b *testing.B) {
-				fields := benchFields(tc.labels)
-				_, raw := buildBenchBatches(mem, tc.totalRows, tc.batchSize, numDistinctTs, tc.labels)
+		b.Run(fmt.Sprintf("pipeline=range_aggregation/aggregator=%s", aggregator), func(b *testing.B) {
+			for _, tc := range cases {
+				b.Run(tc.name, func(b *testing.B) {
+					records := buildBenchRecords(mem, tc.totalRows, tc.batchSize, numDistinctTs, tc.labels)
 
-				b.ReportAllocs()
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					agg := newAggregator(100, aggregationOperationSum)
-					for row := range tc.totalRows {
-						ts := arrow.Timestamp(raw.timestamps[row]).ToTime(arrow.Nanosecond)
-						_ = agg.Add(ts, raw.values[row], fields, raw.rowLabels[row])
+					groupBy := benchGroupByColumns(tc.labels)
+					opts := rangeAggregationOptions{
+						startTs:       baseTs.Add(rangeStep),
+						endTs:         baseTs.Add(time.Duration(numDistinctTs) * time.Second),
+						rangeInterval: rangeStep,
+						step:          rangeStep,
+						operation:     types.RangeAggregationTypeSum,
+						columnar:      columnar,
+						grouping: physical.Grouping{
+							Columns: groupBy,
+							Without: false,
+						},
 					}
-				}
-				b.ReportMetric(float64(tc.totalRows)*float64(b.N)/b.Elapsed().Seconds(), "rows/s")
-			})
-		}
-	})
+
+					// Initial run to sanity check the stats on output record
+					input := NewBufferedPipeline(records...)
+					pipeline, err := newRangeAggregationPipeline([]Pipeline{input}, newExpressionEvaluator(), opts)
+					if err != nil {
+						b.Fatal(err)
+					}
+
+					rec, err := pipeline.Read(ctx)
+					if err != nil {
+						b.Fatal(err)
+					}
+
+					if rec.NumRows() == 0 {
+						b.Fatal("expected non-zero output rows from range aggregation")
+					}
+
+					// num rows should be a numWindows * num series which is determiend by cardinality test config.
+					b.Logf("input: %d rows, windows: %d, output: %d rows x %d cols", tc.totalRows, numWindows, rec.NumRows(), rec.NumCols())
+					pipeline.Close()
+
+					b.ReportAllocs()
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						input := NewBufferedPipeline(records...)
+						pipeline, err := newRangeAggregationPipeline([]Pipeline{input}, newExpressionEvaluator(), opts)
+						if err != nil {
+							b.Fatal(err)
+						}
+						if _, err := pipeline.Read(ctx); err != nil {
+							b.Fatal(err)
+						}
+						pipeline.Close()
+					}
+					b.ReportMetric(float64(tc.totalRows)*float64(b.N)/b.Elapsed().Seconds(), "rows/s")
+				})
+			}
+		})
+
+		b.Run(fmt.Sprintf("pipeline=vector_aggregation/aggregator=%s", aggregator), func(b *testing.B) {
+			for _, tc := range cases {
+				b.Run(tc.name, func(b *testing.B) {
+					records := buildBenchRecords(mem, tc.totalRows, tc.batchSize, numDistinctTs, tc.labels)
+
+					groupBy := benchGroupByColumns(tc.labels)
+					opts := vectorAggregationOptions{
+						operation: types.VectorAggregationTypeSum,
+						columnar:  columnar,
+						grouping: physical.Grouping{
+							Columns: groupBy,
+							Without: false,
+						},
+					}
+
+					// Initial run to sanity check the stats on output record
+					input := NewBufferedPipeline(records...)
+					pipeline, err := newVectorAggregationPipeline([]Pipeline{input}, newExpressionEvaluator(), opts)
+					if err != nil {
+						b.Fatal(err)
+					}
+					rec, err := pipeline.Read(ctx)
+					if err != nil {
+						b.Fatal(err)
+					}
+					if rec.NumRows() == 0 {
+						b.Fatal("expected non-zero output rows from vector aggregation")
+					}
+					b.Logf("input: %d rows, output: %d rows x %d cols", tc.totalRows, rec.NumRows(), rec.NumCols())
+					pipeline.Close()
+
+					b.ReportAllocs()
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						input := NewBufferedPipeline(records...)
+						pipeline, err := newVectorAggregationPipeline([]Pipeline{input}, newExpressionEvaluator(), opts)
+						if err != nil {
+							b.Fatal(err)
+						}
+						if _, err := pipeline.Read(ctx); err != nil {
+							b.Fatal(err)
+						}
+						pipeline.Close()
+					}
+					b.ReportMetric(float64(tc.totalRows)*float64(b.N)/b.Elapsed().Seconds(), "rows/s")
+				})
+			}
+		})
+	}
 }
