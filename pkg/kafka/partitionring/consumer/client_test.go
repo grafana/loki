@@ -121,15 +121,15 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 					require.True(t, ok, "%s received record for unassigned partition %d", id, record.Partition)
 
 					// Only check for duplicates on active partitions. Inactive
-				// partitions use round-robin assignment without the two-round
-				// cooperative protocol, so a brief overlap is expected during handoff.
-				if isActivePartition(record.Partition) {
-					key := recordKey{record.Partition, record.Offset}
-					if prev, loaded := processedRecords.LoadOrStore(key, id); loaded {
-						t.Errorf("Record at partition %d offset %d processed twice! First by %v, then by %v",
-							key.partition, key.offset, prev, id)
+					// partitions use round-robin assignment without the two-round
+					// cooperative protocol, so a brief overlap is expected during handoff.
+					if isActivePartition(record.Partition) {
+						key := recordKey{record.Partition, record.Offset}
+						if prev, loaded := processedRecords.LoadOrStore(key, id); loaded {
+							t.Errorf("Record at partition %d offset %d processed twice! First by %v, then by %v",
+								key.partition, key.offset, prev, id)
+						}
 					}
-				}
 				}
 				if len(records.Records()) > 0 {
 					if err := client.CommitRecords(context.Background(), records.Records()...); err != nil {
