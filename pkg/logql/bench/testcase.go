@@ -17,6 +17,7 @@ type TestCase struct {
 	Direction logproto.Direction
 	Step      time.Duration // Step size for metric queries
 	Source    string        // Source location (suite/file.yaml:line)
+	QueryDesc string        // Query description from YAML
 }
 
 // Name returns a descriptive name for the test case.

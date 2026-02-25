@@ -41,6 +41,8 @@ type Options struct {
 	Tenants Tenants
 
 	TLSProfile TLSProfileSpec
+
+	NetworkPolicyObjStorePorts []int32
 }
 
 // GatewayTimeoutConfig contains the http server configuration options for all Loki components.

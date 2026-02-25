@@ -312,6 +312,11 @@ query_engine:
   # CLI flag: -query-engine.batch-size
   [batch_size: <int> | default = 100]
 
+  # Experimental: Number of bytes to prefetch when opening a data object for
+  # decoding metadata and overlapping section reads. Clamps to at least 16KiB.
+  # CLI flag: -query-engine.prefetch-bytes
+  [prefetch_bytes: <int> | default = 16KiB]
+
   # Experimental: The number of inputs that are prefetched simultaneously by any
   # Merge node. A value of 0 means that only the currently processed input is
   # prefetched, 1 means that only the next input is prefetched, and so on. A
@@ -1202,6 +1207,10 @@ kafka_config:
   # CLI flag: -kafka.enable-kafka-histograms
   [enable_kafka_histograms: <boolean> | default = false]
 
+  # Enable tracing.
+  # CLI flag: -kafka.tracing-enabled
+  [tracing_enabled: <boolean> | default = false]
+
 dataobj:
   consumer:
     builderconfig:
@@ -1884,11 +1893,6 @@ ingest_limits_frontend:
   # The jitter to add to the accepted streams cache.
   # CLI flag: -ingest-limits-frontend.accepted-streams-cache-ttl-jitter
   [accepted_streams_cache_ttl_jitter: <duration> | default = 15s]
-
-  # The maximum number of streams that can be stored in the cache without false
-  # positives.
-  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-size
-  [accepted_streams_cache_size: <int> | default = 1000000]
 
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.

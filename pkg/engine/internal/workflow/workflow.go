@@ -170,6 +170,9 @@ func (wf *Workflow) String() string {
 	return Sprint(wf)
 }
 
+// Opts returns options of the workflow (mostly for testing purposes).
+func (wf *Workflow) Opts() Options { return wf.opts }
+
 // Len returns the total number of tasks in the workflow.
 func (wf *Workflow) Len() int { return len(wf.manifest.Tasks) }
 
