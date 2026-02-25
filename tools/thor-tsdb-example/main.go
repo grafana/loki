@@ -27,14 +27,14 @@ type streamRef struct {
 	KB      int
 }
 
-// chunkRef identifies the object and section that a ChunkMeta points to.
+// sectionRef identifies the object and section that a ChunkMeta points to.
 // Stored in the lookup table alongside the TSDB index.
-type chunkRef struct {
+type sectionRef struct {
 	Path      string
 	SectionID int
 }
 
-// encodeChunkRefTable serializes a chunkRef slice into a compact binary format
+// encodeSectionRefTable serializes a sectionRef slice into a compact binary format
 // with an interned string table for paths.
 //
 // Wire format:
@@ -45,7 +45,7 @@ type chunkRef struct {
 //	[uint32 entry_count]            -- entries indexed by checksum
 //	for each entry:
 //	  [uint32 path_string_index][uint32 section_id]
-func encodeChunkRefTable(refs []chunkRef) []byte {
+func encodeSectionRefTable(refs []sectionRef) []byte {
 	pathIdx := make(map[string]uint32)
 	var pathStrings []string
 	for _, ref := range refs {
@@ -74,9 +74,9 @@ func encodeChunkRefTable(refs []chunkRef) []byte {
 	return buf.Bytes()
 }
 
-// decodeChunkRefTable deserializes the binary table produced by encodeChunkRefTable.
-// The returned slice is indexed by checksum: table[chunkMeta.Checksum] == chunkRef.
-func decodeChunkRefTable(data []byte) ([]chunkRef, error) {
+// decodeSectionRefTable deserializes the binary table produced by encodeSectionRefTable.
+// The returned slice is indexed by checksum: table[chunkMeta.Checksum] == sectionRef.
+func decodeSectionRefTable(data []byte) ([]sectionRef, error) {
 	r := bytes.NewReader(data)
 
 	// String table.
@@ -102,7 +102,7 @@ func decodeChunkRefTable(data []byte) ([]chunkRef, error) {
 	if err := binary.Read(r, binary.LittleEndian, &entryCount); err != nil {
 		return nil, fmt.Errorf("reading entry count: %w", err)
 	}
-	entries := make([]chunkRef, entryCount)
+	entries := make([]sectionRef, entryCount)
 	for i := range entries {
 		var pIdx, secID uint32
 		if err := binary.Read(r, binary.LittleEndian, &pIdx); err != nil {
@@ -111,7 +111,7 @@ func decodeChunkRefTable(data []byte) ([]chunkRef, error) {
 		if err := binary.Read(r, binary.LittleEndian, &secID); err != nil {
 			return nil, fmt.Errorf("reading section ID: %w", err)
 		}
-		entries[i] = chunkRef{Path: pathStrings[pIdx], SectionID: int(secID)}
+		entries[i] = sectionRef{Path: pathStrings[pIdx], SectionID: int(secID)}
 	}
 	return entries, nil
 }

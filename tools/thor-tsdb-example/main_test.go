@@ -70,14 +70,14 @@ func TestStreamRefRoundTrip(t *testing.T) {
 		section int
 	}
 	refIndex := make(map[refKey]uint32)
-	var chunkRefs []chunkRef
+	var chunkRefs []sectionRef
 
 	for _, ref := range refs {
 		key := refKey{path: ref.path, section: ref.section}
 		idx, ok := refIndex[key]
 		if !ok {
 			idx = uint32(len(chunkRefs))
-			chunkRefs = append(chunkRefs, chunkRef{Path: ref.path, SectionID: ref.section})
+			chunkRefs = append(chunkRefs, sectionRef{Path: ref.path, SectionID: ref.section})
 			refIndex[key] = idx
 		}
 
@@ -104,8 +104,8 @@ func TestStreamRefRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	// --- Encode + Decode the chunk ref lookup table ---
-	encoded := encodeChunkRefTable(chunkRefs)
-	decoded, err := decodeChunkRefTable(encoded)
+	encoded := encodeSectionRefTable(chunkRefs)
+	decoded, err := decodeSectionRefTable(encoded)
 	require.NoError(t, err)
 	require.Equal(t, chunkRefs, decoded)
 
