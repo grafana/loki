@@ -120,7 +120,7 @@ The `persist_tokens` option is enabled for a ring but no `path_prefix` is specif
 
 1. **Or disable persist_tokens** if you don't need token persistence:
 
-```yaml
+   ```yaml
    common:
      persist_tokens: false
    ```
@@ -945,7 +945,7 @@ The AWS STS (Security Token Service) endpoint URL is malformed or invalid.
 **Error message:**
 
 ```text
-connection string is either blank or malformed. The expected connection string should contain key value pairs separated by semicolons
+connection string is either blank or malformed. The expected connection string should contain key value pairs separated by semicolons. For example 'DefaultEndpointsProtocol=https;AccountName=<accountName>;AccountKey=<accountKey>;EndpointSuffix=core.windows.net'
 ```
 
 **Cause:**
@@ -990,6 +990,14 @@ Or for specific backends:
 unrecognized named s3 storage config <name>
 unrecognized named gcs storage config <name>
 unrecognized named azure storage config <name>
+unrecognized named filesystem storage config <name>
+unrecognized named swift storage config <name>
+```
+
+Or for an unrecognized store type:
+
+```text
+unrecognized named storage type: <storeType>
 ```
 
 **Cause:**
@@ -1242,7 +1250,8 @@ The ring contains too many unhealthy instances to satisfy the replication factor
 
 **Resolution:**
 
-1. **Check the health of ring members**:
+1. **Check the health of ring members**: Open a browser and navigate to http://localhost:3100/ring. You should see the Loki ring page.
+  OR
 
    ```bash
    curl -s http://loki:3100/ring | jq '.shards[] | select(.state != "ACTIVE")'
@@ -1269,19 +1278,14 @@ empty ring
 
 **Cause:**
 
-No instances are registered in the ring. This typically occurs during initial cluster startup or if the KV store has lost its data.
+No instances are registered in the ring. This typically occurs during initial cluster startup, for example if your ingesters are OOM crashing, or due to misconfiguration.
 
 **Resolution:**
 
 1. **Wait for instances to register** during initial startup.
-1. **Check KV store health** (Consul, etcd, or memberlist):
-
-   ```bash
-   # For memberlist
-   curl -s http://loki:3100/memberlist
-   ```
-
-1. **Verify ring configuration** across all components:
+1. **Check ingesters** to make sure they are running.
+1. **Check that all instances can communicate** over the configured ports.
+1. **Verify ring configuration** across all components, especially memberlist configuration:
 
    ```yaml
    ingester:
@@ -1292,7 +1296,12 @@ No instances are registered in the ring. This typically occurs during initial cl
          replication_factor: 3
    ```
 
-1. **Check that all instances can communicate** over the configured ports.
+1. **Check KV store health** (Consul, etcd, or memberlist):
+
+   ```bash
+   # For memberlist
+   curl -s http://loki:3100/memberlist
+   ```
 
 **Properties:**
 
@@ -1306,7 +1315,7 @@ No instances are registered in the ring. This typically occurs during initial cl
 **Error message:**
 
 ```text
-instance not found in the ring
+instance <id> not found in the ring
 ```
 
 **Cause:**
@@ -1336,10 +1345,10 @@ this instance owns no tokens
 
 **Cause:**
 
-The instance has joined the ring but hasn't been assigned any tokens. Without tokens, the instance cannot receive any work. This can happen if:
+The instance has joined the ring but hasn't claimed any tokens. Without tokens, the instance cannot receive any work. This can happen if:
 
 - The instance is still starting up
-- Token assignment failed
+- Token claim failed
 - The KV store update didn't propagate
 
 **Resolution:**
