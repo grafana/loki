@@ -33,9 +33,9 @@ func main() {
 
 	logger.Info("starting lokistack gateway",
 		"listen-addr", cfg.ListenAddr,
-		"metrics-addr", cfg.MetricsAddr,
-		"write-upstream-url", cfg.WriteUpstreamEndpoint,
-		"read-upstream-url", cfg.ReadUpstreamEndpoint,
+		"admin-addr", cfg.AdminAddr,
+		"loki-distributor-endpoint", cfg.Loki.DistributorEndpoint,
+		"loki-query-frontend-endpoint", cfg.Loki.QueryFrontendEndpoint,
 	)
 
 	reg := prometheus.NewRegistry()
@@ -48,17 +48,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigChan
-		logger.Info("received shutdown signal", "signal", sig.String())
-		cancel()
-	}()
 
 	if err := server.Run(ctx); err != nil {
 		logger.Error(err, "server error")
