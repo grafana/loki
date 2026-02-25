@@ -2135,13 +2135,11 @@ func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) err
 	return d.Err()
 }
 
-func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) (*encoding.Decbuf, uint64, error) {
+// prepSeries returns series labels for a series, only returning selected `by` label names.
+// If `by` is nil, it returns all labels for the series.
+func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
 	builder := labelpool.Get()
 	defer labelpool.Put(builder)
-
-	if chks != nil {
-		*chks = (*chks)[:0]
-	}
 
 	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
 
@@ -2160,54 +2158,11 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 		if err != nil {
 			return nil, 0, errors.Wrap(err, "lookup label name")
 		}
-		lv, err := dec.LookupSymbol(lvo)
-		if err != nil {
-			return nil, 0, errors.Wrap(err, "lookup label value")
-		}
 
-		builder.Add(ln, lv)
-	}
-
-	// Commit built labels.
-	builder.Sort()
-	*lbls = builder.Labels()
-
-	return &d, fprint, nil
-}
-
-// prepSeriesBy returns series labels and chunks for a series and only returning selected `by` label names.
-// If `by` is empty, it returns all labels for the series.
-func (dec *Decoder) prepSeriesBy(b []byte, lbls *labels.Labels, chks *[]ChunkMeta, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
-	if by == nil {
-		return dec.prepSeries(b, lbls, chks)
-	}
-
-	builder := labelpool.Get()
-	defer labelpool.Put(builder)
-
-	if chks != nil {
-		*chks = (*chks)[:0]
-	}
-
-	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
-
-	fprint := d.Be64()
-	k := d.Uvarint()
-
-	for i := 0; i < k; i++ {
-		lno := uint32(d.Uvarint())
-		lvo := uint32(d.Uvarint())
-
-		if d.Err() != nil {
-			return nil, 0, errors.Wrap(d.Err(), "read series label offsets")
-		}
-		// todo(cyriltovena): we could cache this by user requests spanning multiple prepSeries calls.
-		ln, err := dec.LookupSymbol(lno)
-		if err != nil {
-			return nil, 0, errors.Wrap(err, "lookup label name")
-		}
-		if _, ok := by[ln]; !ok {
-			continue
+		if by != nil {
+			if _, ok := by[ln]; !ok {
+				continue
+			}
 		}
 
 		lv, err := dec.LookupSymbol(lvo)
@@ -2226,7 +2181,7 @@ func (dec *Decoder) prepSeriesBy(b []byte, lbls *labels.Labels, chks *[]ChunkMet
 }
 
 func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
-	d, fp, err := dec.prepSeriesBy(b, lbls, nil, by)
+	d, fp, err := dec.prepSeries(b, lbls, by)
 	if err != nil {
 		return 0, ChunkStats{}, err
 	}
@@ -2370,11 +2325,12 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 
 // Series decodes a series entry from the given byte slice into lset and chks.
 func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
-	d, fprint, err := dec.prepSeries(b, lbls, chks)
+	d, fprint, err := dec.prepSeries(b, lbls, nil)
 	if err != nil {
 		return 0, err
 	}
 
+	*chks = (*chks)[:0]
 	// read chunks based on fmt
 	if err := dec.readChunks(version, d, seriesRef, from, through, chks); err != nil {
 		return 0, errors.Wrapf(err, "series %s", lbls.String())
