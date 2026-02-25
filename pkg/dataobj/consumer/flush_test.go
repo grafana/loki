@@ -22,15 +22,13 @@ func TestFlusher_Flush(t *testing.T) {
 		var (
 			reg          = prometheus.NewRegistry()
 			testCtx      = t.Context()
-			testBuilder  *mockBuilder
 			testSorter   = &mockSorter{}
 			testUploader = &mockUploader{}
 			now          = time.Now()
 		)
 		// Create a builder and append some logs so it can be flushed.
-		realBuilder, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
+		testBuilder, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
 		require.NoError(t, err)
-		testBuilder = &mockBuilder{builder: realBuilder}
 		require.NoError(t, testBuilder.Append("test", logproto.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []logproto.Entry{
@@ -56,9 +54,8 @@ func TestFlusher_Flush(t *testing.T) {
 
 	t.Run("should fail", func(t *testing.T) {
 		var (
-			reg         = prometheus.NewRegistry()
-			testCtx     = t.Context()
-			testBuilder *mockBuilder
+			reg     = prometheus.NewRegistry()
+			testCtx = t.Context()
 		)
 		f := newFlusher(nil, nil, log.NewNopLogger(), reg)
 		// Override the flush func to force a failure.
@@ -66,7 +63,7 @@ func TestFlusher_Flush(t *testing.T) {
 			return "", errors.New("mock error")
 		}
 		// Flush the builder we created earlier.
-		objectPath, err := f.Flush(testCtx, testBuilder, "test_sync")
+		objectPath, err := f.Flush(testCtx, &logsobj.Builder{}, "test_sync")
 		require.EqualError(t, err, "mock error")
 		require.Equal(t, "", objectPath)
 		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
@@ -92,7 +89,7 @@ func TestFlusher_FlushAsync(t *testing.T) {
 			// Mock success so promise is invoked.
 			return "", nil
 		}
-		f.FlushAsync(testCtx, &mockBuilder{}, "flush_async", func(res flushJobResult) {
+		f.FlushAsync(testCtx, &logsobj.Builder{}, "flush_async", func(res flushJobResult) {
 			require.NoError(t, res.err)
 			invoked = true
 			close(done)
@@ -115,7 +112,7 @@ func TestFlusher_FlushAsync(t *testing.T) {
 		f.flushFunc = func(_ context.Context, _ flushJob) (string, error) {
 			return "", errors.New("mock error")
 		}
-		f.FlushAsync(testCtx, &mockBuilder{}, "flush_async", func(res flushJobResult) {
+		f.FlushAsync(testCtx, &logsobj.Builder{}, "flush_async", func(res flushJobResult) {
 			require.EqualError(t, res.err, "mock error")
 			invoked = true
 			close(done)
@@ -142,7 +139,7 @@ func TestFlusher_FlushAsync(t *testing.T) {
 		}
 		// Cancel the context so FlushAsync calls the promise.
 		cancel()
-		f.FlushAsync(cancelCtx, &mockBuilder{}, "flush_async", func(res flushJobResult) {
+		f.FlushAsync(cancelCtx, &logsobj.Builder{}, "flush_async", func(res flushJobResult) {
 			require.EqualError(t, res.err, "context canceled")
 			invoked = true
 			close(done)

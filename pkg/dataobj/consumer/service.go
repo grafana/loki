@@ -154,10 +154,17 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
 		"partition": strconv.Itoa(int(partitionID)),
 	}, reg)
-	builder, err := builderFactory.NewBuilder(wrapped)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
+	builders := make([]*logsobj.Builder, 0)
+	for i := 0; i < 2; i++ {
+		builder, err := builderFactory.NewBuilder(prometheus.WrapRegistererWith(prometheus.Labels{
+			"builder": strconv.Itoa(i),
+		}, wrapped))
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
+		}
+		builders = append(builders, builder)
 	}
+	builderPool := logsobj.NewSizedBuilderPool(builders)
 	flushCommitter := newFlushCommitter(
 		s.flusher,
 		newMetastoreEvents(partitionID, int32(mCfg.PartitionRatio), metastoreEvents),
@@ -167,7 +174,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		wrapped,
 	)
 	s.processor = newProcessor(
-		builder,
+		builderPool,
 		records,
 		flushCommitter,
 		cfg.IdleFlushTimeout,
