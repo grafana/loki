@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"cmp"
 	"math"
 	"slices"
 	"strings"
@@ -417,7 +418,21 @@ func (a *columnarAggregator) BuildRecord() (arrow.RecordBatch, error) {
 		labelBuilders[i] = rb.Field(2 + i).(*array.StringBuilder)
 	}
 
-	for key, accumIdx := range a.groupMap {
+	// [ResultBuilder] expects entries to be sorted by timestamp.
+	// Sorting can turn out expensive for large number of groups (queries
+	// with a lot of steps or high cardinality series or both).
+	// Consider moving the sort step to [ResultBuilder] in pkg/engine/compat.go
+	sortedKeys := make([]groupKey, 0, len(a.groupMap))
+	for key := range a.groupMap {
+		sortedKeys = append(sortedKeys, key)
+	}
+
+	slices.SortFunc(sortedKeys, func(a, b groupKey) int {
+		return cmp.Compare(a.tsNano, b.tsNano)
+	})
+
+	for _, key := range sortedKeys {
+		accumIdx := a.groupMap[key]
 		tsBuilder.Append(arrow.Timestamp(key.tsNano))
 		valBuilder.Append(a.finalValue(accumIdx))
 		a.appendLabels(labelBuilders, key.seriesHash)
