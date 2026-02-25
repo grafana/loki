@@ -42,12 +42,12 @@ func NewLokiRouter(cfg *Config, logger logr.Logger) (*LokiRouter, error) {
 		return nil, err
 	}
 
-	writeProxy, err := newReverseProxy(cfg.WriteUpstreamEndpoint, transport, logger)
+	writeProxy, err := newReverseProxy(cfg.Loki.DistributorEndpoint, transport, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	readProxy, err := newReverseProxy(cfg.ReadUpstreamEndpoint, transport, logger)
+	readProxy, err := newReverseProxy(cfg.Loki.QueryFrontendEndpoint, transport, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -62,8 +62,10 @@ func NewLokiRouter(cfg *Config, logger logr.Logger) (*LokiRouter, error) {
 
 func newTransport(cfg *Config) (*http.Transport, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.ResponseHeaderTimeout = cfg.Loki.Timeout
 
-	tlsConfig, err := BuildUpstreamTLSConfig(cfg.TLSOptions(), cfg.UpstreamCAFile, cfg.UpstreamCertFile, cfg.UpstreamKeyFile)
+	tlsConfig, err := BuildUpstreamTLSConfig(cfg.TLSOptions(), cfg.Loki.CAFile, cfg.Loki.CertFile, cfg.Loki.KeyFile)
 	if err != nil {
 		return nil, err
 	}
@@ -79,14 +81,9 @@ func newReverseProxy(upstreamEndpoint string, transport *http.Transport, logger 
 	}
 
 	proxy := &httputil.ReverseProxy{
-		Director: func(req *http.Request) {
-			req.URL.Scheme = target.Scheme
-			req.URL.Host = target.Host
-			req.Host = target.Host
-
-			if target.Path != "" && target.Path != "/" {
-				req.URL.Path, _ = url.JoinPath(target.Path, req.URL.Path)
-			}
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(target)
+			pr.Out.Host = target.Host
 		},
 		Transport: transport,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {

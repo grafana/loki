@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -13,12 +14,12 @@ import (
 )
 
 type Server struct {
-	config        *Config
-	logger        logr.Logger
-	metrics       *Metrics
-	proxyServer   *http.Server
-	metricsServer *http.Server
-	shuttingDown  atomic.Bool
+	config       *Config
+	logger       logr.Logger
+	metrics      *Metrics
+	proxyServer  *http.Server
+	adminServer  *http.Server
+	shuttingDown atomic.Bool
 }
 
 func NewServer(cfg *Config, logger logr.Logger, reg prometheus.Registerer) (*Server, error) {
@@ -30,16 +31,22 @@ func NewServer(cfg *Config, logger logr.Logger, reg prometheus.Registerer) (*Ser
 	}
 
 	proxyHandler := InstrumentedHandler(router, metrics)
+
+	var proxyWriteTimeout time.Duration
+	if cfg.Loki.Timeout > 0 {
+		proxyWriteTimeout = cfg.Loki.Timeout + 10*time.Second
+	}
+
 	proxyServer := &http.Server{
 		Addr:         cfg.ListenAddr,
 		Handler:      proxyHandler,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: proxyWriteTimeout,
 		IdleTimeout:  120 * time.Second,
 	}
 
-	metricsServer := &http.Server{
-		Addr:        cfg.MetricsAddr,
+	adminServer := &http.Server{
+		Addr:        cfg.AdminAddr,
 		ReadTimeout: 10 * time.Second,
 	}
 
@@ -50,19 +57,19 @@ func NewServer(cfg *Config, logger logr.Logger, reg prometheus.Registerer) (*Ser
 		}
 		proxyServer.TLSConfig = tlsConfig
 
-		metricsTLSConfig, err := BuildServerTLSConfig(cfg.TLSOptions(), cfg.TLSClientCAFile)
+		adminTLSConfig, err := BuildServerTLSConfig(cfg.TLSOptions(), cfg.TLSClientCAFile)
 		if err != nil {
 			return nil, err
 		}
-		metricsServer.TLSConfig = metricsTLSConfig
+		adminServer.TLSConfig = adminTLSConfig
 	}
 
-	metricsMux := http.NewServeMux()
-	metricsMux.Handle("/metrics", promhttp.HandlerFor(
+	adminMux := http.NewServeMux()
+	adminMux.Handle("/metrics", promhttp.HandlerFor(
 		reg.(prometheus.Gatherer),
 		promhttp.HandlerOpts{Registry: reg},
 	))
-	metricsMux.HandleFunc("/live", func(w http.ResponseWriter, r *http.Request) {
+	adminMux.HandleFunc("/live", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
@@ -72,7 +79,7 @@ func NewServer(cfg *Config, logger logr.Logger, reg prometheus.Registerer) (*Ser
 		metrics: metrics,
 	}
 
-	metricsMux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+	adminMux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 		if server.shuttingDown.Load() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte("shutting down"))
@@ -82,26 +89,29 @@ func NewServer(cfg *Config, logger logr.Logger, reg prometheus.Registerer) (*Ser
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	metricsServer.Handler = metricsMux
-	metricsServer.WriteTimeout = 10 * time.Second
+	adminServer.Handler = adminMux
+	adminServer.WriteTimeout = 10 * time.Second
 
 	server.proxyServer = proxyServer
-	server.metricsServer = metricsServer
+	server.adminServer = adminServer
 
 	return server, nil
 }
 
 func (s *Server) Run(ctx context.Context) error {
+	var wg sync.WaitGroup
 	errChan := make(chan error, 2)
 
+	wg.Add(2)
 	go func() {
+		defer wg.Done()
 		var err error
 		if s.config.TLSEnabled() {
-			s.logger.Info("starting HTTPS metrics server", "addr", s.config.MetricsAddr)
-			err = s.metricsServer.ListenAndServeTLS(s.config.TLSCertFile, s.config.TLSKeyFile)
+			s.logger.Info("starting HTTPS admin server", "addr", s.config.AdminAddr)
+			err = s.adminServer.ListenAndServeTLS(s.config.TLSCertFile, s.config.TLSKeyFile)
 		} else {
-			s.logger.Info("starting HTTP metrics server", "addr", s.config.MetricsAddr)
-			err = s.metricsServer.ListenAndServe()
+			s.logger.Info("starting HTTP admin server", "addr", s.config.AdminAddr)
+			err = s.adminServer.ListenAndServe()
 		}
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errChan <- err
@@ -109,6 +119,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}()
 
 	go func() {
+		defer wg.Done()
 		var err error
 		if s.config.TLSEnabled() {
 			s.logger.Info("starting mTLS proxy server", "addr", s.config.ListenAddr)
@@ -122,32 +133,50 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	}()
 
+	var runErr error
 	select {
 	case <-ctx.Done():
 		s.logger.Info("shutting down servers")
-		return s.Shutdown()
+		runErr = s.Shutdown()
 	case err := <-errChan:
-		return err
+		runErr = err
+		_ = s.Shutdown()
 	}
+
+	wg.Wait()
+	return runErr
 }
 
 func (s *Server) Shutdown() error {
 	s.shuttingDown.Store(true)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	var (
+		wg       sync.WaitGroup
+		proxyErr error
+		adminErr error
+	)
 
-	var lastErr error
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.proxyServer.Shutdown(ctx); err != nil {
+			s.logger.Error(err, "error shutting down proxy server")
+			proxyErr = err
+		}
+	}()
 
-	if err := s.proxyServer.Shutdown(ctx); err != nil {
-		s.logger.Error(err, "error shutting down proxy server")
-		lastErr = err
-	}
+	go func() {
+		defer wg.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.adminServer.Shutdown(ctx); err != nil {
+			s.logger.Error(err, "error shutting down admin server")
+			adminErr = err
+		}
+	}()
 
-	if err := s.metricsServer.Shutdown(ctx); err != nil {
-		s.logger.Error(err, "error shutting down metrics server")
-		lastErr = err
-	}
-
-	return lastErr
+	wg.Wait()
+	return errors.Join(proxyErr, adminErr)
 }
