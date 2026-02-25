@@ -13,12 +13,14 @@ import (
 )
 
 type limitsClient interface {
-	// ExceedsLimits checks if the streams in the request have exceeded their
-	// per-partition limits.
-	ExceedsLimits(context.Context, *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error)
+	// ExceedsLimits checks if any streams in the request have exceeded their
+	// limits. It returns a response containing any rejected streams and the
+	// reason each stream was rejected. If the response is empty, all streams
+	// were accepted.
+	ExceedsLimits(context.Context, *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error)
 
 	// UpdateRates updates the per-second rates for the streams.
-	UpdateRates(context.Context, *proto.UpdateRatesRequest) ([]*proto.UpdateRatesResponse, error)
+	UpdateRates(context.Context, *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error)
 }
 
 // A cacheLimitsClient uses caches to reduce the load on limits backends.
@@ -36,36 +38,30 @@ func newCacheLimitsClient(acceptedStreamsCache *acceptedStreamsCache, onMiss lim
 }
 
 // ExceedsLimits implements the [limitsClient] interface.
-func (c *cacheLimitsClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+func (c *cacheLimitsClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	c.acceptedStreamsCache.ExpireTTL()
 	// Remove streams that have been accepted from the request. This means
 	// we just check streams we haven't seen before, which reduces the
 	// number of requests we need to make to the limits backends.
 	c.acceptedStreamsCache.FilterInPlace(req)
 	if len(req.Streams) == 0 {
-		return []*proto.ExceedsLimitsResponse{}, nil
+		return &proto.ExceedsLimitsResponse{}, nil
 	}
 	// Need to check remaining streams with the limits service.
-	resps, err := c.onMiss.ExceedsLimits(ctx, req)
+	resp, err := c.onMiss.ExceedsLimits(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	numRejected := 0
-	for _, resp := range resps {
-		numRejected += len(resp.Results)
-	}
 	// Fast path, all streams rejected.
-	if numRejected == len(req.Streams) {
-		return resps, nil
+	if len(resp.Results) == len(req.Streams) {
+		return resp, nil
 	}
 	// There are some accepted streams we haven't seen before, so add them
 	// to the cache. We do not cache rejected streams at this time, so
 	// rejections must be filtered out before updating the cache.
 	rejected := make(map[uint64]struct{})
-	for _, resp := range resps {
-		for _, res := range resp.Results {
-			rejected[res.StreamHash] = struct{}{}
-		}
+	for _, res := range resp.Results {
+		rejected[res.StreamHash] = struct{}{}
 	}
 	accepted := make([]*proto.StreamMetadata, 0, len(req.Streams))
 	for _, s := range req.Streams {
@@ -74,11 +70,11 @@ func (c *cacheLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceed
 		}
 	}
 	c.acceptedStreamsCache.Update(req.Tenant, accepted)
-	return resps, nil
+	return resp, nil
 }
 
 // UpdateRates implements the [limitsClient] interface.
-func (c *cacheLimitsClient) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) ([]*proto.UpdateRatesResponse, error) {
+func (c *cacheLimitsClient) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
 	return c.onMiss.UpdateRates(ctx, req)
 }
 

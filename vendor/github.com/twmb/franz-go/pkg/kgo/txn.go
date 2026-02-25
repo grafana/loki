@@ -345,6 +345,7 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 	// heartbeat, meaning that, as mentioned, we should be able to end the
 	// transaction safely.
 	var okHeartbeat bool
+	var heartbeatRebalance bool
 	if g != nil && commitErr == nil {
 		waitHeartbeat := make(chan struct{})
 		var heartbeatErr error
@@ -356,6 +357,7 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 			select {
 			case <-waitHeartbeat:
 				okHeartbeat = heartbeatErr == nil
+				heartbeatRebalance = errors.Is(heartbeatErr, kerr.RebalanceInProgress)
 			case <-s.revokedCh:
 			case <-s.lostCh:
 			}
@@ -393,7 +395,20 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 		}()
 	}
 
-	tryCommit := !s.failed() && commitErr == nil && !hasAbortableCommitErr && okHeartbeat
+	// If we have KIP-447 with RequireStable, we can safely commit even if
+	// the heartbeat returned REBALANCE_IN_PROGRESS. The TxnOffsetCommit
+	// already succeeded; the offsets are stored as pending transactional
+	// offsets on the broker. RequireStable causes any new consumer's
+	// OffsetFetch to return UNSTABLE_OFFSET_COMMIT while our transaction
+	// is pending, blocking it from consuming until our EndTransaction
+	// completes. This is safe even if the rebalance timeout expires and
+	// we are kicked from the group: the blocking is based on transaction
+	// state, not group membership.
+	canCommitDespiteRebalance := heartbeatRebalance && kip447 && s.cl.cfg.requireStable
+	if canCommitDespiteRebalance {
+		s.cl.cfg.logger.Log(LogLevelInfo, "heartbeat returned RebalanceInProgress, but TxnOffsetCommit succeeded and RequireStableFetchOffsets is enabled; allowing commit")
+	}
+	tryCommit := !s.failed() && commitErr == nil && !hasAbortableCommitErr && (okHeartbeat || canCommitDespiteRebalance)
 	willTryCommit := wantCommit && tryCommit
 
 	s.cl.cfg.logger.Log(LogLevelInfo, "transaction session ending",

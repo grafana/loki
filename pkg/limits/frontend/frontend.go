@@ -116,12 +116,14 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 // ExceedsLimits implements proto.IngestLimitsFrontendClient.
 func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	f.streams.Add(float64(len(req.Streams)))
-	results := make([]*proto.ExceedsLimitsResult, 0, len(req.Streams))
-	resps, err := f.limitsClient.ExceedsLimits(ctx, req)
+	resp, err := f.limitsClient.ExceedsLimits(ctx, req)
 	if err != nil {
 		// If the entire call failed, then all streams failed.
+		resp = &proto.ExceedsLimitsResponse{
+			Results: make([]*proto.ExceedsLimitsResult, 0, len(req.Streams)),
+		}
 		for _, stream := range req.Streams {
-			results = append(results, &proto.ExceedsLimitsResult{
+			resp.Results = append(resp.Results, &proto.ExceedsLimitsResult{
 				StreamHash: stream.StreamHash,
 				Reason:     uint32(limits.ReasonFailed),
 			})
@@ -129,39 +131,34 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 		f.streamsFailed.Add(float64(len(req.Streams)))
 		level.Error(f.logger).Log("msg", "failed to check request against limits", "err", err)
 	} else {
-		for _, resp := range resps {
-			for _, res := range resp.Results {
-				// Even if the call succeeded, some (or all) streams might
-				// still have failed.
-				if res.Reason == uint32(limits.ReasonFailed) {
-					f.streamsFailed.Inc()
-				} else {
-					f.streamsRejected.Inc()
-				}
+		for _, res := range resp.Results {
+			// Even if the call succeeded, some (or all) streams might still
+			// have failed.
+			if res.Reason == uint32(limits.ReasonFailed) {
+				f.streamsFailed.Inc()
+			} else {
+				f.streamsRejected.Inc()
 			}
-			results = append(results, resp.Results...)
 		}
 	}
-	return &proto.ExceedsLimitsResponse{Results: results}, nil
+	return resp, nil
 }
 
 func (f *Frontend) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
-	results := make([]*proto.UpdateRatesResult, 0, len(req.Streams))
-	resps, err := f.limitsClient.UpdateRates(ctx, req)
+	resp, err := f.limitsClient.UpdateRates(ctx, req)
 	if err != nil {
 		// If the entire call failed, then all streams failed.
+		resp = &proto.UpdateRatesResponse{
+			Results: make([]*proto.UpdateRatesResult, 0, len(req.Streams)),
+		}
 		for _, stream := range req.Streams {
-			results = append(results, &proto.UpdateRatesResult{
+			resp.Results = append(resp.Results, &proto.UpdateRatesResult{
 				StreamHash: stream.StreamHash,
 				Rate:       0,
 			})
 		}
-	} else {
-		for _, resp := range resps {
-			results = append(results, resp.Results...)
-		}
 	}
-	return &proto.UpdateRatesResponse{Results: results}, nil
+	return resp, nil
 }
 
 func (f *Frontend) CheckReady(ctx context.Context) error {
