@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/klauspost/compress/zstd"
@@ -44,7 +45,7 @@ const (
 	messageSizeLargerErrFmt = "%w than max (%d vs %d)"
 )
 
-func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize, maxDecompressedSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	stats := NewPushStats()
 	otlpLogs, err := extractLogs(r, maxRecvMsgSize, maxDecompressedSize, stats)
 	if err != nil {
@@ -55,7 +56,7 @@ func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	return req, stats, err
 }
 
-func extractLogs(r *http.Request, maxRecvMsgSize, maxDecompressedSize int, pushStats *Stats) (plog.Logs, error) {
+func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64, pushStats *Stats) (plog.Logs, error) {
 	pushStats.ContentEncoding = r.Header.Get(contentEnc)
 	// bodySize should always reflect the compressed size of the request body
 	bodySize := loki_util.NewSizeReader(r.Body)
@@ -76,7 +77,7 @@ func extractLogs(r *http.Request, maxRecvMsgSize, maxDecompressedSize int, pushS
 			_ = reader.Close()
 		}(r)
 		if maxDecompressedSize > 0 {
-			body = io.LimitReader(body, int64(maxDecompressedSize)+1)
+			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
 
 	case zstdContentEncoding:
@@ -86,12 +87,12 @@ func extractLogs(r *http.Request, maxRecvMsgSize, maxDecompressedSize int, pushS
 			return plog.NewLogs(), err
 		}
 		if maxDecompressedSize > 0 {
-			body = io.LimitReader(body, int64(maxDecompressedSize)+1)
+			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
 	case lz4ContentEncoding:
 		body = io.NopCloser(lz4.NewReader(body))
 		if maxDecompressedSize > 0 {
-			body = io.LimitReader(body, int64(maxDecompressedSize)+1)
+			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
 	case "":
 		// no content encoding, use the body as is
@@ -108,7 +109,7 @@ func extractLogs(r *http.Request, maxRecvMsgSize, maxDecompressedSize int, pushS
 		return plog.NewLogs(), fmt.Errorf(messageSizeLargerErrFmt, loki_util.ErrMessageSizeTooLarge, size, maxRecvMsgSize)
 	}
 	// Check the size of the decompressed body
-	if len(buf) > maxDecompressedSize && maxDecompressedSize > 0 {
+	if int64(len(buf)) > maxDecompressedSize && maxDecompressedSize > 0 {
 		return plog.NewLogs(), fmt.Errorf(messageSizeLargerErrFmt, loki_util.ErrMessageDecompressedSizeTooLarge, len(buf), maxDecompressedSize)
 	}
 
@@ -242,6 +243,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		}
 		labelsStr := streamLabels.String()
 
+		if len(labelsStr) > maxStreamLabelsSize {
+			return nil, fmt.Errorf("%w: stream labels size %s exceeds limit of %s", ErrRequestBodyTooLarge, humanize.Bytes(uint64(len(labelsStr))), humanize.Bytes(maxStreamLabelsSize))
+		}
+
 		lbs := modelLabelsSetToLabelsList(streamLabels)
 		totalBytesReceived := int64(0)
 
@@ -370,6 +375,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					}
 
 					entryLabelsStr = combinedLabels.String()
+					if len(entryLabelsStr) > maxStreamLabelsSize {
+						return nil, fmt.Errorf("%w: stream labels size %s exceeds limit of %s", ErrRequestBodyTooLarge, humanize.Bytes(uint64(len(entryLabelsStr))), humanize.Bytes(maxStreamLabelsSize))
+					}
 					entryLbs = modelLabelsSetToLabelsList(combinedLabels)
 
 					if _, ok := pushRequestsByStream[entryLabelsStr]; !ok {

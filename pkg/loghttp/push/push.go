@@ -79,6 +79,12 @@ const (
 	applicationJSON  = "application/json"
 	LabelServiceName = "service_name"
 	ServiceUnknown   = "unknown_service"
+
+	// maxStreamLabelsSize is the maximum allowed size of a single stream's labels string.
+	// Prometheus' label parser panics when encoding labels that exceed 16MB (2^24 bytes).
+	// We check the total labels string size per stream before parsing to prevent this panic.
+	// See: https://github.com/prometheus/prometheus/issues/17993
+	maxStreamLabelsSize = 1 << 24 // 16MB
 )
 
 var (
@@ -118,7 +124,7 @@ type StreamResolver interface {
 }
 
 type (
-	RequestParser        func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize, maxDecompressedSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error)
+	RequestParser        func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
 	ErrorWriter          func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
@@ -171,7 +177,7 @@ type Stats struct {
 	HasInternalStreams bool // True if any of the streams has aggregated metrics or is a pattern stream
 }
 
-func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize, maxDecompressedSize int, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
+func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecompressedSize int64, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
 	req, pushStats, err := pushRequestParser(userID, r, limits, tenantConfigs, maxRecvMsgSize, maxDecompressedSize, tracker, streamResolver, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		if errors.Is(err, util.ErrMessageSizeTooLarge) {
@@ -304,7 +310,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize, maxDecompres
 
 // parsePushRequestBody returns logproto.PushRequest from http.Request body, deserialized according to specified content type.
 // It also modifies pushStats.
-func parsePushRequestBody(r *http.Request, maxRecvMsgSize, maxDecompressedSize int, pushStats *Stats) (*logproto.PushRequest, error) {
+func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64, pushStats *Stats) (*logproto.PushRequest, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -333,7 +339,7 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize, maxDecompressedSize i
 		}(gzipReader)
 		body = gzipReader
 		if maxDecompressedSize > 0 {
-			body = io.LimitReader(body, int64(maxDecompressedSize)+1)
+			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
 	case "deflate":
 		flateReader := flate.NewReader(body)
@@ -342,7 +348,7 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize, maxDecompressedSize i
 		}(flateReader)
 		body = flateReader
 		if maxDecompressedSize > 0 {
-			body = io.LimitReader(body, int64(maxDecompressedSize)+1)
+			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
 	default:
 		return nil, fmt.Errorf("Content-Encoding %q not supported", contentEncoding)
@@ -391,7 +397,7 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize, maxDecompressedSize i
 	return &req, nil
 }
 
-func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize, maxDecompressedSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	pushStats := NewPushStats()
 
 	req, err := parsePushRequestBody(r, maxRecvMsgSize, maxDecompressedSize, pushStats)
@@ -408,6 +414,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 
 	for i := range req.Streams {
 		s := req.Streams[i]
+
+		if len(s.Labels) > maxStreamLabelsSize {
+			return nil, nil, fmt.Errorf("%w: stream labels size %s exceeds limit of %s", ErrRequestBodyTooLarge, humanize.Bytes(uint64(len(s.Labels))), humanize.Bytes(maxStreamLabelsSize))
+		}
 
 		lbs, err := syntax.ParseLabels(s.Labels)
 		if err != nil {

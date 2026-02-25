@@ -199,7 +199,7 @@ func parseLines(input *array.String, columnBuilders map[string]*array.StringBuil
 	var errorBuilder, errorDetailsBuilder *array.StringBuilder
 	hasErrorColumns := false
 
-	for i := 0; i < input.Len(); i++ {
+	for i := range input.Len() {
 		line := input.Value(i)
 		parsed, err := parseFunc(line)
 
@@ -220,8 +220,8 @@ func parseLines(input *array.String, columnBuilders map[string]*array.StringBuil
 
 				// Backfill NULLs for previous rows
 				for j := 0; j < i; j++ {
-					errorBuilder.AppendNull()
-					errorDetailsBuilder.AppendNull()
+					errorBuilder.Append("")
+					errorDetailsBuilder.Append("")
 				}
 			}
 			// Append error values
@@ -232,8 +232,8 @@ func parseLines(input *array.String, columnBuilders map[string]*array.StringBuil
 			// Only add NULLs for columns that already exist
 		} else if hasErrorColumns {
 			// No error on this row, but we have error columns
-			errorBuilder.AppendNull()
-			errorDetailsBuilder.AppendNull()
+			errorBuilder.Append("")
+			errorDetailsBuilder.Append("")
 		}
 
 		// Track which keys we've seen this row

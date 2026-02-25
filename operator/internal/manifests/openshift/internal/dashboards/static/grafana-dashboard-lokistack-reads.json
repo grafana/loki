@@ -215,7 +215,7 @@
                "stack": true,
                "targets": [
                   {
-                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-query-frontend-http\", route=~\"(api_prom_rules|api_prom_rules_namespace_groupname|api_v1_rules|loki_api_v1_delete|loki_api_v1_detected_labels|loki_api_v1_index_stats|loki_api_v1_index_volume|loki_api_v1_index_volume_range|loki_api_v1_label_name_values|loki_api_v1_label_values|loki_api_v1_labels|loki_api_v1_patterns|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_series|prometheus_api_v1_rules)\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z]+)\"))\n",
+                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-query-frontend-http\", route=~\"(api_prom_rules|api_prom_rules_namespace_groupname|api_v1_rules|loki_api_v1_delete|loki_api_v1_detected_labels|loki_api_v1_index_stats|loki_api_v1_index_volume|loki_api_v1_index_volume_range|loki_api_v1_label_name_values|loki_api_v1_label_values|loki_api_v1_labels|loki_api_v1_patterns|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_series|prometheus_api_v1_rules)\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z_]+)\"))\n",
                      "format": "time_series",
                      "legendFormat": "{{status}}",
                      "refId": "A"
@@ -554,7 +554,7 @@
                "stack": true,
                "targets": [
                   {
-                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-querier-http\", route=~\"(api_prom_rules|api_prom_rules_namespace_groupname|api_v1_rules|loki_api_v1_delete|loki_api_v1_detected_labels|loki_api_v1_index_stats|loki_api_v1_index_volume|loki_api_v1_index_volume_range|loki_api_v1_label_name_values|loki_api_v1_label_values|loki_api_v1_labels|loki_api_v1_patterns|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_series|prometheus_api_v1_rules)\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z]+)\"))\n",
+                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-querier-http\", route=~\"(api_prom_rules|api_prom_rules_namespace_groupname|api_v1_rules|loki_api_v1_delete|loki_api_v1_detected_labels|loki_api_v1_index_stats|loki_api_v1_index_volume|loki_api_v1_index_volume_range|loki_api_v1_label_name_values|loki_api_v1_label_values|loki_api_v1_labels|loki_api_v1_patterns|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_series|prometheus_api_v1_rules)\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z_]+)\"))\n",
                      "format": "time_series",
                      "legendFormat": "{{status}}",
                      "refId": "A"
@@ -893,7 +893,7 @@
                "stack": true,
                "targets": [
                   {
-                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-ingester-http\", route=~\"(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z]+)\"))\n",
+                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-ingester-http\", route=~\"(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z_]+)\"))\n",
                      "format": "time_series",
                      "legendFormat": "{{status}}",
                      "refId": "A"
@@ -1232,7 +1232,7 @@
                "stack": true,
                "targets": [
                   {
-                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-index-gateway-http\", route=~\"(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z]+)\"))\n",
+                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-index-gateway-http\", route=~\"(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z_]+)\"))\n",
                      "format": "time_series",
                      "legendFormat": "{{status}}",
                      "refId": "A"
@@ -1571,7 +1571,7 @@
                "stack": true,
                "targets": [
                   {
-                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_index_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-querier-http\", operation!=\"index_chunk\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z]+)\"))\n",
+                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_index_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-querier-http\", operation!=\"index_chunk\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z_]+)\"))\n",
                      "format": "time_series",
                      "legendFormat": "{{status}}",
                      "refId": "A"
@@ -1714,7 +1714,7 @@
          "repeatIteration": null,
          "repeatRowId": null,
          "showTitle": true,
-         "title": "TSBD Index",
+         "title": "TSDB Index",
          "titleSize": "h6"
       }
    ],

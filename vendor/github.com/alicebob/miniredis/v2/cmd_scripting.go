@@ -18,7 +18,9 @@ import (
 
 func commandsScripting(m *Miniredis) {
 	m.srv.Register("EVAL", m.cmdEval)
+	m.srv.Register("EVAL_RO", m.cmdEvalro, server.ReadOnlyOption())
 	m.srv.Register("EVALSHA", m.cmdEvalsha)
+	m.srv.Register("EVALSHA_RO", m.cmdEvalshaRo, server.ReadOnlyOption())
 	m.srv.Register("SCRIPT", m.cmdScript)
 }
 
@@ -28,7 +30,7 @@ var (
 
 // Execute lua. Needs to run m.Lock()ed, from within withTx().
 // Returns true if the lua was OK (and hence should be cached).
-func (m *Miniredis) runLuaScript(c *server.Peer, sha, script string, args []string) bool {
+func (m *Miniredis) runLuaScript(c *server.Peer, sha, script string, readOnly bool, args []string) bool {
 	l := lua.NewState(lua.Options{SkipOpenLibs: true})
 	defer l.Close()
 
@@ -85,7 +87,7 @@ func (m *Miniredis) runLuaScript(c *server.Peer, sha, script string, args []stri
 	}
 	l.SetGlobal("ARGV", argvTable)
 
-	redisFuncs, redisConstants := mkLua(m.srv, c, sha)
+	redisFuncs, redisConstants := mkLua(m.srv, c, sha, readOnly)
 	// Register command handlers
 	l.Push(l.NewFunction(func(l *lua.LState) int {
 		mod := l.RegisterModule("redis", redisFuncs).(*lua.LTable)
@@ -95,6 +97,7 @@ func (m *Miniredis) runLuaScript(c *server.Peer, sha, script string, args []stri
 		l.Push(mod)
 		return 1
 	}))
+	l.RegisterModule("os", mkLuaOS())
 
 	_ = doScript(l, protectGlobals)
 
@@ -150,18 +153,12 @@ func compile(script string) (*lua.FunctionProto, error) {
 	return proto, nil
 }
 
-func (m *Miniredis) cmdEval(c *server.Peer, cmd string, args []string) {
-	if len(args) < 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
+// Shared implementation for EVAL and EVALRO
+func (m *Miniredis) cmdEvalShared(c *server.Peer, cmd string, readOnly bool, args []string) {
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 		return
 	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
-		return
-	}
+
 	ctx := getCtx(c)
 	if ctx.nested {
 		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
@@ -172,25 +169,24 @@ func (m *Miniredis) cmdEval(c *server.Peer, cmd string, args []string) {
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		sha := sha1Hex(script)
-		ok := m.runLuaScript(c, sha, script, args)
+		ok := m.runLuaScript(c, sha, script, readOnly, args)
 		if ok {
 			m.scripts[sha] = script
 		}
 	})
 }
 
-func (m *Miniredis) cmdEvalsha(c *server.Peer, cmd string, args []string) {
-	if len(args) < 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
+// Wrapper function for EVAL command
+func (m *Miniredis) cmdEval(c *server.Peer, cmd string, args []string) {
+	m.cmdEvalShared(c, cmd, false, args)
+}
+
+// Shared implementation for EVALSHA and EVALSHA_RO
+func (m *Miniredis) cmdEvalshaShared(c *server.Peer, cmd string, readOnly bool, args []string) {
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 		return
 	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
-		return
-	}
+
 	ctx := getCtx(c)
 	if ctx.nested {
 		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
@@ -206,20 +202,27 @@ func (m *Miniredis) cmdEvalsha(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		m.runLuaScript(c, sha, script, args)
+		m.runLuaScript(c, sha, script, readOnly, args)
 	})
 }
 
+// Wrapper function for EVALSHA command
+func (m *Miniredis) cmdEvalsha(c *server.Peer, cmd string, args []string) {
+	m.cmdEvalshaShared(c, cmd, false, args)
+}
+
+// Wrapper function for EVALRO command
+func (m *Miniredis) cmdEvalro(c *server.Peer, cmd string, args []string) {
+	m.cmdEvalShared(c, cmd, true, args)
+}
+
+// Wrapper function for EVALSHA_RO command
+func (m *Miniredis) cmdEvalshaRo(c *server.Peer, cmd string, args []string) {
+	m.cmdEvalshaShared(c, cmd, true, args)
+}
+
 func (m *Miniredis) cmdScript(c *server.Peer, cmd string, args []string) {
-	if len(args) < 1 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(1)) {
 		return
 	}
 

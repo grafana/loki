@@ -365,7 +365,9 @@ func CopyObject(cli bce.Client, bucket, object, source string, args *CopyObjectA
 		return nil, bce.NewBceClientError("copy source should not be null")
 	}
 	req.SetHeader(http.BCE_COPY_SOURCE, util.UriEncode(source, false))
-
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// Optional arguments settings
 	if args != nil {
 		setOptionalNullHeaders(req, map[string]string{
@@ -650,6 +652,9 @@ func SelectObject(cli bce.Client, bucket, object string, args *SelectObjectArgs,
 	req.SetParam("select", "")
 	req.SetParam("type", args.SelectType)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	jsonBytes, jsonErr := json.Marshal(args)
 	if jsonErr != nil {
 		return nil, jsonErr
@@ -699,6 +704,9 @@ func FetchObject(cli bce.Client, bucket, object, source string, args *FetchObjec
 	req.SetBucket(bucket)
 	if len(source) == 0 {
 		return nil, bce.NewBceClientError("invalid fetch source value: " + source)
+	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
 	}
 	req.SetHeader(http.BCE_PREFIX+"fetch-source", source)
 
@@ -769,6 +777,9 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body, args
 	req.SetBucket(bucket)
 	if content == nil {
 		return nil, bce.NewBceClientError("AppendObject body should not be emtpy")
+	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
 	}
 	if content.Size() >= THRESHOLD_100_CONTINUE {
 		req.SetHeader("Expect", "100-continue")
@@ -874,6 +885,9 @@ func DeleteObject(cli bce.Client, bucket, object, versionId string, ctx *BosCont
 	if versionId != "" {
 		req.SetParam("versionId", versionId)
 	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	req.SetBucket(bucket)
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
@@ -913,6 +927,9 @@ func DeleteMultipleObjects(cli bce.Client, bucket string, objectListStream *bce.
 	}
 	if objectListStream.Size() >= THRESHOLD_100_CONTINUE {
 		req.SetHeader("Expect", "100-continue")
+	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
 	}
 	req.SetBody(objectListStream)
 	// handle options to set the header/params of request
@@ -1044,7 +1061,9 @@ func PutObjectAcl(cli bce.Client, bucket, object, cannedAcl string, grantRead, g
 	req.SetMethod(http.PUT)
 	req.SetParam("acl", "")
 	req.SetBucket(bucket)
-
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// Choose a acl setting method
 	methods := 0
 	if len(cannedAcl) != 0 {
@@ -1102,6 +1121,9 @@ func GetObjectAcl(cli bce.Client, bucket, object string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("acl", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1135,6 +1157,9 @@ func DeleteObjectAcl(cli bce.Client, bucket, object string, ctx *BosContext, opt
 	req.SetMethod(http.DELETE)
 	req.SetParam("acl", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1169,6 +1194,9 @@ func RestoreObject(cli bce.Client, bucket string, object string, args ArchiveRes
 	req.SetHeader(http.BCE_RESTORE_DAYS, strconv.Itoa(args.RestoreDays))
 	req.SetHeader(http.BCE_RESTORE_TIER, args.RestoreTier)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1202,6 +1230,9 @@ func PutObjectSymlink(cli bce.Client, bucket string, object string, symlinkKey s
 	req.SetParam("symlink", "")
 	req.SetMethod(http.PUT)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	if symlinkArgs != nil {
 		if len(symlinkArgs.ForbidOverwrite) != 0 {
 			if !validForbidOverwrite(symlinkArgs.ForbidOverwrite) {
@@ -1262,6 +1293,9 @@ func GetObjectSymlink(cli bce.Client, bucket string, symlinkKey string,
 	req.SetParam("symlink", "")
 	req.SetMethod(http.GET)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return "", bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1304,6 +1338,9 @@ func PutObjectTag(cli bce.Client, bucket, object string, putObjectTagArgs *PutOb
 		return err
 	}
 	req.SetBody(body)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1326,6 +1363,9 @@ func GetObjectTag(cli bce.Client, bucket, object string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("tagging", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -1356,6 +1396,9 @@ func DeleteObjectTag(cli bce.Client, bucket, object string, ctx *BosContext, opt
 	req.SetMethod(http.DELETE)
 	req.SetParam("tagging", "")
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))

@@ -44,7 +44,7 @@ func Test_delta(t *testing.T) {
 		if !errors.Is(err, io.EOF) {
 			require.NoError(t, err)
 		}
-		actual = append(actual, values.(*columnar.Int64).Values()...)
+		actual = append(actual, values.(*columnar.Number[int64]).Values()...)
 		if err != nil {
 			break
 		}
@@ -86,7 +86,7 @@ func Fuzz_delta(f *testing.F) {
 			if err != nil && !errors.Is(err, io.EOF) {
 				t.Fatalf("error decoding: %v", err)
 			}
-			actual = append(actual, values.(*columnar.Int64).Values()...)
+			actual = append(actual, values.(*columnar.Number[int64]).Values()...)
 			if errors.Is(err, io.EOF) {
 				break
 			}

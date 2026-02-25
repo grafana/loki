@@ -146,6 +146,15 @@ func AppendFormat(dst []byte, fmt string, t time.Time) []byte {
 
 // Parse converts a textual representation of time to the time value it represents
 // according to the strptime format specification.
+//
+// The following specifiers are not supported for parsing:
+//
+//	%g %k %l %s %u %w %C %G %Q %U %V %W
+//
+// You must also avoid digits and these letter sequences
+// in fmt literals:
+//
+//	Jan Mon MST PM pm
 func Parse(fmt, value string) (time.Time, error) {
 	pattern, err := layout(fmt, true)
 	if err != nil {
@@ -156,6 +165,15 @@ func Parse(fmt, value string) (time.Time, error) {
 
 // Layout converts a strftime format specification
 // to a Go time pattern specification.
+//
+// The following specifiers are not supported by Go patterns:
+//
+//	%f %g %k %l %s %u %w %C %G %L %N %Q %U %V %W
+//
+// You must also avoid digits and these letter sequences
+// in fmt literals:
+//
+//	Jan Mon MST PM pm
 func Layout(fmt string) (string, error) {
 	return layout(fmt, false)
 }
@@ -220,6 +238,10 @@ func layout(fmt string, parsing bool) (string, error) {
 
 // UTS35 converts a strftime format specification
 // to a Unicode Technical Standard #35 Date Format Pattern.
+//
+// The following specifiers are not supported by UTS35:
+//
+//	%e %k %l %u %w %C %P %U %W
 func UTS35(fmt string) (string, error) {
 	const quote = '\''
 	var quoted bool

@@ -197,6 +197,7 @@ type UpdateOpts struct {
 	AllowedAddressPairs   *[]AddressPair     `json:"allowed_address_pairs,omitempty"`
 	PropagateUplinkStatus *bool              `json:"propagate_uplink_status,omitempty"`
 	ValueSpecs            *map[string]string `json:"value_specs,omitempty"`
+	MACAddress            *string            `json:"mac_address,omitempty"`
 
 	// RevisionNumber implements extension:standard-attr-revisions. If != "" it
 	// will set revision_number=%s. If the revision number does not match, the

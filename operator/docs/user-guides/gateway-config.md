@@ -65,6 +65,51 @@ spec:
     disableIngress: false  # Explicitly enable external access (default)
 ```
 
+## Custom TLS Configuration
+
+If the `httpEncryption` is enabled in the project config, users can provide a custom TLS certificate for the Gateway. If running on OpenShift this certificate will be used instead of the auto-generated certificates.
+
+### Basic Custom Certificate Setup
+
+```yaml
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: lokistack-dev
+spec:
+  tenants:
+    mode: static
+    gateway:
+      tls:
+        certificate:
+          secretName: my-tls-cert-secret
+          key: tls.crt
+        privateKey:
+          secretName: my-tls-cert-secret
+          key: tls.key
+```
+
+If necessary users can also pass a custom CA through the `ca` field:
+
+```yaml
+spec:
+  tenants:
+    mode: static
+    gateway:
+      tls:
+        ca:
+          configMapName: my-ca-bundle
+          key: ca.crt
+```
+
+The CA Certificate is necessary for:
+
+1. **Internal Healthcheck Verification**: The Gateway performs periodic self-checks by making HTTP requests to itself. When `httpEncryption` is enabled the gateway is running with TLS enabled, the healthcheck client needs to be able to verify the gateway TLS certificate.
+
+2. **Metrics Scraping**: When `serviceMonitorTlsEndpoints` is enabled the CA is used in the Prometheus ServiceMonitor to allow secure scraping of Gateway metrics over HTTPS.
+
+**Important:** When custom TLS is configured, OpenShift Routes automatically change to **passthrough** termination mode.
+
 ## Resource Cleanup Behavior
 
 When you change the external access configuration from enabled to disabled:

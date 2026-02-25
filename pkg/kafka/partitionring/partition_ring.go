@@ -26,6 +26,11 @@ type Config struct {
 
 	// lifecyclerPollingInterval is the lifecycler polling interval. This setting is used to lower it in tests.
 	lifecyclerPollingInterval time.Duration
+
+	// ShuffleShardCacheSize is the size of the cache used for shuffle sharding.
+	// If zero or negative, an unbounded map-based cache is used.
+	// If positive, an LRU cache with the specified size is used.
+	ShuffleShardCacheSize int `yaml:"shuffle_shard_cache_size"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -37,6 +42,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MinOwnersCount, prefix+"partition-ring.min-partition-owners-count", 1, "Minimum number of owners to wait before a PENDING partition gets switched to ACTIVE.")
 	f.DurationVar(&cfg.MinOwnersDuration, prefix+"partition-ring.min-partition-owners-duration", 10*time.Second, "How long the minimum number of owners are enforced before a PENDING partition gets switched to ACTIVE.")
 	f.DurationVar(&cfg.DeleteInactivePartitionAfter, prefix+"partition-ring.delete-inactive-partition-after", 13*time.Hour, "How long to wait before an INACTIVE partition is eligible for deletion. The partition is deleted only if it has been in INACTIVE state for at least the configured duration and it has no owners registered. A value of 0 disables partitions deletion.")
+	f.IntVar(&cfg.ShuffleShardCacheSize, prefix+"partition-ring.shuffle-shard-cache-size", 0, "Experimental: The size of the cache used for shuffle sharding. If zero or negative, an unbounded cache is used. If positive, an LRU cache with the specified size is used.")
 }
 
 func (cfg *Config) ToLifecyclerConfig(partitionID int32, instanceID string) ring.PartitionInstanceLifecyclerConfig {

@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -131,10 +131,6 @@ func (m *mockBuilder) TimeRanges() []multitenancy.TimeRange {
 	return m.builder.TimeRanges()
 }
 
-func (m *mockBuilder) UnregisterMetrics(r prometheus.Registerer) {
-	m.builder.UnregisterMetrics(r)
-}
-
 // A mockCommitter implements the committer interface for tests.
 type mockCommitter struct {
 	offsets []int64
@@ -149,9 +145,18 @@ type mockFlusher struct {
 	flushes int
 }
 
-func (m *mockFlusher) FlushAsync(_ context.Context, _ builder, _ time.Time, _ int64, done func(error)) {
+func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (string, error) {
 	m.flushes++
-	done(nil)
+	return "", nil
+}
+
+type mockFlushManager struct {
+	flushes int
+}
+
+func (m *mockFlushManager) Flush(_ context.Context, _ builder, _ string, _ int64, _ time.Time) error {
+	m.flushes++
+	return nil
 }
 
 // mockKafka mocks a [kgo.Client]. The zero value is usable.
@@ -209,13 +214,22 @@ func (m *mockKafka) ProduceSync(_ context.Context, rs ...*kgo.Record) kgo.Produc
 	return kgo.ProduceResults{{Err: nil}}
 }
 
+type mockSorter struct{}
+
+func (m *mockSorter) Sort(_ context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
+	return obj, io.NopCloser(nil), nil
+}
+
 type mockUploader struct {
 	uploaded []*dataobj.Object
+	mtx      sync.Mutex
 }
 
 func (m *mockUploader) Upload(_ context.Context, obj *dataobj.Object) (string, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 	m.uploaded = append(m.uploaded, obj)
-	return "", nil
+	return fmt.Sprintf("object_%03d", len(m.uploaded)), nil
 }
 
 type recordedTocEntry struct {

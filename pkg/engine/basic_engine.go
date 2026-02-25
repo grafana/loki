@@ -82,7 +82,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
 		attribute.Stringer("start", params.Start()),
-		attribute.Stringer("end", params.Start()),
+		attribute.Stringer("end", params.End()),
 		attribute.Stringer("step", params.Step()),
 		attribute.Stringer("length", params.End().Sub(params.Start())),
 		attribute.StringSlice("shards", params.Shards()),
@@ -264,6 +264,10 @@ func IsQuerySupported(params logql.Params) bool {
 }
 
 func collectResult(ctx context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
+	if err := pipeline.Open(ctx); err != nil {
+		return err
+	}
+
 	for {
 		rec, err := pipeline.Read(ctx)
 		if err != nil {

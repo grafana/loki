@@ -3,10 +3,12 @@ package consumer
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -15,6 +17,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -38,7 +41,9 @@ type Service struct {
 	lifecycler                  *ring.Lifecycler
 	partitionInstanceLifecycler *ring.PartitionInstanceLifecycler
 	consumer                    *kafkav2.SinglePartitionConsumer
-	processor                   *partitionProcessor
+	offsetReader                *kafkav2.OffsetReader
+	partition                   int32
+	processor                   *processor
 	flusher                     *flusherImpl
 	downscalePermitted          downscalePermittedFunc
 	watcher                     *services.FailureWatcher
@@ -94,6 +99,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract partition ID from lifecycler configuration: %w", err)
 	}
+	s.partition = partitionID
 	// The mock KV is used in tests. If this is not a test then we must initialize
 	// a real kv.
 	partitionRingKV := cfg.PartitionRingConfig.KVStore.Mock
@@ -126,24 +132,14 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		return nil, fmt.Errorf("failed to create client for data topic: %w", err)
 	}
 
-	offsetReader := kafkav2.NewOffsetReader(readerClient, cfg.Topic, instanceID, logger)
-	// Since dataobj consumers do not group consume, we need to fetch the initial
-	// offset ourselves.
-	resumeOffsetCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	initialOffset, err := offsetReader.ResumeOffset(resumeOffsetCtx, partitionID)
-	if err != nil {
-		// TODO(grobinson): We need to use a backoff retry mechanism in case we cannot
-		// fetch offsets on the first attempt.
-		return nil, fmt.Errorf("failed to fetch resume offset: %w", err)
-	}
+	s.offsetReader = kafkav2.NewOffsetReader(readerClient, cfg.Topic, instanceID, logger)
 	committer := kafkav2.NewGroupCommitter(kadm.NewClient(readerClient), cfg.Topic, instanceID)
 	records := make(chan *kgo.Record)
 	s.consumer = kafkav2.NewSinglePartitionConsumer(
 		readerClient,
 		cfg.Topic,
 		partitionID,
-		initialOffset,
+		kafkav2.OffsetStart, // We fetch the real initial offset before starting the service.
 		records,
 		logger,
 		prometheus.WrapRegistererWithPrefix("loki_dataobj_consumer_", reg),
@@ -152,28 +148,34 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
-	s.flusher = newFlusher(
-		uploader,
+	builderFactory := logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore)
+	sorter := logsobj.NewSorter(builderFactory, reg)
+	s.flusher = newFlusher(sorter, uploader, logger, reg)
+	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
+		"partition": strconv.Itoa(int(partitionID)),
+	}, reg)
+	builder, err := builderFactory.NewBuilder(wrapped)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
+	}
+	flushManager := newFlushManager(
+		s.flusher,
+		newMetastoreEvents(partitionID, int32(mCfg.PartitionRatio), metastoreEvents),
 		committer,
-		metastoreEvents,
 		partitionID,
-		int32(mCfg.PartitionRatio),
 		logger,
-		reg,
+		wrapped,
 	)
-	s.processor = newPartitionProcessor(
-		cfg.BuilderConfig,
-		scratchStore,
+	s.processor = newProcessor(
+		builder,
+		records,
+		flushManager,
 		cfg.IdleFlushTimeout,
 		cfg.MaxBuilderAge,
-		cfg.Topic,
-		partitionID,
-		records,
-		s.flusher,
 		logger,
-		reg,
+		wrapped,
 	)
-	s.downscalePermitted = newOffsetCommittedDownscaleFunc(offsetReader, partitionID, logger)
+	s.downscalePermitted = newOffsetCommittedDownscaleFunc(s.offsetReader, partitionID, logger)
 
 	watcher := services.NewFailureWatcher()
 	watcher.WatchService(lifecycler)
@@ -187,6 +189,9 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 // starting implements the Service interface's starting method.
 func (s *Service) starting(ctx context.Context) error {
 	level.Info(s.logger).Log("msg", "starting")
+	if err := s.initResumeOffset(ctx); err != nil {
+		return fmt.Errorf("failed to initialize offset for consumer: %w", err)
+	}
 	if err := services.StartAndAwaitRunning(ctx, s.lifecycler); err != nil {
 		return fmt.Errorf("failed to start lifecycler: %w", err)
 	}
@@ -198,9 +203,6 @@ func (s *Service) starting(ctx context.Context) error {
 	}
 	if err := services.StartAndAwaitRunning(ctx, s.consumer); err != nil {
 		return fmt.Errorf("failed to start consumer: %w", err)
-	}
-	if err := services.StartAndAwaitRunning(ctx, s.flusher); err != nil {
-		return fmt.Errorf("failed to start flusher: %w", err)
 	}
 	return nil
 }
@@ -215,9 +217,6 @@ func (s *Service) running(ctx context.Context) error {
 func (s *Service) stopping(failureCase error) error {
 	level.Info(s.logger).Log("msg", "stopping")
 	ctx := context.TODO()
-	if err := services.StopAndAwaitTerminated(ctx, s.flusher); err != nil {
-		level.Warn(s.logger).Log("msg", "failed to stop flusher", "err", err)
-	}
 	if err := services.StopAndAwaitTerminated(ctx, s.consumer); err != nil {
 		level.Warn(s.logger).Log("msg", "failed to stop consumer", "err", err)
 	}
@@ -241,4 +240,25 @@ func (s *Service) Flush() {}
 // TransferOut implements the [ring.FlushTransferer] interface.
 func (s *Service) TransferOut(_ context.Context) error {
 	return nil
+}
+
+// initResumeOffset fetches and sets the resume offset (often the last committed
+// offset) for the consumer. It must be called before starting the consumer.
+func (s *Service) initResumeOffset(ctx context.Context) error {
+	b := backoff.New(ctx, backoff.Config{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 10 * time.Second,
+		MaxRetries: 3,
+	})
+	var lastErr error
+	for b.Ongoing() {
+		initialOffset, err := s.offsetReader.ResumeOffset(ctx, s.partition)
+		if err == nil {
+			lastErr = s.consumer.SetInitialOffset(initialOffset)
+			break
+		}
+		lastErr = fmt.Errorf("failed to fetch resume offset: %w", err)
+		b.Wait()
+	}
+	return lastErr
 }

@@ -1442,7 +1442,7 @@ func TestContentEncodingAndLength(t *testing.T) {
 		expectedErrorMessage string
 		expectedLogs         plog.Logs
 		maxRecvMsgSize       int
-		maxDecompressedSize  int
+		maxDecompressedSize  int64
 	}{
 		{
 			name:            "identity_valid_json",
@@ -1722,7 +1722,7 @@ func TestContentEncodingAndLength(t *testing.T) {
 			}
 			if maxDecompressedSize == 0 && !zeroMaxDecompressedSizeTests[tc.name] {
 				if tc.maxRecvMsgSize > 0 {
-					maxDecompressedSize = tc.maxRecvMsgSize * 50 // 50x default
+					maxDecompressedSize = int64(tc.maxRecvMsgSize) * 50 // 50x default
 				} else {
 					maxDecompressedSize = 5000 << 20 // 5000 MB fallback default (50x 100MB)
 				}
