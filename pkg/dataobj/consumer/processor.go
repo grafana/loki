@@ -37,10 +37,12 @@ type flushManager interface {
 // A processor receives records and builds data objects from them.
 type processor struct {
 	*services.BasicService
-	builder      builder
-	decoder      *kafka.Decoder
-	records      chan *kgo.Record
-	flushManager flushManager
+	currentBuilder    builder
+	availableBuilders chan builder
+	decoder           *kafka.Decoder
+	records           chan *kgo.Record
+	flushLocker       chan struct{}
+	flushManager      flushManager
 
 	// lastOffset contains the offset of the last record appended to the data object
 	// builder. It is used to commit the correct offset after a flush.
@@ -78,7 +80,7 @@ type processor struct {
 }
 
 func newProcessor(
-	builder builder,
+	builders []builder,
 	records chan *kgo.Record,
 	flushManager flushManager,
 	idleFlushTimeout time.Duration,
@@ -90,15 +92,20 @@ func newProcessor(
 	if err != nil {
 		panic(err)
 	}
+	availableBuilders := make(chan builder, len(builders))
+	for _, b := range builders {
+		availableBuilders <- b
+	}
 	p := &processor{
-		builder:          builder,
-		decoder:          decoder,
-		records:          records,
-		flushManager:     flushManager,
-		idleFlushTimeout: idleFlushTimeout,
-		maxBuilderAge:    maxBuilderAge,
-		metrics:          newMetrics(reg),
-		logger:           logger,
+		availableBuilders: availableBuilders,
+		decoder:           decoder,
+		records:           records,
+		flushLocker:       make(chan struct{}, 1),
+		flushManager:      flushManager,
+		idleFlushTimeout:  idleFlushTimeout,
+		maxBuilderAge:     maxBuilderAge,
+		metrics:           newMetrics(reg),
+		logger:            logger,
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p
@@ -162,20 +169,24 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 		return fmt.Errorf("failed to decode stream: %w", err)
 	}
 
+	if p.currentBuilder == nil {
+		p.currentBuilder = <-p.availableBuilders
+	}
+
 	if p.shouldFlushDueToMaxAge() {
 		if err := p.flush(ctx, flushReasonMaxAge); err != nil {
 			return fmt.Errorf("failed to flush: %w", err)
 		}
 	}
 
-	if err := p.builder.Append(tenant, stream); err != nil {
+	if err := p.currentBuilder.Append(tenant, stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
 			return fmt.Errorf("failed to append stream: %w", err)
 		}
 		if err := p.flush(ctx, flushReasonBuilderFull); err != nil {
 			return fmt.Errorf("failed to flush and commit: %w", err)
 		}
-		if err := p.builder.Append(tenant, stream); err != nil {
+		if err := p.currentBuilder.Append(tenant, stream); err != nil {
 			return fmt.Errorf("failed to append stream after flushing: %w", err)
 		}
 	}
@@ -194,7 +205,8 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 
 func (p *processor) shouldFlushDueToMaxAge() bool {
 	return p.maxBuilderAge > 0 &&
-		p.builder.GetEstimatedSize() > 0 &&
+		p.currentBuilder != nil &&
+		p.currentBuilder.GetEstimatedSize() > 0 &&
 		!p.firstAppend.IsZero() &&
 		time.Since(p.firstAppend) > p.maxBuilderAge
 }
@@ -222,20 +234,37 @@ func (p *processor) needsIdleFlush() bool {
 	// This is a safety check to make sure we never flush empty data objects.
 	// It should never happen that lastAppend is non-zero while the builder
 	// is empty.
-	if p.builder.GetEstimatedSize() == 0 {
+	if p.currentBuilder == nil || p.currentBuilder.GetEstimatedSize() == 0 {
 		return false
 	}
 	return time.Since(p.lastAppend) > p.idleFlushTimeout
 }
 
 func (p *processor) flush(ctx context.Context, reason string) error {
-	defer func() {
-		// Reset the state to prepare for building the next data object.
-		p.earliestRecordTime = time.Time{}
-		p.firstAppend = time.Time{}
-		p.lastAppend = time.Time{}
-	}()
-	return p.flushManager.Flush(ctx, p.builder, reason, p.lastOffset, p.earliestRecordTime)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case p.flushLocker <- struct{}{}:
+		// Acquired the lock.
+	}
+	go func(builder builder, offset int64, earliestRecordTime time.Time) {
+		defer func() {
+			p.availableBuilders <- builder
+			_ = <-p.flushLocker
+		}()
+		if err := p.flushManager.Flush(ctx, builder, reason, offset, earliestRecordTime); err != nil {
+			level.Error(p.logger).Log("msg", "failed to flush data object", "error", err)
+			if !errors.Is(err, context.Canceled) {
+				panic(err)
+			}
+		}
+	}(p.currentBuilder, p.lastOffset, p.earliestRecordTime)
+	// Reset the state to prepare for building the next data object.
+	p.earliestRecordTime = time.Time{}
+	p.firstAppend = time.Time{}
+	p.lastAppend = time.Time{}
+	p.currentBuilder = <-p.availableBuilders
+	return nil
 }
 
 func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
