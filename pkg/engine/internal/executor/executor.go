@@ -41,6 +41,8 @@ type Config struct {
 	Bucket    objstore.Bucket
 	Metastore metastore.Metastore
 
+	PrefetchBytes int64
+
 	MergePrefetchCount int
 
 	// GetExternalInputs is an optional function called for each node in the
@@ -57,6 +59,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 	c := &Context{
 		plan:               plan,
 		batchSize:          cfg.BatchSize,
+		prefetchBytes:      cfg.PrefetchBytes,
 		mergePrefetchCount: cfg.MergePrefetchCount,
 		bucket:             cfg.Bucket,
 		metastore:          cfg.Metastore,
@@ -78,7 +81,8 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 
 // Context is the execution context
 type Context struct {
-	batchSize int64
+	batchSize     int64
+	prefetchBytes int64
 
 	logger    log.Logger
 	plan      *physical.Plan
@@ -149,7 +153,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(ctx, errors.New("no object store bucket configured"))
 	}
 
-	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location))
+	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location), c.prefetchBytes)
 	if err != nil {
 		return errorPipeline(ctx, fmt.Errorf("creating data object: %w", err))
 	}
@@ -317,9 +321,10 @@ func (c *Context) executePointersScan(ctx context.Context, node *physical.Pointe
 
 	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
 		pipeline, err := newScanPointersPipeline(ctx, scanPointersOptions{
-			metastore: c.metastore,
-			location:  string(node.Location),
-			req:       req,
+			metastore:     c.metastore,
+			location:      string(node.Location),
+			req:           req,
+			prefetchBytes: c.prefetchBytes,
 		})
 		if err != nil {
 			return errorPipeline(ctx, err)

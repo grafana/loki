@@ -143,10 +143,18 @@
       automerge: false,
     },
     {
+      // Disable all updates for pkg/push/go.mod
+      matchFileNames: ['pkg/push/go.mod'],
+      enabled: false,
+      autoApprove: false,
+      automerge: false,
+    },
+    {
       // Enable all other updates, and auto-merge minor and patch updates
       matchFileNames: [
         '!operator/go.mod',
         '!operator/api/loki/go.mod',
+        '!pkg/push/go.mod',
       ],
       groupName: '{{packageName}}',
       enabled: true,
@@ -162,6 +170,7 @@
       matchFileNames: [
         '!operator/go.mod',
         '!operator/api/loki/go.mod',
+        '!pkg/push/go.mod',
       ],
       groupName: '{{packageName}}',
       enabled: true,
@@ -179,6 +188,21 @@
       ],
       allowedVersions: '~1.2.0',
       enabled: true,
+    },
+    {
+      // Track prometheus via pseudo-versions only (closest to main); do not switch to a tagged release and stick to that major.
+      // Scoped to main branch only and excludes operator files to avoid overriding their disabled update rules.
+      matchPackageNames: ['github.com/prometheus/prometheus'],
+      matchBaseBranches: ['main'],
+      matchFileNames: [
+        '!operator/go.mod',
+        '!operator/api/loki/go.mod',
+      ],
+      allowedVersions: '/^v[0-9]+\\.[0-9]+\\.[0-9]+-0\\.\\d{14}-[a-f0-9]+$/',
+      enabled: true,
+      digest: {
+        enabled: true,
+      },
     },
   ],
   digest: {

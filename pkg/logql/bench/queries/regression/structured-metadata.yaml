@@ -51,9 +51,7 @@ queries:
       - json
       - logfmt
       - complex
-    notes: "Common pattern from Logs Drilldown UI with multiple parsing stages
-
-      "
+    notes: Common pattern from Logs Drilldown UI with multiple parsing stages
   - description: Drilldown with failed search and error level
     query: ${SELECTOR} | detected_level="error" |~ "(?i)failed"
     time_range:

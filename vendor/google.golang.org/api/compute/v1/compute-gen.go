@@ -3500,7 +3500,7 @@ func (s AllocationSpecificSKUAllocationAllocatedInstancePropertiesReservedDisk) 
 
 // AllocationSpecificSKUAllocationReservedInstanceProperties: Properties of the
 // SKU instances being reserved.
-// Next ID: 9
+// Next ID: 10
 type AllocationSpecificSKUAllocationReservedInstanceProperties struct {
 	// GuestAccelerators: Specifies accelerator type and count.
 	GuestAccelerators []*AcceleratorConfig `json:"guestAccelerators,omitempty"`
@@ -22787,7 +22787,8 @@ type Instance struct {
 	// setTags
 	// method. Each tag within the list must comply withRFC1035.
 	// Multiple tags can be specified via the 'tags.items' field.
-	Tags *Tags `json:"tags,omitempty"`
+	Tags                   *Tags                   `json:"tags,omitempty"`
+	WorkloadIdentityConfig *WorkloadIdentityConfig `json:"workloadIdentityConfig,omitempty"`
 	// Zone: Output only. [Output Only] URL of the zone where the instance
 	// resides.
 	// You must specify this field as part of the HTTP request URL. It is
@@ -24226,6 +24227,27 @@ type InstanceGroupManagerInstanceLifecyclePolicy struct {
 	//   "NO"
 	//   "YES"
 	ForceUpdateOnRepair string `json:"forceUpdateOnRepair,omitempty"`
+	// OnFailedHealthCheck: The action that a MIG performs on an unhealthy VM. A VM
+	// is marked as
+	// unhealthy when the application running on that VM fails a health
+	// check.
+	// Valid values are:
+	//
+	//    - DEFAULT_ACTION (default): MIG uses the same action
+	//    configured for instanceLifecyclePolicy.defaultActionOnFailure field.
+	//    - REPAIR: MIG automatically repairs an unhealthy VM by
+	//    recreating it.
+	//    - DO_NOTHING: MIG doesn't repair an unhealthy VM.
+	//    For more information, see
+	//    About repairing VMs in a MIG.
+	//
+	// Possible values:
+	//   "DEFAULT_ACTION" - (Default) MIG uses the same action configured
+	// for
+	// instanceLifecyclePolicy.defaultActionOnFailure field.
+	//   "DO_NOTHING" - MIG doesn't repair an unhealthy VM.
+	//   "REPAIR" - MIG automatically repairs an unhealthy VM by recreating it.
+	OnFailedHealthCheck string `json:"onFailedHealthCheck,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "DefaultActionOnFailure") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -27337,7 +27359,8 @@ type InstanceProperties struct {
 	// firewalls. The setTags method can modify this list of tags. Each tag
 	// within
 	// the list must comply with RFC1035.
-	Tags *Tags `json:"tags,omitempty"`
+	Tags                   *Tags                   `json:"tags,omitempty"`
+	WorkloadIdentityConfig *WorkloadIdentityConfig `json:"workloadIdentityConfig,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "AdvancedMachineFeatures") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -28785,6 +28808,10 @@ type InstantSnapshot struct {
 	// cannot
 	// be a dash.
 	Name string `json:"name,omitempty"`
+	// Params: Input only. Additional params passed with the request, but not
+	// persisted
+	// as part of resource payload.
+	Params *InstantSnapshotParams `json:"params,omitempty"`
 	// Region: Output only. [Output Only] URL of the region where the instant
 	// snapshot resides.
 	// You must specify this field as part of the HTTP request URL. It is
@@ -29234,6 +29261,37 @@ type InstantSnapshotListWarningData struct {
 
 func (s InstantSnapshotListWarningData) MarshalJSON() ([]byte, error) {
 	type NoMethod InstantSnapshotListWarningData
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// InstantSnapshotParams: Additional instant snapshot params.
+type InstantSnapshotParams struct {
+	// ResourceManagerTags: Input only. Resource manager tags to be bound to the
+	// instant snapshot. Tag keys and
+	// values have the same definition as resource
+	// manager tags. Keys and values can be either in numeric format,
+	// such as `tagKeys/{tag_key_id}` and `tagValues/{tag_value_id}` or
+	// in
+	// namespaced format such as `{org_id|project_id}/{tag_key_short_name}`
+	// and
+	// `{tag_value_short_name}`. The field is ignored (both PUT &
+	// PATCH) when empty.
+	ResourceManagerTags map[string]string `json:"resourceManagerTags,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "ResourceManagerTags") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "ResourceManagerTags") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s InstantSnapshotParams) MarshalJSON() ([]byte, error) {
+	type NoMethod InstantSnapshotParams
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -29711,9 +29769,7 @@ type Interconnect struct {
 	// attachments may be
 	// provisioned on this interconnect.
 	State string `json:"state,omitempty"`
-	// Subzone: Specific subzone in the InterconnectLocation that represents
-	// where
-	// this connection is to be provisioned.
+	// Subzone: To be deprecated.
 	//
 	// Possible values:
 	//   "SUBZONE_A" - Subzone A.
@@ -37982,6 +38038,20 @@ func (s NetworkEndpoint) MarshalJSON() ([]byte, error) {
 // reached, whether they are reachable, and where they are located.
 // For more information about using NEGs for different use cases, seeNetwork
 // endpoint groups overview.
+//
+// Note: Use the following APIs to manage network endpoint groups:
+//
+//	-
+//	To manage NEGs with zonal scope (such as zonal NEGs, hybrid connectivity
+//	NEGs): zonal
+//	API
+//	-
+//	To manage NEGs with regional scope (such as regional internet NEGs,
+//	serverless NEGs, Private Service Connect NEGs): regional
+//	API
+//	-
+//	To manage NEGs with global scope (such as global internet NEGs):global
+//	API
 type NetworkEndpointGroup struct {
 	// Annotations: Optional. Metadata defined as annotations on the network
 	// endpoint group.
@@ -39330,6 +39400,10 @@ type NetworkInterface struct {
 	// AliasIpRanges: An array of alias IP ranges for this network interface.
 	// You can only specify this field for network interfaces in VPC networks.
 	AliasIpRanges []*AliasIpRange `json:"aliasIpRanges,omitempty"`
+	// EnableVpcScopedDns: Optional. If true, DNS resolution will be enabled over
+	// this interface. Only valid
+	// with network_attachment.
+	EnableVpcScopedDns bool `json:"enableVpcScopedDns,omitempty"`
 	// Fingerprint: Fingerprint hash of contents stored in this network
 	// interface.
 	// This field will be ignored when inserting an Instance or
@@ -50751,6 +50825,17 @@ type Reservation struct {
 	// when you
 	// create the resource.
 	Description string `json:"description,omitempty"`
+	// EarlyAccessMaintenance: Indicates the early access maintenance for the
+	// reservation.
+	// If this field is absent or set to NO_EARLY_ACCESS, the reservation is
+	// not
+	// enrolled in early access maintenance and the standard notice applies.
+	//
+	// Possible values:
+	//   "NO_EARLY_ACCESS" - No early access.
+	//   "WAVE1" - Wave 1: Fastest notification period
+	//   "WAVE2" - Wave 2: Medium notification period
+	EarlyAccessMaintenance string `json:"earlyAccessMaintenance,omitempty"`
 	// EnableEmergentMaintenance: Indicates whether Compute Engine allows unplanned
 	// maintenance for your VMs;
 	// for example, to fix hardware errors.
@@ -75321,6 +75406,27 @@ type WireProperties struct {
 
 func (s WireProperties) MarshalJSON() ([]byte, error) {
 	type NoMethod WireProperties
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+type WorkloadIdentityConfig struct {
+	Identity                   string `json:"identity,omitempty"`
+	IdentityCertificateEnabled bool   `json:"identityCertificateEnabled,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Identity") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Identity") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s WorkloadIdentityConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod WorkloadIdentityConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
