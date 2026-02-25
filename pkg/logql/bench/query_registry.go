@@ -128,10 +128,6 @@ func (r *QueryRegistry) Load(suites ...Suite) error {
 			}
 
 			for _, query := range queries {
-				if query.Skip {
-					continue
-				}
-
 				r.queries[suite] = append(r.queries[suite], query)
 			}
 		}
@@ -274,20 +270,32 @@ func extractQueryLineNumbers(rootNode *yaml.Node) []int {
 
 // GetQueries returns all loaded queries for the specified suites
 // If suites is empty, returns all queries
-func (r *QueryRegistry) GetQueries(suites ...Suite) []QueryDefinition {
+// If includeSkipped is false, skipped queries are filtered out
+func (r *QueryRegistry) GetQueries(includeSkipped bool, suites ...Suite) []QueryDefinition {
+	var result []QueryDefinition
+
 	if len(suites) == 0 {
 		// Return all queries
-		var all []QueryDefinition
 		for _, queries := range r.queries {
-			all = append(all, queries...)
+			result = append(result, queries...)
 		}
-		return all
+	} else {
+		for _, suite := range suites {
+			result = append(result, r.queries[suite]...)
+		}
 	}
 
-	var result []QueryDefinition
-	for _, suite := range suites {
-		result = append(result, r.queries[suite]...)
+	// Filter out skipped queries if requested
+	if !includeSkipped {
+		filtered := result[:0]
+		for _, def := range result {
+			if !def.Skip {
+				filtered = append(filtered, def)
+			}
+		}
+		result = filtered
 	}
+
 	return result
 }
 
@@ -326,6 +334,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 			Direction: logproto.FORWARD,
 			Step:      step,
 			Source:    def.Source,
+			QueryDesc: def.Description,
 		}
 		cases = append(cases, tc)
 	} else {
@@ -338,6 +347,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 				End:       end,
 				Direction: logproto.FORWARD,
 				Source:    def.Source,
+				QueryDesc: def.Description,
 			})
 		case DirectionBackward:
 			cases = append(cases, TestCase{
@@ -346,6 +356,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 				End:       end,
 				Direction: logproto.BACKWARD,
 				Source:    def.Source,
+				QueryDesc: def.Description,
 			})
 		case DirectionBoth:
 			cases = append(cases,
@@ -355,6 +366,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 					End:       end,
 					Direction: logproto.FORWARD,
 					Source:    def.Source,
+					QueryDesc: def.Description,
 				},
 				TestCase{
 					Query:     resolvedQuery,
@@ -362,6 +374,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 					End:       end,
 					Direction: logproto.BACKWARD,
 					Source:    def.Source,
+					QueryDesc: def.Description,
 				},
 			)
 		}

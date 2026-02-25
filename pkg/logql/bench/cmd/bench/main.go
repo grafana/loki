@@ -171,7 +171,7 @@ func loadBenchmarks() []string {
 
 	resolver := bench.NewMetadataVariableResolver(metadata, config.Seed)
 
-	queryDefs := registry.GetQueries(suites...)
+	queryDefs := registry.GetQueries(false, suites...)
 	var names []string
 	for _, def := range queryDefs {
 		expanded, err := registry.ExpandQuery(def, resolver, false)
@@ -253,7 +253,7 @@ func listBenchmarks() {
 
 	resolver := bench.NewMetadataVariableResolver(metadata, config.Seed)
 
-	queryDefs := registry.GetQueries(suites...)
+	queryDefs := registry.GetQueries(false, suites...)
 	for _, def := range queryDefs {
 		expanded, err := registry.ExpandQuery(def, resolver, false)
 		if err != nil {
