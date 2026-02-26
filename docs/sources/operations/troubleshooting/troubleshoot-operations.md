@@ -192,7 +192,7 @@ Structured metadata is enabled but the active schema version is older than v13. 
    ```yaml
    schema_config:
      configs:
-       - from: "2024-01-01"
+       - from: "2024-04-01"
          store: tsdb
          object_store: s3
          schema: v13
@@ -1250,8 +1250,10 @@ The ring contains too many unhealthy instances to satisfy the replication factor
 
 **Resolution:**
 
-1. **Check the health of ring members**: Open a browser and navigate to http://localhost:3100/ring. You should see the Loki ring page.
-  OR
+1. **Check the health of ring members**: 
+    Open a browser and navigate to http://localhost:3100/ring. You should see the Loki ring page.
+    
+    OR
 
    ```bash
    curl -s http://loki:3100/ring | jq '.shards[] | select(.state != "ACTIVE")'
