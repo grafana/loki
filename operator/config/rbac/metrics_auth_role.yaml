@@ -1,13 +1,12 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: proxy-role
+  name: metrics-auth-role
 rules:
 - apiGroups: ["authentication.k8s.io"]
-  resources:
-  - tokenreviews
+  resources: ["tokenreviews"]
   verbs: ["create"]
 - apiGroups: ["authorization.k8s.io"]
-  resources:
-  - subjectaccessreviews
+  resources: ["subjectaccessreviews"]
   verbs: ["create"]
+  

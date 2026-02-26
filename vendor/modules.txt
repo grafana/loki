@@ -1691,7 +1691,7 @@ github.com/parquet-go/bitpack/unsafecast
 # github.com/parquet-go/jsonlite v1.0.0
 ## explicit; go 1.23
 github.com/parquet-go/jsonlite
-# github.com/parquet-go/parquet-go v0.27.0
+# github.com/parquet-go/parquet-go v0.28.0
 ## explicit; go 1.24.9
 github.com/parquet-go/parquet-go
 github.com/parquet-go/parquet-go/bloom

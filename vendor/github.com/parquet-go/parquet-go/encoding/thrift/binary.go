@@ -46,7 +46,8 @@ func (r *binaryReader) Reader() io.Reader {
 
 func (r *binaryReader) ReadBool() (bool, error) {
 	v, err := r.ReadByte()
-	return v != 0, err
+	// Thrift protocol treats both 0 and 2 as false.
+	return v != 0 && v != 2, err
 }
 
 func (r *binaryReader) ReadInt8() (int8, error) {

@@ -7,7 +7,7 @@ metadata:
 spec:
   endpoints:
     - path: /metrics
-      targetPort: 8443
+      targetPort: metrics
       scheme: https
       interval: 30s
       scrapeTimeout: 10s

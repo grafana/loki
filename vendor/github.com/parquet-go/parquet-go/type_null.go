@@ -10,6 +10,8 @@ import (
 
 type nullType format.NullType
 
+var nullLogicalType = format.LogicalType{Unknown: new(format.NullType)}
+
 func (t *nullType) String() string { return (*format.NullType)(t).String() }
 
 func (t *nullType) Kind() Kind { return -1 }
@@ -26,9 +28,7 @@ func (t *nullType) ColumnOrder() *format.ColumnOrder { return nil }
 
 func (t *nullType) PhysicalType() *format.Type { return nil }
 
-func (t *nullType) LogicalType() *format.LogicalType {
-	return &format.LogicalType{Unknown: (*format.NullType)(t)}
-}
+func (t *nullType) LogicalType() *format.LogicalType { return &nullLogicalType }
 
 func (t *nullType) ConvertedType() *deprecated.ConvertedType { return nil }
 
