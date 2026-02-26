@@ -185,10 +185,17 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 				if !found {
 					level.Warn(logger).Log("msg", "no source found for input stream", "stream_id", stream.ULID)
 					continue
-				} else if err := source.Bind(input); err != nil {
+				}
+
+				if err := source.Bind(input); err != nil && errors.Is(err, wire.ErrConnClosed) {
+					// Depending on load to workers, it's possible for a job to
+					// have some already-closed sources, such as if they got
+					// canceled due to short circuiting. This can be safely
+					// ignored.
+					level.Debug(logger).Log("msg", "skipping closed source", "source", stream.ULID)
+				} else if err != nil {
 					level.Error(logger).Log("msg", "failed to bind source", "err", err)
 					errs = append(errs, fmt.Errorf("binding source %s: %w", stream.ULID, err))
-					continue
 				}
 			}
 
