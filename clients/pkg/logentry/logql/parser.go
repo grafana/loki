@@ -85,6 +85,11 @@ func (l *lexer) Lex(lval *exprSymType) int {
 			return 0
 		}
 		return STRING
+
+	case scanner.RawString:
+		s := l.TokenText()
+		lval.str = s[1 : len(s)-1]
+		return STRING
 	}
 
 	if tok, ok := tokens[l.TokenText()+string(l.Peek())]; ok {

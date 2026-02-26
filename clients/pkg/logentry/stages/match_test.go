@@ -82,6 +82,52 @@ func TestMatchPipeline(t *testing.T) {
 	close(in)
 }
 
+var testMatchBacktickYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      job:
+      ip:
+- labels:
+    job:
+    ip:
+- match:
+    selector: '{job="snmptrap", ip=~` + "`10\\..*`" + `}'
+    stages:
+    - json:
+        expressions:
+          msg: message
+- output:
+    source: msg
+`
+
+var testMatchBacktickLogLine = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"job":"snmptrap",
+	"ip":"10.0.0.1",
+	"message":"trap received"
+}
+`
+
+func TestMatchPipelineBacktick(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	plName := "test_pipeline_backtick"
+	pl, err := NewPipeline(util_log.Logger, loadConfig(testMatchBacktickYaml), &plName, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	in := make(chan Entry)
+	out := pl.Run(in)
+
+	in <- newEntry(nil, nil, testMatchBacktickLogLine, time.Now())
+	e := <-out
+
+	assert.Equal(t, "trap received", e.Line)
+	close(in)
+}
+
 func TestMatcher(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -122,6 +168,7 @@ func TestMatcher(t *testing.T) {
 		{`{foo="bar",bar!="test"}`, map[string]string{"foo": "bar", "bar": "test"}, MatchActionKeep, false, false, false},
 		{`{foo="bar",bar=~"te.*"}`, map[string]string{"foo": "bar", "bar": "test"}, MatchActionDrop, true, false, false},
 		{`{foo="bar",bar=~"te.*"}`, map[string]string{"foo": "bar", "bar": "test"}, MatchActionKeep, false, true, false},
+		{"{foo=\"bar\",bar=~`te.*`}", map[string]string{"foo": "bar", "bar": "test"}, MatchActionKeep, false, true, false},
 		{`{foo="bar",bar!~"te.*"}`, map[string]string{"foo": "bar", "bar": "test"}, MatchActionKeep, false, false, false},
 		{`{foo="bar",bar!~"te.*"}`, map[string]string{"foo": "bar", "bar": "test"}, MatchActionDrop, false, false, false},
 
