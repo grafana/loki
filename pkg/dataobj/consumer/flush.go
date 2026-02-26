@@ -45,6 +45,7 @@ type flushJobResult struct {
 // A flusherImpl is responsible for flushing data object builders to data objects.
 type flusherImpl struct {
 	sorter   sorter
+	tsdb     tsdbBuilder
 	uploader uploader
 	logger   log.Logger
 
@@ -57,9 +58,10 @@ type flusherImpl struct {
 	flushFunc func(context.Context, flushJob) (string, error)
 }
 
-func newFlusher(sorter sorter, uploader uploader, logger log.Logger, r prometheus.Registerer) *flusherImpl {
+func newFlusher(sorter sorter, uploader uploader, tsdb tsdbBuilder, logger log.Logger, r prometheus.Registerer) *flusherImpl {
 	f := &flusherImpl{
 		sorter:   sorter,
+		tsdb:     tsdb,
 		uploader: uploader,
 		logger:   logger,
 		flushes: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
@@ -139,5 +141,9 @@ func (f *flusherImpl) flush(ctx context.Context, job flushJob) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to upload object: %w", err)
 	}
-	return objectPath, nil
+	err = f.tsdb.BuildAndStore(ctx, obj, objectPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to build and store tsdb for object %s: %w", objectPath, err)
+	}
+	return objectPath, err
 }
