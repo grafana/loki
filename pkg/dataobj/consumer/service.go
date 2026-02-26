@@ -148,9 +148,11 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
+	// TODO: Set the right prefix & node name
+	tsdb := newTSDBBuilder("dataobj-consumer-1", bucket)
 	builderFactory := logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore)
 	sorter := logsobj.NewSorter(builderFactory, reg)
-	s.flusher = newFlusher(sorter, uploader, logger, reg)
+	s.flusher = newFlusher(sorter, uploader, tsdb, logger, reg)
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
 		"partition": strconv.Itoa(int(partitionID)),
 	}, reg)

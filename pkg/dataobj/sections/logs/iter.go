@@ -40,6 +40,7 @@ func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[Record] {
 }
 
 func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
+	sym := symbolizer.New(128, 4096)
 	return result.Iter(func(yield func(Record) bool) error {
 		dset, err := MakeColumnarDataset(section)
 		if err != nil {
@@ -62,7 +63,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 			return err
 		}
 
-		var rows [1]dataset.Row
+		var rows [1024]dataset.Row
 		var record Record
 		for {
 			n, err := r.Read(ctx, rows[:])
@@ -73,7 +74,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 			}
 
 			for _, row := range rows[:n] {
-				err := DecodeRow(section.Columns(), row, &record, nil)
+				err := DecodeRow(section.Columns(), row, &record, sym)
 				if err != nil || !yield(record) {
 					return err
 				}
@@ -100,6 +101,7 @@ func MakeColumnarDataset(section *Section) (*ColumnarDataset, error) {
 // DecodeRow. If sym is nil, metadata strings are always allocated.
 func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symbolizer.Symbolizer) error {
 	labelBuilder := labelpool.Get()
+	labelBuilder.Reset()
 	defer labelpool.Put(labelBuilder)
 
 	for columnIndex, columnValue := range row.Values {

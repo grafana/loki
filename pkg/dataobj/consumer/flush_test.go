@@ -24,6 +24,7 @@ func TestFlusher_Flush(t *testing.T) {
 			testCtx      = t.Context()
 			testBuilder  *mockBuilder
 			testSorter   = &mockSorter{}
+			testTSDB     = &mockTSDBBuilder{}
 			testUploader = &mockUploader{}
 			now          = time.Now()
 		)
@@ -37,13 +38,15 @@ func TestFlusher_Flush(t *testing.T) {
 				{Timestamp: now, Line: "baz"},
 			},
 		}))
-		f := newFlusher(testSorter, testUploader, log.NewNopLogger(), reg)
+		f := newFlusher(testSorter, testUploader, testTSDB, log.NewNopLogger(), reg)
 		// Flush the builder we created earlier.
 		objectPath, err := f.Flush(testCtx, testBuilder, "test_sync")
 		require.NoError(t, err)
 		require.Equal(t, "object_001", objectPath)
 		// Check that the dataobj was flushed and uploaded.
 		require.Len(t, testUploader.uploaded, 1)
+		require.Equal(t, 1, testTSDB.calls)
+		require.Equal(t, objectPath, testTSDB.lastPath)
 		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 	# HELP loki_dataobj_consumer_flushes_total Total number of flushes.
 	# TYPE loki_dataobj_consumer_flushes_total counter
@@ -60,7 +63,7 @@ func TestFlusher_Flush(t *testing.T) {
 			testCtx     = t.Context()
 			testBuilder *mockBuilder
 		)
-		f := newFlusher(nil, nil, log.NewNopLogger(), reg)
+		f := newFlusher(nil, nil, nil, log.NewNopLogger(), reg)
 		// Override the flush func to force a failure.
 		f.flushFunc = func(_ context.Context, _ flushJob) (string, error) {
 			return "", errors.New("mock error")
@@ -87,7 +90,7 @@ func TestFlusher_FlushAsync(t *testing.T) {
 			done    = make(chan struct{})
 			invoked bool
 		)
-		f := newFlusher(nil, nil, log.NewNopLogger(), prometheus.NewRegistry())
+		f := newFlusher(nil, nil, nil, log.NewNopLogger(), prometheus.NewRegistry())
 		f.flushFunc = func(_ context.Context, _ flushJob) (string, error) {
 			// Mock success so promise is invoked.
 			return "", nil
@@ -111,7 +114,7 @@ func TestFlusher_FlushAsync(t *testing.T) {
 			done    = make(chan struct{})
 			invoked bool
 		)
-		f := newFlusher(nil, nil, log.NewNopLogger(), prometheus.NewRegistry())
+		f := newFlusher(nil, nil, nil, log.NewNopLogger(), prometheus.NewRegistry())
 		f.flushFunc = func(_ context.Context, _ flushJob) (string, error) {
 			return "", errors.New("mock error")
 		}
@@ -135,7 +138,7 @@ func TestFlusher_FlushAsync(t *testing.T) {
 			done              = make(chan struct{})
 			invoked           bool
 		)
-		f := newFlusher(nil, nil, log.NewNopLogger(), prometheus.NewRegistry())
+		f := newFlusher(nil, nil, nil, log.NewNopLogger(), prometheus.NewRegistry())
 		f.flushFunc = func(ctx context.Context, _ flushJob) (string, error) {
 			<-ctx.Done()
 			return "", ctx.Err()
