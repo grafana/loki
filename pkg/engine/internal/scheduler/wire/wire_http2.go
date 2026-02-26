@@ -3,6 +3,7 @@ package wire
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -106,7 +107,7 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := newHTTP2Conn(l.Addr(), remoteAddr, r.Body, w, rc, l.codec)
+	conn := newHTTP2Conn(r.Context(), l.Addr(), remoteAddr, r.Body, w, rc, l.codec)
 	defer conn.Close()
 
 	// Wait until connection is accepted by HTTP2Listener.Accept(ctx)
@@ -164,6 +165,8 @@ func (l *HTTP2Listener) Addr() net.Addr {
 
 // http2Conn implements Conn for HTTP/2-based connections.
 type http2Conn struct {
+	ctx context.Context
+
 	localAddr  net.Addr
 	remoteAddr net.Addr
 
@@ -187,8 +190,9 @@ type incomingFrame struct {
 
 var _ Conn = (*http2Conn)(nil)
 
-// newHTTP2Conn creates a new HTTP/2 connection.
+// newHTTP2Conn creates a new HTTP/2 connection tied to the lifetime of ctx.
 func newHTTP2Conn(
+	ctx context.Context,
 	localAddr net.Addr,
 	remoteAddr net.Addr,
 	reader io.ReadCloser,
@@ -197,6 +201,7 @@ func newHTTP2Conn(
 	codec *protobufCodec,
 ) *http2Conn {
 	c := &http2Conn{
+		ctx:                ctx,
 		localAddr:          localAddr,
 		remoteAddr:         remoteAddr,
 		codec:              codec,
@@ -225,7 +230,12 @@ func (c *http2Conn) readLoop(ctx context.Context) {
 
 // Send sends a frame over the connection.
 func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
 	select {
+	case <-c.ctx.Done():
+		return ErrConnClosed
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-c.closed:
@@ -233,17 +243,19 @@ func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
 	default:
 	}
 
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
-
-	if err := c.codec.EncodeTo(c.writer, frame); err != nil {
+	err := c.codec.EncodeTo(c.writer, frame)
+	if err != nil && isStreamClosedError(err) {
+		return ErrConnClosed
+	} else if err != nil {
 		return fmt.Errorf("write frame: %w", err)
 	}
 
 	// Flush after each frame to ensure immediate delivery
 	if c.responseController != nil {
 		err := c.responseController.Flush()
-		if err != nil {
+		if err != nil && isStreamClosedError(err) {
+			return ErrConnClosed
+		} else if err != nil {
 			return fmt.Errorf("flush response: %w", err)
 		}
 	}
@@ -254,6 +266,8 @@ func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
 // Recv receives a frame from the connection.
 func (c *http2Conn) Recv(ctx context.Context) (Frame, error) {
 	select {
+	case <-c.ctx.Done():
+		return nil, ErrConnClosed
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-c.closed:
@@ -265,6 +279,9 @@ func (c *http2Conn) Recv(ctx context.Context) (Frame, error) {
 
 // Close closes the connection.
 func (c *http2Conn) Close() error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
 	var err error
 	c.closeOnce.Do(func() {
 		close(c.closed)
@@ -341,6 +358,7 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, from, to net.Addr) (Conn, error)
 
 	// Create connection
 	conn := newHTTP2Conn(
+		req.Context(),
 		from,
 		to,
 		resp.Body,
@@ -363,4 +381,20 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, from, to net.Addr) (Conn, error)
 	}
 
 	return conn, nil
+}
+
+// isStreamClosedError returns true if err represents an `http2: stream closed`
+// error.
+func isStreamClosedError(err error) bool {
+	// NOTE(rfratto): At the time of writing, the http2 package doesn't have a
+	// guaranteed way to check if an error is a stream closed error, so we look
+	// at the error message instead.
+	for {
+		next := errors.Unwrap(err)
+		if next == nil {
+			break
+		}
+		err = next
+	}
+	return err.Error() == "http2: stream closed"
 }
