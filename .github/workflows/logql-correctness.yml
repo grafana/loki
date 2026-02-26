@@ -22,6 +22,15 @@ on:
         required: false
         default: true
         type: "boolean"
+      suite:
+        description: "Test suite to run (each option includes its predecessors)"
+        required: false
+        default: "regression"
+        type: "choice"
+        options:
+          - fast
+          - regression
+          - exhaustive
 permissions: {}
 jobs:
   generate-testdata:
@@ -95,11 +104,16 @@ jobs:
       - name: Run tests
         shell: bash # Use bash shell to propagate pipe failures
         run: |
+          case "${{ inputs.suite || (github.event_name == 'schedule' && 'exhaustive') || 'regression' }}" in
+            exhaustive) SUITE="fast|regression|exhaustive" ;;
+            regression) SUITE="fast|regression" ;;
+            *)          SUITE="fast" ;;
+          esac
           go test \
             -o results/bench.test \
             -v -slow-tests -remote-transport=${{ matrix.remote_transport }} -timeout=60m \
             -cpuprofile=results/cpu.pprof -memprofile=results/mem.pprof \
-            -run='TestStorageEquality/(fast|regression)/.*/kind=.+/store=${{ matrix.store }}$' \
+            -run="TestStorageEquality/(${SUITE})/.*/kind=.+/store=${{ matrix.store }}$" \
             ${{ matrix.range_type == 'instant' && '-range-type=instant' || '' }} \
             ${{ inputs.failfast == true && '-failfast' || '' }} \
           | tee results/results.txt
