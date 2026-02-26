@@ -43,6 +43,7 @@ type Config struct {
 	WorkerConfig                    jobqueue.WorkerConfig `yaml:"worker_config"`
 	JobsConfig                      JobsConfig            `yaml:"jobs_config"`
 	DeletionMarkerObjectStorePrefix string                `yaml:"deletion_marker_object_store_prefix"`
+	UseSectionRefTable              bool                  `yaml:"use_section_ref_table"`
 }
 
 // RegisterFlags registers flags.
@@ -85,6 +86,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.WorkerConfig.RegisterFlagsWithPrefix("compactor.worker.", f)
 	cfg.JobsConfig.RegisterFlagsWithPrefix("compactor.jobs.", f)
 	f.StringVar(&cfg.DeletionMarkerObjectStorePrefix, "compactor.deletion-marker-object-store-prefix", "", "Object storage path prefix for storing deletion markers. The prefix must end with a forward slash(/). Leave empty to continue to store deletion markers on the local disk.")
+	f.BoolVar(&cfg.UseSectionRefTable, "compactor.use-section-ref-table", false, "Enable section-ref-table mode for TSDB compaction. In this mode compactor expects companion .sections.gz files for source TSDB indices.")
 }
 
 // Validate verifies the config does not contain inappropriate values

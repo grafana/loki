@@ -1919,7 +1919,9 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	}
 
 	t.compactor.RegisterIndexCompactor(types.BoltDBShipperType, boltdbcompactor.NewIndexCompactor())
-	t.compactor.RegisterIndexCompactor(types.TSDBType, tsdb.NewIndexCompactor())
+	t.compactor.RegisterIndexCompactor(types.TSDBType, tsdb.NewIndexCompactorWithConfig(tsdb.IndexCompactorConfig{
+		UseSectionRefTable: t.Cfg.CompactorConfig.UseSectionRefTable,
+	}))
 	prefix, compactorHandler := t.compactor.Handler()
 	t.Server.HTTP.PathPrefix(prefix).Handler(compactorHandler)
 
