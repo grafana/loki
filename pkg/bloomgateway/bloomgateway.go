@@ -285,7 +285,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	// TODO(owen-d): include capacity in constructor?
 	task.responses = responsesPool.Get(len(series.series))
 	// free up the responses
-	defer responsesPool.Put(task.responses)
+	defer func() { responsesPool.Put(task.responses) }()
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
 
