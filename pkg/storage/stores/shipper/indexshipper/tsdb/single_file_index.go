@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -100,11 +101,20 @@ func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
 		return nil, err
 	}
 
+	lookupPath := strings.TrimSuffix(id.Path(), ".tsdb") + ".lookup"
+	if data, readErr := os.ReadFile(lookupPath); readErr == nil {
+		table, decErr := index.DecodeChunkRefTable(data)
+		if decErr != nil {
+			return nil, fmt.Errorf("decoding lookup table %s: %w", lookupPath, decErr)
+		}
+		idx.chunkRefTable = table
+	}
+
 	return &TSDBFile{
 		Identifier:       id,
 		Index:            idx,
 		getRawFileReader: getRawFileReader,
-	}, err
+	}, nil
 }
 
 func (f *TSDBFile) Close() error {
@@ -120,8 +130,9 @@ func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
 // and translates the IndexReader to an Index implementation
 // It loads the file into memory and doesn't keep a file descriptor open
 type TSDBIndex struct {
-	reader      IndexReader
-	chunkFilter chunk.RequestChunkFilterer
+	reader        IndexReader
+	chunkFilter   chunk.RequestChunkFilterer
+	chunkRefTable *index.ChunkRefTable
 }
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
@@ -505,6 +516,85 @@ func (i *TSDBIndex) Volume(
 		}
 		return p.Err()
 	})
+}
+
+// GetDataobjSections resolves matching chunk references through the companion
+// lookup table and returns fully resolved dataobj section references grouped
+// by (Path, SectionID). StreamIDs are collected from each ChunkMeta and
+// merged per section. Time bounds and sizing are the union across all
+// contributing chunks.
+func (i *TSDBIndex) GetDataobjSections(
+	ctx context.Context,
+	_ string,
+	from, through model.Time,
+	fpFilter index.FingerprintFilter,
+	matchers ...*labels.Matcher,
+) ([]DataobjSectionRef, error) {
+	if i.chunkRefTable == nil {
+		return nil, fmt.Errorf("no chunk ref lookup table loaded for this index")
+	}
+
+	type sectionKey struct {
+		Path      string
+		SectionID int
+	}
+
+	type accumulator struct {
+		ref       DataobjSectionRef
+		streamSet map[int64]struct{}
+	}
+
+	sections := make(map[sectionKey]*accumulator)
+	var order []sectionKey
+
+	if err := i.ForSeries(ctx, "", fpFilter, from, through, func(_ labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+		for _, chk := range chks {
+			sref := i.chunkRefTable.Lookup(chk.Checksum)
+			k := sectionKey{Path: sref.Path, SectionID: sref.SectionID}
+
+			acc, ok := sections[k]
+			if !ok {
+				acc = &accumulator{
+					ref: DataobjSectionRef{
+						Path:      sref.Path,
+						SectionID: sref.SectionID,
+						MinTime:   chk.From(),
+						MaxTime:   chk.Through(),
+						KB:        chk.KB,
+						Entries:   chk.Entries,
+					},
+					streamSet: make(map[int64]struct{}),
+				}
+				sections[k] = acc
+				order = append(order, k)
+			} else {
+				if chk.From() < acc.ref.MinTime {
+					acc.ref.MinTime = chk.From()
+				}
+				if chk.Through() > acc.ref.MaxTime {
+					acc.ref.MaxTime = chk.Through()
+				}
+				acc.ref.KB += chk.KB
+				acc.ref.Entries += chk.Entries
+			}
+			acc.streamSet[chk.StreamID] = struct{}{}
+		}
+		return false
+	}, matchers...); err != nil {
+		return nil, err
+	}
+
+	res := make([]DataobjSectionRef, 0, len(order))
+	for _, k := range order {
+		acc := sections[k]
+		ids := make([]int64, 0, len(acc.streamSet))
+		for id := range acc.streamSet {
+			ids = append(ids, id)
+		}
+		acc.ref.StreamIDs = ids
+		res = append(res, acc.ref)
+	}
+	return res, nil
 }
 
 func cloneStringList(strs []string) []string {

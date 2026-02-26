@@ -18,7 +18,15 @@ type LoadableSeries struct {
 }
 
 func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
-	b := NewBuilder(index.FormatV3)
+	return BuildIndexWithVersion(t, dir, cases, index.FormatV3)
+}
+
+func BuildIndexV4(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
+	return BuildIndexWithVersion(t, dir, cases, index.FormatV4)
+}
+
+func BuildIndexWithVersion(t testing.TB, dir string, cases []LoadableSeries, version int) *TSDBFile {
+	b := NewBuilder(version)
 
 	for _, s := range cases {
 		b.AddSeries(s.Labels, model.Fingerprint(labels.StableHash(s.Labels)), s.Chunks)

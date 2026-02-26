@@ -377,3 +377,76 @@ func (i MultiIndex) ForSeries(ctx context.Context, userID string, fpFilter index
 		return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
 	})
 }
+
+func (i *MultiIndex) GetDataobjSections(ctx context.Context, userID string, from, through model.Time, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]DataobjSectionRef, error) {
+	acc := newResultAccumulator(func(xs [][]DataobjSectionRef) ([]DataobjSectionRef, error) {
+		type key struct {
+			Path      string
+			SectionID int
+		}
+		merged := make(map[key]*DataobjSectionRef)
+		var order []key
+
+		for _, group := range xs {
+			for _, ref := range group {
+				k := key{Path: ref.Path, SectionID: ref.SectionID}
+				existing, ok := merged[k]
+				if !ok {
+					clone := ref
+					clone.StreamIDs = append([]int64(nil), ref.StreamIDs...)
+					merged[k] = &clone
+					order = append(order, k)
+					continue
+				}
+				if ref.MinTime < existing.MinTime {
+					existing.MinTime = ref.MinTime
+				}
+				if ref.MaxTime > existing.MaxTime {
+					existing.MaxTime = ref.MaxTime
+				}
+				existing.KB += ref.KB
+				existing.Entries += ref.Entries
+
+				seen := make(map[int64]struct{}, len(existing.StreamIDs))
+				for _, id := range existing.StreamIDs {
+					seen[id] = struct{}{}
+				}
+				for _, id := range ref.StreamIDs {
+					if _, ok := seen[id]; !ok {
+						existing.StreamIDs = append(existing.StreamIDs, id)
+					}
+				}
+			}
+		}
+
+		res := make([]DataobjSectionRef, 0, len(order))
+		for _, k := range order {
+			res = append(res, *merged[k])
+		}
+		return res, nil
+	})
+
+	if err := i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
+		resolver, ok := idx.(DataobjResolver)
+		if !ok {
+			return nil
+		}
+		got, err := resolver.GetDataobjSections(ctx, userID, from, through, fpFilter, matchers...)
+		if err != nil {
+			return err
+		}
+		acc.Add(got)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	merged, err := acc.Merge()
+	if err != nil {
+		if err == ErrEmptyAccumulator {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return merged, nil
+}

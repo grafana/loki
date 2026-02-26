@@ -75,3 +75,23 @@ func (NoopIndex) Volume(_ context.Context, _ string, _, _ model.Time, _ VolumeAc
 func (NoopIndex) ForSeries(_ context.Context, _ string, _ index.FingerprintFilter, _ model.Time, _ model.Time, _ func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), _ ...*labels.Matcher) error {
 	return nil
 }
+
+// DataobjSectionRef is a fully resolved reference to a section within a data
+// object, including time bounds and sizing information.
+type DataobjSectionRef struct {
+	Path      string
+	SectionID int
+	MinTime   model.Time
+	MaxTime   model.Time
+	KB        uint32
+	Entries   uint32
+	StreamIDs []int64
+}
+
+// DataobjResolver is an optional interface implemented by Index types that
+// support resolving ChunkMeta references into dataobj section references via a
+// companion lookup table.
+type DataobjResolver interface {
+	GetDataobjSections(ctx context.Context, userID string, from, through model.Time,
+		fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]DataobjSectionRef, error)
+}

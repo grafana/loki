@@ -19,6 +19,10 @@ type ChunkMeta struct {
 	KB uint32
 
 	Entries uint32
+
+	// StreamID identifies the stream within a dataobj section.
+	// Only populated for FormatV4+ indices used with dataobj indexing.
+	StreamID int64
 }
 
 func (c ChunkMeta) From() model.Time                 { return model.Time(c.MinTime) }
