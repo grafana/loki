@@ -244,7 +244,7 @@ func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
 	}
 
 	err := c.codec.EncodeTo(c.writer, frame)
-	if err != nil && isStreamClosedError(err) {
+	if err != nil && isHTTP2Error(err) {
 		return ErrConnClosed
 	} else if err != nil {
 		return fmt.Errorf("write frame: %w", err)
@@ -253,7 +253,7 @@ func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
 	// Flush after each frame to ensure immediate delivery
 	if c.responseController != nil {
 		err := c.responseController.Flush()
-		if err != nil && isStreamClosedError(err) {
+		if err != nil && isHTTP2Error(err) {
 			return ErrConnClosed
 		} else if err != nil {
 			return fmt.Errorf("flush response: %w", err)
@@ -383,11 +383,19 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, from, to net.Addr) (Conn, error)
 	return conn, nil
 }
 
-// isStreamClosedError returns true if err represents an `http2: stream closed`
-// error.
-func isStreamClosedError(err error) bool {
+// https://github.com/golang/net/blob/master/http2/server.go#L68-L73
+var http2Errors = map[string]struct{}{
+	"http2: stream closed":                              {},
+	"body closed by handler":                            {},
+	"http2: request body closed due to handler exiting": {},
+	"client disconnected":                               {},
+}
+
+// isHTTP2Error returns true if err represents one of the known http2 errors that leads to a
+// broken connection.
+func isHTTP2Error(err error) bool {
 	// NOTE(rfratto): At the time of writing, the http2 package doesn't have a
-	// guaranteed way to check if an error is a stream closed error, so we look
+	// guaranteed way to check its errors, so we look
 	// at the error message instead.
 	for {
 		next := errors.Unwrap(err)
@@ -396,5 +404,6 @@ func isStreamClosedError(err error) bool {
 		}
 		err = next
 	}
-	return err.Error() == "http2: stream closed"
+	_, res := http2Errors[err.Error()]
+	return res
 }
