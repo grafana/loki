@@ -45,7 +45,7 @@ type queryExecutor interface {
 }
 
 func executorHandler(cfg Config, logger log.Logger, exec queryExecutor, limits Limits) http.Handler {
-	h := &queryHandler{
+	var h queryrangebase.Handler = &queryHandler{
 		cfg:    cfg,
 		logger: logger,
 		exec:   exec,
@@ -53,7 +53,11 @@ func executorHandler(cfg Config, logger log.Logger, exec queryExecutor, limits L
 	}
 
 	if cfg.EnforceRetentionPeriod {
-		h.retentionChecker = newRetentionChecker(limits, logger)
+		h.(*queryHandler).retentionChecker = newRetentionChecker(limits, logger)
+	}
+
+	if cfg.AlignQueriesWithStep {
+		h = queryrangebase.StepAlignMiddleware.Wrap(h)
 	}
 
 	return queryrange.NewSerializeHTTPHandler(h, queryrange.DefaultCodec)
