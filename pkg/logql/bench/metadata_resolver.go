@@ -48,7 +48,16 @@ func (r *MetadataVariableResolver) ResolveQuery(query string, requirements Query
 		if err != nil {
 			return "", fmt.Errorf("failed to resolve ${SELECTOR}: %w", err)
 		}
-		result = strings.ReplaceAll(result, placeholderSelector, selector)
+
+		// Use original equality selector for metadata lookups, but convert for actual query if regex requested
+		querySelector := selector
+		if requirements.RegexSelectors {
+			querySelector, err = r.convertToRegexSelector(selector)
+			if err != nil {
+				return "", fmt.Errorf("failed to convert to regex selector: %w", err)
+			}
+		}
+		result = strings.ReplaceAll(result, placeholderSelector, querySelector)
 	}
 
 	// Resolve ${LABEL_NAME} and ${LABEL_VALUE} if present
@@ -132,6 +141,33 @@ func (r *MetadataVariableResolver) resolveLabelSelector(req QueryRequirements) (
 	}
 
 	return candidates[r.rnd.Intn(len(candidates))], nil
+}
+
+// convertToRegexSelector converts equality matchers to regex matchers in a selector string.
+// For a selector like {service_name="loki", env="prod"}, returns {service_name=~".*loki.*", env=~".*prod.*"}.
+// Values are wrapped with .* to prevent simplification into bare literals.
+func (r *MetadataVariableResolver) convertToRegexSelector(selector string) (string, error) {
+	matchers, err := syntax.ParseMatchers(selector, true)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse selector for regex conversion: %w", err)
+	}
+
+	var parts []string
+	for _, m := range matchers {
+		switch m.Type {
+		case labels.MatchEqual:
+			// Convert = to =~ with .*value.* to exercise the regex contains fast path.
+			parts = append(parts, fmt.Sprintf(`%s=~".*%s.*"`, m.Name, m.Value))
+		case labels.MatchNotEqual:
+			// Convert != to !~ with .*value.* for the same reason.
+			parts = append(parts, fmt.Sprintf(`%s!~".*%s.*"`, m.Name, m.Value))
+		default:
+			// Already regex, keep as-is
+			parts = append(parts, m.String())
+		}
+	}
+
+	return "{" + strings.Join(parts, ", ") + "}", nil
 }
 
 // extractLabelFromSelector parses a label selector and extracts a random label name and value

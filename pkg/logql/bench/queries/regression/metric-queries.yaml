@@ -223,3 +223,25 @@ queries:
       log_format: json
       detected_fields:
         - level
+  - description: "aggregated rate with logfmt parser, label filter, and line filters"
+    query: >-
+      sum by (level) (rate(${SELECTOR} |= "duration" != "error" | logfmt | level!="" [${RANGE}]))
+    kind: metric
+    regex_selectors: true
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - range_rate
+      - logfmt_parser
+      - label_filter
+      - line_contains
+      - line_not_contains
+      - group_by
+    requires:
+      log_format: logfmt
+      keywords:
+        - duration
+        - error
+      detected_fields:
+        - level

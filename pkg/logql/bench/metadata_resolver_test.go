@@ -678,3 +678,159 @@ func TestMetadataVariableResolver_DetectedFields(t *testing.T) {
 		require.Equal(t, `{service_name="loki"}`, selector)
 	})
 }
+
+func TestResolveQueryWithRegexSelectors(t *testing.T) {
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	metadata := &DatasetMetadata{
+		TimeRange: TimeRange{
+			Start: start,
+			End:   end,
+		},
+		AllSelectors: []string{
+			`{service_name="database"}`,
+			`{service_name="loki"}`,
+		},
+		ByFormat: map[LogFormat][]string{
+			LogFormatJSON: {
+				`{service_name="database"}`,
+			},
+			LogFormatLogfmt: {
+				`{service_name="loki"}`,
+			},
+		},
+		MetadataBySelector: map[string]*SerializableStreamMetadata{
+			`{service_name="database"}`: {
+				MinRange:        2 * time.Minute,
+				MinInstantRange: 5 * time.Minute,
+			},
+			`{service_name="loki"}`: {
+				MinRange:        3 * time.Minute,
+				MinInstantRange: 7 * time.Minute,
+			},
+		},
+	}
+
+	resolver := NewMetadataVariableResolver(metadata, 42)
+
+	t.Run("single matcher converts = to =~", func(t *testing.T) {
+		result, err := resolver.ResolveQuery(`${SELECTOR} | json`, QueryRequirements{
+			LogFormat:      "json",
+			RegexSelectors: true,
+		}, false)
+		require.NoError(t, err)
+		require.Equal(t, `{service_name=~".*database.*"} | json`, result)
+	})
+
+	t.Run("two matchers converts = to =~", func(t *testing.T) {
+		twoMatcherMeta := &DatasetMetadata{
+			TimeRange:    TimeRange{Start: start, End: end},
+			AllSelectors: []string{`{service_name="loki", env="prod"}`},
+			MetadataBySelector: map[string]*SerializableStreamMetadata{
+				`{service_name="loki", env="prod"}`: {
+					MinRange:        2 * time.Minute,
+					MinInstantRange: 5 * time.Minute,
+				},
+			},
+		}
+		twoMatcherResolver := NewMetadataVariableResolver(twoMatcherMeta, 42)
+
+		result, err := twoMatcherResolver.ResolveQuery(`${SELECTOR}`, QueryRequirements{
+			RegexSelectors: true,
+		}, false)
+		require.NoError(t, err)
+		require.Equal(t, `{service_name=~".*loki.*", env=~".*prod.*"}`, result)
+	})
+
+	t.Run("three matchers converts = to =~", func(t *testing.T) {
+		threeMatcherMeta := &DatasetMetadata{
+			TimeRange:    TimeRange{Start: start, End: end},
+			AllSelectors: []string{`{service_name="database", region="us-west-2", env="prod"}`},
+			MetadataBySelector: map[string]*SerializableStreamMetadata{
+				`{service_name="database", region="us-west-2", env="prod"}`: {
+					MinRange:        2 * time.Minute,
+					MinInstantRange: 5 * time.Minute,
+				},
+			},
+		}
+		threeMatcherResolver := NewMetadataVariableResolver(threeMatcherMeta, 42)
+
+		result, err := threeMatcherResolver.ResolveQuery(`${SELECTOR}`, QueryRequirements{
+			RegexSelectors: true,
+		}, false)
+		require.NoError(t, err)
+		require.Equal(t, `{service_name=~".*database.*", region=~".*us-west-2.*", env=~".*prod.*"}`, result)
+	})
+
+	t.Run("without regex selectors uses equality", func(t *testing.T) {
+		result, err := resolver.ResolveQuery(`${SELECTOR} | json`, QueryRequirements{
+			LogFormat:      "json",
+			RegexSelectors: false,
+		}, false)
+		require.NoError(t, err)
+		require.Equal(t, `{service_name="database"} | json`, result)
+	})
+
+	t.Run("default (no regex_selectors) uses equality", func(t *testing.T) {
+		result, err := resolver.ResolveQuery(`${SELECTOR} | json`, QueryRequirements{
+			LogFormat: "json",
+		}, false)
+		require.NoError(t, err)
+		require.Equal(t, `{service_name="database"} | json`, result)
+	})
+
+	t.Run("instant query uses MinInstantRange with regex selectors", func(t *testing.T) {
+		result, err := resolver.ResolveQuery(`rate(${SELECTOR} [${RANGE}])`, QueryRequirements{
+			LogFormat:      "logfmt",
+			RegexSelectors: true,
+		}, true)
+		require.NoError(t, err)
+		require.Equal(t, `rate({service_name=~".*loki.*"} [7m])`, result)
+	})
+}
+
+func TestExtractLabelFromSelectorWithRegexMatchers(t *testing.T) {
+	resolver := &MetadataVariableResolver{
+		rnd: rand.New(rand.NewSource(42)),
+	}
+
+	t.Run("regex matcher with exact value is extractable", func(t *testing.T) {
+		// After convertToRegexSelector, selectors have =~ matchers with exact values
+		labelName, labelValue, err := resolver.extractLabelFromSelector(
+			`{service_name=~"loki", env=~"prod"}`,
+			QueryRequirements{},
+		)
+		require.NoError(t, err)
+		require.Contains(t, []string{"service_name", "env"}, labelName)
+		if labelName == "service_name" {
+			require.Equal(t, "loki", labelValue)
+		} else {
+			require.Equal(t, "prod", labelValue)
+		}
+	})
+
+	t.Run("mixed equality and regex matchers", func(t *testing.T) {
+		labelName, labelValue, err := resolver.extractLabelFromSelector(
+			`{service_name="loki", env=~"prod"}`,
+			QueryRequirements{},
+		)
+		require.NoError(t, err)
+		require.Contains(t, []string{"service_name", "env"}, labelName)
+		if labelName == "service_name" {
+			require.Equal(t, "loki", labelValue)
+		} else {
+			require.Equal(t, "prod", labelValue)
+		}
+	})
+
+	t.Run("prioritize required label from regex matchers", func(t *testing.T) {
+		labelName, labelValue, err := resolver.extractLabelFromSelector(
+			`{service_name=~"loki", env=~"prod"}`,
+			QueryRequirements{Labels: []string{"env"}},
+		)
+		require.NoError(t, err)
+		require.Equal(t, "env", labelName)
+		require.Equal(t, "prod", labelValue)
+	})
+}
