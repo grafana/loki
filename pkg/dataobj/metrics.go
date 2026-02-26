@@ -11,9 +11,10 @@ import (
 
 // Metrics instruments encoded data objects.
 type Metrics struct {
-	sectionsCount       prometheus.Histogram
-	fileMetadataSize    prometheus.Histogram
-	sectionMetadataSize *prometheus.HistogramVec
+	sectionsCount          prometheus.Histogram
+	lastObjectSecionsCount prometheus.Gauge
+	fileMetadataSize       prometheus.Histogram
+	sectionMetadataSize    *prometheus.HistogramVec
 }
 
 // NewMetrics creates a new set of metrics for encoding.
@@ -28,6 +29,13 @@ func NewMetrics() *Metrics {
 			Subsystem: "encoding",
 			Name:      "sections_count",
 			Help:      "Distribution of sections per encoded data object.",
+		}),
+
+		lastObjectSecionsCount: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki_dataobj",
+			Subsystem: "encoding",
+			Name:      "last_object_sections_count",
+			Help:      "Number of sections in the last encoded data object.",
 		}),
 
 		fileMetadataSize: newNativeHistogram(prometheus.HistogramOpts{
@@ -66,6 +74,7 @@ func newNativeHistogramVec(opts prometheus.HistogramOpts, labels []string) *prom
 func (m *Metrics) Register(reg prometheus.Registerer) error {
 	var errs []error
 	errs = append(errs, reg.Register(m.sectionsCount))
+	errs = append(errs, reg.Register(m.lastObjectSecionsCount))
 	errs = append(errs, reg.Register(m.fileMetadataSize))
 	errs = append(errs, reg.Register(m.sectionMetadataSize))
 	return errors.Join(errs...)
@@ -74,13 +83,16 @@ func (m *Metrics) Register(reg prometheus.Registerer) error {
 // Unregister unregisters metrics from the provided Registerer.
 func (m *Metrics) Unregister(reg prometheus.Registerer) {
 	reg.Unregister(m.sectionsCount)
+	reg.Unregister(m.lastObjectSecionsCount)
 	reg.Unregister(m.fileMetadataSize)
 	reg.Unregister(m.sectionMetadataSize)
 }
 
 // Observe updates metrics with statistics about the given [Object].
 func (m *Metrics) Observe(obj *Object) error {
-	m.sectionsCount.Observe(float64(len(obj.sections)))
+	numSections := float64(len(obj.sections))
+	m.sectionsCount.Observe(numSections)
+	m.lastObjectSecionsCount.Set(numSections)
 	m.fileMetadataSize.Observe(float64(proto.Size(obj.metadata)))
 
 	var errs []error
