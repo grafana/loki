@@ -1524,7 +1524,7 @@ After being disconnected from the memberlist cluster, the instance failed to rej
 
 ## Component readiness errors
 
-Readiness errors occur when Loki components are not ready to serve requests. These errors are returned by the `/ready` health check endpoint and prevent load balancers from routing traffic to unready instances.
+Readiness errors occur when Loki components are not ready to serve requests. These errors are returned by the [`/ready` health check endpoint](http://localhost:3100/ready) and prevent load balancers from routing traffic to unready instances.
 
 ### Error: Application is stopping
 
