@@ -49,7 +49,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.25.7"
+          go-version: "1.26.0"
 
       # The metastore generates invalid filenames for Windows (with colons),
       # which get rejected by upload-artifact. We zip these files to avoid this
@@ -96,7 +96,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.25.7"
+          go-version: "1.26.0"
 
       - name: Create results directory
         run: mkdir -p ./pkg/logql/bench/results
