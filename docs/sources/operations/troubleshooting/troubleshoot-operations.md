@@ -1250,9 +1250,9 @@ The ring contains too many unhealthy instances to satisfy the replication factor
 
 **Resolution:**
 
-1. **Check the health of ring members**: 
+1. **Check the health of ring members**:
     Open a browser and navigate to http://localhost:3100/ring. You should see the Loki ring page.
-    
+
     OR
 
    ```bash
@@ -1556,12 +1556,22 @@ Loki is shutting down and no longer accepting new requests. This is normal durin
 **Error message:**
 
 ```text
-Some services are not Running: <service_list>
+Some services are not Running:
+<state>: <count>
+<state>: <count>
+```
+
+For example:
+
+```text
+Some services are not Running:
+Starting: 1
+Failed: 2
 ```
 
 **Cause:**
 
-One or more internal Loki services have failed to start or have stopped unexpectedly. The error message lists which services are not in a running state.
+One or more internal Loki services have failed to start or have stopped unexpectedly. The error message lists each service state with a count of services in that state.
 
 **Resolution:**
 
@@ -1585,18 +1595,20 @@ One or more internal Loki services have failed to start or have stopped unexpect
 Ingester not ready: <details>
 ```
 
-Or:
+When the ingester's own state check fails, `<details>` contains the ingester state, giving the full message:
 
 ```text
-ingester not ready: <state>
+Ingester not ready: ingester not ready: <state>
 ```
+
+Where `<state>` is the service state, for example `Starting`, `Stopping`, or `Failed`.
 
 **Cause:**
 
 The ingester is not in a ready state to accept writes or serve reads. The detail message indicates the specific reason, such as:
 
-- The ingester is still starting up and joining the ring
-- The lifecycler is not ready
+- The ingester is still starting up and joining the ring (`Starting`)
+- The lifecycler is not ready (lifecycler error text)
 - The ingester is waiting for minimum ready duration after ring join
 
 **Resolution:**
@@ -1629,7 +1641,7 @@ The ingester is not in a ready state to accept writes or serve reads. The detail
 **Error message:**
 
 ```text
-not ready: number of queriers connected to query-frontend is 0
+Query Frontend not ready: not ready: number of queriers connected to query-frontend is 0
 ```
 
 **Cause:**
@@ -1671,7 +1683,7 @@ The query frontend has no querier workers connected. Without queriers, the front
 **Error message:**
 
 ```text
-not ready: number of schedulers this worker is connected to is 0
+Query Frontend not ready: not ready: number of schedulers this worker is connected to is 0
 ```
 
 **Cause:**
