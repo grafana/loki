@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/klauspost/compress/zstd"
@@ -242,6 +243,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		}
 		labelsStr := streamLabels.String()
 
+		if len(labelsStr) > maxStreamLabelsSize {
+			return nil, fmt.Errorf("%w: stream labels size %s exceeds limit of %s", ErrRequestBodyTooLarge, humanize.Bytes(uint64(len(labelsStr))), humanize.Bytes(maxStreamLabelsSize))
+		}
+
 		lbs := modelLabelsSetToLabelsList(streamLabels)
 		totalBytesReceived := int64(0)
 
@@ -370,6 +375,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					}
 
 					entryLabelsStr = combinedLabels.String()
+					if len(entryLabelsStr) > maxStreamLabelsSize {
+						return nil, fmt.Errorf("%w: stream labels size %s exceeds limit of %s", ErrRequestBodyTooLarge, humanize.Bytes(uint64(len(entryLabelsStr))), humanize.Bytes(maxStreamLabelsSize))
+					}
 					entryLbs = modelLabelsSetToLabelsList(combinedLabels)
 
 					if _, ok := pushRequestsByStream[entryLabelsStr]; !ok {

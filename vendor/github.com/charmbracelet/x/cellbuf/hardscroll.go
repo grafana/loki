@@ -75,7 +75,7 @@ func (s *Screen) scrolln(n, top, bot, maxY int) (v bool) { //nolint:unparam
 	)
 
 	blank := s.clearBlank()
-	if n > 0 {
+	if n > 0 { //nolint:nestif
 		// Scroll up (forward)
 		v = s.scrollUp(n, top, bot, 0, maxY, blank)
 		if !v {
@@ -99,7 +99,7 @@ func (s *Screen) scrolln(n, top, bot, maxY int) (v bool) { //nolint:unparam
 				s.move(0, bot-n+1)
 				s.clearToBottom(nil)
 			} else {
-				for i := 0; i < n; i++ {
+				for i := range n {
 					s.move(0, bot-i)
 					s.clearToEnd(nil, false)
 				}
@@ -124,7 +124,7 @@ func (s *Screen) scrolln(n, top, bot, maxY int) (v bool) { //nolint:unparam
 			// Clear newly shifted-in lines.
 			if v &&
 				(nonDestScrollRegion || (memoryBelow && top == 0)) {
-				for i := 0; i < -n; i++ {
+				for i := range -n {
 					s.move(0, top+i)
 					s.clearToEnd(nil, false)
 				}
@@ -133,7 +133,7 @@ func (s *Screen) scrolln(n, top, bot, maxY int) (v bool) { //nolint:unparam
 	}
 
 	if !v {
-		return
+		return v
 	}
 
 	s.scrollBuffer(s.curbuf, n, top, bot, blank)
@@ -193,7 +193,7 @@ func (s *Screen) touchLine(width, height, y, n int, changed bool) {
 
 // scrollUp scrolls the screen up by n lines.
 func (s *Screen) scrollUp(n, top, bot, minY, maxY int, blank *Cell) bool {
-	if n == 1 && top == minY && bot == maxY {
+	if n == 1 && top == minY && bot == maxY { //nolint:nestif
 		s.move(0, bot)
 		s.updatePen(blank)
 		s.buf.WriteByte('\n')
@@ -202,13 +202,14 @@ func (s *Screen) scrollUp(n, top, bot, minY, maxY int, blank *Cell) bool {
 		s.updatePen(blank)
 		s.buf.WriteString(ansi.DeleteLine(1))
 	} else if top == minY && bot == maxY {
-		if s.xtermLike {
+		supportsSU := s.caps.Contains(capSU)
+		if supportsSU {
 			s.move(0, bot)
 		} else {
 			s.move(0, top)
 		}
 		s.updatePen(blank)
-		if s.xtermLike {
+		if supportsSU {
 			s.buf.WriteString(ansi.ScrollUp(n))
 		} else {
 			s.buf.WriteString(strings.Repeat("\n", n))
@@ -225,7 +226,7 @@ func (s *Screen) scrollUp(n, top, bot, minY, maxY int, blank *Cell) bool {
 
 // scrollDown scrolls the screen down by n lines.
 func (s *Screen) scrollDown(n, top, bot, minY, maxY int, blank *Cell) bool {
-	if n == 1 && top == minY && bot == maxY {
+	if n == 1 && top == minY && bot == maxY { //nolint:nestif
 		s.move(0, top)
 		s.updatePen(blank)
 		s.buf.WriteString(ansi.ReverseIndex)
@@ -236,7 +237,7 @@ func (s *Screen) scrollDown(n, top, bot, minY, maxY int, blank *Cell) bool {
 	} else if top == minY && bot == maxY {
 		s.move(0, top)
 		s.updatePen(blank)
-		if s.xtermLike {
+		if s.caps.Contains(capSD) {
 			s.buf.WriteString(ansi.ScrollDown(n))
 		} else {
 			s.buf.WriteString(strings.Repeat(ansi.ReverseIndex, n))

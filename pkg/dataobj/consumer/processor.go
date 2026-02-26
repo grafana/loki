@@ -243,9 +243,6 @@ func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
 	p.metrics.receivedBytes.Add(float64(len(rec.Value)))
 	p.metrics.setLastOffset(rec.Offset)
 	p.metrics.setConsumptionLag(now.Sub(rec.Timestamp))
-	// Deprecated metrics.
-	p.metrics.processedBytes.Add(float64(len(rec.Value)))
-	p.metrics.processedRecords.Inc()
 }
 
 func (p *processor) observeRecordErr(rec *kgo.Record) {

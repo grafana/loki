@@ -13,7 +13,7 @@ import (
 
 	"github.com/grafana/regexp"
 	"github.com/mitchellh/go-wordwrap"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/grafana/loki/v3/tools/doc-generator/parse"
 )

@@ -15,7 +15,7 @@ import (
 // Special cases:
 //
 //   - The negation of null is null.
-func Not(alloc *memory.Allocator, input columnar.Datum) (columnar.Datum, error) {
+func Not(alloc *memory.Allocator, input columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	if got, want := input.Kind(), columnar.KindBool; got != want {
 		return nil, fmt.Errorf("invalid input kind %s, expected %s", got, want)
 	}
@@ -24,7 +24,8 @@ func Not(alloc *memory.Allocator, input columnar.Datum) (columnar.Datum, error) 
 	case *columnar.BoolScalar:
 		return notScalar(input), nil
 	case *columnar.Bool:
-		return notArray(alloc, input), nil
+		out := notArray(alloc, input)
+		return applySelectionToBoolArray(alloc, out, selection)
 	default:
 		panic(fmt.Sprintf("unexpected input type %T", input))
 	}
@@ -68,8 +69,8 @@ func notArray(alloc *memory.Allocator, input *columnar.Bool) *columnar.Bool {
 // Special cases:
 //
 //   - If either side of the AND is null, the result is null.
-func And(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
-	return dispatchLogical(alloc, logicalAndKernel, left, right)
+func And(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+	return dispatchLogical(alloc, logicalAndKernel, left, right, selection)
 }
 
 // Or computes the logical OR of two input boolean datums. Or returns an error
@@ -79,11 +80,11 @@ func And(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, e
 // Special cases:
 //
 //   - If either side of the OR is null, the result is null.
-func Or(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
-	return dispatchLogical(alloc, logicalOrKernel, left, right)
+func Or(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+	return dispatchLogical(alloc, logicalOrKernel, left, right, selection)
 }
 
-func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right columnar.Datum) (columnar.Datum, error) {
+func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	if got, want := left.Kind(), columnar.KindBool; got != want {
 		return nil, fmt.Errorf("invalid input kind %s, expected %s", got, want)
 	} else if left.Kind() != right.Kind() {
@@ -97,11 +98,17 @@ func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right 
 	case leftScalar && rightScalar:
 		return logicalSS(kernel, left.(*columnar.BoolScalar), right.(*columnar.BoolScalar)), nil
 	case leftScalar && !rightScalar:
-		return logicalSA(alloc, kernel, left.(*columnar.BoolScalar), right.(*columnar.Bool)), nil
+		out := logicalSA(alloc, kernel, left.(*columnar.BoolScalar), right.(*columnar.Bool))
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && rightScalar:
-		return logicalAS(alloc, kernel, left.(*columnar.Bool), right.(*columnar.BoolScalar)), nil
+		out := logicalAS(alloc, kernel, left.(*columnar.Bool), right.(*columnar.BoolScalar))
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && !rightScalar:
-		return logicalAA(alloc, kernel, left.(*columnar.Bool), right.(*columnar.Bool))
+		out, err := logicalAA(alloc, kernel, left.(*columnar.Bool), right.(*columnar.Bool))
+		if err != nil {
+			return nil, err
+		}
+		return applySelectionToBoolArray(alloc, out, selection)
 	}
 
 	panic("unreachable")

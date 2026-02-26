@@ -18,7 +18,7 @@ import (
 //
 //   - If a value in the haystack is null, the result for that value is null.
 //   - If the regexp is null, the result is null.
-func RegexpMatch(alloc *memory.Allocator, haystack columnar.Datum, regexp *regexp.Regexp) (columnar.Datum, error) {
+func RegexpMatch(alloc *memory.Allocator, haystack columnar.Datum, regexp *regexp.Regexp, selection memory.Bitmap) (columnar.Datum, error) {
 	if haystack.Kind() != columnar.KindUTF8 {
 		return nil, fmt.Errorf("haystack must be UTF-8; got %s", haystack.Kind())
 	}
@@ -27,7 +27,7 @@ func RegexpMatch(alloc *memory.Allocator, haystack columnar.Datum, regexp *regex
 
 	switch {
 	case haystackArray:
-		return regexpMatchAS(alloc, haystack.(*columnar.UTF8), regexp)
+		return regexpMatchAS(alloc, haystack.(*columnar.UTF8), regexp, selection)
 	case !haystackArray:
 		return regexpMatchSS(alloc, haystack.(*columnar.UTF8Scalar), regexp)
 	default:
@@ -35,24 +35,26 @@ func RegexpMatch(alloc *memory.Allocator, haystack columnar.Datum, regexp *regex
 	}
 }
 
-func regexpMatchAS(alloc *memory.Allocator, haystack *columnar.UTF8, regexp *regexp.Regexp) (*columnar.Bool, error) {
-	results := columnar.NewBoolBuilder(alloc)
-	results.Grow(haystack.Len())
-
+func regexpMatchAS(alloc *memory.Allocator, haystack *columnar.UTF8, regexp *regexp.Regexp, selection memory.Bitmap) (*columnar.Bool, error) {
 	if regexp == nil {
-		results.AppendNulls(haystack.Len())
-		return results.Build(), nil
+		builder := columnar.NewBoolBuilder(alloc)
+		builder.AppendNulls(haystack.Len())
+		return builder.Build(), nil
 	}
 
-	for i := range haystack.Len() {
-		if haystack.IsNull(i) {
-			results.AppendNull()
-			continue
-		}
-
-		results.AppendValue(regexp.Match(haystack.Get(i)))
+	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	if err != nil {
+		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
-	return results.Build(), nil
+
+	values := memory.NewBitmap(alloc, haystack.Len())
+	values.Resize(haystack.Len())
+
+	for i := range iterTrue(validity, haystack.Len()) {
+		values.Set(i, regexp.Match(haystack.Get(i)))
+	}
+
+	return columnar.NewBool(values, validity), nil
 }
 
 func regexpMatchSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, regexp *regexp.Regexp) (*columnar.BoolScalar, error) {
@@ -70,7 +72,7 @@ func regexpMatchSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, regexp *r
 //
 //   - If a value in the haystack is null, the result for that value is null.
 //   - If the needle is null, the result is null.
-func SubstrInsensitive(alloc *memory.Allocator, haystack columnar.Datum, needle columnar.Datum) (columnar.Datum, error) {
+func SubstrInsensitive(alloc *memory.Allocator, haystack columnar.Datum, needle columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	if haystack.Kind() != columnar.KindUTF8 || needle.Kind() != columnar.KindUTF8 {
 		return nil, fmt.Errorf("haystack and needle must both be UTF-8; got %s and %s", haystack.Kind(), needle.Kind())
 	}
@@ -83,7 +85,7 @@ func SubstrInsensitive(alloc *memory.Allocator, haystack columnar.Datum, needle 
 
 	switch {
 	case haystackArray:
-		return substrInsensitiveAS(alloc, haystack.(*columnar.UTF8), needle.(*columnar.UTF8Scalar))
+		return substrInsensitiveAS(alloc, haystack.(*columnar.UTF8), needle.(*columnar.UTF8Scalar), selection)
 	case !haystackArray:
 		return substrInsensitiveSS(alloc, haystack.(*columnar.UTF8Scalar), needle.(*columnar.UTF8Scalar))
 	default:
@@ -91,27 +93,29 @@ func SubstrInsensitive(alloc *memory.Allocator, haystack columnar.Datum, needle 
 	}
 }
 
-func substrInsensitiveAS(alloc *memory.Allocator, haystack *columnar.UTF8, needle *columnar.UTF8Scalar) (*columnar.Bool, error) {
-	results := columnar.NewBoolBuilder(alloc)
-	results.Grow(haystack.Len())
-
+func substrInsensitiveAS(alloc *memory.Allocator, haystack *columnar.UTF8, needle *columnar.UTF8Scalar, selection memory.Bitmap) (*columnar.Bool, error) {
 	if needle.IsNull() {
-		results.AppendNulls(haystack.Len())
-		return results.Build(), nil
+		builder := columnar.NewBoolBuilder(alloc)
+		builder.AppendNulls(haystack.Len())
+		return builder.Build(), nil
+	}
+
+	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	if err != nil {
+		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
 
 	needleUpper := bytes.ToUpper(needle.Value)
 
-	for i := range haystack.Len() {
-		if haystack.IsNull(i) {
-			results.AppendNull()
-			continue
-		}
+	values := memory.NewBitmap(alloc, haystack.Len())
+	values.Resize(haystack.Len())
 
+	for i := range iterTrue(validity, haystack.Len()) {
 		haystackValueUpper := bytes.ToUpper(haystack.Get(i))
-		results.AppendValue(bytes.Contains(haystackValueUpper, needleUpper))
+		values.Set(i, bytes.Contains(haystackValueUpper, needleUpper))
 	}
-	return results.Build(), nil
+
+	return columnar.NewBool(values, validity), nil
 }
 
 func substrInsensitiveSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, needle *columnar.UTF8Scalar) (*columnar.BoolScalar, error) {
@@ -132,7 +136,7 @@ func substrInsensitiveSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, nee
 //
 //   - If a value in the haystack is null, the result for that value is null.
 //   - If the needle is null, the result is null.
-func Substr(alloc *memory.Allocator, haystack columnar.Datum, needle columnar.Datum) (columnar.Datum, error) {
+func Substr(alloc *memory.Allocator, haystack columnar.Datum, needle columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	if haystack.Kind() != columnar.KindUTF8 || needle.Kind() != columnar.KindUTF8 {
 		return nil, fmt.Errorf("haystack and needle must both be UTF-8; got %s and %s", haystack.Kind(), needle.Kind())
 	}
@@ -145,7 +149,7 @@ func Substr(alloc *memory.Allocator, haystack columnar.Datum, needle columnar.Da
 
 	switch {
 	case haystackArray:
-		return substrAS(alloc, haystack.(*columnar.UTF8), needle.(*columnar.UTF8Scalar))
+		return substrAS(alloc, haystack.(*columnar.UTF8), needle.(*columnar.UTF8Scalar), selection)
 	case !haystackArray:
 		return substrSS(alloc, haystack.(*columnar.UTF8Scalar), needle.(*columnar.UTF8Scalar))
 	default:
@@ -153,24 +157,26 @@ func Substr(alloc *memory.Allocator, haystack columnar.Datum, needle columnar.Da
 	}
 }
 
-func substrAS(alloc *memory.Allocator, haystack *columnar.UTF8, needle *columnar.UTF8Scalar) (*columnar.Bool, error) {
-	results := columnar.NewBoolBuilder(alloc)
-	results.Grow(haystack.Len())
-
+func substrAS(alloc *memory.Allocator, haystack *columnar.UTF8, needle *columnar.UTF8Scalar, selection memory.Bitmap) (*columnar.Bool, error) {
 	if needle.IsNull() {
-		results.AppendNulls(haystack.Len())
-		return results.Build(), nil
+		builder := columnar.NewBoolBuilder(alloc)
+		builder.AppendNulls(haystack.Len())
+		return builder.Build(), nil
 	}
 
-	for i := range haystack.Len() {
-		if haystack.IsNull(i) {
-			results.AppendNull()
-			continue
-		}
-
-		results.AppendValue(bytes.Contains(haystack.Get(i), needle.Value))
+	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	if err != nil {
+		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
-	return results.Build(), nil
+
+	values := memory.NewBitmap(alloc, haystack.Len())
+	values.Resize(haystack.Len())
+
+	for i := range iterTrue(validity, haystack.Len()) {
+		values.Set(i, bytes.Contains(haystack.Get(i), needle.Value))
+	}
+
+	return columnar.NewBool(values, validity), nil
 }
 
 func substrSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, needle *columnar.UTF8Scalar) (*columnar.BoolScalar, error) {

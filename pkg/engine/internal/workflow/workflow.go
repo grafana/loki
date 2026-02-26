@@ -14,6 +14,8 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -22,10 +24,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-var shortCircuitsTotal = promauto.NewCounter(prometheus.CounterOpts{
-	Name: "loki_engine_v2_task_short_circuits_total",
-	Help: "Total number of tasks preemptively canceled by short circuiting.",
-})
+var (
+	tracer = otel.Tracer("pkg/engine/internal/workflow")
+
+	shortCircuitsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "loki_engine_v2_task_short_circuits_total",
+		Help: "Total number of tasks preemptively canceled by short circuiting.",
+	})
+)
 
 // Options configures a [Workflow].
 type Options struct {
@@ -68,9 +74,12 @@ type Workflow struct {
 	statsMut sync.Mutex
 	stats    stats.Result
 
-	captureMut   sync.Mutex
+	captureMut sync.Mutex
+	// used to merge and link task regions
 	capture      *xcap.Capture
 	parentRegion *xcap.Region
+
+	span trace.Span
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -161,11 +170,18 @@ func (wf *Workflow) String() string {
 	return Sprint(wf)
 }
 
+// Opts returns options of the workflow (mostly for testing purposes).
+func (wf *Workflow) Opts() Options { return wf.opts }
+
 // Len returns the total number of tasks in the workflow.
 func (wf *Workflow) Len() int { return len(wf.manifest.Tasks) }
 
 // Close releases resources associated with the workflow.
 func (wf *Workflow) Close() {
+	if wf.span != nil {
+		wf.span.End()
+	}
+
 	if err := wf.runner.UnregisterManifest(context.Background(), wf.manifest); err != nil {
 		level.Warn(wf.logger).Log("msg", "failed to unregister workflow manifest", "err", err)
 	}
@@ -179,6 +195,9 @@ func (wf *Workflow) Close() {
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
 	wf.capture = xcap.CaptureFromContext(ctx)
 	wf.parentRegion = xcap.RegionFromContext(ctx)
+
+	// wf.Run tracks the lifetime of the workflow execution.
+	ctx, wf.span = xcap.StartSpan(ctx, tracer, "wf.Run")
 
 	wrapped := &wrappedPipeline{
 		inner: wf.resultsPipeline,
@@ -212,10 +231,16 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 		int64(wf.opts.MaxRunningOtherTasks),
 	)
 
-	// Start runner region once per workflow for capturing runner-level observations.
-	// Not calling defer region.End() here, as we want to allow observations to be recorded
-	// until the workflow is Closed.
-	ctx, region := xcap.StartRegion(ctx, "wf.runner")
+	// this span captures the time spent waiting for all tasks to be admitted
+	// but not the time spent to assign them all to workers.
+	//
+	// context is not updated here to avoid making this a parent of
+	// task spans since admission span ends once all tasks are admitted,
+	// but tasks can still be running after it ends.
+	_, span := tracer.Start(ctx, "wf.taskAdmission")
+	defer span.End()
+
+	region := xcap.RegionFromContext(ctx)
 	region.Record(xcap.StatTaskCount.Observe(int64(len(tasks))))
 
 	groups := wf.admissionControl.groupByType(tasks)
@@ -444,7 +469,6 @@ func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
 	}
 
 	if wf.parentRegion != nil {
-		// Assign wf.parentRegion as the parent to all root regions of the task's capture.
 		capture.LinkParent(wf.parentRegion)
 	}
 
@@ -466,6 +490,10 @@ type wrappedPipeline struct {
 
 	inner   executor.Pipeline
 	onClose func()
+}
+
+func (p *wrappedPipeline) Open(ctx context.Context) error {
+	return p.inner.Open(ctx)
 }
 
 func (p *wrappedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
