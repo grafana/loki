@@ -580,7 +580,7 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 			return nil, fmt.Errorf("pointers schema missing stream_id column")
 		}
 
-		rec, err := pr.Read(ctx, 128)
+		rec, err := pr.Read(ctx, 8192)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return nil, err
 		}
@@ -597,7 +597,7 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 			}
 		}
 
-		if errors.Is(err, io.EOF) {
+		if err != nil && errors.Is(err, io.EOF) {
 			// Eager close the pointers reader to release resources.
 			if err := pr.Close(); err != nil {
 				level.Warn(utillog.WithContext(ctx, r.logger)).Log("msg", "error closing pointers reader", "err", err)
@@ -796,7 +796,7 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 		}
 
 		for {
-			rec, err := br.Read(ctx, 128)
+			rec, err := br.Read(ctx, 8192)
 			if err != nil && !errors.Is(err, io.EOF) {
 				return nil, fmt.Errorf("reading bloom record batch: %w", err)
 			}
