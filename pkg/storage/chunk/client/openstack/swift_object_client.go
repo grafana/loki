@@ -69,26 +69,29 @@ type SwiftObjectClient struct {
 
 // SwiftConfig is config for the Swift Chunk Client.
 type SwiftConfig struct {
-	AuthVersion       int            `yaml:"auth_version"`
-	AuthURL           string         `yaml:"auth_url"`
-	Internal          bool           `yaml:"internal"`
-	Username          string         `yaml:"username"`
-	UserDomainName    string         `yaml:"user_domain_name"`
-	UserDomainID      string         `yaml:"user_domain_id"`
-	UserID            string         `yaml:"user_id"`
-	Password          flagext.Secret `yaml:"password"`
-	DomainID          string         `yaml:"domain_id"`
-	DomainName        string         `yaml:"domain_name"`
-	ProjectID         string         `yaml:"project_id"`
-	ProjectName       string         `yaml:"project_name"`
-	ProjectDomainID   string         `yaml:"project_domain_id"`
-	ProjectDomainName string         `yaml:"project_domain_name"`
-	RegionName        string         `yaml:"region_name"`
-	ContainerName     string         `yaml:"container_name"`
-	MaxRetries        int            `yaml:"max_retries" category:"advanced"`
-	ConnectTimeout    time.Duration  `yaml:"connect_timeout" category:"advanced"`
-	RequestTimeout    time.Duration  `yaml:"request_timeout" category:"advanced"`
-	HTTP              HTTPConfig     `yaml:"http"`
+	AuthVersion                 int            `yaml:"auth_version"`
+	AuthURL                     string         `yaml:"auth_url"`
+	Internal                    bool           `yaml:"internal"`
+	Username                    string         `yaml:"username"`
+	UserDomainName              string         `yaml:"user_domain_name"`
+	UserDomainID                string         `yaml:"user_domain_id"`
+	UserID                      string         `yaml:"user_id"`
+	ApplicationCredentialID     string         `yaml:"application_credential_id"`
+	ApplicationCredentialName   string         `yaml:"application_credential_name"`
+	ApplicationCredentialSecret flagext.Secret `yaml:"application_credential_secret"`
+	Password                    flagext.Secret `yaml:"password"`
+	DomainID                    string         `yaml:"domain_id"`
+	DomainName                  string         `yaml:"domain_name"`
+	ProjectID                   string         `yaml:"project_id"`
+	ProjectName                 string         `yaml:"project_name"`
+	ProjectDomainID             string         `yaml:"project_domain_id"`
+	ProjectDomainName           string         `yaml:"project_domain_name"`
+	RegionName                  string         `yaml:"region_name"`
+	ContainerName               string         `yaml:"container_name"`
+	MaxRetries                  int            `yaml:"max_retries" category:"advanced"`
+	ConnectTimeout              time.Duration  `yaml:"connect_timeout" category:"advanced"`
+	RequestTimeout              time.Duration  `yaml:"request_timeout" category:"advanced"`
+	HTTP                        HTTPConfig     `yaml:"http"`
 }
 
 // RegisterFlags registers flags.
@@ -110,6 +113,9 @@ func (cfg *SwiftConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	f.StringVar(&cfg.UserDomainName, prefix+"swift.user-domain-name", "", "OpenStack Swift user's domain name.")
 	f.StringVar(&cfg.UserDomainID, prefix+"swift.user-domain-id", "", "OpenStack Swift user's domain ID.")
 	f.StringVar(&cfg.UserID, prefix+"swift.user-id", "", "OpenStack Swift user ID.")
+	f.StringVar(&cfg.ApplicationCredentialID, prefix+"swift.application-credential-id", "", "OpenStack Swift application credential id.")
+	f.StringVar(&cfg.ApplicationCredentialName, prefix+"swift.application-credential-name", "", "OpenStack Swift application credential name.")
+	f.Var(&cfg.ApplicationCredentialSecret, prefix+"swift.application-credential-secret", "OpenStack Swift application credential secret.")
 	f.Var(&cfg.Password, prefix+"swift.password", "OpenStack Swift API key.")
 	f.StringVar(&cfg.DomainID, prefix+"swift.domain-id", "", "OpenStack Swift user's domain ID.")
 	f.StringVar(&cfg.DomainName, prefix+"swift.domain-name", "", "OpenStack Swift user's domain name.")
@@ -155,23 +161,26 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 	}
 
 	c := &swift.Connection{
-		AuthVersion:    cfg.AuthVersion,
-		AuthUrl:        cfg.AuthURL,
-		Internal:       cfg.Internal,
-		ApiKey:         cfg.Password.String(),
-		UserName:       cfg.Username,
-		UserId:         cfg.UserID,
-		Retries:        cfg.MaxRetries,
-		ConnectTimeout: cfg.ConnectTimeout,
-		Timeout:        cfg.RequestTimeout,
-		TenantId:       cfg.ProjectID,
-		Tenant:         cfg.ProjectName,
-		TenantDomain:   cfg.ProjectDomainName,
-		TenantDomainId: cfg.ProjectDomainID,
-		Domain:         cfg.DomainName,
-		DomainId:       cfg.DomainID,
-		Region:         cfg.RegionName,
-		Transport:      defaultTransport,
+		AuthVersion:                 cfg.AuthVersion,
+		AuthUrl:                     cfg.AuthURL,
+		Internal:                    cfg.Internal,
+		ApiKey:                      cfg.Password.String(),
+		UserName:                    cfg.Username,
+		UserId:                      cfg.UserID,
+		ApplicationCredentialId:     cfg.ApplicationCredentialID,
+		ApplicationCredentialName:   cfg.ApplicationCredentialName,
+		ApplicationCredentialSecret: cfg.ApplicationCredentialSecret.String(),
+		Retries:                     cfg.MaxRetries,
+		ConnectTimeout:              cfg.ConnectTimeout,
+		Timeout:                     cfg.RequestTimeout,
+		TenantId:                    cfg.ProjectID,
+		Tenant:                      cfg.ProjectName,
+		TenantDomain:                cfg.ProjectDomainName,
+		TenantDomainId:              cfg.ProjectDomainID,
+		Domain:                      cfg.DomainName,
+		DomainId:                    cfg.DomainID,
+		Region:                      cfg.RegionName,
+		Transport:                   defaultTransport,
 	}
 
 	switch {
