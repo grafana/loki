@@ -1,7 +1,11 @@
-Case-insensitive searches are currently unsupported.
+Case-insensitive literal should simplify to case-insensitive substring match.
 
 -- column --
 utf8.builtin.message
 
 -- regex --
 (?i)foo
+
+-- expect --
+%1 = MATCH_STR_CASE_INSENSITIVE builtin.message "FOO"
+RETURN %1

@@ -11,7 +11,11 @@ keywords:
 
 # Migrate from SSD to distributed
 
-This guide provides instructions for migrating from a [simple scalable deployment (SSD)](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) to a [distributed microservices deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) of Loki. Before starting the migration, make sure you have read the [considerations](#considerations) section. 
+This guide provides instructions for migrating from a [simple scalable deployment (SSD)](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) to a [distributed microservices deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) of Loki. Before starting the migration, make sure you have read the [considerations](#considerations) section.
+
+{{< admonition type="note" >}}
+Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released. You should plan to migrate from SSD to distributed before Loki 4.0 releases.
+{{< /admonition >}}
 
 {{< admonition type="note" >}}
 In this guide, an AWS deployment is used as an example. However, the migration process is mirrored for other cloud providers. This is due to the fact that no changes are required to the underlying data storage.
@@ -25,7 +29,7 @@ Migrating from a simple scalable deployment to a distributed deployment with zer
 1. **Kubernetes Resources:** This migration method requires you to spin up distributed Loki pods before shutting down the SSD pods. This means that you need to have enough resources in your Kubernetes cluster to run both the SSD and distributed Loki pods at the same time.
 1. **Data:** No changes are required to your underlying data storage. Although data loss or corruption is unlikely, it is always recommended to back up your data before starting the migration process. If you are using a cloud provider you can take a snapshot/backup.
 1. **Configuration:** We do not account for all configuration parameters in this guide. We only cover the parameters that need to be changed. Other parameters can remain the same. **However**, if `pattern_ingesters=true` you will need to spin up `patternIngesters` before shutting down the SSD ingesters. This is primarily needed for the Grafana Logs Drilldown feature.
-1. **Zone Aware Ingesters:** This guide does not currently account for Zone Aware Ingesters. Our current recommendation is to either disable Zone Aware Ingesters or to consult the [Mimir migration guide](https://grafana.com/docs/helm-charts/mimir-distributed/latest/migration-guides/migrate-from-single-zone-with-helm/). Take note, not all parameters are equivalent between Mimir and Loki. 
+1. **Zone Aware Ingesters:** This guide does not currently account for Zone Aware Ingesters. Our current recommendation is to either disable Zone Aware Ingesters or to consult the [Mimir migration guide](https://grafana.com/docs/helm-charts/mimir-distributed/latest/migration-guides/migrate-from-single-zone-with-helm/). Take note, not all parameters are equivalent between Mimir and Loki.
 
 ## Prerequisites
 
@@ -140,6 +144,7 @@ backend (StatefulSet)      |   Compactor + Ruler + Index Gateway
 How Loki handles request routing during the migration:
 
 The Gateway (nginx) handles request routing based on endpoint type:
+
 1. Write Path (`loki/api/v1/push`):
    * Initially routes to Simple Scalable write component
    * Gradually shifted to the Distributor
@@ -258,12 +263,14 @@ To start the migration process:
     ```bash
     helm upgrade --values values-migration.yaml loki grafana/loki -n loki 
     ```
+
    {{< admonition type="caution" >}}
    It is important to allow all components to fully spin up before proceeding to the next stage. You can check the status of the components using the following command:
 
     ```bash
     kubectl get pods -n loki
     ```
+
    Let all components reach the `Running` state before proceeding to the next stage.
    {{< /admonition >}}
 
@@ -276,7 +283,9 @@ The final stage of the migration involves transitioning all traffic to the distr
     ```bash
     cp values-migration.yaml values-distributed.yaml
     ```
+
 1. Next modify the following parameters; `deploymentMode` and components based on the annotations below.
+
    ```yaml
    ---
    loki:
@@ -362,6 +371,7 @@ The final stage of the migration involves transitioning all traffic to the distr
    minio:
      enabled: false
    ```
+   
      Here is a breakdown of the changes:
      * `deploymentMode: Distributed`: This will allow for the distributed components to run in isolation.
      * Scale down all SSD components to `0`.
@@ -382,5 +392,5 @@ You should see all distributed components running and the SSD compontents have n
 
 ## What's next?
 
-Loki in distributed mode is inherently more complex than SSD mode. It is recommended to meta-monitor your Loki deployment to ensure that everything is running smoothly. You can do this by following the [meta-monitoring guide](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/). 
+Loki in distributed mode is inherently more complex than SSD mode. It is recommended to meta-monitor your Loki deployment to ensure that everything is running smoothly. You can do this by following the [meta-monitoring guide](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/).
 

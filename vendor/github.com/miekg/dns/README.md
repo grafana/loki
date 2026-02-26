@@ -6,7 +6,12 @@
 DNS version 2 is now available at <https://codeberg.org/miekg/dns>, check it out if you want to
 help shape the next 15 years of the Go DNS package.
 
-The version here will see no new features and less and less development.
+The version here will see no new features and less and less development, and my time (if any) will be fully
+devoted towards v2.
+
+**December 2025**: v2 should be (already) a good replacement, the coming months would be a good time to
+migrate, see [this file describing the
+differences](https://codeberg.org/miekg/dns/src/branch/main/README-diff-with-v1.md), to help you get started.
 
 # Alternative (more granular) approach to a DNS library
 
@@ -62,7 +67,7 @@ A not-so-up-to-date-list-that-may-be-actually-current:
 - https://www.dnsperf.com/
 - https://dnssectest.net/
 - https://github.com/oif/apex
-- https://github.com/jedisct1/dnscrypt-proxy
+- https://github.com/jedisct1/dnscrypt-proxy (migrated to v2)
 - https://github.com/jedisct1/rpdns
 - https://github.com/xor-gate/sshfp
 - https://github.com/rs/dnstrace

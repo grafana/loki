@@ -508,7 +508,7 @@ func (cl *Client) updateMetadata() (retryWhy multiUpdateWhy, err error) {
 	return retryWhy, nil
 }
 
-// We use a special structure to repesent metadata before we *actually* convert
+// We use a special structure to represent metadata before we *actually* convert
 // it to topicPartitionsData. This helps avoid any pointer reuse problems
 // because we want to keep the client's producer and consumer maps completely
 // independent.  If we just returned map[string]*topicPartitionsData, we could
@@ -650,7 +650,7 @@ func (cl *Client) fetchTopicMetadata(all bool, reqTopics []string) (map[string]*
 		})
 		for i := range topicMeta.Partitions {
 			if got := topicMeta.Partitions[i].Partition; got != int32(i) {
-				mt.loadErr = fmt.Errorf("kafka did not reply with a comprensive set of partitions for a topic; we expected partition %d but saw %d", i, got)
+				mt.loadErr = fmt.Errorf("kafka did not reply with a comprehensive set of partitions for a topic; we expected partition %d but saw %d", i, got)
 				break
 			}
 		}
@@ -924,6 +924,14 @@ func (cl *Client) mergeTopicPartitions(
 	// Anything left with a negative recBufsIdx / cursorsIdx is a new topic
 	// partition and must be added to the sink / source.
 	for _, newTP := range newPartitions {
+		if newTP.loadErr != nil {
+			if isProduce {
+				newTP.records.bumpRepeatedLoadErr(newTP.loadErr)
+			} else if !kerr.IsRetriable(newTP.loadErr) || cl.cfg.keepRetryableFetchErrors {
+				cl.consumer.addFakeReadyForDraining(topic, newTP.partition(), newTP.loadErr, "metadata refresh has a load error on a new partition")
+			}
+			retryWhy.add(topic, newTP.partition(), newTP.loadErr)
+		}
 		if isProduce && newTP.records.recBufsIdx == -1 {
 			newTP.records.sink.addRecBuf(newTP.records)
 			cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new produce partition",

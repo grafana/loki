@@ -307,7 +307,7 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 }
 
 func mustParseLabels(s string) labels.Labels {
-	labels, err := promql_parser.ParseMetric(s)
+	labels, err := promql_parser.NewParser(promql_parser.Options{}).ParseMetric(s)
 	if err != nil {
 		logger.Fatalf("Failed to parse %s", s)
 	}

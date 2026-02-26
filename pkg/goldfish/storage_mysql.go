@@ -77,7 +77,7 @@ func NewMySQLStorage(config StorageConfig, logger log.Logger) (*MySQLStorage, er
 func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample, comparison *ComparisonResult) error {
 	query := `
 		INSERT INTO sampled_queries (
-			correlation_id, tenant_id, user, is_logs_drilldown, query, query_type,
+			correlation_id, tenant_id, user, issuer, is_logs_drilldown, query, query_type,
 			start_time, end_time, step_duration,
 			cell_a_exec_time_ms, cell_b_exec_time_ms,
 			cell_a_queue_time_ms, cell_b_queue_time_ms,
@@ -99,8 +99,9 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 			cell_a_used_new_engine, cell_b_used_new_engine,
 			sampled_at,
 			comparison_status,
-			match_within_tolerance
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			match_within_tolerance,
+			mismatch_cause
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Convert empty span IDs to NULL for database storage
@@ -110,6 +111,12 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 	}
 	if sample.CellBSpanID != "" {
 		cellBSpanID = sample.CellBSpanID
+	}
+
+	// Prepare nullable mismatch_cause (NULL when empty)
+	var mismatchCauseVal any
+	if comparison.MismatchCause != "" {
+		mismatchCauseVal = comparison.MismatchCause
 	}
 
 	// Prepare nullable result storage metadata
@@ -135,6 +142,7 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		sample.CorrelationID,
 		sample.TenantID,
 		sample.User,
+		sample.Issuer,
 		sample.IsLogsDrilldown,
 		sample.Query,
 		sample.QueryType,
@@ -180,6 +188,7 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		sample.SampledAt,
 		comparison.ComparisonStatus,
 		comparison.MatchWithinTolerance,
+		mismatchCauseVal,
 	)
 
 	return err
@@ -199,22 +208,29 @@ func (s *MySQLStorage) StoreComparisonResult(ctx context.Context, result *Compar
 
 	query := `
 		INSERT INTO comparison_outcomes (
-			correlation_id, comparison_status, match_within_tolerance,
+			correlation_id, comparison_status, match_within_tolerance, mismatch_cause,
 			difference_details, performance_metrics,
 			compared_at
-		) VALUES (?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON DUPLICATE KEY UPDATE
 			comparison_status = VALUES(comparison_status),
 			match_within_tolerance = VALUES(match_within_tolerance),
+			mismatch_cause = VALUES(mismatch_cause),
 			difference_details = VALUES(difference_details),
 			performance_metrics = VALUES(performance_metrics),
 			compared_at = VALUES(compared_at)
 	`
 
+	var comparisonMismatchCause any
+	if result.MismatchCause != "" {
+		comparisonMismatchCause = result.MismatchCause
+	}
+
 	_, err = s.db.ExecContext(ctx, query,
 		result.CorrelationID,
 		result.ComparisonStatus,
 		result.MatchWithinTolerance,
+		comparisonMismatchCause,
 		differenceJSON,
 		perfMetricsJSON,
 		result.ComparedAt,
@@ -240,7 +256,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 
 	query := `
 		SELECT
-			correlation_id, tenant_id, user, query, query_type, start_time, end_time, step_duration,
+			correlation_id, tenant_id, user, issuer, query, query_type, start_time, end_time, step_duration,
 			cell_a_exec_time_ms, cell_b_exec_time_ms, cell_a_queue_time_ms, cell_b_queue_time_ms,
 			cell_a_bytes_processed, cell_b_bytes_processed, cell_a_lines_processed, cell_b_lines_processed,
 			cell_a_bytes_per_second, cell_b_bytes_per_second, cell_a_lines_per_second, cell_b_lines_per_second,
@@ -254,7 +270,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
 			sampled_at, created_at,
-			comparison_status, match_within_tolerance
+			comparison_status, match_within_tolerance, mismatch_cause
 		FROM sampled_queries
 		` + whereClause + `
 		ORDER BY sampled_at DESC
@@ -287,7 +303,8 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 		var cellAResultSize, cellBResultSize sql.NullInt64
 
 		err := rows.Scan(
-			&q.CorrelationID, &q.TenantID, &q.User, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
+
+			&q.CorrelationID, &q.TenantID, &q.User, &q.Issuer, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
 			&q.CellAStats.ExecTimeMs, &q.CellBStats.ExecTimeMs, &q.CellAStats.QueueTimeMs, &q.CellBStats.QueueTimeMs,
 			&q.CellAStats.BytesProcessed, &q.CellBStats.BytesProcessed, &q.CellAStats.LinesProcessed, &q.CellBStats.LinesProcessed,
 			&q.CellAStats.BytesPerSecond, &q.CellBStats.BytesPerSecond, &q.CellAStats.LinesPerSecond, &q.CellBStats.LinesPerSecond,
@@ -301,7 +318,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			&cellASpanID, &cellBSpanID,
 			&q.CellAUsedNewEngine, &q.CellBUsedNewEngine,
 			&q.SampledAt, &createdAt,
-			&q.ComparisonStatus, &q.MatchWithinTolerance,
+			&q.ComparisonStatus, &q.MatchWithinTolerance, &q.MismatchCause,
 		)
 		if err != nil {
 			return nil, err
@@ -363,7 +380,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationID string) (*QuerySample, error) {
 	query := `
 		SELECT
-			correlation_id, tenant_id, user, query, query_type, start_time, end_time, step_duration,
+			correlation_id, tenant_id, user, issuer, query, query_type, start_time, end_time, step_duration,
 			cell_a_exec_time_ms, cell_b_exec_time_ms, cell_a_queue_time_ms, cell_b_queue_time_ms,
 			cell_a_bytes_processed, cell_b_bytes_processed, cell_a_lines_processed, cell_b_lines_processed,
 			cell_a_bytes_per_second, cell_b_bytes_per_second, cell_a_lines_per_second, cell_b_lines_per_second,
@@ -376,7 +393,7 @@ func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationI
 			cell_a_trace_id, cell_b_trace_id,
 			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
-			sampled_at, created_at, comparison_status, match_within_tolerance
+			sampled_at, created_at, comparison_status, match_within_tolerance, mismatch_cause
 		FROM sampled_queries
 		WHERE correlation_id = ?
 	`
@@ -390,7 +407,7 @@ func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationI
 	var cellAResultSize, cellBResultSize sql.NullInt64
 
 	err := s.db.QueryRowContext(ctx, query, correlationID).Scan(
-		&q.CorrelationID, &q.TenantID, &q.User, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
+		&q.CorrelationID, &q.TenantID, &q.User, &q.Issuer, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
 		&q.CellAStats.ExecTimeMs, &q.CellBStats.ExecTimeMs, &q.CellAStats.QueueTimeMs, &q.CellBStats.QueueTimeMs,
 		&q.CellAStats.BytesProcessed, &q.CellBStats.BytesProcessed, &q.CellAStats.LinesProcessed, &q.CellBStats.LinesProcessed,
 		&q.CellAStats.BytesPerSecond, &q.CellBStats.BytesPerSecond, &q.CellAStats.LinesPerSecond, &q.CellBStats.LinesPerSecond,
@@ -403,7 +420,7 @@ func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationI
 		&q.CellATraceID, &q.CellBTraceID,
 		&cellASpanID, &cellBSpanID,
 		&q.CellAUsedNewEngine, &q.CellBUsedNewEngine,
-		&q.SampledAt, &createdAt, &q.ComparisonStatus, &q.MatchWithinTolerance,
+		&q.SampledAt, &createdAt, &q.ComparisonStatus, &q.MatchWithinTolerance, &q.MismatchCause,
 	)
 
 	if err != nil {

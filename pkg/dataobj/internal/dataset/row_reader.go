@@ -9,12 +9,13 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// ReaderOptions configures how a [RowReader] will read [Row]s.
-type ReaderOptions struct {
+// RowReaderOptions configures how a [RowReader] will read [Row]s.
+type RowReaderOptions struct {
 	Dataset Dataset // Dataset to read from.
 
 	// Columns to read from the Dataset. It is invalid to provide a Column that
@@ -39,7 +40,7 @@ type ReaderOptions struct {
 
 // A RowReader reads [Row]s from a [Dataset].
 type RowReader struct {
-	opts  ReaderOptions
+	opts  RowReaderOptions
 	ready bool // ready is true if the RowReader has been initialized.
 
 	origColumnLookup     map[Column]int // Find the index of a column in opts.Columns.
@@ -48,35 +49,52 @@ type RowReader struct {
 	dl     *rowReaderDownloader // Bulk page download manager.
 	row    int64                // The current row being read.
 	inner  *basicRowReader      // Underlying reader that reads from columns.
-	ranges rowRanges            // Valid ranges to read across the entire dataset.
-
-	region *xcap.Region // Region for recording statistics.
+	ranges rangeset.Set         // Valid ranges to read across the entire dataset.
 }
 
+var errRowReaderNotOpen = errors.New("row reader not opened")
+
 // NewRowReader creates a new RowReader from the provided options.
-func NewRowReader(opts ReaderOptions) *RowReader {
+//
+// Call [RowReader.Open] before calling [RowReader.Read].
+func NewRowReader(opts RowReaderOptions) *RowReader {
 	var r RowReader
 	r.Reset(opts)
 	return &r
 }
 
+// Open initializes RowReader resources.
+//
+// Open must be called before [RowReader.Read]. Open is safe to call multiple
+// times.
+func (r *RowReader) Open(ctx context.Context) error {
+	if r.ready {
+		return nil
+	}
+
+	if err := r.init(ctx); err != nil {
+		_ = r.Close()
+		return fmt.Errorf("initializing reader: %w", err)
+	}
+	return nil
+}
+
 // Read reads up to the next len(s) rows from r and stores them into s. It
 // returns the number of rows read and any error encountered. At the end of the
 // Dataset, Read returns 0, [io.EOF].
+//
+// Read returns an error if [RowReader.Open] was not called first.
 func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 	if len(s) == 0 {
 		return 0, nil
 	}
 
 	if !r.ready {
-		err := r.init(ctx)
-		if err != nil {
-			return 0, fmt.Errorf("initializing reader: %w", err)
-		}
+		return 0, errRowReaderNotOpen
 	}
 
-	r.region.Record(xcap.StatDatasetReadCalls.Observe(1))
-	ctx = xcap.ContextWithRegion(ctx, r.region)
+	region := xcap.RegionFromContext(ctx)
+	region.Record(xcap.StatDatasetReadCalls.Observe(1))
 
 	// Our Read implementation works by:
 	//
@@ -112,18 +130,18 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 		return 0, fmt.Errorf("failed to seek to row %d: %w", row, err)
 	}
 
-	currentRange, ok := r.ranges.Range(row)
-	if !ok {
+	currentRange := r.ranges.RangeFor(row)
+	if !currentRange.IsValid() {
 		// This should be unreachable; alignToRange already ensures that we're in a
 		// range, or it returns io.EOF.
 		return 0, fmt.Errorf("failed to find range for row %d", row)
 	}
 
-	readSize := min(len(s), int(currentRange.End-row+1))
+	readSize := min(len(s), int(currentRange.End-row))
 
-	readRange := rowRange{
+	readRange := rangeset.Range{
 		Start: row,
-		End:   row + uint64(readSize) - 1,
+		End:   row + uint64(readSize),
 	}
 	r.dl.SetReadRange(readRange)
 
@@ -149,8 +167,8 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 			primaryColumnBytes += s[i].Size()
 		}
 
-		r.region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
-		r.region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
+		region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
+		region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 	} else {
 		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize])
 		if err != nil {
@@ -182,8 +200,8 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 			totalBytesFilled += s[i].Size() - s[i].SizeOfColumns(r.primaryColumnIndexes)
 		}
 
-		r.region.Record(xcap.StatDatasetSecondaryRowsRead.Observe(int64(count)))
-		r.region.Record(xcap.StatDatasetSecondaryRowBytes.Observe(totalBytesFilled))
+		region.Record(xcap.StatDatasetSecondaryRowsRead.Observe(int64(count)))
+		region.Record(xcap.StatDatasetSecondaryRowBytes.Observe(totalBytesFilled))
 	}
 
 	// We only advance r.row after we successfully read and filled rows. This
@@ -268,8 +286,9 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 		readSize = passCount
 	}
 
-	r.region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
-	r.region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
+	region := xcap.RegionFromContext(ctx)
+	region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
+	region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 
 	return rowsRead, passCount, nil
 }
@@ -277,7 +296,7 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 // alignRow returns r.row if it is a valid row in ranges, or adjusts r.row to
 // the next valid row in ranges.
 func (r *RowReader) alignRow() (uint64, error) {
-	if r.ranges.Includes(uint64(r.row)) {
+	if r.ranges.IncludesValue(uint64(r.row)) {
 		return uint64(r.row), nil
 	}
 
@@ -359,8 +378,8 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 // present in s.
 //
 // buildMask will panic if any index in s is outside the range of full.
-func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
-	return func(yield func(rowRange) bool) {
+func buildMask(full rangeset.Range, s []Row) iter.Seq[rangeset.Range] {
+	return func(yield func(rangeset.Range) bool) {
 		// Rows in s are in ascending order, but there may be gaps between rows. We
 		// need to return ranges of rows in full that are not in s.
 		if len(s) == 0 {
@@ -376,10 +395,7 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 			}
 
 			if uint64(row.Index) != start {
-				// If start is 1 and row.Index is 5, then the excluded range is (1, 4):
-				//
-				// (start, row.Index - 1).
-				if !yield(rowRange{Start: start, End: uint64(row.Index) - 1}) {
+				if !yield(rangeset.Range{Start: start, End: uint64(row.Index)}) {
 					return
 				}
 			}
@@ -387,8 +403,8 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 			start = uint64(row.Index) + 1
 		}
 
-		if start <= full.End {
-			if !yield(rowRange{Start: start, End: full.End}) {
+		if start < full.End {
+			if !yield(rangeset.Range{Start: start, End: full.End}) {
 				return
 			}
 		}
@@ -398,8 +414,6 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 // Close closes the RowReader. Closed RowReaders can be reused by calling
 // [RowReader.Reset].
 func (r *RowReader) Close() error {
-	r.region.End()
-
 	if r.inner != nil {
 		return r.inner.Close()
 	}
@@ -409,13 +423,13 @@ func (r *RowReader) Close() error {
 
 // Reset discards any state and resets the RowReader with a new set of options.
 // This permits reusing a RowReader rather than allocating a new one.
-func (r *RowReader) Reset(opts ReaderOptions) {
+func (r *RowReader) Reset(opts RowReaderOptions) {
 	r.opts = opts
 
 	// There's not much work Reset can do without a context, since it needs to
 	// retrieve page info. We'll defer this work to an init function. This also
 	// unfortunately means that we might not reset page readers until the first
-	// call to Read.
+	// call to Open.
 	if r.origColumnLookup == nil {
 		r.origColumnLookup = make(map[Column]int, len(opts.Columns))
 	}
@@ -425,17 +439,14 @@ func (r *RowReader) Reset(opts ReaderOptions) {
 	}
 
 	r.row = 0
-	r.ranges = sliceclear.Clear(r.ranges)
+	r.ranges.Reset()
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
 	r.ready = false
-	r.region = nil
 }
 
 func (r *RowReader) init(ctx context.Context) error {
 	// RowReader.init is kept close to the defition of RowReader.Reset to make it
 	// easier to follow the correctness of resetting + initializing.
-
-	_, r.region = xcap.StartRegion(ctx, "dataset.RowReader")
 
 	// r.validatePredicate must be called before initializing anything else; for
 	// simplicity, other functions assume that the predicate is valid and can
@@ -447,6 +458,9 @@ func (r *RowReader) init(ctx context.Context) error {
 	if err := r.initDownloader(ctx); err != nil {
 		return err
 	}
+	if err := r.prefetchPages(ctx); err != nil {
+		return fmt.Errorf("prefetching pages: %w", err)
+	}
 
 	if r.inner == nil {
 		r.inner = newBasicRowReader(r.allColumns())
@@ -456,6 +470,13 @@ func (r *RowReader) init(ctx context.Context) error {
 
 	r.ready = true
 	return nil
+}
+
+func (r *RowReader) prefetchPages(ctx context.Context) error {
+	if !r.opts.Prefetch {
+		return nil
+	}
+	return r.dl.Prefetch(ctx)
 }
 
 // allColumns returns the full set of column to read. If r was configured with
@@ -489,7 +510,7 @@ func (r *RowReader) secondaryColumns() []Column {
 }
 
 // validatePredicate ensures that all columns used in a predicate have been
-// provided in [ReaderOptions].
+// provided in [RowReaderOptions].
 func (r *RowReader) validatePredicate() error {
 	process := func(c Column) error {
 		_, ok := r.origColumnLookup[c]
@@ -540,6 +561,8 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 	//   2. Add columns with a flag of whether a column is primary or secondary.
 	//   3. Provide the overall dataset row ranges that will be valid to read.
 
+	region := xcap.RegionFromContext(ctx)
+
 	if r.dl == nil {
 		r.dl = newRowReaderDownloader(r.opts.Dataset)
 	} else {
@@ -555,15 +578,15 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 
 		if primary {
 			r.primaryColumnIndexes = append(r.primaryColumnIndexes, i)
-			r.region.Record(xcap.StatDatasetPrimaryColumns.Observe(1))
-			r.region.Record(xcap.StatDatasetPrimaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
+			region.Record(xcap.StatDatasetPrimaryColumns.Observe(1))
+			region.Record(xcap.StatDatasetPrimaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
 		} else {
-			r.region.Record(xcap.StatDatasetSecondaryColumns.Observe(1))
-			r.region.Record(xcap.StatDatasetSecondaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
+			region.Record(xcap.StatDatasetSecondaryColumns.Observe(1))
+			region.Record(xcap.StatDatasetSecondaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
 		}
 	}
 
-	var ranges rowRanges
+	var ranges rangeset.Set
 	var err error
 	if len(r.opts.Predicates) == 0 { // no predicates, build full range
 		ranges, err = r.buildPredicateRanges(ctx, nil)
@@ -571,16 +594,16 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 			return err
 		}
 	} else {
-		for _, p := range r.opts.Predicates {
+		for i, p := range r.opts.Predicates {
 			rr, err := r.buildPredicateRanges(ctx, p)
 			if err != nil {
 				return err
 			}
 
-			if ranges == nil {
+			if i == 0 {
 				ranges = rr
 			} else {
-				ranges = intersectRanges(nil, ranges, rr)
+				ranges = rangeset.Intersect(ranges, rr)
 			}
 		}
 	}
@@ -593,8 +616,8 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 	}
 
-	r.region.Record(xcap.StatDatasetMaxRows.Observe(int64(rowsCount)))
-	r.region.Record(xcap.StatDatasetRowsAfterPruning.Observe(int64(ranges.TotalRowCount())))
+	region.Record(xcap.StatDatasetMaxRows.Observe(int64(rowsCount)))
+	region.Record(xcap.StatDatasetRowsAfterPruning.Observe(int64(ranges.Len())))
 
 	return nil
 }
@@ -648,31 +671,29 @@ func (r *RowReader) fillPrimaryMask(mask *bitmask.Mask) {
 // entire dataset range is valid.
 //
 // r.dl must be initialized before calling buildPredicateRanges.
-func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRanges, error) {
-	// TODO(rfratto): We could be reusing memory for building ranges here.
-
+func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rangeset.Set, error) {
 	switch p := p.(type) {
 	case AndPredicate:
 		left, err := r.buildPredicateRanges(ctx, p.Left)
 		if err != nil {
-			return nil, err
+			return rangeset.Set{}, err
 		}
 		right, err := r.buildPredicateRanges(ctx, p.Right)
 		if err != nil {
-			return nil, err
+			return rangeset.Set{}, err
 		}
-		return intersectRanges(nil, left, right), nil
+		return rangeset.Intersect(left, right), nil
 
 	case OrPredicate:
 		left, err := r.buildPredicateRanges(ctx, p.Left)
 		if err != nil {
-			return nil, err
+			return rangeset.Set{}, err
 		}
 		right, err := r.buildPredicateRanges(ctx, p.Right)
 		if err != nil {
-			return nil, err
+			return rangeset.Set{}, err
 		}
-		return unionRanges(nil, left, right), nil
+		return rangeset.Union(left, right), nil
 
 	case NotPredicate:
 		// De Morgan's laws must be applied to reduce the NotPredicate to a set of
@@ -686,12 +707,12 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rowR
 			for _, column := range r.allColumns() {
 				rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 			}
-			return rowRanges{{Start: 0, End: rowsCount - 1}}, nil
+			return rangeset.From(rangeset.Range{Start: 0, End: rowsCount}), nil
 		}
 		return r.buildPredicateRanges(ctx, simplified)
 
 	case FalsePredicate:
-		return nil, nil // No valid ranges.
+		return rangeset.Set{}, nil // No valid ranges.
 
 	case EqualPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
@@ -715,7 +736,7 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rowR
 		for _, column := range r.allColumns() {
 			rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 		}
-		return rowRanges{{Start: 0, End: rowsCount - 1}}, nil
+		return rangeset.From(rangeset.Range{Start: 0, End: rowsCount}), nil
 
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
@@ -790,15 +811,15 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 // buildColumnPredicateRanges returns a set of rowRanges that are valid based
 // on whether EqualPredicate, InPredicate, GreaterThanPredicate, or LessThanPredicate may be
 // true for each page in a column.
-func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p Predicate) (rowRanges, error) {
+func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p Predicate) (rangeset.Set, error) {
 	// Get the wrapped column so that the result of c.ListPages can be cached.
 	if idx, ok := r.origColumnLookup[c]; ok {
 		c = r.allColumns()[idx]
 	} else {
-		return nil, fmt.Errorf("column %v not found in RowReader columns", c)
+		return rangeset.Set{}, fmt.Errorf("column %v not found in RowReader columns", c)
 	}
 
-	var ranges rowRanges
+	var ranges rangeset.Set
 
 	var (
 		pageStart    int
@@ -810,19 +831,19 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 
 		page, err := result.Value()
 		if err != nil {
-			return nil, err
+			return rangeset.Set{}, err
 		}
 		pageInfo := page.PageDesc()
 		lastPageSize = pageInfo.RowCount
 
-		pageRange := rowRange{
+		pageRange := rangeset.Range{
 			Start: uint64(pageStart),
-			End:   uint64(pageStart + pageInfo.RowCount - 1),
+			End:   uint64(pageStart + pageInfo.RowCount),
 		}
 
 		minValue, maxValue, err := readMinMax(pageInfo.Stats)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read page stats: %w", err)
+			return rangeset.Set{}, fmt.Errorf("failed to read page stats: %w", err)
 		} else if minValue.IsNil() || maxValue.IsNil() {
 			// No stats, so we add the whole range.
 			ranges.Add(pageRange)

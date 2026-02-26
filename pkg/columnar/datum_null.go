@@ -60,6 +60,14 @@ func (arr *Null) Validity() memory.Bitmap { return arr.validity }
 // Size returns the size in bytes of the array's buffers.
 func (arr *Null) Size() int { return arr.validity.Len() / 8 }
 
+// Slice returns a slice of arr from i to j.
+func (arr *Null) Slice(i, j int) Array {
+	if i < 0 || j < i || j > arr.Len() {
+		panic(errorSliceBounds{i, j, arr.Len()})
+	}
+	return NewNull(sliceValidity(arr.validity, i, j))
+}
+
 func (arr *Null) isDatum() {}
 func (arr *Null) isArray() {}
 

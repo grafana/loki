@@ -33,7 +33,7 @@ func TestExecutor_Limit(t *testing.T) {
 	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
-		pipeline := c.executeLimit(ctx, &physical.Limit{}, nil, nil)
+		pipeline := c.executeLimit(ctx, &physical.Limit{}, nil)
 		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, EOF.Error())
 	})
@@ -41,7 +41,7 @@ func TestExecutor_Limit(t *testing.T) {
 	t.Run("multiple inputs result in error", func(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
-		pipeline := c.executeLimit(ctx, &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()}, nil)
+		pipeline := c.executeLimit(ctx, &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()})
 		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, "limit expects exactly one input, got 2")
 	})
@@ -51,7 +51,7 @@ func TestExecutor_Filter(t *testing.T) {
 	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
-		pipeline := c.executeFilter(ctx, &physical.Filter{}, nil, nil)
+		pipeline := c.executeFilter(ctx, &physical.Filter{}, nil)
 		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, EOF.Error())
 	})
@@ -59,7 +59,7 @@ func TestExecutor_Filter(t *testing.T) {
 	t.Run("multiple inputs result in error", func(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
-		pipeline := c.executeFilter(ctx, &physical.Filter{}, []Pipeline{emptyPipeline(), emptyPipeline()}, nil)
+		pipeline := c.executeFilter(ctx, &physical.Filter{}, []Pipeline{emptyPipeline(), emptyPipeline()})
 		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, "filter expects exactly one input, got 2")
 	})
@@ -69,7 +69,7 @@ func TestExecutor_Projection(t *testing.T) {
 	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
-		pipeline := c.executeProjection(ctx, &physical.Projection{}, nil, nil)
+		pipeline := c.executeProjection(ctx, &physical.Projection{}, nil)
 		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, EOF.Error())
 	})
@@ -78,7 +78,7 @@ func TestExecutor_Projection(t *testing.T) {
 		ctx := t.Context()
 		cols := []physical.Expression{}
 		c := &Context{}
-		pipeline := c.executeProjection(ctx, &physical.Projection{Expressions: cols}, []Pipeline{emptyPipeline()}, nil)
+		pipeline := c.executeProjection(ctx, &physical.Projection{Expressions: cols}, []Pipeline{emptyPipeline()})
 		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, "projection expects at least one expression, got 0")
 	})
@@ -86,7 +86,7 @@ func TestExecutor_Projection(t *testing.T) {
 	t.Run("multiple inputs result in error", func(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
-		pipeline := c.executeProjection(ctx, &physical.Projection{}, []Pipeline{emptyPipeline(), emptyPipeline()}, nil)
+		pipeline := c.executeProjection(ctx, &physical.Projection{}, []Pipeline{emptyPipeline(), emptyPipeline()})
 		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, "projection expects exactly one input, got 2")
 	})
@@ -160,7 +160,7 @@ func Test_filterStreamsByLabels(t *testing.T) {
 			}
 
 			filterer := &mockStreamFilterer{shouldFilter: tt.filterFunc}
-			filtered := ctx.filterStreamsByLabels(t.Context(), tt.inputIDs, streamsSection, filterer, nil)
+			filtered := ctx.filterStreamsByLabels(t.Context(), tt.inputIDs, streamsSection, filterer)
 
 			require.Len(t, filtered, tt.expectedCount)
 		})

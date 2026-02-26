@@ -24,15 +24,10 @@ type HTTP2Listener struct {
 	logger log.Logger
 	addr   net.Addr
 
-	connCh    chan *incomingHTTP2Conn
+	incoming  chan *http2Conn
 	closeOnce sync.Once
 	closed    chan struct{}
 	codec     *protobufCodec
-}
-
-type incomingHTTP2Conn struct {
-	conn *http2Conn
-	w    http.ResponseWriter
 }
 
 var (
@@ -41,20 +36,11 @@ var (
 )
 
 type http2ListenerOpts struct {
-	// MaxPendingConns defines the maximum number of pending connections (which are not Accepted yet).
-	MaxPendingConns uint
-
 	// Logger is used for logging.
 	Logger log.Logger
 }
 
 type HTTP2ListenerOptFunc func(*http2ListenerOpts)
-
-func WithHTTP2ListenerMaxPendingConns(maxPendingConns uint) HTTP2ListenerOptFunc {
-	return func(o *http2ListenerOpts) {
-		o.MaxPendingConns = maxPendingConns
-	}
-}
 
 func WithHTTP2ListenerLogger(logger log.Logger) HTTP2ListenerOptFunc {
 	return func(o *http2ListenerOpts) {
@@ -65,8 +51,7 @@ func WithHTTP2ListenerLogger(logger log.Logger) HTTP2ListenerOptFunc {
 // NewHTTP2Listener creates a new HTTP/2 listener on the specified address.
 func NewHTTP2Listener(addr net.Addr, optFuncs ...HTTP2ListenerOptFunc) *HTTP2Listener {
 	opts := http2ListenerOpts{
-		MaxPendingConns: 10,
-		Logger:          log.NewNopLogger(),
+		Logger: log.NewNopLogger(),
 	}
 	for _, optFunc := range optFuncs {
 		optFunc(&opts)
@@ -76,9 +61,9 @@ func NewHTTP2Listener(addr net.Addr, optFuncs ...HTTP2ListenerOptFunc) *HTTP2Lis
 		addr:   addr,
 		logger: opts.Logger,
 
-		connCh: make(chan *incomingHTTP2Conn, opts.MaxPendingConns),
-		closed: make(chan struct{}),
-		codec:  defaultFrameCodec,
+		incoming: make(chan *http2Conn),
+		closed:   make(chan struct{}),
+		codec:    defaultFrameCodec,
 	}
 
 	return l
@@ -124,9 +109,7 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	conn := newHTTP2Conn(l.Addr(), remoteAddr, r.Body, w, rc, l.codec)
 	defer conn.Close()
 
-	incomingConn := &incomingHTTP2Conn{conn: conn, w: w}
-
-	// Try to enqueue the connection without blocking indefinitely
+	// Wait until connection is accepted by HTTP2Listener.Accept(ctx)
 	select {
 	case <-l.closed:
 		err := conn.Close()
@@ -137,8 +120,19 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		http.Error(w, "listener closed", http.StatusServiceUnavailable)
-	case l.connCh <- incomingConn:
-		// read loop exits if a connection is closed or the context is canceled
+
+	case <-r.Context().Done():
+		level.Debug(l.logger).Log("msg", "request context cancelled", err, r.Context().Err())
+		return
+
+	case l.incoming <- conn:
+		// connection accepted
+		w.WriteHeader(http.StatusOK)
+		err := conn.responseController.Flush()
+		if err != nil {
+			level.Error(l.logger).Log("msg", "failed to flush response controller", "err", err.Error())
+			return
+		}
 		conn.readLoop(r.Context())
 	}
 }
@@ -150,13 +144,8 @@ func (l *HTTP2Listener) Accept(ctx context.Context) (Conn, error) {
 		return nil, ctx.Err()
 	case <-l.closed:
 		return nil, net.ErrClosed
-	case incomingConn := <-l.connCh:
-		incomingConn.w.WriteHeader(http.StatusOK)
-		err := incomingConn.conn.responseController.Flush()
-		if err != nil {
-			return nil, fmt.Errorf("flush response: %w", err)
-		}
-		return incomingConn.conn, nil
+	case conn := <-l.incoming:
+		return conn, nil
 	}
 }
 

@@ -25,6 +25,7 @@
         <th>Version</th>
         <th>Deleted</th>
         <th>Update Time</th>
+        <th>Size</th>
         <th>Actions</th>
     </tr>
     </thead>
@@ -37,6 +38,7 @@
             <td>{{ $v.Version }}</td>
             <td>{{ $v.Deleted }}</td>
             <td>{{ $v.UpdateTime }}</td>
+            <td>{{ index $.StoreSizes $k }}</td>
             <td>
                 <a href="?viewKey={{ $k }}&format=json">json</a>
                 | <a href="?viewKey={{ $k }}&format=json-pretty">json-pretty</a>
@@ -46,10 +48,18 @@
         </tr>
     {{ end }}
     </tbody>
+
+    <tfoot>
+        <tr>
+            <td colspan="5" style="text-align: right"><strong>Total:</strong></td>
+            <td>{{ .TotalStoreSize }}</td>
+            <td></td>
+        </tr>
+    </tfoot>
 </table>
 
 <p>Note that value "version" is node-specific. It starts with 0 (on restart), and increases on each received update.
-    Size is in bytes.</p>
+    "Size" shows the encoded size in bytes.</p>
 
 <h2>Memberlist Cluster Members</h2>
 

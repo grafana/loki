@@ -195,7 +195,7 @@ func BenchmarkEncodeLabelsString(b *testing.B) {
 	var err error
 	for n := 0; n < b.N; n++ {
 		data = []byte(lbs.String())
-		decoded, err = parser.ParseMetric(string(data))
+		decoded, err = parser.NewParser(parser.Options{}).ParseMetric(string(data))
 		if err != nil {
 			panic(err)
 		}

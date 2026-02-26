@@ -15,20 +15,6 @@ make lint  # run all linters (use in CI-like environment)
 make format                   # format code (gofmt and goimports)
 ```
 
-### Building the Frontend
-
-The Loki UI/frontend (different from the query-frontend) is located in pkg/ui/frontend and is built with [Vite](https://vitejs.dev/). 
-From pkg/ui/frontend, you can use the following commands.
-
-```bash
-make build          # build the frontend
-make check-deps     # check for vulnerabilities in the frontend dependencies
-make clean          # clean the frontend
-make dev            # start the frontend in development mode
-make lint           # lint the frontend code
-make test           # run the frontend tests
-```
-
 ## Code Style Guidelines
 - Follow standard Go formatting (gofmt/goimports)
 - Import order: standard lib, external packages, then Loki packages

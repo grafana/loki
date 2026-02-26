@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -14,12 +16,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var (
 	errUnimplemented     = errors.New("query contains unimplemented features")
 	unimplementedFeature = func(s string) error { return fmt.Errorf("%w: %s", errUnimplemented, s) }
+
+	tracer = otel.Tracer("pkg/engine/internal/planner/logical")
 )
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
@@ -36,7 +39,7 @@ func BuildPlanWithDeletes(ctx context.Context, params logql.Params, deletes []*d
 
 	switch e := params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		value, err = buildPlanForLogQuery(ctx, e, params, false, 0, deletes)
+		value, err = buildPlanForLogQuery(ctx, e, params, false, 0, params.Start(), deletes)
 	case syntax.SampleExpr:
 		value, err = buildPlanForSampleQuery(ctx, e, params, deletes)
 	default:
@@ -55,15 +58,33 @@ func BuildPlanWithDeletes(ctx context.Context, params logql.Params, deletes []*d
 	return builder.ToPlan()
 }
 
+// alignStartToStepGrid floors start to the nearest epoch-aligned step
+// boundary, matching Prometheus's standard behaviour for range queries.
+// If step is zero (instant query) the original start is returned unchanged.
+func alignStartToStepGrid(start time.Time, step time.Duration) time.Time {
+	if step <= 0 {
+		return start
+	}
+	stepNs := step.Nanoseconds()
+	startNs := start.UnixNano()
+	if rem := startNs % stepNs; rem != 0 {
+		return time.Unix(0, startNs-rem)
+	}
+	return start
+}
+
 // buildPlanForLogQuery builds logical plan operations by traversing [syntax.LogSelectorExpr]
 // isMetricQuery should be set to true if this expr is encountered when processing a [syntax.SampleExpr].
 // rangeInterval should be set to a non-zero value if the query contains [$range].
+// queryStart is the effective start time for the query; for range queries it
+// must already be aligned to the step grid via [alignStartToStepGrid].
 func buildPlanForLogQuery(
 	ctx context.Context,
 	expr syntax.LogSelectorExpr,
 	params logql.Params,
 	isMetricQuery bool,
 	rangeInterval time.Duration,
+	queryStart time.Time,
 	deletes []*deletion.Request,
 ) (Value, error) {
 	var (
@@ -146,7 +167,7 @@ func buildPlanForLogQuery(
 	}
 
 	// SELECT -> Filter
-	start := params.Start()
+	start := queryStart
 	end := params.End()
 	// extend search by rangeInterval to be able to include entries belonging to the [$range] interval.
 	for _, value := range convertQueryRangeToPredicates(start.Add(-rangeInterval), end) {
@@ -284,8 +305,9 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 	}
 
 	rangeInterval := e.Left.Interval
+	alignedStart := alignStartToStepGrid(wc.params.Start(), wc.params.Step())
 
-	logQuery, err := buildPlanForLogQuery(wc.ctx, logSelectorExpr, wc.params, true, rangeInterval, wc.deletes)
+	logQuery, err := buildPlanForLogQuery(wc.ctx, logSelectorExpr, wc.params, true, rangeInterval, alignedStart, wc.deletes)
 	if err != nil {
 		return nil, err
 	}
@@ -318,6 +340,23 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 					Type:   types.ColumnTypeAmbiguous,
 				},
 			})
+
+		// Filter out rows with any errors because rows with errors have invalid numeric values.
+		builder = builder.Select(
+			&BinOp{
+				Left: &BinOp{
+					Left:  NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated),
+					Right: NewLiteral(""),
+					Op:    types.BinaryOpEq,
+				},
+				Right: &BinOp{
+					Left:  NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated),
+					Right: NewLiteral(""),
+					Op:    types.BinaryOpEq,
+				},
+				Op: types.BinaryOpAnd,
+			},
+		)
 	}
 
 	var rangeAggType types.RangeAggregationType
@@ -344,25 +383,8 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 		return nil, errUnimplemented
 	}
 
-	// Filter out rows with any errors from parsing or unwrap stages.
-	builder = builder.Select(
-		&BinOp{
-			Left: &BinOp{
-				Left:  NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated),
-				Right: NewLiteral(""),
-				Op:    types.BinaryOpEq,
-			},
-			Right: &BinOp{
-				Left:  NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated),
-				Right: NewLiteral(""),
-				Op:    types.BinaryOpEq,
-			},
-			Op: types.BinaryOpAnd,
-		},
-	)
-
 	builder = builder.RangeAggregation(
-		convertGrouping(e.Grouping), rangeAggType, wc.params.Start(), wc.params.End(), wc.params.Step(), rangeInterval,
+		convertGrouping(e.Grouping), rangeAggType, alignedStart, wc.params.End(), wc.params.Step(), rangeInterval,
 	)
 
 	switch e.Operation {
@@ -720,8 +742,8 @@ func parseShards(shards []string) (*ShardInfo, error) {
 // There is not need to explicitly signal the optimizer to not push these predicates down,
 // canApplyPredicate already correctly handles this by returning an error if there is a label column ref.
 func buildDeletePredicates(ctx context.Context, deletes []*deletion.Request, params logql.Params, rangeInterval time.Duration) ([]Value, error) {
-	_, region := xcap.StartRegion(ctx, "buildDeletePredicates")
-	defer region.End()
+	_, span := tracer.Start(ctx, "logical.buildDeletePredicates")
+	defer span.End()
 
 	var predicates []Value
 
@@ -868,6 +890,9 @@ func buildDeletePredicates(ctx context.Context, deletes []*deletion.Request, par
 		predicates = append(predicates, p)
 	}
 
-	region.Record(xcap.StatDeletePredicates.Observe(int64(len(predicates))))
+	span.SetAttributes(
+		attribute.Int("predicates", len(predicates)),
+	)
+
 	return predicates, nil
 }

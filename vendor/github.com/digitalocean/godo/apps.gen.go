@@ -319,7 +319,8 @@ type AppIngressSpec struct {
 	LoadBalancer     AppIngressSpecLoadBalancer `json:"load_balancer,omitempty"`
 	LoadBalancerSize int64                      `json:"load_balancer_size,omitempty"`
 	// Rules for configuring HTTP ingress for component routes, CORS, rewrites, and redirects.
-	Rules []*AppIngressSpecRule `json:"rules,omitempty"`
+	Rules        []*AppIngressSpecRule `json:"rules,omitempty"`
+	SecureHeader *AppSecureHeaderSpec  `json:"secure_header,omitempty"`
 }
 
 // AppIngressSpecLoadBalancer the model 'AppIngressSpecLoadBalancer'
@@ -374,6 +375,13 @@ type AppIngressSpecRuleStringMatch struct {
 	// Prefix-based match. For example, `/api` will match `/api`, `/api/`, and any nested paths such as `/api/v1/endpoint`.
 	Prefix string `json:"prefix,omitempty"`
 	Exact  string `json:"exact,omitempty"`
+}
+
+type AppSecureHeaderSpec struct {
+	// The name of the header to set.
+	Key string `json:"key,omitempty"`
+	// The value of the header to set.
+	Value string `json:"value,omitempty"`
 }
 
 // AppInstance struct for AppInstance
@@ -565,9 +573,11 @@ type AppServiceSpec struct {
 	// A list of configured alerts which apply to the component.
 	Alerts []*AppAlertSpec `json:"alerts,omitempty"`
 	// A list of configured log forwarding destinations.
-	LogDestinations     []*AppLogDestinationSpec   `json:"log_destinations,omitempty"`
-	Termination         *AppServiceSpecTermination `json:"termination,omitempty"`
-	LivenessHealthCheck *HealthCheckSpec           `json:"liveness_health_check,omitempty"`
+	LogDestinations []*AppLogDestinationSpec   `json:"log_destinations,omitempty"`
+	Termination     *AppServiceSpecTermination `json:"termination,omitempty"`
+	// A configuration for putting the service to sleep after it has been inactive. Note: this is in Private Preview.
+	InactivitySleep     *AppServiceSpecInactivitySleep `json:"inactivity_sleep,omitempty"`
+	LivenessHealthCheck *HealthCheckSpec               `json:"liveness_health_check,omitempty"`
 }
 
 // AppServiceSpecHealthCheck struct for AppServiceSpecHealthCheck
@@ -588,6 +598,13 @@ type AppServiceSpecHealthCheck struct {
 	HTTPPath string `json:"http_path,omitempty"`
 	// The port on which the health check will be performed. If not set, the health check will be performed on the component's http_port.
 	Port int64 `json:"port,omitempty"`
+}
+
+// AppServiceSpecInactivitySleep struct for AppServiceSpecInactivitySleep
+type AppServiceSpecInactivitySleep struct {
+	// The number of seconds to wait before putting the service to sleep after it has been inactive. Minimum 600, Maximum 86400.
+	AfterSeconds int32                       `json:"after_seconds,omitempty"`
+	LoadingPage  *InactivitySleepLoadingPage `json:"loading_page,omitempty"`
 }
 
 // AppServiceSpecTermination struct for AppServiceSpecTermination
@@ -1319,6 +1336,14 @@ const (
 	ImageSourceSpecRegistryType_DockerHub   ImageSourceSpecRegistryType = "DOCKER_HUB"
 	ImageSourceSpecRegistryType_Ghcr        ImageSourceSpecRegistryType = "GHCR"
 )
+
+// InactivitySleepLoadingPage struct for InactivitySleepLoadingPage
+type InactivitySleepLoadingPage struct {
+	// Whether to show a loading page while the service is waking up from sleep. Defaults to false. If this is enabled and there is a request header `Accept` containing `text/html`, then the app will show a loading page with a 503 status code until the service is woken up.
+	Enabled bool `json:"enabled,omitempty"`
+	// A custom loading page to display when the service is woken up from sleep. If not provided, a default loading page will be shown.
+	CustomURL string `json:"custom_url,omitempty"`
+}
 
 // AppInstanceSize struct for AppInstanceSize
 type AppInstanceSize struct {

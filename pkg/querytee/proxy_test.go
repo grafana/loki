@@ -17,10 +17,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 var testReadRoutes = []Route{
-	{Path: "/loki/api/v1/query", RouteName: "api_v1_query", Methods: []string{"GET"}, ResponseComparator: &testComparator{}},
+	{Path: constants.PathLokiQuery, RouteName: "api_v1_query", Methods: []string{"GET"}, ResponseComparator: &testComparator{}},
 }
 
 var testWriteRoutes = []Route{}
@@ -62,22 +63,22 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 	}{
 		"one backend returning 2xx": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/loki/api/v1/query", 200, querySingleMetric1)},
+				{handler: mockQueryResponse(constants.PathLokiQuery, 200, querySingleMetric1)},
 			},
 			expectedStatus: 200,
 			expectedRes:    querySingleMetric1,
 		},
 		"one backend returning 5xx": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/loki/api/v1/query", 500, "")},
+				{handler: mockQueryResponse(constants.PathLokiQuery, 500, "")},
 			},
 			expectedStatus: 500,
 			expectedRes:    "",
 		},
 		"two backends without path prefix": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/loki/api/v1/query", 200, querySingleMetric1)},
-				{handler: mockQueryResponse("/loki/api/v1/query", 200, querySingleMetric2)},
+				{handler: mockQueryResponse(constants.PathLokiQuery, 200, querySingleMetric1)},
+				{handler: mockQueryResponse(constants.PathLokiQuery, 200, querySingleMetric2)},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      200,
@@ -87,11 +88,11 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			backends: []mockedBackend{
 				{
 					pathPrefix: "/api/prom",
-					handler:    mockQueryResponse("/api/prom/loki/api/v1/query", 200, querySingleMetric1),
+					handler:    mockQueryResponse("/api/prom"+constants.PathLokiQuery, 200, querySingleMetric1),
 				},
 				{
 					pathPrefix: "/api/prom",
-					handler:    mockQueryResponse("/api/prom/loki/api/v1/query", 200, querySingleMetric2),
+					handler:    mockQueryResponse("/api/prom"+constants.PathLokiQuery, 200, querySingleMetric2),
 				},
 			},
 			preferredBackendIdx: 0,
@@ -102,11 +103,11 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			backends: []mockedBackend{
 				{
 					pathPrefix: "/prefix-1",
-					handler:    mockQueryResponse("/prefix-1/loki/api/v1/query", 200, querySingleMetric1),
+					handler:    mockQueryResponse("/prefix-1"+constants.PathLokiQuery, 200, querySingleMetric1),
 				},
 				{
 					pathPrefix: "/prefix-2",
-					handler:    mockQueryResponse("/prefix-2/loki/api/v1/query", 200, querySingleMetric2),
+					handler:    mockQueryResponse("/prefix-2"+constants.PathLokiQuery, 200, querySingleMetric2),
 				},
 			},
 			preferredBackendIdx: 0,
@@ -115,8 +116,8 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"preferred backend returns 4xx": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/loki/api/v1/query", 400, "")},
-				{handler: mockQueryResponse("/loki/api/v1/query", 200, querySingleMetric1)},
+				{handler: mockQueryResponse(constants.PathLokiQuery, 400, "")},
+				{handler: mockQueryResponse(constants.PathLokiQuery, 200, querySingleMetric1)},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      400,
@@ -124,8 +125,8 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"preferred backend returns 5xx": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/loki/api/v1/query", 500, "")},
-				{handler: mockQueryResponse("/loki/api/v1/query", 200, querySingleMetric1)},
+				{handler: mockQueryResponse(constants.PathLokiQuery, 500, "")},
+				{handler: mockQueryResponse(constants.PathLokiQuery, 200, querySingleMetric1)},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      200,
@@ -133,8 +134,8 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"non-preferred backend returns 5xx": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/loki/api/v1/query", 200, querySingleMetric1)},
-				{handler: mockQueryResponse("/loki/api/v1/query", 500, "")},
+				{handler: mockQueryResponse(constants.PathLokiQuery, 200, querySingleMetric1)},
+				{handler: mockQueryResponse(constants.PathLokiQuery, 500, "")},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      200,
@@ -142,8 +143,8 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"all backends returns 5xx": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/loki/api/v1/query", 500, "")},
-				{handler: mockQueryResponse("/loki/api/v1/query", 500, "")},
+				{handler: mockQueryResponse(constants.PathLokiQuery, 500, "")},
+				{handler: mockQueryResponse(constants.PathLokiQuery, 500, "")},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      500,
@@ -186,7 +187,7 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			require.NoError(t, p.Start())
 
 			// Send a query request to the proxy.
-			req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/loki/api/v1/query?query=rate({job=\"test\"}[5m])", p.Endpoint()), nil)
+			req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s?query=rate({job=\"test\"}[5m])", p.Endpoint(), constants.PathLokiQuery), nil)
 			require.NoError(t, err)
 			req.Header.Set("X-Scope-OrgID", "test-tenant")
 

@@ -44,9 +44,10 @@ func (p *PubSubPool) NewConn(ctx context.Context, network string, addr string, c
 	}
 	cn := NewConnWithBufferSize(netConn, p.opt.ReadBufferSize, p.opt.WriteBufferSize)
 	cn.pubsub = true
+	// Set pool name for metrics
+	cn.SetPoolName(p.opt.Name)
 	atomic.AddUint32(&p.stats.Created, 1)
 	return cn, nil
-
 }
 
 func (p *PubSubPool) TrackConn(cn *Conn) {

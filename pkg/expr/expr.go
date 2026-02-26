@@ -1,5 +1,5 @@
 // Package expr provides utilities for evaluating expressions against a
-// [columnar.RecordBatch].
+// [columnar.RecordBatch] with a selection vector.
 //
 // Package expr is EXPERIMENTAL and currently only intended to be used by
 // [github.com/grafana/loki/v3/pkg/dataobj].
@@ -52,6 +52,11 @@ type (
 	//
 	// Regexp cannot be evaluated directly into a datum.
 	Regexp struct{ Expression *regexp.Regexp }
+
+	// ValueSet is an [Expression] used as the right-hand side of a [BinaryOpIn].
+	//
+	// ValueSet cannot be evaluated directly into a datum.
+	ValueSet struct{ Values *columnar.Set }
 )
 
 func (*Constant) isExpr() {}
@@ -59,3 +64,4 @@ func (*Column) isExpr()   {}
 func (*Unary) isExpr()    {}
 func (*Binary) isExpr()   {}
 func (*Regexp) isExpr()   {}
+func (*ValueSet) isExpr() {}

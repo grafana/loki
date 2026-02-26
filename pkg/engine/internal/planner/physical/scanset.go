@@ -84,8 +84,7 @@ func (s *ScanSet) Clone() Node {
 	}
 
 	return &ScanSet{
-		NodeID: ulid.Make(),
-
+		NodeID:  ulid.Make(),
 		Targets: newTargets,
 	}
 }
@@ -106,8 +105,8 @@ func (s *ScanSet) Shards() iter.Seq[Node] {
 			switch target.Type {
 			case ScanTypeDataObject:
 				node := target.DataObject.Clone().(*DataObjScan)
-				node.Projections = cloneExpressions(s.Projections)
-				node.Predicates = cloneExpressions(s.Predicates)
+				node.Projections = cloneExpressions(append(s.Projections, node.Projections...))
+				node.Predicates = cloneExpressions(append(s.Predicates, node.Predicates...))
 
 				// Preserve the original NodeID from the target's DataObjScan to
 				// maintain traceability. This allows sharded nodes to be traced
