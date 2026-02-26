@@ -204,7 +204,7 @@ func (i *TSDBIndex) forSeriesAndLabels(ctx context.Context, fpFilter index.Finge
 // Same as ForSeries, but the callback fn does not take a Labels parameter.
 func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
 	chks := ChunkMetasPool.Get()
-	defer ChunkMetasPool.Put(chks)
+	defer func() { ChunkMetasPool.Put(chks) }()
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		for p.Next() {
