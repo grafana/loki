@@ -268,6 +268,7 @@ func (is *indexSet) upload() error {
 
 	defer func() {
 		filePath := idx.Path()
+		sectionsFilePath := filePath + ".sections"
 
 		if err := idx.Close(); err != nil {
 			level.Error(is.logger).Log("msg", "failed to close indexFile", "err", err)
@@ -276,6 +277,11 @@ func (is *indexSet) upload() error {
 
 		if err := os.Remove(filePath); err != nil {
 			level.Error(is.logger).Log("msg", "failed to remove indexFile", "err", err)
+			return
+		}
+
+		if err := os.Remove(sectionsFilePath); err != nil && !os.IsNotExist(err) {
+			level.Error(is.logger).Log("msg", "failed to remove sections table file", "err", err)
 			return
 		}
 	}()
@@ -334,7 +340,22 @@ func (is *indexSet) upload() error {
 		return err
 	}
 
-	return is.baseIndexSet.PutFile(is.ctx, is.tableName, is.userID, fmt.Sprintf("%s.gz", fileName), f)
+	if err := is.baseIndexSet.PutFile(is.ctx, is.tableName, is.userID, fmt.Sprintf("%s.gz", fileName), f); err != nil {
+		return err
+	}
+
+	sectionsFileName := fileName + ".sections"
+	sectionsFilePath := idxPath + ".sections"
+
+	_, err = os.Stat(sectionsFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	return uploadCompressedFile(is.ctx, is.baseIndexSet, is.tableName, is.userID, sectionsFilePath, fmt.Sprintf("%s.gz", sectionsFileName))
 }
 
 // removeFilesFromStorage deletes source objects from storage.
@@ -342,13 +363,76 @@ func (is *indexSet) removeFilesFromStorage() error {
 	level.Info(is.logger).Log("msg", "removing source db files from storage", "count", len(is.sourceObjects))
 
 	for _, object := range is.sourceObjects {
-		err := is.baseIndexSet.DeleteFile(is.ctx, is.tableName, is.userID, object.Name)
-		if err != nil {
+		if err := is.deleteFileIgnoreNotFound(object.Name); err != nil {
+			return err
+		}
+
+		sectionsFileName := strings.TrimSuffix(object.Name, ".gz") + ".sections.gz"
+		if sectionsFileName == object.Name {
+			continue
+		}
+
+		if err := is.deleteFileIgnoreNotFound(sectionsFileName); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (is *indexSet) deleteFileIgnoreNotFound(fileName string) error {
+	err := is.baseIndexSet.DeleteFile(is.ctx, is.tableName, is.userID, fileName)
+	if err != nil && !is.baseIndexSet.IsFileNotFoundErr(err) {
+		return err
+	}
+	return nil
+}
+
+func uploadCompressedFile(ctx context.Context, indexSet storage.IndexSet, tableName, userID, srcPath, dstName string) error {
+	filePath := fmt.Sprintf("%s%s", srcPath, ".temp")
+	f, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close temp file", "path", filePath, "err", err)
+		}
+		if err := os.Remove(filePath); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to remove temp file", "path", filePath, "err", err)
+		}
+	}()
+
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := src.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close source file", "path", srcPath, "err", err)
+		}
+	}()
+
+	gzipPool := compression.GetWriterPool(compression.GZIP)
+	compressedWriter := gzipPool.GetWriter(f)
+	defer gzipPool.PutWriter(compressedWriter)
+
+	if _, err := io.Copy(compressedWriter, src); err != nil {
+		return err
+	}
+
+	if err := compressedWriter.Close(); err != nil {
+		return err
+	}
+
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if _, err := f.Seek(0, 0); err != nil {
+		return err
+	}
+
+	return indexSet.PutFile(ctx, tableName, userID, dstName, f)
 }
 
 // done takes care of file operations which includes:

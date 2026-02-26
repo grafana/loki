@@ -578,7 +578,7 @@ func TestCompactor_Compact(t *testing.T) {
 						defer initializedIndexSetsMtx.Unlock()
 						initializedIndexSets[userID] = idxSet
 						return idxSet, nil
-					}, periodConfig)
+					}, periodConfig, false)
 
 					require.NoError(t, tCompactor.CompactTable())
 
@@ -1045,7 +1045,7 @@ func TestSetupBuilder_ManyFiles(t *testing.T) {
 	// This should complete without errors even with many files
 	// because files are closed immediately after processing
 	ctx := context.Background()
-	builder, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{})
+	builder, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{}, nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, builder)
 
