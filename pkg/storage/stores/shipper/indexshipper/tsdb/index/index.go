@@ -56,6 +56,10 @@ const (
 	// FormatV3 represents 3 version of index. It adds support for
 	// paging through batches of chunks within a series
 	FormatV3 = 3
+	// FormatV4 represents version 4 of the index. It extends V3 by
+	// appending a varint64 StreamID to each serialized ChunkMeta entry,
+	// used for dataobj section indexing.
+	FormatV4 = 4
 
 	IndexFilename = "index"
 
@@ -496,6 +500,10 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 }
 
 func (w *Creator) addChunks(chunks []ChunkMeta, primary, scratch *encoding.Encbuf, pageSize int) {
+	if w.Version >= FormatV4 {
+		w.addChunksV4(chunks, primary, scratch, pageSize)
+		return
+	}
 	if w.Version > FormatV2 {
 		w.addChunksV3(chunks, primary, scratch, pageSize)
 		return
@@ -596,6 +604,62 @@ func (w *Creator) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Enc
 		// -4 for the length of the u32 field we just wrote
 		primary.Skip(-diff - 4)
 
+	}
+
+	primary.PutBytes(scratch.Get())
+}
+
+func (w *Creator) addChunksV4(chunks []ChunkMeta, primary, scratch *encoding.Encbuf, chunkPageSize int) {
+	scratch.Reset()
+
+	primary.PutUvarint(len(chunks))
+	markersLnOffset := primary.Len()
+	primary.PutBE32(0)
+
+	markersStart := primary.Len()
+
+	nMarkers := len(chunks) / chunkPageSize
+	if len(chunks)%chunkPageSize != 0 {
+		nMarkers++
+	}
+	primary.PutUvarint(nMarkers)
+
+	chunksStart := scratch.Len()
+	markerOffset := 0
+
+	if len(chunks) > 0 {
+		var t0 int64
+		var pageMarker chunkPageMarker
+
+		for i, c := range chunks {
+			pageMarker.combine(c)
+
+			w.toc.Metadata.EnsureBounds(c.MinTime, c.MaxTime)
+			scratch.PutVarint64(c.MinTime - t0)
+			scratch.PutUvarint64(uint64(c.MaxTime - c.MinTime))
+			scratch.PutUvarint32(c.KB)
+			scratch.PutUvarint32(c.Entries)
+			t0 = c.MaxTime
+
+			scratch.PutBE32(c.Checksum)
+			scratch.PutVarint64(c.StreamID)
+
+			if i%chunkPageSize == chunkPageSize-1 {
+				pageMarker.encode(primary, markerOffset, chunkPageSize)
+				pageMarker.clear()
+				markerOffset = scratch.Len() - chunksStart
+			}
+		}
+
+		if rem := len(chunks) % chunkPageSize; rem != 0 {
+			pageMarker.encode(primary, markerOffset, rem)
+		}
+
+		markersLn := primary.Len() - markersStart
+		diff := markersLnOffset - primary.Len()
+		primary.Skip(diff)
+		primary.PutBE32(uint32(markersLn))
+		primary.Skip(-diff - 4)
 	}
 
 	primary.PutBytes(scratch.Get())
@@ -1286,7 +1350,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 	}
 	r.version = int(r.b.Range(4, 5)[0])
 
-	if r.version != FormatV1 && r.version != FormatV2 && r.version != FormatV3 {
+	if r.version != FormatV1 && r.version != FormatV2 && r.version != FormatV3 && r.version != FormatV4 {
 		return nil, errors.Errorf("unknown index file version %d", r.version)
 	}
 
@@ -2366,7 +2430,9 @@ func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, f
 }
 
 func (dec *Decoder) readChunks(version int, d *encoding.Decbuf, seriesRef storage.SeriesRef, from int64, through int64, chks *[]ChunkMeta) error {
-	// read chunks based on fmt
+	if version >= FormatV4 {
+		return dec.readChunksV4(d, from, through, chks)
+	}
 	if version > FormatV2 {
 		return dec.readChunksV3(d, from, through, chks)
 	}
@@ -2428,6 +2494,70 @@ iterate:
 			err = readChunkMetaWithForcedMintime(d, marker.MinTime, chunkMeta, true)
 		} else {
 			err = readChunkMeta(d, prevMaxT, chunkMeta)
+		}
+		if err != nil {
+			return errors.Wrapf(d.Err(), "read meta for chunk %d", nChunks-chunksRemaining+i)
+		}
+		prevMaxT = chunkMeta.MaxTime
+
+		if overlap(from, through, chunkMeta.MinTime, chunkMeta.MaxTime) {
+			*chks = append(*chks, *chunkMeta)
+		} else if chunkMeta.MinTime >= through {
+			break
+		}
+	}
+
+	return d.Err()
+}
+
+func (dec *Decoder) readChunksV4(d *encoding.Decbuf, from int64, through int64, chks *[]ChunkMeta) error {
+	nChunks := d.Uvarint()
+	chunksRemaining := nChunks
+
+	markersLn := int(d.Be32())
+
+	var (
+		nMarkers     int
+		marker       chunkPageMarker
+		prevMaxT     int64
+		forceMinTime bool
+	)
+
+	startMarkers := d.Len()
+	if nChunks < dec.maxChunksToBypassMarkerLookup {
+		d.Skip(markersLn)
+		goto iterate
+	}
+
+	nMarkers = d.Uvarint()
+
+	for i := 0; i < nMarkers; i++ {
+		marker.decode(d)
+		forceMinTime = true
+
+		if overlap(from, through, marker.MinTime, marker.MaxTime) {
+			d.Skip(markersLn - (startMarkers - d.Len()))
+			d.Skip(marker.Offset)
+			goto iterate
+		}
+
+		prevMaxT = marker.MaxTime
+		chunksRemaining -= marker.ChunksInPage
+	}
+
+	if d.Err() != nil {
+		return errors.Wrap(d.Err(), "read chunk markers")
+	}
+	return nil
+
+iterate:
+	for i := 0; i < chunksRemaining; i++ {
+		chunkMeta := &ChunkMeta{}
+		var err error
+		if i == 0 && forceMinTime {
+			err = readChunkMetaV4WithForcedMintime(d, marker.MinTime, chunkMeta, true)
+		} else {
+			err = readChunkMetaV4(d, prevMaxT, chunkMeta)
 		}
 		if err != nil {
 			return errors.Wrapf(d.Err(), "read meta for chunk %d", nChunks-chunksRemaining+i)
@@ -2506,6 +2636,29 @@ func readChunkMetaWithForcedMintime(d *encoding.Decbuf, mint int64, chunkMeta *C
 	chunkMeta.KB = uint32(d.Uvarint())
 	chunkMeta.Entries = uint32(d.Uvarint64())
 	chunkMeta.Checksum = d.Be32()
+
+	if d.Err() != nil {
+		return d.Err()
+	}
+
+	return nil
+}
+
+func readChunkMetaV4(d *encoding.Decbuf, prevChunkMaxt int64, chunkMeta *ChunkMeta) error {
+	mint := d.Varint64() + prevChunkMaxt
+	return readChunkMetaV4WithForcedMintime(d, mint, chunkMeta, false)
+}
+
+func readChunkMetaV4WithForcedMintime(d *encoding.Decbuf, mint int64, chunkMeta *ChunkMeta, decodeMinT bool) error {
+	if decodeMinT {
+		d.Varint64()
+	}
+	chunkMeta.MinTime = mint
+	chunkMeta.MaxTime = int64(d.Uvarint64()) + chunkMeta.MinTime
+	chunkMeta.KB = uint32(d.Uvarint())
+	chunkMeta.Entries = uint32(d.Uvarint64())
+	chunkMeta.Checksum = d.Be32()
+	chunkMeta.StreamID = d.Varint64()
 
 	if d.Err() != nil {
 		return d.Err()
