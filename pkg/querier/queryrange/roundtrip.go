@@ -690,7 +690,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 				func(_ context.Context, r base.Request) bool {
 					return !r.GetCachingOptions().Disabled
 				},
-				cfg.Transformer,
+				NewDefaultLogCacheKeyGenerator(limits, cfg.Transformer),
 				metrics.LogResultCacheMetrics,
 			)
 			chunksEngineMWs = append(

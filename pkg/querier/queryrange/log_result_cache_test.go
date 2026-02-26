@@ -36,7 +36,9 @@ func Test_LogResultCacheSameRange(t *testing.T) {
 			},
 			cache.NewMockCache(),
 			nil,
-			nil,
+			NewDefaultLogCacheKeyGenerator(fakeLimits{
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
+			}, nil),
 			nil,
 		)
 	)
@@ -78,7 +80,9 @@ func Test_LogResultCacheSameRangeNonEmpty(t *testing.T) {
 			},
 			cache.NewMockCache(),
 			nil,
-			nil,
+			NewDefaultLogCacheKeyGenerator(fakeLimits{
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
+			}, nil),
 			nil,
 		)
 	)
@@ -126,7 +130,9 @@ func Test_LogResultCacheSmallerRange(t *testing.T) {
 			},
 			cache.NewMockCache(),
 			nil,
-			nil,
+			NewDefaultLogCacheKeyGenerator(fakeLimits{
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
+			}, nil),
 			nil,
 		)
 	)
@@ -176,7 +182,9 @@ func Test_LogResultCacheDifferentRange(t *testing.T) {
 			},
 			cache.NewMockCache(),
 			nil,
-			nil,
+			NewDefaultLogCacheKeyGenerator(fakeLimits{
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
+			}, nil),
 			nil,
 		)
 	)
@@ -252,7 +260,9 @@ func Test_LogResultCacheDifferentRangeNonEmpty(t *testing.T) {
 			},
 			cache.NewMockCache(),
 			nil,
-			nil,
+			NewDefaultLogCacheKeyGenerator(fakeLimits{
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
+			}, nil),
 			nil,
 		)
 	)
@@ -339,7 +349,9 @@ func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
 			},
 			cache.NewMockCache(),
 			nil,
-			nil,
+			NewDefaultLogCacheKeyGenerator(fakeLimits{
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
+			}, nil),
 			nil,
 		)
 	)
@@ -449,7 +461,9 @@ func Test_LogResultNonOverlappingCache(t *testing.T) {
 			},
 			mockCache,
 			nil,
-			nil,
+			NewDefaultLogCacheKeyGenerator(fakeLimits{
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
+			}, nil),
 			metrics,
 		)
 	)
@@ -590,7 +604,9 @@ func Test_LogResultCacheDifferentLimit(t *testing.T) {
 			},
 			cache.NewMockCache(),
 			nil,
-			nil,
+			NewDefaultLogCacheKeyGenerator(fakeLimits{
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
+			}, nil),
 			nil,
 		)
 	)

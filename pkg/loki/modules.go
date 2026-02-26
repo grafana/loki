@@ -1465,7 +1465,20 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		}
 
 		httpMiddleware := middleware.Merge(toMerge...)
-		handler := httpMiddleware.Wrap(engine_v2.Handler(t.Cfg.QueryEngine, logger, engine, t.Overrides))
+
+		c, err := cache.New(t.Cfg.QueryEngine.ResultsCache.CacheConfig, prometheus.DefaultRegisterer, logger, stats.ResultCache, "engine-query-results")
+		if err != nil {
+			return nil, fmt.Errorf("creating engine results cache: %w", err)
+		}
+
+		engineHandler, err := engine_v2.Handler(
+			t.Cfg.QueryEngine, logger, engine, t.Overrides,
+			c, prometheus.DefaultRegisterer,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("creating engine handler: %w", err)
+		}
+		handler := httpMiddleware.Wrap(engineHandler)
 
 		t.Server.HTTP.Path(constants.PathLokiQueryRange).Methods("GET", "POST").Handler(handler)
 		t.Server.HTTP.Path(constants.PathLokiQuery).Methods("GET", "POST").Handler(handler)

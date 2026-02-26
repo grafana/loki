@@ -48,6 +48,12 @@ type mockLimits struct {
 	RetentionLimits
 }
 
+func (m *mockLimits) MaxCacheFreshness(_ context.Context, _ string) time.Duration { return 0 }
+func (m *mockLimits) MaxQueryParallelism(_ context.Context, _ string) int         { return 1 }
+func (m *mockLimits) EngineResultsCacheTimeBucketInterval(_ string) time.Duration {
+	return 24 * time.Hour
+}
+
 func TestHandler(t *testing.T) {
 	cfg := Config{
 		Executor: ExecutorConfig{
@@ -59,7 +65,8 @@ func TestHandler(t *testing.T) {
 	eng := &mockEngine{}
 	limits := &mockLimits{}
 
-	handler := executorHandler(cfg, logger, eng, limits)
+	handler, err := executorHandler(cfg, logger, eng, limits, nil, nil)
+	require.NoError(t, err)
 	require.NotNil(t, handler)
 }
 
