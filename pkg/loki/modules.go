@@ -2000,7 +2000,12 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		bloomQuerier = bloomgateway.NewQuerier(t.bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
 
-	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, t.Overrides, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier)
+	// TODO(dataobj): Wire a DataobjResolver here when TSDB-based dataobj
+	// indexing is deployed. The resolver should wrap the underlying
+	// indexShipperQuerier which implements tsdb.DataobjResolver. For now, the
+	// GetDataobjSections RPC returns an error when unset.
+	var dataobjResolver indexgateway.DataobjResolver
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, t.Overrides, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier, dataobjResolver)
 	if err != nil {
 		return nil, err
 	}

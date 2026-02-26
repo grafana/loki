@@ -276,6 +276,20 @@ func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRe
 	return resp, err
 }
 
+func (s *GatewayClient) GetDataobjSections(ctx context.Context, in *logproto.GetDataobjSectionsRequest) (*logproto.GetDataobjSectionsResponse, error) {
+	var (
+		resp *logproto.GetDataobjSectionsResponse
+		err  error
+	)
+	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
+		resp, err = client.GetDataobjSections(ctx, in)
+		return err
+	}, func(addrs []string) []string {
+		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
+	})
+	return resp, err
+}
+
 func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
 	var (
 		resp *logproto.GetSeriesResponse

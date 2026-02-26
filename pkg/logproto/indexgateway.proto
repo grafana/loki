@@ -31,6 +31,10 @@ service IndexGateway {
   // GetShards is an optimized implemented shard-planning implementation
   // on the index gateway and not on the ingester.
   rpc GetShards(ShardsRequest) returns (stream ShardsResponse);
+
+  // GetDataobjSections resolves matching data object section references
+  // from TSDB indices, including stream IDs and sizing metadata.
+  rpc GetDataobjSections(logproto.GetDataobjSectionsRequest) returns (logproto.GetDataobjSectionsResponse) {}
 }
 
 message ShardsRequest {

@@ -22,12 +22,16 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -88,6 +92,12 @@ func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
 }
 
+// IndexGatewayClient is a subset of the index gateway client used for
+// resolving dataobj section references from TSDB indices.
+type IndexGatewayClient interface {
+	GetDataobjSections(ctx context.Context, in *logproto.GetDataobjSectionsRequest) (*logproto.GetDataobjSectionsResponse, error)
+}
+
 // Params holds parameters for constructing a new [Engine].
 type Params struct {
 	Logger     log.Logger            // Logger for optional log messages.
@@ -99,6 +109,11 @@ type Params struct {
 	Metastore    metastore.Metastore // Metastore to access the indexes
 	Limits       logql.Limits        // Limits to apply to engine queries.
 	DeleteGetter deletion.Getter     // DeleteGetter to fetch delete requests for query-time filtering.
+
+	// IndexGateway is an optional index gateway client for resolving dataobj
+	// sections via TSDB. When set, the engine uses TSDBCatalog instead of
+	// MetastoreCatalog for physical planning.
+	IndexGateway IndexGatewayClient
 }
 
 // validate validates p and applies defaults.
@@ -112,8 +127,8 @@ func (p *Params) validate() error {
 	if p.Scheduler == nil {
 		return errors.New("scheduler is required")
 	}
-	if p.Metastore == nil {
-		return errors.New("metastore is required")
+	if p.Metastore == nil && p.IndexGateway == nil {
+		return errors.New("either metastore or index gateway is required")
 	}
 	if p.Config.Executor.BatchSize <= 0 {
 		return fmt.Errorf("invalid batch size for query engine. must be greater than 0, got %d", p.Config.Executor.BatchSize)
@@ -131,7 +146,8 @@ type Engine struct {
 	limits       logql.Limits    // Limits to apply to engine queries.
 	deleteGetter deletion.Getter // DeleteGetter to fetch delete requests for query-time filtering.
 
-	metastore metastore.Metastore
+	metastore    metastore.Metastore
+	indexGateway IndexGatewayClient
 }
 
 // New creates a new Engine.
@@ -149,7 +165,8 @@ func New(params Params) (*Engine, error) {
 		limits:       params.Limits,
 		deleteGetter: params.DeleteGetter,
 
-		metastore: params.Metastore,
+		metastore:    params.Metastore,
+		indexGateway: params.IndexGateway,
 	}
 
 	return e, nil
@@ -354,7 +371,12 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID))
+	var catalog physical.Catalog
+	if e.indexGateway != nil {
+		catalog = physical.NewTSDBCatalog(e.tsdbSectionsResolver(ctx, tenantID))
+	} else {
+		catalog = physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID))
+	}
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -435,6 +457,38 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 		// close to report the stats
 		reader.Close()
 		return resp.SectionsResponse.Sections, nil
+	}
+}
+
+func (e *Engine) tsdbSectionsResolver(ctx context.Context, _ string) physical.TSDBSectionsResolver {
+	return func(matchers []*labels.Matcher, start, end time.Time) ([]physical.DataObjSections, error) {
+		ctx, span := xcap.StartSpan(ctx, tracer, "engine.tsdbResolver")
+		defer span.End()
+
+		resp, err := e.indexGateway.GetDataobjSections(ctx, &logproto.GetDataobjSectionsRequest{
+			From:     model.TimeFromUnixNano(start.UnixNano()),
+			Through:  model.TimeFromUnixNano(end.UnixNano()),
+			Matchers: syntax.MatchersString(matchers),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("index gateway: get dataobj sections: %w", err)
+		}
+
+		sections := make([]physical.DataObjSections, 0, len(resp.Sections))
+		for _, s := range resp.Sections {
+			tr, err := physical.NewTimeRange(s.MinTime.Time(), s.MaxTime.Time())
+			if err != nil {
+				return nil, err
+			}
+			sections = append(sections, physical.DataObjSections{
+				Location:  physical.DataObjLocation(s.Path),
+				Streams:   s.StreamIds,
+				Sections:  []int{int(s.SectionId)},
+				TimeRange: tr,
+			})
+		}
+
+		return sections, nil
 	}
 }
 

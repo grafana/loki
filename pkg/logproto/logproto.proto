@@ -449,6 +449,38 @@ message Volume {
   uint64 volume = 3 [(gogoproto.jsontag) = "volume"];
 }
 
+message GetDataobjSectionsRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+}
+
+message DataobjSectionRef {
+  string path = 1;
+  int32 section_id = 2;
+  int64 min_time = 3 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 max_time = 4 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  uint32 kb = 5;
+  uint32 entries = 6;
+  repeated int64 stream_ids = 7;
+}
+
+message GetDataobjSectionsResponse {
+  repeated DataobjSectionRef sections = 1 [(gogoproto.nullable) = false];
+}
+
 message DetectedFieldsRequest {
   google.protobuf.Timestamp start = 1 [
     (gogoproto.stdtime) = true,
