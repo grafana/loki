@@ -1,8 +1,9 @@
 package tsdb
 
 import (
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 // TODO(chaudum): Replace with new v1.Interval struct
