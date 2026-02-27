@@ -21,9 +21,9 @@ require (
 	github.com/alicebob/miniredis/v2 v2.36.1
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/apache/cassandra-gocql-driver/v2 v2.0.0
-	github.com/aws/aws-sdk-go-v2 v1.41.1
-	github.com/aws/aws-sdk-go-v2/config v1.32.9
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.9
+	github.com/aws/aws-sdk-go-v2 v1.41.2
+	github.com/aws/aws-sdk-go-v2/config v1.32.10
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.10
 	github.com/baidubce/bce-sdk-go v0.9.260
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
@@ -189,14 +189,14 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.290.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.72.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/elasticache v1.51.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.8 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/kafka v1.48.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/lightsail v1.50.11 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.0.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.14 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.0.6 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.15 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/basgys/goxml2json v1.1.1-0.20231018121955-e66ee54ceaad // indirect
@@ -372,13 +372,13 @@ require (
 	github.com/alecthomas/chroma/v2 v2.23.1
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
 	github.com/armon/go-metrics v0.4.1 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.17 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.17 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.17 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.18 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.18 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.18 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.17 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.30.10 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.41.6 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.18 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.30.11 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.41.7 // indirect
 	github.com/aws/smithy-go v1.24.1
 	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
