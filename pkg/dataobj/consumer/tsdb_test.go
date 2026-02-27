@@ -1,11 +1,15 @@
 package consumer
 
 import (
+	"bytes"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore/providers/filesystem"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -52,4 +56,30 @@ func TestDataobjTSDBBuilder_Build(t *testing.T) {
 	require.NotNil(t, id)
 	require.Greater(t, len(tsdbData), 0)
 	require.Greater(t, len(sectionRefData), 0)
+}
+
+func TestDataobjTSDBBuilder_Build_MultiTenant(t *testing.T) {
+	ctx := t.Context()
+
+	objpath := "/Users/benclive/Downloads/dataobj_objects_08_9e4caa3d7699158353559c0f0778d6435ddf56defad004a71a2959"
+
+	objfile, err := os.ReadFile(objpath)
+	require.NoError(t, err)
+
+	obj, err := dataobj.FromReaderAt(bytes.NewReader(objfile), int64(len(objfile)))
+	require.NoError(t, err)
+
+	tsdbBuilder := &dataobjTSDBBuilder{}
+	id, tsdbData, sectionRefData, err := tsdbBuilder.build(ctx, obj, "tenant-a/object-001")
+	require.NoError(t, err)
+
+	require.NotNil(t, id)
+	require.Greater(t, len(tsdbData), 0)
+	require.Greater(t, len(sectionRefData), 0)
+
+	bkt, err := filesystem.NewBucket("/Users/benclive/dev/loki/dataobj")
+	require.NoError(t, err)
+
+	err = store(ctx, bkt, id, tsdbData, sectionRefData)
+	require.NoError(t, err)
 }

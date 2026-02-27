@@ -117,7 +117,14 @@ func collectStreamLabels(ctx context.Context, obj *dataobj.Object) (map[streamKe
 			}
 			s := rec.MustValue()
 			key := streamKey{tenant: sec.Tenant, streamID: s.ID}
-			res[key] = s.Labels.Copy()
+
+			labelsBuilder := labels.NewScratchBuilder(s.Labels.Len())
+			s.Labels.Range(func(l labels.Label) {
+				labelsBuilder.Add(l.Name, l.Value)
+			})
+			labelsBuilder.Sort()
+			labelsBuilder.Add(index_tsdb.TenantLabel, sec.Tenant)
+			res[key] = labelsBuilder.Labels()
 		}
 	}
 
