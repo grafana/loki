@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"math"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -50,6 +52,12 @@ func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 	}
 }
 
+var defaultRetryBackoff = backoff.Config{
+	MinBackoff: 100 * time.Millisecond,
+	MaxBackoff: 5 * time.Second,
+	MaxRetries: 0, // Retry infinitely
+}
+
 func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Registerer, maxConsumerWorkers int) partition.ConsumerFactory {
 	metrics := newConsumerMetrics(reg)
 	metrics.consumeWorkersCount.Set(float64(maxConsumerWorkers))
@@ -66,6 +74,7 @@ func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Regist
 			metrics:            metrics,
 			committer:          committer,
 			maxConsumerWorkers: maxConsumerWorkers,
+			retryBackoff:       defaultRetryBackoff,
 		}, nil
 	}
 }
@@ -77,6 +86,7 @@ type kafkaConsumer struct {
 	committer          partition.Committer
 	maxConsumerWorkers int
 	metrics            *consumerMetrics
+	retryBackoff       backoff.Config
 }
 
 func (kc *kafkaConsumer) Start(ctx context.Context, recordsCh <-chan []partition.Record) func() {
@@ -154,7 +164,7 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 
 				level.Debug(kc.logger).Log("msg", "pushing record", "offset", recordWithIndex.record.Offset, "length", len(recordWithIndex.record.Content))
 
-				if err := retryWithBackoff(ctx, func(attempts int) error {
+				if err := retryWithBackoff(ctx, kc.retryBackoff, func(attempts int) error {
 					pushTime := time.Now()
 					_, err := kc.pusher.Push(recordCtx, req)
 
@@ -201,10 +211,19 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 }
 
 func canRetry(err error) bool {
-	return errors.Is(err, ErrReadOnly)
+	if errors.Is(err, ErrReadOnly) {
+		return true
+	}
+
+	// Retry rate-limited requests (e.g., stream limit exceeded).
+	// The classic distributor path handles these via replication across
+	// multiple ingesters, but the dataobj partition-ingester has no
+	// such fallback, so we retry with backoff instead.
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	return ok && resp.Code == http.StatusTooManyRequests
 }
 
-func retryWithBackoff(ctx context.Context, fn func(attempts int) error) error {
+func retryWithBackoff(ctx context.Context, cfg backoff.Config, fn func(attempts int) error) error {
 	err := fn(0)
 	if err == nil {
 		return nil
@@ -212,11 +231,7 @@ func retryWithBackoff(ctx context.Context, fn func(attempts int) error) error {
 	if !canRetry(err) {
 		return err
 	}
-	backoff := backoff.New(ctx, backoff.Config{
-		MinBackoff: 100 * time.Millisecond,
-		MaxBackoff: 5 * time.Second,
-		MaxRetries: 0, // Retry infinitely
-	})
+	backoff := backoff.New(ctx, cfg)
 	backoff.Wait()
 	for backoff.Ongoing() {
 		err = fn(backoff.NumRetries())
