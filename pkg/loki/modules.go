@@ -1466,21 +1466,7 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 
 		httpMiddleware := middleware.Merge(toMerge...)
 
-		var c cache.Cache
-		if cache.IsCacheConfigured(t.Cfg.QueryEngine.ResultsCache.CacheConfig) {
-			c, err = cache.New(t.Cfg.QueryEngine.ResultsCache.CacheConfig, prometheus.DefaultRegisterer, logger, stats.ResultCache, "engine-query-results")
-			if err != nil {
-				return nil, fmt.Errorf("creating engine results cache: %w", err)
-			}
-			if strings.EqualFold(t.Cfg.QueryEngine.ResultsCache.Compression, "snappy") {
-				c = cache.NewSnappy(c, logger)
-			}
-		}
-
-		engineHandler, err := engine_v2.Handler(
-			t.Cfg.QueryEngine, logger, engine, t.Overrides,
-			c, prometheus.DefaultRegisterer,
-		)
+		engineHandler, err := engine_v2.Handler(t.Cfg.QueryEngine, logger, engine, t.Overrides, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, fmt.Errorf("creating engine handler: %w", err)
 		}

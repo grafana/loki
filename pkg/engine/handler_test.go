@@ -65,7 +65,7 @@ func TestHandler(t *testing.T) {
 	eng := &mockEngine{}
 	limits := &mockLimits{}
 
-	handler, err := executorHandler(cfg, logger, eng, limits, nil, nil)
+	handler, err := executorHandler(cfg, logger, eng, limits, nil)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
 }

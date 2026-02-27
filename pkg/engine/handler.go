@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -46,10 +47,9 @@ func Handler(
 	logger log.Logger,
 	engine *Engine,
 	limits Limits,
-	c cache.Cache,
 	reg prometheus.Registerer,
 ) (http.Handler, error) {
-	return executorHandler(cfg, logger, engine, limits, c, reg)
+	return executorHandler(cfg, logger, engine, limits, reg)
 }
 
 // queryExecutor is an interface implemented by [Engine] for mocking in tests.
@@ -62,7 +62,6 @@ func executorHandler(
 	logger log.Logger,
 	exec queryExecutor,
 	limits Limits,
-	c cache.Cache,
 	reg prometheus.Registerer,
 ) (http.Handler, error) {
 	var h queryrangebase.Handler = &queryHandler{
@@ -80,7 +79,14 @@ func executorHandler(
 		h = queryrangebase.StepAlignMiddleware.Wrap(h)
 	}
 
-	if c != nil {
+	if cache.IsCacheConfigured(cfg.ResultsCache.CacheConfig) {
+		c, err := cache.New(cfg.ResultsCache.CacheConfig, reg, logger, stats.ResultCache, "engine-query-results")
+		if err != nil {
+			return nil, fmt.Errorf("creating engine results cache: %w", err)
+		}
+		if strings.EqualFold(cfg.ResultsCache.Compression, "snappy") {
+			c = cache.NewSnappy(c, logger)
+		}
 		cacheMw, err := NewCacheMiddleware(logger, limits, c, reg)
 		if err != nil {
 			return nil, fmt.Errorf("creating engine cache middleware: %w", err)
