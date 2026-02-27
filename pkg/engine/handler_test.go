@@ -839,6 +839,100 @@ func TestQueryHandler_ValidateRequest(t *testing.T) {
 	}
 }
 
+func TestExecutorHandler_AlignQueriesWithStep(t *testing.T) {
+	stepMs := int64(60 * 1000) // 60 seconds in milliseconds
+
+	now := time.Now()
+	// Create start/end aligned to step, then add 27s offset to misalign.
+	alignedStartMs := (now.Add(-2*time.Hour).UnixMilli() / stepMs) * stepMs
+	alignedEndMs := (now.Add(-90*time.Minute).UnixMilli() / stepMs) * stepMs
+	unalignedStart := time.UnixMilli(alignedStartMs + 27*1000)
+	unalignedEnd := time.UnixMilli(alignedEndMs + 27*1000)
+	expectedAlignedStart := time.UnixMilli(alignedStartMs)
+	expectedAlignedEnd := time.UnixMilli(alignedEndMs)
+
+	makeHandler := func(cfg Config, eng queryExecutor, limits querier_limits.Limits) queryrangebase.Handler {
+		var h queryrangebase.Handler = &queryHandler{
+			cfg:    cfg,
+			exec:   eng,
+			logger: log.NewNopLogger(),
+			limits: limits,
+		}
+		if cfg.AlignQueriesWithStep {
+			h = queryrangebase.StepAlignMiddleware.Wrap(h)
+		}
+		return h
+	}
+
+	t.Run("aligns start and end to step when enabled", func(t *testing.T) {
+		var capturedParams logql.Params
+		eng := &mockEngine{
+			executeFunc: func(_ context.Context, params logql.Params) (logqlmodel.Result, error) {
+				capturedParams = params
+				return logqlmodel.Result{Data: logqlmodel.Streams{}}, nil
+			},
+		}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 1000}
+		handler := makeHandler(Config{AlignQueriesWithStep: true}, eng, limits)
+
+		expr, err := syntax.ParseExpr(`rate({app="test"}[5m])`)
+		require.NoError(t, err)
+
+		req := &queryrange.LokiRequest{
+			Query:   `rate({app="test"}[5m])`,
+			Limit:   100,
+			Step:    stepMs,
+			StartTs: unalignedStart,
+			EndTs:   unalignedEnd,
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		_, err = handler.Do(ctx, req)
+		require.NoError(t, err)
+
+		require.NotNil(t, capturedParams)
+		require.Equal(t, expectedAlignedStart, capturedParams.Start())
+		require.Equal(t, expectedAlignedEnd, capturedParams.End())
+	})
+
+	t.Run("does not align when disabled", func(t *testing.T) {
+		var capturedParams logql.Params
+		eng := &mockEngine{
+			executeFunc: func(_ context.Context, params logql.Params) (logqlmodel.Result, error) {
+				capturedParams = params
+				return logqlmodel.Result{Data: logqlmodel.Streams{}}, nil
+			},
+		}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 1000}
+		handler := makeHandler(Config{AlignQueriesWithStep: false}, eng, limits)
+
+		expr, err := syntax.ParseExpr(`rate({app="test"}[5m])`)
+		require.NoError(t, err)
+
+		req := &queryrange.LokiRequest{
+			Query:   `rate({app="test"}[5m])`,
+			Limit:   100,
+			Step:    stepMs,
+			StartTs: unalignedStart,
+			EndTs:   unalignedEnd,
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		_, err = handler.Do(ctx, req)
+		require.NoError(t, err)
+
+		require.NotNil(t, capturedParams)
+		require.Equal(t, unalignedStart, capturedParams.Start())
+		require.Equal(t, unalignedEnd, capturedParams.End())
+	})
+}
+
 func TestQueryHandler_ValidateInstantRequest(t *testing.T) {
 	now := time.Now()
 
