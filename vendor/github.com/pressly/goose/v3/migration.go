@@ -365,11 +365,11 @@ func NumericComponent(filename string) (int64, error) {
 	if ext := filepath.Ext(base); ext != ".go" && ext != ".sql" {
 		return 0, errors.New("migration file does not have .sql or .go file extension")
 	}
-	idx := strings.Index(base, "_")
-	if idx < 0 {
+	before, _, ok := strings.Cut(base, "_")
+	if !ok {
 		return 0, errors.New("no filename separator '_' found")
 	}
-	n, err := strconv.ParseInt(base[:idx], 10, 64)
+	n, err := strconv.ParseInt(before, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse version from migration file: %s: %w", base, err)
 	}

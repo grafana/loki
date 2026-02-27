@@ -16,7 +16,7 @@ Manage your **database schema** by creating incremental SQL changes or Go functi
 #### Features
 
 - Works against multiple databases:
-  - Postgres, MySQL, SQLite, YDB, ClickHouse, MSSQL, and
+  - Postgres, MySQL, Spanner, SQLite, YDB, ClickHouse, MSSQL, Vertica, and
     more.
 - Supports Go migrations written as plain functions.
 - Supports [embedded](https://pkg.go.dev/embed/) migrations.
@@ -58,7 +58,7 @@ See [installation documentation](https://pressly.github.io/goose/installation/) 
 <summary>Click to show <code>goose help</code> output</summary>
 
 ```
-Usage: goose [OPTIONS] DRIVER DBSTRING COMMAND
+Usage: goose DRIVER DBSTRING [OPTIONS] COMMAND
 
 or
 
@@ -73,12 +73,14 @@ Drivers:
     postgres
     mysql
     sqlite3
+    spanner
     mssql
     redshift
     tidb
     clickhouse
     ydb
     starrocks
+    turso
 
 Examples:
     goose sqlite3 ./foo.db status
@@ -89,6 +91,7 @@ Examples:
 
     goose postgres "user=postgres dbname=postgres sslmode=disable" status
     goose mysql "user:password@/dbname?parseTime=true" status
+    goose spanner "projects/project/instances/instance/databases/database" status
     goose redshift "postgres://user:password@qwerty.us-east-1.redshift.amazonaws.com:5439/db" status
     goose tidb "user:password@/dbname?parseTime=true" status
     goose mssql "sqlserver://user:password@hostname:1433?database=master" status
