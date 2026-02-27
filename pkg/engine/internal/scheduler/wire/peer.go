@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -51,7 +52,7 @@ func (p *Peer) Serve(ctx context.Context) error {
 	p.lazyInit()
 
 	// Defer connection close here in Serve since Peer does not have an explicit Close method.
-	defer p.Conn.Close()
+	// defer p.Conn.Close()
 
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -140,6 +141,7 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 
 func (p *Peer) handleIncoming(ctx context.Context) error {
 	for {
+		time.Sleep(1 * time.Millisecond)
 		select {
 		case <-ctx.Done():
 			return nil

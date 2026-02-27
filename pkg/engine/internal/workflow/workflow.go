@@ -101,6 +101,8 @@ func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*
 		return nil, err
 	}
 
+	fmt.Println(physical.PrintAsTree(plan))
+
 	// Inject a stream for final task results.
 	results, err := injectResultsStream(opts.Tenant, &graph)
 	if err != nil {

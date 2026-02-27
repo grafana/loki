@@ -56,9 +56,7 @@ const (
 	threadStateBusy
 )
 
-var (
-	tracer = otel.Tracer("pkg/engine/internal/worker")
-)
+var tracer = otel.Tracer("pkg/engine/internal/worker")
 
 func (s threadState) String() string {
 	switch s {
@@ -252,7 +250,9 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
 	}
 
-	_, err = t.drainPipeline(ctx, pipeline, sinksForJob(job), t.BatchSize, logger)
+	sinks := sinksForJob(job)
+
+	_, err = t.drainPipeline(ctx, pipeline, sinks, t.BatchSize, logger)
 	if err != nil {
 		level.Warn(logger).Log("msg", "task failed", "err", err)
 		_ = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"strings"
 	"time"
 	"unsafe"
 
@@ -23,7 +22,6 @@ import (
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/sectionref"
 )
 
 const readDBsConcurrency = 50
@@ -38,16 +36,16 @@ type IndexCompactorConfig struct {
 
 func NewIndexCompactorWithConfig(cfg IndexCompactorConfig) compactor.IndexCompactor {
 	return indexProcessor{
-		useSectionRefTable: cfg.UseSectionRefTable,
+		mode: newCompactionMode(cfg.UseSectionRefTable),
 	}
 }
 
 type indexProcessor struct {
-	useSectionRefTable bool
+	mode compactionMode
 }
 
 func (i indexProcessor) NewTableCompactor(ctx context.Context, commonIndexSet compactor.IndexSet, existingUserIndexSet map[string]compactor.IndexSet, userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc, periodConfig config.PeriodConfig) compactor.TableCompactor {
-	return newTableCompactor(ctx, commonIndexSet, existingUserIndexSet, userIndexSetFactoryFunc, periodConfig, i.useSectionRefTable)
+	return newTableCompactor(ctx, commonIndexSet, existingUserIndexSet, userIndexSetFactoryFunc, periodConfig, i.mode)
 }
 
 func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableName, userID, workingDir string, periodConfig config.PeriodConfig, logger log.Logger) (compactor.CompactedIndex, error) {
@@ -68,39 +66,37 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 	}
 
 	builder := NewBuilder(indexFormat)
-	var refs *sectionref.SectionRefTable
-	if i.useSectionRefTable {
-		refs, err = loadSectionRefTableFromPath(path)
+
+	if i.mode == nil {
+		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
+			builder.AddSeries(lbls.Copy(), fp, chks)
+			return false
+		}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	var addErr error
-	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
-		if !i.useSectionRefTable {
-			builder.AddSeries(lbls.Copy(), fp, chks)
-			return false
-		}
-
-		sectionMetas, err := toSectionMetas(chks, refs)
+	} else {
+		source, err := i.mode.registerPath(path)
 		if err != nil {
-			addErr = err
-			return true
+			return nil, err
 		}
-		addErr = builder.AddSeriesWithSectionRefs(lbls.Copy(), fp, sectionMetas)
-		return addErr != nil
-	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
-	if err != nil {
-		return nil, err
-	}
-	if addErr != nil {
-		return nil, addErr
+		defer i.mode.releaseSource(source)
+		var addErr error
+		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
+			addErr = i.mode.addSeries(builder, source, lbls.Copy(), fp, chks)
+			return addErr != nil
+		}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+		if err != nil {
+			return nil, err
+		}
+		if addErr != nil {
+			return nil, addErr
+		}
 	}
 
 	builder.chunksFinalized = true
 
-	return newCompactedIndex(ctx, tableName, userID, workingDir, periodConfig, builder), nil
+	return newCompactedIndex(ctx, tableName, userID, workingDir, periodConfig, builder, i.mode), nil
 }
 
 type tableCompactor struct {
@@ -110,7 +106,7 @@ type tableCompactor struct {
 	ctx                     context.Context
 	periodConfig            config.PeriodConfig
 	compactedIndexes        map[string]compactor.CompactedIndex
-	useSectionRefTable      bool
+	mode                    compactionMode
 }
 
 func newTableCompactor(
@@ -119,7 +115,7 @@ func newTableCompactor(
 	existingUserIndexSet map[string]compactor.IndexSet,
 	userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc,
 	periodConfig config.PeriodConfig,
-	useSectionRefTable bool,
+	mode compactionMode,
 ) *tableCompactor {
 	return &tableCompactor{
 		ctx:                     ctx,
@@ -127,7 +123,7 @@ func newTableCompactor(
 		existingUserIndexSet:    existingUserIndexSet,
 		userIndexSetFactoryFunc: userIndexSetFactoryFunc,
 		periodConfig:            periodConfig,
-		useSectionRefTable:      useSectionRefTable,
+		mode:                    mode,
 	}
 }
 
@@ -135,7 +131,7 @@ func (t *tableCompactor) CompactTable() error {
 	allMultiTenantIndexes := t.commonIndexSet.ListSourceFiles()
 	multiTenantIndexes := make([]storage.IndexFile, 0, len(allMultiTenantIndexes))
 	for _, source := range allMultiTenantIndexes {
-		if isSidecarFile(source.Name) {
+		if t.mode != nil && t.mode.isSidecarFile(source.Name) {
 			continue
 		}
 		multiTenantIndexes = append(multiTenantIndexes, source)
@@ -145,7 +141,7 @@ func (t *tableCompactor) CompactTable() error {
 	multiTenantIndices := make([]Index, len(multiTenantIndexes))
 	downloadPaths := make([]string, len(multiTenantIndexes))
 	sectionsPaths := make([]string, len(multiTenantIndexes))
-	multiTenantSectionRefs := make([]*sectionref.SectionRefTable, len(multiTenantIndexes))
+	multiTenantSources := make([]modeSourceHandle, len(multiTenantIndexes))
 
 	// concurrently download and open all the multi-tenant indexes
 	err := concurrency.ForEachJob(t.ctx, len(multiTenantIndexes), readDBsConcurrency, func(_ context.Context, job int) error {
@@ -161,13 +157,13 @@ func (t *tableCompactor) CompactTable() error {
 		}
 
 		multiTenantIndices[job] = idx.(Index)
-		if t.useSectionRefTable {
-			refs, sectionsPath, err := loadSectionRefTable(t.commonIndexSet, multiTenantIndexes[job])
+		if t.mode != nil {
+			source, sectionsPath, err := t.mode.registerSource(t.commonIndexSet, multiTenantIndexes[job])
 			if err != nil {
 				return err
 			}
 			sectionsPaths[job] = sectionsPath
-			multiTenantSectionRefs[job] = refs
+			multiTenantSources[job] = source
 		}
 
 		return nil
@@ -189,6 +185,9 @@ func (t *tableCompactor) CompactTable() error {
 				if err := os.Remove(sectionsPaths[i]); err != nil {
 					level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove downloaded sections table file", "path", sectionsPaths[i], "err", err)
 				}
+			}
+			if t.mode != nil {
+				t.mode.releaseSource(multiTenantSources[i])
 			}
 		}
 	}()
@@ -222,12 +221,12 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		builder, err := setupBuilder(t.ctx, indexType, userID, existingUserIndexSet, multiTenantIndices, multiTenantSectionRefs, t.useSectionRefTable)
+		builder, err := setupBuilder(t.ctx, indexType, userID, existingUserIndexSet, multiTenantIndices, multiTenantSources, t.mode)
 		if err != nil {
 			return err
 		}
 
-		compactedIndex := newCompactedIndex(t.ctx, existingUserIndexSet.GetTableName(), userID, existingUserIndexSet.GetWorkingDir(), t.periodConfig, builder)
+		compactedIndex := newCompactedIndex(t.ctx, existingUserIndexSet.GetTableName(), userID, existingUserIndexSet.GetWorkingDir(), t.periodConfig, builder, t.mode)
 		t.compactedIndexes[userID] = compactedIndex
 
 		if err := existingUserIndexSet.SetCompactedIndex(compactedIndex, true); err != nil {
@@ -247,12 +246,12 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		builder, err := setupBuilder(t.ctx, indexType, userID, srcIdxSet, []Index{}, nil, t.useSectionRefTable)
+		builder, err := setupBuilder(t.ctx, indexType, userID, srcIdxSet, []Index{}, nil, t.mode)
 		if err != nil {
 			return err
 		}
 
-		compactedIndex := newCompactedIndex(t.ctx, srcIdxSet.GetTableName(), userID, srcIdxSet.GetWorkingDir(), t.periodConfig, builder)
+		compactedIndex := newCompactedIndex(t.ctx, srcIdxSet.GetTableName(), userID, srcIdxSet.GetWorkingDir(), t.periodConfig, builder, t.mode)
 		t.compactedIndexes[userID] = compactedIndex
 		if err := srcIdxSet.SetCompactedIndex(compactedIndex, true); err != nil {
 			return err
@@ -270,7 +269,7 @@ func (t *tableCompactor) CompactTable() error {
 // processSourceIndex processes a single source index file by downloading it,
 // reading its series, and adding them to the builder. The file is closed and removed
 // using defer statements to ensure cleanup happens even if errors occur.
-func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sourceIndexSet compactor.IndexSet, builder *Builder, useSectionRefTable bool) error {
+func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sourceIndexSet compactor.IndexSet, builder *Builder, mode compactionMode) error {
 	path, err := sourceIndexSet.GetSourceFile(sourceIndex)
 	if err != nil {
 		return err
@@ -283,10 +282,10 @@ func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sour
 		}
 	}()
 
-	var refs *sectionref.SectionRefTable
+	var source modeSourceHandle
 	var sectionsPath string
-	if useSectionRefTable {
-		refs, sectionsPath, err = loadSectionRefTable(sourceIndexSet, sourceIndex)
+	if mode != nil {
+		source, sectionsPath, err = mode.registerSource(sourceIndexSet, sourceIndex)
 		if err != nil {
 			return err
 		}
@@ -295,6 +294,7 @@ func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sour
 				level.Error(sourceIndexSet.GetLogger()).Log("msg", "error removing source sections table file", "err", removeErr)
 			}
 		}()
+		defer mode.releaseSource(source)
 	}
 
 	indexFile, err := OpenShippableTSDB(path)
@@ -311,18 +311,12 @@ func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sour
 
 	var addErr error
 	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
-		if !useSectionRefTable {
+		if mode == nil {
 			builder.AddSeries(withoutTenantLabel(lbls.Copy()), fp, chks)
 			return false
 		}
 
-		sectionMetas, err := toSectionMetas(chks, refs)
-		if err != nil {
-			addErr = err
-			return true
-		}
-
-		addErr = builder.AddSeriesWithSectionRefs(withoutTenantLabel(lbls.Copy()), fp, sectionMetas)
+		addErr = mode.addSeries(builder, source, withoutTenantLabel(lbls.Copy()), fp, chks)
 		return addErr != nil
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
@@ -339,8 +333,8 @@ func setupBuilder(
 	userID string,
 	sourceIndexSet compactor.IndexSet,
 	multiTenantIndexes []Index,
-	multiTenantSectionRefs []*sectionref.SectionRefTable,
-	useSectionRefTable bool,
+	multiTenantSources []modeSourceHandle,
+	mode compactionMode,
 ) (*Builder, error) {
 	sourceIndexes := sourceIndexSet.ListSourceFiles()
 	builder := NewBuilder(indexType)
@@ -349,22 +343,17 @@ func setupBuilder(
 	for i, idx := range multiTenantIndexes {
 		var addErr error
 		err := idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
-			if !useSectionRefTable {
+			if mode == nil {
 				builder.AddSeries(withoutTenantLabel(lbls.Copy()), fp, chks)
 				return false
 			}
 
-			if i >= len(multiTenantSectionRefs) || multiTenantSectionRefs[i] == nil {
-				addErr = fmt.Errorf("missing section reference table for multi-tenant index at position %d", i)
+			if i >= len(multiTenantSources) {
+				addErr = fmt.Errorf("missing source handle for multi-tenant index at position %d", i)
 				return true
 			}
 
-			sectionMetas, err := toSectionMetas(chks, multiTenantSectionRefs[i])
-			if err != nil {
-				addErr = err
-				return true
-			}
-			addErr = builder.AddSeriesWithSectionRefs(withoutTenantLabel(lbls.Copy()), fp, sectionMetas)
+			addErr = mode.addSeries(builder, multiTenantSources[i], withoutTenantLabel(lbls.Copy()), fp, chks)
 			return addErr != nil
 		}, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
 		if err != nil {
@@ -377,10 +366,10 @@ func setupBuilder(
 
 	// download all the existing compacted indexes and add them to the builder
 	for _, sourceIndex := range sourceIndexes {
-		if isSidecarFile(sourceIndex.Name) {
+		if mode != nil && mode.isSidecarFile(sourceIndex.Name) {
 			continue
 		}
-		if err := processSourceIndex(ctx, sourceIndex, sourceIndexSet, builder, useSectionRefTable); err != nil {
+		if err := processSourceIndex(ctx, sourceIndex, sourceIndexSet, builder, mode); err != nil {
 			return nil, err
 		}
 	}
@@ -398,19 +387,21 @@ type compactedIndex struct {
 	workingDir    string
 	tableInterval model.Interval
 	periodConfig  config.PeriodConfig
+	mode          compactionMode
 
 	indexChunks     map[string][]tsdbindex.ChunkMeta
 	deleteChunks    map[string][]tsdbindex.ChunkMeta
 	seriesToCleanup map[string]struct{}
 }
 
-func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string, periodConfig config.PeriodConfig, builder *Builder) *compactedIndex {
+func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string, periodConfig config.PeriodConfig, builder *Builder, mode compactionMode) *compactedIndex {
 	return &compactedIndex{
 		ctx:             ctx,
 		userID:          userID,
 		builder:         builder,
 		workingDir:      workingDir,
 		periodConfig:    periodConfig,
+		mode:            mode,
 		tableInterval:   retention.ExtractIntervalFromTableName(tableName),
 		indexChunks:     map[string][]tsdbindex.ChunkMeta{},
 		deleteChunks:    map[string][]tsdbindex.ChunkMeta{},
@@ -587,16 +578,9 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	sectionsTable, err := c.builder.SectionRefTableBytes()
-	if err != nil {
-		return nil, err
-	}
-	if len(sectionsTable) > 0 {
-		sectionsPath, err := sectionsTablePath(id.Path())
-		if err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(sectionsPath, sectionsTable, 0o644); err != nil {
+
+	if c.mode != nil {
+		if err := c.mode.writeCompactedSidecar(c.builder, id.Path()); err != nil {
 			return nil, err
 		}
 	}
@@ -606,93 +590,4 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 
 func getUnsafeBytes(s string) []byte {
 	return *((*[]byte)(unsafe.Pointer(&s))) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
-}
-
-func sectionsTableFileName(tsdbFile string) (string, error) {
-	switch {
-	case strings.HasSuffix(tsdbFile, ".tsdb.gz"):
-		return strings.TrimSuffix(tsdbFile, ".gz") + ".sections.gz", nil
-	case strings.HasSuffix(tsdbFile, ".tsdb"):
-		return tsdbFile + ".sections", nil
-	default:
-		return "", fmt.Errorf("invalid tsdb source file name %q", tsdbFile)
-	}
-}
-
-func loadSectionRefTable(sourceIndexSet compactor.IndexSet, sourceIndex storage.IndexFile) (*sectionref.SectionRefTable, string, error) {
-	sectionsFileName, err := sectionsTableFileName(sourceIndex.Name)
-	if err != nil {
-		return nil, "", err
-	}
-
-	sectionsPath, err := sourceIndexSet.GetSourceFile(storage.IndexFile{Name: sectionsFileName})
-	if err != nil {
-		return nil, "", fmt.Errorf("downloading sections table %q for %q: %w", sectionsFileName, sourceIndex.Name, err)
-	}
-
-	data, err := os.ReadFile(sectionsPath)
-	if err != nil {
-		return nil, "", fmt.Errorf("reading sections table %q: %w", sectionsPath, err)
-	}
-
-	refs, err := sectionref.Decode(data)
-	if err != nil {
-		return nil, "", fmt.Errorf("decoding sections table %q: %w", sectionsPath, err)
-	}
-	return refs, sectionsPath, nil
-}
-
-func loadSectionRefTableFromPath(tsdbPath string) (*sectionref.SectionRefTable, error) {
-	sectionsPath, err := sectionsTablePath(tsdbPath)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := os.ReadFile(sectionsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("section-ref-table mode enabled but sections file is missing for %q", tsdbPath)
-		}
-		return nil, fmt.Errorf("reading sections table %q: %w", sectionsPath, err)
-	}
-
-	refs, err := sectionref.Decode(data)
-	if err != nil {
-		return nil, fmt.Errorf("decoding sections table %q: %w", sectionsPath, err)
-	}
-	return refs, nil
-}
-
-func toSectionMetas(chks []tsdbindex.ChunkMeta, refs *sectionref.SectionRefTable) ([]sectionref.SectionMeta, error) {
-	sectionMetas := make([]sectionref.SectionMeta, len(chks))
-	for i, chk := range chks {
-		ref, ok := refs.Lookup(chk.Checksum)
-		if !ok {
-			return nil, fmt.Errorf("missing section reference for checksum/index %d", chk.Checksum)
-		}
-		sectionMetas[i] = sectionref.SectionMeta{
-			SectionRef: ref,
-			ChunkMeta:  chk,
-		}
-	}
-	return sectionMetas, nil
-}
-
-func isSectionsFile(name string) bool {
-	return strings.HasSuffix(name, ".sections.gz") || strings.HasSuffix(name, ".sections")
-}
-
-func isSidecarFile(name string) bool {
-	return isSectionsFile(name)
-}
-
-func sectionsTablePath(tsdbPath string) (string, error) {
-	switch {
-	case strings.HasSuffix(tsdbPath, ".tsdb"):
-		return tsdbPath + ".sections", nil
-	case strings.HasSuffix(tsdbPath, ".tsdb.gz"):
-		return strings.TrimSuffix(tsdbPath, ".gz") + ".sections.gz", nil
-	default:
-		return "", fmt.Errorf("invalid tsdb file path %q", tsdbPath)
-	}
 }

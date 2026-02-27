@@ -122,13 +122,18 @@ func (s *Scheduler) run(ctx context.Context) error {
 	g.Go(func() error { return s.runAcceptLoop(ctx) })
 	g.Go(func() error { return s.runAssignLoop(ctx) })
 
-	return g.Wait()
+	err := g.Wait()
+	if ctx.Err() != nil {
+		level.Warn(s.logger).Log("msg", "temporary debug: scheduler run context canceled", "err", ctx.Err())
+	}
+	return err
 }
 
 func (s *Scheduler) runAcceptLoop(ctx context.Context) error {
 	for {
 		conn, err := s.listener.Accept(ctx)
 		if err != nil && ctx.Err() != nil {
+			level.Warn(s.logger).Log("msg", "temporary debug: scheduler accept loop context canceled", "err", ctx.Err())
 			return nil
 		} else if err != nil {
 			level.Warn(s.logger).Log("msg", "failed to accept connection", "err", err)
@@ -182,6 +187,9 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	// Handle communication with the peer until the context is canceled or some
 	// error occurs.
 	err := peer.Serve(ctx)
+	if ctx.Err() != nil {
+		level.Warn(logger).Log("msg", "temporary debug: scheduler peer serve context canceled", "err", ctx.Err())
+	}
 	if err != nil && ctx.Err() != nil && !errors.Is(err, wire.ErrConnClosed) {
 		level.Warn(logger).Log("msg", "serve error", "err", err)
 	} else {
@@ -442,6 +450,7 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 
 		select {
 		case <-ctx.Done():
+			level.Warn(s.logger).Log("msg", "temporary debug: scheduler worker loop context canceled", "worker", worker.RemoteAddr(), "err", ctx.Err())
 			return
 		case <-worker.done:
 			return
@@ -451,7 +460,7 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 		level.Debug(s.logger).Log("msg", "assigning task", "id", assignment.msg.Task.ULID, "conn", worker.RemoteAddr())
 
 		// TODO(rfratto): allow assignment timeout to be configurable.
-		sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		sendCtx, cancel := context.WithTimeout(ctx, 500*time.Second)
 		err := worker.SendMessage(sendCtx, assignment.msg)
 		cancel()
 

@@ -62,7 +62,7 @@ func NewHTTP2Listener(addr net.Addr, optFuncs ...HTTP2ListenerOptFunc) *HTTP2Lis
 		addr:   addr,
 		logger: opts.Logger,
 
-		incoming: make(chan *http2Conn),
+		incoming: make(chan *http2Conn, 64),
 		closed:   make(chan struct{}),
 		codec:    defaultFrameCodec,
 	}
@@ -209,7 +209,7 @@ func newHTTP2Conn(
 		writer:             writer,
 		responseController: responseController,
 		closed:             make(chan struct{}),
-		incomingCh:         make(chan incomingFrame),
+		incomingCh:         make(chan incomingFrame, 1024),
 	}
 	return c
 }

@@ -188,7 +188,7 @@ func (w *Worker) Service() services.Service {
 func (w *Worker) run(ctx context.Context) error {
 	threadsCtx, threadsCancel := context.WithCancel(context.Background())
 	defer threadsCancel()
-	threadsGroup, threadsCtx := errgroup.WithContext(threadsCtx)
+	threadsGroup, _ := errgroup.WithContext(threadsCtx)
 
 	// Spin up worker threads.
 	var threads []*thread
@@ -206,7 +206,7 @@ func (w *Worker) run(ctx context.Context) error {
 		}
 		threads = append(threads, t)
 
-		threadsGroup.Go(func() error { return t.Run(threadsCtx) })
+		threadsGroup.Go(func() error { return t.Run(context.Background()) })
 	}
 
 	w.collector.setThreads(threads)
@@ -243,6 +243,9 @@ func (w *Worker) run(ctx context.Context) error {
 
 	// Wait for shutdown
 	<-ctx.Done()
+	level.Warn(w.logger).Log("msg", "temporary debug: worker run context canceled", "err", ctx.Err())
+
+	fmt.Println("CANCELLING THREADS")
 
 	// Signal all worker threads to stop. This will make them not to ask for new tasks, but continue processing current jobs.
 	threadsCancel()
@@ -275,6 +278,7 @@ func (w *Worker) runAcceptLoop(ctx context.Context) {
 	for {
 		conn, err := w.listener.Accept(ctx)
 		if err != nil && ctx.Err() != nil {
+			level.Warn(w.logger).Log("msg", "temporary debug: worker accept loop context canceled", "err", ctx.Err())
 			return
 		} else if err != nil {
 			level.Warn(w.logger).Log("msg", "failed to accept connection", "err", err)
@@ -310,6 +314,9 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 	// Handle communication with the peer until the context is canceled or some
 	// error occurs.
 	err := peer.Serve(ctx)
+	if ctx.Err() != nil {
+		level.Warn(logger).Log("msg", "temporary debug: worker peer serve context canceled", "err", ctx.Err())
+	}
 	if err != nil && ctx.Err() != nil && !errors.Is(err, wire.ErrConnClosed) {
 		level.Warn(logger).Log("msg", "serve error", "err", err)
 	} else {
@@ -328,6 +335,11 @@ func (w *Worker) schedulerLoop(ctx context.Context, addr net.Addr) error {
 	})
 
 	for bo.Ongoing() {
+		if ctx.Err() != nil {
+			level.Warn(logger).Log("msg", "temporary debug: worker scheduler loop context canceled", "err", ctx.Err())
+			return nil
+		}
+
 		conn, err := w.dial(ctx, addr)
 		if err != nil {
 			level.Warn(logger).Log("msg", "dial to scheduler failed, will retry after backoff", "err", err)
@@ -373,7 +385,7 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 	}
 
 	handleAssignment := func(peer *wire.Peer, msg wire.TaskAssignMessage) error {
-		job, err := w.newJob(ctx, peer, logger, msg)
+		job, err := w.newJob(context.Background(), peer, logger, msg)
 		if err != nil {
 			return err
 		}
@@ -419,7 +431,7 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		},
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
+	g, _ := errgroup.WithContext(ctx)
 	g.Go(func() error { return peer.Serve(ctx) })
 
 	// Perform a handshake with the scheduler. This must be done before
@@ -435,12 +447,14 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 			// Wait for a signal that we want to wait for a ready thread.
 			select {
 			case <-ctx.Done():
+				level.Warn(logger).Log("msg", "temporary debug: worker scheduler ready loop context canceled", "err", ctx.Err())
 				return nil
 			case <-waitReady:
 			}
 
 			if err := w.jobManager.WaitReady(ctx); err != nil {
 				// Context got canceled; abort.
+				level.Warn(logger).Log("msg", "temporary debug: worker wait ready aborted by context cancellation", "err", err)
 				break
 			}
 
