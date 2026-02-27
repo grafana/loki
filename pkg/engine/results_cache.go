@@ -19,22 +19,22 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-// CacheKeySplitter generates cache keys for the Thor (V2) query engine.
+// MetricCacheKeyGenerator generates cache keys for the Thor (V2) query engine.
 // It buckets keys by EngineResultsCacheTimeBucketInterval to allow cache sharing
 // across queries that start within the same bucket.
-type CacheKeySplitter struct {
+type MetricCacheKeyGenerator struct {
 	limits Limits
 }
 
 // GenerateCacheKey generates a cache key based on the userID, query, step, and time bucket.
-func (s CacheKeySplitter) GenerateCacheKey(_ context.Context, userID string, r resultscache.Request) string {
-	split := s.limits.EngineResultsCacheTimeBucketInterval(userID)
+func (s MetricCacheKeyGenerator) GenerateCacheKey(_ context.Context, userID string, r resultscache.Request) string {
+	split := s.limits.EngineResultsCacheTimeBucketInterval(userID) // Guaranteed to be >= 1m
 	var currentInterval int64
-	if ms := int64(split / time.Millisecond); ms > 0 {
-		currentInterval = r.GetStart().UnixMilli() / ms
-	}
+	ms := int64(split / time.Millisecond)
+	currentInterval = r.GetStart().UnixMilli() / ms
 	// step=0 for instant queries; included to prevent key collisions across step sizes.
-	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
+	// ms is included so that key changes when the interval is reconfigured at runtime.
+	return fmt.Sprintf("%s:%s:%d:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval, ms)
 }
 
 // NewMetricCacheMiddleware creates a metric results cache middleware for the Thor engine.
@@ -48,30 +48,28 @@ func NewMetricCacheMiddleware(
 	return queryrangebase.NewResultsCacheMiddleware(
 		logger,
 		c,
-		CacheKeySplitter{limits},
+		MetricCacheKeyGenerator{limits},
 		limits,
 		queryrange.DefaultCodec,
 		queryrange.PrometheusExtractor{},
 		// TODO(salvacorts): pass a non-nil cacheGenNumberLoader once delete requests
 		// are supported by the Thor engine, to invalidate cached results on delete.
 		nil,
-		shouldCacheMetricRequest,
-		func(_ context.Context, _ []string, _ queryrangebase.Request) int { return 1 },
+		shouldCacheRequest,
+		func(ctx context.Context, userIDs []string, _ queryrangebase.Request) int {
+			return validation.SmallestPositiveIntPerTenant(userIDs, func(userID string) int {
+				return limits.MaxQueryParallelism(ctx, userID)
+			})
+		},
 		false, // retentionEnabled (handled elsewhere)
 		false, // onlyUseEntireExtent=false: partial hits are used; missing range is fetched and merged
 		metrics,
 	)
 }
 
-// shouldCacheMetricRequest returns true only for metric (SampleExpr) queries.
-// Log selector queries are handled by the log results cache instead.
-func shouldCacheMetricRequest(_ context.Context, r queryrangebase.Request) bool {
-	expr, err := syntax.ParseExpr(r.GetQuery())
-	if err != nil {
-		return false
-	}
-	_, ok := expr.(syntax.SampleExpr)
-	return ok
+// shouldCacheRequest returns true when caching is not disabled for the request.
+func shouldCacheRequest(_ context.Context, r queryrangebase.Request) bool {
+	return !r.GetCachingOptions().Disabled
 }
 
 // NewResultsCacheMetrics creates metrics for the engine results cache middleware.
@@ -133,19 +131,12 @@ func NewLogResultCache(
 	limits logCacheLimits,
 	c cache.Cache,
 	metrics *queryrange.LogResultCacheMetrics,
-) queryrangebase.Middleware {
+) (queryrangebase.Middleware, error) {
 	return queryrange.NewLogResultCache(
 		logger,
 		limits, // satisfies queryrange.LogCacheLimits (has MaxCacheFreshness)
 		c,
-		func(_ context.Context, r queryrangebase.Request) bool {
-			// Only cache non-metric LokiRequests; metric queries go to the metric cache.
-			if _, ok := r.(*queryrange.LokiRequest); !ok {
-				return false
-			}
-			expr, err := syntax.ParseExpr(r.GetQuery())
-			return err == nil && !isMetricQuery(expr)
-		},
+		shouldCacheRequest,
 		&LogCacheKeyGenerator{limits: limits},
 		metrics,
 	)
@@ -196,6 +187,9 @@ func NewCacheMiddleware(
 	if err != nil {
 		return nil, err
 	}
-	logsMiddleware := NewLogResultCache(logger, limits, c, NewLogResultCacheMetrics(reg))
+	logsMiddleware, err := NewLogResultCache(logger, limits, c, NewLogResultCacheMetrics(reg))
+	if err != nil {
+		return nil, err
+	}
 	return &cacheMiddleware{metrics: metricsMiddleware, logs: logsMiddleware}, nil
 }

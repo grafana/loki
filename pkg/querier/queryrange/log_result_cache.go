@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -96,8 +97,17 @@ func NewDefaultLogCacheKeyGenerator(limits Limits, transformer UserIDTransformer
 // Log hits are difficult to handle because of the limit query parameter and the size of the response.
 // In the future it could be extended to cache non-empty query results.
 // see https://docs.google.com/document/d/1_mACOpxdWZ5K0cIedaja5gzMbv-m0lUVazqZd2O4mEU/edit
-func NewLogResultCache(logger log.Logger, limits LogCacheLimits, c cache.Cache, shouldCache queryrangebase.ShouldCacheFn,
-	keyGen LogCacheKeyGenerator, metrics *LogResultCacheMetrics) queryrangebase.Middleware {
+func NewLogResultCache(
+	logger log.Logger,
+	limits LogCacheLimits,
+	c cache.Cache,
+	shouldCache queryrangebase.ShouldCacheFn,
+	keyGen LogCacheKeyGenerator,
+	metrics *LogResultCacheMetrics,
+) (queryrangebase.Middleware, error) {
+	if keyGen == nil {
+		return nil, errors.New("keyGen must not be nil")
+	}
 	if metrics == nil {
 		metrics = NewLogResultCacheMetrics(nil)
 	}
@@ -111,7 +121,7 @@ func NewLogResultCache(logger log.Logger, limits LogCacheLimits, c cache.Cache, 
 			keyGen:      keyGen,
 			metrics:     metrics,
 		}
-	})
+	}), nil
 }
 
 type logResultCache struct {

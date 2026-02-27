@@ -27,21 +27,20 @@ const (
 )
 
 func Test_LogResultCacheSameRange(t *testing.T) {
-	var (
-		ctx = user.InjectOrgID(context.Background(), "foo")
-		lrc = NewLogResultCache(
-			log.NewNopLogger(),
-			fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			},
-			cache.NewMockCache(),
-			nil,
-			NewDefaultLogCacheKeyGenerator(fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			}, nil),
-			nil,
-		)
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	lrc, err := NewLogResultCache(
+		log.NewNopLogger(),
+		fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		},
+		cache.NewMockCache(),
+		nil,
+		NewDefaultLogCacheKeyGenerator(fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		}, nil),
+		nil,
 	)
+	require.NoError(t, err)
 
 	req := &LokiRequest{
 		StartTs: time.Unix(0, time.Minute.Nanoseconds()),
@@ -71,21 +70,20 @@ func Test_LogResultCacheSameRange(t *testing.T) {
 }
 
 func Test_LogResultCacheSameRangeNonEmpty(t *testing.T) {
-	var (
-		ctx = user.InjectOrgID(context.Background(), "foo")
-		lrc = NewLogResultCache(
-			log.NewNopLogger(),
-			fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			},
-			cache.NewMockCache(),
-			nil,
-			NewDefaultLogCacheKeyGenerator(fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			}, nil),
-			nil,
-		)
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	lrc, err := NewLogResultCache(
+		log.NewNopLogger(),
+		fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		},
+		cache.NewMockCache(),
+		nil,
+		NewDefaultLogCacheKeyGenerator(fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		}, nil),
+		nil,
 	)
+	require.NoError(t, err)
 
 	req := &LokiRequest{
 		StartTs: time.Unix(0, time.Minute.Nanoseconds()),
@@ -121,21 +119,20 @@ func Test_LogResultCacheSameRangeNonEmpty(t *testing.T) {
 }
 
 func Test_LogResultCacheSmallerRange(t *testing.T) {
-	var (
-		ctx = user.InjectOrgID(context.Background(), "foo")
-		lrc = NewLogResultCache(
-			log.NewNopLogger(),
-			fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			},
-			cache.NewMockCache(),
-			nil,
-			NewDefaultLogCacheKeyGenerator(fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			}, nil),
-			nil,
-		)
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	lrc, err := NewLogResultCache(
+		log.NewNopLogger(),
+		fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		},
+		cache.NewMockCache(),
+		nil,
+		NewDefaultLogCacheKeyGenerator(fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		}, nil),
+		nil,
 	)
+	require.NoError(t, err)
 
 	req := &LokiRequest{
 		StartTs: time.Unix(0, time.Minute.Nanoseconds()),
@@ -173,21 +170,20 @@ func Test_LogResultCacheSmallerRange(t *testing.T) {
 }
 
 func Test_LogResultCacheDifferentRange(t *testing.T) {
-	var (
-		ctx = user.InjectOrgID(context.Background(), "foo")
-		lrc = NewLogResultCache(
-			log.NewNopLogger(),
-			fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			},
-			cache.NewMockCache(),
-			nil,
-			NewDefaultLogCacheKeyGenerator(fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			}, nil),
-			nil,
-		)
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	lrc, err := NewLogResultCache(
+		log.NewNopLogger(),
+		fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		},
+		cache.NewMockCache(),
+		nil,
+		NewDefaultLogCacheKeyGenerator(fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		}, nil),
+		nil,
 	)
+	require.NoError(t, err)
 
 	req1 := &LokiRequest{
 		StartTs: time.Unix(0, time.Minute.Nanoseconds()+30*time.Second.Nanoseconds()),
@@ -251,21 +247,20 @@ func Test_LogResultCacheDifferentRange(t *testing.T) {
 }
 
 func Test_LogResultCacheDifferentRangeNonEmpty(t *testing.T) {
-	var (
-		ctx = user.InjectOrgID(context.Background(), "foo")
-		lrc = NewLogResultCache(
-			log.NewNopLogger(),
-			fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			},
-			cache.NewMockCache(),
-			nil,
-			NewDefaultLogCacheKeyGenerator(fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			}, nil),
-			nil,
-		)
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	lrc, err := NewLogResultCache(
+		log.NewNopLogger(),
+		fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		},
+		cache.NewMockCache(),
+		nil,
+		NewDefaultLogCacheKeyGenerator(fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		}, nil),
+		nil,
 	)
+	require.NoError(t, err)
 
 	req1 := &LokiRequest{
 		StartTs: time.Unix(0, time.Minute.Nanoseconds()+30*time.Second.Nanoseconds()),
@@ -340,21 +335,20 @@ func Test_LogResultCacheDifferentRangeNonEmpty(t *testing.T) {
 }
 
 func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
-	var (
-		ctx = user.InjectOrgID(context.Background(), "foo")
-		lrc = NewLogResultCache(
-			log.NewNopLogger(),
-			fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			},
-			cache.NewMockCache(),
-			nil,
-			NewDefaultLogCacheKeyGenerator(fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			}, nil),
-			nil,
-		)
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	lrc, err := NewLogResultCache(
+		log.NewNopLogger(),
+		fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		},
+		cache.NewMockCache(),
+		nil,
+		NewDefaultLogCacheKeyGenerator(fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		}, nil),
+		nil,
 	)
+	require.NoError(t, err)
 
 	req1 := &LokiRequest{
 		StartTs: time.Unix(0, time.Minute.Nanoseconds()+30*time.Second.Nanoseconds()),
@@ -452,21 +446,20 @@ func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
 func Test_LogResultNonOverlappingCache(t *testing.T) {
 	metrics := NewLogResultCacheMetrics(prometheus.NewPedanticRegistry())
 	mockCache := cache.NewMockCache()
-	var (
-		ctx = user.InjectOrgID(context.Background(), "foo")
-		lrc = NewLogResultCache(
-			log.NewNopLogger(),
-			fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			},
-			mockCache,
-			nil,
-			NewDefaultLogCacheKeyGenerator(fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			}, nil),
-			metrics,
-		)
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	lrc, err := NewLogResultCache(
+		log.NewNopLogger(),
+		fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		},
+		mockCache,
+		nil,
+		NewDefaultLogCacheKeyGenerator(fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		}, nil),
+		metrics,
 	)
+	require.NoError(t, err)
 
 	checkCacheMetrics := func(expectedHits, expectedMisses int) {
 		require.Equal(t, float64(expectedHits), testutil.ToFloat64(metrics.CacheHit))
@@ -595,21 +588,20 @@ func Test_LogResultNonOverlappingCache(t *testing.T) {
 }
 
 func Test_LogResultCacheDifferentLimit(t *testing.T) {
-	var (
-		ctx = user.InjectOrgID(context.Background(), "foo")
-		lrc = NewLogResultCache(
-			log.NewNopLogger(),
-			fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			},
-			cache.NewMockCache(),
-			nil,
-			NewDefaultLogCacheKeyGenerator(fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
-			}, nil),
-			nil,
-		)
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	lrc, err := NewLogResultCache(
+		log.NewNopLogger(),
+		fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		},
+		cache.NewMockCache(),
+		nil,
+		NewDefaultLogCacheKeyGenerator(fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		}, nil),
+		nil,
 	)
+	require.NoError(t, err)
 
 	req1 := &LokiRequest{
 		StartTs: time.Unix(0, time.Minute.Nanoseconds()),

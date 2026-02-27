@@ -652,6 +652,11 @@ func (l *Limits) Validate() error {
 		return errors.New("querier.tsdb-max-bytes-per-shard must be greater than 0")
 	}
 
+	if time.Duration(l.EngineResultsCacheTimeBucketInterval) < time.Minute {
+		return fmt.Errorf("engine_results_cache_time_bucket_interval must be >= 1m, got %s",
+			l.EngineResultsCacheTimeBucketInterval)
+	}
+
 	return nil
 }
 
