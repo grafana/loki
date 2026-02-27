@@ -1250,9 +1250,9 @@ The ring contains too many unhealthy instances to satisfy the replication factor
 
 **Resolution:**
 
-1. **Check the health of ring members**: 
+1. **Check the health of ring members**:
     Open a browser and navigate to http://localhost:3100/ring. You should see the Loki ring page.
-    
+
     OR
 
    ```bash
@@ -1524,11 +1524,195 @@ After being disconnected from the memberlist cluster, the instance failed to rej
 
 ## Component readiness errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+Readiness errors occur when Loki components are not ready to serve requests. These errors are returned by the [`/ready` health check endpoint](http://localhost:3100/ready) and prevent load balancers from routing traffic to unready instances.
+
+### Error: Application is stopping
+
+**Error message:**
+
+```text
+Application is stopping
+```
+
+**Cause:**
+
+Loki is shutting down and no longer accepting new requests. This is normal during graceful shutdown.
+
+**Resolution:**
+
+1. **Wait for the instance to restart** if this is a rolling update.
+1. **Check if the shutdown is expected** (maintenance, scaling down).
+1. **Review orchestrator logs** (Kubernetes, systemd) if the shutdown is unexpected.
+
+**Properties:**
+
+- Enforced by: Loki readiness handler
+- Retryable: Yes (after restart)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: Some services are not running
+
+**Error message:**
+
+```text
+Some services are not Running:
+<state>: <count>
+<state>: <count>
+```
+
+For example:
+
+```text
+Some services are not Running:
+Starting: 1
+Failed: 2
+```
+
+**Cause:**
+
+One or more internal Loki services have failed to start or have stopped unexpectedly. The error message lists each service state with a count of services in that state.
+
+**Resolution:**
+
+1. **Check Loki logs** for errors from the listed services.
+1. **Verify configuration** for the affected services.
+1. **Check resource availability** (memory, disk, CPU).
+1. **Restart the instance** if services are stuck.
+
+**Properties:**
+
+- Enforced by: Loki service manager
+- Retryable: Yes (after services recover)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: Ingester not ready
+
+**Error message:**
+
+```text
+Ingester not ready: <details>
+```
+
+When the ingester's own state check fails, `<details>` contains the ingester state, giving the full message:
+
+```text
+Ingester not ready: ingester not ready: <state>
+```
+
+Where `<state>` is the service state, for example `Starting`, `Stopping`, or `Failed`.
+
+**Cause:**
+
+The ingester is not in a ready state to accept writes or serve reads. The detail message indicates the specific reason, such as:
+
+- The ingester is still starting up and joining the ring (`Starting`)
+- The lifecycler is not ready (lifecycler error text)
+- The ingester is waiting for minimum ready duration after ring join
+
+**Resolution:**
+
+1. **Wait for startup to complete** - ingesters take time to join the ring and become ready.
+1. **Check ring membership**:
+
+   ```bash
+   curl -s http://ingester:3100/ring
+   ```
+
+1. **Review logs** for startup errors.
+1. **Adjust the minimum ready duration** if startup is too slow:
+
+   ```yaml
+   ingester:
+     lifecycler:
+       min_ready_duration: 15s
+   ```
+
+**Properties:**
+
+- Enforced by: Ingester readiness check
+- Retryable: Yes (after ingester becomes ready)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: No queriers connected to query frontend
+
+**Error message:**
+
+```text
+Query Frontend not ready: not ready: number of queriers connected to query-frontend is 0
+```
+
+**Cause:**
+
+The query frontend has no querier workers connected. Without queriers, the frontend cannot process any queries. This typically occurs when:
+
+- Queriers are not yet started
+- Queriers cannot reach the frontend
+- gRPC connectivity issues between queriers and frontend
+
+**Resolution:**
+
+1. **Check that queriers are running** and healthy.
+1. **Verify querier configuration** points to the correct frontend address:
+
+   ```yaml
+   frontend_worker:
+     frontend_address: query-frontend:9095
+   ```
+
+1. **Check gRPC connectivity** between queriers and the frontend:
+
+   ```bash
+   # Test gRPC port connectivity
+   nc -zv query-frontend 9095
+   ```
+
+1. **Review querier logs** for connection errors.
+
+**Properties:**
+
+- Enforced by: Query frontend (v1) readiness check
+- Retryable: Yes (after queriers connect)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: No schedulers connected to frontend worker
+
+**Error message:**
+
+```text
+Query Frontend not ready: not ready: number of schedulers this worker is connected to is 0
+```
+
+**Cause:**
+
+The query frontend worker has no active connections to any query scheduler. This prevents the frontend from dispatching queries.
+
+**Resolution:**
+
+1. **Check that query schedulers are running** and healthy.
+1. **Verify scheduler address configuration**:
+
+   ```yaml
+   frontend_worker:
+     scheduler_address: query-scheduler:9095
+   ```
+
+1. **Check gRPC connectivity** between the frontend and schedulers.
+1. **Review query scheduler logs** for errors.
+
+**Properties:**
+
+- Enforced by: Query frontend (v2) readiness check
+- Retryable: Yes (after schedulers connect)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
 
 ## gRPC and message size errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## TLS and certificate errors
 
