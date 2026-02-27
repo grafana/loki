@@ -233,7 +233,6 @@ func applyPropertyNameFallback(
 		&violation.Reason,
 		&violation.FieldName,
 		&violation.FieldPath,
-		&violation.Location,
 		&violation.InstancePath,
 	)
 }
@@ -254,7 +253,6 @@ func enrichSchemaValidationFailure(
 	reason *string,
 	fieldName *string,
 	fieldPath *string,
-	location *string,
 	instancePath *[]string,
 ) bool {
 	if failure == nil {
@@ -298,11 +296,9 @@ func enrichSchemaValidationFailure(
 	// construct JSONPath from parent location segments
 	if len(failure.ParentLocation) > 0 {
 		*fieldPath = helpers.ExtractJSONPathFromStringLocation("/" + strings.Join(failure.ParentLocation, "/") + "/" + failure.PropertyName)
-		*location = "/" + strings.Join(failure.ParentLocation, "/")
 		*instancePath = failure.ParentLocation
 	} else {
 		*fieldPath = helpers.ExtractJSONPathFromStringLocation("/" + failure.PropertyName)
-		*location = "/"
 		*instancePath = []string{}
 	}
 

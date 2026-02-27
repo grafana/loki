@@ -22,3 +22,8 @@ func X__builtin_clzl(t *TLS, n ulong) int32 {
 func X__builtin_popcountl(t *TLS, x ulong) int32 {
 	return int32(mbits.OnesCount64(x))
 }
+
+// int __builtin_popcountll (unsigned long long)
+func X__builtin_popcountll(t *TLS, x uint64) int32 {
+	return int32(mbits.OnesCount64(x))
+}

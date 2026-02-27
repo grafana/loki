@@ -393,6 +393,10 @@ query_engine:
   # CLI flag: -query-engine.enforce-retention-period
   [enforce_retention_period: <boolean> | default = false]
 
+  # Mutate incoming queries to align their start and end with their step.
+  # CLI flag: -query-engine.align-queries-with-step
+  [align_queries_with_step: <boolean> | default = false]
+
   # Experimental: When enabled, the tenant's MaxQuerySeries limit is applied.
   # Otherwise, no limit is enforced.
   # CLI flag: -query-engine.enforce-max-query-series-limit

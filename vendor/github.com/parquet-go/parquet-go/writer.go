@@ -1026,13 +1026,19 @@ func (w *writer) reset(writer io.Writer) {
 	}
 	w.currentRowGroup.reset()
 	for i := range w.rowGroups {
-		w.rowGroups[i] = format.RowGroup{}
+		w.rowGroups[i].Reset()
 	}
 	for i := range w.columnIndexes {
-		w.columnIndexes[i] = nil
+		for j := range w.columnIndexes[i] {
+			w.columnIndexes[i][j].Reset()
+		}
+		w.columnIndexes[i] = w.columnIndexes[i][:0]
 	}
 	for i := range w.offsetIndexes {
-		w.offsetIndexes[i] = nil
+		for j := range w.offsetIndexes[i] {
+			w.offsetIndexes[i][j].Reset()
+		}
+		w.offsetIndexes[i] = w.offsetIndexes[i][:0]
 	}
 	w.rowGroups = w.rowGroups[:0]
 	w.columnIndexes = w.columnIndexes[:0]
@@ -1155,6 +1161,10 @@ func (w *writer) writeRowGroup(rg *ConcurrentRowGroupWriter, rowGroupSchema *Sch
 		return 0, nil
 	}
 
+	rowGroupIndex := len(w.rowGroups)
+	columnIndexIndex := len(w.columnIndexes)
+	offsetIndexIndex := len(w.offsetIndexes)
+
 	if len(w.rowGroups) == MaxRowGroups {
 		return 0, ErrTooManyRowGroups
 	}
@@ -1178,10 +1188,9 @@ func (w *writer) writeRowGroup(rg *ConcurrentRowGroupWriter, rowGroupSchema *Sch
 	fileOffset := w.writer.offset
 
 	for i, c := range rg.columns {
-		columnIndex := c.columnIndex.ColumnIndex()
-		columnIndex.RepetitionLevelHistogram = slices.Clone(c.pageRepetitionLevelHistograms)
-		columnIndex.DefinitionLevelHistogram = slices.Clone(c.pageDefinitionLevelHistograms)
-		rg.columnIndex[i] = columnIndex
+		rg.columnIndex[i] = c.columnIndex.ColumnIndex()
+		rg.columnIndex[i].RepetitionLevelHistogram = append(rg.columnIndex[i].RepetitionLevelHistogram[:0], c.pageRepetitionLevelHistograms...)
+		rg.columnIndex[i].DefinitionLevelHistogram = append(rg.columnIndex[i].DefinitionLevelHistogram[:0], c.pageDefinitionLevelHistograms...)
 
 		c.columnChunk.MetaData.SizeStatistics = format.SizeStatistics{
 			UnencodedByteArrayDataBytes: c.totalUnencodedByteArrayBytes,
@@ -1239,9 +1248,20 @@ func (w *writer) writeRowGroup(rg *ConcurrentRowGroupWriter, rowGroupSchema *Sch
 		totalCompressedSize += int64(c.TotalCompressedSize)
 	}
 
+	var reuseRowGroup *format.RowGroup = nil
+	if cap(w.rowGroups) > rowGroupIndex {
+		w.rowGroups = w.rowGroups[:rowGroupIndex+1] // Extend the slice by one element
+		reuseRowGroup = &w.rowGroups[rowGroupIndex] // Pointer to the last element
+	}
+
 	sortingColumns := w.sortingColumns
 	if len(sortingColumns) == 0 && len(rowGroupSortingColumns) > 0 {
-		sortingColumns = make([]format.SortingColumn, 0, len(rowGroupSortingColumns))
+		scLen := len(rowGroupSortingColumns)
+		if reuseRowGroup == nil {
+			sortingColumns = make([]format.SortingColumn, 0, scLen)
+		} else {
+			sortingColumns = reuseRowGroup.SortingColumns
+		}
 		forEachLeafColumnOf(rowGroupSchema, func(leaf leafColumn) {
 			if sortingIndex := searchSortingColumn(rowGroupSortingColumns, leaf.path); sortingIndex < len(sortingColumns) {
 				sortingColumns[sortingIndex] = format.SortingColumn{
@@ -1253,13 +1273,47 @@ func (w *writer) writeRowGroup(rg *ConcurrentRowGroupWriter, rowGroupSchema *Sch
 		})
 	}
 
-	columns := slices.Clone(rg.columnChunk)
-	columnIndex := slices.Clone(rg.columnIndex)
-	offsetIndex := slices.Clone(rg.offsetIndex)
+	var reuseColumnIndex *[]format.ColumnIndex = nil
+	if cap(w.columnIndexes) > columnIndexIndex {
+		// Extend the slice by one element
+		w.columnIndexes = w.columnIndexes[:columnIndexIndex+1]
+		reuseColumnIndex = &w.columnIndexes[columnIndexIndex]
+	}
+	var columnIndex []format.ColumnIndex
+	if reuseColumnIndex != nil {
+		// Copy the slice
+		columnIndex = append(*reuseColumnIndex, rg.columnIndex...)
+		w.columnIndexes[columnIndexIndex] = columnIndex
+	} else {
+		columnIndex = slices.Clone(rg.columnIndex)
+		w.columnIndexes = append(w.columnIndexes, columnIndex)
+	}
 
+	var reuseOffsetIndex *[]format.OffsetIndex = nil
+	if cap(w.offsetIndexes) > offsetIndexIndex {
+		// Extend the slice by one element
+		w.offsetIndexes = w.offsetIndexes[:offsetIndexIndex+1]
+		reuseOffsetIndex = &w.offsetIndexes[offsetIndexIndex]
+	}
+	var offsetIndex []format.OffsetIndex
+	if reuseOffsetIndex != nil {
+		offsetIndex = append(*reuseOffsetIndex, rg.offsetIndex...)
+		w.offsetIndexes[offsetIndexIndex] = offsetIndex
+	} else {
+		offsetIndex = slices.Clone(rg.offsetIndex)
+		w.offsetIndexes = append(w.offsetIndexes, offsetIndex)
+	}
+
+	// If the existing row group slice is full, we need to create a new element
+	var columns []format.ColumnChunk = nil
+	if reuseRowGroup == nil {
+		columns = slices.Clone(rg.columnChunk)
+	} else {
+		columns = append(reuseRowGroup.Columns, rg.columnChunk...)
+	}
 	for i := range columns {
 		c := &columns[i]
-		c.MetaData.EncodingStats = slices.Clone(rg.columnChunk[i].MetaData.EncodingStats)
+		c.MetaData.EncodingStats = append(c.MetaData.EncodingStats[:0], rg.columnChunk[i].MetaData.EncodingStats...)
 	}
 
 	for i := range offsetIndex {
@@ -1267,18 +1321,26 @@ func (w *writer) writeRowGroup(rg *ConcurrentRowGroupWriter, rowGroupSchema *Sch
 		c.PageLocations = slices.Clone(rg.offsetIndex[i].PageLocations)
 	}
 
-	w.rowGroups = append(w.rowGroups, format.RowGroup{
-		Columns:             columns,
-		TotalByteSize:       totalByteSize,
-		NumRows:             numRows,
-		SortingColumns:      sortingColumns,
-		FileOffset:          fileOffset,
-		TotalCompressedSize: totalCompressedSize,
-		Ordinal:             int16(len(w.rowGroups)),
-	})
+	if reuseRowGroup == nil {
+		w.rowGroups = append(w.rowGroups, format.RowGroup{
+			Columns:             columns,
+			TotalByteSize:       totalByteSize,
+			NumRows:             numRows,
+			SortingColumns:      sortingColumns,
+			FileOffset:          fileOffset,
+			TotalCompressedSize: totalCompressedSize,
+			Ordinal:             int16(len(w.rowGroups)),
+		})
+	} else {
+		reuseRowGroup.Columns = columns
+		reuseRowGroup.TotalByteSize = totalByteSize
+		reuseRowGroup.NumRows = numRows
+		reuseRowGroup.SortingColumns = sortingColumns
+		reuseRowGroup.FileOffset = fileOffset
+		reuseRowGroup.TotalCompressedSize = totalCompressedSize
+		reuseRowGroup.Ordinal = int16(len(w.rowGroups) - 1)
+	}
 
-	w.columnIndexes = append(w.columnIndexes, columnIndex)
-	w.offsetIndexes = append(w.offsetIndexes, offsetIndex)
 	return numRows, nil
 }
 
@@ -1946,7 +2008,15 @@ func (c *ColumnWriter) fallbackDictionaryToPlain() error {
 		c.columnType = indexedType.Type
 	}
 	if c.plainColumnBuffer == nil {
-		c.plainColumnBuffer = c.columnType.NewColumnBuffer(int(c.bufferIndex), int(c.bufferSize))
+		base := c.columnType.NewColumnBuffer(int(c.bufferIndex), int(c.bufferSize))
+		switch {
+		case c.maxRepetitionLevel > 0:
+			c.plainColumnBuffer = newRepeatedColumnBuffer(base, c.maxRepetitionLevel, c.maxDefinitionLevel, nullsGoLast)
+		case c.maxDefinitionLevel > 0:
+			c.plainColumnBuffer = newOptionalColumnBuffer(base, c.maxDefinitionLevel, nullsGoLast)
+		default:
+			c.plainColumnBuffer = base
+		}
 	}
 	c.columnBuffer = c.plainColumnBuffer
 	c.encoding = &plain.Encoding{}
@@ -2045,16 +2115,20 @@ func (c *ColumnWriter) recordPageStats(headerSize int32, header *format.PageHead
 		definitionLevels := page.DefinitionLevels()
 
 		if c.maxRepetitionLevel > 0 {
-			accumulateLevelHistogram(c.repetitionLevelHistogram, repetitionLevels)
-			c.pageRepetitionLevelHistograms = appendPageLevelHistogram(
-				c.pageRepetitionLevelHistograms, repetitionLevels, c.maxRepetitionLevel,
+			c.pageRepetitionLevelHistograms = accumulateAndAppendPageLevelHistogram(
+				c.repetitionLevelHistogram,
+				c.pageRepetitionLevelHistograms,
+				repetitionLevels,
+				c.maxRepetitionLevel,
 			)
 		}
 
 		if c.maxDefinitionLevel > 0 {
-			accumulateLevelHistogram(c.definitionLevelHistogram, definitionLevels)
-			c.pageDefinitionLevelHistograms = appendPageLevelHistogram(
-				c.pageDefinitionLevelHistograms, definitionLevels, c.maxDefinitionLevel,
+			c.pageDefinitionLevelHistograms = accumulateAndAppendPageLevelHistogram(
+				c.definitionLevelHistogram,
+				c.pageDefinitionLevelHistograms,
+				definitionLevels,
+				c.maxDefinitionLevel,
 			)
 		}
 	}

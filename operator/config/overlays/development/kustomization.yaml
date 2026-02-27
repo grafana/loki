@@ -30,3 +30,5 @@ patchesStrategicMerge:
 - manager_related_image_patch.yaml
 - manager_image_pull_policy_patch.yaml
 - manager_security_context_patch.yaml
+- manager_metrics_port_patch.yaml
+

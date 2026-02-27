@@ -120,7 +120,7 @@ The `persist_tokens` option is enabled for a ring but no `path_prefix` is specif
 
 1. **Or disable persist_tokens** if you don't need token persistence:
 
-```yaml
+   ```yaml
    common:
      persist_tokens: false
    ```
@@ -192,7 +192,7 @@ Structured metadata is enabled but the active schema version is older than v13. 
    ```yaml
    schema_config:
      configs:
-       - from: "2024-01-01"
+       - from: "2024-04-01"
          store: tsdb
          object_store: s3
          schema: v13
@@ -754,7 +754,7 @@ unsupported storage backend
 
 **Cause:**
 
-The specified storage backend type is not recognized. This typically occurs when a typo exists in the storage type configuration. 
+The specified storage backend type is not recognized. This typically occurs when a typo exists in the storage type configuration.
 
 **Resolution:**
 
@@ -945,7 +945,7 @@ The AWS STS (Security Token Service) endpoint URL is malformed or invalid.
 **Error message:**
 
 ```text
-connection string is either blank or malformed. The expected connection string should contain key value pairs separated by semicolons
+connection string is either blank or malformed. The expected connection string should contain key value pairs separated by semicolons. For example 'DefaultEndpointsProtocol=https;AccountName=<accountName>;AccountKey=<accountKey>;EndpointSuffix=core.windows.net'
 ```
 
 **Cause:**
@@ -990,6 +990,14 @@ Or for specific backends:
 unrecognized named s3 storage config <name>
 unrecognized named gcs storage config <name>
 unrecognized named azure storage config <name>
+unrecognized named filesystem storage config <name>
+unrecognized named swift storage config <name>
+```
+
+Or for an unrecognized store type:
+
+```text
+unrecognized named storage type: <storeType>
 ```
 
 **Cause:**
@@ -1224,19 +1232,487 @@ A results cache is required for the query frontend but no cache configuration wa
 - HTTP status: N/A (startup failure)
 - Configurable per tenant: No
 
-
 ## Ring and cluster communication errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+Ring errors occur when Loki components cannot properly communicate through the [hash ring](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/hash-rings/), which is used to distribute work across instances. The ring is fundamental to Loki's distributed operation.
 
+### Error: Too many unhealthy instances in the ring
+
+**Error message:**
+
+```text
+too many unhealthy instances in the ring
+```
+
+**Cause:**
+
+The ring contains too many unhealthy instances to satisfy the replication factor. For example, with a replication factor of 3, at least 3 healthy instances must be available.
+
+**Resolution:**
+
+1. **Check the health of ring members**:
+    Open a browser and navigate to http://localhost:3100/ring. You should see the Loki ring page.
+
+    OR
+
+   ```bash
+   curl -s http://loki:3100/ring | jq '.shards[] | select(.state != "ACTIVE")'
+   ```
+
+1. **Restart unhealthy instances** that are stuck in a bad state.
+1. **Scale up instances** if there aren't enough healthy members.
+1. **Check resource constraints** (CPU, memory, disk) on unhealthy instances.
+
+**Properties:**
+
+- Enforced by: Ring replication
+- Retryable: Yes (after instances recover)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: Empty ring
+
+**Error message:**
+
+```text
+empty ring
+```
+
+**Cause:**
+
+No instances are registered in the ring. This typically occurs during initial cluster startup, for example if your ingesters are OOM crashing, or due to misconfiguration.
+
+**Resolution:**
+
+1. **Wait for instances to register** during initial startup.
+1. **Check ingesters** to make sure they are running.
+1. **Check that all instances can communicate** over the configured ports.
+1. **Verify ring configuration** across all components, especially memberlist configuration:
+
+   ```yaml
+   ingester:
+     lifecycler:
+       ring:
+         kvstore:
+           store: memberlist
+         replication_factor: 3
+   ```
+
+1. **Check KV store health** (Consul, etcd, or memberlist):
+
+   ```bash
+   # For memberlist
+   curl -s http://loki:3100/memberlist
+   ```
+
+**Properties:**
+
+- Enforced by: Ring operations
+- Retryable: Yes (after instances register)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: Instance not found in the ring
+
+**Error message:**
+
+```text
+instance <id> not found in the ring
+```
+
+**Cause:**
+
+A specific instance is expected to be in the ring but isn't registered. This can happen after a restart if the instance hasn't re-joined the ring yet.
+
+**Resolution:**
+
+1. **Wait for the instance to re-register** in the ring.
+1. **Check the instance's logs** for ring join failures.
+1. **Verify KV store connectivity** from the instance.
+
+**Properties:**
+
+- Enforced by: Ring operations
+- Retryable: Yes (after instance registers)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: Instance owns no tokens
+
+**Error message:**
+
+```text
+this instance owns no tokens
+```
+
+**Cause:**
+
+The instance has joined the ring but hasn't claimed any tokens. Without tokens, the instance cannot receive any work. This can happen if:
+
+- The instance is still starting up
+- Token claim failed
+- The KV store update didn't propagate
+
+**Resolution:**
+
+1. **Wait for token assignment** during startup.
+1. **Check the ring status** for the instance:
+
+   ```bash
+   curl -s http://loki:3100/ring
+   ```
+
+1. **Restart the instance** if tokens are not assigned after startup completes.
+1. **Check KV store connectivity** and health.
+
+**Properties:**
+
+- Enforced by: Lifecycler readiness check
+- Retryable: Yes (after tokens are assigned)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: Error talking to the KV store
+
+**Error message:**
+
+```text
+error talking to the KV store
+```
+
+**Cause:**
+
+The instance cannot communicate with the key-value store used for ring state. The KV store (Consul, etcd, or memberlist) is required for ring coordination.
+
+**Resolution:**
+
+1. **Check KV store health and connectivity**:
+
+   ```bash
+   # For Consul
+   curl http://consul:8500/v1/status/leader
+   
+   # For etcd
+   etcdctl endpoint health
+   ```
+
+1. **Verify network connectivity** between Loki instances and the KV store.
+1. **Check firewall rules** allow traffic on KV store ports.
+1. **For memberlist**, verify that gossip ports are accessible between all instances:
+
+   ```yaml
+   memberlist:
+     bind_port: 7946
+     join_members:
+       - loki-memberlist:7946
+   ```
+
+**Properties:**
+
+- Enforced by: Ring lifecycler
+- Retryable: Yes (after KV store recovery)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: No ring returned from the KV store
+
+**Error message:**
+
+```text
+no ring returned from the KV store
+```
+
+**Cause:**
+
+The KV store responded but returned an empty or invalid ring descriptor. This can happen if the KV store was recently initialized or its data was cleared.
+
+**Resolution:**
+
+1. **Wait for ring initialization** during first startup.
+1. **Check if the KV store data was accidentally cleared**.
+1. **Restart all ring members** to re-register if the KV store was reset.
+
+**Properties:**
+
+- Enforced by: Ring lifecycler
+- Retryable: Yes (after ring initialization)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: Failed to join memberlist cluster
+
+**Error message:**
+
+```text
+failed to join memberlist cluster on startup
+```
+
+Or:
+
+```text
+joining memberlist cluster failed
+```
+
+**Cause:**
+
+The instance could not join the memberlist gossip cluster. Common causes:
+
+- Seed nodes are unreachable
+- DNS resolution failure for join addresses
+- Firewall blocking gossip ports
+- All existing members are down
+
+**Resolution:**
+
+1. **Check that join members are reachable**:
+
+   ```bash
+   # Test connectivity to seed nodes
+   nc -zv loki-memberlist 7946
+   ```
+
+1. **Verify DNS resolution** for join addresses:
+
+   ```bash
+   nslookup loki-memberlist
+   ```
+
+1. **Check memberlist configuration**:
+
+   ```yaml
+   memberlist:
+     bind_port: 7946
+     join_members:
+       - loki-gossip-ring.loki.svc.cluster.local:7946
+   ```
+
+1. **Ensure firewall rules** allow UDP and TCP traffic on the gossip port (default 7946).
+1. **For Kubernetes**, verify that the headless service for memberlist is configured correctly.
+
+**Properties:**
+
+- Enforced by: Memberlist KV client
+- Retryable: Yes (automatic retries with backoff)
+- HTTP status: N/A (startup failure or degraded operation)
+- Configurable per tenant: No
+
+### Error: Re-joining memberlist cluster failed
+
+**Error message:**
+
+```text
+re-joining memberlist cluster failed
+```
+
+**Cause:**
+
+After being disconnected from the memberlist cluster, the instance failed to rejoin. This can happen during network partitions or after prolonged network issues.
+
+**Resolution:**
+
+1. **Check network connectivity** between cluster members.
+1. **Verify other cluster members are healthy**.
+1. **Restart the affected instance** if automatic rejoin continues to fail.
+1. **Review network stability** frequent re-joins indicate underlying network issues.
+
+**Properties:**
+
+- Enforced by: Memberlist KV client
+- Retryable: Yes (automatic retries)
+- HTTP status: N/A (degraded operation)
+- Configurable per tenant: No
 
 ## Component readiness errors
 
+Readiness errors occur when Loki components are not ready to serve requests. These errors are returned by the [`/ready` health check endpoint](http://localhost:3100/ready) and prevent load balancers from routing traffic to unready instances.
 
+### Error: Application is stopping
+
+**Error message:**
+
+```text
+Application is stopping
+```
+
+**Cause:**
+
+Loki is shutting down and no longer accepting new requests. This is normal during graceful shutdown.
+
+**Resolution:**
+
+1. **Wait for the instance to restart** if this is a rolling update.
+1. **Check if the shutdown is expected** (maintenance, scaling down).
+1. **Review orchestrator logs** (Kubernetes, systemd) if the shutdown is unexpected.
+
+**Properties:**
+
+- Enforced by: Loki readiness handler
+- Retryable: Yes (after restart)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: Some services are not running
+
+**Error message:**
+
+```text
+Some services are not Running:
+<state>: <count>
+<state>: <count>
+```
+
+For example:
+
+```text
+Some services are not Running:
+Starting: 1
+Failed: 2
+```
+
+**Cause:**
+
+One or more internal Loki services have failed to start or have stopped unexpectedly. The error message lists each service state with a count of services in that state.
+
+**Resolution:**
+
+1. **Check Loki logs** for errors from the listed services.
+1. **Verify configuration** for the affected services.
+1. **Check resource availability** (memory, disk, CPU).
+1. **Restart the instance** if services are stuck.
+
+**Properties:**
+
+- Enforced by: Loki service manager
+- Retryable: Yes (after services recover)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: Ingester not ready
+
+**Error message:**
+
+```text
+Ingester not ready: <details>
+```
+
+When the ingester's own state check fails, `<details>` contains the ingester state, giving the full message:
+
+```text
+Ingester not ready: ingester not ready: <state>
+```
+
+Where `<state>` is the service state, for example `Starting`, `Stopping`, or `Failed`.
+
+**Cause:**
+
+The ingester is not in a ready state to accept writes or serve reads. The detail message indicates the specific reason, such as:
+
+- The ingester is still starting up and joining the ring (`Starting`)
+- The lifecycler is not ready (lifecycler error text)
+- The ingester is waiting for minimum ready duration after ring join
+
+**Resolution:**
+
+1. **Wait for startup to complete** - ingesters take time to join the ring and become ready.
+1. **Check ring membership**:
+
+   ```bash
+   curl -s http://ingester:3100/ring
+   ```
+
+1. **Review logs** for startup errors.
+1. **Adjust the minimum ready duration** if startup is too slow:
+
+   ```yaml
+   ingester:
+     lifecycler:
+       min_ready_duration: 15s
+   ```
+
+**Properties:**
+
+- Enforced by: Ingester readiness check
+- Retryable: Yes (after ingester becomes ready)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: No queriers connected to query frontend
+
+**Error message:**
+
+```text
+Query Frontend not ready: not ready: number of queriers connected to query-frontend is 0
+```
+
+**Cause:**
+
+The query frontend has no querier workers connected. Without queriers, the frontend cannot process any queries. This typically occurs when:
+
+- Queriers are not yet started
+- Queriers cannot reach the frontend
+- gRPC connectivity issues between queriers and frontend
+
+**Resolution:**
+
+1. **Check that queriers are running** and healthy.
+1. **Verify querier configuration** points to the correct frontend address:
+
+   ```yaml
+   frontend_worker:
+     frontend_address: query-frontend:9095
+   ```
+
+1. **Check gRPC connectivity** between queriers and the frontend:
+
+   ```bash
+   # Test gRPC port connectivity
+   nc -zv query-frontend 9095
+   ```
+
+1. **Review querier logs** for connection errors.
+
+**Properties:**
+
+- Enforced by: Query frontend (v1) readiness check
+- Retryable: Yes (after queriers connect)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: No schedulers connected to frontend worker
+
+**Error message:**
+
+```text
+Query Frontend not ready: not ready: number of schedulers this worker is connected to is 0
+```
+
+**Cause:**
+
+The query frontend worker has no active connections to any query scheduler. This prevents the frontend from dispatching queries.
+
+**Resolution:**
+
+1. **Check that query schedulers are running** and healthy.
+1. **Verify scheduler address configuration**:
+
+   ```yaml
+   frontend_worker:
+     scheduler_address: query-scheduler:9095
+   ```
+
+1. **Check gRPC connectivity** between the frontend and schedulers.
+1. **Review query scheduler logs** for errors.
+
+**Properties:**
+
+- Enforced by: Query frontend (v2) readiness check
+- Retryable: Yes (after schedulers connect)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
 
 ## gRPC and message size errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## TLS and certificate errors
 

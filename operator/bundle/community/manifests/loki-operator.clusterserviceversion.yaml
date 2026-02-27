@@ -152,7 +152,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.9.0
-    createdAt: "2026-02-24T17:37:30Z"
+    createdAt: "2026-02-25T18:26:47Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -1959,11 +1959,11 @@ spec:
                   periodSeconds: 20
                 name: manager
                 ports:
+                - containerPort: 8080
+                  name: metrics
                 - containerPort: 9443
                   name: webhook-server
                   protocol: TCP
-                - containerPort: 8080
-                  name: metrics
                 readinessProbe:
                   httpGet:
                     path: /readyz
@@ -1981,29 +1981,8 @@ spec:
                 - mountPath: /controller_manager_config.yaml
                   name: manager-config
                   subPath: controller_manager_config.yaml
-              - args:
-                - --secure-listen-address=0.0.0.0:8443
-                - --upstream=http://127.0.0.1:8080/
-                - --logtostderr=true
-                - --v=0
-                image: quay.io/brancz/kube-rbac-proxy:v0.18.1
-                name: kube-rbac-proxy
-                ports:
-                - containerPort: 8443
-                  name: https
-                resources:
-                  requests:
-                    cpu: 200m
-                    memory: 256Mi
-                securityContext:
-                  allowPrivilegeEscalation: false
-                  capabilities:
-                    drop:
-                    - ALL
               nodeSelector:
                 kubernetes.io/os: linux
-              securityContext:
-                runAsNonRoot: true
               serviceAccountName: loki-operator-controller-manager
               terminationGracePeriodSeconds: 10
               volumes:
