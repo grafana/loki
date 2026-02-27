@@ -4,7 +4,10 @@
 package requests
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -14,10 +17,11 @@ import (
 	"github.com/pb33f/libopenapi-validator/errors"
 	"github.com/pb33f/libopenapi-validator/helpers"
 	"github.com/pb33f/libopenapi-validator/paths"
+	"github.com/pb33f/libopenapi-validator/schema_validation"
 )
 
 func (v *requestBodyValidator) ValidateRequestBody(request *http.Request) (bool, []*errors.ValidationError) {
-	pathItem, errs, foundPath := paths.FindPath(request, v.document, v.options.RegexCache)
+	pathItem, errs, foundPath := paths.FindPath(request, v.document, v.options)
 	if len(errs) > 0 {
 		return false, errs
 	}
@@ -66,12 +70,6 @@ func (v *requestBodyValidator) ValidateRequestBodyWithPathItem(request *http.Req
 		return false, []*errors.ValidationError{errors.RequestContentTypeNotFound(operation, request, pathValue)}
 	}
 
-	// we currently only support JSON validation for request bodies
-	// this will capture *everything* that contains some form of 'json' in the content type
-	if !strings.Contains(strings.ToLower(contentType), helpers.JSONType) {
-		return true, nil
-	}
-
 	// Nothing to validate
 	if mediaType.Schema == nil {
 		return true, nil
@@ -79,6 +77,53 @@ func (v *requestBodyValidator) ValidateRequestBodyWithPathItem(request *http.Req
 
 	// extract schema from media type
 	schema := mediaType.Schema.Schema()
+
+	isJson := strings.Contains(strings.ToLower(contentType), helpers.JSONType)
+
+	// we currently only support JSON, XML and URLEncoded validation for request bodies
+	if !isJson {
+		isXml := schema_validation.IsXMLContentType(contentType)
+		isUrlEncoded := schema_validation.IsURLEncodedContentType(contentType)
+
+		xmlValid := isXml && v.options.AllowXMLBodyValidation
+		urlEncodedValid := isUrlEncoded && v.options.AllowURLEncodedBodyValidation
+
+		if !xmlValid && !urlEncodedValid {
+			return true, nil
+		}
+
+		if request != nil && request.Body != nil {
+			requestBody, _ := io.ReadAll(request.Body)
+			_ = request.Body.Close()
+
+			stringedBody := string(requestBody)
+			var jsonBody any
+			var prevalidationErrors []*errors.ValidationError
+
+			switch {
+			case xmlValid:
+				jsonBody, prevalidationErrors = schema_validation.TransformXMLToSchemaJSON(stringedBody, schema)
+			case urlEncodedValid:
+				jsonBody, prevalidationErrors = schema_validation.TransformURLEncodedToSchemaJSON(stringedBody, schema, mediaType.Encoding)
+			}
+
+			if len(prevalidationErrors) > 0 {
+				return false, prevalidationErrors
+			}
+
+			transformedBytes, err := json.Marshal(jsonBody)
+			if err != nil {
+				switch {
+				case isXml:
+					return false, []*errors.ValidationError{errors.InvalidXMLParsing(err.Error(), stringedBody)}
+				case isUrlEncoded:
+					return false, []*errors.ValidationError{errors.InvalidURLEncodedParsing(err.Error(), stringedBody)}
+				}
+			}
+
+			request.Body = io.NopCloser(bytes.NewBuffer(transformedBytes))
+		}
+	}
 
 	validationSucceeded, validationErrors := ValidateRequestSchema(&ValidateRequestSchemaInput{
 		Request: request,
@@ -99,7 +144,9 @@ func (v *requestBodyValidator) extractContentType(contentType string, operation 
 		return mediaType, true
 	}
 	ctMediaRange := strings.SplitN(ct, "/", 2)
-	for s, mediaTypeValue := range operation.RequestBody.Content.FromOldest() {
+	for contentPair := operation.RequestBody.Content.First(); contentPair != nil; contentPair = contentPair.Next() {
+		s := contentPair.Key()
+		mediaTypeValue := contentPair.Value()
 		opMediaRange := strings.SplitN(s, "/", 2)
 		if (opMediaRange[0] == "*" || opMediaRange[0] == ctMediaRange[0]) &&
 			(opMediaRange[1] == "*" || opMediaRange[1] == ctMediaRange[1]) {
