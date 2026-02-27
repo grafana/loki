@@ -140,7 +140,7 @@ require (
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
 	github.com/ncw/swift/v2 v2.0.5
 	github.com/oklog/ulid/v2 v2.1.1
-	github.com/parquet-go/parquet-go v0.27.0
+	github.com/parquet-go/parquet-go v0.28.0
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/prometheus/alertmanager v0.31.1
 	github.com/prometheus/common/sigv4 v0.1.0
