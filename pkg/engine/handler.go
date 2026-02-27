@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -80,14 +81,33 @@ func executorHandler(
 	}
 
 	if cache.IsCacheConfigured(cfg.ResultsCache.CacheConfig) {
-		c, err := cache.New(cfg.ResultsCache.CacheConfig, reg, logger, stats.ResultCache, "engine-query-results")
+		newCache := func(suffix string, cacheType stats.CacheType) (cache.Cache, error) {
+			cfgCopy := cfg.ResultsCache.CacheConfig
+			cfgCopy.Prefix += suffix
+			c, err := cache.New(cfgCopy, reg, logger, cacheType, constants.Loki)
+			if err != nil {
+				return nil, err
+			}
+			if strings.EqualFold(cfg.ResultsCache.Compression, "snappy") {
+				c = cache.NewSnappy(c, logger)
+			}
+			return c, nil
+		}
+
+		metricCache, err := newCache("metric.", stats.ResultCache)
 		if err != nil {
-			return nil, fmt.Errorf("creating engine results cache: %w", err)
+			return nil, fmt.Errorf("creating engine metric results cache: %w", err)
 		}
-		if strings.EqualFold(cfg.ResultsCache.Compression, "snappy") {
-			c = cache.NewSnappy(c, logger)
+		instantMetricCache, err := newCache("instant-metric.", stats.InstantMetricResultsCache)
+		if err != nil {
+			return nil, fmt.Errorf("creating engine instant-metric results cache: %w", err)
 		}
-		cacheMw, err := NewCacheMiddleware(logger, limits, c, reg)
+		logCache, err := newCache("log.", stats.EngineLogResultCache)
+		if err != nil {
+			return nil, fmt.Errorf("creating engine log results cache: %w", err)
+		}
+
+		cacheMw, err := NewCacheMiddleware(logger, limits, metricCache, instantMetricCache, logCache, reg)
 		if err != nil {
 			return nil, fmt.Errorf("creating engine cache middleware: %w", err)
 		}

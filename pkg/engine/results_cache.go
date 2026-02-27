@@ -67,6 +67,53 @@ func NewMetricCacheMiddleware(
 	)
 }
 
+// InstantMetricCacheKeyGenerator generates cache keys for instant metric queries
+// in the Thor (V2) query engine. It omits the step from the key because instant
+// queries always have step=0.
+type InstantMetricCacheKeyGenerator struct {
+	limits Limits
+}
+
+// GenerateCacheKey generates a cache key based on userID, query, and time bucket.
+func (s InstantMetricCacheKeyGenerator) GenerateCacheKey(_ context.Context, userID string, r resultscache.Request) string {
+	split := s.limits.EngineResultsCacheTimeBucketInterval(userID) // Guaranteed to be >= 1m
+	ms := int64(split / time.Millisecond)
+	currentInterval := r.GetStart().UnixMilli() / ms
+	// No step in key: instant queries always have step=0.
+	// ms is included so the key changes when the interval is reconfigured.
+	return fmt.Sprintf("instant-metric:%s:%s:%d:%d", userID, r.GetQuery(), currentInterval, ms)
+}
+
+// NewInstantMetricCacheMiddleware creates an instant metric results cache middleware
+// for the Thor engine. It caches instant metric (SampleExpr) queries.
+func NewInstantMetricCacheMiddleware(
+	logger log.Logger,
+	limits Limits,
+	c cache.Cache,
+	metrics *queryrangebase.ResultsCacheMetrics,
+) (queryrangebase.Middleware, error) {
+	return queryrangebase.NewResultsCacheMiddleware(
+		logger,
+		c,
+		InstantMetricCacheKeyGenerator{limits},
+		limits,
+		queryrange.DefaultCodec,
+		queryrange.PrometheusExtractor{},
+		// TODO(salvacorts): pass a non-nil cacheGenNumberLoader once delete requests
+		// are supported by the Thor engine, to invalidate cached results on delete.
+		nil,
+		shouldCacheRequest,
+		func(ctx context.Context, userIDs []string, _ queryrangebase.Request) int {
+			return validation.SmallestPositiveIntPerTenant(userIDs, func(userID string) int {
+				return limits.MaxQueryParallelism(ctx, userID)
+			})
+		},
+		false, // retentionEnabled (handled elsewhere)
+		false, // onlyUseEntireExtent=false: partial hits are used; missing range is fetched and merged
+		metrics,
+	)
+}
+
 // shouldCacheRequest returns true when caching is not disabled for the request.
 func shouldCacheRequest(_ context.Context, r queryrangebase.Request) bool {
 	return !r.GetCachingOptions().Disabled
@@ -143,24 +190,27 @@ func NewLogResultCache(
 }
 
 // cacheMiddleware is a single middleware that routes requests to the
-// metric or log cache based on query type. Both share the same cache backend.
+// metric, instant-metric, or log cache based on query type.
 type cacheMiddleware struct {
-	metrics queryrangebase.Middleware
-	logs    queryrangebase.Middleware
+	metrics       queryrangebase.Middleware
+	instantMetric queryrangebase.Middleware
+	logs          queryrangebase.Middleware
 }
 
 func (m *cacheMiddleware) Wrap(next queryrangebase.Handler) queryrangebase.Handler {
 	return &cacheHandler{
-		metricHandler: m.metrics.Wrap(next),
-		logHandler:    m.logs.Wrap(next),
-		next:          next,
+		metricHandler:        m.metrics.Wrap(next),
+		instantMetricHandler: m.instantMetric.Wrap(next),
+		logHandler:           m.logs.Wrap(next),
+		next:                 next,
 	}
 }
 
 type cacheHandler struct {
-	metricHandler queryrangebase.Handler
-	logHandler    queryrangebase.Handler
-	next          queryrangebase.Handler
+	metricHandler        queryrangebase.Handler
+	instantMetricHandler queryrangebase.Handler
+	logHandler           queryrangebase.Handler
+	next                 queryrangebase.Handler
 }
 
 func (h *cacheHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
@@ -169,27 +219,43 @@ func (h *cacheHandler) Do(ctx context.Context, req queryrangebase.Request) (quer
 		return h.next.Do(ctx, req)
 	}
 	if isMetricQuery(expr) {
+		if req.GetStep() == 0 { // instant metric query
+			return h.instantMetricHandler.Do(ctx, req)
+		}
 		return h.metricHandler.Do(ctx, req)
 	}
 	return h.logHandler.Do(ctx, req)
 }
 
-// NewCacheMiddleware returns a single middleware that caches metric queries
-// via the Prometheus results cache and log (non-metric) range queries via the
-// empty-result log cache. Both use the same cache backend c.
+// NewCacheMiddleware returns a single middleware that routes requests to one of
+// three separate cache backends: metric range queries, instant metric queries,
+// and log (non-metric) range queries.
 func NewCacheMiddleware(
 	logger log.Logger,
 	limits Limits,
-	c cache.Cache,
+	metricCache cache.Cache,
+	instantMetricCache cache.Cache,
+	logCache cache.Cache,
 	reg prometheus.Registerer,
 ) (queryrangebase.Middleware, error) {
-	metricsMiddleware, err := NewMetricCacheMiddleware(logger, limits, c, NewResultsCacheMetrics(reg))
+	// Shared metrics to avoid duplicate Prometheus counter registration.
+	rcMetrics := NewResultsCacheMetrics(reg)
+
+	metricsMiddleware, err := NewMetricCacheMiddleware(logger, limits, metricCache, rcMetrics)
 	if err != nil {
 		return nil, err
 	}
-	logsMiddleware, err := NewLogResultCache(logger, limits, c, NewLogResultCacheMetrics(reg))
+	instantMetricsMiddleware, err := NewInstantMetricCacheMiddleware(logger, limits, instantMetricCache, rcMetrics)
 	if err != nil {
 		return nil, err
 	}
-	return &cacheMiddleware{metrics: metricsMiddleware, logs: logsMiddleware}, nil
+	logsMiddleware, err := NewLogResultCache(logger, limits, logCache, NewLogResultCacheMetrics(reg))
+	if err != nil {
+		return nil, err
+	}
+	return &cacheMiddleware{
+		metrics:       metricsMiddleware,
+		instantMetric: instantMetricsMiddleware,
+		logs:          logsMiddleware,
+	}, nil
 }
