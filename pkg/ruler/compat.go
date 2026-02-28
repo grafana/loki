@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/rules"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/template"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -148,21 +149,44 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 		logger log.Logger,
 		reg prometheus.Registerer,
 	) ruler.RulesManager {
+		// In single-tenant mode (auth_enabled: false), the query evaluation tenant
+		// must be "fake" to match chunks stored by ingesters, but the original
+		// directory-derived tenant (userID) is preserved for remote-write headers
+		// so downstream systems (e.g. Mimir) receive the expected X-Scope-OrgID.
+		queryUserID := userID
+		if !cfg.AuthEnabled {
+			level.Info(logger).Log("msg", "single-tenant mode: overriding query tenant ID", "original", userID, "query_tenant", "fake")
+			queryUserID = "fake"
+		}
+
 		registry.configureTenantStorage(userID)
+		if queryUserID != userID {
+			// Also configure WAL for the query tenant so the readiness check passes.
+			// Actual remote-write appends go through tenantOverrideAppendable using userID.
+			registry.configureTenantStorage(queryUserID)
+		}
 
 		logger = log.With(logger, "user", userID)
-		queryFn := queryFunc(evaluator, registry, userID, logger)
-		memStore := NewMemStore(userID, queryFn, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
+		queryFn := queryFunc(evaluator, registry, queryUserID, logger)
+		memStore := NewMemStore(queryUserID, queryFn, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		// GroupLoader builds a cache of the rules as they're loaded by the
 		// manager.This is used to back the memstore
 		groupLoader := NewCachingGroupLoader(GroupLoader{})
 
+		// When in single-tenant mode, the rules manager context uses "fake" for query
+		// evaluation, but remote-write appends need the original directory-derived tenant
+		// so that downstream systems (e.g. Mimir) receive the expected X-Scope-OrgID header.
+		var appendable storage.Appendable = registry
+		if !cfg.AuthEnabled && userID != queryUserID {
+			appendable = &tenantOverrideAppendable{inner: registry, tenantID: userID}
+		}
+
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:               registry,
+			Appendable:               appendable,
 			Queryable:                memStore,
 			QueryFunc:                queryFn,
-			Context:                  user.InjectOrgID(ctx, userID),
+			Context:                  user.InjectOrgID(ctx, queryUserID),
 			ExternalURL:              cfg.ExternalURL.URL,
 			NotifyFunc:               ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
 			Logger:                   util_log.SlogFromGoKit(logger),
@@ -385,4 +409,17 @@ func GetRuleDetailsFromContext(ctx context.Context) (string, string) {
 	ruleName, _ := ctx.Value(ruleNameKey).(string)
 	ruleType, _ := ctx.Value(ruleTypeKey).(string)
 	return ruleName, ruleType
+}
+
+// tenantOverrideAppendable wraps a storage.Appendable and overrides the tenant ID
+// in the context before delegating to the inner Appender. This is used in single-tenant
+// mode to ensure remote-write sends the original directory-derived tenant as X-Scope-OrgID
+// while the rules manager context uses "fake" for query evaluation.
+type tenantOverrideAppendable struct {
+	inner    storage.Appendable
+	tenantID string
+}
+
+func (t *tenantOverrideAppendable) Appender(ctx context.Context) storage.Appender {
+	return t.inner.Appender(user.InjectOrgID(ctx, t.tenantID))
 }

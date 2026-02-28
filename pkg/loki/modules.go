@@ -1435,6 +1435,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 	}
 
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.Ruler.AuthEnabled = t.Cfg.AuthEnabled
 
 	t.ruler, err = ruler.NewRuler(
 		t.Cfg.Ruler,

@@ -24,6 +24,11 @@ type Config struct {
 	RemoteWrite RemoteWriteConfig `yaml:"remote_write,omitempty" doc:"description=Remote-write configuration to send rule samples to a Prometheus remote-write endpoint."`
 
 	Evaluation EvaluationConfig `yaml:"evaluation,omitempty" doc:"description=Configuration for rule evaluation."`
+
+	// AuthEnabled is propagated from the top-level Loki config. When false (single-tenant mode),
+	// the ruler overrides tenant IDs derived from rule directory names with "fake" to match
+	// the tenant ID used by ingesters and the store for chunk storage.
+	AuthEnabled bool `yaml:"-"`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
