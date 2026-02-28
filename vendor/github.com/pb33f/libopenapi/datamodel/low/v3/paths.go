@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"hash/maphash"
-	"strings"
 	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel"
@@ -159,7 +158,7 @@ func extractPathItemsMap(ctx context.Context, root *yaml.Node, idx *index.SpecIn
 		var currentNode *yaml.Node
 		if root != nil {
 			for i, pathNode := range root.Content {
-				if strings.HasPrefix(strings.ToLower(pathNode.Value), "x-") {
+				if len(pathNode.Value) >= 2 && (pathNode.Value[0] == 'x' || pathNode.Value[0] == 'X') && pathNode.Value[1] == '-' {
 					skip = true
 					continue
 				}

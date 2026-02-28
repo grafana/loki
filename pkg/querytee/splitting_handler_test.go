@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // mockGoldfishManager is a mock implementation of goldfish.ManagerInterface for testing
@@ -45,7 +46,7 @@ func TestSplittingHandler_ServeSplits_UnsupportedRequestUsesDefaultHandler(t *te
 				Query:  `{app="test"}`,
 				TimeTs: time.Now(),
 				Limit:  100,
-				Path:   "/loki/api/v1/query",
+				Path:   constants.PathLokiQuery,
 				Shards: nil,
 			},
 		},
@@ -55,7 +56,7 @@ func TestSplittingHandler_ServeSplits_UnsupportedRequestUsesDefaultHandler(t *te
 				Match:   []string{`{app="test"}`},
 				StartTs: time.Now().Add(-1 * time.Hour),
 				EndTs:   time.Now(),
-				Path:    "/loki/api/v1/series",
+				Path:    constants.PathLokiSeries,
 				Shards:  nil,
 			},
 		},
@@ -66,7 +67,7 @@ func TestSplittingHandler_ServeSplits_UnsupportedRequestUsesDefaultHandler(t *te
 				time.Now(),
 				"",
 				"app",
-				"/loki/api/v1/label/app/values",
+				constants.PathLokiLabel+"/app/values",
 			),
 		},
 	}
@@ -85,13 +86,13 @@ func TestSplittingHandler_ServeSplits_UnsupportedRequestUsesDefaultHandler(t *te
 
 				var response string
 				switch r.URL.Path {
-				case "/loki/api/v1/query":
+				case constants.PathLokiQuery:
 					// LokiInstantRequest response
 					response = `{"status":"success","data":{"resultType":"streams","result":[]}}`
-				case "/loki/api/v1/series":
+				case constants.PathLokiSeries:
 					// LokiSeriesRequest response
 					response = `{"status":"success","data":[]}`
-				case "/loki/api/v1/label/app/values", "/loki/api/v1/labels":
+				case constants.PathLokiLabel + "/app/values", constants.PathLokiLabels:
 					// LabelRequest response
 					response = `{"status":"success","data":[]}`
 				default:
@@ -184,7 +185,7 @@ func TestSplittingHandler_NilPreferredBackend_CallsFanoutHandler(t *testing.T) {
 		EndTs:   time.Now(),
 		Step:    60000, // 1 minute in milliseconds
 		Limit:   100,
-		Path:    "/loki/api/v1/query_range",
+		Path:    constants.PathLokiQueryRange,
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "test-tenant")
@@ -254,7 +255,7 @@ func TestSplittingHandler_RoutingModeV1Preferred_SkipsToDefaultWhenNotSampling(t
 		EndTs:   now,
 		Step:    60000,
 		Limit:   100,
-		Path:    "/loki/api/v1/query_range",
+		Path:    constants.PathLokiQueryRange,
 		Plan: &plan.QueryPlan{
 			AST: expr,
 		},
@@ -343,7 +344,7 @@ func TestSplittingHandler_AlwaysSplitsEvenWhenNotSampling(t *testing.T) {
 				EndTs:   now,                     // End at now (within lag window)
 				Step:    60000,                   // 1 minute step in milliseconds (required for metric queries)
 				Limit:   100,
-				Path:    "/loki/api/v1/query_range",
+				Path:    constants.PathLokiQueryRange,
 				Plan: &plan.QueryPlan{
 					AST: expr,
 				},
@@ -411,7 +412,7 @@ func TestSplittingHandler_NoSplitLag_UsesFanoutHandler(t *testing.T) {
 		Query:  `{app="test"}`,
 		TimeTs: time.Now(),
 		Limit:  100,
-		Path:   "/loki/api/v1/query",
+		Path:   constants.PathLokiQuery,
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "test-tenant")
@@ -483,7 +484,7 @@ func TestSplittingHandler_V1Preferred_SplitsWhenSampling(t *testing.T) {
 		EndTs:   now,
 		Step:    60000,
 		Limit:   100,
-		Path:    "/loki/api/v1/query_range",
+		Path:    constants.PathLokiQueryRange,
 		Plan: &plan.QueryPlan{
 			AST: expr,
 		},
@@ -559,7 +560,7 @@ func TestSplittingHandler_SkipFanoutDisabled_AlwaysSplits(t *testing.T) {
 				EndTs:   now,
 				Step:    60000,
 				Limit:   100,
-				Path:    "/loki/api/v1/query_range",
+				Path:    constants.PathLokiQueryRange,
 				Plan: &plan.QueryPlan{
 					AST: expr,
 				},
@@ -642,7 +643,7 @@ func TestSplittingHandler_MultiTenantQuery_RoutesToV1Only(t *testing.T) {
 				EndTs:   now,
 				Step:    60000,
 				Limit:   100,
-				Path:    "/loki/api/v1/query_range",
+				Path:    constants.PathLokiQueryRange,
 				Plan: &plan.QueryPlan{
 					AST: expr,
 				},

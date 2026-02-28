@@ -381,8 +381,12 @@ func (g *Generator) generateEntriesForStream(meta StreamMetadata) []logproto.Ent
 				}
 			}
 
-			// Generate log line using the application's generators for the selected format
-			line := app.LogGenerator(level, entryTs, faker)
+			line := ""
+			// Leave 3% of logs lines empty
+			if g.rnd.Float32() > 0.03 {
+				// Generate log line using the application's generators for the selected format
+				line = app.LogGenerator(level, entryTs, faker)
+			}
 
 			// Create metadata in a deterministic order
 			var metadata []logproto.LabelAdapter

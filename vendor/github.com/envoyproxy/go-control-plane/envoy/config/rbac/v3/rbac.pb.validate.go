@@ -156,7 +156,7 @@ type RBACMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RBACMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -389,6 +389,35 @@ func (m *Policy) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetCelConfig()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, PolicyValidationError{
+					field:  "CelConfig",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, PolicyValidationError{
+					field:  "CelConfig",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetCelConfig()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return PolicyValidationError{
+				field:  "CelConfig",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return PolicyMultiError(errors)
 	}
@@ -402,7 +431,7 @@ type PolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m PolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -553,7 +582,7 @@ type SourcedMetadataMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m SourcedMetadataMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1220,7 +1249,7 @@ type PermissionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m PermissionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1905,7 +1934,7 @@ type PrincipalMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m PrincipalMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2016,7 +2045,7 @@ type ActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2161,7 +2190,7 @@ type RBAC_AuditLoggingOptionsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RBAC_AuditLoggingOptionsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2297,7 +2326,7 @@ type RBAC_AuditLoggingOptions_AuditLoggerConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RBAC_AuditLoggingOptions_AuditLoggerConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2445,7 +2474,7 @@ type Permission_SetMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Permission_SetMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2590,7 +2619,7 @@ type Principal_SetMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Principal_SetMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2719,7 +2748,7 @@ type Principal_AuthenticatedMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Principal_AuthenticatedMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

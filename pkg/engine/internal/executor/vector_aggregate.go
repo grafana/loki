@@ -237,12 +237,14 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 
 	v.inputsExhausted = true
 
+	rec, err := v.aggregator.BuildRecord()
+
 	if region := xcap.RegionFromContext(ctx); region != nil {
 		computeTime := time.Since(startedAt) - inputReadTime
 		region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
 	}
 
-	return v.aggregator.BuildRecord()
+	return rec, err
 }
 
 // Close closes the resources of the pipeline.

@@ -2,12 +2,10 @@ package validation
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/prometheus/common/model"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -16,7 +14,7 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
-var _ admission.CustomValidator = &AlertingRuleValidator{}
+var _ admission.Validator[*lokiv1.AlertingRule] = &AlertingRuleValidator{}
 
 // AlertingRuleValidator implements a custom validator for AlertingRule resources.
 type AlertingRuleValidator struct {
@@ -26,34 +24,28 @@ type AlertingRuleValidator struct {
 // SetupWebhookWithManager registers the AlertingRuleValidator as a validating webhook
 // with the controller-runtime manager or returns an error.
 func (v *AlertingRuleValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&lokiv1.AlertingRule{}).
+	return ctrl.NewWebhookManagedBy(mgr, &lokiv1.AlertingRule{}).
 		WithValidator(v).
 		Complete()
 }
 
 // ValidateCreate implements admission.CustomValidator.
-func (v *AlertingRuleValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *AlertingRuleValidator) ValidateCreate(ctx context.Context, obj *lokiv1.AlertingRule) (admission.Warnings, error) {
 	return v.validate(ctx, obj)
 }
 
 // ValidateUpdate implements admission.CustomValidator.
-func (v *AlertingRuleValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
+func (v *AlertingRuleValidator) ValidateUpdate(ctx context.Context, _, newObj *lokiv1.AlertingRule) (admission.Warnings, error) {
 	return v.validate(ctx, newObj)
 }
 
 // ValidateDelete implements admission.CustomValidator.
-func (v *AlertingRuleValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
+func (v *AlertingRuleValidator) ValidateDelete(_ context.Context, _ *lokiv1.AlertingRule) (admission.Warnings, error) {
 	// No validation on delete
 	return nil, nil
 }
 
-func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	alertingRule, ok := obj.(*lokiv1.AlertingRule)
-	if !ok {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("object is not of type AlertingRule: %t", obj))
-	}
-
+func (v *AlertingRuleValidator) validate(ctx context.Context, alertingRule *lokiv1.AlertingRule) (admission.Warnings, error) {
 	var allErrs field.ErrorList
 
 	found := make(map[string]bool)

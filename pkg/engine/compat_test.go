@@ -30,7 +30,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		require.NotNil(t, builder.Build(stats.Result{}, md).Data)
 	})
 
-	t.Run("rows without log line, timestamp, or labels are ignored", func(t *testing.T) {
+	t.Run("rows without timestamp, or labels are ignored", func(t *testing.T) {
 		colTs := semconv.ColumnIdentTimestamp
 		colMsg := semconv.ColumnIdentMessage
 		colEnv := semconv.NewIdentifier("env", types.ColumnTypeMetadata, types.Loki.String)
@@ -70,7 +70,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
-		require.Equal(t, 0, builder.Len(), "expected no entries to be collected")
+		require.Equal(t, 1, builder.Len(), "expected 1 entry to be collected")
 	})
 
 	t.Run("successful conversion of labels, log line, timestamp, and structured metadata ", func(t *testing.T) {

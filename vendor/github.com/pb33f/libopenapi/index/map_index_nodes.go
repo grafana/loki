@@ -7,12 +7,6 @@ import (
 	"go.yaml.in/yaml/v4"
 )
 
-type nodeMap struct {
-	line   int
-	column int
-	node   *yaml.Node
-}
-
 // NodeOrigin represents where a node has come from within a specification. This is not useful for single file specs,
 // but becomes very, very important when dealing with exploded specifications, and we need to know where in the mass
 // of files a node has come from.
@@ -60,53 +54,31 @@ func (index *SpecIndex) GetNode(line int, column int) (*yaml.Node, bool) {
 }
 
 // MapNodes maps all nodes in the document to a map of line/column to node.
+// Writes directly to index.nodeMap with lock protection (concurrent reads
+// may happen from ExtractRefs running in parallel).
 func (index *SpecIndex) MapNodes(rootNode *yaml.Node) {
-	cruising := make(chan struct{})
-	nodeChan := make(chan *nodeMap)
-	go func(nodeChan chan *nodeMap) {
-		done := false
-		for !done {
-			node, ok := <-nodeChan
-			if !ok {
-				done = true
-				cruising <- struct{}{}
-				return
-			}
-			index.nodeMapLock.Lock()
-			if index.nodeMap[node.line] == nil {
-				index.nodeMap[node.line] = make(map[int]*yaml.Node)
-			}
-			index.nodeMap[node.line][node.column] = node.node
-			index.nodeMapLock.Unlock()
-		}
-	}(nodeChan)
-	go enjoyALuxuryCruise(rootNode, nodeChan, true)
-	<-cruising
-	close(cruising)
+	mapNodesRecursive(rootNode, index, true)
 	index.nodeMapCompleted <- struct{}{}
 	close(index.nodeMapCompleted)
 }
 
-func enjoyALuxuryCruise(node *yaml.Node, nodeChan chan *nodeMap, root bool) {
+func mapNodesRecursive(node *yaml.Node, index *SpecIndex, root bool) {
 	if node.Kind == yaml.DocumentNode {
 		node = node.Content[0]
 	}
-	if len(node.Content) > 0 {
-		for _, child := range node.Content {
-			nodeChan <- &nodeMap{
-				line:   child.Line,
-				column: child.Column,
-				node:   child,
-			}
-			enjoyALuxuryCruise(child, nodeChan, false)
+	for _, child := range node.Content {
+		index.nodeMapLock.Lock()
+		if index.nodeMap[child.Line] == nil {
+			index.nodeMap[child.Line] = make(map[int]*yaml.Node)
 		}
+		index.nodeMap[child.Line][child.Column] = child
+		index.nodeMapLock.Unlock()
+		mapNodesRecursive(child, index, false)
 	}
-	nodeChan <- &nodeMap{
-		line:   node.Line,
-		column: node.Column,
-		node:   node,
+	index.nodeMapLock.Lock()
+	if index.nodeMap[node.Line] == nil {
+		index.nodeMap[node.Line] = make(map[int]*yaml.Node)
 	}
-	if root {
-		close(nodeChan)
-	}
+	index.nodeMap[node.Line][node.Column] = node
+	index.nodeMapLock.Unlock()
 }

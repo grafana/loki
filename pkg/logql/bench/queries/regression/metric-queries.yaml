@@ -208,7 +208,7 @@ queries:
       unwrappable_fields:
         - ttl
   - description: HTTP status code distribution
-    query: sum by (level) (count_over_time(${SELECTOR} | json [${RANGE}]))
+    query: sum by (level) (count_over_time(${SELECTOR} | json | __error__="" [${RANGE}]))
     kind: metric
     time_range:
       length: 24h

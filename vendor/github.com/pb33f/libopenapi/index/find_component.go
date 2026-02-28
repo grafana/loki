@@ -91,7 +91,7 @@ func FindComponent(_ context.Context, root *yaml.Node, componentId, absoluteFile
 	if friendlySearch == "$." {
 		friendlySearch = "$"
 	}
-	path, err := jsonpath.NewPath(friendlySearch, jsonpathconfig.WithPropertyNameExtension())
+	path, err := jsonpath.NewPath(friendlySearch, jsonpathconfig.WithPropertyNameExtension(), jsonpathconfig.WithLazyContextTracking())
 	if path == nil || err != nil || root == nil {
 		return nil // no component found
 	}
