@@ -30,3 +30,14 @@ bloom-builder priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+bloom-builder pvc name
+*/}}
+{{- define "loki.bloomBuilderPVCName" -}}
+{{- if .Values.bloomBuilder.persistence.existingClaim -}}
+{{ .Values.bloomBuilder.persistence.existingClaim }}
+{{- else -}}
+{{ include "loki.bloomBuilderFullname" . }}
+{{- end -}}
+{{- end }}
