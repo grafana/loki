@@ -11,8 +11,9 @@ import (
 	"strings"
 
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -45,6 +46,8 @@ func (l LabelPolicySet) hash() string {
 	for _, t := range tenants {
 		_, _ = h.Write([]byte(t))
 		for _, p := range l[t] {
+			data := p.String()
+			data = data[:len(data)-1]
 			_, _ = h.Write([]byte(p.String()))
 		}
 	}
@@ -92,6 +95,17 @@ func policyToHeaderValue(instanceName string, policy *types.LabelPolicy) (string
 	}
 
 	return instanceName + ":" + url.PathEscape("{"+strings.Join(matchers, ", ")+"}"), nil
+}
+
+// PolicyFromSelectorString is a helper function used for test fixtures. It should not be
+// fed user supplied input as it panics on error
+func PolicyFromSelectorString(policyString string) types.LabelPolicy {
+	headerString := "dummy:" + url.PathEscape(policyString)
+	_, policy, err := policyFromHeaderValue(headerString)
+	if err != nil {
+		panic(err)
+	}
+	return *policy
 }
 
 func policyFromHeaderValue(headerString string) (string, *types.LabelPolicy, error) {

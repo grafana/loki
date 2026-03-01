@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	"github.com/grafana/dskit/user"
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 )
 
 func TestChunkFiltererShouldFilter(t *testing.T) {

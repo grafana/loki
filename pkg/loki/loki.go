@@ -25,11 +25,12 @@ import (
 	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/signals"
-	"github.com/grafana/loki/v3/pkg/labelaccess"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/grafana/loki/v3/pkg/labelaccess"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
@@ -163,6 +164,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true,
 		"Enables authentication through the X-Scope-OrgID header, which must be present if true. "+
 			"If false, the OrgID will always be set to 'fake'.",
+	)
+	f.BoolVar(&c.LBACEnabled, "lbac.enabled", false,
+		"Enables label based access control through the X-Prom-Label-Policy header.",
 	)
 	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0,
 		"The amount of virtual memory in bytes to reserve as ballast in order to optimize garbage collection. "+
@@ -487,114 +491,6 @@ func New(cfg Config) (*Loki, error) {
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
-
-	loki.Codec = labelaccess.NewCodec(loki.Codec)
-
-	// this can move into setupModuleManager once we know it works
-	loki.ModuleManager.RegisterModule(AuthMiddleware, loki.initAuthMiddleware, modules.UserInvisibleModule)
-	err := loki.ModuleManager.AddDependency(AuthMiddleware, Server) // Auth Injection has to be started after the server so it can access the server
-	if err != nil {
-		return nil, err
-	}
-
-	err = loki.ModuleManager.AddDependency(Distributor, AuthMiddleware)
-	if err != nil {
-		return nil, err
-	}
-
-	err = loki.ModuleManager.AddDependency(QueryFrontend, AuthMiddleware)
-	if err != nil {
-		return nil, err
-	}
-
-	err = loki.ModuleManager.AddDependency(Querier, AuthMiddleware)
-	if err != nil {
-		return nil, err
-	}
-
-	err = loki.ModuleManager.AddDependency(Compactor, AuthMiddleware)
-	if err != nil {
-		return nil, err
-	}
-
-	// QueryEngine must depend on AuthMiddleware so that LabelAccessMiddleware is initialized
-	// before the V2 engine registers its HTTP handlers. This also enables LBAC enforcement for
-	// aggregated metrics queries via ModifyAggregatedMetricsQuery.
-	err = loki.ModuleManager.AddDependency(QueryEngine, AuthMiddleware)
-	if err != nil {
-		return nil, err
-	}
-
-	// more setup which needs a better home (based on addNewModules from enterprise_logs)
-	//_ = level.Debug(util_log.Logger).Log("msg", "Registering store chunk filterer")
-	loki.ModuleManager.RegisterModule(LabelAccess, loki.initStoreChunkFilterer)
-	err = loki.ModuleManager.AddDependency(LabelAccess, Store)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := loki.ModuleManager.AddDependency(Querier, LabelAccess); err != nil {
-		return nil, err
-	}
-	_ = loki.ModuleManager.AddDependency(IndexGateway, LabelAccess)
-
-	_ = level.Debug(util_log.Logger).Log("msg", "Registering label access store wrapper")
-	loki.ModuleManager.RegisterModule(LabelAccessStoreWrapper, loki.initLabelAccessStoreWrapper, modules.UserInvisibleModule)
-
-	err = loki.ModuleManager.AddDependency(LabelAccessStoreWrapper, Store)
-	if err != nil {
-		return nil, err
-	}
-
-	// Ingester must use the wrapped store.
-	err = loki.ModuleManager.AddDependency(Ingester, LabelAccessStoreWrapper)
-	if err != nil {
-		return nil, err
-	}
-	//
-	_ = loki.ModuleManager.AddDependency(Querier, LabelAccessStoreWrapper)
-	//}
-	//
-	//func (l *LokiEnterprise) addLabelAccessIngesterWrapperModule() error {
-	_ = level.Debug(util_log.Logger).Log("msg", "Overriding ingester with wrapped version")
-	loki.ModuleManager.RegisterModule(LabelAccessIngesterWrapper, loki.initLabelAccessIngesterWrapper)
-
-	_ = loki.ModuleManager.AddDependency(Ingester, LabelAccessIngesterWrapper)
-
-	_ = level.Debug(util_log.Logger).Log("msg", "Registering LBAC support for V2 query engine")
-	loki.ModuleManager.RegisterModule(LabelAccessV2Engine, loki.initLabelAccessV2Engine, modules.UserInvisibleModule) // LBAC support be initialized before the QueryEngine module so the configs are set
-	_ = loki.ModuleManager.AddDependency(QueryEngine, LabelAccessV2Engine)
-
-	_ = level.Debug(util_log.Logger).Log("msg", "Registering label access interceptors")
-	loki.ModuleManager.RegisterModule(LabelAccessInterceptors, loki.initLabelAccessInterceptors, modules.UserInvisibleModule)
-
-	_ = loki.ModuleManager.AddDependency(Server, LabelAccessInterceptors)
-
-	_ = level.Debug(util_log.Logger).Log("msg", "Registering label access tripperware")
-	loki.ModuleManager.RegisterModule(LabelAccessTripperware, loki.initLabelAccessMiddleware, modules.UserInvisibleModule)
-
-	err = loki.ModuleManager.AddDependency(QueryFrontend, LabelAccessTripperware)
-	if err != nil {
-		return nil, err
-	}
-
-	_ = level.Debug(util_log.Logger).Log("msg", "Registering filterers")
-	loki.ModuleManager.RegisterModule(Filterers, loki.initFilterers, modules.UserInvisibleModule)
-
-	err = loki.ModuleManager.AddDependency(Ingester, Filterers)
-	if err != nil {
-		return nil, err
-	}
-
-	_ = level.Info(util_log.Logger).Log("msg", "Registering user ID transformer")
-	loki.ModuleManager.RegisterModule(LabelAccessUserIDTransformer, loki.initLabelAccessUserIDTransformer, modules.UserInvisibleModule)
-	_ = loki.ModuleManager.AddDependency(Server, LabelAccessUserIDTransformer)
-
-	_ = loki.ModuleManager.AddDependency(LabelAccessTripperware, AuthTripperware)
-
-	_ = level.Debug(util_log.Logger).Log("msg", "Registering auth tripperware")
-	loki.ModuleManager.RegisterModule(AuthTripperware, loki.initAuthTripperware, modules.UserInvisibleModule)
-	_ = loki.ModuleManager.AddDependency(AuthTripperware, QueryFrontendTripperware)
 
 	return loki, nil
 
@@ -1189,6 +1085,44 @@ func (t *Loki) setupModuleManager() error {
 		if err := mm.AddDependency(Analytics, Ring); err != nil {
 			return err
 		}
+	}
+
+	if t.Cfg.LBACEnabled {
+		t.Codec = labelaccess.NewCodec(t.Codec)
+
+		mm.RegisterModule(AuthMiddleware, t.initAuthMiddleware, modules.UserInvisibleModule)
+		mm.RegisterModule(LabelAccess, t.initStoreChunkFilterer)
+		mm.RegisterModule(LabelAccessStoreWrapper, t.initLabelAccessStoreWrapper, modules.UserInvisibleModule)
+		mm.RegisterModule(LabelAccessIngesterWrapper, t.initLabelAccessIngesterWrapper)
+		mm.RegisterModule(LabelAccessV2Engine, t.initLabelAccessV2Engine, modules.UserInvisibleModule)
+		mm.RegisterModule(LabelAccessInterceptors, t.initLabelAccessInterceptors, modules.UserInvisibleModule)
+		mm.RegisterModule(LabelAccessTripperware, t.initLabelAccessMiddleware, modules.UserInvisibleModule)
+		mm.RegisterModule(Filterers, t.initFilterers, modules.UserInvisibleModule)
+		mm.RegisterModule(LabelAccessUserIDTransformer, t.initLabelAccessUserIDTransformer, modules.UserInvisibleModule)
+		mm.RegisterModule(AuthTripperware, t.initAuthTripperware, modules.UserInvisibleModule)
+
+		lbac_deps := map[string][]string{
+			AuthMiddleware:          {Server},
+			AuthTripperware:         {QueryFrontendTripperware},
+			Compactor:               {AuthMiddleware},
+			Distributor:             {AuthMiddleware},
+			IndexGateway:            {LabelAccess},
+			Ingester:                {LabelAccessStoreWrapper, LabelAccessIngesterWrapper, Filterers},
+			LabelAccess:             {Store},
+			LabelAccessStoreWrapper: {Store},
+			LabelAccessTripperware:  {AuthTripperware},
+			Querier:                 {AuthMiddleware, LabelAccess, LabelAccessStoreWrapper},
+			QueryEngine:             {AuthMiddleware, LabelAccessV2Engine},
+			QueryFrontend:           {AuthMiddleware, LabelAccessTripperware},
+			Server:                  {LabelAccessInterceptors, LabelAccessUserIDTransformer},
+		}
+
+		for mod, targets := range lbac_deps {
+			if err := mm.AddDependency(mod, targets...); err != nil {
+				return err
+			}
+		}
+
 	}
 
 	return nil

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
+
 	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 
 	"github.com/grafana/loki/v3/pkg/loki/codec"

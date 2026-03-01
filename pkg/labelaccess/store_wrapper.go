@@ -4,14 +4,16 @@ import (
 	"context"
 
 	"github.com/go-kit/log/level"
+
 	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 
 	//"github.com/grafana/backend-enterprise-libs/enterprise/admin/types"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 func WrapStore(wrapped storage.Store) storage.Store {

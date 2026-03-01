@@ -4,11 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 )
 
 const (

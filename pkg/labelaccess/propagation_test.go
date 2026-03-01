@@ -3,9 +3,10 @@ package labelaccess
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 )
 
 func TestLabelPolicySetString(t *testing.T) {

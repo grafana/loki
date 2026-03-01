@@ -6,10 +6,11 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 type RequestChunkFilterer struct{}

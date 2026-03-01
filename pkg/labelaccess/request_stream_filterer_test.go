@@ -4,8 +4,9 @@ import (
 	"testing"
 
 	"github.com/grafana/dskit/user"
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 )
 
 // TestRequestStreamFilterer_ForRequest tests that ForRequest returns a proper nil interface
