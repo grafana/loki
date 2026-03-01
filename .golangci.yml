@@ -60,6 +60,14 @@ linters:
       - legacy
       - std-error-handling
     rules:
+      - linters:
+          - revive
+        path: (.*)\.go$
+        text: "avoid meaningless package names"
+      - linters:
+          - revive
+        path: (.*)\.go$
+        text: "avoid package names that conflict with Go standard library"
       - path: pkg/scheduler/scheduler.go
         text: "SA1019: msg.GetHttpRequest is deprecated: Do not use"
       - linters:

@@ -10,11 +10,11 @@
 // the curve used by the Ed25519 signature scheme.
 //
 // Most users don't need this package, and should instead use crypto/ed25519 for
-// signatures, golang.org/x/crypto/curve25519 for Diffie-Hellman, or
-// github.com/gtank/ristretto255 for prime order group logic.
+// signatures, crypto/ecdh for Diffie-Hellman, or github.com/gtank/ristretto255
+// for prime order group logic.
 //
 // However, developers who do need to interact with low-level edwards25519
 // operations can use this package, which is an extended version of
-// crypto/internal/edwards25519 from the standard library repackaged as
+// crypto/internal/fips140/edwards25519 from the standard library repackaged as
 // an importable module.
 package edwards25519

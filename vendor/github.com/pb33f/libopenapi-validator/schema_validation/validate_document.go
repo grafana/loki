@@ -37,21 +37,15 @@ func ValidateOpenAPIDocument(doc libopenapi.Document, opts ...config.Option) (bo
 
 	// Check if SpecJSON is nil before dereferencing
 	if info.SpecJSON == nil {
-		violation := &liberrors.SchemaValidationFailure{
-			Reason:          "document SpecJSON is nil - document may not be properly parsed",
-			Location:        "document root",
-			ReferenceSchema: loadedSchema,
-		}
 		validationErrors = append(validationErrors, &liberrors.ValidationError{
-			ValidationType:         "schema",
-			ValidationSubType:      "document",
-			Message:                "OpenAPI document validation failed",
-			Reason:                 "The document's SpecJSON is nil, indicating the document was not properly parsed or is empty",
-			SpecLine:               1,
-			SpecCol:                0,
-			SchemaValidationErrors: []*liberrors.SchemaValidationFailure{violation},
-			HowToFix:               "ensure the OpenAPI document is valid YAML/JSON and can be properly parsed by libopenapi",
-			Context:                "document root",
+			ValidationType:    helpers.Schema,
+			ValidationSubType: "document",
+			Message:           "OpenAPI document validation failed",
+			Reason:            "The document's SpecJSON is nil, indicating the document was not properly parsed or is empty",
+			SpecLine:          1,
+			SpecCol:           0,
+			HowToFix:          "ensure the OpenAPI document is valid YAML/JSON and can be properly parsed by libopenapi",
+			Context:           "document root",
 		})
 		return false, validationErrors
 	}
@@ -62,21 +56,15 @@ func ValidateOpenAPIDocument(doc libopenapi.Document, opts ...config.Option) (bo
 	jsch, err := helpers.NewCompiledSchema("schema", []byte(loadedSchema), options)
 	if err != nil {
 		// schema compilation failed, return validation error instead of panicking
-		violation := &liberrors.SchemaValidationFailure{
-			Reason:          fmt.Sprintf("failed to compile OpenAPI schema: %s", err.Error()),
-			Location:        "schema compilation",
-			ReferenceSchema: loadedSchema,
-		}
 		validationErrors = append(validationErrors, &liberrors.ValidationError{
-			ValidationType:         helpers.Schema,
-			ValidationSubType:      "compilation",
-			Message:                "OpenAPI document schema compilation failed",
-			Reason:                 fmt.Sprintf("The OpenAPI schema failed to compile: %s", err.Error()),
-			SpecLine:               1,
-			SpecCol:                0,
-			SchemaValidationErrors: []*liberrors.SchemaValidationFailure{violation},
-			HowToFix:               "check the OpenAPI schema for invalid JSON Schema syntax, complex regex patterns, or unsupported schema constructs",
-			Context:                loadedSchema,
+			ValidationType:    helpers.Schema,
+			ValidationSubType: "compilation",
+			Message:           "OpenAPI document schema compilation failed",
+			Reason:            fmt.Sprintf("The OpenAPI schema failed to compile: %s", err.Error()),
+			SpecLine:          1,
+			SpecCol:           0,
+			HowToFix:          "check the OpenAPI schema for invalid JSON Schema syntax, complex regex patterns, or unsupported schema constructs",
+			Context:           loadedSchema,
 		})
 		return false, validationErrors
 	}
@@ -109,14 +97,12 @@ func ValidateOpenAPIDocument(doc libopenapi.Document, opts ...config.Option) (bo
 					// locate the violated property in the schema
 					located := LocateSchemaPropertyNodeByJSONPath(info.RootNode.Content[0], er.InstanceLocation)
 					violation := &liberrors.SchemaValidationFailure{
-						Reason:           errMsg,
-						Location:         er.InstanceLocation,
-						FieldName:        helpers.ExtractFieldNameFromStringLocation(er.InstanceLocation),
-						FieldPath:        helpers.ExtractJSONPathFromStringLocation(er.InstanceLocation),
-						InstancePath:     helpers.ConvertStringLocationToPathSegments(er.InstanceLocation),
-						DeepLocation:     er.KeywordLocation,
-						AbsoluteLocation: er.AbsoluteKeywordLocation,
-						OriginalError:    jk,
+						Reason:                  errMsg,
+						FieldName:               helpers.ExtractFieldNameFromStringLocation(er.InstanceLocation),
+						FieldPath:               helpers.ExtractJSONPathFromStringLocation(er.InstanceLocation),
+						InstancePath:            helpers.ConvertStringLocationToPathSegments(er.InstanceLocation),
+						KeywordLocation:         er.KeywordLocation,
+						OriginalJsonSchemaError: jk,
 					}
 
 					// if we have a location within the schema, add it to the error

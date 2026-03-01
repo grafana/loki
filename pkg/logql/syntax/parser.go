@@ -285,7 +285,6 @@ func ParseLabels(lbs string) (labels.Labels, error) {
 		return labels.EmptyLabels(), err
 	}
 
-	// Use the label builder to trim empty label values.
 	// Empty label values are equivalent to absent labels
 	// in Prometheus, but they unfortunately alter the
 	// Hash values created. This can cause problems in Loki
@@ -294,5 +293,5 @@ func ParseLabels(lbs string) (labels.Labels, error) {
 	// Therefore we must normalize early in the write path.
 	// See https://github.com/grafana/loki/pull/7355
 	// for more information
-	return labels.NewBuilder(ls).Labels(), nil
+	return ls.WithoutEmpty(), nil
 }
