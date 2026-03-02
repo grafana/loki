@@ -260,7 +260,7 @@ func forEachNotNullRowColValue(numRows int, col arrow.Array, f func(rowIdx int))
 
 func (b *streamsResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
 	// Executor does not guarantee order of entries, so we sort them here.
-	for _, stream := range b.data {
+	for i, stream := range b.data {
 		if b.direction == logproto.BACKWARD {
 			sort.Slice(stream.Entries, func(a, b int) bool {
 				return stream.Entries[a].Timestamp.After(stream.Entries[b].Timestamp)
@@ -270,6 +270,11 @@ func (b *streamsResultBuilder) Build(s stats.Result, md *metadata.Context) logql
 				return stream.Entries[a].Timestamp.Before(stream.Entries[b].Timestamp)
 			})
 		}
+
+		// Deduplicate entries with the same (timestamp, line) within each
+		// stream. Multiple data object sections can contain the same log entry,
+		// and the merge pipeline concatenates them without deduplication.
+		b.data[i].Entries = dedupeEntries(stream.Entries)
 	}
 
 	sort.Sort(b.data)
@@ -279,6 +284,27 @@ func (b *streamsResultBuilder) Build(s stats.Result, md *metadata.Context) logql
 		Headers:    md.Headers(),
 		Warnings:   md.Warnings(),
 	}
+}
+
+// dedupeEntries removes consecutive duplicate entries. Two entries are
+// considered duplicates when all fields (timestamp, line, structured metadata,
+// and parsed labels) are equal. The input slice must already be sorted by
+// timestamp.
+func dedupeEntries(entries []logproto.Entry) []logproto.Entry {
+	if len(entries) <= 1 {
+		return entries
+	}
+	w := 1
+	for r := 1; r < len(entries); r++ {
+		prev := &entries[w-1]
+		cur := &entries[r]
+		if cur.Timestamp.Equal(prev.Timestamp) && cur.Line == prev.Line && cur.Equal(prev) {
+			continue
+		}
+		entries[w] = entries[r]
+		w++
+	}
+	return entries[:w]
 }
 
 func (b *streamsResultBuilder) Len() int {
