@@ -1,0 +1,61 @@
+package sectionref
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestSectionRefTableAddAndLookup(t *testing.T) {
+	tbl := NewSectionRefTable(nil)
+
+	a := SectionRef{Path: "path-a", SectionID: 7, SeriesID: 1}
+	b := SectionRef{Path: "path-b", SectionID: 9, SeriesID: 2}
+
+	idxA1 := tbl.Add(a)
+	idxB := tbl.Add(b)
+	idxA2 := tbl.Add(a)
+
+	require.Equal(t, uint32(0), idxA1)
+	require.Equal(t, uint32(1), idxB)
+	require.Equal(t, idxA1, idxA2)
+	require.Equal(t, 2, tbl.Len())
+
+	gotA, ok := tbl.Lookup(idxA1)
+	require.True(t, ok)
+	require.Equal(t, a, gotA)
+
+	_, ok = tbl.Lookup(10)
+	require.False(t, ok)
+}
+
+func TestSectionRefTableEncodeDecodeRoundTrip(t *testing.T) {
+	tbl := NewSectionRefTable(nil)
+	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1, SeriesID: 4})
+	tbl.Add(SectionRef{Path: "s3://bucket/b", SectionID: 2, SeriesID: 5})
+	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1, SeriesID: 4}) // dedupe
+
+	data, err := tbl.Encode()
+	require.NoError(t, err)
+
+	decoded, err := Decode(data)
+	require.NoError(t, err)
+	require.Equal(t, tbl.Len(), decoded.Len())
+
+	for i := 0; i < tbl.Len(); i++ {
+		want, ok := tbl.Lookup(uint32(i))
+		require.True(t, ok)
+		got, ok := decoded.Lookup(uint32(i))
+		require.True(t, ok)
+		require.Equal(t, want, got)
+	}
+}
+
+func TestSectionRefTableEncodePathTooLong(t *testing.T) {
+	tbl := NewSectionRefTable(nil)
+	tbl.Add(SectionRef{Path: strings.Repeat("a", 1<<16), SectionID: 1, SeriesID: 2})
+
+	_, err := tbl.Encode()
+	require.ErrorIs(t, err, ErrSectionRefPathTooLong)
+}
