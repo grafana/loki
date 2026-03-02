@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,29 +39,115 @@ func buildLBACPolicyHeaders(tenantID string, policies []types.LabelPolicy) []str
 			}
 			matchers[j] = matcher.String()
 		}
-		headers[i] = fmt.Sprintf("%s:%s", tenantID, "{"+strings.Join(matchers, ", ")+"}")
+		headers[i] = fmt.Sprintf("%s:%s", tenantID, url.PathEscape("{"+strings.Join(matchers, ", ")+"}"))
 	}
 	return headers
 }
 
 var (
-	//testCaseDefaultPolicy = &testQueryAndLabelResults{
-	//	name:          "default",
-	//	labelPolicies: defaultLabelPolicies,
-	//	labelValues: map[string][]string{
-	//		"env":            {"dev", "prod"},
-	//		"classification": {"secret", "confidential"},
-	//	},
-	//	lines: []string{"line1", "line3", "line4"},
-	//	streams: []string{
-	//		`{classification="confidential", env="dev", job="varlog"}`,
-	//		`{classification="secret", env="dev", job="varlog"}`,
-	//		`{classification="secret", env="prod", job="varlog"}`,
-	//	},
-	//}
-	testCaseNoMatches = &testQueryAndLabelResults{
-		name:          "nothing",
-		labelPolicies: []types.LabelPolicy{labelaccess.PolicyFromSelectorString(`{not="existing"}`)},
+	testCases = []*testQueryAndLabelResults{
+		{
+			name:          "no matches",
+			createCluster: clusterAllLBAC,
+			tenantID:      randStringRunes(),
+			now:           time.Now(),
+			labelPolicies: []types.LabelPolicy{labelaccess.PolicyFromSelectorString(`{not="existing"}`)},
+		},
+		{
+			name:          "disabled",
+			createCluster: clusterAll,
+			tenantID:      randStringRunes(),
+			now:           time.Now(),
+			labelPolicies: []types.LabelPolicy{
+				labelaccess.PolicyFromSelectorString(`{env="dev"}`),
+			},
+			labelValues: map[string][]string{
+				"classification": {"confidential", "secret"},
+				"env":            {"dev", "prod"},
+				"job":            {"varlog"},
+			},
+			lines: []string{"line1", "line2", "line3", "line4"},
+			streams: []map[string]string{
+				{
+					"classification": "confidential",
+					"env":            "dev",
+					"job":            "varlog",
+				},
+				{
+					"classification": "secret",
+					"env":            "prod",
+					"job":            "varlog",
+				},
+				{
+					"classification": "secret",
+					"env":            "dev",
+					"job":            "varlog",
+				},
+				{
+					"job": "varlog",
+				},
+			},
+		},
+		{
+			name:          "lbac enabled",
+			createCluster: clusterAllLBAC,
+			tenantID:      randStringRunes(),
+			now:           time.Now(),
+			labelPolicies: []types.LabelPolicy{
+				labelaccess.PolicyFromSelectorString(`{env="dev"}`),
+			},
+			labelValues: map[string][]string{
+				"classification": {"confidential", "secret"},
+				"env":            {"dev"},
+				"job":            {"varlog"},
+			},
+			lines: []string{"line1", "line3"},
+			streams: []map[string]string{
+				{
+					"classification": "confidential",
+					"env":            "dev",
+					"job":            "varlog",
+				},
+				{
+					"classification": "secret",
+					"env":            "dev",
+					"job":            "varlog",
+				},
+			},
+		},
+		{
+			name:          "multiple policies",
+			createCluster: clusterAllLBAC,
+			tenantID:      randStringRunes(),
+			now:           time.Now(),
+			labelPolicies: []types.LabelPolicy{
+				labelaccess.PolicyFromSelectorString(`{env="dev", classification!="secret"}`),
+				labelaccess.PolicyFromSelectorString(`{classification=~"secre.*"}`),
+			},
+			labelValues: map[string][]string{
+				"env":            {"dev", "prod"},
+				"classification": {"secret", "confidential"},
+				"job":            {"varlog"},
+			},
+			lines: []string{"line1", "line3", "line4"},
+			streams: []map[string]string{
+				{
+					"classification": "confidential",
+					"env":            "dev",
+					"job":            "varlog",
+				},
+				{
+					"classification": "secret",
+					"env":            "dev",
+					"job":            "varlog",
+				},
+				{
+					"classification": "secret",
+					"env":            "prod",
+					"job":            "varlog",
+				},
+			},
+		},
 	}
 )
 
@@ -92,98 +179,26 @@ func clusterAllLBAC(t *testing.T) *cluster.Component {
 	return tAll
 }
 
-// TestLabelAccessDefault starts Loki with LBAC disabled and verifies
-// query results are not filtered by the label policy header.
-func TestLabelAccessDisabled(t *testing.T) {
-	testCase := &testQueryAndLabelResults{
-		name:          "disabled",
-		createCluster: clusterAll,
-		tenantID:      randStringRunes(),
-		now:           time.Now(),
-		labelPolicies: []types.LabelPolicy{
-			labelaccess.PolicyFromSelectorString(`{env="dev"}`),
-		},
-		labelValues: map[string][]string{
-			"classification": {"confidential", "secret"},
-			"env":            {"dev", "prod"},
-			"job":            {"varlog"},
-		},
-		lines: []string{"line1", "line2", "line3", "line4"},
-		streams: []map[string]string{
-			{
-				"classification": "confidential",
-				"env":            "dev",
-				"job":            "varlog",
-			},
-			{
-				"classification": "secret",
-				"env":            "prod",
-				"job":            "varlog",
-			},
-			{
-				"classification": "secret",
-				"env":            "dev",
-				"job":            "varlog",
-			},
-			{
-				"job": "varlog",
-			},
-		},
+// TestLabelAccessDefault starts a Loki cluster and verifies
+// the query results are as expected as per the testCase configuration
+func TestLabelAccessTestCases(t *testing.T) {
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if testCase.createCluster == nil {
+				panic("test case is missing createCluster function")
+			}
+			tAll := testCase.createCluster(t)
+			testCase.ingest(t, tAll)
+
+			cliQuery := testCase.cliQuery(t, tAll)
+
+			testCase.logsQuery(t, cliQuery)
+			testCase.labelValuesQuery(t, cliQuery)
+			testCase.seriesQuery(t, cliQuery)
+			testCase.metricsRangeQuery(t, cliQuery)
+			testCase.metricsQuery(t, cliQuery)
+		})
 	}
-
-	tAll := testCase.createCluster(t)
-	testCase.ingest(t, tAll)
-
-	cliQuery := testCase.cliQuery(t, tAll)
-
-	testCase.logsQuery(t, cliQuery)
-	testCase.labelValuesQuery(t, cliQuery)
-	testCase.seriesQuery(t, cliQuery)
-	testCase.metricsRangeQuery(t, cliQuery)
-	testCase.metricsQuery(t, cliQuery)
-}
-
-// TestLabelAccess starts Loki with LBAC enabled and verifies
-// query results are filtered by the label policy header.
-func TestLabelAccessEnabled(t *testing.T) {
-	testCase := &testQueryAndLabelResults{
-		name:          "lbac enabled",
-		createCluster: clusterAllLBAC,
-		tenantID:      randStringRunes(),
-		now:           time.Now(),
-		labelPolicies: []types.LabelPolicy{
-			labelaccess.PolicyFromSelectorString(`{env="dev"}`),
-		},
-		labelValues: map[string][]string{
-			"classification": {"confidential", "secret"},
-			"env":            {"dev"},
-			"job":            {"varlog"},
-		},
-		lines: []string{"line1", "line3"},
-		streams: []map[string]string{
-			{
-				"classification": "confidential",
-				"env":            "dev",
-				"job":            "varlog",
-			},
-			{
-				"classification": "secret",
-				"env":            "dev",
-				"job":            "varlog",
-			},
-		},
-	}
-
-	tAll := testCase.createCluster(t)
-	testCase.ingest(t, tAll)
-
-	cliQuery := testCase.cliQuery(t, tAll)
-
-	testCase.logsQuery(t, cliQuery)
-	testCase.labelValuesQuery(t, cliQuery)
-	testCase.seriesQuery(t, cliQuery)
-	testCase.metricsRangeQuery(t, cliQuery)
-	testCase.metricsQuery(t, cliQuery)
 }
 
 //
@@ -280,17 +295,17 @@ func (tc *testQueryAndLabelResults) cliQuery(t *testing.T, tAll *cluster.Compone
 
 func (tc *testQueryAndLabelResults) labelValuesQuery(t *testing.T, qc *client.Client) {
 	t.Run("label-values-query", func(t *testing.T) {
-		labels := make(map[string][]string)
+		labelMap := make(map[string][]string)
 		labelNames, err := qc.LabelNames(context.Background())
 		require.NoError(t, err)
 		for _, label := range labelNames {
 			labelValues, err := qc.LabelValues(context.Background(), label)
 			require.NoError(t, err)
-			labels[label] = labelValues
+			labelMap[label] = labelValues
 		}
 		require.NoError(t, err)
 
-		require.Equal(t, normalizeLabelsData(tc.labelValues), normalizeLabelsData(labels))
+		require.Equal(t, normalizeLabelsData(tc.labelValues), normalizeLabelsData(labelMap))
 	})
 }
 func (tc *testQueryAndLabelResults) logsQuery(t *testing.T, qc *client.Client) {
