@@ -21,10 +21,6 @@ func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
 	return BuildIndexWithVersion(t, dir, cases, index.FormatV3)
 }
 
-func BuildIndexV4(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
-	return BuildIndexWithVersion(t, dir, cases, index.FormatV4)
-}
-
 func BuildIndexWithVersion(t testing.TB, dir string, cases []LoadableSeries, version int) *TSDBFile {
 	b := NewBuilder(version)
 
