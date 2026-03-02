@@ -1722,7 +1722,7 @@ gRPC errors occur during inter-component communication. Loki components communic
 message size too large than max (<size> vs <max>)
 ```
 
-Or:
+Or for the decompressed body:
 
 ```text
 decompressed message size too large than max (<size> vs <max>)
@@ -1730,40 +1730,32 @@ decompressed message size too large than max (<size> vs <max>)
 
 **Cause:**
 
-A gRPC message or HTTP request body exceeds the maximum allowed size. This can happen with:
+The compressed or decompressed body of an HTTP push request to the distributor exceeds the configured limit.
 
-- Very large query results
-- Bulk push requests with many log entries
-- Large index query responses
+**Default configuration:**
+
+- `distributor.max_recv_msg_size`: 100MB (compressed request body limit)
+- `distributor.max_decompressed_size`: 5000MB (decompressed body limit, defaults to 50× `max_recv_msg_size`)
 
 **Resolution:**
 
-1. **Increase the gRPC message size limit**:
+1. **Increase the distributor receive message size limit**:
 
    ```yaml
-   server:
-     grpc_server_max_recv_msg_size: 104857600   # 100MB
-     grpc_server_max_send_msg_size: 104857600   # 100MB
+   distributor:
+     max_recv_msg_size: 209715200      # 200MB compressed
+     max_decompressed_size: 10737418240  # 10GB decompressed
    ```
 
-1. **Increase client-side message limits**:
+1. **Reduce push batch sizes** in your log shipping client (Alloy, Promtail, etc.) to send smaller individual requests.
 
-   ```yaml
-   query_frontend_grpc_client:
-     max_recv_msg_size: 104857600
-     max_send_msg_size: 104857600
-   ```
-
-1. **Reduce the amount of data** by:
-   - Using more specific queries
-   - Reducing batch sizes for push requests
-   - Lowering `max_entries_limit_per_query`
+1. **Reduce the amount of data per request** by lowering the batch size or flush interval in your client.
 
 **Properties:**
 
-- Enforced by: gRPC server/client
+- Enforced by: Distributor push handler
 - Retryable: No (request must be smaller or limits increased)
-- HTTP status: 400 Bad Request or gRPC ResourceExhausted
+- HTTP status: 413 Request Entity Too Large (compressed), 400 Bad Request (decompressed)
 - Configurable per tenant: No
 
 ### Error: Response larger than max message size
@@ -1778,29 +1770,34 @@ response larger than the max message size (<size> vs <max>)
 
 A query result from the querier to the frontend exceeds the maximum allowed gRPC response size. This typically happens with queries that return very large result sets.
 
+**Default configuration:**
+
+- `server.grpc_server_max_send_msg_size`: 4MB (gRPC server send limit on the querier)
+- `querier.query_frontend_grpc_client.max_recv_msg_size`: 100MB (gRPC client receive limit on the querier worker)
+
 **Resolution:**
 
-1. **Increase gRPC message size limits** on both queriers and frontend.
 1. **Reduce query scope** to return fewer results:
    - Add more specific label matchers
    - Reduce the time range
    - Lower the entries limit
 
-1. **Increase limits if needed**:
+1. **Increase gRPC message size limits** if needed. Apply these settings to querier nodes:
 
    ```yaml
    server:
      grpc_server_max_send_msg_size: 209715200   # 200MB
-   
-   query_frontend_grpc_client:
-     max_recv_msg_size: 209715200
+
+   querier:
+     query_frontend_grpc_client:
+       max_recv_msg_size: 209715200             # 200MB
    ```
 
 **Properties:**
 
 - Enforced by: Querier worker
 - Retryable: No (query scope or limits must change)
-- HTTP status: 500 Internal Server Error
+- HTTP status: 413 Request Entity Too Large
 - Configurable per tenant: No
 
 ### Error: Compressed message size exceeds limit
@@ -1813,23 +1810,26 @@ compressed message size <size> exceeds limit <limit>
 
 **Cause:**
 
-The compressed push request body exceeds the configured maximum. This is checked before decompression to prevent resource exhaustion from compressed data that expands to very large sizes.
+The compressed body of an HTTP push request exceeds the distributor's configured limit. This check runs after the request body has been fully read and validates the total compressed size against the configured maximum.
+
+**Default configuration:**
+
+- `distributor.max_recv_msg_size`: 100MB
 
 **Resolution:**
 
 1. **Reduce batch sizes** in your log shipping client.
+1. **Split large batches** into smaller, more frequent requests.
 1. **Increase the limit** if needed:
 
    ```yaml
-   server:
-     grpc_server_max_recv_msg_size: 104857600
+   distributor:
+     max_recv_msg_size: 209715200   # 200MB
    ```
-
-1. **Split large batches** into smaller requests.
 
 **Properties:**
 
-- Enforced by: Push API handler
+- Enforced by: Distributor push handler
 - Retryable: No (request must be smaller)
 - HTTP status: 400 Bad Request
 - Configurable per tenant: No
