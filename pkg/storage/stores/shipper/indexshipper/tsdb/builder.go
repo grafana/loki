@@ -15,6 +15,7 @@ import (
 
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/sectionref"
 )
 
 // Builder is a helper used to create tsdb indices.
@@ -26,6 +27,7 @@ type Builder struct {
 	streams         map[string]*stream
 	chunksFinalized bool
 	version         int
+	sectionRefs     *sectionref.SectionRefTable
 }
 
 type stream struct {
@@ -42,6 +44,44 @@ func NewBuilder(version int) *Builder {
 }
 
 func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	b.addSeries(ls, fp, chks)
+}
+
+// AddSeriesWithSectionRefRemapping remaps chunk checksums from a source
+// SectionRefTable into the builder-local SectionRefTable before adding series.
+// This keeps lookup-table mode isolated from the legacy AddSeries path.
+func (b *Builder) AddSeriesWithSectionRefs(ls labels.Labels, fp model.Fingerprint, sectionMetas []sectionref.SectionMeta) error {
+	if b.sectionRefs == nil {
+		b.sectionRefs = sectionref.NewSectionRefTable(make([]sectionref.SectionRef, 0, len(sectionMetas)))
+	}
+
+	chks := make([]index.ChunkMeta, len(sectionMetas))
+	for i, meta := range sectionMetas {
+		idx := b.sectionRefs.Add(meta.SectionRef)
+
+		chks[i].Checksum = idx
+		chks[i].MinTime = meta.MinTime
+		chks[i].MaxTime = meta.MaxTime
+		chks[i].KB = meta.KB
+		chks[i].Entries = meta.Entries
+	}
+
+	b.addSeries(ls, fp, chks)
+	return nil
+}
+
+func (b *Builder) SectionRefTable() *sectionref.SectionRefTable {
+	return b.sectionRefs
+}
+
+func (b *Builder) SectionRefTableBytes() ([]byte, error) {
+	if b.sectionRefs == nil {
+		return nil, nil
+	}
+	return b.sectionRefs.Encode()
+}
+
+func (b *Builder) addSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 	id := ls.String()
 	s, ok := b.streams[id]
 	if !ok {

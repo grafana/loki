@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/sectionref"
 )
 
 func Test_Build(t *testing.T) {
@@ -36,7 +37,7 @@ func Test_Build(t *testing.T) {
 	}
 
 	getReader := func(path string) *index.Reader {
-		indexPath := fakeIdentifierPathForBounds(path, 1, 6) //default step is 1
+		indexPath := fakeIdentifierPathForBounds(path, 1, 6) // default step is 1
 		files, err := filepath.Glob(indexPath)
 		require.NoError(t, err)
 		require.Len(t, files, 1)
@@ -59,7 +60,7 @@ func Test_Build(t *testing.T) {
 		})
 
 		require.NoError(t, err)
-		indexPath := fakeIdentifierPathForBounds(tmpDir, 1, 6) //default step is 1
+		indexPath := fakeIdentifierPathForBounds(tmpDir, 1, 6) // default step is 1
 
 		files, err := filepath.Glob(indexPath)
 		require.NoError(t, err)
@@ -125,4 +126,60 @@ func (f *fakeIdentifier) Path() string {
 
 func fakeIdentifierPathForBounds(path string, from, through model.Time) string {
 	return filepath.Join(path, fmt.Sprintf("%d-%d-*.tsdb", from, through))
+}
+
+func TestBuilderSectionRefs(t *testing.T) {
+	lbls := mustParseLabels(`{foo="bar"}`)
+	fp := model.Fingerprint(labels.StableHash(lbls))
+
+	t.Run("legacy add series path remains unchanged", func(t *testing.T) {
+		builder := NewBuilder(index.FormatV3)
+		builder.AddSeries(lbls, fp, []index.ChunkMeta{{Checksum: 99, MinTime: 1, MaxTime: 2}})
+
+		require.Nil(t, builder.SectionRefTable())
+		data, err := builder.SectionRefTableBytes()
+		require.NoError(t, err)
+		require.Nil(t, data)
+	})
+
+	t.Run("assigns checksums via section reference table", func(t *testing.T) {
+		builder := NewBuilder(index.FormatV3)
+
+		refA := sectionref.SectionRef{Path: "obj/a", SectionID: 1, SeriesID: 0}
+		refB := sectionref.SectionRef{Path: "obj/b", SectionID: 2, SeriesID: 1}
+
+		err := builder.AddSeriesWithSectionRefs(
+			lbls,
+			fp,
+			[]sectionref.SectionMeta{
+				{SectionRef: refB, ChunkMeta: index.ChunkMeta{MinTime: 1, MaxTime: 2, KB: 10, Entries: 20}},
+				{SectionRef: refA, ChunkMeta: index.ChunkMeta{MinTime: 3, MaxTime: 4, KB: 11, Entries: 21}},
+				{SectionRef: refB, ChunkMeta: index.ChunkMeta{MinTime: 5, MaxTime: 6, KB: 12, Entries: 22}},
+			},
+		)
+		require.NoError(t, err)
+
+		id := lbls.String()
+		require.Contains(t, builder.streams, id)
+		require.Len(t, builder.streams[id].chunks, 3)
+
+		dst := builder.SectionRefTable()
+		require.NotNil(t, dst)
+		require.Equal(t, 2, dst.Len())
+
+		remappedB := builder.streams[id].chunks[0].Checksum
+		remappedA := builder.streams[id].chunks[1].Checksum
+		require.NotEqual(t, remappedA, remappedB)
+		require.Equal(t, remappedB, builder.streams[id].chunks[2].Checksum)
+		require.Equal(t, int64(1), builder.streams[id].chunks[0].MinTime)
+		require.Equal(t, uint32(22), builder.streams[id].chunks[2].Entries)
+
+		gotA, ok := dst.Lookup(remappedA)
+		require.True(t, ok)
+		require.Equal(t, refA, gotA)
+
+		gotB, ok := dst.Lookup(remappedB)
+		require.True(t, ok)
+		require.Equal(t, refB, gotB)
+	})
 }
