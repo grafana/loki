@@ -1,4 +1,4 @@
-package index
+package tsdb
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -19,17 +18,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
-	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 var ErrPartitionRevoked = errors.New("partition revoked")
 
 const (
-	defaultIndexConsumerGroup = "index-builder"
+	defaultTsdbConsumerGroup = "tsdb-builder"
 )
 
-// An interface for the methods needed from a calculator. Useful for testing.
-type tsdbBuilder interface {
+type tsdbManager interface {
 	BuildAndStore(ctx context.Context, obj *dataobj.Object, objectPath string) error
 }
 
@@ -40,22 +37,22 @@ type kafkaClient interface {
 	Close()
 }
 
-type Config struct{}
-
 type Builder struct {
 	services.Service
 
-	cfg Config
+	cfg         Config
+	readBucket  objstore.Bucket
+	tsdbBuilder tsdbBuilder
 
 	// Kafka client and topic/partition info
 	client kafkaClient
 	topic  string
 
 	// Partition management only
-	ownedPartitions map[int32]struct{}
+	ownedPartitions map[int32]bool
 
 	// Only kafka commit functionality
-	// metrics *builderMetrics
+	metrics *builderMetrics
 
 	// Control and coordination
 	wg                 sync.WaitGroup
@@ -69,8 +66,7 @@ func NewTSDBBuilder(
 	kafkaCfg kafka.Config,
 	logger log.Logger,
 	instanceID string,
-	bucket objstore.Bucket,
-	scratchStore scratch.Store,
+	dataobjBucket objstore.Bucket,
 	reg prometheus.Registerer,
 ) (*Builder, error) {
 	builderReg := prometheus.WrapRegistererWith(prometheus.Labels{
@@ -80,31 +76,30 @@ func NewTSDBBuilder(
 
 	builderMetrics := newBuilderMetrics()
 	if err := builderMetrics.register(builderReg); err != nil {
-		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
+		return nil, fmt.Errorf("failed to register metrics for tsdb builder: %w", err)
 	}
 
-	indexStorageBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
-
-	if err := builder.RegisterMetrics(builderReg); err != nil {
-		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
-	}
+	tsdbStorageBucket := objstore.NewPrefixedBucket(dataobjBucket, cfg.TSDBStoragePrefix)
+	tsdbBuilder := newTSDBBuilder(instanceID, tsdbStorageBucket)
 
 	s := &Builder{
-		cfg:    cfg,
-		logger: logger,
-		// metrics:            builderMetrics,
-		ownedPartitions:    make(map[int32]struct{}),
+		cfg:                cfg,
+		logger:             logger,
+		readBucket:         dataobjBucket,
+		tsdbBuilder:        tsdbBuilder,
+		metrics:            builderMetrics,
+		ownedPartitions:    make(map[int32]bool),
 		activeCalculations: make(map[int32]context.CancelCauseFunc),
 	}
 
-	consumerGroup := defaultIndexConsumerGroup
+	consumerGroup := defaultTsdbConsumerGroup
 	if kafkaCfg.ConsumerGroup != "" {
 		consumerGroup = kafkaCfg.ConsumerGroup
 	}
 
 	kafkaCfg.AutoCreateTopicEnabled = true
 	eventConsumerClient, err := client.NewReaderClient(
-		"index_builder",
+		"tsdb_builder",
 		kafkaCfg,
 		logger,
 		reg,
@@ -135,7 +130,7 @@ func (p *Builder) handlePartitionsAssigned(_ context.Context, _ *kgo.Client, top
 
 	for _, partitions := range topics {
 		for _, partition := range partitions {
-			p.ownedPartitions[partition] = struct{}{}
+			p.ownedPartitions[partition] = true
 		}
 	}
 }
@@ -212,32 +207,32 @@ func (p *Builder) stopping(failureCase error) error {
 func (p *Builder) processRecord(ctx context.Context, record *kgo.Record) {
 	defer p.cleanupPartition(record.Partition)
 
-	// Commit the records
-	if err := p.commitRecords(calculationCtx, records); err != nil {
-		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
-			level.Debug(p.logger).Log("msg", "partition revoked, aborting index commit", "partition", record.Partition)
-			return
-		}
-		level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "partition", record.Partition)
+	calcCtx, cancel := context.WithCancelCause(ctx)
+	p.activeCalculations[record.Partition] = cancel
+
+	metastoreEvent := &metastore.ObjectWrittenEvent{}
+	if err := metastoreEvent.Unmarshal(record.Value); err != nil {
+		level.Error(p.logger).Log("msg", "failed to unmarshal metastore event", "err", err)
 		return
 	}
-	p.markEventsCompleted(record.Partition, len(records))
-}
 
-// Appends a record and returns a slice of buffered events to index. The slice will be empty if no indexing is required.
-func (p *Builder) appendRecord(ctx context.Context, record *kgo.Record) (context.Context, []bufferedEvent) {
-	event := &metastore.ObjectWrittenEvent{}
-	if err := event.Unmarshal(record.Value); err != nil {
-		level.Error(p.logger).Log("msg", "failed to unmarshal metastore event", "err", err)
-		return nil, nil
+	obj, err := dataobj.FromBucket(calcCtx, p.readBucket, metastoreEvent.ObjectPath, 4*1024*1024)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to create object", "err", err)
+		return
 	}
 
-	bufferedEvt := &bufferedEvent{
-		event:  *event,
-		record: record,
+	err = p.tsdbBuilder.BuildAndStore(calcCtx, obj, metastoreEvent.ObjectPath)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to build and store object", "err", err)
+		return
 	}
 
-	return p.bufferAndTryProcess(ctx, record.Partition, bufferedEvt, triggerTypeAppend)
+	err = p.client.CommitRecords(ctx, record)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to commit record", "err", err, "partition", record.Partition)
+		return
+	}
 }
 
 func (p *Builder) cleanupPartition(partition int32) {
@@ -249,153 +244,4 @@ func (p *Builder) cleanupPartition(partition int32) {
 		cancel(nil)
 		delete(p.activeCalculations, partition)
 	}
-
-	if state, ok := p.ownedPartitions[partition]; ok {
-		// Clear processed events and reset processing flag
-		state.isProcessing = false
-		state.lastActivity = time.Now()
-	}
-}
-
-func (p *Builder) markEventsCompleted(partition int32, eventsProcessed int) {
-	p.partitionsMutex.Lock()
-	defer p.partitionsMutex.Unlock()
-
-	state, ok := p.ownedPartitions[partition]
-	if !ok {
-		return
-	}
-	state.events = state.events[eventsProcessed:]
-}
-
-func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {
-	p.partitionsMutex.Lock()
-	partitionsToFlush := make([]int32, 0)
-
-	for partition, state := range p.ownedPartitions {
-		if !state.isProcessing &&
-			time.Since(state.lastActivity) >= p.cfg.MaxIdleTime {
-			partitionsToFlush = append(partitionsToFlush, partition)
-		}
-	}
-	p.partitionsMutex.Unlock()
-
-	for _, partition := range partitionsToFlush {
-		p.flushPartition(ctx, partition)
-	}
-}
-
-func (p *Builder) flushPartition(ctx context.Context, partition int32) {
-	calculationCtx, eventsToFlush := p.bufferAndTryProcess(ctx, partition, nil, triggerTypeMaxIdle)
-	if len(eventsToFlush) == 0 {
-		return
-	}
-
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
-		defer p.cleanupPartition(partition)
-
-		level.Info(p.logger).Log("msg", "flushing stale partition",
-			"partition", partition, "events", len(eventsToFlush))
-
-		// Submit to indexer service and wait for completion
-		records, err := p.indexer.submitBuild(calculationCtx, eventsToFlush, partition, triggerTypeMaxIdle)
-		if err != nil {
-			if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
-				level.Debug(p.logger).Log("msg", "partition revoked during flush", "partition", partition)
-				return
-			}
-			level.Error(p.logger).Log("msg", "failed to flush partition", "partition", partition, "err", err)
-			return
-		}
-
-		// Commit the records
-		if err := p.commitRecords(calculationCtx, records); err != nil {
-			if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
-				level.Debug(p.logger).Log("msg", "partition revoked during flush commit", "partition", partition)
-				return
-			}
-			level.Error(p.logger).Log("msg", "failed to commit flush records", "partition", partition, "err", err)
-		}
-	}()
-}
-
-// bufferAndTryProcess is the unified method that handles both buffering and processing decisions
-func (p *Builder) bufferAndTryProcess(ctx context.Context, partition int32, newEvent *bufferedEvent, trigger triggerType) (context.Context, []bufferedEvent) {
-	p.partitionsMutex.Lock()
-	defer p.partitionsMutex.Unlock()
-
-	state, exists := p.ownedPartitions[partition]
-	if !exists {
-		return nil, nil
-	}
-
-	// Add new event to buffer if provided (normal processing case)
-	if newEvent != nil {
-		state.events = append(state.events, *newEvent)
-		state.lastActivity = time.Now()
-		level.Debug(p.logger).Log("msg", "buffered new event for partition", "count", len(state.events), "partition", partition)
-	}
-
-	// Check if we can start processing
-	if state.isProcessing || len(state.events) == 0 {
-		return nil, nil
-	}
-
-	// Check trigger-specific requirements
-	switch trigger {
-	case triggerTypeAppend:
-		if len(state.events) < p.cfg.EventsPerIndex {
-			return nil, nil
-		}
-	case triggerTypeMaxIdle:
-		if time.Since(state.lastActivity) < p.cfg.MaxIdleTime {
-			return nil, nil
-		}
-	default:
-		level.Error(p.logger).Log("msg", "unknown trigger type")
-		return nil, nil
-	}
-
-	// Atomically mark as processing and extract events
-	state.isProcessing = true
-	eventsToProcess := make([]bufferedEvent, len(state.events))
-	copy(eventsToProcess, state.events)
-
-	// Set up cancellation context with proper coordination
-	calculationCtx, cancel := context.WithCancelCause(ctx)
-	p.activeCalculations[partition] = cancel
-
-	level.Debug(p.logger).Log("msg", "started processing partition",
-		"partition", partition, "events", len(eventsToProcess), "trigger", trigger)
-
-	return calculationCtx, eventsToProcess
-}
-
-func (p *Builder) commitRecords(ctx context.Context, records []*kgo.Record) error {
-	if len(records) == 0 {
-		return nil
-	}
-
-	backoff := backoff.New(ctx, backoff.Config{
-		MinBackoff: 100 * time.Millisecond,
-		MaxBackoff: 10 * time.Second,
-		MaxRetries: 20,
-	})
-
-	var lastErr error
-	backoff.Reset()
-	for backoff.Ongoing() {
-		p.metrics.incCommitsTotal()
-		err := p.client.CommitRecords(ctx, records...)
-		if err == nil {
-			return nil
-		}
-		level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "count", len(records))
-		p.metrics.incCommitFailures()
-		lastErr = err
-		backoff.Wait()
-	}
-	return lastErr
 }

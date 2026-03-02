@@ -1,10 +1,8 @@
-package index
+package tsdb
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"testing"
 	"time"
@@ -15,26 +13,14 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-var testBuilderConfig = logsobj.BuilderBaseConfig{
-	TargetPageSize:    128 * 1024,
-	TargetObjectSize:  4 * 1024 * 1024,
-	TargetSectionSize: 2 * 1024 * 1024,
-
-	BufferSize: 4 * 1024 * 1024,
-
-	SectionStripeMergeLimit: 2,
-}
-
-func TestIndexBuilder_PartitionRevocation(t *testing.T) {
+func TestTSDBBuilder_PartitionRevocation(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -52,15 +38,12 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 	// Create a builder with mocks for dependencies
 	builder, err := NewTSDBBuilder(
 		Config{
-			BuilderBaseConfig: testBuilderConfig,
-			EventsPerIndex:    1,
+			TSDBStoragePrefix: "index/tsdb/",
 		},
-		metastore.Config{},
 		kafka.Config{},
 		log.NewLogfmtLogger(os.Stderr),
 		"instance-id",
 		bucket,
-		nil,
 		prometheus.NewRegistry(),
 	)
 	require.NoError(t, err)
@@ -96,80 +79,18 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 			Partition: int32(1),
 		})
 		if i < 2 {
-			// After revocation is triggered, we can't guarantee that the partition will be in the partition states map.
-			require.NotNil(t, builder.ownedPartitions[1])
-			require.Len(t, builder.ownedPartitions[1].events, 0)
+			// After revocation is triggered, we can't guarantee that the revoked partition will be in the partition states map so stop checking it after that.
+			require.True(t, builder.ownedPartitions[1])
 		}
 	}
 
 	// Verify that the partition was revoked.
 	<-revokedProcessed
 	require.Equal(t, 2, len(builder.ownedPartitions))
-	require.Nil(t, builder.ownedPartitions[1])
+	require.False(t, builder.ownedPartitions[1])
 }
 
-func TestIndexBuilder_PartialCompletion(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
-	defer cancel()
-
-	// Set up some test data
-	bucket := objstore.NewInMemBucket()
-	buildLogObject(t, "loki", "test-path-0", bucket)
-	event := metastore.ObjectWrittenEvent{
-		ObjectPath: "test-path-0",
-		WriteTime:  time.Now().Format(time.RFC3339),
-	}
-	eventBytes, err := event.Marshal()
-	require.NoError(t, err)
-
-	// Create a builder with mocks for dependencies
-	builder, err := NewTSDBBuilder(
-		Config{
-			BuilderBaseConfig: logsobj.BuilderBaseConfig{
-				TargetPageSize:          1,
-				TargetObjectSize:        2, // Object size 2 bytes, so it is full after the first object is processed
-				TargetSectionSize:       1,
-				SectionStripeMergeLimit: 2,
-				BufferSize:              1024 * 1024,
-			},
-			EventsPerIndex: 2, // Build from 2 objects when only 1 will fit
-		},
-		metastore.Config{},
-		kafka.Config{},
-		log.NewLogfmtLogger(os.Stderr),
-		"instance-id",
-		bucket,
-		nil,
-		prometheus.NewRegistry(),
-	)
-	require.NoError(t, err)
-	builder.client.Close()
-	builder.client = &mockKafkaClient{}
-
-	// Start the service so the downloader goroutines are started.
-	require.NoError(t, builder.StartAsync(ctx))
-	require.NoError(t, builder.AwaitRunning(ctx))
-
-	// Assign some partitions to the builder.
-	builder.handlePartitionsAssigned(ctx, nil, map[string][]int32{
-		"loki.metastore-events": {0},
-	})
-
-	// Trigger the revocation of a partition, but only after we've processed a couple of records.
-	for range 2 {
-		builder.processRecord(ctx, &kgo.Record{
-			Value:     eventBytes,
-			Partition: int32(0),
-		})
-	}
-
-	require.Equal(t, 1, len(builder.ownedPartitions))
-	require.NotNil(t, builder.ownedPartitions[0])
-	require.Len(t, builder.ownedPartitions[0].events, 1) // There should be one event remaining that wasn't processed yet
-}
-
-func TestIndexBuilder(t *testing.T) {
+func TestTSDBBuilder(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -182,18 +103,12 @@ func TestIndexBuilder(t *testing.T) {
 	client, err := kgo.NewClient(kgo.ConsumerGroup("test-consumer-group"), kgo.ConsumeTopics("loki.metastore-events"), kgo.SeedBrokers(configString))
 	require.NoError(t, err)
 
+	prefix := "index/tsdb/"
 	p, err := NewTSDBBuilder(
 		Config{
-			BuilderBaseConfig: testBuilderConfig,
-			EventsPerIndex:    3,
+			TSDBStoragePrefix: prefix,
 		},
-		metastore.Config{},
-		kafka.Config{},
-		log.NewNopLogger(),
-		"instance-id",
-		bucket,
-		nil,
-		prometheus.NewRegistry(),
+		kafka.Config{}, log.NewNopLogger(), "instance-id", bucket, prometheus.NewRegistry(),
 	)
 	require.NoError(t, err)
 	p.client.Close()
@@ -211,6 +126,9 @@ func TestIndexBuilder(t *testing.T) {
 	buildLogObject(t, "three", "test-path-2", bucket)
 
 	for i := 0; i < 3; i++ {
+		// Hack: Change the node name so each object gets a different tsdb file.
+		p.tsdbBuilder.(*dataobjTSDBBuilder).nodeName = fmt.Sprintf("instance-id-%d", i)
+
 		event := metastore.ObjectWrittenEvent{
 			ObjectPath: fmt.Sprintf("test-path-%d", i),
 			WriteTime:  time.Now().Format(time.RFC3339),
@@ -224,63 +142,19 @@ func TestIndexBuilder(t *testing.T) {
 		})
 	}
 
-	_, err = p.indexer.(*serialIndexer).flushIndex(ctx, 0)
-	require.NoError(t, err)
-
-	indexes := readAllSectionPointers(t, bucket)
-	require.Equal(t, 30, len(indexes))
+	// There should be 2 files per object (a tsdb and section ref table)
+	indexes := findAllObjects(t, bucket, prefix)
+	require.Equal(t, 6, len(indexes))
 }
 
-func readAllSectionPointers(t *testing.T, bucket objstore.Bucket) []pointers.SectionPointer {
-	var out []pointers.SectionPointer
+func findAllObjects(t *testing.T, bucket objstore.Bucket, prefix string) []string {
+	var out []string
 
-	err := bucket.Iter(context.Background(), "indexes/", func(name string) error {
-		objReader, err := bucket.Get(context.Background(), name)
-		require.NoError(t, err)
-		defer objReader.Close()
-
-		objectBytes, err := io.ReadAll(objReader)
-		require.NoError(t, err)
-
-		object, err := dataobj.FromReaderAt(bytes.NewReader(objectBytes), int64(len(objectBytes)))
-		require.NoError(t, err)
-
-		var reader pointers.RowReader
-		defer reader.Close()
-
-		buf := make([]pointers.SectionPointer, 64)
-
-		for _, section := range object.Sections() {
-			if !pointers.CheckSection(section) {
-				continue
-			}
-
-			sec, err := pointers.Open(context.Background(), section)
-			if err != nil {
-				return fmt.Errorf("opening section: %w", err)
-			}
-
-			reader.Reset(sec)
-
-			if err := reader.Open(context.Background()); err != nil {
-				return fmt.Errorf("opening section reader: %w", err)
-			}
-
-			for {
-				num, err := reader.Read(context.Background(), buf)
-				if err != nil && err != io.EOF {
-					return fmt.Errorf("reading section: %w", err)
-				}
-				if num == 0 && err == io.EOF {
-					break
-				}
-				out = append(out, buf[:num]...)
-			}
-		}
+	err := bucket.Iter(context.Background(), prefix, func(name string) error {
+		out = append(out, name)
 		return nil
 	}, objstore.WithRecursiveIter())
 	require.NoError(t, err)
-
 	return out
 }
 

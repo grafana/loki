@@ -52,6 +52,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
+	dataobjtsdb "github.com/grafana/loki/v3/pkg/dataobj/tsdb"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
@@ -159,6 +160,7 @@ const (
 	DataObjConsumerRing          = "dataobj-consumer-ring"
 	DataObjConsumerPartitionRing = "dataobj-consumer-partition-ring"
 	DataObjIndexBuilder          = "dataobj-index-builder"
+	DataObjTSDBBuilder           = "dataobj-tsdb-builder"
 	ScratchStore                 = "scratch-store"
 	UIRing                       = "ui-ring"
 	UI                           = "ui"
@@ -2452,6 +2454,28 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 		Handler(httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.PrepareDelayedDownscaleHandler)))
 
 	return t.dataObjConsumer, nil
+}
+
+func (t *Loki) initDataObjTSDBBuilder() (services.Service, error) {
+	if !t.Cfg.DataObj.Enabled {
+		return nil, nil
+	}
+	store, err := t.getDataObjBucket("dataobj-tsdb-builder")
+	if err != nil {
+		return nil, err
+	}
+
+	level.Info(util_log.Logger).Log("msg", "initializing dataobj tsdb builder", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
+	t.dataObjTSDBBuilder, err = dataobjtsdb.NewTSDBBuilder(
+		t.Cfg.DataObj.TSDB,
+		t.Cfg.KafkaConfig,
+		util_log.Logger,
+		t.Cfg.Ingester.LifecyclerConfig.ID,
+		store,
+		prometheus.DefaultRegisterer,
+	)
+
+	return t.dataObjTSDBBuilder, nil
 }
 
 func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
