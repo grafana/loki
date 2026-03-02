@@ -1,4 +1,4 @@
-package consumer
+package tsdb
 
 import (
 	"testing"
@@ -13,6 +13,16 @@ import (
 
 func TestDataobjTSDBBuilder_Build(t *testing.T) {
 	ctx := t.Context()
+
+	testBuilderCfg := logsobj.BuilderConfig{
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:          128 * 1024,
+			TargetObjectSize:        4 * 1024 * 1024,
+			TargetSectionSize:       2 * 1024 * 1024,
+			BufferSize:              4 * 1024 * 1024,
+			SectionStripeMergeLimit: 2,
+		},
+	}
 
 	// Build a real object first.
 	builder, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
