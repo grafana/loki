@@ -145,8 +145,8 @@ func TestBuilderSectionRefs(t *testing.T) {
 	t.Run("assigns checksums via section reference table", func(t *testing.T) {
 		builder := NewBuilder(index.FormatV3)
 
-		refA := sectionref.SectionRef{Path: "obj/a", SectionID: 1}
-		refB := sectionref.SectionRef{Path: "obj/b", SectionID: 2}
+		refA := sectionref.SectionRef{Path: "obj/a", SectionID: 1, SeriesID: 0}
+		refB := sectionref.SectionRef{Path: "obj/b", SectionID: 2, SeriesID: 1}
 
 		err := builder.AddSeriesWithSectionRefs(
 			lbls,

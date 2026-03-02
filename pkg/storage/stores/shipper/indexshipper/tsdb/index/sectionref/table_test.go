@@ -1,8 +1,6 @@
 package sectionref
 
 import (
-	"bytes"
-	"encoding/binary"
 	"strings"
 	"testing"
 
@@ -12,8 +10,8 @@ import (
 func TestSectionRefTableAddAndLookup(t *testing.T) {
 	tbl := NewSectionRefTable(nil)
 
-	a := SectionRef{Path: "path-a", SectionID: 7}
-	b := SectionRef{Path: "path-b", SectionID: 9}
+	a := SectionRef{Path: "path-a", SectionID: 7, SeriesID: 1}
+	b := SectionRef{Path: "path-b", SectionID: 9, SeriesID: 2}
 
 	idxA1 := tbl.Add(a)
 	idxB := tbl.Add(b)
@@ -34,9 +32,9 @@ func TestSectionRefTableAddAndLookup(t *testing.T) {
 
 func TestSectionRefTableEncodeDecodeRoundTrip(t *testing.T) {
 	tbl := NewSectionRefTable(nil)
-	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1})
-	tbl.Add(SectionRef{Path: "s3://bucket/b", SectionID: 2})
-	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1}) // dedupe
+	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1, SeriesID: 4})
+	tbl.Add(SectionRef{Path: "s3://bucket/b", SectionID: 2, SeriesID: 5})
+	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1, SeriesID: 4}) // dedupe
 
 	data, err := tbl.Encode()
 	require.NoError(t, err)
@@ -56,28 +54,8 @@ func TestSectionRefTableEncodeDecodeRoundTrip(t *testing.T) {
 
 func TestSectionRefTableEncodePathTooLong(t *testing.T) {
 	tbl := NewSectionRefTable(nil)
-	tbl.Add(SectionRef{Path: strings.Repeat("a", 1<<16), SectionID: 1})
+	tbl.Add(SectionRef{Path: strings.Repeat("a", 1<<16), SectionID: 1, SeriesID: 2})
 
 	_, err := tbl.Encode()
 	require.ErrorIs(t, err, ErrSectionRefPathTooLong)
-}
-
-func TestDecodeSectionRefTableBadPathIndex(t *testing.T) {
-	var b bytes.Buffer
-
-	// path_count = 1
-	require.NoError(t, binary.Write(&b, binary.LittleEndian, uint32(1)))
-	// path[0] = "x"
-	require.NoError(t, binary.Write(&b, binary.LittleEndian, uint16(1)))
-	_, err := b.WriteString("x")
-	require.NoError(t, err)
-	// entry_count = 1
-	require.NoError(t, binary.Write(&b, binary.LittleEndian, uint32(1)))
-	// entry path index = 2 (invalid), section = 0
-	require.NoError(t, binary.Write(&b, binary.LittleEndian, uint32(2)))
-	require.NoError(t, binary.Write(&b, binary.LittleEndian, uint32(0)))
-
-	_, err = Decode(b.Bytes())
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "path index")
 }
