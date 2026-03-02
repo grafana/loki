@@ -1,10 +1,13 @@
 package tsdb
 
 import (
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -13,6 +16,8 @@ import (
 
 func TestDataobjTSDBBuilder_Build(t *testing.T) {
 	ctx := t.Context()
+
+	now := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
 
 	testBuilderCfg := logsobj.BuilderConfig{
 		BuilderBaseConfig: logsobj.BuilderBaseConfig{
@@ -28,7 +33,6 @@ func TestDataobjTSDBBuilder_Build(t *testing.T) {
 	builder, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
 	require.NoError(t, err)
 
-	now := time.Now()
 	require.NoError(t, builder.Append("tenant-a", logproto.Stream{
 		Labels: `{app="api", env="prod"}`,
 		Entries: []logproto.Entry{
@@ -42,24 +46,32 @@ func TestDataobjTSDBBuilder_Build(t *testing.T) {
 			{Timestamp: now.Add(-30 * time.Second), Line: "third"},
 		},
 	}))
+	require.NoError(t, builder.Append("tenant-a", logproto.Stream{
+		Labels: `{app="worker", env="prod"}`,
+		Entries: []logproto.Entry{
+			{Timestamp: now.Add(-24 * time.Hour), Line: "fourth"},
+		},
+	}))
 
 	obj, objCloser, err := builder.Flush()
 	require.NoError(t, err)
 	defer objCloser.Close()
 
-	// Sort it the same way the flush path does.
-	sortFactory := logsobj.NewBuilderFactory(testBuilderCfg, scratch.NewMemory())
-	sorter := logsobj.NewSorter(sortFactory, nil)
-	sortedObj, sortedCloser, err := sorter.Sort(ctx, obj)
-	require.NoError(t, err)
-	defer sortedCloser.Close()
-
 	// Build TSDB + section refs from the sorted object.
-	tsdbBuilder := &dataobjTSDBBuilder{}
-	id, tsdbData, sectionRefData, err := tsdbBuilder.build(ctx, sortedObj, "tenant-a/object-001")
+	tsdbBuilder := newTSDBBuilder("test-node", objstore.NewInMemBucket())
+	outputs, err := tsdbBuilder.(*dataobjTSDBBuilder).build(ctx, obj, "tenant-a/object-001")
 	require.NoError(t, err)
 
-	require.NotNil(t, id)
-	require.Greater(t, len(tsdbData), 0)
-	require.Greater(t, len(sectionRefData), 0)
+	require.Equal(t, 2, len(outputs))
+	sort.Slice(outputs, func(i, j int) bool {
+		return outputs[i].id.Path() < outputs[j].id.Path()
+	})
+	require.True(t, strings.HasPrefix(outputs[0].id.Path(), "index_20467/"))
+	require.True(t, strings.HasPrefix(outputs[1].id.Path(), "index_20468/"))
+
+	for _, out := range outputs {
+		require.NotNil(t, out.id)
+		require.Greater(t, len(out.tsdbData), 0)
+		require.Greater(t, len(out.sectionRefData), 0)
+	}
 }
