@@ -459,7 +459,7 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 				return &ComparisonSummary{MismatchCause: CauseParsedLabelsCountMismatch}, fmt.Errorf("expected %d parsed label pairs for timestamp %v but got %d pairs for stream %s: %w", expectedSamplePair.Parsed.Len(),
 					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Parsed.Len(), expectedStream.Labels, ErrComparisonMismatch)
 			}
-			if !labels.Equal(expectedSamplePair.StructuredMetadata, actualSamplePair.StructuredMetadata) {
+			if !labels.Equal(expectedSamplePair.Parsed, actualSamplePair.Parsed) {
 				return &ComparisonSummary{MismatchCause: CauseParsedLabelsMismatch}, fmt.Errorf("expected parsed labels %v for timestamp %v but got %v for stream %s: %w", expectedSamplePair.Parsed.String(),
 					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Parsed.String(), expectedStream.Labels, ErrComparisonMismatch)
 			}
