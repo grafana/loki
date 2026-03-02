@@ -220,20 +220,6 @@ func (m *mockSorter) Sort(_ context.Context, obj *dataobj.Object) (*dataobj.Obje
 	return obj, io.NopCloser(nil), nil
 }
 
-type mockTSDBBuilder struct {
-	calls      int
-	lastObject *dataobj.Object
-	lastPath   string
-	err        error
-}
-
-func (m *mockTSDBBuilder) BuildAndStore(_ context.Context, obj *dataobj.Object, objectPath string) error {
-	m.calls++
-	m.lastObject = obj
-	m.lastPath = objectPath
-	return m.err
-}
-
 type mockUploader struct {
 	uploaded []*dataobj.Object
 	mtx      sync.Mutex
