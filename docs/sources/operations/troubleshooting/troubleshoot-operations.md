@@ -1856,6 +1856,12 @@ error loading client cert: <path>
 Or:
 
 ```text
+error loading client key: <path>
+```
+
+Or:
+
+```text
 failed to load TLS certificate <cert_path>,<key_path>
 ```
 
@@ -1919,28 +1925,36 @@ Loki cannot load TLS certificates from the specified paths. Common causes:
 **Error message:**
 
 ```text
-TLS configuration error: <details>
+error generating http tls config: <details>
 ```
+
+Or:
+
+```text
+error generating grpc tls config: <details>
+```
+
+Where `<details>` may include messages such as `TLS version %q not recognized`, `cipher suite %q not recognized`, or `unknown TLS version: <version>`.
 
 **Cause:**
 
 The TLS configuration is invalid. This can happen when:
 
-- Incompatible TLS options are set
-- TLS version is unsupported
+- An unsupported TLS version string is supplied
 - Cipher suite configuration is invalid
+- Client auth type is unrecognized
 
 **Resolution:**
 
 1. **Review TLS settings** for compatibility issues.
-1. **Use supported TLS versions**:
+1. **Use supported TLS versions** by setting `tls_min_version` at the top level of the `server` block:
 
    ```yaml
    server:
-     http_tls_config:
-       min_version: TLS12
-       max_version: TLS13
+     tls_min_version: VersionTLS12
    ```
+
+   Valid values are `VersionTLS10`, `VersionTLS11`, `VersionTLS12`, and `VersionTLS13`. There is no `max_version` setting; `tls_min_version` is the only version constraint.
 
 1. **Check cipher suite configuration** if customized.
 
