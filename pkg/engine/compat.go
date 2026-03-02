@@ -278,6 +278,14 @@ func (b *streamsResultBuilder) Build(s stats.Result, md *metadata.Context) logql
 	}
 
 	sort.Sort(b.data)
+
+	// Recount entries after dedup so the stats reflect the actual result size.
+	total := 0
+	for _, stream := range b.data {
+		total += len(stream.Entries)
+	}
+	s.Summary.TotalEntriesReturned = int64(total)
+
 	return logqlmodel.Result{
 		Data:       b.data,
 		Statistics: s,

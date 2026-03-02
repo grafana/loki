@@ -562,6 +562,8 @@ func TestStreamsResultBuilder(t *testing.T) {
 		streams := result.Data.(logqlmodel.Streams)
 		require.Equal(t, 1, len(streams), "should have 1 unique stream")
 		require.Equal(t, 3, len(streams[0].Entries), "duplicates should be removed")
+		require.Equal(t, int64(3), result.Statistics.Summary.TotalEntriesReturned,
+			"stats should reflect post-dedup count")
 
 		expected := logqlmodel.Streams{
 			push.Stream{
