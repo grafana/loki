@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -84,50 +83,40 @@ func (q *TestQuery) Step() time.Duration {
 
 var _ logql.Params = (*TestQuery)(nil)
 
-type TestMetastore struct{}
-
-// Labels implements metastore.Metastore.
-func (t *TestMetastore) Labels(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
-	panic("unimplemented")
-}
-
-// Values implements metastore.Metastore.
-func (t *TestMetastore) Values(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
-	panic("unimplemented")
-}
-
-// Sections implements metastore.Metastore.
-func (t *TestMetastore) Sections(_ context.Context, _ time.Time, _ time.Time, _ []*labels.Matcher, _ []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-	return []*metastore.DataobjSectionDescriptor{
-		{
-			SectionKey: metastore.SectionKey{
-				ObjectPath: "objects/00/0000000000.dataobj",
-				SectionIdx: 0,
-			},
-			StreamIDs: []int64{1, 3, 5, 7, 9},
-			RowCount:  1000,
-			Size:      1 << 10,
-			Start:     time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
-			End:       time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
+var mockedMetastoreSections = []*metastore.DataobjSectionDescriptor{
+	{
+		SectionKey: metastore.SectionKey{
+			ObjectPath: "objects/00/0000000000.dataobj",
+			SectionIdx: 0,
 		},
-		{
-			SectionKey: metastore.SectionKey{
-				ObjectPath: "objects/00/0000000000.dataobj",
-				SectionIdx: 1,
-			},
-			StreamIDs: []int64{1, 3, 5, 7, 9},
-			RowCount:  1000,
-			Size:      1 << 10,
-			Start:     time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
-			End:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
+		StreamIDs: []int64{1, 3, 5, 7, 9},
+		RowCount:  1000,
+		Size:      1 << 10,
+		Start:     time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
+		End:       time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
+		AmbiguousPredicatesByStream: map[int64][]string{
+			1: {"app", "one", "foo", "bar"},
+			2: {"app", "two", "foo", "bar"},
 		},
-	}, nil
+	},
+	{
+		SectionKey: metastore.SectionKey{
+			ObjectPath: "objects/00/0000000000.dataobj",
+			SectionIdx: 1,
+		},
+		StreamIDs: []int64{1, 3, 5, 7, 9},
+		RowCount:  1000,
+		Size:      1 << 10,
+		Start:     time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
+		End:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
+		AmbiguousPredicatesByStream: map[int64][]string{
+			1: {"app", "one", "foo", "bar"},
+			2: {"app", "two", "foo", "bar"},
+		},
+	},
 }
-
-var _ metastore.Metastore = (*TestMetastore)(nil)
 
 func TestFullQueryPlanning(t *testing.T) {
-	ms := &TestMetastore{}
 	testCases := []struct {
 		comment  string
 		query    string
@@ -156,8 +145,8 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
         └── Filter predicate[0]=EQ(ambiguous.label_foo, "bar")
             └── Compat src=metadata dst=metadata collisions=(label)
                 └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z) predicate[2]=MATCH_STR(builtin.message, "baz")
-                        ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                        └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+                        ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=() predicate[0]=EQ(metadata.label_foo, "bar")
+                        └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=() predicate[0]=EQ(metadata.label_foo, "bar")
 `,
 		},
 		{
@@ -193,44 +182,46 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
 `,
 		},
 		{
-			// This tests a bunch of optimistaion scearios:
+			// This tests a bunch of optimisation scenarios:
 			// - GroupBy pushdown from vector aggregation into range aggregation
 			// - Filter node pushdown blocked by parse
 			// - Projection pushdown with range aggregation, filter and unwrap as sources, scan and parse as sinks.
+			// - Aggregation parallelism: RangeAgg shifted into Parallelize
 			comment: "metric: parse, unwrap and aggregate",
 			query:   `sum by (bar) (sum_over_time({app="foo"} | logfmt | request_duration != "" | unwrap duration(request_duration)[1m]))`,
 			expected: `
 VectorAggregation operation=sum group_by=(ambiguous.bar)
-└── RangeAggregation operation=sum start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s partition_by=(ambiguous.bar)
-    └── Parallelize
-        └── Projection all=true expand=(CAST_DURATION(ambiguous.request_duration))
-            └── Filter predicate[0]=NEQ(ambiguous.request_duration, "")
-                └── Compat src=parsed dst=parsed collisions=(label, metadata)
-                    └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [bar, request_duration], false, false))
-                        └── Compat src=metadata dst=metadata collisions=(label)
-                            └── ScanSet num_targets=2 projections=(ambiguous.bar, builtin.message, ambiguous.request_duration, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
-                                    ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                                    └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+└── Parallelize
+    └── RangeAggregation operation=sum start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s group_by=(ambiguous.bar)
+        └── Filter predicate[0]=AND(EQ(generated.__error__, ""), EQ(generated.__error_details__, ""))
+            └── Projection all=true drop=(ambiguous.request_duration)
+                └── Projection all=true expand=(CAST_DURATION(ambiguous.request_duration))
+                    └── Filter predicate[0]=NEQ(ambiguous.request_duration, "")
+                        └── Compat src=parsed dst=parsed collisions=(label, metadata)
+                            └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [bar, request_duration], false, false))
+                                └── Compat src=metadata dst=metadata collisions=(label)
+                                    └── ScanSet num_targets=2 projections=(ambiguous.bar, builtin.message, ambiguous.request_duration, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                                            ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                                            └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
 `,
 		},
 		{
 			comment: `metric: multiple parse stages`,
 			query:   `sum(count_over_time({app="foo"} | detected_level="error" | json | logfmt | drop __error__,__error_details__[1m]))`,
 			expected: `
-VectorAggregation operation=sum
+VectorAggregation operation=sum group_by=()
 └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s
     └── Parallelize
         └── Projection all=true drop=(ambiguous.__error__, ambiguous.__error_details__)
             └── Compat src=parsed dst=parsed collisions=(label, metadata)
-                └── Projection all=true expand=(PARSE_JSON(builtin.message, [], false, false))
+                └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
                     └── Compat src=parsed dst=parsed collisions=(label, metadata)
-                        └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
+                        └── Projection all=true expand=(PARSE_JSON(builtin.message, [], false, false))
                             └── Filter predicate[0]=EQ(ambiguous.detected_level, "error")
                                 └── Compat src=metadata dst=metadata collisions=(label)
-                                    └── ScanSet num_targets=2 projections=(ambiguous.detected_level, builtin.message, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
-                                            ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                                            └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
-
+                                    └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                                            ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=() predicate[0]=EQ(metadata.detected_level, "error")
+                                            └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=() predicate[0]=EQ(metadata.detected_level, "error")
 `,
 		},
 		{
@@ -239,7 +230,7 @@ VectorAggregation operation=sum
 			expected: `
 VectorAggregation operation=sum group_by=(ambiguous.bar)
 └── Projection all=true expand=(DIV(generated.value, 300))
-    └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s partition_by=(ambiguous.bar)
+    └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s group_by=(ambiguous.bar)
         └── Parallelize
             └── Compat src=metadata dst=metadata collisions=(label)
                 └── ScanSet num_targets=2 projections=(ambiguous.bar, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
@@ -263,12 +254,13 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
 `,
 		},
 		{
+			// RangeAgg shifted into Parallelize (aggregation parallelism)
 			comment: "parse logfmt with grouping",
 			query:   `sum by (bar) (count_over_time({app="foo"} | logfmt[1m]))`,
 			expected: `
 VectorAggregation operation=sum group_by=(ambiguous.bar)
-└── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s partition_by=(ambiguous.bar)
-    └── Parallelize
+└── Parallelize
+    └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s group_by=(ambiguous.bar)
         └── Compat src=parsed dst=parsed collisions=(label, metadata)
             └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [bar], false, false))
                 └── Compat src=metadata dst=metadata collisions=(label)
@@ -277,13 +269,53 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
                             └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
 `,
 		},
+		{
+			comment: "case-insensitive regex optimization",
+			query:   `{app="foo"} |~ "(?i)error"`,
+			expected: `
+TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+└── Parallelize
+    └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+        └── Compat src=metadata dst=metadata collisions=(label)
+            └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z) predicate[2]=MATCH_STR_CASE_INSENSITIVE(builtin.message, "ERROR")
+                    ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                    └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+`,
+		},
+		{
+			comment: "case-insensitive regex negation optimization",
+			query:   `{app="foo"} !~ "(?i)debug"`,
+			expected: `
+TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+└── Parallelize
+    └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+        └── Filter predicate[0]=NOT(MATCH_STR_CASE_INSENSITIVE(builtin.message, "DEBUG"))
+            └── Compat src=metadata dst=metadata collisions=(label)
+                └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                        ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                        └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+`,
+		},
+		{
+			comment: "case-insensitive regex on label column",
+			query:   `{app="foo"} | logfmt | level =~ "(?i)error"`,
+			expected: `
+TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+└── Parallelize
+    └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+        └── Filter predicate[0]=EQ_CASE_INSENSITIVE(ambiguous.level, "ERROR")
+            └── Compat src=parsed dst=parsed collisions=(label, metadata)
+                └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
+                    └── Compat src=metadata dst=metadata collisions=(label)
+                        └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                                ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                                └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+`,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.comment, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-			t.Cleanup(cancel)
-
 			q := &TestQuery{
 				statement: tc.query,
 				start:     time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
@@ -293,11 +325,12 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 				direction: logproto.BACKWARD,
 			}
 
-			logicalPlan, err := logical.BuildPlan(q)
+			logicalPlan, err := logical.BuildPlan(context.Background(), q)
 			require.NoError(t, err)
+			require.NoError(t, logical.Optimize(logicalPlan), "logical optimization should not fail")
 
-			catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-				return ms.Sections(ctx, start, end, selectors, predicates)
+			catalog := physical.NewMetastoreCatalog(func(_ physical.Expression, _ []physical.Expression, _ time.Time, _ time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+				return mockedMetastoreSections, nil
 			})
 			planner := physical.NewPlanner(physical.NewContext(q.Start(), q.End()), catalog)
 

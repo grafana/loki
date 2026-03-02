@@ -175,7 +175,9 @@ func (r *groupByPushdown) apply(root Node) bool {
 	var changed bool
 	for _, n := range nodes {
 		vecAgg := n.(*VectorAggregation)
-		if len(vecAgg.GroupBy) == 0 {
+
+		// Can only push down a non-empty by() label set
+		if vecAgg.Grouping.Without || len(vecAgg.Grouping.Columns) == 0 {
 			continue
 		}
 
@@ -195,7 +197,7 @@ func (r *groupByPushdown) apply(root Node) bool {
 			return false
 		}
 
-		if r.applyToTargets(vecAgg, vecAgg.GroupBy, supportedAggTypes...) {
+		if r.applyToTargets(vecAgg, vecAgg.Grouping.Columns, supportedAggTypes...) {
 			changed = true
 		}
 	}
@@ -203,7 +205,7 @@ func (r *groupByPushdown) apply(root Node) bool {
 	return changed
 }
 
-func (r *groupByPushdown) applyToTargets(node Node, groupBy []ColumnExpression, supportedAggTypes ...types.RangeAggregationType) bool {
+func (r *groupByPushdown) applyToTargets(node Node, grouping []ColumnExpression, supportedAggTypes ...types.RangeAggregationType) bool {
 	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
@@ -211,15 +213,21 @@ func (r *groupByPushdown) applyToTargets(node Node, groupBy []ColumnExpression, 
 			return false
 		}
 
-		for _, colExpr := range groupBy {
+		// Cannot push down into without()
+		if node.Grouping.Without && len(node.Grouping.Columns) > 0 {
+			return false
+		}
+
+		for _, colExpr := range grouping {
 			colExpr, ok := colExpr.(*ColumnExpr)
 			if !ok {
 				continue
 			}
 
 			var wasAdded bool
-			node.PartitionBy, wasAdded = addUniqueColumnExpr(node.PartitionBy, colExpr)
+			node.Grouping.Columns, wasAdded = addUniqueColumnExpr(node.Grouping.Columns, colExpr)
 			if wasAdded {
+				node.Grouping.Without = false
 				changed = true
 			}
 		}
@@ -229,7 +237,7 @@ func (r *groupByPushdown) applyToTargets(node Node, groupBy []ColumnExpression, 
 
 	// Continue to children
 	for _, child := range r.plan.Children(node) {
-		if r.applyToTargets(child, groupBy, supportedAggTypes...) {
+		if r.applyToTargets(child, grouping, supportedAggTypes...) {
 			changed = true
 		}
 	}
@@ -259,10 +267,12 @@ func (r *projectionPushdown) propagateProjections(node Node, projections []Colum
 	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
+		if node.Grouping.Without {
+			return changed
+		}
 		// [Source] RangeAggregation requires partitionBy columns & timestamp.
-		projections = append(projections, node.PartitionBy...)
-		// Always project timestamp column even if partitionBy is empty.
-		// Timestamp values are required to perform range aggregation.
+		projections = append(projections, node.Grouping.Columns...)
+		// Always project timestamp column. Timestamp values are required to perform range aggregation.
 		projections = append(projections, &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}})
 	case *Filter:
 		// [Source] Filter nodes require predicate columns.
@@ -328,6 +338,11 @@ func (r *projectionPushdown) handleScanSet(node *ScanSet, projections []ColumnEx
 			continue
 		}
 
+		// There are no generated columns in data objects
+		if colExpr.Ref.Type == types.ColumnTypeGenerated {
+			continue
+		}
+
 		var wasAdded bool
 		node.Projections, wasAdded = addUniqueColumnExpr(node.Projections, colExpr)
 		if wasAdded {
@@ -354,6 +369,11 @@ func (r *projectionPushdown) handleDataobjScan(node *DataObjScan, projections []
 	for _, colExpr := range projections {
 		colExpr, ok := colExpr.(*ColumnExpr)
 		if !ok {
+			continue
+		}
+
+		// There are no generated columns in data objects
+		if colExpr.Ref.Type == types.ColumnTypeGenerated {
 			continue
 		}
 
@@ -563,7 +583,7 @@ func (p *parallelPushdown) applyParallelization(node Node) bool {
 	//
 	// There can be additional special cases, such as parallelizing an `avg` by
 	// pushing down a `sum` and `count` into the Parallelize.
-	switch node.(type) {
+	switch node := node.(type) {
 	case *Projection, *Filter, *ColumnCompat: // Catchall for shifting nodes
 		for _, parallelize := range p.plan.Children(node) {
 			p.plan.graph.Inject(parallelize, node.Clone())
@@ -572,12 +592,30 @@ func (p *parallelPushdown) applyParallelization(node Node) bool {
 		p.pushed[node] = struct{}{}
 		return true
 
-	case *TopK: // Catchall for sharding nodes
-		// TODO: Add Range aggregation as a sharding node
-
+	case *TopK: // shard TopK
 		for _, parallelize := range p.plan.Children(node) {
 			p.plan.graph.Inject(parallelize, node.Clone())
 		}
+		p.pushed[node] = struct{}{}
+		return true
+
+	case *RangeAggregation:
+		vecAgg := p.findParentVectorAggregation(node)
+		if vecAgg == nil {
+			return false // No VectorAgg parent - don't shift
+		}
+
+		// RangeAggregation can be parallelized only when the operation
+		// is associative and commutative with the parent vector aggregation.
+		if !canShardAggregation(vecAgg, node) {
+			return false
+		}
+
+		// Shift: move RangeAgg into Parallelize, eliminate original
+		for _, parallelize := range p.plan.Children(node) {
+			p.plan.graph.Inject(parallelize, node.Clone())
+		}
+		p.plan.graph.Eliminate(node)
 		p.pushed[node] = struct{}{}
 		return true
 	}
@@ -600,6 +638,65 @@ func (p *parallelPushdown) canPushdown(node Node) bool {
 		return n.Type() != NodeTypeParallelize
 	})
 	return !foundNonParallelize
+}
+
+// findParentVectorAggregation finds the VectorAggregation node that is a parent
+// of the given node (typically a RangeAggregation). Returns nil if no parent
+// VectorAggregation exists.
+func (p *parallelPushdown) findParentVectorAggregation(node Node) *VectorAggregation {
+	for _, parent := range p.plan.Parent(node) {
+		if vecAgg, ok := parent.(*VectorAggregation); ok {
+			return vecAgg
+		}
+	}
+	return nil
+}
+
+// canShardAggregation returns true if the combination of vector and
+// range aggregation operations can be safely parallelized.
+//
+// This is valid for aggregate functions that are both associative and commutative.
+//
+// Supported combinations:
+//   - sum over sum/count: additive operations can be summed across partitions
+//   - max over max: max of local maxes equals global max
+//   - min over min: min of loca mins equals global min
+func canShardAggregation(vec *VectorAggregation, rng *RangeAggregation) bool {
+	// without grouping is not pushed down.
+	if vec.Grouping.Without || rng.Grouping.Without {
+		return false
+	}
+
+	// range aggregation's grouping must preserve all labels that the
+	// vector aggregation needs. Currently we require exact match as
+	// a conservative simplification.
+	if len(vec.Grouping.Columns) != len(rng.Grouping.Columns) {
+		return false
+	}
+
+	for i, vecCol := range vec.Grouping.Columns {
+		rngCol := rng.Grouping.Columns[i]
+
+		colExprA, okA := vecCol.(*ColumnExpr)
+		colExprB, okB := rngCol.(*ColumnExpr)
+		if !okA || !okB {
+			return false
+		}
+
+		if colExprA.Ref.Column != colExprB.Ref.Column {
+			return false
+		}
+	}
+
+	switch vec.Operation {
+	case types.VectorAggregationTypeSum:
+		return rng.Operation == types.RangeAggregationTypeSum || rng.Operation == types.RangeAggregationTypeCount
+	case types.VectorAggregationTypeMax:
+		return rng.Operation == types.RangeAggregationTypeMax
+	case types.VectorAggregationTypeMin:
+		return rng.Operation == types.RangeAggregationTypeMin
+	}
+	return false
 }
 
 // optimization represents a single optimization pass and can hold multiple rules.

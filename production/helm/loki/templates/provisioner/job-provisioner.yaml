@@ -53,8 +53,9 @@ spec:
             - -exuc
             - |
               echo "================================================================================"
-              echo "Starting provisioner. Tokens will be displayed below."
-              echo "Copy these tokens and create secrets manually for each tenant."
+              echo "Starting provisioner. Any configured tenants will be provisioned below."
+              echo "If you need to manually provision a tenant, see the following documentation: "
+              echo "https://github.com/grafana/loki/blob/main/production/helm/loki/docs/examples/enterprise/README.md"
               echo "================================================================================"
               {{- range .Values.enterprise.provisioner.additionalTenants }}
               echo "\nProvisioning tenant: {{ .name }}..."
@@ -78,7 +79,7 @@ spec:
                 -token=self-monitoring
               {{- end }}
               echo "\n================================================================================"
-              echo "Provisioning complete. Please create secrets using the tokens above."
+              echo "Provisioning complete."
               echo "================================================================================"
           volumeMounts:
             {{- with .Values.enterprise.provisioner.extraVolumeMounts }}

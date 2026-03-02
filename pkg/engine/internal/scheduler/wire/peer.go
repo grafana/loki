@@ -3,7 +3,6 @@ package wire
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"reflect"
@@ -21,6 +20,7 @@ import (
 // Callers must call [Peer.Serve] to run the peer.
 type Peer struct {
 	Logger  log.Logger
+	Metrics *Metrics
 	Conn    Conn    // Connection to use for communication.
 	Handler Handler // Handler for incoming messages from the remote peer.
 	Buffer  int     // Buffer size for incoming and outgoing messages.
@@ -50,6 +50,9 @@ type Handler func(ctx context.Context, peer *Peer, message Message) error
 func (p *Peer) Serve(ctx context.Context) error {
 	p.lazyInit()
 
+	// Defer connection close here in Serve since Peer does not have an explicit Close method.
+	defer p.Conn.Close()
+
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error { return p.recvMessages(ctx) })
@@ -76,18 +79,22 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 
 	for {
 		frame, err := p.Conn.Recv(ctx)
-		if err != nil && ctx.Err() != nil {
-			// Context got canceled; shut down
-			return nil
-		} else if err != nil {
-			return fmt.Errorf("recv: %w", err)
+		if err != nil {
+			if ctx.Err() != nil {
+				// Context got canceled; shut down
+				return nil
+			}
+			return err
 		}
+
+		p.Metrics.incFrameReceived(frame.FrameKind().String())
 
 		switch frame := frame.(type) {
 		case MessageFrame:
 			// Queue the message for processing.
 			select {
 			case p.incoming <- frame:
+				p.Metrics.incMessageQueued()
 			case <-ctx.Done():
 				return nil
 			}
@@ -139,6 +146,7 @@ func (p *Peer) handleIncoming(ctx context.Context) error {
 		case <-p.done:
 			return nil // Closed connection.
 		case frame := <-p.incoming:
+			p.Metrics.decMessageQueued()
 			p.processMessage(ctx, frame.ID, frame.Message)
 		}
 	}
@@ -233,6 +241,10 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 	p.sentRequests.Store(reqID, req)
 	defer p.sentRequests.Delete(reqID)
 
+	timer := p.Metrics.newMessageRTTTimer()
+	defer timer.ObserveDuration()
+	p.Metrics.incMessageSent()
+
 	if err := p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message}); err != nil {
 		return err
 	}
@@ -258,6 +270,7 @@ func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
 	p.lazyInit()
 
 	reqID := p.requestID.Inc()
+	p.Metrics.incMessageSent()
 	return p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message})
 }
 

@@ -1,0 +1,16 @@
+Concatenations against a literal with alternatives as the suffix should expand
+into the full set of possible matches.
+
+-- column --
+utf8.builtin.message
+
+-- regex --
+hello (world|galaxy|universe)
+
+-- expect --
+%1 = MATCH_STR builtin.message "hello world"
+%2 = MATCH_STR builtin.message "hello galaxy"
+%3 = OR %1 %2
+%4 = MATCH_STR builtin.message "hello universe"
+%5 = OR %3 %4
+RETURN %5

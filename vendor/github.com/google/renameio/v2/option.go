@@ -13,7 +13,6 @@
 // limitations under the License.
 
 //go:build !windows
-// +build !windows
 
 package renameio
 
@@ -84,5 +83,16 @@ func WithExistingPermissions() Option {
 func WithReplaceOnClose() Option {
 	return optionFunc(func(c *config) {
 		c.renameOnClose = true
+	})
+}
+
+// WithRoot specifies a root directory to use when working with files.
+// See [os.Root] and https://go.dev/blog/osroot for more details.
+//
+// When WithRoot is used, WithTempDir (and the $TMPDIR environment variable) are
+// ignored, as temporary files must be created in the specified root directory.
+func WithRoot(root *os.Root) Option {
+	return optionFunc(func(c *config) {
+		c.root = root
 	})
 }

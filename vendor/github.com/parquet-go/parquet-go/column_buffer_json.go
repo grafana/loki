@@ -14,6 +14,11 @@ import (
 
 var jsonNull jsonlite.Value
 
+func init() {
+	v, _ := jsonlite.Parse("null")
+	jsonNull = *v
+}
+
 func jsonParse(data []byte) (*jsonlite.Value, error) {
 	if len(data) == 0 {
 		return &jsonNull, nil
@@ -35,7 +40,7 @@ func writeJSONToLeaf(col ColumnBuffer, levels columnLevels, val *jsonlite.Value,
 	case jsonlite.True, jsonlite.False:
 		col.writeBoolean(levels, val.Kind() == jsonlite.True)
 	case jsonlite.Number:
-		writeJSONNumber(col, levels, json.Number(val.String()), node)
+		writeJSONNumber(col, levels, val.Number(), node)
 	case jsonlite.String:
 		writeJSONString(col, levels, val.String(), node)
 	default:
@@ -46,12 +51,9 @@ func writeJSONToLeaf(col ColumnBuffer, levels columnLevels, val *jsonlite.Value,
 func writeJSONToByteArray(col ColumnBuffer, levels columnLevels, val *jsonlite.Value, node Node) {
 	if val.Kind() == jsonlite.Null && node.Optional() {
 		col.writeNull(levels)
-		return
+	} else {
+		col.writeByteArray(levels, unsafeByteArrayFromString(val.JSON()))
 	}
-	buf := getColumnWriteBuffer()
-	buf.Write(val.Append(buf.AvailableBuffer()))
-	col.writeByteArray(levels, buf.Bytes())
-	putColumnWriteBuffer(buf)
 }
 
 func writeJSONToGroup(columns []ColumnBuffer, levels columnLevels, val *jsonlite.Value, node Node, writers []fieldWriter) {
@@ -84,7 +86,7 @@ func writeJSONToRepeated(columns []ColumnBuffer, levels columnLevels, val *jsonl
 		levels.repetitionDepth++
 		levels.definitionLevel++
 
-		for elem := range val.Array() {
+		for elem := range val.Array {
 			elementWriter(columns, levels, reflect.ValueOf(elem))
 			levels.repetitionLevel = levels.repetitionDepth
 		}

@@ -24,11 +24,8 @@ func (a *GoAllocator) Allocate(size int) []byte {
 	buf := make([]byte, size+alignment) // padding for 64-byte alignment
 	addr := int(addressOf(buf))
 	next := roundUpToMultipleOf64(addr)
-	if addr != next {
-		shift := next - addr
-		return buf[shift : size+shift : size+shift]
-	}
-	return buf[:size:size]
+	shift := next - addr
+	return buf[shift : size+shift : size+shift]
 }
 
 func (a *GoAllocator) Reallocate(size int, b []byte) []byte {

@@ -1,0 +1,10 @@
+".*" regexes should always be true, dropping the entire filter.
+
+-- column --
+utf8.builtin.message
+
+-- regex --
+.*
+
+-- expect --
+RETURN builtin.message

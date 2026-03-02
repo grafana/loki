@@ -698,7 +698,7 @@ func mergeTwoNodes(a, b Node) Node {
 		if !isPlainEncoding(encoding2) {
 			encoding = encoding2
 		}
-		if encoding != nil {
+		if encoding != nil && canEncode(encoding, merged.Type().Kind()) {
 			merged = Encoded(merged, encoding)
 		}
 	} else {
@@ -743,6 +743,8 @@ func mergeTwoNodes(a, b Node) Node {
 				merged = &listNode{group}
 			case logicalType.Map != nil:
 				merged = &mapNode{group}
+			case logicalType.Variant != nil:
+				merged = &variantNode{group}
 			}
 		}
 	}

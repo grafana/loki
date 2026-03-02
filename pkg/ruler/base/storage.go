@@ -7,6 +7,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/rulefmt"
+	"github.com/prometheus/prometheus/promql/parser"
 	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
@@ -84,7 +87,7 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 	}
 
 	if loader == nil {
-		loader = promRules.FileLoader{}
+		loader = newDefaultFileLoader()
 	}
 
 	var err error
@@ -122,7 +125,7 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.SSEConfigProvider, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
 	if cfg.Backend == local.Name {
 		if loader == nil {
-			loader = promRules.FileLoader{}
+			loader = newDefaultFileLoader()
 		}
 		return local.NewLocalRulesClient(cfg.Local, loader)
 	}
@@ -133,4 +136,23 @@ func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.
 	}
 
 	return bucketclient.NewBucketRuleStore(bucketClient, cfgProvider, logger), nil
+}
+
+// defaultFileLoader is a GroupLoader that delegates to rulefmt.ParseFile with a
+// default PromQL parser. This replaces direct use of newDefaultFileLoader(),
+// whose parser field is unexported and nil by default, causing panics.
+type defaultFileLoader struct {
+	p parser.Parser
+}
+
+func newDefaultFileLoader() defaultFileLoader {
+	return defaultFileLoader{p: parser.NewParser(parser.Options{})}
+}
+
+func (fl defaultFileLoader) Load(identifier string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
+	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, fl.p)
+}
+
+func (fl defaultFileLoader) Parse(query string) (parser.Expr, error) {
+	return fl.p.ParseExpr(query)
 }

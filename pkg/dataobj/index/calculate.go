@@ -134,8 +134,14 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 		return fmt.Errorf("failed to open stream section: %w", err)
 	}
 
-	streamBuf := make([]streams.Stream, 8192)
 	rowReader := streams.NewRowReader(streamSection)
+	defer rowReader.Close()
+
+	if err := rowReader.Open(ctx); err != nil {
+		return fmt.Errorf("failed to open stream row reader: %w", err)
+	}
+
+	streamBuf := make([]streams.Stream, 8192)
 	for {
 		n, err := rowReader.Read(ctx, streamBuf)
 		if err != nil && !errors.Is(err, io.EOF) {
@@ -197,8 +203,14 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	}
 
 	// TODO(benclive): Switch to a columnar reader instead of row based
-	cnt := 0
 	rowReader := logs.NewRowReader(logsSection)
+	defer rowReader.Close()
+
+	if err := rowReader.Open(ctx); err != nil {
+		return fmt.Errorf("failed to open logs row reader: %w", err)
+	}
+
+	var cnt int
 	for {
 		n, err := rowReader.Read(ctx, logsBuf)
 		if err != nil && !errors.Is(err, io.EOF) {

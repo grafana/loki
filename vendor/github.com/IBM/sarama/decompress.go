@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	snappy "github.com/eapache/go-xerial-snappy"
 	"github.com/klauspost/compress/gzip"
+	snappy "github.com/klauspost/compress/snappy/xerial"
 	"github.com/pierrec/lz4/v4"
 )
 

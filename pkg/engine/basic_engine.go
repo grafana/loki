@@ -10,7 +10,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -36,16 +35,7 @@ var ErrNotSupported = errors.New("feature not supported in new query engine")
 // NewBasic creates a new instance of the basic query engine that implements the
 // [logql.Engine] interface. The basic engine executes plans sequentially with
 // no local or distributed parallelism.
-func NewBasic(cfg ExecutorConfig, metastoreCfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *Basic {
-	var ms metastore.Metastore
-	if bucket != nil {
-		indexBucket := bucket
-		if metastoreCfg.IndexStoragePrefix != "" {
-			indexBucket = objstore.NewPrefixedBucket(bucket, metastoreCfg.IndexStoragePrefix)
-		}
-		ms = metastore.NewObjectMetastore(indexBucket, logger, reg)
-	}
-
+func NewBasic(cfg ExecutorConfig, ms metastore.Metastore, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *Basic {
 	if cfg.BatchSize <= 0 {
 		panic(fmt.Sprintf("invalid batch size for query engine. must be greater than 0, got %d", cfg.BatchSize))
 	}
@@ -92,7 +82,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
 		attribute.Stringer("start", params.Start()),
-		attribute.Stringer("end", params.Start()),
+		attribute.Stringer("end", params.End()),
 		attribute.Stringer("step", params.Step()),
 		attribute.Stringer("length", params.End().Sub(params.Start())),
 		attribute.StringSlice("shards", params.Shards()),
@@ -125,7 +115,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		defer span.End()
 
 		timer := prometheus.NewTimer(e.metrics.logicalPlanning)
-		logicalPlan, err := logical.BuildPlan(params)
+		logicalPlan, err := logical.BuildPlan(ctx, params)
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
 			e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
@@ -155,8 +145,13 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 
 		timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-		catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-			return e.metastore.Sections(ctx, start, end, selectors, predicates)
+		catalog := physical.NewMetastoreCatalog(func(selectors physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+			req, err := physical.CatalogRequestToMetastoreSectionsRequest(selectors, predicates, start, end)
+			if err != nil {
+				return nil, err
+			}
+			resp, err := e.metastore.Sections(ctx, req)
+			return resp.Sections, err
 		})
 		planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 		plan, err := planner.Build(logicalPlan)
@@ -205,6 +200,8 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			BatchSize:          int64(e.cfg.BatchSize),
 			MergePrefetchCount: e.cfg.MergePrefetchCount,
 			Bucket:             e.bucket,
+			Metastore:          e.metastore,
+			StreamFilterer:     e.cfg.StreamFilterer,
 		}
 
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
@@ -262,11 +259,15 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 }
 
 func IsQuerySupported(params logql.Params) bool {
-	_, err := logical.BuildPlan(params)
+	_, err := logical.BuildPlan(context.Background(), params)
 	return err == nil
 }
 
 func collectResult(ctx context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
+	if err := pipeline.Open(ctx); err != nil {
+		return err
+	}
+
 	for {
 		rec, err := pipeline.Read(ctx)
 		if err != nil {

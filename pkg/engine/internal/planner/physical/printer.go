@@ -63,7 +63,7 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("limit", false, node.Fetch),
 		}
 	case *RangeAggregation:
-		properties := []tree.Property{
+		treeNode.Properties = []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
 			tree.NewProperty("start", false, node.Start.Format(time.RFC3339Nano)),
 			tree.NewProperty("end", false, node.End.Format(time.RFC3339Nano)),
@@ -71,19 +71,27 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("range", false, node.Range),
 		}
 
-		if len(node.PartitionBy) > 0 {
-			properties = append(properties, tree.NewProperty("partition_by", true, toAnySlice(node.PartitionBy)...))
+		if node.Grouping.Without {
+			if len(node.Grouping.Columns) > 0 {
+				treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_without", true, toAnySlice(node.Grouping.Columns)...))
+			}
+		} else {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_by", true, toAnySlice(node.Grouping.Columns)...))
 		}
-
-		treeNode.Properties = properties
 	case *VectorAggregation:
-		treeNode.Properties = []tree.Property{
+		properties := []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
 		}
 
-		if len(node.GroupBy) > 0 {
-			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_by", true, toAnySlice(node.GroupBy)...))
+		if node.Grouping.Without {
+			if len(node.Grouping.Columns) > 0 {
+				properties = append(properties, tree.NewProperty("group_without", true, toAnySlice(node.Grouping.Columns)...))
+			}
+		} else {
+			properties = append(properties, tree.NewProperty("group_by", true, toAnySlice(node.Grouping.Columns)...))
 		}
+
+		treeNode.Properties = properties
 	case *ColumnCompat:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("src", false, node.Source),
@@ -98,6 +106,8 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("k", false, node.K),
 		}
 	case *Parallelize:
+		// Nothing to add
+	case *Merge:
 		// Nothing to add
 	case *ScanSet:
 		treeNode.Properties = []tree.Property{
@@ -121,9 +131,19 @@ func toTreeNode(n Node) *tree.Node {
 				// Create a child node to extract the properties of the target.
 				childNode := toTreeNode(target.DataObject)
 				properties = append(properties, childNode.Properties...)
+			case ScanTypePointers:
+				childNode := toTreeNode(target.Pointers)
+				properties = append(properties, childNode.Properties...)
 			}
 
 			treeNode.AddComment("@target", "", properties)
+		}
+	case *PointersScan:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("location", false, node.Location),
+			tree.NewProperty("num_predicates", false, len(node.Predicates)),
+			tree.NewProperty("start", false, node.Start.Format(time.RFC3339Nano)),
+			tree.NewProperty("end", false, node.End.Format(time.RFC3339Nano)),
 		}
 	}
 	return treeNode

@@ -97,6 +97,12 @@ type PutAccountSettingDefaultInput struct {
 	//   Fargate task. For information about the Fargate tasks maintenance, see [Amazon Web Services Fargate task maintenance]in the
 	//   Amazon ECS Developer Guide.
 	//
+	//   - fargateEventWindows - When Amazon Web Services determines that a security or
+	//   infrastructure update is needed for an Amazon ECS task hosted on Fargate, the
+	//   tasks need to be stopped and new tasks launched to replace them. Use
+	//   fargateEventWindows to use EC2 Event Windows associated with Fargate tasks to
+	//   configure time windows for task retirement.
+	//
 	//   - tagResourceAuthorization - Amazon ECS is introducing tagging authorization
 	//   for resource creation. Users must have permissions for actions that create the
 	//   resource, such as ecsCreateCluster . If tags are specified when you create a
@@ -265,40 +271,7 @@ func (c *Client) addOperationPutAccountSettingDefaultMiddlewares(stack *middlewa
 	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptExecution(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptTransmit(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

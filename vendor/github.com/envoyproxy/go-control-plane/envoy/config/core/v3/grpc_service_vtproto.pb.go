@@ -960,6 +960,30 @@ func (m *GrpcService_GoogleGrpc) MarshalToSizedBufferVTStrict(dAtA []byte) (int,
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.CallCredentialsPlugin) > 0 {
+		for iNdEx := len(m.CallCredentialsPlugin) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := (*anypb.Any)(m.CallCredentialsPlugin[iNdEx]).MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x52
+		}
+	}
+	if len(m.ChannelCredentialsPlugin) > 0 {
+		for iNdEx := len(m.ChannelCredentialsPlugin) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := (*anypb.Any)(m.ChannelCredentialsPlugin[iNdEx]).MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x4a
+		}
+	}
 	if m.ChannelArgs != nil {
 		size, err := m.ChannelArgs.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -1586,6 +1610,18 @@ func (m *GrpcService_GoogleGrpc) SizeVT() (n int) {
 	if m.ChannelArgs != nil {
 		l = m.ChannelArgs.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.ChannelCredentialsPlugin) > 0 {
+		for _, e := range m.ChannelCredentialsPlugin {
+			l = (*anypb.Any)(e).SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if len(m.CallCredentialsPlugin) > 0 {
+		for _, e := range m.CallCredentialsPlugin {
+			l = (*anypb.Any)(e).SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
 	}
 	n += len(m.unknownFields)
 	return n

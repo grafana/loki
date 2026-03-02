@@ -130,15 +130,12 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 			})
 
 		// One of the parsed columns
-		case ident.ColumnType() == types.ColumnTypeParsed:
+		case ident.ColumnType() == types.ColumnTypeParsed || (ident.ColumnType() == types.ColumnTypeGenerated &&
+			shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails):
 			parsedCol := col.(*array.String)
 
-			// TODO: keep errors if --strict is set
-			// These are reserved column names used to track parsing errors. We are dropping them until
-			// we add support for --strict parsing.
-			if shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails {
-				continue
-			}
+			isErrorColumn := ident.ColumnType() == types.ColumnTypeGenerated &&
+				shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails
 
 			forEachNotNullRowColValue(numRows, parsedCol, func(rowIdx int) {
 				parsedVal := parsedCol.Value(rowIdx)
@@ -147,12 +144,14 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 				}
 
 				b.rowBuilders[rowIdx].parsedBuilder.Set(shortName, parsedVal)
-				b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, parsedVal)
+				if !b.categorizeLabels {
+					b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, parsedVal)
+				}
 				if b.rowBuilders[rowIdx].metadataBuilder.Get(shortName) != "" {
 					b.rowBuilders[rowIdx].metadataBuilder.Del(shortName)
 				}
 				// If the parsed value is empty, the builder won't accept it as it's not a valid Prometheus-style label. We must add it later for LogQL compatibility.
-				if parsedVal == "" {
+				if parsedVal == "" && !isErrorColumn {
 					b.rowBuilders[rowIdx].parsedEmptyKeys = append(b.rowBuilders[rowIdx].parsedEmptyKeys, shortName)
 				}
 			})
@@ -164,8 +163,8 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 		lbs := b.rowBuilders[rowIdx].lbsBuilder.Labels()
 		ts := b.rowBuilders[rowIdx].timestamp
 		line := b.rowBuilders[rowIdx].line
-		// Ignore rows that don't have stream labels, log line, or timestamp
-		if line == "" || ts.IsZero() || lbs.IsEmpty() {
+		// Ignore rows that don't have stream labels, or timestamp
+		if ts.IsZero() || lbs.IsEmpty() {
 			b.resetRowBuilder(rowIdx)
 			continue
 		}
@@ -443,7 +442,10 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.RecordBatch, i int
 
 		// allow any string columns
 		if ident.DataType() == types.Loki.String {
-			builder.Set(shortName, col.(*array.String).Value(i))
+			val := col.(*array.String).Value(i)
+			if val != "" {
+				builder.Set(shortName, val)
+			}
 		}
 	}
 

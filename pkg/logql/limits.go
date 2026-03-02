@@ -38,7 +38,6 @@ type fakeLimits struct {
 	multiVariantQueryEnable bool
 
 	// v2 engine limits
-
 	maxScanTaskParallelism int
 	debugEngineTasks       bool
 	debugEngineStreams     bool

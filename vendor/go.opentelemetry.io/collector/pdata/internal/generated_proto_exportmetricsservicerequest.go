@@ -44,11 +44,9 @@ func DeleteExportMetricsServiceRequest(orig *ExportMetricsServiceRequest, nullab
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.ResourceMetrics {
 		DeleteResourceMetrics(orig.ResourceMetrics[i], true)
 	}
-
 	orig.Reset()
 	if nullable {
 		protoPoolExportMetricsServiceRequest.Put(orig)

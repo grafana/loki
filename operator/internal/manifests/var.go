@@ -61,7 +61,7 @@ const (
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:3.5.5"
+	DefaultContainerImage = "docker.io/grafana/loki:3.6.5"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
@@ -481,7 +481,7 @@ func lokiServiceMonitorEndpoint(stackName, portName, serviceName, namespace stri
 }
 
 // gatewayServiceMonitorEndpoint returns the lokistack endpoint for service monitors.
-func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace string, enableTLS bool) monitoringv1.Endpoint {
+func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace string, enableTLS bool, tlsOptions *lokiv1.TLSSpec) monitoringv1.Endpoint {
 	if enableTLS {
 		tlsConfig := monitoringv1.TLSConfig{
 			SafeTLSConfig: monitoringv1.SafeTLSConfig{
@@ -496,6 +496,29 @@ func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace
 				// ServerName can be e.g. lokistack-dev-gateway-http.openshift-logging.svc.cluster.local
 				ServerName: ptr.To(fqdn(serviceName, namespace)),
 			},
+		}
+
+		if tlsOptions != nil && tlsOptions.CA != nil {
+			if tlsOptions.CA.ConfigMapName != "" {
+				tlsConfig.CA = monitoringv1.SecretOrConfigMap{
+					ConfigMap: &corev1.ConfigMapKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: tlsOptions.CA.ConfigMapName,
+						},
+						Key: caFile,
+					},
+				}
+			}
+			if tlsOptions.CA.SecretName != "" {
+				tlsConfig.CA = monitoringv1.SecretOrConfigMap{
+					Secret: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: tlsOptions.CA.SecretName,
+						},
+						Key: caFile,
+					},
+				}
+			}
 		}
 
 		return monitoringv1.Endpoint{
