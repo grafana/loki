@@ -13,43 +13,47 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/sectionref"
 )
 
 func TestGetDataobjSections(t *testing.T) {
 	dir := t.TempDir()
 
-	table := index.NewChunkRefTable()
-	idx0 := table.Add(index.SectionRef{Path: "objects/ab/obj001", SectionID: 0})
-	idx1 := table.Add(index.SectionRef{Path: "objects/ab/obj001", SectionID: 1})
-	idx2 := table.Add(index.SectionRef{Path: "objects/cd/obj002", SectionID: 0})
+	table := sectionref.NewSectionRefTable(nil)
+	idx0 := table.Add(sectionref.SectionRef{Path: "objects/ab/obj001", SectionID: 0, SeriesID: 1})
+	idx1 := table.Add(sectionref.SectionRef{Path: "objects/ab/obj001", SectionID: 1, SeriesID: 1})
+	idx2 := table.Add(sectionref.SectionRef{Path: "objects/cd/obj002", SectionID: 0, SeriesID: 5})
+	idx3 := table.Add(sectionref.SectionRef{Path: "objects/ab/obj001", SectionID: 0, SeriesID: 3})
 
 	cases := []LoadableSeries{
 		{
 			Labels: mustParseLabels(`{app="gateway", cluster="us"}`),
 			Chunks: index.ChunkMetas{
-				{Checksum: idx0, MinTime: 1000, MaxTime: 2000, KB: 10, Entries: 100, StreamID: 1},
-				{Checksum: idx1, MinTime: 3000, MaxTime: 4000, KB: 15, Entries: 150, StreamID: 1},
+				{Checksum: idx0, MinTime: 1000, MaxTime: 2000, KB: 10, Entries: 100},
+				{Checksum: idx1, MinTime: 3000, MaxTime: 4000, KB: 15, Entries: 150},
 			},
 		},
 		{
 			Labels: mustParseLabels(`{app="gateway", cluster="eu"}`),
 			Chunks: index.ChunkMetas{
-				{Checksum: idx2, MinTime: 1500, MaxTime: 2500, KB: 20, Entries: 200, StreamID: 5},
+				{Checksum: idx2, MinTime: 1500, MaxTime: 2500, KB: 20, Entries: 200},
 			},
 		},
 		{
 			Labels: mustParseLabels(`{app="ingester", cluster="us"}`),
 			Chunks: index.ChunkMetas{
-				{Checksum: idx0, MinTime: 1200, MaxTime: 1800, KB: 5, Entries: 50, StreamID: 3},
+				{Checksum: idx3, MinTime: 1200, MaxTime: 1800, KB: 5, Entries: 50},
 			},
 		},
 	}
 
-	tsdbFile := BuildIndexV4(t, dir, cases)
+	tsdbFile := BuildIndex(t, dir, cases)
 
 	tsdbPath := tsdbFile.Path()
 	lookupPath := strings.TrimSuffix(tsdbPath, ".tsdb") + ".lookup"
-	require.NoError(t, os.WriteFile(lookupPath, table.Encode(), 0o644))
+	lookupData, err := table.Encode()
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(lookupPath, lookupData, 0o644))
 
 	id, err := identifierFromPath(tsdbPath)
 	require.NoError(t, err)
@@ -105,7 +109,7 @@ func TestGetDataobjSections(t *testing.T) {
 		streamIDs := sec0.StreamIDs
 		sort.Slice(streamIDs, func(i, j int) bool { return streamIDs[i] < streamIDs[j] })
 		require.Equal(t, []int64{1, 3}, streamIDs,
-			"section 0 should have StreamIDs from both gateway/us (1) and ingester/us (3)")
+			"section 0 should have SeriesIDs from both gateway/us (1) and ingester/us (3)")
 
 		require.Equal(t, model.Time(1000), sec0.MinTime)
 		require.Equal(t, model.Time(2000), sec0.MaxTime)
@@ -146,18 +150,18 @@ func TestGetDataobjSections_NoLookupTable(t *testing.T) {
 	tsdbFile := BuildIndex(t, dir, cases)
 	tsdbIdx := tsdbFile.Index.(*TSDBIndex)
 
-	require.Nil(t, tsdbIdx.chunkRefTable)
+	require.Nil(t, tsdbIdx.sectionRefTable)
 
 	_, err := tsdbIdx.GetDataobjSections(context.Background(), "fake", 0, 10, nil)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "no chunk ref lookup table")
+	require.Contains(t, err.Error(), "no section ref lookup table")
 }
 
 func TestNewShippableTSDBFile_LoadsLookupCompanion(t *testing.T) {
 	dir := t.TempDir()
 
-	table := index.NewChunkRefTable()
-	table.Add(index.SectionRef{Path: "objects/ab/test", SectionID: 0})
+	table := sectionref.NewSectionRefTable(nil)
+	table.Add(sectionref.SectionRef{Path: "objects/ab/test", SectionID: 0, SeriesID: 1})
 
 	cases := []LoadableSeries{
 		{
@@ -185,12 +189,14 @@ func TestNewShippableTSDBFile_LoadsLookupCompanion(t *testing.T) {
 		defer file.Close()
 
 		tsdbIdx := file.Index.(*TSDBIndex)
-		require.Nil(t, tsdbIdx.chunkRefTable)
+		require.Nil(t, tsdbIdx.sectionRefTable)
 	})
 
 	t.Run("with lookup file", func(t *testing.T) {
 		lookupPath := strings.TrimSuffix(dst.Path(), ".tsdb") + ".lookup"
-		require.NoError(t, os.WriteFile(lookupPath, table.Encode(), 0o644))
+		lookupData, err := table.Encode()
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(lookupPath, lookupData, 0o644))
 		defer os.Remove(lookupPath)
 
 		file, err := NewShippableTSDBFile(dst)
@@ -198,43 +204,48 @@ func TestNewShippableTSDBFile_LoadsLookupCompanion(t *testing.T) {
 		defer file.Close()
 
 		tsdbIdx := file.Index.(*TSDBIndex)
-		require.NotNil(t, tsdbIdx.chunkRefTable)
-		require.Equal(t, 1, tsdbIdx.chunkRefTable.Len())
-		require.Equal(t, "objects/ab/test", tsdbIdx.chunkRefTable.Lookup(0).Path)
+		require.NotNil(t, tsdbIdx.sectionRefTable)
+		require.Equal(t, 1, tsdbIdx.sectionRefTable.Len())
+		ref, ok := tsdbIdx.sectionRefTable.Lookup(0)
+		require.True(t, ok)
+		require.Equal(t, "objects/ab/test", ref.Path)
 	})
 }
 
-func TestGetDataobjSections_StreamIDFromV4(t *testing.T) {
+func TestGetDataobjSections_SeriesIDFromSidecar(t *testing.T) {
 	dir := t.TempDir()
 
-	table := index.NewChunkRefTable()
-	secIdx := table.Add(index.SectionRef{Path: "objects/aa/shared", SectionID: 0})
+	table := sectionref.NewSectionRefTable(nil)
+	idxA := table.Add(sectionref.SectionRef{Path: "objects/aa/shared", SectionID: 0, SeriesID: 10})
+	idxB := table.Add(sectionref.SectionRef{Path: "objects/aa/shared", SectionID: 0, SeriesID: 20})
 
 	cases := []LoadableSeries{
 		{
 			Labels: mustParseLabels(`{app="a"}`),
 			Chunks: index.ChunkMetas{
-				{Checksum: secIdx, MinTime: 1000, MaxTime: 2000, KB: 10, Entries: 100, StreamID: 10},
+				{Checksum: idxA, MinTime: 1000, MaxTime: 2000, KB: 10, Entries: 100},
 			},
 		},
 		{
 			Labels: mustParseLabels(`{app="b"}`),
 			Chunks: index.ChunkMetas{
-				{Checksum: secIdx, MinTime: 1500, MaxTime: 3000, KB: 20, Entries: 200, StreamID: 20},
+				{Checksum: idxB, MinTime: 1500, MaxTime: 3000, KB: 20, Entries: 200},
 			},
 		},
 		{
 			Labels: mustParseLabels(`{app="c"}`),
 			Chunks: index.ChunkMetas{
-				{Checksum: secIdx, MinTime: 500, MaxTime: 1500, KB: 5, Entries: 50, StreamID: 10},
+				{Checksum: idxA, MinTime: 500, MaxTime: 1500, KB: 5, Entries: 50},
 			},
 		},
 	}
 
-	tsdbFile := BuildIndexV4(t, dir, cases)
+	tsdbFile := BuildIndex(t, dir, cases)
 	tsdbPath := tsdbFile.Path()
 	lookupPath := strings.TrimSuffix(tsdbPath, ".tsdb") + ".lookup"
-	require.NoError(t, os.WriteFile(lookupPath, table.Encode(), 0o644))
+	lookupData, err := table.Encode()
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(lookupPath, lookupData, 0o644))
 
 	id, err := identifierFromPath(tsdbPath)
 	require.NoError(t, err)
@@ -257,7 +268,7 @@ func TestGetDataobjSections_StreamIDFromV4(t *testing.T) {
 	streamIDs := ref.StreamIDs
 	sort.Slice(streamIDs, func(i, j int) bool { return streamIDs[i] < streamIDs[j] })
 	require.Equal(t, []int64{10, 20}, streamIDs,
-		"StreamID 10 should be deduped (appears in app=a and app=c)")
+		"SeriesID 10 should be deduped (appears in app=a and app=c)")
 
 	require.Equal(t, model.Time(500), ref.MinTime)
 	require.Equal(t, model.Time(3000), ref.MaxTime)
