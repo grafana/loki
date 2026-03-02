@@ -21,6 +21,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 )
 
+const (
+	logsQuery           = `{job="varlog"} |= "line"`
+	metricsQuery        = "count_over_time(" + logsQuery + " [2h])"
+	aggregatedLogsQuery = `{__aggregated_metric__="varlog_service"} | logfmt`
+)
+
 func buildLBACPolicyHeaders(tenantID string, policies []types.LabelPolicy) []string {
 	headers := make([]string, len(policies))
 	for i := range policies {

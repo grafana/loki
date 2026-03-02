@@ -122,6 +122,7 @@ require (
 	github.com/efficientgo/core v1.0.0-rc.3
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/gogo/googleapis v1.4.1
+	github.com/grafana/e2e v0.1.1
 	github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
 	github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
@@ -218,7 +219,6 @@ require (
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/gorilla/handlers v1.5.2 // indirect
-	github.com/grafana/e2e v0.1.1 // indirect
 	github.com/grafana/otel-profiling-go v0.5.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.7 // indirect
 	github.com/hashicorp/go-metrics v0.5.4 // indirect
