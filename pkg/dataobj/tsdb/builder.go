@@ -233,6 +233,7 @@ func (p *Builder) processRecord(ctx context.Context, record *kgo.Record) {
 		level.Error(p.logger).Log("msg", "failed to commit record", "err", err, "partition", record.Partition)
 		return
 	}
+	level.Info(p.logger).Log("msg", "finished processing event", "object_path", metastoreEvent.ObjectPath)
 }
 
 func (p *Builder) cleanupPartition(partition int32) {
