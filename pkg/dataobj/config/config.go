@@ -6,9 +6,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/tsdb"
 )
 
 type Config struct {
+	TSDB      tsdb.Config      `yaml:"tsdb" experimental:"true"`
 	Consumer  consumer.Config  `yaml:"consumer"`
 	Index     index.Config     `yaml:"index"`
 	Metastore metastore.Config `yaml:"metastore"`
@@ -18,6 +20,7 @@ type Config struct {
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.TSDB.RegisterFlags(f)
 	cfg.Consumer.RegisterFlags(f)
 	cfg.Index.RegisterFlags(f)
 	cfg.Metastore.RegisterFlags(f)

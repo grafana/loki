@@ -1,4 +1,4 @@
-package consumer
+package tsdb
 
 import (
 	"bytes"
@@ -51,11 +51,12 @@ func (b *dataobjTSDBBuilder) BuildAndStore(ctx context.Context, obj *dataobj.Obj
 		return err
 	}
 
-	if err := store(ctx, b.bkt, id, tsdbData, sectionRefData); err != nil {
-		return err
+	if id == nil {
+		// No data to store
+		return nil
 	}
 
-	return nil
+	return store(ctx, b.bkt, id, tsdbData, sectionRefData)
 }
 
 func (b *dataobjTSDBBuilder) build(ctx context.Context, obj *dataobj.Object, objectPath string) (index_tsdb.Identifier, []byte, []byte, error) {
@@ -87,7 +88,7 @@ func (b *dataobjTSDBBuilder) build(ctx context.Context, obj *dataobj.Object, obj
 
 	tsdbId, tsdbData, err := tsdbBuilder.BuildInMemory(ctx, func(from, through model.Time, checksum uint32) index_tsdb.Identifier {
 		return index_tsdb.MultitenantTSDBIdentifier{
-			NodeName: "dataobj-consumer",
+			NodeName: b.nodeName,
 			Ts:       time.Now(),
 		}
 	})
