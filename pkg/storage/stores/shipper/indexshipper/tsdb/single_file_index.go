@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/sectionref"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -103,11 +104,11 @@ func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
 
 	lookupPath := strings.TrimSuffix(id.Path(), ".tsdb") + ".lookup"
 	if data, readErr := os.ReadFile(lookupPath); readErr == nil {
-		table, decErr := index.DecodeChunkRefTable(data)
+		table, decErr := sectionref.Decode(data)
 		if decErr != nil {
 			return nil, fmt.Errorf("decoding lookup table %s: %w", lookupPath, decErr)
 		}
-		idx.chunkRefTable = table
+		idx.sectionRefTable = table
 	}
 
 	return &TSDBFile{
@@ -130,9 +131,9 @@ func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
 // and translates the IndexReader to an Index implementation
 // It loads the file into memory and doesn't keep a file descriptor open
 type TSDBIndex struct {
-	reader        IndexReader
-	chunkFilter   chunk.RequestChunkFilterer
-	chunkRefTable *index.ChunkRefTable
+	reader          IndexReader
+	chunkFilter     chunk.RequestChunkFilterer
+	sectionRefTable *sectionref.SectionRefTable
 }
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
@@ -520,8 +521,8 @@ func (i *TSDBIndex) Volume(
 
 // GetDataobjSections resolves matching chunk references through the companion
 // lookup table and returns fully resolved dataobj section references grouped
-// by (Path, SectionID). StreamIDs are collected from each ChunkMeta and
-// merged per section. Time bounds and sizing are the union across all
+// by (Path, SectionID). SeriesIDs are read from the sidecar SectionRefTable
+// and collected per section. Time bounds and sizing are the union across all
 // contributing chunks.
 func (i *TSDBIndex) GetDataobjSections(
 	ctx context.Context,
@@ -530,8 +531,8 @@ func (i *TSDBIndex) GetDataobjSections(
 	fpFilter index.FingerprintFilter,
 	matchers ...*labels.Matcher,
 ) ([]DataobjSectionRef, error) {
-	if i.chunkRefTable == nil {
-		return nil, fmt.Errorf("no chunk ref lookup table loaded for this index")
+	if i.sectionRefTable == nil {
+		return nil, fmt.Errorf("no section ref lookup table loaded for this index")
 	}
 
 	type sectionKey struct {
@@ -549,7 +550,10 @@ func (i *TSDBIndex) GetDataobjSections(
 
 	if err := i.ForSeries(ctx, "", fpFilter, from, through, func(_ labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 		for _, chk := range chks {
-			sref := i.chunkRefTable.Lookup(chk.Checksum)
+			sref, ok := i.sectionRefTable.Lookup(chk.Checksum)
+			if !ok {
+				continue
+			}
 			k := sectionKey{Path: sref.Path, SectionID: sref.SectionID}
 
 			acc, ok := sections[k]
@@ -577,7 +581,7 @@ func (i *TSDBIndex) GetDataobjSections(
 				acc.ref.KB += chk.KB
 				acc.ref.Entries += chk.Entries
 			}
-			acc.streamSet[chk.StreamID] = struct{}{}
+			acc.streamSet[int64(sref.SeriesID)] = struct{}{}
 		}
 		return false
 	}, matchers...); err != nil {
