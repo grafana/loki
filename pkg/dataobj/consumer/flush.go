@@ -139,5 +139,5 @@ func (f *flusherImpl) flush(ctx context.Context, job flushJob) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to upload object: %w", err)
 	}
-	return objectPath, err
+	return objectPath, nil
 }
