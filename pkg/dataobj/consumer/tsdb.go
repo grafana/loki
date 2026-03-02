@@ -179,6 +179,7 @@ func collectSectionMetas(ctx context.Context, obj *dataobj.Object, objectPath st
 				SectionRef: sectionref.SectionRef{
 					Path:      objectPath,
 					SectionID: sectionID,
+					SeriesID:  int(key.streamID),
 				},
 				ChunkMeta: tsdbindex.ChunkMeta{
 					MinTime: stats.minTime,
