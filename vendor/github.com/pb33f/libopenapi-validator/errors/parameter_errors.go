@@ -80,7 +80,9 @@ func InvalidDeepObject(param *v3.Parameter, qp *helpers.QueryParam) *ValidationE
 	}
 }
 
-func QueryParameterMissing(param *v3.Parameter) *ValidationError {
+func QueryParameterMissing(param *v3.Parameter, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "required")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -91,10 +93,23 @@ func QueryParameterMissing(param *v3.Parameter) *ValidationError {
 		SpecCol:       param.GoLow().Required.KeyNode.Column,
 		ParameterName: param.Name,
 		HowToFix:      HowToFixMissingValue,
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Required query parameter '%s' is missing", param.Name),
+			FieldName:       param.Name,
+			FieldPath:       "",
+			InstancePath:    []string{},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func HeaderParameterMissing(param *v3.Parameter) *ValidationError {
+func HeaderParameterMissing(param *v3.Parameter, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	escapedPath := strings.ReplaceAll(pathTemplate, "~", "~0")
+	escapedPath = strings.ReplaceAll(escapedPath, "/", "~1")
+	escapedPath = strings.TrimPrefix(escapedPath, "~1")
+	keywordLocation := fmt.Sprintf("/paths/%s/%s/parameters/%s/required", escapedPath, strings.ToLower(operation), param.Name)
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationHeader,
@@ -105,10 +120,20 @@ func HeaderParameterMissing(param *v3.Parameter) *ValidationError {
 		SpecCol:       param.GoLow().Required.KeyNode.Column,
 		ParameterName: param.Name,
 		HowToFix:      HowToFixMissingValue,
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Required header parameter '%s' is missing", param.Name),
+			FieldName:       param.Name,
+			FieldPath:       "",
+			InstancePath:    []string{},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func CookieParameterMissing(param *v3.Parameter) *ValidationError {
+func CookieParameterMissing(param *v3.Parameter, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "required")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationCookie,
@@ -119,10 +144,20 @@ func CookieParameterMissing(param *v3.Parameter) *ValidationError {
 		SpecCol:       param.GoLow().Required.KeyNode.Column,
 		ParameterName: param.Name,
 		HowToFix:      HowToFixMissingValue,
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Required cookie parameter '%s' is missing", param.Name),
+			FieldName:       param.Name,
+			FieldPath:       "",
+			InstancePath:    []string{},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func HeaderParameterCannotBeDecoded(param *v3.Parameter, val string) *ValidationError {
+func HeaderParameterCannotBeDecoded(param *v3.Parameter, val string, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationHeader,
@@ -133,15 +168,25 @@ func HeaderParameterCannotBeDecoded(param *v3.Parameter, val string) *Validation
 		SpecCol:       param.GoLow().Schema.Value.Schema().Type.KeyNode.Line,
 		ParameterName: param.Name,
 		HowToFix:      HowToFixInvalidEncoding,
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Header value '%s' cannot be decoded as object (malformed encoding)", val),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func IncorrectHeaderParamEnum(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func IncorrectHeaderParamEnum(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
 	var enums []string
 	for i := range sch.Enum {
 		enums = append(enums, fmt.Sprint(sch.Enum[i].Value))
 	}
 	validEnums := strings.Join(enums, ", ")
+
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "enum")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationHeader,
@@ -153,12 +198,21 @@ func IncorrectHeaderParamEnum(param *v3.Parameter, ef string, sch *base.Schema) 
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidEnum, ef, validEnums),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' does not match any enum values: [%s]", ef, validEnums),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
 func IncorrectQueryParamArrayBoolean(
-	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema,
+	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema, pathTemplate string, operation string, renderedItemsSchema string,
 ) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "items/type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -170,10 +224,19 @@ func IncorrectQueryParamArrayBoolean(
 		ParameterName: param.Name,
 		Context:       itemsSchema,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidBoolean, item),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array item '%s' is not a valid boolean", item),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name, "[item]"},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedItemsSchema,
+		}},
 	}
 }
 
-func IncorrectParamArrayMaxNumItems(param *v3.Parameter, sch *base.Schema, expected, actual int64) *ValidationError {
+func IncorrectParamArrayMaxNumItems(param *v3.Parameter, sch *base.Schema, expected, actual int64, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "maxItems")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -185,10 +248,19 @@ func IncorrectParamArrayMaxNumItems(param *v3.Parameter, sch *base.Schema, expec
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixInvalidMaxItems, expected),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array has %d items, but maximum is %d", actual, expected),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func IncorrectParamArrayMinNumItems(param *v3.Parameter, sch *base.Schema, expected, actual int64) *ValidationError {
+func IncorrectParamArrayMinNumItems(param *v3.Parameter, sch *base.Schema, expected, actual int64, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "minItems")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -200,10 +272,19 @@ func IncorrectParamArrayMinNumItems(param *v3.Parameter, sch *base.Schema, expec
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixInvalidMinItems, expected),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array has %d items, but minimum is %d", actual, expected),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func IncorrectParamArrayUniqueItems(param *v3.Parameter, sch *base.Schema, duplicates string) *ValidationError {
+func IncorrectParamArrayUniqueItems(param *v3.Parameter, sch *base.Schema, duplicates string, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "uniqueItems")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -214,12 +295,21 @@ func IncorrectParamArrayUniqueItems(param *v3.Parameter, sch *base.Schema, dupli
 		ParameterName:     param.Name,
 		Context:           sch,
 		HowToFix:          "Ensure the array values are all unique",
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array contains duplicate values: %s", duplicates),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
 func IncorrectCookieParamArrayBoolean(
-	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema,
+	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema, pathTemplate string, operation string, renderedItemsSchema string,
 ) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "items/type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationCookie,
@@ -231,12 +321,21 @@ func IncorrectCookieParamArrayBoolean(
 		ParameterName: param.Name,
 		Context:       itemsSchema,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidBoolean, item),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array item '%s' is not a valid boolean", item),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name, "[item]"},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedItemsSchema,
+		}},
 	}
 }
 
 func IncorrectQueryParamArrayInteger(
-	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema,
+	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema, pathTemplate string, operation string, renderedItemsSchema string,
 ) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "items/type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -248,12 +347,21 @@ func IncorrectQueryParamArrayInteger(
 		ParameterName: param.Name,
 		Context:       itemsSchema,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidInteger, item),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array item '%s' is not a valid integer", item),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name, "[item]"},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedItemsSchema,
+		}},
 	}
 }
 
 func IncorrectQueryParamArrayNumber(
-	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema,
+	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema, pathTemplate string, operation string, renderedItemsSchema string,
 ) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "items/type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -265,12 +373,21 @@ func IncorrectQueryParamArrayNumber(
 		ParameterName: param.Name,
 		Context:       itemsSchema,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidNumber, item),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array item '%s' is not a valid number", item),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name, "[item]"},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedItemsSchema,
+		}},
 	}
 }
 
 func IncorrectCookieParamArrayNumber(
-	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema,
+	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema, pathTemplate string, operation string, renderedItemsSchema string,
 ) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "items/type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationCookie,
@@ -282,10 +399,22 @@ func IncorrectCookieParamArrayNumber(
 		ParameterName: param.Name,
 		Context:       itemsSchema,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidNumber, item),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array item '%s' is not a valid number", item),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name, "[item]"},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedItemsSchema,
+		}},
 	}
 }
 
-func IncorrectParamEncodingJSON(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func IncorrectParamEncodingJSON(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	escapedPath := strings.ReplaceAll(pathTemplate, "~", "~0")
+	escapedPath = strings.ReplaceAll(escapedPath, "/", "~1")
+	escapedPath = strings.TrimPrefix(escapedPath, "~1")
+	keywordLocation := fmt.Sprintf("/paths/%s/%s/parameters/%s/content/application~1json/schema", escapedPath, strings.ToLower(operation), param.Name)
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -297,10 +426,19 @@ func IncorrectParamEncodingJSON(param *v3.Parameter, ef string, sch *base.Schema
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      HowToFixInvalidJSON,
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' is not valid JSON", ef),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func IncorrectQueryParamBool(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func IncorrectQueryParamBool(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -312,10 +450,19 @@ func IncorrectQueryParamBool(param *v3.Parameter, ef string, sch *base.Schema) *
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidBoolean, ef),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' is not a valid boolean", ef),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func InvalidQueryParamInteger(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func InvalidQueryParamInteger(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -327,10 +474,19 @@ func InvalidQueryParamInteger(param *v3.Parameter, ef string, sch *base.Schema) 
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidInteger, ef),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' is not a valid integer", ef),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func InvalidQueryParamNumber(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func InvalidQueryParamNumber(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -342,15 +498,25 @@ func InvalidQueryParamNumber(param *v3.Parameter, ef string, sch *base.Schema) *
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidNumber, ef),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' is not a valid number", ef),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func IncorrectQueryParamEnum(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func IncorrectQueryParamEnum(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
 	var enums []string
 	for i := range sch.Enum {
 		enums = append(enums, fmt.Sprint(sch.Enum[i].Value))
 	}
 	validEnums := strings.Join(enums, ", ")
+
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "enum")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -362,10 +528,17 @@ func IncorrectQueryParamEnum(param *v3.Parameter, ef string, sch *base.Schema) *
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidEnum, ef, validEnums),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' does not match any enum values: [%s]", ef, validEnums),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func IncorrectQueryParamEnumArray(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func IncorrectQueryParamEnumArray(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedItemsSchema string) *ValidationError {
 	var enums []string
 	// look at that model fly!
 	for i := range param.GoLow().Schema.Value.Schema().Items.Value.A.Schema().Enum.Value {
@@ -373,6 +546,9 @@ func IncorrectQueryParamEnumArray(param *v3.Parameter, ef string, sch *base.Sche
 			fmt.Sprint(param.GoLow().Schema.Value.Schema().Items.Value.A.Schema().Enum.Value[i].Value.Value))
 	}
 	validEnums := strings.Join(enums, ", ")
+
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "items/enum")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -384,10 +560,22 @@ func IncorrectQueryParamEnumArray(param *v3.Parameter, ef string, sch *base.Sche
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidEnum, ef, validEnums),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array item '%s' does not match any enum values: [%s]", ef, validEnums),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name, "[item]"},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedItemsSchema,
+		}},
 	}
 }
 
-func IncorrectReservedValues(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func IncorrectReservedValues(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	escapedPath := strings.ReplaceAll(pathTemplate, "~", "~0")
+	escapedPath = strings.ReplaceAll(escapedPath, "/", "~1")
+	escapedPath = strings.TrimPrefix(escapedPath, "~1")
+	keywordLocation := fmt.Sprintf("/paths/%s/%s/parameters/%s/allowReserved", escapedPath, strings.ToLower(operation), param.Name)
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationQuery,
@@ -399,10 +587,19 @@ func IncorrectReservedValues(param *v3.Parameter, ef string, sch *base.Schema) *
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixReservedValues, url.QueryEscape(ef)),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' contains reserved characters but allowReserved is false", ef),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func InvalidHeaderParamInteger(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func InvalidHeaderParamInteger(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationHeader,
@@ -414,10 +611,19 @@ func InvalidHeaderParamInteger(param *v3.Parameter, ef string, sch *base.Schema)
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidInteger, ef),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' is not a valid integer", ef),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func InvalidHeaderParamNumber(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func InvalidHeaderParamNumber(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationHeader,
@@ -429,10 +635,19 @@ func InvalidHeaderParamNumber(param *v3.Parameter, ef string, sch *base.Schema) 
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidNumber, ef),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' is not a valid number", ef),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func InvalidCookieParamInteger(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func InvalidCookieParamInteger(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationCookie,
@@ -444,10 +659,19 @@ func InvalidCookieParamInteger(param *v3.Parameter, ef string, sch *base.Schema)
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidInteger, ef),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' is not a valid integer", ef),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func InvalidCookieParamNumber(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func InvalidCookieParamNumber(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationCookie,
@@ -459,10 +683,19 @@ func InvalidCookieParamNumber(param *v3.Parameter, ef string, sch *base.Schema) 
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidNumber, ef),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' is not a valid number", ef),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func IncorrectHeaderParamBool(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func IncorrectHeaderParamBool(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationHeader,
@@ -474,10 +707,19 @@ func IncorrectHeaderParamBool(param *v3.Parameter, ef string, sch *base.Schema) 
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidBoolean, ef),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' is not a valid boolean", ef),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func IncorrectCookieParamBool(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func IncorrectCookieParamBool(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationCookie,
@@ -489,15 +731,25 @@ func IncorrectCookieParamBool(param *v3.Parameter, ef string, sch *base.Schema) 
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidBoolean, ef),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' is not a valid boolean", ef),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func IncorrectCookieParamEnum(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func IncorrectCookieParamEnum(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, operation string, renderedSchema string) *ValidationError {
 	var enums []string
 	for i := range sch.Enum {
 		enums = append(enums, fmt.Sprint(sch.Enum[i].Value))
 	}
 	validEnums := strings.Join(enums, ", ")
+
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "enum")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationCookie,
@@ -509,12 +761,21 @@ func IncorrectCookieParamEnum(param *v3.Parameter, ef string, sch *base.Schema) 
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidEnum, ef, validEnums),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' does not match any enum values: [%s]", ef, validEnums),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
 func IncorrectHeaderParamArrayBoolean(
-	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema,
+	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema, pathTemplate string, operation string, renderedItemsSchema string,
 ) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "items/type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationHeader,
@@ -526,12 +787,21 @@ func IncorrectHeaderParamArrayBoolean(
 		ParameterName: param.Name,
 		Context:       itemsSchema,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidBoolean, item),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array item '%s' is not a valid boolean", item),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name, "[item]"},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedItemsSchema,
+		}},
 	}
 }
 
 func IncorrectHeaderParamArrayNumber(
-	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema,
+	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema, pathTemplate string, operation string, renderedItemsSchema string,
 ) *ValidationError {
+	keywordLocation := helpers.ConstructParameterJSONPointer(pathTemplate, operation, param.Name, "items/type")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationHeader,
@@ -543,10 +813,21 @@ func IncorrectHeaderParamArrayNumber(
 		ParameterName: param.Name,
 		Context:       itemsSchema,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidNumber, item),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array item '%s' is not a valid number", item),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name, "[item]"},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedItemsSchema,
+		}},
 	}
 }
 
-func IncorrectPathParamBool(param *v3.Parameter, item string, sch *base.Schema) *ValidationError {
+func IncorrectPathParamBool(param *v3.Parameter, item string, sch *base.Schema, pathTemplate string, renderedSchema string) *ValidationError {
+	escapedPath := strings.ReplaceAll(pathTemplate, "~", "~0")
+	escapedPath = strings.ReplaceAll(escapedPath, "/", "~1")
+	keywordLocation := fmt.Sprintf("/paths/%s/parameters/%s/schema/type", escapedPath, param.Name)
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationPath,
@@ -558,15 +839,27 @@ func IncorrectPathParamBool(param *v3.Parameter, item string, sch *base.Schema) 
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidBoolean, item),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' is not a valid boolean", item),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func IncorrectPathParamEnum(param *v3.Parameter, ef string, sch *base.Schema) *ValidationError {
+func IncorrectPathParamEnum(param *v3.Parameter, ef string, sch *base.Schema, pathTemplate string, renderedSchema string) *ValidationError {
+	escapedPath := strings.ReplaceAll(pathTemplate, "~", "~0")
+	escapedPath = strings.ReplaceAll(escapedPath, "/", "~1")
+	keywordLocation := fmt.Sprintf("/paths/%s/parameters/%s/schema/enum", escapedPath, param.Name)
+
 	var enums []string
 	for i := range sch.Enum {
 		enums = append(enums, fmt.Sprint(sch.Enum[i].Value))
 	}
 	validEnums := strings.Join(enums, ", ")
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationPath,
@@ -578,10 +871,21 @@ func IncorrectPathParamEnum(param *v3.Parameter, ef string, sch *base.Schema) *V
 		SpecCol:  param.GoLow().Schema.Value.Schema().Enum.KeyNode.Column,
 		Context:  sch,
 		HowToFix: fmt.Sprintf(HowToFixParamInvalidEnum, ef, validEnums),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' does not match any enum values: [%s]", ef, validEnums),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func IncorrectPathParamInteger(param *v3.Parameter, item string, sch *base.Schema) *ValidationError {
+func IncorrectPathParamInteger(param *v3.Parameter, item string, sch *base.Schema, pathTemplate string, renderedSchema string) *ValidationError {
+	escapedPath := strings.ReplaceAll(pathTemplate, "~", "~0")
+	escapedPath = strings.ReplaceAll(escapedPath, "/", "~1")
+	keywordLocation := fmt.Sprintf("/paths/%s/parameters/%s/schema/type", escapedPath, param.Name)
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationPath,
@@ -593,10 +897,21 @@ func IncorrectPathParamInteger(param *v3.Parameter, item string, sch *base.Schem
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidInteger, item),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' is not a valid integer", item),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func IncorrectPathParamNumber(param *v3.Parameter, item string, sch *base.Schema) *ValidationError {
+func IncorrectPathParamNumber(param *v3.Parameter, item string, sch *base.Schema, pathTemplate string, renderedSchema string) *ValidationError {
+	escapedPath := strings.ReplaceAll(pathTemplate, "~", "~0")
+	escapedPath = strings.ReplaceAll(escapedPath, "/", "~1")
+	keywordLocation := fmt.Sprintf("/paths/%s/parameters/%s/schema/type", escapedPath, param.Name)
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationPath,
@@ -608,12 +923,23 @@ func IncorrectPathParamNumber(param *v3.Parameter, item string, sch *base.Schema
 		ParameterName: param.Name,
 		Context:       sch,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidNumber, item),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Value '%s' is not a valid number", item),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
 func IncorrectPathParamArrayNumber(
-	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema,
+	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema, pathTemplate string, renderedSchema string,
 ) *ValidationError {
+	escapedPath := strings.ReplaceAll(pathTemplate, "~", "~0")
+	escapedPath = strings.ReplaceAll(escapedPath, "/", "~1")
+	keywordLocation := fmt.Sprintf("/paths/%s/parameters/%s/schema/items/type", escapedPath, param.Name)
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationPath,
@@ -625,12 +951,23 @@ func IncorrectPathParamArrayNumber(
 		ParameterName: param.Name,
 		Context:       itemsSchema,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidNumber, item),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array item '%s' is not a valid number", item),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name, "[item]"},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
 func IncorrectPathParamArrayInteger(
-	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema,
+	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema, pathTemplate string, renderedSchema string,
 ) *ValidationError {
+	escapedPath := strings.ReplaceAll(pathTemplate, "~", "~0")
+	escapedPath = strings.ReplaceAll(escapedPath, "/", "~1")
+	keywordLocation := fmt.Sprintf("/paths/%s/parameters/%s/schema/items/type", escapedPath, param.Name)
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationPath,
@@ -642,12 +979,23 @@ func IncorrectPathParamArrayInteger(
 		ParameterName: param.Name,
 		Context:       itemsSchema,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidNumber, item),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array item '%s' is not a valid integer", item),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name, "[item]"},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
 func IncorrectPathParamArrayBoolean(
-	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema,
+	param *v3.Parameter, item string, sch *base.Schema, itemsSchema *base.Schema, pathTemplate string, renderedSchema string,
 ) *ValidationError {
+	escapedPath := strings.ReplaceAll(pathTemplate, "~", "~0")
+	escapedPath = strings.ReplaceAll(escapedPath, "/", "~1")
+	keywordLocation := fmt.Sprintf("/paths/%s/parameters/%s/schema/items/type", escapedPath, param.Name)
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationPath,
@@ -659,10 +1007,24 @@ func IncorrectPathParamArrayBoolean(
 		ParameterName: param.Name,
 		Context:       itemsSchema,
 		HowToFix:      fmt.Sprintf(HowToFixParamInvalidBoolean, item),
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Array item '%s' is not a valid boolean", item),
+			FieldName:       param.Name,
+			InstancePath:    []string{param.Name, "[item]"},
+			KeywordLocation: keywordLocation,
+			ReferenceSchema: renderedSchema,
+		}},
 	}
 }
 
-func PathParameterMissing(param *v3.Parameter) *ValidationError {
+func PathParameterMissing(param *v3.Parameter, pathTemplate string, actualPath string) *ValidationError {
+	actualSegments := strings.Split(strings.Trim(actualPath, "/"), "/")
+
+	encodedPath := strings.ReplaceAll(pathTemplate, "~", "~0")
+	encodedPath = strings.ReplaceAll(encodedPath, "/", "~1")
+	encodedPath = strings.TrimPrefix(encodedPath, "~1")
+	keywordLoc := fmt.Sprintf("/paths/%s/parameters/%s/required", encodedPath, param.Name)
+
 	return &ValidationError{
 		ValidationType:    helpers.ParameterValidation,
 		ValidationSubType: helpers.ParameterValidationPath,
@@ -673,5 +1035,12 @@ func PathParameterMissing(param *v3.Parameter) *ValidationError {
 		SpecCol:       param.GoLow().Required.KeyNode.Column,
 		ParameterName: param.Name,
 		HowToFix:      HowToFixMissingValue,
+		SchemaValidationErrors: []*SchemaValidationFailure{{
+			Reason:          fmt.Sprintf("Required path parameter '%s' is missing from path '%s'", param.Name, actualPath),
+			FieldName:       param.Name,
+			FieldPath:       "",
+			InstancePath:    actualSegments,
+			KeywordLocation: keywordLoc,
+		}},
 	}
 }

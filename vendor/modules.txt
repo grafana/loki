@@ -456,7 +456,7 @@ github.com/aws/aws-sdk-go-v2/internal/shareddefaults
 github.com/aws/aws-sdk-go-v2/internal/strings
 github.com/aws/aws-sdk-go-v2/internal/sync/singleflight
 github.com/aws/aws-sdk-go-v2/internal/timeconv
-# github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.4
+# github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.5
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/eventstreamapi
@@ -486,12 +486,12 @@ github.com/aws/aws-sdk-go-v2/internal/endpoints/v2
 # github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/internal/ini
-# github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.17
+# github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.18
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/internal/v4a
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/crypto
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/v4
-# github.com/aws/aws-sdk-go-v2/service/dynamodb v1.55.0
+# github.com/aws/aws-sdk-go-v2/service/dynamodb v1.56.0
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/dynamodb
 github.com/aws/aws-sdk-go-v2/service/dynamodb/internal/customizations
@@ -517,16 +517,16 @@ github.com/aws/aws-sdk-go-v2/service/elasticache/types
 # github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.5
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding
-# github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.8
+# github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.9
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/internal/checksum
-# github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.17
+# github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.18
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery
 # github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.18
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url
-# github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.17
+# github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.18
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/arn
@@ -541,7 +541,7 @@ github.com/aws/aws-sdk-go-v2/service/kafka/types
 github.com/aws/aws-sdk-go-v2/service/lightsail
 github.com/aws/aws-sdk-go-v2/service/lightsail/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/lightsail/types
-# github.com/aws/aws-sdk-go-v2/service/s3 v1.96.0
+# github.com/aws/aws-sdk-go-v2/service/s3 v1.96.1
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/s3
 github.com/aws/aws-sdk-go-v2/service/s3/internal/arn
@@ -1088,8 +1088,8 @@ github.com/goccy/go-json/internal/encoder/vm_color_indent
 github.com/goccy/go-json/internal/encoder/vm_indent
 github.com/goccy/go-json/internal/errors
 github.com/goccy/go-json/internal/runtime
-# github.com/gofrs/flock v0.8.1
-## explicit
+# github.com/gofrs/flock v0.13.0
+## explicit; go 1.24.0
 github.com/gofrs/flock
 # github.com/gogo/googleapis v1.4.1
 ## explicit; go 1.12
@@ -1720,22 +1720,24 @@ github.com/parquet-go/parquet-go/internal/debug
 github.com/parquet-go/parquet-go/internal/memory
 github.com/parquet-go/parquet-go/internal/unsafecast
 github.com/parquet-go/parquet-go/sparse
-# github.com/pb33f/jsonpath v0.7.1
+# github.com/pb33f/jsonpath v0.8.1
 ## explicit; go 1.24
 github.com/pb33f/jsonpath/pkg/jsonpath
 github.com/pb33f/jsonpath/pkg/jsonpath/config
 github.com/pb33f/jsonpath/pkg/jsonpath/token
-# github.com/pb33f/libopenapi v0.33.4
+# github.com/pb33f/libopenapi v0.34.0
 ## explicit; go 1.24.0
 github.com/pb33f/libopenapi
 github.com/pb33f/libopenapi/datamodel
 github.com/pb33f/libopenapi/datamodel/high
+github.com/pb33f/libopenapi/datamodel/high/arazzo
 github.com/pb33f/libopenapi/datamodel/high/base
 github.com/pb33f/libopenapi/datamodel/high/nodes
 github.com/pb33f/libopenapi/datamodel/high/overlay
 github.com/pb33f/libopenapi/datamodel/high/v2
 github.com/pb33f/libopenapi/datamodel/high/v3
 github.com/pb33f/libopenapi/datamodel/low
+github.com/pb33f/libopenapi/datamodel/low/arazzo
 github.com/pb33f/libopenapi/datamodel/low/base
 github.com/pb33f/libopenapi/datamodel/low/overlay
 github.com/pb33f/libopenapi/datamodel/low/v2
@@ -1747,7 +1749,7 @@ github.com/pb33f/libopenapi/overlay
 github.com/pb33f/libopenapi/utils
 github.com/pb33f/libopenapi/what-changed
 github.com/pb33f/libopenapi/what-changed/model
-# github.com/pb33f/libopenapi-validator v0.11.1
+# github.com/pb33f/libopenapi-validator v0.13.0
 ## explicit; go 1.25.0
 github.com/pb33f/libopenapi-validator
 github.com/pb33f/libopenapi-validator/cache
@@ -1757,6 +1759,7 @@ github.com/pb33f/libopenapi-validator/helpers
 github.com/pb33f/libopenapi-validator/openapi_vocabulary
 github.com/pb33f/libopenapi-validator/parameters
 github.com/pb33f/libopenapi-validator/paths
+github.com/pb33f/libopenapi-validator/radix
 github.com/pb33f/libopenapi-validator/requests
 github.com/pb33f/libopenapi-validator/responses
 github.com/pb33f/libopenapi-validator/schema_validation
@@ -1865,7 +1868,7 @@ github.com/prometheus/otlptranslator
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.310.1-0.20260226160648-02b1abab5e7f
+# github.com/prometheus/prometheus v0.310.1-0.20260227151745-3b1d65816f22
 ## explicit; go 1.25.0
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
