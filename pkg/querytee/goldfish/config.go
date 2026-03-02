@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
@@ -56,6 +57,12 @@ type Config struct {
 	//
 	// When set to 0 (default), only exact response hash matches are considered matches.
 	CompareValuesTolerance float64 `yaml:"compare_values_tolerance"`
+
+	// SkipRecentSamples excludes samples whose timestamp is within this
+	// duration of the query evaluation time. This avoids false-positive
+	// mismatches caused by ingestion lag or data replication timing between
+	// cells.
+	SkipRecentSamples time.Duration `yaml:"skip_recent_samples"`
 }
 
 // SamplingConfig defines how queries are sampled
@@ -143,6 +150,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	// Compare response values with tolerance
 	f.Float64Var(&cfg.CompareValuesTolerance, "goldfish.compare-values-tolerance", 0.0, "Tolerance for comparing sample values in metric query responses. When set to 0, we expect an exact response hash match.")
+	f.DurationVar(&cfg.SkipRecentSamples, "goldfish.skip-recent-samples", 0, "Skip comparing samples whose timestamp is within this duration of the query evaluation time. Helps avoid false mismatches from ingestion lag between cells.")
 }
 
 // Validate validates the configuration
