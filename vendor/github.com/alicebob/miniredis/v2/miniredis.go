@@ -37,19 +37,20 @@ type setKey map[string]struct{}
 
 // RedisDB holds a single (numbered) Redis database.
 type RedisDB struct {
-	master        *Miniredis               // pointer to the lock in Miniredis
-	id            int                      // db id
-	keys          map[string]string        // Master map of keys with their type
-	stringKeys    map[string]string        // GET/SET &c. keys
-	hashKeys      map[string]hashKey       // MGET/MSET &c. keys
-	listKeys      map[string]listKey       // LPUSH &c. keys
-	setKeys       map[string]setKey        // SADD &c. keys
-	hllKeys       map[string]*hll          // PFADD &c. keys
-	sortedsetKeys map[string]sortedSet     // ZADD &c. keys
-	streamKeys    map[string]*streamKey    // XADD &c. keys
-	ttl           map[string]time.Duration // effective TTL values
-	lru           map[string]time.Time     // last recently used ( read or written to )
-	keyVersion    map[string]uint          // used to watch values
+	master        *Miniredis                          // pointer to the lock in Miniredis
+	id            int                                 // db id
+	keys          map[string]string                   // Master map of keys with their type
+	stringKeys    map[string]string                   // GET/SET &c. keys
+	hashKeys      map[string]hashKey                  // MGET/MSET &c. keys
+	listKeys      map[string]listKey                  // LPUSH &c. keys
+	setKeys       map[string]setKey                   // SADD &c. keys
+	hllKeys       map[string]*hll                     // PFADD &c. keys
+	sortedsetKeys map[string]sortedSet                // ZADD &c. keys
+	streamKeys    map[string]*streamKey               // XADD &c. keys
+	ttl           map[string]time.Duration            // effective TTL values
+	hashTTLs      map[string]map[string]time.Duration // Hash TTL values
+	lru           map[string]time.Time                // last recently used ( read or written to )
+	keyVersion    map[string]uint                     // used to watch values
 }
 
 // Miniredis is a Redis server implementation.
@@ -116,6 +117,7 @@ func newRedisDB(id int, m *Miniredis) RedisDB {
 		sortedsetKeys: map[string]sortedSet{},
 		streamKeys:    map[string]*streamKey{},
 		ttl:           map[string]time.Duration{},
+		hashTTLs:      make(map[string]map[string]time.Duration),
 		keyVersion:    map[string]uint{},
 	}
 }
