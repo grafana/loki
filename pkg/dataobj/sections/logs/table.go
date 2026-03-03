@@ -116,8 +116,7 @@ type tableBuffer struct {
 	timestamp *dataset.ColumnBuilder
 
 	metadatas      []*dataset.ColumnBuilder
-	metadataLookup map[string]int                    // map of metadata key to index in metadatas
-	usedMetadatas  map[*dataset.ColumnBuilder]string // metadata with its name.
+	metadataLookup map[string]int // map of metadata key to index in metadatas
 
 	message *dataset.ColumnBuilder
 }
@@ -185,16 +184,11 @@ func (b *tableBuffer) Timestamp(pageSize, pageRowCount int) *dataset.ColumnBuild
 
 // Metadata gets or creates a metadata column for the buffer. To remove created
 // metadata columns, call [tableBuffer.CleanupMetadatas].
-func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions) *dataset.ColumnBuilder {
-	if b.usedMetadatas == nil {
-		b.usedMetadatas = make(map[*dataset.ColumnBuilder]string)
-	}
-
+func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions) (int, *dataset.ColumnBuilder) {
 	index, ok := b.metadataLookup[key]
 	if ok {
 		builder := b.metadatas[index]
-		b.usedMetadatas[builder] = key
-		return builder
+		return index, builder
 	}
 
 	col, err := dataset.NewColumnBuilder(key, dataset.BuilderOptions{
@@ -225,8 +219,7 @@ func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressi
 		b.metadataLookup = make(map[string]int)
 	}
 	b.metadataLookup[key] = len(b.metadatas) - 1
-	b.usedMetadatas[col] = key
-	return col
+	return len(b.metadatas) - 1, col
 }
 
 // Message gets or creates a message column for the buffer.
@@ -286,22 +279,16 @@ func (b *tableBuffer) Reset() {
 		newMetadatas      = make([]*dataset.ColumnBuilder, 0, len(b.metadatas))
 		newMetadataLookup = make(map[string]int, len(b.metadatas))
 	)
-	for _, md := range b.metadatas {
-		if b.usedMetadatas == nil {
-			break // Nothing was used.
-		}
-
-		key, used := b.usedMetadatas[md]
-		if !used {
+	for key, mdIdx := range b.metadataLookup {
+		md := b.metadatas[mdIdx]
+		if md.EstimatedSize() <= 0 {
 			continue
 		}
-
 		newMetadatas = append(newMetadatas, md)
 		newMetadataLookup[key] = len(newMetadatas) - 1
 	}
 	b.metadatas = newMetadatas
 	b.metadataLookup = newMetadataLookup
-	clear(b.usedMetadatas) // Reset the used cache for next time.
 }
 
 // Flush flushes the buffer into a table. Flush returns an error if the stream,
@@ -332,9 +319,7 @@ func (b *tableBuffer) Flush() (*table, error) {
 	)
 
 	for _, metadataBuilder := range b.metadatas {
-		if b.usedMetadatas == nil {
-			continue
-		} else if _, ok := b.usedMetadatas[metadataBuilder]; !ok {
+		if metadataBuilder.EstimatedSize() <= 0 {
 			continue
 		}
 
