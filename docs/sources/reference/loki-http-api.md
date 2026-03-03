@@ -1020,8 +1020,9 @@ This endpoint is useful for discovering the structure of your logs without runni
 URL query parameters:
 
 - `query`: The [LogQL](../../query/) stream selector to match. Example: `{app="myapp", environment="dev"}`. This parameter is required.
-- `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is required.
-- `end=<nanosecond Unix epoch>`: End timestamp. This parameter is required.
+- `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is optional. If omitted, it defaults to `end - since`.
+- `end=<nanosecond Unix epoch>`: End timestamp. This parameter is optional. If omitted, it defaults to the current server time.
+- `since=<duration>`: Relative time range (for example, `1h`, `5m`). This parameter is optional and is used when `start` is omitted to compute `start = end - since`. If both `start` and `since` are omitted, `since` defaults to `1h`.
 - `step=<duration string or float number of seconds>`: Step between sample windows. This parameter is optional.
 - `line_limit=<integer>`: Maximum number of log lines to scan per shard. Defaults to 100. This parameter is optional.
 - `limit=<integer>`: Maximum number of fields to return. Defaults to 1000. The query parameter `field_limit` is also accepted as an alias for backwards compatibility. This parameter is optional.
@@ -1037,7 +1038,9 @@ Response format:
       "label": <string>,
       "type": <string|int|float|boolean|duration|bytes>,
       "cardinality": <integer>,
-      "parser": <string>
+      "parsers": [<string>],
+      "jsonPath": <string, optional>,
+      "sketch": <object, optional>
     }
   ],
   "limit": <integer>
@@ -1064,19 +1067,19 @@ gave this response:
       "label": "level",
       "type": "string",
       "cardinality": 3,
-      "parser": "logfmt"
+      "parsers": ["logfmt"]
     },
     {
       "label": "duration",
       "type": "duration",
       "cardinality": 152,
-      "parser": "logfmt"
+      "parsers": ["logfmt"]
     },
     {
       "label": "status",
       "type": "int",
       "cardinality": 5,
-      "parser": "logfmt"
+      "parsers": ["logfmt"]
     }
   ],
   "limit": 1000
@@ -1096,11 +1099,12 @@ The `/loki/api/v1/detected_field/{name}/values` endpoint returns the values obse
 URL query parameters:
 
 - `query`: The [LogQL](../../query/) stream selector to match. Example: `{app="myapp", environment="dev"}`. This parameter is required.
-- `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is required.
-- `end=<nanosecond Unix epoch>`: End timestamp. This parameter is required.
+- `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is optional. If omitted, it defaults to `end - since`.
+- `end=<nanosecond Unix epoch>`: End timestamp. This parameter is optional. If omitted, it defaults to the current server time.
+- `since=<duration>`: Relative time range (for example, `1h`, `5m`). This parameter is optional and is used when `start` is omitted to compute `start = end - since`. If both `start` and `since` are omitted, `since` defaults to `1h`.
 - `step=<duration string or float number of seconds>`: Step between sample windows. This parameter is optional.
 - `line_limit=<integer>`: Maximum number of log lines to scan per shard. Defaults to 100. This parameter is optional.
-- `limit=<integer>`: Maximum number of values to return. Defaults to 1000. This parameter is optional.
+- `limit=<integer>`: Maximum number of values to return. Defaults to 1000. The query parameter `field_limit` is also accepted as an alias. This parameter is optional.
 
 You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header.
 
