@@ -13,6 +13,8 @@ const (
 	EnvAWSAccessKeySecret = "AWS_ACCESS_KEY_SECRET" //#nosec G101 -- False positive
 	// EnvAWSSseKmsEncryptionContext is the environment variable to specify the AWS KMS encryption context when using type SSE-KMS.
 	EnvAWSSseKmsEncryptionContext = "AWS_SSE_KMS_ENCRYPTION_CONTEXT"
+	// EnvAWSSseCEncryptionKey is the environment variable to specify the AWS SSE-C encryption key when using type SSE-C.
+	EnvAWSSseCEncryptionKey = "AWS_SSE_C_ENCRYPTION_KEY" //#nosec G101 -- False positive
 	// EnvAWSRoleArn is the environment variable to specify the AWS role ARN secret for the federated identity workflow.
 	EnvAWSRoleArn = "AWS_ROLE_ARN"
 	// EnvAWSWebIdentityTokenFile is the environment variable to specify the path to the web identity token file used in the federated identity workflow.
@@ -67,6 +69,8 @@ const (
 	KeyAWSSseKmsEncryptionContext = "sse_kms_encryption_context"
 	// KeyAWSSseKmsKeyID is the secret data key for the AWS SSE KMS key id.
 	KeyAWSSseKmsKeyID = "sse_kms_key_id"
+	// KeyAWSSseCEncryptionKey is the secret key for the AWS SSE-C encryption key.
+	KeyAWSSseCEncryptionKey = "sse_c_encryption_key" //#nosec G101 -- False positive
 	// KeyAWSRoleArn is the secret data key for the AWS STS role ARN.
 	KeyAWSRoleArn = "role_arn"
 	// KeyAWSAudience is the audience for the AWS STS workflow.
