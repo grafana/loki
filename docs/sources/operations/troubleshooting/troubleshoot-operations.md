@@ -1962,7 +1962,7 @@ The TLS configuration is invalid. This can happen when:
 - Enforced by: TLS initialization
 - Retryable: No (configuration must be fixed)
 - HTTP status: N/A (startup failure)
-- Configurable per tenant: No 
+- Configurable per tenant: No
 
 ## DNS resolution errors
 
@@ -1973,18 +1973,14 @@ DNS errors occur when Loki cannot resolve hostnames for service discovery or bac
 **Error message:**
 
 ```text
-DNS lookup timeout: <hostname>
-```
-
-Or:
-
-```text
-failed to resolve server addresses
+msg="failed to resolve server addresses" err="... DNS lookup timeout: [<address>] ..."
 ```
 
 **Cause:**
 
-DNS resolution timed out or failed when trying to resolve hostnames for Loki service discovery or backend connections.
+DNS resolution exceeded the 5-second timeout when trying to resolve addresses for Loki service discovery or backend connections.
+This error is emitted by the index gateway and bloom gateway DNS discovery loops.
+The `DNS lookup timeout: [<address>]` string is the context cause embedded within the `err` field; the full address list is formatted as a Go slice (for example, `[dns+loki-index-gateway.loki.svc.cluster.local:9095]`).
 
 **Resolution:**
 
@@ -2010,11 +2006,10 @@ DNS resolution timed out or failed when trying to resolve hostnames for Loki ser
 
 **Properties:**
 
-- Enforced by: DNS resolver
+- Enforced by: Index gateway client, bloom gateway client DNS discovery loop
 - Retryable: Yes (DNS may recover)
 - HTTP status: N/A (connectivity failure)
-- Configurable per tenant: No
->>>>>>> 7317369389 (docs: Troubleshoot DNS)
+- Configurable per tenant: No 
 
 ## Scheduler and frontend errors
 
