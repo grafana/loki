@@ -285,9 +285,14 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 			owner.Unassign(task)
 		}
 
-		if task.status.State == workflow.TaskStateCompleted {
+		if task.status.State == workflow.TaskStateCompleted && !task.assignTime.IsZero() {
 			// The execution time of the task is the duration from when it was
 			// first assigned to when we received the completion status.
+			//
+			// We skip the observation when assignTime is zero, which can happen
+			// when a task completes before we can process the assignment. If we
+			// didn't skip these, we'd record an observation of the maximum
+			// time.Duration value (290 years).
 			s.metrics.taskExecSeconds.Observe(time.Since(task.assignTime).Seconds())
 		}
 

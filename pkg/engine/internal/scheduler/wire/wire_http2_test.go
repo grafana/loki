@@ -541,6 +541,120 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}
 }
 
+func TestHTTP_NoPanicOnServerWriteAfterClose(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Start HTTP/2 listener
+	listener, shutdown := prepareHTTP2Listener(t)
+	defer shutdown()
+
+	// Accept connection
+	var serverConn wire.Conn
+	acceptErr := make(chan error, 1)
+	go func() {
+		var err error
+		serverConn, err = listener.Accept(ctx)
+		acceptErr <- err
+	}()
+
+	// Dial from client
+	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr(), listener.Addr())
+	require.NoError(t, err)
+	defer clientConn.Close()
+
+	// Wait for server to accept
+	require.NoError(t, <-acceptErr)
+	require.NotNil(t, serverConn)
+	defer serverConn.Close()
+
+	var wg sync.WaitGroup
+
+	wg.Go(func() {
+		for {
+			_, err := clientConn.Recv(ctx)
+			if err != nil && errors.Is(err, wire.ErrConnClosed) {
+				return
+			} else if ctx.Err() != nil {
+				return
+			}
+			require.NoError(t, err)
+		}
+	})
+
+	for range 100 {
+		wg.Go(func() {
+			for range 10_000 {
+				err := serverConn.Send(ctx, wire.AckFrame{ID: 1})
+				if err != nil && errors.Is(err, wire.ErrConnClosed) {
+					return
+				}
+				require.NoError(t, err)
+			}
+		})
+	}
+
+	wg.Go(func() { _ = clientConn.Close() })
+	wg.Wait()
+}
+
+func TestHTTP_NoPanicOnClientWriteAfterClose(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Start HTTP/2 listener
+	listener, shutdown := prepareHTTP2Listener(t)
+	defer shutdown()
+
+	// Accept connection
+	var serverConn wire.Conn
+	acceptErr := make(chan error, 1)
+	go func() {
+		var err error
+		serverConn, err = listener.Accept(ctx)
+		acceptErr <- err
+	}()
+
+	// Dial from client
+	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr(), listener.Addr())
+	require.NoError(t, err)
+	defer clientConn.Close()
+
+	// Wait for server to accept
+	require.NoError(t, <-acceptErr)
+	require.NotNil(t, serverConn)
+	defer serverConn.Close()
+
+	var wg sync.WaitGroup
+
+	wg.Go(func() {
+		for {
+			_, err := serverConn.Recv(ctx)
+			if err != nil && errors.Is(err, wire.ErrConnClosed) {
+				return
+			} else if ctx.Err() != nil {
+				return
+			}
+			require.NoError(t, err)
+		}
+	})
+
+	for range 100 {
+		wg.Go(func() {
+			for range 10_000 {
+				err := clientConn.Send(ctx, wire.AckFrame{ID: 1})
+				if err != nil && errors.Is(err, wire.ErrConnClosed) {
+					return
+				}
+				require.NoError(t, err)
+			}
+		})
+	}
+
+	wg.Go(func() { _ = clientConn.Close() })
+	wg.Wait()
+}
+
 func prepareHTTP2Listener(t *testing.T) (*wire.HTTP2Listener, func()) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)

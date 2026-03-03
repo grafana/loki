@@ -70,14 +70,14 @@ jobs:
               --force
 
       - name: Checkout operatorhub repo
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: grafanabot/${{ inputs.repo }}
           token: ${{ steps.app-token.outputs.token }}
           persist-credentials: false
 
       - name: Checkout loki to tmp/ directory
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: grafana/loki
           token: ${{ steps.app-token.outputs.token }}

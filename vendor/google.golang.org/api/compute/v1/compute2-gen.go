@@ -11676,7 +11676,7 @@ type DisksUpdateCall struct {
 // Update: Updates the specified disk with the data included in the
 // request.
 // The update is performed only on selected fields included as part
-// of update-mask. Only the following fields can be modified: user_license.
+// of update-mask.
 //
 // - disk: The disk name for this request.
 // - project: Project ID for this request.
@@ -14029,6 +14029,17 @@ type FirewallPoliciesListAssociationsCall struct {
 // organization or folder.
 func (r *FirewallPoliciesService) ListAssociations() *FirewallPoliciesListAssociationsCall {
 	c := &FirewallPoliciesListAssociationsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	return c
+}
+
+// IncludeInheritedPolicies sets the optional parameter
+// "includeInheritedPolicies": If set to "true", the response will contain a
+// list of all associations for
+// the containing folders and the containing organization of the target.
+// The
+// parameter has no effect if the target is an organization.
+func (c *FirewallPoliciesListAssociationsCall) IncludeInheritedPolicies(includeInheritedPolicies bool) *FirewallPoliciesListAssociationsCall {
+	c.urlParams_.Set("includeInheritedPolicies", fmt.Sprint(includeInheritedPolicies))
 	return c
 }
 
@@ -21006,6 +21017,20 @@ type GlobalNetworkEndpointGroupsInsertCall struct {
 // Insert: Creates a network endpoint group in the specified project using
 // the
 // parameters that are included in the request.
+//
+// Note: Use the following APIs to manage network endpoint groups:
+//
+//	-
+//	To manage NEGs with zonal scope (such as zonal NEGs, hybrid connectivity
+//	NEGs): zonal
+//	API
+//	-
+//	To manage NEGs with regional scope (such as regional internet NEGs,
+//	serverless NEGs, Private Service Connect NEGs): regional
+//	API
+//	-
+//	To manage NEGs with global scope (such as global internet NEGs):global
+//	API
 //
 // - project: Project ID for this request.
 func (r *GlobalNetworkEndpointGroupsService) Insert(project string, networkendpointgroup *NetworkEndpointGroup) *GlobalNetworkEndpointGroupsInsertCall {
@@ -57328,10 +57353,24 @@ type NetworkEndpointGroupsInsertCall struct {
 // the
 // parameters that are included in the request.
 //
-//   - project: Project ID for this request.
-//   - zone: The name of the zone where
-//     you want to create the network endpoint group. It should comply
-//     with
+// Note: Use the following APIs to manage network endpoint groups:
+//
+//		-
+//		To manage NEGs with zonal scope (such as zonal NEGs, hybrid connectivity
+//		NEGs): zonal
+//		API
+//		-
+//		To manage NEGs with regional scope (such as regional internet NEGs,
+//		serverless NEGs, Private Service Connect NEGs): regional
+//		API
+//		-
+//		To manage NEGs with global scope (such as global internet NEGs):global
+//		API
+//
+//	  - project: Project ID for this request.
+//	  - zone: The name of the zone where
+//	    you want to create the network endpoint group. It should comply
+//	    with
 //
 // RFC1035.
 func (r *NetworkEndpointGroupsService) Insert(project string, zone string, networkendpointgroup *NetworkEndpointGroup) *NetworkEndpointGroupsInsertCall {

@@ -8,7 +8,8 @@ queries:
       length: 24h
     directions: both
     requires:
-      structured_metadata: ["detected_level"]
+      structured_metadata:
+        - detected_level
     tags:
       - structured-metadata
       - filter
@@ -21,7 +22,8 @@ queries:
     directions: both
     requires:
       log_format: logfmt
-      structured_metadata: ["detected_level"]
+      structured_metadata:
+        - detected_level
     tags:
       - structured-metadata
       - logfmt
@@ -35,7 +37,8 @@ queries:
     directions: both
     requires:
       log_format: logfmt
-      structured_metadata: ["detected_level"]
+      structured_metadata:
+        - detected_level
     tags:
       - structured-metadata
       - logfmt
@@ -49,7 +52,8 @@ queries:
     directions: both
     requires:
       log_format: json
-      structured_metadata: ["detected_level"]
+      structured_metadata:
+        - detected_level
     tags:
       - structured-metadata
       - json
@@ -58,13 +62,14 @@ queries:
   - description: JSON parsing with structured metadata filter first
     query: ${SELECTOR} | detected_level="error" | json
     kind: log
-    skip: true # timing out
+    skip: true # timing out - requires dataobj engine schema fix for structured metadata columns
     time_range:
       length: 24h
     directions: both
     requires:
       log_format: json
-      structured_metadata: ["detected_level"]
+      structured_metadata:
+        - detected_level
     tags:
       - structured-metadata
       - json

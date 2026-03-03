@@ -78,6 +78,8 @@ type Nfs struct {
 	Host string `json:"host"`
 	// MountPath is the path at which the share will be available
 	MountPath string `json:"mount_path"`
+	//PerformanceTier is the performance tier of the NFS share
+	PerformanceTier string `json:"performance_tier"`
 }
 
 type NfsSnapshot struct {
@@ -99,10 +101,11 @@ type NfsSnapshot struct {
 
 // NfsCreateRequest represents a request to create an NFS share.
 type NfsCreateRequest struct {
-	Name    string   `json:"name"`
-	SizeGib int      `json:"size_gib"`
-	Region  string   `json:"region"`
-	VpcIDs  []string `json:"vpc_ids,omitempty"`
+	Name            string   `json:"name"`
+	SizeGib         int      `json:"size_gib"`
+	Region          string   `json:"region"`
+	VpcIDs          []string `json:"vpc_ids,omitempty"`
+	PerformanceTier string   `json:"performance_tier,omitempty"`
 }
 
 // nfsRoot represents a response from the DigitalOcean API

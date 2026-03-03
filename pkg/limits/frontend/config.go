@@ -22,7 +22,6 @@ type Config struct {
 	AcceptedStreamsCacheEnabled    bool                  `yaml:"accepted_streams_cache_enabled"`
 	AcceptedStreamsCacheTTL        time.Duration         `yaml:"accepted_streams_cache_ttl"`
 	AcceptedStreamsCacheTTLJitter  time.Duration         `yaml:"accepted_streams_cache_ttl_jitter"`
-	AcceptedStreamsCacheSize       int                   `yaml:"accepted_streams_cache_size"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -64,12 +63,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		15*time.Second,
 		"The jitter to add to the accepted streams cache.",
 	)
-	f.IntVar(
-		&cfg.AcceptedStreamsCacheSize,
-		"ingest-limits-frontend.accepted-streams-cache-size",
-		1000000,
-		"The maximum number of streams that can be stored in the cache without false positives.",
-	)
 }
 
 func (cfg *Config) Validate() error {
@@ -87,9 +80,6 @@ func (cfg *Config) Validate() error {
 		}
 		if cfg.AcceptedStreamsCacheTTLJitter <= 0 {
 			return errors.New("accepted streams cache TTL jitter must be a positive number, or the cache must be disabled")
-		}
-		if cfg.AcceptedStreamsCacheSize <= 0 {
-			return errors.New("accepted streams cache size must be a positive number, or the cache must be disabled")
 		}
 	}
 	return nil

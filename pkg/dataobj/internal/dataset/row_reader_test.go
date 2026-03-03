@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/dustin/go-humanize"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -19,6 +20,24 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
+
+func Test_RowReader_Open_Prefetch(t *testing.T) {
+	dset, columns := buildTestDataset(t)
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns, Prefetch: true})
+	defer r.Close()
+
+	require.NoError(t, r.Open(t.Context()))
+
+	require.NotEqual(t, 0, len(r.dl.allColumns), "expected at least one column")
+	for i, col := range r.dl.allColumns {
+		rc := col.(*readerColumn)
+
+		assert.NotEqual(t, 0, len(rc.pages), "expected at least one page in column %d", i)
+		for j, page := range rc.pages {
+			assert.NotNil(t, page.data, "Expected column %d page %d to be prefetched", i, j)
+		}
+	}
+}
 
 func Test_Reader_ReadAll(t *testing.T) {
 	dset, columns := buildTestDataset(t)
