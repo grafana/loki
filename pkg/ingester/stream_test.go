@@ -31,6 +31,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/grafana/loki/v3/pkg/validation"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 var (
@@ -147,6 +149,109 @@ func TestPushDeduplication(t *testing.T) {
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
 		"expected exact duplicate to be dropped and newer content with same timestamp to be appended")
 	require.Equal(t, len("test"+"newer, better test"), written)
+}
+
+func TestPushDoesNotDedupeWhenMetadataDiffers(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	// Force structured-metadata-capable format
+	chunkfmt, headfmt := chunkenc.ChunkFormatV4, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt
+
+	s := newStream(
+		chunkfmt,
+		headfmt,
+		defaultConfig(),
+		limiter.rateLimitStrategy,
+		"fake",
+		model.Fingerprint(0),
+		labels.FromStrings("foo", "bar"),
+		true,
+		NewStreamRateCalculator(),
+		NilMetrics,
+		nil,
+		nil,
+		retentionHours,
+		noPolicy,
+	)
+
+	// Two entries with same ts and line, but different StructuredMetadata
+	entries := []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "same", StructuredMetadata: push.LabelsAdapter{push.LabelAdapter{Name: "k", Value: "a"}}},
+		{Timestamp: time.Unix(1, 0), Line: "same", StructuredMetadata: push.LabelsAdapter{push.LabelAdapter{Name: "k", Value: "b"}}},
+	}
+
+	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+
+	// Desired behavior: both entries should be stored (this will fail today)
+	require.Len(t, s.chunks, 1)
+	require.Equal(t, 2, s.chunks[0].chunk.Size(),
+		"expected no dedupe when StructuredMetadata differs, but dedupe occurred")
+}
+
+func TestEndToEnd_Dedup_WithStructuredMetadata(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	// Force structured-metadata-capable format
+	chunkfmt, headfmt := chunkenc.ChunkFormatV4, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt
+
+	// Ensure we run this for unordered writes to exercise the unordered head block path which performs its own dedupe.
+	s := newStream(
+		chunkfmt,
+		headfmt,
+		defaultConfig(),
+		limiter.rateLimitStrategy,
+		"fake",
+		model.Fingerprint(0),
+		labels.FromStrings("foo", "bar"),
+		true,
+		NewStreamRateCalculator(),
+		NilMetrics,
+		nil,
+		nil,
+		retentionHours,
+		noPolicy,
+	)
+
+	// Push two entries with identical ts and line but different StructuredMetadata
+	baseTS := time.Unix(100, 0)
+	entries := []logproto.Entry{
+		{Timestamp: baseTS, Line: "same", StructuredMetadata: push.LabelsAdapter{push.LabelAdapter{Name: "k", Value: "a"}}},
+		{Timestamp: baseTS, Line: "same", StructuredMetadata: push.LabelsAdapter{push.LabelAdapter{Name: "k", Value: "b"}}},
+	}
+
+	written, err := s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+	// Both should be accepted (no dedupe) - written is bytes, not count
+	// Each entry: "same" (4 bytes) + metadata overhead
+	require.Greater(t, written, 0, "should have written bytes")
+
+	// Iterate over the stream and verify both entries exist
+	itr, err := s.Iterator(context.Background(), nil, baseTS.Add(-time.Second), baseTS.Add(time.Second), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
+	require.NoError(t, err)
+	defer itr.Close()
+
+	var got []logproto.Entry
+	for itr.Next() {
+		got = append(got, itr.At())
+	}
+	require.NoError(t, itr.Err())
+	require.Equal(t, 2, len(got))
+	require.Equal(t, "same", got[0].Line)
+	require.Equal(t, "same", got[1].Line)
+
+	vals := map[string]struct{}{}
+	for _, e := range got {
+		if len(e.StructuredMetadata) == 1 && e.StructuredMetadata[0].Name == "k" {
+			vals[e.StructuredMetadata[0].Value] = struct{}{}
+		}
+	}
+	require.Contains(t, vals, "a")
+	require.Contains(t, vals, "b")
 }
 
 func TestPushDeduplicationExtraMetrics(t *testing.T) {
