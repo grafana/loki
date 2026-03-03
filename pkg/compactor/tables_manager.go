@@ -264,6 +264,10 @@ func (c *tablesManager) runCompaction(ctx context.Context, applyRetention bool) 
 		return err
 	}
 
+	if len(tables) == 0 {
+		level.Info(util_log.Logger).Log("msg", "no tables to compact")
+	}
+
 	compactTablesChan := make(chan string)
 	errChan := make(chan error)
 
