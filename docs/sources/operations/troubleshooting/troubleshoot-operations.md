@@ -1962,15 +1962,58 @@ The TLS configuration is invalid. This can happen when:
 - Enforced by: TLS initialization
 - Retryable: No (configuration must be fixed)
 - HTTP status: N/A (startup failure)
-- Configurable per tenant: No 
+- Configurable per tenant: No
 
 ## DNS resolution errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+DNS errors occur when Loki cannot resolve hostnames for service discovery or backend connections.
+
+### Error: DNS lookup timeout
+
+**Error message:**
+
+```text
+msg="failed to resolve server addresses" err="... DNS lookup timeout: [<address>] ..."
+```
+
+**Cause:**
+
+DNS resolution exceeded the 5-second timeout when trying to resolve addresses for Loki service discovery or backend connections.
+This error is emitted by the index gateway and bloom gateway DNS discovery loops.
+The `DNS lookup timeout: [<address>]` string is the context cause embedded within the `err` field; the full address list is formatted as a Go slice (for example, `[dns+loki-index-gateway.loki.svc.cluster.local:9095]`).
+
+**Resolution:**
+
+1. **Check DNS server availability** and configuration.
+1. **Verify hostname resolution**:
+
+   ```bash
+   nslookup <hostname>
+   dig <hostname>
+   ```
+
+1. **Use IP addresses** as a workaround if DNS is unreliable:
+
+   ```yaml
+   # Instead of dns+hostname:port
+   memberlist:
+     join_members:
+       - 10.0.0.1:7946
+       - 10.0.0.2:7946
+   ```
+
+1. **For Kubernetes**, ensure CoreDNS is healthy and headless services are configured correctly.
+
+**Properties:**
+
+- Enforced by: Index gateway client, bloom gateway client DNS discovery loop
+- Retryable: Yes (DNS may recover)
+- HTTP status: N/A (connectivity failure)
+- Configurable per tenant: No 
 
 ## Scheduler and frontend errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Index gateway errors
 
