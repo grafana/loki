@@ -1712,11 +1712,131 @@ The query frontend worker has no active connections to any query scheduler. This
 
 ## gRPC and message size errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+gRPC errors occur during inter-component communication. Loki components communicate using gRPC for ring coordination, query execution, and data transfer.
+
+### Error: Message size too large
+
+**Error message:**
+
+```text
+message size too large than max (<size> vs <max>)
+```
+
+Or for the decompressed body:
+
+```text
+decompressed message size too large than max (<size> vs <max>)
+```
+
+**Cause:**
+
+The compressed or decompressed body of an HTTP push request to the distributor exceeds the configured limit.
+
+**Default configuration:**
+
+- `distributor.max_recv_msg_size`: 100MB (compressed request body limit)
+- `distributor.max_decompressed_size`: 5000MB (decompressed body limit, defaults to 50× `max_recv_msg_size`)
+
+**Resolution:**
+
+1. **Increase the distributor receive message size limit**:
+
+   ```yaml
+   distributor:
+     max_recv_msg_size: 209715200      # 200MB compressed
+     max_decompressed_size: 10737418240  # 10GB decompressed
+   ```
+
+1. **Reduce push batch sizes** in your log shipping client (Alloy, Promtail, etc.) to send smaller individual requests.
+
+1. **Reduce the amount of data per request** by lowering the batch size or flush interval in your client.
+
+**Properties:**
+
+- Enforced by: Distributor push handler
+- Retryable: No (request must be smaller or limits increased)
+- HTTP status: 413 Request Entity Too Large (compressed), 400 Bad Request (decompressed)
+- Configurable per tenant: No
+
+### Error: Response larger than max message size
+
+**Error message:**
+
+```text
+response larger than the max message size (<size> vs <max>)
+```
+
+**Cause:**
+
+A query result from the querier to the frontend exceeds the maximum allowed gRPC response size. This typically happens with queries that return very large result sets.
+
+**Default configuration:**
+
+- `server.grpc_server_max_send_msg_size`: 4MB (gRPC server send limit on the querier)
+- `querier.query_frontend_grpc_client.max_recv_msg_size`: 100MB (gRPC client receive limit on the querier worker)
+
+**Resolution:**
+
+1. **Reduce query scope** to return fewer results:
+   - Add more specific label matchers
+   - Reduce the time range
+   - Lower the entries limit
+
+1. **Increase gRPC message size limits** if needed. Apply these settings to querier nodes:
+
+   ```yaml
+   server:
+     grpc_server_max_send_msg_size: 209715200   # 200MB
+
+   querier:
+     query_frontend_grpc_client:
+       max_recv_msg_size: 209715200             # 200MB
+   ```
+
+**Properties:**
+
+- Enforced by: Querier worker
+- Retryable: No (query scope or limits must change)
+- HTTP status: 413 Request Entity Too Large
+- Configurable per tenant: No
+
+### Error: Compressed message size exceeds limit
+
+**Error message:**
+
+```text
+compressed message size <size> exceeds limit <limit>
+```
+
+**Cause:**
+
+The compressed body of an HTTP push request exceeds the distributor's configured limit. This check runs after the request body has been fully read and validates the total compressed size against the configured maximum.
+
+**Default configuration:**
+
+- `distributor.max_recv_msg_size`: 100MB
+
+**Resolution:**
+
+1. **Reduce batch sizes** in your log shipping client.
+1. **Split large batches** into smaller, more frequent requests.
+1. **Increase the limit** if needed:
+
+   ```yaml
+   distributor:
+     max_recv_msg_size: 209715200   # 200MB
+   ```
+
+**Properties:**
+
+- Enforced by: Distributor push handler
+- Retryable: No (request must be smaller)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
 
 ## TLS and certificate errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## DNS resolution errors
 
