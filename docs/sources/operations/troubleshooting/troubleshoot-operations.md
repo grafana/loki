@@ -1833,7 +1833,6 @@ The compressed body of an HTTP push request exceeds the distributor's configured
 - Retryable: No (request must be smaller)
 - HTTP status: 400 Bad Request
 - Configurable per tenant: No
-- Configurable per tenant: No
 
 ## TLS and certificate errors
 
