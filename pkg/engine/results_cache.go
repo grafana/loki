@@ -28,13 +28,11 @@ type MetricCacheKeyGenerator struct {
 
 // GenerateCacheKey generates a cache key based on the userID, query, step, and time bucket.
 func (s MetricCacheKeyGenerator) GenerateCacheKey(_ context.Context, userID string, r resultscache.Request) string {
-	split := s.limits.EngineResultsCacheTimeBucketInterval(userID) // Guaranteed to be >= 1m
-	var currentInterval int64
-	ms := int64(split / time.Millisecond)
-	currentInterval = r.GetStart().UnixMilli() / ms
-	// step=0 for instant queries; included to prevent key collisions across step sizes.
-	// ms is included so that key changes when the interval is reconfigured at runtime.
-	return fmt.Sprintf("%s:%s:%d:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval, ms)
+	splitMs := s.limits.EngineResultsCacheTimeBucketInterval(userID).Milliseconds() // Guaranteed to be >= 1m
+	currentInterval := r.GetStart().UnixMilli() / splitMs
+	// step is included to prevent key collisions across step sizes.
+	// splitMs is included so the key changes when the interval is reconfigured.
+	return fmt.Sprintf("%s:%s:%d:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval, splitMs)
 }
 
 // NewMetricCacheMiddleware creates a metric results cache middleware for the Thor engine.
@@ -76,12 +74,11 @@ type InstantMetricCacheKeyGenerator struct {
 
 // GenerateCacheKey generates a cache key based on userID, query, and time bucket.
 func (s InstantMetricCacheKeyGenerator) GenerateCacheKey(_ context.Context, userID string, r resultscache.Request) string {
-	split := s.limits.EngineResultsCacheTimeBucketInterval(userID) // Guaranteed to be >= 1m
-	ms := int64(split / time.Millisecond)
-	currentInterval := r.GetStart().UnixMilli() / ms
+	splitMs := s.limits.EngineResultsCacheTimeBucketInterval(userID).Milliseconds() // Guaranteed to be >= 1m
+	currentInterval := r.GetStart().UnixMilli() / splitMs
 	// No step in key: instant queries always have step=0.
-	// ms is included so the key changes when the interval is reconfigured.
-	return fmt.Sprintf("instant-metric:%s:%s:%d:%d", userID, r.GetQuery(), currentInterval, ms)
+	// splitMs is included so the key changes when the interval is reconfigured.
+	return fmt.Sprintf("instant-metric:%s:%s:%d:%d", userID, r.GetQuery(), currentInterval, splitMs)
 }
 
 // NewInstantMetricCacheMiddleware creates an instant metric results cache middleware
@@ -153,21 +150,16 @@ type LogCacheKeyGenerator struct {
 }
 
 func (g *LogCacheKeyGenerator) GenerateCacheKey(_ context.Context, tenantIDs []string, req *queryrange.LokiRequest) string {
-	intervalCapture := func(id string) time.Duration { return g.limits.EngineResultsCacheTimeBucketInterval(id) }
-	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, intervalCapture)
-	// Skip caching if interval is unset or limit is 0 (limit=0 would register an
-	// empty result even if the time range contains log lines).
-	if interval == 0 || req.Limit == 0 {
+	// Skip caching if the limit is 0 (limit=0 would register an empty result even if the time range contains log lines).
+	if req.Limit == 0 {
 		return ""
 	}
-	alignedStart := time.Unix(0, req.GetStartTs().UnixNano()-(req.GetStartTs().UnixNano()%interval.Nanoseconds()))
-	return fmt.Sprintf("log:%s:%s:%d:%d",
-		tenant.JoinTenantIDs(tenantIDs),
-		req.GetQuery(),
-		interval.Nanoseconds(),
-		alignedStart.UnixNano()/interval.Nanoseconds(),
-	)
-	// Note: no pipeline-disabled prefix — separate cache backend; engine does not use that header.
+
+	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, g.limits.EngineResultsCacheTimeBucketInterval)
+	splitMs := interval.Milliseconds()
+	currentInterval := req.GetStartTs().UnixMilli() / splitMs
+	// splitMs is included so the key changes when the interval is reconfigured.
+	return fmt.Sprintf("log:%s:%s:%d:%d", tenant.JoinTenantIDs(tenantIDs), req.GetQuery(), currentInterval, splitMs)
 }
 
 // NewLogResultCache creates a log result cache middleware for the Thor engine.

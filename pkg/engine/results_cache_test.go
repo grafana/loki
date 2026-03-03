@@ -144,13 +144,6 @@ func TestLogCacheKeyGenerator(t *testing.T) {
 		wantSame  bool
 	}{
 		{
-			name:       "zero interval returns empty key",
-			interval:   0,
-			tenantIDsA: []string{"tenant1"},
-			reqA:       &queryrange.LokiRequest{Query: `{app="test"}`, StartTs: time.Unix(3600, 0), Limit: 100},
-			wantExact:  new(string), // expects ""
-		},
-		{
 			name:       "zero limit returns empty key",
 			interval:   time.Hour,
 			tenantIDsA: []string{"tenant1"},
