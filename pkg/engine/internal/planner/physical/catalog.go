@@ -246,61 +246,33 @@ func convertBinaryOp(t types.BinaryOp) (labels.MatchType, error) {
 var _ Catalog = (*MetastoreCatalog)(nil)
 
 // TSDBSectionsResolver resolves label matchers into DataObjSections via a TSDB
-// index (typically accessed through the index gateway gRPC API). The conversion
-// from the gRPC response to []DataObjSections is the caller's responsibility.
+// index.
 type TSDBSectionsResolver func(matchers []*labels.Matcher, start, end time.Time) ([]DataObjSections, error)
 
-// TSDBCatalog is a [Catalog] implementation backed by TSDB indices. It
-// converts the planner's expression tree into label matchers and delegates to
-// a TSDBSectionsResolver.
+// TSDBCatalog is a [Catalog] implementation backed by TSDB indices.
 type TSDBCatalog struct {
-	sectionsResolver TSDBSectionsResolver
+	resolver TSDBSectionsResolver
 }
 
 // NewTSDBCatalog creates a new instance of [TSDBCatalog] for query planning.
 func NewTSDBCatalog(resolver TSDBSectionsResolver) *TSDBCatalog {
-	return &TSDBCatalog{sectionsResolver: resolver}
+	return &TSDBCatalog{resolver: resolver}
 }
 
-// ResolveDataObjSections converts the selector and predicate expressions into
-// label matchers, calls the underlying TSDB resolver, and filters the results
-// for the requested shard.
-func (c *TSDBCatalog) ResolveDataObjSections(selector Expression, predicates []Expression, shard ShardInfo, start, end time.Time) ([]DataObjSections, error) {
+// ResolveDataObjSections resolves dataobj sections for the provided
+// selector expression and time range.
+func (c *TSDBCatalog) ResolveDataObjSections(selector Expression, _ []Expression, shard ShardInfo, start, end time.Time) ([]DataObjSections, error) {
 	matchers, err := expressionToMatchers(selector, false)
 	if err != nil {
 		return nil, fmt.Errorf("convert selector to matchers: %w", err)
 	}
 
-	for _, p := range predicates {
-		ms, err := expressionToMatchers(p, true)
-		if err != nil {
-			continue
-		}
-		matchers = append(matchers, ms...)
-	}
-
-	sections, err := c.sectionsResolver(matchers, start, end)
+	sections, err := c.resolver(matchers, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("resolve tsdb sections: %w", err)
 	}
 
-	return filterDataobjSectionsForShard(shard, sections), nil
-}
-
-// filterDataobjSectionsForShard keeps only sections whose first section ID
-// belongs to the requested shard, mirroring the metastore filterForShard logic.
-func filterDataobjSectionsForShard(shard ShardInfo, sections []DataObjSections) []DataObjSections {
-	if shard.Of <= 1 {
-		return sections
-	}
-
-	result := make([]DataObjSections, 0, len(sections))
-	for _, s := range sections {
-		if len(s.Sections) > 0 && int(s.Sections[0])%int(shard.Of) == int(shard.Shard) {
-			result = append(result, s)
-		}
-	}
-	return result
+	return sections, nil
 }
 
 var _ Catalog = (*TSDBCatalog)(nil)

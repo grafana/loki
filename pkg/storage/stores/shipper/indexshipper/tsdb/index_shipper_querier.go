@@ -144,13 +144,13 @@ func (i *indexShipperQuerier) ForSeries(ctx context.Context, userID string, fpFi
 	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
 }
 
-func (i *indexShipperQuerier) GetDataobjSections(ctx context.Context, userID string, from, through model.Time, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]DataobjSectionRef, error) {
+func (i *indexShipperQuerier) GetDataobjSections(ctx context.Context, userID string, from, through model.Time, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]tsdbindex.DataobjSectionRef, error) {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	resolver, ok := idx.(DataobjResolver)
+	resolver, ok := idx.(tsdbindex.DataobjResolver)
 	if !ok {
 		return nil, fmt.Errorf("underlying index does not support dataobj resolution")
 	}

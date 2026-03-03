@@ -378,14 +378,14 @@ func (i MultiIndex) ForSeries(ctx context.Context, userID string, fpFilter index
 	})
 }
 
-func (i *MultiIndex) GetDataobjSections(ctx context.Context, userID string, from, through model.Time, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]DataobjSectionRef, error) {
-	acc := newResultAccumulator(func(xs [][]DataobjSectionRef) ([]DataobjSectionRef, error) {
+func (i *MultiIndex) GetDataobjSections(ctx context.Context, userID string, from, through model.Time, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]index.DataobjSectionRef, error) {
+	acc := newResultAccumulator(func(xs [][]index.DataobjSectionRef) ([]index.DataobjSectionRef, error) {
 		type sectionKey struct {
 			Path      string
 			SectionID int
 		}
 		type accumulator struct {
-			ref       DataobjSectionRef
+			ref       index.DataobjSectionRef
 			streamSet map[int64]struct{}
 		}
 
@@ -398,7 +398,7 @@ func (i *MultiIndex) GetDataobjSections(ctx context.Context, userID string, from
 				a, ok := merged[k]
 				if !ok {
 					a = &accumulator{
-						ref: DataobjSectionRef{
+						ref: index.DataobjSectionRef{
 							Path:      ref.Path,
 							SectionID: ref.SectionID,
 							MinTime:   ref.MinTime,
@@ -424,7 +424,7 @@ func (i *MultiIndex) GetDataobjSections(ctx context.Context, userID string, from
 			}
 		}
 
-		res := make([]DataobjSectionRef, 0, len(merged))
+		res := make([]index.DataobjSectionRef, 0, len(merged))
 		for _, a := range merged {
 			ids := make([]int64, 0, len(a.streamSet))
 			for id := range a.streamSet {
@@ -437,7 +437,7 @@ func (i *MultiIndex) GetDataobjSections(ctx context.Context, userID string, from
 	})
 
 	if err := i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
-		resolver, ok := idx.(DataobjResolver)
+		resolver, ok := idx.(index.DataobjResolver)
 		if !ok {
 			return nil
 		}

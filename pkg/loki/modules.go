@@ -90,6 +90,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	boltdbcompactor "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/ui"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -2000,11 +2001,10 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		bloomQuerier = bloomgateway.NewQuerier(t.bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
 
-	// TODO(dataobj): Wire a DataobjResolver here when TSDB-based dataobj
-	// indexing is deployed. The resolver should wrap the underlying
-	// indexShipperQuerier which implements tsdb.DataobjResolver. For now, the
-	// GetDataobjSections RPC returns an error when unset.
-	var dataobjResolver indexgateway.DataobjResolver
+	var dataobjResolver tsdb_index.DataobjResolver
+	if lokiStore, ok := t.Store.(*storage.LokiStore); ok {
+		dataobjResolver = lokiStore.DataobjResolver()
+	}
 	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, t.Overrides, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier, dataobjResolver)
 	if err != nil {
 		return nil, err
