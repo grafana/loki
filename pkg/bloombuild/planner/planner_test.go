@@ -403,8 +403,7 @@ func Test_processTenantTaskResults(t *testing.T) {
 			err = plannertest.PutMetas(bloomClient, tc.originalMetas)
 			require.NoError(t, err)
 
-			ctx, ctxCancel := context.WithCancel(context.Background())
-			defer ctxCancel()
+			ctx := t.Context()
 			resultsCh := make(chan *protos.TaskResult, len(tc.taskResults))
 
 			var wg sync.WaitGroup

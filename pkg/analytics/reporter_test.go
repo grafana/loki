@@ -163,8 +163,7 @@ func TestStartCPUCollection(t *testing.T) {
 		Store: "inmemory",
 	}, nil, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	r.startCPUPercentCollection(ctx, 1*time.Second)
 	require.Eventually(t, func() bool {
 		return cpuUsage.Value() > 0
