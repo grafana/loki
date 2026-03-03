@@ -138,7 +138,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
 			},
 			exp: []entry{
-				{0, "a", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")}, {1, "b", labels.EmptyLabels()},
+				{0, "a", labels.FromStrings("a", "b")}, {0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()},
 			},
 			forFormat: UnorderedWithStructuredMetadataHeadBlockFmt,
 		},
