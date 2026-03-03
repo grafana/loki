@@ -380,48 +380,58 @@ func (i MultiIndex) ForSeries(ctx context.Context, userID string, fpFilter index
 
 func (i *MultiIndex) GetDataobjSections(ctx context.Context, userID string, from, through model.Time, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]DataobjSectionRef, error) {
 	acc := newResultAccumulator(func(xs [][]DataobjSectionRef) ([]DataobjSectionRef, error) {
-		type key struct {
+		type sectionKey struct {
 			Path      string
 			SectionID int
 		}
-		merged := make(map[key]*DataobjSectionRef)
-		var order []key
+		type accumulator struct {
+			ref       DataobjSectionRef
+			streamSet map[int64]struct{}
+		}
+
+		merged := make(map[sectionKey]*accumulator)
 
 		for _, group := range xs {
 			for _, ref := range group {
-				k := key{Path: ref.Path, SectionID: ref.SectionID}
-				existing, ok := merged[k]
-				if !ok {
-					clone := ref
-					clone.StreamIDs = append([]int64(nil), ref.StreamIDs...)
-					merged[k] = &clone
-					order = append(order, k)
-					continue
-				}
-				if ref.MinTime < existing.MinTime {
-					existing.MinTime = ref.MinTime
-				}
-				if ref.MaxTime > existing.MaxTime {
-					existing.MaxTime = ref.MaxTime
-				}
-				existing.KB += ref.KB
-				existing.Entries += ref.Entries
+				k := sectionKey{Path: ref.Path, SectionID: ref.SectionID}
 
-				seen := make(map[int64]struct{}, len(existing.StreamIDs))
-				for _, id := range existing.StreamIDs {
-					seen[id] = struct{}{}
-				}
-				for _, id := range ref.StreamIDs {
-					if _, ok := seen[id]; !ok {
-						existing.StreamIDs = append(existing.StreamIDs, id)
+				a, ok := merged[k]
+				if !ok {
+					a = &accumulator{
+						ref: DataobjSectionRef{
+							Path:      ref.Path,
+							SectionID: ref.SectionID,
+							MinTime:   ref.MinTime,
+							MaxTime:   ref.MaxTime,
+							KB:        ref.KB,
+							Entries:   ref.Entries,
+						},
+						streamSet: make(map[int64]struct{}, len(ref.StreamIDs)),
 					}
+					merged[k] = a
+				} else {
+					if ref.MinTime < a.ref.MinTime {
+						a.ref.MinTime = ref.MinTime
+					}
+					if ref.MaxTime > a.ref.MaxTime {
+						a.ref.MaxTime = ref.MaxTime
+					}
+				}
+
+				for _, id := range ref.StreamIDs {
+					a.streamSet[id] = struct{}{}
 				}
 			}
 		}
 
-		res := make([]DataobjSectionRef, 0, len(order))
-		for _, k := range order {
-			res = append(res, *merged[k])
+		res := make([]DataobjSectionRef, 0, len(merged))
+		for _, a := range merged {
+			ids := make([]int64, 0, len(a.streamSet))
+			for id := range a.streamSet {
+				ids = append(ids, id)
+			}
+			a.ref.StreamIDs = ids
+			res = append(res, a.ref)
 		}
 		return res, nil
 	})
