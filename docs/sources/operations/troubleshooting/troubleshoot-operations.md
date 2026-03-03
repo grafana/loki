@@ -1250,9 +1250,9 @@ The ring contains too many unhealthy instances to satisfy the replication factor
 
 **Resolution:**
 
-1. **Check the health of ring members**: 
+1. **Check the health of ring members**:
     Open a browser and navigate to http://localhost:3100/ring. You should see the Loki ring page.
-    
+
     OR
 
    ```bash
@@ -1524,19 +1524,449 @@ After being disconnected from the memberlist cluster, the instance failed to rej
 
 ## Component readiness errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+Readiness errors occur when Loki components are not ready to serve requests. These errors are returned by the [`/ready` health check endpoint](http://localhost:3100/ready) and prevent load balancers from routing traffic to unready instances.
+
+### Error: Application is stopping
+
+**Error message:**
+
+```text
+Application is stopping
+```
+
+**Cause:**
+
+Loki is shutting down and no longer accepting new requests. This is normal during graceful shutdown.
+
+**Resolution:**
+
+1. **Wait for the instance to restart** if this is a rolling update.
+1. **Check if the shutdown is expected** (maintenance, scaling down).
+1. **Review orchestrator logs** (Kubernetes, systemd) if the shutdown is unexpected.
+
+**Properties:**
+
+- Enforced by: Loki readiness handler
+- Retryable: Yes (after restart)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: Some services are not running
+
+**Error message:**
+
+```text
+Some services are not Running:
+<state>: <count>
+<state>: <count>
+```
+
+For example:
+
+```text
+Some services are not Running:
+Starting: 1
+Failed: 2
+```
+
+**Cause:**
+
+One or more internal Loki services have failed to start or have stopped unexpectedly. The error message lists each service state with a count of services in that state.
+
+**Resolution:**
+
+1. **Check Loki logs** for errors from the listed services.
+1. **Verify configuration** for the affected services.
+1. **Check resource availability** (memory, disk, CPU).
+1. **Restart the instance** if services are stuck.
+
+**Properties:**
+
+- Enforced by: Loki service manager
+- Retryable: Yes (after services recover)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: Ingester not ready
+
+**Error message:**
+
+```text
+Ingester not ready: <details>
+```
+
+When the ingester's own state check fails, `<details>` contains the ingester state, giving the full message:
+
+```text
+Ingester not ready: ingester not ready: <state>
+```
+
+Where `<state>` is the service state, for example `Starting`, `Stopping`, or `Failed`.
+
+**Cause:**
+
+The ingester is not in a ready state to accept writes or serve reads. The detail message indicates the specific reason, such as:
+
+- The ingester is still starting up and joining the ring (`Starting`)
+- The lifecycler is not ready (lifecycler error text)
+- The ingester is waiting for minimum ready duration after ring join
+
+**Resolution:**
+
+1. **Wait for startup to complete** - ingesters take time to join the ring and become ready.
+1. **Check ring membership**:
+
+   ```bash
+   curl -s http://ingester:3100/ring
+   ```
+
+1. **Review logs** for startup errors.
+1. **Adjust the minimum ready duration** if startup is too slow:
+
+   ```yaml
+   ingester:
+     lifecycler:
+       min_ready_duration: 15s
+   ```
+
+**Properties:**
+
+- Enforced by: Ingester readiness check
+- Retryable: Yes (after ingester becomes ready)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: No queriers connected to query frontend
+
+**Error message:**
+
+```text
+Query Frontend not ready: not ready: number of queriers connected to query-frontend is 0
+```
+
+**Cause:**
+
+The query frontend has no querier workers connected. Without queriers, the frontend cannot process any queries. This typically occurs when:
+
+- Queriers are not yet started
+- Queriers cannot reach the frontend
+- gRPC connectivity issues between queriers and frontend
+
+**Resolution:**
+
+1. **Check that queriers are running** and healthy.
+1. **Verify querier configuration** points to the correct frontend address:
+
+   ```yaml
+   frontend_worker:
+     frontend_address: query-frontend:9095
+   ```
+
+1. **Check gRPC connectivity** between queriers and the frontend:
+
+   ```bash
+   # Test gRPC port connectivity
+   nc -zv query-frontend 9095
+   ```
+
+1. **Review querier logs** for connection errors.
+
+**Properties:**
+
+- Enforced by: Query frontend (v1) readiness check
+- Retryable: Yes (after queriers connect)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: No schedulers connected to frontend worker
+
+**Error message:**
+
+```text
+Query Frontend not ready: not ready: number of schedulers this worker is connected to is 0
+```
+
+**Cause:**
+
+The query frontend worker has no active connections to any query scheduler. This prevents the frontend from dispatching queries.
+
+**Resolution:**
+
+1. **Check that query schedulers are running** and healthy.
+1. **Verify scheduler address configuration**:
+
+   ```yaml
+   frontend_worker:
+     scheduler_address: query-scheduler:9095
+   ```
+
+1. **Check gRPC connectivity** between the frontend and schedulers.
+1. **Review query scheduler logs** for errors.
+
+**Properties:**
+
+- Enforced by: Query frontend (v2) readiness check
+- Retryable: Yes (after schedulers connect)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
 
 ## gRPC and message size errors
 
+gRPC errors occur during inter-component communication. Loki components communicate using gRPC for ring coordination, query execution, and data transfer.
 
+### Error: Message size too large
+
+**Error message:**
+
+```text
+message size too large than max (<size> vs <max>)
+```
+
+Or for the decompressed body:
+
+```text
+decompressed message size too large than max (<size> vs <max>)
+```
+
+**Cause:**
+
+The compressed or decompressed body of an HTTP push request to the distributor exceeds the configured limit.
+
+**Default configuration:**
+
+- `distributor.max_recv_msg_size`: 100MB (compressed request body limit)
+- `distributor.max_decompressed_size`: 5000MB (decompressed body limit, defaults to 50× `max_recv_msg_size`)
+
+**Resolution:**
+
+1. **Increase the distributor receive message size limit**:
+
+   ```yaml
+   distributor:
+     max_recv_msg_size: 209715200      # 200MB compressed
+     max_decompressed_size: 10737418240  # 10GB decompressed
+   ```
+
+1. **Reduce push batch sizes** in your log shipping client (Alloy, Promtail, etc.) to send smaller individual requests.
+
+1. **Reduce the amount of data per request** by lowering the batch size or flush interval in your client.
+
+**Properties:**
+
+- Enforced by: Distributor push handler
+- Retryable: No (request must be smaller or limits increased)
+- HTTP status: 413 Request Entity Too Large (compressed), 400 Bad Request (decompressed)
+- Configurable per tenant: No
+
+### Error: Response larger than max message size
+
+**Error message:**
+
+```text
+response larger than the max message size (<size> vs <max>)
+```
+
+**Cause:**
+
+A query result from the querier to the frontend exceeds the maximum allowed gRPC response size. This typically happens with queries that return very large result sets.
+
+**Default configuration:**
+
+- `server.grpc_server_max_send_msg_size`: 4MB (gRPC server send limit on the querier)
+- `querier.query_frontend_grpc_client.max_recv_msg_size`: 100MB (gRPC client receive limit on the querier worker)
+
+**Resolution:**
+
+1. **Reduce query scope** to return fewer results:
+   - Add more specific label matchers
+   - Reduce the time range
+   - Lower the entries limit
+
+1. **Increase gRPC message size limits** if needed. Apply these settings to querier nodes:
+
+   ```yaml
+   server:
+     grpc_server_max_send_msg_size: 209715200   # 200MB
+
+   querier:
+     query_frontend_grpc_client:
+       max_recv_msg_size: 209715200             # 200MB
+   ```
+
+**Properties:**
+
+- Enforced by: Querier worker
+- Retryable: No (query scope or limits must change)
+- HTTP status: 413 Request Entity Too Large
+- Configurable per tenant: No
+
+### Error: Compressed message size exceeds limit
+
+**Error message:**
+
+```text
+compressed message size <size> exceeds limit <limit>
+```
+
+**Cause:**
+
+The compressed body of an HTTP push request exceeds the distributor's configured limit. This check runs after the request body has been fully read and validates the total compressed size against the configured maximum.
+
+**Default configuration:**
+
+- `distributor.max_recv_msg_size`: 100MB
+
+**Resolution:**
+
+1. **Reduce batch sizes** in your log shipping client.
+1. **Split large batches** into smaller, more frequent requests.
+1. **Increase the limit** if needed:
+
+   ```yaml
+   distributor:
+     max_recv_msg_size: 209715200   # 200MB
+   ```
+
+**Properties:**
+
+- Enforced by: Distributor push handler
+- Retryable: No (request must be smaller)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
 
 ## TLS and certificate errors
 
+TLS errors occur when Loki or its clients cannot establish secure connections due to certificate issues.
 
+### Error: TLS certificate loading failed
+
+**Error message:**
+
+```text
+error loading ca cert: <path>
+```
+
+Or:
+
+```text
+error loading client cert: <path>
+```
+
+Or:
+
+```text
+error loading client key: <path>
+```
+
+Or:
+
+```text
+failed to load TLS certificate <cert_path>,<key_path>
+```
+
+**Cause:**
+
+Loki cannot load TLS certificates from the specified paths. Common causes:
+
+- Certificate files don't exist at the configured paths
+- Permission issues prevent reading the files
+- Certificate or key format is invalid
+- Certificate and key don't match
+
+**Resolution:**
+
+1. **Verify certificate files exist** and are readable:
+
+   ```bash
+   ls -la /path/to/cert.pem /path/to/key.pem /path/to/ca.pem
+   ```
+
+1. **Check file permissions** (the Loki process must be able to read them).
+
+1. **Validate the certificate format**:
+
+   ```bash
+   openssl x509 -in /path/to/cert.pem -noout -text
+   openssl rsa -in /path/to/key.pem -check
+   ```
+
+1. **Verify cert and key match**:
+
+   ```bash
+   openssl x509 -noout -modulus -in cert.pem | md5sum
+   openssl rsa -noout -modulus -in key.pem | md5sum
+   # Both should produce the same hash
+   ```
+
+1. **Check your TLS configuration**:
+
+   ```yaml
+   server:
+     http_tls_config:
+       cert_file: /path/to/cert.pem
+       key_file: /path/to/key.pem
+       client_ca_file: /path/to/ca.pem
+     grpc_tls_config:
+       cert_file: /path/to/cert.pem
+       key_file: /path/to/key.pem
+       client_ca_file: /path/to/ca.pem
+   ```
+
+**Properties:**
+
+- Enforced by: TLS configuration
+- Retryable: No (certificates must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: TLS configuration error
+
+**Error message:**
+
+```text
+error generating http tls config: <details>
+```
+
+Or:
+
+```text
+error generating grpc tls config: <details>
+```
+
+Where `<details>` may include messages such as `TLS version %q not recognized`, `cipher suite %q not recognized`, or `unknown TLS version: <version>`.
+
+**Cause:**
+
+The TLS configuration is invalid. This can happen when:
+
+- An unsupported TLS version string is supplied
+- Cipher suite configuration is invalid
+- Client auth type is unrecognized
+
+**Resolution:**
+
+1. **Review TLS settings** for compatibility issues.
+1. **Use supported TLS versions** by setting `tls_min_version` at the top level of the `server` block:
+
+   ```yaml
+   server:
+     tls_min_version: VersionTLS12
+   ```
+
+   Valid values are `VersionTLS10`, `VersionTLS11`, `VersionTLS12`, and `VersionTLS13`. There is no `max_version` setting; `tls_min_version` is the only version constraint.
+
+1. **Check cipher suite configuration** if customized.
+
+**Properties:**
+
+- Enforced by: TLS initialization
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No 
 
 ## DNS resolution errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Scheduler and frontend errors
 

@@ -7,6 +7,20 @@
 Hi there! We are thrilled that you would like to contribute to Sarama.
 Contributions are always welcome, both reporting issues and submitting pull requests!
 
+## AI-Assistance
+
+AI-assisted tools (e.g., code generation or language models) _may_ be used in the course of contributing issues and pull requests.
+However, all contributions must meet the same standards as entirely human-written work and the use of AI should ideally be imperceptible.
+You remain fully responsible for correctness, maintainability, security, style, and licensing compliance.
+You may mention the tool or model that you used in your issue/PR description, but do _not_ include it in the Co-authored-by or Signed-off-by commit trailer.
+
+AI assistance may be used when drafting issues, proposals, or discussion posts, but a human must remain fully in the loop and all AI-generated content must be reviewed, fact-checked, and edited _before_ submission.
+Ensure your prompts steer it to remove unnecessary fluff, verbosity, filler and irrelevant content.
+
+If you open a pull request you must be able to clearly explain what your changes do and how they alter the behaviour of Sarama without relying upon AI tools or prompting to roundtrip the reviewer's questions.
+If you cannot confidently explain and defend your contribution during review, do not submit it until you can.
+Submissions must be readable, consistent with the existing codebase, and free of fabricated APIs, references, or unnecessary complexity.
+
 ## Reporting issues
 
 Please make sure to include any potentially useful information in the issue, so we can pinpoint the issue faster without going back and forth.
@@ -20,7 +34,6 @@ Also, please include the following information about your environment, so we can
 - What version of Kafka are you using?
 - What version of Go are you using?
 - What are the values of your Producer/Consumer/Client configuration?
-
 
 ## Contributing a change
 

@@ -45,7 +45,7 @@ type queryExecutor interface {
 }
 
 func executorHandler(cfg Config, logger log.Logger, exec queryExecutor, limits Limits) http.Handler {
-	h := &queryHandler{
+	var h queryrangebase.Handler = &queryHandler{
 		cfg:    cfg,
 		logger: logger,
 		exec:   exec,
@@ -53,10 +53,38 @@ func executorHandler(cfg Config, logger log.Logger, exec queryExecutor, limits L
 	}
 
 	if cfg.EnforceRetentionPeriod {
-		h.retentionChecker = newRetentionChecker(limits, logger)
+		h.(*queryHandler).retentionChecker = newRetentionChecker(limits, logger)
+	}
+
+	if cfg.AlignQueriesWithStep {
+		h = newMetricStepAlignMiddleware().Wrap(h)
 	}
 
 	return queryrange.NewSerializeHTTPHandler(h, queryrange.DefaultCodec)
+}
+
+// newMetricStepAlignMiddleware returns a middleware that applies step alignment
+// only to metric queries (SampleExpr). Log queries are passed through without
+// modification, preserving sub-second timestamp precision.
+func newMetricStepAlignMiddleware() queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		aligned := queryrangebase.StepAlignMiddleware.Wrap(next)
+		return metricStepAlign{next: next, aligned: aligned}
+	})
+}
+
+type metricStepAlign struct {
+	next    queryrangebase.Handler
+	aligned queryrangebase.Handler
+}
+
+func (m metricStepAlign) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	if req, ok := r.(*queryrange.LokiRequest); ok && req.Plan != nil {
+		if _, isSample := req.Plan.AST.(syntax.SampleExpr); isSample {
+			return m.aligned.Do(ctx, r)
+		}
+	}
+	return m.next.Do(ctx, r)
 }
 
 type queryHandler struct {
