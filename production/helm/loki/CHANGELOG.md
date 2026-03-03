@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
 
 ## 6.53.0
 
@@ -75,7 +76,6 @@ Entries should include a reference to the pull request that introduced the chang
 - [FEATURE] Add load balancer port to query-frontend service. [#19462](https://github.com/grafana/loki/pull/19462)
 - [FEATURE] Make loki-canary readinessProbe configurable via values.yaml. [#19328](https://github.com/grafana/loki/pull/19328)
 - [BUGFIX] Don't fail for missing bucket name, if local disk is used. [#19675](https://github.com/grafana/loki/pull/19675)
- [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
 
 ## 6.45.2
 
