@@ -1039,7 +1039,8 @@ Response format:
       "cardinality": <integer>,
       "parser": <string>
     }
-  ]
+  ],
+  "limit": <integer>
 }
 ```
 
@@ -1077,7 +1078,8 @@ gave this response:
       "cardinality": 5,
       "parser": "logfmt"
     }
-  ]
+  ],
+  "limit": 1000
 }
 ```
 
@@ -1109,7 +1111,8 @@ Response format:
   "values": [
     <string>,
     ...
-  ]
+  ],
+  "limit": <integer>
 }
 ```
 
@@ -1133,7 +1136,8 @@ gave this response:
     "info",
     "warn",
     "error"
-  ]
+  ],
+  "limit": 1000
 }
 ```
 
