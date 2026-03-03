@@ -1836,11 +1836,137 @@ The compressed body of an HTTP push request exceeds the distributor's configured
 
 ## TLS and certificate errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+TLS errors occur when Loki or its clients cannot establish secure connections due to certificate issues.
+
+### Error: TLS certificate loading failed
+
+**Error message:**
+
+```text
+error loading ca cert: <path>
+```
+
+Or:
+
+```text
+error loading client cert: <path>
+```
+
+Or:
+
+```text
+error loading client key: <path>
+```
+
+Or:
+
+```text
+failed to load TLS certificate <cert_path>,<key_path>
+```
+
+**Cause:**
+
+Loki cannot load TLS certificates from the specified paths. Common causes:
+
+- Certificate files don't exist at the configured paths
+- Permission issues prevent reading the files
+- Certificate or key format is invalid
+- Certificate and key don't match
+
+**Resolution:**
+
+1. **Verify certificate files exist** and are readable:
+
+   ```bash
+   ls -la /path/to/cert.pem /path/to/key.pem /path/to/ca.pem
+   ```
+
+1. **Check file permissions** (the Loki process must be able to read them).
+
+1. **Validate the certificate format**:
+
+   ```bash
+   openssl x509 -in /path/to/cert.pem -noout -text
+   openssl rsa -in /path/to/key.pem -check
+   ```
+
+1. **Verify cert and key match**:
+
+   ```bash
+   openssl x509 -noout -modulus -in cert.pem | md5sum
+   openssl rsa -noout -modulus -in key.pem | md5sum
+   # Both should produce the same hash
+   ```
+
+1. **Check your TLS configuration**:
+
+   ```yaml
+   server:
+     http_tls_config:
+       cert_file: /path/to/cert.pem
+       key_file: /path/to/key.pem
+       client_ca_file: /path/to/ca.pem
+     grpc_tls_config:
+       cert_file: /path/to/cert.pem
+       key_file: /path/to/key.pem
+       client_ca_file: /path/to/ca.pem
+   ```
+
+**Properties:**
+
+- Enforced by: TLS configuration
+- Retryable: No (certificates must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: TLS configuration error
+
+**Error message:**
+
+```text
+error generating http tls config: <details>
+```
+
+Or:
+
+```text
+error generating grpc tls config: <details>
+```
+
+Where `<details>` may include messages such as `TLS version %q not recognized`, `cipher suite %q not recognized`, or `unknown TLS version: <version>`.
+
+**Cause:**
+
+The TLS configuration is invalid. This can happen when:
+
+- An unsupported TLS version string is supplied
+- Cipher suite configuration is invalid
+- Client auth type is unrecognized
+
+**Resolution:**
+
+1. **Review TLS settings** for compatibility issues.
+1. **Use supported TLS versions** by setting `tls_min_version` at the top level of the `server` block:
+
+   ```yaml
+   server:
+     tls_min_version: VersionTLS12
+   ```
+
+   Valid values are `VersionTLS10`, `VersionTLS11`, `VersionTLS12`, and `VersionTLS13`. There is no `max_version` setting; `tls_min_version` is the only version constraint.
+
+1. **Check cipher suite configuration** if customized.
+
+**Properties:**
+
+- Enforced by: TLS initialization
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No 
 
 ## DNS resolution errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Scheduler and frontend errors
 
