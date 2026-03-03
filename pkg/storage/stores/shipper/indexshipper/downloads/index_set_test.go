@@ -65,15 +65,15 @@ func TestIndexSet_Init(t *testing.T) {
 	checkIndexSet()
 }
 
-func TestIndexSet_SkipsLookupFiles(t *testing.T) {
+func TestIndexSet_SkipsSectionsFiles(t *testing.T) {
 	tempDir := t.TempDir()
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 	tablePathInStorage := filepath.Join(objectStoragePath, tableName, userID)
 
-	// Setup regular index files and a .lookup file in storage.
+	// Setup regular index files and a .sections sidecar file in storage.
 	setupIndexesAtPath(t, userID, tablePathInStorage, 0, 3)
-	lookupFileName := "some-index.lookup"
-	require.NoError(t, os.WriteFile(filepath.Join(tablePathInStorage, lookupFileName), []byte("lookup-data"), 0640))
+	sectionsFileName := "some-index.tsdb.sections"
+	require.NoError(t, os.WriteFile(filepath.Join(tablePathInStorage, sectionsFileName), []byte("sections-data"), 0640))
 
 	openCalled := map[string]bool{}
 	storageClient := buildTestStorageClient(t, tempDir)
@@ -91,11 +91,11 @@ func TestIndexSet_SkipsLookupFiles(t *testing.T) {
 
 	is := idxSet.(*indexSet)
 
-	// The .lookup file should have been downloaded to the cache directory but
+	// The .sections file should have been downloaded to the cache directory but
 	// not opened as an index.
-	require.False(t, openCalled[lookupFileName], ".lookup file should not be opened as an index")
-	_, lookupInIndex := is.index[lookupFileName]
-	require.False(t, lookupInIndex, ".lookup file should not appear in the index map")
+	require.False(t, openCalled[sectionsFileName], ".sections file should not be opened as an index")
+	_, sectionsInIndex := is.index[sectionsFileName]
+	require.False(t, sectionsInIndex, ".sections file should not appear in the index map")
 
 	// Regular index files should be opened normally.
 	require.Len(t, is.index, 3)

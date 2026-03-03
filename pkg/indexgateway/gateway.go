@@ -65,32 +65,13 @@ type BloomQuerier interface {
 	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, series map[uint64]labels.Labels, chunks []*logproto.ChunkRef, plan plan.QueryPlan) ([]*logproto.ChunkRef, bool, error)
 }
 
-// DataobjResolver resolves label matchers to dataobj section references from
-// TSDB indices. It mirrors tsdb.DataobjResolver but is defined locally to avoid
-// a direct dependency on the tsdb package.
-type DataobjResolver interface {
-	GetDataobjSections(ctx context.Context, userID string, from, through model.Time,
-		fpFilter tsdb_index.FingerprintFilter, matchers ...*labels.Matcher) ([]DataobjSectionRef, error)
-}
-
-// DataobjSectionRef is a resolved reference to a section within a data object.
-type DataobjSectionRef struct {
-	Path      string
-	SectionID int
-	MinTime   model.Time
-	MaxTime   model.Time
-	KB        uint32
-	Entries   uint32
-	StreamIDs []int64
-}
-
 type Gateway struct {
 	services.Service
 
 	indexQuerier    IndexQuerier
 	indexClients    []IndexClientWithRange
 	bloomQuerier    BloomQuerier
-	dataobjResolver DataobjResolver
+	dataobjResolver tsdb_index.DataobjResolver
 	metrics         *Metrics
 
 	cfg    Config
@@ -102,7 +83,7 @@ type Gateway struct {
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier, dataobjResolver DataobjResolver) (*Gateway, error) {
+func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier, dataobjResolver tsdb_index.DataobjResolver) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier:    indexQuerier,
 		bloomQuerier:    bloomQuerier,

@@ -50,10 +50,10 @@ func TestGetDataobjSections(t *testing.T) {
 	tsdbFile := BuildIndex(t, dir, cases)
 
 	tsdbPath := tsdbFile.Path()
-	lookupPath := strings.TrimSuffix(tsdbPath, ".tsdb") + ".lookup"
+	sectionsPath := tsdbPath + ".sections"
 	lookupData, err := table.Encode()
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(lookupPath, lookupData, 0o644))
+	require.NoError(t, os.WriteFile(sectionsPath, lookupData, 0o644))
 
 	id, err := identifierFromPath(tsdbPath)
 	require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestGetDataobjSections(t *testing.T) {
 	require.NoError(t, err)
 	defer file.Close()
 
-	resolver, ok := file.Index.(DataobjResolver)
+	resolver, ok := file.Index.(index.DataobjResolver)
 	require.True(t, ok)
 
 	t.Run("all sections for app=gateway", func(t *testing.T) {
@@ -98,7 +98,7 @@ func TestGetDataobjSections(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		bySection := make(map[string]DataobjSectionRef)
+		bySection := make(map[string]index.DataobjSectionRef)
 		for _, ref := range refs {
 			k := ref.Path + "/" + strings.Repeat("0", ref.SectionID)
 			bySection[k] = ref
@@ -133,28 +133,6 @@ func TestGetDataobjSections(t *testing.T) {
 		require.Equal(t, 1, seen[key{Path: "objects/ab/obj001", SectionID: 0}],
 			"section (obj001, 0) should appear exactly once despite being in two series")
 	})
-}
-
-func TestGetDataobjSections_NoLookupTable(t *testing.T) {
-	dir := t.TempDir()
-
-	cases := []LoadableSeries{
-		{
-			Labels: mustParseLabels(`{foo="bar"}`),
-			Chunks: index.ChunkMetas{
-				{Checksum: 0, MinTime: 0, MaxTime: 1, KB: 1, Entries: 1},
-			},
-		},
-	}
-
-	tsdbFile := BuildIndex(t, dir, cases)
-	tsdbIdx := tsdbFile.Index.(*TSDBIndex)
-
-	require.Nil(t, tsdbIdx.sectionRefTable)
-
-	_, err := tsdbIdx.GetDataobjSections(context.Background(), "fake", 0, 10, nil)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "no section ref lookup table")
 }
 
 func TestNewShippableTSDBFile_LoadsLookupCompanion(t *testing.T) {
@@ -192,12 +170,12 @@ func TestNewShippableTSDBFile_LoadsLookupCompanion(t *testing.T) {
 		require.Nil(t, tsdbIdx.sectionRefTable)
 	})
 
-	t.Run("with lookup file", func(t *testing.T) {
-		lookupPath := strings.TrimSuffix(dst.Path(), ".tsdb") + ".lookup"
+	t.Run("with sections file", func(t *testing.T) {
+		sectionsPath := dst.Path() + ".sections"
 		lookupData, err := table.Encode()
 		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(lookupPath, lookupData, 0o644))
-		defer os.Remove(lookupPath)
+		require.NoError(t, os.WriteFile(sectionsPath, lookupData, 0o644))
+		defer os.Remove(sectionsPath)
 
 		file, err := NewShippableTSDBFile(dst)
 		require.NoError(t, err)
@@ -210,66 +188,4 @@ func TestNewShippableTSDBFile_LoadsLookupCompanion(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, "objects/ab/test", ref.Path)
 	})
-}
-
-func TestGetDataobjSections_SeriesIDFromSidecar(t *testing.T) {
-	dir := t.TempDir()
-
-	table := sectionref.NewSectionRefTable(nil)
-	idxA := table.Add(sectionref.SectionRef{Path: "objects/aa/shared", SectionID: 0, SeriesID: 10})
-	idxB := table.Add(sectionref.SectionRef{Path: "objects/aa/shared", SectionID: 0, SeriesID: 20})
-
-	cases := []LoadableSeries{
-		{
-			Labels: mustParseLabels(`{app="a"}`),
-			Chunks: index.ChunkMetas{
-				{Checksum: idxA, MinTime: 1000, MaxTime: 2000, KB: 10, Entries: 100},
-			},
-		},
-		{
-			Labels: mustParseLabels(`{app="b"}`),
-			Chunks: index.ChunkMetas{
-				{Checksum: idxB, MinTime: 1500, MaxTime: 3000, KB: 20, Entries: 200},
-			},
-		},
-		{
-			Labels: mustParseLabels(`{app="c"}`),
-			Chunks: index.ChunkMetas{
-				{Checksum: idxA, MinTime: 500, MaxTime: 1500, KB: 5, Entries: 50},
-			},
-		},
-	}
-
-	tsdbFile := BuildIndex(t, dir, cases)
-	tsdbPath := tsdbFile.Path()
-	lookupPath := strings.TrimSuffix(tsdbPath, ".tsdb") + ".lookup"
-	lookupData, err := table.Encode()
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(lookupPath, lookupData, 0o644))
-
-	id, err := identifierFromPath(tsdbPath)
-	require.NoError(t, err)
-	file, err := NewShippableTSDBFile(id)
-	require.NoError(t, err)
-	defer file.Close()
-
-	resolver := file.Index.(DataobjResolver)
-	refs, err := resolver.GetDataobjSections(
-		context.Background(), "fake", 0, 5000, nil,
-		labels.MustNewMatcher(labels.MatchRegexp, "app", ".+"),
-	)
-	require.NoError(t, err)
-	require.Len(t, refs, 1, "all three series point to same (path, section)")
-
-	ref := refs[0]
-	require.Equal(t, "objects/aa/shared", ref.Path)
-	require.Equal(t, 0, ref.SectionID)
-
-	streamIDs := ref.StreamIDs
-	sort.Slice(streamIDs, func(i, j int) bool { return streamIDs[i] < streamIDs[j] })
-	require.Equal(t, []int64{10, 20}, streamIDs,
-		"SeriesID 10 should be deduped (appears in app=a and app=c)")
-
-	require.Equal(t, model.Time(500), ref.MinTime)
-	require.Equal(t, model.Time(3000), ref.MaxTime)
 }

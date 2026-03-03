@@ -296,7 +296,7 @@ func TestGetDataobjSections(t *testing.T) {
 
 	t.Run("resolves sections via resolver", func(t *testing.T) {
 		resolver := &mockDataobjResolver{
-			sections: []DataobjSectionRef{
+			sections: []tsdb_index.DataobjSectionRef{
 				{
 					Path:      "obj-001",
 					SectionID: 0,
@@ -343,10 +343,10 @@ func TestGetDataobjSections(t *testing.T) {
 }
 
 type mockDataobjResolver struct {
-	sections []DataobjSectionRef
+	sections []tsdb_index.DataobjSectionRef
 }
 
-func (m *mockDataobjResolver) GetDataobjSections(_ context.Context, _ string, _, _ model.Time, _ tsdb_index.FingerprintFilter, _ ...*labels.Matcher) ([]DataobjSectionRef, error) {
+func (m *mockDataobjResolver) GetDataobjSections(_ context.Context, _ string, _, _ model.Time, _ tsdb_index.FingerprintFilter, _ ...*labels.Matcher) ([]tsdb_index.DataobjSectionRef, error) {
 	return m.sections, nil
 }
 

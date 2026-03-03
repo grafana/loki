@@ -25,7 +25,7 @@ import (
 
 const (
 	gzipExtension    = ".gz"
-	lookupExtension  = ".lookup"
+	sectionsExtension = ".sections"
 	maxSyncRetries   = 1
 )
 
@@ -127,7 +127,7 @@ func (t *indexSet) Init(forQuerying bool, logger log.Logger) (err error) {
 			continue
 		}
 
-		if strings.HasSuffix(entry.Name(), lookupExtension) {
+		if strings.HasSuffix(entry.Name(), sectionsExtension) {
 			continue
 		}
 
@@ -349,7 +349,7 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 	}
 
 	for _, fileName := range downloadedFiles {
-		if strings.HasSuffix(fileName, lookupExtension) {
+		if strings.HasSuffix(fileName, sectionsExtension) {
 			continue
 		}
 

@@ -102,12 +102,15 @@ func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
 		return nil, err
 	}
 
-	lookupPath := strings.TrimSuffix(id.Path(), ".tsdb") + ".lookup"
-	if data, readErr := os.ReadFile(lookupPath); readErr == nil {
+	// TODO: register a different index.OpenIndexFileFunc for dataobj TSDB files
+	// during indexshipper init.
+	sectionsPath := id.Path() + ".sections"
+	if data, readErr := os.ReadFile(sectionsPath); readErr == nil {
 		table, decErr := sectionref.Decode(data)
 		if decErr != nil {
-			return nil, fmt.Errorf("decoding lookup table %s: %w", lookupPath, decErr)
+			return nil, fmt.Errorf("decoding sections table %s: %w", sectionsPath, decErr)
 		}
+		// TODO: this is location all sections in memory which can be problematic. should we mmap?
 		idx.sectionRefTable = table
 	}
 
@@ -529,7 +532,7 @@ func (i *TSDBIndex) GetDataobjSections(
 	from, through model.Time,
 	fpFilter index.FingerprintFilter,
 	matchers ...*labels.Matcher,
-) ([]DataobjSectionRef, error) {
+) ([]index.DataobjSectionRef, error) {
 	if i.sectionRefTable == nil {
 		return nil, fmt.Errorf("no section ref lookup table loaded for this index")
 	}
@@ -541,7 +544,7 @@ func (i *TSDBIndex) GetDataobjSections(
 	}
 
 	type accumulator struct {
-		ref       DataobjSectionRef
+		ref       index.DataobjSectionRef
 		streamSet map[int64]struct{}
 	}
 
@@ -562,7 +565,7 @@ func (i *TSDBIndex) GetDataobjSections(
 			acc, ok := sections[k]
 			if !ok {
 				acc = &accumulator{
-					ref: DataobjSectionRef{
+					ref: index.DataobjSectionRef{
 						Path:      ref.Path,
 						SectionID: ref.SectionID,
 						MinTime:   chk.From(),
@@ -596,7 +599,7 @@ func (i *TSDBIndex) GetDataobjSections(
 		return nil, fmt.Errorf("failed to lookup section ref for at least one chunk; cannot resolve dataobj sections")
 	}
 
-	res := make([]DataobjSectionRef, 0, len(sections))
+	res := make([]index.DataobjSectionRef, 0, len(sections))
 	for _, acc := range sections {
 		ids := make([]int64, 0, len(acc.streamSet))
 		for id := range acc.streamSet {
