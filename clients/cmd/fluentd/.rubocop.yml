@@ -1,17 +1,17 @@
-require: rubocop-rspec
+plugins: rubocop-rspec
 
 AllCops:
   TargetRubyVersion: 2.7
   NewCops: disable
   Exclude:
-    - 'bin/**'
-    - 'test/**/*.rb'
+    - "bin/**"
+    - "test/**/*.rb"
 
 Metrics/BlockLength:
   Exclude:
-    - 'Rakefile'
-    - '**/*.rake'
-    - 'spec/**/*.rb'
+    - "Rakefile"
+    - "**/*.rake"
+    - "spec/**/*.rb"
   Max: 60
 Metrics/MethodLength:
   Max: 50
