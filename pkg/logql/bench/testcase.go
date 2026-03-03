@@ -17,6 +17,7 @@ type TestCase struct {
 	Direction logproto.Direction
 	Step      time.Duration // Step size for metric queries
 	Source    string        // Source location (suite/file.yaml:line)
+	QueryDesc string        // Query description from YAML
 }
 
 // Name returns a descriptive name for the test case.
@@ -49,13 +50,13 @@ func (c TestCase) Kind() string {
 func (c TestCase) Description() string {
 	var b strings.Builder
 	if c.Source != "" {
-		b.WriteString(fmt.Sprintf("Source: %s\n", c.Source))
+		fmt.Fprintf(&b, "Source: %s\n", c.Source)
 	}
-	b.WriteString(fmt.Sprintf("Query: %s\n", c.Query))
-	b.WriteString(fmt.Sprintf("Time Range: %v to %v\n", c.Start.Format(time.RFC3339), c.End.Format(time.RFC3339)))
+	fmt.Fprintf(&b, "Query: %s\n", c.Query)
+	fmt.Fprintf(&b, "Time Range: %v to %v\n", c.Start.Format(time.RFC3339), c.End.Format(time.RFC3339))
 	if c.Step > 0 {
-		b.WriteString(fmt.Sprintf("Step: %v\n", c.Step))
+		fmt.Fprintf(&b, "Step: %v\n", c.Step)
 	}
-	b.WriteString(fmt.Sprintf("Direction: %v", c.Direction))
+	fmt.Fprintf(&b, "Direction: %v", c.Direction)
 	return b.String()
 }

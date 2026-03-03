@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,9 +33,9 @@ import (
 )
 
 var (
-	slowTests  = flag.Bool("slow-tests", false, "run slow tests")
-	benchSuite = flag.String("bench-suite", "fast", "benchmark suite to run: fast, regression, or exhaustive")
-	rangeType  = flag.String("range-type", "range", "query range type: instant or range (only affects metric queries)")
+	slowTests      = flag.Bool("slow-tests", false, "run slow tests")
+	rangeType      = flag.String("range-type", "range", "query range type: instant or range (only affects metric queries)")
+	includeSkipped = flag.Bool("include-skipped", false, "include skipped queries in test execution")
 )
 
 const testTenant = "test-tenant"
@@ -48,6 +49,10 @@ var allStores = []string{StoreDataObjV2Engine, StoreChunk}
 
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
 
+func init() {
+	engine.EnableParanoidMode()
+}
+
 // loadTestCases loads test cases from the query registry
 func loadTestCases(tb testing.TB, config *GeneratorConfig) []TestCase {
 	tb.Helper()
@@ -56,24 +61,14 @@ func loadTestCases(tb testing.TB, config *GeneratorConfig) []TestCase {
 	queriesDir := "./queries"
 	registry := NewQueryRegistry(queriesDir)
 
-	// Determine which suites to load based on the flag
-	var suites []Suite
-	switch *benchSuite {
-	case "fast":
-		suites = []Suite{SuiteFast}
-	case "regression":
-		suites = []Suite{SuiteFast, SuiteRegression}
-	case "exhaustive":
-		suites = []Suite{SuiteFast, SuiteRegression, SuiteExhaustive}
-	default:
-		tb.Fatalf("invalid bench-suite: %s (must be fast, regression, or exhaustive)", *benchSuite)
-	}
+	// Load all suites - filtering will be done via -run flag
+	suites := []Suite{SuiteFast, SuiteRegression, SuiteExhaustive}
 
 	if err := registry.Load(suites...); err != nil {
 		tb.Fatalf("failed to load query registry: %v", err)
 	}
 
-	queryDefs := registry.GetQueries(suites...)
+	queryDefs := registry.GetQueries(*includeSkipped, suites...)
 
 	metadata, err := LoadMetadata(DefaultDataDir)
 	if err != nil {
@@ -105,9 +100,9 @@ func loadTestCases(tb testing.TB, config *GeneratorConfig) []TestCase {
 			}
 		}
 		cases = filtered
-		tb.Logf("Loaded %d test cases from registry (suite=%s, range-type=%s, metric-only)", len(cases), *benchSuite, *rangeType)
+		tb.Logf("Loaded %d test cases from registry (range-type=%s, metric-only)", len(cases), *rangeType)
 	} else {
-		tb.Logf("Loaded %d test cases from registry (suite=%s, range-type=%s)", len(cases), *benchSuite, *rangeType)
+		tb.Logf("Loaded %d test cases from registry (range-type=%s)", len(cases), *rangeType)
 	}
 
 	return cases
@@ -208,7 +203,7 @@ func TestStorageEquality(t *testing.T) {
 				continue
 			}
 
-			t.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", baseCase.Name(), baseCase.Kind(), store.Name), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s/kind=%s/store=%s", baseCase.Source, baseCase.Kind(), store.Name), func(t *testing.T) {
 				ctx := user.InjectOrgID(t.Context(), testTenant)
 
 				labels := pprof.Labels("query", baseCase.Name(), "kind", baseCase.Kind(), "store", store.Name)
@@ -242,11 +237,34 @@ func TestStorageEquality(t *testing.T) {
 						return
 					}
 
-					actual, err := store.Engine.Query(params).Exec(ctx)
-					if err != nil && errors.Is(err, engine.ErrNotSupported) {
-						t.Skipf("Store %s does not support features used in test case %s", store.Name, baseCase.Name())
+					var (
+						actual, expected logqlmodel.Result
+					)
+
+					g, ctx := errgroup.WithContext(ctx)
+
+					g.Go(func() error {
+						result, err := store.Engine.Query(params).Exec(ctx)
+						actual = result
+						return err
+					})
+
+					g.Go(func() error {
+						result, err := baseStore.Engine.Query(params).Exec(ctx)
+						expected = result
+						return err
+					})
+
+					err = g.Wait()
+
+					if err != nil {
+						if errors.Is(err, engine.ErrNotSupported) {
+							t.Skipf("Store %s does not support features used in test case %s", store.Name, baseCase.Name())
+						}
+
+						t.Fatal(err)
 					}
-					require.NoError(t, err)
+
 					t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
 						store.Name,
 						actual.Statistics.Summary.TotalLinesProcessed,
@@ -259,8 +277,6 @@ func TestStorageEquality(t *testing.T) {
 					dataobjStats, _ := json.Marshal(&actual.Statistics.Querier.Store.Dataobj)
 					t.Log("Dataobj stats:", string(dataobjStats))
 
-					expected, err := baseStore.Engine.Query(params).Exec(ctx)
-					require.NoError(t, err)
 					t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
 						baseStore.Name,
 						expected.Statistics.Summary.TotalLinesProcessed,
@@ -322,7 +338,7 @@ func TestLogQLQueries(t *testing.T) {
 	// }
 
 	for _, c := range cases {
-		t.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), store), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s/kind=%s/store=%s", c.Source, c.Kind(), store), func(t *testing.T) {
 			// Uncomment this to run only log queries
 			// if c.Kind() != "log" {
 			// 	continue
@@ -388,7 +404,7 @@ func BenchmarkLogQL(b *testing.B) {
 		cases := loadTestCases(b, config)
 
 		for _, c := range cases {
-			b.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), storeType), func(b *testing.B) {
+			b.Run(fmt.Sprintf("%s/kind=%s/store=%s", c.Source, c.Kind(), storeType), func(b *testing.B) {
 				ctx := user.InjectOrgID(b.Context(), testTenant)
 
 				labels := pprof.Labels("query", c.Name(), "kind", c.Kind(), "store", storeType)
@@ -436,24 +452,14 @@ func TestPrintBenchmarkQueries(t *testing.T) {
 	queriesDir := "./queries"
 	registry := NewQueryRegistry(queriesDir)
 
-	// Determine which suites to load based on the flag
-	var suites []Suite
-	switch *benchSuite {
-	case "fast":
-		suites = []Suite{SuiteFast}
-	case "regression":
-		suites = []Suite{SuiteFast, SuiteRegression}
-	case "exhaustive":
-		suites = []Suite{SuiteFast, SuiteRegression, SuiteExhaustive}
-	default:
-		t.Fatalf("invalid bench-suite: %s (must be fast, regression, or exhaustive)", *benchSuite)
-	}
+	// Load all suites
+	suites := []Suite{SuiteFast, SuiteRegression, SuiteExhaustive}
 
 	if err := registry.Load(suites...); err != nil {
 		t.Fatalf("failed to load query registry: %v", err)
 	}
 
-	queryDefs := registry.GetQueries(suites...)
+	queryDefs := registry.GetQueries(false, suites...)
 	resolver := NewMetadataVariableResolver(metadata, defaultGeneratorConfig.Seed)
 
 	var cases []TestCase
@@ -465,7 +471,7 @@ func TestPrintBenchmarkQueries(t *testing.T) {
 		cases = append(cases, expanded...)
 	}
 
-	t.Logf("Loaded %d test cases from registry (suite=%s, range-type=%s)", len(cases), *benchSuite, *rangeType)
+	t.Logf("Loaded %d test cases from registry (range-type=%s)", len(cases), *rangeType)
 
 	t.Log("Benchmark Queries:")
 	t.Log("================")

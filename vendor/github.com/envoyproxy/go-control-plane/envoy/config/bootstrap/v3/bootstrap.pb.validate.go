@@ -1100,7 +1100,7 @@ type BootstrapMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m BootstrapMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1288,6 +1288,40 @@ func (m *Admin) validate(all bool) error {
 
 	// no validation rules for IgnoreGlobalConnLimit
 
+	for idx, item := range m.GetAllowPaths() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, AdminValidationError{
+						field:  fmt.Sprintf("AllowPaths[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, AdminValidationError{
+						field:  fmt.Sprintf("AllowPaths[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return AdminValidationError{
+					field:  fmt.Sprintf("AllowPaths[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
 	if len(errors) > 0 {
 		return AdminMultiError(errors)
 	}
@@ -1301,7 +1335,7 @@ type AdminMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m AdminMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1492,7 +1526,7 @@ type ClusterManagerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ClusterManagerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1649,7 +1683,7 @@ type WatchdogsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m WatchdogsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1957,7 +1991,7 @@ type WatchdogMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m WatchdogMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2085,7 +2119,7 @@ type FatalActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m FatalActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2218,7 +2252,7 @@ type RuntimeMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RuntimeMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2512,7 +2546,7 @@ type RuntimeLayerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RuntimeLayerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2646,7 +2680,7 @@ type LayeredRuntimeMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m LayeredRuntimeMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2779,7 +2813,7 @@ type CustomInlineHeaderMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m CustomInlineHeaderMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2914,7 +2948,7 @@ type MemoryAllocatorManagerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m MemoryAllocatorManagerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3118,7 +3152,7 @@ type Bootstrap_StaticResourcesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Bootstrap_StaticResourcesMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3311,7 +3345,7 @@ type Bootstrap_DynamicResourcesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Bootstrap_DynamicResourcesMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3442,7 +3476,7 @@ type Bootstrap_ApplicationLogConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Bootstrap_ApplicationLogConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3547,7 +3581,7 @@ type Bootstrap_DeferredStatOptionsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Bootstrap_DeferredStatOptionsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3683,7 +3717,7 @@ type Bootstrap_GrpcAsyncClientManagerConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Bootstrap_GrpcAsyncClientManagerConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3860,7 +3894,7 @@ type Bootstrap_ApplicationLogConfig_LogFormatMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Bootstrap_ApplicationLogConfig_LogFormatMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3994,7 +4028,7 @@ type ClusterManager_OutlierDetectionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ClusterManager_OutlierDetectionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4137,7 +4171,7 @@ type Watchdog_WatchdogActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Watchdog_WatchdogActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4245,7 +4279,7 @@ type RuntimeLayer_DiskLayerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RuntimeLayer_DiskLayerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4347,7 +4381,7 @@ type RuntimeLayer_AdminLayerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RuntimeLayer_AdminLayerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4480,7 +4514,7 @@ type RuntimeLayer_RtdsLayerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RuntimeLayer_RtdsLayerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

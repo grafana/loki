@@ -432,6 +432,14 @@ type ClusterOperationV2Provisioned struct {
 // Returns information about a serverless cluster operation.
 type ClusterOperationV2Serverless struct {
 
+	// Describes the cluster's attributes before any updates are applied. For example,
+	// networkType, which can be either IPv4 or DUAL.
+	SourceClusterInfo *ServerlessConnectivityInfo
+
+	// Describes the cluster's attributes after any updates are applied. For example,
+	// networkType, which can be either IPv4 or DUAL.
+	TargetClusterInfo *ServerlessConnectivityInfo
+
 	// Description of the VPC connection for CreateVpcConnection and
 	// DeleteVpcConnection operations.
 	VpcConnectionInfo *VpcConnectionInfoServerless
@@ -560,6 +568,12 @@ type ConfigurationRevision struct {
 
 // Information about the broker access configuration.
 type ConnectivityInfo struct {
+
+	// The network type of the cluster, which is IPv4 or DUAL. The DUAL network type
+	// uses both IPv4 and IPv6 addresses for your cluster and its resources.
+	//
+	// By default, a cluster uses the IPv4 network type.
+	NetworkType NetworkType
 
 	// Public access control for brokers.
 	PublicAccess *PublicAccess
@@ -1288,6 +1302,10 @@ type Serverless struct {
 	// Includes all client authentication information.
 	ClientAuthentication *ServerlessClientAuthentication
 
+	// Describes the cluster's connectivity information, such as its network type,
+	// which is IPv4 or DUAL.
+	ConnectivityInfo *ServerlessConnectivityInfo
+
 	noSmithyDocumentSerde
 }
 
@@ -1296,6 +1314,19 @@ type ServerlessClientAuthentication struct {
 
 	// Details for ClientAuthentication using SASL.
 	Sasl *ServerlessSasl
+
+	noSmithyDocumentSerde
+}
+
+// Describes the cluster's connectivity information, such as its network type,
+// which is IPv4 or DUAL.
+type ServerlessConnectivityInfo struct {
+
+	// The network type of the cluster, which is IPv4 or DUAL. The DUAL network type
+	// uses both IPv4 and IPv6 addresses for your cluster and its resources.
+	//
+	// By default, a cluster uses the IPv4 network type.
+	NetworkType NetworkType
 
 	noSmithyDocumentSerde
 }

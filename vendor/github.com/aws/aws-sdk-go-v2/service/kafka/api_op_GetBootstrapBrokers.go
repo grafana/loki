@@ -46,6 +46,10 @@ type GetBootstrapBrokersOutput struct {
 	// A string containing one or more hostname:port pairs.
 	BootstrapBrokerString *string
 
+	// A string that contains one or more DNS names (or IP) and port pairs for IPv6
+	// connectivity.
+	BootstrapBrokerStringIpv6 *string
+
 	// A string that contains one or more DNS names (or IP addresses) and SASL IAM
 	// port pairs.
 	BootstrapBrokerStringPublicSaslIam *string
@@ -60,11 +64,23 @@ type GetBootstrapBrokersOutput struct {
 	// port pairs.
 	BootstrapBrokerStringSaslIam *string
 
+	// A string that contains one or more DNS names (or IP) and SASL IAM port pairs
+	// for IPv6 connectivity.
+	BootstrapBrokerStringSaslIamIpv6 *string
+
 	// A string containing one or more DNS names (or IP) and Sasl Scram port pairs.
 	BootstrapBrokerStringSaslScram *string
 
+	// A string that contains one or more DNS names (or IP) and SASL SCRAM port pairs
+	// for IPv6 connectivity.
+	BootstrapBrokerStringSaslScramIpv6 *string
+
 	// A string containing one or more DNS names (or IP) and TLS port pairs.
 	BootstrapBrokerStringTls *string
+
+	// A string that contains one or more DNS names (or IP) and TLS port pairs for
+	// IPv6 connectivity.
+	BootstrapBrokerStringTlsIpv6 *string
 
 	// A string containing one or more DNS names (or IP) and SASL/IAM port pairs for
 	// VPC connectivity.

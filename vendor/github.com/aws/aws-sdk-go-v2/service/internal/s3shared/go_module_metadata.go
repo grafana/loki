@@ -3,4 +3,4 @@
 package s3shared
 
 // goModuleVersion is the tagged release for this module
-const goModuleVersion = "1.19.17"
+const goModuleVersion = "1.19.18"

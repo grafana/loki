@@ -531,6 +531,14 @@ func X__builtin_popcountl(t *TLS, x ulong) int32 {
 	return int32(mbits.OnesCount64(uint64(x)))
 }
 
+// int __builtin_popcountll (unsigned long long)
+func X__builtin_popcountll(t *TLS, x uint64) int32 {
+	if __ccgo_strace {
+		trc("t=%v x=%v, (%v:)", t, x, origin(2))
+	}
+	return int32(mbits.OnesCount64(uint64(x)))
+}
+
 // char * __builtin___strcpy_chk (char *dest, const char *src, size_t os);
 func X__builtin___strcpy_chk(t *TLS, dest, src uintptr, os types.Size_t) uintptr {
 	if __ccgo_strace {

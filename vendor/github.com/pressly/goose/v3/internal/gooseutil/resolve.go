@@ -5,7 +5,7 @@ package gooseutil
 import (
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -24,7 +24,7 @@ func UpVersions(
 ) ([]int64, error) {
 	// Sort the list of versions in the filesystem. This should already be sorted, but we do this
 	// just in case.
-	sortAscending(fsysVersions)
+	slices.Sort(fsysVersions)
 
 	// dbAppliedVersions is a map of all applied migrations in the database.
 	dbAppliedVersions := make(map[int64]bool, len(dbVersions))
@@ -78,7 +78,7 @@ func UpVersions(
 		}
 	}
 	// 3. Sort the list of migrations to apply.
-	sortAscending(out)
+	slices.Sort(out)
 
 	return out, nil
 }
@@ -88,7 +88,7 @@ func newMissingError(
 	dbMaxVersion int64,
 	target int64,
 ) error {
-	sortAscending(missing)
+	slices.Sort(missing)
 
 	collected := make([]string, 0, len(missing))
 	for _, v := range missing {
@@ -115,10 +115,4 @@ func newMissingError(
 	return fmt.Errorf("detected %d missing (out-of-order) %s lower than %s: %s",
 		len(missing), msg, desiredMsg, versionsMsg,
 	)
-}
-
-func sortAscending(versions []int64) {
-	sort.Slice(versions, func(i, j int) bool {
-		return versions[i] < versions[j]
-	})
 }

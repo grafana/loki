@@ -632,6 +632,76 @@ func TestCompareStreams(t *testing.T) {
 	}
 }
 
+func TestCompareStreams_ParsedLabels(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		expected       json.RawMessage
+		actual         json.RawMessage
+		err            error
+		expectMismatch bool
+		mismatchCause  string
+	}{
+		{
+			name: "matching parsed labels",
+			expected: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["1","line1",{"structuredMetadata":{"trace":"123"},"parsed":{"level":"info"}}]]}
+			]`),
+			actual: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["1","line1",{"structuredMetadata":{"trace":"123"},"parsed":{"level":"info"}}]]}
+			]`),
+		},
+		{
+			name: "different parsed labels count",
+			expected: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["1","line1",{"structuredMetadata":{"trace":"123"},"parsed":{"level":"info","msg":"hello"}}]]}
+			]`),
+			actual: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["1","line1",{"structuredMetadata":{"trace":"123"},"parsed":{"level":"info"}}]]}
+			]`),
+			err:            errors.New("expected 2 parsed label pairs for timestamp 1 but got 1 pairs for stream"),
+			expectMismatch: true,
+			mismatchCause:  CauseParsedLabelsCountMismatch,
+		},
+		{
+			name: "different parsed labels values",
+			expected: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["1","line1",{"structuredMetadata":{"trace":"123"},"parsed":{"level":"info"}}]]}
+			]`),
+			actual: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["1","line1",{"structuredMetadata":{"trace":"123"},"parsed":{"level":"error"}}]]}
+			]`),
+			err:            errors.New("expected parsed labels"),
+			expectMismatch: true,
+			mismatchCause:  CauseParsedLabelsMismatch,
+		},
+		{
+			name: "same structured metadata but different parsed labels",
+			expected: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["1","line1",{"structuredMetadata":{"trace":"123"},"parsed":{"level":"info"}}]]}
+			]`),
+			actual: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["1","line1",{"structuredMetadata":{"trace":"123"},"parsed":{"level":"warn"}}]]}
+			]`),
+			err:            errors.New("expected parsed labels"),
+			expectMismatch: true,
+			mismatchCause:  CauseParsedLabelsMismatch,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			summary, err := compareStreams(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{})
+			if tc.err == nil {
+				require.NoError(t, err)
+				return
+			}
+			assertError(t, err, tc.err, tc.expectMismatch)
+			if tc.mismatchCause != "" {
+				require.NotNil(t, summary)
+				require.Equal(t, tc.mismatchCause, summary.MismatchCause)
+			}
+		})
+	}
+}
+
 func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 	for _, tc := range []struct {
 		name              string

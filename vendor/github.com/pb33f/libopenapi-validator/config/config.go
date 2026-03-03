@@ -6,6 +6,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"github.com/pb33f/libopenapi-validator/cache"
+	"github.com/pb33f/libopenapi-validator/radix"
 )
 
 // RegexCache can be set to enable compiled regex caching.
@@ -21,16 +22,20 @@ type RegexCache interface {
 //
 // Generally fluent With... style functions are used to establish the desired behavior.
 type ValidationOptions struct {
-	RegexEngine         jsonschema.RegexpEngine
-	RegexCache          RegexCache // Enable compiled regex caching
-	FormatAssertions    bool
-	ContentAssertions   bool
-	SecurityValidation  bool
-	OpenAPIMode         bool // Enable OpenAPI-specific vocabulary validation
-	AllowScalarCoercion bool // Enable string->boolean/number coercion
-	Formats             map[string]func(v any) error
-	SchemaCache         cache.SchemaCache // Optional cache for compiled schemas
-	Logger              *slog.Logger      // Logger for debug/error output (nil = silent)
+	RegexEngine                   jsonschema.RegexpEngine
+	RegexCache                    RegexCache // Enable compiled regex caching
+	FormatAssertions              bool
+	ContentAssertions             bool
+	SecurityValidation            bool
+	OpenAPIMode                   bool // Enable OpenAPI-specific vocabulary validation
+	AllowScalarCoercion           bool // Enable string->boolean/number coercion
+	Formats                       map[string]func(v any) error
+	SchemaCache                   cache.SchemaCache // Optional cache for compiled schemas
+	PathTree                      radix.PathLookup  // O(k) path lookup via radix tree (built automatically)
+	pathTreeDisabled              bool              // Internal: true if radix tree auto-build was disabled via DisablePathTree
+	Logger                        *slog.Logger      // Logger for debug/error output (nil = silent)
+	AllowXMLBodyValidation        bool              // Allows to convert XML to JSON for validating a request/response body.
+	AllowURLEncodedBodyValidation bool              // Allows to convert URL Encoded to JSON for validating a request/response body.
 
 	// strict mode options - detect undeclared properties even when additionalProperties: true
 	StrictMode                bool     // Enable strict property validation
@@ -74,7 +79,11 @@ func WithExistingOpts(options *ValidationOptions) Option {
 			o.AllowScalarCoercion = options.AllowScalarCoercion
 			o.Formats = options.Formats
 			o.SchemaCache = options.SchemaCache
+			o.PathTree = options.PathTree
+			o.pathTreeDisabled = options.pathTreeDisabled
 			o.Logger = options.Logger
+			o.AllowXMLBodyValidation = options.AllowXMLBodyValidation
+			o.AllowURLEncodedBodyValidation = options.AllowURLEncodedBodyValidation
 			o.StrictMode = options.StrictMode
 			o.StrictIgnorePaths = options.StrictIgnorePaths
 			o.StrictIgnoredHeaders = options.StrictIgnoredHeaders
@@ -161,12 +170,44 @@ func WithScalarCoercion() Option {
 	}
 }
 
+// WithXmlBodyValidation enables converting an XML body to a JSON when validating the schema from a request and response body
+// The default option is set to false
+func WithXmlBodyValidation() Option {
+	return func(o *ValidationOptions) {
+		o.AllowXMLBodyValidation = true
+	}
+}
+
+// WithURLEncodedBodyValidation enables converting an URL Encoded body to a JSON when validating the schema from a request and response body
+// The default option is set to false
+func WithURLEncodedBodyValidation() Option {
+	return func(o *ValidationOptions) {
+		o.AllowURLEncodedBodyValidation = true
+	}
+}
+
 // WithSchemaCache sets a custom cache implementation or disables caching if nil.
 // Pass nil to disable schema caching and skip cache warming during validator initialization.
 // The default cache is a thread-safe sync.Map wrapper.
-func WithSchemaCache(cache cache.SchemaCache) Option {
+func WithSchemaCache(schemaCache cache.SchemaCache) Option {
 	return func(o *ValidationOptions) {
-		o.SchemaCache = cache
+		o.SchemaCache = schemaCache
+	}
+}
+
+// WithPathTree sets a custom radix tree for path matching.
+// The default is built automatically from the OpenAPI specification.
+func WithPathTree(pathTree radix.PathLookup) Option {
+	return func(o *ValidationOptions) {
+		o.PathTree = pathTree
+	}
+}
+
+// DisablePathTree prevents automatic radix tree construction.
+// Use this to fall back to regex-based path matching only.
+func DisablePathTree() Option {
+	return func(o *ValidationOptions) {
+		o.pathTreeDisabled = true
 	}
 }
 
@@ -231,6 +272,11 @@ var defaultIgnoredHeaders = []string{
 	"last-modified", "transfer-encoding", "vary", "x-forwarded-for",
 	"x-forwarded-proto", "x-real-ip", "x-request-id",
 	"request-start-time", // Added by some API clients for timing
+}
+
+// IsPathTreeDisabled returns true if radix tree auto-build was disabled via DisablePathTree.
+func (o *ValidationOptions) IsPathTreeDisabled() bool {
+	return o.pathTreeDisabled
 }
 
 // GetEffectiveStrictIgnoredHeaders returns the list of headers to ignore
