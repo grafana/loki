@@ -122,7 +122,6 @@ require (
 	github.com/efficientgo/core v1.0.0-rc.3
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/gogo/googleapis v1.4.1
-	github.com/grafana/e2e v0.1.1
 	github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
 	github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b

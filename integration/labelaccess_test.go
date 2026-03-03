@@ -202,7 +202,7 @@ func TestLabelAccessTestCases(t *testing.T) {
 				panic("test case is missing createCluster function")
 			}
 			tAll := testCase.createCluster(t)
-			testCase.ingest(t, tAll)
+			cliWrite := testCase.ingest(t, tAll)
 
 			cliQuery := testCase.cliQuery(t, tAll)
 
@@ -211,6 +211,9 @@ func TestLabelAccessTestCases(t *testing.T) {
 			testCase.seriesQuery(t, cliQuery)
 			testCase.metricsRangeQuery(t, cliQuery)
 			testCase.metricsQuery(t, cliQuery)
+
+			require.NoError(t, cliWrite.Flush())
+			testCase.seriesQuery(t, cliQuery)
 		})
 	}
 }
@@ -291,7 +294,7 @@ type testQueryAndLabelResults struct {
 	streams       []map[string]string // expected streams
 }
 
-func (tc *testQueryAndLabelResults) ingest(t *testing.T, tAll *cluster.Component) {
+func (tc *testQueryAndLabelResults) ingest(t *testing.T, tAll *cluster.Component) *client.Client {
 	cliWrite := client.New(tc.tenantID, "", tAll.HTTPURL())
 	cliWrite.Now = tc.now
 
@@ -299,7 +302,8 @@ func (tc *testQueryAndLabelResults) ingest(t *testing.T, tAll *cluster.Component
 	require.NoError(t, cliWrite.PushLogLine("line2", tc.now.Add(time.Second), nil))
 	require.NoError(t, cliWrite.PushLogLine("line3", tc.now.Add(2*time.Second), nil, map[string]string{"classification": "secret", "env": "dev"}))
 	require.NoError(t, cliWrite.PushLogLine("line4", tc.now.Add(3*time.Second), nil, map[string]string{"classification": "secret", "env": "prod"}))
-	require.NoError(t, cliWrite.Flush())
+	//require.NoError(t, cliWrite.Flush())
+	return cliWrite
 }
 
 func (tc *testQueryAndLabelResults) ingestAggregatedMetrics(t *testing.T, tAll *cluster.Component) {

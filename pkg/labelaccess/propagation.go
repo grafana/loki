@@ -117,7 +117,7 @@ func policyFromHeaderValue(headerString string) (string, *types.LabelPolicy, err
 	if err != nil {
 		return "", nil, fmt.Errorf("%w, '%v'", errInvalidHeaderEscape, err)
 	}
-	matchers, err := parser.ParseMetricSelector(selectorString)
+	matchers, err := parser.NewParser(parser.Options{}).ParseMetricSelector(selectorString)
 	if err != nil {
 		return "", nil, fmt.Errorf("%w '%s', error: '%v'", errInvalidSelector, selectorString, err)
 	}
