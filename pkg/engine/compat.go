@@ -306,6 +306,9 @@ func dedupeEntries(entries []logproto.Entry) []logproto.Entry {
 	// tracks the next position to write the next unique entry.
 	next := 1
 
+	// we use a form of two-pointer technique to deduplicate entries.
+	// we keep comparing i with i-1. if they are a duplicate we accumulate by moving forward only one pointer (i).
+	// if we find a non-duplicate we want to write its data to the next position and increment the two pointers.
 	for i := 1; i < len(entries); i++ {
 		prev := &entries[next-1]
 		cur := &entries[i]
