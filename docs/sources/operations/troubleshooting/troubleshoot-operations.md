@@ -1963,7 +1963,7 @@ The TLS configuration is invalid. This can happen when:
 - Enforced by: TLS initialization
 - Retryable: No (configuration must be fixed)
 - HTTP status: N/A (startup failure)
-- Configurable per tenant: No
+- Configurable per tenant: No 
 
 ## DNS resolution errors
 
