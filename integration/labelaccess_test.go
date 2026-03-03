@@ -179,6 +179,20 @@ func clusterAllLBAC(t *testing.T) *cluster.Component {
 	return tAll
 }
 
+func clusterAllLBACAggregation(t *testing.T) *cluster.Component {
+	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, clu.Cleanup())
+	})
+
+	tAll := clu.AddComponent("all", "-target=all", "-lbac.enabled=true", "-limits.aggregation-enabled=true", "-pattern-ingester.enabled=true")
+	require.NoError(t, clu.Run())
+
+	return tAll
+}
+
 // TestLabelAccessDefault starts a Loki cluster and verifies
 // the query results are as expected as per the testCase configuration
 func TestLabelAccessTestCases(t *testing.T) {
@@ -201,60 +215,69 @@ func TestLabelAccessTestCases(t *testing.T) {
 	}
 }
 
-//
-//
-//// TestAggregatedMetricsLBAC tests that LBAC works correctly with aggregated metrics
-//// by ensuring that only aggregated metrics matching the LBAC policies are returned.
-//func TestAggregatedMetricsLBAC(t *testing.T) {
-//
-//	// Policies are ORed together into a disjunctive normal form, aka an OR of ANDs
-//	// We need to only use policies that negate here, otherwise they will filter out the
-//	// aggregated metric stream at the stream/selector level, which is not what we want.
-//	// We want to make sure LBAC policies are applied as filters on the aggregated metric stream.
-//	policies := []api.LabelPolicy{
-//		{Selector: `{env!="dev", classification!="secret"}`}, // returns prod, notsecret
-//		{Selector: `{classification!="secret"}`},             //retruns dev, confidential and prod, notsecret
-//	}
-//	tokenString := provisionInstance(t, adminClient, policies...)
-//
-//	c := NewLogsClient("test_instance", tokenString, enterpriseLogs.HTTPEndpoint(),
-//		InjectHeadersOption{
-//			string(httpreq.QueryTagsHTTPHeader): []string{"source=grafana-lokiexplore-app"},
-//		},
-//	)
-//
-//	// Guard against test pollution
-//	output, err := c.RunRangeQuery(aggregatedLogsQuery)
-//	require.NoError(t, err)
-//	require.Equal(t, "success", output.Status)
-//	require.Len(t, output.Data.Stream, 0)
-//
-//	// Push aggregated metrics
-//	pushAggregatedMetrics(t, c)
-//	c.Flush()
+func TestAggregatedMetricsTestCases(t *testing.T) {
+	var aggregatedMetricsTestCases = []*testQueryAndLabelResults{
+		{
+			name:          "aggregated metrics",
+			createCluster: clusterAllLBACAggregation,
+			tenantID:      randStringRunes(),
+			now:           time.Now(),
+			labelPolicies: []types.LabelPolicy{
+				labelaccess.PolicyFromSelectorString(`{env!="dev", classification!="secret"}`),
+				labelaccess.PolicyFromSelectorString(`{classification!="secret"}`),
+			},
+			labelValues: map[string][]string{
+				"classification": {"confidential", "secret"},
+				"env":            {"dev", "prod"},
+				"job":            {"varlog"},
+			},
+			lines: []string{`ts=1 bytes=1024 count=10 job="varlog" service_name="varlog_service" env="dev" classification="confidential"`,
+				`ts=4 bytes=8192 count=40 job="varlog" service_name="varlog_service" env="prod" classification="notsecret"`},
+			streams: []map[string]string{
+				{
+					"classification": "confidential",
+					"env":            "dev",
+					"job":            "varlog",
+				},
+				{
+					"classification": "secret",
+					"env":            "prod",
+					"job":            "varlog",
+				},
+				{
+					"classification": "secret",
+					"env":            "dev",
+					"job":            "varlog",
+				},
+				{
+					"job": "varlog",
+				},
+			},
+		},
+	}
+	t.Skip("This test is not complete")
+	for _, testCase := range aggregatedMetricsTestCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if testCase.createCluster == nil {
+				panic("test case is missing createCluster function")
+			}
+			tAll := testCase.createCluster(t)
+			testCase.ingestAggregatedMetrics(t, tAll)
+
+			cliQuery := testCase.cliQuery(t, tAll)
+
+			testCase.aggregatedMetricsQuery(t, cliQuery)
+			testCase.labelValuesQuery(t, cliQuery)
+			//testCase.seriesQuery(t, cliQuery)
+			//testCase.metricsRangeQuery(t, cliQuery)
+			//testCase.metricsQuery(t, cliQuery)
+		})
+	}
+}
+
 //
 //	// Query aggregated metrics
-//	output, err = c.RunRangeQuery(aggregatedLogsQuery)
-//	require.NoError(t, err)
-//	require.Equal(t, "success", output.Status)
-//	require.Equal(t, "streams", output.Data.ResultType)
-//
-//	require.Len(t, output.Data.Stream, 2)
-//	require.Equal(t, "varlog_service", output.Data.Stream[0].Stream["__aggregated_metric__"])
-//
-//	expected := []string{
-//		`ts=1 bytes=1024 count=10 job="varlog" service_name="varlog_service" env="dev" classification="confidential"`,
-//		`ts=4 bytes=8192 count=40 job="varlog" service_name="varlog_service" env="prod" classification="notsecret"`,
-//	}
-//
-//	actual := []string{}
-//	for _, stream := range output.Data.Stream {
-//		for _, v := range stream.Values {
-//			actual = append(actual, v[1])
-//		}
-//	}
-//
-//	require.ElementsMatch(t, expected, actual)
+
 //}
 
 type testQueryAndLabelResults struct {
@@ -276,6 +299,82 @@ func (tc *testQueryAndLabelResults) ingest(t *testing.T, tAll *cluster.Component
 	require.NoError(t, cliWrite.PushLogLine("line2", tc.now.Add(time.Second), nil))
 	require.NoError(t, cliWrite.PushLogLine("line3", tc.now.Add(2*time.Second), nil, map[string]string{"classification": "secret", "env": "dev"}))
 	require.NoError(t, cliWrite.PushLogLine("line4", tc.now.Add(3*time.Second), nil, map[string]string{"classification": "secret", "env": "prod"}))
+	require.NoError(t, cliWrite.Flush())
+}
+
+func (tc *testQueryAndLabelResults) ingestAggregatedMetrics(t *testing.T, tAll *cluster.Component) {
+	cliWrite := client.New(tc.tenantID, "", tAll.HTTPURL())
+	cliWrite.Now = tc.now
+
+	aggMetricLabels := map[string]string{"__aggregated_metric__": "varlog_service"}
+
+	// Aggregated metrics for dev environment with confidential classification
+	require.NoError(t, cliWrite.PushLogLine(
+		`ts=1 bytes=1024 count=10 job="varlog" service_name="varlog_service" env="dev" classification="confidential"`,
+		tc.now,
+		aggMetricLabels,
+	))
+
+	// Aggregated metrics for dev environment with secret classification
+	require.NoError(t, cliWrite.PushLogLine(
+		`ts=2 bytes=2048 count=20 job="varlog" service_name="varlog_service" env="dev" classification="secret"`,
+		tc.now.Add(-time.Second),
+		aggMetricLabels,
+	))
+
+	// Aggregated metrics for prod environment with secret classification
+	require.NoError(t, cliWrite.PushLogLine(
+		`ts=3 bytes=4096 count=30 job="varlog" service_name="varlog_service" env="prod" classification="secret"`,
+		tc.now.Add(-2*time.Second),
+		aggMetricLabels,
+	))
+
+	// Aggregated metrics for prod environment with notsecret classification
+	require.NoError(t, cliWrite.PushLogLine(
+		`ts=4 bytes=8192 count=40 job="varlog" service_name="varlog_service" env="prod" classification="notsecret"`,
+		tc.now.Add(-3*time.Second),
+		aggMetricLabels,
+	))
+
+	require.NoError(t, cliWrite.Flush())
+}
+
+func (tc *testQueryAndLabelResults) aggregatedMetricsQuery(t *testing.T, qc *client.Client) {
+	t.Run("aggregated-metrics-query", func(t *testing.T) {
+
+		// query the available lines
+		output, err := qc.RunRangeQuery(context.Background(), aggregatedLogsQuery)
+		require.NoError(t, err)
+		assert.Equal(t, "success", output.Status)
+		assert.Equal(t, "streams", output.Data.ResultType)
+
+		var actualLines, streams []string
+		for _, row := range output.Data.Stream {
+			streams = append(streams, labels.FromMap(row.Stream).String())
+			for _, lines := range row.Values {
+				actualLines = append(actualLines, lines[1])
+			}
+		}
+		assert.ElementsMatch(t, tc.lines, actualLines)
+		//assert.ElementsMatch(t, tc.streams, streams)
+	})
+
+	//	require.Len(t, output.Data.Stream, 2)
+	//	require.Equal(t, "varlog_service", output.Data.Stream[0].Stream["__aggregated_metric__"])
+	//
+	//	expected := []string{
+	//		`ts=1 bytes=1024 count=10 job="varlog" service_name="varlog_service" env="dev" classification="confidential"`,
+	//		`ts=4 bytes=8192 count=40 job="varlog" service_name="varlog_service" env="prod" classification="notsecret"`,
+	//	}
+	//
+	//	actual := []string{}
+	//	for _, stream := range output.Data.Stream {
+	//		for _, v := range stream.Values {
+	//			actual = append(actual, v[1])
+	//		}
+	//	}
+	//
+	//	require.ElementsMatch(t, expected, actual)
 }
 
 func (tc *testQueryAndLabelResults) cliQuery(t *testing.T, tAll *cluster.Component) *client.Client {
