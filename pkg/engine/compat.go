@@ -302,17 +302,20 @@ func dedupeEntries(entries []logproto.Entry) []logproto.Entry {
 	if len(entries) <= 1 {
 		return entries
 	}
-	w := 1
-	for r := 1; r < len(entries); r++ {
-		prev := &entries[w-1]
-		cur := &entries[r]
+
+	// tracks the next position to write the next unique entry.
+	next := 1
+
+	for i := 1; i < len(entries); i++ {
+		prev := &entries[next-1]
+		cur := &entries[i]
 		if cur.Timestamp.Equal(prev.Timestamp) && cur.Line == prev.Line && cur.Equal(prev) {
 			continue
 		}
-		entries[w] = entries[r]
-		w++
+		entries[next] = entries[i]
+		next++
 	}
-	return entries[:w]
+	return entries[:next]
 }
 
 func (b *streamsResultBuilder) Len() int {
