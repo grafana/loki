@@ -238,8 +238,10 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input index.Write
 		})
 		if resp != nil {
 			for _, cc := range resp.ConsumedCapacity {
-				a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem", *cc.TableName).
-					Add(*cc.CapacityUnits)
+				if cc.TableName != nil && cc.CapacityUnits != nil {
+					a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem", *cc.TableName).
+						Add(*cc.CapacityUnits)
+				}
 			}
 		}
 
@@ -352,7 +354,7 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query index.Query, cal
 		output, err := a.DynamoDB.Query(innerCtx, input, func(o *dynamodb.Options) { o.Retryer = retryer })
 		pageCount++
 		span.SetAttributes(attribute.Int("page", pageCount))
-		if cc := output.ConsumedCapacity; cc != nil {
+		if cc := output.ConsumedCapacity; cc != nil && cc.TableName != nil && cc.CapacityUnits != nil {
 			a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages", *cc.TableName).
 				Add(*cc.CapacityUnits)
 		}
@@ -487,8 +489,10 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 		})
 		if resp != nil {
 			for _, cc := range resp.ConsumedCapacity {
-				a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchGetItemPages", *cc.TableName).
-					Add(*cc.CapacityUnits)
+				if cc.TableName != nil && cc.CapacityUnits != nil {
+					a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchGetItemPages", *cc.TableName).
+						Add(*cc.CapacityUnits)
+				}
 			}
 		}
 
