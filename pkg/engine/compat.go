@@ -312,7 +312,7 @@ func dedupeEntries(entries []logproto.Entry) []logproto.Entry {
 	for i := 1; i < len(entries); i++ {
 		prev := &entries[next-1]
 		cur := &entries[i]
-		if cur.Timestamp.Equal(prev.Timestamp) && cur.Line == prev.Line && cur.Equal(prev) {
+		if cur.Equal(prev) {
 			continue
 		}
 		entries[next] = entries[i]
