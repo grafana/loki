@@ -2009,7 +2009,7 @@ The `DNS lookup timeout: [<address>]` string is the context cause embedded withi
 - Enforced by: Index gateway client, bloom gateway client DNS discovery loop
 - Retryable: Yes (DNS may recover)
 - HTTP status: N/A (connectivity failure)
-- Configurable per tenant: No 
+- Configurable per tenant: No
 
 ## Scheduler and frontend errors
 
@@ -2080,7 +2080,7 @@ The query queue has reached its maximum capacity. This indicates the system is o
    query_scheduler:
      max_outstanding_requests_per_tenant: 64000
    ```
-   
+
 1. **Rate limit queries** at the client or load balancer level.
 1. **Optimize slow queries** to reduce queue time.
 
@@ -2191,7 +2191,7 @@ The frontend scheduler worker detected that the scheduler is in shutdown mode an
 - Enforced by: Scheduler
 - Retryable: Yes (after scheduler restart)
 - HTTP status: 503 Service Unavailable
-- Configurable per tenant: No 
+- Configurable per tenant: No
 
 ## Index gateway errors
 
