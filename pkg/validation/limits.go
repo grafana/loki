@@ -207,6 +207,8 @@ type Limits struct {
 	RulerRemoteEvaluationTimeout         time.Duration `yaml:"ruler_remote_evaluation_timeout" json:"ruler_remote_evaluation_timeout" doc:"description=Timeout for a remote rule evaluation. Defaults to the value of 'querier.query-timeout'."`
 	RulerRemoteEvaluationMaxResponseSize int64         `yaml:"ruler_remote_evaluation_max_response_size" json:"ruler_remote_evaluation_max_response_size" doc:"description=Maximum size (in bytes) of the allowable response size from a remote rule evaluation. Set to 0 to allow any response size (default)."`
 
+	RulerGrafanaDatasourceUID string `yaml:"ruler_grafana_datasource_uid" json:"ruler_grafana_datasource_uid" doc:"Configure the a per-tenant datasourceUID for rendering the Grafana dashboard."`
+
 	// Global and per tenant deletion mode
 	DeletionMode string `yaml:"deletion_mode" json:"deletion_mode"`
 
@@ -420,6 +422,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when shuffle-sharding is enabled in the ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 	f.BoolVar(&l.RulerEnableWALReplay, "ruler.enable-wal-replay", true, "Enable WAL replay on ruler startup. Disabling this can reduce memory usage on startup at the cost of not recovering in-memory WAL metrics on restart.")
+
+	f.StringVar(&l.RulerGrafanaDatasourceUID, "ruler.grafana-datasource-uid", "", "Grafana datasourceUID per-tenant.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).")
 	_ = l.RetentionPeriod.Set("0s")
@@ -1098,6 +1102,10 @@ func (o *Overrides) RulerRemoteEvaluationTimeout(userID string) time.Duration {
 // RulerRemoteEvaluationMaxResponseSize returns the maximum allowable response size from a remote rule evaluation for a given user.
 func (o *Overrides) RulerRemoteEvaluationMaxResponseSize(userID string) int64 {
 	return o.getOverridesForUser(userID).RulerRemoteEvaluationMaxResponseSize
+}
+
+func (o *Overrides) RulerGrafanaDatasourceUID(userID string) string {
+	return o.getOverridesForUser(userID).RulerGrafanaDatasourceUID
 }
 
 // RetentionPeriod returns the retention period for a given user.
