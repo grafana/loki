@@ -156,13 +156,28 @@ func autoLabels(records map[string]interface{}, kuberneteslbs model.LabelSet) er
 }
 
 func extractLabels(records map[string]interface{}, keys []string) model.LabelSet {
-	res := model.LabelSet{}
+	if len(keys) == 0 {
+		return model.LabelSet{}
+	}
+
+	res := make(model.LabelSet, len(keys)) // Pre-allocate with expected size
 	for _, k := range keys {
-		v, ok := records[k]
+		v, ok := getNestedValue(records, k)
 		if !ok {
 			continue
 		}
-		ln := model.LabelName(k)
+
+		// Convert dot notation to valid label name by replacing dots with underscores
+		// Only allocate new string if dots are present
+		var labelName string
+		if strings.Contains(k, ".") {
+			labelName = strings.ReplaceAll(k, ".", "_")
+		} else {
+			labelName = k
+		}
+
+		ln := model.LabelName(labelName)
+
 		// skips invalid name and values
 		if !model.LegacyValidation.IsValidLabelName(string(ln)) {
 			continue
@@ -174,6 +189,91 @@ func extractLabels(records map[string]interface{}, keys []string) model.LabelSet
 		res[ln] = lv
 	}
 	return res
+}
+
+// traverseNestedMap navigates through nested maps using dot notation
+// Returns the final map and key for operations, or just the value if getValue is true
+func traverseNestedMap(records map[string]interface{}, dottedKey string, getValue bool) (interface{}, map[string]interface{}, string, bool) {
+	// Input validation
+	if records == nil || dottedKey == "" {
+		return nil, nil, "", false
+	}
+
+	if !strings.Contains(dottedKey, ".") {
+		// Handle non-nested keys directly
+		if getValue {
+			if value, exists := records[dottedKey]; exists {
+				return value, nil, "", true
+			}
+		}
+		return nil, records, dottedKey, true
+	}
+
+	keys := strings.Split(dottedKey, ".")
+
+	// Filter out empty segments (e.g., from "a..b" or ".a.b")
+	validKeys := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if key != "" {
+			validKeys = append(validKeys, key)
+		}
+	}
+
+	if len(validKeys) == 0 {
+		return nil, nil, "", false
+	}
+
+	if len(validKeys) == 1 {
+		// After filtering, it's just a simple key
+		key := validKeys[0]
+		if getValue {
+			if value, exists := records[key]; exists {
+				return value, nil, "", true
+			}
+			return nil, nil, "", false
+		}
+		return nil, records, key, true
+	}
+
+	current := records
+
+	// Navigate to the target location
+	for i := 0; i < len(validKeys)-1; i++ {
+		value, exists := current[validKeys[i]]
+		if !exists {
+			return nil, nil, "", false
+		}
+
+		nextMap, ok := value.(map[string]interface{})
+		if !ok {
+			return nil, nil, "", false
+		}
+		current = nextMap
+	}
+
+	finalKey := validKeys[len(validKeys)-1]
+
+	if getValue {
+		if value, exists := current[finalKey]; exists {
+			return value, current, finalKey, true
+		}
+		return nil, nil, "", false
+	}
+
+	return nil, current, finalKey, true
+}
+
+// getNestedValue retrieves a value from a nested map using dot notation
+// For example, "log.level" will traverse records["log"]["level"]
+func getNestedValue(records map[string]interface{}, dottedKey string) (interface{}, bool) {
+	// Fast path for simple keys
+	if !strings.Contains(dottedKey, ".") {
+		value, exists := records[dottedKey]
+		return value, exists
+	}
+
+	value, _, _, ok := traverseNestedMap(records, dottedKey, true)
+	return value, ok
 }
 
 // mapLabels convert records into labels using a json map[string]interface{} mapping
@@ -215,7 +315,15 @@ func getRecordValue(key string, records map[string]interface{}) (string, bool) {
 
 func removeKeys(records map[string]interface{}, keys []string) {
 	for _, k := range keys {
-		delete(records, k)
+		removeNestedKey(records, k)
+	}
+}
+
+// removeNestedKey removes a key from the records map, supporting both regular and dot notation
+func removeNestedKey(records map[string]interface{}, dottedKey string) {
+	_, parentMap, finalKey, ok := traverseNestedMap(records, dottedKey, false)
+	if ok && parentMap != nil {
+		delete(parentMap, finalKey)
 	}
 }
 
