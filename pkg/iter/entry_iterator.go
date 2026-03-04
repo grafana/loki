@@ -121,7 +121,7 @@ func (i *mergeEntryIterator) fillBuffer() {
 
 	// We support multiple entries with the same timestamp, and we want to
 	// preserve their original order.
-	// Entries with identical timestamp and line are removed as duplicates.
+	// Entries with identical timestamp, line, and metadata are removed as duplicates.
 	for {
 		next := i.tree.Winner()
 		entry := next.At()
@@ -139,7 +139,7 @@ func (i *mergeEntryIterator) fillBuffer() {
 
 		var dupe bool
 		for _, t := range previous {
-			if t.Line == entry.Line {
+			if t.Equal(entry) {
 				i.stats.AddDuplicates(1)
 				dupe = true
 				break

@@ -77,7 +77,7 @@ func executorHandler(
 	}
 
 	if cfg.AlignQueriesWithStep {
-		h = queryrangebase.StepAlignMiddleware.Wrap(h)
+		h = newMetricStepAlignMiddleware().Wrap(h)
 	}
 
 	if cache.IsCacheConfigured(cfg.ResultsCache.CacheConfig) {
@@ -115,6 +115,30 @@ func executorHandler(
 	}
 
 	return queryrange.NewSerializeHTTPHandler(h, queryrange.DefaultCodec), nil
+}
+
+// newMetricStepAlignMiddleware returns a middleware that applies step alignment
+// only to metric queries (SampleExpr). Log queries are passed through without
+// modification, preserving sub-second timestamp precision.
+func newMetricStepAlignMiddleware() queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		aligned := queryrangebase.StepAlignMiddleware.Wrap(next)
+		return metricStepAlign{next: next, aligned: aligned}
+	})
+}
+
+type metricStepAlign struct {
+	next    queryrangebase.Handler
+	aligned queryrangebase.Handler
+}
+
+func (m metricStepAlign) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	if req, ok := r.(*queryrange.LokiRequest); ok && req.Plan != nil {
+		if _, isSample := req.Plan.AST.(syntax.SampleExpr); isSample {
+			return m.aligned.Do(ctx, r)
+		}
+	}
+	return m.next.Do(ctx, r)
 }
 
 type queryHandler struct {

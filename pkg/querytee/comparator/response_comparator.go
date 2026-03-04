@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -422,51 +423,91 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 		}
 
 		actualStream := actual[actualStreamIndex]
-		expectedValuesLen := len(expectedStream.Entries)
-		actualValuesLen := len(actualStream.Entries)
-
-		if expectedValuesLen != actualValuesLen {
-			err := fmt.Errorf("expected %d values for stream %s but got %d: %w", expectedValuesLen,
-				expectedStream.Labels, actualValuesLen, ErrComparisonMismatch)
-			if expectedValuesLen > 0 && actualValuesLen > 0 {
-				// assuming BACKWARD search since that is the default ordering
-				level.Error(util_log.Logger).Log("msg", err.Error(), "newest-expected-ts", expectedStream.Entries[0].Timestamp.UnixNano(),
-					"oldest-expected-ts", expectedStream.Entries[expectedValuesLen-1].Timestamp.UnixNano(),
-					"newest-actual-ts", actualStream.Entries[0].Timestamp.UnixNano(), "oldest-actual-ts", actualStream.Entries[actualValuesLen-1].Timestamp.UnixNano())
-			}
-			return &ComparisonSummary{MismatchCause: CauseStreamEntryCountMismatch}, err
-		}
-
-		for i, expectedSamplePair := range expectedStream.Entries {
-			actualSamplePair := actualStream.Entries[i]
-			if !expectedSamplePair.Timestamp.Equal(actualSamplePair.Timestamp) {
-				return &ComparisonSummary{MismatchCause: CauseStreamTimestampMismatch}, fmt.Errorf("expected timestamp %v but got %v for stream %s: %w", expectedSamplePair.Timestamp.UnixNano(),
-					actualSamplePair.Timestamp.UnixNano(), expectedStream.Labels, ErrComparisonMismatch)
-			}
-			if expectedSamplePair.Line != actualSamplePair.Line {
-				return &ComparisonSummary{MismatchCause: CauseStreamLineMismatch}, fmt.Errorf("expected line %s for timestamp %v but got %s for stream %s: %w", expectedSamplePair.Line,
-					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Line, expectedStream.Labels, ErrComparisonMismatch)
-			}
-			if expectedSamplePair.StructuredMetadata.Len() != actualSamplePair.StructuredMetadata.Len() {
-				return &ComparisonSummary{MismatchCause: CauseStructuredMetadataCountMismatch}, fmt.Errorf("expected %d metadata pairs for timestamp %v but got %d pairs for stream %s: %w", expectedSamplePair.StructuredMetadata.Len(),
-					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.StructuredMetadata.Len(), expectedStream.Labels, ErrComparisonMismatch)
-			}
-			if !labels.Equal(expectedSamplePair.StructuredMetadata, actualSamplePair.StructuredMetadata) {
-				return &ComparisonSummary{MismatchCause: CauseStructuredMetadataMismatch}, fmt.Errorf("expected metadata %v for timestamp %v but got %v for stream %s: %w", expectedSamplePair.StructuredMetadata.String(),
-					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.StructuredMetadata.String(), expectedStream.Labels, ErrComparisonMismatch)
-			}
-			if expectedSamplePair.Parsed.Len() != actualSamplePair.Parsed.Len() {
-				return &ComparisonSummary{MismatchCause: CauseParsedLabelsCountMismatch}, fmt.Errorf("expected %d parsed label pairs for timestamp %v but got %d pairs for stream %s: %w", expectedSamplePair.Parsed.Len(),
-					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Parsed.Len(), expectedStream.Labels, ErrComparisonMismatch)
-			}
-			if !labels.Equal(expectedSamplePair.StructuredMetadata, actualSamplePair.StructuredMetadata) {
-				return &ComparisonSummary{MismatchCause: CauseParsedLabelsMismatch}, fmt.Errorf("expected parsed labels %v for timestamp %v but got %v for stream %s: %w", expectedSamplePair.Parsed.String(),
-					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Parsed.String(), expectedStream.Labels, ErrComparisonMismatch)
-			}
+		cause, err := compareStreamEntries(expectedStream.Labels, expectedStream.Entries, actualStream.Entries)
+		if err != nil {
+			return &ComparisonSummary{MismatchCause: cause}, err
 		}
 	}
 
 	return nil, nil
+}
+
+// normalizeStreamEntriesInPlace sorts entries that share the same timestamp in place.
+// Ordering key within a same-timestamp run: Line, then StructuredMetadata, then Parsed.
+// Logs are assumed to be ordered by timestamp; only order within same-timestamp runs is changed.
+func normalizeStreamEntriesInPlace(entries []loghttp.Entry) {
+	i := 0
+	for i < len(entries) {
+		j := i + 1
+		for j < len(entries) && entries[j].Timestamp.Equal(entries[i].Timestamp) {
+			j++
+		}
+		if j-i > 1 {
+			sort.Slice(entries[i:j], func(a, b int) bool {
+				ea, eb := &entries[i+a], &entries[i+b]
+				if ea.Line != eb.Line {
+					return ea.Line < eb.Line
+				}
+				if c := labels.Compare(ea.StructuredMetadata, eb.StructuredMetadata); c != 0 {
+					return c < 0
+				}
+				return labels.Compare(ea.Parsed, eb.Parsed) < 0
+			})
+		}
+		i = j
+	}
+}
+
+// compareStreamEntries compares two slices of log entries. Entries are assumed ordered by timestamp;
+// within the same timestamp, order is normalized (by line, StructuredMetadata, Parsed) in place before index-by-index comparison.
+func compareStreamEntries(streamLabels loghttp.LabelSet, expected, actual []loghttp.Entry) (string, error) {
+	expectedValuesLen := len(expected)
+	actualValuesLen := len(actual)
+
+	if expectedValuesLen != actualValuesLen {
+		err := fmt.Errorf("expected %d values for stream %s but got %d: %w", expectedValuesLen,
+			streamLabels, actualValuesLen, ErrComparisonMismatch)
+		if expectedValuesLen > 0 && actualValuesLen > 0 {
+			// assuming BACKWARD search since that is the default ordering
+			level.Error(util_log.Logger).Log("msg", err.Error(), "newest-expected-ts", expected[0].Timestamp.UnixNano(),
+				"oldest-expected-ts", expected[expectedValuesLen-1].Timestamp.UnixNano(),
+				"newest-actual-ts", actual[0].Timestamp.UnixNano(), "oldest-actual-ts", actual[actualValuesLen-1].Timestamp.UnixNano())
+		}
+		return CauseStreamEntryCountMismatch, err
+	}
+
+	normalizeStreamEntriesInPlace(expected)
+	normalizeStreamEntriesInPlace(actual)
+
+	for i := range expected {
+		expectedSamplePair := &expected[i]
+		actualSamplePair := &actual[i]
+		if !expectedSamplePair.Timestamp.Equal(actualSamplePair.Timestamp) {
+			return CauseStreamTimestampMismatch, fmt.Errorf("expected timestamp %v but got %v for stream %s: %w", expectedSamplePair.Timestamp.UnixNano(),
+				actualSamplePair.Timestamp.UnixNano(), streamLabels, ErrComparisonMismatch)
+		}
+		if expectedSamplePair.Line != actualSamplePair.Line {
+			return CauseStreamLineMismatch, fmt.Errorf("expected line %s for timestamp %v but got %s for stream %s: %w", expectedSamplePair.Line,
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Line, streamLabels, ErrComparisonMismatch)
+		}
+		if expectedSamplePair.StructuredMetadata.Len() != actualSamplePair.StructuredMetadata.Len() {
+			return CauseStructuredMetadataCountMismatch, fmt.Errorf("expected %d metadata pairs for timestamp %v but got %d pairs for stream %s: %w", expectedSamplePair.StructuredMetadata.Len(),
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.StructuredMetadata.Len(), streamLabels, ErrComparisonMismatch)
+		}
+		if !labels.Equal(expectedSamplePair.StructuredMetadata, actualSamplePair.StructuredMetadata) {
+			return CauseStructuredMetadataMismatch, fmt.Errorf("expected metadata %v for timestamp %v but got %v for stream %s: %w", expectedSamplePair.StructuredMetadata.String(),
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.StructuredMetadata.String(), streamLabels, ErrComparisonMismatch)
+		}
+		if expectedSamplePair.Parsed.Len() != actualSamplePair.Parsed.Len() {
+			return CauseParsedLabelsCountMismatch, fmt.Errorf("expected %d parsed label pairs for timestamp %v but got %d pairs for stream %s: %w", expectedSamplePair.Parsed.Len(),
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Parsed.Len(), streamLabels, ErrComparisonMismatch)
+		}
+		if !labels.Equal(expectedSamplePair.Parsed, actualSamplePair.Parsed) {
+			return CauseParsedLabelsMismatch, fmt.Errorf("expected parsed labels %v for timestamp %v but got %v for stream %s: %w", expectedSamplePair.Parsed.String(),
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Parsed.String(), streamLabels, ErrComparisonMismatch)
+		}
+	}
+	return CauseNoMismatch, nil
 }
 
 // filterStreamsOutsideWindow filters out entries that are outside the comparable window

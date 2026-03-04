@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,10 +21,28 @@ import (
 	"go.yaml.in/yaml/v4"
 )
 
+// buildCacheKey builds a "path:line:col" string without fmt.Sprintf allocations.
+func buildCacheKey(path string, line, col int) string {
+	var b strings.Builder
+	b.Grow(len(path) + 12)
+	b.WriteString(path)
+	b.WriteByte(':')
+	b.WriteString(strconv.Itoa(line))
+	b.WriteByte(':')
+	b.WriteString(strconv.Itoa(col))
+	return b.String()
+}
+
 // inlineRenderingTracker tracks schemas during inline rendering to prevent infinite recursion.
 // Uses sync.Map for lock-free concurrent access - each goroutine works on different keys,
 // so sync.Map's internal sharding reduces contention compared to a single mutex.
 var inlineRenderingTracker sync.Map
+
+// ClearInlineRenderingTracker resets the inline rendering tracker.
+// Call this between document lifecycles in long-running processes to bound memory.
+func ClearInlineRenderingTracker() {
+	inlineRenderingTracker.Clear()
+}
 
 // bundlingModeCount tracks the number of active bundling operations.
 // Uses reference counting to support concurrent BundleDocument calls safely.
@@ -183,6 +202,15 @@ func CreateSchemaProxyRef(ref string) *SchemaProxy {
 	return &SchemaProxy{refStr: ref, lock: &sync.Mutex{}}
 }
 
+// CreateSchemaProxyRefWithSchema creates a SchemaProxy that carries both a $ref and sibling schema
+// properties. This supports JSON Schema 2020-12 section 7.7.1.1 where $ref can coexist with other
+// keywords. When rendered, $ref appears first followed by the schema's sibling properties.
+//
+// If schema is nil, the result behaves identically to CreateSchemaProxyRef.
+func CreateSchemaProxyRefWithSchema(ref string, schema *Schema) *SchemaProxy {
+	return &SchemaProxy{refStr: ref, rendered: schema, lock: &sync.Mutex{}}
+}
+
 // GetValueNode returns the value node of the SchemaProxy.
 func (sp *SchemaProxy) GetValueNode() *yaml.Node {
 	if sp.schema != nil {
@@ -219,7 +247,7 @@ func (sp *SchemaProxy) Schema() *Schema {
 	idx := sp.schema.Value.GetIndex()
 	if idx != nil && sp.schema.Value != nil {
 		if sp.schema.Value.IsReference() && sp.schema.Value.GetReferenceNode() != nil && sp.schema.GetValueNode() != nil {
-			loc := fmt.Sprintf("%s:%d:%d", idx.GetSpecAbsolutePath(), sp.schema.GetValueNode().Line, sp.schema.GetValueNode().Column)
+			loc := buildCacheKey(idx.GetSpecAbsolutePath(), sp.schema.GetValueNode().Line, sp.schema.GetValueNode().Column)
 			if seen, ok := idx.GetHighCache().Load(loc); ok {
 				idx.HighCacheHit()
 				// cache locally to avoid recreating on repeated access
@@ -238,21 +266,30 @@ func (sp *SchemaProxy) Schema() *Schema {
 	}
 	sch := NewSchema(s)
 
+	cached := false
 	if idx != nil {
 		// only store the schema in the cache if is a reference!
 		if sp.IsReference() && sp.GetReferenceNode() != nil && sp.schema != nil && sp.schema.GetValueNode() != nil {
-			// if sp.schema.GetValueNode() != nil {
-			loc := fmt.Sprintf("%s:%d:%d", idx.GetSpecAbsolutePath(), sp.schema.GetValueNode().Line, sp.schema.GetValueNode().Column)
+			loc := buildCacheKey(idx.GetSpecAbsolutePath(), sp.schema.GetValueNode().Line, sp.schema.GetValueNode().Column)
 
 			// caching is only performed on traditional $ref nodes with a reference and a value node, any 3.1 additional
 			// will not be cached as libopenapi does not yet support them.
 			if len(sp.GetReferenceNode().Content) == 2 {
 				idx.GetHighCache().Store(loc, sch)
+				cached = true
 			}
 		}
 	}
 
-	sp.rendered = sp.copySchemaWithParentProxy(sch)
+	if cached {
+		// Schema was stored in shared cache — must copy to avoid races with
+		// concurrent readers that will read the cached schema.
+		sp.rendered = sp.copySchemaWithParentProxy(sch)
+	} else {
+		// Not cached — safe to set ParentProxy directly, avoiding a copy.
+		sch.ParentProxy = sp
+		sp.rendered = sch
+	}
 	return sp.rendered
 }
 
@@ -349,6 +386,27 @@ func (sp *SchemaProxy) GoLowUntyped() any {
 	return sp.schema.Value
 }
 
+// isRefWithSiblings returns true when this is a programmatically-created proxy
+// that carries both a $ref and sibling schema properties.
+func (sp *SchemaProxy) isRefWithSiblings() bool {
+	return sp.refStr != "" && sp.rendered != nil && sp.schema == nil
+}
+
+// renderRefWithSiblings builds a YAML mapping node containing $ref as the
+// first key followed by all rendered schema sibling properties.
+func (sp *SchemaProxy) renderRefWithSiblings() *yaml.Node {
+	nb := high.NewNodeBuilder(sp.rendered, nil)
+	node := nb.Render()
+	refKey := utils.CreateStringNode("$ref")
+	refVal := utils.CreateStringNode(sp.refStr)
+	refVal.Style = yaml.SingleQuotedStyle
+	content := make([]*yaml.Node, 0, len(node.Content)+2)
+	content = append(content, refKey, refVal)
+	content = append(content, node.Content...)
+	node.Content = content
+	return node
+}
+
 // Render will return a YAML representation of the Schema object as a byte slice.
 func (sp *SchemaProxy) Render() ([]byte, error) {
 	return yaml.Marshal(sp)
@@ -356,19 +414,18 @@ func (sp *SchemaProxy) Render() ([]byte, error) {
 
 // MarshalYAML will create a ready to render YAML representation of the SchemaProxy object.
 func (sp *SchemaProxy) MarshalYAML() (interface{}, error) {
-	var s *Schema
-	var err error
-	// if this schema isn't a reference, then build it out.
 	if !sp.IsReference() {
-		s, err = sp.BuildSchema()
+		s, err := sp.BuildSchema()
 		if err != nil {
 			return nil, err
 		}
 		nb := high.NewNodeBuilder(s, s.low)
 		return nb.Render(), nil
-	} else {
-		return sp.GetReferenceNode(), nil
 	}
+	if sp.isRefWithSiblings() {
+		return sp.renderRefWithSiblings(), nil
+	}
+	return sp.GetReferenceNode(), nil
 }
 
 // getInlineRenderKey generates a unique key for tracking this schema during inline rendering.
@@ -439,13 +496,22 @@ func (sp *SchemaProxy) MarshalYAMLInline() (interface{}, error) {
 }
 
 func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (interface{}, error) {
+	// refNode returns the correct reference YAML node — with sibling
+	// properties when this proxy carries both a $ref and schema data.
+	refNode := func() *yaml.Node {
+		if sp.isRefWithSiblings() {
+			return sp.renderRefWithSiblings()
+		}
+		return sp.GetReferenceNode()
+	}
+
 	// check if this reference should be preserved (set via context by discriminator handling).
 	// this avoids mutating shared SchemaProxy state and prevents race conditions.
 	// need to guard against nil schema.Value which can happen with bad/incomplete proxies.
 	if sp.IsReference() {
 		ref := sp.GetReference()
 		if ref != "" && ctx.ShouldPreserveRef(ref) {
-			return sp.GetReferenceNode(), nil
+			return refNode(), nil
 		}
 	}
 
@@ -466,7 +532,7 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 						rootIdx := rolodex.GetRootIndex()
 						// If the schema is in the root index, preserve the ref
 						if rootIdx != nil && schemaIdx == rootIdx {
-							return sp.GetReferenceNode(), nil
+							return refNode(), nil
 						}
 					}
 				}
@@ -482,7 +548,7 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 	if ctx.StartRendering(renderKey) {
 		// We're already rendering this schema in THIS call chain - return ref to break the cycle
 		if sp.IsReference() {
-			return sp.GetReferenceNode(),
+			return refNode(),
 				fmt.Errorf("schema render failure, circular reference: `%s`", sp.GetReference())
 		}
 		// For inline schemas, return an empty map to avoid infinite recursion
@@ -514,20 +580,16 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 		for _, c := range circ {
 			if sp.IsReference() {
 				if sp.GetReference() == c.LoopPoint.Definition {
-					// nope
-					return sp.GetReferenceNode(),
-						cirError((c.LoopPoint.Definition))
+					return refNode(), cirError(c.LoopPoint.Definition)
 				}
-				basePath := sp.GoLow().GetIndex().GetSpecAbsolutePath()
+				basePath := idx.GetSpecAbsolutePath()
 
 				if !filepath.IsAbs(basePath) && !strings.HasPrefix(basePath, "http") {
 					basePath, _ = filepath.Abs(basePath)
 				}
 
 				if basePath == c.LoopPoint.FullDefinition {
-					// we loop on our-self
-					return sp.GetReferenceNode(),
-						cirError((c.LoopPoint.Definition))
+					return refNode(), cirError(c.LoopPoint.Definition)
 				}
 				a := utils.ReplaceWindowsDriveWithLinuxPath(strings.Replace(c.LoopPoint.FullDefinition, basePath, "", 1))
 				b := sp.GetReference()
@@ -549,17 +611,14 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 				bBase, bFragment := index.SplitRefFragment(b)
 
 				if aFragment != "" && bFragment != "" && aFragment == bFragment {
-					return sp.GetReferenceNode(),
-						cirError((c.LoopPoint.Definition))
+					return refNode(), cirError(c.LoopPoint.Definition)
 				}
 
 				if aFragment == "" && bFragment == "" {
 					aNorm := strings.TrimPrefix(strings.TrimPrefix(aBase, "./"), "/")
 					bNorm := strings.TrimPrefix(strings.TrimPrefix(bBase, "./"), "/")
 					if aNorm != "" && bNorm != "" && aNorm == bNorm {
-						// nope
-						return sp.GetReferenceNode(),
-							cirError((c.LoopPoint.Definition))
+						return refNode(), cirError(c.LoopPoint.Definition)
 					}
 				}
 			}
@@ -570,6 +629,11 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 		return nil, err
 	}
 	if s != nil {
+		// For programmatic ref+siblings proxies, render directly to avoid nil-deref
+		// in Schema.MarshalYAMLInlineWithContext which assumes s.GoLow() is non-nil.
+		if sp.isRefWithSiblings() {
+			return sp.renderRefWithSiblings(), nil
+		}
 		// Delegate to Schema.MarshalYAMLInlineWithContext to ensure discriminator handling is applied
 		// and cycle detection context is propagated.
 		// Schema.MarshalYAMLInlineWithContext sets preserveReference on OneOf/AnyOf items when

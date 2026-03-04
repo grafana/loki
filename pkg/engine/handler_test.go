@@ -70,6 +70,79 @@ func TestHandler(t *testing.T) {
 	require.NotNil(t, handler)
 }
 
+func TestMetricStepAlignMiddleware(t *testing.T) {
+	base := time.Date(2026, 3, 2, 6, 43, 7, 0, time.UTC)
+	startWithSubSecond := base.Add(123 * time.Millisecond)
+	endWithSubSecond := base.Add(456 * time.Millisecond)
+
+	step := int64(1000) // 1s step in milliseconds
+
+	tests := []struct {
+		name          string
+		query         string
+		startTs       time.Time
+		endTs         time.Time
+		step          int64
+		expectAligned bool
+	}{
+		{
+			name:          "log query preserves sub-second timestamps",
+			query:         `{app="test"}`,
+			startTs:       startWithSubSecond,
+			endTs:         endWithSubSecond,
+			step:          step,
+			expectAligned: false,
+		},
+		{
+			name:          "metric query gets step-aligned",
+			query:         `rate({app="test"}[5m])`,
+			startTs:       startWithSubSecond,
+			endTs:         endWithSubSecond,
+			step:          step,
+			expectAligned: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedStart, capturedEnd time.Time
+
+			inner := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+				capturedStart = r.GetStart()
+				capturedEnd = r.GetEnd()
+				return &queryrange.LokiResponse{}, nil
+			})
+
+			middleware := newMetricStepAlignMiddleware()
+			handler := middleware.Wrap(inner)
+
+			expr, err := syntax.ParseExpr(tt.query)
+			require.NoError(t, err)
+
+			req := &queryrange.LokiRequest{
+				Query:   tt.query,
+				StartTs: tt.startTs,
+				EndTs:   tt.endTs,
+				Step:    tt.step,
+				Plan:    &plan.QueryPlan{AST: expr},
+			}
+
+			_, err = handler.Do(context.Background(), req)
+			require.NoError(t, err)
+
+			if tt.expectAligned {
+				alignedStart := time.UnixMilli((tt.startTs.UnixMilli() / tt.step) * tt.step)
+				alignedEnd := time.UnixMilli((tt.endTs.UnixMilli() / tt.step) * tt.step)
+				require.Equal(t, alignedStart, capturedStart, "metric query start should be step-aligned")
+				require.Equal(t, alignedEnd, capturedEnd, "metric query end should be step-aligned")
+			} else {
+				require.Equal(t, tt.startTs, capturedStart, "log query start should preserve original timestamp")
+				require.Equal(t, tt.endTs, capturedEnd, "log query end should preserve original timestamp")
+			}
+		})
+	}
+}
+
 func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 	now := time.Now()
 	startTime := now.Add(-1 * time.Hour)
