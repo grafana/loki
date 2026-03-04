@@ -28,21 +28,21 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		require.NoError(t, err)
 		// Set up a mock kafka that will return the record during the first poll.
 		clock := quartz.NewMock(t)
-		kafka := mockKafka{
-			fetches: []kgo.Fetches{{{
-				Topics: []kgo.FetchTopic{{
-					Topic: "test",
-					Partitions: []kgo.FetchPartition{{
-						Partition: 1,
-						Records: []*kgo.Record{{
-							Key:       []byte("tenant"),
-							Value:     b,
-							Timestamp: clock.Now(),
-						}},
+		fetchesCh := make(chan kgo.Fetches, 1)
+		fetchesCh <- kgo.Fetches{{
+			Topics: []kgo.FetchTopic{{
+				Topic: "test",
+				Partitions: []kgo.FetchPartition{{
+					Partition: 1,
+					Records: []*kgo.Record{{
+						Key:       []byte("tenant"),
+						Value:     b,
+						Timestamp: clock.Now(),
 					}},
 				}},
-			}}},
-		}
+			}},
+		}}
+		kafkaClient := mockKafka{fetches: fetchesCh}
 		reg := prometheus.NewRegistry()
 		// Need to assign the partition and set it to ready.
 		m, err := newPartitionManager(reg)
@@ -54,7 +54,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 		require.NoError(t, err)
 		s.clock = clock
-		c := newConsumer(&kafka, m, s, newOffsetReadinessCheck(m), "zone1",
+		c := newConsumer(&kafkaClient, m, s, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		ctx := context.Background()
 		require.NoError(t, c.pollFetches(ctx))
@@ -80,21 +80,21 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		require.NoError(t, err)
 		clock := quartz.NewMock(t)
 		// Set up a mock kafka that will return the record during the first poll.
-		kafka := mockKafka{
-			fetches: []kgo.Fetches{{{
-				Topics: []kgo.FetchTopic{{
-					Topic: "test",
-					Partitions: []kgo.FetchPartition{{
-						Partition: 1,
-						Records: []*kgo.Record{{
-							Key:       []byte("tenant"),
-							Value:     b,
-							Timestamp: clock.Now(),
-						}},
+		fetchesCh := make(chan kgo.Fetches, 1)
+		fetchesCh <- kgo.Fetches{{
+			Topics: []kgo.FetchTopic{{
+				Topic: "test",
+				Partitions: []kgo.FetchPartition{{
+					Partition: 1,
+					Records: []*kgo.Record{{
+						Key:       []byte("tenant"),
+						Value:     b,
+						Timestamp: clock.Now(),
 					}},
 				}},
-			}}},
-		}
+			}},
+		}}
+		kafkaClient := mockKafka{fetches: fetchesCh}
 		reg := prometheus.NewRegistry()
 		// Need to assign the partition and set it to ready.
 		m, err := newPartitionManager(reg)
@@ -106,7 +106,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 		require.NoError(t, err)
 		s.clock = clock
-		c := newConsumer(&kafka, m, s, newOffsetReadinessCheck(m), "zone1",
+		c := newConsumer(&kafkaClient, m, s, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		ctx := context.Background()
 		require.NoError(t, c.pollFetches(ctx))
@@ -144,37 +144,38 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	clock := quartz.NewMock(t)
 	// Set up a mock kafka that will return the records over two consecutive
 	// polls.
-	kafka := mockKafka{
-		fetches: []kgo.Fetches{{{
-			// First poll.
-			Topics: []kgo.FetchTopic{{
-				Topic: "test",
-				Partitions: []kgo.FetchPartition{{
-					Partition: 1,
-					Records: []*kgo.Record{{
-						Key:       []byte("tenant"),
-						Value:     b1,
-						Timestamp: clock.Now(),
-						Offset:    1,
-					}},
+	fetchesCh := make(chan kgo.Fetches, 2)
+	fetchesCh <- kgo.Fetches{{
+		// First poll.
+		Topics: []kgo.FetchTopic{{
+			Topic: "test",
+			Partitions: []kgo.FetchPartition{{
+				Partition: 1,
+				Records: []*kgo.Record{{
+					Key:       []byte("tenant"),
+					Value:     b1,
+					Timestamp: clock.Now(),
+					Offset:    1,
 				}},
 			}},
-		}}, {{
-			// Second poll.
-			Topics: []kgo.FetchTopic{{
-				Topic: "test",
-				Partitions: []kgo.FetchPartition{{
-					Partition: 1,
-					Records: []*kgo.Record{{
-						Key:       []byte("tenant"),
-						Value:     b2,
-						Timestamp: clock.Now(),
-						Offset:    2,
-					}},
+		}},
+	}}
+	fetchesCh <- kgo.Fetches{{
+		// Second poll.
+		Topics: []kgo.FetchTopic{{
+			Topic: "test",
+			Partitions: []kgo.FetchPartition{{
+				Partition: 1,
+				Records: []*kgo.Record{{
+					Key:       []byte("tenant"),
+					Value:     b2,
+					Timestamp: clock.Now(),
+					Offset:    2,
 				}},
 			}},
-		}}},
-	}
+		}},
+	}}
+	kafkaClient := mockKafka{fetches: fetchesCh}
 	reg := prometheus.NewRegistry()
 	// Need to assign the partition and set it to replaying.
 	m, err := newPartitionManager(reg)
@@ -187,7 +188,7 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 	require.NoError(t, err)
 	s.clock = clock
-	c := newConsumer(&kafka, m, s, newOffsetReadinessCheck(m), "zone1",
+	c := newConsumer(&kafkaClient, m, s, newOffsetReadinessCheck(m), "zone1",
 		log.NewNopLogger(), prometheus.NewRegistry())
 	// The first poll should fetch the first record.
 	ctx := context.Background()
