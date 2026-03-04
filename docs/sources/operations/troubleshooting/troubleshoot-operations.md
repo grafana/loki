@@ -1251,9 +1251,6 @@ The ring contains too many unhealthy instances to satisfy the replication factor
 **Resolution:**
 
 1. **Check the health of ring members**:
-    Open a browser and navigate to http://localhost:3100/ring. You should see the Loki ring page.
-
-    OR
 
    ```bash
    curl -s http://loki:3100/ring | jq '.shards[] | select(.state != "ACTIVE")'
@@ -1357,6 +1354,9 @@ The instance has joined the ring but hasn't claimed any tokens. Without tokens, 
 
 1. **Wait for token assignment** during startup.
 1. **Check the ring status** for the instance:
+   Open a browser and navigate to http://localhost:3100/ring. You should see the Loki Ring Status page.
+
+   OR
 
    ```bash
    curl -s http://loki:3100/ring
@@ -1615,6 +1615,9 @@ The ingester is not in a ready state to accept writes or serve reads. The detail
 
 1. **Wait for startup to complete** - ingesters take time to join the ring and become ready.
 1. **Check ring membership**:
+   Open a browser and navigate to http://localhost:3100/ring. You should see the Loki Ring Status page.
+
+   OR
 
    ```bash
    curl -s http://ingester:3100/ring
@@ -2195,11 +2198,130 @@ The frontend scheduler worker detected that the scheduler is in shutdown mode an
 
 ## Index gateway errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+Index gateway errors occur when queriers cannot communicate with index gateways for index lookups.
+
+### Error: Index gateway unhealthy in ring
+
+**Error message:**
+
+```text
+index-gateway is unhealthy in the ring
+```
+
+**Cause:**
+
+The index gateway instance detects itself as unhealthy in the ring and refuses to process queries. This is a self-check: before handling tenant requests, the gateway verifies it appears in the set of healthy ring members.
+
+**Resolution:**
+
+1. **Check index gateway health**:
+
+   ```bash
+   curl -s http://index-gateway:3100/ready
+   ```
+
+1. **View the ring status**:
+   Open a browser and navigate to http://localhost:3100/ring. You should see the Loki Ring Status page.
+
+   OR
+
+   ```bash
+   curl -s http://index-gateway:3100/ring
+   ```
+
+1. **Check logs** for errors preventing the gateway from becoming healthy.
+1. **Restart the index gateway** if it's stuck in an unhealthy state.
+
+**Properties:**
+
+- Enforced by: Index gateway ring
+- Retryable: Yes (wait for gateway to become healthy)
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: No index gateway instances found
+
+**Error message:**
+
+```text
+no index gateway instances found for tenant <tenant>
+```
+
+**Cause:**
+
+No index gateway instances are available in the ring to serve the tenant's request. This could be due to:
+
+- All index gateways are unhealthy
+- Shuffle sharding excludes this tenant
+- Ring is empty
+
+**Resolution:**
+
+1. **Check if any index gateways are running**:
+
+   ```bash
+   curl -s http://index-gateway:3100/ring | jq '.shards | length'
+   ```
+
+1. **Verify ring mode is configured** if using shuffle sharding. The index gateway must run in `ring` mode and the per-tenant shard size must be set:
+
+   ```yaml
+   index_gateway:
+     mode: ring
+
+   limits_config:
+     index_gateway_shard_size: 3  # default = 0 (use all instances)
+   ```
+
+1. **Scale up index gateways** if needed.
+
+**Properties:**
+
+- Enforced by: Index gateway client
+- Retryable: Yes
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: Yes (via `index_gateway_shard_size` in `limits_config`)
+
+### Error: Index client not initialized
+
+**Error message:**
+
+```text
+index client is not initialized likely due to boltdb-shipper not being used
+```
+
+**Cause:**
+
+The index gateway was queried for operations that require the index client, but the client wasn't initialized because the boltdb-shipper store isn't configured.
+
+**Resolution:**
+
+1. **Verify your schema config** uses the correct index store:
+
+   ```yaml
+   schema_config:
+     configs:
+       - from: 2024-01-01
+         store: tsdb
+         object_store: s3
+         schema: v13
+         index:
+           prefix: index_
+           period: 24h
+   ```
+
+1. **Check if the operation requires boltdb-shipper** - some legacy operations may not be supported with TSDB.
+
+**Properties:**
+
+- Enforced by: Index gateway
+- Retryable: No (configuration/schema issue)
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No 
 
 ## Compactor and retention errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Ruler errors
 
