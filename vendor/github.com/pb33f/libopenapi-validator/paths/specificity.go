@@ -65,7 +65,11 @@ func pathHasMethod(pathItem *v3.PathItem, method string) bool {
 	case http.MethodOptions:
 		return pathItem.Options != nil
 	case http.MethodHead:
-		return pathItem.Head != nil
+		// Treat HEAD as present when either
+		// a Head operation exists or, if Head is absent, when a Get exists
+		// per HTTP semantics (HEAD can be handled by GET if no explicit
+		// HEAD operation is defined).
+		return pathItem.Head != nil || pathItem.Get != nil
 	case http.MethodPatch:
 		return pathItem.Patch != nil
 	case http.MethodTrace:

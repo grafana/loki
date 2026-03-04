@@ -1712,19 +1712,308 @@ The query frontend worker has no active connections to any query scheduler. This
 
 ## gRPC and message size errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+gRPC errors occur during inter-component communication. Loki components communicate using gRPC for ring coordination, query execution, and data transfer.
+
+### Error: Message size too large
+
+**Error message:**
+
+```text
+message size too large than max (<size> vs <max>)
+```
+
+Or for the decompressed body:
+
+```text
+decompressed message size too large than max (<size> vs <max>)
+```
+
+**Cause:**
+
+The compressed or decompressed body of an HTTP push request to the distributor exceeds the configured limit.
+
+**Default configuration:**
+
+- `distributor.max_recv_msg_size`: 100MB (compressed request body limit)
+- `distributor.max_decompressed_size`: 5000MB (decompressed body limit, defaults to 50× `max_recv_msg_size`)
+
+**Resolution:**
+
+1. **Increase the distributor receive message size limit**:
+
+   ```yaml
+   distributor:
+     max_recv_msg_size: 209715200      # 200MB compressed
+     max_decompressed_size: 10737418240  # 10GB decompressed
+   ```
+
+1. **Reduce push batch sizes** in your log shipping client (Alloy, Promtail, etc.) to send smaller individual requests.
+
+1. **Reduce the amount of data per request** by lowering the batch size or flush interval in your client.
+
+**Properties:**
+
+- Enforced by: Distributor push handler
+- Retryable: No (request must be smaller or limits increased)
+- HTTP status: 413 Request Entity Too Large (compressed), 400 Bad Request (decompressed)
+- Configurable per tenant: No
+
+### Error: Response larger than max message size
+
+**Error message:**
+
+```text
+response larger than the max message size (<size> vs <max>)
+```
+
+**Cause:**
+
+A query result from the querier to the frontend exceeds the maximum allowed gRPC response size. This typically happens with queries that return very large result sets.
+
+**Default configuration:**
+
+- `server.grpc_server_max_send_msg_size`: 4MB (gRPC server send limit on the querier)
+- `querier.query_frontend_grpc_client.max_recv_msg_size`: 100MB (gRPC client receive limit on the querier worker)
+
+**Resolution:**
+
+1. **Reduce query scope** to return fewer results:
+   - Add more specific label matchers
+   - Reduce the time range
+   - Lower the entries limit
+
+1. **Increase gRPC message size limits** if needed. Apply these settings to querier nodes:
+
+   ```yaml
+   server:
+     grpc_server_max_send_msg_size: 209715200   # 200MB
+
+   querier:
+     query_frontend_grpc_client:
+       max_recv_msg_size: 209715200             # 200MB
+   ```
+
+**Properties:**
+
+- Enforced by: Querier worker
+- Retryable: No (query scope or limits must change)
+- HTTP status: 413 Request Entity Too Large
+- Configurable per tenant: No
+
+### Error: Compressed message size exceeds limit
+
+**Error message:**
+
+```text
+compressed message size <size> exceeds limit <limit>
+```
+
+**Cause:**
+
+The compressed body of an HTTP push request exceeds the distributor's configured limit. This check runs after the request body has been fully read and validates the total compressed size against the configured maximum.
+
+**Default configuration:**
+
+- `distributor.max_recv_msg_size`: 100MB
+
+**Resolution:**
+
+1. **Reduce batch sizes** in your log shipping client.
+1. **Split large batches** into smaller, more frequent requests.
+1. **Increase the limit** if needed:
+
+   ```yaml
+   distributor:
+     max_recv_msg_size: 209715200   # 200MB
+   ```
+
+**Properties:**
+
+- Enforced by: Distributor push handler
+- Retryable: No (request must be smaller)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
 
 ## TLS and certificate errors
 
+TLS errors occur when Loki or its clients cannot establish secure connections due to certificate issues.
 
+### Error: TLS certificate loading failed
+
+**Error message:**
+
+```text
+error loading ca cert: <path>
+```
+
+Or:
+
+```text
+error loading client cert: <path>
+```
+
+Or:
+
+```text
+error loading client key: <path>
+```
+
+Or:
+
+```text
+failed to load TLS certificate <cert_path>,<key_path>
+```
+
+**Cause:**
+
+Loki cannot load TLS certificates from the specified paths. Common causes:
+
+- Certificate files don't exist at the configured paths
+- Permission issues prevent reading the files
+- Certificate or key format is invalid
+- Certificate and key don't match
+
+**Resolution:**
+
+1. **Verify certificate files exist** and are readable:
+
+   ```bash
+   ls -la /path/to/cert.pem /path/to/key.pem /path/to/ca.pem
+   ```
+
+1. **Check file permissions** (the Loki process must be able to read them).
+
+1. **Validate the certificate format**:
+
+   ```bash
+   openssl x509 -in /path/to/cert.pem -noout -text
+   openssl rsa -in /path/to/key.pem -check
+   ```
+
+1. **Verify cert and key match**:
+
+   ```bash
+   openssl x509 -noout -modulus -in cert.pem | md5sum
+   openssl rsa -noout -modulus -in key.pem | md5sum
+   # Both should produce the same hash
+   ```
+
+1. **Check your TLS configuration**:
+
+   ```yaml
+   server:
+     http_tls_config:
+       cert_file: /path/to/cert.pem
+       key_file: /path/to/key.pem
+       client_ca_file: /path/to/ca.pem
+     grpc_tls_config:
+       cert_file: /path/to/cert.pem
+       key_file: /path/to/key.pem
+       client_ca_file: /path/to/ca.pem
+   ```
+
+**Properties:**
+
+- Enforced by: TLS configuration
+- Retryable: No (certificates must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: TLS configuration error
+
+**Error message:**
+
+```text
+error generating http tls config: <details>
+```
+
+Or:
+
+```text
+error generating grpc tls config: <details>
+```
+
+Where `<details>` may include messages such as `TLS version %q not recognized`, `cipher suite %q not recognized`, or `unknown TLS version: <version>`.
+
+**Cause:**
+
+The TLS configuration is invalid. This can happen when:
+
+- An unsupported TLS version string is supplied
+- Cipher suite configuration is invalid
+- Client auth type is unrecognized
+
+**Resolution:**
+
+1. **Review TLS settings** for compatibility issues.
+1. **Use supported TLS versions** by setting `tls_min_version` at the top level of the `server` block:
+
+   ```yaml
+   server:
+     tls_min_version: VersionTLS12
+   ```
+
+   Valid values are `VersionTLS10`, `VersionTLS11`, `VersionTLS12`, and `VersionTLS13`. There is no `max_version` setting; `tls_min_version` is the only version constraint.
+
+1. **Check cipher suite configuration** if customized.
+
+**Properties:**
+
+- Enforced by: TLS initialization
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
 
 ## DNS resolution errors
 
+DNS errors occur when Loki cannot resolve hostnames for service discovery or backend connections.
 
+### Error: DNS lookup timeout
+
+**Error message:**
+
+```text
+msg="failed to resolve server addresses" err="... DNS lookup timeout: [<address>] ..."
+```
+
+**Cause:**
+
+DNS resolution exceeded the 5-second timeout when trying to resolve addresses for Loki service discovery or backend connections.
+This error is emitted by the index gateway and bloom gateway DNS discovery loops.
+The `DNS lookup timeout: [<address>]` string is the context cause embedded within the `err` field; the full address list is formatted as a Go slice (for example, `[dns+loki-index-gateway.loki.svc.cluster.local:9095]`).
+
+**Resolution:**
+
+1. **Check DNS server availability** and configuration.
+1. **Verify hostname resolution**:
+
+   ```bash
+   nslookup <hostname>
+   dig <hostname>
+   ```
+
+1. **Use IP addresses** as a workaround if DNS is unreliable:
+
+   ```yaml
+   # Instead of dns+hostname:port
+   memberlist:
+     join_members:
+       - 10.0.0.1:7946
+       - 10.0.0.2:7946
+   ```
+
+1. **For Kubernetes**, ensure CoreDNS is healthy and headless services are configured correctly.
+
+**Properties:**
+
+- Enforced by: Index gateway client, bloom gateway client DNS discovery loop
+- Retryable: Yes (DNS may recover)
+- HTTP status: N/A (connectivity failure)
+- Configurable per tenant: No 
 
 ## Scheduler and frontend errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Index gateway errors
 

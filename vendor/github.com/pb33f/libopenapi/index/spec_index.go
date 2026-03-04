@@ -897,7 +897,7 @@ func (index *SpecIndex) GetGlobalCallbacksCount() int {
 		for _, m := range p {
 
 			// look through method for callbacks
-			callbacks, _ := jsonpath.NewPath("$..callbacks", jsonpathconfig.WithPropertyNameExtension())
+			callbacks, _ := jsonpath.NewPath("$..callbacks", jsonpathconfig.WithPropertyNameExtension(), jsonpathconfig.WithLazyContextTracking())
 			var res []*yaml.Node
 			res = callbacks.Query(m.Node)
 			if len(res) > 0 {
@@ -943,7 +943,7 @@ func (index *SpecIndex) GetGlobalLinksCount() int {
 		for _, m := range p {
 
 			// look through method for links
-			links, _ := jsonpath.NewPath("$..links", jsonpathconfig.WithPropertyNameExtension())
+			links, _ := jsonpath.NewPath("$..links", jsonpathconfig.WithPropertyNameExtension(), jsonpathconfig.WithLazyContextTracking())
 			var res []*yaml.Node
 
 			res = links.Query(m.Node)

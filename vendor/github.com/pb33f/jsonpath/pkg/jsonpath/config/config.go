@@ -10,6 +10,15 @@ func WithPropertyNameExtension() Option {
 	}
 }
 
+// WithLazyContextTracking enables on-demand tracking for JSONPath Plus context variables.
+// When enabled, tracking is only turned on if the query uses @property, @path, @parentProperty, or @index.
+// Defaults to false to preserve historical eager tracking behavior.
+func WithLazyContextTracking() Option {
+	return func(cfg *config) {
+		cfg.lazyContextTracking = true
+	}
+}
+
 // WithStrictRFC9535 disables JSONPath Plus extensions and enforces strict RFC 9535 compliance.
 // By default, JSONPath Plus extensions are enabled as they are a true superset of RFC 9535.
 // Use this option if you need to ensure pure RFC 9535 compliance.
@@ -22,11 +31,13 @@ func WithStrictRFC9535() Option {
 type Config interface {
 	PropertyNameEnabled() bool
 	JSONPathPlusEnabled() bool
+	LazyContextTrackingEnabled() bool
 }
 
 type config struct {
 	propertyNameExtension bool
 	strictRFC9535         bool
+	lazyContextTracking   bool
 }
 
 func (c *config) PropertyNameEnabled() bool {
@@ -38,6 +49,12 @@ func (c *config) PropertyNameEnabled() bool {
 // Returns false only if WithStrictRFC9535() was explicitly called.
 func (c *config) JSONPathPlusEnabled() bool {
 	return !c.strictRFC9535
+}
+
+// LazyContextTrackingEnabled returns true if on-demand tracking is enabled.
+// Defaults to false for backward compatibility.
+func (c *config) LazyContextTrackingEnabled() bool {
+	return c.lazyContextTracking
 }
 
 func New(opts ...Option) Config {
