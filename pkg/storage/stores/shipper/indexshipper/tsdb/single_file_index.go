@@ -97,6 +97,10 @@ type TSDBFile struct {
 }
 
 func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
+	logger := util_log.Logger
+
+	level.Debug(logger).Log("msg", "loading TSDB file", "path", id.Path())
+
 	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path())
 	if err != nil {
 		return nil, err
@@ -112,6 +116,9 @@ func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
 		}
 		// TODO: this is location all sections in memory which can be problematic. should we mmap?
 		idx.sectionRefTable = table
+		level.Debug(logger).Log("msg", "loaded sections companion", "path", sectionsPath, "entries", table.Len())
+	} else {
+		level.Debug(logger).Log("msg", "no sections companion found", "path", sectionsPath, "err", readErr)
 	}
 
 	return &TSDBFile{
@@ -127,6 +134,15 @@ func (f *TSDBFile) Close() error {
 
 func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
 	return f.getRawFileReader()
+}
+
+func (f *TSDBFile) GetDataobjSections(ctx context.Context, userID string, from, through model.Time,
+	fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]index.DataobjSectionRef, error) {
+	resolver, ok := f.Index.(index.DataobjResolver)
+	if !ok {
+		return nil, fmt.Errorf("underlying index does not support dataobj resolution: %T", f.Index)
+	}
+	return resolver.GetDataobjSections(ctx, userID, from, through, fpFilter, matchers...)
 }
 
 // nolint
@@ -533,9 +549,14 @@ func (i *TSDBIndex) GetDataobjSections(
 	fpFilter index.FingerprintFilter,
 	matchers ...*labels.Matcher,
 ) ([]index.DataobjSectionRef, error) {
+	logger := util_log.Logger
+
 	if i.sectionRefTable == nil {
-		return nil, fmt.Errorf("no section ref lookup table loaded for this index")
+		level.Debug(logger).Log("msg", "TSDBIndex.GetDataobjSections skipped: no section ref table", "user", userID, "from", from, "through", through)
+		return nil, nil
 	}
+
+	level.Debug(logger).Log("msg", "TSDBIndex.GetDataobjSections starting", "user", userID, "from", from, "through", through, "table_entries", i.sectionRefTable.Len())
 
 	// key to uniquely identify a dataobj section.
 	type sectionKey struct {
@@ -550,14 +571,21 @@ func (i *TSDBIndex) GetDataobjSections(
 
 	sections := make(map[sectionKey]*accumulator)
 
-	var failedLookup bool
+	var (
+		failedLookup bool
+		seriesCount  int
+		chunkCount   int
+	)
 
 	if err := i.ForSeries(ctx, userID, fpFilter, from, through, func(_ labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+		seriesCount++
 		for _, chk := range chks {
+			chunkCount++
 			ref, ok := i.sectionRefTable.Lookup(chk.Checksum)
 			if !ok {
+				level.Warn(logger).Log("msg", "TSDBIndex.GetDataobjSections: failed to lookup section ref", "checksum", chk.Checksum)
 				failedLookup = true
-				return true // stop iterator.
+				return true
 			}
 
 			k := sectionKey{Path: ref.Path, SectionID: ref.SectionID}
@@ -583,10 +611,6 @@ func (i *TSDBIndex) GetDataobjSections(
 				if chk.Through() > acc.ref.MaxTime {
 					acc.ref.MaxTime = chk.Through()
 				}
-
-				// do not add these up, as these reflect entire section stats.
-				// acc.ref.KB += chk.KB
-				// acc.ref.Entries += chk.Entries
 			}
 			acc.streamSet[int64(ref.SeriesID)] = struct{}{}
 		}
@@ -608,6 +632,9 @@ func (i *TSDBIndex) GetDataobjSections(
 		acc.ref.StreamIDs = ids
 		res = append(res, acc.ref)
 	}
+
+	level.Debug(logger).Log("msg", "TSDBIndex.GetDataobjSections completed", "user", userID, "series_matched", seriesCount, "chunks_matched", chunkCount, "sections_resolved", len(res))
+
 	return res, nil
 }
 
