@@ -7,11 +7,11 @@ import (
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/dskit/services"
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 

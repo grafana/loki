@@ -2,7 +2,7 @@ package limits
 
 import (
 	"context"
-	"sync/atomic"
+	"sync/atomic" //lint:ignore faillint go.uber.org/atomic is no longer needed as sync/atomic has atomic types since Go 1.19.
 
 	"github.com/twmb/franz-go/pkg/kgo"
 )
