@@ -2778,11 +2778,138 @@ An operation was attempted on the ruler's write-ahead log (WAL) after it was clo
 
 ## Kafka integration errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+These errors occur when Loki is configured to use Kafka for ingestion.
+
+### Error: Missing Kafka address
+
+**Error message:**
+
+```text
+the Kafka address has not been configured
+```
+
+**Cause:**
+
+Kafka ingestion is enabled but no Kafka broker address is configured.
+
+**Resolution:**
+
+1. **Configure the Kafka address**:
+
+   ```yaml
+   kafka_config:
+     topic: loki-logs
+     reader_config:
+       address: kafka:9092
+     writer_config:
+       address: kafka:9092
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Missing Kafka topic
+
+**Error message:**
+
+```text
+the Kafka topic has not been configured
+```
+
+**Cause:**
+
+Kafka ingestion is enabled but no topic name is configured.
+
+**Resolution:**
+
+1. **Configure the Kafka topic**:
+
+   ```yaml
+   kafka_config:
+     topic: loki-logs
+     reader_config:
+       address: kafka:9092
+     writer_config:
+       address: kafka:9092
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Inconsistent SASL username and password
+
+**Error message:**
+
+```text
+both sasl username and password must be set
+```
+
+**Cause:**
+
+Only one of the Simple Authentication and Security Layer (SASL) username or password is configured. Both must be set together.
+
+**Resolution:**
+
+1. **Configure both username and password**:
+
+   ```yaml
+   kafka_config:
+     sasl_username: my-user
+     sasl_password: ${KAFKA_PASSWORD}
+   ```
+
+1. **Or remove both** if SASL authentication is not required.
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Kafka enabled in distributor but not in ingester
+
+**Error message:**
+
+```text
+kafka is enabled in distributor but not in ingester
+```
+
+**Cause:**
+
+Kafka is configured for the distributor but the ingester isn't configured to read from Kafka. Both must be configured together.
+
+**Resolution:**
+
+1. **Enable Kafka in both distributor and ingester**:
+
+   ```yaml
+   distributor:
+     kafka_writes_enabled: true
+
+   ingester:
+     kafka_ingestion:
+       enabled: true
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No 
 
 ## Bloom gateway errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Write-ahead log (WAL) errors
 
