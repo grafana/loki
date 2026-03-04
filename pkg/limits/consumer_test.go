@@ -17,6 +17,7 @@ import (
 
 func TestConsumer_ProcessRecords(t *testing.T) {
 	t.Run("records for own zone are stored when replaying partitions", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
 		// Create a record in the same zone.
 		sameZoneRecord := proto.StreamMetadataRecord{
 			Zone:   "zone1",
@@ -45,18 +46,17 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 			}},
 		}}
 		kafkaClient := mockKafka{fetches: fetchesCh}
-		reg := prometheus.NewRegistry()
-		// Need to assign the partition and set it to ready.
-		m, err := newPartitionManager(reg)
+		// Assign the partition to the PartitionManager and set it as ready.
+		partitionManager, err := newPartitionManager(reg)
 		require.NoError(t, err)
-		m.Assign([]int32{1})
-		m.SetReplaying(1, 1000)
-		// Create a usage store, we will use this to check if the record
-		// was stored.
-		s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
+		partitionManager.Assign([]int32{1})
+		partitionManager.SetReplaying(1, 1000)
+		// Create a store, we will use this to assert the consumer added the stream
+		// to the store as expected.
+		store, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 		require.NoError(t, err)
-		s.clock = clock
-		consumer := newConsumer(&kafkaClient, m, s, newOffsetReadinessCheck(m), "zone1", log.NewNopLogger(), reg)
+		store.clock = clock
+		consumer := newConsumer(&kafkaClient, partitionManager, store, newOffsetReadinessCheck(partitionManager), "zone1", log.NewNopLogger(), reg)
 		postFetchCh := make(chan struct{})
 		consumer.postFetchCh = postFetchCh
 		cancelCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -66,7 +66,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		<-postFetchCh
 		// Check that the record was stored.
 		var n int
-		for range s.ActiveStreams() {
+		for range store.ActiveStreams() {
 			n++
 		}
 		require.Equal(t, 1, n)
@@ -101,18 +101,17 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 			}},
 		}}
 		kafkaClient := mockKafka{fetches: fetchesCh}
+		// Assign the partition to the PartitionManager and set it as ready.
 		reg := prometheus.NewRegistry()
-		// Need to assign the partition and set it to ready.
-		m, err := newPartitionManager(reg)
+		partitionManager, err := newPartitionManager(reg)
 		require.NoError(t, err)
-		m.Assign([]int32{1})
-		m.SetReady(1)
-		// Create a usage store, we will use this to check if the record
-		// was discarded.
-		s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
+		partitionManager.Assign([]int32{1})
+		partitionManager.SetReady(1)
+		// Create a usage store, we will use this to check if the record was discarded.
+		store, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 		require.NoError(t, err)
-		s.clock = clock
-		c := newConsumer(&kafkaClient, m, s, newOffsetReadinessCheck(m), "zone1", log.NewNopLogger(), prometheus.NewRegistry())
+		store.clock = clock
+		c := newConsumer(&kafkaClient, partitionManager, store, newOffsetReadinessCheck(partitionManager), "zone1", log.NewNopLogger(), prometheus.NewRegistry())
 		postFetchCh := make(chan struct{})
 		c.postFetchCh = postFetchCh
 		cancelCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -122,7 +121,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		<-postFetchCh
 		// Check that the record was discarded.
 		var n int
-		for range s.ActiveStreams() {
+		for range store.ActiveStreams() {
 			n++
 		}
 		require.Equal(t, 0, n)
@@ -173,17 +172,17 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	kafkaClient := mockKafka{fetches: fetchesCh}
 	reg := prometheus.NewRegistry()
 	// Need to assign the partition and set it to replaying.
-	m, err := newPartitionManager(reg)
+	partitionManager, err := newPartitionManager(reg)
 	require.NoError(t, err)
-	m.Assign([]int32{1})
+	partitionManager.Assign([]int32{1})
 	// The partition should be marked ready when the second record
 	// has been consumed.
-	m.SetReplaying(1, 2)
+	partitionManager.SetReplaying(1, 2)
 	// We don't need the usage store for this test.
-	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
+	store, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 	require.NoError(t, err)
-	s.clock = clock
-	c := newConsumer(&kafkaClient, m, s, newOffsetReadinessCheck(m), "zone1", log.NewNopLogger(), prometheus.NewRegistry())
+	store.clock = clock
+	c := newConsumer(&kafkaClient, partitionManager, store, newOffsetReadinessCheck(partitionManager), "zone1", log.NewNopLogger(), prometheus.NewRegistry())
 	postFetchCh := make(chan struct{})
 	c.postFetchCh = postFetchCh
 	cancelCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -194,12 +193,12 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	<-postFetchCh
 	// The partition should still be replaying as we have not read up to
 	// the target offset.
-	state, ok := m.GetState(1)
+	state, ok := partitionManager.GetState(1)
 	require.True(t, ok)
 	require.Equal(t, partitionReplaying, state)
 	// Check that the record was stored.
 	var n int
-	for range s.ActiveStreams() {
+	for range store.ActiveStreams() {
 		n++
 	}
 	require.Equal(t, 1, n)
@@ -222,12 +221,12 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	<-postFetchCh
 	// The partition should still be ready as we have read up to the target
 	// offset.
-	state, ok = m.GetState(1)
+	state, ok = partitionManager.GetState(1)
 	require.True(t, ok)
 	require.Equal(t, partitionReady, state)
 	// Check that the record was stored.
 	n = 0
-	for range s.ActiveStreams() {
+	for range store.ActiveStreams() {
 		n++
 	}
 	require.Equal(t, 2, n)
