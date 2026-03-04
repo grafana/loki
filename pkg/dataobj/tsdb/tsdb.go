@@ -206,7 +206,8 @@ func collectStreamLabels(ctx context.Context, obj *dataobj.Object) (map[streamKe
 func collectSectionMetas(ctx context.Context, obj *dataobj.Object, objectPath string) (map[streamKey][]sectionref.SectionMeta, error) {
 	perStream := map[streamKey][]sectionref.SectionMeta{}
 
-	for sectionID, sec := range obj.Sections() {
+	var logsSectionIdx int
+	for _, sec := range obj.Sections() {
 		if !logs.CheckSection(sec) {
 			continue
 		}
@@ -250,7 +251,7 @@ func collectSectionMetas(ctx context.Context, obj *dataobj.Object, objectPath st
 			perStream[key] = append(perStream[key], sectionref.SectionMeta{
 				SectionRef: sectionref.SectionRef{
 					Path:      objectPath,
-					SectionID: sectionID,
+					SectionID: logsSectionIdx,
 					SeriesID:  int(key.streamID),
 				},
 				ChunkMeta: tsdbindex.ChunkMeta{
@@ -261,6 +262,7 @@ func collectSectionMetas(ctx context.Context, obj *dataobj.Object, objectPath st
 				},
 			})
 		}
+		logsSectionIdx++
 	}
 
 	return perStream, nil
