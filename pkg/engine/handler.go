@@ -53,15 +53,23 @@ func Handler(
 	return executorHandler(cfg, logger, engine, limits, reg)
 }
 
-// queryExecutor is an interface implemented by [Engine] for mocking in tests.
-type queryExecutor interface {
+// QueryExecutor is the interface satisfied by [Engine], exposed for testing.
+type QueryExecutor interface {
 	Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error)
+}
+
+var _ QueryExecutor = (*Engine)(nil)
+
+// HandlerFromExecutor is like [Handler] but accepts any [QueryExecutor].
+// Useful for testing with wrapped or mock executors.
+func HandlerFromExecutor(cfg Config, logger log.Logger, exec QueryExecutor, limits Limits, reg prometheus.Registerer) (http.Handler, error) {
+	return executorHandler(cfg, logger, exec, limits, reg)
 }
 
 func executorHandler(
 	cfg Config,
 	logger log.Logger,
-	exec queryExecutor,
+	exec QueryExecutor,
 	limits Limits,
 	reg prometheus.Registerer,
 ) (http.Handler, error) {
@@ -120,7 +128,7 @@ func executorHandler(
 type queryHandler struct {
 	cfg              Config
 	logger           log.Logger
-	exec             queryExecutor
+	exec             QueryExecutor
 	limits           querier_limits.Limits
 	retentionChecker *retentionChecker
 }
