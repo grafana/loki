@@ -2600,15 +2600,185 @@ The `max_interval` parameter on a delete request has an invalid value, exceeds t
 - Enforced by: Compactor delete request handler
 - Retryable: No (request must be fixed)
 - HTTP status: 400 Bad Request
-- Configurable per tenant: No 
+- Configurable per tenant: No
 
 ## Ruler errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+Ruler errors occur when evaluating alerting rules or recording rules.
+
+### Error: Invalid ruler evaluation config
+
+**Error message:**
+
+```text
+invalid ruler evaluation config: <details>
+```
+
+**Cause:**
+
+The ruler evaluation mode configuration is invalid.
+
+**Resolution:**
+
+1. **Use a valid evaluation mode**:
+
+   ```yaml
+   ruler:
+     evaluation:
+       mode: local  # Or "remote"
+   ```
+
+**Properties:**
+
+- Enforced by: Ruler module initialization (`initRuleEvaluator`)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Ruler remote write config conflict
+
+**Error message:**
+
+```text
+ruler remote write config: both 'client' and 'clients' options are defined; 'client' is deprecated, please only use 'clients'
+```
+
+**Cause:**
+
+Both the deprecated `client` and the new `clients` configuration options are set for ruler remote write.
+
+**Resolution:**
+
+1. **Remove the deprecated config** and use `clients`:
+
+   ```yaml
+   ruler:
+     remote_write:
+       # Remove this:
+       # client: {}
+       
+       # Use this instead:
+       clients:
+         primary:
+           url: http://prometheus:9090/api/v1/write
+   ```
+
+**Properties:**
+
+- Enforced by: Ruler initialization (`NewRuler`)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Remote write enabled but no URL configured
+
+**Error message:**
+
+```text
+remote-write enabled but no clients URL are configured
+```
+
+Or when multiple clients are configured in the `clients` map and one entry is missing a URL:
+
+```text
+remote-write enabled but client '<name>' URL for tenant <client-id> is not configured
+```
+
+**Cause:**
+
+Remote write is enabled for the ruler but no destination URL is configured. The first variant occurs when the `clients` map is empty. The second occurs when a named entry in the `clients` map has no `url` set; `<client-id>` is the map key for that entry, not a tenant ID.
+
+**Resolution:**
+
+1. **Configure the remote write URL**:
+
+   ```yaml
+   ruler:
+     remote_write:
+       enabled: true
+       clients:
+         primary:
+           url: http://prometheus:9090/api/v1/write
+   ```
+
+1. **Or disable remote write**:
+
+   ```yaml
+   ruler:
+     remote_write:
+       enabled: false
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Rule result is not a vector or scalar
+
+**Error message:**
+
+```text
+rule result is not a vector or scalar
+```
+
+**Cause:**
+
+A rule evaluation returned an unexpected result type. Both recording rules and alerting rules must produce vector or scalar results. A plain log-stream expression (one that returns log lines rather than a numeric metric) triggers this error in either rule type.
+
+**Resolution:**
+
+1. **Check the rule expression** returns a vector or scalar:
+
+   ```yaml
+   # Valid - returns vector:
+   record: my_metric
+   expr: sum(rate({job="app"}[5m] | json | level="error"))
+
+   # Invalid - returns logs (triggers error for both recording and alerting rules):
+   # record: my_metric
+   # expr: '{job="app"}'
+   ```
+
+1. **Use aggregation functions** to produce numeric results from log queries.
+
+**Properties:**
+
+- Enforced by: Ruler evaluation
+- Retryable: No (rule must be fixed)
+- HTTP status: N/A (background process)
+- Configurable per tenant: No
+
+### Error: Ruler WAL closed
+
+**Error message:**
+
+```text
+WAL storage closed
+```
+
+**Cause:**
+
+An operation was attempted on the ruler's write-ahead log (WAL) after it was closed. This typically occurs during shutdown.
+
+**Resolution:**
+
+1. **Wait for the ruler to restart** if it's restarting.
+1. **Check ruler logs** for errors that caused unexpected WAL closure.
+1. **Verify disk space** is available for WAL operations.
+
+**Properties:**
+
+- Enforced by: Ruler WAL
+- Retryable: Yes (after ruler restart)
+- HTTP status: N/A
+- Configurable per tenant: No 
 
 ## Kafka integration errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Bloom gateway errors
 
