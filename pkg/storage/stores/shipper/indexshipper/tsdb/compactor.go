@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -156,15 +157,22 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		multiTenantIndices[job] = idx.(Index)
 		if t.mode != nil {
 			source, sectionsPath, err := t.mode.registerSource(t.commonIndexSet, multiTenantIndexes[job])
 			if err != nil {
+				if errors.Is(err, errSectionsSidecarMissing) {
+					level.Warn(t.commonIndexSet.GetLogger()).Log("msg", "skipping source tsdb because sections sidecar is missing", "file", multiTenantIndexes[job].Name, "err", err)
+					if closeErr := idx.Close(); closeErr != nil {
+						level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to close skipped multi-tenant source index file", "path", downloadPaths[job], "err", closeErr)
+					}
+					return nil
+				}
 				return err
 			}
 			sectionsPaths[job] = sectionsPath
 			multiTenantSources[job] = source
 		}
+		multiTenantIndices[job] = idx.(Index)
 
 		return nil
 	})
@@ -174,6 +182,23 @@ func (t *tableCompactor) CompactTable() error {
 
 	defer func() {
 		for i, idx := range multiTenantIndices {
+			if idx == nil {
+				if downloadPaths[i] != "" {
+					if err := os.Remove(downloadPaths[i]); err != nil {
+						level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove skipped downloaded index file", "path", downloadPaths[i], "err", err)
+					}
+				}
+				if sectionsPaths[i] != "" {
+					if err := os.Remove(sectionsPaths[i]); err != nil {
+						level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove skipped downloaded sections table file", "path", sectionsPaths[i], "err", err)
+					}
+				}
+				if t.mode != nil {
+					t.mode.releaseSource(multiTenantSources[i])
+				}
+				continue
+			}
+
 			if err := idx.Close(); err != nil {
 				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to close multi-tenant source index file", "path", downloadPaths[i], "err", err)
 			}
@@ -193,8 +218,19 @@ func (t *tableCompactor) CompactTable() error {
 	}()
 
 	var multiTenantIndex Index = NoopIndex{}
-	if len(multiTenantIndices) > 0 {
-		multiTenantIndex = NewMultiIndex(IndexSlice(multiTenantIndices))
+	activeMultiTenantIndices := make([]Index, 0, len(multiTenantIndices))
+	activeMultiTenantSources := make([]modeSourceHandle, 0, len(multiTenantSources))
+	for i := range multiTenantIndices {
+		if multiTenantIndices[i] == nil {
+			continue
+		}
+		activeMultiTenantIndices = append(activeMultiTenantIndices, multiTenantIndices[i])
+		if t.mode != nil {
+			activeMultiTenantSources = append(activeMultiTenantSources, multiTenantSources[i])
+		}
+	}
+	if len(activeMultiTenantIndices) > 0 {
+		multiTenantIndex = NewMultiIndex(IndexSlice(activeMultiTenantIndices))
 	}
 
 	// find all the user ids from the multi-tenant indexes using TenantLabel.
@@ -221,7 +257,7 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		builder, err := setupBuilder(t.ctx, indexType, userID, existingUserIndexSet, multiTenantIndices, multiTenantSources, t.mode)
+		builder, err := setupBuilder(t.ctx, indexType, userID, existingUserIndexSet, activeMultiTenantIndices, activeMultiTenantSources, t.mode)
 		if err != nil {
 			return err
 		}
@@ -258,7 +294,7 @@ func (t *tableCompactor) CompactTable() error {
 		}
 	}
 
-	if len(multiTenantIndices) > 0 {
+	if len(activeMultiTenantIndices) > 0 {
 		if err := t.commonIndexSet.SetCompactedIndex(nil, true); err != nil {
 			return err
 		}
@@ -287,6 +323,10 @@ func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sour
 	if mode != nil {
 		source, sectionsPath, err = mode.registerSource(sourceIndexSet, sourceIndex)
 		if err != nil {
+			if errors.Is(err, errSectionsSidecarMissing) {
+				level.Warn(sourceIndexSet.GetLogger()).Log("msg", "skipping source tsdb because sections sidecar is missing", "file", sourceIndex.Name, "err", err)
+				return nil
+			}
 			return err
 		}
 		defer func() {

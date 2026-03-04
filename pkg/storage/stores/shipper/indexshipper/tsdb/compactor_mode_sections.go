@@ -1,6 +1,7 @@
 package tsdb
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -32,6 +33,8 @@ type sectionRefCompactionMode struct {
 	refs   map[modeSourceHandle]*sectionref.SectionRefTable
 }
 
+var errSectionsSidecarMissing = errors.New("sections sidecar is missing")
+
 func newCompactionMode(useSectionRefTable bool) compactionMode {
 	if !useSectionRefTable {
 		return nil
@@ -53,6 +56,9 @@ func (m *sectionRefCompactionMode) registerSource(sourceIndexSet compactor.Index
 
 	sectionsPath, err := sourceIndexSet.GetSourceFile(storage.IndexFile{Name: sectionsFileName})
 	if err != nil {
+		if isMissingSectionsError(err) {
+			return 0, "", fmt.Errorf("%w: %q for %q", errSectionsSidecarMissing, sectionsFileName, sourceIndex.Name)
+		}
 		return 0, "", fmt.Errorf("downloading sections table %q for %q: %w", sectionsFileName, sourceIndex.Name, err)
 	}
 
@@ -183,4 +189,19 @@ func sectionsTablePath(tsdbPath string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid tsdb file path %q", tsdbPath)
 	}
+}
+
+func isMissingSectionsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, os.ErrNotExist) || os.IsNotExist(err) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "no such file") ||
+		strings.Contains(msg, "nosuchkey") ||
+		strings.Contains(msg, "404")
 }
