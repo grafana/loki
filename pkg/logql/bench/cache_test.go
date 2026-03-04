@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -46,7 +47,7 @@ type benchCacheLimits struct {
 }
 
 // Methods called by queryHandler validation:
-func (*benchCacheLimits) MaxEntriesLimitPerQuery(_ context.Context, _ string) int  { return 0 }
+func (*benchCacheLimits) MaxEntriesLimitPerQuery(_ context.Context, _ string) int    { return 0 }
 func (*benchCacheLimits) MaxQueryLookback(_ context.Context, _ string) time.Duration { return 0 }
 func (*benchCacheLimits) MaxQueryLength(_ context.Context, _ string) time.Duration   { return 0 }
 func (*benchCacheLimits) MaxQueryRange(_ context.Context, _ string) time.Duration    { return 0 }
@@ -55,9 +56,11 @@ func (*benchCacheLimits) RequiredNumberLabels(_ context.Context, _ string) int  
 func (*benchCacheLimits) QueryTimeout(_ context.Context, _ string) time.Duration     { return time.Hour }
 
 // Methods called by cache middleware:
-func (*benchCacheLimits) MaxCacheFreshness(_ context.Context, _ string) time.Duration        { return 0 }
-func (*benchCacheLimits) MaxQueryParallelism(_ context.Context, _ string) int                 { return 4 }
-func (*benchCacheLimits) EngineResultsCacheTimeBucketInterval(_ string) time.Duration         { return 24 * time.Hour }
+func (*benchCacheLimits) MaxCacheFreshness(_ context.Context, _ string) time.Duration { return 0 }
+func (*benchCacheLimits) MaxQueryParallelism(_ context.Context, _ string) int         { return 4 }
+func (*benchCacheLimits) EngineResultsCacheTimeBucketInterval(_ string) time.Duration {
+	return 24 * time.Hour
+}
 
 // encodeTestCaseAsHTTPRequest converts a TestCase into an *http.Request using
 // DefaultCodec, so the handler's codec stack can decode it correctly.
@@ -146,6 +149,7 @@ func TestEngineCachingCorrectness(t *testing.T) {
 		supported = append(supported, result{tc, resp})
 	}
 	require.NotEmpty(t, supported, "all metric queries were unsupported")
+	t.Logf("supported metric queries: %d out of: %d", len(supported), len(metricCases))
 
 	countAfterPass1 := counting.n.Load()
 	require.Greater(t, countAfterPass1, int64(0), "engine was never called on first pass")
@@ -185,4 +189,34 @@ func TestEngineCachingCorrectness(t *testing.T) {
 		require.Equal(t, rt1, rt2, "resultType differs for query %q", r.tc.Query)
 		require.JSONEq(t, result1, result2, "cached result differs for query %q", r.tc.Query)
 	}
+
+	// --- Log cache: only caches empty results ---
+	// Identify queries that are guaranteed to return empty results.
+	const impossibleFilter = `|= "this will not hit any line"`
+	var logEmptyCases []TestCase
+	for _, tc := range cases {
+		if tc.Kind() == "log" && strings.Contains(tc.Query, impossibleFilter) {
+			logEmptyCases = append(logEmptyCases, tc)
+		}
+	}
+	require.NotEmpty(t, logEmptyCases, "expected at least one log query with impossible filter")
+
+	countBeforeLogTest := counting.n.Load()
+
+	// Pass 1: engine is called; empty results are stored in the log cache.
+	for _, tc := range logEmptyCases {
+		resp := run(tc)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "log query %q failed", tc.Query)
+	}
+	countAfterLogPass1 := counting.n.Load()
+	require.Greater(t, countAfterLogPass1, countBeforeLogTest,
+		"engine should have been called for empty log queries on first pass")
+
+	// Pass 2: log cache returns the cached empty result; engine is not called.
+	for _, tc := range logEmptyCases {
+		resp := run(tc)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "log query %q failed on second pass", tc.Query)
+	}
+	require.Equal(t, countAfterLogPass1, counting.n.Load(),
+		"engine should not be called for empty log queries on second pass (log cache should be hit)")
 }
