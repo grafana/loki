@@ -129,7 +129,6 @@ storage_config:
     aws:
       s3: s3://loki:supersecret@minio:9000/loki
       s3forcepathstyle: true
-      region: minio
       insecure: true
       endpoint: minio:9000
     index_queries_cache_config:
