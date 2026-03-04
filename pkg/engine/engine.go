@@ -462,7 +462,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 
 func (e *Engine) tsdbSectionsResolver(ctx context.Context, _ string) physical.TSDBSectionsResolver {
 	return func(matchers []*labels.Matcher, start, end time.Time) ([]physical.DataObjSections, error) {
-		ctx, span := xcap.StartSpan(ctx, tracer, "engine.tsdbResolver")
+		ctx, span := tracer.Start(ctx, "engine.tsdbResolver")
 		defer span.End()
 
 		resp, err := e.indexGateway.GetDataobjSections(ctx, &logproto.GetDataobjSectionsRequest{
@@ -471,7 +471,7 @@ func (e *Engine) tsdbSectionsResolver(ctx context.Context, _ string) physical.TS
 			Matchers: syntax.MatchersString(matchers),
 		})
 		if err != nil {
-			return nil, fmt.Errorf("index gateway: get dataobj sections: %w", err)
+			return nil, fmt.Errorf("tsdb resolve sections: %w", err)
 		}
 
 		sections := make([]physical.DataObjSections, 0, len(resp.Sections))
@@ -488,6 +488,7 @@ func (e *Engine) tsdbSectionsResolver(ctx context.Context, _ string) physical.TS
 			})
 		}
 
+		span.SetAttributes(attribute.Int("num_sections", len(sections)))
 		return sections, nil
 	}
 }

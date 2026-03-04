@@ -829,7 +829,7 @@ func (t *Loki) setupModuleManager() error {
 		QueryFrontendTripperware:     {Server, Overrides, TenantConfigs},
 		QueryFrontend:                {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
 		QueryScheduler:               {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing, UIRing},
-		QueryEngine:                  {QueryEngineScheduler},
+		QueryEngine:                  {QueryEngineScheduler, IndexGatewayRing},
 		QueryEngineWorker:            {Server, Overrides, TenantConfigs, Analytics},
 		QueryEngineScheduler:         {Server, Overrides, TenantConfigs, Analytics},
 		Ruler:                        {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics, UIRing},
