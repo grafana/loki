@@ -2321,9 +2321,6 @@ The index gateway was queried for operations that require the index client, but 
 
 ## Compactor and retention errors
 
-<<<<<<< HEAD
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
-=======
 Compactor errors occur during index compaction or retention enforcement.
 
 ### Error: No chunks found in table
@@ -2561,36 +2558,6 @@ An attempt was made to cancel a delete request that is already being processed o
 - HTTP status: 400 Bad Request
 - Configurable per tenant: No
 
-### Error: Delete request cancellation past deadline
-
-**Error message:**
-
-```text
-Cancellation of partially completed delete request or delete request past the deadline of <duration> since its creation is not allowed. To force, use the ?force query parameter
-```
-
-**Cause:**
-
-A cancel request was made for a delete request that is either partially completed or past the cancellation deadline.
-
-**Resolution:**
-
-1. **Force the cancellation** using the `force` query parameter:
-<!-- Is this even possible or did the AI hallucinate this? -->
-   ```bash
-   curl -X DELETE "http://compactor:3100/loki/api/v1/delete?request_id=<id>&force=true" \
-     -H "X-Scope-OrgID: my-tenant"
-   ```
-
-1. **Note:** Forcing cancellation of a partially completed request means some data may already have been deleted.
-
-**Properties:**
-
-- Enforced by: Compactor delete request handler
-- Retryable: Yes (with force parameter)
-- HTTP status: 400 Bad Request
-- Configurable per tenant: No
-
 ### Error: Invalid max_interval for delete request
 
 **Error message:**
@@ -2634,7 +2601,6 @@ The `max_interval` parameter on a delete request has an invalid value, exceeds t
 - Retryable: No (request must be fixed)
 - HTTP status: 400 Bad Request
 - Configurable per tenant: No 
->>>>>>> a545d7a3c4 (docs: Troubleshooting Compactor)
 
 ## Ruler errors
 
