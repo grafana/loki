@@ -64,7 +64,7 @@ func (c *tablesManager) start(ctx context.Context) {
 	// time for existing compactors to shutdown before this starts to avoid
 	// multiple compactors running at the same time.
 	stopped := false
-	/* 	func() {
+	func() {
 		t := time.NewTimer(c.cfg.CompactionInterval)
 		defer t.Stop()
 		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("waiting %v for ring to stay stable and previous compactions to finish before starting compactor", c.cfg.CompactionInterval))
@@ -76,7 +76,7 @@ func (c *tablesManager) start(ctx context.Context) {
 			level.Info(util_log.Logger).Log("msg", "compactor startup delay completed")
 			return
 		}
-	}() */
+	}()
 
 	if stopped {
 		return
