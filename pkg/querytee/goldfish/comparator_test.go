@@ -2,20 +2,33 @@ package goldfish
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func TestComparator_CompareResponses(t *testing.T) {
 	testTolerance := 0.1 // 10% tolerance for tests
+	mockComp := mockComparator{}
+
+	// keeping the body for stream and matrix responses empty since comparator does not care about the body and always returns true for a match
+	streamBody := []byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`)
+	matrixBody := []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`)
+
 	tests := []struct {
-		name           string
-		sample         *goldfish.QuerySample
-		expectedStatus goldfish.ComparisonStatus
-		expectedDiffs  []string
+		name                         string
+		sample                       *goldfish.QuerySample
+		cellAResp                    *ResponseData
+		cellBResp                    *ResponseData
+		respComparator               comparator.ResponsesComparator
+		expectedStatus               goldfish.ComparisonStatus
+		expectedDiffs                []string
+		expectedMatchWithinTolerance bool
 	}{
 		{
 			name: "different status codes",
@@ -94,17 +107,54 @@ func TestComparator_CompareResponses(t *testing.T) {
 			},
 			expectedStatus: goldfish.ComparisonStatusMatch,
 		},
+		{
+			name: "different hashes but stream comparator match yields exact Match",
+			sample: &goldfish.QuerySample{
+				CorrelationID:     "test-stream-match",
+				CellAStatusCode:   200,
+				CellBStatusCode:   200,
+				CellAResponseHash: "hash-a",
+				CellBResponseHash: "hash-b",
+				CellAStats:        goldfish.QueryStats{ExecTimeMs: 100},
+				CellBStats:        goldfish.QueryStats{ExecTimeMs: 100},
+			},
+			cellAResp:      &ResponseData{Body: streamBody, ResultType: loghttp.ResultTypeStream},
+			cellBResp:      &ResponseData{Body: streamBody, ResultType: loghttp.ResultTypeStream},
+			respComparator: mockComp,
+			expectedStatus: goldfish.ComparisonStatusMatch,
+		},
+		{
+			name: "different hashes but samples comparator match yields MatchWithinTolerance",
+			sample: &goldfish.QuerySample{
+				CorrelationID:     "test-matrix-tolerance",
+				CellAStatusCode:   200,
+				CellBStatusCode:   200,
+				CellAResponseHash: "hash-a",
+				CellBResponseHash: "hash-b",
+				CellAStats:        goldfish.QueryStats{ExecTimeMs: 100},
+				CellBStats:        goldfish.QueryStats{ExecTimeMs: 100},
+			},
+			cellAResp:                    &ResponseData{Body: matrixBody, ResultType: loghttp.ResultTypeMatrix},
+			cellBResp:                    &ResponseData{Body: matrixBody, ResultType: loghttp.ResultTypeMatrix},
+			respComparator:               mockComp,
+			expectedStatus:               goldfish.ComparisonStatusMatchWithinTolerance,
+			expectedMatchWithinTolerance: true,
+		},
 	}
-
-	// Note: No comparator setup needed for simplified hash-based comparison
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CompareResponses(tt.sample, nil, nil, testTolerance, nil, util_log.Logger)
+			result := CompareResponses(tt.sample, tt.cellAResp, tt.cellBResp, testTolerance, tt.respComparator, util_log.Logger)
 			assert.Equal(t, tt.expectedStatus, result.ComparisonStatus)
 
 			for _, expectedDiff := range tt.expectedDiffs {
 				assert.Contains(t, result.DifferenceDetails, expectedDiff)
+			}
+
+			if result.ComparisonStatus == goldfish.ComparisonStatusMatchWithinTolerance {
+				assert.True(t, result.MatchWithinTolerance, "MatchWithinTolerance should be true for within tolerance match")
+			} else {
+				assert.False(t, result.MatchWithinTolerance, "MatchWithinTolerance should be false when response is an exact match or a mismatch")
 			}
 		})
 	}
@@ -297,4 +347,11 @@ func TestCompareResponses_ConfigurableTolerance(t *testing.T) {
 			}
 		})
 	}
+}
+
+// mockComparator implements comparator.ResponsesComparator and always returns a successful comparison.
+type mockComparator struct{}
+
+func (mockComparator) Compare(_, _ []byte, _ time.Time) (*comparator.ComparisonSummary, error) {
+	return nil, nil
 }
