@@ -2317,7 +2317,7 @@ The index gateway was queried for operations that require the index client, but 
 - Enforced by: Index gateway
 - Retryable: No (configuration/schema issue)
 - HTTP status: 500 Internal Server Error
-- Configurable per tenant: No 
+- Configurable per tenant: No
 
 ## Compactor and retention errors
 
