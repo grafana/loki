@@ -109,16 +109,13 @@ func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
 	// TODO: register a different index.OpenIndexFileFunc for dataobj TSDB files
 	// during indexshipper init.
 	sectionsPath := id.Path() + ".sections"
-	if data, readErr := os.ReadFile(sectionsPath); readErr == nil {
-		table, decErr := sectionref.Decode(data)
-		if decErr != nil {
-			return nil, fmt.Errorf("decoding sections table %s: %w", sectionsPath, decErr)
-		}
-		// TODO: this is location all sections in memory which can be problematic. should we mmap?
+	if table, mmapErr := sectionref.OpenMmap(sectionsPath); mmapErr == nil {
 		idx.sectionRefTable = table
 		level.Debug(logger).Log("msg", "loaded sections companion", "path", sectionsPath, "entries", table.Len())
+	} else if errors.Is(mmapErr, os.ErrNotExist) {
+		level.Debug(logger).Log("msg", "no sections companion found", "path", sectionsPath)
 	} else {
-		level.Debug(logger).Log("msg", "no sections companion found", "path", sectionsPath, "err", readErr)
+		return nil, fmt.Errorf("opening sections table %s: %w", sectionsPath, mmapErr)
 	}
 
 	return &TSDBFile{
@@ -152,7 +149,7 @@ func (f *TSDBFile) GetDataobjSections(ctx context.Context, userID string, from, 
 type TSDBIndex struct {
 	reader          IndexReader
 	chunkFilter     chunk.RequestChunkFilterer
-	sectionRefTable *sectionref.SectionRefTable
+	sectionRefTable sectionref.SectionRefLookup
 }
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
@@ -175,6 +172,9 @@ func NewTSDBIndex(reader IndexReader) *TSDBIndex {
 }
 
 func (i *TSDBIndex) Close() error {
+	if i.sectionRefTable != nil {
+		i.sectionRefTable.Close()
+	}
 	return i.reader.Close()
 }
 
