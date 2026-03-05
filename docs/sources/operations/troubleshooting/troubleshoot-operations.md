@@ -2321,11 +2321,290 @@ The index gateway was queried for operations that require the index client, but 
 
 ## Compactor and retention errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+Compactor errors occur during index compaction or retention enforcement.
+
+### Error: No chunks found in table
+
+**Error message:**
+
+```text
+no chunks found in table, please check if there are really no chunks and manually drop the table or see if there is a bug causing us to drop whole index table
+```
+
+**Cause:**
+
+The compactor found an empty index table during retention processing. This could indicate:
+
+- All chunks in the table have expired
+- The table was never populated
+- Data corruption
+
+**Resolution:**
+
+1. **Verify the table should be empty**:
+
+   ```bash
+   # Check if data exists for the time period
+   logcli query '{job=~".+"}' --from="<table-start-time>" --to="<table-end-time>" --limit=1
+   ```
+
+1. **If the table is legitimately empty**, manually delete it from object storage.
+1. **If data should exist**, investigate potential data loss.
+
+**Properties:**
+
+- Enforced by: Compactor retention
+- Retryable: No (requires manual intervention)
+- HTTP status: N/A (background process)
+- Configurable per tenant: No
+
+### Error: Delete request store not configured
+
+**Error message:**
+
+```text
+compactor.delete-request-store should be configured when retention is enabled
+```
+
+**Cause:**
+
+Retention is enabled but no store is configured for tracking delete requests.
+
+**Resolution:**
+
+1. **Configure the delete request store**:
+
+   ```yaml
+   compactor:
+     retention_enabled: true
+     delete_request_store: s3
+   ```
+
+1. **Or disable retention** if not needed:
+
+   ```yaml
+   compactor:
+     retention_enabled: false
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Max compaction parallelism invalid
+
+**Error message:**
+
+```text
+max compaction parallelism must be >= 1
+```
+
+**Cause:**
+
+The compactor's parallelism setting is configured to zero or a negative number.
+
+**Resolution:**
+
+1. **Set a valid parallelism value**:
+
+   ```yaml
+   compactor:
+     max_compaction_parallelism: 1  # Must be >= 1
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Delete request not found
+
+**Error message:**
+
+```text
+could not find delete request with given id
+```
+
+**Cause:**
+
+An attempt to cancel a delete request failed because no matching request exists.
+
+**Resolution:**
+
+1. **List existing delete requests**:
+
+   ```bash
+   curl -s http://compactor:3100/loki/api/v1/delete | jq
+   ```
+
+1. **Verify the delete request ID** is correct.
+1. **Check if the request has already been processed** and removed.
+
+**Properties:**
+
+- Enforced by: Compactor API
+- Retryable: No
+- HTTP status: 404 Not Found
+- Configurable per tenant: No
+
+### Error: Retention is not enabled
+
+**Error message:**
+
+```text
+Retention is not enabled
+```
+
+**Cause:**
+
+A delete request was submitted but retention is not enabled in the compactor configuration. Delete requests require retention to be enabled.
+
+**Resolution:**
+
+1. **Enable retention** in the compactor:
+
+   ```yaml
+   compactor:
+     retention_enabled: true
+     delete_request_store: s3
+   ```
+
+1. **Restart the compactor** after changing the configuration.
+
+**Properties:**
+
+- Enforced by: Compactor delete request handler
+- Retryable: No (configuration must change)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Invalid delete request time format
+
+**Error message:**
+
+```text
+invalid start time: require unix seconds or RFC3339 format
+```
+
+Or:
+
+```text
+invalid end time: require unix seconds or RFC3339 format
+```
+
+**Cause:**
+
+The start or end time in a delete request is not in a valid format.
+
+**Resolution:**
+
+1. **Use Unix seconds or RFC3339 format**:
+
+   ```bash
+   # Unix seconds
+   curl -X POST http://compactor:3100/loki/api/v1/delete \
+     -H "X-Scope-OrgID: my-tenant" \
+     -d "query={app=\"foo\"}" \
+     -d "start=1704067200" \
+     -d "end=1704153600"
+   
+   # RFC3339
+   curl -X POST http://compactor:3100/loki/api/v1/delete \
+     -H "X-Scope-OrgID: my-tenant" \
+     -d "query={app=\"foo\"}" \
+     -d "start=2024-01-01T00:00:00Z" \
+     -d "end=2024-01-02T00:00:00Z"
+   ```
+
+**Properties:**
+
+- Enforced by: Compactor delete request handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Delete request already processed
+
+**Error message:**
+
+```text
+deletion of request which is in process or already processed is not allowed
+```
+
+**Cause:**
+
+An attempt was made to cancel a delete request that is already being processed or has completed processing.
+
+**Resolution:**
+
+1. **Check the status** of the delete request:
+
+   ```bash
+   curl -s http://compactor:3100/loki/api/v1/delete \
+     -H "X-Scope-OrgID: my-tenant" | jq
+   ```
+
+1. **Submit a new delete request** if you need to delete additional data.
+
+**Properties:**
+
+- Enforced by: Compactor delete request handler
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Invalid max_interval for delete request
+
+**Error message:**
+
+```text
+invalid max_interval: valid time units are 's', 'm', 'h'
+```
+
+Or:
+
+```text
+max_interval can't be greater than <configured-limit>
+```
+
+Or:
+
+```text
+max_interval can't be greater than the interval to be deleted (<duration>)
+```
+
+**Cause:**
+
+The `max_interval` parameter on a delete request has an invalid value, exceeds the configured `delete_max_interval` limit, or exceeds the time range of the delete request itself.
+
+**Resolution:**
+
+1. **Use a valid time format** with supported units (`s`, `m`, `h`):
+
+   ```bash
+   curl -X POST http://compactor:3100/loki/api/v1/delete \
+     -H "X-Scope-OrgID: my-tenant" \
+     -d "query={app=\"foo\"}" \
+     -d "start=1704067200" \
+     -d "end=1704153600" \
+     -d "max_interval=1h"
+   ```
+
+**Properties:**
+
+- Enforced by: Compactor delete request handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No 
 
 ## Ruler errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Kafka integration errors
 
