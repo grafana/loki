@@ -15,7 +15,7 @@ var (
 		"openshift.log.type",
 	}
 
-	recommendedAttributes = []string{
+	consoleLabels = []string{
 		"k8s.container.name",
 		"k8s.cronjob.name",
 		"k8s.daemonset.name",
@@ -32,13 +32,13 @@ var (
 )
 
 // DefaultOTLPAttributes provides the required/recommended set of OTLP attributes for OpenShift Logging.
-func DefaultOTLPAttributes(disableRecommended bool) []string {
+func DefaultOTLPAttributes(enableConsoleLabels bool) []string {
 	result := append([]string{}, requiredAttributes...)
-	if disableRecommended {
+	if !enableConsoleLabels {
 		return result
 	}
 
-	result = append(result, recommendedAttributes...)
+	result = append(result, consoleLabels...)
 	slices.Sort(result)
 
 	return result
