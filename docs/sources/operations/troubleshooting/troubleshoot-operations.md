@@ -3048,7 +3048,7 @@ The WAL checkpoint duration is set to an invalid value (likely zero or negative)
 - Enforced by: Configuration validation
 - Retryable: No
 - HTTP status: N/A (startup failure)
-- Configurable per tenant: No 
+- Configurable per tenant: No
 
 <!-- Hiding this for now, as it won't exist until we release Loki 3.7 
 
@@ -3227,7 +3227,124 @@ The ingester's lifecycler (which manages ring membership) encountered a fatal er
 
 ## Pattern ingester errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+Pattern ingester errors occur when using the pattern ingester for automatic log pattern detection.
+
+### Error: Pattern ingester replication factor must be 1
+
+**Error message:**
+
+```text
+pattern ingester replication factor must be 1
+```
+
+**Cause:**
+
+The pattern ingester is configured with a replication factor other than 1. Currently, the pattern ingester only supports a replication factor of 1.
+
+**Resolution:**
+
+1. **Set the replication factor to 1**:
+
+   ```yaml
+   pattern_ingester:
+     lifecycler:
+       ring:
+         replication_factor: 1
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Pattern ingester retain-for too short
+
+**Error message:**
+
+```text
+retain-for (<duration>) must be greater than or equal to chunk-duration (<duration>)
+```
+
+**Cause:**
+
+The pattern ingester's `retain_for` duration is shorter than `max_chunk_age`, which would cause data loss.
+
+**Resolution:**
+
+1. **Increase the retain-for duration** to be at least as long as `max_chunk_age`:
+
+   ```yaml
+   pattern_ingester:
+     retain_for: 15m   # Must be >= max_chunk_age
+     max_chunk_age: 5m
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Pattern ingester chunk-duration too short
+
+**Error message:**
+
+```text
+chunk-duration (<duration>) must be greater than or equal to sample-interval (<duration>)
+```
+
+**Cause:**
+
+The pattern ingester's `max_chunk_age` is shorter than `pattern_sample_interval`. Chunks must span at least one sample interval to hold any data.
+
+**Resolution:**
+
+1. **Increase `max_chunk_age`** to be at least as long as `pattern_sample_interval`:
+
+   ```yaml
+   pattern_ingester:
+     max_chunk_age: 1h     # Must be >= pattern_sample_interval (default: 1h)
+     pattern_sample_interval: 10s  # default: 10s
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Pattern ingester volume threshold out of range
+
+**Error message:**
+
+```text
+volume_threshold (<value>) must be between 0 and 1
+```
+
+**Cause:**
+
+The `volume_threshold` value is outside the valid range of 0 to 1. This setting controls what fraction of log volume the pattern ingester tracks — only patterns representing the top X% of log volume are persisted.
+
+**Resolution:**
+
+1. **Set `volume_threshold` to a value between 0 and 1** (default is `0.99`):
+
+   ```yaml
+   pattern_ingester:
+     volume_threshold: 0.99
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No 
 
 ## API parameter errors
 
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
