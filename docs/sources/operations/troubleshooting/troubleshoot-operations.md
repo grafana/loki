@@ -2905,7 +2905,7 @@ Kafka is configured for the distributor but the ingester isn't configured to rea
 - Enforced by: Configuration validation
 - Retryable: No
 - HTTP status: N/A (startup failure)
-- Configurable per tenant: No
+- Configurable per tenant: No 
 
 ## Bloom gateway errors
 
@@ -2990,7 +2990,7 @@ The bloom gateway received a request where the start time (`from`) is later than
 - Enforced by: Bloom gateway
 - Retryable: No
 - HTTP status: 500 Internal Server Error
-- Configurable per tenant: No
+- Configurable per tenant: No 
 
 ## Write-ahead log (WAL) errors
 
@@ -3048,7 +3048,7 @@ The WAL checkpoint duration is set to an invalid value (likely zero or negative)
 - Enforced by: Configuration validation
 - Retryable: No
 - HTTP status: N/A (startup failure)
-- Configurable per tenant: No
+- Configurable per tenant: No 
 
 <!-- Hiding this for now, as it won't exist until we release Loki 3.7 
 
@@ -3083,7 +3083,7 @@ The WAL disk full threshold is set to a value outside the valid range. Valid val
 - Enforced by: Configuration validation
 - Retryable: No
 - HTTP status: N/A (startup failure)
-- Configurable per tenant: No -->
+- Configurable per tenant: No --> 
 
 ## Ingester lifecycle errors
 
@@ -3223,7 +3223,7 @@ The ingester's lifecycler (which manages ring membership) encountered a fatal er
 - Enforced by: Ingester lifecycler
 - Retryable: Yes (after fix and restart)
 - HTTP status: N/A (internal failure)
-- Configurable per tenant: No
+- Configurable per tenant: No 
 
 ## Pattern ingester errors
 
@@ -3343,8 +3343,160 @@ The `volume_threshold` value is outside the valid range of 0 to 1. This setting 
 - Enforced by: Configuration validation
 - Retryable: No (configuration must be fixed)
 - HTTP status: N/A (startup failure)
-- Configurable per tenant: No 
+- Configurable per tenant: No
+
 
 ## API parameter errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+These errors occur when API requests contain invalid parameters.
+
+### Error: Invalid direction
+
+**Error message:**
+
+```text
+invalid direction '<value>'
+```
+
+**Cause:**
+
+The `direction` query parameter contains an invalid value.
+
+**Resolution:**
+
+1. **Use a valid direction value**:
+   - `forward` - Oldest to newest
+   - `backward` - Newest to oldest (default)
+
+   ```bash
+   curl "http://loki:3100/loki/api/v1/query_range?query={job=\"app\"}&direction=forward"
+   ```
+
+**Properties:**
+
+- Enforced by: API handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Limit must be a positive value
+
+**Error message:**
+
+```text
+limit must be a positive value
+```
+
+**Cause:**
+
+The `limit` parameter is zero or negative.
+
+**Resolution:**
+
+1. **Provide a positive limit**:
+
+   ```bash
+   curl "http://loki:3100/loki/api/v1/query_range?query={job=\"app\"}&limit=100"
+   ```
+
+**Properties:**
+
+- Enforced by: API handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: End timestamp must not be before start time
+
+**Error message:**
+
+```text
+end timestamp must not be before or equal to start time
+```
+
+**Cause:**
+
+The query's `end` time is before or equal to its `start` time.
+
+**Resolution:**
+
+1. **Ensure end time is after start time**:
+
+   ```bash
+   curl "http://loki:3100/loki/api/v1/query_range?\
+   query={job=\"app\"}&\
+   start=2024-01-01T00:00:00Z&\
+   end=2024-01-02T00:00:00Z"
+   ```
+
+**Properties:**
+
+- Enforced by: API handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Delay for tailing too large
+
+**Error message:**
+
+```text
+delay_for can't be greater than <max>
+```
+
+**Cause:**
+
+The `delay_for` parameter for tailing queries exceeds the maximum allowed value.
+
+**Resolution:**
+
+1. **Reduce the delay_for value**:
+
+   ```bash
+   curl "http://loki:3100/loki/api/v1/tail?query={job=\"app\"}&delay_for=5"
+   ```
+
+   The maximum value is typically 5 seconds.
+
+**Properties:**
+
+- Enforced by: API handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Query filtering requires compactor address
+
+**Error message:**
+
+```text
+query filtering for deletes requires 'compactor_grpc_address' or 'compactor_address' to be configured
+```
+
+**Cause:**
+
+Query-time filtering for delete requests is enabled but Loki doesn't know how to reach the compactor to retrieve active delete requests.
+
+**Resolution:**
+
+1. **Configure the compactor address**:
+
+   ```yaml
+   compactor:
+     compactor_grpc_address: compactor:9095
+   ```
+
+1. **Or use the HTTP address**:
+
+   ```yaml
+   compactor:
+     compactor_address: http://compactor:3100
+   ```
+
+**Properties:**
+
+- Enforced by: Module initialization
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
