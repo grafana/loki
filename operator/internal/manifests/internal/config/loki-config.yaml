@@ -212,6 +212,8 @@ limits_config:
   volume_enabled: true
   volume_max_series: {{ .Stack.Limits.Global.QueryLimits.MaxVolumeSeries }}
   enable_multi_variant_queries: true
+  shard_aggregations:
+    - approx_topk
 {{- if .Retention.Enabled }}{{- with .Stack.Limits.Global.Retention }}
   retention_period: {{.Days}}d
 {{- with .Streams }}
