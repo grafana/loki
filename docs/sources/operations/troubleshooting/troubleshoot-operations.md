@@ -3087,11 +3087,147 @@ The WAL disk full threshold is set to a value outside the valid range. Valid val
 
 ## Ingester lifecycle errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+Ingester lifecycle errors occur during ingester startup, shutdown, or state transitions.
+
+### Error: Ingester is shutting down
+
+**Error message:**
+
+```text
+Ingester is shutting down
+```
+
+**Cause:**
+
+The ingester is in the process of shutting down and is no longer accepting writes. This error (also known as `ErrReadOnly`) is returned when a push request arrives during graceful shutdown. During this period the ingester may still serve reads for data it holds in memory.
+
+**Resolution:**
+
+1. **Configure clients to retry** with backoff. The distributor will route to other healthy ingesters.
+1. **Wait for shutdown to complete** and the new instance to start.
+1. **Check if shutdown is expected** (rolling update, scaling event).
+1. **If unexpected**, check orchestrator logs for OOM kills or health check failures.
+
+**Properties:**
+
+- Enforced by: Ingester
+- Retryable: Partial. The distributor sends writes to all ingesters in the replication set in parallel and uses a quorum model. If the remaining ingesters meet the minimum success threshold, the overall write succeeds despite this error from a shutting-down ingester.
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: Ingester is stopping or already stopped
+
+**Error message:**
+
+```text
+Ingester is stopping or already stopped.
+```
+
+**Cause:**
+
+The ingester's shutdown management endpoint (`POST /loki/api/v1/ingester/shutdown`) was called when the ingester was not in a `Running` state. This happens when the endpoint is called a second time during an in-progress shutdown or after the ingester has already stopped. This error is returned by the shutdown endpoint, not by the log-write or query paths.
+
+**Resolution:**
+
+1. **Do not call the shutdown endpoint again** while a shutdown is already in progress.
+1. **Check orchestrator** for duplicate shutdown signals or restart policies.
+1. **Investigate** if the stop was unexpected (pod eviction, OOM, crash).
+
+**Properties:**
+
+- Enforced by: Ingester shutdown endpoint
+- Retryable: No (the shutdown endpoint call itself is not retryable; wait for the ingester to restart before sending new writes)
+- HTTP status: 503 Service Unavailable (response from the shutdown endpoint)
+- Configurable per tenant: No
+
+### Error: Failed to start partition reader
+
+**Error message:**
+
+```text
+failed to start partition reader: <details>
+```
+
+**Cause:**
+
+The ingester could not start its Kafka partition reader. This occurs when Kafka ingestion is enabled but the partition reader fails to initialize.
+
+**Resolution:**
+
+1. **Check Kafka connectivity** from the ingester.
+1. **Verify Kafka topic exists** and the ingester has appropriate permissions.
+1. **Review Kafka configuration**:
+
+   ```yaml
+   kafka:
+     address: kafka:9092
+     topic: loki-logs
+   ```
+
+1. **Check Kafka broker health**.
+
+**Properties:**
+
+- Enforced by: Ingester startup
+- Retryable: No (configuration or infrastructure must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Failed to start partition ring lifecycler
+
+**Error message:**
+
+```text
+failed to start partition ring lifecycler: <details>
+```
+
+**Cause:**
+
+The ingester could not start its Kafka partition ring lifecycler during startup. This is a separate component from the partition reader; it manages the ingester's membership in the partition ring. This only occurs when Kafka ingestion is enabled.
+
+**Resolution:**
+
+1. **Check Kafka connectivity** from the ingester.
+1. **Verify the partition ring KV store** (the store used for the partition ring) is reachable.
+1. **Review ingester logs** for the wrapped error in `<details>`.
+1. **Check Kafka broker health** and partition availability.
+
+**Properties:**
+
+- Enforced by: Ingester startup
+- Retryable: No (configuration or infrastructure must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Lifecycler failed
+
+**Error message:**
+
+```text
+lifecycler failed: <details>
+```
+
+**Cause:**
+
+The ingester's lifecycler (which manages ring membership) encountered a fatal error. This prevents the ingester from participating in the ring.
+
+**Resolution:**
+
+1. **Check KV store connectivity** (Consul, etcd, or memberlist).
+1. **Review ingester logs** for the specific lifecycler error.
+1. **Verify ring configuration** is consistent across all ingesters.
+1. **Restart the ingester** after fixing the underlying issue.
+
+**Properties:**
+
+- Enforced by: Ingester lifecycler
+- Retryable: Yes (after fix and restart)
+- HTTP status: N/A (internal failure)
+- Configurable per tenant: No 
 
 ## Pattern ingester errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## API parameter errors
 
