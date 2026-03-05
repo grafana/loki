@@ -287,15 +287,6 @@ func (g *testConsumerGroup) createConsumer(id string) *kgo.Client {
 		}),
 	)
 	require.NoError(g.t, err)
-	// kgo's group management (JoinGroup/SyncGroup) is driven by PollFetches.
-	go func() {
-		for {
-			fetches := client.PollFetches(context.Background())
-			if fetches.IsClientClosed() {
-				return
-			}
-		}
-	}()
 	return client
 }
 
