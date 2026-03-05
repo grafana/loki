@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
@@ -37,6 +37,8 @@ type IndexSet interface {
 	// There is no need to call SetCompactedIndex if no changes were made to the index for this IndexSet.
 	SetCompactedIndex(compactedIndex CompactedIndex, removeSourceFiles bool) error
 }
+
+var ErrSourceFileNotFound = errors.New("source index file not found")
 
 // CompactedIndex is built by TableCompactor for IndexSet after compaction.
 // It would be used for:
@@ -139,6 +141,9 @@ func (is *indexSet) GetSourceFile(indexFile storage.IndexFile) (string, error) {
 			return is.baseIndexSet.GetFile(is.ctx, is.tableName, is.userID, indexFile.Name)
 		})
 	if err != nil {
+		if is.baseIndexSet.IsFileNotFoundErr(err) {
+			return "", fmt.Errorf("%w: %s", ErrSourceFileNotFound, indexFile.Name)
+		}
 		return "", err
 	}
 
