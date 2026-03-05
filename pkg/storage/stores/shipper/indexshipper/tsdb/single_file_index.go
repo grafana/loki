@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/sectionref"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -95,16 +97,32 @@ type TSDBFile struct {
 }
 
 func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
+	logger := util_log.Logger
+
+	level.Debug(logger).Log("msg", "loading TSDB file", "path", id.Path())
+
 	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path())
 	if err != nil {
 		return nil, err
+	}
+
+	// TODO: register a different index.OpenIndexFileFunc for dataobj TSDB files
+	// during indexshipper init.
+	sectionsPath := id.Path() + ".sections"
+	if table, mmapErr := sectionref.OpenMmap(sectionsPath); mmapErr == nil {
+		idx.sectionRefTable = table
+		level.Debug(logger).Log("msg", "loaded sections companion", "path", sectionsPath, "entries", table.Len())
+	} else if errors.Is(mmapErr, os.ErrNotExist) {
+		level.Debug(logger).Log("msg", "no sections companion found", "path", sectionsPath)
+	} else {
+		return nil, fmt.Errorf("opening sections table %s: %w", sectionsPath, mmapErr)
 	}
 
 	return &TSDBFile{
 		Identifier:       id,
 		Index:            idx,
 		getRawFileReader: getRawFileReader,
-	}, err
+	}, nil
 }
 
 func (f *TSDBFile) Close() error {
@@ -115,13 +133,23 @@ func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
 	return f.getRawFileReader()
 }
 
+func (f *TSDBFile) GetDataobjSections(ctx context.Context, userID string, from, through model.Time,
+	fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]index.DataobjSectionRef, error) {
+	resolver, ok := f.Index.(index.DataobjResolver)
+	if !ok {
+		return nil, fmt.Errorf("underlying index does not support dataobj resolution: %T", f.Index)
+	}
+	return resolver.GetDataobjSections(ctx, userID, from, through, fpFilter, matchers...)
+}
+
 // nolint
 // TSDBIndex is backed by an IndexReader
 // and translates the IndexReader to an Index implementation
 // It loads the file into memory and doesn't keep a file descriptor open
 type TSDBIndex struct {
-	reader      IndexReader
-	chunkFilter chunk.RequestChunkFilterer
+	reader          IndexReader
+	chunkFilter     chunk.RequestChunkFilterer
+	sectionRefTable sectionref.SectionRefLookup
 }
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
@@ -144,6 +172,9 @@ func NewTSDBIndex(reader IndexReader) *TSDBIndex {
 }
 
 func (i *TSDBIndex) Close() error {
+	if i.sectionRefTable != nil {
+		i.sectionRefTable.Close()
+	}
 	return i.reader.Close()
 }
 
@@ -505,6 +536,106 @@ func (i *TSDBIndex) Volume(
 		}
 		return p.Err()
 	})
+}
+
+// GetDataobjSections resolves matching dataobj references using the companion
+// lookup table and returns fully resolved dataobj section references grouped
+// by (Path, SectionID). SeriesIDs are read from the sidecar SectionRefTable
+// and collected per section.
+func (i *TSDBIndex) GetDataobjSections(
+	ctx context.Context,
+	userID string,
+	from, through model.Time,
+	fpFilter index.FingerprintFilter,
+	matchers ...*labels.Matcher,
+) ([]index.DataobjSectionRef, error) {
+	logger := util_log.Logger
+
+	if i.sectionRefTable == nil {
+		level.Debug(logger).Log("msg", "TSDBIndex.GetDataobjSections skipped: no section ref table", "user", userID, "from", from, "through", through)
+		return nil, nil
+	}
+
+	level.Debug(logger).Log("msg", "TSDBIndex.GetDataobjSections starting", "user", userID, "from", from, "through", through, "table_entries", i.sectionRefTable.Len())
+
+	// key to uniquely identify a dataobj section.
+	type sectionKey struct {
+		Path      string
+		SectionID int
+	}
+
+	type accumulator struct {
+		ref       index.DataobjSectionRef
+		streamSet map[int64]struct{}
+	}
+
+	sections := make(map[sectionKey]*accumulator)
+
+	var (
+		failedLookup bool
+		seriesCount  int
+		chunkCount   int
+	)
+
+	if err := i.ForSeries(ctx, userID, fpFilter, from, through, func(_ labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+		seriesCount++
+		for _, chk := range chks {
+			chunkCount++
+			ref, ok := i.sectionRefTable.Lookup(chk.Checksum)
+			if !ok {
+				level.Warn(logger).Log("msg", "TSDBIndex.GetDataobjSections: failed to lookup section ref", "checksum", chk.Checksum)
+				failedLookup = true
+				return true
+			}
+
+			k := sectionKey{Path: ref.Path, SectionID: ref.SectionID}
+
+			acc, ok := sections[k]
+			if !ok {
+				acc = &accumulator{
+					ref: index.DataobjSectionRef{
+						Path:      ref.Path,
+						SectionID: ref.SectionID,
+						MinTime:   chk.From(),
+						MaxTime:   chk.Through(),
+						KB:        chk.KB,
+						Entries:   chk.Entries,
+					},
+					streamSet: make(map[int64]struct{}),
+				}
+				sections[k] = acc
+			} else {
+				if chk.From() < acc.ref.MinTime {
+					acc.ref.MinTime = chk.From()
+				}
+				if chk.Through() > acc.ref.MaxTime {
+					acc.ref.MaxTime = chk.Through()
+				}
+			}
+			acc.streamSet[int64(ref.SeriesID)] = struct{}{}
+		}
+		return false
+	}, matchers...); err != nil {
+		return nil, err
+	}
+
+	if failedLookup {
+		return nil, fmt.Errorf("failed to lookup section ref for at least one chunk; cannot resolve dataobj sections")
+	}
+
+	res := make([]index.DataobjSectionRef, 0, len(sections))
+	for _, acc := range sections {
+		ids := make([]int64, 0, len(acc.streamSet))
+		for id := range acc.streamSet {
+			ids = append(ids, id)
+		}
+		acc.ref.StreamIDs = ids
+		res = append(res, acc.ref)
+	}
+
+	level.Debug(logger).Log("msg", "TSDBIndex.GetDataobjSections completed", "user", userID, "series_matched", seriesCount, "chunks_matched", chunkCount, "sections_resolved", len(res))
+
+	return res, nil
 }
 
 func cloneStringList(strs []string) []string {

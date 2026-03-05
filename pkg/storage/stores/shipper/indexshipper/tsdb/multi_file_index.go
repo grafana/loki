@@ -377,3 +377,86 @@ func (i MultiIndex) ForSeries(ctx context.Context, userID string, fpFilter index
 		return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
 	})
 }
+
+func (i *MultiIndex) GetDataobjSections(ctx context.Context, userID string, from, through model.Time, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]index.DataobjSectionRef, error) {
+	acc := newResultAccumulator(func(xs [][]index.DataobjSectionRef) ([]index.DataobjSectionRef, error) {
+		type sectionKey struct {
+			Path      string
+			SectionID int
+		}
+		type accumulator struct {
+			ref       index.DataobjSectionRef
+			streamSet map[int64]struct{}
+		}
+
+		merged := make(map[sectionKey]*accumulator)
+
+		for _, group := range xs {
+			for _, ref := range group {
+				k := sectionKey{Path: ref.Path, SectionID: ref.SectionID}
+
+				a, ok := merged[k]
+				if !ok {
+					a = &accumulator{
+						ref: index.DataobjSectionRef{
+							Path:      ref.Path,
+							SectionID: ref.SectionID,
+							MinTime:   ref.MinTime,
+							MaxTime:   ref.MaxTime,
+							KB:        ref.KB,
+							Entries:   ref.Entries,
+						},
+						streamSet: make(map[int64]struct{}, len(ref.StreamIDs)),
+					}
+					merged[k] = a
+				} else {
+					if ref.MinTime < a.ref.MinTime {
+						a.ref.MinTime = ref.MinTime
+					}
+					if ref.MaxTime > a.ref.MaxTime {
+						a.ref.MaxTime = ref.MaxTime
+					}
+				}
+
+				for _, id := range ref.StreamIDs {
+					a.streamSet[id] = struct{}{}
+				}
+			}
+		}
+
+		res := make([]index.DataobjSectionRef, 0, len(merged))
+		for _, a := range merged {
+			ids := make([]int64, 0, len(a.streamSet))
+			for id := range a.streamSet {
+				ids = append(ids, id)
+			}
+			a.ref.StreamIDs = ids
+			res = append(res, a.ref)
+		}
+		return res, nil
+	})
+
+	if err := i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
+		resolver, ok := idx.(index.DataobjResolver)
+		if !ok {
+			return nil
+		}
+		got, err := resolver.GetDataobjSections(ctx, userID, from, through, fpFilter, matchers...)
+		if err != nil {
+			return err
+		}
+		acc.Add(got)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	merged, err := acc.Merge()
+	if err != nil {
+		if err == ErrEmptyAccumulator {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return merged, nil
+}

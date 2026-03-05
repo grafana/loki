@@ -144,6 +144,19 @@ func (i *indexShipperQuerier) ForSeries(ctx context.Context, userID string, fpFi
 	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
 }
 
+func (i *indexShipperQuerier) GetDataobjSections(ctx context.Context, userID string, from, through model.Time, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]tsdbindex.DataobjSectionRef, error) {
+	idx, err := i.indices(ctx, from, through, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	resolver, ok := idx.(tsdbindex.DataobjResolver)
+	if !ok {
+		return nil, fmt.Errorf("underlying index does not support dataobj resolution")
+	}
+	return resolver.GetDataobjSections(ctx, userID, from, through, fpFilter, matchers...)
+}
+
 type resultAccumulator[T any] struct {
 	mtx   sync.Mutex
 	items []T

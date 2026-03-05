@@ -65,6 +65,42 @@ func TestIndexSet_Init(t *testing.T) {
 	checkIndexSet()
 }
 
+func TestIndexSet_SkipsSectionsFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+	tablePathInStorage := filepath.Join(objectStoragePath, tableName, userID)
+
+	// Setup regular index files and a .sections sidecar file in storage.
+	setupIndexesAtPath(t, userID, tablePathInStorage, 0, 3)
+	sectionsFileName := "some-index.tsdb.sections"
+	require.NoError(t, os.WriteFile(filepath.Join(tablePathInStorage, sectionsFileName), []byte("sections-data"), 0640))
+
+	openCalled := map[string]bool{}
+	storageClient := buildTestStorageClient(t, tempDir)
+	cachePath := filepath.Join(tempDir, cacheDirName)
+	baseIndexSet := storage.NewIndexSet(storageClient, true)
+
+	idxSet, err := NewIndexSet(tableName, userID, filepath.Join(cachePath, tableName, userID), baseIndexSet,
+		func(path string) (index.Index, error) {
+			openCalled[filepath.Base(path)] = true
+			return openMockIndexFile(t, path), nil
+		}, util_log.Logger)
+	require.NoError(t, err)
+	require.NoError(t, idxSet.Init(false, util_log.Logger))
+	defer idxSet.Close()
+
+	is := idxSet.(*indexSet)
+
+	// The .sections file should have been downloaded to the cache directory but
+	// not opened as an index.
+	require.False(t, openCalled[sectionsFileName], ".sections file should not be opened as an index")
+	_, sectionsInIndex := is.index[sectionsFileName]
+	require.False(t, sectionsInIndex, ".sections file should not appear in the index map")
+
+	// Regular index files should be opened normally.
+	require.Len(t, is.index, 3)
+}
+
 func TestIndexSet_doConcurrentDownload(t *testing.T) {
 	tempDir := t.TempDir()
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)

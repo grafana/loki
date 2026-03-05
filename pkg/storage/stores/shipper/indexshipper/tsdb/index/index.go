@@ -2366,7 +2366,6 @@ func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, f
 }
 
 func (dec *Decoder) readChunks(version int, d *encoding.Decbuf, seriesRef storage.SeriesRef, from int64, through int64, chks *[]ChunkMeta) error {
-	// read chunks based on fmt
 	if version > FormatV2 {
 		return dec.readChunksV3(d, from, through, chks)
 	}

@@ -156,6 +156,22 @@ func (s *store) Stop() {
 	})
 }
 
+func (s *store) GetDataobjSections(ctx context.Context, userID string, from, through model.Time,
+	fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]tsdbindex.DataobjSectionRef, error) {
+	resolver, ok := s.Reader.(tsdbindex.DataobjResolver)
+	if !ok {
+		level.Warn(s.logger).Log("msg", "store.GetDataobjSections: underlying reader does not implement DataobjResolver", "reader_type", fmt.Sprintf("%T", s.Reader))
+		return nil, fmt.Errorf("underlying index reader does not support dataobj resolution")
+	}
+	level.Debug(s.logger).Log("msg", "store.GetDataobjSections: delegating to reader", "user", userID, "from", from, "through", through)
+	refs, err := resolver.GetDataobjSections(ctx, userID, from, through, fpFilter, matchers...)
+	if err != nil {
+		return nil, err
+	}
+	level.Debug(s.logger).Log("msg", "store.GetDataobjSections: completed", "user", userID, "sections", len(refs))
+	return refs, nil
+}
+
 func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk chunk.Chunk) error {
 	// Always write the index to benefit durability via replication factor.
 	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))

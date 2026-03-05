@@ -36,7 +36,7 @@ type TimeRange struct {
 	End   time.Time
 }
 
-func newTimeRange(start, end time.Time) (TimeRange, error) {
+func NewTimeRange(start, end time.Time) (TimeRange, error) {
 	if end.Before(start) {
 		return TimeRange{}, fmt.Errorf("cannot have end time (%v) before start time (%v)", end, start)
 	}
@@ -129,7 +129,7 @@ func filterForShard(shard ShardInfo, sections []*metastore.DataobjSectionDescrip
 		if int(s.SectionIdx)%int(shard.Of) == int(shard.Shard) {
 			ds.Streams = s.StreamIDs
 			ds.Sections = []int{int(s.SectionIdx)}
-			tr, err := newTimeRange(s.Start, s.End)
+			tr, err := NewTimeRange(s.Start, s.End)
 			if err != nil {
 				return nil, err
 			}
@@ -244,3 +244,35 @@ func convertBinaryOp(t types.BinaryOp) (labels.MatchType, error) {
 }
 
 var _ Catalog = (*MetastoreCatalog)(nil)
+
+// TSDBSectionsResolver resolves label matchers into DataObjSections via a TSDB
+// index.
+type TSDBSectionsResolver func(matchers []*labels.Matcher, start, end time.Time) ([]DataObjSections, error)
+
+// TSDBCatalog is a [Catalog] implementation backed by TSDB indices.
+type TSDBCatalog struct {
+	resolver TSDBSectionsResolver
+}
+
+// NewTSDBCatalog creates a new instance of [TSDBCatalog] for query planning.
+func NewTSDBCatalog(resolver TSDBSectionsResolver) *TSDBCatalog {
+	return &TSDBCatalog{resolver: resolver}
+}
+
+// ResolveDataObjSections resolves dataobj sections for the provided
+// selector expression and time range.
+func (c *TSDBCatalog) ResolveDataObjSections(selector Expression, _ []Expression, shard ShardInfo, start, end time.Time) ([]DataObjSections, error) {
+	matchers, err := expressionToMatchers(selector, false)
+	if err != nil {
+		return nil, fmt.Errorf("convert selector to matchers: %w", err)
+	}
+
+	sections, err := c.resolver(matchers, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("resolve tsdb sections: %w", err)
+	}
+
+	return sections, nil
+}
+
+var _ Catalog = (*TSDBCatalog)(nil)

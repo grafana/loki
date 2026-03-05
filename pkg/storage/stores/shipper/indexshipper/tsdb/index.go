@@ -75,3 +75,4 @@ func (NoopIndex) Volume(_ context.Context, _ string, _, _ model.Time, _ VolumeAc
 func (NoopIndex) ForSeries(_ context.Context, _ string, _ index.FingerprintFilter, _ model.Time, _ model.Time, _ func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), _ ...*labels.Matcher) error {
 	return nil
 }
+

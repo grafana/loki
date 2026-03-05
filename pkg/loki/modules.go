@@ -90,6 +90,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	boltdbcompactor "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/ui"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -1424,6 +1425,8 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "query-engine")
 	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
+	gwClient := t.newEngineGatewayClient(logger)
+
 	params := engine_v2.Params{
 		Logger:     logger,
 		Registerer: prometheus.DefaultRegisterer,
@@ -1434,6 +1437,9 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		Limits:    t.Overrides,
 
 		Metastore: ms,
+	}
+	if gwClient != nil {
+		params.IndexGateway = gwClient
 	}
 
 	if t.Cfg.QueryEngine.EnableDeleteReqFiltering {
@@ -1447,6 +1453,9 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 
 	engine, err := engine_v2.New(params)
 	if err != nil {
+		if gwClient != nil {
+			gwClient.Stop()
+		}
 		return nil, err
 	}
 
@@ -1472,7 +1481,50 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 	}
 
 	t.queryEngineV2 = engine
+
+	if gwClient != nil {
+		return services.NewIdleService(nil, func(_ error) error {
+			gwClient.Stop()
+			return nil
+		}), nil
+	}
 	return nil, nil
+}
+
+// newEngineGatewayClient creates an index gateway client for the V2 query
+// engine if the current target should use one. Targets that include the index
+// gateway (Backend, IndexGateway, All, legacy Read) resolve TSDB locally and
+// do not need a client. Returns nil when a client is not applicable.
+func (t *Loki) newEngineGatewayClient(logger log.Logger) *indexgateway.GatewayClient {
+	cfg := t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig
+	cfg.Mode = t.Cfg.IndexGateway.Mode
+	if cfg.Mode == indexgateway.RingMode && t.indexGatewayRingManager != nil {
+		cfg.Ring = t.indexGatewayRingManager.Ring
+	}
+
+	switch cfg.Mode {
+	case indexgateway.RingMode:
+		if cfg.Ring == nil {
+			return nil
+		}
+	case indexgateway.SimpleMode:
+		if cfg.Address == "" {
+			return nil
+		}
+	default:
+		return nil
+	}
+
+	reg := prometheus.WrapRegistererWith(
+		prometheus.Labels{"component": "query-engine-index-gateway-client"},
+		prometheus.DefaultRegisterer,
+	)
+	gw, err := indexgateway.NewGatewayClient(cfg, reg, t.Overrides, logger, constants.Loki)
+	if err != nil {
+		level.Warn(logger).Log("msg", "failed to create index gateway client for query engine, falling back to metastore", "err", err)
+		return nil
+	}
+	return gw
 }
 
 func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
@@ -2000,7 +2052,11 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		bloomQuerier = bloomgateway.NewQuerier(t.bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
 
-	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, t.Overrides, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier)
+	var dataobjResolver tsdb_index.DataobjResolver
+	if lokiStore, ok := t.Store.(*storage.LokiStore); ok {
+		dataobjResolver = lokiStore.DataobjResolver()
+	}
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, t.Overrides, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier, dataobjResolver)
 	if err != nil {
 		return nil, err
 	}

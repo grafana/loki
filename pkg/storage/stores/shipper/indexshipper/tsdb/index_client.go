@@ -365,3 +365,12 @@ func (c *IndexClient) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 func (c *IndexClient) HasChunkSizingInfo(_, _ model.Time) bool {
 	return true
 }
+
+func (c *IndexClient) GetDataobjSections(ctx context.Context, userID string, from, through model.Time,
+	fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]index.DataobjSectionRef, error) {
+	resolver, ok := c.idx.(index.DataobjResolver)
+	if !ok {
+		return nil, fmt.Errorf("underlying index does not support dataobj resolution")
+	}
+	return resolver.GetDataobjSections(ctx, userID, from, through, fpFilter, matchers...)
+}
