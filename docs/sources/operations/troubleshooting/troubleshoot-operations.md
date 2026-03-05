@@ -2994,11 +2994,100 @@ The bloom gateway received a request where the start time (`from`) is later than
 
 ## Write-ahead log (WAL) errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+WAL errors occur when the ingester cannot properly manage its write-ahead log.
+
+### Error: WAL is stopped
+
+**Error message:**
+
+```text
+wal is stopped
+```
+
+**Cause:**
+
+An operation was attempted on the WAL after it was stopped. This typically occurs during shutdown or after a fatal error.
+
+**Resolution:**
+
+1. **Check ingester health and logs** for errors.
+1. **Verify disk space** is available.
+1. **Restart the ingester** if it's in a bad state.
+
+**Properties:**
+
+- Enforced by: Ingester WAL
+- Retryable: Yes (after ingester restart)
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: Invalid checkpoint duration
+
+**Error message:**
+
+```text
+invalid checkpoint duration: <duration>
+```
+
+**Cause:**
+
+The WAL checkpoint duration is set to an invalid value (likely zero or negative).
+
+**Resolution:**
+
+1. **Set a valid checkpoint duration**:
+
+   ```yaml
+   ingester:
+     wal:
+       checkpoint_duration: 5m
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No 
+
+<!-- Hiding this for now, as it won't exist until we release Loki 3.7 
+
+### Error: Invalid disk full threshold
+
+{{< admonition type="note" >}}
+The `disk_full_threshold` configuration option was introduced in Loki 3.7. This error does not occur in earlier releases.
+{{< /admonition >}}
+
+**Error message:**
+
+```text
+invalid disk full threshold: <value> (must be between 0 and 1)
+```
+
+**Cause:**
+
+The WAL disk full threshold is set to a value outside the valid range. Valid values are between 0 and 1 (inclusive), where 0 disables throttling and values greater than 0 represent the fraction of disk capacity at which writes are throttled.
+
+**Resolution:**
+
+1. **Set a valid threshold**:
+
+   ```yaml
+   ingester:
+     wal:
+       disk_full_threshold: 0.9  # 90%
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No -->
 
 ## Ingester lifecycle errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Pattern ingester errors
 
