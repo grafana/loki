@@ -413,7 +413,7 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags httpre
 	s.WriteObjectField("stream")
 	s.WriteObjectStart()
 
-	lbls, err := parser.ParseMetric(stream.Labels)
+	lbls, err := parser.NewParser(parser.Options{}).ParseMetric(stream.Labels)
 	if err != nil {
 		return err
 	}

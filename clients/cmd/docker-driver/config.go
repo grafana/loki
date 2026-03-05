@@ -372,8 +372,11 @@ func relabelConfig(config string, lbs model.LabelSet) (model.LabelSet, error) {
 			return nil, err
 		}
 	}
-	relabed, _ := relabel.Process(labels.FromMap(util.ModelLabelSetToMap(lbs)), relabelConfig...)
-	return model.LabelSet(util.LabelsToMetric(relabed)), nil
+	lb := labels.NewBuilder(labels.FromMap(util.ModelLabelSetToMap(lbs)))
+	if keep := relabel.ProcessBuilder(lb, relabelConfig...); !keep {
+		return nil, nil
+	}
+	return model.LabelSet(util.LabelsToMetric(lb.Labels())), nil
 }
 
 func parseBoolean(key string, logCtx logger.Info, defaultValue bool) (bool, error) {

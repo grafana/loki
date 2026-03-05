@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	yaml "go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // ProviderSettings are the settings to initialize a Provider.

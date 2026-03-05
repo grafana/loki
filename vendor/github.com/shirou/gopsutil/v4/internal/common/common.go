@@ -7,6 +7,7 @@ package common
 //  - linux (amd64, arm)
 //  - freebsd (amd64)
 //  - windows (amd64)
+//  - aix (ppc64)
 
 import (
 	"bufio"
@@ -333,7 +334,7 @@ func PathExists(filename string) bool {
 
 // PathExistsWithContents returns the filename exists and it is not empty
 func PathExistsWithContents(filename string) bool {
-	info, err := os.Stat(filename)
+	info, err := os.Stat(filename) //nolint:gosec // filename is constructed from system paths, not user input
 	if err != nil {
 		return false
 	}
@@ -463,4 +464,12 @@ func Round(val float64, n int) float64 {
 	pow10 := math.Pow(10, float64(n))
 	// Multiply the value by pow10, round it, then divide it by pow10
 	return math.Round(val*pow10) / pow10
+}
+
+func TimeSince(ts uint64) uint64 {
+	return uint64(time.Now().Unix()) - ts
+}
+
+func TimeSinceMillis(ts uint64) uint64 {
+	return uint64(time.Now().UnixMilli()) - ts
 }

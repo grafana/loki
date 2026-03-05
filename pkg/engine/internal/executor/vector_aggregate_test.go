@@ -10,10 +10,15 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
+
+func init() {
+	assertions.Enabled = true
+}
 
 func TestVectorAggregationPipeline(t *testing.T) {
 	// input schema with timestamp, value and group by columns
@@ -85,7 +90,11 @@ func TestVectorAggregationPipeline(t *testing.T) {
 		Without: false,
 	}
 
-	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, grouping, newExpressionEvaluator(), types.VectorAggregationTypeSum, nil)
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, newExpressionEvaluator(), vectorAggregationOptions{
+		grouping:       grouping,
+		operation:      types.VectorAggregationTypeSum,
+		maxQuerySeries: 0, // no limit for test
+	})
 	require.NoError(t, err)
 	defer pipeline.Close()
 

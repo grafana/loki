@@ -2,6 +2,7 @@ package colorprofile
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os/exec"
 	"runtime"
@@ -11,6 +12,8 @@ import (
 	"github.com/charmbracelet/x/term"
 	"github.com/xo/terminfo"
 )
+
+const dumbTerm = "dumb"
 
 // Detect returns the color profile based on the terminal output, and
 // environment variables. This respects NO_COLOR, CLICOLOR, and CLICOLOR_FORCE
@@ -29,10 +32,10 @@ import (
 // See https://no-color.org/ and https://bixense.com/clicolors/ for more information.
 func Detect(output io.Writer, env []string) Profile {
 	out, ok := output.(term.File)
-	isatty := ok && term.IsTerminal(out.Fd())
 	environ := newEnviron(env)
-	term := environ.get("TERM")
-	isDumb := term == "dumb"
+	isatty := isTTYForced(environ) || (ok && term.IsTerminal(out.Fd()))
+	term, ok := environ.lookup("TERM")
+	isDumb := !ok || term == dumbTerm
 	envp := colorProfile(isatty, environ)
 	if envp == TrueColor || envNoColor(environ) {
 		// We already know we have TrueColor, or NO_COLOR is set.
@@ -69,7 +72,8 @@ func Env(env []string) (p Profile) {
 }
 
 func colorProfile(isatty bool, env environ) (p Profile) {
-	isDumb := env.get("TERM") == "dumb"
+	term, ok := env.lookup("TERM")
+	isDumb := (!ok && runtime.GOOS != "windows") || term == dumbTerm
 	envp := envColorProfile(env)
 	if !isatty || isDumb {
 		// Check if the output is a terminal.
@@ -80,10 +84,10 @@ func colorProfile(isatty bool, env environ) (p Profile) {
 	}
 
 	if envNoColor(env) && isatty {
-		if p > Ascii {
-			p = Ascii
+		if p > ASCII {
+			p = ASCII
 		}
-		return
+		return //nolint:nakedret
 	}
 
 	if cliColorForced(env) {
@@ -94,7 +98,7 @@ func colorProfile(isatty bool, env environ) (p Profile) {
 			p = envp
 		}
 
-		return
+		return //nolint:nakedret
 	}
 
 	if cliColor(env) {
@@ -123,6 +127,11 @@ func cliColorForced(env environ) bool {
 	return cliColorForce
 }
 
+func isTTYForced(env environ) bool {
+	skip, _ := strconv.ParseBool(env.get("TTY_FORCE"))
+	return skip
+}
+
 func colorTerm(env environ) bool {
 	colorTerm := strings.ToLower(env.get("COLORTERM"))
 	return colorTerm == "truecolor" || colorTerm == "24bit" ||
@@ -132,7 +141,7 @@ func colorTerm(env environ) bool {
 // envColorProfile returns infers the color profile from the environment.
 func envColorProfile(env environ) (p Profile) {
 	term, ok := env.lookup("TERM")
-	if !ok || len(term) == 0 || term == "dumb" {
+	if !ok || len(term) == 0 || term == dumbTerm {
 		p = NoTTY
 		if runtime.GOOS == "windows" {
 			// Use Windows API to detect color profile. Windows Terminal and
@@ -145,29 +154,29 @@ func envColorProfile(env environ) (p Profile) {
 		p = ANSI
 	}
 
-	parts := strings.Split(term, "-")
-	switch parts[0] {
-	case "alacritty",
-		"contour",
-		"foot",
-		"ghostty",
-		"kitty",
-		"rio",
-		"st",
-		"wezterm":
+	switch {
+	case strings.Contains(term, "alacritty"),
+		strings.Contains(term, "contour"),
+		strings.Contains(term, "foot"),
+		strings.Contains(term, "ghostty"),
+		strings.Contains(term, "kitty"),
+		strings.Contains(term, "rio"),
+		strings.Contains(term, "st"),
+		strings.Contains(term, "wezterm"):
 		return TrueColor
-	case "xterm":
-		if len(parts) > 1 {
-			switch parts[1] {
-			case "ghostty", "kitty":
-				// These terminals can be defined as xterm-TERMNAME
-				return TrueColor
-			}
-		}
-	case "tmux", "screen":
+	case strings.HasPrefix(term, "tmux"), strings.HasPrefix(term, "screen"):
 		if p < ANSI256 {
 			p = ANSI256
 		}
+	case strings.HasPrefix(term, "xterm"):
+		if p < ANSI {
+			p = ANSI
+		}
+	}
+
+	if len(env["WT_SESSION"]) > 0 {
+		// Windows Terminal supports TrueColor
+		return TrueColor
 	}
 
 	if isCloudShell, _ := strconv.ParseBool(env.get("GOOGLE_CLOUD_SHELL")); isCloudShell {
@@ -184,7 +193,12 @@ func envColorProfile(env environ) (p Profile) {
 		p = ANSI256
 	}
 
-	return
+	// Direct color terminals support true colors.
+	if strings.HasSuffix(term, "direct") {
+		return TrueColor
+	}
+
+	return //nolint:nakedret
 }
 
 // Terminfo returns the color profile based on the terminal's terminfo
@@ -231,13 +245,13 @@ func tmux(env environ) (p Profile) {
 	// Check if tmux has either Tc or RGB capabilities. Otherwise, return
 	// ANSI256.
 	p = ANSI256
-	cmd := exec.Command("tmux", "info")
+	cmd := exec.CommandContext(context.Background(), "tmux", "info")
 	out, err := cmd.Output()
 	if err != nil {
 		return
 	}
 
-	for _, line := range bytes.Split(out, []byte("\n")) {
+	for line := range bytes.SplitSeq(out, []byte("\n")) {
 		if (bytes.Contains(line, []byte("Tc")) || bytes.Contains(line, []byte("RGB"))) &&
 			bytes.Contains(line, []byte("true")) {
 			return TrueColor
@@ -277,11 +291,4 @@ func (e environ) lookup(key string) (string, bool) {
 func (e environ) get(key string) string {
 	v, _ := e.lookup(key)
 	return v
-}
-
-func max[T ~byte | ~int](a, b T) T {
-	if a > b {
-		return a
-	}
-	return b
 }

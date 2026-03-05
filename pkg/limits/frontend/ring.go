@@ -73,13 +73,12 @@ func newRingLimitsClient(
 }
 
 // ExceedsLimits implements the [exceedsLimitsGatherer] interface.
-func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+	var resp proto.ExceedsLimitsResponse
 	if len(req.Streams) == 0 {
-		return nil, nil
+		return &resp, nil
 	}
-	responses := make([]*proto.ExceedsLimitsResponse, 0)
-	doExceedsLimitsRPC := r.newExceedsLimitsRPCsFunc(&responses)
-	unanswered, err := r.exhaustAllZones(ctx, req.Tenant, req.Streams, doExceedsLimitsRPC)
+	unanswered, err := r.exhaustAllZones(ctx, req.Tenant, req.Streams, r.newExceedsLimitsRPCsFunc(&resp))
 	if err != nil {
 		return nil, err
 	}
@@ -92,19 +91,18 @@ func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceeds
 				Reason:     uint32(limits.ReasonFailed),
 			})
 		}
-		responses = append(responses, &proto.ExceedsLimitsResponse{Results: failed})
+		resp.Results = append(resp.Results, failed...)
 	}
-	return responses, nil
+	return &resp, nil
 }
 
 // UpdateRates implements the [exceedsLimitsGatherer] interface.
-func (r *ringLimitsClient) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) ([]*proto.UpdateRatesResponse, error) {
+func (r *ringLimitsClient) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
+	var resp proto.UpdateRatesResponse
 	if len(req.Streams) == 0 {
-		return nil, nil
+		return &resp, nil
 	}
-	responses := make([]*proto.UpdateRatesResponse, 0)
-	doUpdateRatesRPC := r.newUpdateRatesRPCsFunc(&responses)
-	unanswered, err := r.exhaustAllZones(ctx, req.Tenant, req.Streams, doUpdateRatesRPC)
+	unanswered, err := r.exhaustAllZones(ctx, req.Tenant, req.Streams, r.newUpdateRatesRPCsFunc(&resp))
 	if err != nil {
 		return nil, err
 	}
@@ -117,14 +115,14 @@ func (r *ringLimitsClient) UpdateRates(ctx context.Context, req *proto.UpdateRat
 				Rate:       0,
 			})
 		}
-		responses = append(responses, &proto.UpdateRatesResponse{Results: failed})
+		resp.Results = append(resp.Results, failed...)
 	}
-	return responses, nil
+	return &resp, nil
 }
 
 // newExceedsLimitsRPCsFunc returns a doRPCsFunc that executes the ExceedsLimits
 // RPCs for the instances in a zone.
-func (r *ringLimitsClient) newExceedsLimitsRPCsFunc(responses *[]*proto.ExceedsLimitsResponse) doRPCsFunc {
+func (r *ringLimitsClient) newExceedsLimitsRPCsFunc(resp *proto.ExceedsLimitsResponse) doRPCsFunc {
 	return func(
 		ctx context.Context,
 		tenant string,
@@ -162,7 +160,7 @@ func (r *ringLimitsClient) newExceedsLimitsRPCsFunc(responses *[]*proto.ExceedsL
 		close(responseCh)
 		close(answeredCh)
 		for r := range responseCh {
-			*responses = append(*responses, r)
+			resp.Results = append(resp.Results, r.Results...)
 		}
 		answered := make([]uint64, 0, len(streams))
 		for streamHash := range answeredCh {
@@ -174,7 +172,7 @@ func (r *ringLimitsClient) newExceedsLimitsRPCsFunc(responses *[]*proto.ExceedsL
 
 // newUpdateRatesRPCsFunc returns a doRPCsFunc that executes the UpdateRates
 // RPCs for the instances in a zone.
-func (r *ringLimitsClient) newUpdateRatesRPCsFunc(responses *[]*proto.UpdateRatesResponse) doRPCsFunc {
+func (r *ringLimitsClient) newUpdateRatesRPCsFunc(resp *proto.UpdateRatesResponse) doRPCsFunc {
 	return func(
 		ctx context.Context,
 		tenant string,
@@ -212,7 +210,7 @@ func (r *ringLimitsClient) newUpdateRatesRPCsFunc(responses *[]*proto.UpdateRate
 		close(responseCh)
 		close(answeredCh)
 		for r := range responseCh {
-			*responses = append(*responses, r)
+			resp.Results = append(resp.Results, r.Results...)
 		}
 		answered := make([]uint64, 0, len(streams))
 		for streamHash := range answeredCh {

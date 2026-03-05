@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"maps"
 	"sync"
 
 	pb "cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
@@ -320,9 +321,14 @@ func (c messageCarrier) Keys() []string {
 func injectPropagation(ctx context.Context, msg *Message) {
 	// only inject propagation if a valid span context was detected.
 	if trace.SpanFromContext(ctx).SpanContext().IsValid() {
-		if msg.Attributes == nil {
-			msg.Attributes = make(map[string]string)
+		// Create a defensive copy of the attributes map to prevent concurrent map writes
+		// when multiple goroutines publish messages with shared attributes.
+		// See https://github.com/googleapis/google-cloud-go/issues/11314
+		attrs := maps.Clone(msg.Attributes)
+		if attrs == nil {
+			attrs = make(map[string]string)
 		}
+		msg.Attributes = attrs
 		propagation.TraceContext{}.Inject(ctx, newMessageCarrier(msg))
 	}
 }

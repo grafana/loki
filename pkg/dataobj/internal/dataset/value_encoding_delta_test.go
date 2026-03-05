@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -43,9 +44,7 @@ func Test_delta(t *testing.T) {
 		if !errors.Is(err, io.EOF) {
 			require.NoError(t, err)
 		}
-		for _, v := range values.([]int64) {
-			actual = append(actual, v)
-		}
+		actual = append(actual, values.(*columnar.Number[int64]).Values()...)
 		if err != nil {
 			break
 		}
@@ -87,9 +86,7 @@ func Fuzz_delta(f *testing.F) {
 			if err != nil && !errors.Is(err, io.EOF) {
 				t.Fatalf("error decoding: %v", err)
 			}
-			for _, v := range values.([]int64) {
-				actual = append(actual, v)
-			}
+			actual = append(actual, values.(*columnar.Number[int64]).Values()...)
 			if errors.Is(err, io.EOF) {
 				break
 			}
@@ -191,7 +188,7 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 
 					for {
 						values, err := dec.Decode(&alloc, batchSize)
-						valuesRead += len(values.([]int64))
+						valuesRead += values.Len()
 						if err != nil && errors.Is(err, io.EOF) {
 							break
 						} else if err != nil {

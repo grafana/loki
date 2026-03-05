@@ -9,6 +9,7 @@ type QuerySample struct {
 	CorrelationID   string        `json:"correlationId"`
 	TenantID        string        `json:"tenantId"`
 	User            string        `json:"user"`
+	Issuer          string        `json:"issuer"`
 	IsLogsDrilldown bool          `json:"isLogsDrilldown"`
 	Query           string        `json:"query"`
 	QueryType       string        `json:"queryType"`
@@ -45,7 +46,9 @@ type QuerySample struct {
 	CellBUsedNewEngine bool `json:"cellBUsedNewEngine"`
 
 	// Comparison outcome
-	ComparisonStatus ComparisonStatus `json:"comparisonStatus"`
+	ComparisonStatus     ComparisonStatus `json:"comparisonStatus"`
+	MatchWithinTolerance bool             `json:"matchWithinTolerance"`
+	MismatchCause        string           `json:"mismatchCause,omitempty"` // Set when ComparisonStatus is mismatch
 
 	SampledAt time.Time `json:"sampledAt"`
 }
@@ -65,21 +68,24 @@ type QueryStats struct {
 
 // ComparisonResult represents the outcome of comparing two responses
 type ComparisonResult struct {
-	CorrelationID      string
-	ComparisonStatus   ComparisonStatus
-	DifferenceDetails  map[string]any
-	PerformanceMetrics PerformanceMetrics
-	ComparedAt         time.Time
+	CorrelationID        string
+	ComparisonStatus     ComparisonStatus
+	MatchWithinTolerance bool
+	MismatchCause        string
+	DifferenceDetails    map[string]any
+	PerformanceMetrics   PerformanceMetrics
+	ComparedAt           time.Time
 }
 
 // ComparisonStatus represents the outcome of a comparison
 type ComparisonStatus string
 
 const (
-	ComparisonStatusMatch    ComparisonStatus = "match"
-	ComparisonStatusMismatch ComparisonStatus = "mismatch"
-	ComparisonStatusError    ComparisonStatus = "error"
-	ComparisonStatusPartial  ComparisonStatus = "partial"
+	ComparisonStatusMatch                ComparisonStatus = "match"
+	ComparisonStatusMismatch             ComparisonStatus = "mismatch"
+	ComparisonStatusError                ComparisonStatus = "error"
+	ComparisonStatusPartial              ComparisonStatus = "partial"
+	ComparisonStatusMatchWithinTolerance ComparisonStatus = "match_within_tolerance"
 )
 
 // IsValid checks if the ComparisonStatus value is valid

@@ -26,7 +26,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
 )
 
 var tracer = otel.Tracer("dskit/tracing")
