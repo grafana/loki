@@ -3223,7 +3223,7 @@ The ingester's lifecycler (which manages ring membership) encountered a fatal er
 - Enforced by: Ingester lifecycler
 - Retryable: Yes (after fix and restart)
 - HTTP status: N/A (internal failure)
-- Configurable per tenant: No 
+- Configurable per tenant: No
 
 ## Pattern ingester errors
 
