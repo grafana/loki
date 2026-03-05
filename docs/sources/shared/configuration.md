@@ -4103,6 +4103,12 @@ wal:
 # CLI flag: -ingester.owned-streams-check-interval
 [owned_streams_check_interval: <duration> | default = 30s]
 
+# When enabled, the ingester skips stream count limit checks, delegating them
+# entirely to the ingest-limits service (Thor). Requires ingest-limits service
+# to be enabled.
+# CLI flag: -ingester.delegate-stream-limits-enabled
+[delegate_stream_limits_enabled: <boolean> | default = false]
+
 kafka_ingestion:
   # Whether the kafka ingester is enabled.
   # CLI flag: -ingester.kafka-ingestion-enabled

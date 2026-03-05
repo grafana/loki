@@ -40,7 +40,8 @@ type JSONPath struct {
 
 // newParserPrivate creates a new JSONPath with the given tokens.
 func newParserPrivate(tokenizer *token.Tokenizer, tokens []token.TokenInfo, opts ...config.Option) *JSONPath {
-    return &JSONPath{tokenizer, tokens, jsonPathAST{}, 0, []mode{modeNormal}, config.New(opts...)}
+    cfg := config.New(opts...)
+    return &JSONPath{tokenizer, tokens, jsonPathAST{lazyContextTracking: cfg.LazyContextTrackingEnabled()}, 0, []mode{modeNormal}, cfg}
 }
 
 // parse parses the JSONPath tokens and returns the root node of the AST.
@@ -563,7 +564,10 @@ func (p *JSONPath) parseTestExpr() (*testExpr, error) {
         if err != nil {
             return nil, err
         }
-        return &testExpr{filterQuery: &filterQuery{jsonPathQuery: &jsonPathAST{segments: query.segments}}, not: not}, nil
+        return &testExpr{filterQuery: &filterQuery{jsonPathQuery: &jsonPathAST{
+            segments:            query.segments,
+            lazyContextTracking: p.config.LazyContextTrackingEnabled(),
+        }}, not: not}, nil
     default:
         funcExpr, err := p.parseFunctionExpr()
         if err != nil {
@@ -717,7 +721,10 @@ func (p *JSONPath) parseFunctionArgument(single bool) (*functionArgument, error)
         if err != nil {
             return nil, err
         }
-        return &functionArgument{filterQuery: &filterQuery{jsonPathQuery: &jsonPathAST{segments: query.segments}}}, nil
+        return &functionArgument{filterQuery: &filterQuery{jsonPathQuery: &jsonPathAST{
+            segments:            query.segments,
+            lazyContextTracking: p.config.LazyContextTrackingEnabled(),
+        }}}, nil
     }
 
     // Check for JSONPath Plus context variables as function arguments
@@ -777,6 +784,7 @@ func (p *JSONPath) parseLiteral() (*literal, error) {
 type jsonPathAST struct {
     // "$"
     segments []*segment
+    lazyContextTracking bool
 }
 
 func (q jsonPathAST) ToString() string {

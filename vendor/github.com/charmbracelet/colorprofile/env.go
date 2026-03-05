@@ -2,6 +2,7 @@ package colorprofile
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os/exec"
 	"runtime"
@@ -173,6 +174,11 @@ func envColorProfile(env environ) (p Profile) {
 		}
 	}
 
+	if len(env["WT_SESSION"]) > 0 {
+		// Windows Terminal supports TrueColor
+		return TrueColor
+	}
+
 	if isCloudShell, _ := strconv.ParseBool(env.get("GOOGLE_CLOUD_SHELL")); isCloudShell {
 		return TrueColor
 	}
@@ -239,13 +245,13 @@ func tmux(env environ) (p Profile) {
 	// Check if tmux has either Tc or RGB capabilities. Otherwise, return
 	// ANSI256.
 	p = ANSI256
-	cmd := exec.Command("tmux", "info")
+	cmd := exec.CommandContext(context.Background(), "tmux", "info")
 	out, err := cmd.Output()
 	if err != nil {
 		return
 	}
 
-	for _, line := range bytes.Split(out, []byte("\n")) {
+	for line := range bytes.SplitSeq(out, []byte("\n")) {
 		if (bytes.Contains(line, []byte("Tc")) || bytes.Contains(line, []byte("RGB"))) &&
 			bytes.Contains(line, []byte("true")) {
 			return TrueColor

@@ -1,6 +1,7 @@
 package sarama
 
 import (
+	"reflect"
 	"runtime/debug"
 	"sync"
 )
@@ -12,9 +13,18 @@ var (
 
 func version() string {
 	vOnce.Do(func() {
+		// Determine our package name without hardcoding a string
+		type getPackageName struct{}
+		thisPackagePath := reflect.TypeFor[getPackageName]().PkgPath()
+
 		bi, ok := debug.ReadBuildInfo()
 		if ok {
-			v = bi.Main.Version
+			for _, dep := range bi.Deps {
+				if dep.Path == thisPackagePath {
+					v = dep.Version
+					break
+				}
+			}
 		}
 		if v == "" || v == "(devel)" {
 			// if we can't read a go module version then they're using a git
