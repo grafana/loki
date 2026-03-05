@@ -4106,8 +4106,8 @@ wal:
 # When enabled, the ingester skips stream count limit checks, delegating them
 # entirely to the ingest-limits service (Thor). Requires ingest-limits service
 # to be enabled.
-# CLI flag: -ingester.delegate-stream-limits
-[delegate_stream_limits: <boolean> | default = false]
+# CLI flag: -ingester.delegate-stream-limits-enabled
+[delegate_stream_limits_enabled: <boolean> | default = false]
 
 kafka_ingestion:
   # Whether the kafka ingester is enabled.
