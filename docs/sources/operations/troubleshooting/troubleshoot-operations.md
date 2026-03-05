@@ -2905,7 +2905,7 @@ Kafka is configured for the distributor but the ingester isn't configured to rea
 - Enforced by: Configuration validation
 - Retryable: No
 - HTTP status: N/A (startup failure)
-- Configurable per tenant: No 
+- Configurable per tenant: No
 
 ## Bloom gateway errors
 
@@ -2990,7 +2990,7 @@ The bloom gateway received a request where the start time (`from`) is later than
 - Enforced by: Bloom gateway
 - Retryable: No
 - HTTP status: 500 Internal Server Error
-- Configurable per tenant: No 
+- Configurable per tenant: No
 
 ## Write-ahead log (WAL) errors
 
