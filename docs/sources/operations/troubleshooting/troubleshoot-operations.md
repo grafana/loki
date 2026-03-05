@@ -2909,11 +2909,92 @@ Kafka is configured for the distributor but the ingester isn't configured to rea
 
 ## Bloom gateway errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+Bloom gateway errors occur when using bloom filters for query acceleration.
+
+### Error: Invalid bloom gateway addresses
+
+**Error message:**
+
+```text
+addresses requires a list of comma separated strings in DNS service discovery format with at least one item
+```
+
+**Cause:**
+
+The `bloom_gateway.client.addresses` configuration field is empty or unset.
+
+**Resolution:**
+
+1. **Configure valid addresses**:
+
+   ```yaml
+   bloom_gateway:
+     client:
+       addresses: dns+bloom-gateway:9095
+   ```
+
+   Valid formats:
+   - `dns+hostname:port` - DNS-based discovery
+   - `host1:port,host2:port` - Static list
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Request time range must span exactly one day
+
+**Error message:**
+
+```text
+request time range must span exactly one day
+```
+
+**Cause:**
+
+Bloom gateway requests must be for exactly one day of data due to how bloom blocks are organized.
+
+**Resolution:**
+
+1. This is typically handled automatically by the bloom querier, which splits multi-day queries into per-day requests before sending them to the gateway. If you see this error:
+   - **Check that the querier is properly configured**
+   - **Ensure queries are routed through the querier**
+
+**Properties:**
+
+- Enforced by: Bloom gateway
+- Retryable: No
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: From time must not be after through time
+
+**Error message:**
+
+```text
+from time must not be after through time
+```
+
+**Cause:**
+
+The bloom gateway received a request where the start time (`from`) is later than the end time (`through`).
+
+**Resolution:**
+
+1. This indicates a malformed request reaching the bloom gateway. Verify that the client sending the request constructs time ranges correctly with `from` ≤ `through`.
+
+**Properties:**
+
+- Enforced by: Bloom gateway
+- Retryable: No
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No 
 
 ## Write-ahead log (WAL) errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Ingester lifecycle errors
 
