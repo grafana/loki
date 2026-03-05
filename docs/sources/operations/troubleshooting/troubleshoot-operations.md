@@ -2774,7 +2774,7 @@ An operation was attempted on the ruler's write-ahead log (WAL) after it was clo
 - Enforced by: Ruler WAL
 - Retryable: Yes (after ruler restart)
 - HTTP status: N/A
-- Configurable per tenant: No 
+- Configurable per tenant: No
 
 ## Kafka integration errors
 
