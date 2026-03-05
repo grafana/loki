@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime/pprof"
+	gotrace "runtime/trace"
 	"sync"
 	"time"
 
@@ -124,6 +125,9 @@ func (t *thread) setState(state threadState) {
 func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	defer job.Close()
 
+	ctx, task := gotrace.NewTask(ctx, "thread.runJob")
+	defer task.End()
+
 	logger := log.With(t.Logger, "task_id", job.Task.ULID)
 	logger = utillog.WithContext(ctx, logger) // Extract trace ID
 
@@ -217,6 +221,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	span.Record(xcap.TaskExternalSourcesCount.Observe(int64(countSources)))
 	span.Record(xcap.TaskExternalSinksCount.Observe(int64(countSinks)))
 
+	gotrace.Log(ctx, "pipeline_built", "executing plan")
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
 
 	// If the root pipeline can be interested in some specific contributing time range
@@ -252,6 +257,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
 	}
 
+	gotrace.Log(ctx, "drain_start", "draining pipeline")
 	_, err = t.drainPipeline(ctx, pipeline, sinksForJob(job), t.BatchSize, logger)
 	if err != nil {
 		level.Warn(logger).Log("msg", "task failed", "err", err)
@@ -282,6 +288,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	span.End()
 	capture.End()
 
+	gotrace.Log(ctx, "drain_done", "pipeline drained")
 	duration := time.Since(startTime)
 
 	logValues := []any{
