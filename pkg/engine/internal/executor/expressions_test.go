@@ -994,29 +994,32 @@ func TestLogfmtParser(t *testing.T) {
 			}, nil),
 			input: arrowtest.Rows{
 				{colMsg: " status=200 level=info method=GET"},
-				{colMsg: "status=500 level==error"}, // Error in requested key
+				{colMsg: "status=500 level==error method=POST"}, // Error in requested key
 				{colMsg: " status=201 level=debug"},
 			},
-			requestedKeys:  []string{"status", "level"},
+			requestedKeys:  []string{"status", "level", "method"},
 			strict:         false,
 			keepEmpty:      false,
-			expectedFields: 4, // status, level, __error__, __error_details__
+			expectedFields: 5, // status, level, method, __error__, __error_details__
 			expectedOutput: arrowtest.Rows{
 				{
 					"utf8.parsed.status":               "200",
 					"utf8.parsed.level":                "info",
+					"utf8.parsed.method":               "GET",
 					"utf8.generated.__error__":         "",
 					"utf8.generated.__error_details__": "",
 				},
 				{
 					"utf8.parsed.status":               "500",
 					"utf8.parsed.level":                nil,
+					"utf8.parsed.method":               "POST",
 					"utf8.generated.__error__":         "LogfmtParserErr",
 					"utf8.generated.__error_details__": "logfmt syntax error at pos 18 : unexpected '='",
 				},
 				{
 					"utf8.parsed.status":               "201",
 					"utf8.parsed.level":                "debug",
+					"utf8.parsed.method":               nil,
 					"utf8.generated.__error__":         "",
 					"utf8.generated.__error_details__": "",
 				},
