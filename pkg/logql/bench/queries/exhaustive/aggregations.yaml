@@ -2,7 +2,7 @@
 ---
 queries:
   - description: Average over time with unwrap - no grouping
-    query: sum(avg_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: sum(avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -12,12 +12,13 @@ queries:
       - aggregation
       - avg
       - logfmt
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Average over time with line filter and unwrap
-    query: sum(avg_over_time(${SELECTOR} |= "level" | logfmt | unwrap duration [${RANGE}]))
+    query: sum(avg_over_time(${SELECTOR} |= "level" | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -28,6 +29,7 @@ queries:
       - avg
       - line-filter
       - logfmt
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
@@ -35,7 +37,7 @@ queries:
       keywords:
         - level
   - description: Min over time with unwrap
-    query: sum(min_over_time(${SELECTOR} |= "level" | logfmt | unwrap duration [${RANGE}]))
+    query: sum(min_over_time(${SELECTOR} |= "level" | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -45,6 +47,7 @@ queries:
       - aggregation
       - min
       - logfmt
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
@@ -52,7 +55,7 @@ queries:
       keywords:
         - level
   - description: Max over time with unwrap
-    query: sum(max_over_time(${SELECTOR} |= "level" | logfmt | unwrap duration [${RANGE}]))
+    query: sum(max_over_time(${SELECTOR} |= "level" | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -62,6 +65,7 @@ queries:
       - aggregation
       - max
       - logfmt
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
@@ -152,7 +156,7 @@ queries:
         - service_name
         - container
   - description: JSON duration by level
-    query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -163,6 +167,7 @@ queries:
       - sum
       - grouping
       - logfmt
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
@@ -278,7 +283,7 @@ queries:
       unwrappable_fields:
         - duration
   - description: Sum duration without outer aggregation
-    query: sum_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}])
+    query: sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     time_range:
       length: 24h
       step: 1m
@@ -287,6 +292,7 @@ queries:
       - aggregation
       - no-outer-aggregation
       - logfmt
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:

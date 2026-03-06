@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=../schema.json
 ---
 queries:
-  - description: Sum over time with integer unwrap
-    query: sum(sum_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+  - description: Sum over time with duration conversion
+    query: sum(sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -11,14 +11,14 @@ queries:
       - unwrap
       - sum_over_time
       - logfmt
-      - integer-field
-    notes: Basic unwrap of integer field with sum aggregation
+      - duration-conversion
+    notes: Basic unwrap of duration field with sum aggregation
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
-  - description: Average over time with integer unwrap
-    query: avg(avg_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+  - description: Average over time with duration conversion
+    query: avg(avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -27,13 +27,13 @@ queries:
       - unwrap
       - avg_over_time
       - logfmt
-      - integer-field
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Rate of unwrapped values
-    query: rate(${SELECTOR} | logfmt | unwrap duration [${RANGE}])
+    query: rate(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     kind: metric
     time_range:
       length: 24h
@@ -42,7 +42,7 @@ queries:
       - unwrap
       - rate
       - logfmt
-      - integer-field
+      - duration-conversion
     notes: Rate shows per-second rate of change
     requires:
       log_format: logfmt
@@ -146,7 +146,7 @@ queries:
       unwrappable_fields:
         - size
   - description: Min over time with unwrap
-    query: min(min_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: min(min_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -155,13 +155,13 @@ queries:
       - unwrap
       - min_over_time
       - logfmt
-      - integer-field
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Max over time with unwrap
-    query: max(max_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: max(max_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -170,7 +170,7 @@ queries:
       - unwrap
       - max_over_time
       - logfmt
-      - integer-field
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:

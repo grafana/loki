@@ -17,7 +17,7 @@ queries:
       unwrappable_fields:
         - duration_ms
   - description: Rate with grouping by level
-    query: sum by (level) (rate(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: sum by (level) (rate(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -26,6 +26,7 @@ queries:
       - unwrap
       - rate
       - logfmt
+      - duration-conversion
       - grouping
     requires:
       log_format: logfmt
@@ -62,7 +63,7 @@ queries:
       unwrappable_fields:
         - duration_ms
   - description: Sum over time with top-level aggregation
-    query: sum(sum_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: sum(sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -72,12 +73,13 @@ queries:
       - sum_over_time
       - sum
       - logfmt
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Sum over time grouped by single label
-    query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -86,13 +88,14 @@ queries:
       - unwrap
       - sum_over_time
       - logfmt
+      - duration-conversion
       - grouping
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Sum over time grouped by multiple labels
-    query: sum by (level, namespace) (sum_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: sum by (level, namespace) (sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -101,13 +104,14 @@ queries:
       - unwrap
       - sum_over_time
       - logfmt
+      - duration-conversion
       - grouping
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Sum over time with without clause
-    query: sum without (namespace) (sum_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: sum without (namespace) (sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -116,6 +120,7 @@ queries:
       - unwrap
       - sum_over_time
       - logfmt
+      - duration-conversion
       - grouping
       - without
     requires:
@@ -154,7 +159,7 @@ queries:
       unwrappable_fields:
         - duration_ms
   - description: Average over time with top-level aggregation
-    query: avg(avg_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: avg(avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -164,12 +169,13 @@ queries:
       - avg_over_time
       - avg
       - logfmt
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Average over time grouped by level
-    query: avg by (level) (avg_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: avg by (level) (avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -178,6 +184,7 @@ queries:
       - unwrap
       - avg_over_time
       - logfmt
+      - duration-conversion
       - grouping
     requires:
       log_format: logfmt
@@ -215,7 +222,7 @@ queries:
       unwrappable_fields:
         - duration_ms
   - description: Max over time with top-level aggregation
-    query: max(max_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: max(max_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -225,12 +232,13 @@ queries:
       - max_over_time
       - max
       - logfmt
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Max over time grouped by level
-    query: max by (level) (max_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: max by (level) (max_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -239,6 +247,7 @@ queries:
       - unwrap
       - max_over_time
       - logfmt
+      - duration-conversion
       - grouping
     requires:
       log_format: logfmt
@@ -261,7 +270,7 @@ queries:
       unwrappable_fields:
         - duration
   - description: Min over time - no grouping
-    query: min_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}])
+    query: min_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     kind: metric
     time_range:
       length: 24h
@@ -270,12 +279,13 @@ queries:
       - unwrap
       - min_over_time
       - logfmt
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Min over time with top-level aggregation
-    query: min(min_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: min(min_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -285,12 +295,13 @@ queries:
       - min_over_time
       - min
       - logfmt
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Min over time grouped by level
-    query: min by (level) (min_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: min by (level) (min_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -299,6 +310,7 @@ queries:
       - unwrap
       - min_over_time
       - logfmt
+      - duration-conversion
       - grouping
     requires:
       log_format: logfmt
@@ -321,7 +333,7 @@ queries:
       unwrappable_fields:
         - duration
   - description: Count over time with unwrap
-    query: sum by (detected_level) (sum_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: sum by (detected_level) (sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -330,13 +342,14 @@ queries:
       - unwrap
       - count_over_time
       - logfmt
+      - duration-conversion
     notes: Sums unwrapped values over time by detected level
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Sum over time grouped by level
-    query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -345,13 +358,14 @@ queries:
       - unwrap
       - count_over_time
       - logfmt
+      - duration-conversion
       - grouping
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Standard variance over time
-    query: stdvar_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}])
+    query: stdvar_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     kind: metric
     time_range:
       length: 24h
@@ -360,13 +374,14 @@ queries:
       - unwrap
       - stdvar_over_time
       - logfmt
+      - duration-conversion
     notes: Calculate variance of unwrapped values
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Standard variance grouped by level
-    query: avg by (level) (stdvar_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: avg by (level) (stdvar_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -375,13 +390,14 @@ queries:
       - unwrap
       - stdvar_over_time
       - logfmt
+      - duration-conversion
       - grouping
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Standard deviation over time
-    query: stddev_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}])
+    query: stddev_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     kind: metric
     time_range:
       length: 24h
@@ -390,13 +406,14 @@ queries:
       - unwrap
       - stddev_over_time
       - logfmt
+      - duration-conversion
     notes: Calculate standard deviation of unwrapped values
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Standard deviation grouped by level
-    query: avg by (level) (stddev_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: avg by (level) (stddev_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -405,13 +422,14 @@ queries:
       - unwrap
       - stddev_over_time
       - logfmt
+      - duration-conversion
       - grouping
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Quantile over time - p50 (median)
-    query: quantile_over_time(0.5, ${SELECTOR} | logfmt | unwrap duration [${RANGE}])
+    query: quantile_over_time(0.5, ${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     kind: metric
     time_range:
       length: 24h
@@ -421,13 +439,14 @@ queries:
       - quantile_over_time
       - logfmt
       - p50
+      - duration-conversion
     notes: 50th percentile (median) of unwrapped values
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Quantile over time - p90
-    query: quantile_over_time(0.90, ${SELECTOR} | logfmt | unwrap duration [${RANGE}])
+    query: quantile_over_time(0.90, ${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     kind: metric
     time_range:
       length: 24h
@@ -437,12 +456,13 @@ queries:
       - quantile_over_time
       - logfmt
       - p90
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
         - duration
   - description: Quantile over time - p95
-    query: quantile_over_time(0.95, ${SELECTOR} | logfmt | unwrap duration [${RANGE}])
+    query: quantile_over_time(0.95, ${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     kind: metric
     time_range:
       length: 24h
@@ -452,6 +472,7 @@ queries:
       - quantile_over_time
       - logfmt
       - p95
+      - duration-conversion
     requires:
       log_format: logfmt
       unwrappable_fields:
@@ -473,7 +494,7 @@ queries:
       unwrappable_fields:
         - duration_ms
   - description: P99 latency grouped by level
-    query: avg by (level) (quantile_over_time(0.99, ${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: avg by (level) (quantile_over_time(0.99, ${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -483,6 +504,7 @@ queries:
       - quantile_over_time
       - logfmt
       - p99
+      - duration-conversion
       - grouping
     requires:
       log_format: logfmt
@@ -553,7 +575,7 @@ queries:
       unwrappable_fields:
         - size
   - description: Empty by() clause
-    query: max by () (max_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: max by () (max_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -562,6 +584,7 @@ queries:
       - unwrap
       - max_over_time
       - logfmt
+      - duration-conversion
       - grouping
     notes: Empty by() aggregates all series into one
     requires:
@@ -569,7 +592,7 @@ queries:
       unwrappable_fields:
         - duration
   - description: Without multiple labels
-    query: sum without (namespace, cluster) (sum_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
+    query: sum without (namespace, cluster) (sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -578,6 +601,7 @@ queries:
       - unwrap
       - sum_over_time
       - logfmt
+      - duration-conversion
       - grouping
       - without
     requires:
@@ -585,7 +609,7 @@ queries:
       unwrappable_fields:
         - duration
   - description: Nested aggregations
-    query: max(avg by (level) (avg_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}])))
+    query: max(avg by (level) (avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])))
     kind: metric
     time_range:
       length: 24h
@@ -594,6 +618,7 @@ queries:
       - unwrap
       - avg_over_time
       - logfmt
+      - duration-conversion
       - grouping
       - nested
     notes: Max of per-level averages
@@ -602,7 +627,7 @@ queries:
       unwrappable_fields:
         - duration
   - description: Unwrap with line filter
-    query: sum(sum_over_time(${SELECTOR} |= "level" | logfmt | unwrap duration [${RANGE}]))
+    query: sum(sum_over_time(${SELECTOR} |= "level" | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -611,6 +636,7 @@ queries:
       - unwrap
       - sum_over_time
       - logfmt
+      - duration-conversion
       - line-filter
     notes: Filter logs before unwrapping
     requires:
@@ -620,7 +646,7 @@ queries:
       keywords:
         - level
   - description: Unwrap with regex line filter
-    query: avg(avg_over_time(${SELECTOR} |~ "(?i)error|warn" | logfmt | unwrap duration [${RANGE}]))
+    query: avg(avg_over_time(${SELECTOR} |~ "(?i)error|warn" | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -629,6 +655,7 @@ queries:
       - unwrap
       - avg_over_time
       - logfmt
+      - duration-conversion
       - line-filter
       - regex
     notes: Regex filter for error/warn before unwrapping
@@ -639,7 +666,7 @@ queries:
       keywords:
         - error
   - description: Unwrap with label filter after parsing
-    query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | level != "" | unwrap duration [${RANGE}]))
+    query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | level != "" | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -648,6 +675,7 @@ queries:
       - unwrap
       - sum_over_time
       - logfmt
+      - duration-conversion
       - label-filter
       - grouping
     notes: Filter by parsed label before unwrapping
