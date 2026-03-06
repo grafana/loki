@@ -37,8 +37,14 @@ var (
 		"bytes",
 		"duration",
 		"duration_ms",
+		"offset",
+		"partition",
+		"rows_affected",
 		"size",
+		"spans",
 		"status",
+		"streams",
+		"ttl",
 	}
 
 	// FilterableKeywords are literal strings commonly appearing in log content.
@@ -289,17 +295,17 @@ func BuildMetadata(config *GeneratorConfig, streamsMeta []StreamMetadata) *Datas
 func getUnwrappableFields(appName string) []string {
 	switch appName {
 	case appDatabase:
-		return []string{"duration", "duration_ms", "status"}
+		return []string{"duration_ms", "rows_affected"}
 	case "web-server":
-		return []string{"status", "duration", "duration_ms"}
+		return []string{"status", "duration_ms"}
 	case "cache":
-		return []string{"size", "duration", "duration_ms"}
+		return []string{"size", "ttl", "duration"}
 	case "kafka":
-		return []string{"size"}
+		return []string{"partition", "offset", "size"}
 	case appLoki, "mimir":
-		return []string{"duration", "size", "streams", "bytes"}
+		return []string{"duration", "streams", "bytes"}
 	case "tempo":
-		return []string{"duration", "size", "spans", "bytes"}
+		return []string{"duration", "spans", "bytes"}
 	case "grafana":
 		return []string{"duration", "status"}
 	default:

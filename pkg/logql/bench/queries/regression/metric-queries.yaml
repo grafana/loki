@@ -130,7 +130,7 @@ queries:
       unwrappable_fields:
         - bytes
   - description: Bytes conversion function
-    query: sum(sum_over_time(${SELECTOR} | logfmt | unwrap bytes(size) [${RANGE}]))
+    query: sum(sum_over_time(${SELECTOR} | json | unwrap size [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -138,11 +138,11 @@ queries:
     tags:
       - unwrap
       - sum_over_time
-      - logfmt
+      - json
       - bytes-conversion
-    notes: Convert size strings like '1KB' to bytes
+    notes: Unwrap integer size field from JSON logs (cache/kafka services)
     requires:
-      log_format: logfmt
+      log_format: json
       unwrappable_fields:
         - size
   - description: Min over time with unwrap
@@ -175,8 +175,8 @@ queries:
       log_format: logfmt
       unwrappable_fields:
         - duration
-  - description: Logfmt size unwrap
-    query: avg(avg_over_time(${SELECTOR} | logfmt | unwrap size [${RANGE}]))
+  - description: JSON size unwrap
+    query: avg(avg_over_time(${SELECTOR} | json | unwrap size [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -184,11 +184,11 @@ queries:
     tags:
       - unwrap
       - avg_over_time
-      - logfmt
+      - json
       - size-field
-    notes: Average size from logfmt streams
+    notes: Average size from JSON streams (cache/kafka services)
     requires:
-      log_format: logfmt
+      log_format: json
       unwrappable_fields:
         - size
   - description: Logfmt status unwrap
