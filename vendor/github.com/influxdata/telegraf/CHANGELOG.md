@@ -1,6 +1,67 @@
 <!-- markdownlint-disable MD013 MD024 -->
 # Changelog
 
+## v1.37.3 [2026-02-23]
+
+### Bugfixes
+
+- [#18195](https://github.com/influxdata/telegraf/pull/18195) `common.jolokia2` Add Jolokia 2.x compatibility for proxy target tag
+- [#18378](https://github.com/influxdata/telegraf/pull/18378) `common.opcua` Include node ID in duplicate metric check
+- [#18335](https://github.com/influxdata/telegraf/pull/18335) `inputs.disk` Preserve device tag for virtual filesystems
+- [#18374](https://github.com/influxdata/telegraf/pull/18374) `inputs.docker` Remove pre-filtering of states
+- [#18383](https://github.com/influxdata/telegraf/pull/18383) `inputs.docker_log` Remove pre-filtering of states
+- [#18347](https://github.com/influxdata/telegraf/pull/18347) `inputs.jenkins` Report all concurrent builds
+- [#18377](https://github.com/influxdata/telegraf/pull/18377) `inputs.prometheus` Add thread safety and proper cleanup for shared informer factories
+- [#18304](https://github.com/influxdata/telegraf/pull/18304) `inputs.prometheus` Cleanup shared informers on stop
+- [#18367](https://github.com/influxdata/telegraf/pull/18367) `inputs.upsd` Stop silently dropping mandatory variables from additional_fields
+- [#18386](https://github.com/influxdata/telegraf/pull/18386) `serializers.template` Unwrap tracking metrics
+
+### Dependency Updates
+
+- [#18354](https://github.com/influxdata/telegraf/pull/18354) `deps` Bump cloud.google.com/go/auth from 0.18.1 to 0.18.2
+- [#18324](https://github.com/influxdata/telegraf/pull/18324) `deps` Bump cloud.google.com/go/bigquery from 1.72.0 to 1.73.1
+- [#18319](https://github.com/influxdata/telegraf/pull/18319) `deps` Bump cloud.google.com/go/pubsub/v2 from 2.3.0 to 2.4.0
+- [#18298](https://github.com/influxdata/telegraf/pull/18298) `deps` Bump cloud.google.com/go/storage from 1.59.1 to 1.59.2
+- [#18361](https://github.com/influxdata/telegraf/pull/18361) `deps` Bump cloud.google.com/go/storage from 1.59.2 to 1.60.0
+- [#18376](https://github.com/influxdata/telegraf/pull/18376) `deps` Bump filippo.io/edwards25519 from 1.1.0 to 1.1.1
+- [#18292](https://github.com/influxdata/telegraf/pull/18292) `deps` Bump github.com/ClickHouse/clickhouse-go/v2 from 2.42.0 to 2.43.0
+- [#18295](https://github.com/influxdata/telegraf/pull/18295) `deps` Bump github.com/IBM/nzgo/v12 from 12.0.10 to 12.0.11
+- [#18297](https://github.com/influxdata/telegraf/pull/18297) `deps` Bump github.com/SAP/go-hdb from 1.14.18 to 1.14.19
+- [#18328](https://github.com/influxdata/telegraf/pull/18328) `deps` Bump github.com/SAP/go-hdb from 1.14.19 to 1.14.22
+- [#18364](https://github.com/influxdata/telegraf/pull/18364) `deps` Bump github.com/SAP/go-hdb from 1.14.22 to 1.15.0
+- [#18358](https://github.com/influxdata/telegraf/pull/18358) `deps` Bump github.com/alitto/pond/v2 from 2.6.0 to 2.6.2
+- [#18289](https://github.com/influxdata/telegraf/pull/18289) `deps` Bump github.com/aws/aws-sdk-go-v2/service/ec2 from 1.282.0 to 1.285.0
+- [#18362](https://github.com/influxdata/telegraf/pull/18362) `deps` Bump github.com/coocood/freecache from 1.2.4 to 1.2.5
+- [#18299](https://github.com/influxdata/telegraf/pull/18299) `deps` Bump github.com/coreos/go-systemd/v22 from 22.6.0 to 22.7.0
+- [#18294](https://github.com/influxdata/telegraf/pull/18294) `deps` Bump github.com/golang-jwt/jwt/v5 from 5.3.0 to 5.3.1
+- [#18291](https://github.com/influxdata/telegraf/pull/18291) `deps` Bump github.com/google/cel-go from 0.26.1 to 0.27.0
+- [#18330](https://github.com/influxdata/telegraf/pull/18330) `deps` Bump github.com/klauspost/compress from 1.18.3 to 1.18.4
+- [#18268](https://github.com/influxdata/telegraf/pull/18268) `deps` Bump github.com/lxc/incus/v6 from 6.20.0 to 6.21.0
+- [#18296](https://github.com/influxdata/telegraf/pull/18296) `deps` Bump github.com/nats-io/nats-server/v2 from 2.12.3 to 2.12.4
+- [#18356](https://github.com/influxdata/telegraf/pull/18356) `deps` Bump github.com/p4lang/p4runtime from 1.4.1 to 1.5.0
+- [#18326](https://github.com/influxdata/telegraf/pull/18326) `deps` Bump github.com/prometheus-community/pro-bing from 0.7.0 to 0.8.0
+- [#18355](https://github.com/influxdata/telegraf/pull/18355) `deps` Bump github.com/redis/go-redis/v9 from 9.17.3 to 9.18.0
+- [#18293](https://github.com/influxdata/telegraf/pull/18293) `deps` Bump github.com/shirou/gopsutil/v4 from 4.25.11 to 4.26.1
+- [#18331](https://github.com/influxdata/telegraf/pull/18331) `deps` Bump github.com/snowflakedb/gosnowflake from 1.18.1 to 1.19.0
+- [#18323](https://github.com/influxdata/telegraf/pull/18323) `deps` Bump github.com/vertica/vertica-sql-go from 1.3.4 to 1.3.5
+- [#18290](https://github.com/influxdata/telegraf/pull/18290) `deps` Bump go.mongodb.org/mongo-driver from 1.17.7 to 1.17.8
+- [#18332](https://github.com/influxdata/telegraf/pull/18332) `deps` Bump go.mongodb.org/mongo-driver from 1.17.8 to 1.17.9
+- [#18318](https://github.com/influxdata/telegraf/pull/18318) `deps` Bump golang.org/x/mod from 0.32.0 to 0.33.0
+- [#18322](https://github.com/influxdata/telegraf/pull/18322) `deps` Bump golang.org/x/net from 0.49.0 to 0.50.0
+- [#18333](https://github.com/influxdata/telegraf/pull/18333) `deps` Bump golang.org/x/term from 0.39.0 to 0.40.0
+- [#18329](https://github.com/influxdata/telegraf/pull/18329) `deps` Bump golang.org/x/text from 0.33.0 to 0.34.0
+- [#18300](https://github.com/influxdata/telegraf/pull/18300) `deps` Bump google.golang.org/api from 0.262.0 to 0.264.0
+- [#18317](https://github.com/influxdata/telegraf/pull/18317) `deps` Bump google.golang.org/api from 0.264.0 to 0.265.0
+- [#18357](https://github.com/influxdata/telegraf/pull/18357) `deps` Bump google.golang.org/grpc from 1.78.0 to 1.79.1
+- [#18363](https://github.com/influxdata/telegraf/pull/18363) `deps` Bump k8s.io/client-go from 0.35.0 to 0.35.1
+- [#18327](https://github.com/influxdata/telegraf/pull/18327) `deps` Bump modernc.org/sqlite from 1.44.3 to 1.45.0
+- [#18288](https://github.com/influxdata/telegraf/pull/18288) `deps` Bump super-linter/super-linter from 8.3.2 to 8.4.0
+- [#18315](https://github.com/influxdata/telegraf/pull/18315) `deps` Bump super-linter/super-linter from 8.4.0 to 8.5.0
+- [#18353](https://github.com/influxdata/telegraf/pull/18353) `deps` Bump the aws-sdk-go-v2 group with 2 updates
+- [#18316](https://github.com/influxdata/telegraf/pull/18316) `deps` Bump the aws-sdk-go-v2 group with 2 updates
+- [#18314](https://github.com/influxdata/telegraf/pull/18314) `deps` Bump tj-actions/changed-files from 47.0.1 to 47.0.2
+- [#18372](https://github.com/influxdata/telegraf/pull/18372) `deps` Update github.com/pion/dtls from v2 to v3
+
 ## v1.37.2 [2026-02-02]
 
 ### Bugfixes
