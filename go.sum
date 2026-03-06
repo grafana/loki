@@ -144,8 +144,8 @@ github.com/HdrHistogram/hdrhistogram-go v1.2.0 h1:XMJkDWuz6bM9Fzy7zORuVFKH7ZJY41
 github.com/HdrHistogram/hdrhistogram-go v1.2.0/go.mod h1:CiIeGiHSd06zjX+FypuEJ5EQ07KKtxZ+8J6hszwVQig=
 github.com/IBM/go-sdk-core/v5 v5.21.2 h1:mJ5QbLPOm4g5qhZiVB6wbSllfpeUExftGoyPek2hk4M=
 github.com/IBM/go-sdk-core/v5 v5.21.2/go.mod h1:ngpMgwkjur1VNUjqn11LPk3o5eCyOCRbcfg/0YAY7Hc=
-github.com/IBM/ibm-cos-sdk-go v1.13.0 h1:bN1e3ayGzBbgEhd57uOq1xqtbQJHZwJReg4AoAa5/ks=
-github.com/IBM/ibm-cos-sdk-go v1.13.0/go.mod h1:y6vy1Vie63M+PKaKM339Zifbo7MZ+pukm03ql95tSDw=
+github.com/IBM/ibm-cos-sdk-go v1.14.0 h1:K8uhFw4/yAEVjCHpaFkQXdPaPC4LGa9Zhb66vt3rS3M=
+github.com/IBM/ibm-cos-sdk-go v1.14.0/go.mod h1:Nvo9K1YYlJ3NtolQnnbOwV5MFre24YhnRuMzheMakeI=
 github.com/IBM/sarama v1.47.0 h1:GcQFEd12+KzfPYeLgN69Fh7vLCtYRhVIx0rO4TZO318=
 github.com/IBM/sarama v1.47.0/go.mod h1:7gLLIU97nznOmA6TX++Qds+DRxH89P2XICY2KAQUzAY=
 github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573 h1:DCPjdUAi+jcGnL7iN+A7uNY8xG584oMRuisYh/VE21E=
