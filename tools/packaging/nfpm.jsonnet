@@ -20,7 +20,7 @@ local overrides = {
     contents+: [
       {
         src: './tools/packaging/loki.service',
-        dst: '/etc/systemd/system/loki.service',
+        dst: '/usr/lib/systemd/system/loki.service',
       },
       {
         src: './cmd/loki/loki-local-config.yaml',
@@ -42,7 +42,7 @@ local overrides = {
     contents+: [
       {
         src: './tools/packaging/promtail.service',
-        dst: '/etc/systemd/system/promtail.service',
+        dst: '/usr/lib/systemd/system/promtail.service',
       },
       {
         src: './tools/packaging/promtail-minimal-config.yaml',
