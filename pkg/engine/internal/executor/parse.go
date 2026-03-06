@@ -245,21 +245,19 @@ func parseLines(input *array.String, columnBuilders map[string]*array.StringBuil
 		}
 
 		// Add values for parsed keys (only if no error)
-		if err == nil {
-			for key, value := range parsed {
-				seenKeys[key] = struct{}{}
-				builder, exists := columnBuilders[key]
-				if !exists {
-					// New column discovered - create and backfill
-					builder = array.NewStringBuilder(memory.DefaultAllocator)
-					columnBuilders[key] = builder
-					columnOrder = append(columnOrder, key)
+		for key, value := range parsed {
+			seenKeys[key] = struct{}{}
+			builder, exists := columnBuilders[key]
+			if !exists {
+				// New column discovered - create and backfill
+				builder = array.NewStringBuilder(memory.DefaultAllocator)
+				columnBuilders[key] = builder
+				columnOrder = append(columnOrder, key)
 
-					// Backfill NULLs for previous rows
-					builder.AppendNulls(i)
-				}
-				builder.Append(value)
+				// Backfill NULLs for previous rows
+				builder.AppendNulls(i)
 			}
+			builder.Append(value)
 		}
 		// For error cases, don't mark the failed keys as seen - let them get NULLs below
 
