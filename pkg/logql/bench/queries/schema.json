@@ -244,6 +244,11 @@
             "type": "string"
           },
           "uniqueItems": true
+        },
+        "regex_selectors": {
+          "type": "boolean",
+          "description": "If true, label selectors use regex matchers (=~) instead of equality (=). This exercises different code paths in the query engine",
+          "default": false
         }
       },
       "additionalProperties": false

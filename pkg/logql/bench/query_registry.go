@@ -51,6 +51,7 @@ type QueryRequirements struct {
 	DetectedFields     []string `yaml:"detected_fields,omitempty"`     // Fields that must be parsable from log content (for aggregations/filters)
 	Labels             []string `yaml:"labels,omitempty"`              // Stream label keys needed (for selectors, filters, or grouping)
 	Keywords           []string `yaml:"keywords,omitempty"`            // Strings that must appear in log content
+	RegexSelectors     bool     `yaml:"regex_selectors,omitempty"`     // If true, use =~ matchers instead of = in resolved selector
 }
 
 // QueryDefinition represents a single query definition from the registry

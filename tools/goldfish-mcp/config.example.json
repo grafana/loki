@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "goldfish": {
+      "command": "/path/to/loki/tools/goldfish-mcp/goldfish-mcp",
+      "args": [
+        "--api-url", "http://localhost:3100",
+        "--timeout", "30s"
+      ],
+      "env": {}
+    }
+  }
+}

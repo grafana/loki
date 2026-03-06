@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "goldfish": {
+      "command": "/usr/local/bin/goldfish-mcp",
+      "args": [
+        "--api-url", "http://localhost:3100",
+        "--timeout", "60s",
+        "--debug"
+      ],
+      "env": {
+        "HTTP_PROXY": "",
+        "HTTPS_PROXY": "",
+        "NO_PROXY": "localhost,127.0.0.1"
+      }
+    },
+    "goldfish-prod": {
+      "command": "/usr/local/bin/goldfish-mcp",
+      "args": [
+        "--api-url", "http://localhost:3101",
+        "--timeout", "90s"
+      ],
+      "env": {}
+    }
+  }
+}
