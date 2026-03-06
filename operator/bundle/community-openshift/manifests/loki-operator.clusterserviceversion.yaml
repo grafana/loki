@@ -149,10 +149,10 @@ metadata:
         }
       ]
     capabilities: Full Lifecycle
-    categories: OpenShift Optional, Logging & Tracing
+    categories: OpenShift Optional, Logging & Tracing, Observability
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.9.0
-    createdAt: "2026-02-27T13:31:21Z"
+    createdAt: "2026-03-06T12:58:04Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     features.operators.openshift.io/disconnected: "true"
