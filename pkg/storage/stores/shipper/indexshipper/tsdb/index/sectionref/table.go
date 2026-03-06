@@ -21,25 +21,49 @@ type SectionRef struct {
 	SeriesID  int
 }
 
+type sectionRefEntry struct {
+	pathID    uint32
+	sectionID int
+	seriesID  int
+}
+
+type sectionRefKey struct {
+	pathID    uint32
+	sectionID int
+	seriesID  int
+}
+
 // SectionRefTable stores section references by index.
 // It supports insert-or-dedup via Add and lookup by index via Lookup.
 type SectionRefTable struct {
-	refs        []SectionRef
-	index       map[SectionRef]uint32
-	pathSymbols map[string]string
+	paths   []string
+	entries []sectionRefEntry
+
+	// Built eagerly for mutable tables and lazily for decoded tables.
+	index     map[sectionRefKey]uint32
+	pathIndex map[string]uint32
 }
 
 func NewSectionRefTable(refs []SectionRef) *SectionRefTable {
 	t := &SectionRefTable{
-		refs:        make([]SectionRef, 0, len(refs)),
-		index:       make(map[SectionRef]uint32, len(refs)),
-		pathSymbols: make(map[string]string, len(refs)),
+		paths:     make([]string, 0, len(refs)),
+		entries:   make([]sectionRefEntry, 0, len(refs)),
+		index:     make(map[sectionRefKey]uint32, len(refs)),
+		pathIndex: make(map[string]uint32, len(refs)),
 	}
-	for _, ref := range refs {
-		ref.Path = t.symbolizePath(ref.Path)
-		idx := uint32(len(t.refs))
-		t.refs = append(t.refs, ref)
-		t.index[ref] = idx
+	for i := range refs {
+		ref := refs[i]
+		pathID := t.internPath(ref.Path)
+		t.entries = append(t.entries, sectionRefEntry{
+			pathID:    pathID,
+			sectionID: ref.SectionID,
+			seriesID:  ref.SeriesID,
+		})
+		t.index[sectionRefKey{
+			pathID:    pathID,
+			sectionID: ref.SectionID,
+			seriesID:  ref.SeriesID,
+		}] = uint32(i)
 	}
 	return t
 }
@@ -48,46 +72,56 @@ func (t *SectionRefTable) Len() int {
 	if t == nil {
 		return 0
 	}
-	return len(t.refs)
+	return len(t.entries)
 }
 
 func (t *SectionRefTable) Add(ref SectionRef) uint32 {
-	ref.Path = t.symbolizePath(ref.Path)
-	if idx, ok := t.index[ref]; ok {
+	t.ensureMutableState()
+	pathID := t.internPath(ref.Path)
+	key := sectionRefKey{
+		pathID:    pathID,
+		sectionID: ref.SectionID,
+		seriesID:  ref.SeriesID,
+	}
+	if idx, ok := t.index[key]; ok {
 		return idx
 	}
 
-	idx := uint32(len(t.refs))
-	t.refs = append(t.refs, ref)
-	t.index[ref] = idx
+	idx := uint32(len(t.entries))
+	t.entries = append(t.entries, sectionRefEntry{
+		pathID:    pathID,
+		sectionID: ref.SectionID,
+		seriesID:  ref.SeriesID,
+	})
+	t.index[key] = idx
 	return idx
 }
 
 func (t *SectionRefTable) Lookup(idx uint32) (SectionRef, bool) {
-	if t == nil || idx >= uint32(len(t.refs)) {
+	if t == nil || idx >= uint32(len(t.entries)) {
 		return SectionRef{}, false
 	}
-	return t.refs[idx], true
+	entry := t.entries[idx]
+	if entry.pathID >= uint32(len(t.paths)) {
+		return SectionRef{}, false
+	}
+
+	return SectionRef{
+		Path:      t.paths[entry.pathID],
+		SectionID: entry.sectionID,
+		SeriesID:  entry.seriesID,
+	}, true
 }
 
 // Encode serializes the table into a compact binary format with an interned
 // string table for paths.
 func (t *SectionRefTable) Encode() ([]byte, error) {
-	pathIdx := make(map[string]uint32)
-	pathStrings := make([]string, 0, len(t.refs))
-	for _, ref := range t.refs {
-		if _, ok := pathIdx[ref.Path]; !ok {
-			pathIdx[ref.Path] = uint32(len(pathStrings))
-			pathStrings = append(pathStrings, ref.Path)
-		}
-	}
-
 	var buf bytes.Buffer
 
-	if err := binary.Write(&buf, binary.LittleEndian, uint32(len(pathStrings))); err != nil {
+	if err := binary.Write(&buf, binary.LittleEndian, uint32(len(t.paths))); err != nil {
 		return nil, err
 	}
-	for _, s := range pathStrings {
+	for _, s := range t.paths {
 		if len(s) > math.MaxUint16 {
 			return nil, ErrSectionRefPathTooLong
 		}
@@ -99,20 +133,23 @@ func (t *SectionRefTable) Encode() ([]byte, error) {
 		}
 	}
 
-	if err := binary.Write(&buf, binary.LittleEndian, uint32(len(t.refs))); err != nil {
+	if err := binary.Write(&buf, binary.LittleEndian, uint32(len(t.entries))); err != nil {
 		return nil, err
 	}
-	for _, ref := range t.refs {
-		if ref.SectionID < 0 || uint64(ref.SectionID) > math.MaxUint32 {
+	for _, entry := range t.entries {
+		if entry.sectionID < 0 || uint64(entry.sectionID) > math.MaxUint32 {
 			return nil, ErrSectionRefSectionOutRange
 		}
-		if err := binary.Write(&buf, binary.LittleEndian, pathIdx[ref.Path]); err != nil {
+		if err := binary.Write(&buf, binary.LittleEndian, entry.pathID); err != nil {
 			return nil, err
 		}
-		if err := binary.Write(&buf, binary.LittleEndian, uint32(ref.SectionID)); err != nil {
+		if err := binary.Write(&buf, binary.LittleEndian, uint32(entry.sectionID)); err != nil {
 			return nil, err
 		}
-		if err := binary.Write(&buf, binary.LittleEndian, uint32(ref.SeriesID)); err != nil {
+		if entry.seriesID < 0 || uint64(entry.seriesID) > math.MaxUint32 {
+			return nil, ErrSectionRefSectionOutRange
+		}
+		if err := binary.Write(&buf, binary.LittleEndian, uint32(entry.seriesID)); err != nil {
 			return nil, err
 		}
 	}
@@ -128,7 +165,6 @@ func Decode(data []byte) (*SectionRefTable, error) {
 		return nil, fmt.Errorf("reading path count: %w", err)
 	}
 
-	pathSymbols := make(map[string]string, pathCount)
 	pathStrings := make([]string, pathCount)
 	for i := range pathStrings {
 		var slen uint16
@@ -139,13 +175,7 @@ func Decode(data []byte) (*SectionRefTable, error) {
 		if _, err := io.ReadFull(r, buf); err != nil {
 			return nil, fmt.Errorf("reading path: %w", err)
 		}
-		path := string(buf)
-		if canonical, ok := pathSymbols[path]; ok {
-			pathStrings[i] = canonical
-		} else {
-			pathSymbols[path] = path
-			pathStrings[i] = path
-		}
+		pathStrings[i] = string(buf)
 	}
 
 	var entryCount uint32
@@ -154,11 +184,10 @@ func Decode(data []byte) (*SectionRefTable, error) {
 	}
 
 	t := &SectionRefTable{
-		refs:        make([]SectionRef, entryCount),
-		index:       make(map[SectionRef]uint32, entryCount),
-		pathSymbols: pathSymbols,
+		paths:   pathStrings,
+		entries: make([]sectionRefEntry, entryCount),
 	}
-	for i := range t.refs {
+	for i := range t.entries {
 		var pIdx, secID, seriesID uint32
 		if err := binary.Read(r, binary.LittleEndian, &pIdx); err != nil {
 			return nil, fmt.Errorf("reading path index: %w", err)
@@ -179,13 +208,11 @@ func Decode(data []byte) (*SectionRefTable, error) {
 			return nil, fmt.Errorf("series ID %d overflows int", seriesID)
 		}
 
-		ref := SectionRef{
-			Path:      pathStrings[pIdx],
-			SectionID: int(secID),
-			SeriesID:  int(seriesID),
+		t.entries[i] = sectionRefEntry{
+			pathID:    pIdx,
+			sectionID: int(secID),
+			seriesID:  int(seriesID),
 		}
-		t.refs[i] = ref
-		t.index[ref] = uint32(i)
 	}
 
 	if r.Len() != 0 {
@@ -195,10 +222,34 @@ func Decode(data []byte) (*SectionRefTable, error) {
 	return t, nil
 }
 
-func (t *SectionRefTable) symbolizePath(path string) string {
-	if canonical, ok := t.pathSymbols[path]; ok {
-		return canonical
+func (t *SectionRefTable) ensureMutableState() {
+	if t.index != nil && t.pathIndex != nil {
+		return
 	}
-	t.pathSymbols[path] = path
-	return path
+
+	t.index = make(map[sectionRefKey]uint32, len(t.entries))
+	t.pathIndex = make(map[string]uint32, len(t.paths))
+
+	for i, p := range t.paths {
+		if _, ok := t.pathIndex[p]; !ok {
+			t.pathIndex[p] = uint32(i)
+		}
+	}
+	for i, entry := range t.entries {
+		t.index[sectionRefKey{
+			pathID:    entry.pathID,
+			sectionID: entry.sectionID,
+			seriesID:  entry.seriesID,
+		}] = uint32(i)
+	}
+}
+
+func (t *SectionRefTable) internPath(path string) uint32 {
+	if idx, ok := t.pathIndex[path]; ok {
+		return idx
+	}
+	idx := uint32(len(t.paths))
+	t.paths = append(t.paths, path)
+	t.pathIndex[path] = idx
+	return idx
 }
