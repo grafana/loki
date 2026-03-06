@@ -2001,6 +2001,8 @@ ingester:
   autoscaling:
     # -- Enable autoscaling for the ingester
     enabled: false
+    # -- When zone-aware replication is enabled, only scale zone-a with HPA. If null, this is enabled when rollout_operator.enabled is true.
+    scaleOnlyZoneA: null
     # -- Minimum autoscaling replicas for the ingester
     minReplicas: 1
     # -- Maximum autoscaling replicas for the ingester

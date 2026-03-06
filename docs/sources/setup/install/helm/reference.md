@@ -6023,6 +6023,7 @@ null
     "enabled": false,
     "maxReplicas": 3,
     "minReplicas": 1,
+    "scaleOnlyZoneA": null,
     "targetCPUUtilizationPercentage": 60,
     "targetMemoryUtilizationPercentage": null
   },
@@ -6217,6 +6218,15 @@ false
 			<td>Minimum autoscaling replicas for the ingester</td>
 			<td><pre lang="json">
 1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.autoscaling.scaleOnlyZoneA</td>
+			<td>string</td>
+			<td>When zone-aware replication is enabled, only scale zone-a with HPA. If null, this is enabled when rollout_operator.enabled is true.</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>

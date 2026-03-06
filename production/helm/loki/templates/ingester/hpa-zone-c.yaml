@@ -1,5 +1,6 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if and $isDistributed .Values.ingester.autoscaling.enabled .Values.ingester.zoneAwareReplication.enabled }}
+{{- $scaleOnlyZoneA := eq (include "loki.ingester.autoscaling.scaleOnlyZoneA" .) "true" -}}
+{{- if and $isDistributed .Values.ingester.autoscaling.enabled .Values.ingester.zoneAwareReplication.enabled (not $scaleOnlyZoneA) }}
 {{- $apiVersion := include "loki.hpa.apiVersion" . -}}
 apiVersion: {{ $apiVersion }}
 kind: HorizontalPodAutoscaler
