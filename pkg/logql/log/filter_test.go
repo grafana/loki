@@ -159,6 +159,21 @@ func Test_TrueFilter(t *testing.T) {
 	}
 }
 
+func Test_OrFilterWithEmptyString(t *testing.T) {
+	// empty string produces TrueFilter
+	notfoundFilter := newContainsFilter([]byte("notfound"), false)
+	emptyFilter := newContainsFilter([]byte(""), false)
+
+	// notfound OR "" produces TrueFilter
+	orFilter := newOrFilter(notfoundFilter, emptyFilter)
+	require.Equal(t, TrueFilter, orFilter)
+
+	// "(notfound|)" contains an empty branch → TrueFilter
+	regexFilter, err := parseRegexpFilter("(notfound|)", true, false)
+	require.NoError(t, err)
+	require.Equal(t, TrueFilter, regexFilter)
+}
+
 func Benchmark_LineFilter(b *testing.B) {
 	b.ReportAllocs()
 	logline := `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /buzz (200) 4.599635ms`
