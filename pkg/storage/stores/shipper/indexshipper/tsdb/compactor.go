@@ -147,6 +147,15 @@ func (t *tableCompactor) CompactTable() error {
 	sectionsPaths := make([]string, len(multiTenantIndexes))
 	multiTenantSources := make([]modeSourceHandle, len(multiTenantIndexes))
 
+	if len(multiTenantIndexes) > 1000 {
+		level.Info(t.commonIndexSet.GetLogger()).Log("msg", "compacting more than 1000 multi-tenant indexes, truncating to first 1000", "count", len(multiTenantIndexes))
+		multiTenantIndexes = multiTenantIndexes[:1000]
+		multiTenantIndices = multiTenantIndices[:1000]
+		downloadPaths = downloadPaths[:1000]
+		sectionsPaths = sectionsPaths[:1000]
+		multiTenantSources = multiTenantSources[:1000]
+	}
+
 	// concurrently download and open all the multi-tenant indexes
 	err := concurrency.ForEachJob(t.ctx, len(multiTenantIndexes), readDBsConcurrency, func(_ context.Context, job int) error {
 		downloadedAt, err := t.commonIndexSet.GetSourceFile(multiTenantIndexes[job])
