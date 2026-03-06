@@ -6,8 +6,12 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
+	"slices"
+	"sync"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -44,8 +48,16 @@ func GetSegmentationKey(stream KeyedStream) (SegmentationKey, error) {
 // SegmentationPartitionResolver resolves the partition for a segmentation key.
 type SegmentationPartitionResolver struct {
 	perPartitionRateBytes uint64
-	ringReader            ring.PartitionRingReader
 	logger                log.Logger
+
+	// We divide the partition ring into two smaller rings called oldEntries
+	// and newEntries. oldEntries contains the partitions that receive entries
+	// more than 1 hour old, while newEntries contains the partitions that
+	// receive recent entries less than 1 hour old. The mtx must be used to
+	// access each pointer as it can be swapped concurrently via the delegate.
+	oldEntries *ring.PartitionRing
+	newEntries *ring.PartitionRing
+	mtx        sync.RWMutex
 
 	// Metrics.
 	failed          prometheus.Counter
@@ -54,10 +66,13 @@ type SegmentationPartitionResolver struct {
 }
 
 // NewSegmentationPartitionResolver returns a new SegmentationPartitionResolver.
-func NewSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *SegmentationPartitionResolver {
+func NewSegmentationPartitionResolver(
+	perPartitionRateBytes uint64,
+	reg prometheus.Registerer,
+	logger log.Logger,
+) *SegmentationPartitionResolver {
 	return &SegmentationPartitionResolver{
 		perPartitionRateBytes: perPartitionRateBytes,
-		ringReader:            ringReader,
 		failed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_segmentation_partition_resolver_keys_failed_total",
 			Help: "Total number of segmentation keys that could not be resolved.",
@@ -74,16 +89,57 @@ func NewSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader r
 	}
 }
 
-func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key SegmentationKey, rateBytes, tenantRateBytes uint64) (int32, error) {
+func (r *SegmentationPartitionResolver) Resolve(
+	ctx context.Context,
+	tenant string,
+	key SegmentationKey,
+	rateBytes,
+	tenantRateBytes uint64,
+	since time.Duration,
+) (int32, error) {
 	r.total.Inc()
-	// We use a snapshot of the partition ring to ensure resolving the
-	// partition for a segmentation key is determinstic even if the ring
-	// changes.
-	ring := r.ringReader.PartitionRing()
-	if ring.ActivePartitionsCount() == 0 {
-		// If there are no active partitions then we cannot write to any
-		// partition as we do not know if the partition we chose will have a
-		// consumer.
+	if since > 4*time.Hour {
+		return r.resolveOldEntries(ctx, since)
+	}
+	return r.resolve(ctx, tenant, key, rateBytes, tenantRateBytes)
+}
+
+func (r *SegmentationPartitionResolver) resolveOldEntries(
+	ctx context.Context,
+	since time.Duration,
+) (int32, error) {
+	r.mtx.RLock()
+	oldEntries := r.oldEntries
+	r.mtx.RUnlock()
+	// Write old logs to dedicated "old" partitions.
+	if oldEntries == nil || oldEntries.ActivePartitionsCount() == 0 {
+		// If there are no active partitions we must return an error,
+		// otherwise we would write to a partition without knowing if the
+		// partition has a consumer.
+		r.failed.Inc()
+		return 0, errors.New("no active partitions")
+	}
+	n := oldEntries.ActivePartitionsCount()
+	if since > 24*time.Hour {
+		return int32(min(1, n)), nil
+	}
+	return 0, nil
+}
+
+func (r *SegmentationPartitionResolver) resolve(
+	ctx context.Context,
+	tenant string,
+	key SegmentationKey,
+	rateBytes,
+	tenantRateBytes uint64,
+) (int32, error) {
+	r.mtx.RLock()
+	newEntries := r.newEntries
+	r.mtx.RUnlock()
+	if newEntries == nil || newEntries.ActivePartitionsCount() == 0 {
+		// If there are no active partitions we must return an error,
+		// otherwise we would write to a partition without knowing if the
+		// partition has a consumer.
 		r.failed.Inc()
 		return 0, errors.New("no active partitions")
 	}
@@ -91,7 +147,7 @@ func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 	// This ensures that streams are not only co-located within the same
 	// segmentation key, but also segmentation keys for a tenant are as
 	// co-located as possible.
-	subring, err := r.getTenantSubring(ctx, ring, tenant, tenantRateBytes)
+	subring, err := r.getTenantSubring(ctx, newEntries, tenant, tenantRateBytes)
 	if err != nil {
 		r.failed.Inc()
 		return 0, fmt.Errorf("failed to get tenant subring: %w", err)
@@ -119,7 +175,12 @@ func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 }
 
 // getTenantRing returns a subring for the tenant based on their rate limit.
-func (r *SegmentationPartitionResolver) getTenantSubring(_ context.Context, ring *ring.PartitionRing, tenant string, tenantRateBytes uint64) (*ring.PartitionRing, error) {
+func (r *SegmentationPartitionResolver) getTenantSubring(
+	_ context.Context,
+	ring *ring.PartitionRing,
+	tenant string,
+	tenantRateBytes uint64,
+) (*ring.PartitionRing, error) {
 	if tenantRateBytes == 0 {
 		// If the tenant has no limit, return the full ring.
 		return ring, nil
@@ -134,7 +195,12 @@ func (r *SegmentationPartitionResolver) getTenantSubring(_ context.Context, ring
 	return ring.ShuffleShard(tenant, int(partitions))
 }
 
-func (r *SegmentationPartitionResolver) getSegmentationKeySubring(_ context.Context, ring *ring.PartitionRing, key SegmentationKey, rateBytes uint64) (*ring.PartitionRing, error) {
+func (r *SegmentationPartitionResolver) getSegmentationKeySubring(
+	_ context.Context,
+	ring *ring.PartitionRing,
+	key SegmentationKey,
+	rateBytes uint64,
+) (*ring.PartitionRing, error) {
 	if rateBytes == 0 {
 		// If the rate is 0, return the full ring.
 		return ring, nil
@@ -149,4 +215,50 @@ func (r *SegmentationPartitionResolver) getSegmentationKeySubring(_ context.Cont
 	partitions = min(partitions, uint64(ring.ActivePartitionsCount()))
 	// Shuffle shard.
 	return ring.ShuffleShard(string(key), int(partitions))
+}
+
+// OnPartitionRingChanged implements [ring.PartitionRingWatcherDelegate].
+func (r *SegmentationPartitionResolver) OnPartitionRingChanged(_, newDesc *ring.PartitionRingDesc) {
+	// Select just the active partitions from the desc.
+	active := make([]int32, 0, len(newDesc.Partitions))
+	for partition, desc := range newDesc.Partitions {
+		if desc.IsActive() {
+			active = append(active, partition)
+		}
+	}
+	slices.Sort(active)
+	// Sort the active partitions into old and new entries partitions.
+	partitionsOldEntries := make(map[int32]struct{}, len(newDesc.Partitions))
+	partitionsNewEntries := make(map[int32]struct{}, len(newDesc.Partitions))
+	if len(active) < 3 {
+		for _, partition := range active {
+			partitionsOldEntries[partition] = struct{}{}
+			partitionsNewEntries[partition] = struct{}{}
+		}
+	} else {
+		var n int
+		for _, partition := range active {
+			if n < 2 {
+				partitionsOldEntries[partition] = struct{}{}
+			} else {
+				partitionsNewEntries[partition] = struct{}{}
+			}
+			n++
+		}
+	}
+	oldEntries, err := ring.NewPartitionRing(newDesc.WithPartitions(partitionsOldEntries))
+	if err != nil {
+		level.Error(r.logger).Log("msg", "failed to update old entries ring", "err", err)
+		return
+	}
+	newEntries, err := ring.NewPartitionRing(newDesc.WithPartitions(partitionsNewEntries))
+	if err != nil {
+		level.Error(r.logger).Log("msg", "failed to update new entries ring", "err", err)
+		return
+	}
+	level.Debug(r.logger).Log("msg", "partition ring change", "old_entries", len(partitionsOldEntries), "new_entries", len(partitionsNewEntries))
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.oldEntries = oldEntries
+	r.newEntries = newEntries
 }

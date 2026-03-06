@@ -187,15 +187,21 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 
 	for _, s := range segmentationKeyStreams {
 		go func(stream SegmentedStream) {
-			t.duplicate(ctx, tenant, stream, fastRates[stream.SegmentationKeyHash], tenantRateBytesLimit, pushTracker)
+			var oldestEntry time.Time
+			for _, entry := range stream.Stream.Entries {
+				if oldestEntry.IsZero() || entry.Timestamp.Before(oldestEntry) {
+					oldestEntry = entry.Timestamp
+				}
+			}
+			t.duplicate(ctx, tenant, stream, fastRates[stream.SegmentationKeyHash], tenantRateBytesLimit, time.Since(oldestEntry), pushTracker)
 		}(s)
 	}
 }
 
-func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream SegmentedStream, rateBytes, tenantRateBytes uint64, pushTracker *PushTracker) {
+func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream SegmentedStream, rateBytes, tenantRateBytes uint64, since time.Duration, pushTracker *PushTracker) {
 	t.streams.Inc()
 
-	partition, err := t.resolver.Resolve(ctx, tenant, stream.SegmentationKey, rateBytes, tenantRateBytes)
+	partition, err := t.resolver.Resolve(ctx, tenant, stream.SegmentationKey, rateBytes, tenantRateBytes, since)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to resolve partition", "err", err)
 		t.streamFailures.Inc()

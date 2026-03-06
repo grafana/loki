@@ -243,7 +243,7 @@ func New(
 	limitsFrontendCfg limits_frontend_client.Config,
 	limitsFrontendRing ring.ReadRing,
 	numMetadataPartitions int,
-	dataObjConsumerPartitionRing ring.PartitionRingReader,
+	dataObjConsumerPartitionRingWatcher *ring.PartitionRingWatcher,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
@@ -310,10 +310,10 @@ func New(
 		if cfg.DataObjTeeConfig.Enabled {
 			resolver := NewSegmentationPartitionResolver(
 				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
-				dataObjConsumerPartitionRing,
 				registerer,
 				logger,
 			)
+			dataObjConsumerPartitionRingWatcher.WithDelegate(resolver)
 			dataObjTee, err := NewDataObjTee(
 				&cfg.DataObjTeeConfig,
 				resolver,
