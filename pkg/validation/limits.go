@@ -228,7 +228,8 @@ type Limits struct {
 	RequiredLabels       []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty" doc:"description=Define a list of required selector labels."`
 	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
 
-	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
+	IndexGatewayShardSize   int     `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
+	IndexGatewayMaxCapacity float64 `yaml:"index_gateway_max_capacity" json:"index_gateway_max_capacity"`
 
 	BloomGatewayEnabled bool `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering" category:"experimental"`
 
@@ -449,6 +450,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
 
 	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
+	f.Float64Var(&l.IndexGatewayMaxCapacity, "index-gateway.max-capacity", 1.0, "Experimental. Defines a fraction (between 0.0 and 1.0) of the total index gateways available for a each tenant. A value of 0.0 has the same effect as 1.0, meaning all available index gateways. This setting only applies to simple mode.")
 
 	f.BoolVar(&l.BloomGatewayEnabled, "bloom-gateway.enable-filtering", false, "Experimental. Whether to use the bloom gateway component in the read path to filter chunks.")
 
@@ -1182,6 +1184,10 @@ func (o *Overrides) IndexGatewayShardSize(userID string) int {
 	return o.getOverridesForUser(userID).IndexGatewayShardSize
 }
 
+func (o *Overrides) IndexGatewayMaxCapacity(userID string) float64 {
+	return o.getOverridesForUser(userID).IndexGatewayMaxCapacity
+}
+
 func (o *Overrides) BloomGatewayEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).BloomGatewayEnabled
 }
@@ -1411,7 +1417,7 @@ func (sm *OverwriteMarshalingStringMap) Map() map[string]string {
 	return sm.m
 }
 
-// MarshalJSON explicitly uses the the type receiver and not pointer receiver
+// MarshalJSON explicitly uses the type receiver and not pointer receiver
 // or it won't be called
 func (sm OverwriteMarshalingStringMap) MarshalJSON() ([]byte, error) {
 	return json.Marshal(sm.m)
@@ -1427,7 +1433,7 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalJSON(val []byte) error {
 	return nil
 }
 
-// MarshalYAML explicitly uses the the type receiver and not pointer receiver
+// MarshalYAML explicitly uses the type receiver and not pointer receiver
 // or it won't be called
 func (sm OverwriteMarshalingStringMap) MarshalYAML() (interface{}, error) {
 	return sm.m, nil

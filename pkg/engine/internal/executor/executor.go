@@ -7,23 +7,41 @@ import (
 	"strings"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
 
+// RequestStreamFilterer creates a StreamFilterer for a given request context.
+type RequestStreamFilterer interface {
+	ForRequest(ctx context.Context) StreamFilterer
+}
+
+// StreamFilterer filters streams based on their labels.
+type StreamFilterer interface {
+	// ShouldFilter returns true if the stream should be filtered out.
+	ShouldFilter(labels labels.Labels) bool
+}
+
 type Config struct {
 	BatchSize int64
 	Bucket    objstore.Bucket
+	Metastore metastore.Metastore
+
+	PrefetchBytes int64
 
 	MergePrefetchCount int
 
@@ -31,17 +49,24 @@ type Config struct {
 	// plan. If GetExternalInputs returns a non-nil slice of Pipelines, they
 	// will be used as inputs to the pipeline of node.
 	GetExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
+
+	// StreamFilterer is an optional filterer that can filter streams based on their labels.
+	// When set, streams are filtered before scanning.
+	StreamFilterer RequestStreamFilterer `yaml:"-"`
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
 		plan:               plan,
 		batchSize:          cfg.BatchSize,
+		prefetchBytes:      cfg.PrefetchBytes,
 		mergePrefetchCount: cfg.MergePrefetchCount,
 		bucket:             cfg.Bucket,
+		metastore:          cfg.Metastore,
 		logger:             logger,
 		evaluator:          newExpressionEvaluator(),
 		getExternalInputs:  cfg.GetExternalInputs,
+		streamFilterer:     cfg.StreamFilterer,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -56,23 +81,23 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 
 // Context is the execution context
 type Context struct {
-	batchSize int64
+	batchSize     int64
+	prefetchBytes int64
 
 	logger    log.Logger
 	plan      *physical.Plan
-	evaluator expressionEvaluator
+	evaluator *expressionEvaluator
 	bucket    objstore.Bucket
+	metastore metastore.Metastore
 
 	getExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 
 	mergePrefetchCount int
+
+	streamFilterer RequestStreamFilterer
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
-	// Start a new xcap.Region for this node.
-	// Region is created in preorder traversal to maintain the parent-child relationship.
-	ctx, nodeRegion := startRegionForNode(ctx, node)
-
 	children := c.plan.Children(node)
 	inputs := make([]Pipeline, 0, len(children))
 	for _, child := range children {
@@ -91,45 +116,53 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// TODO(rfratto): find a way to remove the logic from executeDataObjScan
 		// which wraps the pipeline with a topk/limit without reintroducing
 		// planning cost for thousands of scan nodes.
-		return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-			return newObservedPipeline(c.executeDataObjScan(ctx, n, nodeRegion))
-		}, inputs)
-
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+			return c.executeDataObjScan(ctx, n)
+		}, inputs))
+	case *physical.PointersScan:
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executePointersScan(ctx, n))
 	case *physical.TopK:
-		return newObservedPipeline(c.executeTopK(ctx, n, inputs, nodeRegion))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeTopK(ctx, n, inputs))
 	case *physical.Limit:
-		return newObservedPipeline(c.executeLimit(ctx, n, inputs, nodeRegion))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLimit(ctx, n, inputs))
 	case *physical.Filter:
-		return newObservedPipeline(c.executeFilter(ctx, n, inputs, nodeRegion))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeFilter(ctx, n, inputs))
 	case *physical.Projection:
-		return newObservedPipeline(c.executeProjection(ctx, n, inputs, nodeRegion))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeProjection(ctx, n, inputs))
 	case *physical.RangeAggregation:
-		return newObservedPipeline(c.executeRangeAggregation(ctx, n, inputs, nodeRegion))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeRangeAggregation(ctx, n, inputs))
 	case *physical.VectorAggregation:
-		return newObservedPipeline(c.executeVectorAggregation(ctx, n, inputs, nodeRegion))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeVectorAggregation(ctx, n, inputs))
 	case *physical.ColumnCompat:
-		return newObservedPipeline(c.executeColumnCompat(ctx, n, inputs, nodeRegion))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeColumnCompat(ctx, n, inputs))
+	case *physical.Merge:
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeMerge(ctx, n, inputs))
 	case *physical.Parallelize:
 		return c.executeParallelize(ctx, n, inputs)
 	case *physical.ScanSet:
-		return c.executeScanSet(ctx, n, nodeRegion)
+		return c.executeScanSet(ctx, n)
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
 }
 
-func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObjScan, region *xcap.Region) Pipeline {
+func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObjScan) Pipeline {
+	span := trace.SpanFromContext(ctx)
+
 	if c.bucket == nil {
 		return errorPipeline(ctx, errors.New("no object store bucket configured"))
 	}
 
-	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location))
+	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location), c.prefetchBytes)
 	if err != nil {
 		return errorPipeline(ctx, fmt.Errorf("creating data object: %w", err))
 	}
-	region.AddEvent("opened dataobj")
+	span.AddEvent("opened dataobj")
 
 	var (
+		foundStreamsSection *dataobj.Section
+		foundLogsSection    *dataobj.Section
+
 		streamsSection *streams.Section
 		logsSection    *logs.Section
 	)
@@ -139,41 +172,68 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(ctx, fmt.Errorf("missing org ID: %w", err))
 	}
 
-	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+	var logsSectionIndex int
+	for _, sec := range obj.Sections() {
 		if sec.Tenant != tenant {
+			if logs.CheckSection(sec) {
+				logsSectionIndex++
+			}
 			continue
 		}
 
-		if streamsSection != nil {
-			return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
-		}
+		switch {
+		case streams.CheckSection(sec):
+			if foundStreamsSection != nil {
+				return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
+			}
+			foundStreamsSection = sec
 
-		var err error
-		streamsSection, err = streams.Open(ctx, sec)
-		if err != nil {
-			return errorPipeline(ctx, fmt.Errorf("opening streams section %q: %w", sec.Type, err))
+		case logs.CheckSection(sec):
+			if logsSectionIndex == node.Section {
+				foundLogsSection = sec
+			}
+			logsSectionIndex++
 		}
-		region.AddEvent("opened streams section")
 	}
-	if streamsSection == nil {
+
+	if foundStreamsSection == nil {
 		return errorPipeline(ctx, fmt.Errorf("streams section not found in data object %q", node.Location))
-	}
-
-	for i, sec := range obj.Sections().Filter(logs.CheckSection) {
-		if i != node.Section {
-			continue
-		}
-
-		var err error
-		logsSection, err = logs.Open(ctx, sec)
-		if err != nil {
-			return errorPipeline(ctx, fmt.Errorf("opening logs section %q: %w", sec.Type, err))
-		}
-		region.AddEvent("opened logs section")
-		break
-	}
-	if logsSection == nil {
+	} else if foundLogsSection == nil {
 		return errorPipeline(ctx, fmt.Errorf("logs section %d not found in data object %q", node.Section, node.Location))
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		var err error
+		streamsSection, err = streams.Open(ctx, foundStreamsSection)
+		if err != nil {
+			return fmt.Errorf("opening streams section %q: %w", foundStreamsSection.Type, err)
+		}
+		span.AddEvent("opened streams section")
+		return nil
+	})
+
+	g.Go(func() error {
+		var err error
+		logsSection, err = logs.Open(ctx, foundLogsSection)
+		if err != nil {
+			return fmt.Errorf("opening logs section %q: %w", foundLogsSection.Type, err)
+		}
+		span.AddEvent("opened logs section")
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return errorPipeline(ctx, err)
+	}
+
+	// Filter streams if a filterer is configured
+	streamsToMatch := node.StreamIDs
+	if c.streamFilterer != nil {
+		if filterer := c.streamFilterer.ForRequest(ctx); filterer != nil {
+			streamsToMatch = c.filterStreamsByLabels(ctx, node.StreamIDs, streamsSection, filterer)
+		}
 	}
 
 	predicates := make([]logs.Predicate, 0, len(node.Predicates))
@@ -185,7 +245,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		}
 		predicates = append(predicates, conv)
 	}
-	region.AddEvent("constructed predicate")
+	span.AddEvent("constructed predicate")
 
 	var pipeline Pipeline = newDataobjScanPipeline(dataobjScanOptions{
 		// TODO(rfratto): passing the streams section means that each DataObjScan
@@ -198,17 +258,82 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		StreamsSection: streamsSection,
 
 		LogsSection: logsSection,
-		StreamIDs:   node.StreamIDs,
+		StreamIDs:   streamsToMatch,
 		Predicates:  predicates,
 		Projections: node.Projections,
 
 		BatchSize: c.batchSize,
-	}, log.With(c.logger, "location", string(node.Location), "section", node.Section), region)
+	}, log.With(c.logger, "location", string(node.Location), "section", node.Section))
 
 	return pipeline
 }
 
-func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs []Pipeline, region *xcap.Region) Pipeline {
+// filterStreamsByLabels filters stream IDs based on the StreamFilterer.
+func (c *Context) filterStreamsByLabels(ctx context.Context, streamIDs []int64, streamsSection *streams.Section, filterer StreamFilterer) []int64 {
+	if len(streamIDs) == 0 {
+		return streamIDs
+	}
+
+	view := newStreamsView(streamsSection, &streamsViewOptions{
+		StreamIDs: streamIDs,
+		BatchSize: int(c.batchSize),
+	})
+
+	filtered := make([]int64, 0, len(streamIDs))
+	if err := view.Open(ctx); err != nil {
+		level.Error(c.logger).Log("msg", "failed to open streams view, filtering out all streams", "err", err)
+		return filtered
+	}
+
+	for _, id := range streamIDs {
+		lbls, err := view.Labels(ctx, id)
+		if err != nil {
+			level.Error(c.logger).Log("msg", "failed to get labels for stream, skipping", "stream_id", id, "err", err)
+			continue
+		}
+
+		// Skip stream if it should be filtered out.
+		if filterer.ShouldFilter(labels.New(lbls...)) {
+			continue
+		}
+
+		filtered = append(filtered, id)
+	}
+
+	trace.SpanFromContext(ctx).AddEvent("filtered streams",
+		trace.WithAttributes(
+			attribute.Int("original", len(streamIDs)),
+			attribute.Int("remaining", len(filtered)),
+		),
+	)
+	return filtered
+}
+
+func (c *Context) executePointersScan(ctx context.Context, node *physical.PointersScan) Pipeline {
+	if c.metastore == nil {
+		return errorPipeline(ctx, errors.New("no metastore configured"))
+	}
+
+	req, err := physical.CatalogRequestToMetastoreSectionsRequest(node.Selector, node.Predicates, node.Start, node.End)
+	if err != nil {
+		return errorPipeline(ctx, fmt.Errorf("convert catalog request to metastore request: %w", err))
+	}
+
+	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+		pipeline, err := newScanPointersPipeline(ctx, scanPointersOptions{
+			metastore:     c.metastore,
+			location:      string(node.Location),
+			req:           req,
+			prefetchBytes: c.prefetchBytes,
+		})
+		if err != nil {
+			return errorPipeline(ctx, err)
+		}
+		return pipeline
+	}, nil)
+}
+
+func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
@@ -220,7 +345,6 @@ func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs [
 		NullsFirst: topK.NullsFirst,
 		K:          topK.K,
 		MaxUnused:  int(c.batchSize) * 2,
-		Region:     region,
 	})
 	if err != nil {
 		return errorPipeline(ctx, err)
@@ -229,7 +353,7 @@ func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs [
 	return pipeline
 }
 
-func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, inputs []Pipeline, region *xcap.Region) Pipeline {
+func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
@@ -238,10 +362,10 @@ func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, input
 		return errorPipeline(ctx, fmt.Errorf("limit expects exactly one input, got %d", len(inputs)))
 	}
 
-	return NewLimitPipeline(inputs[0], limit.Skip, limit.Fetch, region)
+	return NewLimitPipeline(inputs[0], limit.Skip, limit.Fetch)
 }
 
-func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, inputs []Pipeline, region *xcap.Region) Pipeline {
+func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
@@ -250,10 +374,10 @@ func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, in
 		return errorPipeline(ctx, fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
 
-	return NewFilterPipeline(filter, inputs[0], c.evaluator, region)
+	return NewFilterPipeline(filter, inputs[0], c.evaluator)
 }
 
-func (c *Context) executeProjection(ctx context.Context, proj *physical.Projection, inputs []Pipeline, region *xcap.Region) Pipeline {
+func (c *Context) executeProjection(ctx context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
@@ -267,26 +391,27 @@ func (c *Context) executeProjection(ctx context.Context, proj *physical.Projecti
 		return errorPipeline(ctx, fmt.Errorf("projection expects at least one expression, got 0"))
 	}
 
-	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator, region)
+	p, err := NewProjectPipeline(inputs[0], proj, c.evaluator)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
 	return p
 }
 
-func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.RangeAggregation, inputs []Pipeline, region *xcap.Region) Pipeline {
+func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.RangeAggregation, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 
 	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
-		partitionBy:   plan.PartitionBy,
-		startTs:       plan.Start,
-		endTs:         plan.End,
-		rangeInterval: plan.Range,
-		step:          plan.Step,
-		operation:     plan.Operation,
-	}, region)
+		grouping:       plan.Grouping,
+		startTs:        plan.Start,
+		endTs:          plan.End,
+		rangeInterval:  plan.Range,
+		step:           plan.Step,
+		operation:      plan.Operation,
+		maxQuerySeries: plan.MaxQuerySeries,
+	})
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -294,12 +419,16 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 	return pipeline
 }
 
-func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.VectorAggregation, inputs []Pipeline, region *xcap.Region) Pipeline {
+func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.VectorAggregation, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 
-	pipeline, err := newVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator, plan.Operation, region)
+	pipeline, err := newVectorAggregationPipeline(inputs, c.evaluator, vectorAggregationOptions{
+		grouping:       plan.Grouping,
+		operation:      plan.Operation,
+		maxQuerySeries: plan.MaxQuerySeries,
+	})
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -307,7 +436,7 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 	return pipeline
 }
 
-func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.ColumnCompat, inputs []Pipeline, region *xcap.Region) Pipeline {
+func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.ColumnCompat, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
@@ -316,7 +445,20 @@ func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.Colu
 		return errorPipeline(ctx, fmt.Errorf("columncompat expects exactly one input, got %d", len(inputs)))
 	}
 
-	return newColumnCompatibilityPipeline(compat, inputs[0], region)
+	return newColumnCompatibilityPipeline(compat, inputs[0])
+}
+
+func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []Pipeline) Pipeline {
+	if len(inputs) == 0 {
+		return emptyPipeline()
+	}
+
+	pipeline, err := newMergePipeline(inputs, c.mergePrefetchCount)
+	if err != nil {
+		return errorPipeline(ctx, err)
+	}
+
+	return pipeline
 }
 
 func (c *Context) executeParallelize(ctx context.Context, _ *physical.Parallelize, inputs []Pipeline) Pipeline {
@@ -332,14 +474,13 @@ func (c *Context) executeParallelize(ctx context.Context, _ *physical.Paralleliz
 	return inputs[0]
 }
 
-func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, _ *xcap.Region) Pipeline {
+func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {
 	// ScanSet typically gets partitioned by the scheduler into multiple scan
 	// nodes.
 	//
-	// However, for locally testing unpartitioned pipelines, we still supprt
+	// However, for locally testing unpartitioned pipelines, we still support
 	// running a ScanSet. In this case, we treat internally execute it as a
 	// Merge on top of multiple sequential scans.
-	ctx, mergeRegion := xcap.StartRegion(ctx, physical.NodeTypeMerge.String())
 
 	var targets []Pipeline
 	for _, target := range set.Targets {
@@ -351,11 +492,12 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, _ *
 			partition.Predicates = set.Predicates
 			partition.Projections = set.Projections
 
-			nodeCtx, partitionRegion := startRegionForNode(ctx, partition)
-
-			targets = append(targets, newLazyPipeline(func(_ context.Context, _ []Pipeline) Pipeline {
-				return newObservedPipeline(c.executeDataObjScan(nodeCtx, partition, partitionRegion))
-			}, nil))
+			targets = append(targets, NewObservedPipeline(partition.Type().String(), nodeAttributes(partition), newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+				return c.executeDataObjScan(ctx, partition)
+			}, nil)))
+		case physical.ScanTypePointers:
+			partition := target.Pointers
+			targets = append(targets, NewObservedPipeline(partition.Type().String(), nodeAttributes(partition), c.executePointersScan(ctx, partition)))
 		default:
 			return errorPipeline(ctx, fmt.Errorf("unrecognized ScanSet target %s", target.Type))
 		}
@@ -364,7 +506,7 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, _ *
 		return emptyPipeline()
 	}
 
-	pipeline, err := newMergePipeline(targets, c.mergePrefetchCount, mergeRegion)
+	pipeline, err := newMergePipeline(targets, c.mergePrefetchCount)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -372,17 +514,16 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, _ *
 	return pipeline
 }
 
-// startRegionForNode starts xcap.Region for the given physical plan node.
-// It internally calls xcap.StartRegion with attributes relevant to the node type.
-func startRegionForNode(ctx context.Context, n physical.Node) (context.Context, *xcap.Region) {
-	// Include node ID in the region attributes to retain a link to the physical plan node.
-	attributes := []attribute.KeyValue{
+// nodeAttributes returns OTel span attributes relevant to the given physical
+// plan node type.
+func nodeAttributes(n physical.Node) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{
 		attribute.String("node_id", n.ID().String()),
 	}
 
 	switch n := n.(type) {
 	case *physical.DataObjScan:
-		attributes = append(attributes,
+		attrs = append(attrs,
 			attribute.String("location", string(n.Location)),
 			attribute.Int("section", n.Section),
 			attribute.Int("num_stream_ids", len(n.StreamIDs)),
@@ -390,29 +531,35 @@ func startRegionForNode(ctx context.Context, n physical.Node) (context.Context, 
 			attribute.Int("num_projections", len(n.Projections)),
 		)
 
+	case *physical.PointersScan:
+		attrs = append(attrs,
+			attribute.String("location", string(n.Location)),
+			attribute.Int("num_predicates", len(n.Predicates)),
+		)
+
 	case *physical.TopK:
-		attributes = append(attributes,
+		attrs = append(attrs,
 			attribute.Int("k", n.K),
 			attribute.Bool("ascending", n.Ascending),
 			attribute.Bool("nulls_first", n.NullsFirst),
 		)
 		if n.SortBy != nil {
-			attributes = append(attributes, attribute.Stringer("sort_by", n.SortBy))
+			attrs = append(attrs, attribute.Stringer("sort_by", n.SortBy))
 		}
 
 	case *physical.Limit:
-		attributes = append(attributes,
+		attrs = append(attrs,
 			attribute.Int("skip", int(n.Skip)),
 			attribute.Int("fetch", int(n.Fetch)),
 		)
 
 	case *physical.Filter:
-		attributes = append(attributes,
+		attrs = append(attrs,
 			attribute.Int("num_predicates", len(n.Predicates)),
 		)
 
 	case *physical.Projection:
-		attributes = append(attributes,
+		attrs = append(attrs,
 			attribute.Int("num_expressions", len(n.Expressions)),
 			attribute.Bool("all", n.All),
 			attribute.Bool("drop", n.Drop),
@@ -420,19 +567,21 @@ func startRegionForNode(ctx context.Context, n physical.Node) (context.Context, 
 		)
 
 	case *physical.RangeAggregation:
-		attributes = append(attributes,
+		attrs = append(attrs,
 			attribute.String("operation", string(rune(n.Operation))),
 			attribute.Int64("start_ts", n.Start.UnixNano()),
 			attribute.Int64("end_ts", n.End.UnixNano()),
 			attribute.Int64("range_interval", int64(n.Range)),
 			attribute.Int64("step", int64(n.Step)),
-			attribute.Int("num_partition_by", len(n.PartitionBy)),
+			attribute.Int("num_grouping", len(n.Grouping.Columns)),
+			attribute.Bool("grouping_without", n.Grouping.Without),
 		)
 
 	case *physical.VectorAggregation:
-		attributes = append(attributes,
+		attrs = append(attrs,
 			attribute.String("operation", string(rune(n.Operation))),
-			attribute.Int("num_group_by", len(n.GroupBy)),
+			attribute.Int("num_grouping", len(n.Grouping.Columns)),
+			attribute.Bool("grouping_without", n.Grouping.Without),
 		)
 
 	case *physical.ColumnCompat:
@@ -440,14 +589,14 @@ func startRegionForNode(ctx context.Context, n physical.Node) (context.Context, 
 		for i, ct := range n.Collisions {
 			collisionStrs[i] = ct.String()
 		}
-		attributes = append(attributes,
+		attrs = append(attrs,
 			attribute.String("src", n.Source.String()),
 			attribute.String("dst", n.Destination.String()),
 			attribute.String("collisions", fmt.Sprintf("[%s]", strings.Join(collisionStrs, ", "))),
 		)
 
 	case *physical.ScanSet:
-		attributes = append(attributes,
+		attrs = append(attrs,
 			attribute.Int("num_targets", len(n.Targets)),
 			attribute.Int("num_predicates", len(n.Predicates)),
 			attribute.Int("num_projections", len(n.Projections)),
@@ -456,5 +605,5 @@ func startRegionForNode(ctx context.Context, n physical.Node) (context.Context, 
 		// do nothing.
 	}
 
-	return xcap.StartRegion(ctx, n.Type().String(), xcap.WithRegionAttributes(attributes...))
+	return attrs
 }

@@ -7,11 +7,12 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"strings"
 
 	"github.com/go-viper/mapstructure/v2"
-	yaml "go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v3"
 )
 
 const (
@@ -121,9 +122,7 @@ func (e *Encoder) encodeStruct(value reflect.Value) (any, error) {
 			}
 			if info.squash {
 				if m, ok := encoded.(map[string]any); ok {
-					for k, v := range m {
-						result[k] = v
-					}
+					maps.Copy(result, m)
 				}
 			} else {
 				result[info.name] = encoded

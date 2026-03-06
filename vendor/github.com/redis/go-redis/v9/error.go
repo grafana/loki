@@ -124,6 +124,9 @@ func shouldRetry(err error, retryTimeout bool) bool {
 	if proto.IsTryAgainError(err) {
 		return true
 	}
+	if proto.IsNoReplicasError(err) {
+		return true
+	}
 
 	// Fallback to string checking for backward compatibility with plain errors
 	s := err.Error()
@@ -143,6 +146,9 @@ func shouldRetry(err error, retryTimeout bool) bool {
 		return true
 	}
 	if strings.HasPrefix(s, "MASTERDOWN ") {
+		return true
+	}
+	if strings.HasPrefix(s, "NOREPLICAS ") {
 		return true
 	}
 
@@ -340,6 +346,14 @@ func IsExecAbortError(err error) bool {
 // OOM errors occur when Redis is out of memory.
 func IsOOMError(err error) bool {
 	return proto.IsOOMError(err)
+}
+
+// IsNoReplicasError checks if an error is a Redis NOREPLICAS error, even if wrapped.
+// NOREPLICAS errors occur when not enough replicas acknowledge a write operation.
+// This typically happens with WAIT/WAITAOF commands or CLUSTER SETSLOT with synchronous
+// replication when the required number of replicas cannot confirm the write within the timeout.
+func IsNoReplicasError(err error) bool {
+	return proto.IsNoReplicasError(err)
 }
 
 //------------------------------------------------------------------------------

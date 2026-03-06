@@ -6,7 +6,8 @@ data:
     health:
       healthProbeBindAddress: :8081
     metrics:
-      bindAddress: 127.0.0.1:8080
+      bindAddress: :8443
+      secure: true
     webhook:
       port: 9443
     leaderElection:
@@ -60,9 +61,9 @@ data:
 kind: ConfigMap
 metadata:
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.8.0
+    app.kubernetes.io/instance: loki-operator-v0.9.0
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.8.0
+    app.kubernetes.io/version: 0.9.0
   name: loki-operator-manager-config

@@ -26,12 +26,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/coreos/go-systemd/v22/activation"
 	"github.com/mdlayher/vsock"
 	config_util "github.com/prometheus/common/config"
 	"go.yaml.in/yaml/v2"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 )
 
 var (
@@ -40,9 +42,10 @@ var (
 )
 
 type Config struct {
-	TLSConfig  TLSConfig                     `yaml:"tls_server_config"`
-	HTTPConfig HTTPConfig                    `yaml:"http_server_config"`
-	Users      map[string]config_util.Secret `yaml:"basic_auth_users"`
+	TLSConfig         TLSConfig                     `yaml:"tls_server_config"`
+	HTTPConfig        HTTPConfig                    `yaml:"http_server_config"`
+	RateLimiterConfig RateLimiterConfig             `yaml:"rate_limit"`
+	Users             map[string]config_util.Secret `yaml:"basic_auth_users"`
 }
 
 type TLSConfig struct {
@@ -107,6 +110,11 @@ func (t *TLSConfig) VerifyPeerCertificate(rawCerts [][]byte, _ [][]*x509.Certifi
 type HTTPConfig struct {
 	HTTP2  bool              `yaml:"http2"`
 	Header map[string]string `yaml:"headers,omitempty"`
+}
+
+type RateLimiterConfig struct {
+	Burst    int           `yaml:"burst"`
+	Interval time.Duration `yaml:"interval"`
 }
 
 func getConfig(configPath string) (*Config, error) {
@@ -365,11 +373,18 @@ func Serve(l net.Listener, server *http.Server, flags *FlagConfig, logger *slog.
 		return err
 	}
 
+	var limiter *rate.Limiter
+	if c.RateLimiterConfig.Interval != 0 {
+		limiter = rate.NewLimiter(rate.Every(c.RateLimiterConfig.Interval), c.RateLimiterConfig.Burst)
+		logger.Info("Rate Limiter is enabled.", "burst", c.RateLimiterConfig.Burst, "interval", c.RateLimiterConfig.Interval)
+	}
+
 	server.Handler = &webHandler{
 		tlsConfigPath: tlsConfigPath,
 		logger:        logger,
 		handler:       handler,
 		cache:         newCache(),
+		limiter:       limiter,
 	}
 
 	config, err := ConfigToTLSConfig(&c.TLSConfig)

@@ -18,13 +18,8 @@ type catalog struct {
 }
 
 // ResolveShardDescriptors implements Catalog.
-func (c *catalog) ResolveShardDescriptors(e Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
-	return c.ResolveShardDescriptorsWithShard(e, nil, noShard, from, through)
-}
-
-// ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveShardDescriptorsWithShard(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]FilteredShardDescriptor, error) {
-	return filterDescriptorsForShard(shard, c.sectionDescriptors)
+func (c *catalog) ResolveDataObjSections(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]DataObjSections, error) {
+	return filterForShard(shard, c.sectionDescriptors)
 }
 
 var _ Catalog = (*catalog)(nil)
@@ -43,11 +38,11 @@ func TestMockCatalog(t *testing.T) {
 	}
 	for _, tt := range []struct {
 		shard          ShardInfo
-		expDescriptors []FilteredShardDescriptor
+		expDescriptors []DataObjSections
 	}{
 		{
 			shard: ShardInfo{0, 1},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
@@ -57,29 +52,29 @@ func TestMockCatalog(t *testing.T) {
 		},
 		{
 			shard: ShardInfo{0, 4},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 			},
 		},
 		{
 			shard: ShardInfo{1, 4},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 			},
 		},
 		{
 			shard:          ShardInfo{2, 4},
-			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
+			expDescriptors: []DataObjSections{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
 		},
 		{
 			shard:          ShardInfo{3, 4},
-			expDescriptors: []FilteredShardDescriptor{},
+			expDescriptors: []DataObjSections{},
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
-			filteredShardDescriptors, err := catalog.ResolveShardDescriptorsWithShard(nil, nil, tt.shard, timeStart, timeEnd)
+			filteredShardDescriptors, err := catalog.ResolveDataObjSections(nil, nil, tt.shard, timeStart, timeEnd)
 			require.Nil(t, err)
 			require.ElementsMatch(t, tt.expDescriptors, filteredShardDescriptors)
 		})
@@ -361,7 +356,10 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Op:    types.BinaryOpEq,
 			},
 		).RangeAggregation(
-			[]logical.ColumnRef{*logical.NewColumnRef("level", types.ColumnTypeAmbiguous)},
+			logical.Grouping{
+				Columns: []logical.ColumnRef{*logical.NewColumnRef("level", types.ColumnTypeAmbiguous)},
+				Without: false,
+			},
 			types.RangeAggregationTypeCount,
 			start,         // Start time
 			end,           // End time
@@ -511,7 +509,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -565,7 +563,7 @@ func TestPlanner_Convert_Rate(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -621,7 +619,7 @@ func TestPlanner_BuildMathExpressions(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -675,7 +673,7 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -708,7 +706,7 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -740,6 +738,263 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 	physicalPlan, err = planner.Optimize(physicalPlan)
 	require.NoError(t, err)
 	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+}
+
+func TestDisambiguateExpression(t *testing.T) {
+	labels := []string{"app", "env"}
+
+	t.Run("resolves ambiguous column to metadata when not in set", func(t *testing.T) {
+		expr := &ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "trace_id",
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		}
+		result, changed := disambiguateExpression(expr, labels)
+		require.True(t, changed)
+		colExpr, ok := result.(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, "trace_id", colExpr.Ref.Column)
+		require.Equal(t, types.ColumnTypeMetadata, colExpr.Ref.Type)
+	})
+
+	t.Run("leaves non-ambiguous columns unchanged", func(t *testing.T) {
+		expr := &ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "app",
+				Type:   types.ColumnTypeLabel,
+			},
+		}
+		result, changed := disambiguateExpression(expr, labels)
+		require.False(t, changed)
+		colExpr, ok := result.(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, "app", colExpr.Ref.Column)
+		require.Equal(t, types.ColumnTypeLabel, colExpr.Ref.Type)
+	})
+
+	t.Run("recursively resolves binary expressions", func(t *testing.T) {
+		expr := &BinaryExpr{
+			Left: &ColumnExpr{
+				Ref: types.ColumnRef{Column: "trace_id", Type: types.ColumnTypeAmbiguous},
+			},
+			Right: NewLiteral("abc123"),
+			Op:    types.BinaryOpEq,
+		}
+		result, changed := disambiguateExpression(expr, labels)
+		require.True(t, changed)
+		binExpr, ok := result.(*BinaryExpr)
+		require.True(t, ok)
+
+		leftCol, ok := binExpr.Left.(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnTypeMetadata, leftCol.Ref.Type)
+	})
+
+	t.Run("handles nil expression", func(t *testing.T) {
+		result, changed := disambiguateExpression(nil, labels)
+		require.False(t, changed)
+		require.Nil(t, result)
+	})
+
+	t.Run("handles nested AND expressions", func(t *testing.T) {
+		expr := &BinaryExpr{
+			Left: &BinaryExpr{
+				Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "trace_id", Type: types.ColumnTypeAmbiguous}},
+				Right: NewLiteral("abc"),
+				Op:    types.BinaryOpEq,
+			},
+			Right: &BinaryExpr{
+				Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "request_id", Type: types.ColumnTypeAmbiguous}},
+				Right: NewLiteral("123"),
+				Op:    types.BinaryOpEq,
+			},
+			Op: types.BinaryOpAnd,
+		}
+		result, changed := disambiguateExpression(expr, labels)
+		require.True(t, changed)
+		binExpr, ok := result.(*BinaryExpr)
+		require.True(t, ok)
+
+		leftBin, ok := binExpr.Left.(*BinaryExpr)
+		require.True(t, ok)
+		leftCol, ok := leftBin.Left.(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnTypeMetadata, leftCol.Ref.Type)
+
+		rightBin, ok := binExpr.Right.(*BinaryExpr)
+		require.True(t, ok)
+		rightCol, ok := rightBin.Left.(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnTypeMetadata, rightCol.Ref.Type)
+	})
+}
+
+func TestPlanner_MetadataColumnResolution(t *testing.T) {
+	timeStart := time.Now()
+	timeEnd := timeStart.Add(time.Second * 10)
+
+	findDataObjTargetPredicates := func(plan *Plan) []Expression {
+		var predicates []Expression
+		for node := range plan.graph.Nodes() {
+			if scanSet, ok := node.(*ScanSet); ok {
+				for _, target := range scanSet.Targets {
+					if target.Type == ScanTypeDataObject && target.DataObject != nil {
+						predicates = append(predicates, target.DataObject.Predicates...)
+					}
+				}
+			}
+		}
+		return predicates
+	}
+
+	findFilterPredicates := func(plan *Plan) []Expression {
+		var predicates []Expression
+		for node := range plan.graph.Nodes() {
+			if filter, ok := node.(*Filter); ok {
+				predicates = append(predicates, filter.Predicates...)
+			}
+		}
+		return predicates
+	}
+
+	var hasColumnType func(expr Expression, colName string, colType types.ColumnType) bool
+	hasColumnType = func(expr Expression, colName string, colType types.ColumnType) bool {
+		switch e := expr.(type) {
+		case *BinaryExpr:
+			return hasColumnType(e.Left, colName, colType) || hasColumnType(e.Right, colName, colType)
+		case *ColumnExpr:
+			return e.Ref.Column == colName && e.Ref.Type == colType
+		}
+		return false
+	}
+
+	t.Run("resolves ambiguous column type to metadata in predicates", func(t *testing.T) {
+		cat := &catalog{
+			sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+				{
+					SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0},
+					StreamIDs:  []int64{1, 2},
+					Start:      timeStart,
+					End:        timeEnd,
+					AmbiguousPredicatesByStream: map[int64][]string{
+						1: {"app", "foo"},
+						2: {"app", "bar"},
+					},
+				},
+			},
+		}
+
+		// Build a query: {app="users"} | trace_id="abc123"
+		// The trace_id filter is ambiguous but should be resolved to metadata when present
+		b := logical.NewBuilder(
+			&logical.MakeTable{
+				Selector: &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("users"),
+					Op:    types.BinaryOpEq,
+				},
+				Predicates: []logical.Value{
+					&logical.BinOp{
+						Left:  logical.NewColumnRef("trace_id", types.ColumnTypeAmbiguous),
+						Right: logical.NewLiteral("abc123"),
+						Op:    types.BinaryOpEq,
+					},
+				},
+				Shard: logical.NewShard(0, 1),
+			},
+		).Select(
+			&logical.BinOp{
+				Left:  logical.NewColumnRef("trace_id", types.ColumnTypeAmbiguous),
+				Right: logical.NewLiteral("abc123"),
+				Op:    types.BinaryOpEq,
+			},
+		)
+
+		logicalPlan, err := b.ToPlan()
+		require.NoError(t, err)
+
+		planner := NewPlanner(NewContext(timeStart, timeEnd), cat)
+		physicalPlan, err := planner.Build(logicalPlan)
+		require.NoError(t, err)
+
+		// After optimization, the metadata predicate should be pushed down to DataObjScan
+		optimizedPlan, err := planner.Optimize(physicalPlan)
+		require.NoError(t, err)
+
+		targetPredicates := findDataObjTargetPredicates(optimizedPlan)
+		require.NotEmpty(t, targetPredicates, "predicate should be pushed to ScanSet after resolution to metadata")
+
+		// Verify the pushed predicate has the column resolved to metadata type
+		foundTraceID := false
+		for _, pred := range targetPredicates {
+			if hasColumnType(pred, "trace_id", types.ColumnTypeMetadata) {
+				foundTraceID = true
+				break
+			}
+		}
+		require.True(t, foundTraceID, "trace_id should be resolved to ColumnTypeMetadata in pushed predicate")
+	})
+
+	t.Run("handles empty labels gracefully", func(t *testing.T) {
+		cat := &catalog{
+			sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+				{
+					SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0},
+					StreamIDs:  []int64{1, 2},
+					Start:      timeStart,
+					End:        timeEnd,
+				},
+			},
+		}
+
+		b := logical.NewBuilder(
+			&logical.MakeTable{
+				Selector: &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("users"),
+					Op:    types.BinaryOpEq,
+				},
+				Predicates: []logical.Value{
+					&logical.BinOp{
+						Left:  logical.NewColumnRef("trace_id", types.ColumnTypeAmbiguous),
+						Right: logical.NewLiteral("abc"),
+						Op:    types.BinaryOpEq,
+					},
+				},
+				Shard: logical.NewShard(0, 1),
+			},
+		).Select(
+			&logical.BinOp{
+				Left:  logical.NewColumnRef("trace_id", types.ColumnTypeAmbiguous),
+				Right: logical.NewLiteral("abc"),
+				Op:    types.BinaryOpEq,
+			},
+		)
+
+		logicalPlan, err := b.ToPlan()
+		require.NoError(t, err)
+
+		planner := NewPlanner(NewContext(timeStart, timeEnd), cat)
+		physicalPlan, err := planner.Build(logicalPlan)
+		require.NoError(t, err)
+
+		optimizedPlan, err := planner.Optimize(physicalPlan)
+		require.NoError(t, err)
+
+		// With no metadata columns, nothing should be resolved and predicate stays in Filter
+		filterPredicates := findFilterPredicates(optimizedPlan)
+		require.NotEmpty(t, filterPredicates, "predicate should stay in Filter when no metadata columns")
+
+		found := false
+		for _, pred := range filterPredicates {
+			if hasColumnType(pred, "trace_id", types.ColumnTypeAmbiguous) {
+				found = true
+				break
+			}
+		}
+		require.True(t, found, "trace_id should remain ColumnTypeAmbiguous when not in metadata")
+	})
 }
 
 func TestPlanner_MakeTable_Ordering(t *testing.T) {

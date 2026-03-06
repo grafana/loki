@@ -76,7 +76,7 @@ func run(ctx context.Context, command string, db *sql.DB, dir string, args []str
 		}
 	case "up-to":
 		if len(args) == 0 {
-			return fmt.Errorf("up-to must be of form: goose [OPTIONS] DRIVER DBSTRING up-to VERSION")
+			return fmt.Errorf("up-to must be of form: goose DRIVER DBSTRING [OPTIONS] up-to VERSION")
 		}
 
 		version, err := strconv.ParseInt(args[0], 10, 64)
@@ -88,7 +88,7 @@ func run(ctx context.Context, command string, db *sql.DB, dir string, args []str
 		}
 	case "create":
 		if len(args) == 0 {
-			return fmt.Errorf("create must be of form: goose [OPTIONS] DRIVER DBSTRING create NAME [go|sql]")
+			return fmt.Errorf("create must be of form: goose DRIVER DBSTRING [OPTIONS] create NAME [go|sql]")
 		}
 
 		migrationType := "go"
@@ -104,7 +104,7 @@ func run(ctx context.Context, command string, db *sql.DB, dir string, args []str
 		}
 	case "down-to":
 		if len(args) == 0 {
-			return fmt.Errorf("down-to must be of form: goose [OPTIONS] DRIVER DBSTRING down-to VERSION")
+			return fmt.Errorf("down-to must be of form: goose DRIVER DBSTRING [OPTIONS] down-to VERSION")
 		}
 
 		version, err := strconv.ParseInt(args[0], 10, 64)

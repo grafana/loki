@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +33,8 @@ const (
 	// GetBufferSize is the suggested size of buffers passed to Ring.Get(). It's based on
 	// a typical replication factor 3, plus extra room for a JOINING + LEAVING instance.
 	GetBufferSize = 5
+
+	maxZonesForMetrics = 32
 )
 
 // Options are the result of Option instances that can be used to modify Ring.GetWithOptions behavior.
@@ -142,6 +145,10 @@ type ReadRing interface {
 
 	// ZonesCount returns the number of zones for which there's at least 1 instance registered in the ring.
 	ZonesCount() int
+
+	// Zones returns the list of zones for which there's at least 1 instance registered in the ring.
+	// The returned slice is sorted alphabetically.
+	Zones() []string
 }
 
 var (
@@ -196,9 +203,8 @@ type Config struct {
 	// Whether the shuffle-sharding subring cache is disabled. This option is set
 	// internally and never exposed to the user.
 	SubringCacheDisabled bool `yaml:"-"`
-	// HideTokensInStatusPage allows tokens to be hidden from management tools e.g. the status page, for use in contexts which do not utilize tokens.
-	// This option is set internally and never exposed to the user.
-	HideTokensInStatusPage bool `yaml:"-"`
+
+	StatusPageConfig StatusPageConfig `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix
@@ -210,10 +216,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.KVStore.RegisterFlagsWithPrefix(prefix, "collectors/", f)
 
-	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes. 0 = never (timeout disabled).")
+	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	f.IntVar(&cfg.ReplicationFactor, prefix+"distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, prefix+"distributor.zone-awareness-enabled", false, "True to enable the zone-awareness and replicate ingested samples across different availability zones.")
 	f.Var(&cfg.ExcludedZones, prefix+"distributor.excluded-zones", "Comma-separated list of zones to exclude from the ring. Instances in excluded zones will be filtered out from the ring.")
+}
+
+// Validate checks the consistency of Config, and fails if this cannot be achieved.
+func (cfg *Config) Validate() error {
+	if cfg.HeartbeatTimeout == 0 {
+		return errors.New("heartbeat timeout must be greater than 0")
+	}
+	return nil
 }
 
 type instanceInfo struct {
@@ -258,6 +272,10 @@ type Ring struct {
 	// to be sorted alphabetically.
 	ringZones []string
 
+	// Map containing all ring zones ever discovered, even if they have no instances,
+	// capped at 32 zones to limit cardinality.
+	trackedRingZones map[string]struct{}
+
 	// Number of registered instances with tokens.
 	instancesWithTokensCount int
 
@@ -279,6 +297,7 @@ type Ring struct {
 	shuffledSubringWithLookbackCache map[subringCacheKey]cachedSubringWithLookback[*Ring]
 
 	numMembersGaugeVec      *prometheus.GaugeVec
+	numZoneMembersGaugeVec  *prometheus.GaugeVec
 	totalTokensGauge        prometheus.Gauge
 	oldestTimestampGaugeVec *prometheus.GaugeVec
 
@@ -325,6 +344,7 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 		KVClient:                         store,
 		strategy:                         strategy,
 		ringDesc:                         &Desc{},
+		trackedRingZones:                 map[string]struct{}{},
 		shuffledSubringCache:             map[subringCacheKey]*Ring{},
 		shuffledSubringWithLookbackCache: map[subringCacheKey]cachedSubringWithLookback[*Ring]{},
 		numMembersGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
@@ -333,6 +353,11 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 			ConstLabels: map[string]string{"name": name},
 		},
 			[]string{"state"}),
+		numZoneMembersGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name:        "ring_zone_members",
+			Help:        "Number of ring members for each zone/state pair",
+			ConstLabels: map[string]string{"name": name},
+		}, []string{"zone", "state"}),
 		totalTokensGauge: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name:        "ring_tokens_total",
 			Help:        "Number of tokens in the ring",
@@ -441,7 +466,7 @@ func (r *Ring) setRingStateFromDesc(ringDesc *Desc, updateMetrics, updateRegiste
 	r.ringTokens = ringTokens
 	r.ringTokensByZone = ringTokensByZone
 	r.ringInstanceByToken = ringInstanceByToken
-	r.ringZones = ringZones
+	r.updateRingZones(ringZones)
 	r.instancesWithTokensCount = instancesWithTokensCount
 	r.instancesCountPerZone = instancesCountPerZone
 	r.instancesWithTokensCountPerZone = instancesWithTokensCountPerZone
@@ -534,19 +559,46 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 		maxZones     = r.cfg.ReplicationFactor
 		maxInstances = len(r.ringDesc.Ingesters)
 
-		// We use a slice instead of a map because it's faster to search within a
-		// slice than lookup a map for a very low number of items, we only expect
-		// to have low single-digit number of hosts.
-		distinctHosts = bufHosts[:0]
+		// distinctHosts tracks which instances we've already examined.
+		distinctHosts = newStringSet(bufHosts)
 
-		examinedHostsPerZone = make(map[string]int)
-		foundHostsPerZone    = make(map[string]int)
+		// Fixed-size buffers for zone tracking slices. Using arrays with a fixed size allows
+		// the compiler to allocate them on the stack, avoiding heap allocations. The size of 5
+		// is chosen as a reasonable upper bound for zones (most deployments use 3).
+		totalHostsPerZoneBuf    [5]int
+		examinedHostsPerZoneBuf [5]int
+		foundHostsPerZoneBuf    [5]int
+
+		// These slices are indexed by the zone index, that is the index of a zone in r.ringZones.
+		// We use this technique – instead of a map – to optimize the lookup of the number of hosts by zones.
+		totalHostsPerZone    []int
+		examinedHostsPerZone []int
+		foundHostsPerZone    []int
 		targetHostsPerZone   = max(1, replicationFactor/maxZones)
 	)
 
-	for i := start; len(distinctHosts) < min(maxInstances, n) && iterations < len(r.ringTokens); i++ {
+	if r.cfg.ZoneAwarenessEnabled {
+		// Initialize the per-zone hosts counters only if zone-awareness is enabled.
+		// If zone-awareness is disabled and these slices get used by mistake, the code will intentionally panic.
+		if numZones := len(r.ringZones); numZones <= len(totalHostsPerZoneBuf) {
+			totalHostsPerZone = totalHostsPerZoneBuf[:numZones]
+			examinedHostsPerZone = examinedHostsPerZoneBuf[:numZones]
+			foundHostsPerZone = foundHostsPerZoneBuf[:numZones]
+		} else {
+			totalHostsPerZone = make([]int, numZones)
+			examinedHostsPerZone = make([]int, numZones)
+			foundHostsPerZone = make([]int, numZones)
+		}
+
+		// Pre-populate the total number of hosts per zone.
+		for zoneIndex, zone := range r.ringZones {
+			totalHostsPerZone[zoneIndex] = r.instancesCountPerZone[zone]
+		}
+	}
+
+	for i := start; distinctHosts.len() < min(maxInstances, n) && iterations < len(r.ringTokens); i++ {
 		// If we have the target number of instances or have looked at all instances in each zone, stop looking
-		if r.cfg.ZoneAwarenessEnabled && r.canStopLooking(foundHostsPerZone, examinedHostsPerZone, targetHostsPerZone) {
+		if r.cfg.ZoneAwarenessEnabled && r.canStopLooking(totalHostsPerZone, foundHostsPerZone, examinedHostsPerZone, targetHostsPerZone) {
 			break
 		}
 
@@ -562,23 +614,34 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 		}
 
 		// We want n *distinct* instances && distinct zones.
-		if slices.Contains(distinctHosts, info.InstanceID) {
+		if distinctHosts.contains(info.InstanceID) {
 			continue
+		}
+
+		// Look for the zone index. We only need it if zone-awareness is enabled. If zone-awareness
+		// is disabled, we intentionally use a negative value so that if the index is used unintentionally,
+		// the code will panic.
+		zoneIndex := -1
+		if r.cfg.ZoneAwarenessEnabled {
+			zoneIndex = slices.Index(r.ringZones, info.Zone)
+			if zoneIndex == -1 {
+				return nil, errors.Wrapf(ErrInconsistentTokensInfo, "the zone %q is not present in the ring zones %v", info.Zone, r.ringZones)
+			}
 		}
 
 		if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
 			// If we already have the required number of instances for this zone, skip.
-			if foundHostsPerZone[info.Zone] >= targetHostsPerZone {
+			if foundHostsPerZone[zoneIndex] >= targetHostsPerZone {
 				continue
 			}
 
 			// Keep track of the number of hosts we have examined in each zone. Once we've looked
 			// at every host in a zone, we can stop looking at each token: we won't find any more
 			// hosts to add to the replication set.
-			examinedHostsPerZone[info.Zone]++
+			examinedHostsPerZone[zoneIndex]++
 		}
 
-		distinctHosts = append(distinctHosts, info.InstanceID)
+		distinctHosts.add(info.InstanceID)
 		instance := r.ringDesc.Ingesters[info.InstanceID]
 
 		// Check whether the replica set should be extended given we're including
@@ -588,7 +651,7 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 		} else if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
 			// We should only increment the count for this zone if we are not going to
 			// extend, as we want to extend the instance in the same AZ.
-			foundHostsPerZone[info.Zone]++
+			foundHostsPerZone[zoneIndex]++
 		}
 
 		include, keepGoing := true, true
@@ -608,9 +671,12 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 // canStopLooking returns true if we have enough hosts for the replication factor
 // or if we have looked at all hosts, for all zones. This method assumes that the
 // lock for ring state is held.
-func (r *Ring) canStopLooking(foundPerZone map[string]int, examinedPerZone map[string]int, targetPerZone int) bool {
-	for zone, total := range r.instancesCountPerZone {
-		zoneOk := foundPerZone[zone] >= targetPerZone || examinedPerZone[zone] >= total
+//
+// All input slices must have consistent zone indexes. It means that the index 0
+// of each slice must correspond to the same zone, and the same for all other indexes.
+func (r *Ring) canStopLooking(totalHostsPerZone []int, foundHostsPerZone []int, examinedHostsPerZone []int, targetPerZone int) bool {
+	for zoneIndex, total := range totalHostsPerZone {
+		zoneOk := foundHostsPerZone[zoneIndex] >= targetPerZone || examinedHostsPerZone[zoneIndex] >= total
 		if !zoneOk {
 			return false
 		}
@@ -778,15 +844,49 @@ func (r *Desc) CountTokens() map[string]int64 {
 	return owned
 }
 
+func (r *Ring) updateRingZones(zones []string) {
+	r.ringZones = zones
+	var notAdded []string
+	for _, zone := range zones {
+		if _, ok := r.trackedRingZones[zone]; !ok {
+			if len(r.trackedRingZones) >= maxZonesForMetrics {
+				notAdded = append(notAdded, zone)
+			} else {
+				r.trackedRingZones[zone] = struct{}{}
+			}
+		}
+	}
+	if len(notAdded) > 0 {
+		level.Warn(r.logger).Log(
+			"msg", "not tracking metrics for zone(s) due to high cardinality",
+			"zones", strings.Join(notAdded, ","),
+		)
+	}
+}
+
 // updateRingMetrics updates ring metrics. Caller must be holding the Write lock!
 func (r *Ring) updateRingMetrics() {
 	numByState := map[string]int{}
 	oldestTimestampByState := map[string]int64{}
 
+	// Will emit nothing if no zones were discovered.
+	var numByZoneAndState map[string]map[string]int
+	if r.cfg.ZoneAwarenessEnabled {
+		numByZoneAndState = map[string]map[string]int{}
+		for zone := range r.trackedRingZones {
+			numByZoneAndState[zone] = map[string]int{}
+		}
+	}
+
 	// Initialized to zero so we emit zero-metrics (instead of not emitting anything)
 	for _, s := range []string{unhealthy, ACTIVE.String(), LEAVING.String(), PENDING.String(), JOINING.String()} {
 		numByState[s] = 0
 		oldestTimestampByState[s] = 0
+		if r.cfg.ZoneAwarenessEnabled {
+			for zone := range numByZoneAndState {
+				numByZoneAndState[zone][s] = 0
+			}
+		}
 	}
 
 	for _, instance := range r.ringDesc.Ingesters {
@@ -798,6 +898,11 @@ func (r *Ring) updateRingMetrics() {
 		if oldestTimestampByState[s] == 0 || instance.Timestamp < oldestTimestampByState[s] {
 			oldestTimestampByState[s] = instance.Timestamp
 		}
+		if r.cfg.ZoneAwarenessEnabled {
+			if byState, ok := numByZoneAndState[instance.Zone]; ok {
+				byState[s]++
+			}
+		}
 	}
 
 	for state, count := range numByState {
@@ -805,6 +910,13 @@ func (r *Ring) updateRingMetrics() {
 	}
 	for state, timestamp := range oldestTimestampByState {
 		r.oldestTimestampGaugeVec.WithLabelValues(state).Set(float64(timestamp))
+	}
+	if r.cfg.ZoneAwarenessEnabled {
+		for zone, byState := range numByZoneAndState {
+			for state, count := range byState {
+				r.numZoneMembersGaugeVec.WithLabelValues(zone, state).Set(float64(count))
+			}
+		}
 	}
 
 	r.totalTokensGauge.Set(float64(len(r.ringTokens)))
@@ -1058,14 +1170,17 @@ func (r *Ring) buildRingForTheShard(shard map[string]InstanceDesc) *Ring {
 	shardDesc := &Desc{Ingesters: shard}
 	shardTokensByZone := shardDesc.getTokensByZone()
 	shardTokens := mergeTokenGroups(shardTokensByZone)
+	zones := getZones(shardTokensByZone)
 
-	return &Ring{
+	ring := &Ring{
 		cfg:                                     r.cfg,
 		strategy:                                r.strategy,
+		logger:                                  r.logger,
 		ringDesc:                                shardDesc,
 		ringTokens:                              shardTokens,
 		ringTokensByZone:                        shardTokensByZone,
-		ringZones:                               getZones(shardTokensByZone),
+		ringZones:                               zones,
+		trackedRingZones:                        map[string]struct{}{},
 		instancesWithTokensCount:                shardDesc.instancesWithTokensCount(),
 		instancesCountPerZone:                   shardDesc.instancesCountPerZone(),
 		instancesWithTokensCountPerZone:         shardDesc.instancesWithTokensCountPerZone(),
@@ -1082,6 +1197,9 @@ func (r *Ring) buildRingForTheShard(shard map[string]InstanceDesc) *Ring {
 		// For caching to work, remember these values.
 		lastTopologyChange: r.lastTopologyChange,
 	}
+
+	ring.updateRingZones(zones)
+	return ring
 }
 
 // mergeTokenGroups returns a sorted list of all tokens in each entry in groupsByName.
@@ -1345,7 +1463,7 @@ func (r *Ring) getRing(_ context.Context) (*Desc, error) {
 }
 
 func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	newRingPageHandler(r, r.cfg.HeartbeatTimeout, r.cfg.HideTokensInStatusPage).handle(w, req)
+	newRingPageHandler(r, r.cfg.HeartbeatTimeout, r.cfg.StatusPageConfig).handle(w, req)
 }
 
 // InstancesCount returns the number of instances in the ring.
@@ -1401,6 +1519,15 @@ func (r *Ring) ZonesCount() int {
 	defer r.mtx.RUnlock()
 
 	return len(r.ringZones)
+}
+
+// Zones returns the list of zones for which there's at least 1 instance registered in the ring.
+// The returned slice is sorted alphabetically.
+func (r *Ring) Zones() []string {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	return slices.Clone(r.ringZones)
 }
 
 // readOnlyInstanceCount returns the number of read only instances in the ring.

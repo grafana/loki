@@ -309,7 +309,7 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, from, throug
 	resp := &logproto.ShardsResponse{}
 
 	series := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(m)))
-	defer sharding.SizedFPsPool.Put(series)
+	defer func() { sharding.SizedFPsPool.Put(series) }()
 
 	for fp, chks := range m {
 		x := sharding.SizedFP{Fp: fp}
@@ -349,7 +349,7 @@ func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
 
 	dst := make([]*labels.Matcher, 0, len(matchers)-1)
 	for _, m := range matchers {
-		if m.Name == labels.MetricName {
+		if m.Name == model.MetricNameLabel {
 			continue
 		}
 		dst = append(dst, m)

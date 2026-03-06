@@ -8,7 +8,7 @@ on:
 
 env:
   CT_CONFIGFILE: production/helm/ct.yaml
-  INTEGRARION_TESTS_DIR: production/helm/loki/test/integration
+  INTEGRATION_TESTS_DIR: production/helm/loki/test/integration
 
 jobs:
 # Temporarily disabled linting because this step doesn't easily support passing GO tags yet.
@@ -103,7 +103,7 @@ jobs:
 
       - name: List tests
         id: list_tests
-        working-directory: "${{ env.INTEGRARION_TESTS_DIR }}"
+        working-directory: "${{ env.INTEGRATION_TESTS_DIR }}"
         env:
           LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
@@ -153,7 +153,69 @@ jobs:
           start: false
 
       - name: Run test
-        run: helm-chart-toolbox/tools/helm-test/helm-test "${TEST_DIRECTORY}"
+        run: |
+          # Enable verbose output only if runner debug mode is enabled
+          if [ "${{ runner.debug }}" == "1" ]; then
+            set -x
+            echo "=== Debug mode enabled - verbose output active ==="
+          fi
+          
+          echo "=== Starting Helm Test ==="
+          echo "Test directory: ${TEST_DIRECTORY}"
+          helm-chart-toolbox/tools/helm-test/helm-test "${TEST_DIRECTORY}" || {
+            EXIT_CODE=$?
+            echo "=== Test failed with exit code: $EXIT_CODE ==="
+            echo "=== Attempting to gather debug information ==="
+            
+            # Try to get cluster info if kubectl is available
+            if command -v kubectl &> /dev/null; then
+              echo "=== Kubernetes Cluster Debug Info ==="
+              echo "--- Cluster nodes ---"
+              kubectl get nodes -o wide || true
+              echo "--- All namespaces ---"
+              kubectl get namespaces || true
+              echo "--- Helm releases ---"
+              helm list -A || true
+              echo "--- Helm release status (if exists) ---"
+              helm status loki -n loki || echo "Helm release 'loki' not found or failed"
+              echo "--- All resources in loki namespace ---"
+              kubectl get all -n loki || true
+              echo "--- Pods in loki namespace ---"
+              kubectl get pods -n loki -o wide || true
+              echo "--- Pod status details ---"
+              kubectl get pods -n loki -o json | jq -r '.items[] | "\(.metadata.name): phase=\(.status.phase), reason=\(.status.reason // "none"), message=\(.status.message // "none")"' || true
+              echo "--- Events in loki namespace (last 100) ---"
+              kubectl get events -n loki --sort-by='.lastTimestamp' | tail -100 || true
+              echo "--- Failed/Error pods details ---"
+              kubectl get pods -n loki -o json | jq -r '.items[] | select(.status.phase != "Running" and .status.phase != "Succeeded") | "\(.metadata.name): \(.status.phase) - \(.status.reason // "no reason")"' || true
+              echo "--- Describe failed pods ---"
+              for pod in $(kubectl get pods -n loki -o json | jq -r '.items[] | select(.status.phase != "Running" and .status.phase != "Succeeded") | .metadata.name'); do
+                echo "=== Describe pod: $pod ==="
+                kubectl describe pod -n loki "$pod" || true
+              done
+              echo "--- Pod logs for failed pods ---"
+              for pod in $(kubectl get pods -n loki -o json | jq -r '.items[] | select(.status.phase != "Running" and .status.phase != "Succeeded") | .metadata.name'); do
+                echo "=== Logs for pod: $pod ==="
+                kubectl logs -n loki "$pod" --tail=200 || true
+                echo "=== Previous logs for pod: $pod ==="
+                kubectl logs -n loki "$pod" --previous --tail=200 || true
+              done
+              
+              # Only show all pod logs if debug mode is enabled (can be very verbose)
+              if [ "${{ runner.debug }}" == "1" ]; then
+                echo "--- All pod logs (last 50 lines each) ---"
+                for pod in $(kubectl get pods -n loki -o json | jq -r '.items[] | .metadata.name'); do
+                  echo "=== Logs for pod: $pod ==="
+                  kubectl logs -n loki "$pod" --tail=50 || true
+                done
+              fi
+            fi
+            
+            exit $EXIT_CODE
+          }
         env:
-          TEST_DIRECTORY: "source/${{ env.INTEGRARION_TESTS_DIR }}/${{ matrix.test }}"
+          TEST_DIRECTORY: "source/${{ env.INTEGRATION_TESTS_DIR }}/${{ matrix.test }}"
           DELETE_CLUSTER: true
+          # Enable verbose output for helm-test only if runner debug mode is enabled
+          DEBUG: ${{ runner.debug == '1' && 'true' || 'false' }}
+          VERBOSE: ${{ runner.debug == '1' && 'true' || 'false' }}

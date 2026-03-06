@@ -2,6 +2,12 @@ package parquet
 
 import "github.com/parquet-go/parquet-go/internal/bytealg"
 
+type columnLevels struct {
+	repetitionDepth byte
+	repetitionLevel byte
+	definitionLevel byte
+}
+
 func countLevelsEqual(levels []byte, value byte) int {
 	return bytealg.Count(levels, value)
 }

@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: "read"
+      id-token: "write"
     if: |
       github.event.pull_request.head.ref == 'release-please--branches--main--components--operator' &&
       contains(github.event.pull_request.title, 'chore( operator): community release')
@@ -43,7 +44,7 @@ jobs:
           echo "semver=$SEMVER" >> $GITHUB_OUTPUT
 
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: main
           path: "release"

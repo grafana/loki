@@ -1,3 +1,33 @@
+# v1.56.0 (2026-02-23)
+
+* **Feature**: This change supports the creation of multi-account global tables. It adds one new arguments to UpdateTable, GlobalTableSettingsReplicationMode.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.55.0 (2026-02-03)
+
+* **Feature**: This change supports the creation of multi-account global tables. It adds two new arguments to CreateTable, GlobalTableSourceArn and GlobalTableSettingsReplicationMode. DescribeTable is also updated to include information about GlobalTableSettingsReplicationMode.
+
+# v1.54.0 (2026-01-22)
+
+* **Feature**: Adds additional waiters to Amazon DynamoDB.
+
+# v1.53.6 (2026-01-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.53.5 (2025-12-09)
+
+* No change notes available for this release.
+
+# v1.53.4 (2025-12-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.53.3 (2025-12-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.24.0. Notably this version of the library reduces the allocation footprint of the middleware system. We observe a ~10% reduction in allocations per SDK call with this change.
+
 # v1.53.2 (2025-11-25)
 
 * **Bug Fix**: Add error check for endpoint param binding during auth scheme resolution to fix panic reported in #3234

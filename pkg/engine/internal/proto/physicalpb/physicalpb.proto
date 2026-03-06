@@ -48,13 +48,17 @@ message Node {
     TopK top_k = 10;
     Parallelize parallelize = 11;
     Join join = 12;
+    Merge merge = 13;
+    PointersScan pointers_scan = 14;
   }
 }
 
 // AggregateRange aggregates samples into windowed ranges.
 message AggregateRange {
-  // Columns to partition the data by.
-  repeated loki.expression.ColumnExpression partition_by = 1;
+  reserved 1;
+
+  // Grouping for the data.
+  Grouping grouping = 7;
 
   AggregateRangeOp operation = 2;
 
@@ -74,6 +78,16 @@ message AggregateRange {
     (gogoproto.stdduration) = true,
     (gogoproto.nullable) = false
   ];
+
+  // Maximum number of unique series allowed (0 means no limit).
+  int32 max_query_series = 8;
+}
+
+// Grouping represents the grouping by/without label(s) for vector aggregators
+// and range vector aggregators.
+message Grouping {
+  repeated loki.expression.ColumnExpression columns = 1;
+  bool without = 2;
 }
 
 // AggregateRangeOp represents the operation to perform on the aggregated
@@ -86,16 +100,22 @@ enum AggregateRangeOp {
   AGGREGATE_RANGE_OP_MAX = 3; // Represents LogQL's max_over_time aggregation.
   AGGREGATE_RANGE_OP_MIN = 4; // Represents LogQL's min_over_time aggregation.
   AGGREGATE_RANGE_OP_BYTES = 5; // Represents LogQL's bytes_over_time aggregation.
+  AGGREGATE_RANGE_OP_AVG = 6; // Represents LogQL's avg_over_time aggregation.
 }
 
 // AggregateVector represents an operation to aggregate a range vector into an
 // instant vector, with optional grouping on specified dimensions.
 message AggregateVector {
-  // Columns to group the data by. If empty, all rows are aggregated into a single result.
-  repeated loki.expression.ColumnExpression group_by = 1;
+  reserved 1;
+
+  // Grouping for the data.
+  Grouping grouping = 3;
 
   // Aggregation operation to perform over the underlying range vector.
   AggregateVectorOp operation = 2;
+
+  // Maximum number of unique series allowed (0 means no limit).
+  int32 max_query_series = 4;
 }
 
 // AggregateVectorOp represents the different aggregation operations that can
@@ -225,13 +245,39 @@ message ScanSet {
 message ScanTarget {
   oneof kind {
     DataObjScan data_object = 1;
+    PointersScan pointers = 2;
   }
 }
+
+// Merge combines multiple input streams into a single stream with no
+// guaranteed ordering.
+message Merge {}
 
 // Parallelize represents a hint to the engine to partition and parallelize the
 // children branches of the Parallelize and emit results as a single sequence
 // with no guaranteed order.
 message Parallelize {}
+
+// PointersScan represents an operation to read pointers from an index file.
+message PointersScan {
+  // Stored location of the index to read.
+  string location = 1;
+
+  // Selector expression for the scan.
+  loki.expression.Expression selector = 2;
+
+  // Predicates for the scan.
+  repeated loki.expression.Expression predicates = 3;
+
+  google.protobuf.Timestamp start = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 5 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+}
 
 // Join represents a join operation in the physical plan.
 // For now it is only an inner join on `timestamp`. Will be expanded later.

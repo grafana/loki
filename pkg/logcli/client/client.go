@@ -94,6 +94,7 @@ type DefaultClient struct {
 	BackoffConfig    BackoffConfig
 	Compression      bool
 	EnvironmentProxy bool
+	CustomHeaders    []string
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -646,6 +647,22 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 
 	if c.QueryTags != "" {
 		h.Set(HTTPQueryTags, c.QueryTags)
+	}
+
+	// Add custom headers
+	if c.CustomHeaders != nil {
+		for _, header := range c.CustomHeaders {
+			parts := strings.SplitN(header, ":", 2)
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("invalid header format: %q. Expected format: 'Header-Name: value'", header)
+			}
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			if key == "" {
+				return nil, fmt.Errorf("header name cannot be empty in header: %q", header)
+			}
+			h.Set(key, value)
+		}
 	}
 
 	if (c.Username != "" || c.Password != "") && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {

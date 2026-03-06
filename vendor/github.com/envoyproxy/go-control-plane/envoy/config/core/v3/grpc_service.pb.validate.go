@@ -263,7 +263,7 @@ type GrpcServiceMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcServiceMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -467,7 +467,7 @@ type GrpcService_EnvoyGrpcMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcService_EnvoyGrpcMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -597,6 +597,40 @@ func (m *GrpcService_GoogleGrpc) validate(all bool) error {
 		}
 	}
 
+	for idx, item := range m.GetChannelCredentialsPlugin() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, GrpcService_GoogleGrpcValidationError{
+						field:  fmt.Sprintf("ChannelCredentialsPlugin[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, GrpcService_GoogleGrpcValidationError{
+						field:  fmt.Sprintf("ChannelCredentialsPlugin[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return GrpcService_GoogleGrpcValidationError{
+					field:  fmt.Sprintf("ChannelCredentialsPlugin[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
 	for idx, item := range m.GetCallCredentials() {
 		_, _ = idx, item
 
@@ -623,6 +657,40 @@ func (m *GrpcService_GoogleGrpc) validate(all bool) error {
 			if err := v.Validate(); err != nil {
 				return GrpcService_GoogleGrpcValidationError{
 					field:  fmt.Sprintf("CallCredentials[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	for idx, item := range m.GetCallCredentialsPlugin() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, GrpcService_GoogleGrpcValidationError{
+						field:  fmt.Sprintf("CallCredentialsPlugin[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, GrpcService_GoogleGrpcValidationError{
+						field:  fmt.Sprintf("CallCredentialsPlugin[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return GrpcService_GoogleGrpcValidationError{
+					field:  fmt.Sprintf("CallCredentialsPlugin[%v]", idx),
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -745,7 +813,7 @@ type GrpcService_GoogleGrpcMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcService_GoogleGrpcMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -936,7 +1004,7 @@ type GrpcService_GoogleGrpc_SslCredentialsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcService_GoogleGrpc_SslCredentialsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1042,7 +1110,7 @@ type GrpcService_GoogleGrpc_GoogleLocalCredentialsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcService_GoogleGrpc_GoogleLocalCredentialsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1293,7 +1361,7 @@ type GrpcService_GoogleGrpc_ChannelCredentialsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcService_GoogleGrpc_ChannelCredentialsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1651,7 +1719,7 @@ type GrpcService_GoogleGrpc_CallCredentialsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcService_GoogleGrpc_CallCredentialsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1802,7 +1870,7 @@ type GrpcService_GoogleGrpc_ChannelArgsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcService_GoogleGrpc_ChannelArgsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1914,7 +1982,7 @@ type GrpcService_GoogleGrpc_CallCredentials_ServiceAccountJWTAccessCredentialsMu
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcService_GoogleGrpc_CallCredentials_ServiceAccountJWTAccessCredentialsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2036,7 +2104,7 @@ type GrpcService_GoogleGrpc_CallCredentials_GoogleIAMCredentialsMultiError []err
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcService_GoogleGrpc_CallCredentials_GoogleIAMCredentialsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2203,7 +2271,7 @@ type GrpcService_GoogleGrpc_CallCredentials_MetadataCredentialsFromPluginMultiEr
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcService_GoogleGrpc_CallCredentials_MetadataCredentialsFromPluginMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2356,7 +2424,7 @@ type GrpcService_GoogleGrpc_CallCredentials_StsServiceMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcService_GoogleGrpc_CallCredentials_StsServiceMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2511,7 +2579,7 @@ type GrpcService_GoogleGrpc_ChannelArgs_ValueMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m GrpcService_GoogleGrpc_ChannelArgs_ValueMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

@@ -155,11 +155,11 @@ func (header *Header) EqualsTo(otherHeader *Header) bool {
 	if otherHeader == nil {
 		return false
 	}
-	// TLVs only exist for version 2
-	if header.Version == 2 && !bytes.Equal(header.rawTLVs, otherHeader.rawTLVs) {
+	if header.Version != otherHeader.Version || header.Command != otherHeader.Command || header.TransportProtocol != otherHeader.TransportProtocol {
 		return false
 	}
-	if header.Version != otherHeader.Version || header.Command != otherHeader.Command || header.TransportProtocol != otherHeader.TransportProtocol {
+	// TLVs only exist for version 2
+	if header.Version == 2 && !bytes.Equal(header.rawTLVs, otherHeader.rawTLVs) {
 		return false
 	}
 	// Return early for header with LOCAL command, which contains no address information

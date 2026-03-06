@@ -6,7 +6,7 @@ import (
 )
 
 type wantConn struct {
-	mu        sync.Mutex      // protects ctx, done and sending of the result
+	mu        sync.RWMutex    // protects ctx, done and sending of the result
 	ctx       context.Context // context for dial, cleared after delivered or canceled
 	cancelCtx context.CancelFunc
 	done      bool                // true after delivered or canceled
@@ -15,8 +15,8 @@ type wantConn struct {
 
 // getCtxForDial returns context for dial or nil if connection was delivered or canceled.
 func (w *wantConn) getCtxForDial() context.Context {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.mu.RLock()
+	defer w.mu.RUnlock()
 
 	return w.ctx
 }
@@ -57,6 +57,12 @@ func (w *wantConn) cancel() *Conn {
 	return cn
 }
 
+func (w *wantConn) isOngoing() bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return !w.done
+}
+
 type wantConnResult struct {
 	cn  *Conn
 	err error
@@ -90,4 +96,20 @@ func (q *wantConnQueue) dequeue() (*wantConn, bool) {
 	item := q.items[0]
 	q.items = q.items[1:]
 	return item, true
+}
+
+func (q *wantConnQueue) discardDoneAtFront() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	count := 0
+	for len(q.items) > 0 {
+		if q.items[0].isOngoing() {
+			break
+		}
+
+		q.items = q.items[1:]
+		count++
+	}
+
+	return count
 }

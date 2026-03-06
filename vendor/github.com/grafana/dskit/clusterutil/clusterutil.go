@@ -77,3 +77,14 @@ func GetClusterFromRequest(req *http.Request) (string, error) {
 	}
 	return clusterIDs[0], nil
 }
+
+// IsClusterAllowed checks if the provided cluster is in the list of allowed clusters.
+// Returns true if the cluster is found in the allowedClusters slice.
+func IsClusterAllowed(cluster string, allowedClusters []string) bool {
+	for _, allowed := range allowedClusters {
+		if cluster == allowed {
+			return true
+		}
+	}
+	return false
+}

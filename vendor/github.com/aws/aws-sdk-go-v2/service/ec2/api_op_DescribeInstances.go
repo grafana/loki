@@ -26,6 +26,10 @@ import (
 // which can affect performance. We recommend that you use pagination to ensure
 // that the operation returns quickly and successfully.
 //
+// The response includes SQL license exemption status information for instances
+// registered with the SQL LE service, providing visibility into license exemption
+// configuration and status.
+//
 // If you specify an instance ID that is not valid, an error is returned. If you
 // specify an instance that you do not own, it is not included in the output.
 //
@@ -607,40 +611,7 @@ func (c *Client) addOperationDescribeInstancesMiddlewares(stack *middleware.Stac
 	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptExecution(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptTransmit(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

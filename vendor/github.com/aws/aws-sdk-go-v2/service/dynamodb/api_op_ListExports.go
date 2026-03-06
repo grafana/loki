@@ -11,7 +11,8 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Lists completed exports within the past 90 days.
+// Lists completed exports within the past 90 days, in reverse alphanumeric order
+// of ExportArn .
 func (c *Client) ListExports(ctx context.Context, params *ListExportsInput, optFns ...func(*Options)) (*ListExportsOutput, error) {
 	if params == nil {
 		params = &ListExportsInput{}

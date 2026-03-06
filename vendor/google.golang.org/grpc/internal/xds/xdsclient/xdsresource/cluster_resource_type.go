@@ -18,12 +18,12 @@
 package xdsresource
 
 import (
-	"google.golang.org/grpc/internal/pretty"
+	"bytes"
+	"fmt"
+
 	"google.golang.org/grpc/internal/xds/bootstrap"
 	xdsclient "google.golang.org/grpc/internal/xds/clients/xdsclient"
 	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource/version"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
 )
 
 const (
@@ -32,81 +32,62 @@ const (
 	ClusterResourceTypeName = "ClusterResource"
 )
 
-var (
-	// Compile time interface checks.
-	_ Type = clusterResourceType{}
-
-	// Singleton instantiation of the resource type implementation.
-	clusterType = clusterResourceType{
-		resourceTypeState: resourceTypeState{
-			typeURL:                    version.V3ClusterURL,
-			typeName:                   ClusterResourceTypeName,
-			allResourcesRequiredInSotW: true,
-		},
-	}
-)
-
-// clusterResourceType provides the resource-type specific functionality for a
-// Cluster resource.
-//
-// Implements the Type interface.
-type clusterResourceType struct {
-	resourceTypeState
+// clusterResourceDecoder is an implementation of the xdsclient.Decoder
+// interface for listener resources.
+type clusterResourceDecoder struct {
+	bootstrapConfig *bootstrap.Config
+	serverConfigs   map[xdsclient.ServerConfig]*bootstrap.ServerConfig
 }
 
-// Decode deserializes and validates an xDS resource serialized inside the
-// provided `Any` proto, as received from the xDS management server.
-func (clusterResourceType) Decode(opts *DecodeOptions, resource *anypb.Any) (*DecodeResult, error) {
-	name, cluster, err := unmarshalClusterResource(resource, opts.ServerConfig)
-	switch {
-	case name == "":
+func (d *clusterResourceDecoder) Decode(resource *xdsclient.AnyProto, opts xdsclient.DecodeOptions) (*xdsclient.DecodeResult, error) {
+	serverCfg, ok := d.serverConfigs[*opts.ServerConfig]
+	if !ok {
+		return nil, fmt.Errorf("no server config found for {%+v}", opts.ServerConfig)
+	}
+	name, cluster, err := unmarshalClusterResource(resource.ToAny(), serverCfg)
+	if name == "" {
 		// Name is unset only when protobuf deserialization fails.
 		return nil, err
-	case err != nil:
+	}
+	if err != nil {
 		// Protobuf deserialization succeeded, but resource validation failed.
-		return &DecodeResult{Name: name, Resource: &ClusterResourceData{Resource: ClusterUpdate{}}}, err
+		return &xdsclient.DecodeResult{
+			Name:     name,
+			Resource: &ClusterResourceData{Resource: ClusterUpdate{}},
+		}, err
 	}
 
 	// Perform extra validation here.
-	if err := securityConfigValidator(opts.BootstrapConfig, cluster.SecurityCfg); err != nil {
-		return &DecodeResult{Name: name, Resource: &ClusterResourceData{Resource: ClusterUpdate{}}}, err
+	if err := securityConfigValidator(d.bootstrapConfig, cluster.SecurityCfg); err != nil {
+		return &xdsclient.DecodeResult{
+			Name:     name,
+			Resource: &ClusterResourceData{Resource: ClusterUpdate{}},
+		}, err
 	}
 
-	return &DecodeResult{Name: name, Resource: &ClusterResourceData{Resource: cluster}}, nil
-
+	return &xdsclient.DecodeResult{
+		Name:     name,
+		Resource: &ClusterResourceData{Resource: cluster},
+	}, nil
 }
 
 // ClusterResourceData wraps the configuration of a Cluster resource as received
 // from the management server.
-//
-// Implements the ResourceData interface.
 type ClusterResourceData struct {
-	ResourceData
-
-	// TODO: We have always stored update structs by value. See if this can be
-	// switched to a pointer?
 	Resource ClusterUpdate
 }
 
-// RawEqual returns true if other is equal to r.
-func (c *ClusterResourceData) RawEqual(other ResourceData) bool {
-	if c == nil && other == nil {
-		return true
-	}
-	if (c == nil) != (other == nil) {
+// Equal returns true if other is equal to c.
+func (c *ClusterResourceData) Equal(other xdsclient.ResourceData) bool {
+	if other == nil {
 		return false
 	}
-	return proto.Equal(c.Resource.Raw, other.Raw())
+	return bytes.Equal(c.Bytes(), other.Bytes())
 }
 
-// ToJSON returns a JSON string representation of the resource data.
-func (c *ClusterResourceData) ToJSON() string {
-	return pretty.ToJSON(c.Resource)
-}
-
-// Raw returns the underlying raw protobuf form of the cluster resource.
-func (c *ClusterResourceData) Raw() *anypb.Any {
-	return c.Resource.Raw
+// Bytes returns the protobuf serialized bytes of the cluster resource proto.
+func (c *ClusterResourceData) Bytes() []byte {
+	return c.Resource.Raw.GetValue()
 }
 
 // ClusterWatcher wraps the callbacks to be invoked for different events
@@ -114,7 +95,7 @@ func (c *ClusterResourceData) Raw() *anypb.Any {
 // exhaustive list of what method is invoked under what conditions.
 type ClusterWatcher interface {
 	// ResourceChanged indicates a new version of the resource is available.
-	ResourceChanged(resource *ClusterResourceData, done func())
+	ResourceChanged(resource *ClusterUpdate, done func())
 
 	// ResourceError indicates an error occurred while trying to fetch or
 	// decode the associated resource. The previous version of the resource
@@ -133,9 +114,9 @@ type delegatingClusterWatcher struct {
 	watcher ClusterWatcher
 }
 
-func (d *delegatingClusterWatcher) ResourceChanged(data ResourceData, onDone func()) {
+func (d *delegatingClusterWatcher) ResourceChanged(data xdsclient.ResourceData, onDone func()) {
 	c := data.(*ClusterResourceData)
-	d.watcher.ResourceChanged(c, onDone)
+	d.watcher.ResourceChanged(&c.Resource, onDone)
 }
 
 func (d *delegatingClusterWatcher) ResourceError(err error, onDone func()) {
@@ -149,12 +130,11 @@ func (d *delegatingClusterWatcher) AmbientError(err error, onDone func()) {
 // WatchCluster uses xDS to discover the configuration associated with the
 // provided cluster resource name.
 func WatchCluster(p Producer, name string, w ClusterWatcher) (cancel func()) {
-	delegator := &delegatingClusterWatcher{watcher: w}
-	return p.WatchResource(clusterType, name, delegator)
+	return p.WatchResource(version.V3ClusterURL, name, &delegatingClusterWatcher{watcher: w})
 }
 
-// NewGenericClusterResourceTypeDecoder returns a xdsclient.Decoder that
-// wraps the xdsresource.clusterType.
-func NewGenericClusterResourceTypeDecoder(bc *bootstrap.Config, gServerCfgMap map[xdsclient.ServerConfig]*bootstrap.ServerConfig) xdsclient.Decoder {
-	return &GenericResourceTypeDecoder{ResourceType: clusterType, BootstrapConfig: bc, ServerConfigMap: gServerCfgMap}
+// NewClusterResourceTypeDecoder returns a xdsclient.Decoder that wraps
+// the xdsresource.clusterType.
+func NewClusterResourceTypeDecoder(bc *bootstrap.Config, gServerCfgMap map[xdsclient.ServerConfig]*bootstrap.ServerConfig) xdsclient.Decoder {
+	return &clusterResourceDecoder{bootstrapConfig: bc, serverConfigs: gServerCfgMap}
 }

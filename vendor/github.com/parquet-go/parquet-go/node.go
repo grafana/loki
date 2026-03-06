@@ -1,8 +1,10 @@
 package parquet
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -381,18 +383,70 @@ func goTypeOfLeaf(node Node) reflect.Type {
 func goTypeOfGroup(node Node) reflect.Type {
 	fields := node.Fields()
 	structFields := make([]reflect.StructField, len(fields))
+	names := make(map[string]struct{}, len(fields))
 	for i, field := range fields {
-		structFields[i].Name = exportedStructFieldName(field.Name())
+		if strings.IndexByte(field.Name(), ',') != -1 {
+			// Ruh-roh! We cannot create a valid Go identifier, but neither can we
+			// create a valid Go struct tag for mapping a synthetic field name.
+			panic(fmt.Sprintf("schema node contains an invalid name %q: fields must not have commas in their name", field.Name()))
+		}
+		name := exportedStructFieldName(field.Name())
+		for {
+			if _, alreadyUsed := names[name]; !alreadyUsed {
+				break
+			}
+			name += "_" // add suffix to fix collision
+		}
+		names[name] = struct{}{}
+		structFields[i].Name = name
 		structFields[i].Type = field.GoType()
-		// TODO: can we reconstruct a struct tag that would be valid if a value
-		// of this type were passed to SchemaOf?
+		structFields[i].Tag = reflect.StructTag(`parquet:` + strconv.Quote(field.Name()))
 	}
 	return reflect.StructOf(structFields)
 }
 
 func exportedStructFieldName(name string) string {
 	firstRune, size := utf8.DecodeRuneInString(name)
-	return string([]rune{unicode.ToUpper(firstRune)}) + name[size:]
+	if unicode.IsUpper(firstRune) {
+		return sanitize(name)
+	}
+	upperFirstRune := unicode.ToUpper(firstRune)
+	if upperFirstRune == firstRune {
+		// First character was not a letter, so just trying to upper-case the first
+		// character won't export the field. We need to add an upper-case prefix instead.
+		return "X" + sanitize(name)
+	}
+	return string([]rune{upperFirstRune}) + sanitize(name[size:])
+}
+
+// sanitize replaces any character that are invalid in a Go identifier with "_".
+func sanitize(name string) string {
+	if isSanitized(name) {
+		// Fast path: name is fine, no need to allocate or compute anything.
+		return name
+	}
+	var newName strings.Builder
+	for _, r := range name {
+		if isValidInGoIdent(r) {
+			newName.WriteRune(r)
+		} else {
+			newName.WriteByte('_')
+		}
+	}
+	return newName.String()
+}
+
+func isSanitized(name string) bool {
+	for _, r := range name {
+		if !isValidInGoIdent(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isValidInGoIdent(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
 func isList(node Node) bool {
@@ -491,14 +545,33 @@ func fieldByName(node Node, name string) Field {
 	return nil
 }
 
+// findByPath navigates the node tree to find the node at the given path.
+// Returns nil if the path doesn't exist.
+// The path is a sequence of field names to traverse.
+func findByPath(node Node, path []string) Node {
+	for _, name := range path {
+		field := fieldByName(node, name)
+		if field == nil {
+			return nil
+		}
+		node = field
+	}
+	return node
+}
+
 // EqualNodes returns true if node1 and node2 are equal.
 //
-// Nodes that are not of the same repetition type (optional, required, repeated) or
-// of the same hierarchical type (leaf, group) are considered not equal.
+// Nodes that are not of the same repetition type (optional, required, repeated)
+// or of the same hierarchical type (leaf, group) are considered not equal.
 // Leaf nodes are considered equal if they are of the same data type.
-// Group nodes are considered equal if their fields have the same names and are recursively equal.
 //
-// Note that the encoding and compression of the nodes are not considered by this function.
+// Groups are compared recursively, taking the order of fields into account
+// (because it influences the column index of each leaf node), and comparing
+// their logical types: for example, a MAP node is not equal to a GROUP node
+// with the same fields, because MAP nodes have a specific logical type.
+//
+// Note that the encoding and compression of the nodes are not considered by this
+// function.
 func EqualNodes(node1, node2 Node) bool {
 	if node1.Leaf() {
 		return node2.Leaf() && leafNodesAreEqual(node1, node2)
@@ -507,10 +580,20 @@ func EqualNodes(node1, node2 Node) bool {
 	}
 }
 
-func typesAreEqual(type1, type2 Type) bool {
-	return type1.Kind() == type2.Kind() &&
-		type1.Length() == type2.Length() &&
-		reflect.DeepEqual(type1.LogicalType(), type2.LogicalType())
+// SameNodes returns true if node1 and node2 are equivalent, ignoring field order.
+//
+// Unlike EqualNodes, this function considers nodes with the same fields in different
+// orders as equivalent. This is useful when comparing schemas that may have been
+// reordered by operations like MergeNodes.
+//
+// For leaf nodes, this behaves identically to EqualNodes.
+// For group nodes, this compares fields by name rather than position.
+func SameNodes(node1, node2 Node) bool {
+	if node1.Leaf() {
+		return node2.Leaf() && leafNodesAreEqual(node1, node2)
+	} else {
+		return !node2.Leaf() && groupNodesAreSame(node1, node2)
+	}
 }
 
 func repetitionsAreEqual(node1, node2 Node) bool {
@@ -518,33 +601,72 @@ func repetitionsAreEqual(node1, node2 Node) bool {
 }
 
 func leafNodesAreEqual(node1, node2 Node) bool {
-	return typesAreEqual(node1.Type(), node2.Type()) && repetitionsAreEqual(node1, node2)
+	return EqualTypes(node1.Type(), node2.Type()) && repetitionsAreEqual(node1, node2)
 }
 
 func groupNodesAreEqual(node1, node2 Node) bool {
 	fields1 := node1.Fields()
 	fields2 := node2.Fields()
-
 	if len(fields1) != len(fields2) {
 		return false
 	}
-
 	if !repetitionsAreEqual(node1, node2) {
 		return false
 	}
+	if !fieldsAreEqual(fields1, fields2, EqualNodes) {
+		return false
+	}
+	return equalLogicalTypes(node1.Type(), node2.Type())
+}
 
+func groupNodesAreSame(node1, node2 Node) bool {
+	fields1 := node1.Fields()
+	fields2 := node2.Fields()
+	if len(fields1) != len(fields2) {
+		return false
+	}
+	if !repetitionsAreEqual(node1, node2) {
+		return false
+	}
+	if !fieldsAreSorted(fields1) {
+		fields1 = slices.Clone(fields1)
+		sortFields(fields1)
+	}
+	if !fieldsAreSorted(fields2) {
+		fields2 = slices.Clone(fields2)
+		sortFields(fields2)
+	}
+	if !fieldsAreEqual(fields1, fields2, SameNodes) {
+		return false
+	}
+	return equalLogicalTypes(node1.Type(), node2.Type())
+}
+
+func fieldsAreEqual(fields1, fields2 []Field, equal func(Node, Node) bool) bool {
+	if len(fields1) != len(fields2) {
+		return false
+	}
 	for i := range fields1 {
-		f1 := fields1[i]
-		f2 := fields2[i]
-
-		if f1.Name() != f2.Name() {
-			return false
-		}
-
-		if !EqualNodes(f1, f2) {
+		if fields1[i].Name() != fields2[i].Name() {
 			return false
 		}
 	}
-
+	for i := range fields1 {
+		if !equal(fields1[i], fields2[i]) {
+			return false
+		}
+	}
 	return true
+}
+
+func fieldsAreSorted(fields []Field) bool {
+	return slices.IsSortedFunc(fields, compareFields)
+}
+
+func sortFields(fields []Field) {
+	slices.SortFunc(fields, compareFields)
+}
+
+func compareFields(a, b Field) int {
+	return strings.Compare(a.Name(), b.Name())
 }

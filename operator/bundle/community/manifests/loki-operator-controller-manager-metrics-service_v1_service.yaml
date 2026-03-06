@@ -4,18 +4,18 @@ metadata:
   creationTimestamp: null
   labels:
     app.kubernetes.io/component: metrics
-    app.kubernetes.io/instance: loki-operator-v0.8.0
+    app.kubernetes.io/instance: loki-operator-v0.9.0
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.8.0
+    app.kubernetes.io/version: 0.9.0
   name: loki-operator-controller-manager-metrics-service
 spec:
   ports:
-  - name: https
+  - name: metrics
     port: 8443
     protocol: TCP
-    targetPort: https
+    targetPort: metrics
   selector:
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator

@@ -52,13 +52,13 @@ func (c *protobufCodec) EncodeTo(w io.Writer, frame Frame) error {
 	// Convert wire.Frame to protobuf
 	pbFrame, err := c.frameToPbFrame(frame)
 	if err != nil {
-		return fmt.Errorf("failed to convert frame to protobuf: %w", err)
+		panic(fmt.Errorf("failed to convert frame to protobuf: %w", err))
 	}
 
 	// Marshal to bytes
 	data, err := proto.Marshal(pbFrame)
 	if err != nil {
-		return fmt.Errorf("failed to marshal protobuf: %w", err)
+		panic(fmt.Errorf("failed to marshal protobuf: %w", err))
 	}
 
 	// Write length prefix (uvarint)
@@ -131,13 +131,9 @@ func (c *protobufCodec) frameFromPbFrame(f *wirepb.Frame) (Frame, error) {
 		return AckFrame{ID: k.Ack.Id}, nil
 
 	case *wirepb.Frame_Nack:
-		var err error
-		if k.Nack.Error != "" {
-			err = errors.New(k.Nack.Error)
-		}
 		return NackFrame{
 			ID:    k.Nack.Id,
-			Error: err,
+			Error: c.errorFromPb(k.Nack.Error),
 		}, nil
 
 	case *wirepb.Frame_Discard:
@@ -158,6 +154,17 @@ func (c *protobufCodec) frameFromPbFrame(f *wirepb.Frame) (Frame, error) {
 	}
 }
 
+func (c *protobufCodec) errorFromPb(errPb *wirepb.Error) *Error {
+	if errPb == nil {
+		return nil
+	}
+
+	return &Error{
+		Code:    errPb.Code,
+		Message: errPb.Message,
+	}
+}
+
 func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, error) {
 	if mf == nil {
 		return nil, errors.New("nil message frame")
@@ -166,6 +173,9 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 	switch k := mf.Kind.(type) {
 	case *wirepb.MessageFrame_WorkerHello:
 		return WorkerHelloMessage{Threads: int(k.WorkerHello.Threads)}, nil
+
+	case *wirepb.MessageFrame_WorkerSubscribe:
+		return WorkerSubscribeMessage{}, nil
 
 	case *wirepb.MessageFrame_WorkerReady:
 		return WorkerReadyMessage{}, nil
@@ -316,6 +326,13 @@ func (c *protobufCodec) taskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workf
 		status.Capture = capture
 	}
 
+	if ts.ContributingTimeRange != nil {
+		status.ContributingTimeRange = workflow.ContributingTimeRange{
+			Timestamp: ts.ContributingTimeRange.Timestamp,
+			LessThan:  ts.ContributingTimeRange.LessThan,
+		}
+	}
+
 	return status, nil
 }
 
@@ -403,14 +420,10 @@ func (c *protobufCodec) frameToPbFrame(from Frame) (*wirepb.Frame, error) {
 		}
 
 	case NackFrame:
-		var errStr string
-		if v.Error != nil {
-			errStr = v.Error.Error()
-		}
 		f.Kind = &wirepb.Frame_Nack{
 			Nack: &wirepb.NackFrame{
 				Id:    v.ID,
-				Error: errStr,
+				Error: c.errorToPb(v.Error),
 			},
 		}
 
@@ -428,10 +441,21 @@ func (c *protobufCodec) frameToPbFrame(from Frame) (*wirepb.Frame, error) {
 		f.Kind = &wirepb.Frame_Message{Message: mf}
 
 	default:
-		return nil, fmt.Errorf("unknown frame type: %T", v)
+		panic(fmt.Errorf("unknown frame type: %T", v))
 	}
 
 	return f, nil
+}
+
+func (c *protobufCodec) errorToPb(e *Error) *wirepb.Error {
+	if e == nil {
+		return nil
+	}
+
+	return &wirepb.Error{
+		Code:    e.Code,
+		Message: e.Message,
+	}
 }
 
 func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, error) {
@@ -445,6 +469,11 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 	case WorkerHelloMessage:
 		mf.Kind = &wirepb.MessageFrame_WorkerHello{
 			WorkerHello: &wirepb.WorkerHelloMessage{Threads: uint64(v.Threads)},
+		}
+
+	case WorkerSubscribeMessage:
+		mf.Kind = &wirepb.MessageFrame_WorkerSubscribe{
+			WorkerSubscribe: &wirepb.WorkerSubscribeMessage{},
 		}
 
 	case WorkerReadyMessage:
@@ -529,7 +558,7 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 		}
 
 	default:
-		return nil, fmt.Errorf("unknown message type: %T", v)
+		panic(fmt.Errorf("unknown message type: %T", v))
 	}
 
 	return mf, nil
@@ -571,6 +600,10 @@ func (c *protobufCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) 
 func (c *protobufCodec) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wirepb.TaskStatus, error) {
 	ts := &wirepb.TaskStatus{
 		State: c.taskStateToPbTaskState(from.State),
+		ContributingTimeRange: &wirepb.ContributingTimeRange{
+			Timestamp: from.ContributingTimeRange.Timestamp,
+			LessThan:  from.ContributingTimeRange.LessThan,
+		},
 	}
 
 	if from.Error != nil {

@@ -38,6 +38,7 @@ import (
 	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
@@ -321,6 +322,9 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend config"))
 		}
 	}
+	if c.Ingester.DelegateStreamLimits && !c.IngestLimits.Enabled {
+		errs = append(errs, errors.New("CONFIG ERROR: ingester.delegate-stream-limits requires ingest-limits service to be enabled (ingest_limits.enabled)"))
+	}
 	if err := c.IngestLimitsFrontendClient.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend_client config"))
 	}
@@ -465,6 +469,8 @@ type Loki struct {
 	Metrics *server.Metrics
 
 	UsageTracker push.UsageTracker
+
+	metastoreMetrics *metastore.ObjectMetastoreMetrics
 }
 
 // New makes a new Loki.
@@ -474,6 +480,7 @@ func New(cfg Config) (*Loki, error) {
 		ClientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
 		Codec:               queryrange.DefaultCodec,
+		metastoreMetrics:    metastore.NewObjectMetastoreMetrics(prometheus.DefaultRegisterer),
 	}
 	analytics.Edition("oss")
 	loki.setupAuthMiddleware()
@@ -685,7 +692,7 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 
 			byState := sm.ServicesByState()
 			for st, ls := range byState {
-				msg.WriteString(fmt.Sprintf("%v: %d\n", st, len(ls)))
+				fmt.Fprintf(&msg, "%v: %d\n", st, len(ls))
 			}
 
 			http.Error(w, msg.String(), http.StatusServiceUnavailable)

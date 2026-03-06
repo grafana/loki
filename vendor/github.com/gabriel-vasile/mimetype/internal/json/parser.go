@@ -94,20 +94,6 @@ func eq(path1, path2 [][]byte) bool {
 	return true
 }
 
-// LooksLikeObjectOrArray reports if first non white space character from raw
-// is either { or [. Parsing raw as JSON is a heavy operation. When receiving some
-// text input we can skip parsing if the input does not even look like JSON.
-func LooksLikeObjectOrArray(raw []byte) bool {
-	for i := range raw {
-		if isSpace(raw[i]) {
-			continue
-		}
-		return raw[i] == '{' || raw[i] == '['
-	}
-
-	return false
-}
-
 // Parse will take out a parser from the pool depending on queryType and tries
 // to parse raw bytes as JSON.
 func Parse(queryType string, raw []byte) (parsed, inspected, firstToken int, querySatisfied bool) {

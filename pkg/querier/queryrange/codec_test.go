@@ -1994,6 +1994,8 @@ var (
 			}
 		},
 		"index": {
+			"bloomFilterTime": 0,
+			"chunkRefsLookupTime": 0,
 			"postFilterChunks": 0,
 			"totalChunks": 0,
 			"totalStreams": 0,

@@ -130,15 +130,12 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 			})
 
 		// One of the parsed columns
-		case ident.ColumnType() == types.ColumnTypeParsed:
+		case ident.ColumnType() == types.ColumnTypeParsed || (ident.ColumnType() == types.ColumnTypeGenerated &&
+			shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails):
 			parsedCol := col.(*array.String)
 
-			// TODO: keep errors if --strict is set
-			// These are reserved column names used to track parsing errors. We are dropping them until
-			// we add support for --strict parsing.
-			if shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails {
-				continue
-			}
+			isErrorColumn := ident.ColumnType() == types.ColumnTypeGenerated &&
+				shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails
 
 			forEachNotNullRowColValue(numRows, parsedCol, func(rowIdx int) {
 				parsedVal := parsedCol.Value(rowIdx)
@@ -147,12 +144,14 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 				}
 
 				b.rowBuilders[rowIdx].parsedBuilder.Set(shortName, parsedVal)
-				b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, parsedVal)
+				if !b.categorizeLabels {
+					b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, parsedVal)
+				}
 				if b.rowBuilders[rowIdx].metadataBuilder.Get(shortName) != "" {
 					b.rowBuilders[rowIdx].metadataBuilder.Del(shortName)
 				}
 				// If the parsed value is empty, the builder won't accept it as it's not a valid Prometheus-style label. We must add it later for LogQL compatibility.
-				if parsedVal == "" {
+				if parsedVal == "" && !isErrorColumn {
 					b.rowBuilders[rowIdx].parsedEmptyKeys = append(b.rowBuilders[rowIdx].parsedEmptyKeys, shortName)
 				}
 			})
@@ -164,8 +163,8 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 		lbs := b.rowBuilders[rowIdx].lbsBuilder.Labels()
 		ts := b.rowBuilders[rowIdx].timestamp
 		line := b.rowBuilders[rowIdx].line
-		// Ignore rows that don't have stream labels, log line, or timestamp
-		if line == "" || ts.IsZero() || lbs.IsEmpty() {
+		// Ignore rows that don't have stream labels, or timestamp
+		if ts.IsZero() || lbs.IsEmpty() {
 			b.resetRowBuilder(rowIdx)
 			continue
 		}
@@ -261,7 +260,7 @@ func forEachNotNullRowColValue(numRows int, col arrow.Array, f func(rowIdx int))
 
 func (b *streamsResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
 	// Executor does not guarantee order of entries, so we sort them here.
-	for _, stream := range b.data {
+	for i, stream := range b.data {
 		if b.direction == logproto.BACKWARD {
 			sort.Slice(stream.Entries, func(a, b int) bool {
 				return stream.Entries[a].Timestamp.After(stream.Entries[b].Timestamp)
@@ -271,15 +270,55 @@ func (b *streamsResultBuilder) Build(s stats.Result, md *metadata.Context) logql
 				return stream.Entries[a].Timestamp.Before(stream.Entries[b].Timestamp)
 			})
 		}
+
+		// Deduplicate entries with the same (timestamp, line) within each
+		// stream. Multiple data object sections can contain the same log entry,
+		// and the merge pipeline concatenates them without deduplication.
+		b.data[i].Entries = dedupeEntries(stream.Entries)
 	}
 
 	sort.Sort(b.data)
+
+	// Recount entries after dedup so the stats reflect the actual result size.
+	total := 0
+	for _, stream := range b.data {
+		total += len(stream.Entries)
+	}
+	s.Summary.TotalEntriesReturned = int64(total)
+
 	return logqlmodel.Result{
 		Data:       b.data,
 		Statistics: s,
 		Headers:    md.Headers(),
 		Warnings:   md.Warnings(),
 	}
+}
+
+// dedupeEntries removes consecutive duplicate entries. Two entries are
+// considered duplicates when all fields (timestamp, line, structured metadata,
+// and parsed labels) are equal. The input slice must already be sorted by
+// timestamp.
+func dedupeEntries(entries []logproto.Entry) []logproto.Entry {
+	if len(entries) <= 1 {
+		return entries
+	}
+
+	// tracks the next position to write the next unique entry.
+	next := 1
+
+	// we use a form of two-pointer technique to deduplicate entries.
+	// we keep comparing i with i-1. if they are a duplicate we accumulate by moving forward only one pointer (i).
+	// if we find a non-duplicate we want to write its data to the next position and increment the two pointers.
+	for i := 1; i < len(entries); i++ {
+		prev := &entries[next-1]
+		cur := &entries[i]
+		if cur.Equal(prev) {
+			continue
+		}
+		entries[next] = entries[i]
+		next++
+	}
+	return entries[:next]
 }
 
 func (b *streamsResultBuilder) Len() int {
@@ -443,7 +482,10 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.RecordBatch, i int
 
 		// allow any string columns
 		if ident.DataType() == types.Loki.String {
-			builder.Set(shortName, col.(*array.String).Value(i))
+			val := col.(*array.String).Value(i)
+			if val != "" {
+				builder.Set(shortName, val)
+			}
 		}
 	}
 

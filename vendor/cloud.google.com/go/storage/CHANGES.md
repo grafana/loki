@@ -1,6 +1,60 @@
 # Changes
 
 
+## [1.60.0](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.60.0) (2026-02-10)
+
+### Features
+
+* Add a new field `ComposeObjectRequest.delete_source_objects` field ([611f239](https://github.com/googleapis/google-cloud-go/commit/611f239219225fb03f6475c7238f497a349961e2))
+* Add support for max-retry-duration for all api other than resumable-upload (#13749) ([31c352b](https://github.com/googleapis/google-cloud-go/commit/31c352bd672637813ec251c2f48ad1c38ea13922))
+* Perform checksum for single shot and single chunk uploads (#13733) ([892c5d3](https://github.com/googleapis/google-cloud-go/commit/892c5d32bd14dfbd3a1a7d3fa5894331f41392a1))
+* Support checksum validation in resumable json uploads (#13573) ([337ca07](https://github.com/googleapis/google-cloud-go/commit/337ca078a09d687aa758ed3982f2047bee3da57a))
+
+### Bug Fixes
+
+* Change TestValidateChecksumFromServer error message (#13810) ([0741414](https://github.com/googleapis/google-cloud-go/commit/07414143ceba31ac97f8e2d083fcc95b11a2579e))
+* Fix panic error in transfermanager downloads (#13815) ([4272271](https://github.com/googleapis/google-cloud-go/commit/427227197f79dfee7edf7bf5d66e33276e9eee52))
+
+### Documentation
+
+* Update documentation for `BidiReadObject`, `ReadObjectRequest`, and `ObjectContexts` ([611f239](https://github.com/googleapis/google-cloud-go/commit/611f239219225fb03f6475c7238f497a349961e2))
+
+## [1.59.2](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.59.2) (2026-01-28)
+
+### Bug Fixes
+
+* Deadlock in event loop while coordinating channels (#13652) ([ff6c8e7](https://github.com/googleapis/google-cloud-go/commit/ff6c8e780b2207b154808ba22e3124b68d6b4f7d))
+
+## [1.59.1](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.59.1) (2026-01-14)
+
+### Bug Fixes
+
+* close attrsReady channel when metadata is missing (#13574) ([712f562](https://github.com/googleapis/google-cloud-go/commit/712f56272ac5a219bac1b20894e4825f3682c920))
+* don't update global object's readhandle in MRD (#13575) ([bc92500](https://github.com/googleapis/google-cloud-go/commit/bc925001a2f5b186c231c2885f9162713bb4b1bf))
+* remove mandatory attrs response in MRD (#13585) ([6752a49](https://github.com/googleapis/google-cloud-go/commit/6752a496e756c214faf345c302b58ed7593c6017))
+
+## [1.59.0](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.59.0) (2026-01-09)
+
+### Features
+
+* add default checksums for appendable writer (excludes appendable takeover writer) (#13379) ([647baf3](https://github.com/googleapis/google-cloud-go/commit/647baf3249b01e7d5eb5902197bb828706c4c08f))
+
+### Bug Fixes
+
+* refactor MultiRangeDownloader to resolve deadlock and race conditions (#13524) ([1cfd100](https://github.com/googleapis/google-cloud-go/commit/1cfd10089f206bca0bdcef1e873574b552ae6abb)
+
+## [1.58.0](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.58.0) (2025-12-03)
+
+### Features
+
+* calculate crc32c by default and pass checksum in trailing and per-chunk request (#13205) ([2ab1c77](https://github.com/googleapis/google-cloud-go/commit/2ab1c77826f2d9c9d02b977296a78cf0ba3bd8bf))
+* add support for partial success in ListBuckets (#13320) ([d91e47f](https://github.com/googleapis/google-cloud-go/commit/d91e47f2fc91a95ad4fd54e574b371e172a3889b))
+* add object contexts in Go GCS SDK (#13390) ([079c4d9](https://github.com/googleapis/google-cloud-go/commit/079c4d960a2bafa5d170e2b1c97b00ea8b7917d9))
+
+### Bug Fixes
+
+* omit empty filter in http list object request (#13434) ([377eb13](https://github.com/googleapis/google-cloud-go/commit/377eb13bbadb4f455fac61c500f50ba9057890d4))
+
 ## [1.57.2](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.57.2) (2025-11-14)
 
 ### Bug Fixes

@@ -280,13 +280,13 @@ func TestCatalog_FilterDescriptorsForShard(t *testing.T) {
 		desc3.ObjectPath = "baz"
 		desc3.SectionIdx = 3
 		sectionDescriptors := []*metastore.DataobjSectionDescriptor{&desc1, &desc2, &desc3}
-		res, err := filterDescriptorsForShard(shard, sectionDescriptors)
+		res, err := filterForShard(shard, sectionDescriptors)
 		require.NoError(t, err)
 		tr1, err := newTimeRange(start1, end1)
 		require.NoError(t, err)
 		tr3, err := newTimeRange(start3, end3)
 		require.NoError(t, err)
-		expected := []FilteredShardDescriptor{
+		expected := []DataObjSections{
 			{Location: "foo", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: tr1},
 			{Location: "baz", Streams: []int64{1, 5}, Sections: []int{3}, TimeRange: tr3},
 		}

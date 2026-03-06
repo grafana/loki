@@ -515,7 +515,7 @@ func stringifyMatchers(matchers []*labels.Matcher) string {
 		if i > 0 {
 			result.WriteString(", ")
 		}
-		result.WriteString(fmt.Sprintf("%s %s %s", m.Type.String(), m.Name, m.Value))
+		fmt.Fprintf(&result, "%s %s %s", m.Type.String(), m.Name, m.Value)
 	}
 	return result.String()
 }

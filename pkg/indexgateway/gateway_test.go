@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_test "github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -37,17 +36,17 @@ const (
 	valuePrefix      = "value"
 )
 
-type mockLimits struct{}
+type mockLimits struct {
+	shardSize        int
+	maxCapacity      float64
+	maxBytesPerShard int
+	precomputeChunks bool
+}
 
-func (mockLimits) IndexGatewayShardSize(_ string) int {
-	return 0
-}
-func (mockLimits) TSDBMaxBytesPerShard(_ string) int {
-	return sharding.DefaultTSDBMaxBytesPerShard
-}
-func (mockLimits) TSDBPrecomputeChunks(_ string) bool {
-	return false
-}
+func (l mockLimits) IndexGatewayShardSize(_ string) int       { return l.shardSize }
+func (l mockLimits) IndexGatewayMaxCapacity(_ string) float64 { return l.maxCapacity }
+func (l mockLimits) TSDBMaxBytesPerShard(_ string) int        { return l.maxBytesPerShard }
+func (l mockLimits) TSDBPrecomputeChunks(_ string) bool       { return l.precomputeChunks }
 
 type mockBatch struct {
 	size int

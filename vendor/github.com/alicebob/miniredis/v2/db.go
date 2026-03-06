@@ -55,6 +55,7 @@ func (db *RedisDB) flush() {
 	db.hllKeys = map[string]*hll{}
 	db.sortedsetKeys = map[string]sortedSet{}
 	db.ttl = map[string]time.Duration{}
+	db.hashTTLs = map[string]map[string]time.Duration{}
 	db.streamKeys = map[string]*streamKey{}
 }
 
@@ -74,6 +75,9 @@ func (db *RedisDB) move(key string, to *RedisDB) bool {
 		to.stringKeys[key] = db.stringKeys[key]
 	case keyTypeHash:
 		to.hashKeys[key] = db.hashKeys[key]
+		if fieldTTLs, ok := db.hashTTLs[key]; ok {
+			to.hashTTLs[key] = fieldTTLs
+		}
 	case keyTypeList:
 		to.listKeys[key] = db.listKeys[key]
 	case keyTypeSet:
@@ -102,6 +106,9 @@ func (db *RedisDB) rename(from, to string) {
 		db.stringKeys[to] = db.stringKeys[from]
 	case keyTypeHash:
 		db.hashKeys[to] = db.hashKeys[from]
+		if fieldTTLs, ok := db.hashTTLs[from]; ok {
+			db.hashTTLs[to] = fieldTTLs
+		}
 	case keyTypeList:
 		db.listKeys[to] = db.listKeys[from]
 	case keyTypeSet:
@@ -140,6 +147,7 @@ func (db *RedisDB) del(k string, delTTL bool) {
 		delete(db.stringKeys, k)
 	case keyTypeHash:
 		delete(db.hashKeys, k)
+		delete(db.hashTTLs, k)
 	case keyTypeList:
 		delete(db.listKeys, k)
 	case keyTypeSet:
@@ -713,6 +721,32 @@ func (db *RedisDB) fastForward(duration time.Duration) {
 		if value, ok := db.ttl[key]; ok {
 			db.ttl[key] = value - duration
 			db.checkTTL(key)
+		}
+
+		// Handle hash field TTLs
+		if db.t(key) == keyTypeHash {
+			db.checkHashFieldTTL(key, duration)
+		}
+	}
+}
+
+func (db *RedisDB) checkHashFieldTTL(key string, duration time.Duration) {
+	fieldTTLs, ok := db.hashTTLs[key]
+	if !ok {
+		return
+	}
+
+	for field, ttl := range fieldTTLs {
+		fieldTTLs[field] = ttl - duration
+		if fieldTTLs[field] <= 0 {
+			// Delete the expired field
+			delete(db.hashKeys[key], field)
+			delete(fieldTTLs, field)
+
+			// If hash is now empty, delete the entire key
+			if len(db.hashKeys[key]) == 0 {
+				db.del(key, true)
+			}
 		}
 	}
 }

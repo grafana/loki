@@ -153,10 +153,10 @@ func (et *errorTracker) recordError(rowIndex int, err error) {
 	if !et.hasErrors {
 		et.errorBuilder = array.NewStringBuilder(memory.DefaultAllocator)
 		et.detailsBuilder = array.NewStringBuilder(memory.DefaultAllocator)
-		// Backfill nulls for previous rows
+		// Backfill empty strings for previous rows
 		for range rowIndex {
-			et.errorBuilder.AppendNull()
-			et.detailsBuilder.AppendNull()
+			et.errorBuilder.Append("")
+			et.detailsBuilder.Append("")
 		}
 		et.hasErrors = true
 	}
@@ -166,8 +166,8 @@ func (et *errorTracker) recordError(rowIndex int, err error) {
 
 func (et *errorTracker) recordSuccess() {
 	if et.hasErrors {
-		et.errorBuilder.AppendNull()
-		et.detailsBuilder.AppendNull()
+		et.errorBuilder.Append("")
+		et.detailsBuilder.Append("")
 	}
 }
 

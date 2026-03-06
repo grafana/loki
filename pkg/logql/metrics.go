@@ -115,13 +115,12 @@ func RecordRangeAndInstantQueryMetrics(
 	result promql_parser.Value,
 ) {
 	var (
-		logger              = fixLogger(ctx, log)
-		rangeType           = GetRangeType(p)
-		rt                  = string(rangeType)
-		latencyType         = latencyTypeFast
-		returnedLines       = 0
-		cardinalityEstimate = uint64(0)
-		queryTags, _        = ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
+		logger        = fixLogger(ctx, log)
+		rangeType     = GetRangeType(p)
+		rt            = string(rangeType)
+		latencyType   = latencyTypeFast
+		returnedLines = 0
+		queryTags, _  = ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
 	)
 
 	queryType, err := QueryType(p.GetExpression())
@@ -160,10 +159,6 @@ func RecordRangeAndInstantQueryMetrics(
 	var bloomRatio float64 // what % are filtered
 	if stats.Index.TotalChunks > 0 {
 		bloomRatio = float64(stats.Index.TotalChunks-stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
-	}
-
-	if r, ok := result.(CountMinSketchVector); ok {
-		cardinalityEstimate = r.F.HyperLogLog.Estimate()
 	}
 
 	logValues = append(logValues, []interface{}{
@@ -213,8 +208,6 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_result_hit", resultCache.EntriesFound,
 		"cache_result_download_time", resultCache.CacheDownloadTime(),
 		"cache_result_query_length_served", resultCache.CacheQueryLengthServed(),
-		// Cardinality estimate for some approximate query types
-		"cardinality_estimate", cardinalityEstimate,
 		// The total of chunk reference fetched from index.
 		"ingester_chunk_refs", stats.Ingester.Store.GetTotalChunksRef(),
 		// Total number of chunks fetched.
@@ -240,7 +233,14 @@ func RecordRangeAndInstantQueryMetrics(
 		"index_bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
 		"index_used_bloom_filters", stats.Index.UsedBloomFilters,
 		"index_shard_resolver_duration", time.Duration(stats.Index.ShardsDuration),
+		"index_bloom_filter_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.BloomFilterTime),
+		"index_chunk_refs_lookup_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.ChunkRefsLookupTime),
 	}...)
+
+	if r, ok := result.(CountMinSketchVector); ok {
+		cardinalityEstimate := r.F.HyperLogLog.Estimate()
+		logValues = append(logValues, "cardinality_estimate", cardinalityEstimate)
+	}
 
 	logValues = append(logValues, httpreq.TagsToKeyValues(queryTags)...)
 
@@ -261,7 +261,7 @@ func RecordRangeAndInstantQueryMetrics(
 	// This is only logged from the querier component, not from the frontend
 	// (where stats are merged and this value would be inaccurate)
 	if !isFrontendContext(ctx) && stats.Index.TotalStreams > 0 {
-		logValues = append(logValues, "total_stream_count", stats.Index.TotalStreams)
+		logValues = append(logValues, "index_total_streams", stats.Index.TotalStreams)
 	}
 
 	// Add frontend-specific metrics: approximate result size, streams count, lines count
