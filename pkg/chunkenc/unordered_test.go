@@ -92,6 +92,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		input, exp []entry
 		dir        logproto.Direction
 		hasDup     bool
+		forFormat  HeadBlockFmt
 	}{
 		{
 			desc: "simple forward",
@@ -132,6 +133,50 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			dir: logproto.BACKWARD,
 		},
 		{
+			desc: "different structured metadata forward",
+			input: []entry{
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
+			},
+			exp: []entry{
+				{0, "a", labels.FromStrings("a", "b")}, {0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()},
+			},
+			forFormat: UnorderedWithStructuredMetadataHeadBlockFmt,
+		},
+		{
+			desc: "different structured metadata backward",
+			input: []entry{
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
+			},
+			exp: []entry{
+				{1, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
+			},
+			dir:       logproto.BACKWARD,
+			forFormat: UnorderedWithStructuredMetadataHeadBlockFmt,
+		},
+		{
+			desc: "different structured metadata forward",
+			input: []entry{
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
+			},
+			exp: []entry{
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()},
+			},
+			hasDup:    true,
+			forFormat: UnorderedHeadBlockFmt,
+		},
+		{
+			desc: "different structured metadata backward",
+			input: []entry{
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
+			},
+			exp: []entry{
+				{1, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()},
+			},
+			dir:       logproto.BACKWARD,
+			hasDup:    true,
+			forFormat: UnorderedHeadBlockFmt,
+		},
+		{
 			desc: "ts collision forward",
 			input: []entry{
 				{0, "a", labels.FromStrings("a", "b")}, {0, "b", labels.FromStrings("a", "b")}, {1, "c", labels.EmptyLabels()},
@@ -153,7 +198,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		{
 			desc: "ts remove exact dupe forward",
 			input: []entry{
-				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.FromStrings("a", "b")},
+				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()},
 			},
 			exp: []entry{
 				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()},
@@ -164,7 +209,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		{
 			desc: "ts remove exact dupe backward",
 			input: []entry{
-				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.FromStrings("a", "b")},
+				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()},
 			},
 			exp: []entry{
 				{1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()},
@@ -178,38 +223,40 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 				UnorderedHeadBlockFmt,
 				UnorderedWithStructuredMetadataHeadBlockFmt,
 			} {
-				t.Run(format.String(), func(t *testing.T) {
-					hb := newUnorderedHeadBlock(format, newSymbolizer())
-					dup := false
-					for _, e := range tc.input {
-						tmpdup, err := hb.Append(e.t, e.s, e.structuredMetadata)
-						if !dup { // only set dup if it's not already true
-							if tmpdup { // can't examine duplicates until we start getting all the data
-								dup = true
+				if tc.forFormat == 0 || tc.forFormat == format {
+					t.Run(format.String(), func(t *testing.T) {
+						hb := newUnorderedHeadBlock(format, newSymbolizer())
+						dup := false
+						for _, e := range tc.input {
+							tmpdup, err := hb.Append(e.t, e.s, e.structuredMetadata)
+							if !dup { // only set dup if it's not already true
+								if tmpdup { // can't examine duplicates until we start getting all the data
+									dup = true
+								}
+							}
+							require.Nil(t, err)
+						}
+						require.Equal(t, tc.hasDup, dup)
+
+						itr := hb.Iterator(
+							context.Background(),
+							tc.dir,
+							0,
+							math.MaxInt64,
+							noopStreamPipeline,
+						)
+
+						expected := make([]entry, len(tc.exp))
+						copy(expected, tc.exp)
+						if format < UnorderedWithStructuredMetadataHeadBlockFmt {
+							for i := range expected {
+								expected[i].structuredMetadata = labels.EmptyLabels()
 							}
 						}
-						require.Nil(t, err)
-					}
-					require.Equal(t, tc.hasDup, dup)
 
-					itr := hb.Iterator(
-						context.Background(),
-						tc.dir,
-						0,
-						math.MaxInt64,
-						noopStreamPipeline,
-					)
-
-					expected := make([]entry, len(tc.exp))
-					copy(expected, tc.exp)
-					if format < UnorderedWithStructuredMetadataHeadBlockFmt {
-						for i := range expected {
-							expected[i].structuredMetadata = labels.EmptyLabels()
-						}
-					}
-
-					iterEq(t, expected, itr)
-				})
+						iterEq(t, expected, itr)
+					})
+				}
 			}
 		})
 	}

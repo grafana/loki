@@ -1251,9 +1251,6 @@ The ring contains too many unhealthy instances to satisfy the replication factor
 **Resolution:**
 
 1. **Check the health of ring members**:
-    Open a browser and navigate to http://localhost:3100/ring. You should see the Loki ring page.
-
-    OR
 
    ```bash
    curl -s http://loki:3100/ring | jq '.shards[] | select(.state != "ACTIVE")'
@@ -1357,6 +1354,9 @@ The instance has joined the ring but hasn't claimed any tokens. Without tokens, 
 
 1. **Wait for token assignment** during startup.
 1. **Check the ring status** for the instance:
+   Open a browser and navigate to http://localhost:3100/ring. You should see the Loki Ring Status page.
+
+   OR
 
    ```bash
    curl -s http://loki:3100/ring
@@ -1615,6 +1615,9 @@ The ingester is not in a ready state to accept writes or serve reads. The detail
 
 1. **Wait for startup to complete** - ingesters take time to join the ring and become ready.
 1. **Check ring membership**:
+   Open a browser and navigate to http://localhost:3100/ring. You should see the Loki Ring Status page.
+
+   OR
 
    ```bash
    curl -s http://ingester:3100/ring
@@ -1712,51 +1715,1788 @@ The query frontend worker has no active connections to any query scheduler. This
 
 ## gRPC and message size errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+gRPC errors occur during inter-component communication. Loki components communicate using gRPC for ring coordination, query execution, and data transfer.
+
+### Error: Message size too large
+
+**Error message:**
+
+```text
+message size too large than max (<size> vs <max>)
+```
+
+Or for the decompressed body:
+
+```text
+decompressed message size too large than max (<size> vs <max>)
+```
+
+**Cause:**
+
+The compressed or decompressed body of an HTTP push request to the distributor exceeds the configured limit.
+
+**Default configuration:**
+
+- `distributor.max_recv_msg_size`: 100MB (compressed request body limit)
+- `distributor.max_decompressed_size`: 5000MB (decompressed body limit, defaults to 50× `max_recv_msg_size`)
+
+**Resolution:**
+
+1. **Increase the distributor receive message size limit**:
+
+   ```yaml
+   distributor:
+     max_recv_msg_size: 209715200      # 200MB compressed
+     max_decompressed_size: 10737418240  # 10GB decompressed
+   ```
+
+1. **Reduce push batch sizes** in your log shipping client (Alloy, Promtail, etc.) to send smaller individual requests.
+
+1. **Reduce the amount of data per request** by lowering the batch size or flush interval in your client.
+
+**Properties:**
+
+- Enforced by: Distributor push handler
+- Retryable: No (request must be smaller or limits increased)
+- HTTP status: 413 Request Entity Too Large (compressed), 400 Bad Request (decompressed)
+- Configurable per tenant: No
+
+### Error: Response larger than max message size
+
+**Error message:**
+
+```text
+response larger than the max message size (<size> vs <max>)
+```
+
+**Cause:**
+
+A query result from the querier to the frontend exceeds the maximum allowed gRPC response size. This typically happens with queries that return very large result sets.
+
+**Default configuration:**
+
+- `server.grpc_server_max_send_msg_size`: 4MB (gRPC server send limit on the querier)
+- `querier.query_frontend_grpc_client.max_recv_msg_size`: 100MB (gRPC client receive limit on the querier worker)
+
+**Resolution:**
+
+1. **Reduce query scope** to return fewer results:
+   - Add more specific label matchers
+   - Reduce the time range
+   - Lower the entries limit
+
+1. **Increase gRPC message size limits** if needed. Apply these settings to querier nodes:
+
+   ```yaml
+   server:
+     grpc_server_max_send_msg_size: 209715200   # 200MB
+
+   querier:
+     query_frontend_grpc_client:
+       max_recv_msg_size: 209715200             # 200MB
+   ```
+
+**Properties:**
+
+- Enforced by: Querier worker
+- Retryable: No (query scope or limits must change)
+- HTTP status: 413 Request Entity Too Large
+- Configurable per tenant: No
+
+### Error: Compressed message size exceeds limit
+
+**Error message:**
+
+```text
+compressed message size <size> exceeds limit <limit>
+```
+
+**Cause:**
+
+The compressed body of an HTTP push request exceeds the distributor's configured limit. This check runs after the request body has been fully read and validates the total compressed size against the configured maximum.
+
+**Default configuration:**
+
+- `distributor.max_recv_msg_size`: 100MB
+
+**Resolution:**
+
+1. **Reduce batch sizes** in your log shipping client.
+1. **Split large batches** into smaller, more frequent requests.
+1. **Increase the limit** if needed:
+
+   ```yaml
+   distributor:
+     max_recv_msg_size: 209715200   # 200MB
+   ```
+
+**Properties:**
+
+- Enforced by: Distributor push handler
+- Retryable: No (request must be smaller)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
 
 ## TLS and certificate errors
 
+TLS errors occur when Loki or its clients cannot establish secure connections due to certificate issues.
 
+### Error: TLS certificate loading failed
+
+**Error message:**
+
+```text
+error loading ca cert: <path>
+```
+
+Or:
+
+```text
+error loading client cert: <path>
+```
+
+Or:
+
+```text
+error loading client key: <path>
+```
+
+Or:
+
+```text
+failed to load TLS certificate <cert_path>,<key_path>
+```
+
+**Cause:**
+
+Loki cannot load TLS certificates from the specified paths. Common causes:
+
+- Certificate files don't exist at the configured paths
+- Permission issues prevent reading the files
+- Certificate or key format is invalid
+- Certificate and key don't match
+
+**Resolution:**
+
+1. **Verify certificate files exist** and are readable:
+
+   ```bash
+   ls -la /path/to/cert.pem /path/to/key.pem /path/to/ca.pem
+   ```
+
+1. **Check file permissions** (the Loki process must be able to read them).
+
+1. **Validate the certificate format**:
+
+   ```bash
+   openssl x509 -in /path/to/cert.pem -noout -text
+   openssl rsa -in /path/to/key.pem -check
+   ```
+
+1. **Verify cert and key match**:
+
+   ```bash
+   openssl x509 -noout -modulus -in cert.pem | md5sum
+   openssl rsa -noout -modulus -in key.pem | md5sum
+   # Both should produce the same hash
+   ```
+
+1. **Check your TLS configuration**:
+
+   ```yaml
+   server:
+     http_tls_config:
+       cert_file: /path/to/cert.pem
+       key_file: /path/to/key.pem
+       client_ca_file: /path/to/ca.pem
+     grpc_tls_config:
+       cert_file: /path/to/cert.pem
+       key_file: /path/to/key.pem
+       client_ca_file: /path/to/ca.pem
+   ```
+
+**Properties:**
+
+- Enforced by: TLS configuration
+- Retryable: No (certificates must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: TLS configuration error
+
+**Error message:**
+
+```text
+error generating http tls config: <details>
+```
+
+Or:
+
+```text
+error generating grpc tls config: <details>
+```
+
+Where `<details>` may include messages such as `TLS version %q not recognized`, `cipher suite %q not recognized`, or `unknown TLS version: <version>`.
+
+**Cause:**
+
+The TLS configuration is invalid. This can happen when:
+
+- An unsupported TLS version string is supplied
+- Cipher suite configuration is invalid
+- Client auth type is unrecognized
+
+**Resolution:**
+
+1. **Review TLS settings** for compatibility issues.
+1. **Use supported TLS versions** by setting `tls_min_version` at the top level of the `server` block:
+
+   ```yaml
+   server:
+     tls_min_version: VersionTLS12
+   ```
+
+   Valid values are `VersionTLS10`, `VersionTLS11`, `VersionTLS12`, and `VersionTLS13`. There is no `max_version` setting; `tls_min_version` is the only version constraint.
+
+1. **Check cipher suite configuration** if customized.
+
+**Properties:**
+
+- Enforced by: TLS initialization
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
 
 ## DNS resolution errors
 
+DNS errors occur when Loki cannot resolve hostnames for service discovery or backend connections.
 
+### Error: DNS lookup timeout
+
+**Error message:**
+
+```text
+msg="failed to resolve server addresses" err="... DNS lookup timeout: [<address>] ..."
+```
+
+**Cause:**
+
+DNS resolution exceeded the 5-second timeout when trying to resolve addresses for Loki service discovery or backend connections.
+This error is emitted by the index gateway and bloom gateway DNS discovery loops.
+The `DNS lookup timeout: [<address>]` string is the context cause embedded within the `err` field; the full address list is formatted as a Go slice (for example, `[dns+loki-index-gateway.loki.svc.cluster.local:9095]`).
+
+**Resolution:**
+
+1. **Check DNS server availability** and configuration.
+1. **Verify hostname resolution**:
+
+   ```bash
+   nslookup <hostname>
+   dig <hostname>
+   ```
+
+1. **Use IP addresses** as a workaround if DNS is unreliable:
+
+   ```yaml
+   # Instead of dns+hostname:port
+   memberlist:
+     join_members:
+       - 10.0.0.1:7946
+       - 10.0.0.2:7946
+   ```
+
+1. **For Kubernetes**, ensure CoreDNS is healthy and headless services are configured correctly.
+
+**Properties:**
+
+- Enforced by: Index gateway client, bloom gateway client DNS discovery loop
+- Retryable: Yes (DNS may recover)
+- HTTP status: N/A (connectivity failure)
+- Configurable per tenant: No
 
 ## Scheduler and frontend errors
 
+These errors relate to query scheduling, frontend workers, and queue management.
 
+### Error: Scheduler is not running
+
+**Error message:**
+
+```text
+scheduler is not running
+```
+
+**Cause:**
+
+The query scheduler service is not in a running state. This can occur when:
+
+- The scheduler is starting up
+- The scheduler encountered a fatal error
+- The scheduler is shutting down
+
+**Resolution:**
+
+1. **Check scheduler logs** for startup errors or crashes.
+1. **Verify scheduler health**:
+
+   ```bash
+   curl -s http://scheduler:3100/ready
+   ```
+
+1. **Check scheduler ring membership** if using ring-based scheduling:
+
+   ```bash
+   curl -s http://scheduler:3100/ring | jq
+   ```
+
+**Properties:**
+
+- Enforced by: Scheduler service
+- Retryable: Yes (wait for scheduler to become ready)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
+### Error: Too many outstanding requests
+
+**Error message:**
+
+```text
+too many outstanding requests
+```
+
+**Cause:**
+
+The query queue has reached its maximum capacity. This indicates the system is overloaded with queries.
+
+**Resolution:**
+
+1. **Scale out queriers** to process queries faster:
+
+   ```yaml
+   querier:
+     max_concurrent: 10
+   ```
+
+1. **Increase queue capacity** (with caution). The default is `32000`; increase beyond that only if you have confirmed the system can handle the additional load.  Note that increasing the queue is often necessary because of how many subqueries can be generated by large values for `tsdb_max_query_parallelism`. Generally it's preferable to add more queriers and leave this setting unchanged.
+
+   ```yaml
+   query_scheduler:
+     max_outstanding_requests_per_tenant: 64000
+   ```
+
+1. **Rate limit queries** at the client or load balancer level.
+1. **Optimize slow queries** to reduce queue time.
+
+**Properties:**
+
+- Enforced by: Query scheduler/frontend
+- Retryable: Yes
+- HTTP status: 429 Too Many Requests
+- Configurable per tenant: No
+
+### Error: Querying is disabled
+
+**Error message:**
+
+```text
+querying is disabled, please contact your Loki operator
+```
+
+**Cause:**
+
+Query parallelism has been set to zero, effectively disabling all queries. This is typically done intentionally during maintenance.
+
+**Resolution:**
+
+1. **Check the relevant parallelism setting for your index type.** For TSDB indexes (the current default), `tsdb_max_query_parallelism` supersedes `max_query_parallelism`. Either value being set to zero triggers this error. Verify that both are greater than zero:
+
+   ```yaml
+   limits_config:
+     max_query_parallelism: 32          # default; applies to non-TSDB schemas
+     tsdb_max_query_parallelism: 128    # default; applies to TSDB schemas
+   ```
+
+1. **Size `tsdb_max_query_parallelism` to your ingest volume.** Typical values in production are in the range of 128–2048, proportional to the volume of logs ingested per day:
+
+   | Daily ingest volume | Typical value |
+   |---|---|
+   | Low–moderate | 128–256 |
+   | High | 512 |
+   | Tens of TB/day | 1024–2048 |
+
+1. **Account for the querier capacity this requires.** Each unit of parallelism consumes one querier worker slot. With the default `querier.max_concurrent` of `4`, the number of queriers needed to fully parallelize a single query is:
+
+   ```
+   queriers needed = tsdb_max_query_parallelism / max_concurrent
+   ```
+
+   For example, `tsdb_max_query_parallelism: 2048` with `max_concurrent: 4` requires 512 queriers to run one query fully in parallel. Production deployments supporting many tenants running large queries simultaneously commonly run thousands of queriers.
+
+1. **Contact your administrator** if you don't have access to change these settings.
+
+**Properties:**
+
+- Enforced by: Query frontend
+- Retryable: No (configuration must change)
+- HTTP status: 429 Too Many Requests
+- Configurable per tenant: Yes
+
+### Error: No frontend address
+
+**Error message:**
+
+```text
+no frontend address
+```
+
+**Cause:**
+
+The scheduler received a request from a frontend but no frontend address was provided for sending responses back.
+
+**Resolution:**
+
+1. **Check frontend configuration** to ensure the address is set:
+
+   ```yaml
+   frontend:
+     address: query-frontend:9095
+   ```
+
+1. **Verify gRPC connectivity** between frontend and scheduler.
+
+**Properties:**
+
+- Enforced by: Scheduler
+- Retryable: No (configuration issue)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Scheduler shutting down
+
+**Error message:**
+
+```text
+scheduler is shutting down
+```
+
+**Cause:**
+
+The frontend scheduler worker detected that the scheduler is in shutdown mode and cannot accept new requests.
+
+**Resolution:**
+
+1. **Wait for shutdown to complete** and the scheduler to restart.
+1. **Check if this is expected** (rolling update, maintenance).
+1. **Retry the request** after the scheduler is healthy.
+
+**Properties:**
+
+- Enforced by: Scheduler
+- Retryable: Yes (after scheduler restart)
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
 
 ## Index gateway errors
 
+Index gateway errors occur when queriers cannot communicate with index gateways for index lookups.
 
+### Error: Index gateway unhealthy in ring
+
+**Error message:**
+
+```text
+index-gateway is unhealthy in the ring
+```
+
+**Cause:**
+
+The index gateway instance detects itself as unhealthy in the ring and refuses to process queries. This is a self-check: before handling tenant requests, the gateway verifies it appears in the set of healthy ring members.
+
+**Resolution:**
+
+1. **Check index gateway health**:
+
+   ```bash
+   curl -s http://index-gateway:3100/ready
+   ```
+
+1. **View the ring status**:
+   Open a browser and navigate to http://localhost:3100/ring. You should see the Loki Ring Status page.
+
+   OR
+
+   ```bash
+   curl -s http://index-gateway:3100/ring
+   ```
+
+1. **Check logs** for errors preventing the gateway from becoming healthy.
+1. **Restart the index gateway** if it's stuck in an unhealthy state.
+
+**Properties:**
+
+- Enforced by: Index gateway ring
+- Retryable: Yes (wait for gateway to become healthy)
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: No index gateway instances found
+
+**Error message:**
+
+```text
+no index gateway instances found for tenant <tenant>
+```
+
+**Cause:**
+
+No index gateway instances are available in the ring to serve the tenant's request. This could be due to:
+
+- All index gateways are unhealthy
+- Shuffle sharding excludes this tenant
+- Ring is empty
+
+**Resolution:**
+
+1. **Check if any index gateways are running**:
+
+   ```bash
+   curl -s http://index-gateway:3100/ring | jq '.shards | length'
+   ```
+
+1. **Verify ring mode is configured** if using shuffle sharding. The index gateway must run in `ring` mode and the per-tenant shard size must be set:
+
+   ```yaml
+   index_gateway:
+     mode: ring
+
+   limits_config:
+     index_gateway_shard_size: 3  # default = 0 (use all instances)
+   ```
+
+1. **Scale up index gateways** if needed.
+
+**Properties:**
+
+- Enforced by: Index gateway client
+- Retryable: Yes
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: Yes (via `index_gateway_shard_size` in `limits_config`)
+
+### Error: Index client not initialized
+
+**Error message:**
+
+```text
+index client is not initialized likely due to boltdb-shipper not being used
+```
+
+**Cause:**
+
+The index gateway was queried for operations that require the index client, but the client wasn't initialized because the boltdb-shipper store isn't configured.
+
+**Resolution:**
+
+1. **Verify your schema config** uses the correct index store:
+
+   ```yaml
+   schema_config:
+     configs:
+       - from: 2024-01-01
+         store: tsdb
+         object_store: s3
+         schema: v13
+         index:
+           prefix: index_
+           period: 24h
+   ```
+
+1. **Check if the operation requires boltdb-shipper** - some legacy operations may not be supported with TSDB.
+
+**Properties:**
+
+- Enforced by: Index gateway
+- Retryable: No (configuration/schema issue)
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
 
 ## Compactor and retention errors
 
+Compactor errors occur during index compaction or retention enforcement.
 
+### Error: No chunks found in table
+
+**Error message:**
+
+```text
+no chunks found in table, please check if there are really no chunks and manually drop the table or see if there is a bug causing us to drop whole index table
+```
+
+**Cause:**
+
+The compactor found an empty index table during retention processing. This could indicate:
+
+- All chunks in the table have expired
+- The table was never populated
+- Data corruption
+
+**Resolution:**
+
+1. **Verify the table should be empty**:
+
+   ```bash
+   # Check if data exists for the time period
+   logcli query '{job=~".+"}' --from="<table-start-time>" --to="<table-end-time>" --limit=1
+   ```
+
+1. **If the table is legitimately empty**, manually delete it from object storage.
+1. **If data should exist**, investigate potential data loss.
+
+**Properties:**
+
+- Enforced by: Compactor retention
+- Retryable: No (requires manual intervention)
+- HTTP status: N/A (background process)
+- Configurable per tenant: No
+
+### Error: Delete request store not configured
+
+**Error message:**
+
+```text
+compactor.delete-request-store should be configured when retention is enabled
+```
+
+**Cause:**
+
+Retention is enabled but no store is configured for tracking delete requests.
+
+**Resolution:**
+
+1. **Configure the delete request store**:
+
+   ```yaml
+   compactor:
+     retention_enabled: true
+     delete_request_store: s3
+   ```
+
+1. **Or disable retention** if not needed:
+
+   ```yaml
+   compactor:
+     retention_enabled: false
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Max compaction parallelism invalid
+
+**Error message:**
+
+```text
+max compaction parallelism must be >= 1
+```
+
+**Cause:**
+
+The compactor's parallelism setting is configured to zero or a negative number.
+
+**Resolution:**
+
+1. **Set a valid parallelism value**:
+
+   ```yaml
+   compactor:
+     max_compaction_parallelism: 1  # Must be >= 1
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Delete request not found
+
+**Error message:**
+
+```text
+could not find delete request with given id
+```
+
+**Cause:**
+
+An attempt to cancel a delete request failed because no matching request exists.
+
+**Resolution:**
+
+1. **List existing delete requests**:
+
+   ```bash
+   curl -s http://compactor:3100/loki/api/v1/delete | jq
+   ```
+
+1. **Verify the delete request ID** is correct.
+1. **Check if the request has already been processed** and removed.
+
+**Properties:**
+
+- Enforced by: Compactor API
+- Retryable: No
+- HTTP status: 404 Not Found
+- Configurable per tenant: No
+
+### Error: Retention is not enabled
+
+**Error message:**
+
+```text
+Retention is not enabled
+```
+
+**Cause:**
+
+A delete request was submitted but retention is not enabled in the compactor configuration. Delete requests require retention to be enabled.
+
+**Resolution:**
+
+1. **Enable retention** in the compactor:
+
+   ```yaml
+   compactor:
+     retention_enabled: true
+     delete_request_store: s3
+   ```
+
+1. **Restart the compactor** after changing the configuration.
+
+**Properties:**
+
+- Enforced by: Compactor delete request handler
+- Retryable: No (configuration must change)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Invalid delete request time format
+
+**Error message:**
+
+```text
+invalid start time: require unix seconds or RFC3339 format
+```
+
+Or:
+
+```text
+invalid end time: require unix seconds or RFC3339 format
+```
+
+**Cause:**
+
+The start or end time in a delete request is not in a valid format.
+
+**Resolution:**
+
+1. **Use Unix seconds or RFC3339 format**:
+
+   ```bash
+   # Unix seconds
+   curl -X POST http://compactor:3100/loki/api/v1/delete \
+     -H "X-Scope-OrgID: my-tenant" \
+     -d "query={app=\"foo\"}" \
+     -d "start=1704067200" \
+     -d "end=1704153600"
+   
+   # RFC3339
+   curl -X POST http://compactor:3100/loki/api/v1/delete \
+     -H "X-Scope-OrgID: my-tenant" \
+     -d "query={app=\"foo\"}" \
+     -d "start=2024-01-01T00:00:00Z" \
+     -d "end=2024-01-02T00:00:00Z"
+   ```
+
+**Properties:**
+
+- Enforced by: Compactor delete request handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Delete request already processed
+
+**Error message:**
+
+```text
+deletion of request which is in process or already processed is not allowed
+```
+
+**Cause:**
+
+An attempt was made to cancel a delete request that is already being processed or has completed processing.
+
+**Resolution:**
+
+1. **Check the status** of the delete request:
+
+   ```bash
+   curl -s http://compactor:3100/loki/api/v1/delete \
+     -H "X-Scope-OrgID: my-tenant" | jq
+   ```
+
+1. **Submit a new delete request** if you need to delete additional data.
+
+**Properties:**
+
+- Enforced by: Compactor delete request handler
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Invalid max_interval for delete request
+
+**Error message:**
+
+```text
+invalid max_interval: valid time units are 's', 'm', 'h'
+```
+
+Or:
+
+```text
+max_interval can't be greater than <configured-limit>
+```
+
+Or:
+
+```text
+max_interval can't be greater than the interval to be deleted (<duration>)
+```
+
+**Cause:**
+
+The `max_interval` parameter on a delete request has an invalid value, exceeds the configured `delete_max_interval` limit, or exceeds the time range of the delete request itself.
+
+**Resolution:**
+
+1. **Use a valid time format** with supported units (`s`, `m`, `h`):
+
+   ```bash
+   curl -X POST http://compactor:3100/loki/api/v1/delete \
+     -H "X-Scope-OrgID: my-tenant" \
+     -d "query={app=\"foo\"}" \
+     -d "start=1704067200" \
+     -d "end=1704153600" \
+     -d "max_interval=1h"
+   ```
+
+**Properties:**
+
+- Enforced by: Compactor delete request handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
 
 ## Ruler errors
 
+Ruler errors occur when evaluating alerting rules or recording rules.
 
+### Error: Invalid ruler evaluation config
+
+**Error message:**
+
+```text
+invalid ruler evaluation config: <details>
+```
+
+**Cause:**
+
+The ruler evaluation mode configuration is invalid.
+
+**Resolution:**
+
+1. **Use a valid evaluation mode**:
+
+   ```yaml
+   ruler:
+     evaluation:
+       mode: local  # Or "remote"
+   ```
+
+**Properties:**
+
+- Enforced by: Ruler module initialization (`initRuleEvaluator`)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Ruler remote write config conflict
+
+**Error message:**
+
+```text
+ruler remote write config: both 'client' and 'clients' options are defined; 'client' is deprecated, please only use 'clients'
+```
+
+**Cause:**
+
+Both the deprecated `client` and the new `clients` configuration options are set for ruler remote write.
+
+**Resolution:**
+
+1. **Remove the deprecated config** and use `clients`:
+
+   ```yaml
+   ruler:
+     remote_write:
+       # Remove this:
+       # client: {}
+       
+       # Use this instead:
+       clients:
+         primary:
+           url: http://prometheus:9090/api/v1/write
+   ```
+
+**Properties:**
+
+- Enforced by: Ruler initialization (`NewRuler`)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Remote write enabled but no URL configured
+
+**Error message:**
+
+```text
+remote-write enabled but no clients URL are configured
+```
+
+Or when multiple clients are configured in the `clients` map and one entry is missing a URL:
+
+```text
+remote-write enabled but client '<name>' URL for tenant <client-id> is not configured
+```
+
+**Cause:**
+
+Remote write is enabled for the ruler but no destination URL is configured. The first variant occurs when the `clients` map is empty. The second occurs when a named entry in the `clients` map has no `url` set; `<client-id>` is the map key for that entry, not a tenant ID.
+
+**Resolution:**
+
+1. **Configure the remote write URL**:
+
+   ```yaml
+   ruler:
+     remote_write:
+       enabled: true
+       clients:
+         primary:
+           url: http://prometheus:9090/api/v1/write
+   ```
+
+1. **Or disable remote write**:
+
+   ```yaml
+   ruler:
+     remote_write:
+       enabled: false
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Rule result is not a vector or scalar
+
+**Error message:**
+
+```text
+rule result is not a vector or scalar
+```
+
+**Cause:**
+
+A rule evaluation returned an unexpected result type. Both recording rules and alerting rules must produce vector or scalar results. A plain log-stream expression (one that returns log lines rather than a numeric metric) triggers this error in either rule type.
+
+**Resolution:**
+
+1. **Check the rule expression** returns a vector or scalar:
+
+   ```yaml
+   # Valid - returns vector:
+   record: my_metric
+   expr: sum(rate({job="app"}[5m] | json | level="error"))
+
+   # Invalid - returns logs (triggers error for both recording and alerting rules):
+   # record: my_metric
+   # expr: '{job="app"}'
+   ```
+
+1. **Use aggregation functions** to produce numeric results from log queries.
+
+**Properties:**
+
+- Enforced by: Ruler evaluation
+- Retryable: No (rule must be fixed)
+- HTTP status: N/A (background process)
+- Configurable per tenant: No
+
+### Error: Ruler WAL closed
+
+**Error message:**
+
+```text
+WAL storage closed
+```
+
+**Cause:**
+
+An operation was attempted on the ruler's write-ahead log (WAL) after it was closed. This typically occurs during shutdown.
+
+**Resolution:**
+
+1. **Wait for the ruler to restart** if it's restarting.
+1. **Check ruler logs** for errors that caused unexpected WAL closure.
+1. **Verify disk space** is available for WAL operations.
+
+**Properties:**
+
+- Enforced by: Ruler WAL
+- Retryable: Yes (after ruler restart)
+- HTTP status: N/A
+- Configurable per tenant: No
 
 ## Kafka integration errors
 
+These errors occur when Loki is configured to use Kafka for ingestion.
 
+### Error: Missing Kafka address
+
+**Error message:**
+
+```text
+the Kafka address has not been configured
+```
+
+**Cause:**
+
+Kafka ingestion is enabled but no Kafka broker address is configured.
+
+**Resolution:**
+
+1. **Configure the Kafka address**:
+
+   ```yaml
+   kafka_config:
+     topic: loki-logs
+     reader_config:
+       address: kafka:9092
+     writer_config:
+       address: kafka:9092
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Missing Kafka topic
+
+**Error message:**
+
+```text
+the Kafka topic has not been configured
+```
+
+**Cause:**
+
+Kafka ingestion is enabled but no topic name is configured.
+
+**Resolution:**
+
+1. **Configure the Kafka topic**:
+
+   ```yaml
+   kafka_config:
+     topic: loki-logs
+     reader_config:
+       address: kafka:9092
+     writer_config:
+       address: kafka:9092
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Inconsistent SASL username and password
+
+**Error message:**
+
+```text
+both sasl username and password must be set
+```
+
+**Cause:**
+
+Only one of the Simple Authentication and Security Layer (SASL) username or password is configured. Both must be set together.
+
+**Resolution:**
+
+1. **Configure both username and password**:
+
+   ```yaml
+   kafka_config:
+     sasl_username: my-user
+     sasl_password: ${KAFKA_PASSWORD}
+   ```
+
+1. **Or remove both** if SASL authentication is not required.
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Kafka enabled in distributor but not in ingester
+
+**Error message:**
+
+```text
+kafka is enabled in distributor but not in ingester
+```
+
+**Cause:**
+
+Kafka is configured for the distributor but the ingester isn't configured to read from Kafka. Both must be configured together.
+
+**Resolution:**
+
+1. **Enable Kafka in both distributor and ingester**:
+
+   ```yaml
+   distributor:
+     kafka_writes_enabled: true
+
+   ingester:
+     kafka_ingestion:
+       enabled: true
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
 
 ## Bloom gateway errors
 
+Bloom gateway errors occur when using bloom filters for query acceleration.
 
+### Error: Invalid bloom gateway addresses
+
+**Error message:**
+
+```text
+addresses requires a list of comma separated strings in DNS service discovery format with at least one item
+```
+
+**Cause:**
+
+The `bloom_gateway.client.addresses` configuration field is empty or unset.
+
+**Resolution:**
+
+1. **Configure valid addresses**:
+
+   ```yaml
+   bloom_gateway:
+     client:
+       addresses: dns+bloom-gateway:9095
+   ```
+
+   Valid formats:
+   - `dns+hostname:port` - DNS-based discovery
+   - `host1:port,host2:port` - Static list
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Request time range must span exactly one day
+
+**Error message:**
+
+```text
+request time range must span exactly one day
+```
+
+**Cause:**
+
+Bloom gateway requests must be for exactly one day of data due to how bloom blocks are organized.
+
+**Resolution:**
+
+1. This is typically handled automatically by the bloom querier, which splits multi-day queries into per-day requests before sending them to the gateway. If you see this error:
+   - **Check that the querier is properly configured**
+   - **Ensure queries are routed through the querier**
+
+**Properties:**
+
+- Enforced by: Bloom gateway
+- Retryable: No
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: From time must not be after through time
+
+**Error message:**
+
+```text
+from time must not be after through time
+```
+
+**Cause:**
+
+The bloom gateway received a request where the start time (`from`) is later than the end time (`through`).
+
+**Resolution:**
+
+1. This indicates a malformed request reaching the bloom gateway. Verify that the client sending the request constructs time ranges correctly with `from` ≤ `through`.
+
+**Properties:**
+
+- Enforced by: Bloom gateway
+- Retryable: No
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
 
 ## Write-ahead log (WAL) errors
 
+WAL errors occur when the ingester cannot properly manage its write-ahead log.
 
+### Error: WAL is stopped
+
+**Error message:**
+
+```text
+wal is stopped
+```
+
+**Cause:**
+
+An operation was attempted on the WAL after it was stopped. This typically occurs during shutdown or after a fatal error.
+
+**Resolution:**
+
+1. **Check ingester health and logs** for errors.
+1. **Verify disk space** is available.
+1. **Restart the ingester** if it's in a bad state.
+
+**Properties:**
+
+- Enforced by: Ingester WAL
+- Retryable: Yes (after ingester restart)
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: Invalid checkpoint duration
+
+**Error message:**
+
+```text
+invalid checkpoint duration: <duration>
+```
+
+**Cause:**
+
+The WAL checkpoint duration is set to an invalid value (likely zero or negative).
+
+**Resolution:**
+
+1. **Set a valid checkpoint duration**:
+
+   ```yaml
+   ingester:
+     wal:
+       checkpoint_duration: 5m
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+<!-- Hiding this for now, as it won't exist until we release Loki 3.7 
+
+### Error: Invalid disk full threshold
+
+{{< admonition type="note" >}}
+The `disk_full_threshold` configuration option was introduced in Loki 3.7. This error does not occur in earlier releases.
+{{< /admonition >}}
+
+**Error message:**
+
+```text
+invalid disk full threshold: <value> (must be between 0 and 1)
+```
+
+**Cause:**
+
+The WAL disk full threshold is set to a value outside the valid range. Valid values are between 0 and 1 (inclusive), where 0 disables throttling and values greater than 0 represent the fraction of disk capacity at which writes are throttled.
+
+**Resolution:**
+
+1. **Set a valid threshold**:
+
+   ```yaml
+   ingester:
+     wal:
+       disk_full_threshold: 0.9  # 90%
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No -->
 
 ## Ingester lifecycle errors
 
+Ingester lifecycle errors occur during ingester startup, shutdown, or state transitions.
 
+### Error: Ingester is shutting down
+
+**Error message:**
+
+```text
+Ingester is shutting down
+```
+
+**Cause:**
+
+The ingester is in the process of shutting down and is no longer accepting writes. This error (also known as `ErrReadOnly`) is returned when a push request arrives during graceful shutdown. During this period the ingester may still serve reads for data it holds in memory.
+
+**Resolution:**
+
+1. **Configure clients to retry** with backoff. The distributor will route to other healthy ingesters.
+1. **Wait for shutdown to complete** and the new instance to start.
+1. **Check if shutdown is expected** (rolling update, scaling event).
+1. **If unexpected**, check orchestrator logs for OOM kills or health check failures.
+
+**Properties:**
+
+- Enforced by: Ingester
+- Retryable: Partial. The distributor sends writes to all ingesters in the replication set in parallel and uses a quorum model. If the remaining ingesters meet the minimum success threshold, the overall write succeeds despite this error from a shutting-down ingester.
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: Ingester is stopping or already stopped
+
+**Error message:**
+
+```text
+Ingester is stopping or already stopped.
+```
+
+**Cause:**
+
+The ingester's shutdown management endpoint (`POST /loki/api/v1/ingester/shutdown`) was called when the ingester was not in a `Running` state. This happens when the endpoint is called a second time during an in-progress shutdown or after the ingester has already stopped. This error is returned by the shutdown endpoint, not by the log-write or query paths.
+
+**Resolution:**
+
+1. **Do not call the shutdown endpoint again** while a shutdown is already in progress.
+1. **Check orchestrator** for duplicate shutdown signals or restart policies.
+1. **Investigate** if the stop was unexpected (pod eviction, OOM, crash).
+
+**Properties:**
+
+- Enforced by: Ingester shutdown endpoint
+- Retryable: No (the shutdown endpoint call itself is not retryable; wait for the ingester to restart before sending new writes)
+- HTTP status: 503 Service Unavailable (response from the shutdown endpoint)
+- Configurable per tenant: No
+
+### Error: Failed to start partition reader
+
+**Error message:**
+
+```text
+failed to start partition reader: <details>
+```
+
+**Cause:**
+
+The ingester could not start its Kafka partition reader. This occurs when Kafka ingestion is enabled but the partition reader fails to initialize.
+
+**Resolution:**
+
+1. **Check Kafka connectivity** from the ingester.
+1. **Verify Kafka topic exists** and the ingester has appropriate permissions.
+1. **Review Kafka configuration**:
+
+   ```yaml
+   kafka:
+     address: kafka:9092
+     topic: loki-logs
+   ```
+
+1. **Check Kafka broker health**.
+
+**Properties:**
+
+- Enforced by: Ingester startup
+- Retryable: No (configuration or infrastructure must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Failed to start partition ring lifecycler
+
+**Error message:**
+
+```text
+failed to start partition ring lifecycler: <details>
+```
+
+**Cause:**
+
+The ingester could not start its Kafka partition ring lifecycler during startup. This is a separate component from the partition reader; it manages the ingester's membership in the partition ring. This only occurs when Kafka ingestion is enabled.
+
+**Resolution:**
+
+1. **Check Kafka connectivity** from the ingester.
+1. **Verify the partition ring KV store** (the store used for the partition ring) is reachable.
+1. **Review ingester logs** for the wrapped error in `<details>`.
+1. **Check Kafka broker health** and partition availability.
+
+**Properties:**
+
+- Enforced by: Ingester startup
+- Retryable: No (configuration or infrastructure must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Lifecycler failed
+
+**Error message:**
+
+```text
+lifecycler failed: <details>
+```
+
+**Cause:**
+
+The ingester's lifecycler (which manages ring membership) encountered a fatal error. This prevents the ingester from participating in the ring.
+
+**Resolution:**
+
+1. **Check KV store connectivity** (Consul, etcd, or memberlist).
+1. **Review ingester logs** for the specific lifecycler error.
+1. **Verify ring configuration** is consistent across all ingesters.
+1. **Restart the ingester** after fixing the underlying issue.
+
+**Properties:**
+
+- Enforced by: Ingester lifecycler
+- Retryable: Yes (after fix and restart)
+- HTTP status: N/A (internal failure)
+- Configurable per tenant: No 
 
 ## Pattern ingester errors
 
+Pattern ingester errors occur when using the pattern ingester for automatic log pattern detection.
+
+### Error: Pattern ingester replication factor must be 1
+
+**Error message:**
+
+```text
+pattern ingester replication factor must be 1
+```
+
+**Cause:**
+
+The pattern ingester is configured with a replication factor other than 1. Currently, the pattern ingester only supports a replication factor of 1.
+
+**Resolution:**
+
+1. **Set the replication factor to 1**:
+
+   ```yaml
+   pattern_ingester:
+     lifecycler:
+       ring:
+         replication_factor: 1
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Pattern ingester retain-for too short
+
+**Error message:**
+
+```text
+retain-for (<duration>) must be greater than or equal to chunk-duration (<duration>)
+```
+
+**Cause:**
+
+The pattern ingester's `retain_for` duration is shorter than `max_chunk_age`, which would cause data loss.
+
+**Resolution:**
+
+1. **Increase the retain-for duration** to be at least as long as `max_chunk_age`:
+
+   ```yaml
+   pattern_ingester:
+     retain_for: 15m   # Must be >= max_chunk_age
+     max_chunk_age: 5m
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Pattern ingester chunk-duration too short
+
+**Error message:**
+
+```text
+chunk-duration (<duration>) must be greater than or equal to sample-interval (<duration>)
+```
+
+**Cause:**
+
+The pattern ingester's `max_chunk_age` is shorter than `pattern_sample_interval`. Chunks must span at least one sample interval to hold any data.
+
+**Resolution:**
+
+1. **Increase `max_chunk_age`** to be at least as long as `pattern_sample_interval`:
+
+   ```yaml
+   pattern_ingester:
+     max_chunk_age: 1h     # Must be >= pattern_sample_interval (default: 1h)
+     pattern_sample_interval: 10s  # default: 10s
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Pattern ingester volume threshold out of range
+
+**Error message:**
+
+```text
+volume_threshold (<value>) must be between 0 and 1
+```
+
+**Cause:**
+
+The `volume_threshold` value is outside the valid range of 0 to 1. This setting controls what fraction of log volume the pattern ingester tracks — only patterns representing the top X% of log volume are persisted.
+
+**Resolution:**
+
+1. **Set `volume_threshold` to a value between 0 and 1** (default is `0.99`):
+
+   ```yaml
+   pattern_ingester:
+     volume_threshold: 0.99
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
 
 
 ## API parameter errors
+
+These errors occur when API requests contain invalid parameters.
+
+### Error: Invalid direction
+
+**Error message:**
+
+```text
+invalid direction '<value>'
+```
+
+**Cause:**
+
+The `direction` query parameter contains an invalid value.
+
+**Resolution:**
+
+1. **Use a valid direction value**:
+   - `forward` - Oldest to newest
+   - `backward` - Newest to oldest (default)
+
+   ```bash
+   curl "http://loki:3100/loki/api/v1/query_range?query={job=\"app\"}&direction=forward"
+   ```
+
+**Properties:**
+
+- Enforced by: API handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Limit must be a positive value
+
+**Error message:**
+
+```text
+limit must be a positive value
+```
+
+**Cause:**
+
+The `limit` parameter is zero or negative.
+
+**Resolution:**
+
+1. **Provide a positive limit**:
+
+   ```bash
+   curl "http://loki:3100/loki/api/v1/query_range?query={job=\"app\"}&limit=100"
+   ```
+
+**Properties:**
+
+- Enforced by: API handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: End timestamp must not be before start time
+
+**Error message:**
+
+```text
+end timestamp must not be before or equal to start time
+```
+
+**Cause:**
+
+The query's `end` time is before or equal to its `start` time.
+
+**Resolution:**
+
+1. **Ensure end time is after start time**:
+
+   ```bash
+   curl "http://loki:3100/loki/api/v1/query_range?\
+   query={job=\"app\"}&\
+   start=2024-01-01T00:00:00Z&\
+   end=2024-01-02T00:00:00Z"
+   ```
+
+**Properties:**
+
+- Enforced by: API handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Delay for tailing too large
+
+**Error message:**
+
+```text
+delay_for can't be greater than <max>
+```
+
+**Cause:**
+
+The `delay_for` parameter for tailing queries exceeds the maximum allowed value.
+
+**Resolution:**
+
+1. **Reduce the delay_for value**:
+
+   ```bash
+   curl "http://loki:3100/loki/api/v1/tail?query={job=\"app\"}&delay_for=5"
+   ```
+
+   The maximum value is typically 5 seconds.
+
+**Properties:**
+
+- Enforced by: API handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Query filtering requires compactor address
+
+**Error message:**
+
+```text
+query filtering for deletes requires 'compactor_grpc_address' or 'compactor_address' to be configured
+```
+
+**Cause:**
+
+Query-time filtering for delete requests is enabled but Loki doesn't know how to reach the compactor to retrieve active delete requests.
+
+**Resolution:**
+
+1. **Configure the compactor address**:
+
+   ```yaml
+   compactor:
+     compactor_grpc_address: compactor:9095
+   ```
+
+1. **Or use the HTTP address**:
+
+   ```yaml
+   compactor:
+     compactor_address: http://compactor:3100
+   ```
+
+**Properties:**
+
+- Enforced by: Module initialization
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
 

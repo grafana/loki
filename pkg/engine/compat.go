@@ -260,7 +260,7 @@ func forEachNotNullRowColValue(numRows int, col arrow.Array, f func(rowIdx int))
 
 func (b *streamsResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
 	// Executor does not guarantee order of entries, so we sort them here.
-	for _, stream := range b.data {
+	for i, stream := range b.data {
 		if b.direction == logproto.BACKWARD {
 			sort.Slice(stream.Entries, func(a, b int) bool {
 				return stream.Entries[a].Timestamp.After(stream.Entries[b].Timestamp)
@@ -270,15 +270,55 @@ func (b *streamsResultBuilder) Build(s stats.Result, md *metadata.Context) logql
 				return stream.Entries[a].Timestamp.Before(stream.Entries[b].Timestamp)
 			})
 		}
+
+		// Deduplicate entries with the same (timestamp, line) within each
+		// stream. Multiple data object sections can contain the same log entry,
+		// and the merge pipeline concatenates them without deduplication.
+		b.data[i].Entries = dedupeEntries(stream.Entries)
 	}
 
 	sort.Sort(b.data)
+
+	// Recount entries after dedup so the stats reflect the actual result size.
+	total := 0
+	for _, stream := range b.data {
+		total += len(stream.Entries)
+	}
+	s.Summary.TotalEntriesReturned = int64(total)
+
 	return logqlmodel.Result{
 		Data:       b.data,
 		Statistics: s,
 		Headers:    md.Headers(),
 		Warnings:   md.Warnings(),
 	}
+}
+
+// dedupeEntries removes consecutive duplicate entries. Two entries are
+// considered duplicates when all fields (timestamp, line, structured metadata,
+// and parsed labels) are equal. The input slice must already be sorted by
+// timestamp.
+func dedupeEntries(entries []logproto.Entry) []logproto.Entry {
+	if len(entries) <= 1 {
+		return entries
+	}
+
+	// tracks the next position to write the next unique entry.
+	next := 1
+
+	// we use a form of two-pointer technique to deduplicate entries.
+	// we keep comparing i with i-1. if they are a duplicate we accumulate by moving forward only one pointer (i).
+	// if we find a non-duplicate we want to write its data to the next position and increment the two pointers.
+	for i := 1; i < len(entries); i++ {
+		prev := &entries[next-1]
+		cur := &entries[i]
+		if cur.Equal(prev) {
+			continue
+		}
+		entries[next] = entries[i]
+		next++
+	}
+	return entries[:next]
 }
 
 func (b *streamsResultBuilder) Len() int {
