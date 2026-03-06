@@ -4094,7 +4094,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.9
+    tag: 2.5.0
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy
@@ -4116,6 +4116,8 @@ sidecar:
     allowPrivilegeEscalation: false
   # -- Set to true to skip tls verification for kube api calls.
   skipTlsVerify: false
+  # -- Set to true to disable strict x509 verification for kube api calls.
+  disableX509StrictVerification: false
   # -- Ensure that rule files aren't conflicting and being overwritten by prefixing their name with the namespace they are defined in.
   enableUniqueFilenames: false
   # -- Readiness probe definition. Probe is disabled on the sidecar by default.

@@ -12543,6 +12543,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>sidecar.disableX509StrictVerification</td>
+			<td>bool</td>
+			<td>Set to true to disable strict x509 verification for kube api calls.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>sidecar.enableUniqueFilenames</td>
 			<td>bool</td>
 			<td>Ensure that rule files aren't conflicting and being overwritten by prefixing their name with the namespace they are defined in.</td>
@@ -12592,7 +12601,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.9"
+"2.5.0"
 </pre>
 </td>
 		</tr>
