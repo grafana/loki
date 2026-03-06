@@ -22,11 +22,18 @@ func TestOpenAndInspectIndexes(t *testing.T) {
 	require.Len(t, results, 1)
 
 	result := results[0]
+	t.Cleanup(func() {
+		if result.Index != nil {
+			_ = result.Index.Close()
+		}
+	})
+
 	require.Equal(t, path, result.LocalPath)
 	require.Equal(t, tsdbindex.FormatV3, result.Version)
 	require.NotEmpty(t, result.LabelNames)
 	require.Contains(t, result.LabelNames, "service_name")
 	require.Greater(t, int64(result.Bounds[1]), int64(result.Bounds[0]))
+	require.NotNil(t, result.Index, "Index handle should be non-nil for successful open")
 }
 
 func TestReaderCopiesStringsBeforeClose(t *testing.T) {
@@ -35,6 +42,11 @@ func TestReaderCopiesStringsBeforeClose(t *testing.T) {
 	results, err := OpenAndInspectIndexes([]string{path})
 	require.NoError(t, err)
 	require.Len(t, results, 1)
+	t.Cleanup(func() {
+		if results[0].Index != nil {
+			_ = results[0].Index.Close()
+		}
+	})
 	require.NotEmpty(t, results[0].LabelNames)
 
 	runtime.GC()

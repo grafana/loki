@@ -38,30 +38,6 @@ type storageOpts struct {
 	maxStreams      int
 }
 
-// openIndexes opens TSDB index files as tsdb.Index handles for
-// structural discovery. The returned cleanup function closes all opened indexes
-// and must be called when the indexes are no longer needed.
-func openIndexes(paths []string) ([]tsdb.Index, func(), error) {
-	indexes := make([]tsdb.Index, 0, len(paths))
-	for _, path := range paths {
-		idx, _, err := tsdb.NewTSDBIndexFromFile(path)
-		if err != nil {
-			// Close any already-opened indexes before returning.
-			for _, opened := range indexes {
-				_ = opened.Close()
-			}
-			return nil, nil, fmt.Errorf("open TSDB index for structural discovery %q: %w", path, err)
-		}
-		indexes = append(indexes, idx)
-	}
-	cleanup := func() {
-		for _, idx := range indexes {
-			_ = idx.Close()
-		}
-	}
-	return indexes, cleanup, nil
-}
-
 var (
 	newIndexStorageClient        = discovertsdb.NewIndexStorageClient
 	discoverAndDownloadIndexesFn = discovertsdb.DiscoverAndDownloadIndexes
@@ -243,6 +219,13 @@ func runAgainstStorage(storageCfg discovertsdb.StorageConfig, from, to time.Time
 		fmt.Fprintf(os.Stderr, "Error: storage index open/inspect failed: %v\n", err)
 		return 1
 	}
+	defer func() {
+		for _, r := range inspectResult {
+			if r.Index != nil {
+				_ = r.Index.Close()
+			}
+		}
+	}()
 
 	fmt.Fprintln(os.Stderr, "\n--- Storage Discovery Summary ---")
 	fmt.Fprintf(os.Stderr, "Tables scanned: %d\n", len(tables))
@@ -268,14 +251,10 @@ func runAgainstStorage(storageCfg discovertsdb.StorageConfig, from, to time.Time
 		return 0
 	}
 
-	// ── TSDB Structural Discovery ──────────────────────────────────────────
-	// Open indexes as tsdb.Index handles for ForSeries traversal.
-	indexes, cleanup, err := openIndexes(paths)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to open indexes for structural discovery: %v\n", err)
-		return 1
+	indexes := make([]tsdb.Index, 0, len(inspectResult))
+	for _, r := range inspectResult {
+		indexes = append(indexes, r.Index)
 	}
-	defer cleanup()
 
 	tsdbCfg := discovertsdb.StructuralConfig{
 		UserID:     storageCfg.Tenant,
@@ -343,7 +322,7 @@ func runAgainstStorage(storageCfg discovertsdb.StorageConfig, from, to time.Time
 		probeTo = time.Now().UTC()
 	}
 	if probeFrom.IsZero() {
-		probeFrom = probeTo.Add(-1 * time.Hour)
+		probeFrom = probeTo.Add(-24 * time.Hour)
 	}
 	probeCfg := discover.ProbeConfig{
 		Parallelism:   opts.concurrency,

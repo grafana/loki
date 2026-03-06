@@ -222,7 +222,7 @@ func TestClassifyStream(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := classifyStream(tt.selector, tt.fields, tt.streamLabelSet)
+			got := classifyStream(tt.selector, tt.fields, tt.streamLabelSet, newBoundedSets())
 
 			require.Equal(t, tt.selector, got.selector, "selector must be preserved")
 			// For the tie case (wantFormat==""), just check it resolves to a known format.

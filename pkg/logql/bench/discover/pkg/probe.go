@@ -67,6 +67,8 @@ func runClassifyPhase(
 	completed := 0
 	total := len(selectors)
 
+	sets := newBoundedSets()
+
 	ctx := context.Background()
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(parallelism)
@@ -103,7 +105,7 @@ func runClassifyPhase(
 				}
 			}
 
-			sc := classifyStream(sel, resp.Fields, streamLabelSet)
+			sc := classifyStream(sel, resp.Fields, streamLabelSet, sets)
 			mu.Lock()
 			classifications = append(classifications, sc)
 			mu.Unlock()

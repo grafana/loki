@@ -6,20 +6,25 @@ import (
 
 	"github.com/prometheus/common/model"
 
+	lokitsdb "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func OpenAndInspectIndexes(paths []string) ([]IndexReaderResult, error) {
 	results := make([]IndexReaderResult, 0, len(paths))
-
 	for _, path := range paths {
 		result, err := openAndInspectIndex(path)
 		if err != nil {
+			// Close any already-opened index handles before returning.
+			for _, r := range results {
+				if r.Index != nil {
+					_ = r.Index.Close()
+				}
+			}
 			return nil, err
 		}
 		results = append(results, result)
 	}
-
 	return results, nil
 }
 
@@ -46,6 +51,13 @@ func openAndInspectIndex(path string) (result IndexReaderResult, err error) {
 		copiedNames[i] = strings.Clone(name)
 	}
 
+	// Full index handle for structural discovery (ForSeries traversal).
+	// This stays open — the caller must close it via result.Index.Close().
+	idx, _, err := lokitsdb.NewTSDBIndexFromFile(path)
+	if err != nil {
+		return IndexReaderResult{}, fmt.Errorf("open TSDB index for discovery %q: %w", path, err)
+	}
+
 	return IndexReaderResult{
 		LocalPath: path,
 		Bounds: [2]model.Time{
@@ -54,5 +66,6 @@ func openAndInspectIndex(path string) (result IndexReaderResult, err error) {
 		},
 		Version:    reader.Version(),
 		LabelNames: copiedNames,
+		Index:      idx,
 	}, nil
 }

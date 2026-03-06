@@ -50,6 +50,37 @@ func setOf(keys []string) map[string]struct{} {
 	return m
 }
 
+// boundedSets holds pre-computed membership sets from the global bounded-set
+// slices. Build once with newBoundedSets() and pass to classifyStream to avoid
+// rebuilding on every call.
+type boundedSets struct {
+	unwrappable  map[string]struct{}
+	structuredMD map[string]struct{}
+	union        map[string]struct{} // UnwrappableFields ∪ StructuredMetadataKeys ∪ LabelKeys
+}
+
+func newBoundedSets() boundedSets {
+	unwrappableSet := setOf(bench.UnwrappableFields)
+	smSet := setOf(bench.StructuredMetadataKeys)
+
+	union := make(map[string]struct{}, len(bench.UnwrappableFields)+len(bench.StructuredMetadataKeys)+len(bench.LabelKeys))
+	for _, k := range bench.UnwrappableFields {
+		union[k] = struct{}{}
+	}
+	for _, k := range bench.StructuredMetadataKeys {
+		union[k] = struct{}{}
+	}
+	for _, k := range bench.LabelKeys {
+		union[k] = struct{}{}
+	}
+
+	return boundedSets{
+		unwrappable:  unwrappableSet,
+		structuredMD: smSet,
+		union:        union,
+	}
+}
+
 // isNumericType returns true when the detected field type is numeric and can
 // therefore be used with | unwrap in LogQL metric queries.
 func isNumericType(t logproto.DetectedFieldType) bool {
@@ -80,23 +111,8 @@ func classifyStream(
 	selector string,
 	fields []loghttp.DetectedField,
 	streamLabelSet map[string]struct{},
+	sets boundedSets,
 ) streamClassification {
-	// Pre-build set lookups once.
-	unwrappableSet := setOf(bench.UnwrappableFields)
-	smSet := setOf(bench.StructuredMetadataKeys)
-
-	// Merged bounded set for detected-field membership check.
-	boundedUnion := make(map[string]struct{}, len(bench.UnwrappableFields)+len(bench.StructuredMetadataKeys)+len(bench.LabelKeys))
-	for _, k := range bench.UnwrappableFields {
-		boundedUnion[k] = struct{}{}
-	}
-	for _, k := range bench.StructuredMetadataKeys {
-		boundedUnion[k] = struct{}{}
-	}
-	for _, k := range bench.LabelKeys {
-		boundedUnion[k] = struct{}{}
-	}
-
 	result := streamClassification{
 		selector: selector,
 	}
@@ -116,7 +132,7 @@ func classifyStream(
 		}
 
 		// Rule 3: Unwrappable — in UnwrappableFields AND numeric type.
-		if _, inUnwrappable := unwrappableSet[f.Label]; inUnwrappable {
+		if _, inUnwrappable := sets.unwrappable[f.Label]; inUnwrappable {
 			if isNumericType(f.Type) {
 				result.unwrappable = append(result.unwrappable, f.Label)
 			}
@@ -127,7 +143,7 @@ func classifyStream(
 		// Rule 4: Structured metadata — no parsers AND in StructuredMetadataKeys
 		// AND not a stream label.
 		if !hasParsers {
-			if _, inSM := smSet[f.Label]; inSM {
+			if _, inSM := sets.structuredMD[f.Label]; inSM {
 				if _, isLabel := streamLabelSet[f.Label]; !isLabel {
 					result.structuredMeta = append(result.structuredMeta, f.Label)
 				}
@@ -136,7 +152,7 @@ func classifyStream(
 
 		// Rule 5: Detected fields — has parsers AND in any bounded set.
 		if hasParsers {
-			if _, inUnion := boundedUnion[f.Label]; inUnion {
+			if _, inUnion := sets.union[f.Label]; inUnion {
 				result.detectedFields = append(result.detectedFields, f.Label)
 			}
 		}
