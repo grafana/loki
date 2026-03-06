@@ -144,7 +144,9 @@ func (b *bufferBuilder) Finish() (buffer *memory.Buffer) {
 	b.buffer = nil
 	b.Reset()
 	if buffer == nil {
-		buffer = memory.NewBufferBytes(nil)
+		// Use an empty slice instead of nil to ensure slicing returns an empty slice
+		// This fixes issue #625 where all empty values were incorrectly treated as NULL
+		buffer = memory.NewBufferBytes([]byte{})
 	}
 	return
 }
