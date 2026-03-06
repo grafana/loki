@@ -25,3 +25,7 @@ lint: ## run linters
 .PHONY: test
 test: ## run go tests
 	${GOTEST} -race -v .
+
+.PHONY: bench
+bench: ## run go benchmarks
+	${GOTEST} -bench=. -benchmem -count=10 -run='^$$' -memprofile=mem.out -cpuprofile=cpu.out .
