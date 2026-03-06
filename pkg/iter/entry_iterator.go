@@ -271,7 +271,9 @@ func lessAscending(e1, e2 sortFields) bool {
 		// The underlying stream hash may not be available, such as when merging LokiResponses in the
 		// frontend which were sharded. Prefer to use the underlying stream hash when available,
 		// which is needed in deduping code, but defer to label sorting when it's not present.
-		if e1.streamHash == 0 {
+		// Also defer to label sorting when both hashes are equal (e.g. entries from the same base
+		// stream but with different structured metadata share the same base hash).
+		if e1.streamHash == 0 || e1.streamHash == e2.streamHash {
 			return e1.labels < e2.labels
 		}
 		return e1.streamHash < e2.streamHash
@@ -281,7 +283,7 @@ func lessAscending(e1, e2 sortFields) bool {
 
 func lessDescending(e1, e2 sortFields) bool {
 	if e1.timeNanos == e2.timeNanos {
-		if e1.streamHash == 0 {
+		if e1.streamHash == 0 || e1.streamHash == e2.streamHash {
 			return e1.labels < e2.labels
 		}
 		return e1.streamHash < e2.streamHash
