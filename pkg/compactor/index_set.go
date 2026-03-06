@@ -112,6 +112,10 @@ func newIndexSet(ctx context.Context, tableName, userID string, baseIndexSet sto
 	if err != nil {
 		return nil, err
 	}
+	if len(ui.sourceObjects) > 1000 {
+		level.Info(ui.logger).Log("msg", "listing more than 1000 source index files, truncating to first 1000", "count", len(ui.sourceObjects))
+		ui.sourceObjects = ui.sourceObjects[:1000]
+	}
 
 	return ui, nil
 }
