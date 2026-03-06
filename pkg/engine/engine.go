@@ -128,7 +128,7 @@ func (p *Params) validate() error {
 		return errors.New("scheduler is required")
 	}
 	if p.Metastore == nil && p.IndexGateway == nil {
-		return errors.New("either metastore or index gateway is required")
+		return errors.New("at least one of metastore or index gateway is required")
 	}
 	if p.Config.Executor.BatchSize <= 0 {
 		return fmt.Errorf("invalid batch size for query engine. must be greater than 0, got %d", p.Config.Executor.BatchSize)
@@ -220,6 +220,10 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		span.SetStatus(codes.Error, "failed to create logical plan")
 		return logqlmodel.Result{}, ErrNotSupported
 	}
+
+	// Dual-resolve: call both backends and log results for comparison.
+	e.dualResolve(ctx, tenantID, logger, params, logicalPlan)
+	return logqlmodel.Result{}, nil
 
 	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, tenantID, logger, params, logicalPlan)
 	if err != nil {
@@ -371,6 +375,9 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
+	// Dual-resolve: call both backends and log results for comparison.
+	e.dualResolve(ctx, tenantID, logger, params, logicalPlan)
+
 	var catalog physical.Catalog
 	if e.indexGateway != nil {
 		catalog = physical.NewTSDBCatalog(e.tsdbSectionsResolver(ctx, tenantID))
@@ -412,6 +419,60 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 
 	span.AddEvent("finished physical planning", trace.WithAttributes(attribute.Stringer("duration", duration)))
 	return physicalPlan, duration, nil
+}
+
+// dualResolve resolves dataobj sections from both metastore and index-gateway
+// (when available), logging section counts and durations for comparison.
+// It does not affect the query — results are discarded after logging.
+func (e *Engine) dualResolve(ctx context.Context, tenantID string, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) {
+	plannerCtx := physical.NewContext(params.Start(), params.End())
+
+	if e.metastore != nil {
+		start := time.Now()
+		catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID))
+		p := physical.NewPlanner(plannerCtx, catalog)
+		plan, err := p.Build(logicalPlan)
+		elapsed := time.Since(start)
+		if err != nil {
+			level.Warn(logger).Log("msg", "dual-resolve: metastore resolution failed", "err", err, "duration", elapsed)
+		} else {
+			sections := countScanTargets(plan)
+			level.Info(logger).Log("msg", "dual-resolve: metastore", "sections", sections, "duration", elapsed)
+		}
+	} else {
+		level.Info(logger).Log("msg", "dual-resolve: metastore not configured, skipping")
+	}
+
+	if e.indexGateway != nil {
+		start := time.Now()
+		catalog := physical.NewTSDBCatalog(e.tsdbSectionsResolver(ctx, tenantID))
+		p := physical.NewPlanner(plannerCtx, catalog)
+		plan, err := p.Build(logicalPlan)
+		elapsed := time.Since(start)
+		if err != nil {
+			level.Warn(logger).Log("msg", "dual-resolve: index-gateway resolution failed", "err", err, "duration", elapsed)
+		} else {
+			sections := countScanTargets(plan)
+			level.Info(logger).Log("msg", "dual-resolve: index-gateway", "sections", sections, "duration", elapsed)
+		}
+	} else {
+		level.Info(logger).Log("msg", "dual-resolve: index-gateway not configured, skipping")
+	}
+}
+
+// countScanTargets counts the total number of DataObjScan targets in a physical plan.
+func countScanTargets(plan *physical.Plan) int {
+	var count int
+	for _, node := range plan.Leaves() {
+		if ss, ok := node.(*physical.ScanSet); ok {
+			for _, t := range ss.Targets {
+				if t.Type == physical.ScanTypeDataObject {
+					count++
+				}
+			}
+		}
+	}
+	return count
 }
 
 func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string) physical.MetastoreSectionsResolver {
