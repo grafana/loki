@@ -190,7 +190,7 @@ Either get credentials for the Loki instance you want to test against or setup a
 Build the discover binary:
 
 ```bash
-go build -o /tmp/discover ./pkg/logql/bench/cmd/discover/
+make -C pkg/logql/bench discover/cmd/discover
 ```
 
 ### Running the Discovery Tool
@@ -200,7 +200,7 @@ go build -o /tmp/discover ./pkg/logql/bench/cmd/discover/
 This is the primary workflow (available via `make discover`). It reads TSDB indexes directly from S3 for structural discovery (zero API calls) and uses the Grafana Cloud gateway with HTTP basic auth for content probes (keyword detection, field classification).
 
 ```bash
-discover/cmd/discover \
+pkg/logql/bench/discover/cmd/discover \
   --address "$LOKI_ADDR" \
   --username "$LOKI_USERNAME" \
   --password "$LOKI_PASSWORD" \
@@ -228,7 +228,7 @@ If you have `kubectl` access with port-forward permissions, you can bypass the a
 kubectl port-forward --context ops-eu-south-0 --namespace loki-ops-002 svc/query-frontend 3100:3100
 
 # Then run discover without --username/--password:
-discover/cmd/discover \
+pkg/logql/bench/discover/cmd/discover \
   --address http://localhost:3100 \
   --tenant "$LOKI_USERNAME" \
   --storage-type s3 \
