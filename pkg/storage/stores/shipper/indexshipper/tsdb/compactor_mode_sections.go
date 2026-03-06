@@ -23,6 +23,7 @@ type compactionMode interface {
 	addSeries(builder *Builder, source modeSourceHandle, lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) error
 	releaseSource(source modeSourceHandle)
 	writeCompactedSidecar(builder *Builder, tsdbPath string) error
+	reset()
 }
 
 type modeSourceHandle uint32
@@ -150,6 +151,13 @@ func (m *sectionRefCompactionMode) refsForSource(source modeSourceHandle) (*sect
 	return refs, nil
 }
 
+func (m *sectionRefCompactionMode) reset() {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.refs = make(map[modeSourceHandle]*sectionref.SectionRefTable)
+	m.nextID = 0
+}
+
 func sectionsTableFileName(tsdbFile string) (string, error) {
 	switch {
 	case strings.HasSuffix(tsdbFile, ".tsdb.gz"):
@@ -189,4 +197,7 @@ func sectionsTablePath(tsdbPath string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid tsdb file path %q", tsdbPath)
 	}
+}
+
+func Reset() {
 }
