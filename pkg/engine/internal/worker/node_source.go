@@ -59,7 +59,7 @@ func (src *nodeSource) Read(ctx context.Context) (arrow.RecordBatch, error) {
 func (src *nodeSource) lazyInit() {
 	src.initOnce.Do(func() {
 		src.closed = make(chan struct{})
-		src.records = make(chan arrow.RecordBatch)
+		src.records = make(chan arrow.RecordBatch, 128)
 	})
 }
 
