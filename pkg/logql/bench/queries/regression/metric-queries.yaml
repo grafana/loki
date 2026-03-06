@@ -2,7 +2,7 @@
 ---
 queries:
   - description: Sum over time with integer unwrap
-    query: sum(sum_over_time(${SELECTOR} | json | unwrap rows_affected [${RANGE}]))
+    query: sum(sum_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -10,15 +10,15 @@ queries:
     tags:
       - unwrap
       - sum_over_time
-      - json
+      - logfmt
       - integer-field
     notes: Basic unwrap of integer field with sum aggregation
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
-        - rows_affected
+        - duration
   - description: Average over time with integer unwrap
-    query: avg(avg_over_time(${SELECTOR} | json | unwrap rows_affected [${RANGE}]))
+    query: avg(avg_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -26,14 +26,14 @@ queries:
     tags:
       - unwrap
       - avg_over_time
-      - json
+      - logfmt
       - integer-field
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
-        - rows_affected
+        - duration
   - description: Rate of unwrapped values
-    query: rate(${SELECTOR} | json | unwrap rows_affected [${RANGE}])
+    query: rate(${SELECTOR} | logfmt | unwrap duration [${RANGE}])
     kind: metric
     time_range:
       length: 24h
@@ -41,13 +41,13 @@ queries:
     tags:
       - unwrap
       - rate
-      - json
+      - logfmt
       - integer-field
     notes: Rate shows per-second rate of change
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
-        - rows_affected
+        - duration
   - description: Duration seconds conversion with avg
     query: sum by (level) (avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
     kind: metric
@@ -130,7 +130,7 @@ queries:
       unwrappable_fields:
         - bytes
   - description: Bytes conversion function
-    query: sum(sum_over_time(${SELECTOR} | json | unwrap bytes(size) [${RANGE}]))
+    query: sum(sum_over_time(${SELECTOR} | logfmt | unwrap bytes(size) [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -138,15 +138,15 @@ queries:
     tags:
       - unwrap
       - sum_over_time
-      - json
+      - logfmt
       - bytes-conversion
     notes: Convert size strings like '1KB' to bytes
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
         - size
   - description: Min over time with unwrap
-    query: min(min_over_time(${SELECTOR} | json | unwrap rows_affected [${RANGE}]))
+    query: min(min_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -154,14 +154,14 @@ queries:
     tags:
       - unwrap
       - min_over_time
-      - json
+      - logfmt
       - integer-field
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
-        - rows_affected
+        - duration
   - description: Max over time with unwrap
-    query: max(max_over_time(${SELECTOR} | json | unwrap rows_affected [${RANGE}]))
+    query: max(max_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -169,14 +169,14 @@ queries:
     tags:
       - unwrap
       - max_over_time
-      - json
+      - logfmt
       - integer-field
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
-        - rows_affected
-  - description: Cache size unwrap
-    query: avg(avg_over_time(${SELECTOR} | json | unwrap size [${RANGE}]))
+        - duration
+  - description: Logfmt size unwrap
+    query: avg(avg_over_time(${SELECTOR} | logfmt | unwrap size [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -184,15 +184,15 @@ queries:
     tags:
       - unwrap
       - avg_over_time
-      - json
+      - logfmt
       - size-field
-    notes: Average cache entry size
+    notes: Average size from logfmt streams
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
         - size
-  - description: Cache TTL unwrap
-    query: avg(avg_over_time(${SELECTOR} | json | unwrap ttl [${RANGE}]))
+  - description: Logfmt status unwrap
+    query: avg(avg_over_time(${SELECTOR} | logfmt | unwrap status [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -200,15 +200,15 @@ queries:
     tags:
       - unwrap
       - avg_over_time
-      - json
-      - ttl-field
-    notes: Average cache TTL in seconds
+      - logfmt
+      - status-field
+    notes: Average status code from logfmt streams
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
-        - ttl
+        - status
   - description: HTTP status code distribution
-    query: sum by (level) (count_over_time(${SELECTOR} | json | __error__="" [${RANGE}]))
+    query: sum by (level) (count_over_time(${SELECTOR} | json [${RANGE}]))
     kind: metric
     time_range:
       length: 24h

@@ -2,7 +2,7 @@
 ---
 queries:
   - description: Average over time with unwrap - no grouping
-    query: sum(avg_over_time(${SELECTOR} | json | unwrap rows_affected [${RANGE}]))
+    query: sum(avg_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -11,12 +11,13 @@ queries:
       - unwrap
       - aggregation
       - avg
+      - logfmt
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
-        - rows_affected
+        - duration
   - description: Average over time with line filter and unwrap
-    query: sum(avg_over_time(${SELECTOR} |= "level" | json | unwrap rows_affected [${RANGE}]))
+    query: sum(avg_over_time(${SELECTOR} |= "level" | logfmt | unwrap duration [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -26,14 +27,15 @@ queries:
       - aggregation
       - avg
       - line-filter
+      - logfmt
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
-        - rows_affected
+        - duration
       keywords:
         - level
   - description: Min over time with unwrap
-    query: sum(min_over_time(${SELECTOR} |= "level" | json | unwrap rows_affected [${RANGE}]))
+    query: sum(min_over_time(${SELECTOR} |= "level" | logfmt | unwrap duration [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -42,14 +44,15 @@ queries:
       - unwrap
       - aggregation
       - min
+      - logfmt
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
-        - rows_affected
+        - duration
       keywords:
         - level
   - description: Max over time with unwrap
-    query: sum(max_over_time(${SELECTOR} |= "level" | json | unwrap rows_affected [${RANGE}]))
+    query: sum(max_over_time(${SELECTOR} |= "level" | logfmt | unwrap duration [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -58,10 +61,11 @@ queries:
       - unwrap
       - aggregation
       - max
+      - logfmt
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
-        - rows_affected
+        - duration
       keywords:
         - level
   - description: Count aggregated by pod
@@ -90,8 +94,8 @@ queries:
     requires:
       labels:
         - namespace
-  - description: Count aggregated by env
-    query: sum by (env) (count_over_time(${SELECTOR}[${RANGE}]))
+  - description: Count aggregated by service_name
+    query: sum by (service_name) (count_over_time(${SELECTOR}[${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -102,7 +106,7 @@ queries:
       - grouping
     requires:
       labels:
-        - env
+        - service_name
   - description: Count aggregated by detected_level
     query: sum by (detected_level) (count_over_time(${SELECTOR}[${RANGE}]))
     kind: metric
@@ -132,10 +136,9 @@ queries:
       labels:
         - cluster
         - namespace
-  - description: Count aggregated by env and component
-    query: sum by (env, component) (count_over_time(${SELECTOR}[${RANGE}]))
+  - description: Count aggregated by service_name and container
+    query: sum by (service_name, container) (count_over_time(${SELECTOR}[${RANGE}]))
     kind: metric
-    skip: true # component label not available in test data
     time_range:
       length: 24h
       step: 1m
@@ -146,10 +149,10 @@ queries:
       - multi-dimension
     requires:
       labels:
-        - env
-        - component
-  - description: Database rows affected by level
-    query: sum by (level) (sum_over_time(${SELECTOR} | json | unwrap rows_affected [${RANGE}]))
+        - service_name
+        - container
+  - description: JSON duration by level
+    query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}]))
     kind: metric
     time_range:
       length: 24h
@@ -159,10 +162,11 @@ queries:
       - aggregation
       - sum
       - grouping
+      - logfmt
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
-        - rows_affected
+        - duration
       detected_fields:
         - level
   - description: Loki duration unwrap with logfmt
@@ -273,8 +277,8 @@ queries:
       log_format: logfmt
       unwrappable_fields:
         - duration
-  - description: Sum rows affected without outer aggregation
-    query: sum_over_time(${SELECTOR} | json | unwrap rows_affected [${RANGE}])
+  - description: Sum duration without outer aggregation
+    query: sum_over_time(${SELECTOR} | logfmt | unwrap duration [${RANGE}])
     time_range:
       length: 24h
       step: 1m
@@ -282,7 +286,8 @@ queries:
       - unwrap
       - aggregation
       - no-outer-aggregation
+      - logfmt
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
-        - rows_affected
+        - duration

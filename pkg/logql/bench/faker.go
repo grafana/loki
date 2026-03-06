@@ -507,7 +507,7 @@ var defaultApplications = []Service{
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
-				`{"level":"%s","ts":"%s","msg":"HTTP request","method":"%s","path":"%s","status":%d,"duration":%d,"user_agent":"%s","client_ip":"%s"`,
+				`{"level":"%s","ts":"%s","msg":"HTTP request","method":"%s","path":"%s","status":%d,"duration_ms":%d,"user_agent":"%s","client_ip":"%s"`,
 				level, ts.Format(time.RFC3339), f.Method(), f.Path(), f.Status(), f.Duration().Milliseconds(), f.UserAgent(), f.IP(),
 			)
 
@@ -543,7 +543,7 @@ var defaultApplications = []Service{
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
-				`{"level":"%s","ts":"%s","msg":"Query executed","query_type":"%s","table":"%s","duration":%d,"rows_affected":%d`,
+				`{"level":"%s","ts":"%s","msg":"Query executed","query_type":"%s","table":"%s","duration_ms":%d,"rows_affected":%d`,
 				level, ts.Format(time.RFC3339), f.QueryType(), f.Table(), f.Duration().Milliseconds(), f.RowsAffected(),
 			)
 
