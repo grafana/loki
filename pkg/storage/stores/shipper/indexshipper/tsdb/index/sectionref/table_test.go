@@ -66,6 +66,26 @@ func TestSectionRefTableEncodePathTooLong(t *testing.T) {
 	require.ErrorIs(t, err, ErrSectionRefPathTooLong)
 }
 
+func TestSectionRefTableDecodeThenAddUsesLazyMaps(t *testing.T) {
+	src := NewSectionRefTable(nil)
+	src.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1, SeriesID: 10})
+	src.Add(SectionRef{Path: "s3://bucket/b", SectionID: 2, SeriesID: 20})
+
+	data, err := src.Encode()
+	require.NoError(t, err)
+
+	decoded, err := Decode(data)
+	require.NoError(t, err)
+	require.NotNil(t, decoded)
+
+	existing := SectionRef{Path: "s3://bucket/a", SectionID: 1, SeriesID: 10}
+	newRef := SectionRef{Path: "s3://bucket/a", SectionID: 3, SeriesID: 30}
+
+	require.Equal(t, uint32(0), decoded.Add(existing))
+	require.Equal(t, uint32(2), decoded.Add(newRef))
+	require.Equal(t, 3, decoded.Len())
+}
+
 func BenchmarkSectionRefTableAddRepeatedPaths(b *testing.B) {
 	refs := buildBenchmarkRefs(100_000, 64)
 
