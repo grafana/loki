@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/backoff"
+
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	bench "github.com/grafana/loki/v3/pkg/logql/bench"

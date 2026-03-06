@@ -6,18 +6,18 @@ import (
 
 const (
 	// DefaultMaxStreams is the default cap on the number of streams returned by
-	// RunDiscovery. Callers can override via DiscoverConfig.MaxStreams.
+	// RunDiscovery. Callers can override via Config.MaxStreams.
 	DefaultMaxStreams = 250
 
 	// DefaultParallelism is the default number of concurrent series API calls
-	// issued by RunDiscovery. Callers can override via DiscoverConfig.Parallelism.
+	// issued by RunDiscovery. Callers can override via Config.Parallelism.
 	DefaultParallelism = 5
 )
 
-// DiscoverConfig controls assembly and validation of the metadata pipeline.
+// Config controls assembly and validation of the metadata pipeline.
 // Storage discovery, content probing, and other pipeline options are configured
 // directly on their respective config types (TSDBStructuralConfig, ProbeConfig).
-type DiscoverConfig struct {
+type Config struct {
 	// From is the start of the query time range. When zero-valued, defaults to
 	// 24 hours before To (or before now when To is also zero).
 	From time.Time
@@ -29,7 +29,7 @@ type DiscoverConfig struct {
 
 // effectiveFrom returns the resolved From boundary, defaulting to 24h before
 // the effective To when From is zero-valued.
-func (c DiscoverConfig) effectiveFrom() time.Time {
+func (c Config) effectiveFrom() time.Time {
 	if !c.From.IsZero() {
 		return c.From
 	}
@@ -38,7 +38,7 @@ func (c DiscoverConfig) effectiveFrom() time.Time {
 
 // effectiveTo returns the resolved To boundary, defaulting to the current time
 // when To is zero-valued.
-func (c DiscoverConfig) effectiveTo() time.Time {
+func (c Config) effectiveTo() time.Time {
 	if !c.To.IsZero() {
 		return c.To
 	}

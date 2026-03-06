@@ -7,12 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestDiscoverConfigDefaults verifies that DiscoverConfig applies the correct
+// TestConfigDefaults verifies that Config applies the correct
 // defaults when time fields are left at zero-values.
-func TestDiscoverConfigDefaults(t *testing.T) {
+func TestConfigDefaults(t *testing.T) {
 	t.Run("To defaults to approximately now", func(t *testing.T) {
 		before := time.Now()
-		cfg := DiscoverConfig{}
+		cfg := Config{}
 		to := cfg.effectiveTo()
 		after := time.Now()
 
@@ -23,7 +23,7 @@ func TestDiscoverConfigDefaults(t *testing.T) {
 	})
 
 	t.Run("From defaults to 24h before effectiveTo when both are zero", func(t *testing.T) {
-		cfg := DiscoverConfig{}
+		cfg := Config{}
 		to := cfg.effectiveTo()
 		from := cfg.effectiveFrom()
 
@@ -35,19 +35,19 @@ func TestDiscoverConfigDefaults(t *testing.T) {
 
 	t.Run("explicit From is preserved", func(t *testing.T) {
 		fixedFrom := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-		cfg := DiscoverConfig{From: fixedFrom}
+		cfg := Config{From: fixedFrom}
 		require.Equal(t, fixedFrom, cfg.effectiveFrom())
 	})
 
 	t.Run("explicit To is preserved", func(t *testing.T) {
 		fixedTo := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
-		cfg := DiscoverConfig{To: fixedTo}
+		cfg := Config{To: fixedTo}
 		require.Equal(t, fixedTo, cfg.effectiveTo())
 	})
 
 	t.Run("From defaults to 24h before explicit To", func(t *testing.T) {
 		fixedTo := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
-		cfg := DiscoverConfig{To: fixedTo}
+		cfg := Config{To: fixedTo}
 		expected := fixedTo.Add(-24 * time.Hour)
 		require.Equal(t, expected, cfg.effectiveFrom())
 	})

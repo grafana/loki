@@ -6,13 +6,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	"github.com/stretchr/testify/require"
 )
 
 type fakeObjectClient struct{}
@@ -50,7 +51,7 @@ func TestNewObjectClient(t *testing.T) {
 
 	t.Run("s3 backend", func(t *testing.T) {
 		called := false
-		newS3ObjectClient = func(cfg aws.S3Config, hedgingCfg hedging.Config) (client.ObjectClient, error) {
+		newS3ObjectClient = func(_ aws.S3Config, _ hedging.Config) (client.ObjectClient, error) {
 			called = true
 			return fakeObjectClient{}, nil
 		}
@@ -63,7 +64,7 @@ func TestNewObjectClient(t *testing.T) {
 
 	t.Run("gcs backend", func(t *testing.T) {
 		called := false
-		newGCSObjectClient = func(ctx context.Context, cfg gcp.GCSConfig, hedgingCfg hedging.Config) (client.ObjectClient, error) {
+		newGCSObjectClient = func(_ context.Context, _ gcp.GCSConfig, _ hedging.Config) (client.ObjectClient, error) {
 			called = true
 			return fakeObjectClient{}, nil
 		}
@@ -76,7 +77,7 @@ func TestNewObjectClient(t *testing.T) {
 
 	t.Run("azure backend", func(t *testing.T) {
 		called := false
-		newAzureObjectClient = func(cfg *azure.BlobStorageConfig, hedgingCfg hedging.Config) (client.ObjectClient, error) {
+		newAzureObjectClient = func(_ *azure.BlobStorageConfig, _ hedging.Config) (client.ObjectClient, error) {
 			called = true
 			return fakeObjectClient{}, nil
 		}
@@ -89,7 +90,7 @@ func TestNewObjectClient(t *testing.T) {
 
 	t.Run("filesystem backend", func(t *testing.T) {
 		called := false
-		newFSObjectClient = func(cfg local.FSConfig) (client.ObjectClient, error) {
+		newFSObjectClient = func(_ local.FSConfig) (client.ObjectClient, error) {
 			called = true
 			return fakeObjectClient{}, nil
 		}
@@ -132,7 +133,7 @@ func TestNewIndexStorageClient(t *testing.T) {
 
 	t.Run("returns validation errors before constructor calls", func(t *testing.T) {
 		called := false
-		newFSObjectClient = func(cfg local.FSConfig) (client.ObjectClient, error) {
+		newFSObjectClient = func(_ local.FSConfig) (client.ObjectClient, error) {
 			called = true
 			return fakeObjectClient{}, nil
 		}

@@ -558,8 +558,8 @@ queries:
       log_format: logfmt
       unwrappable_fields:
         - duration
-  - description: Bytes conversion function
-    query: sum_over_time(${SELECTOR} | json | unwrap size [${RANGE}])
+  - description: JSON size unwrap
+    query: sum_over_time(${SELECTOR} | json | size != "" | unwrap size [${RANGE}])
     kind: metric
     time_range:
       length: 24h
@@ -568,7 +568,7 @@ queries:
       - unwrap
       - sum_over_time
       - json
-      - bytes-conversion
+      - integer-field
     notes: Unwrap integer size field from JSON logs (cache/kafka services)
     requires:
       log_format: json

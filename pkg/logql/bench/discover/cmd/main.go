@@ -314,7 +314,7 @@ func runAgainstStorage(storageCfg discovertsdb.StorageConfig, from, to time.Time
 	}
 
 	// Default time range for content probes: when --from/--to are not
-	// specified, use a 24h window ending at now (same as DiscoverConfig).
+	// specified, use a 24h window ending at now (same as Config).
 	// Zero times would cause the detected_fields API to receive epoch-0
 	// timestamps and return empty results.
 	probeFrom, probeTo := from, to
@@ -362,7 +362,7 @@ func runAgainstStorage(storageCfg discovertsdb.StorageConfig, from, to time.Time
 	}
 
 	// ── Assembly ───────────────────────────────────────────────────────────
-	cfg := discover.DiscoverConfig{
+	cfg := discover.Config{
 		From: from,
 		To:   to,
 	}

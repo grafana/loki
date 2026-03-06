@@ -4,11 +4,12 @@ import (
 	"flag"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
 	storageawscommon "github.com/grafana/loki/v3/pkg/storage/common/aws"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/stretchr/testify/require"
 )
 
 func TestStorageConfigRegisterFlags(t *testing.T) {

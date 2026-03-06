@@ -23,7 +23,7 @@ func AssembleMetadata(
 	classify *ClassifyResult,
 	keywords *KeywordResult,
 	ranges *tsdb.RangeResult,
-	cfg DiscoverConfig,
+	cfg Config,
 ) *bench.DatasetMetadata {
 	return &bench.DatasetMetadata{
 		Version:              bench.MetadataVersion,

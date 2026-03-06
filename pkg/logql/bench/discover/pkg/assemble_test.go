@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/loghttp"
 
 	bench "github.com/grafana/loki/v3/pkg/logql/bench"
 	"github.com/grafana/loki/v3/pkg/logql/bench/discover/pkg/tsdb"
@@ -147,7 +148,7 @@ func TestAssembleMetadata(t *testing.T) {
 		},
 	}
 
-	cfg := DiscoverConfig{From: from, To: to}
+	cfg := Config{From: from, To: to}
 
 	// --- Assemble ---
 	md := AssembleMetadata(discoverResult, classify, keywords, ranges, cfg)
