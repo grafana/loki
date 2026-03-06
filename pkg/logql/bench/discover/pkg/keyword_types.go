@@ -35,7 +35,7 @@ type KeywordResult struct {
 	// as per-probe API errors that caused a probe to be skipped.
 	Warnings []string
 
-	// TotalProbed is the total number of stream-keyword pairs probed.
+	// TotalProbed is the number of keyword probes that completed successfully.
 	TotalProbed int
 
 	// TotalSkipped is the number of pairs skipped due to API error.
