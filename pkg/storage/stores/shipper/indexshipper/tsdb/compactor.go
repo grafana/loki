@@ -129,6 +129,9 @@ func newTableCompactor(
 }
 
 func (t *tableCompactor) CompactTable() error {
+	if t.mode != nil {
+		t.mode.reset()
+	}
 	allMultiTenantIndexes := t.commonIndexSet.ListSourceFiles()
 	multiTenantIndexes := make([]storage.IndexFile, 0, len(allMultiTenantIndexes))
 	for _, source := range allMultiTenantIndexes {
