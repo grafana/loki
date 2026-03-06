@@ -38,9 +38,9 @@ Multiple configuration validation errors were detected during startup. Loki aggr
 - **Check your configuration file** for syntax errors and invalid values.
 - **Validate your configuration** before applying:
 
-   ```bash
-   loki - config.file=/path/to/config.yaml - verify- config
-   ```
+  ```bash
+  loki -config.file=/path/to/config.yaml -verify-config
+  ```
 
 **Properties:**
 
@@ -65,20 +65,20 @@ Multiple storage backends are configured in the common configuration section. Lo
 
 - **Use only one storage backend** in your common config:
 
-   ```yaml
-   common:
-     storage:
-       # Choose only ONE of the following:
-       s3:
-         endpoint: s3.amazonaws.com
-         bucketnames: loki- data
-       # OR
-       gcs:
-         bucket_name: loki- data
-       # OR
-       azure:
-         container_name: loki- data
-   ```
+  ```yaml
+  common:
+    storage:
+      # Choose only ONE of the following:
+      s3:
+        endpoint: s3.amazonaws.com
+        bucketnames: loki-data
+      # OR
+      gcs:
+        bucket_name: loki-data
+      # OR
+      azure:
+        container_name: loki-data
+  ```
 
 - **For multiple storage backends**, configure them explicitly in specific sections rather than common config.
 
@@ -105,25 +105,25 @@ The `persist_tokens` option is enabled for a ring but no `path_prefix` is specif
 
 - **Set the path prefix**:
 
-   ```yaml
-   common:
-     path_prefix: /var/loki
-     persist_tokens: true
-   
-   ingester:
-     lifecycler:
-       ring:
-         kvstore:
-           store: memberlist
-       tokens_file_path: /var/loki/tokens
-   ```
+  ```yaml
+  common:
+    path_prefix: /var/loki
+    persist_tokens: true
+  
+  ingester:
+    lifecycler:
+      ring:
+        kvstore:
+          store: memberlist
+      tokens_file_path: /var/loki/tokens
+  ```
 
 - **Or disable persist_tokens** if you don't need token persistence:
 
-   ```yaml
-   common:
-     persist_tokens: false
-   ```
+  ```yaml
+  common:
+    persist_tokens: false
+  ```
 
 **Properties:**
 
@@ -148,16 +148,16 @@ Both the deprecated `grpc_client_config` and the newer specific gRPC client conf
 
 - **Remove the deprecated config** and use specific gRPC client configs:
 
-   ```yaml
-   # Remove this:
-   # grpc_client_config: ...
-   
-   # Use these instead:
-   query_frontend_grpc_client:
-     max_recv_msg_size: 104857600
-   query_scheduler_grpc_client:
-     max_recv_msg_size: 104857600
-   ```
+  ```yaml
+  # Remove this:
+  # grpc_client_config: ...
+  
+  # Use these instead:
+  query_frontend_grpc_client:
+    max_recv_msg_size: 104857600
+  query_scheduler_grpc_client:
+    max_recv_msg_size: 104857600
+  ```
 
 **Properties:**
 
@@ -171,7 +171,7 @@ Both the deprecated `grpc_client_config` and the newer specific gRPC client conf
 **Error message:**
 
 ```text
-CONFIG ERROR: schema v13 is required to store Structured Metadata and use native OTLP ingestion, your schema version is <version>. Set `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `- validation.allow- structured- metadata=false` and restart Loki. Then proceed to update to schema v13 or newer before re- enabling this config, search for 'Storage Schema' in the docs for the schema update procedure
+CONFIG ERROR: schema v13 is required to store Structured Metadata and use native OTLP ingestion, your schema version is <version>. Set `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false` and restart Loki. Then proceed to update to schema v13 or newer before re-enabling this config, search for 'Storage Schema' in the docs for the schema update procedure
 ```
 
 **Cause:**
@@ -182,26 +182,26 @@ Structured metadata is enabled but the active schema version is older than v13. 
 
 - **Disable structured metadata temporarily**:
 
-   ```yaml
-   limits_config:
-     allow_structured_metadata: false
-   ```
+  ```yaml
+  limits_config:
+    allow_structured_metadata: false
+  ```
 
 - **Update your schema config** to v13 or newer:
 
-   ```yaml
-   schema_config:
-     configs:
-       - from: "2024- 04- 01"
-         store: tsdb
-         object_store: s3
-         schema: v13
-         index:
-           prefix: index_
-           period: 24h
-   ```
+  ```yaml
+  schema_config:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  ```
 
-- **Re- enable structured metadata** after the schema migration is complete.
+- **Re-enable structured metadata** after the schema migration is complete.
 
 **Properties:**
 
@@ -215,7 +215,7 @@ Structured metadata is enabled but the active schema version is older than v13. 
 **Error message:**
 
 ```text
-CONFIG ERROR: `tsdb` index type is required to store Structured Metadata and use native OTLP ingestion, your index type is `<type>` (defined in the `store` parameter of the schema_config). Set `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `- validation.allow- structured- metadata=false` and restart Loki. Then proceed to update the schema to use index type `tsdb` before re- enabling this config, search for 'Storage Schema' in the docs for the schema update procedure
+CONFIG ERROR: `tsdb` index type is required to store Structured Metadata and use native OTLP ingestion, your index type is `<type>` (defined in the `store` parameter of the schema_config). Set `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false` and restart Loki. Then proceed to update the schema to use index type `tsdb` before re-enabling this config, search for 'Storage Schema' in the docs for the schema update procedure
 ```
 
 **Cause:**
@@ -226,19 +226,19 @@ Structured metadata is enabled but the active index type is not TSDB. Structured
 
 - **Disable structured metadata temporarily** and migrate to the TSDB index type:
 
-   ```yaml
-   limits_config:
-     allow_structured_metadata: false
-   
-   schema_config:
-     configs:
-       - from: "2024- 01- 01"
-         store: tsdb
-         object_store: s3
-         schema: v13
-   ```
+  ```yaml
+  limits_config:
+    allow_structured_metadata: false
+  
+  schema_config:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: s3
+        schema: v13
+  ```
 
-- **Re- enable structured metadata** after migrating to TSDB.
+- **Re-enable structured metadata** after migrating to TSDB.
 
 **Properties:**
 
@@ -269,19 +269,19 @@ The TSDB index type is configured in the schema but required local directories f
 
 - **Set the common path prefix** (simplest approach):
 
-   ```yaml
-   common:
-     path_prefix: /var/loki
-   ```
+  ```yaml
+  common:
+    path_prefix: /var/loki
+  ```
 
 - **Or configure directories explicitly**:
 
-   ```yaml
-   storage_config:
-     tsdb_shipper:
-       active_index_directory: /var/loki/tsdb- index
-       cache_location: /var/loki/tsdb- cache
-   ```
+  ```yaml
+  storage_config:
+    tsdb_shipper:
+      active_index_directory: /var/loki/tsdb-index
+      cache_location: /var/loki/tsdb-cache
+  ```
 
 **Properties:**
 
@@ -306,17 +306,17 @@ The compactor requires a working directory for index compaction, but none is con
 
 - **Set the common path prefix**:
 
-   ```yaml
-   common:
-     path_prefix: /var/loki
-   ```
+  ```yaml
+  common:
+    path_prefix: /var/loki
+  ```
 
 - **Or set the compactor working directory explicitly**:
 
-   ```yaml
-   compactor:
-     working_directory: /var/loki/compactor
-   ```
+  ```yaml
+  compactor:
+    working_directory: /var/loki/compactor
+  ```
 
 **Properties:**
 
@@ -341,13 +341,13 @@ The chunk retain period is shorter than the index cache validity (TTL), which ca
 
 - **Increase the chunk retain period** to be greater than the index cache validity:
 
-   ```yaml
-   ingester:
-     chunk_retain_period: 15m  # Must be > index_cache_validity
-   
-   storage_config:
-     index_cache_validity: 5m
-   ```
+  ```yaml
+  ingester:
+    chunk_retain_period: 15m  # Must be > index_cache_validity
+  
+  storage_config:
+    index_cache_validity: 5m
+  ```
 
 **Properties:**
 
@@ -372,10 +372,10 @@ The `backend` target is configured while legacy read mode is enabled. These are 
 
 - **Disable legacy read mode** if using the `backend` target:
 
-   ```yaml
-   # Remove or set to false:
-   legacy_read_mode: false
-   ```
+  ```yaml
+  # Remove or set to false:
+  legacy_read_mode: false
+  ```
 
 - **Or use a different target** compatible with legacy read mode.
 
@@ -406,26 +406,26 @@ The schema configuration references an index type or object store type that Loki
 
 **Resolution:**
 
-- **Use a supported index type**: `tsdb` (recommended) or `boltdb- shipper`
+- **Use a supported index type**: `tsdb` (recommended) or `boltdb-shipper`
 
 - **Use a supported object store type**: `s3`, `gcs`, `azure`, `swift`, `filesystem`, `bos`
 
 - **Or reference a valid named store** defined in your configuration:
 
-   ```yaml
-   storage_config:
-     named_stores:
-       aws:
-         my- store:
-           endpoint: s3.amazonaws.com
-           bucketnames: my- bucket
-   
-   schema_config:
-     configs:
-       - from: 2024- 01- 01
-         store: tsdb
-         object_store: my- store  # References the named store
-   ```
+  ```yaml
+  storage_config:
+    named_stores:
+      aws:
+        my-store:
+          endpoint: s3.amazonaws.com
+          bucketnames: my-bucket
+  
+  schema_config:
+    configs:
+      - from: 2024-01-01
+        store: tsdb
+        object_store: my-store  # References the named store
+  ```
 
 **Properties:**
 
@@ -439,23 +439,23 @@ The schema configuration references an index type or object store type that Loki
 **Error message:**
 
 ```text
-overrides- exporter has been enabled, but no runtime configuration file was configured
+overrides-exporter has been enabled, but no runtime configuration file was configured
 ```
 
 **Cause:**
 
-The overrides- exporter target is enabled but no runtime configuration file is provided. The overrides- exporter needs a runtime config to expose tenant- specific limit overrides as metrics.
+The overrides-exporter target is enabled but no runtime configuration file is provided. The overrides-exporter needs a runtime config to expose tenant-specific limit overrides as metrics.
 
 **Resolution:**
 
 - **Configure a runtime configuration file**:
 
-   ```yaml
-   runtime_config:
-     file: /etc/loki/runtime- config.yaml
-   ```
+  ```yaml
+  runtime_config:
+    file: /etc/loki/runtime-config.yaml
+  ```
 
-- **Or disable the overrides- exporter** if not needed by removing it from your target list.
+- **Or disable the overrides-exporter** if not needed by removing it from your target list.
 
 **Properties:**
 
@@ -480,7 +480,7 @@ The runtime configuration file contains an invalid override for a specific tenan
 
 - **Review the runtime config** file for the specified tenant.
 - **Validate the override values** against the limits configuration schema.
-- **Fix invalid values** such as negative durations, invalid label matchers, or out- of- range settings.
+- **Fix invalid values** such as negative durations, invalid label matchers, or out-of-range settings.
 
 **Properties:**
 
@@ -499,19 +499,19 @@ retention period must be >= 24h was <duration>
 
 **Cause:**
 
-A stream- level retention rule specifies a retention period shorter than 24 hours, which is the minimum allowed.
+A stream-level retention rule specifies a retention period shorter than 24 hours, which is the minimum allowed.
 
 **Resolution:**
 
 - **Set retention periods to at least 24 hours**:
 
-   ```yaml
-   limits_config:
-     retention_stream:
-       - selector: '{namespace="dev"}'
-         priority: 1
-         period: 24h  # Must be >= 24h
-   ```
+  ```yaml
+  limits_config:
+    retention_stream:
+      - selector: '{namespace="dev"}'
+        priority: 1
+        period: 24h  # Must be >= 24h
+  ```
 
 **Properties:**
 
@@ -530,16 +530,16 @@ it is an error to specify a non zero `query_store_max_look_back_period` value wh
 
 **Cause:**
 
-The `query_store_max_look_back_period` is set to a non- zero value with a storage backend other than `filesystem`. This setting only applies to local filesystem storage.
+The `query_store_max_look_back_period` is set to a non-zero value with a storage backend other than `filesystem`. This setting only applies to local filesystem storage.
 
 **Resolution:**
 
 - **Remove the setting** if using object storage:
 
-   ```yaml
-   # Remove or set to 0:
-   query_store_max_look_back_period: 0
-   ```
+  ```yaml
+  # Remove or set to 0:
+  query_store_max_look_back_period: 0
+  ```
 
 - **Or use filesystem storage** if this setting is needed for local development.
 
@@ -552,7 +552,7 @@ The `query_store_max_look_back_period` is set to a non- zero value with a storag
 
 ## Authentication and tenant errors
 
-Authentication and tenant errors occur when requests are missing required tenant identification or when tenant IDs are invalid. In multi- tenant mode, every request must include a valid tenant ID.
+Authentication and tenant errors occur when requests are missing required tenant identification or when tenant IDs are invalid. In multi-tenant mode, every request must include a valid tenant ID.
 
 ### Error: No org ID
 
@@ -564,34 +564,34 @@ no org id
 
 **Cause:**
 
-A request was made to Loki without the required `X- Scope- OrgID` header. In multi- tenant mode, every request must identify the tenant.
+A request was made to Loki without the required `X-Scope-OrgID` header. In multi-tenant mode, every request must identify the tenant.
 
 **Resolution:**
 
-- **Add the `X- Scope- OrgID` header** to your requests:
+- **Add the `X-Scope-OrgID` header** to your requests:
 
-   ```bash
-   curl - H "X- Scope- OrgID: my- tenant" http://loki:3100/loki/api/v1/push ...
-   ```
+  ```bash
+  curl -H "X-Scope-OrgID: my-tenant" http://loki:3100/loki/api/v1/push ...
+  ```
 
 - **For Grafana**, configure the tenant ID in the Loki data source settings under "HTTP Headers".
 
 - **For Alloy**, set the tenant ID in the `loki.write` component:
 
-   ```alloy
-   loki.write "default" {
-     endpoint {
-       url       = "http://loki:3100/loki/api/v1/push"
-       tenant_id = "my- tenant"
-     }
-   }
-   ```
+  ```alloy
+  loki.write "default" {
+    endpoint {
+      url       = "http://loki:3100/loki/api/v1/push"
+      tenant_id = "my-tenant"
+    }
+  }
+  ```
 
-- **Disable multi- tenancy** for single- tenant deployments:
+- **Disable multi-tenancy** for single-tenant deployments:
 
-   ```yaml
-   auth_enabled: false
-   ```
+  ```yaml
+  auth_enabled: false
+  ```
 
 **Properties:**
 
@@ -614,13 +614,13 @@ The request contains multiple different tenant IDs, but the operation requires a
 
 **Resolution:**
 
-- **Ensure only one tenant ID** is set in the `X- Scope- OrgID` header.
+- **Ensure only one tenant ID** is set in the `X-Scope-OrgID` header.
 - **Check proxy configurations** for conflicting tenant ID injection.
-- **For cross- tenant queries**, use pipe- separated tenant IDs only where supported:
+- **For cross-tenant queries**, use pipe-separated tenant IDs only where supported:
 
-   ```bash
-   curl - H "X- Scope- OrgID: tenant1|tenant2" http://loki:3100/loki/api/v1/query ...
-   ```
+  ```bash
+  curl -H "X-Scope-OrgID: tenant1|tenant2" http://loki:3100/loki/api/v1/query ...
+  ```
 
 **Properties:**
 
@@ -714,24 +714,24 @@ A delete request was submitted for a tenant that does not have deletion enabled.
 
 - **Enable deletion for the tenant** in the runtime configuration:
 
-   ```yaml
-   overrides:
-     my- tenant:
-       deletion_mode: filter- and- delete  # Or "filter- only"
-   ```
+  ```yaml
+  overrides:
+    my-tenant:
+      deletion_mode: filter-and-delete  # Or "filter-only"
+  ```
 
-   Valid deletion modes:
-- `disabled` - Deletion is not allowed (default)
-- `filter- only` - Lines matching delete requests are filtered at query time but not physically deleted
-- `filter- and- delete` - Lines are filtered at query time and physically deleted during compaction
+  Valid deletion modes:
+  - `disabled` - Deletion is not allowed (default)
+  - `filter-only` - Lines matching delete requests are filtered at query time but not physically deleted
+  - `filter-and-delete` - Lines are filtered at query time and physically deleted during compaction
 
 - **Ensure the compactor is configured** for retention:
 
-   ```yaml
-   compactor:
-     retention_enabled: true
-     delete_request_store: s3
-   ```
+  ```yaml
+  compactor:
+    retention_enabled: true
+    delete_request_store: s3
+  ```
 
 **Properties:**
 
@@ -760,18 +760,18 @@ The specified storage backend type is not recognized. This typically occurs when
 
 - **Use a valid storage backend type**:
 
-- `s3` - Amazon S3 or S3- compatible storage
-- `gcs` - Google Cloud Storage
-- `azure` - Azure Blob Storage
-- `swift` - OpenStack Swift
-- `filesystem` - Local filesystem
-- `bos` - Baidu Object Storage
+  - `s3` - Amazon S3 or S3-compatible storage
+  - `gcs` - Google Cloud Storage
+  - `azure` - Azure Blob Storage
+  - `swift` - OpenStack Swift
+  - `filesystem` - Local filesystem
+  - `bos` - Baidu Object Storage
 
-   ```yaml
-   storage_config:
-     boltdb_shipper:
-       shared_store: s3  # Must be one of the valid types
-   ```
+  ```yaml
+  storage_config:
+    boltdb_shipper:
+      shared_store: s3  # Must be one of the valid types
+  ```
 
 **Properties:**
 
@@ -796,13 +796,13 @@ The storage path prefix contains invalid characters. Only alphanumeric character
 
 - **Use valid characters** in your storage prefix:
 
-   ```yaml
-   storage_config:
-     # Invalid: prefix_with_underscore_or/special chars
-     # Valid: my- loki- data or lokilogs123
-     aws:
-       s3: s3://my- bucket/my- loki- data
-   ```
+  ```yaml
+  storage_config:
+    # Invalid: prefix_with_underscore_or/special chars
+    # Valid: my-loki-data or lokilogs123
+    aws:
+      s3: s3://my-bucket/my-loki-data
+  ```
 
 **Properties:**
 
@@ -821,22 +821,22 @@ unsupported S3 SSE type
 
 **Cause:**
 
-The S3 server- side encryption (SSE) type is not supported. Loki supports specific SSE types.
+The S3 server-side encryption (SSE) type is not supported. Loki supports specific SSE types.
 
 **Resolution:**
 
 - **Use a supported SSE type**:
 
-   ```yaml
-   storage_config:
-     aws:
-       sse:
-         type: SSE- S3    # Or SSE- KMS
-   ```
+  ```yaml
+  storage_config:
+    aws:
+      sse:
+        type: SSE-S3    # Or SSE-KMS
+  ```
 
-   Supported types:
-- `SSE- S3` - Server- side encryption with Amazon S3- managed keys
-- `SSE- KMS` - Server- side encryption with AWS KMS- managed keys
+  Supported types:
+  - `SSE-S3` - Server-side encryption with Amazon S3-managed keys
+  - `SSE-KMS` - Server-side encryption with AWS KMS-managed keys
 
 **Properties:**
 
@@ -855,20 +855,20 @@ invalid S3 SSE encryption context
 
 **Cause:**
 
-The SSE- KMS encryption context is malformed and cannot be parsed as valid JSON.
+The SSE-KMS encryption context is malformed and cannot be parsed as valid JSON.
 
 **Resolution:**
 
 - **Provide valid JSON** for the encryption context:
 
-   ```yaml
-   storage_config:
-     aws:
-       sse:
-         type: SSE- KMS
-         kms_key_id: alias/my- key
-         kms_encryption_context: '{"key": "value"}'  # Valid JSON
-   ```
+  ```yaml
+  storage_config:
+    aws:
+      sse:
+        type: SSE-KMS
+        kms_key_id: alias/my-key
+        kms_encryption_context: '{"key": "value"}'  # Valid JSON
+  ```
 
 **Properties:**
 
@@ -887,22 +887,22 @@ the endpoint must not prefixed with the bucket name
 
 **Cause:**
 
-The S3 endpoint incorrectly includes the bucket name as a prefix. This can cause path- style vs virtual- hosted- style URL issues.
+The S3 endpoint incorrectly includes the bucket name as a prefix. This can cause path-style vs virtual-hosted-style URL issues.
 
 **Resolution:**
 
 - **Remove the bucket name** from the endpoint and configure it separately:
 
-   ```yaml
-   storage_config:
-     aws:
-       # Incorrect:
-       # endpoint: my- bucket.s3.amazonaws.com
-       
-       # Correct:
-       endpoint: s3.amazonaws.com
-       bucketnames: my- bucket
-   ```
+  ```yaml
+  storage_config:
+    aws:
+      # Incorrect:
+      # endpoint: my-bucket.s3.amazonaws.com
+      
+      # Correct:
+      endpoint: s3.amazonaws.com
+      bucketnames: my-bucket
+  ```
 
 **Properties:**
 
@@ -916,7 +916,7 @@ The S3 endpoint incorrectly includes the bucket name as a prefix. This can cause
 **Error message:**
 
 ```text
-sts- endpoint must be a valid url
+sts-endpoint must be a valid url
 ```
 
 **Cause:**
@@ -927,11 +927,11 @@ The AWS STS (Security Token Service) endpoint URL is malformed or invalid.
 
 - **Provide a valid URL** for the STS endpoint:
 
-   ```yaml
-   storage_config:
-     aws:
-       sts_endpoint: https://sts.us- east- 1.amazonaws.com
-   ```
+  ```yaml
+  storage_config:
+    aws:
+      sts_endpoint: https://sts.us-east-1.amazonaws.com
+  ```
 
 **Properties:**
 
@@ -956,16 +956,16 @@ The Azure storage connection string is missing or doesn't follow the expected fo
 
 - **Use a valid connection string format**:
 
-   ```yaml
-   storage_config:
-     azure:
-       # Use account credentials:
-       account_name: myaccount
-       account_key: mykey
-       
-       # Or connection string:
-       connection_string: "DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=mykey;EndpointSuffix=core.windows.net"
-   ```
+  ```yaml
+  storage_config:
+    azure:
+      # Use account credentials:
+      account_name: myaccount
+      account_key: mykey
+      
+      # Or connection string:
+      connection_string: "DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=mykey;EndpointSuffix=core.windows.net"
+  ```
 
 - **Verify the connection string** in Azure Portal under Storage Account > Access Keys.
 
@@ -1008,20 +1008,20 @@ A named storage configuration referenced in the schema config doesn't exist in t
 
 - **Define the named store** in your configuration:
 
-   ```yaml
-   storage_config:
-     named_stores:
-       aws:
-         my- s3- store:  # This name must match the reference
-           endpoint: s3.amazonaws.com
-           bucketnames: my- bucket
-   
-   schema_config:
-     configs:
-       - from: 2024- 01- 01
-         store: tsdb
-         object_store: my- s3- store  # References the named store above
-   ```
+  ```yaml
+  storage_config:
+    named_stores:
+      aws:
+        my-s3-store:  # This name must match the reference
+          endpoint: s3.amazonaws.com
+          bucketnames: my-bucket
+  
+  schema_config:
+    configs:
+      - from: 2024-01-01
+        store: tsdb
+        object_store: my-s3-store  # References the named store above
+  ```
 
 - **Check spelling** of the store name in both the definition and reference.
 
@@ -1057,29 +1057,29 @@ Loki cannot establish a connection to the Redis server. Common causes include:
 
 - **Verify Redis connectivity** from the Loki host:
 
-   ```bash
-   redis- cli - h <REDIS- HOST> - p <REDIS- PORT> ping
-   ```
+  ```bash
+  redis-cli -h <REDIS-HOST> -p <REDIS-PORT> ping
+  ```
 
 - **Check the Redis endpoint configuration**:
 
-   ```yaml
-   chunk_store_config:
-     chunk_cache_config:
-       redis:
-         endpoint: redis:6379
-         timeout: 500ms
-   ```
+  ```yaml
+  chunk_store_config:
+    chunk_cache_config:
+      redis:
+        endpoint: redis:6379
+        timeout: 500ms
+  ```
 
 - **Configure authentication** if required:
 
-   ```yaml
-   chunk_store_config:
-     chunk_cache_config:
-       redis:
-         endpoint: redis:6379
-         password: ${REDIS_PASSWORD}
-   ```
+  ```yaml
+  chunk_store_config:
+    chunk_cache_config:
+      redis:
+        endpoint: redis:6379
+        password: ${REDIS_PASSWORD}
+  ```
 
 **Properties:**
 
@@ -1104,18 +1104,18 @@ DNS resolution failed for the Redis hostname.
 
 - **Verify DNS resolution**:
 
-   ```bash
-   nslookup redis- host
-   ```
+  ```bash
+  nslookup redis-host
+  ```
 
 - **Use an IP address** if DNS is not available:
 
-   ```yaml
-   chunk_store_config:
-     chunk_cache_config:
-       redis:
-         endpoint: 10.0.0.100:6379
-   ```
+  ```yaml
+  chunk_store_config:
+    chunk_cache_config:
+      redis:
+        endpoint: 10.0.0.100:6379
+  ```
 
 - **Check your DNS configuration** and network settings.
 
@@ -1147,9 +1147,9 @@ The Redis server returned an unexpected response to a PING command. This could i
 - **Verify the endpoint** is actually a Redis server.
 - **Check Redis health**:
 
-   ```bash
-   redis- cli - h <HOST> - p <PORT> INFO
-   ```
+  ```bash
+  redis-cli -h <HOST> -p <PORT> INFO
+  ```
 
 - **Review proxy configurations** if using a load balancer in front of Redis.
 
@@ -1176,14 +1176,14 @@ Both Memcached and Redis cache backends are configured for the same cache type. 
 
 - **Choose one cache backend** per cache type:
 
-   ```yaml
-   chunk_store_config:
-     chunk_cache_config:
-       # Use either memcached OR redis, not both
-       redis:
-         endpoint: redis:6379
-       memcached: {}  # Remove this
-   ```
+  ```yaml
+  chunk_store_config:
+    chunk_cache_config:
+      # Use either memcached OR redis, not both
+      redis:
+        endpoint: redis:6379
+      memcached: {}  # Remove this
+  ```
 
 **Properties:**
 
@@ -1208,22 +1208,22 @@ A results cache is required for the query frontend but no cache configuration wa
 
 - **Configure a cache backend**:
 
-   ```yaml
-   query_range:
-     results_cache:
-       cache:
-         memcached:
-           expiration: 1h
-         memcached_client:
-           addresses: memcached:11211
-   ```
+  ```yaml
+  query_range:
+    results_cache:
+      cache:
+        memcached:
+          expiration: 1h
+        memcached_client:
+          addresses: memcached:11211
+  ```
 
 - **Or disable results caching** if not needed:
 
-   ```yaml
-   query_range:
-     cache_results: false
-   ```
+  ```yaml
+  query_range:
+    cache_results: false
+  ```
 
 **Properties:**
 
@@ -1234,7 +1234,7 @@ A results cache is required for the query frontend but no cache configuration wa
 
 ## Ring and cluster communication errors
 
-Ring errors occur when Loki components cannot properly communicate through the [hash ring](https://grafana.com/docs/loki/<LOKI_VERSION>/get- started/hash- rings/), which is used to distribute work across instances. The ring is fundamental to Loki's distributed operation.
+Ring errors occur when Loki components cannot properly communicate through the [hash ring](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/hash-rings/), which is used to distribute work across instances. The ring is fundamental to Loki's distributed operation.
 
 ### Error: Too many unhealthy instances in the ring
 
@@ -1252,9 +1252,9 @@ The ring contains too many unhealthy instances to satisfy the replication factor
 
 - **Check the health of ring members**:
 
-   ```bash
-   curl - s http://loki:3100/ring | jq '.shards[] | select(.state != "ACTIVE")'
-   ```
+  ```bash
+  curl -s http://loki:3100/ring | jq '.shards[] | select(.state != "ACTIVE")'
+  ```
 
 - **Restart unhealthy instances** that are stuck in a bad state.
 - **Scale up instances** if there aren't enough healthy members.
@@ -1286,21 +1286,21 @@ No instances are registered in the ring. This typically occurs during initial cl
 - **Check that all instances can communicate** over the configured ports.
 - **Verify ring configuration** across all components, especially memberlist configuration:
 
-   ```yaml
-   ingester:
-     lifecycler:
-       ring:
-         kvstore:
-           store: memberlist
-         replication_factor: 3
-   ```
+  ```yaml
+  ingester:
+    lifecycler:
+      ring:
+        kvstore:
+          store: memberlist
+        replication_factor: 3
+  ```
 
 - **Check KV store health** (Consul, etcd, or memberlist):
 
-   ```bash
-   # For memberlist
-   curl - s http://loki:3100/memberlist
-   ```
+  ```bash
+  # For memberlist
+  curl -s http://loki:3100/memberlist
+  ```
 
 **Properties:**
 
@@ -1319,11 +1319,11 @@ instance <id> not found in the ring
 
 **Cause:**
 
-A specific instance is expected to be in the ring but isn't registered. This can happen after a restart if the instance hasn't re- joined the ring yet.
+A specific instance is expected to be in the ring but isn't registered. This can happen after a restart if the instance hasn't re-joined the ring yet.
 
 **Resolution:**
 
-- **Wait for the instance to re- register** in the ring.
+- **Wait for the instance to re-register** in the ring.
 - **Check the instance's logs** for ring join failures.
 - **Verify KV store connectivity** from the instance.
 
@@ -1354,13 +1354,13 @@ The instance has joined the ring but hasn't claimed any tokens. Without tokens, 
 
 - **Wait for token assignment** during startup.
 - **Check the ring status** for the instance:
-   Open a browser and navigate to http://localhost:3100/ring. You should see the Loki Ring Status page.
+  Open a browser and navigate to http://localhost:3100/ring. You should see the Loki Ring Status page.
 
-   OR
+  OR
 
-   ```bash
-   curl - s http://loki:3100/ring
-   ```
+  ```bash
+  curl -s http://loki:3100/ring
+  ```
 
 - **Restart the instance** if tokens are not assigned after startup completes.
 - **Check KV store connectivity** and health.
@@ -1382,30 +1382,30 @@ error talking to the KV store
 
 **Cause:**
 
-The instance cannot communicate with the key- value store used for ring state. The KV store (Consul, etcd, or memberlist) is required for ring coordination.
+The instance cannot communicate with the key-value store used for ring state. The KV store (Consul, etcd, or memberlist) is required for ring coordination.
 
 **Resolution:**
 
 - **Check KV store health and connectivity**:
 
-   ```bash
-   # For Consul
-   curl http://consul:8500/v1/status/leader
-   
-   # For etcd
-   etcdctl endpoint health
-   ```
+  ```bash
+  # For Consul
+  curl http://consul:8500/v1/status/leader
+  
+  # For etcd
+  etcdctl endpoint health
+  ```
 
 - **Verify network connectivity** between Loki instances and the KV store.
 - **Check firewall rules** allow traffic on KV store ports.
 - **For memberlist**, verify that gossip ports are accessible between all instances:
 
-   ```yaml
-   memberlist:
-     bind_port: 7946
-     join_members:
-       - loki- memberlist:7946
-   ```
+  ```yaml
+  memberlist:
+    bind_port: 7946
+    join_members:
+      - loki-memberlist:7946
+  ```
 
 **Properties:**
 
@@ -1430,7 +1430,7 @@ The KV store responded but returned an empty or invalid ring descriptor. This ca
 
 - **Wait for ring initialization** during first startup.
 - **Check if the KV store data was accidentally cleared**.
-- **Restart all ring members** to re- register if the KV store was reset.
+- **Restart all ring members** to re-register if the KV store was reset.
 
 **Properties:**
 
@@ -1466,25 +1466,25 @@ The instance could not join the memberlist gossip cluster. Common causes:
 
 - **Check that join members are reachable**:
 
-   ```bash
-   # Test connectivity to seed nodes
-   nc - zv loki- memberlist 7946
-   ```
+  ```bash
+  # Test connectivity to seed nodes
+  nc -zv loki-memberlist 7946
+  ```
 
 - **Verify DNS resolution** for join addresses:
 
-   ```bash
-   nslookup loki- memberlist
-   ```
+  ```bash
+  nslookup loki-memberlist
+  ```
 
 - **Check memberlist configuration**:
 
-   ```yaml
-   memberlist:
-     bind_port: 7946
-     join_members:
-       - loki- gossip- ring.loki.svc.cluster.local:7946
-   ```
+  ```yaml
+  memberlist:
+    bind_port: 7946
+    join_members:
+      - loki-gossip-ring.loki.svc.cluster.local:7946
+  ```
 
 - **Ensure firewall rules** allow UDP and TCP traffic on the gossip port (default 7946).
 - **For Kubernetes**, verify that the headless service for memberlist is configured correctly.
@@ -1496,12 +1496,12 @@ The instance could not join the memberlist gossip cluster. Common causes:
 - HTTP status: N/A (startup failure or degraded operation)
 - Configurable per tenant: No
 
-### Error: Re- joining memberlist cluster failed
+### Error: Re-joining memberlist cluster failed
 
 **Error message:**
 
 ```text
-re- joining memberlist cluster failed
+re-joining memberlist cluster failed
 ```
 
 **Cause:**
@@ -1513,7 +1513,7 @@ After being disconnected from the memberlist cluster, the instance failed to rej
 - **Check network connectivity** between cluster members.
 - **Verify other cluster members are healthy**.
 - **Restart the affected instance** if automatic rejoin continues to fail.
-- **Review network stability** frequent re- joins indicate underlying network issues.
+- **Review network stability** frequent re-joins indicate underlying network issues.
 
 **Properties:**
 
@@ -1615,22 +1615,22 @@ The ingester is not in a ready state to accept writes or serve reads. The detail
 
 - **Wait for startup to complete** - ingesters take time to join the ring and become ready.
 - **Check ring membership**:
-   Open a browser and navigate to http://localhost:3100/ring. You should see the Loki Ring Status page.
+  Open a browser and navigate to http://localhost:3100/ring. You should see the Loki Ring Status page.
 
-   OR
+  OR
 
-   ```bash
-   curl - s http://ingester:3100/ring
-   ```
+  ```bash
+  curl -s http://ingester:3100/ring
+  ```
 
 - **Review logs** for startup errors.
 - **Adjust the minimum ready duration** if startup is too slow:
 
-   ```yaml
-   ingester:
-     lifecycler:
-       min_ready_duration: 15s
-   ```
+  ```yaml
+  ingester:
+    lifecycler:
+      min_ready_duration: 15s
+  ```
 
 **Properties:**
 
@@ -1644,7 +1644,7 @@ The ingester is not in a ready state to accept writes or serve reads. The detail
 **Error message:**
 
 ```text
-Query Frontend not ready: not ready: number of queriers connected to query- frontend is 0
+Query Frontend not ready: not ready: number of queriers connected to query-frontend is 0
 ```
 
 **Cause:**
@@ -1660,17 +1660,17 @@ The query frontend has no querier workers connected. Without queriers, the front
 - **Check that queriers are running** and healthy.
 - **Verify querier configuration** points to the correct frontend address:
 
-   ```yaml
-   frontend_worker:
-     frontend_address: query- frontend:9095
-   ```
+  ```yaml
+  frontend_worker:
+    frontend_address: query-frontend:9095
+  ```
 
 - **Check gRPC connectivity** between queriers and the frontend:
 
-   ```bash
-   # Test gRPC port connectivity
-   nc - zv query- frontend 9095
-   ```
+  ```bash
+  # Test gRPC port connectivity
+  nc -zv query-frontend 9095
+  ```
 
 - **Review querier logs** for connection errors.
 
@@ -1698,10 +1698,10 @@ The query frontend worker has no active connections to any query scheduler. This
 - **Check that query schedulers are running** and healthy.
 - **Verify scheduler address configuration**:
 
-   ```yaml
-   frontend_worker:
-     scheduler_address: query- scheduler:9095
-   ```
+  ```yaml
+  frontend_worker:
+    scheduler_address: query-scheduler:9095
+  ```
 
 - **Check gRPC connectivity** between the frontend and schedulers.
 - **Review query scheduler logs** for errors.
@@ -1715,7 +1715,7 @@ The query frontend worker has no active connections to any query scheduler. This
 
 ## gRPC and message size errors
 
-gRPC errors occur during inter- component communication. Loki components communicate using gRPC for ring coordination, query execution, and data transfer.
+gRPC errors occur during inter-component communication. Loki components communicate using gRPC for ring coordination, query execution, and data transfer.
 
 ### Error: Message size too large
 
@@ -1744,11 +1744,11 @@ The compressed or decompressed body of an HTTP push request to the distributor e
 
 - **Increase the distributor receive message size limit**:
 
-   ```yaml
-   distributor:
-     max_recv_msg_size: 209715200      # 200MB compressed
-     max_decompressed_size: 10737418240  # 10GB decompressed
-   ```
+  ```yaml
+  distributor:
+    max_recv_msg_size: 209715200      # 200MB compressed
+    max_decompressed_size: 10737418240  # 10GB decompressed
+  ```
 
 - **Reduce push batch sizes** in your log shipping client (Alloy, Promtail, etc.) to send smaller individual requests.
 
@@ -1787,14 +1787,14 @@ A query result from the querier to the frontend exceeds the maximum allowed gRPC
 
 - **Increase gRPC message size limits** if needed. Apply these settings to querier nodes:
 
-   ```yaml
-   server:
-     grpc_server_max_send_msg_size: 209715200   # 200MB
+  ```yaml
+  server:
+    grpc_server_max_send_msg_size: 209715200   # 200MB
 
-   querier:
-     query_frontend_grpc_client:
-       max_recv_msg_size: 209715200             # 200MB
-   ```
+  querier:
+    query_frontend_grpc_client:
+      max_recv_msg_size: 209715200             # 200MB
+  ```
 
 **Properties:**
 
@@ -1825,10 +1825,10 @@ The compressed body of an HTTP push request exceeds the distributor's configured
 - **Split large batches** into smaller, more frequent requests.
 - **Increase the limit** if needed:
 
-   ```yaml
-   distributor:
-     max_recv_msg_size: 209715200   # 200MB
-   ```
+  ```yaml
+  distributor:
+    max_recv_msg_size: 209715200   # 200MB
+  ```
 
 **Properties:**
 
@@ -1880,40 +1880,40 @@ Loki cannot load TLS certificates from the specified paths. Common causes:
 
 - **Verify certificate files exist** and are readable:
 
-   ```bash
-   ls - la /path/to/cert.pem /path/to/key.pem /path/to/ca.pem
-   ```
+  ```bash
+  ls -la /path/to/cert.pem /path/to/key.pem /path/to/ca.pem
+  ```
 
 - **Check file permissions** (the Loki process must be able to read them).
 
 - **Validate the certificate format**:
 
-   ```bash
-   openssl x509 - in /path/to/cert.pem - noout - text
-   openssl rsa - in /path/to/key.pem - check
-   ```
+  ```bash
+  openssl x509 -in /path/to/cert.pem -noout -text
+  openssl rsa -in /path/to/key.pem -check
+  ```
 
 - **Verify cert and key match**:
 
-   ```bash
-   openssl x509 - noout - modulus - in cert.pem | md5sum
-   openssl rsa - noout - modulus - in key.pem | md5sum
-   # Both should produce the same hash
-   ```
+  ```bash
+  openssl x509 -noout -modulus -in cert.pem | md5sum
+  openssl rsa -noout -modulus -in key.pem | md5sum
+  # Both should produce the same hash
+  ```
 
 - **Check your TLS configuration**:
 
-   ```yaml
-   server:
-     http_tls_config:
-       cert_file: /path/to/cert.pem
-       key_file: /path/to/key.pem
-       client_ca_file: /path/to/ca.pem
-     grpc_tls_config:
-       cert_file: /path/to/cert.pem
-       key_file: /path/to/key.pem
-       client_ca_file: /path/to/ca.pem
-   ```
+  ```yaml
+  server:
+    http_tls_config:
+      cert_file: /path/to/cert.pem
+      key_file: /path/to/key.pem
+      client_ca_file: /path/to/ca.pem
+    grpc_tls_config:
+      cert_file: /path/to/cert.pem
+      key_file: /path/to/key.pem
+      client_ca_file: /path/to/ca.pem
+  ```
 
 **Properties:**
 
@@ -1951,12 +1951,12 @@ The TLS configuration is invalid. This can happen when:
 - **Review TLS settings** for compatibility issues.
 - **Use supported TLS versions** by setting `tls_min_version` at the top level of the `server` block:
 
-   ```yaml
-   server:
-     tls_min_version: VersionTLS12
-   ```
+  ```yaml
+  server:
+    tls_min_version: VersionTLS12
+  ```
 
-   Valid values are `VersionTLS10`, `VersionTLS11`, `VersionTLS12`, and `VersionTLS13`. There is no `max_version` setting; `tls_min_version` is the only version constraint.
+  Valid values are `VersionTLS10`, `VersionTLS11`, `VersionTLS12`, and `VersionTLS13`. There is no `max_version` setting; `tls_min_version` is the only version constraint.
 
 - **Check cipher suite configuration** if customized.
 
@@ -1981,29 +1981,29 @@ msg="failed to resolve server addresses" err="... DNS lookup timeout: [<address>
 
 **Cause:**
 
-DNS resolution exceeded the 5- second timeout when trying to resolve addresses for Loki service discovery or backend connections.
+DNS resolution exceeded the 5-second timeout when trying to resolve addresses for Loki service discovery or backend connections.
 This error is emitted by the index gateway and bloom gateway DNS discovery loops.
-The `DNS lookup timeout: [<address>]` string is the context cause embedded within the `err` field; the full address list is formatted as a Go slice (for example, `[dns+loki- index- gateway.loki.svc.cluster.local:9095]`).
+The `DNS lookup timeout: [<address>]` string is the context cause embedded within the `err` field; the full address list is formatted as a Go slice (for example, `[dns+loki-index-gateway.loki.svc.cluster.local:9095]`).
 
 **Resolution:**
 
 - **Check DNS server availability** and configuration.
 - **Verify hostname resolution**:
 
-   ```bash
-   nslookup <hostname>
-   dig <hostname>
-   ```
+  ```bash
+  nslookup <hostname>
+  dig <hostname>
+  ```
 
 - **Use IP addresses** as a workaround if DNS is unreliable:
 
-   ```yaml
-   # Instead of dns+hostname:port
-   memberlist:
-     join_members:
-       - 10.0.0.1:7946
-       - 10.0.0.2:7946
-   ```
+  ```yaml
+  # Instead of dns+hostname:port
+  memberlist:
+    join_members:
+      - 10.0.0.1:7946
+      - 10.0.0.2:7946
+  ```
 
 - **For Kubernetes**, ensure CoreDNS is healthy and headless services are configured correctly.
 
@@ -2039,15 +2039,15 @@ The query scheduler service is not in a running state. This can occur when:
 - **Check scheduler logs** for startup errors or crashes.
 - **Verify scheduler health**:
 
-   ```bash
-   curl - s http://scheduler:3100/ready
-   ```
+  ```bash
+  curl -s http://scheduler:3100/ready
+  ```
 
-- **Check scheduler ring membership** if using ring- based scheduling:
+- **Check scheduler ring membership** if using ring-based scheduling:
 
-   ```bash
-   curl - s http://scheduler:3100/ring | jq
-   ```
+  ```bash
+  curl -s http://scheduler:3100/ring | jq
+  ```
 
 **Properties:**
 
@@ -2072,17 +2072,17 @@ The query queue has reached its maximum capacity. This indicates the system is o
 
 - **Scale out queriers** to process queries faster:
 
-   ```yaml
-   querier:
-     max_concurrent: 10
-   ```
+  ```yaml
+  querier:
+    max_concurrent: 10
+  ```
 
-- **Increase queue capacity** (with caution). The default is `32000`; increase beyond that only if you have confirmed the system can handle the additional load. Note that increasing the queue is often necessary because of how many subqueries can be generated by large values for `tsdb_max_query_parallelism`. Generally it's preferable to add more queriers and leave this setting unchanged.
+- **Increase queue capacity** (with caution). The default is `32000`; increase beyond that only if you have confirmed the system can handle the additional load.  Note that increasing the queue is often necessary because of how many subqueries can be generated by large values for `tsdb_max_query_parallelism`. Generally it's preferable to add more queriers and leave this setting unchanged.
 
-   ```yaml
-   query_scheduler:
-     max_outstanding_requests_per_tenant: 64000
-   ```
+  ```yaml
+  query_scheduler:
+    max_outstanding_requests_per_tenant: 64000
+  ```
 
 - **Rate limit queries** at the client or load balancer level.
 - **Optimize slow queries** to reduce queue time.
@@ -2110,27 +2110,27 @@ Query parallelism has been set to zero, effectively disabling all queries. This 
 
 - **Check the relevant parallelism setting for your index type.** For TSDB indexes (the current default), `tsdb_max_query_parallelism` supersedes `max_query_parallelism`. Either value being set to zero triggers this error. Verify that both are greater than zero:
 
-   ```yaml
-   limits_config:
-     max_query_parallelism: 32          # default; applies to non- TSDB schemas
-     tsdb_max_query_parallelism: 128    # default; applies to TSDB schemas
-   ```
+  ```yaml
+  limits_config:
+    max_query_parallelism: 32          # default; applies to non-TSDB schemas
+    tsdb_max_query_parallelism: 128    # default; applies to TSDB schemas
+  ```
 
 - **Size `tsdb_max_query_parallelism` to your ingest volume.** Typical values in production are in the range of 128–2048, proportional to the volume of logs ingested per day:
 
-   | Daily ingest volume | Typical value |
-   |- - - |- - - |
-   | Low–moderate | 128–256 |
-   | High | 512 |
-   | Tens of TB/day | 1024–2048 |
+  | Daily ingest volume | Typical value |
+  |---|---|
+  | Low–moderate | 128–256 |
+  | High | 512 |
+  | Tens of TB/day | 1024–2048 |
 
 - **Account for the querier capacity this requires.** Each unit of parallelism consumes one querier worker slot. With the default `querier.max_concurrent` of `4`, the number of queriers needed to fully parallelize a single query is:
 
-   ```
-   queriers needed = tsdb_max_query_parallelism / max_concurrent
-   ```
+  ```
+  queriers needed = tsdb_max_query_parallelism / max_concurrent
+  ```
 
-   For example, `tsdb_max_query_parallelism: 2048` with `max_concurrent: 4` requires 512 queriers to run one query fully in parallel. Production deployments supporting many tenants running large queries simultaneously commonly run thousands of queriers.
+  For example, `tsdb_max_query_parallelism: 2048` with `max_concurrent: 4` requires 512 queriers to run one query fully in parallel. Production deployments supporting many tenants running large queries simultaneously commonly run thousands of queriers.
 
 - **Contact your administrator** if you don't have access to change these settings.
 
@@ -2157,10 +2157,10 @@ The scheduler received a request from a frontend but no frontend address was pro
 
 - **Check frontend configuration** to ensure the address is set:
 
-   ```yaml
-   frontend:
-     address: query- frontend:9095
-   ```
+  ```yaml
+  frontend:
+    address: query-frontend:9095
+  ```
 
 - **Verify gRPC connectivity** between frontend and scheduler.
 
@@ -2205,29 +2205,29 @@ Index gateway errors occur when queriers cannot communicate with index gateways 
 **Error message:**
 
 ```text
-index- gateway is unhealthy in the ring
+index-gateway is unhealthy in the ring
 ```
 
 **Cause:**
 
-The index gateway instance detects itself as unhealthy in the ring and refuses to process queries. This is a self- check: before handling tenant requests, the gateway verifies it appears in the set of healthy ring members.
+The index gateway instance detects itself as unhealthy in the ring and refuses to process queries. This is a self-check: before handling tenant requests, the gateway verifies it appears in the set of healthy ring members.
 
 **Resolution:**
 
 - **Check index gateway health**:
 
-   ```bash
-   curl - s http://index- gateway:3100/ready
-   ```
+  ```bash
+  curl -s http://index-gateway:3100/ready
+  ```
 
 - **View the ring status**:
-   Open a browser and navigate to http://localhost:3100/ring. You should see the Loki Ring Status page.
+  Open a browser and navigate to http://localhost:3100/ring. You should see the Loki Ring Status page.
 
-   OR
+  OR
 
-   ```bash
-   curl - s http://index- gateway:3100/ring
-   ```
+  ```bash
+  curl -s http://index-gateway:3100/ring
+  ```
 
 - **Check logs** for errors preventing the gateway from becoming healthy.
 - **Restart the index gateway** if it's stuck in an unhealthy state.
@@ -2259,19 +2259,19 @@ No index gateway instances are available in the ring to serve the tenant's reque
 
 - **Check if any index gateways are running**:
 
-   ```bash
-   curl - s http://index- gateway:3100/ring | jq '.shards | length'
-   ```
+  ```bash
+  curl -s http://index-gateway:3100/ring | jq '.shards | length'
+  ```
 
-- **Verify ring mode is configured** if using shuffle sharding. The index gateway must run in `ring` mode and the per- tenant shard size must be set:
+- **Verify ring mode is configured** if using shuffle sharding. The index gateway must run in `ring` mode and the per-tenant shard size must be set:
 
-   ```yaml
-   index_gateway:
-     mode: ring
+  ```yaml
+  index_gateway:
+    mode: ring
 
-   limits_config:
-     index_gateway_shard_size: 3  # default = 0 (use all instances)
-   ```
+  limits_config:
+    index_gateway_shard_size: 3  # default = 0 (use all instances)
+  ```
 
 - **Scale up index gateways** if needed.
 
@@ -2287,30 +2287,30 @@ No index gateway instances are available in the ring to serve the tenant's reque
 **Error message:**
 
 ```text
-index client is not initialized likely due to boltdb- shipper not being used
+index client is not initialized likely due to boltdb-shipper not being used
 ```
 
 **Cause:**
 
-The index gateway was queried for operations that require the index client, but the client wasn't initialized because the boltdb- shipper store isn't configured.
+The index gateway was queried for operations that require the index client, but the client wasn't initialized because the boltdb-shipper store isn't configured.
 
 **Resolution:**
 
 - **Verify your schema config** uses the correct index store:
 
-   ```yaml
-   schema_config:
-     configs:
-       - from: 2024- 01- 01
-         store: tsdb
-         object_store: s3
-         schema: v13
-         index:
-           prefix: index_
-           period: 24h
-   ```
+  ```yaml
+  schema_config:
+    configs:
+      - from: 2024-01-01
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  ```
 
-- **Check if the operation requires boltdb- shipper** - some legacy operations may not be supported with TSDB.
+- **Check if the operation requires boltdb-shipper** - some legacy operations may not be supported with TSDB.
 
 **Properties:**
 
@@ -2343,10 +2343,10 @@ The compactor found an empty index table during retention processing. This could
 
 - **Verify the table should be empty**:
 
-   ```bash
-   # Check if data exists for the time period
-   logcli query '{job=~".+"}' - - from="<table- start- time>" - - to="<table- end- time>" - - limit=1
-   ```
+  ```bash
+  # Check if data exists for the time period
+  logcli query '{job=~".+"}' --from="<table-start-time>" --to="<table-end-time>" --limit=1
+  ```
 
 - **If the table is legitimately empty**, manually delete it from object storage.
 - **If data should exist**, investigate potential data loss.
@@ -2363,7 +2363,7 @@ The compactor found an empty index table during retention processing. This could
 **Error message:**
 
 ```text
-compactor.delete- request- store should be configured when retention is enabled
+compactor.delete-request-store should be configured when retention is enabled
 ```
 
 **Cause:**
@@ -2374,18 +2374,18 @@ Retention is enabled but no store is configured for tracking delete requests.
 
 - **Configure the delete request store**:
 
-   ```yaml
-   compactor:
-     retention_enabled: true
-     delete_request_store: s3
-   ```
+  ```yaml
+  compactor:
+    retention_enabled: true
+    delete_request_store: s3
+  ```
 
 - **Or disable retention** if not needed:
 
-   ```yaml
-   compactor:
-     retention_enabled: false
-   ```
+  ```yaml
+  compactor:
+    retention_enabled: false
+  ```
 
 **Properties:**
 
@@ -2410,10 +2410,10 @@ The compactor's parallelism setting is configured to zero or a negative number.
 
 - **Set a valid parallelism value**:
 
-   ```yaml
-   compactor:
-     max_compaction_parallelism: 1  # Must be >= 1
-   ```
+  ```yaml
+  compactor:
+    max_compaction_parallelism: 1  # Must be >= 1
+  ```
 
 **Properties:**
 
@@ -2438,9 +2438,9 @@ An attempt to cancel a delete request failed because no matching request exists.
 
 - **List existing delete requests**:
 
-   ```bash
-   curl - s http://compactor:3100/loki/api/v1/delete | jq
-   ```
+  ```bash
+  curl -s http://compactor:3100/loki/api/v1/delete | jq
+  ```
 
 - **Verify the delete request ID** is correct.
 - **Check if the request has already been processed** and removed.
@@ -2468,11 +2468,11 @@ A delete request was submitted but retention is not enabled in the compactor con
 
 - **Enable retention** in the compactor:
 
-   ```yaml
-   compactor:
-     retention_enabled: true
-     delete_request_store: s3
-   ```
+  ```yaml
+  compactor:
+    retention_enabled: true
+    delete_request_store: s3
+  ```
 
 - **Restart the compactor** after changing the configuration.
 
@@ -2505,21 +2505,21 @@ The start or end time in a delete request is not in a valid format.
 
 - **Use Unix seconds or RFC3339 format**:
 
-   ```bash
-   # Unix seconds
-   curl - X POST http://compactor:3100/loki/api/v1/delete \
-     - H "X- Scope- OrgID: my- tenant" \
-     - d "query={app=\"foo\"}" \
-     - d "start=1704067200" \
-     - d "end=1704153600"
-   
-   # RFC3339
-   curl - X POST http://compactor:3100/loki/api/v1/delete \
-     - H "X- Scope- OrgID: my- tenant" \
-     - d "query={app=\"foo\"}" \
-     - d "start=2024- 01- 01T00:00:00Z" \
-     - d "end=2024- 01- 02T00:00:00Z"
-   ```
+  ```bash
+  # Unix seconds
+  curl -X POST http://compactor:3100/loki/api/v1/delete \
+    -H "X-Scope-OrgID: my-tenant" \
+    -d "query={app=\"foo\"}" \
+    -d "start=1704067200" \
+    -d "end=1704153600"
+  
+  # RFC3339
+  curl -X POST http://compactor:3100/loki/api/v1/delete \
+    -H "X-Scope-OrgID: my-tenant" \
+    -d "query={app=\"foo\"}" \
+    -d "start=2024-01-01T00:00:00Z" \
+    -d "end=2024-01-02T00:00:00Z"
+  ```
 
 **Properties:**
 
@@ -2544,10 +2544,10 @@ An attempt was made to cancel a delete request that is already being processed o
 
 - **Check the status** of the delete request:
 
-   ```bash
-   curl - s http://compactor:3100/loki/api/v1/delete \
-     - H "X- Scope- OrgID: my- tenant" | jq
-   ```
+  ```bash
+  curl -s http://compactor:3100/loki/api/v1/delete \
+    -H "X-Scope-OrgID: my-tenant" | jq
+  ```
 
 - **Submit a new delete request** if you need to delete additional data.
 
@@ -2569,7 +2569,7 @@ invalid max_interval: valid time units are 's', 'm', 'h'
 Or:
 
 ```text
-max_interval can't be greater than <configured- limit>
+max_interval can't be greater than <configured-limit>
 ```
 
 Or:
@@ -2586,14 +2586,14 @@ The `max_interval` parameter on a delete request has an invalid value, exceeds t
 
 - **Use a valid time format** with supported units (`s`, `m`, `h`):
 
-   ```bash
-   curl - X POST http://compactor:3100/loki/api/v1/delete \
-     - H "X- Scope- OrgID: my- tenant" \
-     - d "query={app=\"foo\"}" \
-     - d "start=1704067200" \
-     - d "end=1704153600" \
-     - d "max_interval=1h"
-   ```
+  ```bash
+  curl -X POST http://compactor:3100/loki/api/v1/delete \
+    -H "X-Scope-OrgID: my-tenant" \
+    -d "query={app=\"foo\"}" \
+    -d "start=1704067200" \
+    -d "end=1704153600" \
+    -d "max_interval=1h"
+  ```
 
 **Properties:**
 
@@ -2622,11 +2622,11 @@ The ruler evaluation mode configuration is invalid.
 
 - **Use a valid evaluation mode**:
 
-   ```yaml
-   ruler:
-     evaluation:
-       mode: local  # Or "remote"
-   ```
+  ```yaml
+  ruler:
+    evaluation:
+      mode: local  # Or "remote"
+  ```
 
 **Properties:**
 
@@ -2651,17 +2651,17 @@ Both the deprecated `client` and the new `clients` configuration options are set
 
 - **Remove the deprecated config** and use `clients`:
 
-   ```yaml
-   ruler:
-     remote_write:
-       # Remove this:
-       # client: {}
-       
-       # Use this instead:
-       clients:
-         primary:
-           url: http://prometheus:9090/api/v1/write
-   ```
+  ```yaml
+  ruler:
+    remote_write:
+      # Remove this:
+      # client: {}
+      
+      # Use this instead:
+      clients:
+        primary:
+          url: http://prometheus:9090/api/v1/write
+  ```
 
 **Properties:**
 
@@ -2675,39 +2675,39 @@ Both the deprecated `client` and the new `clients` configuration options are set
 **Error message:**
 
 ```text
-remote- write enabled but no clients URL are configured
+remote-write enabled but no clients URL are configured
 ```
 
 Or when multiple clients are configured in the `clients` map and one entry is missing a URL:
 
 ```text
-remote- write enabled but client '<name>' URL for tenant <client- id> is not configured
+remote-write enabled but client '<name>' URL for tenant <client-id> is not configured
 ```
 
 **Cause:**
 
-Remote write is enabled for the ruler but no destination URL is configured. The first variant occurs when the `clients` map is empty. The second occurs when a named entry in the `clients` map has no `url` set; `<client- id>` is the map key for that entry, not a tenant ID.
+Remote write is enabled for the ruler but no destination URL is configured. The first variant occurs when the `clients` map is empty. The second occurs when a named entry in the `clients` map has no `url` set; `<client-id>` is the map key for that entry, not a tenant ID.
 
 **Resolution:**
 
 - **Configure the remote write URL**:
 
-   ```yaml
-   ruler:
-     remote_write:
-       enabled: true
-       clients:
-         primary:
-           url: http://prometheus:9090/api/v1/write
-   ```
+  ```yaml
+  ruler:
+    remote_write:
+      enabled: true
+      clients:
+        primary:
+          url: http://prometheus:9090/api/v1/write
+  ```
 
 - **Or disable remote write**:
 
-   ```yaml
-   ruler:
-     remote_write:
-       enabled: false
-   ```
+  ```yaml
+  ruler:
+    remote_write:
+      enabled: false
+  ```
 
 **Properties:**
 
@@ -2726,21 +2726,21 @@ rule result is not a vector or scalar
 
 **Cause:**
 
-A rule evaluation returned an unexpected result type. Both recording rules and alerting rules must produce vector or scalar results. A plain log- stream expression (one that returns log lines rather than a numeric metric) triggers this error in either rule type.
+A rule evaluation returned an unexpected result type. Both recording rules and alerting rules must produce vector or scalar results. A plain log-stream expression (one that returns log lines rather than a numeric metric) triggers this error in either rule type.
 
 **Resolution:**
 
 - **Check the rule expression** returns a vector or scalar:
 
-   ```yaml
-   # Valid - returns vector:
-   record: my_metric
-   expr: sum(rate({job="app"}[5m] | json | level="error"))
+  ```yaml
+  # Valid - returns vector:
+  record: my_metric
+  expr: sum(rate({job="app"}[5m] | json | level="error"))
 
-   # Invalid - returns logs (triggers error for both recording and alerting rules):
-   # record: my_metric
-   # expr: '{job="app"}'
-   ```
+  # Invalid - returns logs (triggers error for both recording and alerting rules):
+  # record: my_metric
+  # expr: '{job="app"}'
+  ```
 
 - **Use aggregation functions** to produce numeric results from log queries.
 
@@ -2761,7 +2761,7 @@ WAL storage closed
 
 **Cause:**
 
-An operation was attempted on the ruler's write- ahead log (WAL) after it was closed. This typically occurs during shutdown.
+An operation was attempted on the ruler's write-ahead log (WAL) after it was closed. This typically occurs during shutdown.
 
 **Resolution:**
 
@@ -2796,14 +2796,14 @@ Kafka ingestion is enabled but no Kafka broker address is configured.
 
 - **Configure the Kafka address**:
 
-   ```yaml
-   kafka_config:
-     topic: loki- logs
-     reader_config:
-       address: kafka:9092
-     writer_config:
-       address: kafka:9092
-   ```
+  ```yaml
+  kafka_config:
+    topic: loki-logs
+    reader_config:
+      address: kafka:9092
+    writer_config:
+      address: kafka:9092
+  ```
 
 **Properties:**
 
@@ -2828,14 +2828,14 @@ Kafka ingestion is enabled but no topic name is configured.
 
 - **Configure the Kafka topic**:
 
-   ```yaml
-   kafka_config:
-     topic: loki- logs
-     reader_config:
-       address: kafka:9092
-     writer_config:
-       address: kafka:9092
-   ```
+  ```yaml
+  kafka_config:
+    topic: loki-logs
+    reader_config:
+      address: kafka:9092
+    writer_config:
+      address: kafka:9092
+  ```
 
 **Properties:**
 
@@ -2860,11 +2860,11 @@ Only one of the Simple Authentication and Security Layer (SASL) username or pass
 
 - **Configure both username and password**:
 
-   ```yaml
-   kafka_config:
-     sasl_username: my- user
-     sasl_password: ${KAFKA_PASSWORD}
-   ```
+  ```yaml
+  kafka_config:
+    sasl_username: my-user
+    sasl_password: ${KAFKA_PASSWORD}
+  ```
 
 - **Or remove both** if SASL authentication is not required.
 
@@ -2891,14 +2891,14 @@ Kafka is configured for the distributor but the ingester isn't configured to rea
 
 - **Enable Kafka in both distributor and ingester**:
 
-   ```yaml
-   distributor:
-     kafka_writes_enabled: true
+  ```yaml
+  distributor:
+    kafka_writes_enabled: true
 
-   ingester:
-     kafka_ingestion:
-       enabled: true
-   ```
+  ingester:
+    kafka_ingestion:
+      enabled: true
+  ```
 
 **Properties:**
 
@@ -2927,15 +2927,15 @@ The `bloom_gateway.client.addresses` configuration field is empty or unset.
 
 - **Configure valid addresses**:
 
-   ```yaml
-   bloom_gateway:
-     client:
-       addresses: dns+bloom- gateway:9095
-   ```
+  ```yaml
+  bloom_gateway:
+    client:
+      addresses: dns+bloom-gateway:9095
+  ```
 
-   Valid formats:
-- `dns+hostname:port` - DNS- based discovery
-- `host1:port,host2:port` - Static list
+  Valid formats:
+  - `dns+hostname:port` - DNS-based discovery
+  - `host1:port,host2:port` - Static list
 
 **Properties:**
 
@@ -2958,9 +2958,9 @@ Bloom gateway requests must be for exactly one day of data due to how bloom bloc
 
 **Resolution:**
 
-- This is typically handled automatically by the bloom querier, which splits multi- day queries into per- day requests before sending them to the gateway. If you see this error:
-- **Check that the querier is properly configured**
-- **Ensure queries are routed through the querier**
+- This is typically handled automatically by the bloom querier, which splits multi-day queries into per-day requests before sending them to the gateway. If you see this error:
+  - **Check that the querier is properly configured**
+  - **Ensure queries are routed through the querier**
 
 **Properties:**
 
@@ -2992,9 +2992,9 @@ The bloom gateway received a request where the start time (`from`) is later than
 - HTTP status: 500 Internal Server Error
 - Configurable per tenant: No
 
-## Write- ahead log (WAL) errors
+## Write-ahead log (WAL) errors
 
-WAL errors occur when the ingester cannot properly manage its write- ahead log.
+WAL errors occur when the ingester cannot properly manage its write-ahead log.
 
 ### Error: WAL is stopped
 
@@ -3037,11 +3037,11 @@ The WAL checkpoint duration is set to an invalid value (likely zero or negative)
 
 - **Set a valid checkpoint duration**:
 
-   ```yaml
-   ingester:
-     wal:
-       checkpoint_duration: 5m
-   ```
+  ```yaml
+  ingester:
+    wal:
+      checkpoint_duration: 5m
+  ```
 
 **Properties:**
 
@@ -3050,7 +3050,7 @@ The WAL checkpoint duration is set to an invalid value (likely zero or negative)
 - HTTP status: N/A (startup failure)
 - Configurable per tenant: No
 
-<!- - Hiding this for now, as it won't exist until we release Loki 3.7
+<!-- Hiding this for now, as it won't exist until we release Loki 3.7 
 
 ### Error: Invalid disk full threshold
 
@@ -3072,18 +3072,18 @@ The WAL disk full threshold is set to a value outside the valid range. Valid val
 
 - **Set a valid threshold**:
 
-   ```yaml
-   ingester:
-     wal:
-       disk_full_threshold: 0.9  # 90%
-   ```
+  ```yaml
+  ingester:
+    wal:
+      disk_full_threshold: 0.9  # 90%
+  ```
 
 **Properties:**
 
 - Enforced by: Configuration validation
 - Retryable: No
 - HTTP status: N/A (startup failure)
-- Configurable per tenant: No - - >
+- Configurable per tenant: No -->
 
 ## Ingester lifecycle errors
 
@@ -3111,7 +3111,7 @@ The ingester is in the process of shutting down and is no longer accepting write
 **Properties:**
 
 - Enforced by: Ingester
-- Retryable: Partial. The distributor sends writes to all ingesters in the replication set in parallel and uses a quorum model. If the remaining ingesters meet the minimum success threshold, the overall write succeeds despite this error from a shutting- down ingester.
+- Retryable: Partial. The distributor sends writes to all ingesters in the replication set in parallel and uses a quorum model. If the remaining ingesters meet the minimum success threshold, the overall write succeeds despite this error from a shutting-down ingester.
 - HTTP status: 500 Internal Server Error
 - Configurable per tenant: No
 
@@ -3125,7 +3125,7 @@ Ingester is stopping or already stopped.
 
 **Cause:**
 
-The ingester's shutdown management endpoint (`POST /loki/api/v1/ingester/shutdown`) was called when the ingester was not in a `Running` state. This happens when the endpoint is called a second time during an in- progress shutdown or after the ingester has already stopped. This error is returned by the shutdown endpoint, not by the log- write or query paths.
+The ingester's shutdown management endpoint (`POST /loki/api/v1/ingester/shutdown`) was called when the ingester was not in a `Running` state. This happens when the endpoint is called a second time during an in-progress shutdown or after the ingester has already stopped. This error is returned by the shutdown endpoint, not by the log-write or query paths.
 
 **Resolution:**
 
@@ -3158,11 +3158,11 @@ The ingester could not start its Kafka partition reader. This occurs when Kafka 
 - **Verify Kafka topic exists** and the ingester has appropriate permissions.
 - **Review Kafka configuration**:
 
-   ```yaml
-   kafka:
-     address: kafka:9092
-     topic: loki- logs
-   ```
+  ```yaml
+  kafka:
+    address: kafka:9092
+    topic: loki-logs
+  ```
 
 - **Check Kafka broker health**.
 
@@ -3245,12 +3245,12 @@ The pattern ingester is configured with a replication factor other than 1. Curre
 
 - **Set the replication factor to 1**:
 
-   ```yaml
-   pattern_ingester:
-     lifecycler:
-       ring:
-         replication_factor: 1
-   ```
+  ```yaml
+  pattern_ingester:
+    lifecycler:
+      ring:
+        replication_factor: 1
+  ```
 
 **Properties:**
 
@@ -3259,12 +3259,12 @@ The pattern ingester is configured with a replication factor other than 1. Curre
 - HTTP status: N/A (startup failure)
 - Configurable per tenant: No
 
-### Error: Pattern ingester retain- for too short
+### Error: Pattern ingester retain-for too short
 
 **Error message:**
 
 ```text
-retain- for (<duration>) must be greater than or equal to chunk- duration (<duration>)
+retain-for (<duration>) must be greater than or equal to chunk-duration (<duration>)
 ```
 
 **Cause:**
@@ -3273,13 +3273,13 @@ The pattern ingester's `retain_for` duration is shorter than `max_chunk_age`, wh
 
 **Resolution:**
 
-- **Increase the retain- for duration** to be at least as long as `max_chunk_age`:
+- **Increase the retain-for duration** to be at least as long as `max_chunk_age`:
 
-   ```yaml
-   pattern_ingester:
-     retain_for: 15m   # Must be >= max_chunk_age
-     max_chunk_age: 5m
-   ```
+  ```yaml
+  pattern_ingester:
+    retain_for: 15m   # Must be >= max_chunk_age
+    max_chunk_age: 5m
+  ```
 
 **Properties:**
 
@@ -3288,12 +3288,12 @@ The pattern ingester's `retain_for` duration is shorter than `max_chunk_age`, wh
 - HTTP status: N/A (startup failure)
 - Configurable per tenant: No
 
-### Error: Pattern ingester chunk- duration too short
+### Error: Pattern ingester chunk-duration too short
 
 **Error message:**
 
 ```text
-chunk- duration (<duration>) must be greater than or equal to sample- interval (<duration>)
+chunk-duration (<duration>) must be greater than or equal to sample-interval (<duration>)
 ```
 
 **Cause:**
@@ -3304,11 +3304,11 @@ The pattern ingester's `max_chunk_age` is shorter than `pattern_sample_interval`
 
 - **Increase `max_chunk_age`** to be at least as long as `pattern_sample_interval`:
 
-   ```yaml
-   pattern_ingester:
-     max_chunk_age: 1h     # Must be >= pattern_sample_interval (default: 1h)
-     pattern_sample_interval: 10s  # default: 10s
-   ```
+  ```yaml
+  pattern_ingester:
+    max_chunk_age: 1h     # Must be >= pattern_sample_interval (default: 1h)
+    pattern_sample_interval: 10s  # default: 10s
+  ```
 
 **Properties:**
 
@@ -3333,10 +3333,10 @@ The `volume_threshold` value is outside the valid range of 0 to 1. This setting 
 
 - **Set `volume_threshold` to a value between 0 and 1** (default is `0.99`):
 
-   ```yaml
-   pattern_ingester:
-     volume_threshold: 0.99
-   ```
+  ```yaml
+  pattern_ingester:
+    volume_threshold: 0.99
+  ```
 
 **Properties:**
 
@@ -3367,9 +3367,9 @@ The `direction` query parameter contains an invalid value.
   - `forward` - Oldest to newest
   - `backward` - Newest to oldest (default)
 
-   ```bash
-   curl "http://loki:3100/loki/api/v1/query_range?query={job=\"app\"}&direction=forward"
-   ```
+  ```bash
+  curl "http://loki:3100/loki/api/v1/query_range?query={job=\"app\"}&direction=forward"
+  ```
 
 **Properties:**
 
@@ -3394,9 +3394,9 @@ The `limit` parameter is zero or negative.
 
 - **Provide a positive limit**:
 
-   ```bash
-   curl "http://loki:3100/loki/api/v1/query_range?query={job=\"app\"}&limit=100"
-   ```
+  ```bash
+  curl "http://loki:3100/loki/api/v1/query_range?query={job=\"app\"}&limit=100"
+  ```
 
 **Properties:**
 
@@ -3421,12 +3421,12 @@ The query's `end` time is before or equal to its `start` time.
 
 - **Ensure end time is after start time**:
 
-   ```bash
-   curl "http://loki:3100/loki/api/v1/query_range?\
-   query={job=\"app\"}&\
-   start=2024- 01- 01T00:00:00Z&\
-   end=2024- 01- 02T00:00:00Z"
-   ```
+  ```bash
+  curl "http://loki:3100/loki/api/v1/query_range?\
+  query={job=\"app\"}&\
+  start=2024-01-01T00:00:00Z&\
+  end=2024-01-02T00:00:00Z"
+  ```
 
 **Properties:**
 
@@ -3451,11 +3451,11 @@ The `delay_for` parameter for tailing queries exceeds the maximum allowed value.
 
 - **Reduce the delay_for value**:
 
-   ```bash
-   curl "http://loki:3100/loki/api/v1/tail?query={job=\"app\"}&delay_for=5"
-   ```
+  ```bash
+  curl "http://loki:3100/loki/api/v1/tail?query={job=\"app\"}&delay_for=5"
+  ```
 
-   The maximum value is typically 5 seconds.
+  The maximum value is typically 5 seconds.
 
 **Properties:**
 
@@ -3474,23 +3474,23 @@ query filtering for deletes requires 'compactor_grpc_address' or 'compactor_addr
 
 **Cause:**
 
-Query- time filtering for delete requests is enabled but Loki doesn't know how to reach the compactor to retrieve active delete requests.
+Query-time filtering for delete requests is enabled but Loki doesn't know how to reach the compactor to retrieve active delete requests.
 
 **Resolution:**
 
 - **Configure the compactor address**:
 
-   ```yaml
-   compactor:
-     compactor_grpc_address: compactor:9095
-   ```
+  ```yaml
+  compactor:
+    compactor_grpc_address: compactor:9095
+  ```
 
 - **Or use the HTTP address**:
 
-   ```yaml
-   compactor:
-     compactor_address: http://compactor:3100
-   ```
+  ```yaml
+  compactor:
+    compactor_address: http://compactor:3100
+  ```
 
 **Properties:**
 
