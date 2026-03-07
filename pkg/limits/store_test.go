@@ -674,6 +674,42 @@ func TestUsageStore_PolicyBasedStreamLimits(t *testing.T) {
 	})
 }
 
+func TestUsageStore_AverageRate(t *testing.T) {
+	clock := quartz.NewMock(t)
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
+	s.clock = clock
+	require.NoError(t, err)
+
+	// Empty buckets should return a rate of 0.
+	buckets := make([]rateBucket, 5)
+	require.Equal(t, uint64(0), s.averageRate(buckets, clock.Now()))
+
+	// Buckets inside window, but with no rates, should return a rate of 0.
+	for i := range buckets {
+		buckets[i].timestamp = clock.Now().UnixNano()
+		clock.Advance(time.Minute)
+	}
+	require.Equal(t, uint64(0), s.averageRate(buckets, clock.Now()))
+
+	// Buckets inside window, with rates, should return average rate.
+	for i := range buckets {
+		// Bucket size is 1 minute, so if each bucket is 1800 bytes,
+		// the per second rate is 30KB/sec.
+		buckets[i].size = uint64(1800)
+	}
+	require.Equal(t, uint64(30), s.averageRate(buckets, clock.Now()))
+
+	// If the last bucket is just inside the window (because it is the start of the
+	// next minute) just the seconds inside the window should be included.
+	for i := range buckets {
+		buckets[i].timestamp = clock.Now().Add(time.Minute * time.Duration(i)).UnixNano()
+	}
+	// Advance the clock 1 second into the last bucket. It should work out as
+	// 9000 (1800 x 5) over 4 minutes and 1 second.
+	clock.Advance(4*time.Minute + time.Second)
+	require.Equal(t, uint64(37), s.averageRate(buckets, clock.Now()))
+}
+
 // mockLimitsWithPolicy extends mockLimits to support policy-specific limits
 type mockLimitsWithPolicy struct {
 	mockLimits

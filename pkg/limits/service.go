@@ -200,21 +200,14 @@ func (s *Service) UpdateRates(
 	if err != nil {
 		return nil, err
 	}
+	now := s.clock.Now()
 	resp := proto.UpdateRatesResponse{
 		Results: make([]*proto.UpdateRatesResult, len(updated)),
 	}
 	for i, stream := range updated {
-		var totalSize uint64
-		for _, bucket := range stream.rateBuckets {
-			totalSize += bucket.size
-		}
-		// The average rate is calculated over the total number of
-		// populated buckets. This allows us to calculate accurate rates
-		// without empty buckets pulling down the average.
-		averageRate := totalSize / (uint64(s.cfg.BucketSize.Seconds()) * uint64(len(stream.rateBuckets)))
 		resp.Results[i] = &proto.UpdateRatesResult{
 			StreamHash: stream.hash,
-			Rate:       averageRate,
+			Rate:       s.usage.averageRate(stream.rateBuckets, now),
 		}
 	}
 	return &resp, nil
