@@ -2,9 +2,8 @@ package bloomgateway
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
-
-	"go.uber.org/atomic"
 )
 
 type Stats struct {
@@ -12,10 +11,10 @@ type Stats struct {
 	NumTasks, NumMatchers               int
 	ChunksRequested, ChunksFiltered     int
 	SeriesRequested, SeriesFiltered     int
-	QueueTime                           *atomic.Duration
-	BlocksFetchTime                     *atomic.Duration
-	ProcessingTime, TotalProcessingTime *atomic.Duration
-	PostProcessingTime                  *atomic.Duration
+	QueueTime                           *atomic.Int64
+	BlocksFetchTime                     *atomic.Int64
+	ProcessingTime, TotalProcessingTime *atomic.Int64
+	PostProcessingTime                  *atomic.Int64
 	SkippedBlocks                       *atomic.Int32 // blocks skipped because they were not available (yet)
 	ProcessedBlocks                     *atomic.Int32 // blocks processed for this specific request
 	ProcessedBlocksTotal                *atomic.Int32 // blocks processed for multiplexed request
@@ -29,14 +28,14 @@ var ctxKey = statsKey(0)
 func ContextWithEmptyStats(ctx context.Context) (*Stats, context.Context) {
 	stats := &Stats{
 		Status:               "unknown",
-		SkippedBlocks:        atomic.NewInt32(0),
-		ProcessedBlocks:      atomic.NewInt32(0),
-		ProcessedBlocksTotal: atomic.NewInt32(0),
-		QueueTime:            atomic.NewDuration(0),
-		BlocksFetchTime:      atomic.NewDuration(0),
-		ProcessingTime:       atomic.NewDuration(0),
-		TotalProcessingTime:  atomic.NewDuration(0),
-		PostProcessingTime:   atomic.NewDuration(0),
+		SkippedBlocks:        &atomic.Int32{},
+		ProcessedBlocks:      &atomic.Int32{},
+		ProcessedBlocksTotal: &atomic.Int32{},
+		QueueTime:            &atomic.Int64{},
+		BlocksFetchTime:      &atomic.Int64{},
+		ProcessingTime:       &atomic.Int64{},
+		TotalProcessingTime:  &atomic.Int64{},
+		PostProcessingTime:   &atomic.Int64{},
 	}
 	ctx = context.WithValue(ctx, ctxKey, stats)
 	return stats, ctx
@@ -54,10 +53,10 @@ func FromContext(ctx context.Context) *Stats {
 
 // aggregates the total duration
 func (s *Stats) Duration() (dur time.Duration) {
-	dur += s.QueueTime.Load()
-	dur += s.BlocksFetchTime.Load()
-	dur += s.ProcessingTime.Load()
-	dur += s.PostProcessingTime.Load()
+	dur += time.Duration(s.QueueTime.Load())
+	dur += time.Duration(s.BlocksFetchTime.Load())
+	dur += time.Duration(s.ProcessingTime.Load())
+	dur += time.Duration(s.PostProcessingTime.Load())
 	return
 }
 
@@ -82,10 +81,10 @@ func (s *Stats) KVArgs() []any {
 		"chunks_filtered", s.ChunksFiltered,
 		"chunks_remaining", chunksRemaining,
 		"filter_ratio", filterRatio,
-		"queue_time", s.QueueTime.Load(),
-		"blocks_fetch_time", s.BlocksFetchTime.Load(),
-		"processing_time", s.ProcessingTime.Load(),
-		"post_processing_time", s.PostProcessingTime.Load(),
+		"queue_time", time.Duration(s.QueueTime.Load()),
+		"blocks_fetch_time", time.Duration(s.BlocksFetchTime.Load()),
+		"processing_time", time.Duration(s.ProcessingTime.Load()),
+		"post_processing_time", time.Duration(s.PostProcessingTime.Load()),
 		"duration", s.Duration(),
 	}
 }
@@ -94,49 +93,49 @@ func (s *Stats) AddQueueTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	s.QueueTime.Add(t)
+	s.QueueTime.Add(int64(t))
 }
 
 func (s *Stats) AddBlocksFetchTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	s.BlocksFetchTime.Add(t)
+	s.BlocksFetchTime.Add(int64(t))
 }
 
 func (s *Stats) AddProcessingTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	s.ProcessingTime.Add(t)
+	s.ProcessingTime.Add(int64(t))
 }
 
 func (s *Stats) AddTotalProcessingTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	s.TotalProcessingTime.Add(t)
+	s.TotalProcessingTime.Add(int64(t))
 }
 
 func (s *Stats) AddPostProcessingTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	s.PostProcessingTime.Add(t)
+	s.PostProcessingTime.Add(int64(t))
 }
 
 func (s *Stats) IncSkippedBlocks() {
 	if s == nil {
 		return
 	}
-	s.SkippedBlocks.Inc()
+	s.SkippedBlocks.Add(1)
 }
 
 func (s *Stats) IncProcessedBlocks() {
 	if s == nil {
 		return
 	}
-	s.ProcessedBlocks.Inc()
+	s.ProcessedBlocks.Add(1)
 }
 
 func (s *Stats) AddProcessedBlocksTotal(delta int) {

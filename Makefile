@@ -397,9 +397,6 @@ lint: ## run linters
 	go version
 	golangci-lint version
 	golangci-lint run -v $(LINT_FLAGS)
-	GOFLAGS=$(GOFLAGS) faillint -paths \
-		"sync/atomic=go.uber.org/atomic" \
-		./...
 
 	# Use our spanlogger implementation instead of the one in dskit to make sure we use the correct tracing lib.
 	faillint -paths \
