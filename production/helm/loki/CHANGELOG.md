@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Apply `trafficDistribution` setting to SingleBinary service template. [#20894](https://github.com/grafana/loki/pull/20894)
+
 
 ## 6.53.0
 
