@@ -489,7 +489,7 @@ func (c *COSObjectClient) List(ctx context.Context, prefix, delimiter string) ([
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func (c *COSObjectClient) IsObjectNotFoundErr(err error) bool {
-	var awsErr types.NoSuchKey
+	var awsErr *types.NoSuchKey
 	return errors.As(err, &awsErr)
 }
 
