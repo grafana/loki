@@ -1010,6 +1010,7 @@ type ObjectStorageClass string
 
 // Enum values for ObjectStorageClass
 const (
+	ObjectStorageClassExpressOneZone     ObjectStorageClass = "EXPRESS_ONEZONE"
 	ObjectStorageClassStandard           ObjectStorageClass = "STANDARD"
 	ObjectStorageClassReducedRedundancy  ObjectStorageClass = "REDUCED_REDUNDANCY"
 	ObjectStorageClassGlacier            ObjectStorageClass = "GLACIER"
