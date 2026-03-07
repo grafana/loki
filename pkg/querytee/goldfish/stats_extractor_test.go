@@ -209,6 +209,182 @@ func TestStatsExtractor_NewEngineWarningDetection(t *testing.T) {
 	}
 }
 
+func TestStatsExtractor_EntriesCountedFromResponseData(t *testing.T) {
+	extractor := NewStatsExtractor()
+
+	tests := []struct {
+		name            string
+		responseBody    string
+		expectedEntries int64
+	}{
+		{
+			name: "stream entries counted from result, not stats",
+			responseBody: `{
+				"status": "success",
+				"data": {
+					"resultType": "streams",
+					"result": [
+						{
+							"stream": {"job": "test"},
+							"values": [
+								["1700000000000000000", "line 1"],
+								["1700000000001000000", "line 2"],
+								["1700000000002000000", "line 3"]
+							]
+						}
+					],
+					"stats": {
+						"summary": {
+							"totalEntriesReturned": 999
+						}
+					}
+				}
+			}`,
+			expectedEntries: 3,
+		},
+		{
+			name: "multiple streams entries summed",
+			responseBody: `{
+				"status": "success",
+				"data": {
+					"resultType": "streams",
+					"result": [
+						{
+							"stream": {"job": "a"},
+							"values": [["1700000000000000000", "line 1"], ["1700000000001000000", "line 2"]]
+						},
+						{
+							"stream": {"job": "b"},
+							"values": [["1700000000000000000", "line 3"]]
+						}
+					],
+					"stats": {
+						"summary": {
+							"totalEntriesReturned": 50
+						}
+					}
+				}
+			}`,
+			expectedEntries: 3,
+		},
+		{
+			name: "empty streams returns zero",
+			responseBody: `{
+				"status": "success",
+				"data": {
+					"resultType": "streams",
+					"result": [],
+					"stats": {
+						"summary": {
+							"totalEntriesReturned": 10
+						}
+					}
+				}
+			}`,
+			expectedEntries: 0,
+		},
+		{
+			name: "same result data with different stats produces same entry count",
+			responseBody: `{
+				"status": "success",
+				"data": {
+					"resultType": "streams",
+					"result": [
+						{
+							"stream": {"job": "test"},
+							"values": [["1700000000000000000", "line 1"], ["1700000000001000000", "line 2"]]
+						}
+					],
+					"stats": {
+						"summary": {
+							"totalEntriesReturned": 200,
+							"splits": 5,
+							"shards": 10
+						}
+					}
+				}
+			}`,
+			expectedEntries: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stats, _, _, _, _, err := extractor.ExtractResponseData([]byte(tt.responseBody), 50)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedEntries, stats.TotalEntriesReturned,
+				"TotalEntriesReturned should be counted from actual response entries, not stats")
+		})
+	}
+}
+
+func TestStatsExtractor_IdenticalResultsDifferentStats(t *testing.T) {
+	extractor := NewStatsExtractor()
+
+	// Two responses with identical result data but different stats (simulating v1 vs v2 cells)
+	cellAResponse := `{
+		"status": "success",
+		"data": {
+			"resultType": "streams",
+			"result": [
+				{
+					"stream": {"job": "test", "env": "prod"},
+					"values": [
+						["1700000000000000000", "request completed"],
+						["1700000000001000000", "request started"]
+					]
+				}
+			],
+			"stats": {
+				"summary": {
+					"execTime": 0.05,
+					"totalBytesProcessed": 1000,
+					"totalEntriesReturned": 2,
+					"splits": 1,
+					"shards": 4
+				}
+			}
+		}
+	}`
+
+	cellBResponse := `{
+		"status": "success",
+		"data": {
+			"resultType": "streams",
+			"result": [
+				{
+					"stream": {"job": "test", "env": "prod"},
+					"values": [
+						["1700000000000000000", "request completed"],
+						["1700000000001000000", "request started"]
+					]
+				}
+			],
+			"stats": {
+				"summary": {
+					"execTime": 0.08,
+					"totalBytesProcessed": 2000,
+					"totalEntriesReturned": 150,
+					"splits": 3,
+					"shards": 8
+				}
+			}
+		}
+	}`
+
+	statsA, hashA, _, _, _, err := extractor.ExtractResponseData([]byte(cellAResponse), 50)
+	require.NoError(t, err)
+
+	statsB, hashB, _, _, _, err := extractor.ExtractResponseData([]byte(cellBResponse), 80)
+	require.NoError(t, err)
+
+	assert.Equal(t, hashA, hashB, "identical result data should produce the same hash")
+	assert.Equal(t, statsA.TotalEntriesReturned, statsB.TotalEntriesReturned,
+		"identical result data should produce the same entry count regardless of stats differences")
+	assert.Equal(t, int64(2), statsA.TotalEntriesReturned,
+		"entry count should reflect the 2 actual entries in the response")
+}
+
 func TestStatsExtractor_CheckForNewEngineWarning(t *testing.T) {
 	extractor := NewStatsExtractor()
 

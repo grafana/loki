@@ -105,8 +105,8 @@ func NewManager(config Config, storage goldfish.Storage, resultStore ResultStore
 	// Create comparator if values should be compared with tolerance
 	if config.CompareValuesTolerance > 0 {
 		m.responseComparator = comparator.NewSamplesComparator(comparator.SampleComparisonOptions{
-			Tolerance: config.CompareValuesTolerance,
-			// zero value for SkipRecentSamples, SkipSamplesBefore ensures all samples are compared.
+			Tolerance:         config.CompareValuesTolerance,
+			SkipRecentSamples: config.SkipRecentSamples,
 		})
 	}
 
