@@ -39,6 +39,20 @@ func SmallestPositiveNonZeroIntPerTenant(tenantIDs []string, f func(string) int)
 	return *result
 }
 
+// AllTruePerTenant returns true only if all tenants have the boolean value set to true.
+// Returns false if any tenant has false or if the tenant list is empty.
+func AllTruePerTenant(tenantIDs []string, f func(string) bool) bool {
+	if len(tenantIDs) == 0 {
+		return false
+	}
+	for _, tenantID := range tenantIDs {
+		if !f(tenantID) {
+			return false
+		}
+	}
+	return true
+}
+
 // SmallestPositiveNonZeroDurationPerTenant is returning the minimal positive
 // and non-zero value of the supplied limit function for all given tenants. In
 // many limits a value of 0 means unlimited so the method will return 0 only if
