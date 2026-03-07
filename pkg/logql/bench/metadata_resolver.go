@@ -43,8 +43,13 @@ func (r *MetadataVariableResolver) ResolveQuery(query string, requirements Query
 
 	// Resolve ${SELECTOR} if present
 	if strings.Contains(result, placeholderSelector) {
+		// When the query also contains ${RANGE}, pre-filter candidates to
+		// streams that have a valid range duration. This prevents selecting
+		// a stream with zero MinRange that would cause ${RANGE} resolution
+		// to fail later.
+		needsRange := strings.Contains(query, placeholderRange)
 		var err error
-		selector, err = r.resolveLabelSelector(requirements)
+		selector, err = r.resolveLabelSelector(requirements, needsRange, isInstant)
 		if err != nil {
 			return "", fmt.Errorf("failed to resolve ${SELECTOR}: %w", err)
 		}
@@ -80,8 +85,11 @@ func (r *MetadataVariableResolver) ResolveQuery(query string, requirements Query
 	return result, nil
 }
 
-// resolveLabelSelector filters streams by all requirements and returns a random selector
-func (r *MetadataVariableResolver) resolveLabelSelector(req QueryRequirements) (string, error) {
+// resolveLabelSelector filters streams by all requirements and returns a random selector.
+// When needsRange is true, candidates are additionally filtered to streams that
+// have valid range metadata (MinRange > 0 for range queries, MinInstantRange > 0
+// for instant queries).
+func (r *MetadataVariableResolver) resolveLabelSelector(req QueryRequirements, needsRange bool, isInstant bool) (string, error) {
 	candidates := r.metadata.AllSelectors
 
 	if req.LogFormat != "" {
@@ -129,6 +137,26 @@ func (r *MetadataVariableResolver) resolveLabelSelector(req QueryRequirements) (
 
 	if len(candidates) == 0 {
 		return "", fmt.Errorf("no streams match all requirements")
+	}
+
+	// When the query needs ${RANGE}, filter to streams with valid range metadata.
+	if needsRange {
+		var rangeFiltered []string
+		for _, sel := range candidates {
+			meta, ok := r.metadata.MetadataBySelector[sel]
+			if !ok {
+				continue
+			}
+			if isInstant && meta.MinInstantRange > 0 {
+				rangeFiltered = append(rangeFiltered, sel)
+			} else if !isInstant && meta.MinRange > 0 {
+				rangeFiltered = append(rangeFiltered, sel)
+			}
+		}
+		if len(rangeFiltered) == 0 {
+			return "", fmt.Errorf("no streams with valid %s range duration", map[bool]string{true: "instant", false: "range"}[isInstant])
+		}
+		candidates = rangeFiltered
 	}
 
 	return candidates[r.rnd.Intn(len(candidates))], nil

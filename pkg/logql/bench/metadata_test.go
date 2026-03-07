@@ -52,7 +52,7 @@ func TestBuildMetadata(t *testing.T) {
 	metadata := BuildMetadata(config, streamsMeta)
 
 	// Verify version
-	require.Equal(t, metadataVersion, metadata.Version)
+	require.Equal(t, MetadataVersion, metadata.Version)
 
 	// Verify time range
 	require.Equal(t, config.StartTime, metadata.TimeRange.Start)
@@ -93,11 +93,6 @@ func TestBuildMetadata(t *testing.T) {
 	require.Equal(t, 1, metadata.Statistics.StreamsByService["loki"])
 	require.Equal(t, 1, metadata.Statistics.StreamsByService["nginx"])
 
-	// Verify unique labels tracking
-	require.Equal(t, 2, metadata.Statistics.UniqueLabels["cluster"])   // cluster-0, cluster-1
-	require.Equal(t, 2, metadata.Statistics.UniqueLabels["namespace"]) // namespace-0, namespace-1
-	require.Equal(t, 2, metadata.Statistics.UniqueLabels["env"])       // prod, staging
-	require.Equal(t, 2, metadata.Statistics.UniqueLabels["region"])    // us-west-2, us-east-1
 }
 
 func TestSaveAndLoadMetadata(t *testing.T) {

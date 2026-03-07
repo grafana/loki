@@ -40,7 +40,7 @@ func TestMetadataGenerationIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify metadata content
-	require.Equal(t, metadataVersion, metadata.Version)
+	require.Equal(t, MetadataVersion, metadata.Version)
 	require.Equal(t, 10, metadata.Statistics.TotalStreams)
 	require.Len(t, metadata.AllSelectors, 10)
 	require.NotEmpty(t, metadata.ByFormat)
@@ -103,10 +103,10 @@ func TestMetadataFormatFiltering(t *testing.T) {
 	resolver := NewMetadataVariableResolver(metadata, 123)
 
 	// Query with JSON format should only get JSON selectors
-	jsonQuery := `${SELECTOR} | json | unwrap rows_affected`
+	jsonQuery := `${SELECTOR} | json | unwrap duration_ms`
 	jsonReq := QueryRequirements{
 		LogFormat:         "json",
-		UnwrappableFields: []string{"rows_affected"},
+		UnwrappableFields: []string{"duration_ms"},
 	}
 
 	resolvedJSON, err := resolver.ResolveQuery(jsonQuery, jsonReq, false)
