@@ -1,0 +1,24 @@
+
+---
+overrides:
+  test-a:
+    otlp_config:
+      resource_attributes:
+        attributes_config:
+        - action: index_label
+          attributes:
+          - res.foo.bar
+          - res.bar.baz
+        - action: drop
+          attributes:
+          - res.service.env
+      scope_attributes:
+      - action: drop
+        attributes:
+        - scope.foo.bar
+        - scope.bar.baz
+      log_attributes:
+      - action: drop
+        attributes:
+        - log.foo.bar
+        - log.bar.baz
