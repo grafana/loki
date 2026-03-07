@@ -7558,6 +7558,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.autoAuth</td>
+			<td>bool</td>
+			<td>If true, auto detect authentication information based on enterprise.enabled==true, use environment variables USER/PASS of container loki.auth_enabled==true, use monitoring.selfMonitoring.tenant.name/password</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.dnsConfig</td>
 			<td>object</td>
 			<td>DNS config for canary pods</td>
