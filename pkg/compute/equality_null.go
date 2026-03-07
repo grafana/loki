@@ -15,17 +15,11 @@ func dispatchNullEquality(alloc *memory.Allocator, left, right columnar.Datum, s
 	case leftScalar && rightScalar:
 		return nullEqualitySS(left.(*columnar.NullScalar), right.(*columnar.NullScalar)), nil
 	case leftScalar && !rightScalar:
-		out := nullEqualitySA(alloc, left.(*columnar.NullScalar), right.(*columnar.Null))
-		return applySelectionToBoolArray(alloc, out, selection)
+		return nullEqualitySAA(alloc, left.(*columnar.NullScalar), right.(*columnar.Null), selection)
 	case !leftScalar && rightScalar:
-		out := nullEqualityAS(alloc, left.(*columnar.Null), right.(*columnar.NullScalar))
-		return applySelectionToBoolArray(alloc, out, selection)
+		return nullEqualityASA(alloc, left.(*columnar.Null), right.(*columnar.NullScalar), selection)
 	case !leftScalar && !rightScalar:
-		out, err := nullEqualityAA(alloc, left.(*columnar.Null), right.(*columnar.Null))
-		if err != nil {
-			return nil, err
-		}
-		return applySelectionToBoolArray(alloc, out, selection)
+		return nullEqualityAAA(alloc, left.(*columnar.Null), right.(*columnar.Null), selection)
 	}
 
 	panic("unreachable")
@@ -35,30 +29,36 @@ func nullEqualitySS(_, _ *columnar.NullScalar) *columnar.BoolScalar {
 	return &columnar.BoolScalar{Null: true}
 }
 
-func nullEqualitySA(alloc *memory.Allocator, _ *columnar.NullScalar, right *columnar.Null) *columnar.Bool {
-	validity := computeValiditySA(alloc, true, right.Validity())
+func nullEqualitySAA(alloc *memory.Allocator, _ *columnar.NullScalar, right *columnar.Null, selection memory.Bitmap) (*columnar.Bool, error) {
+	validity, err := computeValiditySAA(alloc, true, right.Validity(), selection)
+	if err != nil {
+		return nil, err
+	}
 
 	values := memory.NewBitmap(alloc, right.Len())
 	values.AppendCount(false, right.Len())
 
-	return columnar.NewBool(values, validity)
+	return columnar.NewBool(values, validity), nil
 }
 
-func nullEqualityAS(alloc *memory.Allocator, left *columnar.Null, _ *columnar.NullScalar) *columnar.Bool {
-	validity := computeValidityAS(alloc, left.Validity(), true)
+func nullEqualityASA(alloc *memory.Allocator, left *columnar.Null, _ *columnar.NullScalar, selection memory.Bitmap) (*columnar.Bool, error) {
+	validity, err := computeValidityASA(alloc, left.Validity(), true, selection)
+	if err != nil {
+		return nil, err
+	}
 
 	values := memory.NewBitmap(alloc, left.Len())
 	values.AppendCount(false, left.Len())
 
-	return columnar.NewBool(values, validity)
+	return columnar.NewBool(values, validity), nil
 }
 
-func nullEqualityAA(alloc *memory.Allocator, left, right *columnar.Null) (*columnar.Bool, error) {
+func nullEqualityAAA(alloc *memory.Allocator, left, right *columnar.Null, selection memory.Bitmap) (*columnar.Bool, error) {
 	if left.Len() != right.Len() {
 		return nil, fmt.Errorf("array length mismatch: %d != %d", left.Len(), right.Len())
 	}
 
-	validity, err := computeValidityAA(alloc, left.Validity(), right.Validity())
+	validity, err := computeValidityAAA(alloc, left.Validity(), right.Validity(), selection)
 	if err != nil {
 		return nil, err
 	}
