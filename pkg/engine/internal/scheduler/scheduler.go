@@ -219,7 +219,12 @@ func (s *Scheduler) handleWorkerHello(ctx context.Context, worker *workerConn, m
 		return err
 	}
 
-	// Request to be notified when the worker is ready.
+	worker.readyCh = make(chan struct{}, msg.Threads)
+
+	// Spawn a single long-lived workerLoop for this connection.
+	go s.workerLoop(ctx, worker)
+
+	// Request to be notified when the worker has a ready thread.
 	s.workerSubscribe(ctx, worker)
 	return nil
 }
@@ -233,15 +238,8 @@ func (s *Scheduler) markWorkerReady(ctx context.Context, worker *workerConn) err
 	}
 	s.readyWorkers[worker] = struct{}{}
 
-	// Spawn a goroutine that assigns tasks to this worker by reading
-	// from the tasksCh. The goroutine exits on 429/error/disconnect.
-	//
-	// It's possible for this to launch multiple goroutines if the worker
-	// (incorrectly) sends more than one ready message. If this happens
-	// the worker basically gets a higher weight towards task assignment
-	// as more than a single routine is picking from the shared channel.
-	// But backpressure would still work as expected if worker can't keep up.
-	go s.workerLoop(ctx, worker)
+	// Signal the existing workerLoop that a thread is available.
+	worker.SignalReady()
 
 	// Wake [Scheduler.runAssignLoop] so it feeds tasks into tasksCh.
 	if s.taskQueue.Len() > 0 {
@@ -428,16 +426,30 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 	}
 }
 
-// workerLoop assigns tasks to a single worker by reading from the
-// shared tasksCh. It continues assigning until the worker NACKs, an error
-// occurs, or the connection is closed.
+// workerLoop is a long-lived goroutine (one per worker connection) that
+// assigns tasks to the worker. It waits on readyCh until the worker reports
+// a ready thread, then greedily pulls tasks from tasksCh until the worker
+// NACKs with 429 (no ready threads), at which point it loops back to
+// waiting.
 //
-// TODO(ashwanth): When there is only a single worker (say single-binary)
-// all assignments go through a single workerLoop. Because SendMessage blocks
-// until the worker ACKs, the per-task round-trip overhead adds up
-// when there are a large number of tasks, resulting in tail latencies.
+// This avoids the previous pattern where a new goroutine was spawned for
+// every re-subscribe cycle, eliminating goroutine churn and the wasted
+// 429 "probe" that occurred after each spawn.
 func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
+	ready := false
+
 	for {
+		if !ready {
+			select {
+			case <-ctx.Done():
+				return
+			case <-worker.done:
+				return
+			case <-worker.readyCh:
+				ready = true
+			}
+		}
+
 		var assignment taskAssignment
 
 		select {
@@ -458,7 +470,6 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 		if err != nil {
 			s.requeueTask(assignment.t, assignment.pos)
 
-			// if its 429, remove from ready workers and fire subscribe request.
 			if isTooManyRequestsError(err) {
 				s.assignMut.Lock()
 				delete(s.readyWorkers, worker)
@@ -466,18 +477,16 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 
 				s.metrics.backoffsTotal.Inc()
 				s.workerSubscribe(ctx, worker)
+				ready = false
 
-				return
+				continue
 			}
 
 			level.Warn(s.logger).Log("msg", "failed to assign task", "id", assignment.msg.Task.ULID, "conn", worker.RemoteAddr(), "err", err)
-			// other errors are treated as transient, continue with next assignment.
-			// if the worker disconnected, the loop will exit on worker.done.
 			continue
 		}
 
 		s.finalizeAssignment(ctx, assignment.t, worker, assignment.msg.StreamStates)
-
 	}
 }
 

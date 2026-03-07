@@ -69,6 +69,12 @@ type workerConn struct {
 	// done is closed when the worker connection is closed. It is used to signal
 	// worker goroutines to exit.
 	done chan struct{}
+
+	// readyCh is signaled by markWorkerReady when the worker reports a thread
+	// is available. The workerLoop waits on this channel before entering its
+	// greedy assignment phase. Buffered to the advertised thread count so that
+	// multiple readiness signals can queue without blocking.
+	readyCh chan struct{}
 }
 
 // Type returns the type of the worker connection.
@@ -109,6 +115,15 @@ func (wc *workerConn) MarkReady() error {
 		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
 	}
 	return nil
+}
+
+// SignalReady wakes a worker assignment loop waiting for the worker to become
+// ready. Multiple ready notifications can be coalesced.
+func (wc *workerConn) SignalReady() {
+	select {
+	case wc.readyCh <- struct{}{}:
+	default:
+	}
 }
 
 // MarkDataPlane marks the worker as a data plane connection. Returns an error
