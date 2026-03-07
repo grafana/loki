@@ -135,7 +135,6 @@ func (wrt *Writer) start(maxSegmentAge time.Duration) {
 				if err := wrt.cleanSegments(maxSegmentAge); err != nil {
 					level.Error(wrt.log).Log("msg", "Error cleaning old segments", "err", err)
 				}
-				break
 			case <-wrt.closeCleaner:
 				trigger.Stop()
 				return
