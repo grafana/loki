@@ -175,8 +175,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 			// Binding the [streamSource] to the input in the loop below
 			// increases the reference count. As sources are closed, the
 			// reference count decreases. Once the reference count reaches 0,
-			// the nodeSource is closed, and reads return EOF.
-			input := new(nodeSource)
+			// the nodeSource is closed, and reads return EOF after draining the buffer.
+			input := newNodeSource(512)
 
 			var errs []error
 
