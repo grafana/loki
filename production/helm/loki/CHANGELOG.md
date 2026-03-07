@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Ignore dots in the image repository after first path segment when detecting image registry
 
 ## 6.53.0
 
