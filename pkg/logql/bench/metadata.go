@@ -303,7 +303,7 @@ func getUnwrappableFields(appName string) []string {
 	case "kafka":
 		return []string{"partition", "offset", "size"}
 	case appLoki, "mimir":
-		return []string{"duration", "streams", "bytes"}
+		return []string{"duration", "size", "streams", "bytes"}
 	case "tempo":
 		return []string{"duration", "spans", "bytes"}
 	case "grafana":

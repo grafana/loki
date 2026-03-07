@@ -558,8 +558,8 @@ queries:
       log_format: logfmt
       unwrappable_fields:
         - duration
-  - description: JSON size unwrap
-    query: sum_over_time(${SELECTOR} | json | size != "" | unwrap size [${RANGE}])
+  - description: Logfmt size unwrap
+    query: sum_over_time(${SELECTOR} | logfmt | size != "" | unwrap size [${RANGE}])
     kind: metric
     time_range:
       length: 24h
@@ -567,11 +567,11 @@ queries:
     tags:
       - unwrap
       - sum_over_time
-      - json
+      - logfmt
       - integer-field
-    notes: Unwrap integer size field from JSON logs (cache/kafka services)
+    notes: Unwrap integer size field from logfmt logs (loki/mimir services)
     requires:
-      log_format: json
+      log_format: logfmt
       unwrappable_fields:
         - size
   - description: Empty by() clause

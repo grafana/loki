@@ -752,6 +752,11 @@ var defaultApplications = []Service{
 				baseLogfmt += fmt.Sprintf(` streams=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
 			}
 
+			// Add size for some logs (e.g. uncompressed request size)
+			if f.rnd.Float32() < 0.5 {
+				baseLogfmt += fmt.Sprintf(` size=%d`, f.rnd.Intn(10000))
+			}
+
 			// Add error for error level logs
 			if level == errorLevel {
 				baseLogfmt += fmt.Sprintf(` error="failed to %s: %s"`, f.GRPCMethod(), f.ErrorMessage())
@@ -794,6 +799,11 @@ var defaultApplications = []Service{
 			// Add metrics for some logs
 			if f.rnd.Float32() < 0.5 {
 				baseLogfmt += fmt.Sprintf(` streams=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
+			}
+
+			// Add size for some logs (e.g. uncompressed request size)
+			if f.rnd.Float32() < 0.5 {
+				baseLogfmt += fmt.Sprintf(` size=%d`, f.rnd.Intn(10000))
 			}
 
 			// Add error for error level logs
@@ -842,7 +852,7 @@ var defaultApplications = []Service{
 
 			// Add metrics for some logs
 			if f.rnd.Float32() < 0.5 {
-				baseLogfmt += fmt.Sprintf(` spans=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
+				baseLogfmt += fmt.Sprintf(` streams=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
 			}
 
 			// Add error for error level logs
