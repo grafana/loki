@@ -5,7 +5,7 @@ type bucketer interface {
 	bucket() (string, bool)
 }
 
-func bucketFromInput(params interface{}) (string, bool) {
+func bucketFromInput(params any) (string, bool) {
 	v, ok := params.(bucketer)
 	if !ok {
 		return "", false
