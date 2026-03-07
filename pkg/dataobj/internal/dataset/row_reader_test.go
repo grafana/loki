@@ -585,11 +585,11 @@ func BenchmarkReader(b *testing.B) {
 			b.ReportAllocs()
 
 			batch := make([]Row, rp.batchSize)
+			var rowsRead int
 			for b.Loop() {
 				reader := NewRowReader(opts)
 				require.NoError(b, reader.Open(context.Background()))
 
-				var rowsRead int
 				for {
 					n, err := reader.Read(context.Background(), batch)
 					if err == io.EOF {
@@ -602,8 +602,8 @@ func BenchmarkReader(b *testing.B) {
 				}
 				reader.Close()
 
-				b.ReportMetric(float64(rowsRead)/float64(b.N), "rows/op")
 			}
+			b.ReportMetric(float64(rowsRead), "rows/op")
 		})
 	}
 }
