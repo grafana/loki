@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,7 +17,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -568,7 +568,7 @@ func TestCancelWhileWaitingResponse(t *testing.T) {
 
 	// Launch the For call in a goroutine because it blocks and we need to be able to cancel the context
 	// to prove it will exit when the context is canceled.
-	b := atomic.NewBool(false)
+	b := (&atomic.Bool{})
 	go func() {
 		_, _ = in.For(ctx, queries, acc, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
 			// Intended to keep the For method from returning unless the context is canceled.

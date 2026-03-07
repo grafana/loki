@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,7 +17,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -158,7 +158,8 @@ func TestFrontendBasicWorkflowProto(t *testing.T) {
 
 func TestFrontendRetryEnqueue(t *testing.T) {
 	// Frontend uses worker concurrency to compute number of retries. We use one less failure.
-	failures := atomic.NewInt64(testFrontendWorkerConcurrency - 1)
+	failures := &atomic.Int64{}
+	failures.Store(testFrontendWorkerConcurrency - 1)
 	const (
 		body   = "hello world"
 		userID = "test"
@@ -167,7 +168,7 @@ func TestFrontendRetryEnqueue(t *testing.T) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	f, _ := setupFrontend(t, cfg, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
-		fail := failures.Dec()
+		fail := failures.Add(-1)
 		if fail >= 0 {
 			return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN}
 		}

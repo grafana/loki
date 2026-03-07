@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -253,7 +253,7 @@ func (m *mockObjectClient) PutObject(context.Context, string, io.Reader) error {
 
 func (m *mockObjectClient) GetObject(context.Context, string) (io.ReadCloser, int64, error) {
 	time.Sleep(time.Millisecond * 10)
-	if m.strategy.fail(m.reqCounter.Inc()) {
+	if m.strategy.fail(m.reqCounter.Add(1)) {
 		return nil, 0, errFakeFailure
 	}
 

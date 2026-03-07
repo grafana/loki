@@ -14,13 +14,13 @@ package tsdb
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -169,7 +169,7 @@ func (h *Head) Append(ls labels.Labels, fprint uint64, chks index.ChunkMetas) (c
 	from, through := chks.Bounds()
 	var id uint64
 	created, refID = h.series.Append(ls, chks, func() *memSeries {
-		id = h.lastSeriesID.Inc()
+		id = h.lastSeriesID.Add(1)
 		return newMemSeries(id, ls, fprint)
 	})
 	updateMintMaxt(int64(from), int64(through), &h.minTime, &h.maxTime)
@@ -178,7 +178,7 @@ func (h *Head) Append(ls labels.Labels, fprint uint64, chks index.ChunkMetas) (c
 		return
 	}
 	h.postings.Add(storage.SeriesRef(id), ls)
-	h.numSeries.Inc()
+	h.numSeries.Add(1)
 	return
 }
 

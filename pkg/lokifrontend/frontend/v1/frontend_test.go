@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,7 +28,6 @@ import (
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -173,7 +173,7 @@ func TestFrontendCancel(t *testing.T) {
 	var tries atomic.Int32
 	handler := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		<-ctx.Done()
-		tries.Inc()
+		tries.Add(1)
 		return nil, ctx.Err()
 	})
 	test := func(addr string, _ *Frontend) {

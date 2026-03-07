@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
@@ -1403,6 +1403,6 @@ type mockRecordWriter struct {
 }
 
 func (m *mockRecordWriter) Write(_ context.Context, _ arrow.RecordBatch) error {
-	m.writes.Inc()
+	m.writes.Add(1)
 	return nil
 }

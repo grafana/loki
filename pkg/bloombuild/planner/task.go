@@ -2,9 +2,9 @@ package planner
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 )

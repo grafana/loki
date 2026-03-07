@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -15,7 +16,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
@@ -76,7 +76,7 @@ func NewTarget(
 		maxLineSize:   maxLineSize,
 
 		client:  client,
-		running: atomic.NewBool(false),
+		running: (&atomic.Bool{}),
 	}
 	t.startIfNotRunning()
 	return t, nil
