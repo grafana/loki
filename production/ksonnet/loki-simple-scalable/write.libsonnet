@@ -45,7 +45,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     k.util.antiAffinity +
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001) +  // 10001 is the group ID assigned to Loki in the Dockerfile
-    statefulSet.mixin.spec.template.spec.withTerminationGracePeriodSeconds(4800) +
+    statefulSet.mixin.spec.template.spec.withTerminationGracePeriodSeconds(300) +
     statefulSet.mixin.spec.withPodManagementPolicy('Parallel'),
 
   write_service:
