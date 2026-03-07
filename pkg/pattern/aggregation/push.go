@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -389,12 +390,23 @@ func AggregatedMetricEntry(
 	return internalEntry(base, lbls)
 }
 
+// normalizeNewlines replaces newlines and carriage returns in the pattern with
+// spaces so stored patterns are single-line and safe for LogQL (e.g. | pattern "...").
+// Replacing with space (not empty string) preserves token boundaries.
+func normalizeNewlines(pattern string) string {
+	pattern = strings.ReplaceAll(pattern, "\r\n", " ")
+	pattern = strings.ReplaceAll(pattern, "\n", " ")
+	pattern = strings.ReplaceAll(pattern, "\r", " ")
+	return strings.TrimSpace(pattern)
+}
+
 func PatternEntry(
 	ts time.Time,
 	count int64,
 	pattern string,
 	lbls labels.Labels,
 ) string {
+	pattern = normalizeNewlines(pattern)
 	base := fmt.Sprintf(
 		`ts=%d count=%d detected_pattern="%s"`,
 		ts.UnixNano(),
