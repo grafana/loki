@@ -128,7 +128,7 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 	*chks = (*chks)[:0]
 	s.Lock()
 	for _, chk := range s.chks {
-		if !Overlap(chk, queryBounds) {
+		if !overlapChunk(chk, queryBounds) {
 			continue
 		}
 		*chks = append(*chks, chk)
@@ -167,7 +167,7 @@ func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64,
 	var res index.ChunkStats
 	s.Lock()
 	for _, chk := range s.chks {
-		if !Overlap(chk, queryBounds) {
+		if !overlapChunk(chk, queryBounds) {
 			continue
 		}
 		res.AddChunk(&chk, from, through)
