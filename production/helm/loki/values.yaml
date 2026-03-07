@@ -897,6 +897,7 @@ networkPolicy:
   # -- Specifies whether the policies created will be standard Network Policies (flavor: kubernetes)
   # or Cilium Network Policies (flavor: cilium)
   flavor: kubernetes
+  l7Proxy: false
   metrics:
     # -- Specifies the Pods which are allowed to access the metrics port.
     # As this is cross-namespace communication, you also need the namespaceSelector.
@@ -926,6 +927,8 @@ networkPolicy:
     ports: []
     # -- Specifies specific network CIDRs you want to limit access to
     cidrs: []
+    # -- Specifies the allowed FQDNs for external storage access
+    toFQDNs: []
   discovery:
     # -- (int) Specify the port used for discovery
     port: null
@@ -937,6 +940,8 @@ networkPolicy:
   egressWorld:
     # -- Enable additional cilium egress rules to external world for write, read and backend.
     enabled: false
+    # -- Specifies the allowed CIDRs for external (world) access
+    toFQDNs: []
   egressKubeApiserver:
     # -- Enable additional cilium egress rules to kube-apiserver for backend.
     enabled: false
