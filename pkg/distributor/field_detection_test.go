@@ -1107,6 +1107,13 @@ func TestGetLevelUsingJsonParser(t *testing.T) {
 			maxDepth:           1,
 			want:               "",
 		},
+		{
+			name:               "Parse JSON inside a string value",
+			json:               `{"time":"2026-01-22T18:27:31.91714715Z", "looksLikeJsonButItsNot": "{not_valid_json}", "message":"{\"message\":\"foo\",\"log.level\":\"INFO\"}","object":{"service":"foo"}}`,
+			allowedLevelFields: map[string]struct{}{"log.level": {}, "level": {}},
+			maxDepth:           0,
+			want:               "INFO",
+		},
 	}
 
 	for _, tt := range tests {
