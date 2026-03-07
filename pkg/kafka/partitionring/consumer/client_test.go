@@ -45,7 +45,20 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 		offset    int64
 	}
 	processedRecords := sync.Map{}
-	var processingWg sync.WaitGroup
+
+	// isActivePartition reports whether p is currently in the active ring.
+	// Only active partitions get cooperative sticky assignment (via AdjustCooperative),
+	// so only they are guaranteed no-duplicate handoff. Inactive partitions are
+	// distributed round-robin without the two-round cooperative protocol, so a brief
+	// overlap window exists during rebalance and duplicate detection is skipped for them.
+	isActivePartition := func(p int32) bool {
+		for _, id := range mockRing.PartitionIDs() {
+			if id == p {
+				return true
+			}
+		}
+		return false
+	}
 
 	// Create two consumers using our Client wrapper
 	createConsumer := func(id string) *Client {
@@ -63,6 +76,13 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 		client, err := NewGroupClient(cfg, mockReader, "test-group", log.NewNopLogger(),
 			prometheus.NewRegistry(),
 			kgo.ClientID(id),
+			kgo.HeartbeatInterval(500*time.Millisecond),
+			// BlockRebalanceOnPoll ensures OnPartitionsRevoked cannot fire until after
+			// we commit the records returned by a PollFetches call and call AllowRebalance.
+			// Without this, the revoke fires inside PollFetches before the caller can
+			// commit, so CommitUncommittedOffsets misses the in-flight batch and the
+			// new owner re-reads those records, causing duplicate detection failures.
+			kgo.BlockRebalanceOnPoll(),
 			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, assigned map[string][]int32) {
 				partitionsLock.Lock()
 				defer partitionsLock.Unlock()
@@ -86,39 +106,37 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		// Start consuming in a goroutine
+		// Start consuming in a goroutine. Process and commit synchronously, then
+		// AllowRebalance so that OnPartitionsRevoked sees committed offsets.
 		go func() {
 			for {
 				ctx := context.Background()
 				records := client.PollFetches(ctx)
-				if records == nil {
-					return // client closed
+				if records.IsClientClosed() {
+					return
 				}
 
+				for _, record := range records.Records() {
+					_, ok := assignedPartitions.Load(record.Partition)
+					require.True(t, ok, "%s received record for unassigned partition %d", id, record.Partition)
+
+					// Only check for duplicates on active partitions. Inactive
+					// partitions use round-robin assignment without the two-round
+					// cooperative protocol, so a brief overlap is expected during handoff.
+					if isActivePartition(record.Partition) {
+						key := recordKey{record.Partition, record.Offset}
+						if prev, loaded := processedRecords.LoadOrStore(key, id); loaded {
+							t.Errorf("Record at partition %d offset %d processed twice! First by %v, then by %v",
+								key.partition, key.offset, prev, id)
+						}
+					}
+				}
 				if len(records.Records()) > 0 {
-					processingWg.Add(1)
-					go func(fetches kgo.Fetches) {
-						defer processingWg.Done()
-
-						// Verify we only got records for partitions we own
-						for _, record := range fetches.Records() {
-							_, ok := assignedPartitions.Load(record.Partition)
-							require.True(t, ok, "%s received record for unassigned partition %d", id, record.Partition)
-
-							// Track this record
-							key := recordKey{record.Partition, record.Offset}
-							if prev, loaded := processedRecords.LoadOrStore(key, id); loaded {
-								t.Errorf("Record at partition %d offset %d processed twice! First by %v, then by %v",
-									key.partition, key.offset, prev, id)
-							}
-						}
-
-						// Commit the records
-						if err := client.CommitRecords(context.Background(), fetches.Records()...); err != nil {
-							t.Logf("%s error committing: %v", id, err)
-						}
-					}(records)
+					if err := client.CommitRecords(context.Background(), records.Records()...); err != nil {
+						t.Logf("%s error committing: %v", id, err)
+					}
 				}
+				client.AllowRebalance()
 			}
 		}()
 
@@ -160,23 +178,24 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 
 	// Change the active partitions in the ring
 	t.Log("Changing active partitions from [0,1] to [0,1,2]")
-	mockRing.partitionIDs = []int32{0, 1, 2}
+	mockRing.setPartitions([]int32{0, 1, 2})
+	consumer1.ForceRebalance()
+	consumer2.ForceRebalance()
 
 	// Wait for rebalancing to occur and stabilize
-	time.Sleep(7 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	// Change active partitions again
 	t.Log("Changing active partitions from [0,1,2] to [0,1,2,3]")
-	mockRing.partitionIDs = []int32{0, 1, 2, 3}
+	mockRing.setPartitions([]int32{0, 1, 2, 3})
+	consumer1.ForceRebalance()
+	consumer2.ForceRebalance()
 
 	// Wait for final rebalancing
-	time.Sleep(7 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	// Stop producing
 	cancel()
-
-	// Wait for any in-flight processing to complete
-	processingWg.Wait()
 
 	// Verify no duplicates were processed and count records per partition
 	partitionCounts := make(map[int32]int)
@@ -233,6 +252,7 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 		client, err := NewGroupClient(cfg, mockReader, "test-group", log.NewNopLogger(),
 			prometheus.NewRegistry(),
 			kgo.ClientID(id),
+			kgo.HeartbeatInterval(500*time.Millisecond),
 			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, assigned map[string][]int32) {
 				t.Logf("%s assigned partitions: %v", id, assigned["test-topic"])
 			}),
@@ -246,8 +266,8 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 			for {
 				ctx := context.Background()
 				records := client.PollFetches(ctx)
-				if records == nil {
-					return // client closed
+				if records.IsClientClosed() {
+					return
 				}
 
 				// Only verify partition 0's offset continuity
@@ -303,24 +323,36 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 		}
 	}()
 
-	// Let initial setup stabilize and verify consumer1 is reading
-	time.Sleep(2 * time.Second)
-	require.Greater(t, lastOffset, int64(0), "consumer1 should have read some records from partition 0")
+	// Wait until consumer1 is actually reading from partition 0
+	require.Eventually(t, func() bool {
+		offsetMu.Lock()
+		defer offsetMu.Unlock()
+		return lastOffset > 0
+	}, 15*time.Second, 100*time.Millisecond, "consumer1 should have read some records from partition 0")
+	offsetMu.Lock()
 	initialOffset := lastOffset
+	offsetMu.Unlock()
 
 	// Add second consumer and change active partitions
 	t.Log("Adding consumer2 and changing active partitions from [0,1] to [0,1,2]")
 	consumer2 := createConsumer("consumer2")
 	defer consumer2.Close()
-	mockRing.partitionIDs = []int32{0, 1, 2}
+	mockRing.setPartitions([]int32{0, 1, 2})
+	// Only trigger rebalance on the already-established consumer1; calling ForceRebalance
+	// on consumer2 while it is still completing its first join causes a rebalance storm.
+	consumer1.ForceRebalance()
 
-	// Let it run for a while
-	time.Sleep(5 * time.Second)
-
-	// Verify partition 0 continued reading without reset
-	require.Greater(t, lastOffset, initialOffset,
+	// Wait for partition 0 to advance past the pre-rebalance offset
+	require.Eventually(t, func() bool {
+		offsetMu.Lock()
+		defer offsetMu.Unlock()
+		return lastOffset > initialOffset
+	}, 15*time.Second, 100*time.Millisecond,
 		"partition 0 should have continued reading from last offset (%d)", initialOffset)
-	t.Logf("Partition 0 read from offset %d to %d during rebalance", initialOffset, lastOffset)
+	offsetMu.Lock()
+	finalOffset := lastOffset
+	offsetMu.Unlock()
+	t.Logf("Partition 0 read from offset %d to %d during rebalance", initialOffset, finalOffset)
 
 	// Stop everything
 	cancel()

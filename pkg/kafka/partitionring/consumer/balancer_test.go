@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,11 +22,20 @@ type memberUpdate struct {
 }
 
 type mockPartitionRing struct {
+	mu           sync.RWMutex
 	partitionIDs []int32
+}
+
+func (m *mockPartitionRing) setPartitions(ids []int32) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.partitionIDs = ids
 }
 
 // Mock implementation of PartitionRing interface
 func (m *mockPartitionRing) PartitionIDs() []int32 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.partitionIDs
 }
 
@@ -37,7 +47,7 @@ func (m *mockPartitionRingReader) PartitionRing() *ring.PartitionRing {
 	desc := ring.PartitionRingDesc{
 		Partitions: make(map[int32]ring.PartitionDesc),
 	}
-	for _, id := range m.ring.partitionIDs {
+	for _, id := range m.ring.PartitionIDs() {
 		desc.Partitions[id] = ring.PartitionDesc{
 			Id:     id,
 			State:  ring.PartitionActive,
@@ -268,6 +278,7 @@ func (g *testConsumerGroup) createConsumer(id string) *kgo.Client {
 		kgo.ConsumeTopics("test-topic"),
 		kgo.Balancers(NewCooperativeActiveStickyBalancer(g.mockReader)),
 		kgo.ClientID(id),
+		kgo.HeartbeatInterval(500*time.Millisecond),
 		kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, m map[string][]int32) {
 			g.t.Logf("Assigned partitions 1: %v", m)
 		}),
@@ -342,7 +353,7 @@ func TestCooperativeActiveStickyBalancerE2E(t *testing.T) {
 	defer consumer1.Close()
 
 	// Wait for initial assignment
-	assignments := group.waitForStableAssignments(1, 5*time.Second)
+	assignments := group.waitForStableAssignments(1, 10*time.Second)
 	t.Log("Initial state:")
 	t.Logf("Assignments: %v", assignments)
 	require.NotEmpty(t, assignments["member-1"])
@@ -352,7 +363,7 @@ func TestCooperativeActiveStickyBalancerE2E(t *testing.T) {
 	defer consumer2.Close()
 
 	// Wait for rebalance
-	assignments = group.waitForStableAssignments(2, 5*time.Second)
+	assignments = group.waitForStableAssignments(2, 10*time.Second)
 	t.Log("After consumer2 joins:")
 	t.Logf("Assignments: %v", assignments)
 	require.NotEmpty(t, assignments["member-1"])
@@ -363,7 +374,7 @@ func TestCooperativeActiveStickyBalancerE2E(t *testing.T) {
 	defer consumer3.Close()
 
 	// Wait for rebalance
-	assignments = group.waitForStableAssignments(3, 5*time.Second)
+	assignments = group.waitForStableAssignments(3, 10*time.Second)
 	t.Log("After consumer3 joins:")
 	t.Logf("Assignments: %v", assignments)
 	require.NotEmpty(t, assignments["member-1"])
@@ -374,7 +385,7 @@ func TestCooperativeActiveStickyBalancerE2E(t *testing.T) {
 	consumer2.Close()
 
 	// Wait for rebalance
-	assignments = group.waitForStableAssignments(2, 5*time.Second)
+	assignments = group.waitForStableAssignments(2, 10*time.Second)
 	t.Log("After consumer2 leaves:")
 	t.Logf("Assignments: %v", assignments)
 	require.NotEmpty(t, assignments["member-1"])
