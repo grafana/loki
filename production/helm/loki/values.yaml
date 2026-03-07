@@ -469,6 +469,9 @@ loki:
       user_domain_name: null
       user_domain_id: null
       user_id: null
+      application_credential_id: null
+      application_credential_name: null
+      application_credential_secret: null
       password: null
       domain_id: null
       domain_name: null
