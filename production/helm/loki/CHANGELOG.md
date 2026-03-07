@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Dashboard fixes for changed metrics with Loki 3.0 ([#13217](https://github.com/grafana/loki/pull/13217))
 
 ## 6.53.0
 
