@@ -173,6 +173,7 @@ func (n *AggregateRange) UnmarshalPhysical(from physical.Node) error {
 		Step:           rangeAgg.Step,
 		Range:          rangeAgg.Range,
 		MaxQuerySeries: int32(rangeAgg.MaxQuerySeries),
+		Columnar:       rangeAgg.Columnar,
 	}
 
 	return nil
@@ -227,6 +228,7 @@ func (n *AggregateVector) UnmarshalPhysical(from physical.Node) error {
 		Grouping:       grouping,
 		Operation:      op,
 		MaxQuerySeries: int32(vectorAgg.MaxQuerySeries),
+		Columnar:       vectorAgg.Columnar,
 	}
 	return nil
 }

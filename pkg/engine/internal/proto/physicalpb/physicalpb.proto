@@ -81,6 +81,10 @@ message AggregateRange {
 
   // Maximum number of unique series allowed (0 means no limit).
   int32 max_query_series = 8;
+
+  // Columnar indicates that this node should use the columnar (batch)
+  // execution path.
+  bool columnar = 9;
 }
 
 // Grouping represents the grouping by/without label(s) for vector aggregators
@@ -116,6 +120,10 @@ message AggregateVector {
 
   // Maximum number of unique series allowed (0 means no limit).
   int32 max_query_series = 4;
+
+  // Columnar indicates that this node should use the columnar (batch)
+  // execution path.
+  bool columnar = 5;
 }
 
 // AggregateVectorOp represents the different aggregation operations that can

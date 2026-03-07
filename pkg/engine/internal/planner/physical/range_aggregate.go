@@ -19,6 +19,10 @@ type RangeAggregation struct {
 	Step           time.Duration // optional for instant queries
 	Range          time.Duration
 	MaxQuerySeries int // maximum number of unique series allowed (0 means no limit)
+
+	// Columnar indicates that this node should use the columnar (batch)
+	// execution path.
+	Columnar bool
 }
 
 // ID returns the ULID that uniquely identifies the node in the plan.
@@ -39,6 +43,7 @@ func (r *RangeAggregation) Clone() Node {
 		Step:           r.Step,
 		Range:          r.Range,
 		MaxQuerySeries: r.MaxQuerySeries,
+		Columnar:       r.Columnar,
 	}
 }
 

@@ -69,6 +69,7 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("end", false, node.End.Format(time.RFC3339Nano)),
 			tree.NewProperty("step", false, node.Step),
 			tree.NewProperty("range", false, node.Range),
+			tree.NewProperty("columnar", false, node.Columnar),
 		}
 
 		if node.Grouping.Without {
@@ -81,6 +82,7 @@ func toTreeNode(n Node) *tree.Node {
 	case *VectorAggregation:
 		properties := []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
+			tree.NewProperty("columnar", false, node.Columnar),
 		}
 
 		if node.Grouping.Without {

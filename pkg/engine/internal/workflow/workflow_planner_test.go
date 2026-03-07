@@ -82,7 +82,7 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000001
 │ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 │
-│ RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s columnar=false group_by=()
 │ └── DataObjScan location= streams=0 section_id=0 projections=()
 │         └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
@@ -123,13 +123,13 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000001
 │ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 │
-│ VectorAggregation operation=invalid group_by=()
+│ VectorAggregation operation=invalid columnar=false group_by=()
 │     └── @source stream=00000000000000000000000003
 └
 ┌ Task 00000000000000000000000002
 │ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 │
-│ RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s columnar=false group_by=()
 │ │   └── @sink stream=00000000000000000000000003
 │ └── DataObjScan location= streams=0 section_id=0 projections=()
 │         └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
@@ -213,13 +213,13 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000001
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ VectorAggregation operation=invalid group_by=()
+│ VectorAggregation operation=invalid columnar=false group_by=()
 │     └── @source stream=00000000000000000000000006
 └
 ┌ Task 00000000000000000000000002
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s columnar=false group_by=()
 │     ├── @source stream=00000000000000000000000007
 │     ├── @source stream=00000000000000000000000008
 │     ├── @source stream=00000000000000000000000009
@@ -306,14 +306,14 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000001
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ VectorAggregation operation=sum group_by=()
+│ VectorAggregation operation=sum columnar=false group_by=()
 │     ├── @source stream=00000000000000000000000004
 │     └── @source stream=00000000000000000000000005
 └
 ┌ Task 00000000000000000000000002
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s columnar=false group_by=()
 │ │   └── @sink stream=00000000000000000000000004
 │ └── DataObjScan location=a streams=0 section_id=0 projections=()
 │         └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
@@ -321,7 +321,7 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000003
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s columnar=false group_by=()
 │ │   └── @sink stream=00000000000000000000000005
 │ └── DataObjScan location=b streams=0 section_id=0 projections=()
 │         └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z

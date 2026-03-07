@@ -125,6 +125,7 @@ func (n *AggregateRange) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error
 		Step:           n.Step,
 		Range:          n.Range,
 		MaxQuerySeries: int(n.MaxQuerySeries),
+		Columnar:       n.Columnar,
 	}, nil
 }
 
@@ -174,6 +175,7 @@ func (n *AggregateVector) MarshalPhysical(nodeID ulid.ULID) (physical.Node, erro
 		Grouping:       grouping,
 		Operation:      operation,
 		MaxQuerySeries: int(n.MaxQuerySeries),
+		Columnar:       n.Columnar,
 	}, nil
 }
 
