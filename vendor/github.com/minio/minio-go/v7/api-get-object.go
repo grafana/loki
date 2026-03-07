@@ -458,7 +458,14 @@ func (o *Object) ReadAt(b []byte, offset int64) (n int, err error) {
 		return 0, o.prevErr
 	}
 
-	// Set the current offset to ReadAt offset, because the current offset will be shifted at the end of this method.
+	// Save and restore currOffset so ReadAt doesn't affect sequential Read operations.
+	// Per io.ReaderAt: "ReadAt should not affect nor be affected by the underlying seek offset."
+	savedOffset := o.currOffset
+	defer func() {
+		o.currOffset = savedOffset
+		o.seekData = true // Force next Read to re-establish stream at correct position
+	}()
+
 	o.currOffset = offset
 
 	// Can only compare offsets to size when size has been set.

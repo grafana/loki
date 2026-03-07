@@ -525,7 +525,7 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 			break
 		}
 
-		if rerr != nil && rerr != io.ErrUnexpectedEOF && err != io.EOF {
+		if rerr != nil && rerr != io.ErrUnexpectedEOF && rerr != io.EOF {
 			cancel()
 			wg.Wait()
 			return UploadInfo{}, rerr
