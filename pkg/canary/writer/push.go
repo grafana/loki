@@ -36,6 +36,7 @@ var defaultUserAgent = fmt.Sprintf("canary-push/%s", build.GetVersion().Version)
 // directly to the given loki server URL. Each `Push` instance handles for a single tenant.
 type Push struct {
 	lokiURL     string
+	pathPrefix  string
 	tenantID    string
 	httpClient  *http.Client
 	userAgent   string
@@ -51,6 +52,7 @@ type Push struct {
 
 	// auth
 	username, password string
+	bearerToken        string
 
 	// Will add these label to the logs pushed to loki
 	labelName, labelValue, streamName, streamValue string
@@ -68,7 +70,7 @@ type Push struct {
 // is either a `Push` instance (which sends each log line immediately to Loki), or a `BatchedPush`
 // instance which sends log lines to Loki in batches.
 func NewPush(
-	lokiAddr, tenantID string,
+	lokiAddr, pathPrefix, tenantID string,
 	timeout time.Duration,
 	cfg config.HTTPClientConfig,
 	labelName, labelValue string,
@@ -77,6 +79,7 @@ func NewPush(
 	tlsCfg *tls.Config,
 	caFile, certFile, keyFile string,
 	username, password string,
+	bearerToken string,
 	backoffCfg *backoff.Config,
 	logBatchSize int,
 	logger log.Logger,
@@ -88,6 +91,10 @@ func NewPush(
 
 	if logBatchSize < 0 {
 		return nil, fmt.Errorf("logBatchSize must be >= 0")
+	}
+
+	if (username != "" || password != "") && bearerToken != "" {
+		return nil, fmt.Errorf("cannot provide both username/password and bearerToken")
 	}
 
 	client.Timeout = timeout
@@ -117,7 +124,12 @@ func NewPush(
 	u := url.URL{
 		Scheme: scheme,
 		Host:   lokiAddr,
-		Path:   pushEndpoint,
+	}
+
+	if pathPrefix != "" {
+		u.Path = pathPrefix + pushEndpoint
+	} else {
+		u.Path = pushEndpoint
 	}
 
 	p := &Push{
@@ -135,6 +147,7 @@ func NewPush(
 		streamName:  streamName,
 		streamValue: streamValue,
 		username:    username,
+		bearerToken: bearerToken,
 		password:    password,
 		backoff:     backoffCfg,
 	}
@@ -282,6 +295,10 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 	// basic auth if provided
 	if p.username != "" {
 		req.SetBasicAuth(p.username, p.password)
+	}
+
+	if p.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+p.bearerToken)
 	}
 
 	resp, err = p.httpClient.Do(req)
