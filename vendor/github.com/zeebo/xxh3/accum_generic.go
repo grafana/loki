@@ -14,45 +14,66 @@ func accumScalar(accs *[8]u64, p, secret ptr, l u64) {
 
 		// accs
 		for i := 0; i < 16; i++ {
-			dv0 := readU64(p, 8*0)
-			dk0 := dv0 ^ readU64(k, 8*0)
-			accs[1] += dv0
-			accs[0] += (dk0 & 0xffffffff) * (dk0 >> 32)
+			{
+				const off = 0
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv1 := readU64(p, 8*1)
-			dk1 := dv1 ^ readU64(k, 8*1)
-			accs[0] += dv1
-			accs[1] += (dk1 & 0xffffffff) * (dk1 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv2 := readU64(p, 8*2)
-			dk2 := dv2 ^ readU64(k, 8*2)
-			accs[3] += dv2
-			accs[2] += (dk2 & 0xffffffff) * (dk2 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 2
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv3 := readU64(p, 8*3)
-			dk3 := dv3 ^ readU64(k, 8*3)
-			accs[2] += dv3
-			accs[3] += (dk3 & 0xffffffff) * (dk3 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv4 := readU64(p, 8*4)
-			dk4 := dv4 ^ readU64(k, 8*4)
-			accs[5] += dv4
-			accs[4] += (dk4 & 0xffffffff) * (dk4 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 4
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv5 := readU64(p, 8*5)
-			dk5 := dv5 ^ readU64(k, 8*5)
-			accs[4] += dv5
-			accs[5] += (dk5 & 0xffffffff) * (dk5 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv6 := readU64(p, 8*6)
-			dk6 := dv6 ^ readU64(k, 8*6)
-			accs[7] += dv6
-			accs[6] += (dk6 & 0xffffffff) * (dk6 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 6
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv7 := readU64(p, 8*7)
-			dk7 := dv7 ^ readU64(k, 8*7)
-			accs[6] += dv7
-			accs[7] += (dk7 & 0xffffffff) * (dk7 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
+
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
 
 			l -= _stripe
 			if l > 0 {
@@ -98,45 +119,66 @@ func accumScalar(accs *[8]u64, p, secret ptr, l u64) {
 		t, k := (l-1)/_stripe, secret
 
 		for i := u64(0); i < t; i++ {
-			dv0 := readU64(p, 8*0)
-			dk0 := dv0 ^ readU64(k, 8*0)
-			accs[1] += dv0
-			accs[0] += (dk0 & 0xffffffff) * (dk0 >> 32)
+			{
+				const off = 0
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv1 := readU64(p, 8*1)
-			dk1 := dv1 ^ readU64(k, 8*1)
-			accs[0] += dv1
-			accs[1] += (dk1 & 0xffffffff) * (dk1 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv2 := readU64(p, 8*2)
-			dk2 := dv2 ^ readU64(k, 8*2)
-			accs[3] += dv2
-			accs[2] += (dk2 & 0xffffffff) * (dk2 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 2
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv3 := readU64(p, 8*3)
-			dk3 := dv3 ^ readU64(k, 8*3)
-			accs[2] += dv3
-			accs[3] += (dk3 & 0xffffffff) * (dk3 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv4 := readU64(p, 8*4)
-			dk4 := dv4 ^ readU64(k, 8*4)
-			accs[5] += dv4
-			accs[4] += (dk4 & 0xffffffff) * (dk4 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 4
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv5 := readU64(p, 8*5)
-			dk5 := dv5 ^ readU64(k, 8*5)
-			accs[4] += dv5
-			accs[5] += (dk5 & 0xffffffff) * (dk5 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv6 := readU64(p, 8*6)
-			dk6 := dv6 ^ readU64(k, 8*6)
-			accs[7] += dv6
-			accs[6] += (dk6 & 0xffffffff) * (dk6 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 6
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv7 := readU64(p, 8*7)
-			dk7 := dv7 ^ readU64(k, 8*7)
-			accs[6] += dv7
-			accs[7] += (dk7 & 0xffffffff) * (dk7 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
+
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
 
 			l -= _stripe
 			if l > 0 {
@@ -150,42 +192,42 @@ func accumScalar(accs *[8]u64, p, secret ptr, l u64) {
 			dv0 := readU64(p, 8*0)
 			dk0 := dv0 ^ key64_121
 			accs[1] += dv0
-			accs[0] += (dk0 & 0xffffffff) * (dk0 >> 32)
+			accs[0] += uint64(uint32(dk0)) * (dk0 >> 32)
 
 			dv1 := readU64(p, 8*1)
 			dk1 := dv1 ^ key64_129
 			accs[0] += dv1
-			accs[1] += (dk1 & 0xffffffff) * (dk1 >> 32)
+			accs[1] += uint64(uint32(dk1)) * (dk1 >> 32)
 
 			dv2 := readU64(p, 8*2)
 			dk2 := dv2 ^ key64_137
 			accs[3] += dv2
-			accs[2] += (dk2 & 0xffffffff) * (dk2 >> 32)
+			accs[2] += uint64(uint32(dk2)) * (dk2 >> 32)
 
 			dv3 := readU64(p, 8*3)
 			dk3 := dv3 ^ key64_145
 			accs[2] += dv3
-			accs[3] += (dk3 & 0xffffffff) * (dk3 >> 32)
+			accs[3] += uint64(uint32(dk3)) * (dk3 >> 32)
 
 			dv4 := readU64(p, 8*4)
 			dk4 := dv4 ^ key64_153
 			accs[5] += dv4
-			accs[4] += (dk4 & 0xffffffff) * (dk4 >> 32)
+			accs[4] += uint64(uint32(dk4)) * (dk4 >> 32)
 
 			dv5 := readU64(p, 8*5)
 			dk5 := dv5 ^ key64_161
 			accs[4] += dv5
-			accs[5] += (dk5 & 0xffffffff) * (dk5 >> 32)
+			accs[5] += uint64(uint32(dk5)) * (dk5 >> 32)
 
 			dv6 := readU64(p, 8*6)
 			dk6 := dv6 ^ key64_169
 			accs[7] += dv6
-			accs[6] += (dk6 & 0xffffffff) * (dk6 >> 32)
+			accs[6] += uint64(uint32(dk6)) * (dk6 >> 32)
 
 			dv7 := readU64(p, 8*7)
 			dk7 := dv7 ^ key64_177
 			accs[6] += dv7
-			accs[7] += (dk7 & 0xffffffff) * (dk7 >> 32)
+			accs[7] += uint64(uint32(dk7)) * (dk7 >> 32)
 		}
 	}
 }
@@ -197,45 +239,66 @@ func accumBlockScalar(accs *[8]u64, p, secret ptr) {
 	}
 	// accs
 	for i := 0; i < 16; i++ {
-		dv0 := readU64(p, 8*0)
-		dk0 := dv0 ^ readU64(secret, 8*0)
-		accs[1] += dv0
-		accs[0] += (dk0 & 0xffffffff) * (dk0 >> 32)
+		{
+			const off = 0
+			dv0 := readU64(p, 8*off)
+			dk0 := dv0 ^ readU64(secret, 8*off)
+			ac1 := dv0
+			ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-		dv1 := readU64(p, 8*1)
-		dk1 := dv1 ^ readU64(secret, 8*1)
-		accs[0] += dv1
-		accs[1] += (dk1 & 0xffffffff) * (dk1 >> 32)
+			dv1 := readU64(p, 8*off+8)
+			dk1 := dv1 ^ readU64(secret, 8*off+8)
+			ac0 += dv1
+			ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-		dv2 := readU64(p, 8*2)
-		dk2 := dv2 ^ readU64(secret, 8*2)
-		accs[3] += dv2
-		accs[2] += (dk2 & 0xffffffff) * (dk2 >> 32)
+			accs[off] += ac0
+			accs[off+1] += ac1
+		}
+		{
+			const off = 2
+			dv0 := readU64(p, 8*off)
+			dk0 := dv0 ^ readU64(secret, 8*off)
+			ac1 := dv0
+			ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-		dv3 := readU64(p, 8*3)
-		dk3 := dv3 ^ readU64(secret, 8*3)
-		accs[2] += dv3
-		accs[3] += (dk3 & 0xffffffff) * (dk3 >> 32)
+			dv1 := readU64(p, 8*off+8)
+			dk1 := dv1 ^ readU64(secret, 8*off+8)
+			ac0 += dv1
+			ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-		dv4 := readU64(p, 8*4)
-		dk4 := dv4 ^ readU64(secret, 8*4)
-		accs[5] += dv4
-		accs[4] += (dk4 & 0xffffffff) * (dk4 >> 32)
+			accs[off] += ac0
+			accs[off+1] += ac1
+		}
+		{
+			const off = 4
+			dv0 := readU64(p, 8*off)
+			dk0 := dv0 ^ readU64(secret, 8*off)
+			ac1 := dv0
+			ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-		dv5 := readU64(p, 8*5)
-		dk5 := dv5 ^ readU64(secret, 8*5)
-		accs[4] += dv5
-		accs[5] += (dk5 & 0xffffffff) * (dk5 >> 32)
+			dv1 := readU64(p, 8*off+8)
+			dk1 := dv1 ^ readU64(secret, 8*off+8)
+			ac0 += dv1
+			ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-		dv6 := readU64(p, 8*6)
-		dk6 := dv6 ^ readU64(secret, 8*6)
-		accs[7] += dv6
-		accs[6] += (dk6 & 0xffffffff) * (dk6 >> 32)
+			accs[off] += ac0
+			accs[off+1] += ac1
+		}
+		{
+			const off = 6
+			dv0 := readU64(p, 8*off)
+			dk0 := dv0 ^ readU64(secret, 8*off)
+			ac1 := dv0
+			ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-		dv7 := readU64(p, 8*7)
-		dk7 := dv7 ^ readU64(secret, 8*7)
-		accs[6] += dv7
-		accs[7] += (dk7 & 0xffffffff) * (dk7 >> 32)
+			dv1 := readU64(p, 8*off+8)
+			dk1 := dv1 ^ readU64(secret, 8*off+8)
+			ac0 += dv1
+			ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
+
+			accs[off] += ac0
+			accs[off+1] += ac1
+		}
 
 		p, secret = ptr(ui(p)+_stripe), ptr(ui(secret)+8)
 	}
@@ -281,45 +344,66 @@ func accumScalarSeed(accs *[8]u64, p, secret ptr, l u64) {
 
 		// accs
 		for i := 0; i < 16; i++ {
-			dv0 := readU64(p, 8*0)
-			dk0 := dv0 ^ readU64(k, 8*0)
-			accs[1] += dv0
-			accs[0] += (dk0 & 0xffffffff) * (dk0 >> 32)
+			{
+				const off = 0
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv1 := readU64(p, 8*1)
-			dk1 := dv1 ^ readU64(k, 8*1)
-			accs[0] += dv1
-			accs[1] += (dk1 & 0xffffffff) * (dk1 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv2 := readU64(p, 8*2)
-			dk2 := dv2 ^ readU64(k, 8*2)
-			accs[3] += dv2
-			accs[2] += (dk2 & 0xffffffff) * (dk2 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 2
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv3 := readU64(p, 8*3)
-			dk3 := dv3 ^ readU64(k, 8*3)
-			accs[2] += dv3
-			accs[3] += (dk3 & 0xffffffff) * (dk3 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv4 := readU64(p, 8*4)
-			dk4 := dv4 ^ readU64(k, 8*4)
-			accs[5] += dv4
-			accs[4] += (dk4 & 0xffffffff) * (dk4 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 4
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv5 := readU64(p, 8*5)
-			dk5 := dv5 ^ readU64(k, 8*5)
-			accs[4] += dv5
-			accs[5] += (dk5 & 0xffffffff) * (dk5 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv6 := readU64(p, 8*6)
-			dk6 := dv6 ^ readU64(k, 8*6)
-			accs[7] += dv6
-			accs[6] += (dk6 & 0xffffffff) * (dk6 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 6
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv7 := readU64(p, 8*7)
-			dk7 := dv7 ^ readU64(k, 8*7)
-			accs[6] += dv7
-			accs[7] += (dk7 & 0xffffffff) * (dk7 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
+
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
 
 			l -= _stripe
 			if l > 0 {
@@ -365,45 +449,66 @@ func accumScalarSeed(accs *[8]u64, p, secret ptr, l u64) {
 		t, k := (l-1)/_stripe, secret
 
 		for i := u64(0); i < t; i++ {
-			dv0 := readU64(p, 8*0)
-			dk0 := dv0 ^ readU64(k, 8*0)
-			accs[1] += dv0
-			accs[0] += (dk0 & 0xffffffff) * (dk0 >> 32)
+			{
+				const off = 0
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv1 := readU64(p, 8*1)
-			dk1 := dv1 ^ readU64(k, 8*1)
-			accs[0] += dv1
-			accs[1] += (dk1 & 0xffffffff) * (dk1 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv2 := readU64(p, 8*2)
-			dk2 := dv2 ^ readU64(k, 8*2)
-			accs[3] += dv2
-			accs[2] += (dk2 & 0xffffffff) * (dk2 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 2
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv3 := readU64(p, 8*3)
-			dk3 := dv3 ^ readU64(k, 8*3)
-			accs[2] += dv3
-			accs[3] += (dk3 & 0xffffffff) * (dk3 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv4 := readU64(p, 8*4)
-			dk4 := dv4 ^ readU64(k, 8*4)
-			accs[5] += dv4
-			accs[4] += (dk4 & 0xffffffff) * (dk4 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 4
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv5 := readU64(p, 8*5)
-			dk5 := dv5 ^ readU64(k, 8*5)
-			accs[4] += dv5
-			accs[5] += (dk5 & 0xffffffff) * (dk5 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv6 := readU64(p, 8*6)
-			dk6 := dv6 ^ readU64(k, 8*6)
-			accs[7] += dv6
-			accs[6] += (dk6 & 0xffffffff) * (dk6 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 6
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(k, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv7 := readU64(p, 8*7)
-			dk7 := dv7 ^ readU64(k, 8*7)
-			accs[6] += dv7
-			accs[7] += (dk7 & 0xffffffff) * (dk7 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(k, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
+
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
 
 			l -= _stripe
 			if l > 0 {
@@ -417,42 +522,42 @@ func accumScalarSeed(accs *[8]u64, p, secret ptr, l u64) {
 			dv0 := readU64(p, 8*0)
 			dk0 := dv0 ^ readU64(secret, 121)
 			accs[1] += dv0
-			accs[0] += (dk0 & 0xffffffff) * (dk0 >> 32)
+			accs[0] += uint64(uint32(dk0)) * (dk0 >> 32)
 
 			dv1 := readU64(p, 8*1)
 			dk1 := dv1 ^ readU64(secret, 129)
 			accs[0] += dv1
-			accs[1] += (dk1 & 0xffffffff) * (dk1 >> 32)
+			accs[1] += uint64(uint32(dk1)) * (dk1 >> 32)
 
 			dv2 := readU64(p, 8*2)
 			dk2 := dv2 ^ readU64(secret, 137)
 			accs[3] += dv2
-			accs[2] += (dk2 & 0xffffffff) * (dk2 >> 32)
+			accs[2] += uint64(uint32(dk2)) * (dk2 >> 32)
 
 			dv3 := readU64(p, 8*3)
 			dk3 := dv3 ^ readU64(secret, 145)
 			accs[2] += dv3
-			accs[3] += (dk3 & 0xffffffff) * (dk3 >> 32)
+			accs[3] += uint64(uint32(dk3)) * (dk3 >> 32)
 
 			dv4 := readU64(p, 8*4)
 			dk4 := dv4 ^ readU64(secret, 153)
 			accs[5] += dv4
-			accs[4] += (dk4 & 0xffffffff) * (dk4 >> 32)
+			accs[4] += uint64(uint32(dk4)) * (dk4 >> 32)
 
 			dv5 := readU64(p, 8*5)
 			dk5 := dv5 ^ readU64(secret, 161)
 			accs[4] += dv5
-			accs[5] += (dk5 & 0xffffffff) * (dk5 >> 32)
+			accs[5] += uint64(uint32(dk5)) * (dk5 >> 32)
 
 			dv6 := readU64(p, 8*6)
 			dk6 := dv6 ^ readU64(secret, 169)
 			accs[7] += dv6
-			accs[6] += (dk6 & 0xffffffff) * (dk6 >> 32)
+			accs[6] += uint64(uint32(dk6)) * (dk6 >> 32)
 
 			dv7 := readU64(p, 8*7)
 			dk7 := dv7 ^ readU64(secret, 177)
 			accs[6] += dv7
-			accs[7] += (dk7 & 0xffffffff) * (dk7 >> 32)
+			accs[7] += uint64(uint32(dk7)) * (dk7 >> 32)
 		}
 	}
 }
@@ -463,45 +568,66 @@ func accumBlockScalarSeed(accs *[8]u64, p, secret ptr) {
 	{
 		secret := secret
 		for i := 0; i < 16; i++ {
-			dv0 := readU64(p, 8*0)
-			dk0 := dv0 ^ readU64(secret, 8*0)
-			accs[1] += dv0
-			accs[0] += (dk0 & 0xffffffff) * (dk0 >> 32)
+			{
+				const off = 0
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(secret, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv1 := readU64(p, 8*1)
-			dk1 := dv1 ^ readU64(secret, 8*1)
-			accs[0] += dv1
-			accs[1] += (dk1 & 0xffffffff) * (dk1 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(secret, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv2 := readU64(p, 8*2)
-			dk2 := dv2 ^ readU64(secret, 8*2)
-			accs[3] += dv2
-			accs[2] += (dk2 & 0xffffffff) * (dk2 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 2
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(secret, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv3 := readU64(p, 8*3)
-			dk3 := dv3 ^ readU64(secret, 8*3)
-			accs[2] += dv3
-			accs[3] += (dk3 & 0xffffffff) * (dk3 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(secret, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv4 := readU64(p, 8*4)
-			dk4 := dv4 ^ readU64(secret, 8*4)
-			accs[5] += dv4
-			accs[4] += (dk4 & 0xffffffff) * (dk4 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 4
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(secret, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv5 := readU64(p, 8*5)
-			dk5 := dv5 ^ readU64(secret, 8*5)
-			accs[4] += dv5
-			accs[5] += (dk5 & 0xffffffff) * (dk5 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(secret, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
 
-			dv6 := readU64(p, 8*6)
-			dk6 := dv6 ^ readU64(secret, 8*6)
-			accs[7] += dv6
-			accs[6] += (dk6 & 0xffffffff) * (dk6 >> 32)
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
+			{
+				const off = 6
+				dv0 := readU64(p, 8*off)
+				dk0 := dv0 ^ readU64(secret, 8*off)
+				ac1 := dv0
+				ac0 := uint64(uint32(dk0)) * (dk0 >> 32)
 
-			dv7 := readU64(p, 8*7)
-			dk7 := dv7 ^ readU64(secret, 8*7)
-			accs[6] += dv7
-			accs[7] += (dk7 & 0xffffffff) * (dk7 >> 32)
+				dv1 := readU64(p, 8*off+8)
+				dk1 := dv1 ^ readU64(secret, 8*off+8)
+				ac0 += dv1
+				ac1 += uint64(uint32(dk1)) * (dk1 >> 32)
+
+				accs[off] += ac0
+				accs[off+1] += ac1
+			}
 
 			p, secret = ptr(ui(p)+_stripe), ptr(ui(secret)+8)
 		}
