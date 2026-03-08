@@ -2317,7 +2317,7 @@ The index gateway was queried for operations that require the index client, but 
 - Enforced by: Index gateway
 - Retryable: No (configuration/schema issue)
 - HTTP status: 500 Internal Server Error
-- Configurable per tenant: No 
+- Configurable per tenant: No
 
 ## Compactor and retention errors
 
@@ -2600,31 +2600,903 @@ The `max_interval` parameter on a delete request has an invalid value, exceeds t
 - Enforced by: Compactor delete request handler
 - Retryable: No (request must be fixed)
 - HTTP status: 400 Bad Request
-- Configurable per tenant: No 
+- Configurable per tenant: No
 
 ## Ruler errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+Ruler errors occur when evaluating alerting rules or recording rules.
+
+### Error: Invalid ruler evaluation config
+
+**Error message:**
+
+```text
+invalid ruler evaluation config: <details>
+```
+
+**Cause:**
+
+The ruler evaluation mode configuration is invalid.
+
+**Resolution:**
+
+1. **Use a valid evaluation mode**:
+
+   ```yaml
+   ruler:
+     evaluation:
+       mode: local  # Or "remote"
+   ```
+
+**Properties:**
+
+- Enforced by: Ruler module initialization (`initRuleEvaluator`)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Ruler remote write config conflict
+
+**Error message:**
+
+```text
+ruler remote write config: both 'client' and 'clients' options are defined; 'client' is deprecated, please only use 'clients'
+```
+
+**Cause:**
+
+Both the deprecated `client` and the new `clients` configuration options are set for ruler remote write.
+
+**Resolution:**
+
+1. **Remove the deprecated config** and use `clients`:
+
+   ```yaml
+   ruler:
+     remote_write:
+       # Remove this:
+       # client: {}
+       
+       # Use this instead:
+       clients:
+         primary:
+           url: http://prometheus:9090/api/v1/write
+   ```
+
+**Properties:**
+
+- Enforced by: Ruler initialization (`NewRuler`)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Remote write enabled but no URL configured
+
+**Error message:**
+
+```text
+remote-write enabled but no clients URL are configured
+```
+
+Or when multiple clients are configured in the `clients` map and one entry is missing a URL:
+
+```text
+remote-write enabled but client '<name>' URL for tenant <client-id> is not configured
+```
+
+**Cause:**
+
+Remote write is enabled for the ruler but no destination URL is configured. The first variant occurs when the `clients` map is empty. The second occurs when a named entry in the `clients` map has no `url` set; `<client-id>` is the map key for that entry, not a tenant ID.
+
+**Resolution:**
+
+1. **Configure the remote write URL**:
+
+   ```yaml
+   ruler:
+     remote_write:
+       enabled: true
+       clients:
+         primary:
+           url: http://prometheus:9090/api/v1/write
+   ```
+
+1. **Or disable remote write**:
+
+   ```yaml
+   ruler:
+     remote_write:
+       enabled: false
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Rule result is not a vector or scalar
+
+**Error message:**
+
+```text
+rule result is not a vector or scalar
+```
+
+**Cause:**
+
+A rule evaluation returned an unexpected result type. Both recording rules and alerting rules must produce vector or scalar results. A plain log-stream expression (one that returns log lines rather than a numeric metric) triggers this error in either rule type.
+
+**Resolution:**
+
+1. **Check the rule expression** returns a vector or scalar:
+
+   ```yaml
+   # Valid - returns vector:
+   record: my_metric
+   expr: sum(rate({job="app"}[5m] | json | level="error"))
+
+   # Invalid - returns logs (triggers error for both recording and alerting rules):
+   # record: my_metric
+   # expr: '{job="app"}'
+   ```
+
+1. **Use aggregation functions** to produce numeric results from log queries.
+
+**Properties:**
+
+- Enforced by: Ruler evaluation
+- Retryable: No (rule must be fixed)
+- HTTP status: N/A (background process)
+- Configurable per tenant: No
+
+### Error: Ruler WAL closed
+
+**Error message:**
+
+```text
+WAL storage closed
+```
+
+**Cause:**
+
+An operation was attempted on the ruler's write-ahead log (WAL) after it was closed. This typically occurs during shutdown.
+
+**Resolution:**
+
+1. **Wait for the ruler to restart** if it's restarting.
+1. **Check ruler logs** for errors that caused unexpected WAL closure.
+1. **Verify disk space** is available for WAL operations.
+
+**Properties:**
+
+- Enforced by: Ruler WAL
+- Retryable: Yes (after ruler restart)
+- HTTP status: N/A
+- Configurable per tenant: No
 
 ## Kafka integration errors
 
+These errors occur when Loki is configured to use Kafka for ingestion.
 
+### Error: Missing Kafka address
+
+**Error message:**
+
+```text
+the Kafka address has not been configured
+```
+
+**Cause:**
+
+Kafka ingestion is enabled but no Kafka broker address is configured.
+
+**Resolution:**
+
+1. **Configure the Kafka address**:
+
+   ```yaml
+   kafka_config:
+     topic: loki-logs
+     reader_config:
+       address: kafka:9092
+     writer_config:
+       address: kafka:9092
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Missing Kafka topic
+
+**Error message:**
+
+```text
+the Kafka topic has not been configured
+```
+
+**Cause:**
+
+Kafka ingestion is enabled but no topic name is configured.
+
+**Resolution:**
+
+1. **Configure the Kafka topic**:
+
+   ```yaml
+   kafka_config:
+     topic: loki-logs
+     reader_config:
+       address: kafka:9092
+     writer_config:
+       address: kafka:9092
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Inconsistent SASL username and password
+
+**Error message:**
+
+```text
+both sasl username and password must be set
+```
+
+**Cause:**
+
+Only one of the Simple Authentication and Security Layer (SASL) username or password is configured. Both must be set together.
+
+**Resolution:**
+
+1. **Configure both username and password**:
+
+   ```yaml
+   kafka_config:
+     sasl_username: my-user
+     sasl_password: ${KAFKA_PASSWORD}
+   ```
+
+1. **Or remove both** if SASL authentication is not required.
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Kafka enabled in distributor but not in ingester
+
+**Error message:**
+
+```text
+kafka is enabled in distributor but not in ingester
+```
+
+**Cause:**
+
+Kafka is configured for the distributor but the ingester isn't configured to read from Kafka. Both must be configured together.
+
+**Resolution:**
+
+1. **Enable Kafka in both distributor and ingester**:
+
+   ```yaml
+   distributor:
+     kafka_writes_enabled: true
+
+   ingester:
+     kafka_ingestion:
+       enabled: true
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
 
 ## Bloom gateway errors
 
+Bloom gateway errors occur when using bloom filters for query acceleration.
 
+### Error: Invalid bloom gateway addresses
+
+**Error message:**
+
+```text
+addresses requires a list of comma separated strings in DNS service discovery format with at least one item
+```
+
+**Cause:**
+
+The `bloom_gateway.client.addresses` configuration field is empty or unset.
+
+**Resolution:**
+
+1. **Configure valid addresses**:
+
+   ```yaml
+   bloom_gateway:
+     client:
+       addresses: dns+bloom-gateway:9095
+   ```
+
+   Valid formats:
+   - `dns+hostname:port` - DNS-based discovery
+   - `host1:port,host2:port` - Static list
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Request time range must span exactly one day
+
+**Error message:**
+
+```text
+request time range must span exactly one day
+```
+
+**Cause:**
+
+Bloom gateway requests must be for exactly one day of data due to how bloom blocks are organized.
+
+**Resolution:**
+
+1. This is typically handled automatically by the bloom querier, which splits multi-day queries into per-day requests before sending them to the gateway. If you see this error:
+   - **Check that the querier is properly configured**
+   - **Ensure queries are routed through the querier**
+
+**Properties:**
+
+- Enforced by: Bloom gateway
+- Retryable: No
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: From time must not be after through time
+
+**Error message:**
+
+```text
+from time must not be after through time
+```
+
+**Cause:**
+
+The bloom gateway received a request where the start time (`from`) is later than the end time (`through`).
+
+**Resolution:**
+
+1. This indicates a malformed request reaching the bloom gateway. Verify that the client sending the request constructs time ranges correctly with `from` ≤ `through`.
+
+**Properties:**
+
+- Enforced by: Bloom gateway
+- Retryable: No
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
 
 ## Write-ahead log (WAL) errors
 
+WAL errors occur when the ingester cannot properly manage its write-ahead log.
 
+### Error: WAL is stopped
+
+**Error message:**
+
+```text
+wal is stopped
+```
+
+**Cause:**
+
+An operation was attempted on the WAL after it was stopped. This typically occurs during shutdown or after a fatal error.
+
+**Resolution:**
+
+1. **Check ingester health and logs** for errors.
+1. **Verify disk space** is available.
+1. **Restart the ingester** if it's in a bad state.
+
+**Properties:**
+
+- Enforced by: Ingester WAL
+- Retryable: Yes (after ingester restart)
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: Invalid checkpoint duration
+
+**Error message:**
+
+```text
+invalid checkpoint duration: <duration>
+```
+
+**Cause:**
+
+The WAL checkpoint duration is set to an invalid value (likely zero or negative).
+
+**Resolution:**
+
+1. **Set a valid checkpoint duration**:
+
+   ```yaml
+   ingester:
+     wal:
+       checkpoint_duration: 5m
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+<!-- Hiding this for now, as it won't exist until we release Loki 3.7 
+
+### Error: Invalid disk full threshold
+
+{{< admonition type="note" >}}
+The `disk_full_threshold` configuration option was introduced in Loki 3.7. This error does not occur in earlier releases.
+{{< /admonition >}}
+
+**Error message:**
+
+```text
+invalid disk full threshold: <value> (must be between 0 and 1)
+```
+
+**Cause:**
+
+The WAL disk full threshold is set to a value outside the valid range. Valid values are between 0 and 1 (inclusive), where 0 disables throttling and values greater than 0 represent the fraction of disk capacity at which writes are throttled.
+
+**Resolution:**
+
+1. **Set a valid threshold**:
+
+   ```yaml
+   ingester:
+     wal:
+       disk_full_threshold: 0.9  # 90%
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No -->
 
 ## Ingester lifecycle errors
 
+Ingester lifecycle errors occur during ingester startup, shutdown, or state transitions.
 
+### Error: Ingester is shutting down
+
+**Error message:**
+
+```text
+Ingester is shutting down
+```
+
+**Cause:**
+
+The ingester is in the process of shutting down and is no longer accepting writes. This error (also known as `ErrReadOnly`) is returned when a push request arrives during graceful shutdown. During this period the ingester may still serve reads for data it holds in memory.
+
+**Resolution:**
+
+1. **Configure clients to retry** with backoff. The distributor will route to other healthy ingesters.
+1. **Wait for shutdown to complete** and the new instance to start.
+1. **Check if shutdown is expected** (rolling update, scaling event).
+1. **If unexpected**, check orchestrator logs for OOM kills or health check failures.
+
+**Properties:**
+
+- Enforced by: Ingester
+- Retryable: Partial. The distributor sends writes to all ingesters in the replication set in parallel and uses a quorum model. If the remaining ingesters meet the minimum success threshold, the overall write succeeds despite this error from a shutting-down ingester.
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: Ingester is stopping or already stopped
+
+**Error message:**
+
+```text
+Ingester is stopping or already stopped.
+```
+
+**Cause:**
+
+The ingester's shutdown management endpoint (`POST /loki/api/v1/ingester/shutdown`) was called when the ingester was not in a `Running` state. This happens when the endpoint is called a second time during an in-progress shutdown or after the ingester has already stopped. This error is returned by the shutdown endpoint, not by the log-write or query paths.
+
+**Resolution:**
+
+1. **Do not call the shutdown endpoint again** while a shutdown is already in progress.
+1. **Check orchestrator** for duplicate shutdown signals or restart policies.
+1. **Investigate** if the stop was unexpected (pod eviction, OOM, crash).
+
+**Properties:**
+
+- Enforced by: Ingester shutdown endpoint
+- Retryable: No (the shutdown endpoint call itself is not retryable; wait for the ingester to restart before sending new writes)
+- HTTP status: 503 Service Unavailable (response from the shutdown endpoint)
+- Configurable per tenant: No
+
+### Error: Failed to start partition reader
+
+**Error message:**
+
+```text
+failed to start partition reader: <details>
+```
+
+**Cause:**
+
+The ingester could not start its Kafka partition reader. This occurs when Kafka ingestion is enabled but the partition reader fails to initialize.
+
+**Resolution:**
+
+1. **Check Kafka connectivity** from the ingester.
+1. **Verify Kafka topic exists** and the ingester has appropriate permissions.
+1. **Review Kafka configuration**:
+
+   ```yaml
+   kafka:
+     address: kafka:9092
+     topic: loki-logs
+   ```
+
+1. **Check Kafka broker health**.
+
+**Properties:**
+
+- Enforced by: Ingester startup
+- Retryable: No (configuration or infrastructure must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Failed to start partition ring lifecycler
+
+**Error message:**
+
+```text
+failed to start partition ring lifecycler: <details>
+```
+
+**Cause:**
+
+The ingester could not start its Kafka partition ring lifecycler during startup. This is a separate component from the partition reader; it manages the ingester's membership in the partition ring. This only occurs when Kafka ingestion is enabled.
+
+**Resolution:**
+
+1. **Check Kafka connectivity** from the ingester.
+1. **Verify the partition ring KV store** (the store used for the partition ring) is reachable.
+1. **Review ingester logs** for the wrapped error in `<details>`.
+1. **Check Kafka broker health** and partition availability.
+
+**Properties:**
+
+- Enforced by: Ingester startup
+- Retryable: No (configuration or infrastructure must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Lifecycler failed
+
+**Error message:**
+
+```text
+lifecycler failed: <details>
+```
+
+**Cause:**
+
+The ingester's lifecycler (which manages ring membership) encountered a fatal error. This prevents the ingester from participating in the ring.
+
+**Resolution:**
+
+1. **Check KV store connectivity** (Consul, etcd, or memberlist).
+1. **Review ingester logs** for the specific lifecycler error.
+1. **Verify ring configuration** is consistent across all ingesters.
+1. **Restart the ingester** after fixing the underlying issue.
+
+**Properties:**
+
+- Enforced by: Ingester lifecycler
+- Retryable: Yes (after fix and restart)
+- HTTP status: N/A (internal failure)
+- Configurable per tenant: No 
 
 ## Pattern ingester errors
 
+Pattern ingester errors occur when using the pattern ingester for automatic log pattern detection.
+
+### Error: Pattern ingester replication factor must be 1
+
+**Error message:**
+
+```text
+pattern ingester replication factor must be 1
+```
+
+**Cause:**
+
+The pattern ingester is configured with a replication factor other than 1. Currently, the pattern ingester only supports a replication factor of 1.
+
+**Resolution:**
+
+1. **Set the replication factor to 1**:
+
+   ```yaml
+   pattern_ingester:
+     lifecycler:
+       ring:
+         replication_factor: 1
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Pattern ingester retain-for too short
+
+**Error message:**
+
+```text
+retain-for (<duration>) must be greater than or equal to chunk-duration (<duration>)
+```
+
+**Cause:**
+
+The pattern ingester's `retain_for` duration is shorter than `max_chunk_age`, which would cause data loss.
+
+**Resolution:**
+
+1. **Increase the retain-for duration** to be at least as long as `max_chunk_age`:
+
+   ```yaml
+   pattern_ingester:
+     retain_for: 15m   # Must be >= max_chunk_age
+     max_chunk_age: 5m
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Pattern ingester chunk-duration too short
+
+**Error message:**
+
+```text
+chunk-duration (<duration>) must be greater than or equal to sample-interval (<duration>)
+```
+
+**Cause:**
+
+The pattern ingester's `max_chunk_age` is shorter than `pattern_sample_interval`. Chunks must span at least one sample interval to hold any data.
+
+**Resolution:**
+
+1. **Increase `max_chunk_age`** to be at least as long as `pattern_sample_interval`:
+
+   ```yaml
+   pattern_ingester:
+     max_chunk_age: 1h     # Must be >= pattern_sample_interval (default: 1h)
+     pattern_sample_interval: 10s  # default: 10s
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Pattern ingester volume threshold out of range
+
+**Error message:**
+
+```text
+volume_threshold (<value>) must be between 0 and 1
+```
+
+**Cause:**
+
+The `volume_threshold` value is outside the valid range of 0 to 1. This setting controls what fraction of log volume the pattern ingester tracks — only patterns representing the top X% of log volume are persisted.
+
+**Resolution:**
+
+1. **Set `volume_threshold` to a value between 0 and 1** (default is `0.99`):
+
+   ```yaml
+   pattern_ingester:
+     volume_threshold: 0.99
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
 
 
 ## API parameter errors
+
+These errors occur when API requests contain invalid parameters.
+
+### Error: Invalid direction
+
+**Error message:**
+
+```text
+invalid direction '<value>'
+```
+
+**Cause:**
+
+The `direction` query parameter contains an invalid value.
+
+**Resolution:**
+
+1. **Use a valid direction value**:
+   - `forward` - Oldest to newest
+   - `backward` - Newest to oldest (default)
+
+   ```bash
+   curl "http://loki:3100/loki/api/v1/query_range?query={job=\"app\"}&direction=forward"
+   ```
+
+**Properties:**
+
+- Enforced by: API handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Limit must be a positive value
+
+**Error message:**
+
+```text
+limit must be a positive value
+```
+
+**Cause:**
+
+The `limit` parameter is zero or negative.
+
+**Resolution:**
+
+1. **Provide a positive limit**:
+
+   ```bash
+   curl "http://loki:3100/loki/api/v1/query_range?query={job=\"app\"}&limit=100"
+   ```
+
+**Properties:**
+
+- Enforced by: API handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: End timestamp must not be before start time
+
+**Error message:**
+
+```text
+end timestamp must not be before or equal to start time
+```
+
+**Cause:**
+
+The query's `end` time is before or equal to its `start` time.
+
+**Resolution:**
+
+1. **Ensure end time is after start time**:
+
+   ```bash
+   curl "http://loki:3100/loki/api/v1/query_range?\
+   query={job=\"app\"}&\
+   start=2024-01-01T00:00:00Z&\
+   end=2024-01-02T00:00:00Z"
+   ```
+
+**Properties:**
+
+- Enforced by: API handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Delay for tailing too large
+
+**Error message:**
+
+```text
+delay_for can't be greater than <max>
+```
+
+**Cause:**
+
+The `delay_for` parameter for tailing queries exceeds the maximum allowed value.
+
+**Resolution:**
+
+1. **Reduce the delay_for value**:
+
+   ```bash
+   curl "http://loki:3100/loki/api/v1/tail?query={job=\"app\"}&delay_for=5"
+   ```
+
+   The maximum value is typically 5 seconds.
+
+**Properties:**
+
+- Enforced by: API handler
+- Retryable: No (request must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: Query filtering requires compactor address
+
+**Error message:**
+
+```text
+query filtering for deletes requires 'compactor_grpc_address' or 'compactor_address' to be configured
+```
+
+**Cause:**
+
+Query-time filtering for delete requests is enabled but Loki doesn't know how to reach the compactor to retrieve active delete requests.
+
+**Resolution:**
+
+1. **Configure the compactor address**:
+
+   ```yaml
+   compactor:
+     compactor_grpc_address: compactor:9095
+   ```
+
+1. **Or use the HTTP address**:
+
+   ```yaml
+   compactor:
+     compactor_address: http://compactor:3100
+   ```
+
+**Properties:**
+
+- Enforced by: Module initialization
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
 

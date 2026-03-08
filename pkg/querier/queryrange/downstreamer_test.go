@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -585,6 +586,74 @@ func TestCancelWhileWaitingResponse(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond,
 		"The parent context calling the Downstreamer For method was canceled "+
 			"but the For method did not return as expected.")
+}
+
+func TestCancelDoesNotLeakGoroutines(t *testing.T) {
+	mkIn := func() *instance {
+		return DownstreamHandler{
+			limits: fakeLimits{},
+			next:   nil,
+		}.Downstreamer(context.Background()).(*instance)
+	}
+	in := mkIn()
+
+	params, err := logql.NewLiteralParams(
+		`{app="foo"}`,
+		time.Now(),
+		time.Now(),
+		0,
+		0,
+		logproto.BACKWARD,
+		1000,
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
+
+	queries := make([]logql.DownstreamQuery, in.parallelism+1)
+	for i := range queries {
+		queries[i] = logql.DownstreamQuery{Params: params}
+	}
+
+	// Record baseline goroutine count.
+	runtime.GC()
+	time.Sleep(50 * time.Millisecond)
+	baseline := runtime.NumGoroutine()
+
+	// Run multiple iterations of canceled queries to amplify any leak.
+	for i := 0; i < 100; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		acc := logql.NewBufferedAccumulator(len(queries))
+
+		started := atomic.NewInt32(0)
+		done := make(chan struct{})
+		go func() {
+			_, _ = in.For(ctx, queries, acc, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
+				started.Inc()
+				// Block until context is canceled.
+				<-ctx.Done()
+				return logqlmodel.Result{}, ctx.Err()
+			})
+			close(done)
+		}()
+
+		// Wait for at least one job to start, then cancel.
+		require.Eventually(t, func() bool {
+			return started.Load() > 0
+		}, 5*time.Second, time.Millisecond)
+
+		cancel()
+		<-done
+	}
+
+	// Allow goroutines to settle.
+	runtime.GC()
+	require.Eventually(t, func() bool {
+		return runtime.NumGoroutine() <= baseline+10
+	}, 10*time.Second, 100*time.Millisecond,
+		"goroutine count did not return to baseline; likely leak in For on context cancellation (baseline=%d, current=%d)",
+		baseline, runtime.NumGoroutine(),
+	)
 }
 
 func TestDownstreamerUsesCorrectParallelism(t *testing.T) {
