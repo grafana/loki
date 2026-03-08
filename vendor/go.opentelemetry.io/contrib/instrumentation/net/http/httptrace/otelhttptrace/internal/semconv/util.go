@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -124,4 +125,9 @@ func standardizeHTTPMethod(method string) string {
 		method = "_OTHER"
 	}
 	return method
+}
+
+func durationToSeconds(d time.Duration) float64 {
+	// Use floating point division here for higher precision (instead of Seconds method).
+	return float64(d) / float64(time.Second)
 }

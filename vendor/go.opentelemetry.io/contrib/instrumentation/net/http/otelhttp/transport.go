@@ -106,9 +106,7 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 	}
 
-	opts := append([]trace.SpanStartOption{}, t.spanStartOptions...) // start with the configured options
-
-	ctx, span := tracer.Start(r.Context(), t.spanNameFormatter("", r), opts...)
+	ctx, span := tracer.Start(r.Context(), t.spanNameFormatter("", r), t.spanStartOptions...)
 
 	if t.clientTrace != nil {
 		ctx = httptrace.WithClientTrace(ctx, t.clientTrace(ctx))
@@ -145,35 +143,23 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 	res, err := t.rt.RoundTrip(r)
 
-	// Defer metrics recording function to record the metrics on error or no error.
-	defer func() {
-		metricAttributes := semconv.MetricAttributes{
+	// Record the metrics on error or no error.
+	statusCode := 0
+	if err == nil {
+		statusCode = res.StatusCode
+	}
+	t.semconv.RecordMetrics(
+		ctx,
+		semconv.MetricData{
+			RequestSize:     bw.BytesRead(),
+			RequestDuration: time.Since(requestStartTime),
+		},
+		t.semconv.MetricOptions(semconv.MetricAttributes{
 			Req:                  r,
+			StatusCode:           statusCode,
 			AdditionalAttributes: append(labeler.Get(), t.metricAttributesFromRequest(r)...),
-		}
-
-		if err == nil {
-			metricAttributes.StatusCode = res.StatusCode
-		}
-
-		metricOpts := t.semconv.MetricOptions(metricAttributes)
-
-		metricData := semconv.MetricData{
-			RequestSize: bw.BytesRead(),
-		}
-
-		if err == nil {
-			readRecordFunc := func(int64) {}
-			res.Body = newWrappedBody(span, readRecordFunc, res.Body)
-		}
-
-		// Use floating point division here for higher precision (instead of Millisecond method).
-		elapsedTime := float64(time.Since(requestStartTime)) / float64(time.Millisecond)
-
-		metricData.ElapsedTime = elapsedTime
-
-		t.semconv.RecordMetrics(ctx, metricData, metricOpts)
-	}()
+		}),
+	)
 
 	if err != nil {
 		span.SetAttributes(otelsemconv.ErrorType(err))
@@ -183,6 +169,8 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 		return res, err
 	}
 
+	readRecordFunc := func(int64) {}
+	res.Body = newWrappedBody(span, readRecordFunc, res.Body)
 	// traces
 	span.SetAttributes(t.semconv.ResponseTraceAttrs(res)...)
 	span.SetStatus(t.semconv.Status(res.StatusCode))
