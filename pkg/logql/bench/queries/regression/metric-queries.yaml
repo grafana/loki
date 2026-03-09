@@ -209,6 +209,7 @@ queries:
         - status
   - description: HTTP status code distribution
     query: sum by (level) (count_over_time(${SELECTOR} | json [${RANGE}]))
+    skip: true # TODO(twhitney): JSONParserErr: generated data contains log lines the json parser cannot handle
     kind: metric
     time_range:
       length: 24h
