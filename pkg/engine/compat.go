@@ -263,11 +263,19 @@ func (b *streamsResultBuilder) Build(s stats.Result, md *metadata.Context) logql
 	for i, stream := range b.data {
 		if b.direction == logproto.BACKWARD {
 			sort.Slice(stream.Entries, func(a, b int) bool {
-				return stream.Entries[a].Timestamp.After(stream.Entries[b].Timestamp)
+				ta, tb := stream.Entries[a].Timestamp, stream.Entries[b].Timestamp
+				if ta.Equal(tb) {
+					return stream.Entries[a].Line < stream.Entries[b].Line
+				}
+				return ta.After(tb)
 			})
 		} else {
 			sort.Slice(stream.Entries, func(a, b int) bool {
-				return stream.Entries[a].Timestamp.Before(stream.Entries[b].Timestamp)
+				ta, tb := stream.Entries[a].Timestamp, stream.Entries[b].Timestamp
+				if ta.Equal(tb) {
+					return stream.Entries[a].Line < stream.Entries[b].Line
+				}
+				return ta.Before(tb)
 			})
 		}
 

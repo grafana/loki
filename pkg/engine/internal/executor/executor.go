@@ -105,7 +105,9 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	}
 
 	if c.getExternalInputs != nil {
-		inputs = append(inputs, c.getExternalInputs(ctx, node)...)
+		for _, ext := range c.getExternalInputs(ctx, node) {
+			inputs = append(inputs, newDedupPipeline(ext))
+		}
 	}
 
 	switch n := node.(type) {
@@ -458,7 +460,7 @@ func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []
 		return errorPipeline(ctx, err)
 	}
 
-	return pipeline
+	return newDedupPipeline(pipeline)
 }
 
 func (c *Context) executeParallelize(ctx context.Context, _ *physical.Parallelize, inputs []Pipeline) Pipeline {
@@ -486,11 +488,12 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 	for _, target := range set.Targets {
 		switch target.Type {
 		case physical.ScanTypeDataObject:
-			// Make sure projections and predicates get passed down to the
-			// individual scan.
+			// Merge ScanSet-level projections and predicates with the
+			// individual scan's own, matching the behavior of
+			// ScanSet.Shards() used in the distributed execution path.
 			partition := target.DataObject
-			partition.Predicates = set.Predicates
-			partition.Projections = set.Projections
+			partition.Predicates = append(set.Predicates, partition.Predicates...)
+			partition.Projections = append(set.Projections, partition.Projections...)
 
 			targets = append(targets, NewObservedPipeline(partition.Type().String(), nodeAttributes(partition), newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
 				return c.executeDataObjScan(ctx, partition)
@@ -511,7 +514,7 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 		return errorPipeline(ctx, err)
 	}
 
-	return pipeline
+	return newDedupPipeline(pipeline)
 }
 
 // nodeAttributes returns OTel span attributes relevant to the given physical
