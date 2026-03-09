@@ -169,7 +169,7 @@ from `make discover` and the `remote_correctness` build tag.
         -addr-2=http://loki-test:3100 \
         -org-id=my-tenant \
         -username=admin -password=secret \
-        -metadata-dir=testdata
+        -metadata-dir=pkg/logql/bench/testdata
 
 Use `-run` to filter queries (same as TestStorageEquality).
 

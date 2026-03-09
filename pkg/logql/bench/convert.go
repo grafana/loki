@@ -19,7 +19,7 @@ func ConvertResult(v loghttp.ResultValue) (parser.Value, error) {
 	case loghttp.Streams:
 		return convertStreams(r), nil
 	case loghttp.Matrix:
-		return convertMatrix(r), nil
+		return convertMatrix(r)
 	case loghttp.Vector:
 		return convertVector(r), nil
 	case loghttp.Scalar:
@@ -35,9 +35,12 @@ func convertStreams(s loghttp.Streams) logqlmodel.Streams {
 }
 
 // convertMatrix converts a loghttp.Matrix to promql.Matrix.
-func convertMatrix(m loghttp.Matrix) promql.Matrix {
+func convertMatrix(m loghttp.Matrix) (promql.Matrix, error) {
 	result := make(promql.Matrix, len(m))
 	for i, sampleStream := range m {
+		if len(sampleStream.Histograms) > 0 {
+			return nil, fmt.Errorf("histogram data not yet supported in conversion (series %d has %d histogram points)", i, len(sampleStream.Histograms))
+		}
 		floats := make([]promql.FPoint, len(sampleStream.Values))
 		for j, pair := range sampleStream.Values {
 			floats[j] = promql.FPoint{
@@ -50,7 +53,7 @@ func convertMatrix(m loghttp.Matrix) promql.Matrix {
 			Floats: floats,
 		}
 	}
-	return result
+	return result, nil
 }
 
 // convertVector converts a loghttp.Vector to promql.Vector.

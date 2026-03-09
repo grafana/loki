@@ -40,6 +40,7 @@ func assertResultNotEmpty(t *testing.T, data parser.Value, message string) {
 
 // assertDataEqualWithTolerance compares two parser.Value instances with floating point tolerance
 func assertDataEqualWithTolerance(t *testing.T, expected, actual parser.Value, tolerance float64) {
+	t.Helper()
 	switch expectedType := expected.(type) {
 	case promql.Vector:
 		actualVector, ok := actual.(promql.Vector)
@@ -60,6 +61,7 @@ func assertDataEqualWithTolerance(t *testing.T, expected, actual parser.Value, t
 
 // assertVectorEqualWithTolerance compares two Vector instances with floating point tolerance
 func assertVectorEqualWithTolerance(t *testing.T, expected, actual promql.Vector, tolerance float64) {
+	t.Helper()
 	require.Len(t, actual, len(expected))
 
 	for i := range expected {
@@ -78,6 +80,7 @@ func assertVectorEqualWithTolerance(t *testing.T, expected, actual promql.Vector
 
 // assertMatrixEqualWithTolerance compares two Matrix instances with floating point tolerance
 func assertMatrixEqualWithTolerance(t *testing.T, expected, actual promql.Matrix, tolerance float64) {
+	t.Helper()
 	require.Equal(t, len(expected), len(actual), "number of entries differs")
 
 	for i := range expected {
@@ -102,6 +105,7 @@ func assertMatrixEqualWithTolerance(t *testing.T, expected, actual promql.Matrix
 
 // assertScalarEqualWithTolerance compares two Scalar instances with floating point tolerance
 func assertScalarEqualWithTolerance(t *testing.T, expected, actual promql.Scalar, tolerance float64) {
+	t.Helper()
 	require.Equal(t, expected.T, actual.T, "scalar timestamp differs")
 
 	if tolerance > 0 {

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
@@ -98,39 +99,27 @@ func queryRemote(t *testing.T, c *client.DefaultClient, tc TestCase) (parser.Val
 	return ConvertResult(resp.Data.Result)
 }
 
-// sortVector sorts a promql.Vector by metric fingerprint (primary) then timestamp (secondary)
+// sortVector sorts a promql.Vector by metric labels (primary) then timestamp (secondary)
 func sortVector(v promql.Vector) {
 	slices.SortFunc(v, func(a, b promql.Sample) int {
-		ha := a.Metric.Hash()
-		hb := b.Metric.Hash()
-		if ha != hb {
-			if ha < hb {
-				return -1
-			}
-			return 1
+		if c := labels.Compare(a.Metric, b.Metric); c != 0 {
+			return c
 		}
-		if a.T != b.T {
-			if a.T < b.T {
-				return -1
-			}
+		// tie-break by timestamp
+		if a.T < b.T {
+			return -1
+		}
+		if a.T > b.T {
 			return 1
 		}
 		return 0
 	})
 }
 
-// sortMatrix sorts a promql.Matrix by metric fingerprint
+// sortMatrix sorts a promql.Matrix by metric labels
 func sortMatrix(m promql.Matrix) {
 	slices.SortFunc(m, func(a, b promql.Series) int {
-		ha := a.Metric.Hash()
-		hb := b.Metric.Hash()
-		if ha < hb {
-			return -1
-		}
-		if ha > hb {
-			return 1
-		}
-		return 0
+		return labels.Compare(a.Metric, b.Metric)
 	})
 }
 

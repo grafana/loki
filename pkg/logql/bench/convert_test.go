@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func TestConvertResult_Streams(t *testing.T) {
@@ -26,11 +27,14 @@ func TestConvertResult_Streams(t *testing.T) {
 
 	result, err := ConvertResult(input)
 	require.NoError(t, err)
-
-	// Result should be of type logqlmodel.Streams — since we can't import logqlmodel
-	// here directly, verify via the parser.Value interface
 	require.NotNil(t, result)
-	assert.Equal(t, "streams", string(result.Type()))
+
+	streams, ok := result.(logqlmodel.Streams)
+	require.True(t, ok, "expected logqlmodel.Streams but got %T", result)
+	require.Len(t, streams, 1)
+	assert.Len(t, streams[0].Entries, 2)
+	assert.Equal(t, "log line 1", streams[0].Entries[0].Line)
+	assert.Equal(t, "log line 2", streams[0].Entries[1].Line)
 }
 
 func TestConvertResult_Matrix(t *testing.T) {
@@ -235,4 +239,23 @@ func TestConvertResult_Vector_Timestamp(t *testing.T) {
 	require.Len(t, vector, 1)
 	assert.Equal(t, int64(msTimestamp), vector[0].T)
 	assert.InDelta(t, 99.9, vector[0].F, 1e-10)
+}
+
+func TestConvertResult_Matrix_HistogramsUnsupported(t *testing.T) {
+	input := loghttp.Matrix{
+		{
+			Metric: model.Metric{"job": "test"},
+			Values: []model.SamplePair{},
+			Histograms: []model.SampleHistogramPair{
+				{
+					Timestamp: model.Time(1000),
+					Histogram: &model.SampleHistogram{},
+				},
+			},
+		},
+	}
+
+	result, err := ConvertResult(input)
+	assert.Nil(t, result)
+	assert.ErrorContains(t, err, "histogram data not yet supported in conversion")
 }
