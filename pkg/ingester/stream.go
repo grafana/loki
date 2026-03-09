@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	pushtypes "github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
@@ -29,8 +30,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
-
-	pushtypes "github.com/grafana/loki/pkg/push"
 )
 
 var ErrEntriesExist = errors.New("duplicate push - entries already exist")
