@@ -105,7 +105,9 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	}
 
 	if c.getExternalInputs != nil {
-		inputs = append(inputs, c.getExternalInputs(ctx, node)...)
+		for _, ext := range c.getExternalInputs(ctx, node) {
+			inputs = append(inputs, newDedupPipeline(ext))
+		}
 	}
 
 	switch n := node.(type) {
@@ -460,7 +462,7 @@ func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []
 		return errorPipeline(ctx, err)
 	}
 
-	return pipeline
+	return newDedupPipeline(pipeline)
 }
 
 func (c *Context) executeParallelize(ctx context.Context, _ *physical.Parallelize, inputs []Pipeline) Pipeline {
@@ -520,7 +522,7 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 		return errorPipeline(ctx, err)
 	}
 
-	return pipeline
+	return newDedupPipeline(pipeline)
 }
 
 // nodeAttributes returns OTel span attributes relevant to the given physical
