@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -43,6 +44,8 @@ type Config struct {
 	// EnforceQuerySeriesLimit enables enforcement of the max_query_series limit.
 	// When enabled, the tenant's MaxQuerySeries limit is applied; otherwise, no limit is enforced.
 	EnforceQuerySeriesLimit bool `yaml:"enforce_max_query_series_limit" category:"experimental"`
+
+	ResultsCache queryrangebase.ResultsCacheConfig `yaml:"results_cache" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -69,6 +72,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableDeleteReqFiltering, prefix+"enable-delete-req-filtering", true, "When enabled, query results exclude log lines that match overlapping delete requests (not just pending requests). Disable to return all logs without considering delete requests.")
 	f.BoolVar(&cfg.AlignQueriesWithStep, prefix+"align-queries-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.EnforceQuerySeriesLimit, prefix+"enforce-max-query-series-limit", false, "Experimental: When enabled, the tenant's MaxQuerySeries limit is applied. Otherwise, no limit is enforced.")
+	cfg.ResultsCache.RegisterFlagsWithPrefix(f, prefix+"results-cache.")
 }
 
 func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {
