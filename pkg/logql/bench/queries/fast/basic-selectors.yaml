@@ -58,8 +58,8 @@ queries:
     directions: both
     requires:
       labels:
-        - env
-        - region
+        - namespace
+        - service_name
         - cluster
     tags:
       - line-filter

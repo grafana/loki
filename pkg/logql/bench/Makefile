@@ -1,8 +1,17 @@
-.PHONY: generate bench list run run-debug stream grafana grafana-stop
+.PHONY: generate bench list run run-debug stream grafana grafana-stop discover
+
+# Load local secrets from .env (ignored by git).
+# Copy .env.template → .env and fill in real values.
+-include .env
+export
 
 # Default size for data generation (2GB)
 SIZE ?= 2147483648
 TENANT ?= test-tenant
+
+# Discover configuration — override via .env or environment
+DISCOVER_MAX_STREAMS ?= 500
+DISCOVER_CONCURRENCY ?= 5
 
 generate:
 	@echo "Generating benchmark data..."
@@ -81,3 +90,60 @@ server-stop:
 	@make grafana-stop
 	@pkill dlv
 	@pkill loki
+
+############
+# Discover #
+############
+
+# Build the discover binary
+discover/cmd/discover:
+	CGO_ENABLED=0 go build -o $@ ./$(@D)
+
+# discover runs the metadata discovery pipeline against the live Loki cluster.
+# Requires secrets in .env (copy .env.template and fill in values):
+#   LOKI_ADDR, LOKI_USERNAME, LOKI_PASSWORD     — Loki endpoint and auth
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY    — S3 credentials for TSDB index access
+#   S3_BUCKET, S3_REGION, S3_ENDPOINT           — S3 bucket configuration
+#   TABLE_PREFIX                                — TSDB index table name prefix
+discover: discover/cmd/discover
+ifndef LOKI_ADDR
+	$(error LOKI_ADDR is required — add it to .env (see .env.template))
+endif
+ifndef LOKI_USERNAME
+	$(error LOKI_USERNAME is required — add it to .env (see .env.template))
+endif
+ifndef LOKI_PASSWORD
+	$(error LOKI_PASSWORD is required — add it to .env (see .env.template))
+endif
+ifndef AWS_ACCESS_KEY_ID
+	$(error AWS_ACCESS_KEY_ID is required — add it to .env (see .env.template))
+endif
+ifndef AWS_SECRET_ACCESS_KEY
+	$(error AWS_SECRET_ACCESS_KEY is required — add it to .env (see .env.template))
+endif
+ifndef S3_BUCKET
+	$(error S3_BUCKET is required — add it to .env (see .env.template))
+endif
+ifndef S3_REGION
+	$(error S3_REGION is required — add it to .env (see .env.template))
+endif
+ifndef S3_ENDPOINT
+	$(error S3_ENDPOINT is required — add it to .env (see .env.template))
+endif
+ifndef TABLE_PREFIX
+	$(error TABLE_PREFIX is required — add it to .env (see .env.template))
+endif
+	./discover/cmd/discover \
+		--tenant $(LOKI_USERNAME) \
+		--storage-type s3 \
+		--s3.buckets "$(S3_BUCKET)" \
+		--s3.region "$(S3_REGION)" \
+		--s3.endpoint "$(S3_ENDPOINT)" \
+		--s3.access-key-id "$(AWS_ACCESS_KEY_ID)" \
+		--s3.secret-access-key "$(AWS_SECRET_ACCESS_KEY)" \
+		--table-prefix "$(TABLE_PREFIX)" \
+		--selector '$(DISCOVER_SELECTOR)' \
+		--max-streams $(DISCOVER_MAX_STREAMS) \
+		--concurrency $(DISCOVER_CONCURRENCY) \
+		--output testdata \
+		--queries-dir queries
