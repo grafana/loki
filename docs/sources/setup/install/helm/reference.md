@@ -2191,6 +2191,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.allocatedCPU</td>
+			<td>string</td>
+			<td>Amount of cpu allocated to chunks-cache for object storage (in integer or millicores).</td>
+			<td><pre lang="json">
+"500m"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.allocatedMemory</td>
 			<td>int</td>
 			<td>Amount of memory allocated to chunks-cache for object storage (in MB).</td>
@@ -2324,6 +2333,7 @@ true
 {
   "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}",
   "affinity": {},
+  "allocatedCPU": "500m",
   "allocatedMemory": 8192,
   "annotations": {},
   "batchSize": 4,
@@ -2392,6 +2402,15 @@ true
 			<td>Affinity for chunks-cache-l2 pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.allocatedCPU</td>
+			<td>string</td>
+			<td>Amount of cpu allocated to chunks-cache-l2 for object storage (in integer or millicores).</td>
+			<td><pre lang="json">
+"500m"
 </pre>
 </td>
 		</tr>
@@ -11683,6 +11702,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.allocatedCPU</td>
+			<td>string</td>
+			<td>Amount of cpu allocated to results-cache for object storage (in integer or millicores).</td>
+			<td><pre lang="json">
+"500m"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.allocatedMemory</td>
 			<td>int</td>
 			<td>Amount of memory allocated to results-cache for object storage (in MB).</td>
@@ -12563,6 +12591,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>sidecar.disableX509StrictVerification</td>
+			<td>bool</td>
+			<td>Set to true to disable strict x509 verification for kube api calls.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>sidecar.enableUniqueFilenames</td>
 			<td>bool</td>
 			<td>Ensure that rule files aren't conflicting and being overwritten by prefixing their name with the namespace they are defined in.</td>
@@ -12612,7 +12649,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.9"
+"2.5.0"
 </pre>
 </td>
 		</tr>
