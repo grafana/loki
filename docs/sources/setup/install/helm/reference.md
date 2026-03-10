@@ -17,21 +17,6 @@ keywords: []
 
 This is the generated reference for the Loki Helm Chart values.
 
-Because the Loki Helm chart exposes a large number of configuration options, this reference is intentionally exhaustive and can be quite long.
-
-Configuration keys are grouped by prefix. For example:
-
-- `adminApi.*` — configuration for the admin API component
-- `backend.*` — configuration for backend pods
-- `backend.persistence.*` — storage configuration for backend pods
-- `backend.autoscaling.*` — autoscaling configuration for backend pods
-
-To navigate it more easily:
-
-- Use your browser search (`Ctrl+F`) to locate specific configuration keys.
-- Search by prefix (for example `backend.` or `ingester.`) to jump between related settings.
-- For installation examples and setup instructions, refer to the Helm installation guide rather than this reference page.
-
 > **Note:** This reference is for the Loki Helm chart version 3.0 or greater.
 > If you are using the `grafana/loki-stack` Helm chart from the community repo,
 > please refer to the `values.yaml` of the respective Github repository
