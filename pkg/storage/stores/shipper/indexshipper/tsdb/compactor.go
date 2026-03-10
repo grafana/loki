@@ -33,11 +33,16 @@ func NewIndexCompactor() compactor.IndexCompactor {
 
 type IndexCompactorConfig struct {
 	UseSectionRefTable bool
+	Logger             log.Logger
 }
 
 func NewIndexCompactorWithConfig(cfg IndexCompactorConfig) compactor.IndexCompactor {
+	logger := cfg.Logger
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
 	return indexProcessor{
-		mode: newCompactionMode(cfg.UseSectionRefTable),
+		mode: newCompactionMode(cfg.UseSectionRefTable, logger),
 	}
 }
 

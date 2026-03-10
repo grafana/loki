@@ -7,11 +7,28 @@ import (
 	"io"
 	"math"
 	"strconv"
+
+	"github.com/prometheus/prometheus/tsdb/fileutil"
 )
+
+const entrySize = 12 // pathID(4) + sectionID(4) + seriesID(4)
 
 var (
 	ErrSectionRefPathTooLong     = fmt.Errorf("section reference path exceeds %d bytes", math.MaxUint16)
 	ErrSectionRefSectionOutRange = fmt.Errorf("section reference section ID out of uint32 range")
+)
+
+// SectionRefLookup is a read-only interface for looking up section references
+// by index. Both SectionRefTable and MmapSectionRefTable implement it.
+type SectionRefLookup interface {
+	Lookup(idx uint32) (SectionRef, bool)
+	Len() int
+	Close() error
+}
+
+var (
+	_ SectionRefLookup = (*SectionRefTable)(nil)
+	_ SectionRefLookup = (*MmapSectionRefTable)(nil)
 )
 
 // SectionRef identifies a singleseries ID from a section location in object storage.
@@ -112,6 +129,9 @@ func (t *SectionRefTable) Lookup(idx uint32) (SectionRef, bool) {
 		SeriesID:  entry.seriesID,
 	}, true
 }
+
+// Close is a no-op for in-memory tables. It exists to satisfy SectionRefLookup.
+func (t *SectionRefTable) Close() error { return nil }
 
 // Encode serializes the table into a compact binary format with an interned
 // string table for paths.
@@ -252,4 +272,113 @@ func (t *SectionRefTable) internPath(path string) uint32 {
 	t.paths = append(t.paths, path)
 	t.pathIndex[path] = idx
 	return idx
+}
+
+// MmapSectionRefTable is a read-only, memory-mapped section-ref table.
+// The path strings are copied onto the Go heap during open, but the entry
+// data (the bulk of the file) stays in the OS page cache and is accessed
+// directly from the mmap'd region.
+type MmapSectionRefTable struct {
+	paths      []string
+	data       []byte // slice into the mmap'd region covering all entries
+	entryCount uint32
+	mmap       *fileutil.MmapFile // non-nil for file-backed; nil for from-bytes
+}
+
+// OpenMmap opens a section-ref sidecar file and returns a memory-mapped,
+// read-only table. The caller must call Close when done.
+func OpenMmap(path string) (*MmapSectionRefTable, error) {
+	f, err := fileutil.OpenMmapFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("mmap section-ref table %q: %w", path, err)
+	}
+
+	t, err := parseMmapData(f.Bytes())
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("parsing mmap'd section-ref table %q: %w", path, err)
+	}
+	t.mmap = f
+	return t, nil
+}
+
+// NewMmapSectionRefTableFromBytes creates a read-only table backed by an
+// existing byte slice (e.g. for testing). The caller must keep data alive
+// for the lifetime of the returned table.
+func NewMmapSectionRefTableFromBytes(data []byte) (*MmapSectionRefTable, error) {
+	return parseMmapData(data)
+}
+
+func (t *MmapSectionRefTable) Lookup(idx uint32) (SectionRef, bool) {
+	if idx >= t.entryCount {
+		return SectionRef{}, false
+	}
+	off := int(idx) * entrySize
+	pathID := binary.LittleEndian.Uint32(t.data[off:])
+	sectionID := binary.LittleEndian.Uint32(t.data[off+4:])
+	seriesID := binary.LittleEndian.Uint32(t.data[off+8:])
+
+	if pathID >= uint32(len(t.paths)) {
+		return SectionRef{}, false
+	}
+	return SectionRef{
+		Path:      t.paths[pathID],
+		SectionID: int(sectionID),
+		SeriesID:  int(seriesID),
+	}, true
+}
+
+func (t *MmapSectionRefTable) Len() int {
+	return int(t.entryCount)
+}
+
+// Close unmaps the underlying file if the table is file-backed.
+func (t *MmapSectionRefTable) Close() error {
+	if t.mmap != nil {
+		return t.mmap.Close()
+	}
+	return nil
+}
+
+// parseMmapData parses the path table from the raw bytes and returns a table
+// whose entry data slice points directly into the provided buffer.
+func parseMmapData(data []byte) (*MmapSectionRefTable, error) {
+	if len(data) < 4 {
+		return nil, fmt.Errorf("data too short for path count")
+	}
+	pathCount := binary.LittleEndian.Uint32(data[:4])
+	offset := 4
+
+	paths := make([]string, pathCount)
+	for i := uint32(0); i < pathCount; i++ {
+		if offset+2 > len(data) {
+			return nil, fmt.Errorf("data too short for path length at index %d", i)
+		}
+		slen := int(binary.LittleEndian.Uint16(data[offset : offset+2]))
+		offset += 2
+		end := offset + slen
+		if end > len(data) {
+			return nil, fmt.Errorf("data too short for path at index %d", i)
+		}
+		paths[i] = string(data[offset:end])
+		offset = end
+	}
+
+	if offset+4 > len(data) {
+		return nil, fmt.Errorf("data too short for entry count")
+	}
+	entryCount := binary.LittleEndian.Uint32(data[offset : offset+4])
+	offset += 4
+
+	expected := int(entryCount) * entrySize
+	remaining := len(data) - offset
+	if remaining != expected {
+		return nil, fmt.Errorf("expected %d bytes for %d entries, got %d remaining", expected, entryCount, remaining)
+	}
+
+	return &MmapSectionRefTable{
+		paths:      paths,
+		data:       data[offset:],
+		entryCount: entryCount,
+	}, nil
 }

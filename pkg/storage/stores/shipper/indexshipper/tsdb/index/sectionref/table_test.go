@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -84,6 +85,72 @@ func TestSectionRefTableDecodeThenAddUsesLazyMaps(t *testing.T) {
 	require.Equal(t, uint32(0), decoded.Add(existing))
 	require.Equal(t, uint32(2), decoded.Add(newRef))
 	require.Equal(t, 3, decoded.Len())
+}
+
+func TestMmapSectionRefTableFromBytes(t *testing.T) {
+	tbl := NewSectionRefTable(nil)
+	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1, SeriesID: 4})
+	tbl.Add(SectionRef{Path: "s3://bucket/b", SectionID: 2, SeriesID: 5})
+	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 3, SeriesID: 6})
+
+	data, err := tbl.Encode()
+	require.NoError(t, err)
+
+	mmapTbl, err := NewMmapSectionRefTableFromBytes(data)
+	require.NoError(t, err)
+	defer mmapTbl.Close()
+
+	require.Equal(t, tbl.Len(), mmapTbl.Len())
+	for i := 0; i < tbl.Len(); i++ {
+		want, ok := tbl.Lookup(uint32(i))
+		require.True(t, ok)
+		got, ok := mmapTbl.Lookup(uint32(i))
+		require.True(t, ok)
+		require.Equal(t, want, got)
+	}
+
+	_, ok := mmapTbl.Lookup(uint32(tbl.Len()))
+	require.False(t, ok)
+}
+
+func TestMmapSectionRefTableOpenFile(t *testing.T) {
+	tbl := NewSectionRefTable(nil)
+	tbl.Add(SectionRef{Path: "s3://bucket/obj1", SectionID: 10, SeriesID: 100})
+	tbl.Add(SectionRef{Path: "s3://bucket/obj2", SectionID: 20, SeriesID: 200})
+
+	data, err := tbl.Encode()
+	require.NoError(t, err)
+
+	path := t.TempDir() + "/test.sections"
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	mmapTbl, err := OpenMmap(path)
+	require.NoError(t, err)
+
+	require.Equal(t, tbl.Len(), mmapTbl.Len())
+	for i := 0; i < tbl.Len(); i++ {
+		want, ok := tbl.Lookup(uint32(i))
+		require.True(t, ok)
+		got, ok := mmapTbl.Lookup(uint32(i))
+		require.True(t, ok)
+		require.Equal(t, want, got)
+	}
+
+	require.NoError(t, mmapTbl.Close())
+}
+
+func TestMmapSectionRefTableEmptyTable(t *testing.T) {
+	tbl := NewSectionRefTable(nil)
+	data, err := tbl.Encode()
+	require.NoError(t, err)
+
+	mmapTbl, err := NewMmapSectionRefTableFromBytes(data)
+	require.NoError(t, err)
+	defer mmapTbl.Close()
+
+	require.Equal(t, 0, mmapTbl.Len())
+	_, ok := mmapTbl.Lookup(0)
+	require.False(t, ok)
 }
 
 func BenchmarkSectionRefTableAddRepeatedPaths(b *testing.B) {
