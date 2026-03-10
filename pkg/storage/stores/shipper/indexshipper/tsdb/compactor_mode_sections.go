@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -29,19 +31,21 @@ type compactionMode interface {
 type modeSourceHandle uint32
 
 type sectionRefCompactionMode struct {
+	logger log.Logger
 	mtx    sync.Mutex
 	nextID modeSourceHandle
-	refs   map[modeSourceHandle]*sectionref.SectionRefTable
+	refs   map[modeSourceHandle]sectionref.SectionRefLookup
 }
 
 var errSectionsSidecarMissing = errors.New("sections sidecar is missing")
 
-func newCompactionMode(useSectionRefTable bool) compactionMode {
+func newCompactionMode(useSectionRefTable bool, logger log.Logger) compactionMode {
 	if !useSectionRefTable {
 		return nil
 	}
 	return &sectionRefCompactionMode{
-		refs: make(map[modeSourceHandle]*sectionref.SectionRefTable),
+		logger: logger,
+		refs:   make(map[modeSourceHandle]sectionref.SectionRefLookup),
 	}
 }
 
@@ -63,14 +67,9 @@ func (m *sectionRefCompactionMode) registerSource(sourceIndexSet compactor.Index
 		return 0, "", fmt.Errorf("downloading sections table %q for %q: %w", sectionsFileName, sourceIndex.Name, err)
 	}
 
-	data, err := os.ReadFile(sectionsPath)
+	refs, err := sectionref.OpenMmap(sectionsPath)
 	if err != nil {
-		return 0, "", fmt.Errorf("reading sections table %q: %w", sectionsPath, err)
-	}
-
-	refs, err := sectionref.Decode(data)
-	if err != nil {
-		return 0, "", fmt.Errorf("decoding sections table %q: %w", sectionsPath, err)
+		return 0, "", fmt.Errorf("mmap sections table %q: %w", sectionsPath, err)
 	}
 	id := m.storeRefs(refs)
 	return id, sectionsPath, nil
@@ -82,17 +81,13 @@ func (m *sectionRefCompactionMode) registerPath(tsdbPath string) (modeSourceHand
 		return 0, err
 	}
 
-	data, err := os.ReadFile(sectionsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, fmt.Errorf("section-ref-table mode enabled but sections file is missing for %q", tsdbPath)
-		}
-		return 0, fmt.Errorf("reading sections table %q: %w", sectionsPath, err)
+	if _, err := os.Stat(sectionsPath); os.IsNotExist(err) {
+		return 0, fmt.Errorf("section-ref-table mode enabled but sections file is missing for %q", tsdbPath)
 	}
 
-	refs, err := sectionref.Decode(data)
+	refs, err := sectionref.OpenMmap(sectionsPath)
 	if err != nil {
-		return 0, fmt.Errorf("decoding sections table %q: %w", sectionsPath, err)
+		return 0, fmt.Errorf("mmap sections table %q: %w", sectionsPath, err)
 	}
 	return m.storeRefs(refs), nil
 }
@@ -112,8 +107,14 @@ func (m *sectionRefCompactionMode) addSeries(builder *Builder, source modeSource
 
 func (m *sectionRefCompactionMode) releaseSource(source modeSourceHandle) {
 	m.mtx.Lock()
+	refs, ok := m.refs[source]
 	delete(m.refs, source)
 	m.mtx.Unlock()
+	if ok {
+		if err := refs.Close(); err != nil {
+			level.Warn(m.logger).Log("msg", "failed to close section-ref table", "source", source, "err", err)
+		}
+	}
 }
 
 func (m *sectionRefCompactionMode) writeCompactedSidecar(builder *Builder, tsdbPath string) error {
@@ -132,7 +133,7 @@ func (m *sectionRefCompactionMode) writeCompactedSidecar(builder *Builder, tsdbP
 	return os.WriteFile(sectionsPath, sectionsTable, 0o644)
 }
 
-func (m *sectionRefCompactionMode) storeRefs(refs *sectionref.SectionRefTable) modeSourceHandle {
+func (m *sectionRefCompactionMode) storeRefs(refs sectionref.SectionRefLookup) modeSourceHandle {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.nextID++
@@ -141,7 +142,7 @@ func (m *sectionRefCompactionMode) storeRefs(refs *sectionref.SectionRefTable) m
 	return id
 }
 
-func (m *sectionRefCompactionMode) refsForSource(source modeSourceHandle) (*sectionref.SectionRefTable, error) {
+func (m *sectionRefCompactionMode) refsForSource(source modeSourceHandle) (sectionref.SectionRefLookup, error) {
 	m.mtx.Lock()
 	refs, ok := m.refs[source]
 	m.mtx.Unlock()
@@ -154,7 +155,12 @@ func (m *sectionRefCompactionMode) refsForSource(source modeSourceHandle) (*sect
 func (m *sectionRefCompactionMode) reset() {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	m.refs = make(map[modeSourceHandle]*sectionref.SectionRefTable)
+	for id, refs := range m.refs {
+		if err := refs.Close(); err != nil {
+			level.Warn(m.logger).Log("msg", "failed to close section-ref table during reset", "source", id, "err", err)
+		}
+	}
+	m.refs = make(map[modeSourceHandle]sectionref.SectionRefLookup)
 	m.nextID = 0
 }
 
@@ -169,7 +175,7 @@ func sectionsTableFileName(tsdbFile string) (string, error) {
 	}
 }
 
-func toSectionMetas(chks []tsdbindex.ChunkMeta, refs *sectionref.SectionRefTable) ([]sectionref.SectionMeta, error) {
+func toSectionMetas(chks []tsdbindex.ChunkMeta, refs sectionref.SectionRefLookup) ([]sectionref.SectionMeta, error) {
 	sectionMetas := make([]sectionref.SectionMeta, len(chks))
 	for i, chk := range chks {
 		ref, ok := refs.Lookup(chk.Checksum)
