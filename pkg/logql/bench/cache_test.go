@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -192,10 +192,9 @@ func TestEngineCachingCorrectness(t *testing.T) {
 
 	// --- Log cache: only caches empty results ---
 	// Identify queries that are guaranteed to return empty results.
-	const impossibleFilter = `|= "this will not hit any line"`
 	var logEmptyCases []TestCase
 	for _, tc := range cases {
-		if tc.Kind() == "log" && strings.Contains(tc.Query, impossibleFilter) {
+		if tc.Kind() == "log" && slices.Contains(tc.Tags, "empty-result") {
 			logEmptyCases = append(logEmptyCases, tc)
 		}
 	}

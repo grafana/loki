@@ -230,7 +230,7 @@ func TestStorageEquality(t *testing.T) {
 
 					// Find matching test case in other stores and then compare results.
 					idx := slices.IndexFunc(store.Cases, func(tc TestCase) bool {
-						return tc == baseCase
+						return tc.Equal(baseCase)
 					})
 					if idx == -1 {
 						t.Logf("Store %s missing test case %s", store.Name, baseCase.Name())
@@ -287,8 +287,13 @@ func TestStorageEquality(t *testing.T) {
 					)
 
 					// Verify that the query returned non-empty results to catch query templating issues
-					assertResultNotEmpty(t, expected.Data, "base store query returned empty results - possible query templating issue")
-					assertResultNotEmpty(t, actual.Data, "store query returned empty results - possible query templating issue")
+					if !slices.Contains(baseCase.Tags, "empty-result") {
+						assertResultNotEmpty(t, expected.Data, "base store query returned empty results - possible query templating issue")
+						assertResultNotEmpty(t, actual.Data, "store query returned empty results - possible query templating issue")
+					} else {
+						assertResultEmpty(t, expected.Data, "base store query returned non-empty results but expected empty")
+						assertResultEmpty(t, actual.Data, "store query returned non-empty results but expected empty")
+					}
 
 					// Use tolerance-based comparison for floating point precision issues
 					assertDataEqualWithTolerance(t, expected.Data, actual.Data, 1e-5)
@@ -536,6 +541,29 @@ func assertResultNotEmpty(t *testing.T, data parser.Value, message string) {
 		// Scalars always have a value, so no need to check
 	case logqlmodel.Streams:
 		require.NotEmpty(t, v, message)
+	default:
+		t.Fatalf("unknown result type: %T", data)
+	}
+}
+
+func assertResultEmpty(t *testing.T, data parser.Value, message string) {
+	t.Helper()
+	switch v := data.(type) {
+	case promql.Vector:
+		require.Empty(t, v, message)
+	case promql.Matrix:
+		isEmpty := true
+		for _, series := range v {
+			if len(series.Floats) > 0 || len(series.Histograms) > 0 {
+				isEmpty = false
+				break
+			}
+		}
+		require.True(t, isEmpty, message+" - matrix has series with data points")
+	case promql.Scalar:
+		// Scalars always have a value, so no need to check
+	case logqlmodel.Streams:
+		require.Empty(t, v, message)
 	default:
 		t.Fatalf("unknown result type: %T", data)
 	}
