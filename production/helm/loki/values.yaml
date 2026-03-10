@@ -3668,6 +3668,8 @@ resultsCache:
   port: 11211
   # -- Amount of memory allocated to results-cache for object storage (in MB).
   allocatedMemory: 1024
+  # -- Amount of cpu allocated to results-cache for object storage (in integer or millicores).
+  allocatedCPU: 500m
   # -- Maximum item results-cache for memcached (in MB).
   maxItemMemory: 5
   # -- Maximum number of connections allowed
@@ -3783,6 +3785,8 @@ chunksCache:
   port: 11211
   # -- Amount of memory allocated to chunks-cache for object storage (in MB).
   allocatedMemory: 8192
+  # -- Amount of cpu allocated to chunks-cache for object storage (in integer or millicores).
+  allocatedCPU: 500m
   # -- Maximum item memory for chunks-cache (in MB).
   maxItemMemory: 5
   # -- Maximum number of connections allowed
@@ -3901,6 +3905,8 @@ chunksCache:
     port: 11211
     # -- Amount of memory allocated to chunks-cache-l2 for object storage (in MB).
     allocatedMemory: 8192
+    # -- Amount of cpu allocated to chunks-cache-l2 for object storage (in integer or millicores).
+    allocatedCPU: 500m
     # -- Maximum item memory for chunks-cache-l2 (in MB).
     maxItemMemory: 5
     # -- Maximum number of connections allowed
