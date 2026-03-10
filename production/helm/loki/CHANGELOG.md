@@ -13,6 +13,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [ENHANCEMENT] Add the ability to customize write, read and backend workloads PDB maxUnavailable [#16871](https://github.com/grafana/loki/pull/16871)
+- [BUGFIX] Make the loki-sc-rules sidecar container compatible with the most recent versions of k8s-sidecar. [#20164](https://github.com/grafana/loki/pull/20164)
+- [BUGFIX] Fix incorrect syntax in loki-egress-dns CiliumNetworkPolicy manifest [#20221](https://github.com/grafana/loki/pull/20221)
+- [BUGFIX] Correctly pass arguments for kubectl in statefulset/pvc-recreation job. [#20556](https://github.com/grafana/loki/pull/20556)
+- [BUGFIX] Ignore dots in the image repository after first path segment when detecting image registry [#20695](https://github.com/grafana/loki/pull/20695)
 
 ## 6.53.0
 
