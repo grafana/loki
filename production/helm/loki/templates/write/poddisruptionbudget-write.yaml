@@ -11,5 +11,7 @@ spec:
   selector:
     matchLabels:
       {{- include "loki.writeSelectorLabels" . | nindent 6 }}
-  maxUnavailable: 1
+  {{- with .Values.write.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
 {{- end }}
