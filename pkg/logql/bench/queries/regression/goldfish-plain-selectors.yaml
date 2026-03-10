@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  # P6: Plain stream selectors with no pipeline — 62 occurrences, 4KB avg delta
+  # Even basic queries show mismatches — differences in stream selection or result ordering
+  # Correlation IDs: 50a00487, 55e43188
+
+  - description: "Goldfish P6-A: plain stream selector — direct adaptation"
+    query: >-
+      ${SELECTOR}
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, plain-selector, variation-a]
+    notes: >-
+      Pattern P6 Variation A: Plain stream selector with no pipeline.
+      62 occurrences with 4KB avg delta. Correlation: 50a00487.
+
+  - description: "Goldfish P6-B: plain stream selector with regex matchers"
+    query: >-
+      ${SELECTOR}
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, plain-selector, regex-selector, variation-b]
+    notes: >-
+      Pattern P6 Variation B: Same but with regex selectors to exercise =~ code path.
+    requires:
+      regex_selectors: true

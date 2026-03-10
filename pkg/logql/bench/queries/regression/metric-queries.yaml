@@ -129,6 +129,25 @@ queries:
       log_format: logfmt
       unwrappable_fields:
         - bytes
+  - description: Bytes grouped by detected_level
+    query: sum by (detected_level) (sum_over_time(${SELECTOR} | logfmt | unwrap bytes [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - sum_over_time
+      - logfmt
+      - bytes-field
+      - grouping
+    notes: Goldfish correlation 3bbc766b
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - bytes
+      structured_metadata:
+        - detected_level
   - description: Bytes conversion function
     query: sum(sum_over_time(${SELECTOR} | json | unwrap bytes(size) [${RANGE}]))
     kind: metric
@@ -226,6 +245,8 @@ queries:
   - description: "aggregated rate with logfmt parser, label filter, and line filters"
     query: >-
       sum by (level) (rate(${SELECTOR} |= "duration" != "error" | logfmt | level!="" [${RANGE}]))
+
+
     kind: metric
     regex_selectors: true
     time_range:
@@ -245,3 +266,44 @@ queries:
         - error
       detected_fields:
         - level
+  - description: "aggregated count with drop but no parser"
+    query: >-
+      sum by (level, detected_level) (count_over_time(${SELECTOR} | drop __error__, __error_details__ [${RANGE}]))
+
+
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, count_over_time, agg_sum, group_by, drop]
+    notes: >-
+      goldfish correlation ID d608e70b-9a96-4eb2-beda-49ab57a7eb71
+
+
+    requires:
+      log_format: logfmt
+      detected_fields: [level]
+      structured_metadata: [detected_level]
+
+  - description: "aggregated count with drop and filter"
+    query: >-
+      sum by (level, detected_level) (count_over_time(${SELECTOR} |= "debug" | drop __error__, __error_details__ [${RANGE}]))
+
+
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, count_over_time, agg_sum, group_by, drop]
+    notes: >-
+      goldfish correlation ID 8eef7635-532b-4451-b45b-7f67bcdabbf9 and e60075c1-d0cb-4266-aa70-6bf3a9d8bb11
+
+
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - level
+      structured_metadata:
+        - detected_level
+      keywords:
+        - debug

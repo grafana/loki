@@ -32,9 +32,9 @@ queries:
       - filter
       - or-expression
   - description: Drilldown unwrap query with detected_level grouping
-    query: sum by (detected_level) (avg_over_time(${SELECTOR} | json | logfmt | duration != "" | drop __error__, __error_details__ | unwrap duration_seconds(duration) [${RANGE}]))
+    query: sum by (detected_level) (avg_over_time(${SELECTOR} | json | logfmt | bytes != "" | drop __error__, __error_details__ | unwrap bytes [${RANGE}]))
     kind: metric
-    skip: true # getting pipeline error: 'SampleExtractionErr' for series: '{__error__="SampleExtractionErr", __error_details__="time: missing unit in duration \"301\"", client_ip="137.149.25.103", cluster="cluster-4", container="container-1", datacenter="dc1", detected_level="info", duration="301", env="staging", level="info", level_extracted="info", method="POST", msg="HTTP request", namespace="namespace-34", path="/api/v1/users", pod="pod-1874", region="eu-west-1", resource_deployment_environment="production", resource_service_name="web-server", resource_service_namespace="default", resource_service_version="1.0.0", resource_telemetry_sdk_language="go", resource_telemetry_sdk_name="opentelemetry", service="service-175", service_name="web-server", status="400", ts="2024-01-01T23:59:09Z", user_agent="python-requests/2.26.0"}'.
+    skip: false # getting pipeline error: 'SampleExtractionErr' for series: '{__error__="SampleExtractionErr", __error_details__="time: missing unit in duration \"301\"", client_ip="137.149.25.103", cluster="cluster-4", container="container-1", datacenter="dc1", detected_level="info", duration="301", env="staging", level="info", level_extracted="info", method="POST", msg="HTTP request", namespace="namespace-34", path="/api/v1/users", pod="pod-1874", region="eu-west-1", resource_deployment_environment="production", resource_service_name="web-server", resource_service_namespace="default", resource_service_version="1.0.0", resource_telemetry_sdk_language="go", resource_telemetry_sdk_name="opentelemetry", service="service-175", service_name="web-server", status="400", ts="2024-01-01T23:59:09Z", user_agent="python-requests/2.26.0"}'.
     time_range:
       length: 24h
       step: 1m
@@ -46,7 +46,7 @@ queries:
     notes: Common pattern from drilldown fields tab when analyzing duration metrics
     requires:
       unwrappable_fields:
-        - duration
+        - bytes
       structured_metadata:
         - detected_level
   - description: Drilldown count with complex filters
@@ -69,3 +69,37 @@ queries:
         - detected_level
       keywords:
         - duration
+  - description: "Simplified Logs Drilldown level detection with drop - logfmt"
+    query: >-
+      sum by (level) (count_over_time(${SELECTOR} | logfmt | drop __error__, __error_details__ [${RANGE}]))
+
+
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, count_over_time, agg_sum, group_by, drop, logfmt_parser, drilldown, variation-a]
+    notes: >-
+      goldfish correlation ID d608e70b-9a96-4eb2-beda-49ab57a7eb71
+
+
+    requires:
+      log_format: logfmt
+      detected_fields: [level]
+  - description: "Simplified Logs Drilldown level detection with drop - json"
+    query: >-
+      sum by (level) (count_over_time(${SELECTOR} | json | drop __error__, __error_details__ [${RANGE}]))
+
+
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, count_over_time, agg_sum, group_by, drop, json_parser, drilldown]
+    notes: >-
+      goldfish correlation ID d608e70b-9a96-4eb2-beda-49ab57a7eb71
+
+
+    requires:
+      log_format: logfmt
+      detected_fields: [level]

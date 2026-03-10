@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  # P4: Regex line filter combinations (!~ + |~) — 27.7% of all mismatches
+  # Production: Both engines return 1000 entries but different content (~27KB avg delta)
+  # Correlation IDs: bff75357, 3624d1d0, 22abd631
+
+  - description: "Goldfish P4-A: exclude debug/info + match error/fatal — direct adaptation"
+    query: >-
+      ${SELECTOR}
+      !~ "debug|DEBUG|info|INFO"
+      |~ "error|ERROR|failed|WARN"
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, line_regex_match, line_regex_not_match, variation-a]
+    notes: >-
+      Pattern P4 Variation A: Direct adaptation of the #1 mismatch pattern (277 occurrences).
+      Production: {cluster="...", namespace="..."} !~ "debug|DEBUG|info|INFO" |~ "error|ERROR|fatal|FATAL"
+      Both engines return 1000 entries but with ~27KB content differences.
+      Uses unstructured streams since debug/DEBUG/etc only appear in kubernetes logs.
+    requires:
+      keywords: [debug, error]
+
+  - description: "Goldfish P4-B: simple negative regex + positive regex — simplified"
+    query: >-
+      ${SELECTOR}
+      !~ "duration"
+      |~ "error"
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, line_regex_match, line_regex_not_match, variation-b]
+    notes: >-
+      Pattern P4 Variation B: Minimum viable — single !~ and single |~ filter.
+    requires:
+      keywords: [duration, error]
+
+  - description: "Goldfish P4-C: case-insensitive regex filters — expanded"
+    query: >-
+      ${SELECTOR}
+      !~ "(?i)(refused|query)"
+      |~ "(?i)(error|failed)"
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, line_regex_match, line_regex_not_match, case-insensitive, variation-c]
+    notes: >-
+      Case-insensitive regex patterns. Some production queries. Tests whether case folding triggers different behavior.
+    requires:
+      keywords: [error, failed]
+
+  - description: "Goldfish P4-D: regex filters with regex selectors"
+    query: >-
+      ${SELECTOR}
+      !~ "refused|query"
+      |~ "error|failed"
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, line_regex_match, line_regex_not_match, regex-selector, variation-d]
+    notes: >-
+      Regex selectors to exercise =~ code path.
+    requires:
+      keywords: [error, failed]
+      regex_selectors: true

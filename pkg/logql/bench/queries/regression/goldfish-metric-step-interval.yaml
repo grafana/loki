@@ -1,0 +1,90 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  # P3: Metric step/interval calculation — v2 returns orders-of-magnitude more data points
+  # Production: 30 entries (v1) vs 30,000 entries (v2)
+  # Correlation IDs: c61aa541, bb61f35b, 6d98024f, bc76c067
+
+  - description: "Goldfish P3-A: sum count_over_time with line_not_contains grouped — direct adaptation"
+    query: >-
+      sum(count_over_time(${SELECTOR}
+      != "error" != "failed"
+      [${RANGE}])) by (service_name)
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, count_over_time, agg_sum, group_by, line_not_contains, step-interval, variation-a]
+    notes: >-
+      Pattern P3 Variation A: Direct adaptation of production query
+      sum(count_over_time({job="machine-learning/mlapi"} != "level=debug" != "level=info"[5m])) by (cluster)
+      which showed 30 vs 30,000 entry delta. Correlation: c61aa541.
+    requires:
+      labels: [service_name]
+      keywords: [error, failed]
+
+  - description: "Goldfish P3-B: count_over_time with regex line match — simplified"
+    query: >-
+      count_over_time(${SELECTOR}
+      |~ "(?i)error"
+      [${RANGE}])
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, count_over_time, line_regex_match, step-interval, variation-b]
+    notes: >-
+      Pattern P3 Variation B: Simplified count_over_time with regex match.
+      Production showed 87 vs 28,622 entries (correlation 6d98024f).
+    requires:
+      keywords: [error]
+
+  - description: "Goldfish P3-C: sum by cluster of count_over_time with regex — expanded"
+    query: >-
+      sum by (service_name) (count_over_time(${SELECTOR}
+      |~ "(?i)error|failed"
+      [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, count_over_time, agg_sum, group_by, line_regex_match, step-interval, variation-c]
+    notes: >-
+      Pattern P3 Variation C: sum by(cluster) (count_over_time({...} |~ "(?i)context cancel" [1m]))
+      showed 22 vs 27,593 entry delta (correlation bc76c067).
+    requires:
+      labels: [service_name]
+      keywords: [error, failed]
+
+  - description: "Goldfish P3-D: sum rate with line_contains grouped"
+    query: >-
+      sum(rate(${SELECTOR}
+      |= "error"
+      [${RANGE}])) by (service_name)
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, range_rate, agg_sum, group_by, line_contains, step-interval, variation-d]
+    notes: >-
+      Pattern P3 Variation D: sum(rate({namespace="grafana-iam"} |= "BatchCheck"[1h])) by (cluster)
+      showed 25 vs 26,696 entry delta (correlation 1ab2c7ae).
+    requires:
+      labels: [service_name]
+      keywords: [error]
+
+  - description: "Goldfish P3-E: plain count_over_time with line_contains"
+    query: >-
+      count_over_time(${SELECTOR}
+      |= "error" |= "failed"
+      [${RANGE}])
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, count_over_time, line_contains, step-interval, variation-e]
+    notes: >-
+      Pattern P3 Variation E: count_over_time with multiple |= filters.
+      Production showed 120 vs 17,280 entries (correlation 62d25da2).
+    requires:
+      keywords: [error, failed]

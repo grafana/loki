@@ -1,0 +1,102 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  # P2: max_over_time + unwrap + json produces massive data discrepancy
+  # Production: v1 returns 0 entries/231B, v2 returns 24,110 entries/3.9MB
+  # Correlation ID: 22dea2b0
+
+  - description: "Goldfish P2-A: max_over_time with json unwrap and label filter — direct adaptation"
+    query: >-
+      sum by (service_name) (max_over_time(${SELECTOR}
+      | json
+      | level!=""
+      != "error"
+      | unwrap status [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, max_over_time, unwrap, json_parser, label_filter, group_by, variation-a]
+    notes: >-
+      Pattern P2 Variation A: Direct adaptation of production query
+      sum by(cluster, pod, sessionID) (max_over_time({container="crocochrome"} | json | ... | unwrap ... [...]))
+      which showed 0 vs 24,110 entry delta (3.9MB). Correlation: 22dea2b0.
+    requires:
+      log_format: json
+      unwrappable_fields: [status]
+      detected_fields: [level]
+      labels: [service_name]
+      keywords: [error]
+
+  - description: "Goldfish P2-B: max_over_time with json unwrap — simplified"
+    query: >-
+      max_over_time(${SELECTOR} | json | unwrap rows_affected [${RANGE}])
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, max_over_time, unwrap, json_parser, variation-b]
+    notes: >-
+      Pattern P2 Variation B: Minimum viable — just json parser + unwrap + max_over_time.
+    requires:
+      log_format: json
+      unwrappable_fields: [rows_affected]
+
+  - description: "Goldfish P2-C: max_over_time with json unwrap grouped by level — expanded"
+    query: >-
+      max by (level) (max_over_time(${SELECTOR}
+      | json
+      | level!=""
+      |= "duration"
+      != "refused"
+      | unwrap rows_affected [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, max_over_time, unwrap, json_parser, label_filter, group_by, variation-c]
+    notes: >-
+      Pattern P2 Variation C: Expanded with line filters and grouping by parsed field.
+      Mirrors production pattern with additional pipeline stages.
+    requires:
+      log_format: json
+      unwrappable_fields: [rows_affected]
+      detected_fields: [level]
+      keywords: [duration, refused]
+
+  - description: "Goldfish P2-D: max_over_time with logfmt unwrap — different parser"
+    query: >-
+      sum by (level) (max_over_time(${SELECTOR}
+      | logfmt
+      | level!=""
+      | unwrap bytes [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, max_over_time, unwrap, logfmt_parser, label_filter, group_by, variation-d]
+    notes: >-
+      Tests max_over_time+unwrap bug against logfmt parser.
+    requires:
+      log_format: logfmt
+      unwrappable_fields: [bytes]
+      detected_fields: [level]
+
+  - description: "Goldfish P2-E: max_over_time with json unwrap and line_not_contains"
+    query: >-
+      sum by (service_name) (max_over_time(${SELECTOR}
+      | json
+      != "error" != "refused"
+      | unwrap size [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, max_over_time, unwrap, json_parser, line_not_contains, group_by, variation-e]
+    notes: >-
+      Tests != line filters before unwrap.
+    requires:
+      log_format: json
+      unwrappable_fields: [size]
+      labels: [service_name]
+      keywords: [error]

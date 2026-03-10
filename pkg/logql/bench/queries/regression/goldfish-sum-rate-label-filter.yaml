@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  # P8: agg_sum + label_filter + range_rate — 29 occurrences, 2KB avg delta
+  # Correlation IDs: cfc866bd, 16c7694d
+
+  - description: "Goldfish P8-A: sum rate with label filter — direct adaptation"
+    query: >-
+      sum(rate(${SELECTOR}
+      | logfmt
+      | level!=""
+      [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, range_rate, agg_sum, label_filter, logfmt_parser, variation-a]
+    notes: >-
+      Pattern P8 Variation A: sum(rate({namespace="incident"} | level!="" | ...)).
+      29 occurrences with 2KB avg delta. Correlation: cfc866bd.
+    requires:
+      log_format: logfmt
+      detected_fields: [level]
+
+  - description: "Goldfish P8-B: sum rate with label filter — simplified (no parser)"
+    query: >-
+      sum(rate(${SELECTOR}
+      | detected_level!=""
+      [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, range_rate, agg_sum, label_filter, variation-b]
+    notes: >-
+      Pattern P8 Variation B: Label filter on structured metadata instead of parsed field.
+    requires:
+      structured_metadata: [detected_level]
+
+  - description: "Goldfish P8-C: sum rate with label filter and grouping — expanded"
+    query: >-
+      sum by (level) (rate(${SELECTOR}
+      |= "error"
+      | logfmt
+      | level!="" | level!="debug"
+      [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags: [goldfish, regression, range_rate, agg_sum, label_filter, group_by, logfmt_parser, line_contains, variation-c]
+    notes: >-
+      Pattern P8 Variation C: Expanded with grouping, line filter, and multiple label filters.
+    requires:
+      log_format: logfmt
+      detected_fields: [level]
+      keywords: [error]

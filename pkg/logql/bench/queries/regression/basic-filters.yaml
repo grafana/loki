@@ -1,0 +1,100 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  - description: "Goldfish P10-A: detected_level label filter — direct adaptation"
+    query: >-
+      ${SELECTOR} | detected_level!="debug"
+
+
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, label_filter, detected-level]
+    notes: >-
+      Filters on structured metadata label detected_level. {container="ingester"} | detected_level!="debug" | detected_level!="info" showed 15 occurrences with 3.8KB avg delta. Correlation: 7ab0f309 and 3a054438.
+
+
+    requires:
+      structured_metadata: [detected_level]
+
+  - description: "multiple detected_level exclusion filters"
+    query: >-
+      ${SELECTOR} | detected_level!="debug" | detected_level!="info"
+
+
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, label_filter, detected-level, multiple-filters]
+    notes: >-
+      Filters on structured metadata label detected_level. {container="ingester"} | detected_level!="debug" | detected_level!="info" showed 15 occurrences with 3.8KB avg delta. Correlation: 7ab0f309 and 3a054438.
+
+
+    requires:
+      structured_metadata: [detected_level]
+
+  - description: "label filter on parsed field after logfmt"
+    query: >-
+      ${SELECTOR} | logfmt | level!="debug" | level!="info"
+
+
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, label_filter, logfmt_parser]
+    requires:
+      log_format: logfmt
+      detected_fields: [level]
+
+  - description: "label filter with line_not_contains"
+    query: >-
+      ${SELECTOR} != "debug" | detected_level!="debug" | detected_level!="info"
+
+
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, label_filter, line_not_contains, detected-level]
+    requires:
+      structured_metadata: [detected_level]
+      keywords: [debug]
+
+  - description: "logfmt parser with line_contains"
+    query: >-
+      ${SELECTOR} | logfmt |= "error"
+
+
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, line_contains, logfmt_parser]
+    notes: >-
+      Logfmt parser followed by line_contains filter. Goldfish correlation: d67b43a1.
+
+
+    requires:
+      log_format: logfmt
+      keywords: [error]
+
+  - description: "line_contains before logfmt parser"
+    query: >-
+      ${SELECTOR} |= "failed" | logfmt
+
+
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, line_contains, logfmt_parser]
+    notes: >-
+      Line filter before parser — tests filter ordering. Goldfish correlation: 4f5ebfde.
+
+
+    requires:
+      log_format: logfmt
+      keywords: [failed]

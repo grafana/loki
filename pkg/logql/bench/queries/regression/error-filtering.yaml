@@ -1,0 +1,79 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  - description: "__error__ label filter after regex line filter"
+    query: >-
+      ${SELECTOR} |~ "(?i)(error|failed)" | __error__=""
+
+
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    skip: true # see note
+    tags: [goldfish, regression, label_filter, line_regex_match, error-filter, variation-a]
+    notes: >-
+      Queries like {container="ruler"} |~ "error" | __error__="" return 1000 entries in v1 but 0 in v2. Tests __error__ label filter after regex line filter. SKIPPED: dataobj-engine does not synthesize __error__="" labels when no parser precedes the filter. Chunk store returns 1000 entries, dataobj-engine returns 0. Unskip once the engine is fixed. Goldfish correlation IDs: 6885893c, d10aae25, 5697154c
+
+
+    requires:
+      keywords: [error, failed]
+
+  - description: "__error__ label filter alone"
+    query: >-
+      ${SELECTOR} | __error__=""
+
+
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    skip: true # see note
+    tags: [goldfish, regression, label_filter, error-filter, variation-b]
+    notes: >-
+      Just stream selector + __error__="" filter. Tests whether __error__ filter alone causes data loss. SKIPPED: dataobj-engine does not synthesize __error__="" labels when no parser precedes the filter. Chunk store returns 1000 entries, dataobj-engine returns 0. Unskip once the engine is fixed. Goldfish correlation IDs: 6885893c, d10aae25, 5697154c
+
+
+  - description: "__error__ with structured metadata filter"
+    query: >-
+      ${SELECTOR} | detected_level="warn" | __error__=""
+
+
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    skip: true # see note
+    tags: [goldfish, regression, label_filter, error-filter, detected-level, variation-c]
+    notes: >-
+      Queries like {container="ruler"} | detected_level="warn" | __error__="" showe 200 entries in v1 but 0 in v2 (goldfish correlation 5697154c). SKIPPED: dataobj-engine does not synthesize __error__="" labels when no parser precedes the filter. Chunk store returns 1000 entries, dataobj-engine returns 0. Unskip once the engine is fixed. Goldfish correlation IDs: 6885893c, d10aae25, 5697154c
+
+
+    requires:
+      structured_metadata: [detected_level]
+
+  - description: "__error__ filter after json parser"
+    query: >-
+      ${SELECTOR} | json | __error__=""
+
+
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, label_filter, json_parser, error-filter, variation-d]
+    requires:
+      log_format: json
+
+  - description: "__error__ filter after logfmt parser"
+    query: >-
+      ${SELECTOR} | logfmt | __error__=""
+
+
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    tags: [goldfish, regression, label_filter, logfmt_parser, error-filter, variation-e]
+    requires:
+      log_format: logfmt
