@@ -482,21 +482,32 @@ func (f *Faker) GrafanaMessage() string {
 // LogGenerator is a function that generates a log line
 type LogGenerator func(level string, timestamp time.Time, faker *Faker) string
 
-// Application represents a type of application that generates logs
-type Application struct {
+// LogFormat represents the format of logs produced by an application
+type LogFormat string
+
+const (
+	LogFormatJSON         LogFormat = "json"
+	LogFormatLogfmt       LogFormat = "logfmt"
+	LogFormatUnstructured LogFormat = "unstructured"
+)
+
+// Service represents a type of application that generates logs
+type Service struct {
 	Name         string
+	Format       LogFormat // Log format: json, logfmt, or unstructured
 	LogGenerator LogGenerator
 	OTELResource map[string]string // OTEL resource attributes
 }
 
 // Register standard application types with known log patterns
-var defaultApplications = []Application{
+var defaultApplications = []Service{
 	{
-		Name: "web-server",
+		Name:   "web-server",
+		Format: LogFormatJSON,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
-				`{"level":"%s","ts":"%s","msg":"HTTP request","method":"%s","path":"%s","status":%d,"duration":%d,"user_agent":"%s","client_ip":"%s"`,
+				`{"level":"%s","ts":"%s","msg":"HTTP request","method":"%s","path":"%s","status":%d,"duration_ms":%d,"user_agent":"%s","client_ip":"%s"`,
 				level, ts.Format(time.RFC3339), f.Method(), f.Path(), f.Status(), f.Duration().Milliseconds(), f.UserAgent(), f.IP(),
 			)
 
@@ -527,11 +538,12 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "database",
+		Name:   "database",
+		Format: LogFormatJSON,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
-				`{"level":"%s","ts":"%s","msg":"Query executed","query_type":"%s","table":"%s","duration":%d,"rows_affected":%d`,
+				`{"level":"%s","ts":"%s","msg":"Query executed","query_type":"%s","table":"%s","duration_ms":%d,"rows_affected":%d`,
 				level, ts.Format(time.RFC3339), f.QueryType(), f.Table(), f.Duration().Milliseconds(), f.RowsAffected(),
 			)
 
@@ -547,7 +559,7 @@ var defaultApplications = []Application{
 
 			// Add error for error level logs
 			if level == errorLevel {
-				baseJSON += fmt.Sprintf(`,"error":"%s"`, f.ErrorMessage())
+				baseJSON += fmt.Sprintf(`,"error":"%s"`, f.DBError())
 			}
 
 			return baseJSON + "}"
@@ -562,7 +574,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "cache",
+		Name:   "cache",
+		Format: LogFormatJSON,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
@@ -575,9 +588,9 @@ var defaultApplications = []Application{
 				baseJSON += fmt.Sprintf(`,"request_id":"%s"`, f.TraceID())
 			}
 
-			// Sometimes add latency
+			// Sometimes add duration
 			if f.rnd.Float32() < 0.7 {
-				baseJSON += fmt.Sprintf(`,"latency":"%s"`, f.Duration())
+				baseJSON += fmt.Sprintf(`,"duration":"%s"`, f.Duration())
 			}
 
 			// Add error for error level logs
@@ -596,7 +609,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "auth-service",
+		Name:   "auth-service",
+		Format: LogFormatJSON,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
@@ -634,7 +648,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "kafka",
+		Name:   "kafka",
+		Format: LogFormatJSON,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
@@ -673,7 +688,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "nginx",
+		Name:   "nginx",
+		Format: LogFormatUnstructured,
 		LogGenerator: func(_ string, ts time.Time, f *Faker) string {
 			return fmt.Sprintf(
 				`%s - %s [%s] "%s %s HTTP/1.1" %d %d "%s" "%s"`,
@@ -689,7 +705,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "syslog",
+		Name:   "syslog",
+		Format: LogFormatUnstructured,
 		LogGenerator: func(_ string, _ time.Time, f *Faker) string {
 			return fmt.Sprintf(
 				`<%d>%s %s[%d]: %s`,
@@ -706,7 +723,8 @@ var defaultApplications = []Application{
 	},
 	// New applications with logfmt and other formats
 	{
-		Name: "mimir",
+		Name:   "mimir",
+		Format: LogFormatLogfmt,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// Logfmt format for Mimir
 			baseLogfmt := fmt.Sprintf(
@@ -729,6 +747,16 @@ var defaultApplications = []Application{
 				baseLogfmt += fmt.Sprintf(` trace_id=%s span_id=%s`, f.TraceID(), f.SpanID())
 			}
 
+			// Add metrics for some logs
+			if f.rnd.Float32() < 0.5 {
+				baseLogfmt += fmt.Sprintf(` streams=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
+			}
+
+			// Add size for some logs (e.g. uncompressed request size)
+			if f.rnd.Float32() < 0.5 {
+				baseLogfmt += fmt.Sprintf(` size=%d`, f.rnd.Intn(10000))
+			}
+
 			// Add error for error level logs
 			if level == errorLevel {
 				baseLogfmt += fmt.Sprintf(` error="failed to %s: %s"`, f.GRPCMethod(), f.ErrorMessage())
@@ -744,7 +772,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "loki",
+		Name:   "loki",
+		Format: LogFormatLogfmt,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// Logfmt format for Loki
 			baseLogfmt := fmt.Sprintf(
@@ -772,6 +801,11 @@ var defaultApplications = []Application{
 				baseLogfmt += fmt.Sprintf(` streams=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
 			}
 
+			// Add size for some logs (e.g. uncompressed request size)
+			if f.rnd.Float32() < 0.5 {
+				baseLogfmt += fmt.Sprintf(` size=%d`, f.rnd.Intn(10000))
+			}
+
 			// Add error for error level logs
 			if level == errorLevel {
 				baseLogfmt += fmt.Sprintf(` error="failed to process request: %s"`, f.ErrorMessage())
@@ -792,7 +826,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "tempo",
+		Name:   "tempo",
+		Format: LogFormatLogfmt,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// Logfmt format for Tempo
 			baseLogfmt := fmt.Sprintf(
@@ -817,7 +852,7 @@ var defaultApplications = []Application{
 
 			// Add metrics for some logs
 			if f.rnd.Float32() < 0.5 {
-				baseLogfmt += fmt.Sprintf(` spans=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
+				baseLogfmt += fmt.Sprintf(` streams=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
 			}
 
 			// Add error for error level logs
@@ -840,7 +875,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "kubernetes",
+		Name:   "kubernetes",
+		Format: LogFormatUnstructured,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// Kubernetes log format (mix of structured and unstructured)
 			component := f.K8sComponent()
@@ -859,7 +895,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "prometheus",
+		Name:   "prometheus",
+		Format: LogFormatJSON,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
@@ -894,7 +931,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "grafana",
+		Name:   "grafana",
+		Format: LogFormatLogfmt,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// Logfmt format for Grafana
 			baseLogfmt := fmt.Sprintf(

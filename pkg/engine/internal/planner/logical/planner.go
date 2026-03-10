@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -14,12 +16,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var (
 	errUnimplemented     = errors.New("query contains unimplemented features")
 	unimplementedFeature = func(s string) error { return fmt.Errorf("%w: %s", errUnimplemented, s) }
+
+	tracer = otel.Tracer("pkg/engine/internal/planner/logical")
 )
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
@@ -720,8 +723,8 @@ func parseShards(shards []string) (*ShardInfo, error) {
 // There is not need to explicitly signal the optimizer to not push these predicates down,
 // canApplyPredicate already correctly handles this by returning an error if there is a label column ref.
 func buildDeletePredicates(ctx context.Context, deletes []*deletion.Request, params logql.Params, rangeInterval time.Duration) ([]Value, error) {
-	_, region := xcap.StartRegion(ctx, "buildDeletePredicates")
-	defer region.End()
+	_, span := tracer.Start(ctx, "logical.buildDeletePredicates")
+	defer span.End()
 
 	var predicates []Value
 
@@ -868,6 +871,9 @@ func buildDeletePredicates(ctx context.Context, deletes []*deletion.Request, par
 		predicates = append(predicates, p)
 	}
 
-	region.Record(xcap.StatDeletePredicates.Observe(int64(len(predicates))))
+	span.SetAttributes(
+		attribute.Int("predicates", len(predicates)),
+	)
+
 	return predicates, nil
 }

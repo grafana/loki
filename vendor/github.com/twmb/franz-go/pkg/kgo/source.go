@@ -203,11 +203,16 @@ func (c *cursor) usable() bool {
 }
 
 // allowUsable allows a cursor to be fetched, and is called either in assigning
-// offsets, or when a buffered fetch is taken or discarded,  or when listing /
+// offsets, or when a buffered fetch is taken or discarded, or when listing /
 // epoch loading finishes.
+//
+// We capture c.source before Swap because Swap makes this cursor immediately
+// eligible for fetching. With kfake (in-process), a fetch can complete and
+// move() can overwrite c.source before we reach maybeConsume.
 func (c *cursor) allowUsable() {
+	s := c.source
 	c.useState.Swap(true)
-	c.source.maybeConsume()
+	s.maybeConsume()
 }
 
 // setOffset sets the cursors offset which will be used the next time a fetch
@@ -1367,7 +1372,7 @@ type ProcessFetchPartitionOpts struct {
 	// as [KeepControlRecords].
 	KeepControlRecords bool
 
-	// DisableFetchCRCValidation opts out of validating the CRC prefixing
+	// DisableCRCValidation opts out of validating the CRC prefixing
 	// every batch. This should only be true if your broker does not
 	// properly support CRCs.
 	DisableCRCValidation bool

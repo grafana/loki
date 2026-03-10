@@ -285,7 +285,7 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 		level.Error(si.logger).Log("msg", "failed to parse write time", "err", err)
 		return "", 0, err
 	}
-	si.builderMetrics.setProcessingDelay(writeTime)
+	si.builderMetrics.setProcessingDelay(partition, writeTime)
 
 	// downloadQueue is closed when all events are submitted, or the context is canceled.
 	downloadQueue := make(chan metastore.ObjectWrittenEvent)

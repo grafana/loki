@@ -61,8 +61,38 @@ func main() {
 
 ### Options
 
-There is one option, `displaywidth.Options.EastAsianWidth`, which defines
-how [East Asian Ambiguous characters](https://www.unicode.org/reports/tr11/#Ambiguous)
+Create the options you need, and then use methods on the options struct.
+
+```go
+var myOptions = displaywidth.Options{
+    EastAsianWidth: true,
+    ControlSequences: true,
+}
+
+width := myOptions.String("Hello, 世界!")
+```
+
+#### ControlSequences
+
+`ControlSequences` specifies whether to ignore ECMA-48 escape sequences
+when calculating the display width. When `false` (default), ANSI escape
+sequences are treated as just a series of characters. When `true`, they are
+treated as a single zero-width unit.
+
+#### ControlSequences8Bit
+
+`ControlSequences8Bit` specifies whether to ignore 8-bit ECMA-48 escape sequences
+when calculating the display width. When `false` (default), these are treated
+as just a series of characters. When `true`, they are treated as a single
+zero-width unit.
+
+Note: this option is ignored by the `Truncate` methods, as the concatenation
+can lead to unintended UTF-8 semantics.
+
+#### EastAsianWidth
+
+`EastAsianWidth` defines how
+[East Asian Ambiguous characters](https://www.unicode.org/reports/tr11/#Ambiguous)
 are treated.
 
 When `false` (default), East Asian Ambiguous characters are treated as width 1.
@@ -70,26 +100,8 @@ When `true`, they are treated as width 2.
 
 You may wish to configure this based on environment variables or locale.
  `go-runewidth`, for example, does so
- [during package initialization](https://github.com/mattn/go-runewidth/blob/master/runewidth.go#L26C1-L45C2).
+ [during package initialization](https://github.com/mattn/go-runewidth/blob/master/runewidth.go#L26C1-L45C2). `displaywidth` does not do this automatically, we prefer to leave it to you.
 
-`displaywidth` does not do this automatically, we prefer to leave it to you.
-You might do something like:
-
-```go
-var width displaywidth.Options // zero value is default
-
-func init() {
-    if os.Getenv("EAST_ASIAN_WIDTH") == "true" {
-        width = displaywidth.Options{EastAsianWidth: true}
-    }
-    // or check locale, or any other logic you want
-}
-
-// use it in your logic
-func myApp() {
-    fmt.Println(width.String("Hello, 世界!"))
-}
-```
 
 ## Technical standards and compatibility
 
@@ -101,9 +113,21 @@ and [regional indicator pairs](https://en.wikipedia.org/wiki/Regional_indicator_
 for emojis. We are keeping an eye on
 [emerging standards](https://www.jeffquast.com/post/state-of-terminal-emulation-2025/).
 
+For control sequences, we implement the [ECMA-48](https://ecma-international.org/publications-and-standards/standards/ecma-48/) standard for 7-bit and 8-bit control sequences.
+
 `clipperhouse/displaywidth`, `mattn/go-runewidth`, and `rivo/uniseg` will
 give the same outputs for most real-world text. Extensive details are in the
 [compatibility analysis](comparison/COMPATIBILITY_ANALYSIS.md).
+
+## Invalid UTF-8
+
+This package does not validate UTF-8. If you pass invalid UTF-8, the results
+are undefined. We fuzz against invalid UTF-8 to ensure we don't panic or
+loop indefinitely.
+
+The `ControlSequences8Bit` option means that we will segment valid 8-bit
+control sequences, which are typically _not_ valid UTF-8. 8-bit control bytes
+happen to also be UTF-8 continuation bytes. Use with caution.
 
 ## Prior Art
 

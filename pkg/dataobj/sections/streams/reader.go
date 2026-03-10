@@ -9,6 +9,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	columnarv2 "github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
@@ -16,7 +18,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
+
+var tracer = otel.Tracer("pkg/dataobj/sections/streams")
 
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
@@ -117,6 +122,11 @@ type Reader struct {
 	inner *columnar.ReaderAdapter
 
 	alloc *memoryv2.Allocator
+
+	// readSpan for recording observations, it is created once during init
+	// and is passed down via context so that inner readers can record
+	// observations to it.
+	readSpan trace.Span
 }
 
 var errReaderNotOpen = errors.New("reader not opened")
@@ -128,6 +138,9 @@ func NewReader(opts ReaderOptions) *Reader {
 	r.Reset(opts)
 	return &r
 }
+
+// Columns returns the current [Column]s used by the Reader.
+func (r *Reader) Columns() []*Column { return r.opts.Columns }
 
 // Schema returns the [arrow.Schema] used by the Reader. Fields in the schema
 // match the order of columns listed in [ReaderOptions].
@@ -151,6 +164,7 @@ func (r *Reader) Open(ctx context.Context) error {
 		_ = r.Close()
 		return fmt.Errorf("initializing Reader: %w", err)
 	}
+
 	return nil
 }
 
@@ -176,7 +190,15 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 		return nil, errReaderNotOpen
 	}
 
+	if r.readSpan == nil {
+		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "streams.Reader.Read")
+	} else {
+		// inject span into context for inner readers to record observations.
+		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
+	}
+
 	defer r.alloc.Reclaim()
+
 	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
 	if len(r.opts.Columns) < int(rb.NumCols()) {
 		// Ignore columns that are not in projection list.
@@ -202,6 +224,9 @@ func (r *Reader) init(ctx context.Context) error {
 	} else if r.opts.Allocator == nil {
 		r.opts.Allocator = memory.DefaultAllocator
 	}
+
+	ctx, span := xcap.StartSpan(ctx, tracer, "streams.Reader.Open")
+	defer span.End()
 
 	// Compose dataset using projected columns and any additional columns
 	// used for evaluating predicates.
@@ -399,6 +424,7 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	}
 	r.opts = opts
 	r.schema = columnsSchema(opts.Columns)
+	r.readSpan = nil
 
 	r.ready = false
 
@@ -412,9 +438,14 @@ func (r *Reader) Reset(opts ReaderOptions) {
 // Close closes the Reader and releases any resources it holds. Closed Readers
 // can be reused by calling [Reader.Reset].
 func (r *Reader) Close() error {
+	if r.readSpan != nil {
+		r.readSpan.End()
+	}
+
 	if r.inner != nil {
 		return r.inner.Close()
 	}
+
 	return nil
 }
 

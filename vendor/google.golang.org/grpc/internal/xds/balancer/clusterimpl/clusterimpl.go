@@ -29,13 +29,11 @@ import (
 	"fmt"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/weightedroundrobin"
 	"google.golang.org/grpc/connectivity"
-	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/internal/balancer/gracefulswitch"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/pretty"
@@ -45,6 +43,7 @@ import (
 	"google.golang.org/grpc/internal/xds/clients"
 	"google.golang.org/grpc/internal/xds/clients/lrsclient"
 	"google.golang.org/grpc/internal/xds/xdsclient"
+	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
 )
@@ -57,7 +56,6 @@ const (
 )
 
 var (
-	connectedAddress = internal.ConnectedAddress.(func(balancer.SubConnState) resolver.Address)
 	// Below function is no-op in actual code, but can be overridden in
 	// tests to give tests visibility into exactly when certain events happen.
 	clientConnUpdateHook = func() {}
@@ -417,21 +415,9 @@ func (b *clusterImplBalancer) getClusterName() string {
 type scWrapper struct {
 	balancer.SubConn
 
-	// locality needs to be atomic because it can be updated while being read by
-	// the picker.
-	locality atomic.Pointer[clients.Locality]
-}
+	localityID clients.Locality
 
-func (scw *scWrapper) updateLocalityID(lID clients.Locality) {
-	scw.locality.Store(&lID)
-}
-
-func (scw *scWrapper) localityID() clients.Locality {
-	lID := scw.locality.Load()
-	if lID == nil {
-		return clients.Locality{}
-	}
-	return *lID
+	hostname string
 }
 
 func (b *clusterImplBalancer) NewSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
@@ -442,26 +428,13 @@ func (b *clusterImplBalancer) NewSubConn(addrs []resolver.Address, opts balancer
 	}
 	var sc balancer.SubConn
 	scw := &scWrapper{}
+	if len(addrs) > 0 {
+		scw.hostname = xdsresource.Hostname(addrs[0])
+		scw.localityID = xdsinternal.GetLocalityID(addrs[0])
+	}
 	oldListener := opts.StateListener
 	opts.StateListener = func(state balancer.SubConnState) {
 		b.updateSubConnState(sc, state, oldListener)
-		if state.ConnectivityState != connectivity.Ready {
-			return
-		}
-		// Read connected address and call updateLocalityID() based on the connected
-		// address's locality. https://github.com/grpc/grpc-go/issues/7339
-		addr := connectedAddress(state)
-		lID := xdsinternal.GetLocalityID(addr)
-		if (lID == clients.Locality{}) {
-			if b.logger.V(2) {
-				// TODO: After A74, we should have the entire CDS config,
-				// allowing us to verify if this is indeed a Logical DNS cluster
-				// and avoid logging the message below.
-				b.logger.Infof("No Locality ID found for address %s. This is normal if %q is a Logical DNS cluster.", addr, clusterName)
-			}
-			return
-		}
-		scw.updateLocalityID(lID)
 	}
 	sc, err := b.ClientConn.NewSubConn(newAddrs, opts)
 	if err != nil {
@@ -475,19 +448,6 @@ func (b *clusterImplBalancer) RemoveSubConn(sc balancer.SubConn) {
 	b.logger.Errorf("RemoveSubConn(%v) called unexpectedly", sc)
 }
 
-func (b *clusterImplBalancer) UpdateAddresses(sc balancer.SubConn, addrs []resolver.Address) {
-	clusterName := b.getClusterName()
-	newAddrs := make([]resolver.Address, len(addrs))
-	var lID clients.Locality
-	for i, addr := range addrs {
-		newAddrs[i] = xdsinternal.SetXDSHandshakeClusterName(addr, clusterName)
-		lID = xdsinternal.GetLocalityID(newAddrs[i])
-	}
-	if scw, ok := sc.(*scWrapper); ok {
-		scw.updateLocalityID(lID)
-		// Need to get the original SubConn from the wrapper before calling
-		// parent ClientConn.
-		sc = scw.SubConn
-	}
-	b.ClientConn.UpdateAddresses(sc, newAddrs)
+func (b *clusterImplBalancer) UpdateAddresses(sc balancer.SubConn, _ []resolver.Address) {
+	b.logger.Errorf("UpdateAddresses(%v) called unexpectedly", sc)
 }
