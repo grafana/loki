@@ -1672,6 +1672,8 @@ write:
           topologyKey: kubernetes.io/hostname
   # -- DNS config for write pods
   dnsConfig: {}
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- Node selector for write pods
   nodeSelector: {}
   # -- Topology Spread Constraints for write pods
@@ -1811,6 +1813,8 @@ read:
           topologyKey: kubernetes.io/hostname
   # -- DNS config for read pods
   dnsConfig: {}
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- Node selector for read pods
   nodeSelector: {}
   # -- Topology Spread Constraints for read pods
@@ -1938,6 +1942,8 @@ backend:
           topologyKey: kubernetes.io/hostname
   # -- DNS config for backend pods
   dnsConfig: {}
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- Node selector for backend pods
   nodeSelector: {}
   # -- Topology Spread Constraints for backend pods
@@ -3662,6 +3668,8 @@ resultsCache:
   port: 11211
   # -- Amount of memory allocated to results-cache for object storage (in MB).
   allocatedMemory: 1024
+  # -- Amount of cpu allocated to results-cache for object storage (in integer or millicores).
+  allocatedCPU: 500m
   # -- Maximum item results-cache for memcached (in MB).
   maxItemMemory: 5
   # -- Maximum number of connections allowed
@@ -3777,6 +3785,8 @@ chunksCache:
   port: 11211
   # -- Amount of memory allocated to chunks-cache for object storage (in MB).
   allocatedMemory: 8192
+  # -- Amount of cpu allocated to chunks-cache for object storage (in integer or millicores).
+  allocatedCPU: 500m
   # -- Maximum item memory for chunks-cache (in MB).
   maxItemMemory: 5
   # -- Maximum number of connections allowed
@@ -3895,6 +3905,8 @@ chunksCache:
     port: 11211
     # -- Amount of memory allocated to chunks-cache-l2 for object storage (in MB).
     allocatedMemory: 8192
+    # -- Amount of cpu allocated to chunks-cache-l2 for object storage (in integer or millicores).
+    allocatedCPU: 500m
     # -- Maximum item memory for chunks-cache-l2 (in MB).
     maxItemMemory: 5
     # -- Maximum number of connections allowed

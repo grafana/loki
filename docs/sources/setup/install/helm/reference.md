@@ -388,6 +388,7 @@ This is the generated reference for the Loki Helm Chart values.
     "tag": null
   },
   "initContainers": [],
+  "maxUnavailable": 1,
   "nodeSelector": {},
   "persistence": {
     "accessModes": [
@@ -603,6 +604,15 @@ null
 			<td>Init containers to add to the backend pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
 </pre>
 </td>
 		</tr>
@@ -2181,6 +2191,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.allocatedCPU</td>
+			<td>string</td>
+			<td>Amount of cpu allocated to chunks-cache for object storage (in integer or millicores).</td>
+			<td><pre lang="json">
+"500m"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.allocatedMemory</td>
 			<td>int</td>
 			<td>Amount of memory allocated to chunks-cache for object storage (in MB).</td>
@@ -2314,6 +2333,7 @@ true
 {
   "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}",
   "affinity": {},
+  "allocatedCPU": "500m",
   "allocatedMemory": 8192,
   "annotations": {},
   "batchSize": 4,
@@ -2382,6 +2402,15 @@ true
 			<td>Affinity for chunks-cache-l2 pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.allocatedCPU</td>
+			<td>string</td>
+			<td>Amount of cpu allocated to chunks-cache-l2 for object storage (in integer or millicores).</td>
+			<td><pre lang="json">
+"500m"
 </pre>
 </td>
 		</tr>
@@ -11155,6 +11184,7 @@ false
   "legacyReadTarget": false,
   "lifecycle": {},
   "livenessProbe": {},
+  "maxUnavailable": 1,
   "nodeSelector": {},
   "persistence": {
     "accessModes": [
@@ -11394,6 +11424,15 @@ false
 			<td>liveness probe settings for read pods. If empty, applies no livenessProbe</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
 </pre>
 </td>
 		</tr>
@@ -11659,6 +11698,15 @@ null
 			<td>Affinity for results-cache pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.allocatedCPU</td>
+			<td>string</td>
+			<td>Amount of cpu allocated to results-cache for object storage (in integer or millicores).</td>
+			<td><pre lang="json">
+"500m"
 </pre>
 </td>
 		</tr>
@@ -13841,6 +13889,15 @@ null
 			<td>Lifecycle for the write container</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
 </pre>
 </td>
 		</tr>
