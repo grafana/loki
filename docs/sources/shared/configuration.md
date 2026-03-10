@@ -402,6 +402,18 @@ query_engine:
   # CLI flag: -query-engine.enforce-max-query-series-limit
   [enforce_max_query_series_limit: <boolean> | default = false]
 
+  results_cache:
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is:
+    # query-engine.results-cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -query-engine.results-cache.compression
+    [compression: <string> | default = ""]
+
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
 [query_scheduler: <query_scheduler>]
@@ -2391,6 +2403,7 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `frontend.label-results-cache`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
+- `query-engine.results-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
 - `store.index-cache-read`
@@ -4532,6 +4545,11 @@ discover_generic_fields:
 # is enabled.
 # CLI flag: -querier.split-instant-metric-queries-by-interval
 [split_instant_metric_queries_by_interval: <duration> | default = 1h]
+
+# Time bucket interval used for cache key generation in the Thor (V2) query
+# engine. Queries starting within the same bucket share the same cache key.
+# CLI flag: -querier.engine-results-cache-time-bucket-interval
+[engine_results_cache_time_bucket_interval: <duration> | default = 1d]
 
 # Interval to use for time-based splitting when a request is within the
 # `query_ingesters_within` window; defaults to `split-queries-by-interval` by
@@ -7880,6 +7898,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`
+- `query-engine.results-cache.memcached`
 - `query-scheduler.grpc-client-config`
 - `query-scheduler.ring.etcd`
 - `reporting.tls-config`
@@ -8046,12 +8065,18 @@ and be accepted with
 ```yaml
 time_of_most_recent_line - (max_chunk_age/2)
 ```
+This means the allowed out-of-order window is half of the configured max_chunk_age.
 
 Log entries with timestamps that are after this earliest time are accepted.
 Log entries further back in time return an out-of-order error.
 
 For example, if `max_chunk_age` is 2 hours
 and the stream `{foo="bar"}` has one entry at `8:00`,
+the earliest accepted timestamp will be calculated as: 8:00 - (2h / 2) = `7:00`.
+
 Loki will accept data for that stream as far back in time as `7:00`.
+
 If another log line is written at `10:00`,
+the earliest accepted timestamp becomes: 10:00 - (2h / 2) = `9:00`.
+
 Loki will accept data for that stream as far back in time as `9:00`.

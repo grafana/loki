@@ -1509,6 +1509,10 @@ func (f fakeLimits) RequiredNumberLabels(_ context.Context, _ string) int {
 	return f.requiredNumberLabels
 }
 
+func (f fakeLimits) EngineResultsCacheTimeBucketInterval(_ string) time.Duration {
+	return 24 * time.Hour
+}
+
 func (f fakeLimits) MaxStatsCacheFreshness(_ context.Context, _ string) time.Duration {
 	return f.maxStatsCacheFreshness
 }
