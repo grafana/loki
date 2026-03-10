@@ -126,6 +126,7 @@ frontend:
   compress_responses: true
   max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
+  encoding: protobuf
 frontend_worker:
   frontend_address: {{ .FrontendWorker.FQDN }}:{{ .FrontendWorker.Port }}
   grpc_client_config:
@@ -329,6 +330,7 @@ query_range:
         enabled: true
         max_size_mb: 500
   parallelise_shardable_queries: true
+  shard_aggregations: approx_topk
 schema_config:
   configs:
     {{- $store := .ObjectStorage.SharedStore }}
