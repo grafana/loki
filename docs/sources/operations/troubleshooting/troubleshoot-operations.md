@@ -2190,7 +2190,7 @@ Query parallelism has been set to zero, effectively disabling all queries. This 
 
 - **Account for the querier capacity this requires.** Each unit of parallelism consumes one querier worker slot. With the default `querier.max_concurrent` of `4`, the number of queriers needed to fully parallelize a single query is:
 
-  ```
+  ```bash
   queriers needed = tsdb_max_query_parallelism / max_concurrent
   ```
 
