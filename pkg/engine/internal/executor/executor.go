@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -40,6 +41,8 @@ type Config struct {
 	Bucket    objstore.Bucket
 	Metastore metastore.Metastore
 
+	PrefetchBytes int64
+
 	MergePrefetchCount int
 
 	// GetExternalInputs is an optional function called for each node in the
@@ -56,6 +59,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 	c := &Context{
 		plan:               plan,
 		batchSize:          cfg.BatchSize,
+		prefetchBytes:      cfg.PrefetchBytes,
 		mergePrefetchCount: cfg.MergePrefetchCount,
 		bucket:             cfg.Bucket,
 		metastore:          cfg.Metastore,
@@ -77,7 +81,8 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 
 // Context is the execution context
 type Context struct {
-	batchSize int64
+	batchSize     int64
+	prefetchBytes int64
 
 	logger    log.Logger
 	plan      *physical.Plan
@@ -148,13 +153,16 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(ctx, errors.New("no object store bucket configured"))
 	}
 
-	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location))
+	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location), c.prefetchBytes)
 	if err != nil {
 		return errorPipeline(ctx, fmt.Errorf("creating data object: %w", err))
 	}
 	span.AddEvent("opened dataobj")
 
 	var (
+		foundStreamsSection *dataobj.Section
+		foundLogsSection    *dataobj.Section
+
 		streamsSection *streams.Section
 		logsSection    *logs.Section
 	)
@@ -164,41 +172,60 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(ctx, fmt.Errorf("missing org ID: %w", err))
 	}
 
-	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+	var logsSectionIndex int
+	for _, sec := range obj.Sections() {
 		if sec.Tenant != tenant {
+			if logs.CheckSection(sec) {
+				logsSectionIndex++
+			}
 			continue
 		}
 
-		if streamsSection != nil {
-			return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
-		}
+		switch {
+		case streams.CheckSection(sec):
+			if foundStreamsSection != nil {
+				return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
+			}
+			foundStreamsSection = sec
 
+		case logs.CheckSection(sec):
+			if logsSectionIndex == node.Section {
+				foundLogsSection = sec
+			}
+			logsSectionIndex++
+		}
+	}
+
+	if foundStreamsSection == nil {
+		return errorPipeline(ctx, fmt.Errorf("streams section not found in data object %q", node.Location))
+	} else if foundLogsSection == nil {
+		return errorPipeline(ctx, fmt.Errorf("logs section %d not found in data object %q", node.Section, node.Location))
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
 		var err error
-		streamsSection, err = streams.Open(ctx, sec)
+		streamsSection, err = streams.Open(ctx, foundStreamsSection)
 		if err != nil {
-			return errorPipeline(ctx, fmt.Errorf("opening streams section %q: %w", sec.Type, err))
+			return fmt.Errorf("opening streams section %q: %w", foundStreamsSection.Type, err)
 		}
 		span.AddEvent("opened streams section")
-	}
-	if streamsSection == nil {
-		return errorPipeline(ctx, fmt.Errorf("streams section not found in data object %q", node.Location))
-	}
+		return nil
+	})
 
-	for i, sec := range obj.Sections().Filter(logs.CheckSection) {
-		if i != node.Section {
-			continue
-		}
-
+	g.Go(func() error {
 		var err error
-		logsSection, err = logs.Open(ctx, sec)
+		logsSection, err = logs.Open(ctx, foundLogsSection)
 		if err != nil {
-			return errorPipeline(ctx, fmt.Errorf("opening logs section %q: %w", sec.Type, err))
+			return fmt.Errorf("opening logs section %q: %w", foundLogsSection.Type, err)
 		}
 		span.AddEvent("opened logs section")
-		break
-	}
-	if logsSection == nil {
-		return errorPipeline(ctx, fmt.Errorf("logs section %d not found in data object %q", node.Section, node.Location))
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return errorPipeline(ctx, err)
 	}
 
 	// Filter streams if a filterer is configured
@@ -294,9 +321,10 @@ func (c *Context) executePointersScan(ctx context.Context, node *physical.Pointe
 
 	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
 		pipeline, err := newScanPointersPipeline(ctx, scanPointersOptions{
-			metastore: c.metastore,
-			location:  string(node.Location),
-			req:       req,
+			metastore:     c.metastore,
+			location:      string(node.Location),
+			req:           req,
+			prefetchBytes: c.prefetchBytes,
 		})
 		if err != nil {
 			return errorPipeline(ctx, err)

@@ -109,7 +109,7 @@ type ClustersMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ClustersMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -338,7 +338,7 @@ type ClusterStatusMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ClusterStatusMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -622,7 +622,7 @@ type HostStatusMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HostStatusMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -738,7 +738,7 @@ type HostHealthStatusMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HostHealthStatusMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

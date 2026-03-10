@@ -149,12 +149,12 @@ func (t *SyslogTarget) handleMessageRFC5424(connLabels labels.Labels, msg syslog
 		}
 	}
 
-	var processed labels.Labels
 	if len(t.relabelConfig) > 0 {
-		processed, _ = relabel.Process(lb.Labels(), t.relabelConfig...)
-	} else {
-		processed = lb.Labels()
+		if keep := relabel.ProcessBuilder(lb, t.relabelConfig...); !keep {
+			return
+		}
 	}
+	processed := lb.Labels()
 
 	filtered := make(model.LabelSet)
 	processed.Range(func(lbl labels.Label) {
@@ -211,12 +211,12 @@ func (t *SyslogTarget) handleMessageRFC3164(connLabels labels.Labels, msg syslog
 		lb.Set("__syslog_message_msg_id", *v)
 	}
 
-	var processed labels.Labels
 	if len(t.relabelConfig) > 0 {
-		processed, _ = relabel.Process(lb.Labels(), t.relabelConfig...)
-	} else {
-		processed = lb.Labels()
+		if keep := relabel.ProcessBuilder(lb, t.relabelConfig...); !keep {
+			return
+		}
 	}
+	processed := lb.Labels()
 
 	filtered := make(model.LabelSet)
 	processed.Range(func(lbl labels.Label) {

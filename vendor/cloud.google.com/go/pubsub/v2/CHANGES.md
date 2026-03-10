@@ -1,5 +1,25 @@
 # Changes
 
+## [2.4.0](https://github.com/googleapis/google-cloud-go/releases/tag/pubsub%2Fv2.4.0) (2026-02-04)
+
+### Features
+
+* Add AIInference MessageTransform type ([80379ed](https://github.com/googleapis/google-cloud-go/commit/80379edb1c47cd7c2d928d18762029cfe28420c0))
+* fix concurrent map write (#13530) ([50a9c4a](https://github.com/googleapis/google-cloud-go/commit/50a9c4ac16a68db30c9c7ea71bbc2792237f8840))
+* update image to us-central1-docker.pkg.dev/cloud-sdk-librarian-prod/images-prod/librarian-go@sha256:ec5a10e927e3b3cdc457b23974879644572ab204864f353b19bf35d0af227678 (#13305) ([04e111b](https://github.com/googleapis/google-cloud-go/commit/04e111b595b4b7f18673102f6dc8a2cd322a025f))
+
+### Bug Fixes
+
+* return AckWithResult after NackImmediately shutdown mode (#13458) ([e94436c](https://github.com/googleapis/google-cloud-go/commit/e94436cdc351bba0b91af0501c43a3090251e465))
+
+### Documentation
+
+* A comment for field `analytics_hub_subscription_info` in message `.google.pubsub.v1.Subscription` is updated ([80379ed](https://github.com/googleapis/google-cloud-go/commit/80379edb1c47cd7c2d928d18762029cfe28420c0))
+* A comment for field `subscription` in message `.google.pubsub.v1.CreateSnapshotRequest` is updated ([80379ed](https://github.com/googleapis/google-cloud-go/commit/80379edb1c47cd7c2d928d18762029cfe28420c0))
+* A comment for field `topic` in message `.google.pubsub.v1.Subscription` is updated ([80379ed](https://github.com/googleapis/google-cloud-go/commit/80379edb1c47cd7c2d928d18762029cfe28420c0))
+* Add the IDENTIFIER field behavior annotation to fields of Cloud Pub/Sub methods that represent a specific identity and need to be sourced with additional care ([21c9dbf](https://github.com/googleapis/google-cloud-go/commit/21c9dbfbf9061b29b1c64e5ca24273ec97078f25))
+* add tags documentation links to Pub/Sub resource tags fields ([db65e79](https://github.com/googleapis/google-cloud-go/commit/db65e7927e54b21a39a54f685810495d2885cb33))
+
 ## [2.3.0](https://github.com/googleapis/google-cloud-go/releases/tag/pubsub%2Fv2.3.0) (2025-10-22)
 
 ### Features

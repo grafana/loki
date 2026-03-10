@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
@@ -40,26 +41,27 @@ func (c *Client) ModifyInstanceCpuOptions(ctx context.Context, params *ModifyIns
 
 type ModifyInstanceCpuOptionsInput struct {
 
-	// The number of CPU cores to activate for the specified instance.
-	//
-	// This member is required.
-	CoreCount *int32
-
 	// The ID of the instance to update.
 	//
 	// This member is required.
 	InstanceId *string
 
-	// The number of threads to run for each CPU core.
-	//
-	// This member is required.
-	ThreadsPerCore *int32
+	// The number of CPU cores to activate for the specified instance.
+	CoreCount *int32
 
 	// Checks whether you have the required permissions for the operation, without
 	// actually making the request, and provides an error response. If you have the
 	// required permissions, the error response is DryRunOperation . Otherwise, it is
 	// UnauthorizedOperation .
 	DryRun *bool
+
+	// Indicates whether to enable or disable nested virtualization for the instance.
+	// When nested virtualization is enabled, Virtual Secure Mode (VSM) is
+	// automatically disabled for the instance.
+	NestedVirtualization types.NestedVirtualizationSpecification
+
+	// The number of threads to run for each CPU core.
+	ThreadsPerCore *int32
 
 	noSmithyDocumentSerde
 }
@@ -72,6 +74,9 @@ type ModifyInstanceCpuOptionsOutput struct {
 
 	// The ID of the instance that was updated.
 	InstanceId *string
+
+	// Indicates whether nested virtualization has been enabled or disabled.
+	NestedVirtualization types.NestedVirtualizationSpecification
 
 	// The number of threads that are running per CPU core for the specified instance
 	// after the update.

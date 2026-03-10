@@ -1,0 +1,252 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/grafana/loki/pkg/logql/bench/queries/schema.json",
+  "title": "LogQL Benchmark Query Definition",
+  "description": "Schema for LogQL benchmark query definitions",
+  "type": "object",
+  "required": ["queries"],
+  "properties": {
+    "queries": {
+      "type": "array",
+      "description": "List of query definitions",
+      "items": {
+        "$ref": "#/definitions/QueryDefinition"
+      }
+    }
+  },
+  "definitions": {
+    "QueryDefinition": {
+      "type": "object",
+      "required": ["description", "query", "time_range"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this query tests",
+          "minLength": 1
+        },
+        "query": {
+          "type": "string",
+          "description": "LogQL query with ${VARIABLE} placeholders including ${RANGE} for range intervals.",
+          "minLength": 1
+        },
+        "log_format": {
+          "type": "string",
+          "description": "Required log format for queries with parsers (json, logfmt). Leave unset for queries that work with any format.",
+          "enum": ["json", "logfmt", "unstructured"],
+          "examples": ["json", "logfmt"]
+        },
+        "kind": {
+          "type": "string",
+          "description": "Query type: 'log' for log queries or 'metric' for metric queries",
+          "enum": ["log", "metric"],
+          "default": "log"
+        },
+        "time_range": {
+          "$ref": "#/definitions/TimeRangeConfig"
+        },
+        "directions": {
+          "type": "string",
+          "description": "For log queries: which direction(s) to test. Ignored for metric queries.",
+          "enum": ["forward", "backward", "both"],
+          "default": "both"
+        },
+        "variables": {
+          "type": "object",
+          "description": "Variable definitions used in the query",
+          "additionalProperties": {
+            "$ref": "#/definitions/VariableDefinition"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "description": "Tags for categorization and filtering",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional notes about expected behavior, known issues, or additional context"
+        },
+        "skip": {
+          "type": "boolean",
+          "description": "If true, skip this query during test execution. Use for queries with known issues to be fixed in follow-up work.",
+          "default": false
+        },
+        "requires": {
+          "$ref": "#/definitions/QueryRequirements"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "metric"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "time_range": {
+                "required": ["length"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "log"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "time_range": {
+                "required": ["length"],
+                "properties": {
+                  "step": {
+                    "not": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "TimeRangeConfig": {
+      "type": "object",
+      "required": ["length"],
+      "properties": {
+        "length": {
+          "type": "string",
+          "description": "Duration the query should cover (end - start). Examples: '5m', '1h', '24h'",
+          "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h|d)$",
+          "examples": ["5m", "1h", "24h", "30m"]
+        },
+        "step": {
+          "type": "string",
+          "description": "For metric queries only: step size for the query. Examples: '1m', '5m'. If not specified, defaults to (end-start)/250 (Loki's default).",
+          "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)$",
+          "examples": ["1m", "5m", "15s"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "VariableDefinition": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Variable type",
+          "enum": ["label_selector", "duration", "string", "label_name", "structured_metadata", "parsed_field"]
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether this variable must have a value",
+          "default": false
+        },
+        "default": {
+          "type": "string",
+          "description": "Default value for the variable if not required"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of the variable's purpose"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "duration"
+              }
+            }
+          },
+          "then": {
+            "errorMessage": "Duration variables should not be used. Hardcode durations like [5m], [1h] directly in queries.",
+            "properties": {
+              "default": {
+                "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h|d)$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "required": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": ["default"]
+            },
+            "errorMessage": "Required variables should not have default values"
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "QueryRequirements": {
+      "type": "object",
+      "description": "Requirements that streams must meet for this query to work",
+      "properties": {
+        "log_format": {
+          "type": "string",
+          "description": "Required log format for parser queries (json, logfmt). Omit for queries that work with any format.",
+          "enum": ["json", "logfmt", "unstructured"]
+        },
+        "unwrappable_fields": {
+          "type": "array",
+          "description": "Numeric fields that must be available for | unwrap operations",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "detected_fields": {
+          "type": "array",
+          "description": "Fields that must be parsable from log content for use in aggregations or filters",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "structured_metadata": {
+          "type": "array",
+          "description": "Structured metadata keys that must be present on the stream",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "labels": {
+          "type": "array",
+          "description": "Stream labels that must be present (for selectors, filters, or grouping)",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "keywords": {
+          "type": "array",
+          "description": "Keywords that must appear in log content for line filters",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

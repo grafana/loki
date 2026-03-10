@@ -26,6 +26,8 @@ func (mapNode) Type() Type { return &mapType{} }
 
 type mapType format.MapType
 
+var mapLogicalType = format.LogicalType{Map: new(format.MapType)}
+
 func (t *mapType) String() string { return (*format.MapType)(t).String() }
 
 func (t *mapType) Kind() Kind { panic("cannot call Kind on parquet MAP type") }
@@ -42,9 +44,7 @@ func (t *mapType) ColumnOrder() *format.ColumnOrder { return nil }
 
 func (t *mapType) PhysicalType() *format.Type { return nil }
 
-func (t *mapType) LogicalType() *format.LogicalType {
-	return &format.LogicalType{Map: (*format.MapType)(t)}
-}
+func (t *mapType) LogicalType() *format.LogicalType { return &mapLogicalType }
 
 func (t *mapType) ConvertedType() *deprecated.ConvertedType {
 	return &convertedTypes[deprecated.Map]

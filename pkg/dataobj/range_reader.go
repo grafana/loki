@@ -49,16 +49,24 @@ type readerAtRangeReader struct {
 	r    io.ReaderAt
 }
 
-func (rr *readerAtRangeReader) Size(_ context.Context) (int64, error) {
+func (rr *readerAtRangeReader) Size(ctx context.Context) (int64, error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
 	return rr.size, nil
 }
 
-func (rr *readerAtRangeReader) Read(_ context.Context) (io.ReadCloser, error) {
+func (rr *readerAtRangeReader) Read(ctx context.Context) (io.ReadCloser, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	return io.NopCloser(io.NewSectionReader(rr.r, 0, rr.size)), nil
 }
 
-func (rr *readerAtRangeReader) ReadRange(_ context.Context, offset int64, length int64) (io.ReadCloser, error) {
-	if length > math.MaxInt {
+func (rr *readerAtRangeReader) ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	} else if length > math.MaxInt {
 		return nil, fmt.Errorf("length too large: %d", length)
 	}
 	return io.NopCloser(io.NewSectionReader(rr.r, offset, length)), nil

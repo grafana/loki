@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -27,11 +29,11 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name: "loki_engine_v2_subqueries_total",
 			Help: "Total number of subqueries executed with the new engine",
 		}, []string{status}),
-		logicalPlanning: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+		logicalPlanning: newNativeHistogram(r, prometheus.HistogramOpts{
 			Name: "loki_engine_v2_logical_planning_duration_seconds",
 			Help: "Duration of logical query planning in seconds",
 		}),
-		physicalPlanning: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+		physicalPlanning: newNativeHistogram(r, prometheus.HistogramOpts{
 			Name: "loki_engine_v2_physical_planning_duration_seconds",
 			Help: "Duration of physical query planning in seconds",
 			Buckets: append(
@@ -39,7 +41,7 @@ func newMetrics(r prometheus.Registerer) *metrics {
 				prometheus.LinearBuckets(15, 5.0, 10)..., // 15s -> 60s
 			),
 		}),
-		workflowPlanning: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+		workflowPlanning: newNativeHistogram(r, prometheus.HistogramOpts{
 			Name: "loki_engine_v2_workflow_planning_duration_seconds",
 			Help: "Duration of workflow query planning in seconds",
 			Buckets: append(
@@ -47,7 +49,7 @@ func newMetrics(r prometheus.Registerer) *metrics {
 				prometheus.LinearBuckets(15, 5.0, 10)..., // 15s -> 60s
 			),
 		}),
-		execution: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+		execution: newNativeHistogram(r, prometheus.HistogramOpts{
 			Name: "loki_engine_v2_execution_duration_seconds",
 			Help: "Duration of query execution in seconds",
 			Buckets: append(
@@ -56,4 +58,12 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			),
 		}),
 	}
+}
+
+func newNativeHistogram(r prometheus.Registerer, opts prometheus.HistogramOpts) prometheus.Histogram {
+	opts.NativeHistogramBucketFactor = 1.1
+	opts.NativeHistogramMaxBucketNumber = 100
+	opts.NativeHistogramMinResetDuration = time.Hour
+
+	return promauto.With(r).NewHistogram(opts)
 }

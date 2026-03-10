@@ -238,12 +238,15 @@ func (c *Column) setLevels(depth, repetition, definition, index int) (int, error
 		return -1, fmt.Errorf("cannot represent parquet columns with more than %d definition levels: %s", MaxDefinitionLevel, c.path)
 	}
 
-	switch schemaRepetitionTypeOf(c.schema) {
-	case format.Optional:
-		definition++
-	case format.Repeated:
-		repetition++
-		definition++
+	// Only non-root columns have a well defined repetition_type
+	if depth > 0 {
+		switch schemaRepetitionTypeOf(c.schema) {
+		case format.Optional:
+			definition++
+		case format.Repeated:
+			repetition++
+			definition++
+		}
 	}
 
 	c.depth = int8(depth)

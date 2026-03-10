@@ -362,7 +362,7 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 			expectedPorts: []int32{8080},
 		},
 		{
-			name: "Swift endpoint with custom port",
+			name: "Swift endpoint with default SSL port",
 			opts: Options{
 				Name:      "test",
 				Namespace: "test-ns",
@@ -373,7 +373,26 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 					},
 				},
 			},
-			expectedPorts: []int32{5000},
+			expectedPorts: []int32{5000, 443},
+		},
+		{
+			name: "Swift endpoint with OpenStack OpenShift default SSL port",
+			opts: Options{
+				Name:      "test",
+				Namespace: "test-ns",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				ObjectStorage: storage.Options{
+					SharedStore: lokiv1.ObjectStorageSecretSwift,
+					Swift: &storage.SwiftStorageConfig{
+						AuthURL: "http://keystone.openstack.svc.cluster.local:5000/v3",
+					},
+				},
+			},
+			expectedPorts: []int32{5000, 13808},
 		},
 		{
 			name: "AlibabaCloud endpoint with custom port",

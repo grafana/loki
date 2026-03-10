@@ -247,19 +247,19 @@ func (p *producer) purgeTopics(topics []string) {
 			r.mu.Unlock()
 
 			// Now we remove from the sink. When we do, the recBuf
-			// is effectively abandonded. Any active produces may
+			// is effectively abandoned. Any active produces may
 			// finish before we fail the records; if they finish
 			// after they will no longer belong in the batch, but
 			// they may have been produced. This is the duplicate
 			// risk a user runs when purging.
 			//
 			// We do not need to lock for `r.sink` access because
-			// this is ran in a blocking metadata fn, meaning the
+			// this is run in a blocking metadata fn, meaning the
 			// sink cannot change. We do not WANT to lock because
 			// r.mu => r.sink.recBufsMu would cause lock inversion.
 			r.sink.removeRecBuf(r)
 
-			// Once abandonded, we now need to fail anything that
+			// Once abandoned, we now need to fail anything that
 			// was buffered.
 			go func() {
 				r.mu.Lock()
@@ -311,8 +311,13 @@ func (rs ProduceResults) First() (*Record, error) {
 // ProduceSync is a synchronous produce. See the [Produce] documentation for an
 // in depth description of how producing works.
 //
-// This function simply produces all records in one range loop and waits for
-// them all to be produced before returning.
+// This function produces all records and waits for them all to be produced
+// before returning. If the client has a non-zero linger configured, after all
+// records are enqueued, this function stops lingering and triggers an immediate
+// drain on all partitions that records were produced to. This avoids
+// unnecessarily waiting for linger timers when the caller is synchronously
+// waiting for results. Partitions that are lingering due to concurrent
+// [Produce] calls are not affected.
 func (cl *Client) ProduceSync(ctx context.Context, rs ...*Record) ProduceResults {
 	var (
 		wg      sync.WaitGroup
@@ -324,9 +329,76 @@ func (cl *Client) ProduceSync(ctx context.Context, rs ...*Record) ProduceResults
 	)
 
 	wg.Add(len(rs))
-	for _, r := range rs {
-		cl.Produce(ctx, r, promise)
+
+	// After each Produce call for a known topic, the record's Partition
+	// field is already set (see bufferRecord), allowing us to collect
+	// which recBufs to unlinger without a second pass over the records.
+	// We use a [16] base array to avoid heap allocation in the common
+	// case, and linear dedup since the number of unique partitions is
+	// typically small.
+	//
+	// We load partition data BEFORE calling Produce to avoid a data
+	// race on r.Partition. If partitions exist before Produce,
+	// partitionsForTopicProduce will also see them (partition counts
+	// are monotonically increasing) and will partition the record
+	// synchronously in bufferRecord, making r.Partition safe to read
+	// after Produce returns. If pd is nil, we never read r.Partition,
+	// avoiding a race with the metadata goroutine which partitions
+	// unknownTopics records asynchronously.
+	var (
+		buf      [16]*recBuf
+		unlinger = buf[:0]
+		topics   topicsPartitionsData
+
+		lastTopic string
+		lastPD    *topicPartitionsData
+	)
+	if cl.cfg.linger > 0 {
+		topics = cl.producer.topics.load()
 	}
+
+	for _, r := range rs {
+		var pd *topicPartitionsData
+		if topics != nil {
+			if r.Topic == "" || cl.cfg.defaultProduceTopicAlways {
+				r.Topic = cl.cfg.defaultProduceTopic
+			}
+			if r.Topic == lastTopic {
+				pd = lastPD
+			} else if parts, ok := topics[r.Topic]; ok {
+				if v := parts.load(); len(v.partitions) > 0 {
+					pd = v
+				}
+				lastTopic = r.Topic
+				lastPD = pd
+			}
+		}
+
+		cl.Produce(ctx, r, promise)
+
+		if pd == nil {
+			continue
+		}
+		if int(r.Partition) >= len(pd.partitions) {
+			continue
+		}
+		rb := pd.partitions[r.Partition].records
+		var seen bool
+		for _, have := range unlinger {
+			if have == rb {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			unlinger = append(unlinger, rb)
+		}
+	}
+
+	for _, rb := range unlinger {
+		rb.unlingerAndManuallyDrain()
+	}
+
 	wg.Wait()
 
 	return results
@@ -594,7 +666,6 @@ type batchPromise struct {
 	epoch      int16
 	attrs      RecordAttrs
 	beforeBuf  bool
-	partition  int32
 	recs       []promisedRec
 	err        error
 }
@@ -632,7 +703,6 @@ start:
 		} else {
 			pr.Offset = b.baseOffset + int64(i)
 		}
-		pr.Partition = b.partition
 		pr.ProducerID = b.pid
 		pr.ProducerEpoch = b.epoch
 		pr.Attrs = b.attrs

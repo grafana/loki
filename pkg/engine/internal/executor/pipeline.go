@@ -10,7 +10,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -88,14 +90,17 @@ func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
 
 var _ Pipeline = (*GenericPipeline)(nil)
 
+func openInputsConcurrently(ctx context.Context, inputs []Pipeline) error {
+	g, ctx := errgroup.WithContext(ctx)
+	for _, in := range inputs {
+		g.Go(func() error { return in.Open(ctx) })
+	}
+	return g.Wait()
+}
+
 // Open implements Pipeline.
 func (p *GenericPipeline) Open(ctx context.Context) error {
-	for _, inp := range p.inputs {
-		if err := inp.Open(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
+	return openInputsConcurrently(ctx, p.inputs)
 }
 
 // Read implements Pipeline.
@@ -103,7 +108,11 @@ func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if p.read == nil {
 		return nil, EOF
 	}
-	return p.read(ctx, p.inputs)
+	rec, err := p.read(ctx, p.inputs)
+
+	assertions.CheckColumnDuplicates(rec)
+
+	return rec, err
 }
 
 // Close implements Pipeline.

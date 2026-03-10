@@ -190,7 +190,7 @@ type ServicesInactiveWaiterOptions struct {
 	MinDelay time.Duration
 
 	// MaxDelay is the maximum amount of time to delay between retries. If unset or
-	// set to zero, ServicesInactiveWaiter will use default max delay of 120 seconds.
+	// set to zero, ServicesInactiveWaiter will use default max delay of 600 seconds.
 	// Note that MaxDelay must resolve to value greater than or equal to the MinDelay.
 	MaxDelay time.Duration
 
@@ -220,7 +220,7 @@ type ServicesInactiveWaiter struct {
 func NewServicesInactiveWaiter(client DescribeServicesAPIClient, optFns ...func(*ServicesInactiveWaiterOptions)) *ServicesInactiveWaiter {
 	options := ServicesInactiveWaiterOptions{}
 	options.MinDelay = 15 * time.Second
-	options.MaxDelay = 120 * time.Second
+	options.MaxDelay = 600 * time.Second
 	options.Retryable = servicesInactiveStateRetryable
 
 	for _, fn := range optFns {
@@ -255,7 +255,7 @@ func (w *ServicesInactiveWaiter) WaitForOutput(ctx context.Context, params *Desc
 	}
 
 	if options.MaxDelay <= 0 {
-		options.MaxDelay = 120 * time.Second
+		options.MaxDelay = 600 * time.Second
 	}
 
 	if options.MinDelay > options.MaxDelay {
@@ -401,7 +401,7 @@ type ServicesStableWaiterOptions struct {
 	MinDelay time.Duration
 
 	// MaxDelay is the maximum amount of time to delay between retries. If unset or
-	// set to zero, ServicesStableWaiter will use default max delay of 120 seconds.
+	// set to zero, ServicesStableWaiter will use default max delay of 600 seconds.
 	// Note that MaxDelay must resolve to value greater than or equal to the MinDelay.
 	MaxDelay time.Duration
 
@@ -431,7 +431,7 @@ type ServicesStableWaiter struct {
 func NewServicesStableWaiter(client DescribeServicesAPIClient, optFns ...func(*ServicesStableWaiterOptions)) *ServicesStableWaiter {
 	options := ServicesStableWaiterOptions{}
 	options.MinDelay = 15 * time.Second
-	options.MaxDelay = 120 * time.Second
+	options.MaxDelay = 600 * time.Second
 	options.Retryable = servicesStableStateRetryable
 
 	for _, fn := range optFns {
@@ -466,7 +466,7 @@ func (w *ServicesStableWaiter) WaitForOutput(ctx context.Context, params *Descri
 	}
 
 	if options.MaxDelay <= 0 {
-		options.MaxDelay = 120 * time.Second
+		options.MaxDelay = 600 * time.Second
 	}
 
 	if options.MinDelay > options.MaxDelay {
