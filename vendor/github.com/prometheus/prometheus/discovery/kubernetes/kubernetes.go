@@ -1,4 +1,4 @@
-// Copyright 2016 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -194,7 +194,7 @@ func (c *SDConfig) UnmarshalYAML(unmarshal func(any) error) error {
 
 	foundSelectorRoles := make(map[Role]struct{})
 	allowedSelectors := map[Role][]string{
-		RolePod:           {string(RolePod)},
+		RolePod:           {string(RolePod), string(RoleNode)},
 		RoleService:       {string(RoleService)},
 		RoleEndpointSlice: {string(RolePod), string(RoleService), string(RoleEndpointSlice)},
 		RoleEndpoint:      {string(RolePod), string(RoleService), string(RoleEndpoint)},

@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"3131343633323936333034313936343439353533\"",
+  "etag": "\"31363539393037303230303637393438373935\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -1784,6 +1784,50 @@
             "https://www.googleapis.com/auth/devstorage.read_write"
           ]
         },
+        "deleteRecursive": {
+          "description": "Deletes a folder recursively. Only applicable to buckets with hierarchical namespace enabled.",
+          "httpMethod": "POST",
+          "id": "storage.folders.deleteRecursive",
+          "parameterOrder": [
+            "bucket",
+            "folder"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which the folder resides.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "folder": {
+              "description": "Name of a folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "ifMetagenerationMatch": {
+              "description": "If set, only deletes the folder if its metageneration matches this value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifMetagenerationNotMatch": {
+              "description": "If set, only deletes the folder if its metageneration does not match this value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/folders/{folder}/deleteRecursive",
+          "response": {
+            "$ref": "GoogleLongrunningOperation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
         "get": {
           "description": "Returns metadata for the specified folder. Only applicable to buckets with hierarchical namespace enabled.",
           "httpMethod": "GET",
@@ -2779,6 +2823,12 @@
               "location": "query",
               "type": "string"
             },
+            "dropContextGroups": {
+              "description": "Specifies which groups of Object Contexts from the source object(s) should be dropped from the destination object.",
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
             "ifGenerationMatch": {
               "description": "Makes the operation conditional on whether the object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
               "format": "int64",
@@ -3749,6 +3799,12 @@
               "location": "query",
               "type": "string"
             },
+            "dropContextGroups": {
+              "description": "Specifies which groups of Object Contexts from the source object should be dropped from the destination object.",
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
             "ifGenerationMatch": {
               "description": "Makes the operation conditional on whether the object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
               "format": "int64",
@@ -4549,7 +4605,7 @@
       }
     }
   },
-  "revision": "20250925",
+  "revision": "20260204",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -5500,6 +5556,10 @@
       "description": "A Compose request.",
       "id": "ComposeRequest",
       "properties": {
+        "deleteSourceObjects": {
+          "description": "If true, the source objects will be deleted.",
+          "type": "boolean"
+        },
         "destination": {
           "$ref": "Object",
           "description": "Properties of the resulting object."
@@ -6449,6 +6509,10 @@
             }
           },
           "type": "object"
+        },
+        "destinationKmsKeyName": {
+          "description": "Resource name of a Cloud KMS key, of the form projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key. If set, is used to encrypt all objects in the destination bucket.",
+          "type": "string"
         },
         "destinationLocation": {
           "description": "The new location the bucket will be relocated to.",

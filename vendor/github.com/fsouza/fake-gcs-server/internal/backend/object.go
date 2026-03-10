@@ -15,25 +15,27 @@ import (
 
 // ObjectAttrs represents the meta-data without its contents.
 type ObjectAttrs struct {
-	BucketName         string `json:"-"`
-	Name               string `json:"-"`
-	Size               int64  `json:"-"`
-	StorageClass       string
-	ContentType        string
-	ContentEncoding    string
-	ContentDisposition string
-	ContentLanguage    string
-	CacheControl       string
-	Crc32c             string
-	Md5Hash            string
-	Etag               string
-	ACL                []storage.ACLRule
-	Metadata           map[string]string
-	Created            string
-	Deleted            string
-	Updated            string
-	CustomTime         string
-	Generation         int64
+	BucketName           string `json:"-"`
+	Name                 string `json:"-"`
+	Size                 int64  `json:"-"`
+	StorageClass         string
+	ContentType          string
+	ContentEncoding      string
+	ContentDisposition   string
+	ContentLanguage      string
+	CacheControl         string
+	Crc32c               string
+	Md5Hash              string
+	Etag                 string
+	ACL                  []storage.ACLRule
+	Metadata             map[string]string
+	Created              string
+	Deleted              string
+	Updated              string
+	CustomTime           string
+	Generation           int64
+	RetentionMode        string
+	RetentionRetainUntil string
 }
 
 // ID is used for comparing objects.

@@ -47,7 +47,6 @@ func parseTimeConfig(cfg *Config) (*ParsedConfig, error) {
 
 // Global variables for bucket and org ID (used by storage functions)
 var (
-	storageBucket      string
 	orgID              string
 	indexStoragePrefix string
 	logger             log.Logger

@@ -2,9 +2,9 @@ package redis
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/redis/go-redis/v9/internal/proto"
+	"github.com/redis/go-redis/v9/internal/util"
 )
 
 type TimeseriesCmdable interface {
@@ -96,6 +96,8 @@ const (
 	VarP
 	VarS
 	Twa
+	CountNaN
+	CountAll
 )
 
 func (a Aggregator) String() string {
@@ -128,6 +130,10 @@ func (a Aggregator) String() string {
 		return "VAR.S"
 	case Twa:
 		return "TWA"
+	case CountNaN:
+		return "COUNTNAN"
+	case CountAll:
+		return "COUNTALL"
 	default:
 		return ""
 	}
@@ -486,8 +492,9 @@ type TSTimestampValueCmd struct {
 func newTSTimestampValueCmd(ctx context.Context, args ...interface{}) *TSTimestampValueCmd {
 	return &TSTimestampValueCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeTSTimestampValue,
 		},
 	}
 }
@@ -524,13 +531,20 @@ func (cmd *TSTimestampValueCmd) readReply(rd *proto.Reader) (err error) {
 			return err
 		}
 		cmd.val.Timestamp = timestamp
-		cmd.val.Value, err = strconv.ParseFloat(value, 64)
+		cmd.val.Value, err = util.ParseStringToFloat(value)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (cmd *TSTimestampValueCmd) Clone() Cmder {
+	return &TSTimestampValueCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     cmd.val, // TSTimestampValue is a simple struct, can be copied directly
+	}
 }
 
 // TSInfo - Returns information about a time-series key.
@@ -704,8 +718,9 @@ type TSTimestampValueSliceCmd struct {
 func newTSTimestampValueSliceCmd(ctx context.Context, args ...interface{}) *TSTimestampValueSliceCmd {
 	return &TSTimestampValueSliceCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeTSTimestampValueSlice,
 		},
 	}
 }
@@ -743,13 +758,25 @@ func (cmd *TSTimestampValueSliceCmd) readReply(rd *proto.Reader) (err error) {
 			return err
 		}
 		cmd.val[i].Timestamp = timestamp
-		cmd.val[i].Value, err = strconv.ParseFloat(value, 64)
+		cmd.val[i].Value, err = util.ParseStringToFloat(value)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (cmd *TSTimestampValueSliceCmd) Clone() Cmder {
+	var val []TSTimestampValue
+	if cmd.val != nil {
+		val = make([]TSTimestampValue, len(cmd.val))
+		copy(val, cmd.val)
+	}
+	return &TSTimestampValueSliceCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     val,
+	}
 }
 
 // TSMRange - Returns a range of samples from multiple time-series keys.

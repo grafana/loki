@@ -1,8 +1,10 @@
 package parquet
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -381,18 +383,70 @@ func goTypeOfLeaf(node Node) reflect.Type {
 func goTypeOfGroup(node Node) reflect.Type {
 	fields := node.Fields()
 	structFields := make([]reflect.StructField, len(fields))
+	names := make(map[string]struct{}, len(fields))
 	for i, field := range fields {
-		structFields[i].Name = exportedStructFieldName(field.Name())
+		if strings.IndexByte(field.Name(), ',') != -1 {
+			// Ruh-roh! We cannot create a valid Go identifier, but neither can we
+			// create a valid Go struct tag for mapping a synthetic field name.
+			panic(fmt.Sprintf("schema node contains an invalid name %q: fields must not have commas in their name", field.Name()))
+		}
+		name := exportedStructFieldName(field.Name())
+		for {
+			if _, alreadyUsed := names[name]; !alreadyUsed {
+				break
+			}
+			name += "_" // add suffix to fix collision
+		}
+		names[name] = struct{}{}
+		structFields[i].Name = name
 		structFields[i].Type = field.GoType()
-		// TODO: can we reconstruct a struct tag that would be valid if a value
-		// of this type were passed to SchemaOf?
+		structFields[i].Tag = reflect.StructTag(`parquet:` + strconv.Quote(field.Name()))
 	}
 	return reflect.StructOf(structFields)
 }
 
 func exportedStructFieldName(name string) string {
 	firstRune, size := utf8.DecodeRuneInString(name)
-	return string([]rune{unicode.ToUpper(firstRune)}) + name[size:]
+	if unicode.IsUpper(firstRune) {
+		return sanitize(name)
+	}
+	upperFirstRune := unicode.ToUpper(firstRune)
+	if upperFirstRune == firstRune {
+		// First character was not a letter, so just trying to upper-case the first
+		// character won't export the field. We need to add an upper-case prefix instead.
+		return "X" + sanitize(name)
+	}
+	return string([]rune{upperFirstRune}) + sanitize(name[size:])
+}
+
+// sanitize replaces any character that are invalid in a Go identifier with "_".
+func sanitize(name string) string {
+	if isSanitized(name) {
+		// Fast path: name is fine, no need to allocate or compute anything.
+		return name
+	}
+	var newName strings.Builder
+	for _, r := range name {
+		if isValidInGoIdent(r) {
+			newName.WriteRune(r)
+		} else {
+			newName.WriteByte('_')
+		}
+	}
+	return newName.String()
+}
+
+func isSanitized(name string) bool {
+	for _, r := range name {
+		if !isValidInGoIdent(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isValidInGoIdent(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
 func isList(node Node) bool {

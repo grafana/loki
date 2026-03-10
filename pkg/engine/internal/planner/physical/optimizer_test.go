@@ -1054,4 +1054,124 @@ func Test_parallelPushdown(t *testing.T) {
 		expected := PrintAsTree(&expectedPlan)
 		require.Equal(t, expected, PrintAsTree(&plan))
 	})
+
+	t.Run("Shifts RangeAggregation with valid VectorAggregation parent", func(t *testing.T) {
+		// Input plan: VectorAgg -> RangeAgg -> Parallelize -> Scan
+		// Expected output: VectorAgg -> Parallelize -> RangeAgg -> Scan
+		var plan Plan
+		{
+			vecAgg := plan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			rangeAgg := plan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeSum})
+			parallelize := plan.graph.Add(&Parallelize{})
+			scan := plan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: rangeAgg}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+		}
+
+		opt := newOptimizer(&plan, []*optimization{
+			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
+		})
+		root, _ := plan.graph.Root()
+		opt.optimize(root)
+
+		var expectedPlan Plan
+		{
+			vecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeSum})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: rangeAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan}))
+		}
+
+		expected := PrintAsTree(&expectedPlan)
+		require.Equal(t, expected, PrintAsTree(&plan))
+	})
+}
+
+// Test_canShardAggregation tests the canShardAggregation function directly
+// to verify which vector/range aggregation combinations are safe to parallelize.
+func Test_canShardAggregation(t *testing.T) {
+	t.Run("operation combinations", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			vecOp    types.VectorAggregationType
+			rangeOp  types.RangeAggregationType
+			expected bool
+		}{
+			// Valid distributive combinations
+			{"sum over sum", types.VectorAggregationTypeSum, types.RangeAggregationTypeSum, true},
+			{"sum over count", types.VectorAggregationTypeSum, types.RangeAggregationTypeCount, true},
+			{"max over max", types.VectorAggregationTypeMax, types.RangeAggregationTypeMax, true},
+			{"min over min", types.VectorAggregationTypeMin, types.RangeAggregationTypeMin, true},
+
+			// Invalid combinations - operation mismatch
+			{"sum over max", types.VectorAggregationTypeSum, types.RangeAggregationTypeMax, false},
+			{"sum over min", types.VectorAggregationTypeSum, types.RangeAggregationTypeMin, false},
+			{"max over sum", types.VectorAggregationTypeMax, types.RangeAggregationTypeSum, false},
+			{"max over min", types.VectorAggregationTypeMax, types.RangeAggregationTypeMin, false},
+			{"min over sum", types.VectorAggregationTypeMin, types.RangeAggregationTypeSum, false},
+			{"min over max", types.VectorAggregationTypeMin, types.RangeAggregationTypeMax, false},
+
+			// Non-distributive vector aggregations
+			{"avg over sum", types.VectorAggregationTypeAvg, types.RangeAggregationTypeSum, false},
+			{"avg over count", types.VectorAggregationTypeAvg, types.RangeAggregationTypeCount, false},
+			{"count over count", types.VectorAggregationTypeCount, types.RangeAggregationTypeCount, false},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				vec := &VectorAggregation{Operation: tc.vecOp}
+				rng := &RangeAggregation{Operation: tc.rangeOp}
+				require.Equal(t, tc.expected, canShardAggregation(vec, rng))
+			})
+		}
+	})
+
+	t.Run("grouping compatibility", func(t *testing.T) {
+		t.Run("rejects without grouping", func(t *testing.T) {
+			vec := &VectorAggregation{
+				Operation: types.VectorAggregationTypeSum,
+				Grouping:  Grouping{Without: true},
+			}
+			rng := &RangeAggregation{Operation: types.RangeAggregationTypeSum}
+			require.False(t, canShardAggregation(vec, rng))
+		})
+
+		t.Run("rejects mismatched grouping columns", func(t *testing.T) {
+			vec := &VectorAggregation{
+				Operation: types.VectorAggregationTypeSum,
+				Grouping: Grouping{
+					Columns: []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: "foo"}}},
+				},
+			}
+			rng := &RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Grouping: Grouping{
+					Columns: []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: "bar"}}},
+				},
+			}
+			require.False(t, canShardAggregation(vec, rng))
+		})
+
+		t.Run("accepts matching grouping columns", func(t *testing.T) {
+			vec := &VectorAggregation{
+				Operation: types.VectorAggregationTypeSum,
+				Grouping: Grouping{
+					Columns: []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: "foo"}}},
+				},
+			}
+			rng := &RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Grouping: Grouping{
+					Columns: []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: "foo"}}},
+				},
+			}
+			require.True(t, canShardAggregation(vec, rng))
+		})
+	})
 }

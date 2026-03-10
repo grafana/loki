@@ -134,6 +134,8 @@ type Config struct {
 
 	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
 
+	DelegateStreamLimits bool `yaml:"delegate_stream_limits_enabled" doc:"description=When enabled, the ingester skips stream count limit checks, delegating them entirely to the ingest-limits service (Thor). Requires ingest-limits service to be enabled."`
+
 	KafkaIngestion KafkaIngestionConfig `yaml:"kafka_ingestion,omitempty"`
 }
 
@@ -164,6 +166,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
+	f.BoolVar(&cfg.DelegateStreamLimits, "ingester.delegate-stream-limits-enabled", false, "When enabled, the ingester skips stream count limit checks, delegating them entirely to the ingest-limits service (Thor). Requires ingest-limits service to be enabled.")
 }
 
 func (cfg *Config) Validate() error {

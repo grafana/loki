@@ -47,6 +47,7 @@ type GetIndexesResponse struct {
 type IndexSectionsReaderRequest struct {
 	IndexPath       string
 	SectionsRequest SectionsRequest
+	PrefetchBytes   int64
 }
 
 type IndexSectionsReaderResponse struct {

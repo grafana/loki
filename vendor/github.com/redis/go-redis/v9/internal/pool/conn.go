@@ -69,8 +69,9 @@ type Conn struct {
 	// Connection identifier for unique tracking
 	id uint64
 
-	usedAt    atomic.Int64
-	lastPutAt atomic.Int64
+	usedAt      atomic.Int64
+	lastPutAt   atomic.Int64
+	dialStartNs atomic.Int64 // Time when dial started (for connection create time metric)
 
 	// Lock-free netConn access using atomic.Value
 	// Contains *atomicNetConn wrapper, accessed atomically for better performance
@@ -104,6 +105,7 @@ type Conn struct {
 	closed    atomic.Bool
 	createdAt time.Time
 	expiresAt time.Time
+	poolName  string // Name of the pool this connection belongs to (for metrics)
 
 	// maintenanceNotifications upgrade support: relaxed timeouts during migrations/failovers
 
@@ -182,6 +184,24 @@ func (cn *Conn) LastPutAtNs() int64 {
 }
 func (cn *Conn) SetLastPutAtNs(ns int64) {
 	cn.lastPutAt.Store(ns)
+}
+
+// GetDialStartNs returns the time when the dial started (in nanoseconds since epoch).
+// This is used to calculate the full connection creation time (TCP + handshake).
+func (cn *Conn) GetDialStartNs() int64 {
+	return cn.dialStartNs.Load()
+}
+
+// PoolName returns the name of the pool this connection belongs to.
+// This is used for metrics to identify which pool a connection is from.
+func (cn *Conn) PoolName() string {
+	return cn.poolName
+}
+
+// SetPoolName sets the name of the pool this connection belongs to.
+// This should be called when the connection is added to a pool.
+func (cn *Conn) SetPoolName(name string) {
+	cn.poolName = name
 }
 
 // Backward-compatible wrapper methods for state machine
@@ -418,6 +438,8 @@ func (cn *Conn) IsPubSub() bool {
 // SetRelaxedTimeout sets relaxed timeouts for this connection during maintenanceNotifications upgrades.
 // These timeouts will be used for all subsequent commands until the deadline expires.
 // Uses atomic operations for lock-free access.
+// Note: Metrics should be recorded by the caller (notification handler) which has context about
+// the notification type and pool name.
 func (cn *Conn) SetRelaxedTimeout(readTimeout, writeTimeout time.Duration) {
 	cn.relaxedCounter.Add(1)
 	cn.relaxedReadTimeoutNs.Store(int64(readTimeout))
@@ -452,6 +474,11 @@ func (cn *Conn) clearRelaxedTimeout() {
 	cn.relaxedWriteTimeoutNs.Store(0)
 	cn.relaxedDeadlineNs.Store(0)
 	cn.relaxedCounter.Store(0)
+
+	// Note: Metrics for timeout unrelaxing are not recorded here because we don't have
+	// context about which notification type or pool triggered the relaxation.
+	// In practice, relaxed timeouts expire automatically via deadline, so explicit
+	// unrelaxing metrics are less critical than the initial relaxation metrics.
 }
 
 // HasRelaxedTimeout returns true if relaxed timeouts are currently active on this connection.

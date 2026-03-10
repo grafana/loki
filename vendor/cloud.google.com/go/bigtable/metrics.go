@@ -201,6 +201,9 @@ type builtinMetricsTracerFactory struct {
 	// do not change across different function calls on client
 	clientAttributes []attribute.KeyValue
 
+	// otelMeterProvider
+	otelMeterProvider metric.MeterProvider
+
 	operationLatencies      metric.Float64Histogram
 	serverLatencies         metric.Float64Histogram
 	attemptLatencies        metric.Float64Histogram
@@ -266,6 +269,7 @@ func newBuiltinMetricsTracerFactory(ctx context.Context, project, instance, appP
 	// the error from newOtelMetricsContext is silently ignored since metrics are not critical to client creation.
 	if err == nil {
 		tracerFactory.clientOpts = otelContext.clientOpts
+		tracerFactory.otelMeterProvider = otelContext.otelMeterProvider
 	}
 	tracerFactory.shutdown = func() {
 		if otelContext != nil {

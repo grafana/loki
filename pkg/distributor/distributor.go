@@ -308,7 +308,7 @@ func New(
 		)
 
 		if cfg.DataObjTeeConfig.Enabled {
-			resolver := NewSegmentationPartitionResolver(
+			resolver := newSegmentationPartitionResolver(
 				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
 				dataObjConsumerPartitionRing,
 				registerer,

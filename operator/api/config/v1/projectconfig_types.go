@@ -173,6 +173,11 @@ type ControllerMetrics struct {
 	// It can be set to "0" to disable the metrics serving.
 	// +optional
 	BindAddress string `json:"bindAddress,omitempty"`
+
+	// Secure is the flag used to enable/disable TLS authentication to
+	// access the metrics endpoint
+	// +optional
+	Secure bool `json:"secure,omitempty"`
 }
 
 // ControllerHealth defines the health configs.

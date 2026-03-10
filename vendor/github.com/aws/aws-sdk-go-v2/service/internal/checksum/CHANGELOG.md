@@ -1,3 +1,11 @@
+# v1.9.10 (2026-02-26)
+
+* **Bug Fix**: Allow sending unkown checksum values if the value is precalculated on the input request
+
+# v1.9.9 (2026-02-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.9.8 (2026-01-09)
 
 * **Dependency Update**: Updated to the latest SDK module versions
