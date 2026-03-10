@@ -76,7 +76,11 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		return errorPipeline(ctx, err)
 	}
 
-	return c.execute(ctx, node)
+	pipeline := c.execute(ctx, node)
+	if c.batchSize > 0 {
+		pipeline = NewBatchingPipeline(pipeline, c.batchSize)
+	}
+	return pipeline
 }
 
 // Context is the execution context
