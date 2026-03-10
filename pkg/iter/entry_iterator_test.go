@@ -922,3 +922,41 @@ func TestDedupeMergeEntryIterator(t *testing.T) {
 		require.Equal(t, []string{"0", "2", "1", "3"}, lines)
 	}
 }
+
+func TestMergeIteratorNoDedupDifferentStructuredMetadata(t *testing.T) {
+	// Entries with the same timestamp and line but different structured metadata
+	// must NOT be deduplicated — they are distinct entries.
+	const labels = `{app="foo"}`
+	ts := time.Unix(1, 0)
+	line := "same message"
+
+	entry1 := logproto.Entry{
+		Timestamp:          ts,
+		Line:               line,
+		StructuredMetadata: []logproto.LabelAdapter{{Name: "trace_id", Value: "aaa"}},
+	}
+	entry2 := logproto.Entry{
+		Timestamp:          ts,
+		Line:               line,
+		StructuredMetadata: []logproto.LabelAdapter{{Name: "trace_id", Value: "bbb"}},
+	}
+
+	it := NewMergeEntryIterator(context.Background(),
+		[]EntryIterator{
+			NewStreamIterator(logproto.Stream{Labels: labels, Hash: hashLabels(labels), Entries: []logproto.Entry{entry1}}),
+			NewStreamIterator(logproto.Stream{Labels: labels, Hash: hashLabels(labels), Entries: []logproto.Entry{entry2}}),
+		}, logproto.FORWARD)
+
+	var got []logproto.Entry
+	for it.Next() {
+		got = append(got, it.At())
+	}
+	require.NoError(t, it.Err())
+
+	require.Len(t, got, 2, "entries with different structured metadata must not be deduplicated")
+	require.Equal(t, ts, got[0].Timestamp)
+	require.Equal(t, line, got[0].Line)
+	require.Equal(t, ts, got[1].Timestamp)
+	require.Equal(t, line, got[1].Line)
+	require.NotEqual(t, got[0].StructuredMetadata, got[1].StructuredMetadata)
+}
