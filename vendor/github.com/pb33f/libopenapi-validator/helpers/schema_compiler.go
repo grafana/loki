@@ -207,6 +207,26 @@ func transformNullableSchema(schema map[string]interface{}) map[string]interface
 		schema["oneOf"] = oneOfSlice
 	}
 
+	// Handle enum values - add null if nullable but not already in enum
+	enum, hasEnum := schema["enum"]
+	if hasEnum {
+		if enumSlice, ok := enum.([]interface{}); ok {
+			// Check if null is already in enum
+			hasNull := false
+			for _, v := range enumSlice {
+				if v == nil {
+					hasNull = true
+					break
+				}
+			}
+			// Add null if not present
+			if !hasNull {
+				enumSlice = append(enumSlice, nil)
+				schema["enum"] = enumSlice
+			}
+		}
+	}
+
 	return schema
 }
 

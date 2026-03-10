@@ -255,7 +255,11 @@ func (c *DefaultClient) GetDetectedFields(
 	qsb.SetInt("line_limit", int64(lineLimit))
 	qsb.SetInt("start", start.UnixNano())
 	qsb.SetInt("end", end.UnixNano())
-	qsb.SetString("step", step.String())
+	// The step is optional, so we only set it if provided,
+	// otherwise we leverage the API defaults.
+	if step != 0 {
+		qsb.SetString("step", step.String())
+	}
 
 	var err error
 	var r loghttp.DetectedFieldsResponse

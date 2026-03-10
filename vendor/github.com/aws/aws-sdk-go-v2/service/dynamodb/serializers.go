@@ -7348,6 +7348,11 @@ func awsAwsjson10_serializeOpDocumentUpdateTableInput(v *UpdateTableInput, value
 		}
 	}
 
+	if len(v.GlobalTableSettingsReplicationMode) > 0 {
+		ok := object.Key("GlobalTableSettingsReplicationMode")
+		ok.String(string(v.GlobalTableSettingsReplicationMode))
+	}
+
 	if v.GlobalTableWitnessUpdates != nil {
 		ok := object.Key("GlobalTableWitnessUpdates")
 		if err := awsAwsjson10_serializeDocumentGlobalTableWitnessGroupUpdateList(v.GlobalTableWitnessUpdates, ok); err != nil {

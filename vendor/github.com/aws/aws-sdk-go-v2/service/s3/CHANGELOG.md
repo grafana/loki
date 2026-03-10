@@ -1,3 +1,11 @@
+# v1.96.2 (2026-02-26)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.96.1 (2026-02-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.96.0 (2026-01-28)
 
 * **Feature**: Adds support for the UpdateObjectEncryption API to change the server-side encryption type of objects in general purpose buckets.

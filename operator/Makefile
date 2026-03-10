@@ -259,7 +259,8 @@ OLM_VERSION ?= $(DEV_VERSION)
 # Build and push the bundle image to a container registry.
 .PHONY: olm-deploy-bundle
 olm-deploy-bundle:
-	$(MAKE) bundle bundle-build oci-push VERSION=$(OLM_VERSION) IMG=$(OLM_BUNDLE_IMG)
+	$(MAKE) bundle bundle-build VERSION=$(OLM_VERSION)
+	$(MAKE) oci-push IMG=$(OLM_BUNDLE_IMG)
 
 # Build and push the operator image to a container registry.
 .PHONY: olm-deploy-operator

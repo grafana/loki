@@ -17,19 +17,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
-
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	logutil "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-const (
-	unknownUser      = "unknown"
-	unknownQueryType = "unknown"
-)
+const unknown = "unknown"
 
 // Manager defines the interface for Goldfish manager operations.
 type Manager interface {
@@ -54,11 +52,12 @@ type manager struct {
 }
 
 type metrics struct {
-	sampledQueries     prometheus.Counter
-	comparisonResults  *prometheus.CounterVec
-	samplingDecisions  *prometheus.CounterVec
-	storageOperations  *prometheus.CounterVec
-	comparisonDuration prometheus.Histogram
+	sampledQueries          prometheus.Counter
+	comparisonResults       *prometheus.CounterVec
+	comparisonMismatchCause *prometheus.CounterVec
+	samplingDecisions       *prometheus.CounterVec
+	storageOperations       *prometheus.CounterVec
+	comparisonDuration      prometheus.Histogram
 }
 
 // NewManager creates a new Goldfish manager with the provided configuration.
@@ -81,8 +80,12 @@ func NewManager(config Config, storage goldfish.Storage, resultStore ResultStore
 			}),
 			comparisonResults: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 				Name: "goldfish_comparison_results_total",
-				Help: "Total number of comparison results by status",
-			}, []string{"status"}),
+				Help: "Total number of comparison results by status and query type",
+			}, []string{"status", "query_type"}),
+			comparisonMismatchCause: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+				Name: "goldfish_comparison_mismatch_cause_total",
+				Help: "Total number of comparison mismatches by query type and cause",
+			}, []string{"query_type", "cause"}),
 			samplingDecisions: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 				Name: "goldfish_sampling_decisions_total",
 				Help: "Total number of sampling decisions",
@@ -169,15 +172,17 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 
 	correlationID := uuid.New().String()
 	tenantID := extractTenant(req)
-	queryType := getQueryType(req.URL.Path)
+	queryType := getQueryType(req.URL.Path, req.FormValue("query"))
 
-	level.Info(m.logger).Log("msg", "Processing query pair in Goldfish",
+	logger := logutil.WithContext(req.Context(), m.logger)
+
+	level.Info(logger).Log("msg", "Processing query pair in Goldfish",
 		"correlation_id", correlationID,
 		"tenant", tenantID,
 		"query_type", queryType)
 
-	startTime := parseTime(req.URL.Query().Get("start"))
-	endTime := parseTime(req.URL.Query().Get("end"))
+	startTime := parseTime(req.FormValue("start"))
+	endTime := parseTime(req.FormValue("end"))
 
 	// If we couldn't parse the times, use current time as a fallback for MySQL compatibility
 	if startTime.IsZero() {
@@ -195,11 +200,11 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 		User:               ExtractUserFromQueryTags(req),
 		Issuer:             detectIssuer(req),
 		IsLogsDrilldown:    isLogsDrilldownRequest(req),
-		Query:              req.URL.Query().Get("query"),
+		Query:              req.FormValue("query"),
 		QueryType:          queryType,
 		StartTime:          startTime,
 		EndTime:            endTime,
-		Step:               parseDuration(req.URL.Query().Get("step")),
+		Step:               parseDuration(req.FormValue("step")),
 		CellAStats:         cellAResp.Stats,
 		CellBStats:         cellBResp.Stats,
 		CellAResponseHash:  cellAResp.Hash,
@@ -220,10 +225,17 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 	m.metrics.sampledQueries.Inc()
 
 	comparisonStart := time.Now()
-	result := CompareResponses(sample, cellAResp, cellBResp, m.config.PerformanceTolerance, m.responseComparator, m.logger)
+	result := CompareResponses(sample, cellAResp, cellBResp, m.config.PerformanceTolerance, m.responseComparator, logger)
 
 	m.metrics.comparisonDuration.Observe(time.Since(comparisonStart).Seconds())
-	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus)).Inc()
+	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus), queryType).Inc()
+	if result.ComparisonStatus == goldfish.ComparisonStatusMismatch {
+		mismatchCause := comparator.CauseUnknown
+		if result.MismatchCause != "" {
+			mismatchCause = result.MismatchCause
+		}
+		m.metrics.comparisonMismatchCause.WithLabelValues(queryType, mismatchCause).Inc()
+	}
 
 	// Persist raw payloads when configured
 	var persistedA, persistedB *StoredResult
@@ -246,7 +258,7 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 
 	if m.storage != nil {
 		if err := m.storage.StoreQuerySample(ctx, sample, &result); err != nil {
-			level.Error(m.logger).Log("msg", "failed to store query sample", "correlation_id", correlationID, "err", err)
+			level.Error(logger).Log("msg", "failed to store query sample", "correlation_id", correlationID, "err", err)
 			m.metrics.storageOperations.WithLabelValues("store_sample", "error").Inc()
 		} else {
 			m.metrics.storageOperations.WithLabelValues("store_sample", "success").Inc()
@@ -256,8 +268,8 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 
 	// Log user extraction debug info
 	user := sample.User
-	if user != "" && user != unknownUser {
-		level.Info(m.logger).Log("msg", "captured user info", "correlation_id", correlationID, "user", user)
+	if user != "" && user != unknown {
+		level.Info(logger).Log("msg", "captured user info", "correlation_id", correlationID, "user", user)
 	}
 
 	// Log comparison results with stats
@@ -271,13 +283,22 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 		"correlation_id", correlationID,
 		"tenant", sample.TenantID,
 		"query_type", sample.QueryType,
+		"query", sample.Query,
+		"start_time", sample.StartTime.UnixNano(),
+		"end_time", sample.EndTime.UnixNano(),
 		"comparison_status", result.ComparisonStatus,
 		"cell_a_exec_time_ms", sample.CellAStats.ExecTimeMs,
 		"cell_b_exec_time_ms", sample.CellBStats.ExecTimeMs,
 		"cell_a_bytes_processed", sample.CellAStats.BytesProcessed,
 		"cell_b_bytes_processed", sample.CellBStats.BytesProcessed,
+		"cell_a_lines_processed", sample.CellAStats.LinesProcessed,
+		"cell_b_lines_processed", sample.CellBStats.LinesProcessed,
 		"cell_a_entries_returned", sample.CellAStats.TotalEntriesReturned,
 		"cell_b_entries_returned", sample.CellBStats.TotalEntriesReturned,
+	}
+
+	if result.ComparisonStatus == goldfish.ComparisonStatusMismatch && result.MismatchCause != "" {
+		logFields = append(logFields, "mismatch_cause", result.MismatchCause)
 	}
 
 	if persistedA != nil {
@@ -312,13 +333,13 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 		}
 	}
 
-	logLevel(m.logger).Log(logFields...)
+	logLevel(logger).Log(logFields...)
 
 	// Log specific performance differences if significant
 	if execTimeVar, ok := result.DifferenceDetails["exec_time_variance"]; ok {
 		if variance, ok := execTimeVar.(map[string]any); ok {
 			if ratio, ok := variance["ratio"].(float64); ok && (ratio > 2.0 || ratio < 0.5) {
-				level.Info(m.logger).Log(
+				level.Info(logger).Log(
 					"msg", "significant execution time difference detected",
 					"correlation_id", correlationID,
 					"cell_a_ms", variance["cell_a_ms"],
@@ -332,7 +353,7 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 	// Store comparison result only if the sample was stored successfully
 	if m.storage != nil && sampleStored {
 		if err := m.storage.StoreComparisonResult(ctx, &result); err != nil {
-			level.Error(m.logger).Log("msg", "failed to store comparison result", "correlation_id", correlationID, "err", err)
+			level.Error(logger).Log("msg", "failed to store comparison result", "correlation_id", correlationID, "err", err)
 			m.metrics.storageOperations.WithLabelValues("store_result", "error").Inc()
 		} else {
 			m.metrics.storageOperations.WithLabelValues("store_result", "success").Inc()
@@ -492,21 +513,41 @@ func extractTenant(r *http.Request) string {
 	return tenant
 }
 
-func getQueryType(path string) string {
-	switch path {
-	case "/loki/api/v1/query_range":
-		return "query_range"
-	case "/loki/api/v1/query":
-		return "query"
-	case "/loki/api/v1/series":
-		return "series"
-	case "/loki/api/v1/labels":
-		return "labels"
-	case "/loki/api/v1/label":
-		return "label_values"
-	default:
-		return unknownQueryType
+func getQueryType(path, query string) string {
+	isQueryRoute := path == constants.PathLokiQueryRange || path == constants.PathLokiQuery || path == constants.PathPromQuery
+	if isQueryRoute {
+		if query == "" {
+			return unknown
+		}
+		expr, err := syntax.ParseExpr(query)
+		if err != nil {
+			return unknown
+		}
+		qt, err := logql.QueryType(expr)
+		if err != nil || qt == "" {
+			return unknown
+		}
+		return qt
 	}
+	if path == constants.PathLokiSeries || path == constants.PathPromSeries {
+		return logql.QueryTypeSeries
+	}
+	if path == constants.PathLokiLabels || path == constants.PathLokiLabel || path == constants.PathPromLabel {
+		return logql.QueryTypeLabels
+	}
+	if strings.HasPrefix(path, constants.PathPromLabelPrefix) && strings.HasSuffix(path, constants.PathPromLabelSuffix) {
+		return logql.QueryTypeLabels
+	}
+	if path == constants.PathLokiIndexStats {
+		return logql.QueryTypeStats
+	}
+	if path == constants.PathLokiIndexShards {
+		return logql.QueryTypeShards
+	}
+	if path == constants.PathLokiIndexVolume || path == constants.PathLokiIndexVolumeRange {
+		return logql.QueryTypeVolume
+	}
+	return unknown
 }
 
 func parseTime(s string) time.Time {
@@ -562,7 +603,7 @@ func ExtractUserFromQueryTags(req *http.Request) string {
 		return grafanaUser
 	}
 
-	return unknownUser
+	return unknown
 }
 
 // detectIssuer determines the source of the query based on the User-Agent header
@@ -570,7 +611,7 @@ func detectIssuer(req *http.Request) string {
 	if strings.HasPrefix(req.Header.Get("User-Agent"), "loki-canary") {
 		return "loki-canary"
 	}
-	return "unknown"
+	return unknown
 }
 
 // isLogsDrilldownRequest checks if the request comes from Logs Drilldown by examining the X-Query-Tags header

@@ -7,8 +7,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/grafana/loki/v3/pkg/logql/bench"
 	"github.com/grafana/loki/v3/pkg/logql/bench/cmd/bench/views"
@@ -68,7 +68,7 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			if m.currentView == views.ListID && m.listView.FilterState() != list.Filtering {
@@ -134,16 +134,20 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m mainModel) View() string {
+func (m mainModel) View() tea.View {
+	var content string
 	switch m.currentView {
 	case views.ListID:
-		return m.listView.View()
+		content = m.listView.View()
 	case views.RunID:
-		return m.runView.View()
+		content = m.runView.View()
 	default:
 		log.Printf("Main: Unknown view ID: %d", m.currentView)
-		return "Unknown view"
+		content = "Unknown view"
 	}
+	v := tea.NewView(content)
+	v.AltScreen = true
+	return v
 }
 
 // loadBenchmarks loads available benchmarks
@@ -214,10 +218,7 @@ func main() {
 	case "list":
 		listBenchmarks()
 	case "run":
-		p := tea.NewProgram(
-			initialModel(),
-			tea.WithAltScreen(),
-		)
+		p := tea.NewProgram(initialModel())
 		views.SetProgram(p) // Set global program reference for message sending
 		if _, err := p.Run(); err != nil {
 			fmt.Printf("Error running UI: %v\n", err)

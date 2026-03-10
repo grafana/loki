@@ -1080,8 +1080,8 @@ type ContainerDefinition struct {
 	//
 	//   - Images in Amazon ECR repositories can be specified by either using the full
 	//   registry/repository:tag or registry/repository@digest . For example,
-	//   012345678910.dkr.ecr..amazonaws.com/:latest or
-	//   012345678910.dkr.ecr..amazonaws.com/@sha256:94afd1f2e64d908bc90dbca0035a5b567EXAMPLE
+	//   012345678910.dkr.ecr.<region-name>.amazonaws.com/<repository-name>:latest or
+	//   012345678910.dkr.ecr.<region-name>.amazonaws.com/<repository-name>@sha256:94afd1f2e64d908bc90dbca0035a5b567EXAMPLE
 	//   .
 	//
 	//   - Images in official repositories on Docker Hub use a single name (for
@@ -2463,10 +2463,10 @@ type EBSTagSpecification struct {
 	// This member is required.
 	ResourceType EBSResourceType
 
-	// Determines whether to propagate the tags from the task definition to  the
-	// Amazon EBS volume. Tags can only propagate to a SERVICE specified in
+	// Determines whether to propagate the tags from the task definition to the Amazon
+	// EBS volume. Tags can only propagate to a SERVICE specified in
 	// ServiceVolumeConfiguration . If no value is specified, the tags aren't
-	//  propagated.
+	// propagated.
 	PropagateTags PropagateTags
 
 	// The tags applied to this Amazon EBS volume. AmazonECSCreated and
@@ -6165,7 +6165,7 @@ type ServiceManagedEBSVolumeConfiguration struct {
 	// snapshot was created. If there is a filesystem type mismatch, the tasks will
 	// fail to start.
 	//
-	// The available Linux filesystem types are  ext3 , ext4 , and xfs . If no value is
+	// The available Linux filesystem types are ext3 , ext4 , and xfs . If no value is
 	// specified, the xfs filesystem type is used by default.
 	//
 	// The available Windows filesystem types are NTFS .
@@ -6990,9 +6990,9 @@ type TaskDefinition struct {
 	//
 	// For Amazon ECS tasks on Fargate, the awsvpc network mode is required. For
 	// Amazon ECS tasks on Amazon EC2 Linux instances, any network mode can be used.
-	// For Amazon ECS tasks on Amazon EC2 Windows instances, or awsvpc can be used. If
-	// the network mode is set to none , you cannot specify port mappings in your
-	// container definitions, and the tasks containers do not have external
+	// For Amazon ECS tasks on Amazon EC2 Windows instances, <default> or awsvpc can
+	// be used. If the network mode is set to none , you cannot specify port mappings
+	// in your container definitions, and the tasks containers do not have external
 	// connectivity. The host and awsvpc network modes offer the highest networking
 	// performance for containers because they use the EC2 network stack instead of the
 	// virtualized network stack provided by the bridge mode.
@@ -7154,7 +7154,7 @@ type TaskEphemeralStorage struct {
 	KmsKeyId *string
 
 	// The total amount, in GiB, of the ephemeral storage to set for the task. The
-	// minimum supported value is 20 GiB and the maximum supported value is  200 GiB.
+	// minimum supported value is 20 GiB and the maximum supported value is 200 GiB.
 	SizeInGiB int32
 
 	noSmithyDocumentSerde
@@ -7190,7 +7190,7 @@ type TaskManagedEBSVolumeConfiguration struct {
 	// snapshot was created. If there is a filesystem type mismatch, the task will fail
 	// to start.
 	//
-	// The available filesystem types are  ext3 , ext4 , and xfs . If no value is
+	// The available filesystem types are ext3 , ext4 , and xfs . If no value is
 	// specified, the xfs filesystem type is used by default.
 	FilesystemType TaskFilesystemType
 
@@ -7320,10 +7320,10 @@ type TaskManagedEBSVolumeConfiguration struct {
 type TaskManagedEBSVolumeTerminationPolicy struct {
 
 	// Indicates whether the volume should be deleted on when the task stops. If a
-	// value of true is specified,  Amazon ECS deletes the Amazon EBS volume on your
+	// value of true is specified, Amazon ECS deletes the Amazon EBS volume on your
 	// behalf when the task goes into the STOPPED state. If no value is specified, the
-	//  default value is true is used. When set to false , Amazon ECS leaves the volume
-	// in your  account.
+	// default value is true is used. When set to false , Amazon ECS leaves the volume
+	// in your account.
 	//
 	// This member is required.
 	DeleteOnTermination *bool
@@ -7844,7 +7844,7 @@ type VpcLatticeConfiguration struct {
 	PortName *string
 
 	// The ARN of the IAM role to associate with this VPC Lattice configuration. This
-	// is the Amazon ECS  infrastructure IAM role that is used to manage your VPC
+	// is the Amazon ECS infrastructure IAM role that is used to manage your VPC
 	// Lattice infrastructure.
 	//
 	// This member is required.

@@ -275,7 +275,7 @@ type HeaderMutationRulesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HeaderMutationRulesMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -501,7 +501,7 @@ type HeaderMutationMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HeaderMutationMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -643,7 +643,7 @@ type HeaderMutation_RemoveOnMatchMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HeaderMutation_RemoveOnMatchMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

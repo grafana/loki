@@ -8,7 +8,6 @@ import (
 	"hash/maphash"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
@@ -16,6 +15,8 @@ import (
 	"github.com/pb33f/libopenapi/utils"
 	"go.yaml.in/yaml/v4"
 )
+
+var buildPathItemOperationModel = low.BuildModel
 
 // PathItem represents a low-level Swagger / OpenAPI 2 PathItem object.
 //
@@ -56,9 +57,6 @@ func (p *PathItem) Build(ctx context.Context, _, root *yaml.Node, idx *index.Spe
 	skip := false
 	var currentNode *yaml.Node
 
-	var wg sync.WaitGroup
-	var errors []error
-
 	var ops []low.NodeReference[*Operation]
 
 	// extract parameters
@@ -75,7 +73,7 @@ func (p *PathItem) Build(ctx context.Context, _, root *yaml.Node, idx *index.Spe
 	}
 
 	for i, pathNode := range root.Content {
-		if strings.HasPrefix(strings.ToLower(pathNode.Value), "x-") {
+		if len(pathNode.Value) >= 2 && (pathNode.Value[0] == 'x' || pathNode.Value[0] == 'X') && pathNode.Value[1] == '-' {
 			skip = true
 			continue
 		}
@@ -115,10 +113,9 @@ func (p *PathItem) Build(ctx context.Context, _, root *yaml.Node, idx *index.Spe
 		}
 
 		var op Operation
-
-		wg.Add(1)
-
-		low.BuildModelAsync(pathNode, &op, &wg, &errors)
+		if err := buildPathItemOperationModel(pathNode, &op); err != nil {
+			return err
+		}
 
 		opRef := low.NodeReference[*Operation]{
 			Value:     &op,
@@ -176,11 +173,6 @@ func (p *PathItem) Build(ctx context.Context, _, root *yaml.Node, idx *index.Spe
 		case <-opBuildChan:
 			n++
 		}
-	}
-
-	// make sure we don't exit before the path is finished building.
-	if len(ops) > 0 {
-		wg.Wait()
 	}
 
 	return nil

@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/labels"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -21,6 +23,28 @@ import (
 // This distinguishes data mismatches from operational failures (parsing errors, backend failures).
 var ErrComparisonMismatch = errors.New("comparison mismatch")
 
+// Mismatch cause constants for categorising comparison failures.
+const (
+	CauseNoMismatch                      = ""
+	CauseStatusMismatch                  = "status_mismatch"
+	CauseResultTypeMismatch              = "result_type_mismatch"
+	CauseMetricCountMismatch             = "metric_count_mismatch"
+	CauseMetricMissing                   = "metric_missing"
+	CauseSampleCountMismatch             = "sample_count_mismatch"
+	CauseSampleValueMismatch             = "sample_value_mismatch"
+	CauseSampleTimestampMismatch         = "sample_timestamp_mismatch"
+	CauseStreamCountMismatch             = "stream_count_mismatch"
+	CauseStreamMissing                   = "stream_missing"
+	CauseStreamEntryCountMismatch        = "stream_entry_count_mismatch"
+	CauseStreamTimestampMismatch         = "stream_timestamp_mismatch"
+	CauseStreamLineMismatch              = "stream_line_mismatch"
+	CauseStructuredMetadataCountMismatch = "structured_metadata_count_mismatch"
+	CauseStructuredMetadataMismatch      = "structured_metadata_mismatch"
+	CauseParsedLabelsCountMismatch       = "parsed_labels_count_mismatch"
+	CauseParsedLabelsMismatch            = "parsed_labels_mismatch"
+	CauseUnknown                         = "unknown"
+)
+
 type ResponsesComparator interface {
 	Compare(expected, actual []byte, queryEvaluationTime time.Time) (*ComparisonSummary, error)
 }
@@ -28,6 +52,8 @@ type ResponsesComparator interface {
 type ComparisonSummary struct {
 	Skipped        bool
 	MissingMetrics int
+	// MismatchCause is set when comparison fails with ErrComparisonMismatch.
+	MismatchCause string
 }
 
 // SamplesComparatorFunc helps with comparing different types of samples coming from /api/v1/query and /api/v1/query_range routes.
@@ -97,11 +123,11 @@ func (s *SamplesComparator) Compare(expectedResponse, actualResponse []byte, eva
 	}
 
 	if expected.Status != actual.Status {
-		return nil, fmt.Errorf("expected status %s but got %s: %w", expected.Status, actual.Status, ErrComparisonMismatch)
+		return &ComparisonSummary{MismatchCause: CauseStatusMismatch}, fmt.Errorf("expected status %s but got %s: %w", expected.Status, actual.Status, ErrComparisonMismatch)
 	}
 
 	if expected.Data.ResultType != actual.Data.ResultType {
-		return nil, fmt.Errorf("expected resultType %s but got %s: %w", expected.Data.ResultType, actual.Data.ResultType, ErrComparisonMismatch)
+		return &ComparisonSummary{MismatchCause: CauseResultTypeMismatch}, fmt.Errorf("expected resultType %s but got %s: %w", expected.Data.ResultType, actual.Data.ResultType, ErrComparisonMismatch)
 	}
 
 	comparator, ok := s.sampleTypesComparator[expected.Data.ResultType]
@@ -141,7 +167,7 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 
 	if len(expected) != len(actual) {
 		// TODO: log the missing metrics
-		return nil, fmt.Errorf("expected %d metrics but got %d: %w", len(expected),
+		return &ComparisonSummary{MismatchCause: CauseMetricCountMismatch}, fmt.Errorf("expected %d metrics but got %d: %w", len(expected),
 			len(actual), ErrComparisonMismatch)
 	}
 
@@ -153,21 +179,21 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 	for _, expectedMetric := range expected {
 		actualMetricIndex, ok := metricFingerprintToIndexMap[expectedMetric.Metric.Fingerprint()]
 		if !ok {
-			return nil, fmt.Errorf("expected metric %s missing from actual response: %w", expectedMetric.Metric, ErrComparisonMismatch)
+			return &ComparisonSummary{MismatchCause: CauseMetricMissing}, fmt.Errorf("expected metric %s missing from actual response: %w", expectedMetric.Metric, ErrComparisonMismatch)
 		}
 
 		actualMetric := actual[actualMetricIndex]
 
-		err := compareMatrixSamples(expectedMetric, actualMetric, opts)
+		cause, err := compareMatrixSamples(expectedMetric, actualMetric, opts)
 		if err != nil {
-			return nil, fmt.Errorf("%w\nExpected result for series:\n%v\n\nActual result for series:\n%v", err, expectedMetric, actualMetric)
+			return &ComparisonSummary{MismatchCause: cause}, fmt.Errorf("%w\nExpected result for series:\n%v\n\nActual result for series:\n%v", err, expectedMetric, actualMetric)
 		}
 	}
 
 	return nil, nil
 }
 
-func compareMatrixSamples(expected, actual *model.SampleStream, opts SampleComparisonOptions) error {
+func compareMatrixSamples(expected, actual *model.SampleStream, opts SampleComparisonOptions) (cause string, err error) {
 	expectedEntriesCount := len(expected.Values)
 	actualEntriesCount := len(actual.Values)
 
@@ -180,17 +206,17 @@ func compareMatrixSamples(expected, actual *model.SampleStream, opts SampleCompa
 				"oldest-actual-ts", actual.Values[0].Timestamp,
 				"newest-actual-ts", actual.Values[actualEntriesCount-1].Timestamp)
 		}
-		return err
+		return CauseSampleCountMismatch, err
 	}
 
 	for i := range expected.Values {
-		err := compareSamplePair(expected.Values[i], actual.Values[i], opts)
+		cause, err := compareSamplePair(expected.Values[i], actual.Values[i], opts)
 		if err != nil {
-			return fmt.Errorf("float sample pair does not match for metric %s: %w", expected.Metric, err)
+			return cause, fmt.Errorf("float sample pair does not match for metric %s: %w", expected.Metric, err)
 		}
 	}
 
-	return nil
+	return CauseNoMismatch, nil
 }
 
 func filterSamplesOutsideWindow(matrix model.Matrix, skipSample func(time.Time) bool) model.Matrix {
@@ -251,7 +277,7 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 	}
 
 	if len(expected) != len(actual) {
-		return nil, fmt.Errorf("expected %d metrics but got %d: %w", len(expected),
+		return &ComparisonSummary{MismatchCause: CauseMetricCountMismatch}, fmt.Errorf("expected %d metrics but got %d: %w", len(expected),
 			len(actual), ErrComparisonMismatch)
 	}
 
@@ -270,7 +296,7 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 
 		// TODO: collect errors instead of returning.
 		actualMetric := actual[actualMetricIndex]
-		err := compareSamplePair(model.SamplePair{
+		cause, err := compareSamplePair(model.SamplePair{
 			Timestamp: expectedMetric.Timestamp,
 			Value:     expectedMetric.Value,
 		}, model.SamplePair{
@@ -278,7 +304,7 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 			Value:     actualMetric.Value,
 		}, opts)
 		if err != nil {
-			return nil, fmt.Errorf("sample pair not matching for metric %s: %w", expectedMetric.Metric, err)
+			return &ComparisonSummary{MismatchCause: cause}, fmt.Errorf("sample pair not matching for metric %s: %w", expectedMetric.Metric, err)
 		}
 	}
 
@@ -290,10 +316,10 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 			}
 			b.WriteString(m.String())
 		}
-		err = fmt.Errorf("expected metric(s) [%s] missing from actual response: %w", b.String(), ErrComparisonMismatch)
+		return &ComparisonSummary{MissingMetrics: len(missingMetrics), MismatchCause: CauseMetricMissing}, fmt.Errorf("expected metric(s) [%s] missing from actual response: %w", b.String(), ErrComparisonMismatch)
 	}
 
-	return &ComparisonSummary{MissingMetrics: len(missingMetrics)}, err
+	return nil, nil
 }
 
 func compareScalar(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (*ComparisonSummary, error) {
@@ -312,24 +338,28 @@ func compareScalar(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 		return &ComparisonSummary{Skipped: true}, nil
 	}
 
-	return nil, compareSamplePair(model.SamplePair{
+	cause, err := compareSamplePair(model.SamplePair{
 		Timestamp: expected.Timestamp,
 		Value:     expected.Value,
 	}, model.SamplePair{
 		Timestamp: actual.Timestamp,
 		Value:     actual.Value,
 	}, opts)
+	if err != nil {
+		return &ComparisonSummary{MismatchCause: cause}, err
+	}
+	return nil, nil
 }
 
-func compareSamplePair(expected, actual model.SamplePair, opts SampleComparisonOptions) error {
+func compareSamplePair(expected, actual model.SamplePair, opts SampleComparisonOptions) (cause string, err error) {
 	if expected.Timestamp != actual.Timestamp {
-		return fmt.Errorf("expected timestamp %v but got %v: %w", expected.Timestamp, actual.Timestamp, ErrComparisonMismatch)
+		return CauseSampleTimestampMismatch, fmt.Errorf("expected timestamp %v but got %v: %w", expected.Timestamp, actual.Timestamp, ErrComparisonMismatch)
 	}
 	if !compareSampleValue(expected.Value, actual.Value, opts) {
-		return fmt.Errorf("expected value %s for timestamp %v but got %s: %w", expected.Value, expected.Timestamp, actual.Value, ErrComparisonMismatch)
+		return CauseSampleValueMismatch, fmt.Errorf("expected value %s for timestamp %v but got %s: %w", expected.Value, expected.Timestamp, actual.Value, ErrComparisonMismatch)
 	}
 
-	return nil
+	return CauseNoMismatch, nil
 }
 
 func compareSampleValue(first, second model.SampleValue, opts SampleComparisonOptions) bool {
@@ -378,7 +408,7 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 
 	if len(expected) != len(actual) {
 		// TODO: log the missing stream
-		return nil, fmt.Errorf("expected %d streams but got %d: %w", len(expected), len(actual), ErrComparisonMismatch)
+		return &ComparisonSummary{MismatchCause: CauseStreamCountMismatch}, fmt.Errorf("expected %d streams but got %d: %w", len(expected), len(actual), ErrComparisonMismatch)
 	}
 
 	streamLabelsToIndexMap := make(map[string]int, len(expected))
@@ -389,39 +419,95 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 	for _, expectedStream := range expected {
 		actualStreamIndex, ok := streamLabelsToIndexMap[expectedStream.Labels.String()]
 		if !ok {
-			return nil, fmt.Errorf("expected stream %s missing from actual response: %w", expectedStream.Labels, ErrComparisonMismatch)
+			return &ComparisonSummary{MismatchCause: CauseStreamMissing}, fmt.Errorf("expected stream %s missing from actual response: %w", expectedStream.Labels, ErrComparisonMismatch)
 		}
 
 		actualStream := actual[actualStreamIndex]
-		expectedValuesLen := len(expectedStream.Entries)
-		actualValuesLen := len(actualStream.Entries)
-
-		if expectedValuesLen != actualValuesLen {
-			err := fmt.Errorf("expected %d values for stream %s but got %d: %w", expectedValuesLen,
-				expectedStream.Labels, actualValuesLen, ErrComparisonMismatch)
-			if expectedValuesLen > 0 && actualValuesLen > 0 {
-				// assuming BACKWARD search since that is the default ordering
-				level.Error(util_log.Logger).Log("msg", err.Error(), "newest-expected-ts", expectedStream.Entries[0].Timestamp.UnixNano(),
-					"oldest-expected-ts", expectedStream.Entries[expectedValuesLen-1].Timestamp.UnixNano(),
-					"newest-actual-ts", actualStream.Entries[0].Timestamp.UnixNano(), "oldest-actual-ts", actualStream.Entries[actualValuesLen-1].Timestamp.UnixNano())
-			}
-			return nil, err
-		}
-
-		for i, expectedSamplePair := range expectedStream.Entries {
-			actualSamplePair := actualStream.Entries[i]
-			if !expectedSamplePair.Timestamp.Equal(actualSamplePair.Timestamp) {
-				return nil, fmt.Errorf("expected timestamp %v but got %v for stream %s: %w", expectedSamplePair.Timestamp.UnixNano(),
-					actualSamplePair.Timestamp.UnixNano(), expectedStream.Labels, ErrComparisonMismatch)
-			}
-			if expectedSamplePair.Line != actualSamplePair.Line {
-				return nil, fmt.Errorf("expected line %s for timestamp %v but got %s for stream %s: %w", expectedSamplePair.Line,
-					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Line, expectedStream.Labels, ErrComparisonMismatch)
-			}
+		cause, err := compareStreamEntries(expectedStream.Labels, expectedStream.Entries, actualStream.Entries)
+		if err != nil {
+			return &ComparisonSummary{MismatchCause: cause}, err
 		}
 	}
 
 	return nil, nil
+}
+
+// normalizeStreamEntriesInPlace sorts entries that share the same timestamp in place.
+// Ordering key within a same-timestamp run: Line, then StructuredMetadata, then Parsed.
+// Logs are assumed to be ordered by timestamp; only order within same-timestamp runs is changed.
+func normalizeStreamEntriesInPlace(entries []loghttp.Entry) {
+	i := 0
+	for i < len(entries) {
+		j := i + 1
+		for j < len(entries) && entries[j].Timestamp.Equal(entries[i].Timestamp) {
+			j++
+		}
+		if j-i > 1 {
+			sort.Slice(entries[i:j], func(a, b int) bool {
+				ea, eb := &entries[i+a], &entries[i+b]
+				if ea.Line != eb.Line {
+					return ea.Line < eb.Line
+				}
+				if c := labels.Compare(ea.StructuredMetadata, eb.StructuredMetadata); c != 0 {
+					return c < 0
+				}
+				return labels.Compare(ea.Parsed, eb.Parsed) < 0
+			})
+		}
+		i = j
+	}
+}
+
+// compareStreamEntries compares two slices of log entries. Entries are assumed ordered by timestamp;
+// within the same timestamp, order is normalized (by line, StructuredMetadata, Parsed) in place before index-by-index comparison.
+func compareStreamEntries(streamLabels loghttp.LabelSet, expected, actual []loghttp.Entry) (string, error) {
+	expectedValuesLen := len(expected)
+	actualValuesLen := len(actual)
+
+	if expectedValuesLen != actualValuesLen {
+		err := fmt.Errorf("expected %d values for stream %s but got %d: %w", expectedValuesLen,
+			streamLabels, actualValuesLen, ErrComparisonMismatch)
+		if expectedValuesLen > 0 && actualValuesLen > 0 {
+			// assuming BACKWARD search since that is the default ordering
+			level.Error(util_log.Logger).Log("msg", err.Error(), "newest-expected-ts", expected[0].Timestamp.UnixNano(),
+				"oldest-expected-ts", expected[expectedValuesLen-1].Timestamp.UnixNano(),
+				"newest-actual-ts", actual[0].Timestamp.UnixNano(), "oldest-actual-ts", actual[actualValuesLen-1].Timestamp.UnixNano())
+		}
+		return CauseStreamEntryCountMismatch, err
+	}
+
+	normalizeStreamEntriesInPlace(expected)
+	normalizeStreamEntriesInPlace(actual)
+
+	for i := range expected {
+		expectedSamplePair := &expected[i]
+		actualSamplePair := &actual[i]
+		if !expectedSamplePair.Timestamp.Equal(actualSamplePair.Timestamp) {
+			return CauseStreamTimestampMismatch, fmt.Errorf("expected timestamp %v but got %v for stream %s: %w", expectedSamplePair.Timestamp.UnixNano(),
+				actualSamplePair.Timestamp.UnixNano(), streamLabels, ErrComparisonMismatch)
+		}
+		if expectedSamplePair.Line != actualSamplePair.Line {
+			return CauseStreamLineMismatch, fmt.Errorf("expected line %s for timestamp %v but got %s for stream %s: %w", expectedSamplePair.Line,
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Line, streamLabels, ErrComparisonMismatch)
+		}
+		if expectedSamplePair.StructuredMetadata.Len() != actualSamplePair.StructuredMetadata.Len() {
+			return CauseStructuredMetadataCountMismatch, fmt.Errorf("expected %d metadata pairs for timestamp %v but got %d pairs for stream %s: %w", expectedSamplePair.StructuredMetadata.Len(),
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.StructuredMetadata.Len(), streamLabels, ErrComparisonMismatch)
+		}
+		if !labels.Equal(expectedSamplePair.StructuredMetadata, actualSamplePair.StructuredMetadata) {
+			return CauseStructuredMetadataMismatch, fmt.Errorf("expected metadata %v for timestamp %v but got %v for stream %s: %w", expectedSamplePair.StructuredMetadata.String(),
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.StructuredMetadata.String(), streamLabels, ErrComparisonMismatch)
+		}
+		if expectedSamplePair.Parsed.Len() != actualSamplePair.Parsed.Len() {
+			return CauseParsedLabelsCountMismatch, fmt.Errorf("expected %d parsed label pairs for timestamp %v but got %d pairs for stream %s: %w", expectedSamplePair.Parsed.Len(),
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Parsed.Len(), streamLabels, ErrComparisonMismatch)
+		}
+		if !labels.Equal(expectedSamplePair.Parsed, actualSamplePair.Parsed) {
+			return CauseParsedLabelsMismatch, fmt.Errorf("expected parsed labels %v for timestamp %v but got %v for stream %s: %w", expectedSamplePair.Parsed.String(),
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Parsed.String(), streamLabels, ErrComparisonMismatch)
+		}
+	}
+	return CauseNoMismatch, nil
 }
 
 // filterStreamsOutsideWindow filters out entries that are outside the comparable window

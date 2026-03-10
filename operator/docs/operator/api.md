@@ -3240,17 +3240,18 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 <tbody>
 <tr>
 <td>
-<code>disableRecommendedAttributes</code><br/>
+<code>enableConsoleLabels</code><br/>
 <em>
 bool
 </em>
 </td>
 <td>
 <em>(Optional)</em>
-<p>DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.</p>
-<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the stream labels. This requires an update
-to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.</p>
-<p>The recommended attributes are:</p>
+<p>EnableConsoleLabels can be used to add a set of additional stream labels to the OTLP input. These labels are
+currently used by the logs console in OpenShift.</p>
+<p>This is not different from manually adding some or all of the attributes to the set of stream labels using the
+normal OTLP configuration.</p>
+<p>The additional attributes which are converted to stream labels are:</p>
 <ul>
 <li>k8s.container.name</li>
 <li>k8s.cronjob.name</li>
@@ -3265,8 +3266,6 @@ to queries that relied on these attributes as stream labels, as they will no lon
 <li>kubernetes.pod_name</li>
 <li>service.name</li>
 </ul>
-<p>This option is supposed to be combined with a custom attribute configuration listing the stream labels that
-should continue to exist.</p>
 <p>See also: <a href="https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes">https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes</a></p>
 </td>
 </tr>

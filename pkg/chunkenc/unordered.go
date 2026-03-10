@@ -132,18 +132,19 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 	}
 	displaced := hb.rt.Add(e)
 	if displaced[0] != nil {
+		symbols, err := hb.symbolizer.Add(structuredMetadata)
+		if err != nil {
+			return false, err
+		}
+
 		// While we support multiple entries at the same timestamp, we _do_ de-duplicate
 		// entries at the same time with the same content, iterate through any existing
 		// entries and ignore the line if we already have an entry with the same content
 		for _, et := range displaced[0].(*nsEntries).entries {
-			if et.line == line {
+			if et.line == line && et.structuredMetadataSymbols.Equal(symbols) {
 				e.entries = displaced[0].(*nsEntries).entries
 				return true, nil
 			}
-		}
-		symbols, err := hb.symbolizer.Add(structuredMetadata)
-		if err != nil {
-			return false, err
 		}
 
 		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, symbols})

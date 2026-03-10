@@ -4,6 +4,7 @@
 package parameters
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -21,7 +22,7 @@ import (
 )
 
 func (v *paramValidator) ValidateHeaderParams(request *http.Request) (bool, []*errors.ValidationError) {
-	pathItem, errs, foundPath := paths.FindPath(request, v.document, v.options.RegexCache)
+	pathItem, errs, foundPath := paths.FindPath(request, v.document, v.options)
 	if len(errs) > 0 {
 		return false, errs
 	}
@@ -47,6 +48,7 @@ func (v *paramValidator) ValidateHeaderParamsWithPathItem(request *http.Request,
 
 	var validationErrors []*errors.ValidationError
 	seenHeaders := make(map[string]bool)
+	operation := strings.ToLower(request.Method)
 	for _, p := range params {
 		if p.In == helpers.Header {
 
@@ -57,6 +59,15 @@ func (v *paramValidator) ValidateHeaderParamsWithPathItem(request *http.Request,
 				if p.Schema != nil {
 					sch = p.Schema.Schema()
 				}
+
+				// Render schema once for ReferenceSchema field in errors
+				var renderedSchema string
+				if sch != nil {
+					rendered, _ := sch.RenderInline()
+					schemaBytes, _ := json.Marshal(rendered)
+					renderedSchema = string(schemaBytes)
+				}
+
 				pType := sch.Type
 
 				for _, ty := range pType {
@@ -64,7 +75,7 @@ func (v *paramValidator) ValidateHeaderParamsWithPathItem(request *http.Request,
 					case helpers.Integer:
 						if _, err := strconv.ParseInt(param, 10, 64); err != nil {
 							validationErrors = append(validationErrors,
-								errors.InvalidHeaderParamInteger(p, strings.ToLower(param), sch))
+								errors.InvalidHeaderParamInteger(p, strings.ToLower(param), sch, pathValue, operation, renderedSchema))
 							break
 						}
 						// check if the param is within the enum
@@ -78,14 +89,14 @@ func (v *paramValidator) ValidateHeaderParamsWithPathItem(request *http.Request,
 							}
 							if !matchFound {
 								validationErrors = append(validationErrors,
-									errors.IncorrectCookieParamEnum(p, strings.ToLower(param), sch))
+									errors.IncorrectHeaderParamEnum(p, strings.ToLower(param), sch, pathValue, operation, renderedSchema))
 							}
 						}
 
 					case helpers.Number:
 						if _, err := strconv.ParseFloat(param, 64); err != nil {
 							validationErrors = append(validationErrors,
-								errors.InvalidHeaderParamNumber(p, strings.ToLower(param), sch))
+								errors.InvalidHeaderParamNumber(p, strings.ToLower(param), sch, pathValue, operation, renderedSchema))
 							break
 						}
 						// check if the param is within the enum
@@ -99,14 +110,14 @@ func (v *paramValidator) ValidateHeaderParamsWithPathItem(request *http.Request,
 							}
 							if !matchFound {
 								validationErrors = append(validationErrors,
-									errors.IncorrectCookieParamEnum(p, strings.ToLower(param), sch))
+									errors.IncorrectHeaderParamEnum(p, strings.ToLower(param), sch, pathValue, operation, renderedSchema))
 							}
 						}
 
 					case helpers.Boolean:
 						if _, err := strconv.ParseBool(param); err != nil {
 							validationErrors = append(validationErrors,
-								errors.IncorrectHeaderParamBool(p, strings.ToLower(param), sch))
+								errors.IncorrectHeaderParamBool(p, strings.ToLower(param), sch, pathValue, operation, renderedSchema))
 						}
 
 					case helpers.Object:
@@ -124,7 +135,7 @@ func (v *paramValidator) ValidateHeaderParamsWithPathItem(request *http.Request,
 
 						if len(encodedObj) == 0 {
 							validationErrors = append(validationErrors,
-								errors.HeaderParameterCannotBeDecoded(p, strings.ToLower(param)))
+								errors.HeaderParameterCannotBeDecoded(p, strings.ToLower(param), pathValue, operation, renderedSchema))
 							break
 						}
 
@@ -145,7 +156,7 @@ func (v *paramValidator) ValidateHeaderParamsWithPathItem(request *http.Request,
 						if !p.IsExploded() { // only unexploded arrays are supported for cookie params
 							if sch.Items.IsA() {
 								validationErrors = append(validationErrors,
-									ValidateHeaderArray(sch, p, param)...)
+									ValidateHeaderArray(sch, p, param, pathValue, operation, renderedSchema)...)
 							}
 						}
 
@@ -163,7 +174,7 @@ func (v *paramValidator) ValidateHeaderParamsWithPathItem(request *http.Request,
 							}
 							if !matchFound {
 								validationErrors = append(validationErrors,
-									errors.IncorrectHeaderParamEnum(p, strings.ToLower(param), sch))
+									errors.IncorrectHeaderParamEnum(p, strings.ToLower(param), sch, pathValue, operation, renderedSchema))
 								break
 							}
 						}
@@ -177,6 +188,8 @@ func (v *paramValidator) ValidateHeaderParamsWithPathItem(request *http.Request,
 								helpers.ParameterValidation,
 								helpers.ParameterValidationHeader,
 								v.options,
+								pathValue,
+								operation,
 							)...)
 					}
 				}
@@ -185,11 +198,23 @@ func (v *paramValidator) ValidateHeaderParamsWithPathItem(request *http.Request,
 					validationErrors = append(validationErrors, ValidateSingleParameterSchema(sch,
 						param,
 						p.Name,
-						lowbase.SchemaLabel, p.Name, helpers.ParameterValidation, helpers.ParameterValidationHeader, v.options)...)
+						lowbase.SchemaLabel, p.Name, helpers.ParameterValidation, helpers.ParameterValidationHeader, v.options,
+						pathValue,
+						operation)...)
 				}
 			} else {
 				if p.Required != nil && *p.Required {
-					validationErrors = append(validationErrors, errors.HeaderParameterMissing(p))
+					// Render schema for missing required parameter
+					var renderedSchema string
+					if p.Schema != nil {
+						sch := p.Schema.Schema()
+						if sch != nil {
+							rendered, _ := sch.RenderInline()
+							schemaBytes, _ := json.Marshal(rendered)
+							renderedSchema = string(schemaBytes)
+						}
+					}
+					validationErrors = append(validationErrors, errors.HeaderParameterMissing(p, pathValue, operation, renderedSchema))
 				}
 			}
 		}

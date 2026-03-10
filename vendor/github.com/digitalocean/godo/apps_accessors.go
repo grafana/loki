@@ -1869,6 +1869,14 @@ func (a *AppServiceSpec) GetImage() *ImageSourceSpec {
 	return a.Image
 }
 
+// GetInactivitySleep returns the InactivitySleep field.
+func (a *AppServiceSpec) GetInactivitySleep() *AppServiceSpecInactivitySleep {
+	if a == nil {
+		return nil
+	}
+	return a.InactivitySleep
+}
+
 // GetInstanceCount returns the InstanceCount field.
 func (a *AppServiceSpec) GetInstanceCount() int64 {
 	if a == nil {
@@ -2019,6 +2027,22 @@ func (a *AppServiceSpecHealthCheck) GetTimeoutSeconds() int32 {
 		return 0
 	}
 	return a.TimeoutSeconds
+}
+
+// GetAfterSeconds returns the AfterSeconds field.
+func (a *AppServiceSpecInactivitySleep) GetAfterSeconds() int32 {
+	if a == nil {
+		return 0
+	}
+	return a.AfterSeconds
+}
+
+// GetLoadingPage returns the LoadingPage field.
+func (a *AppServiceSpecInactivitySleep) GetLoadingPage() *InactivitySleepLoadingPage {
+	if a == nil {
+		return nil
+	}
+	return a.LoadingPage
 }
 
 // GetDrainSeconds returns the DrainSeconds field.
@@ -4063,6 +4087,22 @@ func (i *ImageSourceSpec) GetTag() string {
 
 // GetEnabled returns the Enabled field.
 func (i *ImageSourceSpecDeployOnPush) GetEnabled() bool {
+	if i == nil {
+		return false
+	}
+	return i.Enabled
+}
+
+// GetCustomURL returns the CustomURL field.
+func (i *InactivitySleepLoadingPage) GetCustomURL() string {
+	if i == nil {
+		return ""
+	}
+	return i.CustomURL
+}
+
+// GetEnabled returns the Enabled field.
+func (i *InactivitySleepLoadingPage) GetEnabled() bool {
 	if i == nil {
 		return false
 	}
