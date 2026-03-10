@@ -13,12 +13,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
-<<<<<<< fix_for_newer_k8s_sidecar
-- [BUGFIX] Make the loki-sc-rules sidecar container compatible with the most recent versions of k8s-sidecar. [#20164](https://github.com/grafana/loki/pull/20164)
-=======
 - [ENHANCEMENT] Add the ability to customize write, read and backend workloads PDB maxUnavailable [#16871](https://github.com/grafana/loki/pull/16871)
+- [BUGFIX] Make the loki-sc-rules sidecar container compatible with the most recent versions of k8s-sidecar. [#20164](https://github.com/grafana/loki/pull/20164)
 - [BUGFIX] Fix incorrect syntax in loki-egress-dns CiliumNetworkPolicy manifest [#20221](https://github.com/grafana/loki/pull/20221)
->>>>>>> main
+- [BUGFIX] Correctly pass arguments for kubectl in statefulset/pvc-recreation job. [#20556](https://github.com/grafana/loki/pull/20556)
+
 
 ## 6.53.0
 
