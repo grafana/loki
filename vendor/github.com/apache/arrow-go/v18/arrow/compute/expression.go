@@ -687,7 +687,7 @@ func SerializeOptions(opts FunctionOptions, mem memory.Allocator) (*memory.Buffe
 	}
 	defer arr.Release()
 
-	batch := array.NewRecord(arrow.NewSchema([]arrow.Field{{Type: arr.DataType(), Nullable: true}}, nil), []arrow.Array{arr}, 1)
+	batch := array.NewRecordBatch(arrow.NewSchema([]arrow.Field{{Type: arr.DataType(), Nullable: true}}, nil), []arrow.Array{arr}, 1)
 	defer batch.Release()
 
 	buf := &bufferWriteSeeker{mem: mem}
@@ -786,7 +786,7 @@ func SerializeExpr(expr Expression, mem memory.Allocator) (*memory.Buffer, error
 	}
 
 	metadata := arrow.NewMetadata(metaKey, metaValue)
-	rec := array.NewRecord(arrow.NewSchema(fields, &metadata), cols, 1)
+	rec := array.NewRecordBatch(arrow.NewSchema(fields, &metadata), cols, 1)
 	defer rec.Release()
 
 	buf := &bufferWriteSeeker{mem: mem}

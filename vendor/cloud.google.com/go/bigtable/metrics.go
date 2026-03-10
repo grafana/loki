@@ -25,12 +25,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"regexp"
+	"strings"
+
 	"cloud.google.com/go/bigtable/internal"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
 )
@@ -176,6 +180,8 @@ var (
 	}
 
 	sharedLatencyStatsHandler = &latencyStatsHandler{}
+
+	camel = regexp.MustCompile("([a-z0-9])([A-Z])")
 )
 
 type metricInfo struct {
@@ -194,6 +200,9 @@ type builtinMetricsTracerFactory struct {
 	// attributes that are specific to a client instance and
 	// do not change across different function calls on client
 	clientAttributes []attribute.KeyValue
+
+	// otelMeterProvider
+	otelMeterProvider metric.MeterProvider
 
 	operationLatencies      metric.Float64Histogram
 	serverLatencies         metric.Float64Histogram
@@ -260,6 +269,7 @@ func newBuiltinMetricsTracerFactory(ctx context.Context, project, instance, appP
 	// the error from newOtelMetricsContext is silently ignored since metrics are not critical to client creation.
 	if err == nil {
 		tracerFactory.clientOpts = otelContext.clientOpts
+		tracerFactory.otelMeterProvider = otelContext.otelMeterProvider
 	}
 	tracerFactory.shutdown = func() {
 		if otelContext != nil {
@@ -457,6 +467,9 @@ type opTracer struct {
 	currAttempt attemptTracer
 
 	appBlockingLatency float64
+
+	// For routing cookie and gRPC attempt number
+	cookies map[string]string
 }
 
 func (o *opTracer) setStartTime(t time.Time) {
@@ -524,13 +537,19 @@ func (a *attemptTracer) setServerLatencyErr(err error) {
 }
 
 func (tf *builtinMetricsTracerFactory) createBuiltinMetricsTracer(ctx context.Context, tableName string, isStreaming bool) builtinMetricsTracer {
-	if !tf.enabled {
-		return builtinMetricsTracer{builtInEnabled: false}
-	}
 	// Operation has started but not the attempt.
 	// So, create only operation tracer and not attempt tracer
-	currOpTracer := opTracer{}
+	currOpTracer := opTracer{
+		cookies: make(map[string]string),
+	}
 	currOpTracer.setStartTime(time.Now())
+
+	if !tf.enabled {
+		return builtinMetricsTracer{
+			builtInEnabled: false,
+			currOp:         currOpTracer,
+		}
+	}
 
 	return builtinMetricsTracer{
 		ctx:            ctx,
@@ -718,12 +737,16 @@ func (mt *builtinMetricsTracer) recordOperationCompletion() {
 	mt.instrumentAppBlockingLatencies.Record(mt.ctx, mt.currOp.appBlockingLatency, metric.WithAttributeSet(appBlockingLatAttrs))
 }
 
-func (mt *builtinMetricsTracer) setCurrOpStatus(status string) {
+func (mt *builtinMetricsTracer) setCurrOpStatus(code codes.Code) {
 	if !mt.builtInEnabled {
 		return
 	}
 
-	mt.currOp.setStatus(status)
+	mt.currOp.setStatus(canonicalString(code))
+}
+
+func canonicalString(c codes.Code) string {
+	return strings.ToUpper(camel.ReplaceAllString(c.String(), "${1}_${2}"))
 }
 
 func (mt *builtinMetricsTracer) incrementAppBlockingLatency(latency float64) {

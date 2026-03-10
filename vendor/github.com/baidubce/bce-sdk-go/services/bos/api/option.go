@@ -2,7 +2,11 @@ package api
 
 import (
 	"fmt"
+	"hash"
+	"hash/crc64"
+	"io"
 	"mime/multipart"
+	net_http "net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -10,14 +14,22 @@ import (
 	"github.com/baidubce/bce-sdk-go/bce"
 	"github.com/baidubce/bce-sdk-go/http"
 	"github.com/baidubce/bce-sdk-go/util"
+	"github.com/baidubce/bce-sdk-go/util/log"
 )
 
 type optionType string
 
 const (
-	optionHeader    optionType = "HttpHeader"    // HTTP Header
-	optionParam     optionType = "HttpParameter" // URL parameter
-	optionPostField optionType = "PostField"     // URL parameter
+	optionHeader     optionType = "HttpHeader"    // HTTP Header
+	optionParam      optionType = "HttpParameter" // URL parameter
+	optionPostField  optionType = "PostField"     // URL parameter
+	optionBosContext optionType = "BosContext"
+	optionBceClient  optionType = "BceClient"
+
+	// option key
+	API_VERSION_KEY = "API_VERSION"
+	HTTP_CLIENT_KEY = "HTTP_CLIENT"
+	ENABLE_CALC_MD5 = "ENABLE_CALC_MD5"
 )
 
 type (
@@ -26,9 +38,59 @@ type (
 		Type  optionType
 	}
 	// Set various options of HTTP request
-	Option    func(params map[string]optionValue) error
-	GetOption func(params map[string]interface{}) error
+	Option          func(params map[string]optionValue) error
+	GetOption       func(params map[string]interface{}) error
+	RequestTracker  func(*BosRequest) error
+	ResponseHandler func(*BosResponse) error
 )
+
+var ErrorOption Option = func(params map[string]optionValue) error {
+	return fmt.Errorf("error option")
+}
+
+func AddWriter(writer io.Writer) RequestTracker {
+	return func(req *BosRequest) error {
+		if req.Body() != nil {
+			if teeRead, ok := req.Body().(*bce.TeeReadNopCloser); ok {
+				teeRead.AddWriter(writer)
+			}
+			if teeRead, ok := req.Body().(*bce.Body); ok {
+				teeRead.SetWriter(writer)
+			}
+		}
+		return nil
+	}
+}
+func Crc64Handler(writer io.Writer) ResponseHandler {
+	return func(resp *BosResponse) error {
+		cliCrc64 := strconv.FormatUint(writer.(hash.Hash64).Sum64(), 10)
+		if srvCrc64 := resp.Header(http.BCE_CONTENT_CRC64ECMA); srvCrc64 != "" {
+			if cliCrc64 != srvCrc64 {
+				log.Warnf("crc64 mismatch, client: %s, server: %s\n", cliCrc64, srvCrc64)
+				return fmt.Errorf("crc64 is not consistent, client: %s, server: %s", cliCrc64, srvCrc64)
+			}
+		}
+		return nil
+	}
+}
+func AddCrc64Check(req *BosRequest, resp *BosResponse) {
+	var writer io.Writer = crc64.New(crc64.MakeTable(crc64.ECMA))
+	req.Tracker = append(req.Tracker, AddWriter(writer))
+	resp.Handler = append(resp.Handler, Crc64Handler(writer))
+}
+
+func HTTPClient(httpClient *net_http.Client) Option {
+	return setBceClient(HTTP_CLIENT_KEY, httpClient)
+}
+
+func EnableCalcMd5(value bool) Option {
+	return setBosContext(ENABLE_CALC_MD5, value)
+}
+
+// change BosContext api version
+func ApiVersion(value string) Option {
+	return setBosContext(API_VERSION_KEY, value)
+}
 
 // An option to set Cache-Control header
 func CacheControl(value string) Option {
@@ -228,6 +290,9 @@ func CopySourceRange(start, end int64) Option {
 
 // An option to set x-bce-storage-class header
 func StorageClass(value string) Option {
+	if !validStorageClass(value) {
+		return nil
+	}
 	return setHeader(http.BCE_STORAGE_CLASS, value)
 }
 
@@ -272,10 +337,32 @@ func SymlinkBucket(targetBucket string) Option {
 
 // An option to set x-bce-traffic-limit header
 func TrafficLimit(value int64) Option {
-	if value <= 0 {
+	if value < TRAFFIC_LIMIT_MIN || value > TRAFFIC_LIMIT_MAX {
 		return nil
 	}
 	return setHeader(http.BCE_TRAFFIC_LIMIT, strconv.FormatInt(value, 10))
+}
+
+func IfMatch(value string) Option {
+	return setHeader(http.IF_MATCH, value)
+}
+
+func IfNoneMatch(value string) Option {
+	return setHeader(http.IF_NONE_MATCH, value)
+}
+
+func IfModifiedSince(value string) Option {
+	if _, err := time.Parse(HTTPTimeFormat, value); err != nil {
+		return nil
+	}
+	return setHeader(http.IF_MODIFIED_SINCE, value)
+}
+
+func IfUnModifiedSince(value string) Option {
+	if _, err := time.Parse(HTTPTimeFormat, value); err != nil {
+		return nil
+	}
+	return setHeader(http.IF_UNMODIFIED_SINCE, value)
 }
 
 // An option to set X-Bce-Tagging header
@@ -285,6 +372,16 @@ func Tagging(tags map[string]string) Option {
 		return nil
 	}
 	return setHeader(http.BCE_OBJECT_TAGGING, tagsStr)
+}
+
+func TaggingStr(tagStr string) Option {
+	if len(tagStr) == 0 {
+		return nil
+	}
+	if ok, encodeTagging := validObjectTagging(tagStr); ok {
+		return setHeader(http.BCE_OBJECT_TAGGING, encodeTagging)
+	}
+	return nil
 }
 
 // An option to set x-bce-callback-address header
@@ -338,7 +435,7 @@ func SetPostField(key string, value interface{}) Option {
 }
 
 func setHeader(key string, value interface{}) Option {
-	if str, ok := value.(string); !ok || str == "" {
+	if str, ok := value.(string); ok && str == "" {
 		return nil
 	}
 	return func(params map[string]optionValue) error {
@@ -346,6 +443,27 @@ func setHeader(key string, value interface{}) Option {
 			return nil
 		}
 		params[key] = optionValue{value, optionHeader}
+		return nil
+	}
+}
+
+func setBosContext(key string, value interface{}) Option {
+	return setSpecifiedTagParam(optionBosContext, key, value)
+}
+
+func setBceClient(key string, value interface{}) Option {
+	return setSpecifiedTagParam(optionBceClient, key, value)
+}
+
+func setSpecifiedTagParam(tag optionType, key string, value interface{}) Option {
+	if str, ok := value.(string); ok && str == "" {
+		return nil
+	}
+	return func(params map[string]optionValue) error {
+		if value == nil {
+			return nil
+		}
+		params[key] = optionValue{value, tag}
 		return nil
 	}
 }
@@ -420,6 +538,64 @@ func handlePostOptions(w *multipart.Writer, options []Option) error {
 	return nil
 }
 
+func handleBosContextOptions(ctx *BosContext, options []Option) error {
+	params := make(map[string]optionValue)
+	for _, option := range options {
+		if option != nil {
+			if err := option(params); err != nil {
+				return err
+			}
+		}
+	}
+	for k, v := range params {
+		if v.Type == optionBosContext {
+			if k == API_VERSION_KEY {
+				ctx.ApiVersion = v.Value.(string)
+			} else if k == ENABLE_CALC_MD5 {
+				ctx.EnableCalcMd5 = v.Value.(bool)
+			}
+		}
+	}
+	return nil
+}
+
+func handleBceClientOptions(client bce.Client, options []Option) error {
+	bceClient, ok := client.(*bce.BceClient)
+	if !ok {
+		return fmt.Errorf("unknown bceClient type")
+	}
+	params := make(map[string]optionValue)
+	for _, option := range options {
+		if option != nil {
+			if err := option(params); err != nil {
+				return err
+			}
+		}
+	}
+	for k, v := range params {
+		if v.Type == optionBceClient {
+			if k == HTTP_CLIENT_KEY {
+				if httpClient, ok := v.Value.(*net_http.Client); ok {
+					bceClient.HTTPClient = httpClient
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func HandleBosClientOptions(client bce.Client, ctx *BosContext, options []Option) error {
+	// handle options to change params of BosContext
+	if err := handleBosContextOptions(ctx, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("BosContext Options: %s", err))
+	}
+	// handle options to change params of BosContext
+	if err := handleBceClientOptions(client, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("BceClient Options: %s", err))
+	}
+	return nil
+}
+
 func getHeader(key string, value interface{}) GetOption {
 	return func(params map[string]interface{}) error {
 		if value == nil {
@@ -465,7 +641,20 @@ func handleGetOptions(response *BosResponse, options []GetOption) error {
 				}
 			}
 			if vReal, ok := v.(*[]string); ok {
-				*vReal = strings.Split(val, ",")
+				*vReal = append(*vReal, strings.Split(val, ",")...)
+			}
+		}
+	}
+	// retrieve user meta headers
+	userMetaPrefix := toHttpHeaderKey(http.BCE_USER_METADATA_PREFIX)
+	for k, v := range headers {
+		if strings.Index(k, userMetaPrefix) == 0 {
+			val := params[http.BCE_USER_METADATA_PREFIX]
+			if vReal, ok := val.(*map[string]string); ok {
+				if *vReal == nil {
+					*vReal = make(map[string]string)
+				}
+				(*vReal)[k[len(userMetaPrefix):]] = v
 			}
 		}
 	}

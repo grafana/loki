@@ -46,15 +46,14 @@ func DeleteResourceSpans(orig *ResourceSpans, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	DeleteResource(&orig.Resource, false)
 	for i := range orig.ScopeSpans {
 		DeleteScopeSpans(orig.ScopeSpans[i], true)
 	}
+
 	for i := range orig.DeprecatedScopeSpans {
 		DeleteScopeSpans(orig.DeprecatedScopeSpans[i], true)
 	}
-
 	orig.Reset()
 	if nullable {
 		protoPoolResourceSpans.Put(orig)
@@ -79,7 +78,6 @@ func CopyResourceSpans(dest, src *ResourceSpans) *ResourceSpans {
 	dest.ScopeSpans = CopyScopeSpansPtrSlice(dest.ScopeSpans, src.ScopeSpans)
 
 	dest.SchemaUrl = src.SchemaUrl
-
 	dest.DeprecatedScopeSpans = CopyScopeSpansPtrSlice(dest.DeprecatedScopeSpans, src.DeprecatedScopeSpans)
 
 	return dest
@@ -206,6 +204,7 @@ func (orig *ResourceSpans) SizeProto() int {
 		l = orig.ScopeSpans[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	l = len(orig.SchemaUrl)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l

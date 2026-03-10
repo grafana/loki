@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  - description: Structured metadata error level filter
+    query: ${SELECTOR} | detected_level="error"
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    requires:
+      structured_metadata:
+        - detected_level
+    tags:
+      - structured-metadata
+      - filter
+
+  - description: Logfmt parsing with structured metadata filter
+    query: ${SELECTOR} | logfmt | detected_level="error"
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    requires:
+      log_format: logfmt
+      structured_metadata:
+        - detected_level
+    tags:
+      - structured-metadata
+      - logfmt
+      - parser
+
+  - description: Logfmt parsing with structured metadata filter first
+    query: ${SELECTOR} | detected_level="error" | logfmt
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    requires:
+      log_format: logfmt
+      structured_metadata:
+        - detected_level
+    tags:
+      - structured-metadata
+      - logfmt
+      - parser
+
+  - description: JSON parsing with structured metadata filter
+    query: ${SELECTOR} | json | detected_level="error"
+    kind: log
+    time_range:
+      length: 24h
+    directions: both
+    requires:
+      log_format: json
+      structured_metadata:
+        - detected_level
+    tags:
+      - structured-metadata
+      - json
+      - parser
+
+  - description: JSON parsing with structured metadata filter first
+    query: ${SELECTOR} | detected_level="error" | json
+    kind: log
+    skip: true # timing out - requires dataobj engine schema fix for structured metadata columns
+    time_range:
+      length: 24h
+    directions: both
+    requires:
+      log_format: json
+      structured_metadata:
+        - detected_level
+    tags:
+      - structured-metadata
+      - json
+      - parser

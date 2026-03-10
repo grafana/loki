@@ -1,8 +1,17 @@
-.PHONY: generate bench list run run-debug stream grafana grafana-stop
+.PHONY: generate bench list run run-debug stream grafana grafana-stop discover
+
+# Load local secrets from .env (ignored by git).
+# Copy .env.template → .env and fill in real values.
+-include .env
+export
 
 # Default size for data generation (2GB)
 SIZE ?= 2147483648
 TENANT ?= test-tenant
+
+# Discover configuration — override via .env or environment
+DISCOVER_MAX_STREAMS ?= 500
+DISCOVER_CONCURRENCY ?= 5
 
 generate:
 	@echo "Generating benchmark data..."
@@ -35,7 +44,9 @@ grafana:
 		-e GF_AUTH_BASIC_ENABLED=false \
 		-e GF_USERS_DEFAULT_THEME=light \
 		-e GF_CACHING_ENABLED=false \
+		-e GF_PLUGINS_PREINSTALL_SYNC=grafana-lokiexplore-app@main@https://storage.googleapis.com/integration-artifacts/grafana-lokiexplore-app/release/main/any/grafana-lokiexplore-app-main.zip,grafana-lokioperational-app@main@https://storage.googleapis.com/integration-artifacts/grafana-lokioperational-app/release/latest/grafana-lokioperational-app-latest.zip \
 		-v $(PWD)/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasources.yml \
+		-v $(PWD)/grafana-plugins.yaml:/etc/grafana/provisioning/plugins/app.yml \
 		grafana/grafana:latest
 	@echo "Grafana available at http://localhost:3000"
 	@echo "Loki datasource pre-configured to connect to localhost:3100"
@@ -55,13 +66,13 @@ loki-debug:
 		--api-version=2 \
 		--accept-multiclient \
 		--continue \
-		-- -config.file=./pkg/logql/bench/config.yaml -config.expand-env=true)
+		-- -config.file=./pkg/logql/bench/config.yaml -config.expand-env=true -target=ui,dataobj-explorer,all)
 
 loki:
 	@echo "Starting Loki on port 3100 with debug port 18001..."
 	@(cd ../../../ && \
 		make loki && \
-		cmd/loki/loki --config.file=./pkg/logql/bench/config.yaml -config.expand-env=true)
+		cmd/loki/loki --config.file=./pkg/logql/bench/config.yaml -config.expand-env=true -target=ui,dataobj-explorer,all)
 
 # server will start a local Loki instance and Grafana for interacting with bench data. You will need
 # to manually kill the grafana process using `make grafana-stop` once you are done.
@@ -79,3 +90,60 @@ server-stop:
 	@make grafana-stop
 	@pkill dlv
 	@pkill loki
+
+############
+# Discover #
+############
+
+# Build the discover binary
+discover/cmd/discover:
+	CGO_ENABLED=0 go build -o $@ ./$(@D)
+
+# discover runs the metadata discovery pipeline against the live Loki cluster.
+# Requires secrets in .env (copy .env.template and fill in values):
+#   LOKI_ADDR, LOKI_USERNAME, LOKI_PASSWORD     — Loki endpoint and auth
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY    — S3 credentials for TSDB index access
+#   S3_BUCKET, S3_REGION, S3_ENDPOINT           — S3 bucket configuration
+#   TABLE_PREFIX                                — TSDB index table name prefix
+discover: discover/cmd/discover
+ifndef LOKI_ADDR
+	$(error LOKI_ADDR is required — add it to .env (see .env.template))
+endif
+ifndef LOKI_USERNAME
+	$(error LOKI_USERNAME is required — add it to .env (see .env.template))
+endif
+ifndef LOKI_PASSWORD
+	$(error LOKI_PASSWORD is required — add it to .env (see .env.template))
+endif
+ifndef AWS_ACCESS_KEY_ID
+	$(error AWS_ACCESS_KEY_ID is required — add it to .env (see .env.template))
+endif
+ifndef AWS_SECRET_ACCESS_KEY
+	$(error AWS_SECRET_ACCESS_KEY is required — add it to .env (see .env.template))
+endif
+ifndef S3_BUCKET
+	$(error S3_BUCKET is required — add it to .env (see .env.template))
+endif
+ifndef S3_REGION
+	$(error S3_REGION is required — add it to .env (see .env.template))
+endif
+ifndef S3_ENDPOINT
+	$(error S3_ENDPOINT is required — add it to .env (see .env.template))
+endif
+ifndef TABLE_PREFIX
+	$(error TABLE_PREFIX is required — add it to .env (see .env.template))
+endif
+	./discover/cmd/discover \
+		--tenant $(LOKI_USERNAME) \
+		--storage-type s3 \
+		--s3.buckets "$(S3_BUCKET)" \
+		--s3.region "$(S3_REGION)" \
+		--s3.endpoint "$(S3_ENDPOINT)" \
+		--s3.access-key-id "$(AWS_ACCESS_KEY_ID)" \
+		--s3.secret-access-key "$(AWS_SECRET_ACCESS_KEY)" \
+		--table-prefix "$(TABLE_PREFIX)" \
+		--selector '$(DISCOVER_SELECTOR)' \
+		--max-streams $(DISCOVER_MAX_STREAMS) \
+		--concurrency $(DISCOVER_CONCURRENCY) \
+		--output testdata \
+		--queries-dir queries

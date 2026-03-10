@@ -190,9 +190,9 @@ type RegisterTaskDefinitionInput struct {
 	//
 	// For Amazon ECS tasks on Fargate, the awsvpc network mode is required. For
 	// Amazon ECS tasks on Amazon EC2 Linux instances, any network mode can be used.
-	// For Amazon ECS tasks on Amazon EC2 Windows instances, or awsvpc can be used. If
-	// the network mode is set to none , you cannot specify port mappings in your
-	// container definitions, and the tasks containers do not have external
+	// For Amazon ECS tasks on Amazon EC2 Windows instances, <default> or awsvpc can
+	// be used. If the network mode is set to none , you cannot specify port mappings
+	// in your container definitions, and the tasks containers do not have external
 	// connectivity. The host and awsvpc network modes offer the highest networking
 	// performance for containers because they use the EC2 network stack instead of the
 	// virtualized network stack provided by the bridge mode.
@@ -419,40 +419,7 @@ func (c *Client) addOperationRegisterTaskDefinitionMiddlewares(stack *middleware
 	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptExecution(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptTransmit(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

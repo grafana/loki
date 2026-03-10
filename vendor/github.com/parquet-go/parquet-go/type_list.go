@@ -21,6 +21,8 @@ func (listNode) Type() Type { return &listType{} }
 
 type listType format.ListType
 
+var listLogicalType = format.LogicalType{List: new(format.ListType)}
+
 func (t *listType) String() string { return (*format.ListType)(t).String() }
 
 func (t *listType) Kind() Kind { panic("cannot call Kind on parquet LIST type") }
@@ -37,9 +39,7 @@ func (t *listType) ColumnOrder() *format.ColumnOrder { return nil }
 
 func (t *listType) PhysicalType() *format.Type { return nil }
 
-func (t *listType) LogicalType() *format.LogicalType {
-	return &format.LogicalType{List: (*format.ListType)(t)}
-}
+func (t *listType) LogicalType() *format.LogicalType { return &listLogicalType }
 
 func (t *listType) ConvertedType() *deprecated.ConvertedType {
 	return &convertedTypes[deprecated.List]

@@ -1,4 +1,4 @@
-// Copyright 2016 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -284,6 +284,19 @@ func (p *Pod) buildPod(pod *apiv1.Pod) *targetgroup.Group {
 	// PodIP can be empty when a pod is starting or has been evicted.
 	if len(pod.Status.PodIP) == 0 {
 		return tg
+	}
+
+	// Filter out pods scheduled on nodes that are not in the node store, as
+	// these were filtered out by node selectors.
+	if p.withNodeMetadata {
+		_, exists, err := p.nodeInf.GetStore().GetByKey(pod.Spec.NodeName)
+		if err != nil {
+			p.logger.Error("failed to get node from store", "node", pod.Spec.NodeName, "err", err)
+			return tg
+		}
+		if !exists {
+			return tg
+		}
 	}
 
 	tg.Labels = podLabels(pod)

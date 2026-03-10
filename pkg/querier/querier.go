@@ -987,7 +987,8 @@ func determineType(value string) logproto.DetectedFieldType {
 }
 
 func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
-	detectedFields := make(map[string]*parsedFields, limit)
+	const maxDetectedFieldsPreAlloc = 1000
+	detectedFields := make(map[string]*parsedFields, min(maxDetectedFieldsPreAlloc, limit))
 	fieldCount := uint32(0)
 	emtpyparsers := []string{}
 

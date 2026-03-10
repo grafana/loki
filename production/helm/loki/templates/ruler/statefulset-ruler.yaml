@@ -93,8 +93,16 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- with .Values.loki.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with .Values.loki.readinessProbe }}
           readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.loki.startupProbe }}
+          startupProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
@@ -126,11 +134,7 @@ spec:
         {{- if and .Values.sidecar.rules.enabled .Values.ruler.sidecar }}
         - name: loki-sc-rules
           {{- $dict := dict "service" .Values.sidecar.image "global" .Values.global }}
-          {{- if .Values.sidecar.image.sha }}
-          image: "{{ include "loki.baseImage" $dict }}@sha256:{{ .Values.sidecar.image.sha }}"
-          {{- else }}
           image: {{ include "loki.baseImage" $dict }}
-          {{- end }}
           imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
           env:
             - name: METHOD
@@ -156,6 +160,10 @@ spec:
             {{- if .Values.sidecar.skipTlsVerify }}
             - name: SKIP_TLS_VERIFY
               value: "{{ .Values.sidecar.skipTlsVerify }}"
+            {{- end }}
+            {{- if .Values.sidecar.disableX509StrictVerification }}
+            - name: DISABLE_X509_STRICT_VERIFICATION
+              value: "{{ .Values.sidecar.disableX509StrictVerification }}"
             {{- end }}
             {{- if .Values.sidecar.rules.script }}
             - name: SCRIPT
@@ -190,6 +198,8 @@ spec:
           {{- toYaml .Values.sidecar.securityContext | nindent 12 }}
           {{- end }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
             - name: sc-rules-volume
               mountPath: {{ .Values.sidecar.rules.folder | quote }}
         {{- end}}

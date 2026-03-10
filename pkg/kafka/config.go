@@ -63,6 +63,7 @@ type Config struct {
 	MaxConsumerWorkers      int           `yaml:"max_consumer_workers"`
 
 	EnableKafkaHistograms bool `yaml:"enable_kafka_histograms"`
+	TracingEnabled        bool `yaml:"tracing_enabled"`
 }
 
 type ClientConfig struct {
@@ -107,6 +108,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableKafkaHistograms, prefix+".enable-kafka-histograms", false, "Enable collection of the following kafka latency histograms: read-wait, read-timing, write-wait, write-timing")
 	f.IntVar(&cfg.MaxConsumerWorkers, prefix+".max-consumer-workers", 1, "The maximum number of workers to use for processing records from Kafka.")
 
+	f.BoolVar(&cfg.TracingEnabled, prefix+".tracing-enabled", false, "Enable tracing.")
 	// If the number of workers is set to 0, use the number of available CPUs
 	if cfg.MaxConsumerWorkers == 0 {
 		cfg.MaxConsumerWorkers = runtime.GOMAXPROCS(0)

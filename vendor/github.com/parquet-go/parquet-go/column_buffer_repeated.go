@@ -2,9 +2,12 @@ package parquet
 
 import (
 	"bytes"
+	"io"
 	"slices"
 
 	"github.com/parquet-go/parquet-go/deprecated"
+	"github.com/parquet-go/parquet-go/internal/bytealg"
+	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
 )
 
@@ -26,8 +29,8 @@ type repeatedColumnBuffer struct {
 	maxRepetitionLevel byte
 	maxDefinitionLevel byte
 	rows               []offsetMapping
-	repetitionLevels   []byte
-	definitionLevels   []byte
+	repetitionLevels   memory.SliceBuffer[byte]
+	definitionLevels   memory.SliceBuffer[byte]
 	buffer             []Value
 	reordering         *repeatedColumnBuffer
 	nullOrdering       nullOrdering
@@ -41,15 +44,11 @@ type offsetMapping struct {
 	baseOffset uint32
 }
 
-func newRepeatedColumnBuffer(base ColumnBuffer, repetitionLevels, definitionLevels []byte, maxRepetitionLevel, maxDefinitionLevel byte, nullOrdering nullOrdering) *repeatedColumnBuffer {
-	n := base.Cap()
+func newRepeatedColumnBuffer(base ColumnBuffer, maxRepetitionLevel, maxDefinitionLevel byte, nullOrdering nullOrdering) *repeatedColumnBuffer {
 	return &repeatedColumnBuffer{
 		base:               base,
 		maxRepetitionLevel: maxRepetitionLevel,
 		maxDefinitionLevel: maxDefinitionLevel,
-		rows:               make([]offsetMapping, 0, n/8),
-		repetitionLevels:   repetitionLevels,
-		definitionLevels:   definitionLevels,
 		nullOrdering:       nullOrdering,
 	}
 }
@@ -61,8 +60,8 @@ func (col *repeatedColumnBuffer) Clone() ColumnBuffer {
 		maxRepetitionLevel: col.maxRepetitionLevel,
 		maxDefinitionLevel: col.maxDefinitionLevel,
 		rows:               slices.Clone(col.rows),
-		repetitionLevels:   slices.Clone(col.repetitionLevels),
-		definitionLevels:   slices.Clone(col.definitionLevels),
+		repetitionLevels:   col.repetitionLevels.Clone(),
+		definitionLevels:   col.definitionLevels.Clone(),
 		nullOrdering:       col.nullOrdering,
 	}
 }
@@ -72,11 +71,11 @@ func (col *repeatedColumnBuffer) Type() Type {
 }
 
 func (col *repeatedColumnBuffer) NumValues() int64 {
-	return int64(len(col.definitionLevels))
+	return int64(col.definitionLevels.Len())
 }
 
 func (col *repeatedColumnBuffer) ColumnIndex() (ColumnIndex, error) {
-	return columnIndexOfNullable(col.base, col.maxDefinitionLevel, col.definitionLevels)
+	return columnIndexOfNullable(col.base, col.maxDefinitionLevel, col.definitionLevels.Slice())
 }
 
 func (col *repeatedColumnBuffer) OffsetIndex() (OffsetIndex, error) {
@@ -113,11 +112,13 @@ func (col *repeatedColumnBuffer) Page() Page {
 		}()
 
 		baseOffset := 0
+		repetitionLevels := col.repetitionLevels.Slice()
+		definitionLevels := col.definitionLevels.Slice()
 
 		for _, row := range col.rows {
 			rowOffset := int(row.offset)
-			rowLength := repeatedRowLength(col.repetitionLevels[rowOffset:])
-			numNulls := countLevelsNotEqual(col.definitionLevels[rowOffset:rowOffset+rowLength], col.maxDefinitionLevel)
+			rowLength := repeatedRowLength(repetitionLevels[rowOffset:])
+			numNulls := countLevelsNotEqual(definitionLevels[rowOffset:rowOffset+rowLength], col.maxDefinitionLevel)
 			numValues := rowLength - numNulls
 
 			if numValues > 0 {
@@ -139,12 +140,12 @@ func (col *repeatedColumnBuffer) Page() Page {
 			}
 
 			column.rows = append(column.rows, offsetMapping{
-				offset:     uint32(len(column.repetitionLevels)),
+				offset:     uint32(column.repetitionLevels.Len()),
 				baseOffset: uint32(baseOffset),
 			})
 
-			column.repetitionLevels = append(column.repetitionLevels, col.repetitionLevels[rowOffset:rowOffset+rowLength]...)
-			column.definitionLevels = append(column.definitionLevels, col.definitionLevels[rowOffset:rowOffset+rowLength]...)
+			column.repetitionLevels.Append(repetitionLevels[rowOffset : rowOffset+rowLength]...)
+			column.definitionLevels.Append(definitionLevels[rowOffset : rowOffset+rowLength]...)
 			baseOffset += numValues
 		}
 
@@ -156,8 +157,8 @@ func (col *repeatedColumnBuffer) Page() Page {
 		col.base.Page(),
 		col.maxRepetitionLevel,
 		col.maxDefinitionLevel,
-		col.repetitionLevels,
-		col.definitionLevels,
+		col.repetitionLevels.Slice(),
+		col.definitionLevels.Slice(),
 	)
 }
 
@@ -171,12 +172,12 @@ func (col *repeatedColumnBuffer) swapReorderingBuffer(buf *repeatedColumnBuffer)
 func (col *repeatedColumnBuffer) Reset() {
 	col.base.Reset()
 	col.rows = col.rows[:0]
-	col.repetitionLevels = col.repetitionLevels[:0]
-	col.definitionLevels = col.definitionLevels[:0]
+	col.repetitionLevels.Resize(0)
+	col.definitionLevels.Resize(0)
 }
 
 func (col *repeatedColumnBuffer) Size() int64 {
-	return int64(8*len(col.rows)+len(col.repetitionLevels)+len(col.definitionLevels)) + col.base.Size()
+	return int64(8*len(col.rows)+col.repetitionLevels.Len()+col.definitionLevels.Len()) + col.base.Size()
 }
 
 func (col *repeatedColumnBuffer) Cap() int { return cap(col.rows) }
@@ -187,14 +188,16 @@ func (col *repeatedColumnBuffer) Less(i, j int) bool {
 	row1 := col.rows[i]
 	row2 := col.rows[j]
 	less := col.nullOrdering
-	row1Length := repeatedRowLength(col.repetitionLevels[row1.offset:])
-	row2Length := repeatedRowLength(col.repetitionLevels[row2.offset:])
+	repetitionLevels := col.repetitionLevels.Slice()
+	definitionLevels := col.definitionLevels.Slice()
+	row1Length := repeatedRowLength(repetitionLevels[row1.offset:])
+	row2Length := repeatedRowLength(repetitionLevels[row2.offset:])
 
 	for k := 0; k < row1Length && k < row2Length; k++ {
 		x := int(row1.baseOffset)
 		y := int(row2.baseOffset)
-		definitionLevel1 := col.definitionLevels[int(row1.offset)+k]
-		definitionLevel2 := col.definitionLevels[int(row2.offset)+k]
+		definitionLevel1 := definitionLevels[int(row1.offset)+k]
+		definitionLevel2 := definitionLevels[int(row2.offset)+k]
 		switch {
 		case less(col.base, x, y, col.maxDefinitionLevel, definitionLevel1, definitionLevel2):
 			return true
@@ -267,14 +270,14 @@ func (col *repeatedColumnBuffer) writeRow(row []Value) error {
 
 	if row[0].repetitionLevel == 0 {
 		col.rows = append(col.rows, offsetMapping{
-			offset:     uint32(len(col.repetitionLevels)),
+			offset:     uint32(col.repetitionLevels.Len()),
 			baseOffset: uint32(baseOffset),
 		})
 	}
 
 	for _, v := range row {
-		col.repetitionLevels = append(col.repetitionLevels, v.repetitionLevel)
-		col.definitionLevels = append(col.definitionLevels, v.definitionLevel)
+		col.repetitionLevels.AppendValue(v.repetitionLevel)
+		col.definitionLevels.AppendValue(v.definitionLevel)
 	}
 
 	return nil
@@ -283,19 +286,25 @@ func (col *repeatedColumnBuffer) writeRow(row []Value) error {
 func (col *repeatedColumnBuffer) writeValues(levels columnLevels, row sparse.Array) {
 	if levels.repetitionLevel == 0 {
 		col.rows = append(col.rows, offsetMapping{
-			offset:     uint32(len(col.repetitionLevels)),
+			offset:     uint32(col.repetitionLevels.Len()),
 			baseOffset: uint32(col.base.NumValues()),
 		})
 	}
 
 	if row.Len() == 0 {
-		col.repetitionLevels = append(col.repetitionLevels, levels.repetitionLevel)
-		col.definitionLevels = append(col.definitionLevels, levels.definitionLevel)
+		col.repetitionLevels.AppendValue(levels.repetitionLevel)
+		col.definitionLevels.AppendValue(levels.definitionLevel)
 		return
 	}
 
-	col.repetitionLevels = appendLevel(col.repetitionLevels, levels.repetitionLevel, row.Len())
-	col.definitionLevels = appendLevel(col.definitionLevels, levels.definitionLevel, row.Len())
+	// Append multiple copies of the level values
+	count := row.Len()
+	repStart := col.repetitionLevels.Len()
+	defStart := col.definitionLevels.Len()
+	col.repetitionLevels.Resize(repStart + count)
+	col.definitionLevels.Resize(defStart + count)
+	bytealg.Broadcast(col.repetitionLevels.Slice()[repStart:], levels.repetitionLevel)
+	bytealg.Broadcast(col.definitionLevels.Slice()[defStart:], levels.definitionLevel)
 
 	if levels.definitionLevel == col.maxDefinitionLevel {
 		col.base.writeValues(levels, row)
@@ -305,12 +314,12 @@ func (col *repeatedColumnBuffer) writeValues(levels columnLevels, row sparse.Arr
 func (col *repeatedColumnBuffer) writeLevel(levels columnLevels) bool {
 	if levels.repetitionLevel == 0 {
 		col.rows = append(col.rows, offsetMapping{
-			offset:     uint32(len(col.repetitionLevels)),
+			offset:     uint32(col.repetitionLevels.Len()),
 			baseOffset: uint32(col.base.NumValues()),
 		})
 	}
-	col.repetitionLevels = append(col.repetitionLevels, levels.repetitionLevel)
-	col.definitionLevels = append(col.definitionLevels, levels.definitionLevel)
+	col.repetitionLevels.AppendValue(levels.repetitionLevel)
+	col.definitionLevels.AppendValue(levels.definitionLevel)
 	return levels.definitionLevel == col.maxDefinitionLevel
 }
 
@@ -361,8 +370,69 @@ func (col *repeatedColumnBuffer) writeNull(levels columnLevels) {
 }
 
 func (col *repeatedColumnBuffer) ReadValuesAt(values []Value, offset int64) (int, error) {
-	// TODO:
-	panic("NOT IMPLEMENTED")
+	length := int64(col.definitionLevels.Len())
+	if offset < 0 {
+		return 0, errRowIndexOutOfBounds(offset, length)
+	}
+	if offset >= length {
+		return 0, io.EOF
+	}
+	if length -= offset; length < int64(len(values)) {
+		values = values[:length]
+	}
+
+	definitionLevelsSlice := col.definitionLevels.Slice()
+	repetitionLevelsSlice := col.repetitionLevels.Slice()
+
+	numNulls1 := int64(countLevelsNotEqual(definitionLevelsSlice[:offset], col.maxDefinitionLevel))
+	numNulls2 := int64(countLevelsNotEqual(definitionLevelsSlice[offset:offset+length], col.maxDefinitionLevel))
+
+	if numNulls2 < length {
+		n, err := col.base.ReadValuesAt(values[:length-numNulls2], offset-numNulls1)
+		if err != nil {
+			return n, err
+		}
+	}
+
+	definitionLevels := definitionLevelsSlice[offset : offset+length]
+	repetitionLevels := repetitionLevelsSlice[offset : offset+length]
+
+	if numNulls2 > 0 {
+		columnIndex := ^int16(col.Column())
+		i := length - numNulls2 - 1 // Last index of non-null values
+		j := length - 1             // Last index in output values array
+		maxDefinitionLevel := col.maxDefinitionLevel
+
+		for n := len(definitionLevels) - 1; n >= 0 && j > i; n-- {
+			if definitionLevels[n] != maxDefinitionLevel {
+				values[j] = Value{
+					repetitionLevel: repetitionLevels[n],
+					definitionLevel: definitionLevels[n],
+					columnIndex:     columnIndex,
+				}
+			} else {
+				values[j] = values[i]
+				values[j].repetitionLevel = repetitionLevels[n]
+				values[j].definitionLevel = maxDefinitionLevel
+				i--
+			}
+			j--
+		}
+
+		// Set levels on remaining non-null values at the beginning
+		for k := int64(0); k <= i; k++ {
+			values[k].repetitionLevel = repetitionLevels[k]
+			values[k].definitionLevel = maxDefinitionLevel
+		}
+	} else {
+		// No nulls, but still need to set levels on all values
+		for i := range values[:length] {
+			values[i].repetitionLevel = repetitionLevels[i]
+			values[i].definitionLevel = col.maxDefinitionLevel
+		}
+	}
+
+	return int(length), nil
 }
 
 // repeatedRowLength gives the length of the repeated row starting at the

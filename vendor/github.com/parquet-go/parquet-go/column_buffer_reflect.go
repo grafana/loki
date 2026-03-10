@@ -1,10 +1,14 @@
 package parquet
 
 import (
+	"bytes"
 	"cmp"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"maps"
+	"math"
+	"math/big"
 	"math/bits"
 	"reflect"
 	"sort"
@@ -16,7 +20,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/parquet-go/jsonlite"
 	"github.com/parquet-go/parquet-go/deprecated"
+	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
+	"github.com/twpayne/go-geom"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -35,11 +41,10 @@ import (
 // - nil *structpb.Struct, *structpb.ListValue, *structpb.Value
 // - Zero values for value types
 func isNullValue(value reflect.Value) bool {
-	if !value.IsValid() {
-		return true
-	}
-
 	switch value.Kind() {
+	case reflect.Invalid:
+		return true
+
 	case reflect.Pointer, reflect.Interface:
 		if value.IsNil() {
 			return true
@@ -491,13 +496,29 @@ func writeValueFuncOfMap(columnIndex int16, node Node) (int16, writeValueFunc) {
 	keyType := keyValueElem.Field(0).Type
 	valueType := keyValueElem.Field(1).Type
 	nextColumnIndex, writeValue := writeValueFuncOf(columnIndex, schemaOf(keyValueElem))
+	zeroKeyValue := reflect.Zero(keyValueElem)
 
 	return nextColumnIndex, func(columns []ColumnBuffer, levels columnLevels, mapValue reflect.Value) {
+		if mapValue.Kind() == reflect.Pointer {
+			// Return early in the nil case to avoid dealing later with a zero value returned by Elem()
+			if mapValue.IsNil() {
+				writeValue(columns, levels, zeroKeyValue)
+				return
+			}
+			mapValue = mapValue.Elem()
+		}
+
+		// Check for invalid or nil map first to avoid panic on Interface() or Len()
+		if !mapValue.IsValid() || mapValue.IsNil() {
+			writeValue(columns, levels, zeroKeyValue)
+			return
+		}
+
 		switch m := mapValue.Interface().(type) {
 		case protoreflect.Map:
 			n := m.Len()
 			if n == 0 {
-				writeValue(columns, levels, reflect.Zero(keyValueElem))
+				writeValue(columns, levels, zeroKeyValue)
 				return
 			}
 
@@ -518,7 +539,7 @@ func writeValueFuncOfMap(columnIndex int16, node Node) (int16, writeValueFunc) {
 		}
 
 		if mapValue.Len() == 0 {
-			writeValue(columns, levels, reflect.Zero(keyValueElem))
+			writeValue(columns, levels, zeroKeyValue)
 			return
 		}
 
@@ -678,140 +699,189 @@ func writeValueFuncOfGroup(columnIndex int16, node Node) (int16, writeValueFunc)
 }
 
 func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) {
+	if columnIndex < 0 {
+		panic("writeValueFuncOfLeaf called with invalid columnIndex -1 (empty group)")
+	}
 	if columnIndex > MaxColumnIndex {
 		panic("row cannot be written because it has more than 127 columns")
 	}
 	return columnIndex + 1, func(columns []ColumnBuffer, levels columnLevels, value reflect.Value) {
 		col := columns[columnIndex]
+	writeValue:
+		switch value.Kind() {
+		case reflect.Invalid:
+			col.writeNull(levels)
+			return
 
-		for {
-			if !value.IsValid() {
+		case reflect.Pointer, reflect.Interface:
+			if value.IsNil() {
 				col.writeNull(levels)
 				return
 			}
+			switch msg := value.Interface().(type) {
+			case *jsonlite.Value:
+				writeJSONToLeaf(col, levels, msg, node)
+			case *json.Number:
+				writeJSONNumber(col, levels, *msg, node)
+			case *time.Time:
+				writeTime(col, levels, *msg, node)
+			case *time.Duration:
+				writeDuration(col, levels, *msg, node)
+			case *timestamppb.Timestamp:
+				writeProtoTimestamp(col, levels, msg, node)
+			case *durationpb.Duration:
+				writeProtoDuration(col, levels, msg, node)
+			case *wrapperspb.BoolValue:
+				col.writeBoolean(levels, msg.GetValue())
+			case *wrapperspb.Int32Value:
+				col.writeInt32(levels, msg.GetValue())
+			case *wrapperspb.Int64Value:
+				col.writeInt64(levels, msg.GetValue())
+			case *wrapperspb.UInt32Value:
+				col.writeInt32(levels, int32(msg.GetValue()))
+			case *wrapperspb.UInt64Value:
+				col.writeInt64(levels, int64(msg.GetValue()))
+			case *wrapperspb.FloatValue:
+				col.writeFloat(levels, msg.GetValue())
+			case *wrapperspb.DoubleValue:
+				col.writeDouble(levels, msg.GetValue())
+			case *wrapperspb.StringValue:
+				col.writeByteArray(levels, unsafeByteArrayFromString(msg.GetValue()))
+			case *wrapperspb.BytesValue:
+				col.writeByteArray(levels, msg.GetValue())
+			case *structpb.Struct:
+				writeProtoStruct(col, levels, msg, node)
+			case *structpb.ListValue:
+				writeProtoList(col, levels, msg, node)
+			case *anypb.Any:
+				writeProtoAny(col, levels, msg, node)
+			case geom.T:
+				writeGeometry(col, levels, msg, node)
+			case *big.Float:
+				writeBigFloat(col, levels, msg, node)
+			default:
+				value = value.Elem()
+				goto writeValue
+			}
+			return
 
-			switch value.Kind() {
-			case reflect.Pointer, reflect.Interface:
-				if value.IsNil() {
-					col.writeNull(levels)
+		case reflect.Bool:
+			col.writeBoolean(levels, value.Bool())
+			return
+
+		case reflect.Int8, reflect.Int16, reflect.Int32:
+			col.writeInt32(levels, int32(value.Int()))
+			return
+
+		case reflect.Int:
+			col.writeInt64(levels, value.Int())
+			return
+
+		case reflect.Int64:
+			if value.Type() == reflect.TypeFor[time.Duration]() {
+				writeDuration(col, levels, time.Duration(value.Int()), node)
+			} else {
+				col.writeInt64(levels, value.Int())
+			}
+			return
+
+		case reflect.Uint8, reflect.Uint16, reflect.Uint32:
+			col.writeInt32(levels, int32(value.Uint()))
+			return
+
+		case reflect.Uint, reflect.Uint64:
+			col.writeInt64(levels, int64(value.Uint()))
+			return
+
+		case reflect.Float32:
+			typ := node.Type()
+			logicalType := typ.LogicalType()
+			if logicalType != nil && logicalType.Decimal != nil {
+				decimalValue(col, levels, typ, value, logicalType.Decimal.Scale)
+				return
+			}
+			col.writeFloat(levels, float32(value.Float()))
+			return
+
+		case reflect.Float64:
+			typ := node.Type()
+			logicalType := typ.LogicalType()
+			if logicalType != nil && logicalType.Decimal != nil {
+				decimalValue(col, levels, typ, value, logicalType.Decimal.Scale)
+				return
+			}
+
+			col.writeDouble(levels, value.Float())
+			return
+
+		case reflect.String:
+			v := value.String()
+			switch value.Type() {
+			case reflect.TypeFor[json.Number]():
+				writeJSONNumber(col, levels, json.Number(v), node)
+			default:
+				typ := node.Type()
+				logicalType := typ.LogicalType()
+				if logicalType != nil && logicalType.UUID != nil {
+					writeUUID(col, levels, v, typ)
 					return
 				}
-				switch msg := value.Interface().(type) {
-				case *jsonlite.Value:
-					writeJSONToLeaf(col, levels, msg, node)
-				case *json.Number:
-					writeJSONNumber(col, levels, *msg, node)
-				case *time.Time:
-					writeTime(col, levels, *msg, node)
-				case *time.Duration:
-					writeDuration(col, levels, *msg, node)
-				case *timestamppb.Timestamp:
-					writeProtoTimestamp(col, levels, msg, node)
-				case *durationpb.Duration:
-					writeProtoDuration(col, levels, msg, node)
-				case *wrapperspb.BoolValue:
-					col.writeBoolean(levels, msg.GetValue())
-				case *wrapperspb.Int32Value:
-					col.writeInt32(levels, msg.GetValue())
-				case *wrapperspb.Int64Value:
-					col.writeInt64(levels, msg.GetValue())
-				case *wrapperspb.UInt32Value:
-					col.writeInt32(levels, int32(msg.GetValue()))
-				case *wrapperspb.UInt64Value:
-					col.writeInt64(levels, int64(msg.GetValue()))
-				case *wrapperspb.FloatValue:
-					col.writeFloat(levels, msg.GetValue())
-				case *wrapperspb.DoubleValue:
-					col.writeDouble(levels, msg.GetValue())
-				case *wrapperspb.StringValue:
-					col.writeByteArray(levels, unsafeByteArrayFromString(msg.GetValue()))
-				case *wrapperspb.BytesValue:
-					col.writeByteArray(levels, msg.GetValue())
-				case *structpb.Struct:
-					writeProtoStruct(col, levels, msg, node)
-				case *structpb.ListValue:
-					writeProtoList(col, levels, msg, node)
-				case *anypb.Any:
-					writeProtoAny(col, levels, msg, node)
-				default:
-					value = value.Elem()
-					continue
-				}
+				col.writeByteArray(levels, unsafeByteArrayFromString(v))
+			}
+			return
 
-			case reflect.Bool:
-				col.writeBoolean(levels, value.Bool())
-
-			case reflect.Int8, reflect.Int16, reflect.Int32:
-				col.writeInt32(levels, int32(value.Int()))
-
-			case reflect.Int:
-				col.writeInt64(levels, value.Int())
-
-			case reflect.Int64:
-				if value.Type() == reflect.TypeFor[time.Duration]() {
-					writeDuration(col, levels, time.Duration(value.Int()), node)
-				} else {
-					col.writeInt64(levels, value.Int())
-				}
-
-			case reflect.Uint8, reflect.Uint16, reflect.Uint32:
-				col.writeInt32(levels, int32(value.Uint()))
-
-			case reflect.Uint, reflect.Uint64:
-				col.writeInt64(levels, int64(value.Uint()))
-
-			case reflect.Float32:
-				col.writeFloat(levels, float32(value.Float()))
-
-			case reflect.Float64:
-				col.writeDouble(levels, value.Float())
-
-			case reflect.String:
-				v := value.String()
-				switch value.Type() {
-				case reflect.TypeFor[json.Number]():
-					writeJSONNumber(col, levels, json.Number(v), node)
-				default:
-					typ := node.Type()
-					logicalType := typ.LogicalType()
-					if logicalType != nil && logicalType.UUID != nil {
-						writeUUID(col, levels, v, typ)
-						return
-					}
-					col.writeByteArray(levels, unsafeByteArrayFromString(v))
-				}
-
-			case reflect.Slice:
-				switch v := value.Bytes(); value.Type() {
+		case reflect.Slice:
+			if t := value.Type(); t.Elem().Kind() == reflect.Uint8 {
+				switch t {
 				case reflect.TypeFor[json.RawMessage]():
-					val, err := jsonParse(v)
+					val, err := jsonParse(value.Bytes())
 					if err != nil {
 						panic(fmt.Errorf("failed to parse JSON: %w", err))
 					}
 					writeJSONToLeaf(col, levels, val, node)
 				default:
-					col.writeByteArray(levels, v)
+					col.writeByteArray(levels, value.Bytes())
 				}
-
-			case reflect.Array:
-				col.writeByteArray(levels, value.Bytes())
-
-			case reflect.Struct:
-				switch v := value.Interface().(type) {
-				case time.Time:
-					writeTime(col, levels, v, node)
-				case deprecated.Int96:
-					col.writeInt96(levels, v)
-				default:
-					goto unsupported
-				}
-			default:
-				goto unsupported
+				return
 			}
+
+		case reflect.Array:
+			col.writeByteArray(levels, value.Bytes())
 			return
-		unsupported:
+
+		case reflect.Struct:
+			switch v := value.Interface().(type) {
+			case time.Time:
+				writeTime(col, levels, v, node)
+				return
+			case deprecated.Int96:
+				col.writeInt96(levels, v)
+				return
+			}
+		}
+
+		if node.Type().Kind() != ByteArray {
 			panic(fmt.Sprintf("cannot write value of type %s to leaf column", value.Type()))
 		}
+
+		if node.Optional() && isNullValue(value) {
+			col.writeNull(levels)
+			return
+		}
+
+		b := memory.SliceBuffer[byte]{}
+		w := memory.SliceWriter{Buffer: &b}
+		defer b.Reset()
+
+		enc := json.NewEncoder(w)
+		enc.SetEscapeHTML(false)
+
+		if err := enc.Encode(value.Interface()); err != nil {
+			panic(err)
+		}
+
+		data := b.Slice()
+		col.writeByteArray(levels, data[:len(data)-1])
 	}
 }
 
@@ -848,8 +918,114 @@ func writeUUID(col ColumnBuffer, levels columnLevels, str string, typ Type) {
 	if err != nil {
 		panic(fmt.Errorf("cannot parse string %q as UUID: %w", str, err))
 	}
-	buf := getColumnWriteBuffer()
-	buf.Write(parsedUUID[:])
-	col.writeByteArray(levels, buf.Bytes())
-	putColumnWriteBuffer(buf)
+	buf := memory.SliceBuffer[byte]{}
+	buf.Grow(16)
+	buf.Append(parsedUUID[:]...)
+	col.writeByteArray(levels, buf.Slice())
+	buf.Reset()
+}
+
+func decimalValue(col ColumnBuffer, levels columnLevels, typ Type, value reflect.Value, scale int32) {
+	val := int64(math.Round(value.Float() * math.Pow10(int(scale))))
+	switch typ.Kind() {
+	case Int32:
+		col.writeInt32(levels, int32(val))
+	case Int64:
+		col.writeInt64(levels, val)
+	case ByteArray:
+		col.writeByteArray(levels, numberToByteArray(val))
+	}
+}
+
+func numberToByteArray(data any) []byte {
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.BigEndian, data)
+	if err != nil {
+		panic(err)
+	}
+	return buf.Bytes()
+}
+
+func writeBigFloat(col ColumnBuffer, levels columnLevels, f *big.Float, node Node) {
+	typ := node.Type()
+	logicalType := typ.LogicalType()
+	if logicalType == nil || logicalType.Decimal == nil {
+		panic("writeBigFloat requires a decimal logical type")
+	}
+
+	scale := int(logicalType.Decimal.Scale)
+	// Compute minimum precision needed: decimal precision * log2(10) ≈ precision * 3.32
+	// We use precision * 4 + 64 for safety margin
+	minPrec := uint(logicalType.Decimal.Precision)*4 + 64
+	prec := max(f.Prec(), minPrec)
+	scaleFactor := new(big.Float).SetPrec(prec)
+	scaleFactor.SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(scale)), nil))
+	scaled := new(big.Float).SetPrec(prec).Mul(f, scaleFactor)
+	// Round to nearest integer (add 0.5 and truncate for positive, subtract 0.5 for negative)
+	half := new(big.Float).SetPrec(prec).SetFloat64(0.5)
+	if scaled.Sign() >= 0 {
+		scaled.Add(scaled, half)
+	} else {
+		scaled.Sub(scaled, half)
+	}
+	unscaled, _ := scaled.Int(nil)
+
+	b := bigIntToByteArray(unscaled)
+	if typ.Kind() == FixedLenByteArray {
+		b = padToFixedLen(b, typ.Length(), unscaled.Sign() < 0)
+	}
+	col.writeByteArray(levels, b)
+}
+
+func bigIntToByteArray(i *big.Int) []byte {
+	if i.Sign() >= 0 {
+		b := i.Bytes()
+		// Add leading zero byte if high bit is set to avoid being interpreted as negative
+		if len(b) > 0 && b[0]&0x80 != 0 {
+			b = append([]byte{0}, b...)
+		}
+		return b
+	}
+	// Negative: convert to two's complement
+	// Get the absolute value bytes
+	abs := new(big.Int).Abs(i)
+	b := abs.Bytes()
+	// Add a leading zero byte to ensure we have room for sign
+	if len(b) == 0 || b[0]&0x80 != 0 {
+		b = append([]byte{0}, b...)
+	}
+	// Invert all bits
+	for j := range b {
+		b[j] = ^b[j]
+	}
+	// Add 1
+	carry := byte(1)
+	for j := len(b) - 1; j >= 0 && carry > 0; j-- {
+		sum := b[j] + carry
+		b[j] = sum
+		if sum != 0 {
+			carry = 0
+		}
+	}
+	return b
+}
+
+func padToFixedLen(b []byte, length int, negative bool) []byte {
+	if len(b) == length {
+		return b
+	}
+	if len(b) > length {
+		panic(fmt.Sprintf("decimal value requires %d bytes but fixed length is %d", len(b), length))
+	}
+	padByte := byte(0x00)
+	if negative {
+		padByte = 0xFF
+	}
+	result := make([]byte, length)
+	padding := length - len(b)
+	for i := range padding {
+		result[i] = padByte
+	}
+	copy(result[padding:], b)
+	return result
 }

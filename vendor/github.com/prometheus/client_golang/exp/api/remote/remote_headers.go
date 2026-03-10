@@ -132,11 +132,18 @@ func (w *WriteResponse) SetExtraHeader(key, value string) {
 
 // writeHeaders sets response headers in a given response writer.
 // Make sure to use it before http.ResponseWriter.WriteHeader and .Write.
-func (w *WriteResponse) writeHeaders(rw http.ResponseWriter) {
+func (w *WriteResponse) writeHeaders(msgType WriteMessageType, rw http.ResponseWriter) {
 	h := rw.Header()
-	h.Set(writtenSamplesHeader, strconv.Itoa(w.Samples))
-	h.Set(writtenHistogramsHeader, strconv.Itoa(w.Histograms))
-	h.Set(writtenExemplarsHeader, strconv.Itoa(w.Exemplars))
+
+	// TODO make it easier to indicate if the stats are valid before adding the headers. WriteResponseStats.confirmed
+	//  could be used if there was a reliable way for it to be set without parsing headers. For now ensure we don't
+	//  add stats headers for v1 messages which can cause confusion/false positive errors logs.
+	if msgType != WriteV1MessageType {
+		h.Set(writtenSamplesHeader, strconv.Itoa(w.Samples))
+		h.Set(writtenHistogramsHeader, strconv.Itoa(w.Histograms))
+		h.Set(writtenExemplarsHeader, strconv.Itoa(w.Exemplars))
+	}
+
 	for k, v := range w.extraHeaders {
 		for _, vv := range v {
 			h.Add(k, vv)

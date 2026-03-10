@@ -31,7 +31,7 @@ Deploying the Helm chart with a single replica deploys the following components:
 - Loki (1 replica)
 - Loki Canary (1 DaemonSet)
 - Loki Gateway (1 NGINX replica)
-- Loki Chunk and Result Cache (1 DaemonSet)
+- Loki Chunk and Result Cache (1 StatefulSet)
 - Minio (optional, if `minio.enabled=true`)
 
 Create the configuration file `values.yaml`:
@@ -105,7 +105,7 @@ Deploying the Helm chart with multiple replicas deploys the following components
 - Loki (3 replicas)
 - Loki Canary (1 DaemonSet)
 - Loki Gateway (1 NGINX replica)
-- Loki Chunk and Result Cache (1 DaemonSet)
+- Loki Chunk and Result Cache (1 StatefulSet)
 - Minio (optional, if `minio.enabled=true`)
 
 Create the configuration file `values.yaml`:

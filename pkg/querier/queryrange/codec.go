@@ -342,6 +342,11 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
+
+		req.CachingOptions = queryrangebase.CachingOptions{
+			Disabled: disableCacheReq,
+		}
+
 		return req, nil
 	case InstantQueryOp:
 		req, err := parseInstantQuery(r)

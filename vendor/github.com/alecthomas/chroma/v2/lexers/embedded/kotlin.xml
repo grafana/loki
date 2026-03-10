@@ -113,9 +113,7 @@
       <rule pattern="%=|&amp;&amp;|\*=|\+\+|\+=|--|-=|-&gt;|\.\.|\/=|::|&lt;=|==|&gt;=|!!|!=|\|\||\?[:.]">
         <token type="Operator"/>
       </rule>
-      <rule pattern="[~!%^&amp;*()+=|\[\]:;,.&lt;&gt;\/?-]">
-        <token type="Punctuation"/>
-      </rule>
+
       <rule pattern="[{}]">
         <token type="Punctuation"/>
       </rule>
@@ -137,8 +135,20 @@
       <rule pattern="&#39;\\.&#39;|&#39;[^\\]&#39;">
         <token type="LiteralStringChar"/>
       </rule>
-      <rule pattern="0[xX][0-9a-fA-F]+[Uu]?[Ll]?|[0-9]+(\.[0-9]*)?([eE][+-][0-9]+)?[fF]?[Uu]?[Ll]?">
-        <token type="LiteralNumber"/>
+      <rule pattern="0[xX][0-9a-fA-F]+(_+[0-9a-fA-F]+)*[uU]?L?">
+        <token type="LiteralNumberHex"/>
+      </rule>
+      <rule pattern="0[bB][01]+(_+[01]+)*[uU]?L?">
+        <token type="LiteralNumberBin"/>
+      </rule>
+      <rule pattern="[0-9]+(_+[0-9]+)*\.[0-9]+(_+[0-9]+)*([eE][+-]?[0-9]+(_+[0-9]+)*)?[fF]?|\.[0-9]+(_+[0-9]+)*([eE][+-]?[0-9]+(_+[0-9]+)*)?[fF]?|[0-9]+(_+[0-9]+)*[eE][+-]?[0-9]+(_+[0-9]+)*[fF]?|[0-9]+(_+[0-9]+)*[fF]">
+        <token type="LiteralNumberFloat"/>
+      </rule>
+      <rule pattern="[0-9]+(_+[0-9]+)*[uU]?L?">
+        <token type="LiteralNumberInteger"/>
+      </rule>
+      <rule pattern="[~!%^&amp;*()+=|\[\]:;,.&lt;&gt;\/?-]">
+        <token type="Punctuation"/>
       </rule>
       <rule pattern="(companion)(\s+)(object)">
         <bygroups>

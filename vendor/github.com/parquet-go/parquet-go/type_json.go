@@ -98,7 +98,7 @@ func (t *jsonType) AssignValue(dst reflect.Value, src Value) error {
 
 func (t *jsonType) ConvertValue(val Value, typ Type) (Value, error) {
 	switch typ.(type) {
-	case *byteArrayType, *stringType, *jsonType:
+	case byteArrayType, *stringType, *jsonType:
 		return val, nil
 	default:
 		return val, invalidConversion(val, "JSON", typ.String())

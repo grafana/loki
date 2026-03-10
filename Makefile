@@ -26,9 +26,9 @@ DOCKER_INTERACTIVE_FLAGS := --tty --interactive
 endif
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.25.4
+GO_VERSION         := 1.26.0
 # Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
-BUILD_IMAGE_TAG    := 0.34.8
+BUILD_IMAGE_TAG    := 0.35.0
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -294,7 +294,7 @@ PROMTAIL_DEBUG_GO_FLAGS = $(DEBUG_DYN_GO_FLAGS)
 endif
 endif
 ifeq ($(PROMTAIL_JOURNAL_ENABLED), true)
-PROMTAIL_GO_TAGS = promtail_journal_enabled
+PROMTAIL_GO_EXTRA_TAGS = ,promtail_journal_enabled
 endif
 .PHONY: clients/cmd/promtail/promtail clients/cmd/promtail/promtail-debug
 promtail: clients/cmd/promtail/promtail ## build promtail executable
@@ -309,10 +309,10 @@ $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./clients/pkg/promtail/server/ui
 
 clients/cmd/promtail/promtail:
-	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS)$(PROMTAIL_GO_EXTRA_TAGS) -o $@ ./$(@D)
 
 clients/cmd/promtail/promtail-debug:
-	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS)$(PROMTAIL_GO_EXTRA_TAGS) -o $@ ./$(@D)
 
 #########
 # Mixin #

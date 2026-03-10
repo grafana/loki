@@ -1,4 +1,4 @@
-auth_enabled: true 
+auth_enabled: true
 common:
     compactor_address: http://compactor:8006
 chunk_store_config:

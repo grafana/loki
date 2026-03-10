@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
@@ -197,11 +198,24 @@ func (b *pageBuilder) updateMinMax(value Value) {
 	// This allows us to only avoid comparing against NULL values, which would lead to
 	// NULL always being the min.
 	if b.values == 0 || CompareValues(&value, &b.minValue) < 0 {
-		b.minValue = value
+		b.minValue = cloneValue(value)
 	}
 	if b.values == 0 || CompareValues(&value, &b.maxValue) > 0 {
-		b.maxValue = value
+		b.maxValue = cloneValue(value)
 	}
+}
+
+func cloneValue(src Value) Value {
+	dst := Value{}
+	dst.kind = src.kind
+	dst.num = src.num
+	dst.cap = src.cap
+	if src.cap > 0 {
+		newBuffer := make([]byte, src.cap)
+		copy(newBuffer, src.Buffer())
+		dst.data = unsafe.SliceData(newBuffer)
+	}
+	return dst
 }
 
 func valueSize(v Value) int {

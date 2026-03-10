@@ -1,6 +1,6 @@
 <style name="github">
   <entry type="Error" style="#f6f8fa bg:#82071e"/>
-  <entry type="Background" style="bg:#ffffff"/>
+  <entry type="Background" style="bg:#f7f7f7"/>
   <entry type="Keyword" style="#cf222e"/>
   <entry type="KeywordType" style="#cf222e"/>
   <entry type="NameAttribute" style="#1f2328"/>

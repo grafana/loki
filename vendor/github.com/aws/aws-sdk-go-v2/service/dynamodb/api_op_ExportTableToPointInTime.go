@@ -53,7 +53,7 @@ type ExportTableToPointInTimeInput struct {
 	//
 	// If you submit a request with the same client token but a change in other
 	// parameters within the 8-hour idempotency window, DynamoDB returns an
-	// ImportConflictException .
+	// ExportConflictException .
 	ClientToken *string
 
 	// The format for the exported data. Valid values for ExportFormat are

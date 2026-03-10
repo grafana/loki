@@ -37,7 +37,7 @@ type GSSAPIConfig struct {
 	KerberosConfigPath string
 	ServiceName        string
 	Username           string
-	Password           string
+	Password           string // #nosec G117 -- required by GSSAPI auth config and intentionally user-provided.
 	Realm              string
 	DisablePAFXFAST    bool
 	BuildSpn           BuildSpnFunc

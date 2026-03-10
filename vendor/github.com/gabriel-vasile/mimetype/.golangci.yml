@@ -1,5 +1,41 @@
 version: "2"
+
+run:
+  timeout: 5m
+
 linters:
   exclusions:
     presets:
       - std-error-handling
+  enable:
+    - gosec          # Detects security problems.
+    # Keep all extras disabled for now to focus on the integer overflow problem.
+    # TODO: enable these and other good linters
+    - dogsled        # Detects assignments with too many blank identifiers.
+    - errcheck
+    - errchkjson     # Detects unsupported types passed to json encoding functions and reports if checks for the returned error can be omitted.
+    - exhaustive     # Detects missing options in enum switch statements.
+    - gocyclo
+    - govet
+    - ineffassign
+    - makezero       # Finds slice declarations with non-zero initial length.
+    - misspell       # Detects commonly misspelled English words in comments.
+    - nakedret       # Detects uses of naked returns.
+    - prealloc       # Detects slice declarations that could potentially be pre-allocated.
+    - predeclared    # Detects code that shadows one of Go's predeclared identifiers.
+    - reassign       # Detects reassigning a top-level variable in another package.
+    - staticcheck
+    - thelper        # Detects test helpers without t.Helper().
+    - tparallel      # Detects inappropriate usage of t.Parallel().
+    - unconvert      # Detects unnecessary type conversions.
+    - unused
+    - usestdlibvars  # Detects the possibility to use variables/constants from the Go standard library.
+    - usetesting     # Reports uses of functions with replacement inside the testing package.
+  settings:
+    govet:
+      disable:
+        - stdversion
+    gosec:
+      excludes:
+        - G404 # Weak random number generator used in tests.
+        - G304 # File inclusion

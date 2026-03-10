@@ -1,5 +1,44 @@
 # Changes
 
+## [1.42.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.42.0) (2026-02-04)
+
+### Features
+
+* add TieredStorageConfig to table admin api ([611f239](https://github.com/googleapis/google-cloud-go/commit/611f239219225fb03f6475c7238f497a349961e2))
+* add client startup time metrics.  (#13521) ([8f90da3](https://github.com/googleapis/google-cloud-go/commit/8f90da38abc674f23ad0d0289ece3b376caa8746))
+* add dynamic channel support (#2) (#13504) ([65a3c4e](https://github.com/googleapis/google-cloud-go/commit/65a3c4ec26fc3765f4665259226f93ee32abd054))
+* add ip protocol for bigtable connection (#13520) ([6f86983](https://github.com/googleapis/google-cloud-go/commit/6f86983e4b307d45397e36d1498635524ac7615e))
+* add metrics exporter for outstandingrpcs and perconnectionerror count  (#13510) ([7f1b36a](https://github.com/googleapis/google-cloud-go/commit/7f1b36acdf2fddb6bd7b41753a7244021686acf0))
+* introduce prime() method and load counting based on unary,streaming and ability to remove connection (#13419) ([c6773ce](https://github.com/googleapis/google-cloud-go/commit/c6773ceb279f2146eb13a6795d79a0415f71ea41))
+
+### Bug Fixes
+
+* fix a nil pointer deference in remove connections when… (#13535) ([9d2ba82](https://github.com/googleapis/google-cloud-go/commit/9d2ba82ecd770d3e3a18c79e2792ab7ac502240e))
+* handle client region and client host name based on ote… (#13752) ([0429170](https://github.com/googleapis/google-cloud-go/commit/0429170f45ddba05095ca3eedaec25675025fe22))
+
+### Performance Improvements
+
+* use passthrough with emulator endpoint (#13739) ([dafbca2](https://github.com/googleapis/google-cloud-go/commit/dafbca228eae9a07548996f925854d46e6a719e5))
+
+## [1.41.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.41.0) (2025-12-15)
+
+### Features
+
+* Add experimental Bigtable connection pool with custom load balancing strategy.  (#12882) ([7aa9612](https://github.com/googleapis/google-cloud-go/commit/7aa96127a9903d47e8b2834b53e4bd229145161c))
+* Enable ALTS hard bound token in Bigtable w/ direct access (#13153) ([9023934](https://github.com/googleapis/google-cloud-go/commit/9023934127b4aaf8ba02e00486ef0f2fb9822137))
+* Enable routing cookie and attempt headers for enhanced retries (#12964) ([96cfd47](https://github.com/googleapis/google-cloud-go/commit/96cfd47ad729d3507c192e5a73e7473e7c6e7c5a))
+* add PeerInfo proto in Bigtable API ([185951b](https://github.com/googleapis/google-cloud-go/commit/185951b3bea9fb942979e81ce248ccdebb40d94b))
+* precompute featureflags in client and reuse (#13297) ([3b3253a](https://github.com/googleapis/google-cloud-go/commit/3b3253ac1d5c671263456e810cb497d95668fdd0))
+
+### Bug Fixes
+
+* fix project id sent in otel (#13286) ([4865868](https://github.com/googleapis/google-cloud-go/commit/4865868c011724cf51e0141bad3d02a2e9caa78a))
+* screaming uppercase metric status (#13484) ([b35ee8f](https://github.com/googleapis/google-cloud-go/commit/b35ee8fd73f7d740d40b0ed3be4ef0c716cb4eac))
+
+### Performance Improvements
+
+* parallelize the exportTimeSeries function (#13004) ([bafd691](https://github.com/googleapis/google-cloud-go/commit/bafd691de181bf19f39e55d15e1782156524b6ae))
+
 ## [1.40.1](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.40.0...bigtable/v1.40.1) (2025-09-26)
 
 

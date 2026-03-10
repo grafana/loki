@@ -1,0 +1,533 @@
+package comparator
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/labels"
+
+	jsoniter "github.com/json-iterator/go"
+	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+)
+
+// ErrComparisonMismatch is returned when responses are successfully compared but don't match.
+// This distinguishes data mismatches from operational failures (parsing errors, backend failures).
+var ErrComparisonMismatch = errors.New("comparison mismatch")
+
+// Mismatch cause constants for categorising comparison failures.
+const (
+	CauseNoMismatch                      = ""
+	CauseStatusMismatch                  = "status_mismatch"
+	CauseResultTypeMismatch              = "result_type_mismatch"
+	CauseMetricCountMismatch             = "metric_count_mismatch"
+	CauseMetricMissing                   = "metric_missing"
+	CauseSampleCountMismatch             = "sample_count_mismatch"
+	CauseSampleValueMismatch             = "sample_value_mismatch"
+	CauseSampleTimestampMismatch         = "sample_timestamp_mismatch"
+	CauseStreamCountMismatch             = "stream_count_mismatch"
+	CauseStreamMissing                   = "stream_missing"
+	CauseStreamEntryCountMismatch        = "stream_entry_count_mismatch"
+	CauseStreamTimestampMismatch         = "stream_timestamp_mismatch"
+	CauseStreamLineMismatch              = "stream_line_mismatch"
+	CauseStructuredMetadataCountMismatch = "structured_metadata_count_mismatch"
+	CauseStructuredMetadataMismatch      = "structured_metadata_mismatch"
+	CauseParsedLabelsCountMismatch       = "parsed_labels_count_mismatch"
+	CauseParsedLabelsMismatch            = "parsed_labels_mismatch"
+	CauseUnknown                         = "unknown"
+)
+
+type ResponsesComparator interface {
+	Compare(expected, actual []byte, queryEvaluationTime time.Time) (*ComparisonSummary, error)
+}
+
+type ComparisonSummary struct {
+	Skipped        bool
+	MissingMetrics int
+	// MismatchCause is set when comparison fails with ErrComparisonMismatch.
+	MismatchCause string
+}
+
+// SamplesComparatorFunc helps with comparing different types of samples coming from /api/v1/query and /api/v1/query_range routes.
+type SamplesComparatorFunc func(expected, actual json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (*ComparisonSummary, error)
+
+type SamplesResponse struct {
+	Status string
+	Data   struct {
+		ResultType string
+		Result     json.RawMessage
+	}
+}
+
+type SampleComparisonOptions struct {
+	Tolerance         float64
+	UseRelativeError  bool
+	SkipRecentSamples time.Duration
+	SkipSamplesBefore time.Time
+}
+
+func (opts *SampleComparisonOptions) SkipSample(sampleTime, evaluationTime time.Time) bool {
+	// Skip if sample is too old
+	if !opts.SkipSamplesBefore.IsZero() && sampleTime.Before(opts.SkipSamplesBefore) {
+		return true
+	}
+
+	// Skip if sample is too recent
+	if opts.SkipRecentSamples > 0 && sampleTime.After(evaluationTime.Add(-opts.SkipRecentSamples)) {
+		return true
+	}
+	return false
+}
+
+func NewSamplesComparator(opts SampleComparisonOptions) *SamplesComparator {
+	return &SamplesComparator{
+		opts: opts,
+		sampleTypesComparator: map[string]SamplesComparatorFunc{
+			"matrix":                 compareMatrix,
+			"vector":                 compareVector,
+			"scalar":                 compareScalar,
+			loghttp.ResultTypeStream: compareStreams, // TODO: this makes it more than a samples compator
+		},
+	}
+}
+
+type SamplesComparator struct {
+	opts                  SampleComparisonOptions
+	sampleTypesComparator map[string]SamplesComparatorFunc
+}
+
+// RegisterSamplesType helps with registering custom sample types
+func (s *SamplesComparator) RegisterSamplesType(samplesType string, comparator SamplesComparatorFunc) {
+	s.sampleTypesComparator[samplesType] = comparator
+}
+
+func (s *SamplesComparator) Compare(expectedResponse, actualResponse []byte, evaluationTime time.Time) (*ComparisonSummary, error) {
+	var expected, actual SamplesResponse
+
+	err := json.Unmarshal(expectedResponse, &expected)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal expected response: %w", err)
+	}
+
+	err = json.Unmarshal(actualResponse, &actual)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal actual response: %w", err)
+	}
+
+	if expected.Status != actual.Status {
+		return &ComparisonSummary{MismatchCause: CauseStatusMismatch}, fmt.Errorf("expected status %s but got %s: %w", expected.Status, actual.Status, ErrComparisonMismatch)
+	}
+
+	if expected.Data.ResultType != actual.Data.ResultType {
+		return &ComparisonSummary{MismatchCause: CauseResultTypeMismatch}, fmt.Errorf("expected resultType %s but got %s: %w", expected.Data.ResultType, actual.Data.ResultType, ErrComparisonMismatch)
+	}
+
+	comparator, ok := s.sampleTypesComparator[expected.Data.ResultType]
+	if !ok {
+		return nil, fmt.Errorf("resultType %s not registered for comparison", expected.Data.ResultType)
+	}
+
+	return comparator(expected.Data.Result, actual.Data.Result, evaluationTime, s.opts)
+}
+
+func compareMatrix(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (*ComparisonSummary, error) {
+	var expected, actual model.Matrix
+
+	err := json.Unmarshal(expectedRaw, &expected)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal expected matrix: %w", err)
+	}
+	err = json.Unmarshal(actualRaw, &actual)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal actual matrix: %w", err)
+	}
+
+	// Filter out samples outside the comparable window
+	if !opts.SkipSamplesBefore.IsZero() || opts.SkipRecentSamples > 0 {
+		expected = filterSamplesOutsideWindow(expected, func(sampleTime time.Time) bool {
+			return opts.SkipSample(sampleTime, evaluationTime)
+		})
+		actual = filterSamplesOutsideWindow(actual, func(sampleTime time.Time) bool {
+			return opts.SkipSample(sampleTime, evaluationTime)
+		})
+	}
+
+	// If both matrices are empty after filtering, we can skip comparison
+	if len(expected) == 0 && len(actual) == 0 {
+		return &ComparisonSummary{Skipped: true}, nil
+	}
+
+	if len(expected) != len(actual) {
+		// TODO: log the missing metrics
+		return &ComparisonSummary{MismatchCause: CauseMetricCountMismatch}, fmt.Errorf("expected %d metrics but got %d: %w", len(expected),
+			len(actual), ErrComparisonMismatch)
+	}
+
+	metricFingerprintToIndexMap := make(map[model.Fingerprint]int, len(expected))
+	for i, actualMetric := range actual {
+		metricFingerprintToIndexMap[actualMetric.Metric.Fingerprint()] = i
+	}
+
+	for _, expectedMetric := range expected {
+		actualMetricIndex, ok := metricFingerprintToIndexMap[expectedMetric.Metric.Fingerprint()]
+		if !ok {
+			return &ComparisonSummary{MismatchCause: CauseMetricMissing}, fmt.Errorf("expected metric %s missing from actual response: %w", expectedMetric.Metric, ErrComparisonMismatch)
+		}
+
+		actualMetric := actual[actualMetricIndex]
+
+		cause, err := compareMatrixSamples(expectedMetric, actualMetric, opts)
+		if err != nil {
+			return &ComparisonSummary{MismatchCause: cause}, fmt.Errorf("%w\nExpected result for series:\n%v\n\nActual result for series:\n%v", err, expectedMetric, actualMetric)
+		}
+	}
+
+	return nil, nil
+}
+
+func compareMatrixSamples(expected, actual *model.SampleStream, opts SampleComparisonOptions) (cause string, err error) {
+	expectedEntriesCount := len(expected.Values)
+	actualEntriesCount := len(actual.Values)
+
+	if expectedEntriesCount != actualEntriesCount {
+		err := fmt.Errorf("expected %d samples for metric %s but got %d: %w", expectedEntriesCount, expected.Metric, actualEntriesCount, ErrComparisonMismatch)
+		if actualEntriesCount > 0 && expectedEntriesCount > 0 {
+			level.Error(util_log.Logger).Log("msg", err.Error(),
+				"oldest-expected-ts", expected.Values[0].Timestamp,
+				"newest-expected-ts", expected.Values[expectedEntriesCount-1].Timestamp,
+				"oldest-actual-ts", actual.Values[0].Timestamp,
+				"newest-actual-ts", actual.Values[actualEntriesCount-1].Timestamp)
+		}
+		return CauseSampleCountMismatch, err
+	}
+
+	for i := range expected.Values {
+		cause, err := compareSamplePair(expected.Values[i], actual.Values[i], opts)
+		if err != nil {
+			return cause, fmt.Errorf("float sample pair does not match for metric %s: %w", expected.Metric, err)
+		}
+	}
+
+	return CauseNoMismatch, nil
+}
+
+func filterSamplesOutsideWindow(matrix model.Matrix, skipSample func(time.Time) bool) model.Matrix {
+	result := matrix[:0] // Reuse the original slice capacity while starting with length 0
+
+	for _, series := range matrix {
+		// Reuse the original Values slice
+		filteredValues := series.Values[:0]
+		for _, sample := range series.Values {
+			if !skipSample(sample.Timestamp.Time()) {
+				filteredValues = append(filteredValues, sample)
+			}
+		}
+
+		if len(filteredValues) > 0 {
+			series.Values = filteredValues
+			result = append(result, series)
+		}
+	}
+
+	return result
+}
+
+func compareVector(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (*ComparisonSummary, error) {
+	var expected, actual model.Vector
+
+	err := json.Unmarshal(expectedRaw, &expected)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal expected vector: %w", err)
+	}
+
+	err = json.Unmarshal(actualRaw, &actual)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal actual vector: %w", err)
+	}
+
+	// Filter out samples outside the comparable windows
+	if !opts.SkipSamplesBefore.IsZero() || opts.SkipRecentSamples > 0 {
+		filtered := expected[:0]
+		for i := range expected {
+			if !opts.SkipSample(expected[i].Timestamp.Time(), evaluationTime) {
+				filtered = append(filtered, expected[i])
+			}
+		}
+		expected = filtered
+
+		filtered = actual[:0]
+		for i := range actual {
+			if !opts.SkipSample(actual[i].Timestamp.Time(), evaluationTime) {
+				filtered = append(filtered, actual[i])
+			}
+		}
+		actual = filtered
+	}
+
+	if len(expected) == 0 && len(actual) == 0 {
+		return &ComparisonSummary{Skipped: true}, nil
+	}
+
+	if len(expected) != len(actual) {
+		return &ComparisonSummary{MismatchCause: CauseMetricCountMismatch}, fmt.Errorf("expected %d metrics but got %d: %w", len(expected),
+			len(actual), ErrComparisonMismatch)
+	}
+
+	metricFingerprintToIndexMap := make(map[model.Fingerprint]int, len(expected))
+	for i, actualMetric := range actual {
+		metricFingerprintToIndexMap[actualMetric.Metric.Fingerprint()] = i
+	}
+
+	missingMetrics := make([]model.Metric, 0)
+	for _, expectedMetric := range expected {
+		actualMetricIndex, ok := metricFingerprintToIndexMap[expectedMetric.Metric.Fingerprint()]
+		if !ok {
+			missingMetrics = append(missingMetrics, expectedMetric.Metric)
+			continue
+		}
+
+		// TODO: collect errors instead of returning.
+		actualMetric := actual[actualMetricIndex]
+		cause, err := compareSamplePair(model.SamplePair{
+			Timestamp: expectedMetric.Timestamp,
+			Value:     expectedMetric.Value,
+		}, model.SamplePair{
+			Timestamp: actualMetric.Timestamp,
+			Value:     actualMetric.Value,
+		}, opts)
+		if err != nil {
+			return &ComparisonSummary{MismatchCause: cause}, fmt.Errorf("sample pair not matching for metric %s: %w", expectedMetric.Metric, err)
+		}
+	}
+
+	if len(missingMetrics) > 0 {
+		var b strings.Builder
+		for i, m := range missingMetrics {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(m.String())
+		}
+		return &ComparisonSummary{MissingMetrics: len(missingMetrics), MismatchCause: CauseMetricMissing}, fmt.Errorf("expected metric(s) [%s] missing from actual response: %w", b.String(), ErrComparisonMismatch)
+	}
+
+	return nil, nil
+}
+
+func compareScalar(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (*ComparisonSummary, error) {
+	var expected, actual model.Scalar
+	err := json.Unmarshal(expectedRaw, &expected)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal expected scalar: %w", err)
+	}
+
+	err = json.Unmarshal(actualRaw, &actual)
+	if err != nil {
+		return nil, fmt.Errorf("unable to actual expected scalar: %w", err)
+	}
+
+	if opts.SkipSample(expected.Timestamp.Time(), evaluationTime) && opts.SkipSample(actual.Timestamp.Time(), evaluationTime) {
+		return &ComparisonSummary{Skipped: true}, nil
+	}
+
+	cause, err := compareSamplePair(model.SamplePair{
+		Timestamp: expected.Timestamp,
+		Value:     expected.Value,
+	}, model.SamplePair{
+		Timestamp: actual.Timestamp,
+		Value:     actual.Value,
+	}, opts)
+	if err != nil {
+		return &ComparisonSummary{MismatchCause: cause}, err
+	}
+	return nil, nil
+}
+
+func compareSamplePair(expected, actual model.SamplePair, opts SampleComparisonOptions) (cause string, err error) {
+	if expected.Timestamp != actual.Timestamp {
+		return CauseSampleTimestampMismatch, fmt.Errorf("expected timestamp %v but got %v: %w", expected.Timestamp, actual.Timestamp, ErrComparisonMismatch)
+	}
+	if !compareSampleValue(expected.Value, actual.Value, opts) {
+		return CauseSampleValueMismatch, fmt.Errorf("expected value %s for timestamp %v but got %s: %w", expected.Value, expected.Timestamp, actual.Value, ErrComparisonMismatch)
+	}
+
+	return CauseNoMismatch, nil
+}
+
+func compareSampleValue(first, second model.SampleValue, opts SampleComparisonOptions) bool {
+	f := float64(first)
+	s := float64(second)
+
+	if (math.IsNaN(f) && math.IsNaN(s)) ||
+		(math.IsInf(f, 1) && math.IsInf(s, 1)) ||
+		(math.IsInf(f, -1) && math.IsInf(s, -1)) {
+		return true
+	} else if opts.Tolerance <= 0 {
+		return math.Float64bits(f) == math.Float64bits(s)
+	}
+	if opts.UseRelativeError && s != 0 {
+		return math.Abs(f-s)/math.Abs(s) <= opts.Tolerance
+	}
+	return math.Abs(f-s) <= opts.Tolerance
+}
+
+func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (*ComparisonSummary, error) {
+	var expected, actual loghttp.Streams
+
+	err := jsoniter.Unmarshal(expectedRaw, &expected)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal expected streams: %w", err)
+	}
+	err = jsoniter.Unmarshal(actualRaw, &actual)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal actual streams: %w", err)
+	}
+
+	// Filter out entries outside the comparable window
+	if !opts.SkipSamplesBefore.IsZero() || opts.SkipRecentSamples > 0 {
+		expected = filterStreamsOutsideWindow(expected, func(entryTime time.Time) bool {
+			return opts.SkipSample(entryTime, evaluationTime)
+		})
+		actual = filterStreamsOutsideWindow(actual, func(entryTime time.Time) bool {
+			return opts.SkipSample(entryTime, evaluationTime)
+		})
+	}
+
+	// If both streams are empty after filtering, we can skip comparison
+	if len(expected) == 0 && len(actual) == 0 {
+		return &ComparisonSummary{Skipped: true}, nil
+	}
+
+	if len(expected) != len(actual) {
+		// TODO: log the missing stream
+		return &ComparisonSummary{MismatchCause: CauseStreamCountMismatch}, fmt.Errorf("expected %d streams but got %d: %w", len(expected), len(actual), ErrComparisonMismatch)
+	}
+
+	streamLabelsToIndexMap := make(map[string]int, len(expected))
+	for i, actualStream := range actual {
+		streamLabelsToIndexMap[actualStream.Labels.String()] = i
+	}
+
+	for _, expectedStream := range expected {
+		actualStreamIndex, ok := streamLabelsToIndexMap[expectedStream.Labels.String()]
+		if !ok {
+			return &ComparisonSummary{MismatchCause: CauseStreamMissing}, fmt.Errorf("expected stream %s missing from actual response: %w", expectedStream.Labels, ErrComparisonMismatch)
+		}
+
+		actualStream := actual[actualStreamIndex]
+		cause, err := compareStreamEntries(expectedStream.Labels, expectedStream.Entries, actualStream.Entries)
+		if err != nil {
+			return &ComparisonSummary{MismatchCause: cause}, err
+		}
+	}
+
+	return nil, nil
+}
+
+// normalizeStreamEntriesInPlace sorts entries that share the same timestamp in place.
+// Ordering key within a same-timestamp run: Line, then StructuredMetadata, then Parsed.
+// Logs are assumed to be ordered by timestamp; only order within same-timestamp runs is changed.
+func normalizeStreamEntriesInPlace(entries []loghttp.Entry) {
+	i := 0
+	for i < len(entries) {
+		j := i + 1
+		for j < len(entries) && entries[j].Timestamp.Equal(entries[i].Timestamp) {
+			j++
+		}
+		if j-i > 1 {
+			sort.Slice(entries[i:j], func(a, b int) bool {
+				ea, eb := &entries[i+a], &entries[i+b]
+				if ea.Line != eb.Line {
+					return ea.Line < eb.Line
+				}
+				if c := labels.Compare(ea.StructuredMetadata, eb.StructuredMetadata); c != 0 {
+					return c < 0
+				}
+				return labels.Compare(ea.Parsed, eb.Parsed) < 0
+			})
+		}
+		i = j
+	}
+}
+
+// compareStreamEntries compares two slices of log entries. Entries are assumed ordered by timestamp;
+// within the same timestamp, order is normalized (by line, StructuredMetadata, Parsed) in place before index-by-index comparison.
+func compareStreamEntries(streamLabels loghttp.LabelSet, expected, actual []loghttp.Entry) (string, error) {
+	expectedValuesLen := len(expected)
+	actualValuesLen := len(actual)
+
+	if expectedValuesLen != actualValuesLen {
+		err := fmt.Errorf("expected %d values for stream %s but got %d: %w", expectedValuesLen,
+			streamLabels, actualValuesLen, ErrComparisonMismatch)
+		if expectedValuesLen > 0 && actualValuesLen > 0 {
+			// assuming BACKWARD search since that is the default ordering
+			level.Error(util_log.Logger).Log("msg", err.Error(), "newest-expected-ts", expected[0].Timestamp.UnixNano(),
+				"oldest-expected-ts", expected[expectedValuesLen-1].Timestamp.UnixNano(),
+				"newest-actual-ts", actual[0].Timestamp.UnixNano(), "oldest-actual-ts", actual[actualValuesLen-1].Timestamp.UnixNano())
+		}
+		return CauseStreamEntryCountMismatch, err
+	}
+
+	normalizeStreamEntriesInPlace(expected)
+	normalizeStreamEntriesInPlace(actual)
+
+	for i := range expected {
+		expectedSamplePair := &expected[i]
+		actualSamplePair := &actual[i]
+		if !expectedSamplePair.Timestamp.Equal(actualSamplePair.Timestamp) {
+			return CauseStreamTimestampMismatch, fmt.Errorf("expected timestamp %v but got %v for stream %s: %w", expectedSamplePair.Timestamp.UnixNano(),
+				actualSamplePair.Timestamp.UnixNano(), streamLabels, ErrComparisonMismatch)
+		}
+		if expectedSamplePair.Line != actualSamplePair.Line {
+			return CauseStreamLineMismatch, fmt.Errorf("expected line %s for timestamp %v but got %s for stream %s: %w", expectedSamplePair.Line,
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Line, streamLabels, ErrComparisonMismatch)
+		}
+		if expectedSamplePair.StructuredMetadata.Len() != actualSamplePair.StructuredMetadata.Len() {
+			return CauseStructuredMetadataCountMismatch, fmt.Errorf("expected %d metadata pairs for timestamp %v but got %d pairs for stream %s: %w", expectedSamplePair.StructuredMetadata.Len(),
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.StructuredMetadata.Len(), streamLabels, ErrComparisonMismatch)
+		}
+		if !labels.Equal(expectedSamplePair.StructuredMetadata, actualSamplePair.StructuredMetadata) {
+			return CauseStructuredMetadataMismatch, fmt.Errorf("expected metadata %v for timestamp %v but got %v for stream %s: %w", expectedSamplePair.StructuredMetadata.String(),
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.StructuredMetadata.String(), streamLabels, ErrComparisonMismatch)
+		}
+		if expectedSamplePair.Parsed.Len() != actualSamplePair.Parsed.Len() {
+			return CauseParsedLabelsCountMismatch, fmt.Errorf("expected %d parsed label pairs for timestamp %v but got %d pairs for stream %s: %w", expectedSamplePair.Parsed.Len(),
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Parsed.Len(), streamLabels, ErrComparisonMismatch)
+		}
+		if !labels.Equal(expectedSamplePair.Parsed, actualSamplePair.Parsed) {
+			return CauseParsedLabelsMismatch, fmt.Errorf("expected parsed labels %v for timestamp %v but got %v for stream %s: %w", expectedSamplePair.Parsed.String(),
+				expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Parsed.String(), streamLabels, ErrComparisonMismatch)
+		}
+	}
+	return CauseNoMismatch, nil
+}
+
+// filterStreamsOutsideWindow filters out entries that are outside the comparable window
+func filterStreamsOutsideWindow(streams loghttp.Streams, skipEntry func(time.Time) bool) loghttp.Streams {
+	result := streams[:0] // Reuse the original slice capacity while starting with length 0
+
+	for _, stream := range streams {
+		// Reuse the original Entries slice
+		filteredEntries := stream.Entries[:0]
+		for _, entry := range stream.Entries {
+			if !skipEntry(entry.Timestamp) {
+				filteredEntries = append(filteredEntries, entry)
+			}
+		}
+
+		if len(filteredEntries) > 0 {
+			stream.Entries = filteredEntries
+			result = append(result, stream)
+		}
+	}
+
+	return result
+}
