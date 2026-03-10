@@ -26,7 +26,7 @@ import (
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
 const (
-	downloadTimeout        = 1 * time.Minute
+	downloadTimeout        = 5 * time.Minute
 	maxDownloadConcurrency = 50
 )
 
