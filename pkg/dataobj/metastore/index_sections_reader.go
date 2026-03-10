@@ -455,6 +455,11 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 	}()
 
 	for _, sr := range r.streamsReaders {
+		if sr == nil {
+			// Sections can be skipped during Open if they don't have relevant data.
+			continue
+		}
+
 		streamIDColumnIndex := slices.IndexFunc(sr.Columns(), func(c *streams.Column) bool { return c.Type == streams.ColumnTypeStreamID })
 		if streamIDColumnIndex < 0 {
 			return fmt.Errorf("streams schema missing stream_id column")
@@ -564,6 +569,11 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 
 	for r.pointersReaderIdx < len(r.pointersReaders) {
 		pr := r.pointersReaders[r.pointersReaderIdx]
+		if pr == nil {
+			// Sections can be skipped during Open if they don't have relevant data.
+			r.pointersReaderIdx++
+			continue
+		}
 
 		streamIDColumnIndex := slices.IndexFunc(pr.Columns(), func(c *pointers.Column) bool { return c.Type == pointers.ColumnTypeStreamID })
 		if streamIDColumnIndex < 0 {
@@ -769,7 +779,7 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 
 	for _, br := range r.bloomReaders {
 		if br == nil {
-			// We can have nil readers when a section was skipped due to not
+			// Open can leave nil readers when a section was skipped due to not
 			// having relevant data.
 			continue
 		}

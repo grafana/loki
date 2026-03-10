@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -3739,6 +3740,9 @@ func TestParseLabels(t *testing.T) {
 			require.Equal(t, tc.output, got)
 		})
 	}
+	input := strings.Repeat("a", 1<<24)
+	_, err := ParseLabels(input)
+	require.Error(t, err)
 }
 
 func TestNoOpLabelToString(t *testing.T) {

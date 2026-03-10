@@ -159,7 +159,7 @@ type UdpListenerConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m UdpListenerConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -261,7 +261,7 @@ type ActiveRawUdpListenerConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ActiveRawUdpListenerConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

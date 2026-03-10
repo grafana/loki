@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -489,6 +491,70 @@ func TestIndexSectionsReader_MultipleBlooms(t *testing.T) {
 			require.GreaterOrEqual(t, rec.NumRows(), int64(1))
 		})
 	}
+}
+
+func TestIndexSectionsReader_Read_SkipsNilStreamsReader(t *testing.T) {
+	t.Parallel()
+
+	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil)
+	r.initialized = true
+	r.streamsReaders = []*streams.Reader{nil}
+	t.Cleanup(r.Close)
+
+	var (
+		rec arrow.RecordBatch
+		err error
+	)
+	require.NotPanics(t, func() {
+		rec, err = r.Read(context.Background())
+	})
+	require.ErrorIs(t, err, io.EOF)
+	require.Nil(t, rec)
+}
+
+func TestIndexSectionsReader_Read_SkipsNilPointersReader(t *testing.T) {
+	t.Parallel()
+
+	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil)
+	r.initialized = true
+	r.readStreams = true
+	r.hasData = true
+	r.pointersReaders = []*pointers.Reader{nil}
+	t.Cleanup(r.Close)
+
+	var (
+		rec arrow.RecordBatch
+		err error
+	)
+	require.NotPanics(t, func() {
+		rec, err = r.Read(context.Background())
+	})
+	require.ErrorIs(t, err, io.EOF)
+	require.Nil(t, rec)
+}
+
+func TestIndexSectionsReader_ReadMatchedSectionKeys_SkipsNilBloomReader(t *testing.T) {
+	t.Parallel()
+
+	r := newIndexSectionsReader(
+		log.NewNopLogger(),
+		nil,
+		now,
+		now,
+		nil,
+		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd")},
+	)
+	r.bloomReaders = []*pointers.Reader{nil}
+
+	var (
+		matched map[SectionKey]struct{}
+		err     error
+	)
+	require.NotPanics(t, func() {
+		matched, err = r.readMatchedSectionKeys(context.Background())
+	})
+	require.NoError(t, err)
+	require.Empty(t, matched)
 }
 
 func newTestBloomBytes(t *testing.T, vals ...string) []byte {

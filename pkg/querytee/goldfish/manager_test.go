@@ -15,8 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // mockStorage implements Storage interface for testing
@@ -139,7 +141,7 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
-	req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
+	req, _ := http.NewRequest("GET", constants.PathLokiQueryRange+"?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
 	cellAResp := &BackendResponse{
@@ -170,7 +172,7 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 	sample := storage.samples[0]
 	assert.Equal(t, "tenant1", sample.TenantID)
 	assert.Equal(t, "count_over_time({job=\"test\"}[5m])", sample.Query)
-	assert.Equal(t, "query_range", sample.QueryType)
+	assert.Equal(t, logql.QueryTypeMetric, sample.QueryType)
 	assert.Equal(t, 200, sample.CellAStatusCode)
 	assert.Equal(t, 200, sample.CellBStatusCode)
 	assert.Equal(t, int64(100), sample.CellAStats.ExecTimeMs)
@@ -236,7 +238,7 @@ func Test_ProcessQueryPair_populatesTraceIDs(t *testing.T) {
 	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
-	req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
+	req, _ := http.NewRequest("GET", constants.PathLokiQueryRange+"?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
 	cellAResp := &BackendResponse{
@@ -315,7 +317,7 @@ func TestProcessQueryPairCapturesUser(t *testing.T) {
 			manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
-			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
+			req, _ := http.NewRequest("GET", constants.PathLokiQueryRange+"?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
 			req.Header.Set("X-Scope-OrgID", "tenant1")
 			if tt.queryTags != "" {
 				req.Header.Set("X-Query-Tags", tt.queryTags)
@@ -449,7 +451,7 @@ func TestProcessQueryPair_CapturesLogsDrilldown(t *testing.T) {
 			manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
-			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
+			req, _ := http.NewRequest("GET", constants.PathLokiQueryRange+"?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
 			req.Header.Set("X-Scope-OrgID", "tenant1")
 			if tt.queryTags != "" {
 				req.Header.Set("X-Query-Tags", tt.queryTags)
@@ -546,7 +548,7 @@ func TestManagerResultPersistenceModes(t *testing.T) {
 			manager, err := NewManager(config, storage, results, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
-			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=sum(rate({job=\"app\"}[1m]))", nil)
+			req, _ := http.NewRequest("GET", constants.PathLokiQueryRange+"?query=sum(rate({job=\"app\"}[1m]))", nil)
 			req.Header.Set("X-Scope-OrgID", "tenant1")
 
 			cellA := &BackendResponse{
@@ -640,7 +642,7 @@ func TestManager_StoreQuerySample_UsesComparatorResult(t *testing.T) {
 			cellAHash:                    "hash1",
 			cellBHash:                    "hash2",
 			comparatorMatch:              true,
-			expectedStatus:               goldfish.ComparisonStatusMismatch,
+			expectedStatus:               goldfish.ComparisonStatusMatchWithinTolerance,
 			expectedMatchWithinTolerance: true,
 		},
 		{
@@ -693,7 +695,7 @@ func TestManager_StoreQuerySample_UsesComparatorResult(t *testing.T) {
 				SpanID:      "",
 			}
 
-			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=test", nil)
+			req, _ := http.NewRequest("GET", constants.PathLokiQueryRange+"?query=test", nil)
 
 			// Process the query pair
 			m.SendToGoldfish(req, cellAResp, cellBResp)

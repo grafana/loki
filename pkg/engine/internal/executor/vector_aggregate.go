@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -96,7 +97,12 @@ func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch
 	if v.inputsExhausted {
 		return nil, EOF
 	}
-	return v.read(ctx)
+	rec, err := v.read(ctx)
+
+	assertions.CheckColumnDuplicates(rec)
+	assertions.CheckLabelValuesDuplicates(rec)
+
+	return rec, err
 }
 
 func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
@@ -126,11 +132,12 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 			}
 
 			inputsExhausted = false
-
 			if record.NumRows() == 0 {
 				// Nothing to process
 				continue
 			}
+
+			assertions.CheckLabelValuesDuplicates(record)
 
 			// extract timestamp column
 			tsVec, err := v.tsEval(record)
@@ -230,12 +237,14 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 
 	v.inputsExhausted = true
 
+	rec, err := v.aggregator.BuildRecord()
+
 	if region := xcap.RegionFromContext(ctx); region != nil {
 		computeTime := time.Since(startedAt) - inputReadTime
 		region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
 	}
 
-	return v.aggregator.BuildRecord()
+	return rec, err
 }
 
 // Close closes the resources of the pipeline.

@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -66,7 +67,11 @@ func (s *dataobjScan) Read(ctx context.Context) (arrow.RecordBatch, error) {
 		return nil, errPipelineNotOpen
 	}
 
-	return s.read(ctx)
+	rec, err := s.read(ctx)
+
+	assertions.CheckColumnDuplicates(rec)
+
+	return rec, err
 }
 
 func (s *dataobjScan) init(ctx context.Context) error {

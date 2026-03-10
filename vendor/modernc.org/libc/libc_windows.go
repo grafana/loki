@@ -7,7 +7,6 @@ package libc // import "modernc.org/libc"
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/sys/windows"
 	"math"
 	mbits "math/bits"
 	"os"
@@ -24,6 +23,7 @@ import (
 	"unsafe"
 
 	"github.com/ncruces/go-strftime"
+	"golang.org/x/sys/windows"
 	"modernc.org/libc/errno"
 	"modernc.org/libc/fcntl"
 	"modernc.org/libc/limits"
@@ -1681,11 +1681,15 @@ func Xdlsym(t *TLS, handle, symbol uintptr) uintptr {
 }
 
 // void perror(const char *s);
-func Xperror(t *TLS, s uintptr) {
+func Xperror(tls *TLS, msg uintptr) {
 	if __ccgo_strace {
-		trc("t=%v s=%v, (%v:)", t, s, origin(2))
+		trc("tls=%v msg=%v, (%v:)", tls, msg, origin(2))
 	}
-	panic(todo(""))
+	if msg != 0 && *(*int8)(unsafe.Pointer(msg)) != 0 {
+		fmt.Fprintf(os.Stderr, "%s: ", GoString(msg))
+	}
+	errstr := Xstrerror(tls, *(*int32)(unsafe.Pointer(X__errno_location(tls))))
+	fmt.Fprintf(os.Stderr, "%s\n", GoString(errstr))
 }
 
 // int pclose(FILE *stream);
@@ -6032,7 +6036,10 @@ func Xputchar(t *TLS, c int32) int32 {
 	if __ccgo_strace {
 		trc("t=%v c=%v, (%v:)", t, c, origin(2))
 	}
-	panic(todo(""))
+	if _, err := fwrite(unistd.STDOUT_FILENO, []byte{byte(c)}); err != nil {
+		return -1
+	}
+	return int32(byte(c))
 }
 
 // void _assert(
@@ -7693,17 +7700,6 @@ func Xstrftime(tls *TLS, s uintptr, n size_t, f uintptr, tm uintptr) (r size_t) 
 
 func X__mingw_strtod(t *TLS, s uintptr, p uintptr) float64 {
 	return Xstrtod(t, s, p)
-}
-
-func Xstrtod(t *TLS, s uintptr, p uintptr) float64 {
-	if __ccgo_strace {
-		trc("tls=%v s=%v p=%v, (%v:)", t, s, p, origin(2))
-	}
-	r0, _, err := procStrtod.Call(uintptr(s), uintptr(p))
-	if err != windows.NOERROR {
-		t.setErrno(err)
-	}
-	return math.Float64frombits(uint64(r0))
 }
 
 // int vsnprintf(char *str, size_t size, const char *format, va_list ap);

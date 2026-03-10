@@ -48,6 +48,12 @@ type mockLimits struct {
 	RetentionLimits
 }
 
+func (m *mockLimits) MaxCacheFreshness(_ context.Context, _ string) time.Duration { return 0 }
+func (m *mockLimits) MaxQueryParallelism(_ context.Context, _ string) int         { return 1 }
+func (m *mockLimits) EngineResultsCacheTimeBucketInterval(_ string) time.Duration {
+	return 24 * time.Hour
+}
+
 func TestHandler(t *testing.T) {
 	cfg := Config{
 		Executor: ExecutorConfig{
@@ -59,8 +65,82 @@ func TestHandler(t *testing.T) {
 	eng := &mockEngine{}
 	limits := &mockLimits{}
 
-	handler := executorHandler(cfg, logger, eng, limits)
+	handler, err := executorHandler(cfg, logger, eng, limits, nil)
+	require.NoError(t, err)
 	require.NotNil(t, handler)
+}
+
+func TestMetricStepAlignMiddleware(t *testing.T) {
+	base := time.Date(2026, 3, 2, 6, 43, 7, 0, time.UTC)
+	startWithSubSecond := base.Add(123 * time.Millisecond)
+	endWithSubSecond := base.Add(456 * time.Millisecond)
+
+	step := int64(1000) // 1s step in milliseconds
+
+	tests := []struct {
+		name          string
+		query         string
+		startTs       time.Time
+		endTs         time.Time
+		step          int64
+		expectAligned bool
+	}{
+		{
+			name:          "log query preserves sub-second timestamps",
+			query:         `{app="test"}`,
+			startTs:       startWithSubSecond,
+			endTs:         endWithSubSecond,
+			step:          step,
+			expectAligned: false,
+		},
+		{
+			name:          "metric query gets step-aligned",
+			query:         `rate({app="test"}[5m])`,
+			startTs:       startWithSubSecond,
+			endTs:         endWithSubSecond,
+			step:          step,
+			expectAligned: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedStart, capturedEnd time.Time
+
+			inner := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+				capturedStart = r.GetStart()
+				capturedEnd = r.GetEnd()
+				return &queryrange.LokiResponse{}, nil
+			})
+
+			middleware := newMetricStepAlignMiddleware()
+			handler := middleware.Wrap(inner)
+
+			expr, err := syntax.ParseExpr(tt.query)
+			require.NoError(t, err)
+
+			req := &queryrange.LokiRequest{
+				Query:   tt.query,
+				StartTs: tt.startTs,
+				EndTs:   tt.endTs,
+				Step:    tt.step,
+				Plan:    &plan.QueryPlan{AST: expr},
+			}
+
+			_, err = handler.Do(context.Background(), req)
+			require.NoError(t, err)
+
+			if tt.expectAligned {
+				alignedStart := time.UnixMilli((tt.startTs.UnixMilli() / tt.step) * tt.step)
+				alignedEnd := time.UnixMilli((tt.endTs.UnixMilli() / tt.step) * tt.step)
+				require.Equal(t, alignedStart, capturedStart, "metric query start should be step-aligned")
+				require.Equal(t, alignedEnd, capturedEnd, "metric query end should be step-aligned")
+			} else {
+				require.Equal(t, tt.startTs, capturedStart, "log query start should preserve original timestamp")
+				require.Equal(t, tt.endTs, capturedEnd, "log query end should preserve original timestamp")
+			}
+		})
+	}
 }
 
 func TestQueryHandler_Do_LokiRequest(t *testing.T) {
@@ -837,6 +917,100 @@ func TestQueryHandler_ValidateRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExecutorHandler_AlignQueriesWithStep(t *testing.T) {
+	stepMs := int64(60 * 1000) // 60 seconds in milliseconds
+
+	now := time.Now()
+	// Create start/end aligned to step, then add 27s offset to misalign.
+	alignedStartMs := (now.Add(-2*time.Hour).UnixMilli() / stepMs) * stepMs
+	alignedEndMs := (now.Add(-90*time.Minute).UnixMilli() / stepMs) * stepMs
+	unalignedStart := time.UnixMilli(alignedStartMs + 27*1000)
+	unalignedEnd := time.UnixMilli(alignedEndMs + 27*1000)
+	expectedAlignedStart := time.UnixMilli(alignedStartMs)
+	expectedAlignedEnd := time.UnixMilli(alignedEndMs)
+
+	makeHandler := func(cfg Config, eng queryExecutor, limits querier_limits.Limits) queryrangebase.Handler {
+		var h queryrangebase.Handler = &queryHandler{
+			cfg:    cfg,
+			exec:   eng,
+			logger: log.NewNopLogger(),
+			limits: limits,
+		}
+		if cfg.AlignQueriesWithStep {
+			h = queryrangebase.StepAlignMiddleware.Wrap(h)
+		}
+		return h
+	}
+
+	t.Run("aligns start and end to step when enabled", func(t *testing.T) {
+		var capturedParams logql.Params
+		eng := &mockEngine{
+			executeFunc: func(_ context.Context, params logql.Params) (logqlmodel.Result, error) {
+				capturedParams = params
+				return logqlmodel.Result{Data: logqlmodel.Streams{}}, nil
+			},
+		}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 1000}
+		handler := makeHandler(Config{AlignQueriesWithStep: true}, eng, limits)
+
+		expr, err := syntax.ParseExpr(`rate({app="test"}[5m])`)
+		require.NoError(t, err)
+
+		req := &queryrange.LokiRequest{
+			Query:   `rate({app="test"}[5m])`,
+			Limit:   100,
+			Step:    stepMs,
+			StartTs: unalignedStart,
+			EndTs:   unalignedEnd,
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		_, err = handler.Do(ctx, req)
+		require.NoError(t, err)
+
+		require.NotNil(t, capturedParams)
+		require.Equal(t, expectedAlignedStart, capturedParams.Start())
+		require.Equal(t, expectedAlignedEnd, capturedParams.End())
+	})
+
+	t.Run("does not align when disabled", func(t *testing.T) {
+		var capturedParams logql.Params
+		eng := &mockEngine{
+			executeFunc: func(_ context.Context, params logql.Params) (logqlmodel.Result, error) {
+				capturedParams = params
+				return logqlmodel.Result{Data: logqlmodel.Streams{}}, nil
+			},
+		}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 1000}
+		handler := makeHandler(Config{AlignQueriesWithStep: false}, eng, limits)
+
+		expr, err := syntax.ParseExpr(`rate({app="test"}[5m])`)
+		require.NoError(t, err)
+
+		req := &queryrange.LokiRequest{
+			Query:   `rate({app="test"}[5m])`,
+			Limit:   100,
+			Step:    stepMs,
+			StartTs: unalignedStart,
+			EndTs:   unalignedEnd,
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		_, err = handler.Do(ctx, req)
+		require.NoError(t, err)
+
+		require.NotNil(t, capturedParams)
+		require.Equal(t, unalignedStart, capturedParams.Start())
+		require.Equal(t, unalignedEnd, capturedParams.End())
+	})
 }
 
 func TestQueryHandler_ValidateInstantRequest(t *testing.T) {

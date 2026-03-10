@@ -312,6 +312,11 @@ query_engine:
   # CLI flag: -query-engine.batch-size
   [batch_size: <int> | default = 100]
 
+  # Experimental: Number of bytes to prefetch when opening a data object for
+  # decoding metadata and overlapping section reads. Clamps to at least 16KiB.
+  # CLI flag: -query-engine.prefetch-bytes
+  [prefetch_bytes: <int> | default = 16KiB]
+
   # Experimental: The number of inputs that are prefetched simultaneously by any
   # Merge node. A value of 0 means that only the currently processed input is
   # prefetched, 1 means that only the next input is prefetched, and so on. A
@@ -388,10 +393,26 @@ query_engine:
   # CLI flag: -query-engine.enforce-retention-period
   [enforce_retention_period: <boolean> | default = false]
 
+  # Mutate incoming queries to align their start and end with their step.
+  # CLI flag: -query-engine.align-queries-with-step
+  [align_queries_with_step: <boolean> | default = false]
+
   # Experimental: When enabled, the tenant's MaxQuerySeries limit is applied.
   # Otherwise, no limit is enforced.
   # CLI flag: -query-engine.enforce-max-query-series-limit
   [enforce_max_query_series_limit: <boolean> | default = false]
+
+  results_cache:
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is:
+    # query-engine.results-cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -query-engine.results-cache.compression
+    [compression: <string> | default = ""]
 
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
@@ -1202,6 +1223,10 @@ kafka_config:
   # CLI flag: -kafka.enable-kafka-histograms
   [enable_kafka_histograms: <boolean> | default = false]
 
+  # Enable tracing.
+  # CLI flag: -kafka.tracing-enabled
+  [tracing_enabled: <boolean> | default = false]
+
 dataobj:
   consumer:
     builderconfig:
@@ -1865,17 +1890,25 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.num-partitions
   [num_partitions: <int> | default = 64]
 
-  # The TTL for the assigned partitions cache. 0 disables the cache.
+  # Enable the assigned partitions cache.
+  # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-enabled
+  [assigned_partitions_cache_enabled: <boolean> | default = true]
+
+  # The TTL for the assigned partitions cache.
   # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-ttl
   [assigned_partitions_cache_ttl: <duration> | default = 1m]
 
-  # The TTL for the cache. 0 disables the cache.
-  # CLI flag: -ingest-limits-frontend.cache-ttl
-  [cache_ttl: <duration> | default = 1m]
+  # [Experimental]: Enable the accepted streams cache.
+  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-enabled
+  [accepted_streams_cache_enabled: <boolean> | default = false]
 
-  # The jitter to add to the cache.
-  # CLI flag: -ingest-limits-frontend.cache-ttl-jitter
-  [cache_ttl_jitter: <duration> | default = 15s]
+  # The TTL for the accepted streams cache.
+  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-ttl
+  [accepted_streams_cache_ttl: <duration> | default = 1m]
+
+  # The jitter to add to the accepted streams cache.
+  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-ttl-jitter
+  [accepted_streams_cache_ttl_jitter: <duration> | default = 15s]
 
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
@@ -2370,6 +2403,7 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `frontend.label-results-cache`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
+- `query-engine.results-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
 - `store.index-cache-read`
@@ -4082,6 +4116,12 @@ wal:
 # CLI flag: -ingester.owned-streams-check-interval
 [owned_streams_check_interval: <duration> | default = 30s]
 
+# When enabled, the ingester skips stream count limit checks, delegating them
+# entirely to the ingest-limits service (Thor). Requires ingest-limits service
+# to be enabled.
+# CLI flag: -ingester.delegate-stream-limits-enabled
+[delegate_stream_limits_enabled: <boolean> | default = false]
+
 kafka_ingestion:
   # Whether the kafka ingester is enabled.
   # CLI flag: -ingester.kafka-ingestion-enabled
@@ -4505,6 +4545,11 @@ discover_generic_fields:
 # is enabled.
 # CLI flag: -querier.split-instant-metric-queries-by-interval
 [split_instant_metric_queries_by_interval: <duration> | default = 1h]
+
+# Time bucket interval used for cache key generation in the Thor (V2) query
+# engine. Queries starting within the same bucket share the same cache key.
+# CLI flag: -querier.engine-results-cache-time-bucket-interval
+[engine_results_cache_time_bucket_interval: <duration> | default = 1d]
 
 # Interval to use for time-based splitting when a request is within the
 # `query_ingesters_within` window; defaults to `split-queries-by-interval` by
@@ -7853,6 +7898,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`
+- `query-engine.results-cache.memcached`
 - `query-scheduler.grpc-client-config`
 - `query-scheduler.ring.etcd`
 - `reporting.tls-config`
@@ -8019,12 +8065,18 @@ and be accepted with
 ```yaml
 time_of_most_recent_line - (max_chunk_age/2)
 ```
+This means the allowed out-of-order window is half of the configured max_chunk_age.
 
 Log entries with timestamps that are after this earliest time are accepted.
 Log entries further back in time return an out-of-order error.
 
 For example, if `max_chunk_age` is 2 hours
 and the stream `{foo="bar"}` has one entry at `8:00`,
+the earliest accepted timestamp will be calculated as: 8:00 - (2h / 2) = `7:00`.
+
 Loki will accept data for that stream as far back in time as `7:00`.
+
 If another log line is written at `10:00`,
+the earliest accepted timestamp becomes: 10:00 - (2h / 2) = `9:00`.
+
 Loki will accept data for that stream as far back in time as `9:00`.
