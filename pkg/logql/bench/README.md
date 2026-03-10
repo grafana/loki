@@ -164,7 +164,7 @@ To add new query types:
 Compare query results between two live Loki endpoints. Requires metadata
 from `make discover` and the `remote_correctness` build tag.
 
-    go test -tags=remote_correctness -v ./pkg/logql/bench/... \
+    go test -tags=remote_correctness -v ./pkg/logql/bench \
         -addr-1=http://loki-baseline:3100 \
         -addr-2=http://loki-test:3100 \
         -org-id=my-tenant \

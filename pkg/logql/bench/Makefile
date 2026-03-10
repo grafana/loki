@@ -175,6 +175,7 @@ ifndef REMOTE_ORG_ID
 	$(error REMOTE_ORG_ID is required — add it to .env (see .env.template))
 endif
 	go test -tags=remote_correctness -v \
+		./pkg/logql/bench \
 		-run TestRemoteStorageEquality \
 		-timeout $(REMOTE_TIMEOUT) \
 		-addr-1 "$(REMOTE_ADDR_1)" \
@@ -182,5 +183,4 @@ endif
 		-org-id "$(REMOTE_ORG_ID)" \
 		-username "$(LOKI_USERNAME)" \
 		-password "$(LOKI_PASSWORD)" \
-		-metadata-dir testdata \
-		./...
+		-metadata-dir testdata
