@@ -14,7 +14,11 @@ import (
 
 const (
 	metadataFileName = "dataset_metadata.json"
-	metadataVersion  = "1.0"
+	// MetadataVersion is the current version of the dataset metadata format.
+	// It is exported so that callers outside the bench package (e.g. the
+	// discover pipeline) can validate or set the version field without
+	// needing a separate accessor function.
+	MetadataVersion = "1.0"
 
 	// Application names used in metadata processing
 	appDatabase = "database"
@@ -22,13 +26,19 @@ const (
 )
 
 // Bounded sets: characteristics common to all datasets
-// These define the set of possible queries
+// These define the set of possible queries and drive targeted series API queries
+// during stream discovery. Each exported variable corresponds to a discovery
+// query dimension used by the discover CLI.
 var (
-	// unwrappableFields are numeric fields that can be used with | unwrap
-	// Mapped from applications:
-	unwrappableFields = []string{
+	// UnwrappableFields are numeric fields that can be used with | unwrap in
+	// metric queries. The discover tool issues series queries for each field to
+	// find streams that expose these values.
+	UnwrappableFields = []string{
 		"bytes",
 		"duration",
+		"duration_ms",
+		"offset",
+		"partition",
 		"rows_affected",
 		"size",
 		"spans",
@@ -37,49 +47,39 @@ var (
 		"ttl",
 	}
 
-	// filterableKeywords are strings that commonly appear in log content
-	// Used for line filter queries like |= "level" or |~ "error"
-	filterableKeywords = []string{
-		"DEBUG",
-		"ERROR",
-		"INFO",
-		"WARN",
+	// FilterableKeywords are literal strings commonly appearing in log content.
+	// Used for line filter queries like |= "level" or |~ "error". The discover
+	// tool tests keyword presence per stream to populate ByKeyword in the output
+	// metadata.
+	FilterableKeywords = []string{
 		"debug",
 		"duration",
 		"error",
 		"failed",
-		"info",
 		"level",
-		"query",
 		"refused",
-		"status",
-		"success",
-		"warn",
 	}
 
-	// structuredMetadataKeys are keys used in structured metadata
-	// These appear as structured_metadata in log entries
-	structuredMetadataKeys = []string{
+	// StructuredMetadataKeys are keys that appear as structured metadata
+	// attached to log entries (not as stream labels). The discover tool uses
+	// detected_fields responses to find streams that carry these keys.
+	// Note: detected_level lives here (not in LabelKeys) because it is
+	// injected by Loki as structured metadata, not as an indexed stream label.
+	StructuredMetadataKeys = []string{
 		"detected_level",
 		"pod",
-		"span_id",
-		"trace_id",
 	}
 
-	// labelKeys are indexed or parsed labels
-	// Used for label selectors and/or grouping (by/without)
-	labelKeys = []string{
+	// LabelKeys are indexed stream labels used for selectors and grouping
+	// (by/without). The discover tool issues one series query per key with
+	// matcher {key=~".+"} to enumerate streams.
+	LabelKeys = []string{
 		"cluster",
-		"component",
-		"detected_level",
-		"env",
+		"container",
 		"level",
 		"namespace",
 		"pod",
-		"query_type",
-		"region",
 		"service_name",
-		"status",
 	}
 )
 
@@ -120,7 +120,6 @@ type DatasetStatistics struct {
 	StreamsByFormat  map[LogFormat]int `json:"streams_by_format"`
 	StreamsByService map[string]int    `json:"streams_by_service"`
 	TotalStreams     int               `json:"total_streams"`
-	UniqueLabels     map[string]int    `json:"unique_labels"` // label name -> unique value count
 }
 
 // CalculateMinRanges computes the minimum range durations needed for range and instant queries
@@ -186,7 +185,7 @@ func BuildMetadata(config *GeneratorConfig, streamsMeta []StreamMetadata) *Datas
 		AllSelectors:  make([]string, 0, len(streamsMeta)),
 		ByFormat:      make(map[LogFormat][]string),
 		ByServiceName: make(map[string][]string),
-		Version:       metadataVersion,
+		Version:       MetadataVersion,
 
 		ByUnwrappableField:   make(map[string][]string),
 		ByDetectedField:      make(map[string][]string),
@@ -199,7 +198,6 @@ func BuildMetadata(config *GeneratorConfig, streamsMeta []StreamMetadata) *Datas
 			TotalStreams:     len(streamsMeta),
 			StreamsByFormat:  make(map[LogFormat]int),
 			StreamsByService: make(map[string]int),
-			UniqueLabels:     make(map[string]int),
 			Generated:        time.Now(),
 		},
 	}
@@ -208,9 +206,6 @@ func BuildMetadata(config *GeneratorConfig, streamsMeta []StreamMetadata) *Datas
 		Start: config.StartTime,
 		End:   config.StartTime.Add(config.TimeSpread),
 	}
-
-	// Track unique values per label for statistics
-	uniqueValues := make(map[string]map[string]struct{})
 
 	// Build indexes from stream metadata
 	for _, stream := range streamsMeta {
@@ -254,18 +249,8 @@ func BuildMetadata(config *GeneratorConfig, streamsMeta []StreamMetadata) *Datas
 		}
 
 		lbls.Range(func(label labels.Label) {
-			if uniqueValues[label.Name] == nil {
-				uniqueValues[label.Name] = make(map[string]struct{})
-			}
-			uniqueValues[label.Name][label.Value] = struct{}{}
-
 			metadata.ByLabelKey[label.Name] = append(metadata.ByLabelKey[label.Name], selector)
 		})
-	}
-
-	// Calculate unique label cardinalities
-	for name, values := range uniqueValues {
-		metadata.Statistics.UniqueLabels[name] = len(values)
 	}
 
 	// Sort all selector arrays for determinism
@@ -310,15 +295,15 @@ func BuildMetadata(config *GeneratorConfig, streamsMeta []StreamMetadata) *Datas
 func getUnwrappableFields(appName string) []string {
 	switch appName {
 	case appDatabase:
-		return []string{"rows_affected", "duration"}
+		return []string{"duration_ms", "rows_affected"}
 	case "web-server":
-		return []string{"status", "duration"}
+		return []string{"status", "duration_ms"}
 	case "cache":
-		return []string{"size", "ttl"}
+		return []string{"size", "ttl", "duration"}
 	case "kafka":
-		return []string{"size"}
+		return []string{"partition", "offset", "size"}
 	case appLoki, "mimir":
-		return []string{"duration", "streams", "bytes"}
+		return []string{"duration", "size", "streams", "bytes"}
 	case "tempo":
 		return []string{"duration", "spans", "bytes"}
 	case "grafana":
@@ -375,7 +360,7 @@ func getDetectedFields(appName string, format LogFormat) []string {
 
 // getContentKeywords returns keywords that appear in log content for an application
 // These are literal strings that appear in the log text and can be used with line filters (|=, |~)
-// Only returns keywords that are in the filterableKeywords bounded set
+// Only returns keywords that are in the FilterableKeywords bounded set
 func getContentKeywords(appName string) []string {
 	switch appName {
 	case "web-server":
@@ -459,8 +444,8 @@ func LoadMetadata(dataDir string) (*DatasetMetadata, error) {
 	}
 
 	// Validate version
-	if metadata.Version != metadataVersion {
-		return nil, fmt.Errorf("unsupported metadata version %q (expected %q)", metadata.Version, metadataVersion)
+	if metadata.Version != MetadataVersion {
+		return nil, fmt.Errorf("unsupported metadata version %q (expected %q)", metadata.Version, MetadataVersion)
 	}
 
 	return &metadata, nil

@@ -46,10 +46,12 @@ func TestGroupConsumer(t *testing.T) {
 		}
 	}
 
-	// Check that the records are as expected.
+	// Check that the records are as expected. Order is not guaranteed across partitions.
 	require.Len(t, records, 2)
-	require.Equal(t, []byte("value1"), records[0].Value)
-	require.Equal(t, []byte("value2"), records[1].Value)
+	require.ElementsMatch(t,
+		[][]byte{[]byte("value1"), []byte("value2")},
+		[][]byte{records[0].Value, records[1].Value},
+	)
 
 	// cancel the context, channel should be closed.
 	cancel()

@@ -620,6 +620,15 @@ func TestCompareStreams(t *testing.T) {
 							{"stream":{"foo":"bar"},"values":[["1","1"],["2","2"]]}
 						]`),
 		},
+		{
+			name: "same timestamp different order",
+			expected: json.RawMessage(`[
+							{"stream":{"foo":"bar"},"values":[["10","first"],["10","second"],["20","third"]]}
+						]`),
+			actual: json.RawMessage(`[
+							{"stream":{"foo":"bar"},"values":[["10","second"],["10","first"],["20","third"]]}
+						]`),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := compareStreams(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{Tolerance: 0})
