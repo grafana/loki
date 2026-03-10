@@ -154,6 +154,9 @@ func NewReader(opts ReaderOptions) *Reader {
 	return &r
 }
 
+// Columns returns the current [Column]s used by the Reader.
+func (r *Reader) Columns() []*Column { return r.opts.Columns }
+
 // Schema returns the [arrow.Schema] used by the Reader. Fields in the schema
 // match the order of columns listed in [ReaderOptions].
 //
@@ -420,6 +423,7 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	}
 	r.opts = opts
 	r.schema = columnsSchema(opts.Columns)
+	r.readSpan = nil
 
 	r.ready = false
 

@@ -64,8 +64,12 @@ type Config struct {
 	SchedulerLookupInterval time.Duration
 
 	// BatchSize specifies the maximum number of rows to retrieve in a single
-	// read call of a task pipeline.
+	// read call of a task pipeline, or to send in a single message to a peer (sink).
 	BatchSize int64
+
+	// PrefetchBytes controls the number of bytes prefetched when opening a
+	// data object in scan tasks.
+	PrefetchBytes int64
 
 	// NumThreads is the number of worker threads to spawn. The number of
 	// threads corresponds to the number of tasks that can be executed
@@ -191,6 +195,7 @@ func (w *Worker) run(ctx context.Context) error {
 	for i := range w.numThreads {
 		t := &thread{
 			BatchSize:      w.config.BatchSize,
+			PrefetchBytes:  w.config.PrefetchBytes,
 			Logger:         log.With(w.logger, "thread", i),
 			Bucket:         w.config.Bucket,
 			Metastore:      w.config.Metastore,

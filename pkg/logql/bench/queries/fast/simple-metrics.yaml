@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=../schema.json
+---
+# Simple metric queries for fast testing
+queries:
+  - description: Count over time
+    query: sum(count_over_time(${SELECTOR}[${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - aggregation
+      - count
+
+  - description: Count with error/warn filter
+    query: sum(count_over_time(${SELECTOR} | detected_level=~"error|warn" [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    requires:
+      structured_metadata:
+       - detected_level
+    tags:
+      - aggregation
+      - count
+      - structured-metadata
+
+  - description: Rate with error/warn filter
+    query: sum(rate(${SELECTOR} | detected_level=~"error|warn" [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    requires:
+      structured_metadata:
+        - detected_level
+    tags:
+      - aggregation
+      - rate
+      - structured-metadata
+
+  - description: Count with line filter
+    query: sum(count_over_time(${SELECTOR} |= "level" [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    requires:
+      keywords:
+        - level
+    tags:
+      - aggregation
+      - count
+      - line-filter

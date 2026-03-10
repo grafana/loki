@@ -1,10 +1,65 @@
 package index
 
 import (
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+var (
+	processingDelayDesc = prometheus.NewDesc(
+		"loki_index_builder_latest_processing_delay_seconds",
+		"Latest time difference between record timestamp and processing time in seconds",
+		[]string{"partition"},
+		nil,
+	)
+)
+
+// processingDelayCollector implements prometheus.Collector to dynamically report
+// processing delay only for active partitions, preventing cardinality explosion.
+type processingDelayCollector struct {
+	mtx    sync.RWMutex
+	delays map[int32]float64 // partition -> delay in seconds
+}
+
+func newProcessingDelayCollector() *processingDelayCollector {
+	return &processingDelayCollector{
+		delays: make(map[int32]float64),
+	}
+}
+
+// Describe implements prometheus.Collector.
+func (c *processingDelayCollector) Describe(descs chan<- *prometheus.Desc) {
+	descs <- processingDelayDesc
+}
+
+// Collect implements prometheus.Collector.
+func (c *processingDelayCollector) Collect(metrics chan<- prometheus.Metric) {
+	c.mtx.RLock()
+	defer c.mtx.RUnlock()
+	for partition, delay := range c.delays {
+		metrics <- prometheus.MustNewConstMetric(
+			processingDelayDesc,
+			prometheus.GaugeValue,
+			delay,
+			strconv.Itoa(int(partition)),
+		)
+	}
+}
+
+func (c *processingDelayCollector) set(partition int32, delay float64) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.delays[partition] = delay
+}
+
+func (c *processingDelayCollector) delete(partition int32) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	delete(c.delays, partition)
+}
 
 type builderMetrics struct {
 	// Error counters
@@ -14,7 +69,7 @@ type builderMetrics struct {
 	commitsTotal prometheus.Counter
 
 	// Processing delay metrics
-	processingDelay prometheus.Gauge // Latest delta between record timestamp and current time
+	processingDelay *processingDelayCollector
 }
 
 func newBuilderMetrics() *builderMetrics {
@@ -27,10 +82,7 @@ func newBuilderMetrics() *builderMetrics {
 			Name: "loki_index_builder_commits_total",
 			Help: "Total number of commits",
 		}),
-		processingDelay: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "loki_index_builder_latest_processing_delay_seconds",
-			Help: "Latest time difference between record timestamp and processing time in seconds",
-		}),
+		processingDelay: newProcessingDelayCollector(),
 	}
 
 	return p
@@ -73,11 +125,14 @@ func (p *builderMetrics) incCommitsTotal() {
 	p.commitsTotal.Inc()
 }
 
-func (p *builderMetrics) setProcessingDelay(recordTimestamp time.Time) {
-	// Convert milliseconds to seconds and calculate delay
-	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.processingDelay.Set(time.Since(recordTimestamp).Seconds())
+func (p *builderMetrics) setProcessingDelay(partition int32, recordTimestamp time.Time) {
+	if !recordTimestamp.IsZero() {
+		p.processingDelay.set(partition, time.Since(recordTimestamp).Seconds())
 	}
+}
+
+func (p *builderMetrics) deletePartitionMetrics(partition int32) {
+	p.processingDelay.delete(partition)
 }
 
 type indexerMetrics struct {

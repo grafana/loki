@@ -3,9 +3,8 @@ kind: ProjectConfig
 health:
   healthProbeBindAddress: :8081
 metrics:
-  # Bind only on this host to allow accessing metrics
-  # only via the kube-rbac-proxy sidecar.
-  bindAddress: 127.0.0.1:8080
+  bindAddress: :8443
+  secure: true
 webhook:
   port: 9443
 leaderElection:

@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/thanos-io/objstore"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
@@ -51,7 +52,6 @@ func addExecuteCommand(app *kingpin.Application) {
 	cmd.Flag("engine", "Engine version (1 or 2)").Default("2").IntVar(&engineVersion)
 
 	cmd.Action(func(_ *kingpin.ParseContext) error {
-		storageBucket = cfg.Bucket
 		orgID = cfg.OrgID
 
 		parsed, err := parseTimeConfig(&cfg)
@@ -69,22 +69,29 @@ func addExecuteCommand(app *kingpin.Application) {
 
 		switch engineVersion {
 		case 1:
-			return doExecuteLocallyV1(params)
+			return doExecuteLocallyV1(params, cfg.Bucket)
 		case 2:
-			return doExecuteLocallyV2(params)
+			return doExecuteLocallyV2(params, MustGCSDataobjBucket(cfg.Bucket))
 		default:
 			return fmt.Errorf("unsupported engine version: %d (must be 1 or 2)", engineVersion)
 		}
 	})
 }
 
+func initV2Settings() {
+	if indexStoragePrefix == "" {
+		level.Warn(logger).Log("msg", "index storage prefix is not set. using default value.")
+		indexStoragePrefix = "index/v0"
+	}
+}
+
 // doExecuteLocallyV1 executes a query using the V1 engine
-func doExecuteLocallyV1(params logql.LiteralParams) error {
+func doExecuteLocallyV1(params logql.LiteralParams, bucketName string) error {
 	if indexStoragePrefix == "" {
 		level.Warn(logger).Log("msg", "index storage prefix is not set. v1 engine may not find any chunks.")
 	}
 	level.Info(logger).Log("msg", "executing local query with V1 engine")
-	result, err := doLocalQueryWithV1Engine(params)
+	result, err := doLocalQueryWithV1Engine(params, bucketName)
 	if err != nil {
 		level.Error(logger).Log("msg", "local query with V1 engine failed", "error", err)
 		return fmt.Errorf("V1 query execution failed: %w", err)
@@ -93,9 +100,10 @@ func doExecuteLocallyV1(params logql.LiteralParams) error {
 }
 
 // doExecuteLocallyV2 executes a query using the V2 engine
-func doExecuteLocallyV2(params logql.LiteralParams) error {
+func doExecuteLocallyV2(params logql.LiteralParams, bucket objstore.Bucket) error {
+	initV2Settings()
 	level.Info(logger).Log("msg", "executing local query with V2 engine")
-	result, err := doLocalQueryWithV2Engine(params)
+	result, err := doLocalQueryWithV2Engine(params, bucket)
 	if err != nil {
 		level.Error(logger).Log("msg", "V2 query execution failed", "error", err)
 		return fmt.Errorf("V2 query execution failed: %w", err)
@@ -103,9 +111,10 @@ func doExecuteLocallyV2(params logql.LiteralParams) error {
 	return checkResult(result)
 }
 
-func doExecuteLocallyV2Scheduler(params logql.LiteralParams) error {
+func doExecuteLocallyV2Scheduler(params logql.LiteralParams, bucket objstore.Bucket) error {
+	initV2Settings()
 	level.Info(logger).Log("msg", "executing local query with V2 engine via local scheduler and worker")
-	result, err := doLocalQueryWithV2EngineScheduler(params)
+	result, err := doLocalQueryWithV2EngineScheduler(params, bucket)
 	if err != nil {
 		level.Error(logger).Log("msg", "v2 query execution failed", "error", err)
 		return fmt.Errorf("v2 query execution failed: %w", err)
@@ -113,9 +122,10 @@ func doExecuteLocallyV2Scheduler(params logql.LiteralParams) error {
 	return checkResult(result)
 }
 
-func doExecuteLocallyV2SchedulerRemote(params logql.LiteralParams) error {
+func doExecuteLocallyV2SchedulerRemote(params logql.LiteralParams, bucket objstore.Bucket) error {
+	initV2Settings()
 	level.Info(logger).Log("msg", "executing local query with V2 engine via remote scheduler and worker")
-	result, err := doLocalQueryWithV2EngineSchedulerRemote(params)
+	result, err := doLocalQueryWithV2EngineSchedulerRemote(params, bucket)
 	if err != nil {
 		level.Error(logger).Log("msg", "v2 query execution failed", "error", err)
 		return fmt.Errorf("v2 query execution failed: %w", err)
@@ -138,23 +148,23 @@ func checkResult(result logqlmodel.Result) error {
 }
 
 // doLocalQueryWithV2Engine executes a query using the V2 engine
-func doLocalQueryWithV2Engine(params logql.LiteralParams) (logqlmodel.Result, error) {
+func doLocalQueryWithV2Engine(params logql.LiteralParams, bucket objstore.Bucket) (logqlmodel.Result, error) {
 	logger := glog.NewLogfmtLogger(os.Stderr)
 	ms := metastore.NewObjectMetastore(
-		MustDataobjBucket(),
+		bucket,
 		metastore.Config{IndexStoragePrefix: "index/v0"},
 		logger,
 		metastore.NewObjectMetastoreMetrics(prometheus.DefaultRegisterer),
 	)
 
 	ctx := user.InjectOrgID(context.Background(), orgID)
-	qe := engine.NewBasic(engine.ExecutorConfig{BatchSize: 512}, ms, MustDataobjBucket(), logql.NoLimits, prometheus.DefaultRegisterer, logger)
+	qe := engine.NewBasic(engine.ExecutorConfig{BatchSize: 512}, ms, bucket, logql.NoLimits, prometheus.DefaultRegisterer, logger)
 	query := qe.Query(params)
 	return query.Exec(ctx)
 }
 
 // doLocalQueryWithV1Engine executes a query using the V1 engine
-func doLocalQueryWithV1Engine(params logql.LiteralParams) (logqlmodel.Result, error) {
+func doLocalQueryWithV1Engine(params logql.LiteralParams, bucketName string) (logqlmodel.Result, error) {
 	ctx := user.InjectOrgID(context.Background(), orgID)
 
 	l := &validation.Limits{}
@@ -175,7 +185,7 @@ func doLocalQueryWithV1Engine(params logql.LiteralParams) (logqlmodel.Result, er
 		ObjectStore: bucket.ConfigWithNamedStores{
 			Config: bucket.Config{
 				GCS: gcs.Config{
-					BucketName: storageBucket,
+					BucketName: bucketName,
 				},
 			},
 		},
@@ -226,7 +236,7 @@ func doLocalQueryWithV1Engine(params logql.LiteralParams) (logqlmodel.Result, er
 	return query.Exec(ctx)
 }
 
-func doLocalQueryWithV2EngineScheduler(params logql.LiteralParams) (logqlmodel.Result, error) {
+func doLocalQueryWithV2EngineScheduler(params logql.LiteralParams, bucket objstore.Bucket) (logqlmodel.Result, error) {
 	ctx := user.InjectOrgID(context.Background(), orgID)
 
 	sched, err := engine.NewScheduler(engine.SchedulerParams{
@@ -239,16 +249,14 @@ func doLocalQueryWithV2EngineScheduler(params logql.LiteralParams) (logqlmodel.R
 		return logqlmodel.Result{}, fmt.Errorf("starting scheduler service: %w", err)
 	}
 
-	b := MustDataobjBucket()
-
 	metastoreMetrics := metastore.NewObjectMetastoreMetrics(prometheus.DefaultRegisterer)
 	msConfig := metastore.Config{IndexStoragePrefix: "index/v0"}
 	workerLogger := glog.With(logger, "component", "worker")
 	worker, err := engine.NewWorker(engine.WorkerParams{
 		Logger:         workerLogger,
 		AdvertiseAddr:  nil,
-		Bucket:         b,
-		Metastore:      metastore.NewObjectMetastore(b, msConfig, workerLogger, metastoreMetrics),
+		Bucket:         bucket,
+		Metastore:      metastore.NewObjectMetastore(bucket, msConfig, workerLogger, metastoreMetrics),
 		LocalScheduler: sched,
 		Config: engine.WorkerConfig{
 			SchedulerLookupAddress:  "",
@@ -274,7 +282,7 @@ func doLocalQueryWithV2EngineScheduler(params logql.LiteralParams) (logqlmodel.R
 				BatchSize: 128,
 			},
 		},
-		Metastore: metastore.NewObjectMetastore(b, msConfig, engineLogger, metastoreMetrics),
+		Metastore: metastore.NewObjectMetastore(bucket, msConfig, engineLogger, metastoreMetrics),
 		Scheduler: sched,
 		Limits:    logql.NoLimits,
 	})
@@ -285,7 +293,8 @@ func doLocalQueryWithV2EngineScheduler(params logql.LiteralParams) (logqlmodel.R
 	return e.Execute(ctx, params)
 }
 
-func doLocalQueryWithV2EngineSchedulerRemote(params logql.LiteralParams) (logqlmodel.Result, error) {
+// doLocalQueryWithV2EngineSchedulerRemote executes a query using the V2 engine via remote scheduler and workers so it also executes the serialization logic.
+func doLocalQueryWithV2EngineSchedulerRemote(params logql.LiteralParams, bucket objstore.Bucket) (logqlmodel.Result, error) {
 	ctx := user.InjectOrgID(context.Background(), orgID)
 
 	schedSrv, schedSvc, err := newServerService("scheduler", 3101, logger, prometheus.NewRegistry())
@@ -313,19 +322,18 @@ func doLocalQueryWithV2EngineSchedulerRemote(params logql.LiteralParams) (logqlm
 		return logqlmodel.Result{}, fmt.Errorf("starting worker service: %w", err)
 	}
 
-	b := MustDataobjBucket()
 	metastoreMetrics := metastore.NewObjectMetastoreMetrics(prometheus.DefaultRegisterer)
-	msConfig := metastore.Config{IndexStoragePrefix: "index/v0"}
+	msConfig := metastore.Config{IndexStoragePrefix: indexStoragePrefix}
 	workerLogger := glog.With(logger, "component", "worker")
 	worker, err := engine.NewWorker(engine.WorkerParams{
 		Logger:         workerLogger,
 		AdvertiseAddr:  workerSrv.HTTPListenAddr(),
-		Bucket:         b,
-		Metastore:      metastore.NewObjectMetastore(b, msConfig, workerLogger, metastoreMetrics),
+		Bucket:         bucket,
+		Metastore:      metastore.NewObjectMetastore(bucket, msConfig, workerLogger, metastoreMetrics),
 		LocalScheduler: nil,
 		Config: engine.WorkerConfig{
 			SchedulerLookupAddress:  schedSrv.HTTPListenAddr().String(),
-			SchedulerLookupInterval: 60,
+			SchedulerLookupInterval: time.Minute,
 			WorkerThreads:           64,
 		},
 		Executor: engine.ExecutorConfig{
@@ -348,7 +356,7 @@ func doLocalQueryWithV2EngineSchedulerRemote(params logql.LiteralParams) (logqlm
 				BatchSize: 128,
 			},
 		},
-		Metastore: metastore.NewObjectMetastore(b, msConfig, engineLogger, metastoreMetrics),
+		Metastore: metastore.NewObjectMetastore(bucket, msConfig, engineLogger, metastoreMetrics),
 		Scheduler: sched,
 		Limits:    logql.NoLimits,
 	})
