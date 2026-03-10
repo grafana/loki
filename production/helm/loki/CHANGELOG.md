@@ -14,6 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## Unreleased
 
 - [ENHANCEMENT] Add the ability to customize write, read and backend workloads PDB maxUnavailable [#16871](https://github.com/grafana/loki/pull/16871)
+- [BUGFIX] Fix incorrect syntax in loki-egress-dns CiliumNetworkPolicy manifest [#20221](https://github.com/grafana/loki/pull/20221)
 
 ## 6.53.0
 
