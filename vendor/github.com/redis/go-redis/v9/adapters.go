@@ -61,6 +61,13 @@ func (oa *optionsAdapter) GetAddr() string {
 	return oa.options.Addr
 }
 
+// GetNodeAddress returns the address of the Redis node as reported by the server.
+// For cluster clients, this is the endpoint from CLUSTER SLOTS before any transformation.
+// For standalone clients, this defaults to Addr.
+func (oa *optionsAdapter) GetNodeAddress() string {
+	return oa.options.NodeAddress
+}
+
 // IsTLSEnabled returns true if TLS is enabled.
 func (oa *optionsAdapter) IsTLSEnabled() bool {
 	return oa.options.TLSConfig != nil

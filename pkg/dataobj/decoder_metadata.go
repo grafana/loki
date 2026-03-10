@@ -2,6 +2,7 @@ package dataobj
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
@@ -12,8 +13,30 @@ import (
 
 // decode* methods for metadata shared by Decoder implementations.
 
-// decodeTailer decodes the tailer of the file to retrieve the metadata size
+var errLegacyMagic = errors.New("file uses legacy magic value")
+
+// decodeHeader decodes the header of the file to retrieve the metadata size
 // and the magic value.
+//
+// If the header has the legacy magic value, it returns [errLegacyMagic].
+func decodeHeader(r streamio.Reader) (metadataSize uint32, err error) {
+	var gotMagic [4]byte
+	if _, err := io.ReadFull(r, gotMagic[:]); err != nil {
+		return 0, fmt.Errorf("read magic: %w", err)
+	} else if string(gotMagic[:]) == string(legacyMagic) {
+		return 0, errLegacyMagic
+	} else if string(gotMagic[:]) != string(magic) {
+		return 0, fmt.Errorf("unexpected magic: got=%q want=%q", gotMagic, magic)
+	}
+
+	if err := binary.Read(r, binary.LittleEndian, &metadataSize); err != nil {
+		return 0, fmt.Errorf("read metadata size: %w", err)
+	}
+	return
+}
+
+// decodeTailer decodes the tailer of the file to retrieve the metadata size
+// and the magic value. Only works for files with the legacy magic value.
 func decodeTailer(r streamio.Reader) (metadataSize uint32, err error) {
 	if err := binary.Read(r, binary.LittleEndian, &metadataSize); err != nil {
 		return 0, fmt.Errorf("read metadata size: %w", err)
@@ -22,8 +45,8 @@ func decodeTailer(r streamio.Reader) (metadataSize uint32, err error) {
 	var gotMagic [4]byte
 	if _, err := io.ReadFull(r, gotMagic[:]); err != nil {
 		return 0, fmt.Errorf("read magic: %w", err)
-	} else if string(gotMagic[:]) != string(magic) {
-		return 0, fmt.Errorf("unexpected magic: got=%q want=%q", gotMagic, magic)
+	} else if string(gotMagic[:]) != string(legacyMagic) {
+		return 0, fmt.Errorf("unexpected magic: got=%q want=%q", gotMagic, legacyMagic)
 	}
 
 	return

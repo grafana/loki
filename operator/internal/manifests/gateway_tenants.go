@@ -125,19 +125,27 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 
 	objs = append(cObjs, openShiftObjs...)
 
+	setRouteToPassthrough := func(objs []client.Object) {
+		for _, o := range objs {
+			if r, ok := o.(*routev1.Route); ok {
+				r.Spec.TLS.Termination = routev1.TLSTerminationPassthrough
+				break
+			}
+		}
+	}
+
+	if opts.Stack.Tenants != nil && opts.Stack.Tenants.Gateway != nil && opts.Stack.Tenants.Gateway.TLS != nil {
+		setRouteToPassthrough(objs)
+	}
+
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		// If a single tenant configure mTLS change Route termination policy
 		// to Passthrough
-		for _, o := range objs {
-			switch r := o.(type) {
-			case *routev1.Route:
-				for _, secret := range opts.Tenants.Secrets {
-					if secret.MTLSSecret != nil {
-						r.Spec.TLS.Termination = routev1.TLSTerminationPassthrough
-						break
-					}
-				}
+		for _, secret := range opts.Tenants.Secrets {
+			if secret.MTLSSecret != nil {
+				setRouteToPassthrough(objs)
+				break
 			}
 		}
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:

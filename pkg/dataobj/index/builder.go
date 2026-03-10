@@ -221,6 +221,9 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 
 	for _, partitions := range topics {
 		for _, partition := range partitions {
+			// Delete partition metrics to prevent cardinality growth
+			p.metrics.deletePartitionMetrics(partition)
+
 			delete(p.partitionStates, partition)
 
 			// Cancel any active calculations

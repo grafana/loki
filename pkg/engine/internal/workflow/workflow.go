@@ -5,6 +5,8 @@ package workflow
 import (
 	"context"
 	"fmt"
+	gotrace "runtime/trace"
+	"strconv"
 	"sync"
 	"time"
 
@@ -170,6 +172,9 @@ func (wf *Workflow) String() string {
 	return Sprint(wf)
 }
 
+// Opts returns options of the workflow (mostly for testing purposes).
+func (wf *Workflow) Opts() Options { return wf.opts }
+
 // Len returns the total number of tasks in the workflow.
 func (wf *Workflow) Len() int { return len(wf.manifest.Tasks) }
 
@@ -207,11 +212,14 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 	}
 
 	// Start dispatching in background goroutine
+	gotrace.Log(ctx, "dispatch_tasks", "starting dispatch of "+strconv.Itoa(len(wf.manifest.Tasks))+" tasks")
 	go func() {
 		err := wf.dispatchTasks(ctx, wf.manifest.Tasks)
 		if err != nil {
 			wf.resultsPipeline.SetError(err)
 			wrapped.Close()
+		} else {
+			gotrace.Log(ctx, "dispatch_tasks", "all tasks dispatched")
 		}
 	}()
 

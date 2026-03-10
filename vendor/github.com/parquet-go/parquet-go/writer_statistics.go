@@ -29,14 +29,33 @@ func appendPageLevelHistogram(histograms []int64, levels []byte, maxLevel byte) 
 	histSize := int(maxLevel) + 1
 	startIndex := len(histograms)
 	histograms = slices.Grow(histograms, histSize)[:startIndex+histSize]
-
-	for i := range histSize {
-		histograms[startIndex+i] = 0
-	}
+	clear(histograms[startIndex : startIndex+histSize])
 
 	for _, level := range levels {
 		histograms[startIndex+int(level)]++
 	}
 
 	return histograms
+}
+
+// accumulateAndAppendPageLevelHistogram combines accumulateLevelHistogram and
+// appendPageLevelHistogram into a single pass through the levels array.
+// It updates both the column-level histogram and creates a per-page histogram.
+func accumulateAndAppendPageLevelHistogram(
+	columnHistogram []int64,
+	pageHistograms []int64,
+	levels []byte,
+	maxLevel byte,
+) []int64 {
+	histSize := int(maxLevel) + 1
+	startIndex := len(pageHistograms)
+	pageHistograms = slices.Grow(pageHistograms, histSize)[:startIndex+histSize]
+	clear(pageHistograms[startIndex : startIndex+histSize])
+
+	for _, level := range levels {
+		columnHistogram[level]++
+		pageHistograms[startIndex+int(level)]++
+	}
+
+	return pageHistograms
 }

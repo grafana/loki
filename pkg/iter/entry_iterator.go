@@ -121,7 +121,7 @@ func (i *mergeEntryIterator) fillBuffer() {
 
 	// We support multiple entries with the same timestamp, and we want to
 	// preserve their original order.
-	// Entries with identical timestamp and line are removed as duplicates.
+	// Entries with identical timestamp, line, and metadata are removed as duplicates.
 	for {
 		next := i.tree.Winner()
 		entry := next.At()
@@ -139,7 +139,7 @@ func (i *mergeEntryIterator) fillBuffer() {
 
 		var dupe bool
 		for _, t := range previous {
-			if t.Line == entry.Line {
+			if t.Equal(entry) {
 				i.stats.AddDuplicates(1)
 				dupe = true
 				break
@@ -271,7 +271,9 @@ func lessAscending(e1, e2 sortFields) bool {
 		// The underlying stream hash may not be available, such as when merging LokiResponses in the
 		// frontend which were sharded. Prefer to use the underlying stream hash when available,
 		// which is needed in deduping code, but defer to label sorting when it's not present.
-		if e1.streamHash == 0 {
+		// Also defer to label sorting when both hashes are equal (e.g. entries from the same base
+		// stream but with different structured metadata share the same base hash).
+		if e1.streamHash == 0 || e1.streamHash == e2.streamHash {
 			return e1.labels < e2.labels
 		}
 		return e1.streamHash < e2.streamHash
@@ -281,7 +283,7 @@ func lessAscending(e1, e2 sortFields) bool {
 
 func lessDescending(e1, e2 sortFields) bool {
 	if e1.timeNanos == e2.timeNanos {
-		if e1.streamHash == 0 {
+		if e1.streamHash == 0 || e1.streamHash == e2.streamHash {
 			return e1.labels < e2.labels
 		}
 		return e1.streamHash < e2.streamHash
