@@ -1672,6 +1672,8 @@ write:
           topologyKey: kubernetes.io/hostname
   # -- DNS config for write pods
   dnsConfig: {}
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- Node selector for write pods
   nodeSelector: {}
   # -- Topology Spread Constraints for write pods
@@ -1811,6 +1813,8 @@ read:
           topologyKey: kubernetes.io/hostname
   # -- DNS config for read pods
   dnsConfig: {}
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- Node selector for read pods
   nodeSelector: {}
   # -- Topology Spread Constraints for read pods
@@ -1938,6 +1942,8 @@ backend:
           topologyKey: kubernetes.io/hostname
   # -- DNS config for backend pods
   dnsConfig: {}
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- Node selector for backend pods
   nodeSelector: {}
   # -- Topology Spread Constraints for backend pods
