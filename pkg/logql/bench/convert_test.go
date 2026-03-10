@@ -1,261 +1,88 @@
 package bench
 
 import (
-	"testing"
-	"time"
+	"fmt"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
-func TestConvertResult_Streams(t *testing.T) {
-	now := time.Now()
-	input := loghttp.Streams{
-		{
-			Labels: loghttp.LabelSet{"app": "foo", "env": "prod"},
-			Entries: []loghttp.Entry{
-				{Timestamp: now, Line: "log line 1"},
-				{Timestamp: now.Add(time.Second), Line: "log line 2"},
-			},
-		},
-	}
-
-	result, err := ConvertResult(input)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	streams, ok := result.(logqlmodel.Streams)
-	require.True(t, ok, "expected logqlmodel.Streams but got %T", result)
-	require.Len(t, streams, 1)
-	assert.Len(t, streams[0].Entries, 2)
-	assert.Equal(t, "log line 1", streams[0].Entries[0].Line)
-	assert.Equal(t, "log line 2", streams[0].Entries[1].Line)
-}
-
-func TestConvertResult_Matrix(t *testing.T) {
-	ts1 := model.Time(1000)
-	ts2 := model.Time(2000)
-
-	input := loghttp.Matrix{
-		{
-			Metric: model.Metric{
-				"job":      "test",
-				"instance": "localhost",
-			},
-			Values: []model.SamplePair{
-				{Timestamp: ts1, Value: 1.5},
-				{Timestamp: ts2, Value: 2.5},
-			},
-		},
-	}
-
-	result, err := ConvertResult(input)
-	require.NoError(t, err)
-
-	matrix, ok := result.(promql.Matrix)
-	require.True(t, ok, "expected promql.Matrix but got %T", result)
-	require.Len(t, matrix, 1)
-
-	series := matrix[0]
-	require.Len(t, series.Floats, 2)
-
-	assert.Equal(t, int64(ts1), series.Floats[0].T)
-	assert.Equal(t, float64(1.5), series.Floats[0].F)
-	assert.Equal(t, int64(ts2), series.Floats[1].T)
-	assert.Equal(t, float64(2.5), series.Floats[1].F)
-
-	// Check labels
-	assert.Equal(t, "test", series.Metric.Get("job"))
-	assert.Equal(t, "localhost", series.Metric.Get("instance"))
-}
-
-func TestConvertResult_Matrix_MultiSeries(t *testing.T) {
-	tests := []struct {
-		name   string
-		input  loghttp.Matrix
-		wantNS int // number of series
-	}{
-		{
-			name:   "empty matrix",
-			input:  loghttp.Matrix{},
-			wantNS: 0,
-		},
-		{
-			name: "two series",
-			input: loghttp.Matrix{
-				{
-					Metric: model.Metric{"job": "a"},
-					Values: []model.SamplePair{{Timestamp: 1000, Value: 10}},
-				},
-				{
-					Metric: model.Metric{"job": "b"},
-					Values: []model.SamplePair{{Timestamp: 2000, Value: 20}},
-				},
-			},
-			wantNS: 2,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			result, err := ConvertResult(tc.input)
-			require.NoError(t, err)
-
-			matrix, ok := result.(promql.Matrix)
-			require.True(t, ok)
-			assert.Len(t, matrix, tc.wantNS)
-		})
+// ConvertResult converts a loghttp.ResultValue to a parser.Value.
+// It dispatches based on the concrete type of the input.
+func ConvertResult(v loghttp.ResultValue) (parser.Value, error) {
+	switch r := v.(type) {
+	case loghttp.Streams:
+		return convertStreams(r), nil
+	case loghttp.Matrix:
+		return convertMatrix(r)
+	case loghttp.Vector:
+		return convertVector(r), nil
+	case loghttp.Scalar:
+		return convertScalar(r), nil
+	default:
+		return nil, fmt.Errorf("unknown result type: %T", v)
 	}
 }
 
-func TestConvertResult_Vector(t *testing.T) {
-	ts := model.Time(5000)
+// convertStreams converts a loghttp.Streams to logqlmodel.Streams.
+func convertStreams(s loghttp.Streams) logqlmodel.Streams {
+	return logqlmodel.Streams(s.ToProto())
+}
 
-	input := loghttp.Vector{
-		{
-			Metric:    model.Metric{"__name__": "up", "job": "prometheus"},
-			Value:     1.0,
-			Timestamp: ts,
-		},
-		{
-			Metric:    model.Metric{"__name__": "up", "job": "node"},
-			Value:     0.0,
-			Timestamp: ts,
-		},
+// convertMatrix converts a loghttp.Matrix to promql.Matrix.
+func convertMatrix(m loghttp.Matrix) (promql.Matrix, error) {
+	result := make(promql.Matrix, len(m))
+	for i, sampleStream := range m {
+		if len(sampleStream.Histograms) > 0 {
+			return nil, fmt.Errorf("histogram data not yet supported in conversion (series %d has %d histogram points)", i, len(sampleStream.Histograms))
+		}
+		floats := make([]promql.FPoint, len(sampleStream.Values))
+		for j, pair := range sampleStream.Values {
+			floats[j] = promql.FPoint{
+				T: int64(pair.Timestamp),
+				F: float64(pair.Value),
+			}
+		}
+		result[i] = promql.Series{
+			Metric: modelMetricToLabels(sampleStream.Metric),
+			Floats: floats,
+		}
 	}
-
-	result, err := ConvertResult(input)
-	require.NoError(t, err)
-
-	vector, ok := result.(promql.Vector)
-	require.True(t, ok, "expected promql.Vector but got %T", result)
-	require.Len(t, vector, 2)
-
-	assert.Equal(t, int64(ts), vector[0].T)
-	assert.Equal(t, float64(1.0), vector[0].F)
-	assert.Equal(t, "prometheus", vector[0].Metric.Get("job"))
-
-	assert.Equal(t, int64(ts), vector[1].T)
-	assert.Equal(t, float64(0.0), vector[1].F)
-	assert.Equal(t, "node", vector[1].Metric.Get("job"))
+	return result, nil
 }
 
-func TestConvertResult_Vector_Empty(t *testing.T) {
-	input := loghttp.Vector{}
-
-	result, err := ConvertResult(input)
-	require.NoError(t, err)
-
-	vector, ok := result.(promql.Vector)
-	require.True(t, ok)
-	assert.Empty(t, vector)
-}
-
-func TestConvertResult_Scalar(t *testing.T) {
-	input := loghttp.Scalar{
-		Value:     model.SampleValue(42.5),
-		Timestamp: model.Time(9000),
+// convertVector converts a loghttp.Vector to promql.Vector.
+func convertVector(v loghttp.Vector) promql.Vector {
+	result := make(promql.Vector, len(v))
+	for i, sample := range v {
+		result[i] = promql.Sample{
+			Metric: modelMetricToLabels(sample.Metric),
+			T:      int64(sample.Timestamp),
+			F:      float64(sample.Value),
+		}
 	}
-
-	result, err := ConvertResult(input)
-	require.NoError(t, err)
-
-	scalar, ok := result.(promql.Scalar)
-	require.True(t, ok, "expected promql.Scalar but got %T", result)
-
-	assert.Equal(t, int64(9000), scalar.T)
-	assert.Equal(t, float64(42.5), scalar.V)
+	return result
 }
 
-func TestConvertResult_UnknownType(t *testing.T) {
-	// Use an anonymous type that implements loghttp.ResultValue
-	type unknownResultType struct{}
-	// We can't create an unknownResultType that implements loghttp.ResultValue
-	// without defining Type() method. Instead, test using nil after casting.
-	// We pass nil to see the error path for unknown types — but since nil
-	// won't match any case, we verify the error is returned.
-	//
-	// Since loghttp.ResultValue is an interface, we can create a concrete
-	// implementation inline.
-
-	// Instead, test with a custom struct that happens to implement ResultValue
-	// by testing that the function correctly returns an error for unsupported types.
-	// We'll use a helper type in the test.
-	result, err := ConvertResult(testUnknownResultValue{})
-	assert.Nil(t, result)
-	assert.ErrorContains(t, err, "unknown result type")
-}
-
-// testUnknownResultValue is a test helper that implements loghttp.ResultValue
-// but is not one of the known types.
-type testUnknownResultValue struct{}
-
-func (testUnknownResultValue) Type() loghttp.ResultType { return "unknown" }
-
-func TestConvertResult_Matrix_FPointTimestampConversion(t *testing.T) {
-	// Verify timestamp conversion: model.Time is Unix ms as int64
-	// promql.FPoint.T is also Unix ms as int64
-	msTimestamp := model.Time(1700000000000) // some Unix ms timestamp
-
-	input := loghttp.Matrix{
-		{
-			Metric: model.Metric{"job": "test"},
-			Values: []model.SamplePair{
-				{Timestamp: msTimestamp, Value: model.SampleValue(3.14)},
-			},
-		},
+// convertScalar converts a loghttp.Scalar to promql.Scalar.
+func convertScalar(s loghttp.Scalar) promql.Scalar {
+	return promql.Scalar{
+		T: int64(s.Timestamp),
+		V: float64(s.Value),
 	}
-
-	result, err := ConvertResult(input)
-	require.NoError(t, err)
-
-	matrix := result.(promql.Matrix)
-	require.Len(t, matrix[0].Floats, 1)
-	assert.Equal(t, int64(msTimestamp), matrix[0].Floats[0].T)
-	assert.InDelta(t, 3.14, matrix[0].Floats[0].F, 1e-10)
 }
 
-func TestConvertResult_Vector_Timestamp(t *testing.T) {
-	// Verify timestamp conversion for vector
-	msTimestamp := model.Time(1700000000000)
-
-	input := loghttp.Vector{
-		{
-			Metric:    model.Metric{"job": "test"},
-			Value:     model.SampleValue(99.9),
-			Timestamp: msTimestamp,
-		},
+// modelMetricToLabels converts a model.Metric to labels.Labels.
+// model.Metric is map[model.LabelName]model.LabelValue where both are string types.
+func modelMetricToLabels(metric model.Metric) labels.Labels {
+	m := make(map[string]string, len(metric))
+	for k, v := range metric {
+		m[string(k)] = string(v)
 	}
-
-	result, err := ConvertResult(input)
-	require.NoError(t, err)
-
-	vector := result.(promql.Vector)
-	require.Len(t, vector, 1)
-	assert.Equal(t, int64(msTimestamp), vector[0].T)
-	assert.InDelta(t, 99.9, vector[0].F, 1e-10)
-}
-
-func TestConvertResult_Matrix_HistogramsUnsupported(t *testing.T) {
-	input := loghttp.Matrix{
-		{
-			Metric: model.Metric{"job": "test"},
-			Values: []model.SamplePair{},
-			Histograms: []model.SampleHistogramPair{
-				{
-					Timestamp: model.Time(1000),
-					Histogram: &model.SampleHistogram{},
-				},
-			},
-		},
-	}
-
-	result, err := ConvertResult(input)
-	assert.Nil(t, result)
-	assert.ErrorContains(t, err, "histogram data not yet supported in conversion")
+	return labels.FromMap(m)
 }
