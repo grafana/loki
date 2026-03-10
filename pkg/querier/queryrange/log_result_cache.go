@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -46,13 +47,67 @@ func NewLogResultCacheMetrics(registerer prometheus.Registerer) *LogResultCacheM
 	}
 }
 
+// LogCacheLimits is the subset of Limits used by logResultCache (only freshness check).
+type LogCacheLimits interface {
+	MaxCacheFreshness(context.Context, string) time.Duration
+}
+
+// LogCacheKeyGenerator generates cache keys for log result cache entries.
+// Returning an empty string signals that the request should not be cached.
+type LogCacheKeyGenerator interface {
+	GenerateCacheKey(ctx context.Context, tenantIDs []string, req *LokiRequest) string
+}
+
+type defaultLogCacheKeyGenerator struct {
+	limits      Limits
+	transformer UserIDTransformer
+}
+
+func (g *defaultLogCacheKeyGenerator) GenerateCacheKey(ctx context.Context, tenantIDs []string, req *LokiRequest) string {
+	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, g.limits.QuerySplitDuration)
+	// skip caching if interval is unset
+	// skip caching when limit is 0 as it would get registered as empty result in the cache even if that time range contains log lines.
+	if interval == 0 || req.Limit == 0 {
+		return ""
+	}
+	alignedStart := time.Unix(0, req.GetStartTs().UnixNano()-(req.GetStartTs().UnixNano()%interval.Nanoseconds()))
+
+	transformedTenantIDs := tenantIDs
+	if g.transformer != nil {
+		transformedTenantIDs = make([]string, 0, len(tenantIDs))
+		for _, tenantID := range tenantIDs {
+			transformedTenantIDs = append(transformedTenantIDs, g.transformer(ctx, tenantID))
+		}
+	}
+
+	cacheKey := fmt.Sprintf("log:%s:%s:%d:%d", tenant.JoinTenantIDs(transformedTenantIDs), req.GetQuery(), interval.Nanoseconds(), alignedStart.UnixNano()/(interval.Nanoseconds()))
+	if httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) == "true" {
+		cacheKey = "pipeline-disabled:" + cacheKey
+	}
+	return cacheKey
+}
+
+// NewDefaultLogCacheKeyGenerator creates the standard key generator using QuerySplitDuration.
+func NewDefaultLogCacheKeyGenerator(limits Limits, transformer UserIDTransformer) LogCacheKeyGenerator {
+	return &defaultLogCacheKeyGenerator{limits: limits, transformer: transformer}
+}
+
 // NewLogResultCache creates a new log result cache middleware.
 // Currently it only caches empty filter queries, this is because those are usually easily and freely cacheable.
 // Log hits are difficult to handle because of the limit query parameter and the size of the response.
 // In the future it could be extended to cache non-empty query results.
 // see https://docs.google.com/document/d/1_mACOpxdWZ5K0cIedaja5gzMbv-m0lUVazqZd2O4mEU/edit
-func NewLogResultCache(logger log.Logger, limits Limits, cache cache.Cache, shouldCache queryrangebase.ShouldCacheFn,
-	transformer UserIDTransformer, metrics *LogResultCacheMetrics) queryrangebase.Middleware {
+func NewLogResultCache(
+	logger log.Logger,
+	limits LogCacheLimits,
+	c cache.Cache,
+	shouldCache queryrangebase.ShouldCacheFn,
+	keyGen LogCacheKeyGenerator,
+	metrics *LogResultCacheMetrics,
+) (queryrangebase.Middleware, error) {
+	if keyGen == nil {
+		return nil, errors.New("keyGen must not be nil")
+	}
 	if metrics == nil {
 		metrics = NewLogResultCacheMetrics(nil)
 	}
@@ -60,21 +115,21 @@ func NewLogResultCache(logger log.Logger, limits Limits, cache cache.Cache, shou
 		return &logResultCache{
 			next:        next,
 			limits:      limits,
-			cache:       cache,
+			cache:       c,
 			logger:      logger,
 			shouldCache: shouldCache,
-			transformer: transformer,
+			keyGen:      keyGen,
 			metrics:     metrics,
 		}
-	})
+	}), nil
 }
 
 type logResultCache struct {
 	next        queryrangebase.Handler
-	limits      Limits
+	limits      LogCacheLimits
 	cache       cache.Cache
 	shouldCache queryrangebase.ShouldCacheFn
-	transformer UserIDTransformer
+	keyGen      LogCacheKeyGenerator
 
 	metrics *LogResultCacheMetrics
 	logger  log.Logger
@@ -105,28 +160,9 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request type %T", req)
 	}
 
-	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.limits.QuerySplitDuration)
-	// skip caching by if interval is unset
-	// skip caching when limit is 0 as it would get registerted as empty result in the cache even if that time range contains log lines.
-	if interval == 0 || lokiReq.Limit == 0 {
+	cacheKey := l.keyGen.GenerateCacheKey(ctx, tenantIDs, lokiReq)
+	if cacheKey == "" {
 		return l.next.Do(ctx, req)
-	}
-	// The first subquery might not be aligned.
-	alignedStart := time.Unix(0, lokiReq.GetStartTs().UnixNano()-(lokiReq.GetStartTs().UnixNano()%interval.Nanoseconds()))
-	// generate the cache key based on query, tenant and start time.
-
-	transformedTenantIDs := tenantIDs
-	if l.transformer != nil {
-		transformedTenantIDs = make([]string, 0, len(tenantIDs))
-
-		for _, tenantID := range tenantIDs {
-			transformedTenantIDs = append(transformedTenantIDs, l.transformer(ctx, tenantID))
-		}
-	}
-
-	cacheKey := fmt.Sprintf("log:%s:%s:%d:%d", tenant.JoinTenantIDs(transformedTenantIDs), req.GetQuery(), interval.Nanoseconds(), alignedStart.UnixNano()/(interval.Nanoseconds()))
-	if httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) == "true" {
-		cacheKey = "pipeline-disabled:" + cacheKey
 	}
 
 	_, buff, _, err := l.cache.Fetch(ctx, []string{cache.HashKey(cacheKey)})
