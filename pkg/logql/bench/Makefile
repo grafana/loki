@@ -1,4 +1,4 @@
-.PHONY: generate bench list run run-debug stream grafana grafana-stop discover
+.PHONY: generate bench list run run-debug stream grafana grafana-stop discover remote-test
 
 # Load local secrets from .env (ignored by git).
 # Copy .env.template → .env and fill in real values.
@@ -146,4 +146,41 @@ endif
 		--max-streams $(DISCOVER_MAX_STREAMS) \
 		--concurrency $(DISCOVER_CONCURRENCY) \
 		--output testdata \
-		--queries-dir queries
+		--queries-dir queries \
+		$(if $(DISCOVER_FROM),--from "$(DISCOVER_FROM)") \
+		$(if $(DISCOVER_TO),--to "$(DISCOVER_TO)")
+
+###########################
+# Remote Correctness Test #
+###########################
+
+# Default timeout for remote correctness tests
+REMOTE_TIMEOUT ?= 30m
+
+# remote-test compares query results between two live Loki endpoints.
+# Requires:
+#   1. Discovered metadata in testdata/ (run `make discover` first)
+#   2. Secrets in .env (see .env.template):
+#      REMOTE_ADDR_1, REMOTE_ADDR_2  — two Loki endpoints to compare
+#      REMOTE_ORG_ID                 — tenant org ID
+#      LOKI_USERNAME, LOKI_PASSWORD  — HTTP basic auth
+remote-test:
+ifndef REMOTE_ADDR_1
+	$(error REMOTE_ADDR_1 is required — add it to .env (see .env.template))
+endif
+ifndef REMOTE_ADDR_2
+	$(error REMOTE_ADDR_2 is required — add it to .env (see .env.template))
+endif
+ifndef REMOTE_ORG_ID
+	$(error REMOTE_ORG_ID is required — add it to .env (see .env.template))
+endif
+	go test -tags=remote_correctness -v \
+		-run TestRemoteStorageEquality \
+		-timeout $(REMOTE_TIMEOUT) \
+		-addr-1 "$(REMOTE_ADDR_1)" \
+		-addr-2 "$(REMOTE_ADDR_2)" \
+		-org-id "$(REMOTE_ORG_ID)" \
+		-username "$(LOKI_USERNAME)" \
+		-password "$(LOKI_PASSWORD)" \
+		-metadata-dir testdata \
+		./...
