@@ -14,6 +14,10 @@ Entries should include a reference to the pull request that introduced the chang
 ## Unreleased
 
 
+## 6.55.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.7 and GEL version to 3.6.5
+
 ## 6.54.0
 
 **NOTE:** Effective [March 16, 2026](https://github.com/grafana/loki/issues/20705), the Grafana Loki Helm chart will be forked to the new repository [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts). 
