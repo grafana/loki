@@ -13,6 +13,13 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.55.0
+
+
+## 6.54.0
+
+**NOTE:** Effective [March 16, 2026](https://github.com/grafana/loki/issues/20705), the Grafana Loki Helm chart will be forked to the new repository [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts). 
+
 - [FEATURE] Add common labels to all resources [#20269](https://github.com/grafana/loki/pull/20269)
 - [FEATURE] Memcached: allow to override CPU in the auto-computed resource mode  [#20767](https://github.com/grafana/loki/pull/20767)
 - [ENHANCEMENT] Add the ability to customize write, read and backend workloads PDB maxUnavailable [#16871](https://github.com/grafana/loki/pull/16871)
