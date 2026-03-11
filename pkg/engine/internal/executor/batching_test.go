@@ -135,8 +135,3 @@ func TestBatchingPipeline(t *testing.T) {
 	}
 }
 
-func TestBatchingPipeline_Unwrap(t *testing.T) {
-	inner := NewBufferedPipeline()
-	p := NewBatchingPipeline(inner, 10)
-	require.Equal(t, inner, p.(WrappedPipeline).Unwrap())
-}

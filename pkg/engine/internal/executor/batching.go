@@ -28,8 +28,6 @@ type batchingPipeline struct {
 	done    bool // inner pipeline is exhausted
 }
 
-var _ WrappedPipeline = (*batchingPipeline)(nil)
-
 // NewBatchingPipeline wraps inner so that each Read call returns a single
 // aggregated batch of up to batchSize rows. When batchSize <= 0, records are
 // passed through unchanged.
@@ -119,9 +117,4 @@ func (p *batchingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 // Close implements Pipeline.
 func (p *batchingPipeline) Close() {
 	p.inner.Close()
-}
-
-// Unwrap implements WrappedPipeline.
-func (p *batchingPipeline) Unwrap() Pipeline {
-	return p.inner
 }

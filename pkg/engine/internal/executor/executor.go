@@ -76,11 +76,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		return errorPipeline(ctx, err)
 	}
 
-	pipeline := c.execute(ctx, node)
-	if c.batchSize > 0 {
-		pipeline = NewBatchingPipeline(pipeline, c.batchSize)
-	}
-	return pipeline
+	return c.execute(ctx, node)
 }
 
 // Context is the execution context
@@ -143,6 +139,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeMerge(ctx, n, inputs))
 	case *physical.Parallelize:
 		return c.executeParallelize(ctx, n, inputs)
+	case *physical.Batching:
+		return c.executeBatching(ctx, n, inputs)
 	case *physical.ScanSet:
 		return c.executeScanSet(ctx, n)
 	default:
@@ -476,6 +474,13 @@ func (c *Context) executeParallelize(ctx context.Context, _ *physical.Paralleliz
 	// see an Parallelize node in the plan, we ignore it and immediately
 	// propagate up the input.
 	return inputs[0]
+}
+
+func (c *Context) executeBatching(ctx context.Context, node *physical.Batching, inputs []Pipeline) Pipeline {
+	if len(inputs) != 1 {
+		return errorPipeline(ctx, fmt.Errorf("batching expects exactly one input, got %d", len(inputs)))
+	}
+	return NewBatchingPipeline(inputs[0], node.BatchSize)
 }
 
 func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {
