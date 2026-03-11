@@ -16,7 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.55.0
 
-- [CHANGE] Changed version of Grafana Loki to 3.6.7
+- [CHANGE] Changed version of Grafana Loki to 3.6.7 and GEL version to 3.6.5
 
 ## 6.54.0
 
