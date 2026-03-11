@@ -13,9 +13,10 @@ import (
 
 // planner is responsible for constructing the Task graph held by a [Workflow].
 type planner struct {
-	tenantID string
-	graph    dag.Graph[*Task]
-	physical *physical.Plan
+	tenantID  string
+	batchSize int // batch size to wrap each task fragment with; 0 means no wrapping
+	graph     dag.Graph[*Task]
+	physical  *physical.Plan
 
 	streamWriters map[*Stream]*Task // Lookup of stream to which task writes to it
 }
@@ -30,10 +31,23 @@ func planWorkflow(tenantID string, plan *physical.Plan) (dag.Graph[*Task], error
 		return dag.Graph[*Task]{}, err
 	}
 
-	planner := &planner{
-		tenantID: tenantID,
-		physical: plan,
+	var batchSize int
+	if b, ok := root.(*physical.Batching); ok {
+		batchSize = int(b.BatchSize)
+		// The Batching node is consumed here to extract the batch size. Advance
+		// root to its child so the Batching wrapper itself is never turned into a
+		// standalone task fragment.
+		//
+		// The planner.Process will add the batch node on top of task in the workflow.
+		if children := plan.Children(b); len(children) == 1 {
+			root = children[0]
+		}
+	}
 
+	planner := &planner{
+		tenantID:      tenantID,
+		batchSize:     batchSize,
+		physical:      plan,
 		streamWriters: make(map[*Stream]*Task),
 	}
 	if err := planner.Process(root); err != nil {
@@ -167,6 +181,16 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 	if !planTimeRange.IsZero() {
 		timeRange = planTimeRange
 	}
+
+	// If batching is enabled, wrap every task fragment with a Batching node so all task outputs are batched.
+	// Batching is enabled when the root of the original plan is a Batching node.
+	if p.batchSize > 0 {
+		var err error
+		if fragment, err = physical.WrapWithBatching(fragment, p.batchSize); err != nil {
+			return nil, fmt.Errorf("wrapping task fragment with batching: %w", err)
+		}
+	}
+
 	task := &Task{
 		ULID:         ulid.Make(),
 		TenantID:     p.tenantID,

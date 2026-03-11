@@ -1,3 +1,11 @@
+# v1.48.0 (2026-02-16)
+
+* **Feature**: Amazon MSK now supports dual-stack connectivity (IPv4 and IPv6) for existing MSK clusters. You can enable dual-stack on existing clusters by specifying the NetworkType parameter in updateConnectivity API.
+
+# v1.47.0 (2026-02-10.2)
+
+* **Feature**: Amazon MSK adds three new APIs, CreateTopic, UpdateTopic, and DeleteTopic for managing Kafka topics in your MSK clusters.
+
 # v1.46.7 (2026-01-09)
 
 * **Dependency Update**: Updated to the latest SDK module versions

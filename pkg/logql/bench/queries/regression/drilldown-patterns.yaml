@@ -43,9 +43,7 @@ queries:
       - unwrap
       - aggregation
       - parser
-    notes: "Common pattern from drilldown fields tab when analyzing duration metrics
-
-      "
+    notes: Common pattern from drilldown fields tab when analyzing duration metrics
     requires:
       unwrappable_fields:
         - duration
@@ -62,9 +60,7 @@ queries:
       - count
       - complex
       - parser
-    notes: "Complex drilldown pattern with multiple filters and case-insensitive matching
-
-      "
+    notes: Complex drilldown pattern with multiple filters and case-insensitive matching
     requires:
       log_format: json
       detected_fields:

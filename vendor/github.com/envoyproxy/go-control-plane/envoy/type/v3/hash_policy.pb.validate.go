@@ -171,7 +171,7 @@ type HashPolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HashPolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -271,7 +271,7 @@ type HashPolicy_SourceIpMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HashPolicy_SourceIpMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -384,7 +384,7 @@ type HashPolicy_FilterStateMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HashPolicy_FilterStateMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

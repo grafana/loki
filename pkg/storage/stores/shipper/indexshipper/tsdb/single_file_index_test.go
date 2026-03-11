@@ -264,6 +264,7 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 		chkRefs, err := tsdbIndex.GetChunkRefs(context.Background(), "fake", queryFrom, queryThrough, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.NoError(b, err)
 		require.Len(b, chkRefs, numChunksToMatch*2)
+		ChunkRefsPool.Put(chkRefs)
 	}
 }
 

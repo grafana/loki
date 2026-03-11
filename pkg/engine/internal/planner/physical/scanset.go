@@ -84,8 +84,7 @@ func (s *ScanSet) Clone() Node {
 	}
 
 	return &ScanSet{
-		NodeID: ulid.Make(),
-
+		NodeID:  ulid.Make(),
 		Targets: newTargets,
 	}
 }

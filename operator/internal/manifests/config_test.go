@@ -1299,6 +1299,8 @@ func TestConfigOptions_Replication(t *testing.T) {
 				Stack:    tc.spec,
 				Timeouts: testTimeoutConfig(),
 			}
+			err := ApplyDefaultSettings(&inOpt)
+			require.NoError(t, err)
 			options := ConfigOptions(inOpt)
 			require.Equal(t, tc.wantOptions, *options.Stack.Replication)
 		})

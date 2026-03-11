@@ -56,6 +56,9 @@ type CreatePlacementGroupInput struct {
 	// Reserved for future use.
 	LinkedGroupId *string
 
+	// Reserved for internal use.
+	Operator *types.OperatorRequest
+
 	// The number of partitions. Valid only when Strategy is set to partition .
 	PartitionCount *int32
 

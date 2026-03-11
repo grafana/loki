@@ -82,6 +82,9 @@ test-postgres-long: add-gowork test-postgres
 test-postgres: add-gowork
 	go test $(GO_TEST_FLAGS) ./internal/testing/integration -run="^TestPostgres$$" | tparse --follow -sort=elapsed
 
+test-spanner: add-gowork
+	go test $(GO_TEST_FLAGS) ./internal/testing/integration -run='TestSpanner' | tparse --follow -sort=elapsed
+
 test-clickhouse: add-gowork
 	go test $(GO_TEST_FLAGS) ./internal/testing/integration -run='(TestClickhouse|TestClickhouseRemote)' |\
 		tparse --follow -sort=elapsed

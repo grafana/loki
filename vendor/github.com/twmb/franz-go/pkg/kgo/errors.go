@@ -150,9 +150,10 @@ var (
 	// know about (maybe missing from metadata responses now).
 	errUnknownBroker = errors.New("unknown broker")
 
-	// A temporary error returned when a broker chosen for a request is
-	// stopped due to a concurrent metadata response.
-	errChosenBrokerDead = errors.New("the internal broker struct chosen to issue this request has died--either the broker id is migrating or no longer exists")
+	// A temporary error returned when a broker connection has died,
+	// either from a metadata update or from the connection closing
+	// while a request was in-flight.
+	errChosenBrokerDead = errors.New("the broker connection has died and the request will be retried on a new connection")
 
 	// If a broker repeatedly gives us tiny sasl lifetimes, we fail a
 	// request after a few tries to forcefully kill the connection and

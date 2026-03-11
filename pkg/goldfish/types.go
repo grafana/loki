@@ -48,6 +48,7 @@ type QuerySample struct {
 	// Comparison outcome
 	ComparisonStatus     ComparisonStatus `json:"comparisonStatus"`
 	MatchWithinTolerance bool             `json:"matchWithinTolerance"`
+	MismatchCause        string           `json:"mismatchCause,omitempty"` // Set when ComparisonStatus is mismatch
 
 	SampledAt time.Time `json:"sampledAt"`
 }
@@ -70,6 +71,7 @@ type ComparisonResult struct {
 	CorrelationID        string
 	ComparisonStatus     ComparisonStatus
 	MatchWithinTolerance bool
+	MismatchCause        string
 	DifferenceDetails    map[string]any
 	PerformanceMetrics   PerformanceMetrics
 	ComparedAt           time.Time
@@ -79,10 +81,11 @@ type ComparisonResult struct {
 type ComparisonStatus string
 
 const (
-	ComparisonStatusMatch    ComparisonStatus = "match"
-	ComparisonStatusMismatch ComparisonStatus = "mismatch"
-	ComparisonStatusError    ComparisonStatus = "error"
-	ComparisonStatusPartial  ComparisonStatus = "partial"
+	ComparisonStatusMatch                ComparisonStatus = "match"
+	ComparisonStatusMismatch             ComparisonStatus = "mismatch"
+	ComparisonStatusError                ComparisonStatus = "error"
+	ComparisonStatusPartial              ComparisonStatus = "partial"
+	ComparisonStatusMatchWithinTolerance ComparisonStatus = "match_within_tolerance"
 )
 
 // IsValid checks if the ComparisonStatus value is valid

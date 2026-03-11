@@ -6,3 +6,10 @@ bench.test
 trace.out
 result.new.txt
 result.old.txt
+
+# discovery
+testdata/dataset_metadata.json
+discover/cmd/discover
+
+# Local secrets (copy .env.template to .env and fill in values)
+.env

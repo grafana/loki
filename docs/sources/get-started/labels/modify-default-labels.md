@@ -120,7 +120,7 @@ If you are using the [Kubernetes Monitoring Helm chart](https://grafana.com/docs
 podLogs:
   enabled: true
   collector: alloy-singleton
-  #List of attributes to use as index labels in oki
+  #List of attributes to use as index labels in loki
   labelsToKeep:
     - app
     - app_kubernetes_io_name
