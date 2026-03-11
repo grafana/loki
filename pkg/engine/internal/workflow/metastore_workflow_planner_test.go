@@ -57,9 +57,14 @@ func TestPlanWorkflow_MetastorePlan_UsesMergeRootAndPointersPartitions(t *testin
 	for _, child := range children {
 		childRoot, err := child.Fragment.Root()
 		require.NoError(t, err)
-		require.IsType(t, &physical.PointersScan{}, childRoot)
+		require.IsType(t, &physical.Batching{}, childRoot)
 
-		gotLocations[childRoot.(*physical.PointersScan).Location] = struct{}{}
+		// PointersScan is the child of the wrapping Batching node.
+		batchingChildren := child.Fragment.Children(childRoot)
+		require.Len(t, batchingChildren, 1)
+		require.IsType(t, &physical.PointersScan{}, batchingChildren[0])
+
+		gotLocations[batchingChildren[0].(*physical.PointersScan).Location] = struct{}{}
 	}
 
 	for _, indexPath := range ms.indexPaths {
