@@ -140,7 +140,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	case *physical.Parallelize:
 		return c.executeParallelize(ctx, n, inputs)
 	case *physical.Batching:
-		return c.executeBatching(ctx, n, inputs)
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeBatching(ctx, n, inputs))
 	case *physical.ScanSet:
 		return c.executeScanSet(ctx, n)
 	default:
