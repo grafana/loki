@@ -1,8 +1,9 @@
 package physical
 
 import (
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/oklog/ulid/v2"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
 // Batching is a plan node that controls how records are grouped into output

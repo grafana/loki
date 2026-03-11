@@ -134,4 +134,3 @@ func TestBatchingPipeline(t *testing.T) {
 		})
 	}
 }
-
