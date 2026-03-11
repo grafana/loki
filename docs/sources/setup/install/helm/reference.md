@@ -4048,7 +4048,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.6.3"
+  "version": "3.6.5"
 }
 </pre>
 </td>
