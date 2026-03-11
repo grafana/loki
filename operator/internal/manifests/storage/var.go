@@ -7,7 +7,7 @@ const (
 	EnvAlibabaCloudAccessKeyID = "ALIBABA_CLOUD_ACCESS_KEY_ID"
 	// EnvAlibabaCloudAccessKeySecret is the environment variable to specify the AlibabaCloud client secret to access S3.
 	EnvAlibabaCloudAccessKeySecret = "ALIBABA_CLOUD_ACCESS_KEY_SECRET"
-	// EnvAWSRegion configures the AWS region the client uses for operations
+	// EnvAWSRegion configures the AWS region the client uses for operations.
 	EnvAWSRegion = "AWS_REGION"
 	// EnvAWSAccessKeyID is the environment variable to specify the AWS client id to access S3.
 	EnvAWSAccessKeyID = "AWS_ACCESS_KEY_ID"
