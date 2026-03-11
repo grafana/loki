@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	bench "github.com/grafana/loki/v3/pkg/logql/bench"
+	"github.com/grafana/loki/v3/pkg/logql/bench"
 )
 
 func main() {
