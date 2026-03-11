@@ -632,7 +632,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default version of GEL to deploy
-  version: 3.6.3
+  version: 3.6.5
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
