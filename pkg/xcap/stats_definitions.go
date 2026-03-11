@@ -94,12 +94,15 @@ var (
 
 // Task statistics.
 var (
-	TaskRecvDuration         = NewStatisticFloat64("task.recv.duration", AggregationTypeSum)
-	TaskSendDuration         = NewStatisticFloat64("task.send.duration", AggregationTypeSum)
-	TaskRecordsSent          = NewStatisticInt64("task.records.sent", AggregationTypeSum)
-	TaskRowsSent             = NewStatisticInt64("task.rows.sent", AggregationTypeSum)
-	TaskDrainRecordsReceived = NewStatisticInt64("task.drain.records.received", AggregationTypeSum)
-	TaskDrainBatchesProduced = NewStatisticInt64("task.drain.batches.produced", AggregationTypeSum)
-	TaskExternalSourcesCount = NewStatisticInt64("task.external.sources.count", AggregationTypeFirst)
-	TaskExternalSinksCount   = NewStatisticInt64("task.external.sinks.count", AggregationTypeFirst)
+	TaskRecvDuration            = NewStatisticFloat64("task.recv.duration", AggregationTypeSum)
+	TaskSendDuration            = NewStatisticFloat64("task.send.duration", AggregationTypeSum)
+	TaskRecordsSent             = NewStatisticInt64("task.records.sent", AggregationTypeSum)
+	TaskRowsSent                = NewStatisticInt64("task.rows.sent", AggregationTypeSum)
+	TaskDrainRecordsReceived    = NewStatisticInt64("task.drain.records.received", AggregationTypeSum)
+	TaskBatchingRecordsReceived = NewStatisticInt64("task.batching.records.received", AggregationTypeSum)
+	TaskBatchingRowsReceived    = NewStatisticInt64("task.batching.rows.received", AggregationTypeSum)
+	TaskBatchingBatchesProduced = NewStatisticInt64("task.batching.batches.produced", AggregationTypeSum)
+	TaskBatchingRowsWritten     = NewStatisticInt64("task.batching.rows.written", AggregationTypeSum)
+	TaskExternalSourcesCount    = NewStatisticInt64("task.external.sources.count", AggregationTypeFirst)
+	TaskExternalSinksCount      = NewStatisticInt64("task.external.sinks.count", AggregationTypeFirst)
 )
