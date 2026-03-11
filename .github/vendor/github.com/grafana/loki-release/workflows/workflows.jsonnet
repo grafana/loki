@@ -2,7 +2,7 @@ local lokiRelease = import 'main.jsonnet';
 local build = lokiRelease.build;
 
 
-local buildImage = 'golang:1.24';
+local buildImage = 'golang:1.25';
 local dockerPluginDir = 'clients/cmd/docker-driver';
 
 {
