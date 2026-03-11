@@ -392,6 +392,13 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 		return nil, 0, ErrNotSupported
 	}
 
+	physicalPlan, err = physical.WrapWithBatching(physicalPlan, e.cfg.Executor.BatchSize)
+	if err != nil {
+		level.Warn(logger).Log("msg", "failed to wrap physical plan with batching", "err", err)
+		span.RecordError(err)
+		return nil, 0, ErrNotSupported
+	}
+
 	duration := timer.ObserveDuration()
 	level.Info(logger).Log(
 		"msg", "finished physical planning",
@@ -404,7 +411,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 }
 
 func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string) physical.MetastoreSectionsResolver {
-	planner := physical.NewMetastorePlanner(e.metastore)
+	planner := physical.NewMetastorePlanner(e.metastore, e.cfg.Executor.BatchSize)
 	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
 		ctx, span := xcap.StartSpan(ctx, tracer, "engine.metastoreResolver")
 		defer span.End()

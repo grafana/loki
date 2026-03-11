@@ -42,6 +42,8 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 		n.Kind = &Node_Merge{}
 	case *physical.PointersScan:
 		n.Kind = &Node_PointersScan{}
+	case *physical.Batching:
+		n.Kind = &Node_Batching{}
 	default:
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
@@ -145,6 +147,13 @@ func (n *Node_Merge) UnmarshalPhysical(from physical.Node) error {
 func (n *Node_PointersScan) UnmarshalPhysical(from physical.Node) error {
 	n.PointersScan = new(PointersScan)
 	return n.PointersScan.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_Batching) UnmarshalPhysical(from physical.Node) error {
+	n.Batching = new(Batching)
+	return n.Batching.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
@@ -521,6 +530,20 @@ func (n *PointersScan) UnmarshalPhysical(from physical.Node) error {
 		Predicates: predicates,
 		Start:      scan.Start,
 		End:        scan.End,
+	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Batching) UnmarshalPhysical(from physical.Node) error {
+	batching, ok := from.(*physical.Batching)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = Batching{
+		BatchSize: batching.BatchSize,
 	}
 	return nil
 }

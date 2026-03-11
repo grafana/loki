@@ -27,6 +27,7 @@ const (
 	NodeTypeScanSet                           // NodeTypeScanSet represents a [ScanSet].
 	NodeTypeJoin                              // NodeTypeJoin represents a [Join].
 	NodeTypePointersScan                      // NodeTypePointersScan represents a [PointersScan].
+	NodeTypeBatching                          // NodeTypeBatching represents a [Batching] node.
 )
 
 // String returns a string representation of the NodeType.
@@ -58,6 +59,8 @@ func (t NodeType) String() string {
 		return "Join"
 	case NodeTypePointersScan:
 		return "PointersScan"
+	case NodeTypeBatching:
+		return "Batching"
 	default:
 		return "Invalid"
 	}
@@ -108,6 +111,7 @@ var _ Node = (*ScanSet)(nil)
 var _ Node = (*Join)(nil)
 var _ Node = (*PointersScan)(nil)
 var _ Node = (*Merge)(nil)
+var _ Node = (*Batching)(nil)
 
 func (*DataObjScan) isNode()       {}
 func (*Projection) isNode()        {}
@@ -122,6 +126,7 @@ func (*ScanSet) isNode()           {}
 func (*Join) isNode()              {}
 func (*PointersScan) isNode()      {}
 func (*Merge) isNode()             {}
+func (*Batching) isNode()          {}
 
 var _ fmt.Stringer = (*Plan)(nil)
 
