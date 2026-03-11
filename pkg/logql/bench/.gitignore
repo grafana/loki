@@ -13,3 +13,6 @@ discover/cmd/discover
 
 # Local secrets (copy .env.template to .env and fill in values)
 .env
+
+testdata/k6_test_cases_range.json
+testdata/k6_test_cases_instant.json

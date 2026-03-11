@@ -1,4 +1,4 @@
-.PHONY: generate bench list run run-debug stream grafana grafana-stop discover remote-test
+.PHONY: generate bench list run run-debug stream grafana grafana-stop discover remote-test generate-k6
 
 # Load local secrets from .env (ignored by git).
 # Copy .env.template → .env and fill in real values.
@@ -184,3 +184,19 @@ endif
 		-username "$(LOKI_USERNAME)" \
 		-password "$(LOKI_PASSWORD)" \
 		-metadata-dir testdata
+
+#############################
+# k6 Test Case Generation   #
+#############################
+
+TENANT_ID ?= 29
+
+# generate-k6 resolves query registry templates against discovered metadata
+# and outputs JSON files for the k6 Goldfish comparison test suite.
+# Requires: discovered metadata in testdata/ (run `make discover` first)
+generate-k6:
+	go run ./cmd/generate-k6/main.go \
+		--metadata-dir testdata \
+		--queries-dir queries \
+		--tenant-id $(TENANT_ID) \
+		--output-dir testdata
