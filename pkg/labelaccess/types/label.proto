@@ -3,9 +3,6 @@ syntax = "proto3";
 package admin.v1;
 option go_package = "pkg/loki/labelaccess/types";
 
-//import "gogoproto/gogo.proto";
-//import "google/protobuf/timestamp.proto";
-
 enum LabelMatcherType {
   LABEL_MATCHER_TYPE_UNSPECIFIED = 0;
   LABEL_MATCHER_TYPE_EQ = 1;

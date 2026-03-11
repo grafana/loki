@@ -52,19 +52,3 @@ func LabelMatcherFromPromLabel(matcher *labels.Matcher) (*LabelMatcher, error) {
 		Value: matcher.Value,
 	}, nil
 }
-
-//
-//func (m *MetricLimitsDesc) SetFieldsFromLegacyJSON() error {
-//	if m == nil || len(m.MetricLimitsJson) == 0 {
-//		return nil
-//	}
-//
-//	err := json.Unmarshal(m.MetricLimitsJson, &m)
-//	if err != nil {
-//		return err
-//	}
-//
-//	m.MetricLimitsJson = nil
-//
-//	return nil
-//}
