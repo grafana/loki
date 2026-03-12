@@ -244,7 +244,7 @@ func parseLines(input *array.String, columnBuilders map[string]*array.StringBuil
 			seenKeys[semconv.ColumnIdentErrorDetails.ShortName()] = struct{}{}
 		}
 
-		// Add values for parsed keys (only if no error)
+		// Add values for parsed keys
 		for key, value := range parsed {
 			seenKeys[key] = struct{}{}
 			builder, exists := columnBuilders[key]
