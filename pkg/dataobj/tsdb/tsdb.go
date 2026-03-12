@@ -21,16 +21,22 @@ import (
 )
 
 type tsdbBuilder interface {
-	BuildAndStore(ctx context.Context, obj *dataobj.Object, objectPath string) error
+	Append(ctx context.Context, obj *dataobj.Object, objectPath string) error
+	Store(ctx context.Context) error
 }
 
 func newTSDBBuilder(nodeName string, bkt objstore.Bucket) tsdbBuilder {
-	return &dataobjTSDBBuilder{nodeName: nodeName, bkt: bkt}
+	return &dataobjTSDBBuilder{
+		nodeName:    nodeName,
+		bkt:         bkt,
+		dayBuilders: make(map[time.Time]*index_tsdb.Builder),
+	}
 }
 
 type dataobjTSDBBuilder struct {
-	nodeName string
-	bkt      objstore.Bucket
+	nodeName    string
+	bkt         objstore.Bucket
+	dayBuilders map[time.Time]*index_tsdb.Builder
 }
 
 type streamKey struct {
@@ -48,47 +54,25 @@ type sectionStats struct {
 
 const dayWindow = 24 * time.Hour
 
-// tsdbOutput holds the built artifacts for a single daily TSDB.
-type tsdbOutput struct {
-	id             index_tsdb.Identifier
-	tsdbData       []byte
-	sectionRefData []byte
-}
-
-func (b *dataobjTSDBBuilder) BuildAndStore(ctx context.Context, obj *dataobj.Object, objectPath string) error {
-	outputs, err := b.build(ctx, obj, objectPath)
+// Append collects stream labels and section metas from the object, partitions
+// them by day, and adds the series to retained per-day index_tsdb.Builders.
+// The builders are accumulated across calls; call Store to flush them.
+func (b *dataobjTSDBBuilder) Append(ctx context.Context, obj *dataobj.Object, objectPath string) error {
+	streamLabels, err := collectStreamLabels(ctx, obj)
 	if err != nil {
 		return err
 	}
 
-	for _, out := range outputs {
-		if err := store(ctx, b.bkt, out.id, out.tsdbData, out.sectionRefData); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (b *dataobjTSDBBuilder) build(ctx context.Context, obj *dataobj.Object, objectPath string) ([]tsdbOutput, error) {
-	streamLabels, err := collectStreamLabels(ctx, obj)
-	if err != nil {
-		return nil, err
-	}
-
 	streamSectionMetas, err := collectSectionMetas(ctx, obj, objectPath)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if len(streamSectionMetas) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	// Partition metas into daily buckets. A meta that spans a day boundary
 	// is included in every day it overlaps.
-	type dayEntry struct {
-		key   streamKey
-		metas []sectionref.SectionMeta
-	}
 	dayBuckets := make(map[time.Time]map[streamKey][]sectionref.SectionMeta)
 	for key, metas := range streamSectionMetas {
 		for _, meta := range metas {
@@ -103,31 +87,42 @@ func (b *dataobjTSDBBuilder) build(ctx context.Context, obj *dataobj.Object, obj
 		}
 	}
 
-	// Sort days for deterministic output.
-	days := make([]time.Time, 0, len(dayBuckets))
-	for d := range dayBuckets {
+	for day, bucket := range dayBuckets {
+		builder, ok := b.dayBuilders[day]
+		if !ok {
+			builder = index_tsdb.NewBuilder(tsdbindex.FormatV3)
+			b.dayBuilders[day] = builder
+		}
+
+		for key, metas := range bucket {
+			lbls, ok := streamLabels[key]
+			if !ok {
+				return fmt.Errorf("missing stream labels for tenant=%q streamID=%d", key.tenant, key.streamID)
+			}
+
+			fp := model.Fingerprint(labels.StableHash(lbls))
+			if err := builder.AddSeriesWithSectionRefs(lbls, fp, metas); err != nil {
+				return fmt.Errorf("adding stream to tsdb builder: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// Store builds all buffered per-day TSDB indexes, uploads them to the bucket,
+// and resets the internal state.
+func (b *dataobjTSDBBuilder) Store(ctx context.Context) error {
+	days := make([]time.Time, 0, len(b.dayBuilders))
+	for d := range b.dayBuilders {
 		days = append(days, d)
 	}
 	sort.Slice(days, func(i, j int) bool { return days[i].Before(days[j]) })
 
-	var outputs []tsdbOutput
 	for _, day := range days {
-		bucket := dayBuckets[day]
+		builder := b.dayBuilders[day]
 
-		tsdbBuilder := index_tsdb.NewBuilder(tsdbindex.FormatV3)
-		for key, metas := range bucket {
-			lbls, ok := streamLabels[key]
-			if !ok {
-				return nil, fmt.Errorf("missing stream labels for tenant=%q streamID=%d", key.tenant, key.streamID)
-			}
-
-			fp := model.Fingerprint(labels.StableHash(lbls))
-			if err := tsdbBuilder.AddSeriesWithSectionRefs(lbls, fp, metas); err != nil {
-				return nil, fmt.Errorf("adding stream to tsdb builder: %w", err)
-			}
-		}
-
-		tsdbId, tsdbData, err := tsdbBuilder.BuildInMemory(ctx, func(from, through model.Time, checksum uint32) index_tsdb.Identifier {
+		tsdbId, tsdbData, err := builder.BuildInMemory(ctx, func(from, through model.Time, checksum uint32) index_tsdb.Identifier {
 			return dailyTSDBIdentifier{
 				inner: index_tsdb.MultitenantTSDBIdentifier{
 					NodeName: b.nodeName,
@@ -137,22 +132,21 @@ func (b *dataobjTSDBBuilder) build(ctx context.Context, obj *dataobj.Object, obj
 			}
 		})
 		if err != nil {
-			return nil, fmt.Errorf("building TSDB for %s: %w", day.Format("2006-01-02"), err)
+			return fmt.Errorf("building TSDB for %s: %w", day.Format("2006-01-02"), err)
 		}
 
-		sectionRefData, err := tsdbBuilder.SectionRefTable().Encode()
+		sectionRefData, err := builder.SectionRefTable().Encode()
 		if err != nil {
-			return nil, fmt.Errorf("encoding section ref table for %s: %w", day.Format("2006-01-02"), err)
+			return fmt.Errorf("encoding section ref table for %s: %w", day.Format("2006-01-02"), err)
 		}
 
-		outputs = append(outputs, tsdbOutput{
-			id:             tsdbId,
-			tsdbData:       tsdbData,
-			sectionRefData: sectionRefData,
-		})
+		if err := store(ctx, b.bkt, tsdbId, tsdbData, sectionRefData); err != nil {
+			return err
+		}
 	}
 
-	return outputs, nil
+	b.dayBuilders = make(map[time.Time]*index_tsdb.Builder)
+	return nil
 }
 
 // dailyTSDBIdentifier wraps an identifier to prefix its path with the day

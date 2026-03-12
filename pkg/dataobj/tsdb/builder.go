@@ -26,9 +26,7 @@ const (
 	defaultTsdbConsumerGroup = "tsdb-builder"
 )
 
-type tsdbManager interface {
-	BuildAndStore(ctx context.Context, obj *dataobj.Object, objectPath string) error
-}
+const flushInterval = 15 * time.Minute
 
 // An interface for the methods needed from a kafka client. Useful for testing.
 type kafkaClient interface {
@@ -59,6 +57,8 @@ type Builder struct {
 	logger             log.Logger
 	partitionsMutex    sync.Mutex
 	activeCalculations map[int32]context.CancelCauseFunc
+	lastFlush          time.Time
+	processedRecords   []*kgo.Record
 }
 
 func NewTSDBBuilder(
@@ -90,6 +90,7 @@ func NewTSDBBuilder(
 		metrics:            builderMetrics,
 		ownedPartitions:    make(map[int32]bool),
 		activeCalculations: make(map[int32]context.CancelCauseFunc),
+		lastFlush:          time.Now(),
 	}
 
 	consumerGroup := defaultTsdbConsumerGroup
@@ -173,6 +174,15 @@ func (p *Builder) running(ctx context.Context) error {
 			return ctx.Err()
 		default:
 		}
+		if time.Since(p.lastFlush) > flushInterval {
+			if err := p.tsdbBuilder.Store(ctx); err != nil {
+				level.Error(p.logger).Log("msg", "failed to store tsdb builder", "err", err)
+			}
+			p.client.CommitRecords(ctx, p.processedRecords...)
+			p.lastFlush = time.Now()
+			p.processedRecords = p.processedRecords[:0]
+			p.metrics.commitsTotal.Inc()
+		}
 
 		fetches := p.client.PollRecords(ctx, -1)
 		if err := fetches.Err0(); err != nil {
@@ -222,17 +232,13 @@ func (p *Builder) processRecord(ctx context.Context, record *kgo.Record) {
 		return
 	}
 
-	err = p.tsdbBuilder.BuildAndStore(calcCtx, obj, metastoreEvent.ObjectPath)
-	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to build and store object", "err", err)
+	if err := p.tsdbBuilder.Append(calcCtx, obj, metastoreEvent.ObjectPath); err != nil {
+		level.Error(p.logger).Log("msg", "failed to append object to tsdb builder", "err", err)
 		return
 	}
 
-	err = p.client.CommitRecords(ctx, record)
-	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to commit record", "err", err, "partition", record.Partition)
-		return
-	}
+	p.processedRecords = append(p.processedRecords, record)
+
 	level.Info(p.logger).Log("msg", "finished processing event", "object_path", metastoreEvent.ObjectPath)
 }
 
