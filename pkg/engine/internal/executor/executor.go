@@ -53,20 +53,26 @@ type Config struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer RequestStreamFilterer `yaml:"-"`
+
+	// DedupeMetricQueries enables row-level deduplication at merge points to
+	// prevent over-counting in metric aggregations (rate, count_over_time, etc.)
+	// caused by overlapping data object sections.
+	DedupeMetricQueries bool
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
-		plan:               plan,
-		batchSize:          cfg.BatchSize,
-		prefetchBytes:      cfg.PrefetchBytes,
-		mergePrefetchCount: cfg.MergePrefetchCount,
-		bucket:             cfg.Bucket,
-		metastore:          cfg.Metastore,
-		logger:             logger,
-		evaluator:          newExpressionEvaluator(),
-		getExternalInputs:  cfg.GetExternalInputs,
-		streamFilterer:     cfg.StreamFilterer,
+		plan:                plan,
+		batchSize:           cfg.BatchSize,
+		prefetchBytes:       cfg.PrefetchBytes,
+		mergePrefetchCount:  cfg.MergePrefetchCount,
+		bucket:              cfg.Bucket,
+		metastore:           cfg.Metastore,
+		logger:              logger,
+		evaluator:           newExpressionEvaluator(),
+		getExternalInputs:   cfg.GetExternalInputs,
+		streamFilterer:      cfg.StreamFilterer,
+		dedupeMetricQueries: cfg.DedupeMetricQueries,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -95,6 +101,8 @@ type Context struct {
 	mergePrefetchCount int
 
 	streamFilterer RequestStreamFilterer
+
+	dedupeMetricQueries bool
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -106,7 +114,10 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 
 	if c.getExternalInputs != nil {
 		for _, ext := range c.getExternalInputs(ctx, node) {
-			inputs = append(inputs, newDedupPipeline(ext))
+			if c.dedupeMetricQueries {
+				ext = newDedupPipeline(ext)
+			}
+			inputs = append(inputs, ext)
 		}
 	}
 
@@ -462,7 +473,10 @@ func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []
 		return errorPipeline(ctx, err)
 	}
 
-	return newDedupPipeline(pipeline)
+	if c.dedupeMetricQueries {
+		return newDedupPipeline(pipeline)
+	}
+	return pipeline
 }
 
 func (c *Context) executeParallelize(ctx context.Context, _ *physical.Parallelize, inputs []Pipeline) Pipeline {
@@ -522,7 +536,10 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 		return errorPipeline(ctx, err)
 	}
 
-	return newDedupPipeline(pipeline)
+	if c.dedupeMetricQueries {
+		return newDedupPipeline(pipeline)
+	}
+	return pipeline
 }
 
 // nodeAttributes returns OTel span attributes relevant to the given physical

@@ -206,11 +206,12 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		timer := prometheus.NewTimer(e.metrics.execution)
 
 		cfg := executor.Config{
-			BatchSize:          int64(e.cfg.BatchSize),
-			MergePrefetchCount: e.cfg.MergePrefetchCount,
-			Bucket:             e.bucket,
-			Metastore:          e.metastore,
-			StreamFilterer:     e.cfg.StreamFilterer,
+			BatchSize:           int64(e.cfg.BatchSize),
+			MergePrefetchCount:  e.cfg.MergePrefetchCount,
+			Bucket:              e.bucket,
+			Metastore:           e.metastore,
+			StreamFilterer:      e.cfg.StreamFilterer,
+			DedupeMetricQueries: e.cfg.DedupeMetricQueries,
 		}
 
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
