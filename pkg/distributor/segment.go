@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"math/rand"
-	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
@@ -36,25 +34,10 @@ func getSegmentationKey(stream KeyedStream) (segmentationKey, error) {
 	if err != nil {
 		return "", err
 	}
-	sb := strings.Builder{}
-	if cluster := labels.Get("cluster"); cluster != "" {
-		sb.WriteString(cluster)
-	} else {
-		sb.WriteString("unknown_cluster")
-	}
-	sb.WriteString("/")
-	if namespace := labels.Get("namespace"); namespace != "" {
-		sb.WriteString(namespace)
-	} else {
-		sb.WriteString("unknown_namespace")
-	}
-	sb.WriteString("/")
 	if serviceName := labels.Get("service_name"); serviceName != "" {
-		sb.WriteString(serviceName)
-	} else {
-		sb.WriteString("unknown_service")
+		return segmentationKey(serviceName), nil
 	}
-	return segmentationKey(sb.String()), nil
+	return segmentationKey("unknown_service"), nil
 }
 
 // segmentationPartitionResolver resolves the partition for a segmentation key.
@@ -64,9 +47,9 @@ type segmentationPartitionResolver struct {
 	logger                log.Logger
 
 	// Metrics.
-	failed          prometheus.Counter
-	randomlySharded prometheus.Counter
-	total           prometheus.Counter
+	failed        prometheus.Counter
+	streamSharded prometheus.Counter
+	total         prometheus.Counter
 }
 
 // newSegmentationPartitionResolver returns a new segmentationPartitionResolver.
@@ -78,9 +61,9 @@ func newSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader r
 			Name: "loki_distributor_segmentation_partition_resolver_keys_failed_total",
 			Help: "Total number of segmentation keys that could not be resolved.",
 		}),
-		randomlySharded: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_distributor_segmentation_partition_resolver_keys_randomly_sharded_total",
-			Help: "Total number of segmentation keys that fell back to a randomly choosing an active partition due to absent rate.",
+		streamSharded: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_segmentation_partition_resolver_keys_stream_sharded_total",
+			Help: "Total number of segmentation keys that fell back to a stream sharding due to absent rate.",
 		}),
 		total: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_segmentation_partition_resolver_keys_total",
@@ -113,15 +96,11 @@ func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 		return 0, fmt.Errorf("failed to get tenant subring: %w", err)
 	}
 	// If rate bytes is 0, then we were unable to determine the rate (bytes/sec)
-	// for the segmentation key. When this happens we fallback to randomly
-	// selecting an active partition and incrementing the fallback metric.
+	// for the segmentation key. When this happens we fallback to stream
+	// sharding and incrementing the metric.
 	if rateBytes == 0 {
-		r.randomlySharded.Inc()
-		activePartitionIDs := subring.ActivePartitionIDs()
-		rand.Shuffle(len(activePartitionIDs), func(i, j int) {
-			activePartitionIDs[i], activePartitionIDs[j] = activePartitionIDs[j], activePartitionIDs[i]
-		})
-		return activePartitionIDs[0], nil
+		r.streamSharded.Inc()
+		return subring.ActivePartitionForKey(streamHash)
 	}
 	subring, err = r.getSegmentationKeySubring(ctx, subring, key, rateBytes)
 	if err != nil {
