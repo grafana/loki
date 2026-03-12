@@ -1134,3 +1134,47 @@ func Test_ProxyEndpoint_WritePath_GoldfishCorrelationIDHeader(t *testing.T) {
 		})
 	}
 }
+
+// Test_ProxyEndpoint_WritePath_GoldfishHeaderOnErrorResponse tests that the goldfish correlation ID
+// header survives error responses on the writes path. When a sampled request results in a backend
+// error, the client should still receive the header so it can correlate the request.
+func Test_ProxyEndpoint_WritePath_GoldfishHeaderOnErrorResponse(t *testing.T) {
+	// Backend returns 500 to simulate an error
+	errorHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("internal server error"))
+	})
+	errorBackend := httptest.NewServer(errorHandler)
+	defer errorBackend.Close()
+	errorBackendURL, err := url.Parse(errorBackend.URL)
+	require.NoError(t, err)
+
+	proxyBackend, err := NewProxyBackend("backend-1", errorBackendURL, time.Second, true)
+	require.NoError(t, err)
+	backends := []*ProxyBackend{proxyBackend}
+
+	goldfishManager := &mockGoldfishManager{
+		shouldSampleResult:  true,
+		correlationIDResult: "error-test-uuid",
+	}
+
+	metrics := NewProxyMetrics(nil)
+	logger := log.NewNopLogger()
+	endpoint := NewProxyEndpoint(backends, "test", metrics, logger, nil, false)
+	endpoint.WithGoldfish(goldfishManager)
+
+	req, err := http.NewRequest("POST", "http://test"+constants.PathLokiPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Scope-OrgID", "test-tenant")
+
+	w := httptest.NewRecorder()
+	endpoint.ServeHTTP(w, req)
+
+	// The response should be a 500 error
+	require.Equal(t, http.StatusInternalServerError, w.Code, "backend error should be propagated")
+
+	// The goldfish header should still be present despite the error
+	require.Equal(t, "error-test-uuid", w.Header().Get(querytee_goldfish.GoldfishCorrelationIDHeader),
+		"goldfish header must survive error responses so clients can correlate sampled requests")
+}
