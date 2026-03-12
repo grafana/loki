@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+const statusSuccess = "success"
+
 // PredictedCause represents the tool's best guess at why a mismatch occurred.
 type PredictedCause string
 

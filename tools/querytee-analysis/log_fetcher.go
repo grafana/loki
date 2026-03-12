@@ -65,7 +65,7 @@ func fetchMismatchLogs(ctx context.Context, cfg *ParsedAnalyzeConfig) ([]string,
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Loki returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("loki returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var queryResp lokiQueryResponse
@@ -73,8 +73,8 @@ func fetchMismatchLogs(ctx context.Context, cfg *ParsedAnalyzeConfig) ([]string,
 		return nil, fmt.Errorf("unmarshalling Loki response: %w", err)
 	}
 
-	if queryResp.Status != "success" {
-		return nil, fmt.Errorf("Loki query status: %s", queryResp.Status)
+	if queryResp.Status != statusSuccess {
+		return nil, fmt.Errorf("loki query status: %s", queryResp.Status)
 	}
 
 	var lines []string

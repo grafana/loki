@@ -18,7 +18,7 @@ func (a *StatusMismatchAnalyzer) CanAnalyze(_ *MismatchEntry, _ string) bool {
 	return true
 }
 
-func (a *StatusMismatchAnalyzer) Analyze(_ context.Context, entry *MismatchEntry, cellAResp, cellBResp []byte) ([]*AnalysisResult, error) {
+func (a *StatusMismatchAnalyzer) Analyze(_ context.Context, _ *MismatchEntry, cellAResp, cellBResp []byte) ([]*AnalysisResult, error) {
 	statusA := extractStatus(cellAResp)
 	statusB := extractStatus(cellBResp)
 
@@ -32,8 +32,8 @@ func (a *StatusMismatchAnalyzer) Analyze(_ context.Context, entry *MismatchEntry
 		Details:              fmt.Sprintf("cellA body_status=%s, cellB body_status=%s", statusA, statusB),
 	}
 
-	cellAFailed := statusA != "success"
-	cellBFailed := statusB != "success"
+	cellAFailed := statusA != statusSuccess
+	cellBFailed := statusB != statusSuccess
 
 	switch {
 	case cellAFailed != cellBFailed:
@@ -70,7 +70,7 @@ func (a *ResultTypeMismatchAnalyzer) CanAnalyze(_ *MismatchEntry, _ string) bool
 	return true
 }
 
-func (a *ResultTypeMismatchAnalyzer) Analyze(_ context.Context, entry *MismatchEntry, cellAResp, cellBResp []byte) ([]*AnalysisResult, error) {
+func (a *ResultTypeMismatchAnalyzer) Analyze(_ context.Context, _ *MismatchEntry, cellAResp, cellBResp []byte) ([]*AnalysisResult, error) {
 	typeA := detectResultType(cellAResp)
 	typeB := detectResultType(cellBResp)
 

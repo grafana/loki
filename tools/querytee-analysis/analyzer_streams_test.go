@@ -22,7 +22,7 @@ func TestParseStreamsResponse(t *testing.T) {
 		parsed, err := parseStreamsResponse(raw)
 		require.NoError(t, err)
 		require.Len(t, parsed.Streams, 1)
-		assert.Equal(t, "foo", string(parsed.Streams[0].Labels["app"]))
+		assert.Equal(t, "foo", parsed.Streams[0].Labels["app"])
 		assert.Len(t, parsed.Streams[0].Entries, 2)
 	})
 

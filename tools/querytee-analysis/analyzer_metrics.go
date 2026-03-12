@@ -30,7 +30,7 @@ func parseMetricResponse(raw []byte) (*parsedMetricResponse, error) {
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
-	if resp.Status != "" && resp.Status != "success" {
+	if resp.Status != "" && resp.Status != statusSuccess {
 		return nil, fmt.Errorf("response status %q", resp.Status)
 	}
 	parsed := &parsedMetricResponse{ResultType: resp.Data.ResultType}
@@ -110,7 +110,7 @@ func (a *MetricAnalyzer) Analyze(_ context.Context, entry *MismatchEntry, cellAR
 	return results, nil
 }
 
-func analyzeMatrix(entry *MismatchEntry, parsedA, parsedB *parsedMetricResponse) []*AnalysisResult {
+func analyzeMatrix(_ *MismatchEntry, parsedA, parsedB *parsedMetricResponse) []*AnalysisResult {
 	fpToA := matrixByFingerprint(parsedA.Matrix)
 	fpToB := matrixByFingerprint(parsedB.Matrix)
 
@@ -118,16 +118,12 @@ func analyzeMatrix(entry *MismatchEntry, parsedA, parsedB *parsedMetricResponse)
 
 	for fp, s := range fpToA {
 		if _, ok := fpToB[fp]; !ok {
-			results = append(results, newMetricResult(entry, "metric_missing_in_cell_b", s.Metric.String(),
-				PredictedCauseDataMismatch,
-				fmt.Sprintf("metric present in cellA (%d values) but missing from cellB", len(s.Values))))
+			results = append(results, newMetricResult("metric_missing_in_cell_b", s.Metric.String(), PredictedCauseDataMismatch, fmt.Sprintf("metric present in cellA (%d values) but missing from cellB", len(s.Values))))
 		}
 	}
 	for fp, s := range fpToB {
 		if _, ok := fpToA[fp]; !ok {
-			results = append(results, newMetricResult(entry, "metric_missing_in_cell_a", s.Metric.String(),
-				PredictedCauseDataMismatch,
-				fmt.Sprintf("metric present in cellB (%d values) but missing from cellA", len(s.Values))))
+			results = append(results, newMetricResult("metric_missing_in_cell_a", s.Metric.String(), PredictedCauseDataMismatch, fmt.Sprintf("metric present in cellB (%d values) but missing from cellA", len(s.Values))))
 		}
 	}
 
@@ -138,9 +134,7 @@ func analyzeMatrix(entry *MismatchEntry, parsedA, parsedB *parsedMetricResponse)
 		}
 
 		if len(sA.Values) != len(sB.Values) {
-			results = append(results, newMetricResult(entry, "sample_count_mismatch", sA.Metric.String(),
-				PredictedCauseDataMismatch,
-				fmt.Sprintf("cellA has %d samples, cellB has %d samples", len(sA.Values), len(sB.Values))))
+			results = append(results, newMetricResult("sample_count_mismatch", sA.Metric.String(), PredictedCauseDataMismatch, fmt.Sprintf("cellA has %d samples, cellB has %d samples", len(sA.Values), len(sB.Values))))
 		}
 
 		minLen := min(len(sA.Values), len(sB.Values))
@@ -158,8 +152,7 @@ func analyzeMatrix(entry *MismatchEntry, parsedA, parsedB *parsedMetricResponse)
 						sA.Values[i].Timestamp.Time().Format("2006-01-02T15:04:05Z"),
 						sB.Values[i].Timestamp.Time().Format("2006-01-02T15:04:05Z"), delta)
 				}
-				results = append(results, newMetricResult(entry, "sample_value_mismatch", sA.Metric.String(),
-					PredictedCauseDataMismatch, detail))
+				results = append(results, newMetricResult("sample_value_mismatch", sA.Metric.String(), PredictedCauseDataMismatch, detail))
 				break
 			}
 		}
@@ -168,7 +161,7 @@ func analyzeMatrix(entry *MismatchEntry, parsedA, parsedB *parsedMetricResponse)
 	return results
 }
 
-func analyzeVector(entry *MismatchEntry, parsedA, parsedB *parsedMetricResponse) []*AnalysisResult {
+func analyzeVector(_ *MismatchEntry, parsedA, parsedB *parsedMetricResponse) []*AnalysisResult {
 	fpToA := vectorByFingerprint(parsedA.Vector)
 	fpToB := vectorByFingerprint(parsedB.Vector)
 
@@ -176,16 +169,12 @@ func analyzeVector(entry *MismatchEntry, parsedA, parsedB *parsedMetricResponse)
 
 	for fp, s := range fpToA {
 		if _, ok := fpToB[fp]; !ok {
-			results = append(results, newMetricResult(entry, "metric_missing_in_cell_b", s.Metric.String(),
-				PredictedCauseDataMismatch,
-				"metric present in cellA but missing from cellB"))
+			results = append(results, newMetricResult("metric_missing_in_cell_b", s.Metric.String(), PredictedCauseDataMismatch, "metric present in cellA but missing from cellB"))
 		}
 	}
 	for fp, s := range fpToB {
 		if _, ok := fpToA[fp]; !ok {
-			results = append(results, newMetricResult(entry, "metric_missing_in_cell_a", s.Metric.String(),
-				PredictedCauseDataMismatch,
-				"metric present in cellB but missing from cellA"))
+			results = append(results, newMetricResult("metric_missing_in_cell_a", s.Metric.String(), PredictedCauseDataMismatch, "metric present in cellB but missing from cellA"))
 		}
 	}
 
@@ -205,15 +194,14 @@ func analyzeVector(entry *MismatchEntry, parsedA, parsedB *parsedMetricResponse)
 					sampleA.Timestamp.Time().Format("2006-01-02T15:04:05Z"),
 					sampleB.Timestamp.Time().Format("2006-01-02T15:04:05Z"), delta)
 			}
-			results = append(results, newMetricResult(entry, "sample_value_mismatch", sampleA.Metric.String(),
-				PredictedCauseDataMismatch, detail))
+			results = append(results, newMetricResult("sample_value_mismatch", sampleA.Metric.String(), PredictedCauseDataMismatch, detail))
 		}
 	}
 
 	return results
 }
 
-func analyzeScalar(entry *MismatchEntry, parsedA, parsedB *parsedMetricResponse) []*AnalysisResult {
+func analyzeScalar(_ *MismatchEntry, parsedA, parsedB *parsedMetricResponse) []*AnalysisResult {
 	if parsedA.Scalar == nil || parsedB.Scalar == nil {
 		return nil
 	}
@@ -230,11 +218,10 @@ func analyzeScalar(entry *MismatchEntry, parsedA, parsedB *parsedMetricResponse)
 		detail = fmt.Sprintf("scalar timestamps differ, value delta=%.6g", delta)
 	}
 
-	return []*AnalysisResult{newMetricResult(entry, "scalar_value_mismatch", "scalar",
-		PredictedCauseDataMismatch, detail)}
+	return []*AnalysisResult{newMetricResult("scalar_value_mismatch", "scalar", PredictedCauseDataMismatch, detail)}
 }
 
-func newMetricResult(entry *MismatchEntry, mtype, item string, cause PredictedCause, details string) *AnalysisResult {
+func newMetricResult(mtype, item string, cause PredictedCause, details string) *AnalysisResult {
 	r := &AnalysisResult{
 		DetectedMismatchType: mtype,
 		MismatchedItem:       item,

@@ -34,7 +34,7 @@ func parseStreamsResponse(raw []byte) (*parsedStreamResponse, error) {
 	if err := jsoniter.Unmarshal(raw, &resp); err != nil {
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
-	if resp.Status != "" && resp.Status != "success" {
+	if resp.Status != "" && resp.Status != statusSuccess {
 		return nil, fmt.Errorf("response status %q: %s", resp.Status, resp.Error)
 	}
 	if resp.Data.ResultType != string(loghttp.ResultTypeStream) {
@@ -176,7 +176,7 @@ func (a *StreamAnalyzer) Analyze(_ context.Context, entry *MismatchEntry, cellAR
 	return results, nil
 }
 
-func newStreamResult(entry *MismatchEntry, mtype, item string, cause PredictedCause, details string) *AnalysisResult {
+func newStreamResult(_ *MismatchEntry, mtype, item string, cause PredictedCause, details string) *AnalysisResult {
 	r := &AnalysisResult{
 		DetectedMismatchType: mtype,
 		MismatchedItem:       item,
