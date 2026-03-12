@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
-// mockGoldfishManager is a mock implementation of goldfish.ManagerInterface for testing.
+// mockGoldfishManager is a mock implementation of goldfish.Manager for testing.
 // Fields used from async goroutines (sendCalled, sendCorrelationID) are protected by a mutex.
 type mockGoldfishManager struct {
 	shouldSampleResult  bool
