@@ -552,6 +552,7 @@ func assertResultEmpty(t *testing.T, data parser.Value, message string) {
 	case promql.Vector:
 		require.Empty(t, v, message)
 	case promql.Matrix:
+		require.Empty(t, v, message)
 		isEmpty := true
 		for _, series := range v {
 			if len(series.Floats) > 0 || len(series.Histograms) > 0 {
@@ -561,7 +562,8 @@ func assertResultEmpty(t *testing.T, data parser.Value, message string) {
 		}
 		require.True(t, isEmpty, message+" - matrix has series with data points")
 	case promql.Scalar:
-		// Scalars always have a value, so no need to check
+		// Scalars always have a value, so they should be 0
+		require.Equal(t, v, v.V, 0)
 	case logqlmodel.Streams:
 		require.Empty(t, v, message)
 	default:
