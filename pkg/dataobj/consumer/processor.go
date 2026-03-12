@@ -31,13 +31,13 @@ type builder interface {
 
 // A flushCommitter allows mocking of flushes in tests.
 type flushCommitter interface {
-	Flush(ctx context.Context, builder builder, reason string, offset int64, earliestRecordTime time.Time) error
+	Flush(ctx context.Context, builders []builder, reason string, offset int64, earliestRecordTime time.Time) error
 }
 
 // A processor receives records and builds data objects from them.
 type processor struct {
 	*services.BasicService
-	builder        builder
+	builders       []builder
 	decoder        *kafka.Decoder
 	records        chan *kgo.Record
 	flushCommitter flushCommitter
@@ -78,7 +78,7 @@ type processor struct {
 }
 
 func newProcessor(
-	builder builder,
+	builders []builder,
 	records chan *kgo.Record,
 	flushCommitter flushCommitter,
 	idleFlushTimeout time.Duration,
@@ -91,7 +91,7 @@ func newProcessor(
 		panic(err)
 	}
 	p := &processor{
-		builder:          builder,
+		builders:         builders,
 		decoder:          decoder,
 		records:          records,
 		flushCommitter:   flushCommitter,
@@ -168,14 +168,40 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 		}
 	}
 
-	if err := p.builder.Append(tenant, stream); err != nil {
+	// Work out the oldest entry in the stream.
+	var oldestEntry time.Time
+	for _, entry := range stream.Entries {
+		if oldestEntry.IsZero() || entry.Timestamp.Before(oldestEntry) {
+			oldestEntry = entry.Timestamp
+		}
+	}
+
+	// A simple look up table.
+	since := time.Since(oldestEntry)
+	var builder builder
+	if since > 24*time.Hour {
+		builder = p.builders[0]
+	} else if since > 4*time.Hour {
+		builder = p.builders[1]
+	} else {
+		builder = p.builders[2]
+	}
+
+	if err := builder.Append(tenant, stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
 			return fmt.Errorf("failed to append stream: %w", err)
 		}
 		if err := p.flush(ctx, flushReasonBuilderFull); err != nil {
 			return fmt.Errorf("failed to flush and commit: %w", err)
 		}
-		if err := p.builder.Append(tenant, stream); err != nil {
+		if since > 24*time.Hour {
+			builder = p.builders[0]
+		} else if since > 4*time.Hour {
+			builder = p.builders[1]
+		} else {
+			builder = p.builders[2]
+		}
+		if err := builder.Append(tenant, stream); err != nil {
 			return fmt.Errorf("failed to append stream after flushing: %w", err)
 		}
 	}
@@ -193,8 +219,15 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 }
 
 func (p *processor) shouldFlushDueToMaxAge() bool {
+	// At least one builder has entries.
+	count := 0
+	for _, builder := range p.builders {
+		if builder.GetEstimatedSize() > 0 {
+			count++
+		}
+	}
 	return p.maxBuilderAge > 0 &&
-		p.builder.GetEstimatedSize() > 0 &&
+		count > 0 &&
 		!p.firstAppend.IsZero() &&
 		time.Since(p.firstAppend) > p.maxBuilderAge
 }
@@ -219,10 +252,16 @@ func (p *processor) needsIdleFlush() bool {
 	if p.lastAppend.IsZero() {
 		return false
 	}
+	count := 0
+	for _, builder := range p.builders {
+		if builder.GetEstimatedSize() > 0 {
+			count++
+		}
+	}
 	// This is a safety check to make sure we never flush empty data objects.
 	// It should never happen that lastAppend is non-zero while the builder
 	// is empty.
-	if p.builder.GetEstimatedSize() == 0 {
+	if count == 0 {
 		return false
 	}
 	return time.Since(p.lastAppend) > p.idleFlushTimeout
@@ -235,7 +274,7 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 		p.firstAppend = time.Time{}
 		p.lastAppend = time.Time{}
 	}()
-	return p.flushCommitter.Flush(ctx, p.builder, reason, p.lastOffset, p.earliestRecordTime)
+	return p.flushCommitter.Flush(ctx, p.builders, reason, p.lastOffset, p.earliestRecordTime)
 }
 
 func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
