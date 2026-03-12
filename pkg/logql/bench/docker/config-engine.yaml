@@ -40,7 +40,6 @@ query_engine:
   enable: true
   distributed: true
   batch_size: 8192
-  max_concurrent_queries: 4
 
 dataobj:
   storage_bucket_prefix: "dataobj"
