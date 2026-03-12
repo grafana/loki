@@ -128,6 +128,48 @@ func fakeIdentifierPathForBounds(path string, from, through model.Time) string {
 	return filepath.Join(path, fmt.Sprintf("%d-%d-*.tsdb", from, through))
 }
 
+func TestFlushSectionRefTable(t *testing.T) {
+	lbls := mustParseLabels(`{foo="bar"}`)
+	fp := model.Fingerprint(labels.StableHash(lbls))
+
+	t.Run("no-op when section refs are nil", func(t *testing.T) {
+		builder := NewBuilder(index.FormatV3)
+		builder.AddSeries(lbls, fp, []index.ChunkMeta{{Checksum: 1, MinTime: 1, MaxTime: 2}})
+
+		require.NoError(t, builder.FlushSectionRefTable(t.TempDir()))
+
+		data, err := builder.SectionRefTableBytes()
+		require.NoError(t, err)
+		require.Nil(t, data)
+	})
+
+	t.Run("flush and read back produces identical bytes", func(t *testing.T) {
+		builder := NewBuilder(index.FormatV3)
+
+		refA := sectionref.SectionRef{Path: "obj/a", SectionID: 1, SeriesID: 0}
+		refB := sectionref.SectionRef{Path: "obj/b", SectionID: 2, SeriesID: 1}
+
+		require.NoError(t, builder.AddSeriesWithSectionRefs(
+			lbls, fp,
+			[]sectionref.SectionMeta{
+				{SectionRef: refB, ChunkMeta: index.ChunkMeta{MinTime: 1, MaxTime: 2, KB: 10, Entries: 20}},
+				{SectionRef: refA, ChunkMeta: index.ChunkMeta{MinTime: 3, MaxTime: 4, KB: 11, Entries: 21}},
+			},
+		))
+
+		beforeBytes, err := builder.SectionRefTableBytes()
+		require.NoError(t, err)
+		require.NotNil(t, beforeBytes)
+
+		require.NoError(t, builder.FlushSectionRefTable(t.TempDir()))
+		require.Nil(t, builder.sectionRefs, "in-memory table should be freed")
+
+		afterBytes, err := builder.SectionRefTableBytes()
+		require.NoError(t, err)
+		require.Equal(t, beforeBytes, afterBytes)
+	})
+}
+
 func TestBuilderSectionRefs(t *testing.T) {
 	lbls := mustParseLabels(`{foo="bar"}`)
 	fp := model.Fingerprint(labels.StableHash(lbls))
