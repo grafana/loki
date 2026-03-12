@@ -1923,6 +1923,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		UseSectionRefTable:          t.Cfg.CompactorConfig.UseSectionRefTable,
 		MaxSourceFilesPerCompaction: t.Cfg.CompactorConfig.MaxSourceFilesPerCompaction,
 		Logger:                      log.With(util_log.Logger, "component", "tsdb-compactor"),
+		Registerer:                  prometheus.DefaultRegisterer,
 	}))
 	prefix, compactorHandler := t.compactor.Handler()
 	t.Server.HTTP.PathPrefix(prefix).Handler(compactorHandler)
