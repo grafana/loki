@@ -178,10 +178,16 @@ func (p *Builder) running(ctx context.Context) error {
 			if err := p.tsdbBuilder.Store(ctx); err != nil {
 				level.Error(p.logger).Log("msg", "failed to store tsdb builder", "err", err)
 			}
-			p.client.CommitRecords(ctx, p.processedRecords...)
+			err := p.client.CommitRecords(ctx, p.processedRecords...)
+			if err != nil {
+				level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
+				p.metrics.commitFailures.Inc()
+				continue
+			}
+			p.metrics.commitsTotal.Inc()
 			p.lastFlush = time.Now()
 			p.processedRecords = p.processedRecords[:0]
-			p.metrics.commitsTotal.Inc()
+			level.Info(p.logger).Log("msg", "flushed tsdb builder", "time", time.Since(p.lastFlush))
 		}
 
 		fetches := p.client.PollRecords(ctx, -1)
