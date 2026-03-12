@@ -12,6 +12,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -32,9 +34,10 @@ func NewIndexCompactor() compactor.IndexCompactor {
 }
 
 type IndexCompactorConfig struct {
-	UseSectionRefTable         bool
+	UseSectionRefTable          bool
 	MaxSourceFilesPerCompaction int
-	Logger                     log.Logger
+	Logger                      log.Logger
+	Registerer                  prometheus.Registerer
 }
 
 func NewIndexCompactorWithConfig(cfg IndexCompactorConfig) compactor.IndexCompactor {
@@ -42,19 +45,29 @@ func NewIndexCompactorWithConfig(cfg IndexCompactorConfig) compactor.IndexCompac
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
+	reg := cfg.Registerer
+	if reg == nil {
+		reg = prometheus.NewRegistry()
+	}
 	return indexProcessor{
 		mode:           newCompactionMode(cfg.UseSectionRefTable, logger),
 		maxSourceFiles: cfg.MaxSourceFilesPerCompaction,
+		sectionRefEntries: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "loki_compactor",
+			Name:      "section_ref_table_entries",
+			Help:      "Number of entries in the section reference table after compacting a user's index.",
+		}, []string{"table", "user"}),
 	}
 }
 
 type indexProcessor struct {
-	mode           compactionMode
-	maxSourceFiles int
+	mode              compactionMode
+	maxSourceFiles    int
+	sectionRefEntries *prometheus.GaugeVec
 }
 
 func (i indexProcessor) NewTableCompactor(ctx context.Context, commonIndexSet compactor.IndexSet, existingUserIndexSet map[string]compactor.IndexSet, userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc, periodConfig config.PeriodConfig) compactor.TableCompactor {
-	return newTableCompactor(ctx, commonIndexSet, existingUserIndexSet, userIndexSetFactoryFunc, periodConfig, i.mode, i.maxSourceFiles)
+	return newTableCompactor(ctx, commonIndexSet, existingUserIndexSet, userIndexSetFactoryFunc, periodConfig, i.mode, i.maxSourceFiles, i.sectionRefEntries)
 }
 
 func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableName, userID, workingDir string, periodConfig config.PeriodConfig, logger log.Logger) (compactor.CompactedIndex, error) {
@@ -117,6 +130,7 @@ type tableCompactor struct {
 	compactedIndexes        map[string]compactor.CompactedIndex
 	mode                    compactionMode
 	maxSourceFiles          int
+	sectionRefEntries       *prometheus.GaugeVec
 }
 
 func newTableCompactor(
@@ -127,6 +141,7 @@ func newTableCompactor(
 	periodConfig config.PeriodConfig,
 	mode compactionMode,
 	maxSourceFiles int,
+	sectionRefEntries *prometheus.GaugeVec,
 ) *tableCompactor {
 	return &tableCompactor{
 		ctx:                     ctx,
@@ -136,6 +151,7 @@ func newTableCompactor(
 		periodConfig:            periodConfig,
 		mode:                    mode,
 		maxSourceFiles:          maxSourceFiles,
+		sectionRefEntries:       sectionRefEntries,
 	}
 }
 
@@ -284,6 +300,7 @@ func (t *tableCompactor) CompactTable() error {
 		if err != nil {
 			return err
 		}
+		t.reportSectionRefEntries(existingUserIndexSet.GetTableName(), userID, builder)
 		if err := builder.FlushSectionRefTable(existingUserIndexSet.GetWorkingDir()); err != nil {
 			return err
 		}
@@ -312,6 +329,7 @@ func (t *tableCompactor) CompactTable() error {
 		if err != nil {
 			return err
 		}
+		t.reportSectionRefEntries(srcIdxSet.GetTableName(), userID, builder)
 		if err := builder.FlushSectionRefTable(srcIdxSet.GetWorkingDir()); err != nil {
 			return err
 		}
@@ -329,6 +347,17 @@ func (t *tableCompactor) CompactTable() error {
 		}
 	}
 	return nil
+}
+
+func (t *tableCompactor) reportSectionRefEntries(tableName, userID string, builder *Builder) {
+	if t.sectionRefEntries == nil {
+		return
+	}
+	tbl := builder.SectionRefTable()
+	if tbl == nil {
+		return
+	}
+	t.sectionRefEntries.WithLabelValues(tableName, userID).Set(float64(tbl.Len()))
 }
 
 // processSourceIndex processes a single source index file by downloading it,
