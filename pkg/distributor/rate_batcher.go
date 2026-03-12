@@ -44,9 +44,14 @@ type rateBatcher struct {
 	pending   map[string]map[uint64]*proto.StreamMetadata
 
 	// rates stores the last known rate for each stream, updated on each flush.
+	// prevRates holds the rates from the previous flush window. On each flush,
+	// current rates are rotated into prevRates before being replaced. A stream
+	// hash must be absent from both maps to be considered unknown, so a stream
+	// must miss two consecutive windows before triggering a fallback lookup.
 	// Map: tenant -> segmentationKeyHash -> rate (bytes/sec)
-	ratesMu sync.RWMutex
-	rates   map[string]map[uint64]uint64
+	ratesMu   sync.RWMutex
+	rates     map[string]map[uint64]uint64
+	prevRates map[string]map[uint64]uint64
 
 	// Metrics
 	batchesSent     prometheus.Counter
@@ -63,8 +68,9 @@ func newRateBatcher(cfg RateBatcherConfig, client rateBatcherClient, logger log.
 		cfg:     cfg,
 		client:  client,
 		logger:  logger,
-		pending: make(map[string]map[uint64]*proto.StreamMetadata),
-		rates:   make(map[string]map[uint64]uint64),
+		pending:   make(map[string]map[uint64]*proto.StreamMetadata),
+		rates:     make(map[string]map[uint64]uint64),
+		prevRates: make(map[string]map[uint64]uint64),
 		batchesSent: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_rate_batcher_batches_sent_total",
 			Help: "Total number of batches sent to the limits frontend.",
@@ -119,13 +125,24 @@ func (b *rateBatcher) Add(ctx context.Context, tenant string, streams []segmente
 		return nil
 	}
 
-	// Get known rates first (read lock).
+	// Get known rates from the current and previous window (read lock).
 	rates := make(map[uint64]uint64, len(streams))
 	b.ratesMu.RLock()
 	tenantRates := b.rates[tenant]
+	tenantPrevRates := b.prevRates[tenant]
 	for _, stream := range streams {
+		hash := stream.SegmentationKeyHash
 		if tenantRates != nil {
-			rates[stream.SegmentationKeyHash] = tenantRates[stream.SegmentationKeyHash]
+			if rate, ok := tenantRates[hash]; ok {
+				rates[hash] = rate
+				continue
+			}
+		}
+		if tenantPrevRates != nil {
+			if rate, ok := tenantPrevRates[hash]; ok {
+				rates[hash] = rate
+				continue
+			}
 		}
 	}
 	b.ratesMu.RUnlock()
@@ -267,11 +284,20 @@ func (b *rateBatcher) flush(ctx context.Context) {
 	}
 }
 
-// storeRates replaces the rates for a tenant with the results from the latest flush.
-// This ensures we don't accumulate stale rates for streams that stopped sending.
+// storeRates rotates the current rates for a tenant into prevRates and replaces
+// them with the results from the latest flush. A stream hash must be absent from
+// both rates and prevRates to be considered unknown, giving each stream a grace
+// period of one extra window before its cached rate is discarded.
 func (b *rateBatcher) storeRates(tenant string, results []*proto.UpdateRatesResult) {
 	b.ratesMu.Lock()
 	defer b.ratesMu.Unlock()
+
+	// Rotate current rates into previous window.
+	if current := b.rates[tenant]; len(current) > 0 {
+		b.prevRates[tenant] = current
+	} else {
+		delete(b.prevRates, tenant)
+	}
 
 	if len(results) == 0 {
 		delete(b.rates, tenant)
@@ -302,13 +328,21 @@ func (b *rateBatcher) mergeRates(tenant string, results []*proto.UpdateRatesResu
 	}
 }
 
-// GetRate returns the last known rate for a stream, or 0 if unknown.
+// GetRate returns the last known rate for a stream, checking both the current
+// and previous window, or 0 if unknown in both.
 func (b *rateBatcher) GetRate(tenant string, segmentationKeyHash uint64) uint64 {
 	b.ratesMu.RLock()
 	defer b.ratesMu.RUnlock()
 
 	if tenantRates, ok := b.rates[tenant]; ok {
-		return tenantRates[segmentationKeyHash]
+		if rate, ok := tenantRates[segmentationKeyHash]; ok {
+			return rate
+		}
+	}
+	if tenantPrevRates, ok := b.prevRates[tenant]; ok {
+		if rate, ok := tenantPrevRates[segmentationKeyHash]; ok {
+			return rate
+		}
 	}
 	return 0
 }
