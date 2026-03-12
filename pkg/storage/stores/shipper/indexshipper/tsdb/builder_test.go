@@ -146,8 +146,8 @@ func TestFlushSectionRefTable(t *testing.T) {
 	t.Run("flush and read back produces identical bytes", func(t *testing.T) {
 		builder := NewBuilder(index.FormatV3)
 
-		refA := sectionref.SectionRef{Path: "obj/a", SectionID: 1, SeriesID: 0}
-		refB := sectionref.SectionRef{Path: "obj/b", SectionID: 2, SeriesID: 1}
+		refA := sectionref.SectionRef{Path: "obj/a", SectionID: 1}
+		refB := sectionref.SectionRef{Path: "obj/b", SectionID: 2}
 
 		require.NoError(t, builder.AddSeriesWithSectionRefs(
 			lbls, fp,
@@ -187,8 +187,8 @@ func TestBuilderSectionRefs(t *testing.T) {
 	t.Run("assigns checksums via section reference table", func(t *testing.T) {
 		builder := NewBuilder(index.FormatV3)
 
-		refA := sectionref.SectionRef{Path: "obj/a", SectionID: 1, SeriesID: 0}
-		refB := sectionref.SectionRef{Path: "obj/b", SectionID: 2, SeriesID: 1}
+		refA := sectionref.SectionRef{Path: "obj/a", SectionID: 1}
+		refB := sectionref.SectionRef{Path: "obj/b", SectionID: 2}
 
 		err := builder.AddSeriesWithSectionRefs(
 			lbls,

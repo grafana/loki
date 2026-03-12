@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 )
 
-const entrySize = 12 // pathID(4) + sectionID(4) + seriesID(4)
+const entrySize = 8 // pathID(4) + sectionID(4)
 
 var (
 	ErrSectionRefPathTooLong     = fmt.Errorf("section reference path exceeds %d bytes", math.MaxUint16)
@@ -31,23 +31,20 @@ var (
 	_ SectionRefLookup = (*MmapSectionRefTable)(nil)
 )
 
-// SectionRef identifies a singleseries ID from a section location in object storage.
+// SectionRef identifies a section location in object storage.
 type SectionRef struct {
 	Path      string
 	SectionID int
-	SeriesID  int
 }
 
 type sectionRefEntry struct {
 	pathID    uint32
 	sectionID int
-	seriesID  int
 }
 
 type sectionRefKey struct {
 	pathID    uint32
 	sectionID int
-	seriesID  int
 }
 
 // SectionRefTable stores section references by index.
@@ -74,12 +71,10 @@ func NewSectionRefTable(refs []SectionRef) *SectionRefTable {
 		t.entries = append(t.entries, sectionRefEntry{
 			pathID:    pathID,
 			sectionID: ref.SectionID,
-			seriesID:  ref.SeriesID,
 		})
 		t.index[sectionRefKey{
 			pathID:    pathID,
 			sectionID: ref.SectionID,
-			seriesID:  ref.SeriesID,
 		}] = uint32(i)
 	}
 	return t
@@ -98,7 +93,6 @@ func (t *SectionRefTable) Add(ref SectionRef) uint32 {
 	key := sectionRefKey{
 		pathID:    pathID,
 		sectionID: ref.SectionID,
-		seriesID:  ref.SeriesID,
 	}
 	if idx, ok := t.index[key]; ok {
 		return idx
@@ -108,7 +102,6 @@ func (t *SectionRefTable) Add(ref SectionRef) uint32 {
 	t.entries = append(t.entries, sectionRefEntry{
 		pathID:    pathID,
 		sectionID: ref.SectionID,
-		seriesID:  ref.SeriesID,
 	})
 	t.index[key] = idx
 	return idx
@@ -126,7 +119,6 @@ func (t *SectionRefTable) Lookup(idx uint32) (SectionRef, bool) {
 	return SectionRef{
 		Path:      t.paths[entry.pathID],
 		SectionID: entry.sectionID,
-		SeriesID:  entry.seriesID,
 	}, true
 }
 
@@ -166,12 +158,6 @@ func (t *SectionRefTable) Encode() ([]byte, error) {
 		if err := binary.Write(&buf, binary.LittleEndian, uint32(entry.sectionID)); err != nil {
 			return nil, err
 		}
-		if entry.seriesID < 0 || uint64(entry.seriesID) > math.MaxUint32 {
-			return nil, ErrSectionRefSectionOutRange
-		}
-		if err := binary.Write(&buf, binary.LittleEndian, uint32(entry.seriesID)); err != nil {
-			return nil, err
-		}
 	}
 
 	return buf.Bytes(), nil
@@ -208,15 +194,12 @@ func Decode(data []byte) (*SectionRefTable, error) {
 		entries: make([]sectionRefEntry, entryCount),
 	}
 	for i := range t.entries {
-		var pIdx, secID, seriesID uint32
+		var pIdx, secID uint32
 		if err := binary.Read(r, binary.LittleEndian, &pIdx); err != nil {
 			return nil, fmt.Errorf("reading path index: %w", err)
 		}
 		if err := binary.Read(r, binary.LittleEndian, &secID); err != nil {
 			return nil, fmt.Errorf("reading section ID: %w", err)
-		}
-		if err := binary.Read(r, binary.LittleEndian, &seriesID); err != nil {
-			return nil, fmt.Errorf("reading series ID: %w", err)
 		}
 		if pIdx >= uint32(len(pathStrings)) {
 			return nil, fmt.Errorf("path index %d out of range %d", pIdx, len(pathStrings))
@@ -224,14 +207,10 @@ func Decode(data []byte) (*SectionRefTable, error) {
 		if strconv.IntSize == 32 && secID > math.MaxInt32 {
 			return nil, fmt.Errorf("section ID %d overflows int", secID)
 		}
-		if strconv.IntSize == 32 && seriesID > math.MaxInt32 {
-			return nil, fmt.Errorf("series ID %d overflows int", seriesID)
-		}
 
 		t.entries[i] = sectionRefEntry{
 			pathID:    pIdx,
 			sectionID: int(secID),
-			seriesID:  int(seriesID),
 		}
 	}
 
@@ -259,7 +238,6 @@ func (t *SectionRefTable) ensureMutableState() {
 		t.index[sectionRefKey{
 			pathID:    entry.pathID,
 			sectionID: entry.sectionID,
-			seriesID:  entry.seriesID,
 		}] = uint32(i)
 	}
 }
@@ -316,7 +294,6 @@ func (t *MmapSectionRefTable) Lookup(idx uint32) (SectionRef, bool) {
 	off := int(idx) * entrySize
 	pathID := binary.LittleEndian.Uint32(t.data[off:])
 	sectionID := binary.LittleEndian.Uint32(t.data[off+4:])
-	seriesID := binary.LittleEndian.Uint32(t.data[off+8:])
 
 	if pathID >= uint32(len(t.paths)) {
 		return SectionRef{}, false
@@ -324,7 +301,6 @@ func (t *MmapSectionRefTable) Lookup(idx uint32) (SectionRef, bool) {
 	return SectionRef{
 		Path:      t.paths[pathID],
 		SectionID: int(sectionID),
-		SeriesID:  int(seriesID),
 	}, true
 }
 

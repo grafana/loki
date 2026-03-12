@@ -17,8 +17,8 @@ import (
 func TestSectionRefTableAddAndLookup(t *testing.T) {
 	tbl := NewSectionRefTable(nil)
 
-	a := SectionRef{Path: "path-a", SectionID: 7, SeriesID: 1}
-	b := SectionRef{Path: "path-b", SectionID: 9, SeriesID: 2}
+	a := SectionRef{Path: "path-a", SectionID: 7}
+	b := SectionRef{Path: "path-b", SectionID: 9}
 
 	idxA1 := tbl.Add(a)
 	idxB := tbl.Add(b)
@@ -39,9 +39,9 @@ func TestSectionRefTableAddAndLookup(t *testing.T) {
 
 func TestSectionRefTableEncodeDecodeRoundTrip(t *testing.T) {
 	tbl := NewSectionRefTable(nil)
-	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1, SeriesID: 4})
-	tbl.Add(SectionRef{Path: "s3://bucket/b", SectionID: 2, SeriesID: 5})
-	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1, SeriesID: 4}) // dedupe
+	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1})
+	tbl.Add(SectionRef{Path: "s3://bucket/b", SectionID: 2})
+	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1}) // dedupe
 
 	data, err := tbl.Encode()
 	require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestSectionRefTableEncodeDecodeRoundTrip(t *testing.T) {
 
 func TestSectionRefTableEncodePathTooLong(t *testing.T) {
 	tbl := NewSectionRefTable(nil)
-	tbl.Add(SectionRef{Path: strings.Repeat("a", 1<<16), SectionID: 1, SeriesID: 2})
+	tbl.Add(SectionRef{Path: strings.Repeat("a", 1<<16), SectionID: 1})
 
 	_, err := tbl.Encode()
 	require.ErrorIs(t, err, ErrSectionRefPathTooLong)
@@ -69,8 +69,8 @@ func TestSectionRefTableEncodePathTooLong(t *testing.T) {
 
 func TestSectionRefTableDecodeThenAddUsesLazyMaps(t *testing.T) {
 	src := NewSectionRefTable(nil)
-	src.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1, SeriesID: 10})
-	src.Add(SectionRef{Path: "s3://bucket/b", SectionID: 2, SeriesID: 20})
+	src.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1})
+	src.Add(SectionRef{Path: "s3://bucket/b", SectionID: 2})
 
 	data, err := src.Encode()
 	require.NoError(t, err)
@@ -79,8 +79,8 @@ func TestSectionRefTableDecodeThenAddUsesLazyMaps(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, decoded)
 
-	existing := SectionRef{Path: "s3://bucket/a", SectionID: 1, SeriesID: 10}
-	newRef := SectionRef{Path: "s3://bucket/a", SectionID: 3, SeriesID: 30}
+	existing := SectionRef{Path: "s3://bucket/a", SectionID: 1}
+	newRef := SectionRef{Path: "s3://bucket/a", SectionID: 3}
 
 	require.Equal(t, uint32(0), decoded.Add(existing))
 	require.Equal(t, uint32(2), decoded.Add(newRef))
@@ -89,9 +89,9 @@ func TestSectionRefTableDecodeThenAddUsesLazyMaps(t *testing.T) {
 
 func TestMmapSectionRefTableFromBytes(t *testing.T) {
 	tbl := NewSectionRefTable(nil)
-	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1, SeriesID: 4})
-	tbl.Add(SectionRef{Path: "s3://bucket/b", SectionID: 2, SeriesID: 5})
-	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 3, SeriesID: 6})
+	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1})
+	tbl.Add(SectionRef{Path: "s3://bucket/b", SectionID: 2})
+	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 3})
 
 	data, err := tbl.Encode()
 	require.NoError(t, err)
@@ -115,8 +115,8 @@ func TestMmapSectionRefTableFromBytes(t *testing.T) {
 
 func TestMmapSectionRefTableOpenFile(t *testing.T) {
 	tbl := NewSectionRefTable(nil)
-	tbl.Add(SectionRef{Path: "s3://bucket/obj1", SectionID: 10, SeriesID: 100})
-	tbl.Add(SectionRef{Path: "s3://bucket/obj2", SectionID: 20, SeriesID: 200})
+	tbl.Add(SectionRef{Path: "s3://bucket/obj1", SectionID: 10})
+	tbl.Add(SectionRef{Path: "s3://bucket/obj2", SectionID: 20})
 
 	data, err := tbl.Encode()
 	require.NoError(t, err)
@@ -319,15 +319,12 @@ func decodeNoSymbolization(data []byte) (*noSymbolTable, error) {
 	tbl.index = make(map[SectionRef]uint32, entryCount)
 
 	for i := uint32(0); i < entryCount; i++ {
-		var pIdx, secID, seriesID uint32
+		var pIdx, secID uint32
 		if err := binary.Read(r, binary.LittleEndian, &pIdx); err != nil {
 			return nil, fmt.Errorf("reading path index: %w", err)
 		}
 		if err := binary.Read(r, binary.LittleEndian, &secID); err != nil {
 			return nil, fmt.Errorf("reading section ID: %w", err)
-		}
-		if err := binary.Read(r, binary.LittleEndian, &seriesID); err != nil {
-			return nil, fmt.Errorf("reading series ID: %w", err)
 		}
 		if pIdx >= uint32(len(pathStrings)) {
 			return nil, fmt.Errorf("path index %d out of range %d", pIdx, len(pathStrings))
@@ -335,14 +332,10 @@ func decodeNoSymbolization(data []byte) (*noSymbolTable, error) {
 		if strconv.IntSize == 32 && secID > math.MaxInt32 {
 			return nil, fmt.Errorf("section ID %d overflows int", secID)
 		}
-		if strconv.IntSize == 32 && seriesID > math.MaxInt32 {
-			return nil, fmt.Errorf("series ID %d overflows int", seriesID)
-		}
 
 		tbl.Add(SectionRef{
 			Path:      pathStrings[pIdx],
 			SectionID: int(secID),
-			SeriesID:  int(seriesID),
 		})
 	}
 
@@ -385,15 +378,12 @@ func decodeWithCanonicalMap(data []byte) (*canonicalMapTable, error) {
 	tbl.canonical = make(map[string]string, len(pathStrings))
 
 	for i := uint32(0); i < entryCount; i++ {
-		var pIdx, secID, seriesID uint32
+		var pIdx, secID uint32
 		if err := binary.Read(r, binary.LittleEndian, &pIdx); err != nil {
 			return nil, fmt.Errorf("reading path index: %w", err)
 		}
 		if err := binary.Read(r, binary.LittleEndian, &secID); err != nil {
 			return nil, fmt.Errorf("reading section ID: %w", err)
-		}
-		if err := binary.Read(r, binary.LittleEndian, &seriesID); err != nil {
-			return nil, fmt.Errorf("reading series ID: %w", err)
 		}
 		if pIdx >= uint32(len(pathStrings)) {
 			return nil, fmt.Errorf("path index %d out of range %d", pIdx, len(pathStrings))
@@ -401,14 +391,10 @@ func decodeWithCanonicalMap(data []byte) (*canonicalMapTable, error) {
 		if strconv.IntSize == 32 && secID > math.MaxInt32 {
 			return nil, fmt.Errorf("section ID %d overflows int", secID)
 		}
-		if strconv.IntSize == 32 && seriesID > math.MaxInt32 {
-			return nil, fmt.Errorf("series ID %d overflows int", seriesID)
-		}
 
 		tbl.Add(SectionRef{
 			Path:      pathStrings[pIdx],
 			SectionID: int(secID),
-			SeriesID:  int(seriesID),
 		})
 	}
 
@@ -430,7 +416,6 @@ func buildBenchmarkRefs(entryCount int, uniquePaths int) []SectionRef {
 		refs = append(refs, SectionRef{
 			Path:      paths[i%uniquePaths],
 			SectionID: i % 1024,
-			SeriesID:  i,
 		})
 	}
 	return refs
