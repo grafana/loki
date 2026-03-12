@@ -74,7 +74,7 @@ func newSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader r
 	}
 }
 
-func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key segmentationKey, rateBytes, tenantRateBytes uint64) (int32, error) {
+func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key segmentationKey, streamHash uint32, rateBytes, tenantRateBytes uint64) (int32, error) {
 	r.total.Inc()
 	// We use a snapshot of the partition ring to ensure resolving the
 	// partition for a segmentation key is determinstic even if the ring
@@ -112,10 +112,7 @@ func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 		r.failed.Inc()
 		return 0, fmt.Errorf("failed to get segmentation key subring: %w", err)
 	}
-	// Get a random partition from the subring.
-	activePartitionIDs := subring.ActivePartitionIDs()
-	idx := rand.Intn(len(activePartitionIDs))
-	return activePartitionIDs[idx], nil
+	return subring.ActivePartitionForKey(streamHash)
 }
 
 // getTenantRing returns a subring for the tenant based on their rate limit.
