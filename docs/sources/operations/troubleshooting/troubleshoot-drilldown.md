@@ -5,7 +5,7 @@ description: Describes how to solve common issues when working with Grafana Logs
 weight: 300
 ---
 
-# Troubleshoot logs Drilldown
+# Troubleshoot Logs Drilldown
 
 [//]: # 'Shared content for troubleshooting logs drilldown'
 [//]: # 'This content is located in /logs-drilldown/blob/main/docs/sources/shared/troubleshoot-logs-drilldown.md'
