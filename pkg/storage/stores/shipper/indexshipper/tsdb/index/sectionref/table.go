@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"strconv"
 )
 
 var (
@@ -14,11 +13,10 @@ var (
 	ErrSectionRefSectionOutRange = fmt.Errorf("section reference section ID out of uint32 range")
 )
 
-// SectionRef identifies a singleseries ID from a section location in object storage.
+// SectionRef identifies a section location in object storage.
 type SectionRef struct {
 	Path      string
 	SectionID int
-	SeriesID  int
 }
 
 // SectionRefTable stores section references by index.
@@ -106,9 +104,6 @@ func (t *SectionRefTable) Encode() ([]byte, error) {
 		if err := binary.Write(&buf, binary.LittleEndian, uint32(ref.SectionID)); err != nil {
 			return nil, err
 		}
-		if err := binary.Write(&buf, binary.LittleEndian, uint32(ref.SeriesID)); err != nil {
-			return nil, err
-		}
 	}
 
 	return buf.Bytes(), nil
@@ -142,30 +137,23 @@ func Decode(data []byte) (*SectionRefTable, error) {
 
 	refs := make([]SectionRef, entryCount)
 	for i := range refs {
-		var pIdx, secID, seriesID uint32
+		var pIdx, secID uint32
 		if err := binary.Read(r, binary.LittleEndian, &pIdx); err != nil {
 			return nil, fmt.Errorf("reading path index: %w", err)
 		}
 		if err := binary.Read(r, binary.LittleEndian, &secID); err != nil {
 			return nil, fmt.Errorf("reading section ID: %w", err)
 		}
-		if err := binary.Read(r, binary.LittleEndian, &seriesID); err != nil {
-			return nil, fmt.Errorf("reading series ID: %w", err)
-		}
 		if pIdx >= uint32(len(pathStrings)) {
 			return nil, fmt.Errorf("path index %d out of range %d", pIdx, len(pathStrings))
 		}
-		if strconv.IntSize == 32 && secID > math.MaxInt32 {
+		if secID > math.MaxInt32 {
 			return nil, fmt.Errorf("section ID %d overflows int", secID)
-		}
-		if strconv.IntSize == 32 && seriesID > math.MaxInt32 {
-			return nil, fmt.Errorf("series ID %d overflows int", seriesID)
 		}
 
 		refs[i] = SectionRef{
 			Path:      pathStrings[pIdx],
 			SectionID: int(secID),
-			SeriesID:  int(seriesID),
 		}
 	}
 
