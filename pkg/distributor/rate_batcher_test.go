@@ -356,9 +356,17 @@ func TestRateBatcher_RatesClearedForInactiveStreams(t *testing.T) {
 	batcher.Add(context.Background(), "tenant1", []segmentedStream{{SegmentationKeyHash: 123}})
 	batcher.flush(context.Background())
 
-	// Stream 123 still has a rate.
+	// Stream 123 still has a rate (in current window).
 	require.Equal(t, uint64(1000), batcher.GetRate("tenant1", 123))
-	// Stream 456 was cleared by storeRates (not in last batch).
+	// Stream 456 is still available from the previous window (one-window grace period).
+	require.Equal(t, uint64(1000), batcher.GetRate("tenant1", 456))
+
+	// Third flush, again without stream 456. It has now missed two consecutive
+	// windows and should be fully evicted.
+	batcher.Add(context.Background(), "tenant1", []segmentedStream{{SegmentationKeyHash: 123}})
+	batcher.flush(context.Background())
+
+	require.Equal(t, uint64(1000), batcher.GetRate("tenant1", 123))
 	require.Equal(t, uint64(0), batcher.GetRate("tenant1", 456))
 }
 
