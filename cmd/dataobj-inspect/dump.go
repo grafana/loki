@@ -71,6 +71,9 @@ func (cmd *dumpCommand) dumpStreamsSection(ctx context.Context, offset int, sec 
 
 	tmp := make([]streams.Stream, 512)
 	r := streams.NewRowReader(streamsSec)
+	if err = r.Open(ctx); err != nil {
+		exitWithErr(fmt.Errorf("failed to open row reader: %w", err))
+	}
 	for {
 		n, err := r.Read(ctx, tmp)
 		if err != nil && !errors.Is(err, io.EOF) {
@@ -101,6 +104,9 @@ func (cmd *dumpCommand) dumpLogsSection(ctx context.Context, offset int, sec *da
 	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
 	tmp := make([]logs.Record, 512)
 	r := logs.NewRowReader(logsSec)
+	if err = r.Open(ctx); err != nil {
+		exitWithErr(fmt.Errorf("failed to open row reader: %w", err))
+	}
 	for {
 		n, err := r.Read(ctx, tmp)
 		if err != nil && !errors.Is(err, io.EOF) {
