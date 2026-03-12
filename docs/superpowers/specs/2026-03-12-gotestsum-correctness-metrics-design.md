@@ -55,17 +55,32 @@ TestRemoteStorageEquality/fast/basic.yaml:3/kind=log#00
 TestRemoteStorageEquality/fast/basic.yaml:3/kind=log#01
 ```
 
-The parser strips the `#NN` suffix before extracting labels. Both direction variants map to the same label set. If both pass, one metric is emitted. If one fails and one passes, the `fail` status takes precedence (worst-status-wins).
+The parser strips the `#NN` suffix before extracting labels. Both direction variants map to the same label set and are merged into a single logical test:
 
-### Label extraction
+- **Status:** worst-status-wins with precedence `error > fail > skip > pass`.
+- **Duration:** `max(duration)` across the merged cases.
+- **Count:** merged cases count as one test in aggregate metrics.
 
-The `correctness-metrics` binary parses test names to extract labels:
+This dedup only applies to `kind=log` tests. `kind=metric` and `kind=invalid` tests do not produce `DirectionBoth` duplicates.
+
+### Label extraction — parsing algorithm
+
+Given a JUnit `<testcase>` name like `TestRemoteStorageEquality/fast/basic.yaml:3/kind=log#01`:
+
+1. Strip the root test prefix `TestRemoteStorageEquality/`.
+2. Strip any `#NN` dedup suffix.
+3. Split on `/` to get segments: `["fast", "basic.yaml:3", "kind=log"]`.
+4. `suite` = segment[0] → `fast`.
+5. `query_file` = segment[1], split on `:` to drop line number, then strip `.yaml` or `.yml` extension → `basic`.
+6. `kind` = segment[2], parse `kind=` prefix → `log`.
+
+If any step fails (wrong segment count, missing `kind=` prefix, etc.), the test name is unparseable.
 
 | Label | Parsed From | Example Values |
 |-------|------------|----------------|
-| `suite` | 1st path segment after root test name | `fast`, `regression`, `exhaustive` |
-| `query_file` | 2nd segment (filename without `.yaml` extension) | `basic`, `agg`, `filters` |
-| `kind` | `kind=` key-value in last segment | `metric`, `log`, `invalid` |
+| `suite` | segment[0] | `fast`, `regression`, `exhaustive` |
+| `query_file` | segment[1] (filename, no extension or line) | `basic`, `agg`, `filters` |
+| `kind` | segment[2] `kind=` value | `metric`, `log`, `invalid` |
 | `range_type` | CLI flag `--range-type` (static per run) | `instant`, `range` |
 | `status` | JUnit XML test result (see mapping below) | `pass`, `fail`, `skip`, `error` |
 
@@ -82,7 +97,7 @@ The `correctness-metrics` binary parses test names to extract labels:
 
 The parsing logic must be robust — it must not panic on malformed test names with unexpected segment counts or formats. Tests whose names don't match the expected pattern are:
 
-- **Counted** in the aggregate `logql_correctness_tests_total` metric with `suite="unknown"`.
+- **Counted** in the aggregate `logql_correctness_tests_total` metric with `suite="unknown"`. The `status` label still reflects the actual JUnit outcome (pass/fail/skip/error).
 - **Not emitted** as `logql_correctness_test_duration_seconds` (the per-test metric is dropped for unparseable names).
 
 The parent test `TestRemoteStorageEquality` itself (which appears in JUnit as a `<testsuite>`, not a `<testcase>`) is not counted as a test case.
@@ -100,7 +115,7 @@ Each push is a single remote_write request with all metrics timestamped at push 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
 | `logql_correctness_tests_total` | Gauge | `suite`, `range_type`, `status` | Total test count by suite, range type, and status |
-| `logql_correctness_run_pass_ratio` | Gauge | `suite`, `range_type` | `pass / (pass + fail + error)` — skipped tests excluded from denominator |
+| `logql_correctness_run_pass_ratio` | Gauge | `suite`, `range_type` | `pass / (pass + fail + error)` — skipped tests excluded from denominator. If denominator is zero (all tests skipped), omit this metric for that suite. |
 
 ### Per-test detail
 
@@ -112,7 +127,9 @@ Each push is a single remote_write request with all metrics timestamped at push 
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `logql_correctness_run_duration_seconds` | Gauge | `range_type` | Total elapsed time from the root `<testsuite time="...">` attribute in JUnit XML |
+| `logql_correctness_run_duration_seconds` | Gauge | `range_type` | Total elapsed time for the test run |
+
+**Run duration source:** `gotestsum` emits JUnit XML with a `<testsuites>` root element containing one or more `<testsuite>` children. The run duration is the sum of all `<testsuite time="...">` attributes. If no `time` attribute is present, fall back to summing individual `<testcase time="...">` values.
 
 ## `correctness-metrics` CLI
 
@@ -122,46 +139,58 @@ Location: `pkg/logql/bench/cmd/correctness-metrics/main.go`
 
 | Flag | Env Var | Required | Default | Description |
 |------|---------|----------|---------|-------------|
-| `--input` | — | yes | — | Path to JUnit XML file from gotestsum |
-| `--remote-write-url` | `REMOTE_WRITE_URL` | yes | — | Prometheus remote_write endpoint |
+| `--input` | — | yes (always) | — | Path to JUnit XML file from gotestsum |
+| `--remote-write-url` | `REMOTE_WRITE_URL` | yes (push mode only) | — | Prometheus remote_write endpoint |
 | `--remote-write-username` | `REMOTE_WRITE_USERNAME` | no | — | Basic auth username |
 | `--remote-write-password` | `REMOTE_WRITE_PASSWORD` | no | — | Basic auth password |
-| `--range-type` | `RANGE_TYPE` | yes | — | `instant` or `range` — static label on all metrics |
+| `--range-type` | `RANGE_TYPE` | yes (always) | — | `instant` or `range` — static label on all metrics. Any other value is a fatal error. |
 | `--job` | — | no | `logql-correctness` | Job label for all metrics |
 | `--dry-run` | — | no | `false` | Parse and log metrics without pushing |
 
-**Auth validation:** `--remote-write-username` and `--remote-write-password` must both be provided or both omitted. Providing only one is a fatal error.
+**Conditional requirements:**
+- In `--dry-run` mode, only `--input` and `--range-type` are required. `--remote-write-url` and auth flags are ignored.
+- In push mode (no `--dry-run`), `--remote-write-url` is additionally required.
+- `--remote-write-username` and `--remote-write-password` must both be provided or both omitted. Providing only one is a fatal error.
 
 ### Behavior
 
 1. Parse JUnit XML using `github.com/joshdk/go-junit`.
-2. For each test case, extract labels from the test name using the pattern above.
+2. For each test case, extract labels from the test name using the parsing algorithm above.
 3. Build Prometheus time series using `github.com/prometheus/prometheus` types (already in `go.mod`).
 4. Push via remote_write using `github.com/prometheus/prometheus/storage/remote` (already in `go.mod`). Single attempt with a 30-second timeout; no retries.
 5. Log a summary to stdout: `Pushed 47 metrics (32 pass, 12 fail, 3 skip) to https://...`
 
-The `--dry-run` flag allows local testing: run `gotestsum` locally, then `correctness-metrics --dry-run --input results.xml` to verify what would be pushed.
+**`--dry-run` behavior:** Input parsing and validation still run fully. The only step skipped is the remote_write push (step 4). If the input file is missing or malformed, dry-run still exits non-zero. This ensures dry-run can be used to validate the pipeline locally.
 
 ### Exit codes
 
 | Condition | Exit Code | Behavior |
 |-----------|-----------|----------|
-| Success | `0` | All metrics parsed and pushed (or `--dry-run`) |
+| Success (push completed or `--dry-run` with valid input) | `0` | Log summary |
 | Input file missing | `1` | Log error, exit immediately |
 | Input file empty or malformed XML | `1` | Log error describing the parse failure, exit immediately |
 | `remote_write` failure (network, auth, 4xx/5xx) | `1` | Log the error from the Prometheus client, exit immediately |
-| `--dry-run` | `0` | Always, regardless of what would have been pushed |
-| Invalid flag combination (e.g., username without password) | `1` | Log usage error, exit immediately |
+| Invalid flag combination (e.g., username without password, invalid `--range-type` value) | `1` | Log usage error, exit immediately |
 
 A non-zero exit from step 2 will fail the Argo workflow. This is intentional — if we ran tests but couldn't record the results, that's a CI failure worth investigating. Test results are still available as Argo artifacts for manual inspection.
+
+### Build target
+
+Add to `pkg/logql/bench/Makefile`:
+
+```makefile
+.PHONY: build-correctness-metrics
+build-correctness-metrics:
+	CGO_ENABLED=0 go build -o ./build/correctness-metrics ./cmd/correctness-metrics
+```
+
+The binary is built as part of the CI container image. The Dockerfile should include a build step that produces `correctness-metrics` and copies it into the runtime image. (Dockerfile specifics are outside the scope of this spec — they depend on the existing Argo image build pipeline.)
 
 ### Dependencies
 
 - JUnit XML parsing: `github.com/joshdk/go-junit` (new dependency)
-- Prometheus types and remote_write: `github.com/prometheus/prometheus` (already in `go.mod`)
+- Prometheus types and remote_write: `github.com/prometheus/prometheus` (already in `go.mod`, pseudo-version `v0.310.1-0.20260302160042-1751685dd4f6`)
 - No other new dependencies expected
-
-The `github.com/prometheus/prometheus/storage/remote` package API should be verified against the vendored Prometheus version (`v0.310.1`) during implementation. If the client API has changed, use the `net/http` package to POST a snappy-compressed remote_write protobuf payload directly.
 
 ## Argo Workflow Integration
 
@@ -182,7 +211,8 @@ The `github.com/prometheus/prometheus/storage/remote` package API should be veri
       - -count=1
       - -v
       - -timeout=30m
-      - ./pkg/logql/bench/...
+      - ./pkg/logql/bench
+      - -run=TestRemoteStorageEquality
       - --addr-1=$(REMOTE_ADDR_1)
       - --addr-2=$(REMOTE_ADDR_2)
       - --org-id=$(REMOTE_ORG_ID)
@@ -195,6 +225,8 @@ The `github.com/prometheus/prometheus/storage/remote` package API should be veri
   continueOn:
     failed: true  # Step 2 must run even when tests fail
 ```
+
+**Test path:** `./pkg/logql/bench` (no `...` suffix) targets only the bench package, matching the existing `remote-test` Makefile target. The `-run=TestRemoteStorageEquality` flag further restricts to only the correctness test.
 
 **Outputs captured by Argo:**
 
@@ -218,43 +250,73 @@ The `github.com/prometheus/prometheus/storage/remote` package API should be veri
     artifacts:
       - name: junit-xml
         path: /output/results.xml
+        optional: true  # Allow step to run even if artifact is missing
 ```
 
 **Key points:**
 
-- `continueOn: failed` on step 1 ensures metrics are always pushed, including on test failures.
+- `continueOn: failed` on step 1 ensures step 2 always runs, including on test failures.
 - Secrets (`REMOTE_WRITE_PASSWORD`, Loki credentials) come from Kubernetes secrets via Argo env var injection.
 - Stdout from step 2 contains the metric push summary.
-- If step 1 crashes before producing `results.xml`, the Argo artifact transfer fails and step 2 exits with code `1` (input file missing).
+
+**Failure modes at the Argo level:**
+
+| Scenario | Argo Behavior | `correctness-metrics` Behavior |
+|----------|---------------|-------------------------------|
+| Step 1 tests fail, XML produced | Artifact transfers successfully | Parses XML, pushes metrics (including failure counts), exits `0` |
+| Step 1 crashes before producing XML | Artifact marked optional — step 2 still runs | Exits `1` (input file missing) |
+| Step 2 remote_write fails | Step 2 pod exits non-zero, workflow fails | Exits `1`, logs error |
+
+The `optional: true` on the artifact input ensures step 2 always starts. The binary handles the missing-file case with a clear error message and exit code `1`.
 
 ## Makefile Target
 
-Add a `make gotestsum-remote` target in `pkg/logql/bench/Makefile` (alongside the existing `remote-test` target). It requires the same env vars as `make remote-test` (`REMOTE_ADDR_1`, `REMOTE_ADDR_2`, `REMOTE_ORG_ID`, etc.).
+Add a `make gotestsum-remote` target in `pkg/logql/bench/Makefile` (alongside the existing `remote-test` target).
 
 ```makefile
 GOTESTSUM ?= $(shell which gotestsum 2>/dev/null)
+RANGE_TYPE ?= range
+METADATA_DIR ?= testdata
 
 .PHONY: gotestsum-remote
 gotestsum-remote:
 ifndef GOTESTSUM
 	$(error gotestsum not found in PATH — install with: go install gotest.tools/gotestsum@latest)
 endif
+ifndef REMOTE_ADDR_1
+	$(error REMOTE_ADDR_1 is required — add it to .env (see .env.template))
+endif
+ifndef REMOTE_ADDR_2
+	$(error REMOTE_ADDR_2 is required — add it to .env (see .env.template))
+endif
+ifndef REMOTE_ORG_ID
+	$(error REMOTE_ORG_ID is required — add it to .env (see .env.template))
+endif
 	$(GOTESTSUM) \
 		--format standard-verbose \
 		--junitfile ./build/results.xml \
-		-- go test -tags remote_correctness -count=1 -v -timeout $(REMOTE_TIMEOUT) \
-		./... \
-		--addr-1 $(REMOTE_ADDR_1) \
-		--addr-2 $(REMOTE_ADDR_2) \
-		--org-id $(REMOTE_ORG_ID) \
-		--metadata-dir $(METADATA_DIR) \
-		--remote-range-type $(RANGE_TYPE)
+		-- go test -tags=remote_correctness -v \
+		./pkg/logql/bench \
+		-run TestRemoteStorageEquality \
+		-timeout $(REMOTE_TIMEOUT) \
+		-addr-1 "$(REMOTE_ADDR_1)" \
+		-addr-2 "$(REMOTE_ADDR_2)" \
+		-org-id "$(REMOTE_ORG_ID)" \
+		-username "$(LOKI_USERNAME)" \
+		-password "$(LOKI_PASSWORD)" \
+		-metadata-dir $(METADATA_DIR) \
+		-remote-range-type $(RANGE_TYPE)
 ```
 
-Output goes to `./build/results.xml`. `gotestsum` must be pre-installed in `$PATH`.
+**Notes:**
+- Uses the same test path (`./pkg/logql/bench`) and `-run` filter as the existing `remote-test` target and the Argo step.
+- `RANGE_TYPE` defaults to `range`, `METADATA_DIR` defaults to `testdata` — matching the existing `remote-test` behavior.
+- `REMOTE_TIMEOUT` is already defined as `?= 30m` in the existing Makefile.
+- Includes the same `ifndef` guards as `remote-test` for required env vars.
+- Output goes to `./build/results.xml`. `gotestsum` must be pre-installed in `$PATH`.
 
 ## What's Not Changing
 
-- The existing `go test` / `make` workflow for ad-hoc remote test runs is untouched.
+- The existing `go test` / `make remote-test` workflow for ad-hoc remote test runs is untouched.
 - The test code in `remote_test.go`, `assertions_test.go`, and `convert_test.go` is not modified.
 - The build tag gating (`//go:build remote_correctness`) stays as-is.
