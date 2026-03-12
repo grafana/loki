@@ -28,6 +28,12 @@ type Builder struct {
 	chunksFinalized bool
 	version         int
 	sectionRefs     *sectionref.SectionRefTable
+
+	// sectionRefCachePath holds the path to a temp file containing the
+	// encoded SectionRefTable bytes after FlushSectionRefTable has been
+	// called. This allows the in-memory table to be freed while still
+	// being able to produce the sidecar later via SectionRefTableBytes.
+	sectionRefCachePath string
 }
 
 type stream struct {
@@ -75,10 +81,37 @@ func (b *Builder) SectionRefTable() *sectionref.SectionRefTable {
 }
 
 func (b *Builder) SectionRefTableBytes() ([]byte, error) {
+	if b.sectionRefCachePath != "" {
+		return os.ReadFile(b.sectionRefCachePath)
+	}
 	if b.sectionRefs == nil {
 		return nil, nil
 	}
 	return b.sectionRefs.Encode()
+}
+
+// FlushSectionRefTable encodes the in-memory SectionRefTable to a temp file
+// in dir and frees the table from memory. Subsequent calls to
+// SectionRefTableBytes transparently read from the file. This is a no-op when
+// no SectionRefTable has been built (legacy compaction path).
+func (b *Builder) FlushSectionRefTable(dir string) error {
+	if b.sectionRefs == nil {
+		return nil
+	}
+
+	data, err := b.sectionRefs.Encode()
+	if err != nil {
+		return fmt.Errorf("encoding section ref table: %w", err)
+	}
+
+	path := filepath.Join(dir, "sectionrefs.tmp")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("writing section ref cache: %w", err)
+	}
+
+	b.sectionRefCachePath = path
+	b.sectionRefs = nil
+	return nil
 }
 
 func (b *Builder) addSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {

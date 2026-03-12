@@ -278,6 +278,9 @@ func (t *tableCompactor) CompactTable() error {
 		if err != nil {
 			return err
 		}
+		if err := builder.FlushSectionRefTable(existingUserIndexSet.GetWorkingDir()); err != nil {
+			return err
+		}
 
 		compactedIndex := newCompactedIndex(t.ctx, existingUserIndexSet.GetTableName(), userID, existingUserIndexSet.GetWorkingDir(), t.periodConfig, builder, t.mode)
 		t.compactedIndexes[userID] = compactedIndex
@@ -301,6 +304,9 @@ func (t *tableCompactor) CompactTable() error {
 
 		builder, err := setupBuilder(t.ctx, indexType, userID, srcIdxSet, []Index{}, nil, t.mode)
 		if err != nil {
+			return err
+		}
+		if err := builder.FlushSectionRefTable(srcIdxSet.GetWorkingDir()); err != nil {
 			return err
 		}
 
