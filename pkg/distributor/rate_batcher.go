@@ -54,6 +54,7 @@ type rateBatcher struct {
 	streamsPerBatch prometheus.Histogram
 	pendingStreams  prometheus.Gauge
 	streamsFlushed  prometheus.Counter
+	rateFallbacks   prometheus.Counter
 }
 
 // newRateBatcher creates a new rate batcher.
@@ -85,6 +86,10 @@ func newRateBatcher(cfg RateBatcherConfig, client rateBatcherClient, logger log.
 			Name: "loki_distributor_rate_batcher_streams_flushed_total",
 			Help: "Total number of streams flushed to the limits frontend.",
 		}),
+		rateFallbacks: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_rate_batcher_fallback_lookups_total",
+			Help: "Total number of synchronous fallback rate lookups for streams not yet in cache.",
+		}),
 	}
 	b.Service = services.NewBasicService(nil, b.running, nil)
 	return b
@@ -106,8 +111,10 @@ func (b *rateBatcher) running(ctx context.Context) error {
 }
 
 // Add adds streams to the pending batch and returns the last known rates for them.
-// This is a non-blocking operation. Streams with unknown rates will have rate=0.
-func (b *rateBatcher) Add(tenant string, streams []segmentedStream) map[uint64]uint64 {
+// For streams with unknown rates (not yet in cache), a synchronous fallback
+// request is made to the limits frontend to fetch the current rate, which is
+// then cached for subsequent calls.
+func (b *rateBatcher) Add(ctx context.Context, tenant string, streams []segmentedStream) map[uint64]uint64 {
 	if len(streams) == 0 {
 		return nil
 	}
@@ -119,11 +126,51 @@ func (b *rateBatcher) Add(tenant string, streams []segmentedStream) map[uint64]u
 	for _, stream := range streams {
 		if tenantRates != nil {
 			rates[stream.SegmentationKeyHash] = tenantRates[stream.SegmentationKeyHash]
-		} else {
-			rates[stream.SegmentationKeyHash] = 0
 		}
 	}
 	b.ratesMu.RUnlock()
+
+	// Collect streams with unknown rates for a synchronous fallback lookup.
+	unknownSeen := make(map[uint64]struct{})
+	var unknownStreams []*proto.StreamMetadata
+	for _, stream := range streams {
+		hash := stream.SegmentationKeyHash
+		if rates[hash] != 0 {
+			continue
+		}
+		if _, seen := unknownSeen[hash]; seen {
+			continue
+		}
+		unknownSeen[hash] = struct{}{}
+		unknownStreams = append(unknownStreams, &proto.StreamMetadata{
+			StreamHash:      hash,
+			TotalSize:       uint64(stream.Stream.Size()),
+			IngestionPolicy: stream.Policy,
+		})
+	}
+
+	if len(unknownStreams) > 0 {
+		b.rateFallbacks.Add(float64(len(unknownStreams)))
+		req := &proto.UpdateRatesRequest{
+			Tenant:  tenant,
+			Streams: unknownStreams,
+		}
+		tenantCtx := user.InjectOrgID(ctx, tenant)
+		results, err := b.client.UpdateRatesRaw(tenantCtx, req)
+		if err != nil {
+			level.Warn(b.logger).Log(
+				"msg", "fallback rate lookup failed",
+				"tenant", tenant,
+				"streams", len(unknownStreams),
+				"err", err,
+			)
+		} else {
+			b.mergeRates(tenant, results)
+			for _, result := range results {
+				rates[result.StreamHash] = result.Rate
+			}
+		}
+	}
 
 	// Add to pending batch (separate lock).
 	b.pendingMu.Lock()
@@ -236,6 +283,23 @@ func (b *rateBatcher) storeRates(tenant string, results []*proto.UpdateRatesResu
 		tenantRates[result.StreamHash] = result.Rate
 	}
 	b.rates[tenant] = tenantRates
+}
+
+// mergeRates merges the given results into the existing rates for a tenant
+// without replacing the entire tenant's rate map. This is used by the fallback
+// path in Add to cache individually fetched rates alongside batch-populated ones.
+func (b *rateBatcher) mergeRates(tenant string, results []*proto.UpdateRatesResult) {
+	b.ratesMu.Lock()
+	defer b.ratesMu.Unlock()
+
+	tenantRates, ok := b.rates[tenant]
+	if !ok {
+		tenantRates = make(map[uint64]uint64, len(results))
+		b.rates[tenant] = tenantRates
+	}
+	for _, result := range results {
+		tenantRates[result.StreamHash] = result.Rate
+	}
 }
 
 // GetRate returns the last known rate for a stream, or 0 if unknown.
