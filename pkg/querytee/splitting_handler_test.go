@@ -815,8 +815,12 @@ func TestSplittingHandler_CorrelationIDConsistency(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 
-	// Wait for async goldfish processing to complete
-	time.Sleep(500 * time.Millisecond)
+	// Wait for async goldfish processing to complete by polling the send state
+	require.Eventually(t, func() bool {
+		sendCalled, _ := goldfishManager.getSendState()
+		return sendCalled
+	}, 5*time.Second, 10*time.Millisecond,
+		"SendToGoldfish should have been called for a 2-backend sampled request")
 
 	headerID := recorder.Header().Get(goldfish.GoldfishCorrelationIDHeader)
 	require.Equal(t, "consistency-test-uuid", headerID,
