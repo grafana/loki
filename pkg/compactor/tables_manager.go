@@ -211,7 +211,7 @@ func (c *tablesManager) initTable(ctx context.Context, tableName string) (*table
 	}
 
 	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), sc.indexStorageClient, indexCompactor,
-		schemaCfg, sc.tableMarker, c.expirationChecker, c.cfg.UploadParallelism)
+		schemaCfg, sc.tableMarker, c.expirationChecker, c.cfg.UploadParallelism, c.cfg.MaxSourceFilesPerCompaction)
 	if err != nil {
 		return nil, err
 	}

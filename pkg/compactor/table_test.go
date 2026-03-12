@@ -206,7 +206,7 @@ func TestTable_Compaction(t *testing.T) {
 					require.NoError(t, err)
 
 					table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
+						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10, 0)
 					require.NoError(t, err)
 
 					require.NoError(t, table.compact())
@@ -245,7 +245,7 @@ func TestTable_Compaction(t *testing.T) {
 
 					// running compaction again should not do anything.
 					table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
+						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10, 0)
 					require.NoError(t, err)
 
 					require.NoError(t, table.compact())
@@ -393,7 +393,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					newTestIndexCompactor(), config.PeriodConfig{},
 					tt.tableMarker, IntervalMayHaveExpiredChunksFunc(func(_ model.Interval, _ string) bool {
 						return true
-					}), 10)
+					}), 10, 0)
 				require.NoError(t, err)
 
 				defer table.cleanup()
@@ -471,7 +471,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
+		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10, 0)
 	require.NoError(t, err)
 
 	// compaction should fail due to a non-boltdb file.
@@ -490,7 +490,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, "fail.gz")))
 
 	table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
+		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10, 0)
 	require.NoError(t, err)
 	require.NoError(t, table.compact())
 	require.NoError(t, table.done())

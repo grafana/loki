@@ -32,8 +32,9 @@ func NewIndexCompactor() compactor.IndexCompactor {
 }
 
 type IndexCompactorConfig struct {
-	UseSectionRefTable bool
-	Logger             log.Logger
+	UseSectionRefTable         bool
+	MaxSourceFilesPerCompaction int
+	Logger                     log.Logger
 }
 
 func NewIndexCompactorWithConfig(cfg IndexCompactorConfig) compactor.IndexCompactor {
@@ -42,16 +43,18 @@ func NewIndexCompactorWithConfig(cfg IndexCompactorConfig) compactor.IndexCompac
 		logger = log.NewNopLogger()
 	}
 	return indexProcessor{
-		mode: newCompactionMode(cfg.UseSectionRefTable, logger),
+		mode:           newCompactionMode(cfg.UseSectionRefTable, logger),
+		maxSourceFiles: cfg.MaxSourceFilesPerCompaction,
 	}
 }
 
 type indexProcessor struct {
-	mode compactionMode
+	mode           compactionMode
+	maxSourceFiles int
 }
 
 func (i indexProcessor) NewTableCompactor(ctx context.Context, commonIndexSet compactor.IndexSet, existingUserIndexSet map[string]compactor.IndexSet, userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc, periodConfig config.PeriodConfig) compactor.TableCompactor {
-	return newTableCompactor(ctx, commonIndexSet, existingUserIndexSet, userIndexSetFactoryFunc, periodConfig, i.mode)
+	return newTableCompactor(ctx, commonIndexSet, existingUserIndexSet, userIndexSetFactoryFunc, periodConfig, i.mode, i.maxSourceFiles)
 }
 
 func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableName, userID, workingDir string, periodConfig config.PeriodConfig, logger log.Logger) (compactor.CompactedIndex, error) {
@@ -113,6 +116,7 @@ type tableCompactor struct {
 	periodConfig            config.PeriodConfig
 	compactedIndexes        map[string]compactor.CompactedIndex
 	mode                    compactionMode
+	maxSourceFiles          int
 }
 
 func newTableCompactor(
@@ -122,6 +126,7 @@ func newTableCompactor(
 	userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc,
 	periodConfig config.PeriodConfig,
 	mode compactionMode,
+	maxSourceFiles int,
 ) *tableCompactor {
 	return &tableCompactor{
 		ctx:                     ctx,
@@ -130,6 +135,7 @@ func newTableCompactor(
 		userIndexSetFactoryFunc: userIndexSetFactoryFunc,
 		periodConfig:            periodConfig,
 		mode:                    mode,
+		maxSourceFiles:          maxSourceFiles,
 	}
 }
 
@@ -152,13 +158,13 @@ func (t *tableCompactor) CompactTable() error {
 	sectionsPaths := make([]string, len(multiTenantIndexes))
 	multiTenantSources := make([]modeSourceHandle, len(multiTenantIndexes))
 
-	if len(multiTenantIndexes) > 1000 {
-		level.Info(t.commonIndexSet.GetLogger()).Log("msg", "compacting more than 1000 multi-tenant indexes, truncating to first 1000", "count", len(multiTenantIndexes))
-		multiTenantIndexes = multiTenantIndexes[:1000]
-		multiTenantIndices = multiTenantIndices[:1000]
-		downloadPaths = downloadPaths[:1000]
-		sectionsPaths = sectionsPaths[:1000]
-		multiTenantSources = multiTenantSources[:1000]
+	if t.maxSourceFiles > 0 && len(multiTenantIndexes) > t.maxSourceFiles {
+		level.Info(t.commonIndexSet.GetLogger()).Log("msg", "compacting more multi-tenant indexes than limit, truncating", "count", len(multiTenantIndexes), "limit", t.maxSourceFiles)
+		multiTenantIndexes = multiTenantIndexes[:t.maxSourceFiles]
+		multiTenantIndices = multiTenantIndices[:t.maxSourceFiles]
+		downloadPaths = downloadPaths[:t.maxSourceFiles]
+		sectionsPaths = sectionsPaths[:t.maxSourceFiles]
+		multiTenantSources = multiTenantSources[:t.maxSourceFiles]
 	}
 
 	// concurrently download and open all the multi-tenant indexes
