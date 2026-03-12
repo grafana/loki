@@ -168,7 +168,7 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 		// Batching enabled: add to batch and get last known rates
 		// (stats from this push request aren't included as we don't know if the push would be accepted).
 		// New streams will have rate=0 until first flush includes them.
-		fastRates = t.rateBatcher.Add(tenant, segmentationKeyStreams)
+		fastRates = t.rateBatcher.Add(ctx, tenant, segmentationKeyStreams)
 	} else {
 		// Batching disabled: call UpdateRates synchronously.
 		fastRates = make(map[uint64]uint64, len(segmentationKeyStreams))
