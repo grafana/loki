@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
