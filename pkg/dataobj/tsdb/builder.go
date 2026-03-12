@@ -174,21 +174,6 @@ func (p *Builder) running(ctx context.Context) error {
 			return ctx.Err()
 		default:
 		}
-		if time.Since(p.lastFlush) > flushInterval {
-			if err := p.tsdbBuilder.Store(ctx); err != nil {
-				level.Error(p.logger).Log("msg", "failed to store tsdb builder", "err", err)
-			}
-			err := p.client.CommitRecords(ctx, p.processedRecords...)
-			if err != nil {
-				level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
-				p.metrics.commitFailures.Inc()
-				continue
-			}
-			p.metrics.commitsTotal.Inc()
-			p.lastFlush = time.Now()
-			p.processedRecords = p.processedRecords[:0]
-			level.Info(p.logger).Log("msg", "flushed tsdb builder", "time", time.Since(p.lastFlush))
-		}
 
 		fetches := p.client.PollRecords(ctx, -1)
 		if err := fetches.Err0(); err != nil {
@@ -211,6 +196,25 @@ func (p *Builder) running(ctx context.Context) error {
 			}
 		})
 	}
+}
+
+func (p *Builder) tryFlush(ctx context.Context) error {
+	if time.Since(p.lastFlush) > flushInterval {
+		if err := p.tsdbBuilder.Store(ctx); err != nil {
+			level.Error(p.logger).Log("msg", "failed to store tsdb builder", "err", err)
+		}
+		err := p.client.CommitRecords(ctx, p.processedRecords...)
+		if err != nil {
+			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
+			p.metrics.commitFailures.Inc()
+			return err
+		}
+		p.metrics.commitsTotal.Inc()
+		p.lastFlush = time.Now()
+		p.processedRecords = p.processedRecords[:0]
+		level.Info(p.logger).Log("msg", "flushed tsdb builder", "time", time.Since(p.lastFlush))
+	}
+	return nil
 }
 
 func (p *Builder) stopping(failureCase error) error {
@@ -246,6 +250,11 @@ func (p *Builder) processRecord(ctx context.Context, record *kgo.Record) {
 	p.processedRecords = append(p.processedRecords, record)
 
 	level.Info(p.logger).Log("msg", "finished processing event", "object_path", metastoreEvent.ObjectPath)
+
+	if err := p.tryFlush(calcCtx); err != nil {
+		level.Error(p.logger).Log("msg", "failed to flush tsdb builder", "err", err)
+		return
+	}
 }
 
 func (p *Builder) cleanupPartition(partition int32) {
