@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"context"
 	"fmt"
 	"iter"
 
@@ -28,6 +29,7 @@ const (
 	NodeTypeJoin                              // NodeTypeJoin represents a [Join].
 	NodeTypePointersScan                      // NodeTypePointersScan represents a [PointersScan].
 	NodeTypeBatching                          // NodeTypeBatching represents a [Batching] node.
+	NodeTypeCache                             // NodeTypeCache represents a [Cache] node.
 )
 
 // String returns a string representation of the NodeType.
@@ -61,6 +63,8 @@ func (t NodeType) String() string {
 		return "PointersScan"
 	case NodeTypeBatching:
 		return "Batching"
+	case NodeTypeCache:
+		return "Cache"
 	default:
 		return "Invalid"
 	}
@@ -80,6 +84,9 @@ type Node interface {
 	// Clone creates a deep copy of the Node. Cloned nodes do not retain the
 	// same ID.
 	Clone() Node
+	// CacheKey returns a string key representing this node.
+	// Non-cacheable nodes (those whose results cannot be safely cached) return "".
+	CacheKey(ctx context.Context) string
 	// isNode is a marker interface to denote a node, and only allows it to be
 	// implemented within this package
 	isNode()
@@ -112,6 +119,7 @@ var _ Node = (*Join)(nil)
 var _ Node = (*PointersScan)(nil)
 var _ Node = (*Merge)(nil)
 var _ Node = (*Batching)(nil)
+var _ Node = (*Cache)(nil)
 
 func (*DataObjScan) isNode()       {}
 func (*Projection) isNode()        {}
@@ -127,6 +135,7 @@ func (*Join) isNode()              {}
 func (*PointersScan) isNode()      {}
 func (*Merge) isNode()             {}
 func (*Batching) isNode()          {}
+func (*Cache) isNode()             {}
 
 var _ fmt.Stringer = (*Plan)(nil)
 

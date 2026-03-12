@@ -53,6 +53,9 @@ type Config struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer RequestStreamFilterer `yaml:"-"`
+
+	// Cache is an optional store for caching task-level results.
+	Cache CacheStore
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
@@ -67,6 +70,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		evaluator:          newExpressionEvaluator(),
 		getExternalInputs:  cfg.GetExternalInputs,
 		streamFilterer:     cfg.StreamFilterer,
+		cache:              cfg.Cache,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -95,6 +99,7 @@ type Context struct {
 	mergePrefetchCount int
 
 	streamFilterer RequestStreamFilterer
+	cache          CacheStore
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -141,6 +146,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return c.executeParallelize(ctx, n, inputs)
 	case *physical.Batching:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeBatching(ctx, n, inputs))
+	case *physical.Cache:
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeCache(ctx, n, inputs))
 	case *physical.ScanSet:
 		return c.executeScanSet(ctx, n)
 	default:
@@ -481,6 +488,21 @@ func (c *Context) executeBatching(ctx context.Context, node *physical.Batching, 
 		return errorPipeline(ctx, fmt.Errorf("batching expects exactly one input, got %d", len(inputs)))
 	}
 	return NewBatchingPipeline(inputs[0], node.BatchSize)
+}
+
+func (c *Context) executeCache(ctx context.Context, node *physical.Cache, inputs []Pipeline) Pipeline {
+	if len(inputs) != 1 {
+		return errorPipeline(ctx, fmt.Errorf("cache expects exactly one input, got %d", len(inputs)))
+	}
+	if c.cache == nil {
+		// No cache configured: pass through to the inner pipeline.
+		return inputs[0]
+	}
+	return &cachingPipeline{
+		inner: inputs[0],
+		store: c.cache,
+		key:   node.Key,
+	}
 }
 
 func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {
