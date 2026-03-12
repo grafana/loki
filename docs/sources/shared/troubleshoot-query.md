@@ -998,6 +998,7 @@ To remove error labels from results:
 ```logql
 {app="foo"} | json | drop __error__, __error_details__
 ```
+
 ## Authentication and connection errors
 
 These errors occur when connecting to Loki, often when using LogCLI.

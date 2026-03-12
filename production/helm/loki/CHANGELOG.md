@@ -14,6 +14,24 @@ Entries should include a reference to the pull request that introduced the chang
 ## Unreleased
 
 
+## 6.55.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.7 and GEL version to 3.6.5
+
+## 6.54.0
+
+**NOTE:** Effective [March 16, 2026](https://github.com/grafana/loki/issues/20705), the Grafana Loki Helm chart will be forked to the new repository [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts). 
+
+- [FEATURE] Add common labels to all resources [#20269](https://github.com/grafana/loki/pull/20269)
+- [FEATURE] Memcached: allow to override CPU in the auto-computed resource mode  [#20767](https://github.com/grafana/loki/pull/20767)
+- [ENHANCEMENT] Add the ability to customize write, read and backend workloads PDB maxUnavailable [#16871](https://github.com/grafana/loki/pull/16871)
+- [BUGFIX] Make the loki-sc-rules sidecar container compatible with the most recent versions of k8s-sidecar. [#20164](https://github.com/grafana/loki/pull/20164)
+- [BUGFIX] Fix incorrect syntax in loki-egress-dns CiliumNetworkPolicy manifest [#20221](https://github.com/grafana/loki/pull/20221)
+- [BUGFIX] Correctly pass arguments for kubectl in statefulset/pvc-recreation job. [#20556](https://github.com/grafana/loki/pull/20556)
+- [BUGFIX] Ignore dots in the image repository after first path segment when detecting image registry [#20695](https://github.com/grafana/loki/pull/20695)
+- [BUGFIX] Add support for `DISABLE_X509_STRICT_VERIFICATION` environment variable in sidecar containers. [#20818](https://github.com/grafana/loki/pull/20818).
+- [BUGFIX] Apply `trafficDistribution` setting to SingleBinary service template. [#20894](https://github.com/grafana/loki/pull/20894)
+
 ## 6.53.0
 
 - [CHANGE] Changed version of Grafana Loki to 3.6.5

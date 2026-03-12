@@ -57,6 +57,8 @@ imagePullSecrets: []
 # - SimpleScalable<->Distributed: Migrate from SimpleScalable to Distributed (or vice versa)
 # Note: SimpleScalable and Distributed REQUIRE the use of object storage.
 deploymentMode: SimpleScalable
+# -- Labels to be added to resources
+commonLabels: {}
 ######################################################################################################################
 #
 # Base Loki Configs including kubernetes configurations and configurations for Loki itself,
@@ -86,7 +88,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.6.5
+    tag: 3.6.7
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -630,7 +632,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default version of GEL to deploy
-  version: 3.6.3
+  version: 3.6.5
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -672,7 +674,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.6.5
+    tag: 3.6.7
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -1672,6 +1674,8 @@ write:
           topologyKey: kubernetes.io/hostname
   # -- DNS config for write pods
   dnsConfig: {}
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- Node selector for write pods
   nodeSelector: {}
   # -- Topology Spread Constraints for write pods
@@ -1811,6 +1815,8 @@ read:
           topologyKey: kubernetes.io/hostname
   # -- DNS config for read pods
   dnsConfig: {}
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- Node selector for read pods
   nodeSelector: {}
   # -- Topology Spread Constraints for read pods
@@ -1938,6 +1944,8 @@ backend:
           topologyKey: kubernetes.io/hostname
   # -- DNS config for backend pods
   dnsConfig: {}
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- Node selector for backend pods
   nodeSelector: {}
   # -- Topology Spread Constraints for backend pods
@@ -3662,6 +3670,8 @@ resultsCache:
   port: 11211
   # -- Amount of memory allocated to results-cache for object storage (in MB).
   allocatedMemory: 1024
+  # -- Amount of cpu allocated to results-cache for object storage (in integer or millicores).
+  allocatedCPU: 500m
   # -- Maximum item results-cache for memcached (in MB).
   maxItemMemory: 5
   # -- Maximum number of connections allowed
@@ -3777,6 +3787,8 @@ chunksCache:
   port: 11211
   # -- Amount of memory allocated to chunks-cache for object storage (in MB).
   allocatedMemory: 8192
+  # -- Amount of cpu allocated to chunks-cache for object storage (in integer or millicores).
+  allocatedCPU: 500m
   # -- Maximum item memory for chunks-cache (in MB).
   maxItemMemory: 5
   # -- Maximum number of connections allowed
@@ -3895,6 +3907,8 @@ chunksCache:
     port: 11211
     # -- Amount of memory allocated to chunks-cache-l2 for object storage (in MB).
     allocatedMemory: 8192
+    # -- Amount of cpu allocated to chunks-cache-l2 for object storage (in integer or millicores).
+    allocatedCPU: 500m
     # -- Maximum item memory for chunks-cache-l2 (in MB).
     maxItemMemory: 5
     # -- Maximum number of connections allowed
@@ -4094,7 +4108,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.9
+    tag: 2.5.0
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy
@@ -4116,6 +4130,8 @@ sidecar:
     allowPrivilegeEscalation: false
   # -- Set to true to skip tls verification for kube api calls.
   skipTlsVerify: false
+  # -- Set to true to disable strict x509 verification for kube api calls.
+  disableX509StrictVerification: false
   # -- Ensure that rule files aren't conflicting and being overwritten by prefixing their name with the namespace they are defined in.
   enableUniqueFilenames: false
   # -- Readiness probe definition. Probe is disabled on the sidecar by default.

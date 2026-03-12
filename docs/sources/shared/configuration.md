@@ -8065,12 +8065,18 @@ and be accepted with
 ```yaml
 time_of_most_recent_line - (max_chunk_age/2)
 ```
+This means the allowed out-of-order window is half of the configured max_chunk_age.
 
 Log entries with timestamps that are after this earliest time are accepted.
 Log entries further back in time return an out-of-order error.
 
 For example, if `max_chunk_age` is 2 hours
 and the stream `{foo="bar"}` has one entry at `8:00`,
+the earliest accepted timestamp will be calculated as: 8:00 - (2h / 2) = `7:00`.
+
 Loki will accept data for that stream as far back in time as `7:00`.
+
 If another log line is written at `10:00`,
+the earliest accepted timestamp becomes: 10:00 - (2h / 2) = `9:00`.
+
 Loki will accept data for that stream as far back in time as `9:00`.

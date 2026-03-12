@@ -13,11 +13,13 @@ import (
 
 type MetastorePlanner struct {
 	metastore metastore.Metastore
+	batchSize int
 }
 
-func NewMetastorePlanner(metastore metastore.Metastore) MetastorePlanner {
+func NewMetastorePlanner(metastore metastore.Metastore, batchSize int) MetastorePlanner {
 	return MetastorePlanner{
 		metastore: metastore,
+		batchSize: batchSize,
 	}
 }
 
@@ -73,5 +75,5 @@ func (p MetastorePlanner) Plan(ctx context.Context, selector Expression, predica
 		return nil, err
 	}
 
-	return plan, nil
+	return WrapWithBatching(plan, p.batchSize)
 }
