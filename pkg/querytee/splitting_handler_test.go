@@ -588,6 +588,99 @@ func TestSplittingHandler_SkipFanoutDisabled_AlwaysSplits(t *testing.T) {
 	}
 }
 
+// TestSplittingHandler_ReadsPath_GoldfishCorrelationIDHeader tests that the goldfish correlation ID
+// header is set (or absent) in responses for read requests depending on the sampling decision.
+func TestSplittingHandler_ReadsPath_GoldfishCorrelationIDHeader(t *testing.T) {
+	tests := []struct {
+		name           string
+		shouldSample   bool
+		correlationID  string
+		expectHeader   bool
+		expectedHeader string
+	}{
+		{
+			name:           "sampled read sets goldfish header",
+			shouldSample:   true,
+			correlationID:  "test-uuid",
+			expectHeader:   true,
+			expectedHeader: "test-uuid",
+		},
+		{
+			name:          "non-sampled read omits goldfish header",
+			shouldSample:  false,
+			correlationID: "",
+			expectHeader:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// The header is set by SplittingHandler.writeResponse, which is only reached
+			// when V1Backend is non-nil (otherwise NewSplittingHandler returns early with
+			// a plain fanout wrapper). Use a real V1Backend server to reach that code path.
+			v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
+			}))
+			defer v1Server.Close()
+
+			v1BackendURL, err := url.Parse(v1Server.URL)
+			require.NoError(t, err)
+			v1Backend, err := NewProxyBackend("v1", v1BackendURL, 5*time.Second, true, false)
+			require.NoError(t, err)
+
+			mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+				return &queryrange.LokiResponse{
+					Status: "success",
+					Data:   queryrange.LokiData{ResultType: "streams"},
+				}, nil
+			})
+
+			goldfishManager := &mockGoldfishManager{
+				shouldSampleResult:  tc.shouldSample,
+				correlationIDResult: tc.correlationID,
+			}
+
+			handler, err := NewSplittingHandler(SplittingHandlerConfig{
+				Codec:                     queryrange.DefaultCodec,
+				FanOutHandler:             mockFanOutHandler,
+				GoldfishManager:           goldfishManager,
+				V1Backend:                 v1Backend,
+				SkipFanoutWhenNotSampling: false,
+				RoutingMode:               RoutingModeV1Preferred,
+				SplitStart:                time.Time{},
+				SplitLag:                  0, // no split: goes directly to fanOutHandler
+			}, log.NewNopLogger())
+			require.NoError(t, err)
+
+			lokiReq := &queryrange.LokiInstantRequest{
+				Query:  `{app="test"}`,
+				TimeTs: time.Now(),
+				Limit:  100,
+				Path:   constants.PathLokiQuery,
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "test-tenant")
+			httpReq, err := queryrange.DefaultCodec.EncodeRequest(ctx, lokiReq)
+			require.NoError(t, err)
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httpReq)
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+
+			if tc.expectHeader {
+				require.Equal(t, tc.expectedHeader, recorder.Header().Get(goldfish.GoldfishCorrelationIDHeader),
+					"expected goldfish header to be set")
+			} else {
+				require.Empty(t, recorder.Header().Get(goldfish.GoldfishCorrelationIDHeader),
+					"expected goldfish header to be absent")
+			}
+		})
+	}
+}
+
 // TestSplittingHandler_MultiTenantQuery_RoutesToV1Only tests that multi-tenant queries
 // (X-Scope-OrgID: tenant1|tenant2) are routed exclusively to v1, regardless of routing mode.
 // This is because v2 does not support multi-tenant queries.

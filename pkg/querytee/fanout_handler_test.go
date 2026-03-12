@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,7 +16,27 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
 )
+
+// trackingSamplingMockManager is a mock Manager that tracks whether ShouldSample was called.
+type trackingSamplingMockManager struct {
+	shouldSampleResult  bool
+	correlationIDResult string
+	shouldSampleCalled  atomic.Bool
+}
+
+func (m *trackingSamplingMockManager) ShouldSample(_ string) (bool, string) {
+	m.shouldSampleCalled.Store(true)
+	return m.shouldSampleResult, m.correlationIDResult
+}
+
+func (m *trackingSamplingMockManager) SendToGoldfish(_ *http.Request, _, _ *goldfish.BackendResponse, _ string) {
+}
+
+func (m *trackingSamplingMockManager) Close() error {
+	return nil
+}
 
 func TestFanOutHandler_Do_ReturnsPreferredResponse(t *testing.T) {
 	// Create test backends
@@ -429,4 +450,110 @@ func TestFanOutHandler_Do_V2PreferredFallsBackToV1OnFailure(t *testing.T) {
 	require.Equal(t, "success", lokiResp.Status)
 	require.Len(t, lokiResp.Data.Result, 1)
 	require.Contains(t, lokiResp.Data.Result[0].Labels, `backend="1"`)
+}
+
+// TestFanOutHandler_Do_UpstreamDecisionPreventsDoubleSampling tests that when a sampling decision
+// is already present in context (placed there by SplittingHandler), FanOutHandler does NOT
+// call ShouldSample again. When no decision is in context, it DOES call ShouldSample.
+func TestFanOutHandler_Do_UpstreamDecisionPreventsDoubleSampling(t *testing.T) {
+	// Set up a single backend that always succeeds
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
+		require.NoError(t, err)
+	}))
+	defer backend.Close()
+
+	backendURL, _ := url.Parse(backend.URL)
+	proxyBackend, err := NewProxyBackend("backend-1", backendURL, 5*time.Second, true)
+	require.NoError(t, err)
+	backends := []*ProxyBackend{proxyBackend}
+
+	req := &queryrange.LokiRequest{
+		Query:   `{app="test"}`,
+		StartTs: time.Now().Add(-1 * time.Hour),
+		EndTs:   time.Now(),
+		Limit:   100,
+	}
+
+	t.Run("positive upstream decision skips ShouldSample", func(t *testing.T) {
+		mockManager := &trackingSamplingMockManager{
+			shouldSampleResult:  true,
+			correlationIDResult: "test-uuid",
+		}
+
+		handler := NewFanOutHandler(FanOutHandlerConfig{
+			Backends:        backends,
+			Codec:           queryrange.DefaultCodec,
+			Logger:          log.NewNopLogger(),
+			Metrics:         NewProxyMetrics(prometheus.NewRegistry()),
+			RouteName:       "test_route",
+			GoldfishManager: mockManager,
+		})
+
+		// Set upstream decision (sampled=true) in context
+		ctx := user.InjectOrgID(context.Background(), "test-tenant")
+		ctx = goldfish.ContextWithSamplingDecision(ctx, goldfish.SamplingDecision{
+			Sampled:       true,
+			CorrelationID: "test-uuid",
+		})
+
+		_, err := handler.Do(ctx, req)
+		require.NoError(t, err)
+
+		require.False(t, mockManager.shouldSampleCalled.Load(),
+			"ShouldSample should NOT be called when a positive upstream decision is in context")
+	})
+
+	t.Run("negative upstream decision skips ShouldSample", func(t *testing.T) {
+		mockManager := &trackingSamplingMockManager{
+			shouldSampleResult: false,
+		}
+
+		handler := NewFanOutHandler(FanOutHandlerConfig{
+			Backends:        backends,
+			Codec:           queryrange.DefaultCodec,
+			Logger:          log.NewNopLogger(),
+			Metrics:         NewProxyMetrics(prometheus.NewRegistry()),
+			RouteName:       "test_route",
+			GoldfishManager: mockManager,
+		})
+
+		// Set upstream decision (sampled=false) in context
+		ctx := user.InjectOrgID(context.Background(), "test-tenant")
+		ctx = goldfish.ContextWithSamplingDecision(ctx, goldfish.SamplingDecision{
+			Sampled: false,
+		})
+
+		_, err := handler.Do(ctx, req)
+		require.NoError(t, err)
+
+		require.False(t, mockManager.shouldSampleCalled.Load(),
+			"ShouldSample should NOT be called when a negative upstream decision is in context")
+	})
+
+	t.Run("no upstream decision calls ShouldSample", func(t *testing.T) {
+		mockManager := &trackingSamplingMockManager{
+			shouldSampleResult: false,
+		}
+
+		handler := NewFanOutHandler(FanOutHandlerConfig{
+			Backends:        backends,
+			Codec:           queryrange.DefaultCodec,
+			Logger:          log.NewNopLogger(),
+			Metrics:         NewProxyMetrics(prometheus.NewRegistry()),
+			RouteName:       "test_route",
+			GoldfishManager: mockManager,
+		})
+
+		// No upstream decision in context
+		ctx := user.InjectOrgID(context.Background(), "test-tenant")
+
+		_, err := handler.Do(ctx, req)
+		require.NoError(t, err)
+
+		require.True(t, mockManager.shouldSampleCalled.Load(),
+			"ShouldSample SHOULD be called when no upstream decision is in context")
+	})
 }

@@ -1066,3 +1066,71 @@ func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
 func formatTime(t time.Time) string {
 	return strconv.FormatInt(t.UnixNano(), 10)
 }
+
+// Test_ProxyEndpoint_WritePath_GoldfishCorrelationIDHeader tests that the goldfish correlation ID
+// header is set (or absent) in responses for write requests depending on the sampling decision.
+func Test_ProxyEndpoint_WritePath_GoldfishCorrelationIDHeader(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	backend1 := httptest.NewServer(handler)
+	defer backend1.Close()
+	backendURL1, err := url.Parse(backend1.URL)
+	require.NoError(t, err)
+
+	proxyBackend1, err := NewProxyBackend("backend-1", backendURL1, time.Second, true)
+	require.NoError(t, err)
+	backends := []*ProxyBackend{proxyBackend1}
+
+	tests := []struct {
+		name           string
+		shouldSample   bool
+		correlationID  string
+		expectHeader   bool
+		expectedHeader string
+	}{
+		{
+			name:           "sampled write sets goldfish header",
+			shouldSample:   true,
+			correlationID:  "test-uuid-sampled",
+			expectHeader:   true,
+			expectedHeader: "test-uuid-sampled",
+		},
+		{
+			name:          "non-sampled write omits goldfish header",
+			shouldSample:  false,
+			correlationID: "",
+			expectHeader:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			goldfishManager := &mockGoldfishManager{
+				shouldSampleResult:  tc.shouldSample,
+				correlationIDResult: tc.correlationID,
+			}
+
+			metrics := NewProxyMetrics(nil)
+			logger := log.NewNopLogger()
+			endpoint := NewProxyEndpoint(backends, "test", metrics, logger, nil, false)
+			endpoint.WithGoldfish(goldfishManager)
+
+			req, err := http.NewRequest("POST", "http://test"+constants.PathLokiPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Scope-OrgID", "test-tenant")
+
+			w := httptest.NewRecorder()
+			endpoint.ServeHTTP(w, req)
+
+			if tc.expectHeader {
+				require.Equal(t, tc.expectedHeader, w.Header().Get(querytee_goldfish.GoldfishCorrelationIDHeader),
+					"expected goldfish header to be set")
+			} else {
+				require.Empty(t, w.Header().Get(querytee_goldfish.GoldfishCorrelationIDHeader),
+					"expected goldfish header to be absent")
+			}
+		})
+	}
+}
