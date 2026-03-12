@@ -42,6 +42,8 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 		n.Kind = &Node_Merge{}
 	case *physical.PointersScan:
 		n.Kind = &Node_PointersScan{}
+	case *physical.Batching:
+		n.Kind = &Node_Batching{}
 	default:
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
@@ -149,6 +151,13 @@ func (n *Node_PointersScan) UnmarshalPhysical(from physical.Node) error {
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
+func (n *Node_Batching) UnmarshalPhysical(from physical.Node) error {
+	n.Batching = new(Batching)
+	return n.Batching.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
 func (n *AggregateRange) UnmarshalPhysical(from physical.Node) error {
 	rangeAgg, ok := from.(*physical.RangeAggregation)
 	if !ok {
@@ -166,12 +175,13 @@ func (n *AggregateRange) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = AggregateRange{
-		Grouping:  grouping,
-		Operation: op,
-		Start:     rangeAgg.Start,
-		End:       rangeAgg.End,
-		Step:      rangeAgg.Step,
-		Range:     rangeAgg.Range,
+		Grouping:       grouping,
+		Operation:      op,
+		Start:          rangeAgg.Start,
+		End:            rangeAgg.End,
+		Step:           rangeAgg.Step,
+		Range:          rangeAgg.Range,
+		MaxQuerySeries: int32(rangeAgg.MaxQuerySeries),
 	}
 
 	return nil
@@ -223,8 +233,9 @@ func (n *AggregateVector) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = AggregateVector{
-		Grouping:  grouping,
-		Operation: op,
+		Grouping:       grouping,
+		Operation:      op,
+		MaxQuerySeries: int32(vectorAgg.MaxQuerySeries),
 	}
 	return nil
 }
@@ -519,6 +530,20 @@ func (n *PointersScan) UnmarshalPhysical(from physical.Node) error {
 		Predicates: predicates,
 		Start:      scan.Start,
 		End:        scan.End,
+	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Batching) UnmarshalPhysical(from physical.Node) error {
+	batching, ok := from.(*physical.Batching)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = Batching{
+		BatchSize: batching.BatchSize,
 	}
 	return nil
 }

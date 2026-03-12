@@ -423,8 +423,8 @@ type DescribeInstancesInput struct {
 	//   to the state-reason-code filter.
 	//
 	//   - requester-id - The ID of the entity that launched the instance on your
-	//   behalf (for example, Amazon Web Services Management Console, Amazon EC2 Auto
-	//   Scaling, and so on).
+	//   behalf (for example, Amazon Web Services Management Console, Auto Scaling, and
+	//   so on).
 	//
 	//   - reservation-id - The ID of the instance's reservation. A reservation ID is
 	//   created any time you launch an instance. A reservation ID has a one-to-one

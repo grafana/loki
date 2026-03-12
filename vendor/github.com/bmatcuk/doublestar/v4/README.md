@@ -193,6 +193,27 @@ symlink to a directory. However, from this same example, a pattern such as
 Note: if combined with the WithFilesOnly option, symlinks to directories _will_
 be included in the result since no attempt is made to follow the symlink.
 
+```go
+WithNoHidden()
+```
+
+If passed, doublestar will not match hidden files and directories (those
+starting with a dot) when using wildcards. This follows traditional shell glob
+behavior where `*` or a `?` at the start will not match dotfiles by default.
+
+Hidden files can still be matched by explicitly including them in the pattern.
+For example, `.*` will match hidden files, and `.config/**` will match files
+inside the .config directory.
+
+The rule is:
+  - For `**`: do not descend into hidden directories
+  - For `*` or a pattern starting with `?`: do not match dotfiles or
+    directories
+
+On Windows, doublestar will check the file attributes and avoid hidden files
+and directories this way, instead of matching the filename. Therefore, any
+pattern with a `*` or `?` could potentially match a hidden file/directory.
+
 ### Glob
 
 ```go

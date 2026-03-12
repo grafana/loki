@@ -475,7 +475,7 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recMtx.Lock()
 	for _, s := range req.Streams {
-		parsedLabels, err := parser.ParseMetric(s.Labels)
+		parsedLabels, err := parser.NewParser(parser.Options{}).ParseMetric(s.Labels)
 		if err != nil {
 			h.t.Error("Failed to parse incoming labels", err)
 			return

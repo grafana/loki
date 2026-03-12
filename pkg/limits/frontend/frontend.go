@@ -76,15 +76,23 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 		logger,
 	)
 	// Set up the assigned partitions cache.
-	var assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
-	if cfg.AssignedPartitionsCacheTTL == 0 {
-		// When the TTL is 0, the cache is disabled.
-		assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
+	if cfg.AssignedPartitionsCacheEnabled {
+		f.assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
 	} else {
-		assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
+		f.assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
 	}
-	f.assignedPartitionsCache = assignedPartitionsCache
-	f.limitsClient = newRingLimitsClient(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger, reg)
+	// Set up the limits client.
+	f.limitsClient = newRingLimitsClient(limitsRing, clientPool, cfg.NumPartitions, f.assignedPartitionsCache, logger, reg)
+	if cfg.AcceptedStreamsCacheEnabled {
+		f.limitsClient = newCacheLimitsClient(
+			newAcceptedStreamsCache(
+				cfg.AcceptedStreamsCacheTTL,
+				cfg.AcceptedStreamsCacheTTLJitter,
+				reg,
+			),
+			f.limitsClient,
+		)
+	}
 	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
@@ -108,12 +116,14 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 // ExceedsLimits implements proto.IngestLimitsFrontendClient.
 func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	f.streams.Add(float64(len(req.Streams)))
-	results := make([]*proto.ExceedsLimitsResult, 0, len(req.Streams))
-	resps, err := f.limitsClient.ExceedsLimits(ctx, req)
+	resp, err := f.limitsClient.ExceedsLimits(ctx, req)
 	if err != nil {
 		// If the entire call failed, then all streams failed.
+		resp = &proto.ExceedsLimitsResponse{
+			Results: make([]*proto.ExceedsLimitsResult, 0, len(req.Streams)),
+		}
 		for _, stream := range req.Streams {
-			results = append(results, &proto.ExceedsLimitsResult{
+			resp.Results = append(resp.Results, &proto.ExceedsLimitsResult{
 				StreamHash: stream.StreamHash,
 				Reason:     uint32(limits.ReasonFailed),
 			})
@@ -121,39 +131,34 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 		f.streamsFailed.Add(float64(len(req.Streams)))
 		level.Error(f.logger).Log("msg", "failed to check request against limits", "err", err)
 	} else {
-		for _, resp := range resps {
-			for _, res := range resp.Results {
-				// Even if the call succeeded, some (or all) streams might
-				// still have failed.
-				if res.Reason == uint32(limits.ReasonFailed) {
-					f.streamsFailed.Inc()
-				} else {
-					f.streamsRejected.Inc()
-				}
+		for _, res := range resp.Results {
+			// Even if the call succeeded, some (or all) streams might still
+			// have failed.
+			if res.Reason == uint32(limits.ReasonFailed) {
+				f.streamsFailed.Inc()
+			} else {
+				f.streamsRejected.Inc()
 			}
-			results = append(results, resp.Results...)
 		}
 	}
-	return &proto.ExceedsLimitsResponse{Results: results}, nil
+	return resp, nil
 }
 
 func (f *Frontend) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
-	results := make([]*proto.UpdateRatesResult, 0, len(req.Streams))
-	resps, err := f.limitsClient.UpdateRates(ctx, req)
+	resp, err := f.limitsClient.UpdateRates(ctx, req)
 	if err != nil {
 		// If the entire call failed, then all streams failed.
+		resp = &proto.UpdateRatesResponse{
+			Results: make([]*proto.UpdateRatesResult, 0, len(req.Streams)),
+		}
 		for _, stream := range req.Streams {
-			results = append(results, &proto.UpdateRatesResult{
+			resp.Results = append(resp.Results, &proto.UpdateRatesResult{
 				StreamHash: stream.StreamHash,
 				Rate:       0,
 			})
 		}
-	} else {
-		for _, resp := range resps {
-			results = append(results, resp.Results...)
-		}
 	}
-	return &proto.UpdateRatesResponse{Results: results}, nil
+	return resp, nil
 }
 
 func (f *Frontend) CheckReady(ctx context.Context) error {

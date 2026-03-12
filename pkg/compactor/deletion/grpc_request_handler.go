@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
@@ -40,7 +41,15 @@ func (g *GRPCRequestHandler) GetDeleteRequests(ctx context.Context, req *grpc.Ge
 		return nil, errors.New(deletionNotAvailableMsg)
 	}
 
-	deleteRequests, err := g.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID, req.ForQuerytimeFiltering)
+	var timeRange *TimeRange
+	if !req.StartTime.IsZero() && !req.EndTime.IsZero() {
+		timeRange = &TimeRange{
+			Start: model.Time(req.StartTime.UnixMilli()),
+			End:   model.Time(req.EndTime.UnixMilli()),
+		}
+	}
+
+	deleteRequests, err := g.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID, req.ForQuerytimeFiltering, timeRange)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		return nil, err

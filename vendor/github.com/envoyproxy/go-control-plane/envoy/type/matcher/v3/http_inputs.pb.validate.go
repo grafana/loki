@@ -83,7 +83,7 @@ type HttpRequestHeaderMatchInputMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpRequestHeaderMatchInputMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -199,7 +199,7 @@ type HttpRequestTrailerMatchInputMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpRequestTrailerMatchInputMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -315,7 +315,7 @@ type HttpResponseHeaderMatchInputMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpResponseHeaderMatchInputMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -431,7 +431,7 @@ type HttpResponseTrailerMatchInputMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpResponseTrailerMatchInputMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -547,7 +547,7 @@ type HttpRequestQueryParamMatchInputMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpRequestQueryParamMatchInputMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

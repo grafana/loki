@@ -3,4 +3,4 @@
 package ecs
 
 // goModuleVersion is the tagged release for this module
-const goModuleVersion = "1.69.5"
+const goModuleVersion = "1.72.0"

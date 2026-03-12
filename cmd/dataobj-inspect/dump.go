@@ -20,6 +20,8 @@ import (
 type dumpCommand struct {
 	files      *[]string
 	printLines *bool
+	tenant     *string
+	streamID   *int
 }
 
 func (cmd *dumpCommand) run(c *kingpin.ParseContext) error {
@@ -44,6 +46,9 @@ func (cmd *dumpCommand) dumpFile(name string) {
 		exitWithErr(fmt.Errorf("failed to read dataobj: %w", err))
 	}
 	for offset, sec := range dataObj.Sections() {
+		if *cmd.tenant != "" && sec.Tenant != *cmd.tenant {
+			continue
+		}
 		switch {
 		case streams.CheckSection(sec):
 			cmd.dumpStreamsSection(context.TODO(), offset, sec)
@@ -66,6 +71,9 @@ func (cmd *dumpCommand) dumpStreamsSection(ctx context.Context, offset int, sec 
 
 	tmp := make([]streams.Stream, 512)
 	r := streams.NewRowReader(streamsSec)
+	if err = r.Open(ctx); err != nil {
+		exitWithErr(fmt.Errorf("failed to open row reader: %w", err))
+	}
 	for {
 		n, err := r.Read(ctx, tmp)
 		if err != nil && !errors.Is(err, io.EOF) {
@@ -75,6 +83,9 @@ func (cmd *dumpCommand) dumpStreamsSection(ctx context.Context, offset int, sec 
 			return
 		}
 		for _, s := range tmp[:n] {
+			if *cmd.streamID != 0 && *cmd.streamID != int(s.ID) {
+				continue
+			}
 			bold.Printf("\t\tid: %d, labels:\n", s.ID)
 			s.Labels.Range(func(l labels.Label) {
 				fmt.Printf("\t\t\t%s=%s\n", l.Name, l.Value)
@@ -93,6 +104,9 @@ func (cmd *dumpCommand) dumpLogsSection(ctx context.Context, offset int, sec *da
 	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
 	tmp := make([]logs.Record, 512)
 	r := logs.NewRowReader(logsSec)
+	if err = r.Open(ctx); err != nil {
+		exitWithErr(fmt.Errorf("failed to open row reader: %w", err))
+	}
 	for {
 		n, err := r.Read(ctx, tmp)
 		if err != nil && !errors.Is(err, io.EOF) {
@@ -102,6 +116,9 @@ func (cmd *dumpCommand) dumpLogsSection(ctx context.Context, offset int, sec *da
 			return
 		}
 		for _, r := range tmp[0:n] {
+			if *cmd.streamID != 0 && *cmd.streamID != int(r.StreamID) {
+				continue
+			}
 			bold.Printf("\t\tid: %d, timestamp: %s, metadata:\n", r.StreamID, r.Timestamp)
 			r.Metadata.Range(func(l labels.Label) {
 				fmt.Printf("\t\t\t%s=%s\n", l.Name, l.Value)
@@ -124,5 +141,7 @@ func addDumpCommand(app *kingpin.Application) {
 	cmd := &dumpCommand{}
 	dump := app.Command("dump", "Dump the contents of the data object.").Action(cmd.run)
 	cmd.printLines = dump.Flag("print-lines", "Prints the lines of each column.").Bool()
+	cmd.tenant = dump.Flag("tenant", "Which tenant to dump").String()
+	cmd.streamID = dump.Flag("stream", "Which stream ID to dump").Int()
 	cmd.files = dump.Arg("file", "The file to dump.").ExistingFiles()
 }

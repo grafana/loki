@@ -82,7 +82,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
 		attribute.Stringer("start", params.Start()),
-		attribute.Stringer("end", params.Start()),
+		attribute.Stringer("end", params.End()),
 		attribute.Stringer("step", params.Step()),
 		attribute.Stringer("length", params.End().Sub(params.Start())),
 		attribute.StringSlice("shards", params.Shards()),
@@ -115,7 +115,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		defer span.End()
 
 		timer := prometheus.NewTimer(e.metrics.logicalPlanning)
-		logicalPlan, err := logical.BuildPlan(params)
+		logicalPlan, err := logical.BuildPlan(ctx, params)
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
 			e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
@@ -172,6 +172,15 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			return nil, ErrNotSupported
 		}
 
+		plan, err = physical.WrapWithBatching(plan, e.cfg.BatchSize)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to wrap physical plan with batching", "err", err)
+			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "failed to wrap physical plan with batching")
+			return nil, ErrNotSupported
+		}
+
 		durPhysicalPlanning = timer.ObserveDuration()
 		level.Info(logger).Log(
 			"msg", "finished physical planning",
@@ -201,6 +210,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			MergePrefetchCount: e.cfg.MergePrefetchCount,
 			Bucket:             e.bucket,
 			Metastore:          e.metastore,
+			StreamFilterer:     e.cfg.StreamFilterer,
 		}
 
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
@@ -258,11 +268,15 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 }
 
 func IsQuerySupported(params logql.Params) bool {
-	_, err := logical.BuildPlan(params)
+	_, err := logical.BuildPlan(context.Background(), params)
 	return err == nil
 }
 
 func collectResult(ctx context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
+	if err := pipeline.Open(ctx); err != nil {
+		return err
+	}
+
 	for {
 		rec, err := pipeline.Read(ctx)
 		if err != nil {

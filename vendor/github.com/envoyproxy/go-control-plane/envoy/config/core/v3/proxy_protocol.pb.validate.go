@@ -90,7 +90,7 @@ type ProxyProtocolPassThroughTLVsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ProxyProtocolPassThroughTLVsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -234,7 +234,7 @@ type TlvEntryMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m TlvEntryMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -399,7 +399,7 @@ type ProxyProtocolConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ProxyProtocolConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -535,7 +535,7 @@ type PerHostConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m PerHostConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

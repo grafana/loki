@@ -5,6 +5,7 @@ var (
 	StatPipelineRowsOut      = NewStatisticInt64("rows.out", AggregationTypeSum)
 	StatPipelineReadCalls    = NewStatisticInt64("read.calls", AggregationTypeSum)
 	StatPipelineReadDuration = NewStatisticFloat64("read.duration", AggregationTypeSum)
+	StatPipelineExecDuration = NewStatisticFloat64("exec.duration", AggregationTypeSum)
 )
 
 // ColumnCompat statistics.
@@ -74,9 +75,34 @@ var (
 
 // Task scheduling statistics.
 var (
+	StatTaskCount = NewStatisticInt64("task.count", AggregationTypeFirst)
+
 	// Task queue duration (queued to assignment) in seconds.
-	StatTaskQueueDuration = NewStatisticFloat64("task.queue.duration", AggregationTypeSum)
+	StatTaskMaxQueueDuration = NewStatisticFloat64("task.max.queue.duration", AggregationTypeMax)
+
+	// Time from workflow start until last task assignment in seconds.
+	StatTaskAssignmentTailDuration = NewStatisticFloat64("task.assignment.tail.duration", AggregationTypeMax)
 
 	// Time spent waiting for task admission (before being queued) in seconds.
 	StatTaskAdmissionWaitDuration = NewStatisticFloat64("task.admission.wait.duration", AggregationTypeSum)
+)
+
+var (
+	// Track number of predicates applied to enforce delete request filtering.
+	StatDeletePredicates = NewStatisticInt64("delete.request.predicates", AggregationTypeFirst)
+)
+
+// Task statistics.
+var (
+	TaskRecvDuration            = NewStatisticFloat64("task.recv.duration", AggregationTypeSum)
+	TaskSendDuration            = NewStatisticFloat64("task.send.duration", AggregationTypeSum)
+	TaskRecordsSent             = NewStatisticInt64("task.records.sent", AggregationTypeSum)
+	TaskRowsSent                = NewStatisticInt64("task.rows.sent", AggregationTypeSum)
+	TaskDrainRecordsReceived    = NewStatisticInt64("task.drain.records.received", AggregationTypeSum)
+	TaskBatchingRecordsReceived = NewStatisticInt64("task.batching.records.received", AggregationTypeSum)
+	TaskBatchingRowsReceived    = NewStatisticInt64("task.batching.rows.received", AggregationTypeSum)
+	TaskBatchingBatchesProduced = NewStatisticInt64("task.batching.batches.produced", AggregationTypeSum)
+	TaskBatchingRowsWritten     = NewStatisticInt64("task.batching.rows.written", AggregationTypeSum)
+	TaskExternalSourcesCount    = NewStatisticInt64("task.external.sources.count", AggregationTypeFirst)
+	TaskExternalSinksCount      = NewStatisticInt64("task.external.sinks.count", AggregationTypeFirst)
 )

@@ -138,6 +138,7 @@ spec:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           {{- include "loki.ingester.readinessProbe" . | nindent 10 }}
           {{- include "loki.ingester.livenessProbe" . | nindent 10 }}
+          {{- include "loki.ingester.startupProbe" . | nindent 10 }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config

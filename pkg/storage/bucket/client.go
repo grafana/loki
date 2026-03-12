@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket/oss"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
@@ -60,9 +62,21 @@ var (
 	// added to track the status codes by method
 	bucketRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "objstore_bucket_transport_requests_total",
 			Help:      "Total number of HTTP transport requests made to the bucket backend by status code and method.",
+		},
+		[]string{"status_code", "method"},
+	)
+	bucketRequestsDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Name:                            "objstore_bucket_transport_hedged_requests_duration_seconds",
+			Help:                            "Time spent doing requests to the bucket backend after request hedging.",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 		},
 		[]string{"status_code", "method"},
 	)
@@ -70,6 +84,7 @@ var (
 
 func init() {
 	prometheus.MustRegister(bucketRequestsTotal)
+	prometheus.MustRegister(bucketRequestsDuration)
 	metrics = objstore.BucketMetrics(prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), "")
 }
 
@@ -245,12 +260,17 @@ func instrumentTransport() func(http.RoundTripper) http.RoundTripper {
 }
 
 func (i *instrumentedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	start := time.Now()
+
 	resp, err := i.next.RoundTrip(req)
 	if err != nil {
 		return resp, err
 	}
 
 	// Record status code and method metrics
-	bucketRequestsTotal.WithLabelValues(strconv.Itoa(resp.StatusCode), req.Method).Inc()
+	statusCode := strconv.Itoa(resp.StatusCode)
+	bucketRequestsTotal.WithLabelValues(statusCode, req.Method).Inc()
+	bucketRequestsDuration.WithLabelValues(statusCode, req.Method).Observe(time.Since(start).Seconds())
+
 	return resp, nil
 }

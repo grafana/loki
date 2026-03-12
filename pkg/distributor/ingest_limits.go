@@ -201,13 +201,21 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.Excee
 // UpdateRates updates the rates for the streams and returns a slice of the
 // updated rates for all streams. Any streams that could not have rates updated
 // have a rate of zero.
-func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams []SegmentedStream) ([]*proto.UpdateRatesResult, error) {
-	l.requests.WithLabelValues("UpdateRates").Inc()
+func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams []segmentedStream) ([]*proto.UpdateRatesResult, error) {
 	req, err := newUpdateRatesRequest(tenant, streams)
 	if err != nil {
+		// We update `UpdateRates` here because we have clients directly calling `UpdateRatesRaw`.
+		l.requests.WithLabelValues("UpdateRates").Inc()
 		l.requestsFailed.WithLabelValues("UpdateRates").Inc()
 		return nil, err
 	}
+	return l.UpdateRatesRaw(ctx, req)
+}
+
+// UpdateRatesRaw sends a pre-built UpdateRatesRequest to the frontend.
+// This is used by the rate batcher which accumulates stream data over time.
+func (l *ingestLimits) UpdateRatesRaw(ctx context.Context, req *proto.UpdateRatesRequest) ([]*proto.UpdateRatesResult, error) {
+	l.requests.WithLabelValues("UpdateRates").Inc()
 	resp, err := l.client.UpdateRates(ctx, req)
 	if err != nil {
 		l.requestsFailed.WithLabelValues("UpdateRates").Inc()
@@ -216,7 +224,7 @@ func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams [
 	return resp.Results, nil
 }
 
-func newUpdateRatesRequest(tenant string, streams []SegmentedStream) (*proto.UpdateRatesRequest, error) {
+func newUpdateRatesRequest(tenant string, streams []segmentedStream) (*proto.UpdateRatesRequest, error) {
 	// The distributor sends the hashes of all streams in the request to the
 	// limits-frontend. The limits-frontend is responsible for deciding if
 	// the request would exceed the tenants limits, and if so, which streams

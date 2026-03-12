@@ -52,8 +52,8 @@ go get -u github.com/knadh/koanf/parsers/toml
 
 ### Concepts
 
-- `koanf.Provider` is a generic interface that provides configuration, for example, from files, environment variables, HTTP sources, or anywhere. The configuration can either be raw bytes that a parser can parse, or it can be a nested `map[string]interface{}` that can be directly loaded.
-- `koanf.Parser` is a generic interface that takes raw bytes, parses, and returns a nested `map[string]interface{}`. For example, JSON and YAML parsers.
+- `koanf.Provider` is a generic interface that provides configuration, for example, from files, environment variables, HTTP sources, or anywhere. The configuration can either be raw bytes that a parser can parse, or it can be a nested `map[string]any` that can be directly loaded.
+- `koanf.Parser` is a generic interface that takes raw bytes, parses, and returns a nested `map[string]any`. For example, JSON and YAML parsers.
 - Once loaded into koanf, configuration are values queried by a delimited key path syntax. eg: `app.server.port`. Any delimiter can be chosen.
 - Configuration from multiple sources can be loaded and merged into a koanf instance, for example, load from a file first and override certain values with flags from the command line.
 
@@ -133,7 +133,7 @@ func main() {
 	// Watch the file and get a callback on change. The callback can do whatever,
 	// like re-load the configuration.
 	// File provider always returns a nil `event`.
-	f.Watch(func(event interface{}, err error) {
+	f.Watch(func(event any, err error) {
 		if err != nil {
 			log.Printf("watch error: %v", err)
 			return
@@ -430,7 +430,7 @@ func main() {
 
 #### Reading from nested maps
 
-The bundled `confmap` provider takes a `map[string]interface{}` that can be loaded into a koanf instance. 
+The bundled `confmap` provider takes a `map[string]any` that can be loaded into a koanf instance. 
 
 ```go
 package main
@@ -453,7 +453,7 @@ func main() {
 	// Load default values using the confmap provider.
 	// We provide a flat map with the "." delimiter.
 	// A nested map can be loaded by setting the delimiter to an empty string "".
-	k.Load(confmap.Provider(map[string]interface{}{
+	k.Load(confmap.Provider(map[string]any{
 		"parent1.name": "Default Name",
 		"parent3.name": "New name here",
 	}, "."), nil)
@@ -596,11 +596,11 @@ For example: merging JSON and YAML will most likely fail because JSON treats int
 
 ### Custom Providers and Parsers
 
-A Provider returns a nested `map[string]interface{}` config that can be loaded directly into koanf with `koanf.Load()` or it can return raw bytes that can be parsed with a Parser (again, loaded using `koanf.Load()`. Writing Providers and Parsers are easy. See the bundled implementations in the [providers](https://github.com/knadh/koanf/tree/master/providers) and [parsers](https://github.com/knadh/koanf/tree/master/parsers) directories.
+A Provider returns a nested `map[string]any` config that can be loaded directly into koanf with `koanf.Load()` or it can return raw bytes that can be parsed with a Parser (again, loaded using `koanf.Load()`. Writing Providers and Parsers are easy. See the bundled implementations in the [providers](https://github.com/knadh/koanf/tree/master/providers) and [parsers](https://github.com/knadh/koanf/tree/master/parsers) directories.
 
 ### Custom merge strategies
 
-By default, when merging two config sources using `Load()`, koanf recursively merges keys of nested maps (`map[string]interface{}`),
+By default, when merging two config sources using `Load()`, koanf recursively merges keys of nested maps (`map[string]any`),
 while static values are overwritten (slices, strings, etc). This behaviour can be changed by providing a custom merge function with the `WithMergeFunc` option.
 
 ```go
@@ -630,7 +630,7 @@ func main() {
 	}
 
 	jsonPath := "mock/mock.json"
-	if err := k.Load(file.Provider(jsonPath), json.Parser(), koanf.WithMergeFunc(func(src, dest map[string]interface{}) error {
+	if err := k.Load(file.Provider(jsonPath), json.Parser(), koanf.WithMergeFunc(func(src, dest map[string]any) error {
      // Your custom logic, copying values from src into dst
      return nil
     })); err != nil {
@@ -654,8 +654,8 @@ Install with `go get -u github.com/knadh/koanf/providers/$provider`
 | basicflag | `basicflag.Provider(f *flag.FlagSet, delim string)`           | Takes a stdlib `flag.FlagSet`                                                                                                                                                        |
 | posflag   | `posflag.Provider(f *pflag.FlagSet, delim string)`            | Takes an `spf13/pflag.FlagSet` (advanced POSIX compatible flags with multiple types) and provides a nested config map based on delim.                                                 |
 | env/v2       | `env.Provider(prefix, delim string, f func(s string) string)` | Takes an optional prefix to filter env variables by, an optional function that takes and returns a string to transform env variables, and returns a nested config map based on delim. |
-| confmap   | `confmap.Provider(mp map[string]interface{}, delim string)`   | Takes a premade `map[string]interface{}` conf map. If delim is provided, the keys are assumed to be flattened, thus unflattened using delim.                                          |
-| structs   | `structs.Provider(s interface{}, tag string)`                 | Takes a struct and struct tag.                                                                                                                                                        |
+| confmap   | `confmap.Provider(mp map[string]any, delim string)`   | Takes a premade `map[string]any` conf map. If delim is provided, the keys are assumed to be flattened, thus unflattened using delim.                                          |
+| structs   | `structs.Provider(s any, tag string)`                 | Takes a struct and struct tag.                                                                                                                                                        |
 | s3        | `s3.Provider(s3.S3Config{})`                                  | Takes a s3 config struct.                                                                                                                                                             |
 | rawbytes  | `rawbytes.Provider(b []byte)`                                 | Takes a raw `[]byte` slice to be parsed with a koanf.Parser                                                                                                                           |
 | vault/v2     | `vault.Provider(vault.Config{})`                              | Hashicorp Vault provider                                                                                                                           |

@@ -21,10 +21,7 @@ type snapshot struct {
 
 	// Regions to read from (sorted by offset).
 	regions []snapshotRegion
-
-	header         []byte
-	sectionRegions []sectionRegion
-	tailer         []byte
+	handles []scratch.Handle // Handles to remove from the scratch store when the snapshot is closed.
 }
 
 type sectionRegion struct {
@@ -36,30 +33,25 @@ type sectionRegion struct {
 // passed to the newSnapshot are owned by the snapshot, and are deleted
 // by the snapshot when calling [snapshot.Close].
 func newSnapshot(store scratch.Store, header []byte, sectionRegions []sectionRegion, tailer []byte) (*snapshot, error) {
-	s := &snapshot{
-		store:          store,
-		header:         header,
-		sectionRegions: sectionRegions,
-		tailer:         tailer,
-	}
-
-	if err := s.initRegions(); err != nil {
+	s := &snapshot{store: store}
+	if err := s.initRegions(header, sectionRegions, tailer); err != nil {
 		return nil, err
 	}
 	return s, nil
 }
 
-func (s *snapshot) initRegions() error {
-	s.addRegion(int64(len(s.header)), func() (io.ReadSeekCloser, error) {
-		return nopReadSeekerCloser{bytes.NewReader(s.header)}, nil
+func (s *snapshot) initRegions(header []byte, sectionRegions []sectionRegion, tailer []byte) error {
+	s.addRegion(int64(len(header)), func() (io.ReadSeekCloser, error) {
+		return nopReadSeekerCloser{bytes.NewReader(header)}, nil
 	})
 
-	for _, sectionRegion := range s.sectionRegions {
+	for _, sectionRegion := range sectionRegions {
 		s.addRegion(int64(sectionRegion.Size), func() (io.ReadSeekCloser, error) { return s.store.Read(sectionRegion.Handle) })
+		s.handles = append(s.handles, sectionRegion.Handle)
 	}
 
-	s.addRegion(int64(len(s.tailer)), func() (io.ReadSeekCloser, error) {
-		return nopReadSeekerCloser{bytes.NewReader(s.tailer)}, nil
+	s.addRegion(int64(len(tailer)), func() (io.ReadSeekCloser, error) {
+		return nopReadSeekerCloser{bytes.NewReader(tailer)}, nil
 	})
 
 	return nil
@@ -140,8 +132,8 @@ func (s *snapshot) Size() int64 {
 // handles from the backing scratch store.
 func (s *snapshot) Close() error {
 	var errs []error
-	for _, section := range s.sectionRegions {
-		errs = append(errs, s.store.Remove(section.Handle))
+	for _, handle := range s.handles {
+		errs = append(errs, s.store.Remove(handle))
 	}
 	return errors.Join(errs...)
 }

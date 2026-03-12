@@ -102,6 +102,12 @@ func (n *Node_PointersScan) MarshalPhysical(nodeID ulid.ULID) (physical.Node, er
 	return n.PointersScan.MarshalPhysical(nodeID)
 }
 
+// MarshalPhysical converts a protobuf node into a physical plan node. Returns
+// an error if the conversion fails or is unsupported.
+func (n *Node_Batching) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return n.Batching.MarshalPhysical(nodeID)
+}
+
 // MarshalPhysical converts a protobuf AggregateRange into a physical plan node. Returns
 // an error if the conversion fails or is unsupported.
 func (n *AggregateRange) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
@@ -118,12 +124,13 @@ func (n *AggregateRange) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error
 	return &physical.RangeAggregation{
 		NodeID: nodeID,
 
-		Grouping:  grouping,
-		Operation: operation,
-		Start:     n.Start,
-		End:       n.End,
-		Step:      n.Step,
-		Range:     n.Range,
+		Grouping:       grouping,
+		Operation:      operation,
+		Start:          n.Start,
+		End:            n.End,
+		Step:           n.Step,
+		Range:          n.Range,
+		MaxQuerySeries: int(n.MaxQuerySeries),
 	}, nil
 }
 
@@ -170,8 +177,9 @@ func (n *AggregateVector) MarshalPhysical(nodeID ulid.ULID) (physical.Node, erro
 	return &physical.VectorAggregation{
 		NodeID: nodeID,
 
-		Grouping:  grouping,
-		Operation: operation,
+		Grouping:       grouping,
+		Operation:      operation,
+		MaxQuerySeries: int(n.MaxQuerySeries),
 	}, nil
 }
 
@@ -395,5 +403,14 @@ func (n *PointersScan) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) 
 		Predicates: marshalExpressions(n.Predicates),
 		Start:      n.Start,
 		End:        n.End,
+	}, nil
+}
+
+// MarshalPhysical converts a protobuf Batching into a physical plan node. Returns
+// an error if the conversion fails or is unsupported.
+func (n *Batching) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return &physical.Batching{
+		NodeID:    nodeID,
+		BatchSize: n.BatchSize,
 	}, nil
 }

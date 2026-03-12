@@ -9,32 +9,32 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
+// NodeType represents the type of a node in the physical execution plan.
 type NodeType uint32
 
 const (
-	NodeTypeDataObjScan NodeType = iota
-	NodeTypeSortMerge
-	NodeTypeProjection
-	NodeTypeFilter
-	NodeTypeLimit
-	NodeTypeRangeAggregation
-	NodeTypeVectorAggregation
-	NodeTypeMerge
-	NodeTypeParse
-	NodeTypeCompat
-	NodeTypeTopK
-	NodeTypeParallelize
-	NodeTypeScanSet
-	NodeTypeJoin
-	NodeTypePointersScan
+	NodeTypeInvalid           NodeType = iota // NodeTypeInvalid is an illegal NodeType.
+	NodeTypeDataObjScan                       // NodeTypeDataObjScan represents a [DataObjScan].
+	NodeTypeProjection                        // NodeTypeProjection represents a [Projection].
+	NodeTypeFilter                            // NodeTypeFilter represents a [Filter].
+	NodeTypeLimit                             // NodeTypeLimit represents a [Limit].
+	NodeTypeRangeAggregation                  // NodeTypeRangeAggregation represents a [RangeAggregation].
+	NodeTypeVectorAggregation                 // NodeTypeVectorAggregation represents a [VectorAggregation].
+	NodeTypeMerge                             // NodeTypeMerge represents a [Merge].
+	NodeTypeCompat                            // NodeTypeCompat represents a [ColumnCompat].
+	NodeTypeTopK                              // NodeTypeTopK represents a [TopK].
+	NodeTypeParallelize                       // NodeTypeParallelize represents a [Parallelize].
+	NodeTypeScanSet                           // NodeTypeScanSet represents a [ScanSet].
+	NodeTypeJoin                              // NodeTypeJoin represents a [Join].
+	NodeTypePointersScan                      // NodeTypePointersScan represents a [PointersScan].
+	NodeTypeBatching                          // NodeTypeBatching represents a [Batching] node.
 )
 
+// String returns a string representation of the NodeType.
 func (t NodeType) String() string {
 	switch t {
 	case NodeTypeDataObjScan:
 		return "DataObjScan"
-	case NodeTypeSortMerge:
-		return "SortMerge"
 	case NodeTypeMerge:
 		return "Merge"
 	case NodeTypeProjection:
@@ -47,8 +47,6 @@ func (t NodeType) String() string {
 		return "RangeAggregation"
 	case NodeTypeVectorAggregation:
 		return "VectorAggregation"
-	case NodeTypeParse:
-		return "Parse"
 	case NodeTypeCompat:
 		return "Compat"
 	case NodeTypeTopK:
@@ -61,8 +59,10 @@ func (t NodeType) String() string {
 		return "Join"
 	case NodeTypePointersScan:
 		return "PointersScan"
+	case NodeTypeBatching:
+		return "Batching"
 	default:
-		return "Undefined"
+		return "Invalid"
 	}
 }
 
@@ -111,6 +111,7 @@ var _ Node = (*ScanSet)(nil)
 var _ Node = (*Join)(nil)
 var _ Node = (*PointersScan)(nil)
 var _ Node = (*Merge)(nil)
+var _ Node = (*Batching)(nil)
 
 func (*DataObjScan) isNode()       {}
 func (*Projection) isNode()        {}
@@ -125,6 +126,9 @@ func (*ScanSet) isNode()           {}
 func (*Join) isNode()              {}
 func (*PointersScan) isNode()      {}
 func (*Merge) isNode()             {}
+func (*Batching) isNode()          {}
+
+var _ fmt.Stringer = (*Plan)(nil)
 
 // Plan represents a physical execution plan as a directed acyclic graph (DAG).
 // It maintains the relationships between nodes, tracking parent-child connections
@@ -140,6 +144,12 @@ type Plan struct {
 // FromGraph constructs a Plan from a given DAG.
 func FromGraph(graph dag.Graph[Node]) *Plan {
 	return &Plan{graph: graph}
+}
+
+// String returns a string representation of the plan. It is a convenience
+// method for calling [PrintAsTree].
+func (p *Plan) String() string {
+	return PrintAsTree(p)
 }
 
 // Graph returns the underlying graph of the plan. Modifications to the returned

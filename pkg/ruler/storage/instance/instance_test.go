@@ -252,6 +252,28 @@ func (s *mockWalStorage) Appender(context.Context) storage.Appender {
 	return &mockAppender{s: s}
 }
 
+func (s *mockWalStorage) AppenderV2(ctx context.Context) storage.AppenderV2 {
+	return &mockAppenderV2{inner: s.Appender(ctx)}
+}
+
+type mockAppenderV2 struct {
+	inner storage.Appender
+}
+
+func (a *mockAppenderV2) Append(ref storage.SeriesRef, ls labels.Labels, _, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, _ storage.AppendV2Options) (storage.SeriesRef, error) {
+	switch {
+	case fh != nil:
+		return a.inner.AppendHistogram(ref, ls, t, nil, fh)
+	case h != nil:
+		return a.inner.AppendHistogram(ref, ls, t, h, nil)
+	default:
+		return a.inner.Append(ref, ls, t, v)
+	}
+}
+
+func (a *mockAppenderV2) Commit() error   { return a.inner.Commit() }
+func (a *mockAppenderV2) Rollback() error { return a.inner.Rollback() }
+
 type mockAppender struct {
 	s *mockWalStorage
 }
