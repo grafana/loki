@@ -44,6 +44,7 @@ type Config struct {
 	JobsConfig                      JobsConfig            `yaml:"jobs_config"`
 	DeletionMarkerObjectStorePrefix string                `yaml:"deletion_marker_object_store_prefix"`
 	UseSectionRefTable              bool                  `yaml:"use_section_ref_table"`
+	MaxSourceFilesPerCompaction     int                   `yaml:"max_source_files_per_compaction"`
 }
 
 // RegisterFlags registers flags.
@@ -87,6 +88,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.JobsConfig.RegisterFlagsWithPrefix("compactor.jobs.", f)
 	f.StringVar(&cfg.DeletionMarkerObjectStorePrefix, "compactor.deletion-marker-object-store-prefix", "", "Object storage path prefix for storing deletion markers. The prefix must end with a forward slash(/). Leave empty to continue to store deletion markers on the local disk.")
 	f.BoolVar(&cfg.UseSectionRefTable, "compactor.use-section-ref-table", false, "Enable section-ref-table mode for TSDB compaction. In this mode compactor expects companion .sections.gz files for source TSDB indices.")
+	f.IntVar(&cfg.MaxSourceFilesPerCompaction, "compactor.max-source-files-per-compaction", 1000, "Maximum number of source index files to process per compaction run per index set. This limits the number of files downloaded and opened simultaneously. When sidecars are present, they count towards this limit.")
 }
 
 // Validate verifies the config does not contain inappropriate values
@@ -96,6 +98,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.MaxCompactionParallelism < 1 {
 		return errors.New("max compaction parallelism must be >= 1")
+	}
+	if cfg.MaxSourceFilesPerCompaction < 1 {
+		return errors.New("max source files per compaction must be >= 1")
 	}
 
 	if cfg.CompactorRing.NumTokens != ringNumTokens {

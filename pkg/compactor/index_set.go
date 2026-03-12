@@ -72,24 +72,24 @@ type indexSet struct {
 }
 
 // newUserIndexSet intializes a new index set for user index.
-func newUserIndexSet(ctx context.Context, tableName, userID string, baseUserIndexSet storage.IndexSet, workingDir string, logger log.Logger) (*indexSet, error) {
+func newUserIndexSet(ctx context.Context, tableName, userID string, baseUserIndexSet storage.IndexSet, workingDir string, maxSourceFiles int, logger log.Logger) (*indexSet, error) {
 	if !baseUserIndexSet.IsUserBasedIndexSet() {
 		return nil, fmt.Errorf("base index set is not for user index")
 	}
 
-	return newIndexSet(ctx, tableName, userID, baseUserIndexSet, workingDir, log.With(logger, "user-id", userID))
+	return newIndexSet(ctx, tableName, userID, baseUserIndexSet, workingDir, maxSourceFiles, log.With(logger, "user-id", userID))
 }
 
 // newCommonIndexSet intializes a new index set for common index.
-func newCommonIndexSet(ctx context.Context, tableName string, baseUserIndexSet storage.IndexSet, workingDir string, logger log.Logger) (*indexSet, error) {
+func newCommonIndexSet(ctx context.Context, tableName string, baseUserIndexSet storage.IndexSet, workingDir string, maxSourceFiles int, logger log.Logger) (*indexSet, error) {
 	if baseUserIndexSet.IsUserBasedIndexSet() {
 		return nil, fmt.Errorf("base index set is not for common index")
 	}
 
-	return newIndexSet(ctx, tableName, "", baseUserIndexSet, workingDir, logger)
+	return newIndexSet(ctx, tableName, "", baseUserIndexSet, workingDir, maxSourceFiles, logger)
 }
 
-func newIndexSet(ctx context.Context, tableName, userID string, baseIndexSet storage.IndexSet, workingDir string, logger log.Logger) (*indexSet, error) {
+func newIndexSet(ctx context.Context, tableName, userID string, baseIndexSet storage.IndexSet, workingDir string, maxSourceFiles int, logger log.Logger) (*indexSet, error) {
 	if err := util.EnsureDirectory(workingDir); err != nil {
 		return nil, err
 	}
@@ -112,9 +112,9 @@ func newIndexSet(ctx context.Context, tableName, userID string, baseIndexSet sto
 	if err != nil {
 		return nil, err
 	}
-	if len(ui.sourceObjects) > 1000 {
-		level.Info(ui.logger).Log("msg", "listing more than 1000 source index files, truncating to first 1000", "count", len(ui.sourceObjects))
-		ui.sourceObjects = ui.sourceObjects[:1000]
+	if maxSourceFiles > 0 && len(ui.sourceObjects) > maxSourceFiles {
+		level.Info(ui.logger).Log("msg", "listing more source index files than limit, truncating", "count", len(ui.sourceObjects), "limit", maxSourceFiles)
+		ui.sourceObjects = ui.sourceObjects[:maxSourceFiles]
 	}
 
 	return ui, nil

@@ -85,6 +85,7 @@ type table struct {
 	name               string
 	workingDirectory   string
 	uploadConcurrency  int
+	maxSourceFiles     int
 	indexStorageClient storage.Client
 	indexCompactor     IndexCompactor
 	tableMarker        retention.TableMarker
@@ -103,7 +104,7 @@ type table struct {
 func newTable(ctx context.Context, workingDirectory string, indexStorageClient storage.Client,
 	indexCompactor IndexCompactor, periodConfig config.PeriodConfig,
 	tableMarker retention.TableMarker, expirationChecker tableExpirationChecker,
-	uploadConcurrency int,
+	uploadConcurrency, maxSourceFiles int,
 ) (*table, error) {
 	err := chunk_util.EnsureDirectory(workingDirectory)
 	if err != nil {
@@ -123,6 +124,7 @@ func newTable(ctx context.Context, workingDirectory string, indexStorageClient s
 		baseUserIndexSet:   storage.NewIndexSet(indexStorageClient, true),
 		baseCommonIndexSet: storage.NewIndexSet(indexStorageClient, false),
 		uploadConcurrency:  uploadConcurrency,
+		maxSourceFiles:     maxSourceFiles,
 	}
 	table.logger = log.With(util_log.Logger, "table-name", table.name)
 
@@ -140,7 +142,7 @@ func (t *table) compact() error {
 
 	level.Info(t.logger).Log("msg", "listed files", "count", len(indexFiles))
 
-	t.indexSets[""], err = newCommonIndexSet(t.ctx, t.name, t.baseCommonIndexSet, t.workingDirectory, t.logger)
+	t.indexSets[""], err = newCommonIndexSet(t.ctx, t.name, t.baseCommonIndexSet, t.workingDirectory, t.maxSourceFiles, t.logger)
 	if err != nil {
 		return err
 	}
@@ -150,7 +152,7 @@ func (t *table) compact() error {
 
 	for _, userID := range t.usersWithPerUserIndex {
 		var err error
-		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
+		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.maxSourceFiles, t.logger)
 		if err != nil {
 			return err
 		}
@@ -163,7 +165,7 @@ func (t *table) compact() error {
 		indexSetsMtx.Lock()
 		defer indexSetsMtx.Unlock()
 
-		indexSet, err := newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
+		indexSet, err := newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.maxSourceFiles, t.logger)
 		if err != nil {
 			return nil, err
 		}
