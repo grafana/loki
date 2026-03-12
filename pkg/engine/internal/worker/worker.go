@@ -105,6 +105,13 @@ type readyResponse struct {
 	Error error
 }
 
+// managedThread pairs a thread with its cancellation function, allowing
+// individual threads to be stopped during dynamic resizing.
+type managedThread struct {
+	thread *thread
+	cancel context.CancelFunc
+}
+
 // Worker requests tasks from a set of [scheduler.Scheduler] instances and
 // executes them. Task results are forwarded along streams, which are received
 // by other [Worker] instances or the scheduler.
@@ -118,6 +125,12 @@ type Worker struct {
 
 	dialer   wire.Dialer
 	listener wire.Listener
+
+	threadsMut     sync.Mutex
+	managedThreads []managedThread
+	threadsCtx     context.Context
+	threadsWg      sync.WaitGroup
+	nextThreadID   int
 
 	resourcesMut sync.RWMutex
 	sources      map[ulid.ULID]*streamSource
@@ -188,28 +201,14 @@ func (w *Worker) Service() services.Service {
 func (w *Worker) run(ctx context.Context) error {
 	threadsCtx, threadsCancel := context.WithCancel(context.Background())
 	defer threadsCancel()
-	threadsGroup, threadsCtx := errgroup.WithContext(threadsCtx)
 
-	// Spin up worker threads.
-	var threads []*thread
-	for i := range w.numThreads {
-		t := &thread{
-			BatchSize:      w.config.BatchSize,
-			PrefetchBytes:  w.config.PrefetchBytes,
-			Logger:         log.With(w.logger, "thread", i),
-			Bucket:         w.config.Bucket,
-			Metastore:      w.config.Metastore,
-			StreamFilterer: w.config.StreamFilterer,
+	// Store the base context so SetNumThreads can derive per-thread contexts.
+	w.threadsMut.Lock()
+	w.threadsCtx = threadsCtx
+	w.threadsMut.Unlock()
 
-			Metrics:    w.metrics,
-			JobManager: w.jobManager,
-		}
-		threads = append(threads, t)
-
-		threadsGroup.Go(func() error { return t.Run(threadsCtx) })
-	}
-
-	w.collector.setThreads(threads)
+	// Spawn initial worker threads.
+	w.SetNumThreads(w.numThreads)
 
 	// Spin up the listener for peer connections
 	peerConnectionsCtx, peerConnectionsCancel := context.WithCancel(context.Background())
@@ -244,20 +243,18 @@ func (w *Worker) run(ctx context.Context) error {
 	// Wait for shutdown
 	<-ctx.Done()
 
-	// Signal all worker threads to stop. This will make them not to ask for new tasks, but continue processing current jobs.
+	// Signal all worker threads to stop. This will make them not ask for new
+	// tasks, but continue processing current jobs.
 	threadsCancel()
 
 	// Wait for all worker threads to finish their current jobs.
-	err := threadsGroup.Wait()
-	if err != nil {
-		return err
-	}
+	w.threadsWg.Wait()
 
 	// Stop scheduler loop
 	schedulerCancel()
 
 	// Wait for scheduler loop to finish
-	err = schedulerGroup.Wait()
+	err := schedulerGroup.Wait()
 	if err != nil {
 		return err
 	}
@@ -266,6 +263,66 @@ func (w *Worker) run(ctx context.Context) error {
 	peerConnectionsCancel()
 
 	return nil
+}
+
+// SetNumThreads dynamically resizes the worker thread pool to n threads.
+// New threads are spawned if n is greater than the current count; excess
+// threads are canceled (finishing their current task) if n is smaller.
+//
+// SetNumThreads may only be called after the worker has started running.
+func (w *Worker) SetNumThreads(n int) {
+	w.threadsMut.Lock()
+	defer w.threadsMut.Unlock()
+
+	current := len(w.managedThreads)
+	if n == current {
+		return
+	}
+
+	if n > current {
+		for i := current; i < n; i++ {
+			ctx, cancel := context.WithCancel(w.threadsCtx)
+			t := &thread{
+				BatchSize:      w.config.BatchSize,
+				PrefetchBytes:  w.config.PrefetchBytes,
+				Logger:         log.With(w.logger, "thread", w.nextThreadID),
+				Bucket:         w.config.Bucket,
+				Metastore:      w.config.Metastore,
+				StreamFilterer: w.config.StreamFilterer,
+
+				Metrics:    w.metrics,
+				JobManager: w.jobManager,
+			}
+			w.nextThreadID++
+			w.managedThreads = append(w.managedThreads, managedThread{thread: t, cancel: cancel})
+
+			w.threadsWg.Add(1)
+			go func() {
+				defer w.threadsWg.Done()
+				_ = t.Run(ctx)
+			}()
+		}
+	} else {
+		for i := n; i < current; i++ {
+			w.managedThreads[i].cancel()
+		}
+		w.managedThreads = w.managedThreads[:n]
+	}
+
+	threads := make([]*thread, len(w.managedThreads))
+	for i, mt := range w.managedThreads {
+		threads[i] = mt.thread
+	}
+	w.collector.setThreads(threads)
+
+	level.Info(w.logger).Log("msg", "worker threads updated", "previous", current, "current", n)
+}
+
+// NumThreads returns the current number of worker threads.
+func (w *Worker) NumThreads() int {
+	w.threadsMut.Lock()
+	defer w.threadsMut.Unlock()
+	return len(w.managedThreads)
 }
 
 // runAcceptLoop handles incoming connections from peers. Incoming connections
@@ -425,7 +482,7 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 	// Perform a handshake with the scheduler. This must be done before
 	// launching the other worker message goroutines, as WorkerReady messages
 	// are rejected until a WorkerHello is acknowledged.
-	if err := peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: w.numThreads}); err != nil {
+	if err := peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: w.NumThreads()}); err != nil {
 		level.Error(logger).Log("msg", "failed to perform handshake with scheduler", "err", err)
 		return err
 	}

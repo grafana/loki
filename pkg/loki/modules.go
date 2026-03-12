@@ -1575,6 +1575,8 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		worker.RegisterWorkerServer(t.Server.HTTP)
 	}
 
+	t.Server.HTTP.Path("/query-engine/worker/threads").Methods("GET", "POST").Handler(worker.ThreadsHandler())
+
 	return worker.Service(), nil
 }
 

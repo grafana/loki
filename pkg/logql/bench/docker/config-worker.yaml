@@ -39,6 +39,7 @@ query_engine:
   distributed: true
   scheduler_lookup_address: dns+engine:3100
   batch_size: 8192
+  worker_threads: 32
 
 dataobj:
   storage_bucket_prefix: "dataobj"

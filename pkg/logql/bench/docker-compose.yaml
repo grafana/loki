@@ -64,10 +64,12 @@ services:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_AUTH_BASIC_ENABLED=false
       - GF_USERS_DEFAULT_THEME=light
+      - GF_FEATURE_TOGGLES_ENABLE=dashboardNewLayouts,dashboardScene,dashboardSceneForViewers,dashboardSceneSolo
     volumes:
       - ./docker/grafana-compose-datasources.yaml:/etc/grafana/provisioning/datasources/ds.yaml:ro
       - ./docker/grafana-dashboard-provisioning.yaml:/etc/grafana/provisioning/dashboards/default.yaml:ro
       - ./docker/grafana-dashboard-v2-engine.json:/var/lib/grafana/dashboards/v2-engine.json:ro
+      - ./docker/grafana-dashboard-thor.json:/var/lib/grafana/dashboards/thor-scheduler.json:ro
     depends_on:
       loki:
         condition: service_healthy
@@ -81,6 +83,7 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --web.enable-remote-write-receiver
+      - --enable-feature=native-histograms
 
   alloy:
     image: grafana/alloy:latest

@@ -427,6 +427,31 @@ func readTable(ctx context.Context, t *testing.T, p executor.Pipeline) arrow.Tab
 	return array.NewTableFromRecords(recs[0].Schema(), recs)
 }
 
+func TestSetNumThreads(t *testing.T) {
+	logger := log.NewNopLogger()
+	if testing.Verbose() {
+		logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	}
+
+	net := newTestNetwork()
+	_ = newTestScheduler(t, logger, net)
+	w := newTestWorker(t, logger, objtest.Location{}, net)
+
+	require.Equal(t, 2, w.NumThreads(), "initial thread count should match config")
+
+	w.SetNumThreads(4)
+	require.Equal(t, 4, w.NumThreads(), "thread count should increase after scale-up")
+
+	w.SetNumThreads(1)
+	require.Equal(t, 1, w.NumThreads(), "thread count should decrease after scale-down")
+
+	w.SetNumThreads(1)
+	require.Equal(t, 1, w.NumThreads(), "thread count should remain the same for no-op")
+
+	w.SetNumThreads(3)
+	require.Equal(t, 3, w.NumThreads(), "thread count should increase again after re-scale-up")
+}
+
 type testAddr string
 
 var _ net.Addr = testAddr("")

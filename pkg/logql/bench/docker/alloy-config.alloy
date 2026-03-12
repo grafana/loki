@@ -31,8 +31,10 @@ prometheus.scrape "compose" {
 	targets    = discovery.relabel.compose.output
 	forward_to = [prometheus.remote_write.default.receiver]
 
-	scrape_interval = "2s"
-	scrape_timeout  = "1s"
+	scrape_interval           = "2s"
+	scrape_timeout            = "1s"
+	scrape_native_histograms  = true
+	scrape_classic_histograms = true
 }
 
 // Send scraped metrics to the local Prometheus instance.

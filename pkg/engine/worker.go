@@ -1,9 +1,12 @@
 package engine
 
 import (
+	"encoding/json"
 	"flag"
+	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -178,4 +181,49 @@ func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
 // UnregisterMetrics unregisters metrics about w from reg.
 func (w *Worker) UnregisterMetrics(reg prometheus.Registerer) {
 	w.inner.UnregisterMetrics(reg)
+}
+
+// ThreadsHandler returns an HTTP handler that supports reading and updating the
+// number of worker threads at runtime.
+//
+//   - GET returns the current thread count.
+//   - POST with form value "worker_threads" resizes the thread pool.
+func (w *Worker) ThreadsHandler() http.HandlerFunc {
+	type response struct {
+		Status  string `json:"status,omitempty"`
+		Message string `json:"message"`
+	}
+
+	return func(rw http.ResponseWriter, r *http.Request) {
+		var resp response
+		status := http.StatusOK
+
+		rw.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+		switch r.Method {
+		case "GET":
+			resp = response{
+				Message: fmt.Sprintf("Current worker threads: %d", w.inner.NumThreads()),
+			}
+		case "POST":
+			raw := r.FormValue("worker_threads")
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 1 {
+				status = http.StatusBadRequest
+				resp = response{
+					Status:  "failed",
+					Message: "worker_threads must be a positive integer",
+				}
+			} else {
+				w.inner.SetNumThreads(n)
+				resp = response{
+					Status:  "success",
+					Message: fmt.Sprintf("Worker threads set to %d", n),
+				}
+			}
+		}
+
+		rw.WriteHeader(status)
+		_ = json.NewEncoder(rw).Encode(resp)
+	}
 }

@@ -271,7 +271,7 @@ func printStats(w *os.File, s statsSnapshot, elapsed time.Duration) {
 	if s.total > 0 {
 		avgMs = s.totalMs / s.total
 	}
-	qps := float64(s.total) / elapsed.Seconds()
+	qps := float64(s.success) / elapsed.Seconds()
 	fmt.Fprintf(w, "  total=%-8d ok=%-8d 4xx=%-6d 5xx=%-6d err=%-6d qps=%.1f  latency min=%dms avg=%dms max=%dms\n",
 		s.total, s.success, s.http4xx, s.http5xx, s.errors, qps, s.minMs, avgMs, s.maxMs)
 }

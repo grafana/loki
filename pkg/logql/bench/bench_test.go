@@ -514,6 +514,76 @@ func TestStoresGenerateData(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestV2EngineDeadlock verifies that the v2 query engine does not deadlock
+// under concurrent query load. The deadlock occurs because each query creates
+// a parent task (aggregation) and child tasks (scans) that depend on each other:
+// parent blocks reading from scan, scan blocks writing until parent consumes.
+// With limited worker threads and enough concurrent queries, all threads can be
+// occupied by one type of task, starving the other and halting progress.
+func TestV2EngineDeadlock(t *testing.T) {
+	entries, err := os.ReadDir(DefaultDataDir)
+	if err != nil || len(entries) == 0 {
+		t.Skip("Data directory is empty or does not exist. Run 'go generate ./...' first.")
+	}
+
+	metadata, err := LoadMetadata(DefaultDataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metadata.AllSelectors) == 0 {
+		t.Fatal("no selectors found in metadata")
+	}
+	selector := metadata.AllSelectors[0]
+	query := selector
+	start := metadata.TimeRange.Start
+	end := start.Add(5 * time.Minute)
+
+	const (
+		workerThreads = 2
+		concurrency   = 8
+		timeout       = 30 * time.Second
+	)
+
+	store, err := newV2EngineStoreWithThreads(DefaultDataDir, testTenant, workerThreads)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	ctx = user.InjectOrgID(ctx, testTenant)
+
+	g, ctx := errgroup.WithContext(ctx)
+	for range concurrency {
+		g.Go(func() error {
+			params, err := logql.NewLiteralParams(
+				query,
+				start,
+				end,
+				0,
+				0,
+				logproto.FORWARD,
+				1000,
+				nil,
+				nil,
+			)
+			if err != nil {
+				return err
+			}
+			_, err = store.engine.Query(params).Exec(ctx)
+			if errors.Is(err, context.DeadlineExceeded) {
+				return fmt.Errorf("query deadlocked (timed out after %s)", timeout)
+			}
+			return err
+		})
+	}
+
+	err = g.Wait()
+	if err != nil {
+		t.Fatalf("concurrent queries failed: %v", err)
+	}
+}
+
 // assertResultNotEmpty verifies that a query result is not empty
 // This catches templating issues where queries may resolve to selectors that match no data
 func assertResultNotEmpty(t *testing.T, data parser.Value, message string) {

@@ -186,6 +186,78 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 	}, nil
 }
 
+// newV2EngineStoreWithThreads creates a v2 engine store with a specific number
+// of worker threads. Useful for testing thread starvation and deadlock scenarios.
+func newV2EngineStoreWithThreads(dir string, tenantID string, workerThreads int) (*DataObjV2EngineStore, error) {
+	storageDir := filepath.Join(dir, storageDir)
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	storeDir := filepath.Join(storageDir, "dataobj")
+	fsBucket, err := filesystem.NewBucket(storeDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create filesystem bucket: %w", err)
+	}
+
+	registerer := prometheus.NewRegistry()
+	metastoreCfg := metastore.Config{IndexStoragePrefix: "index/v0"}
+	ms := metastore.NewObjectMetastore(fsBucket, metastoreCfg, logger, metastore.NewObjectMetastoreMetrics(registerer))
+
+	sched, err := engine.NewScheduler(engine.SchedulerParams{
+		Logger: log.With(logger, "component", "scheduler"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating scheduler: %w", err)
+	}
+	if err := services.StartAndAwaitRunning(ctx, sched.Service()); err != nil {
+		return nil, fmt.Errorf("starting scheduler: %w", err)
+	}
+
+	execCfg := engine.ExecutorConfig{
+		BatchSize:          512,
+		RangeConfig:        rangeio.DefaultConfig,
+		MergePrefetchCount: 8,
+	}
+
+	worker, err := engine.NewWorker(engine.WorkerParams{
+		Logger:         log.With(logger, "component", "worker"),
+		Bucket:         fsBucket,
+		LocalScheduler: sched,
+		Config: engine.WorkerConfig{
+			WorkerThreads:          workerThreads,
+			SchedulerLookupInterval: time.Minute,
+		},
+		Executor:  execCfg,
+		Metastore: ms,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating worker: %w", err)
+	}
+	if err := services.StartAndAwaitRunning(ctx, worker.Service()); err != nil {
+		return nil, fmt.Errorf("starting worker: %w", err)
+	}
+
+	newEngine, err := engine.New(engine.Params{
+		Logger:     logger,
+		Registerer: registerer,
+		Config: engine.Config{
+			Executor: execCfg,
+		},
+		Scheduler: sched,
+		Limits:    logql.NoLimits,
+		Metastore: ms,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating engine: %w", err)
+	}
+
+	return &DataObjV2EngineStore{
+		engine:   (*engineAdapter)(newEngine),
+		tenantID: tenantID,
+		dataDir:  storageDir,
+	}, nil
+}
+
 func newServerService(name string, logger log.Logger, registerer prometheus.Registerer) (*server.Server, services.Service, error) {
 	logger = log.With(logger, "component", "server", "server", name)
 	serv, err := server.New(server.Config{
