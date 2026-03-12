@@ -32,9 +32,10 @@ const unknown = "unknown"
 // Manager defines the interface for Goldfish manager operations.
 type Manager interface {
 	// ShouldSample determines if a query should be sampled based on tenant configuration.
-	ShouldSample(tenantID string) bool
+	// Returns (true, correlationID) when sampled, (false, "") when not sampled.
+	ShouldSample(tenantID string) (sampled bool, correlationID string)
 	// SendToGoldfish sends backend responses to Goldfish for comparison.
-	SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *BackendResponse)
+	SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *BackendResponse, correlationID string)
 	// Close closes the manager and its dependent storage connections.
 	Close() error
 }
@@ -113,17 +114,26 @@ func NewManager(config Config, storage goldfish.Storage, resultStore ResultStore
 	return m, nil
 }
 
+// NOTE: Currently one correlation ID is generated per sampled request, which maps 1:1
+// to a comparison pair. If >2 backends are ever supported, this model would need to
+// separate "request ID" (shared across all comparisons from one request) from
+// "comparison ID" (unique per pair).
+
 // ShouldSample determines if a query should be sampled based on tenant configuration.
-// Returns false if Goldfish is disabled or if the tenant should not be sampled.
-func (m *manager) ShouldSample(tenantID string) bool {
+// Returns (true, correlationID) when sampled, (false, "") when not sampled.
+func (m *manager) ShouldSample(tenantID string) (bool, string) {
 	if !m.config.Enabled {
-		return false
+		return false, ""
 	}
 
 	sampled := m.sampler.ShouldSample(tenantID)
 	m.metrics.samplingDecisions.WithLabelValues(tenantID, fmt.Sprintf("%v", sampled)).Inc()
 	level.Debug(m.logger).Log("msg", "Goldfish sampling check", "tenant", tenantID, "sampled", sampled, "default_rate", m.config.SamplingConfig.DefaultRate)
-	return sampled
+	if !sampled {
+		return false, ""
+	}
+	correlationID := uuid.New().String()
+	return true, correlationID
 }
 
 type BackendResponse struct {
@@ -135,8 +145,13 @@ type BackendResponse struct {
 	SpanID      string
 }
 
-func (m *manager) SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *BackendResponse) {
+func (m *manager) SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *BackendResponse, correlationID string) {
 	if !m.config.Enabled {
+		return
+	}
+
+	if correlationID == "" {
+		level.Warn(m.logger).Log("msg", "SendToGoldfish called with empty correlationID, skipping")
 		return
 	}
 
@@ -160,17 +175,16 @@ func (m *manager) SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *Ba
 	}
 	cellBData.BackendName = cellBResp.BackendName
 
-	m.processQueryPair(httpReq, cellAData, cellBData)
+	m.processQueryPair(httpReq, cellAData, cellBData, correlationID)
 }
 
 // processQueryPair processes a sampled query pair from both cells.
 // It extracts performance statistics, compares responses, persists raw payloads when configured, and stores metadata/results.
-func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *ResponseData) {
+func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *ResponseData, correlationID string) {
 	// Use a detached context with timeout since this runs async
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	correlationID := uuid.New().String()
 	tenantID := extractTenant(req)
 	queryType := getQueryType(req.URL.Path, req.FormValue("query"))
 

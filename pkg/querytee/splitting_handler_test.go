@@ -22,14 +22,20 @@ import (
 
 // mockGoldfishManager is a mock implementation of goldfish.ManagerInterface for testing
 type mockGoldfishManager struct {
-	shouldSampleResult bool
+	shouldSampleResult  bool
+	correlationIDResult string
+	sendCalled          bool
+	sendCorrelationID   string
 }
 
-func (m *mockGoldfishManager) ShouldSample(_ string) bool {
-	return m.shouldSampleResult
+func (m *mockGoldfishManager) ShouldSample(_ string) (bool, string) {
+	return m.shouldSampleResult, m.correlationIDResult
 }
 
-func (m *mockGoldfishManager) SendToGoldfish(_ *http.Request, _, _ *goldfish.BackendResponse) {}
+func (m *mockGoldfishManager) SendToGoldfish(_ *http.Request, _, _ *goldfish.BackendResponse, correlationID string) {
+	m.sendCalled = true
+	m.sendCorrelationID = correlationID
+}
 
 func (m *mockGoldfishManager) Close() error {
 	return nil
@@ -393,7 +399,8 @@ func TestSplittingHandler_NoSplitLag_UsesFanoutHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	goldfishManager := &mockGoldfishManager{
-		shouldSampleResult: true, // sampling enabled
+		shouldSampleResult:  true, // sampling enabled
+		correlationIDResult: "test-correlation-id",
 	}
 
 	handler, err := NewSplittingHandler(SplittingHandlerConfig{
@@ -456,7 +463,8 @@ func TestSplittingHandler_V1Preferred_SplitsWhenSampling(t *testing.T) {
 	require.NoError(t, err)
 
 	goldfishManager := &mockGoldfishManager{
-		shouldSampleResult: true, // IS sampling
+		shouldSampleResult:  true, // IS sampling
+		correlationIDResult: "test-correlation-id",
 	}
 
 	handler, err := NewSplittingHandler(SplittingHandlerConfig{
@@ -616,7 +624,8 @@ func TestSplittingHandler_MultiTenantQuery_RoutesToV1Only(t *testing.T) {
 			})
 
 			goldfishManager := &mockGoldfishManager{
-				shouldSampleResult: true, // Enable sampling to ensure we're not skipping due to that
+				shouldSampleResult:  true, // Enable sampling to ensure we're not skipping due to that
+				correlationIDResult: "test-correlation-id",
 			}
 
 			handler, err := NewSplittingHandler(SplittingHandlerConfig{

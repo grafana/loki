@@ -190,14 +190,12 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var resp queryrangebase.Response
 	tenants, err := tenant.TenantIDs(ctx)
-	shouldSample := false
 	if err != nil {
 		level.Warn(f.logger).Log("msg", "failed to extract tenant IDs, will skip sampling evaluation", "err", err)
-	} else {
-		shouldSample = f.shouldSample(tenants, r)
 	}
 
-	// Multi-tenant queries must always go to v1 only (v2 doesn't support them)
+	// Multi-tenant queries must always go to v1 only (v2 doesn't support them).
+	// Multi-tenant path returns before sampling, so writeResponse correctly won't set the header.
 	if isMultiTenant(tenants) {
 		level.Info(f.logger).Log("msg", "multi-tenant query detected, routing to v1 only", "tenants", len(tenants))
 		resp, err = f.v1Handler.Do(ctx, req)
@@ -208,10 +206,21 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Determine sampling decision for this request.
+	var sampled bool
+	var correlationID string
+	if err == nil {
+		sampled, correlationID = f.shouldSample(tenants, r)
+	}
+
+	// Store the sampling decision in context so downstream handlers (e.g. FanOutHandler)
+	// can use it without re-sampling independently.
+	ctx = goldfish.ContextWithSamplingDecision(ctx, goldfish.SamplingDecision{Sampled: sampled, CorrelationID: correlationID})
+
 	// Routing decision logic:
 	// - v2-preferred/race: Always split when splitLag > 0 (sampling only affects goldfish comparison)
 	// - v1-preferred: Skip fanout when not sampling, only split for goldfish comparison
-	useDefault := f.skipFanoutWhenNotSampling && !shouldSample && f.routingMode == RoutingModeV1Preferred
+	useDefault := f.skipFanoutWhenNotSampling && !sampled && f.routingMode == RoutingModeV1Preferred
 	splittingEnabled := f.splitLag > 0
 	level.Debug(f.logger).Log("msg", "routing decision", "useDefault", useDefault, "splittingEnabled", splittingEnabled)
 
@@ -237,6 +246,10 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // writeResponse handles encoding and writing the response back to the HTTP response writer.
 func (f *SplittingHandler) writeResponse(ctx context.Context, r *http.Request, w http.ResponseWriter, resp queryrangebase.Response, err error) {
+	if decision, ok := goldfish.SamplingDecisionFromContext(ctx); ok && decision.Sampled && decision.CorrelationID != "" {
+		w.Header().Set(goldfish.GoldfishCorrelationIDHeader, decision.CorrelationID)
+	}
+
 	if err != nil {
 		switch typedResp := resp.(type) {
 		case *NonDecodableResponse:
@@ -264,6 +277,11 @@ func (f *SplittingHandler) writeResponse(ctx context.Context, r *http.Request, w
 		}
 	}
 
+	// Re-assert the goldfish header in case the encoded response contained a same-name header.
+	if decision, ok := goldfish.SamplingDecisionFromContext(ctx); ok && decision.Sampled && decision.CorrelationID != "" {
+		w.Header().Set(goldfish.GoldfishCorrelationIDHeader, decision.CorrelationID)
+	}
+
 	// Write status code
 	w.WriteHeader(httpResp.StatusCode)
 
@@ -274,23 +292,25 @@ func (f *SplittingHandler) writeResponse(ctx context.Context, r *http.Request, w
 }
 
 // shouldSample determines if a query should be sampled for goldfish comparison.
-func (f *SplittingHandler) shouldSample(tenants []string, httpReq *http.Request) bool {
+// Returns (true, correlationID) for the first sampled tenant, or (false, "") if none.
+func (f *SplittingHandler) shouldSample(tenants []string, httpReq *http.Request) (bool, string) {
 	if f.goldfishManager == nil {
-		return false
+		return false, ""
 	}
 
 	for _, tenant := range tenants {
-		if f.goldfishManager.ShouldSample(tenant) {
+		sampled, correlationID := f.goldfishManager.ShouldSample(tenant)
+		if sampled {
 			level.Debug(f.logger).Log(
 				"msg", "Goldfish sampling decision",
 				"tenant", tenant,
 				"sampled", true,
 				"path", httpReq.URL.Path)
-			return true
+			return true, correlationID
 		}
 	}
 
-	return false
+	return false, ""
 }
 
 func (f *SplittingHandler) serveSplits(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
