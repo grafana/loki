@@ -43,14 +43,16 @@ type rateBatcher struct {
 	pendingMu sync.Mutex
 	pending   map[string]map[uint64]*proto.StreamMetadata
 
+	ratesMu sync.RWMutex
+
 	// rates stores the last known rate for each stream, updated on each flush.
+	// Map: tenant -> segmentationKeyHash -> rate (bytes/sec)
+	rates map[string]map[uint64]uint64
 	// prevRates holds the rates from the previous flush window. On each flush,
 	// current rates are rotated into prevRates before being replaced. A stream
 	// hash must be absent from both maps to be considered unknown, so a stream
 	// must miss two consecutive windows before triggering a fallback lookup.
 	// Map: tenant -> segmentationKeyHash -> rate (bytes/sec)
-	ratesMu   sync.RWMutex
-	rates     map[string]map[uint64]uint64
 	prevRates map[string]map[uint64]uint64
 
 	// Metrics
@@ -65,9 +67,9 @@ type rateBatcher struct {
 // newRateBatcher creates a new rate batcher.
 func newRateBatcher(cfg RateBatcherConfig, client rateBatcherClient, logger log.Logger, reg prometheus.Registerer) *rateBatcher {
 	b := &rateBatcher{
-		cfg:     cfg,
-		client:  client,
-		logger:  logger,
+		cfg:       cfg,
+		client:    client,
+		logger:    logger,
 		pending:   make(map[string]map[uint64]*proto.StreamMetadata),
 		rates:     make(map[string]map[uint64]uint64),
 		prevRates: make(map[string]map[uint64]uint64),
@@ -153,9 +155,11 @@ func (b *rateBatcher) Add(ctx context.Context, tenant string, streams []segmente
 	for _, stream := range streams {
 		hash := stream.SegmentationKeyHash
 		if rates[hash] != 0 {
+			// we already have a rate for this stream, no need to lookup.
 			continue
 		}
 		if _, seen := unknownSeen[hash]; seen {
+			// don't repeat streams in the request to the limits frontend.
 			continue
 		}
 		unknownSeen[hash] = struct{}{}
@@ -175,7 +179,7 @@ func (b *rateBatcher) Add(ctx context.Context, tenant string, streams []segmente
 		tenantCtx := user.InjectOrgID(ctx, tenant)
 		results, err := b.client.UpdateRatesRaw(tenantCtx, req)
 		if err != nil {
-			level.Warn(b.logger).Log(
+			level.Error(b.logger).Log(
 				"msg", "fallback rate lookup failed",
 				"tenant", tenant,
 				"streams", len(unknownStreams),
