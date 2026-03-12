@@ -1,8 +1,8 @@
-# Gotestsum Wrapper & Correctness Metrics Design
+# Gotestsum Correctness Metrics Design
 
 ## Goal
 
-Add a `gotestsum` wrapper and a `correctness-metrics` Go binary to the LogQL correctness test suite so that CI (Argo) can run tests with structured output and push pass/fail/duration metrics to a Prometheus-compatible remote_write endpoint.
+Add a `correctness-metrics` Go binary and a Makefile target for running tests via `gotestsum`, so that CI (Argo) can run LogQL correctness tests with structured output and push pass/fail/duration metrics to a Prometheus-compatible remote_write endpoint.
 
 ## Background
 
@@ -14,7 +14,7 @@ Ad-hoc usage via `go test` and existing Makefile targets remains unchanged. This
 
 Two independent Argo workflow steps:
 
-1. **Step 1 — Test execution:** `gotestsum` runs the tests, streams `standard-verbose` output to stdout, and writes JUnit XML + JSON event files.
+1. **Step 1 — Test execution:** `gotestsum` runs the tests, streams `standard-verbose` output to stdout, and writes a JUnit XML file.
 2. **Step 2 — Metric push:** A Go binary (`correctness-metrics`) parses the JUnit XML and pushes metrics via Prometheus `remote_write`.
 
 ### Why two steps instead of one binary
@@ -46,17 +46,46 @@ TestRemoteStorageEquality/regression/agg.yaml:12/kind=log
 TestRemoteStorageEquality/exhaustive/filters.yaml:7/kind=metric
 ```
 
+### `DirectionBoth` and Go's `#NN` dedup suffixes
+
+Log queries default to `DirectionBoth` (`query_registry.go:207-209`), which produces two `TestCase` structs with identical `Source` fields — one for forward and one for backward. Because Go's `t.Run` deduplicates identical subtest names, the JUnit output will contain suffixed names:
+
+```
+TestRemoteStorageEquality/fast/basic.yaml:3/kind=log#00
+TestRemoteStorageEquality/fast/basic.yaml:3/kind=log#01
+```
+
+The parser strips the `#NN` suffix before extracting labels. Both direction variants map to the same label set. If both pass, one metric is emitted. If one fails and one passes, the `fail` status takes precedence (worst-status-wins).
+
+### Label extraction
+
 The `correctness-metrics` binary parses test names to extract labels:
 
 | Label | Parsed From | Example Values |
 |-------|------------|----------------|
 | `suite` | 1st path segment after root test name | `fast`, `regression`, `exhaustive` |
 | `query_file` | 2nd segment (filename without `.yaml` extension) | `basic`, `agg`, `filters` |
-| `kind` | `kind=` key-value in last segment | `metric`, `log` |
+| `kind` | `kind=` key-value in last segment | `metric`, `log`, `invalid` |
 | `range_type` | CLI flag `--range-type` (static per run) | `instant`, `range` |
-| `status` | JUnit XML test result | `pass`, `fail`, `skip`, `error` |
+| `status` | JUnit XML test result (see mapping below) | `pass`, `fail`, `skip`, `error` |
 
-Tests that don't match the expected name pattern are still counted in aggregate metrics but won't carry the per-query labels.
+### Status mapping from JUnit XML
+
+| JUnit Element | `status` Label |
+|--------------|----------------|
+| No `<failure>`, `<error>`, or `<skipped>` | `pass` |
+| `<failure>` (assertion failed) | `fail` |
+| `<error>` (test panicked or unexpected error) | `error` |
+| `<skipped>` | `skip` |
+
+### Handling unparseable test names
+
+The parsing logic must be robust — it must not panic on malformed test names with unexpected segment counts or formats. Tests whose names don't match the expected pattern are:
+
+- **Counted** in the aggregate `logql_correctness_tests_total` metric with `suite="unknown"`.
+- **Not emitted** as `logql_correctness_test_duration_seconds` (the per-test metric is dropped for unparseable names).
+
+The parent test `TestRemoteStorageEquality` itself (which appears in JUnit as a `<testsuite>`, not a `<testcase>`) is not counted as a test case.
 
 ## Metrics Emitted
 
@@ -70,20 +99,20 @@ Each push is a single remote_write request with all metrics timestamped at push 
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `logql_correctness_tests_total` | Gauge | `suite`, `status` | Total test count by suite and status |
-| `logql_correctness_run_pass_ratio` | Gauge | `suite`, `range_type` | Fraction of tests that passed (0.0–1.0), per suite |
+| `logql_correctness_tests_total` | Gauge | `suite`, `range_type`, `status` | Total test count by suite, range type, and status |
+| `logql_correctness_run_pass_ratio` | Gauge | `suite`, `range_type` | `pass / (pass + fail + error)` — skipped tests excluded from denominator |
 
 ### Per-test detail
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `logql_correctness_test_duration_seconds` | Gauge | `suite`, `query_file`, `kind`, `range_type`, `status` | Per-test execution duration |
+| `logql_correctness_test_duration_seconds` | Gauge | `suite`, `query_file`, `kind`, `range_type`, `status` | Per-test execution duration (only for parseable test names) |
 
 ### Run-level
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `logql_correctness_run_duration_seconds` | Gauge | `range_type` | Total wall-clock time for the entire test run |
+| `logql_correctness_run_duration_seconds` | Gauge | `range_type` | Total elapsed time from the root `<testsuite time="...">` attribute in JUnit XML |
 
 ## `correctness-metrics` CLI
 
@@ -101,21 +130,38 @@ Location: `pkg/logql/bench/cmd/correctness-metrics/main.go`
 | `--job` | — | no | `logql-correctness` | Job label for all metrics |
 | `--dry-run` | — | no | `false` | Parse and log metrics without pushing |
 
+**Auth validation:** `--remote-write-username` and `--remote-write-password` must both be provided or both omitted. Providing only one is a fatal error.
+
 ### Behavior
 
-1. Parse JUnit XML using a library (e.g., `github.com/joshdk/go-junit`).
+1. Parse JUnit XML using `github.com/joshdk/go-junit`.
 2. For each test case, extract labels from the test name using the pattern above.
 3. Build Prometheus time series using `github.com/prometheus/prometheus` types (already in `go.mod`).
-4. Push via remote_write using `github.com/prometheus/prometheus/storage/remote` (already in `go.mod`).
+4. Push via remote_write using `github.com/prometheus/prometheus/storage/remote` (already in `go.mod`). Single attempt with a 30-second timeout; no retries.
 5. Log a summary to stdout: `Pushed 47 metrics (32 pass, 12 fail, 3 skip) to https://...`
 
 The `--dry-run` flag allows local testing: run `gotestsum` locally, then `correctness-metrics --dry-run --input results.xml` to verify what would be pushed.
 
+### Exit codes
+
+| Condition | Exit Code | Behavior |
+|-----------|-----------|----------|
+| Success | `0` | All metrics parsed and pushed (or `--dry-run`) |
+| Input file missing | `1` | Log error, exit immediately |
+| Input file empty or malformed XML | `1` | Log error describing the parse failure, exit immediately |
+| `remote_write` failure (network, auth, 4xx/5xx) | `1` | Log the error from the Prometheus client, exit immediately |
+| `--dry-run` | `0` | Always, regardless of what would have been pushed |
+| Invalid flag combination (e.g., username without password) | `1` | Log usage error, exit immediately |
+
+A non-zero exit from step 2 will fail the Argo workflow. This is intentional — if we ran tests but couldn't record the results, that's a CI failure worth investigating. Test results are still available as Argo artifacts for manual inspection.
+
 ### Dependencies
 
-- JUnit XML parsing: `github.com/joshdk/go-junit` (new dependency) or a minimal in-tree parser
+- JUnit XML parsing: `github.com/joshdk/go-junit` (new dependency)
 - Prometheus types and remote_write: `github.com/prometheus/prometheus` (already in `go.mod`)
 - No other new dependencies expected
+
+The `github.com/prometheus/prometheus/storage/remote` package API should be verified against the vendored Prometheus version (`v0.310.1`) during implementation. If the client API has changed, use the `net/http` package to POST a snappy-compressed remote_write protobuf payload directly.
 
 ## Argo Workflow Integration
 
@@ -129,7 +175,6 @@ The `--dry-run` flag allows local testing: run `gotestsum` locally, then `correc
     args:
       - --format=standard-verbose
       - --junitfile=/output/results.xml
-      - --jsonfile=/output/results.json
       - --
       - go
       - test
@@ -147,8 +192,6 @@ The `--dry-run` flag allows local testing: run `gotestsum` locally, then `correc
     artifacts:
       - name: junit-xml
         path: /output/results.xml
-      - name: json-events
-        path: /output/results.json
   continueOn:
     failed: true  # Step 2 must run even when tests fail
 ```
@@ -157,7 +200,6 @@ The `--dry-run` flag allows local testing: run `gotestsum` locally, then `correc
 
 - **Pod logs (stdout):** `standard-verbose` formatted test output — readable in Argo UI.
 - **results.xml:** JUnit XML artifact — consumed by step 2 and viewable in Argo test result UI.
-- **results.json:** gotestsum JSON event stream — artifact for debugging.
 
 ### Step 2: Push metrics
 
@@ -182,12 +224,34 @@ The `--dry-run` flag allows local testing: run `gotestsum` locally, then `correc
 
 - `continueOn: failed` on step 1 ensures metrics are always pushed, including on test failures.
 - Secrets (`REMOTE_WRITE_PASSWORD`, Loki credentials) come from Kubernetes secrets via Argo env var injection.
-- The JSON events file is a debug artifact; step 2 only consumes the JUnit XML.
 - Stdout from step 2 contains the metric push summary.
+- If step 1 crashes before producing `results.xml`, the Argo artifact transfer fails and step 2 exits with code `1` (input file missing).
 
-## Makefile Targets
+## Makefile Target
 
-Add a `make gotestsum-remote` target for local development/testing of the `gotestsum` invocation (without metric push), so developers can verify JUnit output format locally.
+Add a `make gotestsum-remote` target in `pkg/logql/bench/Makefile` (alongside the existing `remote-test` target). It requires the same env vars as `make remote-test` (`REMOTE_ADDR_1`, `REMOTE_ADDR_2`, `REMOTE_ORG_ID`, etc.).
+
+```makefile
+GOTESTSUM ?= $(shell which gotestsum 2>/dev/null)
+
+.PHONY: gotestsum-remote
+gotestsum-remote:
+ifndef GOTESTSUM
+	$(error gotestsum not found in PATH — install with: go install gotest.tools/gotestsum@latest)
+endif
+	$(GOTESTSUM) \
+		--format standard-verbose \
+		--junitfile ./build/results.xml \
+		-- go test -tags remote_correctness -count=1 -v -timeout $(REMOTE_TIMEOUT) \
+		./... \
+		--addr-1 $(REMOTE_ADDR_1) \
+		--addr-2 $(REMOTE_ADDR_2) \
+		--org-id $(REMOTE_ORG_ID) \
+		--metadata-dir $(METADATA_DIR) \
+		--remote-range-type $(RANGE_TYPE)
+```
+
+Output goes to `./build/results.xml`. `gotestsum` must be pre-installed in `$PATH`.
 
 ## What's Not Changing
 
