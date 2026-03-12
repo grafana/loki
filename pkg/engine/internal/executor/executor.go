@@ -511,12 +511,11 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 	for _, target := range set.Targets {
 		switch target.Type {
 		case physical.ScanTypeDataObject:
-			// Merge ScanSet-level projections and predicates with the
-			// individual scan's own, matching the behavior of
-			// ScanSet.Shards() used in the distributed execution path.
+			// Make sure projections and predicates get passed down to the
+			// individual scan.
 			partition := target.DataObject
-			partition.Predicates = append(set.Predicates, partition.Predicates...)
-			partition.Projections = append(set.Projections, partition.Projections...)
+			partition.Predicates = set.Predicates
+			partition.Projections = set.Projections
 
 			targets = append(targets, NewObservedPipeline(partition.Type().String(), nodeAttributes(partition), newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
 				return c.executeDataObjScan(ctx, partition)
