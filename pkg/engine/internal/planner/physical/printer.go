@@ -149,6 +149,10 @@ func toTreeNode(n Node) *tree.Node {
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("batch_size", false, node.BatchSize),
 		}
+	case *Cache:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("key", false, node.Key),
+		}
 	}
 	return treeNode
 }

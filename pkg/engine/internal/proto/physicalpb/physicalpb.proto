@@ -51,6 +51,7 @@ message Node {
     Merge merge = 13;
     PointersScan pointers_scan = 14;
     Batching batching = 15;
+    Cache cache = 16;
   }
 }
 
@@ -288,4 +289,8 @@ message Join {}
 // It wraps the root of the plan and is added after optimization.
 message Batching {
   int64 batch_size = 1;
+}
+
+message Cache {
+  string key = 1;
 }

@@ -58,6 +58,12 @@ type Options struct {
 	// DebugStreams toggles debug messages for data streams. This is very
 	// verbose and should only be enabled for debugging purposes.
 	DebugStreams bool
+
+	// CacheEnabled controls whether task fragments are wrapped with a Cache
+	// node during workflow planning. When true, cacheable task fragments get a
+	// Cache node as their root, allowing the executor to serve results from a
+	// cache store.
+	CacheEnabled bool
 }
 
 var _ fmt.Stringer = (*Workflow)(nil)
@@ -98,7 +104,7 @@ type Workflow struct {
 //
 // The provided Runner will be used for Workflow execution.
 func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
-	graph, err := planWorkflow(opts.Tenant, plan)
+	graph, err := planWorkflow(opts.Tenant, plan, opts.CacheEnabled)
 	if err != nil {
 		return nil, err
 	}
