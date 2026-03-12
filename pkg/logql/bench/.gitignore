@@ -10,6 +10,7 @@ result.old.txt
 # discovery
 testdata/dataset_metadata.json
 discover/cmd/discover
+generate-k6/cmd/generate-k6
 
 # Local secrets (copy .env.template to .env and fill in values)
 .env
