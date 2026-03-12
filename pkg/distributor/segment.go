@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
@@ -35,10 +36,25 @@ func getSegmentationKey(stream KeyedStream) (segmentationKey, error) {
 	if err != nil {
 		return "", err
 	}
-	if serviceName := labels.Get("service_name"); serviceName != "" {
-		return segmentationKey(serviceName), nil
+	sb := strings.Builder{}
+	if cluster := labels.Get("cluster"); cluster != "" {
+		sb.WriteString(cluster)
+	} else {
+		sb.WriteString("unknown_cluster")
 	}
-	return segmentationKey("unknown_service"), nil
+	sb.WriteString("/")
+	if namespace := labels.Get("namespace"); namespace != "" {
+		sb.WriteString(namespace)
+	} else {
+		sb.WriteString("unknown_namespace")
+	}
+	sb.WriteString("/")
+	if serviceName := labels.Get("service_name"); serviceName != "" {
+		sb.WriteString(serviceName)
+	} else {
+		sb.WriteString("unknown_service")
+	}
+	return segmentationKey(sb.String()), nil
 }
 
 // segmentationPartitionResolver resolves the partition for a segmentation key.
