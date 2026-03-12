@@ -77,6 +77,7 @@ func (s threadState) String() string {
 type thread struct {
 	BatchSize      int64
 	PrefetchBytes  int64
+	EnableDedupMetricQueries bool
 	Bucket         objstore.Bucket
 	Metastore      metastore.Metastore
 	Logger         log.Logger
@@ -157,6 +158,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	cfg := executor.Config{
 		BatchSize:      t.BatchSize,
 		PrefetchBytes:  t.PrefetchBytes,
+		EnableDedupMetricQueries: t.EnableDedupMetricQueries,
 		Bucket:         bucket.NewXCapBucket(t.Bucket),
 		Metastore:      t.Metastore,
 		StreamFilterer: t.StreamFilterer,

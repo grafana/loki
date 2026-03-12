@@ -82,6 +82,10 @@ type Config struct {
 	// Used for connecting to scheduler and other workers.
 	Endpoint string
 
+	// EnableDedupMetricQueries enables row-level deduplication of entries in
+	// merge and scan-set pipelines.
+	EnableDedupMetricQueries bool
+
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
@@ -196,6 +200,7 @@ func (w *Worker) run(ctx context.Context) error {
 		t := &thread{
 			BatchSize:      w.config.BatchSize,
 			PrefetchBytes:  w.config.PrefetchBytes,
+			EnableDedupMetricQueries: w.config.EnableDedupMetricQueries,
 			Logger:         log.With(w.logger, "thread", i),
 			Bucket:         w.config.Bucket,
 			Metastore:      w.config.Metastore,

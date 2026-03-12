@@ -45,6 +45,10 @@ type Config struct {
 
 	MergePrefetchCount int
 
+	// EnableDedupMetricQueries controls whether the executor wraps merge and
+	// scan-set pipelines with row-level deduplication.
+	EnableDedupMetricQueries bool
+
 	// GetExternalInputs is an optional function called for each node in the
 	// plan. If GetExternalInputs returns a non-nil slice of Pipelines, they
 	// will be used as inputs to the pipeline of node.
@@ -61,6 +65,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		batchSize:          cfg.BatchSize,
 		prefetchBytes:      cfg.PrefetchBytes,
 		mergePrefetchCount: cfg.MergePrefetchCount,
+		enableDedup:        cfg.EnableDedupMetricQueries,
 		bucket:             cfg.Bucket,
 		metastore:          cfg.Metastore,
 		logger:             logger,
@@ -83,6 +88,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 type Context struct {
 	batchSize     int64
 	prefetchBytes int64
+	enableDedup   bool
 
 	logger    log.Logger
 	plan      *physical.Plan
@@ -97,6 +103,14 @@ type Context struct {
 	streamFilterer RequestStreamFilterer
 }
 
+// maybeDedup wraps pipeline with row-level deduplication when dedup is enabled.
+func (c *Context) maybeDedup(pipeline Pipeline) Pipeline {
+	if c.enableDedup {
+		return newDedupPipeline(pipeline)
+	}
+	return pipeline
+}
+
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	children := c.plan.Children(node)
 	inputs := make([]Pipeline, 0, len(children))
@@ -106,7 +120,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 
 	if c.getExternalInputs != nil {
 		for _, ext := range c.getExternalInputs(ctx, node) {
-			inputs = append(inputs, newDedupPipeline(ext))
+			inputs = append(inputs, c.maybeDedup(ext))
 		}
 	}
 
@@ -460,7 +474,7 @@ func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []
 		return errorPipeline(ctx, err)
 	}
 
-	return newDedupPipeline(pipeline)
+	return c.maybeDedup(pipeline)
 }
 
 func (c *Context) executeParallelize(ctx context.Context, _ *physical.Parallelize, inputs []Pipeline) Pipeline {
@@ -514,7 +528,7 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 		return errorPipeline(ctx, err)
 	}
 
-	return newDedupPipeline(pipeline)
+	return c.maybeDedup(pipeline)
 }
 
 // nodeAttributes returns OTel span attributes relevant to the given physical

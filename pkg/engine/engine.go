@@ -71,6 +71,12 @@ type ExecutorConfig struct {
 	// MergePrefetchCount controls the number of inputs that are prefetched simultaneously by any Merge node.
 	MergePrefetchCount int `yaml:"merge_prefetch_count" category:"experimental"`
 
+	// EnableDedupMetricQueries enables row-level deduplication of entries in
+	// merge and scan-set pipelines. This prevents over-counting in metric
+	// queries when the same entry exists in multiple overlapping data object
+	// sections.
+	EnableDedupMetricQueries bool `yaml:"enable_dedup_metric_queries" category:"experimental"`
+
 	// RangeConfig determines how to optimize range reads in the V2 engine.
 	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
 
@@ -85,6 +91,7 @@ func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	f.Var(&cfg.PrefetchBytes, prefix+"prefetch-bytes", "Experimental: Number of bytes to prefetch when opening a data object for decoding metadata and overlapping section reads. Clamps to at least 16KiB.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
+	f.BoolVar(&cfg.EnableDedupMetricQueries, prefix+"enable-dedup-metric-queries", true, "Experimental: Enable row-level deduplication of entries in merge and scan-set pipelines to prevent over-counting in metric queries.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
 }
 
