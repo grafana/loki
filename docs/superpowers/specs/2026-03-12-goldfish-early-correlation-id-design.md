@@ -116,7 +116,9 @@ This fixes the double-sampling bug: the effective rate becomes `rate` instead of
 
 `processGoldfishComparison` (`fanout_handler.go:444`) currently loops over results and calls `sendToGoldfish` for each non-preferred backend. In practice, there are always exactly 2 backends (one preferred, one comparison), so only one comparison pair is produced per sampled request. A single correlation ID per request is correct for this deployment model.
 
-The spec does not change this behavior. If >2 backends were ever supported, the pairing model would need revisiting (per-pair IDs or a different storage key), but that is out of scope.
+The spec does not change this behavior. If >2 backends were ever supported, the pairing model would need revisiting — likely by separating the concept of a "request ID" (shared across all comparisons from one sampled request) from a "comparison ID" (unique per pair). That is out of scope for this work.
+
+Code comments should be left at both the correlation ID generation site (`ShouldSample`) and at the `processGoldfishComparison` loop to document this assumption and the future direction.
 
 ### processQueryPair changes
 
