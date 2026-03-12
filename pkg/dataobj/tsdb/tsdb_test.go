@@ -1,25 +1,76 @@
 package tsdb
 
 import (
-	"sort"
-	"strings"
+	"context"
+	"io"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-func TestDataobjTSDBBuilder_Build(t *testing.T) {
+func TestDataobjTSDBBuilder_AppendBuffersByDay(t *testing.T) {
 	ctx := t.Context()
-
 	now := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
 
-	testBuilderCfg := logsobj.BuilderConfig{
+	obj, objCloser := buildTestObject(t, now)
+	defer objCloser.Close()
+
+	tb := newTSDBBuilder("test-node", objstore.NewInMemBucket())
+	require.NoError(t, tb.Append(ctx, obj, "tenant-a/object-001"))
+
+	inner := tb.(*dataobjTSDBBuilder)
+	require.Len(t, inner.dayBuilders, 2, "data spans two days so two builders should exist")
+}
+
+func TestDataobjTSDBBuilder_AppendAccumulatesAcrossCalls(t *testing.T) {
+	ctx := t.Context()
+	now := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	obj1, closer1 := buildTestObject(t, now)
+	defer closer1.Close()
+
+	obj2, closer2 := buildTestObject(t, now)
+	defer closer2.Close()
+
+	tb := newTSDBBuilder("test-node", objstore.NewInMemBucket())
+	require.NoError(t, tb.Append(ctx, obj1, "tenant-a/object-001"))
+	require.NoError(t, tb.Append(ctx, obj2, "tenant-a/object-002"))
+
+	inner := tb.(*dataobjTSDBBuilder)
+	require.Len(t, inner.dayBuilders, 2, "two appends for the same days should reuse builders")
+}
+
+func TestDataobjTSDBBuilder_StoreUploadsAndResets(t *testing.T) {
+	ctx := t.Context()
+	now := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	obj, objCloser := buildTestObject(t, now)
+	defer objCloser.Close()
+
+	bkt := objstore.NewInMemBucket()
+	tb := newTSDBBuilder("test-node", bkt)
+
+	require.NoError(t, tb.Append(ctx, obj, "tenant-a/object-001"))
+	require.NoError(t, tb.Store(ctx))
+
+	inner := tb.(*dataobjTSDBBuilder)
+	require.Len(t, inner.dayBuilders, 0, "Store should reset buffered builders")
+
+	uploaded := listBucket(t, ctx, bkt, "")
+	require.Equal(t, 4, len(uploaded), "2 days x 2 files (tsdb + section refs)")
+}
+
+func buildTestObject(t *testing.T, now time.Time) (*dataobj.Object, io.Closer) {
+	t.Helper()
+
+	cfg := logsobj.BuilderConfig{
 		BuilderBaseConfig: logsobj.BuilderBaseConfig{
 			TargetPageSize:          128 * 1024,
 			TargetObjectSize:        4 * 1024 * 1024,
@@ -29,8 +80,7 @@ func TestDataobjTSDBBuilder_Build(t *testing.T) {
 		},
 	}
 
-	// Build a real object first.
-	builder, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
+	builder, err := logsobj.NewBuilder(cfg, scratch.NewMemory())
 	require.NoError(t, err)
 
 	require.NoError(t, builder.Append("tenant-a", logproto.Stream{
@@ -53,25 +103,18 @@ func TestDataobjTSDBBuilder_Build(t *testing.T) {
 		},
 	}))
 
-	obj, objCloser, err := builder.Flush()
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
-	defer objCloser.Close()
+	return obj, closer
+}
 
-	// Build TSDB + section refs from the sorted object.
-	tsdbBuilder := newTSDBBuilder("test-node", objstore.NewInMemBucket())
-	outputs, err := tsdbBuilder.(*dataobjTSDBBuilder).build(ctx, obj, "tenant-a/object-001")
+func listBucket(t *testing.T, ctx context.Context, bkt objstore.Bucket, prefix string) []string {
+	t.Helper()
+	var out []string
+	err := bkt.Iter(ctx, prefix, func(name string) error {
+		out = append(out, name)
+		return nil
+	}, objstore.WithRecursiveIter())
 	require.NoError(t, err)
-
-	require.Equal(t, 2, len(outputs))
-	sort.Slice(outputs, func(i, j int) bool {
-		return outputs[i].id.Path() < outputs[j].id.Path()
-	})
-	require.True(t, strings.HasPrefix(outputs[0].id.Path(), "index_20467/"))
-	require.True(t, strings.HasPrefix(outputs[1].id.Path(), "index_20468/"))
-
-	for _, out := range outputs {
-		require.NotNil(t, out.id)
-		require.Greater(t, len(out.tsdbData), 0)
-		require.Greater(t, len(out.sectionRefData), 0)
-	}
+	return out
 }
