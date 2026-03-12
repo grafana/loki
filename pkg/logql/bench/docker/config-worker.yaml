@@ -1,0 +1,50 @@
+# Loki configuration for docker-compose query-engine-worker instances.
+# Workers only need storage access and the scheduler address; the rest of the
+# Loki stack (ingester, querier, etc.) is handled by the main loki service.
+
+auth_enabled: true
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+  log_level: info
+
+common:
+  instance_addr: 0.0.0.0
+  path_prefix: /loki/workingdir
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        path_prefix: index/
+        prefix: index_
+        period: 24h
+
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    filesystem:
+      dir: /loki/storage
+
+query_engine:
+  enable: true
+  distributed: true
+  scheduler_lookup_address: dns+engine:3100
+  batch_size: 8192
+
+dataobj:
+  storage_bucket_prefix: "dataobj"
+
+tracing:
+  enabled: false
+
+analytics:
+  reporting_enabled: false

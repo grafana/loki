@@ -1,0 +1,58 @@
+# Loki configuration for the "all" service in docker-compose.
+# Runs the full Loki stack minus the v2 query engine (which is routed
+# to the separate engine service via the engine router).
+
+auth_enabled: true
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+  log_level: info
+
+common:
+  instance_addr: 0.0.0.0
+  path_prefix: /loki/workingdir
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+limits_config:
+  allow_structured_metadata: true
+  query_timeout: 1h
+  split_queries_by_interval: 1h
+  ingestion_rate_mb: 100
+
+schema_config:
+  configs:
+    - from: 2020-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        path_prefix: index/
+        prefix: index_
+        period: 24h
+
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    filesystem:
+      dir: /loki/storage
+
+query_engine:
+  enable: false
+  enable_engine_router: true
+  downstream_address: http://engine:3100
+
+query_range:
+  cache_results: false
+
+dataobj:
+  storage_bucket_prefix: "dataobj"
+
+tracing:
+  enabled: false
+
+analytics:
+  reporting_enabled: false

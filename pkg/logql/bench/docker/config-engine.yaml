@@ -1,0 +1,52 @@
+# Loki configuration for the distributed v2 query engine service.
+# Runs query-engine + query-engine-scheduler targets.
+# The query-frontend (on the loki service) routes v2 queries here.
+
+auth_enabled: true
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+  log_level: info
+  http_server_read_timeout: 5m
+  http_server_write_timeout: 5m
+
+common:
+  instance_addr: 0.0.0.0
+  path_prefix: /loki/workingdir
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        path_prefix: index/
+        prefix: index_
+        period: 24h
+
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    filesystem:
+      dir: /loki/storage
+
+query_engine:
+  enable: true
+  distributed: true
+  batch_size: 8192
+  max_concurrent_queries: 4
+
+dataobj:
+  storage_bucket_prefix: "dataobj"
+
+tracing:
+  enabled: false
+
+analytics:
+  reporting_enabled: false

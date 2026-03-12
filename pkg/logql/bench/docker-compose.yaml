@@ -1,0 +1,94 @@
+services:
+  loki:
+    build:
+      context: docker
+      dockerfile: Dockerfile.local
+    image: loki-bench
+    command:
+      - -config.file=/etc/loki/config.yaml
+      - -target=all
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./docker/config-docker.yaml:/etc/loki/config.yaml:ro
+      - ./data/storage:/loki/storage
+      - ./data/workingdir:/loki/workingdir
+    healthcheck:
+      test: ["CMD", "/usr/bin/loki", "-health"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  engine:
+    image: loki-bench
+    command:
+      - -config.file=/etc/loki/config.yaml
+      - -target=query-engine,query-engine-scheduler
+    ports:
+      - "3101:3100" # only needed to access debug/pprof from the host
+    depends_on:
+      loki:
+        condition: service_healthy
+    volumes:
+      - ./docker/config-engine.yaml:/etc/loki/config.yaml:ro
+      - ./data/storage:/loki/storage:ro
+    healthcheck:
+      test: ["CMD", "/usr/bin/loki", "-health"]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    image: loki-bench
+    command:
+      - -config.file=/etc/loki/config.yaml
+      - -target=query-engine-worker
+    depends_on:
+      engine:
+        condition: service_healthy
+    volumes:
+      - ./docker/config-worker.yaml:/etc/loki/config.yaml:ro
+      - ./data/storage:/loki/storage:ro
+    deploy:
+      replicas: 2
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_BASIC_ENABLED=false
+      - GF_USERS_DEFAULT_THEME=light
+    volumes:
+      - ./docker/grafana-compose-datasources.yaml:/etc/grafana/provisioning/datasources/ds.yaml:ro
+      - ./docker/grafana-dashboard-provisioning.yaml:/etc/grafana/provisioning/dashboards/default.yaml:ro
+      - ./docker/grafana-dashboard-v2-engine.json:/var/lib/grafana/dashboards/v2-engine.json:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-remote-write-receiver
+
+  alloy:
+    image: grafana/alloy:latest
+    ports:
+      - "12345:12345"
+    volumes:
+      - ./docker/alloy-config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+    depends_on:
+      - prometheus

@@ -1,4 +1,4 @@
-.PHONY: generate bench list run run-debug stream grafana grafana-stop discover
+.PHONY: generate bench list run run-debug stream grafana grafana-stop discover compose-up compose-down compose-build load
 
 # Load local secrets from .env (ignored by git).
 # Copy .env.template → .env and fill in real values.
@@ -32,6 +32,13 @@ run-debug:
 
 stream:
 	@go run ./cmd/stream/main.go | less
+
+CONCURRENCY ?= 4
+LOAD_SUITE ?= fast
+LOAD_ADDR ?= http://localhost:3100
+
+load:
+	@go run ./cmd/load/main.go -concurrency=$(CONCURRENCY) -suite=$(LOAD_SUITE) -addr=$(LOAD_ADDR)
 
 grafana:
 	@echo "Starting Grafana with Loki datasource..."
@@ -90,6 +97,39 @@ server-stop:
 	@make grafana-stop
 	@pkill dlv
 	@pkill loki
+
+##################
+# Docker Compose #
+##################
+
+WORKERS ?= 2
+LOKI_BINARY := docker/loki-bench
+
+# Detect host architecture for cross-compilation
+DOCKER_GOARCH := $(shell docker info --format '{{.Architecture}}' 2>/dev/null | sed 's/aarch64/arm64/' | sed 's/x86_64/amd64/')
+DOCKER_GOARCH ?= arm64
+
+# Build the Loki binary for the Docker container OS/arch.
+$(LOKI_BINARY): $(shell find ../../../cmd/loki ../../../pkg -name '*.go' -newer $(LOKI_BINARY) 2>/dev/null | head -1)
+	@echo "Building loki binary (linux/$(DOCKER_GOARCH))..."
+	@(cd ../../../ && CGO_ENABLED=0 GOOS=linux GOARCH=$(DOCKER_GOARCH) go build -o pkg/logql/bench/$(LOKI_BINARY) ./cmd/loki)
+
+compose-build: $(LOKI_BINARY)
+	@docker compose build loki
+
+compose-up: $(LOKI_BINARY)
+	@echo "Building image and starting docker-compose with $(WORKERS) workers..."
+	@docker compose up --build --scale worker=$(WORKERS) -d
+	@echo ""
+	@echo "Loki:       http://localhost:3100  (logcli --addr=http://localhost:3100 --org-id=test-tenant)"
+	@echo "Engine:     http://localhost:3101 (To access engine's debug/pprof from the host)"
+	@echo "Grafana:    http://localhost:3000/d/loki-v2-engine"
+	@echo "Prometheus: http://localhost:9090"
+	@echo "Alloy:      http://localhost:12345"
+
+compose-down:
+	@echo "Stopping docker-compose..."
+	@docker compose down
 
 ############
 # Discover #

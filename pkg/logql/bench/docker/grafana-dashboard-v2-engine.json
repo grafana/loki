@@ -1,0 +1,488 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Engine Overview",
+      "type": "row"
+    },
+    {
+      "title": "V2 Subquery QPS",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "id": 1,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 15 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(loki_engine_v2_subqueries_total[$__rate_interval]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "title": "Query Execution Latency (p50 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "id": 2,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(loki_engine_v2_execution_duration_seconds_bucket[$__rate_interval])) by (le))",
+          "legendFormat": "p50 execution"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(loki_engine_v2_execution_duration_seconds_bucket[$__rate_interval])) by (le))",
+          "legendFormat": "p99 execution"
+        }
+      ]
+    },
+    {
+      "title": "Planning Latency (p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "id": 3,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(loki_engine_v2_logical_planning_duration_seconds_bucket[$__rate_interval])) by (le))",
+          "legendFormat": "p99 logical"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(loki_engine_v2_physical_planning_duration_seconds_bucket[$__rate_interval])) by (le))",
+          "legendFormat": "p99 physical"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(loki_engine_v2_workflow_planning_duration_seconds_bucket[$__rate_interval])) by (le))",
+          "legendFormat": "p99 workflow"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 101,
+      "title": "Scheduler",
+      "type": "row"
+    },
+    {
+      "title": "Scheduler Task QPS",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 10 },
+      "id": 10,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 15 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (state) (rate(loki_engine_scheduler_tasks_total[$__rate_interval]))",
+          "legendFormat": "{{state}}"
+        }
+      ]
+    },
+    {
+      "title": "Scheduler Load",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 10 },
+      "id": 11,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "loki_engine_scheduler_load",
+          "legendFormat": "current"
+        },
+        {
+          "expr": "loki_engine_scheduler_load_average",
+          "legendFormat": "avg {{window}}"
+        }
+      ]
+    },
+    {
+      "title": "In-Flight Tasks",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 10 },
+      "id": 12,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "loki_engine_scheduler_tasks_inflight",
+          "legendFormat": "{{state}}"
+        }
+      ]
+    },
+    {
+      "title": "Task Queue Length",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 10 },
+      "id": 13,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "loki_engine_scheduler_task_queue_length",
+          "legendFormat": "queue depth"
+        }
+      ]
+    },
+    {
+      "title": "Ready Workers",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 18 },
+      "id": 14,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "loki_engine_scheduler_ready_workers",
+          "legendFormat": "ready"
+        }
+      ]
+    },
+    {
+      "title": "Active Connections",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 18 },
+      "id": 15,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "thresholds": { "steps": [{ "color": "blue", "value": null }] } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "loki_engine_scheduler_connections_active",
+          "legendFormat": "active"
+        }
+      ]
+    },
+    {
+      "title": "Task Queue Wait (p50 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 18 },
+      "id": 16,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(loki_engine_scheduler_task_queue_seconds_bucket[$__rate_interval])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(loki_engine_scheduler_task_queue_seconds_bucket[$__rate_interval])) by (le))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "title": "Scheduler Task Exec (p50 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 18 },
+      "id": 17,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(loki_engine_scheduler_task_exec_seconds_bucket[$__rate_interval])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(loki_engine_scheduler_task_exec_seconds_bucket[$__rate_interval])) by (le))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "title": "Assignment Backoffs / Requeues",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 26 },
+      "id": 18,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(loki_engine_scheduler_assignment_backoffs_total[$__rate_interval])",
+          "legendFormat": "backoffs"
+        },
+        {
+          "expr": "rate(loki_engine_scheduler_task_requeue_total[$__rate_interval])",
+          "legendFormat": "requeues"
+        }
+      ]
+    },
+    {
+      "title": "In-Flight Streams",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 26 },
+      "id": 19,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "loki_engine_scheduler_streams_inflight",
+          "legendFormat": "{{state}}"
+        }
+      ]
+    },
+    {
+      "title": "Stream QPS",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 26 },
+      "id": 20,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 15 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (state) (rate(loki_engine_scheduler_streams_total[$__rate_interval]))",
+          "legendFormat": "{{state}}"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+      "id": 102,
+      "title": "Workers",
+      "type": "row"
+    },
+    {
+      "title": "Worker Threads by State",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 31 },
+      "id": 30,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 25, "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (state) (loki_engine_worker_threads)",
+          "legendFormat": "{{state}}"
+        }
+      ]
+    },
+    {
+      "title": "Worker Utilization",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 4, "x": 8, "y": 31 },
+      "id": 31,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.7 },
+              { "color": "red", "value": 0.9 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(loki_engine_worker_threads{state=\"busy\"}) / sum(loki_engine_worker_threads)",
+          "legendFormat": "utilization"
+        }
+      ]
+    },
+    {
+      "title": "Worker Threads per Instance",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+      "id": 32,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15, "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "loki_engine_worker_threads",
+          "legendFormat": "{{instance}} {{state}}"
+        }
+      ]
+    },
+    {
+      "title": "Worker Task Assignment QPS",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 39 },
+      "id": 33,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 15 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (instance) (rate(loki_engine_worker_tasks_assigned_total[$__rate_interval]))",
+          "legendFormat": "{{instance}}"
+        }
+      ]
+    },
+    {
+      "title": "Worker Task Exec Latency (p50 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 39 },
+      "id": 34,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(loki_engine_worker_task_exec_seconds_bucket[$__rate_interval])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(loki_engine_worker_task_exec_seconds_bucket[$__rate_interval])) by (le))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "title": "Task Short Circuits",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 39 },
+      "id": 35,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(loki_engine_v2_task_short_circuits_total[$__rate_interval])",
+          "legendFormat": "short circuits"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 47 },
+      "id": 103,
+      "title": "Wire / Network",
+      "type": "row"
+    },
+    {
+      "title": "Wire Frames Received QPS",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 48 },
+      "id": 40,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 15 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (type) (rate(loki_engine_scheduler_wire_frames_received_total[$__rate_interval]))",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    },
+    {
+      "title": "Wire Message RTT (p50 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 48 },
+      "id": 41,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(loki_engine_scheduler_wire_message_rtt_seconds_bucket[$__rate_interval])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(loki_engine_scheduler_wire_message_rtt_seconds_bucket[$__rate_interval])) by (le))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "title": "Wire Messages Queued / Sent",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 48 },
+      "id": 42,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(loki_engine_scheduler_wire_messages_queued)",
+          "legendFormat": "queued"
+        },
+        {
+          "expr": "sum(rate(loki_engine_scheduler_wire_messages_sent_total[$__rate_interval]))",
+          "legendFormat": "sent/s"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["loki", "v2-engine"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Loki V2 Query Engine",
+  "uid": "loki-v2-engine",
+  "version": 1
+}

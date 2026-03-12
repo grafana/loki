@@ -1,0 +1,43 @@
+// Discover all containers in the Docker Compose project.
+discovery.docker "compose" {
+	host             = "unix:///var/run/docker.sock"
+	refresh_interval = "5s"
+}
+
+// Relabel discovered targets to attach useful labels and filter to only
+// containers that expose a metrics port.
+discovery.relabel "compose" {
+	targets = discovery.docker.compose.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "service"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+		target_label  = "project"
+	}
+}
+
+// Scrape /metrics from every discovered container.
+prometheus.scrape "compose" {
+	targets    = discovery.relabel.compose.output
+	forward_to = [prometheus.remote_write.default.receiver]
+
+	scrape_interval = "2s"
+	scrape_timeout  = "1s"
+}
+
+// Send scraped metrics to the local Prometheus instance.
+prometheus.remote_write "default" {
+	endpoint {
+		url = "http://prometheus:9090/api/v1/write"
+	}
+}

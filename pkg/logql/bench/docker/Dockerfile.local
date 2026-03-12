@@ -1,0 +1,4 @@
+FROM gcr.io/distroless/static:nonroot
+COPY loki-bench /usr/bin/loki
+EXPOSE 3100 9095
+ENTRYPOINT ["/usr/bin/loki"]
