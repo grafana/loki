@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -21,9 +22,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -31,12 +35,22 @@ import (
 type Limits interface {
 	querier_limits.Limits
 	RetentionLimits
+
+	MaxCacheFreshness(context.Context, string) time.Duration
+	MaxQueryParallelism(context.Context, string) int
+	EngineResultsCacheTimeBucketInterval(string) time.Duration
 }
 
 // Handler returns an [http.Handler] for serving queries. Unsupported queries
 // will result in an error.
-func Handler(cfg Config, logger log.Logger, engine *Engine, limits Limits) http.Handler {
-	return executorHandler(cfg, logger, engine, limits)
+func Handler(
+	cfg Config,
+	logger log.Logger,
+	engine *Engine,
+	limits Limits,
+	reg prometheus.Registerer,
+) (http.Handler, error) {
+	return executorHandler(cfg, logger, engine, limits, reg)
 }
 
 // queryExecutor is an interface implemented by [Engine] for mocking in tests.
@@ -44,7 +58,13 @@ type queryExecutor interface {
 	Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error)
 }
 
-func executorHandler(cfg Config, logger log.Logger, exec queryExecutor, limits Limits) http.Handler {
+func executorHandler(
+	cfg Config,
+	logger log.Logger,
+	exec queryExecutor,
+	limits Limits,
+	reg prometheus.Registerer,
+) (http.Handler, error) {
 	var h queryrangebase.Handler = &queryHandler{
 		cfg:    cfg,
 		logger: logger,
@@ -60,7 +80,41 @@ func executorHandler(cfg Config, logger log.Logger, exec queryExecutor, limits L
 		h = newMetricStepAlignMiddleware().Wrap(h)
 	}
 
-	return queryrange.NewSerializeHTTPHandler(h, queryrange.DefaultCodec)
+	if cache.IsCacheConfigured(cfg.ResultsCache.CacheConfig) {
+		newCache := func(suffix string, cacheType stats.CacheType) (cache.Cache, error) {
+			cfgCopy := cfg.ResultsCache.CacheConfig
+			cfgCopy.Prefix += suffix
+			c, err := cache.New(cfgCopy, reg, logger, cacheType, constants.Loki)
+			if err != nil {
+				return nil, err
+			}
+			if strings.EqualFold(cfg.ResultsCache.Compression, "snappy") {
+				c = cache.NewSnappy(c, logger)
+			}
+			return c, nil
+		}
+
+		metricCache, err := newCache("metric.", stats.ResultCache)
+		if err != nil {
+			return nil, fmt.Errorf("creating engine metric results cache: %w", err)
+		}
+		instantMetricCache, err := newCache("instant-metric.", stats.InstantMetricResultsCache)
+		if err != nil {
+			return nil, fmt.Errorf("creating engine instant-metric results cache: %w", err)
+		}
+		logCache, err := newCache("log.", stats.EngineLogResultCache)
+		if err != nil {
+			return nil, fmt.Errorf("creating engine log results cache: %w", err)
+		}
+
+		cacheMw, err := NewCacheMiddleware(logger, limits, metricCache, instantMetricCache, logCache, reg)
+		if err != nil {
+			return nil, fmt.Errorf("creating engine cache middleware: %w", err)
+		}
+		h = cacheMw.Wrap(h)
+	}
+
+	return queryrange.NewSerializeHTTPHandler(h, queryrange.DefaultCodec), nil
 }
 
 // newMetricStepAlignMiddleware returns a middleware that applies step alignment
