@@ -13,7 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-func TestFlushManager(t *testing.T) {
+func TestFlushCommitter(t *testing.T) {
 	t.Run("should succeed", func(t *testing.T) {
 		var (
 			now             = time.Now()
@@ -22,7 +22,7 @@ func TestFlushManager(t *testing.T) {
 			metastoreKafka  = &mockKafka{}
 			metastoreEvents = newMetastoreEvents(1, 10, metastoreKafka)
 			committer       = &mockCommitter{}
-			flushManager    = newFlushManager(flusher, metastoreEvents, committer, 0, log.NewNopLogger(), reg)
+			flushCommitter  = newFlushCommitter(flusher, metastoreEvents, committer, 0, log.NewNopLogger(), reg)
 		)
 		// Create a builder and append some logs so it can be flushed.
 		builder := newTestBuilder(t, reg)
@@ -32,7 +32,7 @@ func TestFlushManager(t *testing.T) {
 				{Timestamp: now, Line: "test"},
 			},
 		}))
-		require.NoError(t, flushManager.Flush(t.Context(), builder, "test", 1, now))
+		require.NoError(t, flushCommitter.Flush(t.Context(), builder, "test", 1, now))
 		// A flush should have occurred, a metastore event emitted, and the correct
 		// offset was committed.
 		require.Equal(t, 1, flusher.flushes)
@@ -58,7 +58,7 @@ func TestFlushManager(t *testing.T) {
 			metastoreKafka  = &mockKafka{}
 			metastoreEvents = newMetastoreEvents(1, 10, metastoreKafka)
 			committer       = &mockCommitter{}
-			flushManager    = newFlushManager(flusher, metastoreEvents, committer, 0, log.NewNopLogger(), reg)
+			flushCommitter  = newFlushCommitter(flusher, metastoreEvents, committer, 0, log.NewNopLogger(), reg)
 		)
 		// Create a builder and append some logs so it can be flushed.
 		builder := newTestBuilder(t, reg)
@@ -68,7 +68,7 @@ func TestFlushManager(t *testing.T) {
 				{Timestamp: now, Line: "test"},
 			},
 		}))
-		flushErr := flushManager.Flush(t.Context(), builder, "test", 1, now)
+		flushErr := flushCommitter.Flush(t.Context(), builder, "test", 1, now)
 		require.EqualError(t, flushErr, "failed to flush data object: mock error")
 		// Since no flush occurred, no event should be emitted and no offsets
 		// should be committed either.

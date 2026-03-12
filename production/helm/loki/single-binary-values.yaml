@@ -1,4 +1,7 @@
 ---
+commonLabels:
+  labelA: valueA
+  labelA: valueB
 loki:
   commonConfig:
     replication_factor: 1

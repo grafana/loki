@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"runtime/pprof"
+	gotrace "runtime/trace"
 	"sync"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
@@ -19,7 +19,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/engine/internal/arrowagg"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
@@ -124,6 +123,9 @@ func (t *thread) setState(state threadState) {
 
 func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	defer job.Close()
+
+	ctx, task := gotrace.NewTask(ctx, "thread.runJob")
+	defer task.End()
 
 	logger := log.With(t.Logger, "task_id", job.Task.ULID)
 	logger = utillog.WithContext(ctx, logger) // Extract trace ID
@@ -261,7 +263,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
 	}
 
-	_, err = t.drainPipeline(ctx, pipeline, sinksForJob(job), t.BatchSize, logger)
+	gotrace.Log(ctx, "drain_pipeline", "start")
+	_, err = t.drainPipeline(ctx, pipeline, sinksForJob(job), logger)
 	if err != nil {
 		level.Warn(logger).Log("msg", "task failed", "err", err)
 		_ = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
@@ -291,6 +294,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	span.End()
 	capture.End()
 
+	gotrace.Log(ctx, "drain_pipeline", "done")
 	duration := time.Since(startTime)
 
 	logValues := []any{
@@ -314,7 +318,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	}
 }
 
-func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []recordSink, batchSizeRecords int64, logger log.Logger) (int, error) {
+func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (int, error) {
 	region := xcap.RegionFromContext(ctx)
 
 	if err := pipeline.Open(ctx); err != nil {
@@ -322,48 +326,6 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 	}
 
 	var totalRows int
-	var currentBatchRecordCount int64
-	batchAggregator := arrowagg.NewRecords(memory.DefaultAllocator)
-
-	// When batchSizeRecords <= 0, no batching: each record is sent alone.
-	flush := func(toSend arrow.RecordBatch) {
-		startSend := time.Now()
-		for _, sink := range sinks {
-			// If a sink doesn't accept the result, we'll continue
-			// best-effort processing our task. It's possible that one of
-			// the receiving sinks got canceled, and other sinks may still
-			// need data.
-			err := sink.Send(ctx, toSend)
-			if err != nil {
-				level.Warn(logger).Log("msg", "failed to send result", "err", err)
-				continue
-			}
-		}
-		region.Record(xcap.TaskRecordsSent.Observe(1))
-		region.Record(xcap.TaskRowsSent.Observe(toSend.NumRows()))
-		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
-	}
-
-	// flushBatch flushes the batch aggregator's accumulated records (aggregate with schema reconciliation and send), then resets it.
-	flushBatch := func() {
-		if currentBatchRecordCount == 0 {
-			return
-		}
-
-		combined, err := batchAggregator.Aggregate()
-
-		// Regardless of errors, reset the aggregator to prepare for the next batch.
-		batchAggregator.Reset()
-		currentBatchRecordCount = 0
-
-		if err != nil {
-			level.Warn(logger).Log("msg", "failed to aggregate record batch", "err", err)
-			return
-		}
-
-		region.Record(xcap.TaskDrainBatchesProduced.Observe(1))
-		flush(combined)
-	}
 
 	for {
 		rec, err := pipeline.Read(ctx)
@@ -381,24 +343,20 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			continue
 		}
 
-		// If batching is disabled, send this record alone.
-		if batchSizeRecords <= 0 {
-			flush(rec)
-			continue
+		startSend := time.Now()
+		for _, sink := range sinks {
+			// If a sink doesn't accept the result, we'll continue
+			// best-effort processing our task. It's possible that one of
+			// the receiving sinks got canceled, and other sinks may still
+			// need data.
+			if err := sink.Send(ctx, rec); err != nil {
+				level.Warn(logger).Log("msg", "failed to send result", "err", err)
+			}
 		}
-
-		// If adding this record would exceed the batch size, flush before the next iteration.
-		if currentBatchRecordCount+rec.NumRows() > batchSizeRecords {
-			flushBatch()
-		}
-
-		// Add the record to the batch aggregator.
-		batchAggregator.Append(rec)
-		currentBatchRecordCount += rec.NumRows()
+		region.Record(xcap.TaskRecordsSent.Observe(1))
+		region.Record(xcap.TaskRowsSent.Observe(rec.NumRows()))
+		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
 	}
-
-	// Flush any remaining batch.
-	flushBatch()
 
 	return totalRows, nil
 }

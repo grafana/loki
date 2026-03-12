@@ -27,8 +27,8 @@ type flusher interface {
 	Flush(ctx context.Context, builder builder, reason string) (string, error)
 }
 
-// A flushManagerImpl manages the flushing of data objects and commits.
-type flushManagerImpl struct {
+// A flushCommitterImpl manages the flushing of data objects and commits.
+type flushCommitterImpl struct {
 	flusher         flusher
 	metastoreEvents metastoreEventEmitter
 	committer       committer
@@ -40,15 +40,15 @@ type flushManagerImpl struct {
 	commitFailures prometheus.Counter
 }
 
-func newFlushManager(
+func newFlushCommitter(
 	flusher flusher,
 	metastoreEvents metastoreEventEmitter,
 	committer committer,
 	partition int32,
 	logger log.Logger,
 	r prometheus.Registerer,
-) *flushManagerImpl {
-	return &flushManagerImpl{
+) *flushCommitterImpl {
+	return &flushCommitterImpl{
 		flusher:         flusher,
 		metastoreEvents: metastoreEvents,
 		committer:       committer,
@@ -66,16 +66,16 @@ func newFlushManager(
 }
 
 // Flush the data object builder and, if successful, commit the offset.
-func (m *flushManagerImpl) Flush(ctx context.Context, builder builder, reason string, offset int64, earliestRecordTime time.Time) error {
-	objectPath, err := m.flusher.Flush(ctx, builder, reason)
+func (c *flushCommitterImpl) Flush(ctx context.Context, builder builder, reason string, offset int64, earliestRecordTime time.Time) error {
+	objectPath, err := c.flusher.Flush(ctx, builder, reason)
 	if err != nil {
 		return fmt.Errorf("failed to flush data object: %w", err)
 	}
-	if err := m.emitEvent(ctx, objectPath, earliestRecordTime); err != nil {
+	if err := c.emitEvent(ctx, objectPath, earliestRecordTime); err != nil {
 		return fmt.Errorf("failed to emit metastore event: %w", err)
 	}
-	if err := m.commit(ctx, offset); err != nil {
-		m.commitFailures.Inc()
+	if err := c.commit(ctx, offset); err != nil {
+		c.commitFailures.Inc()
 		return fmt.Errorf("failed to commit data object: %w", err)
 	}
 	return nil
@@ -83,7 +83,7 @@ func (m *flushManagerImpl) Flush(ctx context.Context, builder builder, reason st
 
 // emitEvent emits a metastore event for the object, retries with exponential
 // backoff until successful or the context is canceled.
-func (m *flushManagerImpl) emitEvent(ctx context.Context, objectPath string, earliestRecordTime time.Time) error {
+func (c *flushCommitterImpl) emitEvent(ctx context.Context, objectPath string, earliestRecordTime time.Time) error {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 10 * time.Second,
@@ -91,11 +91,11 @@ func (m *flushManagerImpl) emitEvent(ctx context.Context, objectPath string, ear
 	})
 	var lastErr error
 	for b.Ongoing() {
-		lastErr = m.metastoreEvents.Emit(ctx, objectPath, earliestRecordTime)
+		lastErr = c.metastoreEvents.Emit(ctx, objectPath, earliestRecordTime)
 		if lastErr == nil {
 			break
 		}
-		level.Warn(m.logger).Log("msg", "failed to emit metastore event", "err", lastErr, "attempt", b.NumRetries())
+		level.Warn(c.logger).Log("msg", "failed to emit metastore event", "err", lastErr, "attempt", b.NumRetries())
 		b.Wait()
 	}
 	return lastErr
@@ -103,21 +103,21 @@ func (m *flushManagerImpl) emitEvent(ctx context.Context, objectPath string, ear
 
 // commits the offset, retries with exponential backoff until successful or
 // the context is canceled.
-func (m *flushManagerImpl) commit(ctx context.Context, offset int64) error {
+func (c *flushCommitterImpl) commit(ctx context.Context, offset int64) error {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 10 * time.Second,
 		MaxRetries: 0,
 	})
-	m.commits.Inc()
+	c.commits.Inc()
 	var lastErr error
 	for b.Ongoing() {
-		lastErr = m.committer.Commit(ctx, m.partition, offset)
+		lastErr = c.committer.Commit(ctx, c.partition, offset)
 		if lastErr == nil {
-			level.Debug(m.logger).Log("msg", "committed offset", "partition", m.partition, "offset", offset)
+			level.Debug(c.logger).Log("msg", "committed offset", "partition", c.partition, "offset", offset)
 			break
 		}
-		level.Warn(m.logger).Log("msg", "failed to commit offset", "err", lastErr, "attempt", b.NumRetries())
+		level.Warn(c.logger).Log("msg", "failed to commit offset", "err", lastErr, "attempt", b.NumRetries())
 		b.Wait()
 	}
 	return lastErr
