@@ -143,8 +143,8 @@ github.com/prometheus/otlptranslator v1.0.0 h1:s0LJW/iN9dkIH+EnhiD3BlkkP5QVIUVEo
 github.com/prometheus/otlptranslator v1.0.0/go.mod h1:vRYWnXvI6aWGpsdY/mOT/cbeVRBlPWtBNDb7kGR3uKM=
 github.com/prometheus/procfs v0.19.2 h1:zUMhqEW66Ex7OXIiDkll3tl9a1ZdilUOd/F6ZXw4Vws=
 github.com/prometheus/procfs v0.19.2/go.mod h1:M0aotyiemPhBCM0z5w87kL22CxfcH05ZpYlu+b4J7mw=
-github.com/prometheus/prometheus v0.310.1-0.20260302160042-1751685dd4f6 h1:YeKVdoknWYKHvcrw1/QNrqAnaQdcs1rMbQ9i575HowM=
-github.com/prometheus/prometheus v0.310.1-0.20260302160042-1751685dd4f6/go.mod h1:cwgOGTBad7xXbKQBCJVfHKe6qjW7fHF6f+IQNzzISZ8=
+github.com/prometheus/prometheus v0.310.1-0.20260312203008-8b25b26a7653 h1:Z7afRT2yWqXrOQfz7fLyqEBRbLzuAb3WDtaY48WvUkk=
+github.com/prometheus/prometheus v0.310.1-0.20260312203008-8b25b26a7653/go.mod h1:inufIOTbzFkTjM5hLQJTih8pcstVJRNpISmqf+jTlVY=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/sercand/kuberesolver/v6 v6.0.1 h1:XZUTA0gy/lgDYp/UhEwv7Js24F1j8NJ833QrWv0Xux4=
