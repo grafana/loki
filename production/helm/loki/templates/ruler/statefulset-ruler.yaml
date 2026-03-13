@@ -202,7 +202,9 @@ spec:
               mountPath: /tmp
             - name: sc-rules-volume
               mountPath: {{ .Values.sidecar.rules.folder | quote }}
-        {{- end}}
+            - name: sc-rules-tmp
+              mountPath: /tmp
+        {{- end }}
         {{- with .Values.ruler.extraContainers }}
         {{- toYaml . | nindent 8}}
         {{- end }}
@@ -244,7 +246,9 @@ spec:
             sizeLimit: {{ .Values.sidecar.rules.sizeLimit }}
         {{- else }}
           emptyDir: {}
-        {{- end -}}
+        {{- end }}
+        - name: sc-rules-tmp
+          emptyDir: {}
         {{- end -}}
         {{- range $dir, $_ := .Values.ruler.directories }}
         - name: {{ include "loki.rulerRulesDirName" $dir }}
