@@ -34,6 +34,7 @@ type scanPointersOptions struct {
 
 	location      string
 	prefetchBytes int64
+	batchSize     int
 }
 
 func newScanPointersPipeline(ctx context.Context, opts scanPointersOptions) (*metastorePipeline, error) {
@@ -41,6 +42,7 @@ func newScanPointersPipeline(ctx context.Context, opts scanPointersOptions) (*me
 		IndexPath:       opts.location,
 		SectionsRequest: opts.req,
 		PrefetchBytes:   opts.prefetchBytes,
+		BatchSize:       opts.batchSize,
 	})
 	if err != nil {
 		return nil, translateEOF(err, true)

@@ -2,6 +2,7 @@ package bench
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,6 +19,17 @@ type TestCase struct {
 	Step      time.Duration // Step size for metric queries
 	Source    string        // Source location (suite/file.yaml:line)
 	QueryDesc string        // Query description from YAML
+	Tags      []string
+}
+
+// Equal returns true if two TestCases represent the same query execution.
+func (c TestCase) Equal(other TestCase) bool {
+	return c.Query == other.Query &&
+		c.Start == other.Start &&
+		c.End == other.End &&
+		c.Step == other.Step &&
+		c.Direction == other.Direction &&
+		slices.Equal(c.Tags, other.Tags)
 }
 
 // Name returns a descriptive name for the test case.
