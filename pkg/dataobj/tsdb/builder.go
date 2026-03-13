@@ -206,10 +206,11 @@ func (p *Builder) tryFlush(ctx context.Context) error {
 		err := p.client.CommitRecords(ctx, p.processedRecords...)
 		if err != nil {
 			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
-			p.metrics.commitFailures.Inc()
+			p.metrics.incCommitsTotal()
+			p.metrics.incCommitFailures()
 			return err
 		}
-		p.metrics.commitsTotal.Inc()
+		p.metrics.incCommitsTotal()
 		p.lastFlush = time.Now()
 		p.processedRecords = p.processedRecords[:0]
 		level.Info(p.logger).Log("msg", "flushed tsdb builder", "time", time.Since(p.lastFlush))
@@ -229,6 +230,7 @@ func (p *Builder) processRecord(ctx context.Context, record *kgo.Record) {
 
 	calcCtx, cancel := context.WithCancelCause(ctx)
 	p.activeCalculations[record.Partition] = cancel
+	p.metrics.setProcessingDelay(record.Partition, record.Timestamp)
 
 	metastoreEvent := &metastore.ObjectWrittenEvent{}
 	if err := metastoreEvent.Unmarshal(record.Value); err != nil {
