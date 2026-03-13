@@ -168,6 +168,15 @@ func (v *cloneVisitor) VisitJSONExpressionParser(e *JSONExpressionParserExpr) {
 	v.cloned = copied
 }
 
+func (v *cloneVisitor) VisitXMLExpressionParser(e *XMLExpressionParserExpr) {
+	copied := &XMLExpressionParserExpr{
+		Expressions: make([]log.LabelExtractionExpr, len(e.Expressions)),
+	}
+	copy(copied.Expressions, e.Expressions)
+
+	v.cloned = copied
+}
+
 func (v *cloneVisitor) VisitKeepLabel(e *KeepLabelsExpr) {
 	copied := &KeepLabelsExpr{
 		keepLabels: make([]log.NamedLabelMatcher, len(e.keepLabels)),

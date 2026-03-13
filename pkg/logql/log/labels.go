@@ -427,6 +427,22 @@ func (b *LabelsBuilder) GetJSONPath(labelName string) []string {
 	return path
 }
 
+// SetXMLPath sets the original XML path parts that a label came from
+func (b *LabelsBuilder) SetXMLPath(labelName string, xmlPath []string) *LabelsBuilder {
+	b.jsonPaths[labelName] = xmlPath
+	return b
+}
+
+// GetXMLPath gets the original XML path parts for a given label if available
+func (b *LabelsBuilder) GetXMLPath(labelName string) []string {
+	path, ok := b.jsonPaths[labelName]
+	if !ok {
+		return nil
+	}
+
+	return path
+}
+
 func (b *LabelsBuilder) appendErrors(buf []labels.Label) []labels.Label {
 	if b.err != "" {
 		buf = append(buf, labels.Label{
