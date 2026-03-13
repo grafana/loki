@@ -78,6 +78,7 @@ func TestParseRequest(t *testing.T) {
 		body                            string
 		contentType                     string
 		contentEncoding                 string
+		userAgent                       string
 		valid                           bool
 		enableServiceDiscovery          bool
 		expectedStructuredMetadataBytes map[string]int
@@ -339,6 +340,17 @@ func TestParseRequest(t *testing.T) {
 			expectedLabels:                  []labels.Labels{labels.FromStrings("foo", "bar2", "environment", "prod")},
 			expectedStructuredMetadataBytes: map[string]int{"prod": len("name1") + len("value1")},
 		},
+		{
+			path:                      `/loki/api/v1/push`,
+			body:                      fmt.Sprintf(`{"streams": [{"stream": {"foo": "bar2"}, "values": [["%d", "fizzbuzz"]]}]}`, time.Now().UnixNano()),
+			contentType:               `application/json`,
+			userAgent:                 "\xe5\xe5\xe5\xe5\xe5\xe5; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0",
+			valid:                     true,
+			expectedBytes:             map[string]int{"": len("fizzbuzz")},
+			expectedLines:             map[string]int{"": 1},
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuzz"))},
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2")},
+		},
 	} {
 		t.Run(fmt.Sprintf("test %d", index), func(t *testing.T) {
 			streamResolver := newMockStreamResolver("fake", test.fakeLimits)
@@ -356,6 +368,9 @@ func TestParseRequest(t *testing.T) {
 			}
 			if len(test.contentEncoding) > 0 {
 				request.Header.Add("Content-Encoding", test.contentEncoding)
+			}
+			if len(test.userAgent) > 0 {
+				request.Header.Set("User-Agent", test.userAgent)
 			}
 
 			tracker := NewMockTracker()
