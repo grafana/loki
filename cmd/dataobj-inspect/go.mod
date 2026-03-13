@@ -6,7 +6,7 @@ require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.18.0
-	github.com/grafana/loki/v3 v3.0.0-20260311215855-e22a9bed508b
+	github.com/grafana/loki/v3 v3.6.7
 	github.com/prometheus/prometheus v0.310.1-0.20260312203008-8b25b26a7653
 )
 
@@ -17,7 +17,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/dennwc/varint v1.0.0 // indirect
 	github.com/dgryski/go-metro v0.0.0-20250106013310-edb8663e5e33 // indirect
 	github.com/efficientgo/core v1.0.0-rc.3 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
