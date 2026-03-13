@@ -211,6 +211,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			Bucket:             e.bucket,
 			Metastore:          e.metastore,
 			StreamFilterer:     e.cfg.StreamFilterer,
+			Cache:              e.cfg.TaskCache,
 		}
 
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)

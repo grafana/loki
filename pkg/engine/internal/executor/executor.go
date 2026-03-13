@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
@@ -55,7 +56,7 @@ type Config struct {
 	StreamFilterer RequestStreamFilterer `yaml:"-"`
 
 	// Cache is an optional store for caching task-level results.
-	Cache CacheStore
+	Cache cache.Cache
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
@@ -99,7 +100,7 @@ type Context struct {
 	mergePrefetchCount int
 
 	streamFilterer RequestStreamFilterer
-	cache          CacheStore
+	cache          cache.Cache
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -494,15 +495,7 @@ func (c *Context) executeCache(ctx context.Context, node *physical.Cache, inputs
 	if len(inputs) != 1 {
 		return errorPipeline(ctx, fmt.Errorf("cache expects exactly one input, got %d", len(inputs)))
 	}
-	if c.cache == nil {
-		// No cache configured: pass through to the inner pipeline.
-		return inputs[0]
-	}
-	return &cachingPipeline{
-		inner: inputs[0],
-		store: c.cache,
-		key:   node.Key,
-	}
+	return newCachingPipeline(c.cache, inputs[0], node.Key)
 }
 
 func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {

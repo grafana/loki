@@ -1541,7 +1541,7 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "query-engine-worker")
 
-	worker, err := engine_v2.NewWorker(engine_v2.WorkerParams{
+	workerParams := engine_v2.WorkerParams{
 		Logger: logger,
 		Bucket: store,
 
@@ -1556,7 +1556,17 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		Metastore: metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics),
 
 		StreamFilterer: t.Cfg.QueryEngine.Executor.StreamFilterer,
-	})
+	}
+
+	if cache.IsCacheConfigured(t.Cfg.QueryEngine.TasksResultCache.CacheConfig) {
+		c, err := cache.New(t.Cfg.QueryEngine.TasksResultCache.CacheConfig, prometheus.DefaultRegisterer, logger, stats.ResultCache, constants.Loki)
+		if err != nil {
+			return nil, fmt.Errorf("creating task results cache: %w", err)
+		}
+		workerParams.TaskCache = c
+	}
+
+	worker, err := engine_v2.NewWorker(workerParams)
 	if err != nil {
 		return nil, err
 	}

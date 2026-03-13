@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -80,6 +81,7 @@ type thread struct {
 	Metastore      metastore.Metastore
 	Logger         log.Logger
 	StreamFilterer executor.RequestStreamFilterer
+	TaskCache      cache.Cache
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -162,6 +164,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		Bucket:         bucket.NewXCapBucket(t.Bucket),
 		Metastore:      t.Metastore,
 		StreamFilterer: t.StreamFilterer,
+		Cache:          t.TaskCache,
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
