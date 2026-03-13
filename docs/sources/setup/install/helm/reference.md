@@ -8343,6 +8343,7 @@ false
   },
   "serviceMonitor": {
     "annotations": {},
+    "clusterLabel": "",
     "enabled": false,
     "interval": "15s",
     "labels": {},
@@ -8770,6 +8771,7 @@ The same namespace as the loki chart is installed in.
 			<td><pre lang="json">
 {
   "annotations": {},
+  "clusterLabel": "",
   "enabled": false,
   "interval": "15s",
   "labels": {},
@@ -8795,6 +8797,15 @@ The same namespace as the loki chart is installed in.
 			<td>ServiceMonitor annotations</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.serviceMonitor.clusterLabel</td>
+			<td>string</td>
+			<td>To disable setting a 'cluster' label in metrics, set to 'null'. To overwrite the 'cluster' label with your own value, set to a non-empty string. Keep empty string "" to have the default value in the 'cluster' label, which is the helm release name for Loki.</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>

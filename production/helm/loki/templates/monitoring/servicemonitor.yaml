@@ -42,9 +42,11 @@ spec:
           action: replace
           replacement: "{{ include "loki.namespace" $ }}/$1"
           targetLabel: job
+        {{- if kindIs "string" .clusterLabel }}
         - action: replace
-          replacement: "{{ include "loki.clusterLabel" $ }}"
+          replacement: "{{ .clusterLabel | default (include "loki.clusterLabel" $) }}"
           targetLabel: cluster
+        {{- end }}
         {{- with .relabelings }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
