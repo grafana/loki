@@ -32,55 +32,62 @@ An alternative was to write a custom Go test reporter that hooks into `testing` 
 
 ## Test Name Convention & Label Extraction
 
-Test names follow the pattern established in `remote_test.go:176` and `query_registry.go:204`:
+Test names currently follow the pattern from `remote_test.go:176` and `query_registry.go:204`:
 
 ```
 TestRemoteStorageEquality/{suite}/{file}.yaml:{line}/kind={kind}
 ```
 
+**This design requires a small change to `remote_test.go`** to add `direction` to the test name, producing:
+
+```
+TestRemoteStorageEquality/{suite}/{file}.yaml:{line}/kind={kind}/direction={direction}
+```
+
+This is a one-line change to the `t.Run` format string at `remote_test.go:176`:
+
+```go
+// Before:
+t.Run(fmt.Sprintf("%s/kind=%s", tc.Source, tc.Kind()), func(t *testing.T) {
+
+// After:
+t.Run(fmt.Sprintf("%s/kind=%s/direction=%s", tc.Source, tc.Kind(), tc.Direction), func(t *testing.T) {
+```
+
+`tc.Direction` is `logproto.FORWARD` or `logproto.BACKWARD`, which stringifies to `FORWARD` or `BACKWARD`.
+
+### Why direction is in the test name
+
+Log queries default to `DirectionBoth` (`query_registry.go:207-209`), which produces two `TestCase` structs with identical `Source` fields — one for forward and one for backward. Without `direction` in the name, Go's `t.Run` deduplicates identical subtest names by appending `#00` / `#01` suffixes, which are opaque and require complex merge logic in the parser. By including `direction` in the name, each test is unique and no dedup logic is needed. Metric queries always use `direction=FORWARD`.
+
 Examples:
 
 ```
-TestRemoteStorageEquality/fast/basic.yaml:3/kind=metric
-TestRemoteStorageEquality/regression/agg.yaml:12/kind=log
-TestRemoteStorageEquality/exhaustive/filters.yaml:7/kind=metric
+TestRemoteStorageEquality/fast/basic.yaml:3/kind=metric/direction=FORWARD
+TestRemoteStorageEquality/regression/agg.yaml:12/kind=log/direction=FORWARD
+TestRemoteStorageEquality/regression/agg.yaml:12/kind=log/direction=BACKWARD
+TestRemoteStorageEquality/exhaustive/filters.yaml:7/kind=metric/direction=FORWARD
 ```
-
-### `DirectionBoth` and Go's `#NN` dedup suffixes
-
-Log queries default to `DirectionBoth` (`query_registry.go:207-209`), which produces two `TestCase` structs with identical `Source` fields — one for forward and one for backward. Because Go's `t.Run` deduplicates identical subtest names, the JUnit output will contain suffixed names:
-
-```
-TestRemoteStorageEquality/fast/basic.yaml:3/kind=log#00
-TestRemoteStorageEquality/fast/basic.yaml:3/kind=log#01
-```
-
-The parser strips the `#NN` suffix before extracting labels. Both direction variants map to the same label set and are merged into a single logical test:
-
-- **Status:** worst-status-wins with precedence `error > fail > skip > pass`.
-- **Duration:** `max(duration)` across the merged cases.
-- **Count:** merged cases count as one test in aggregate metrics.
-
-This dedup only applies to `kind=log` tests. `kind=metric` and `kind=invalid` tests do not produce `DirectionBoth` duplicates.
 
 ### Label extraction — parsing algorithm
 
-Given a JUnit `<testcase>` name like `TestRemoteStorageEquality/fast/basic.yaml:3/kind=log#01`:
+Given a JUnit `<testcase>` name like `TestRemoteStorageEquality/fast/basic.yaml:3/kind=log/direction=BACKWARD`:
 
 1. Strip the root test prefix `TestRemoteStorageEquality/`.
-2. Strip any `#NN` dedup suffix.
-3. Split on `/` to get segments: `["fast", "basic.yaml:3", "kind=log"]`.
-4. `suite` = segment[0] → `fast`.
-5. `query_file` = segment[1], split on `:` to drop line number, then strip `.yaml` or `.yml` extension → `basic`.
-6. `kind` = segment[2], parse `kind=` prefix → `log`.
+2. Split on `/` to get segments: `["fast", "basic.yaml:3", "kind=log", "direction=BACKWARD"]`.
+3. `suite` = segment[0] → `fast`.
+4. `query_file` = segment[1], split on `:` to drop line number, then strip `.yaml` or `.yml` extension → `basic`.
+5. `kind` = segment[2], parse `kind=` prefix → `log`.
+6. `direction` = segment[3], parse `direction=` prefix → `BACKWARD`.
 
-If any step fails (wrong segment count, missing `kind=` prefix, etc.), the test name is unparseable.
+If any step fails (wrong segment count, missing `kind=` or `direction=` prefix, etc.), the test name is unparseable.
 
 | Label | Parsed From | Example Values |
 |-------|------------|----------------|
 | `suite` | segment[0] | `fast`, `regression`, `exhaustive` |
 | `query_file` | segment[1] (filename, no extension or line) | `basic`, `agg`, `filters` |
 | `kind` | segment[2] `kind=` value | `metric`, `log`, `invalid` |
+| `direction` | segment[3] `direction=` value | `FORWARD`, `BACKWARD` |
 | `range_type` | CLI flag `--range-type` (static per run) | `instant`, `range` |
 | `status` | JUnit XML test result (see mapping below) | `pass`, `fail`, `skip`, `error` |
 
@@ -121,7 +128,7 @@ Each push is a single remote_write request with all metrics timestamped at push 
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `logql_correctness_test_duration_seconds` | Gauge | `suite`, `query_file`, `kind`, `range_type`, `status` | Per-test execution duration (only for parseable test names) |
+| `logql_correctness_test_duration_seconds` | Gauge | `suite`, `query_file`, `kind`, `direction`, `range_type`, `status` | Per-test execution duration (only for parseable test names) |
 
 ### Run-level
 
@@ -315,8 +322,12 @@ endif
 - Includes the same `ifndef` guards as `remote-test` for required env vars.
 - Output goes to `./build/results.xml`. `gotestsum` must be pre-installed in `$PATH`.
 
+## Test Code Change
+
+One small change to `remote_test.go:176` — adding `direction` to the `t.Run()` format string. This affects both ad-hoc and CI test output (test names will include `/direction=FORWARD` or `/direction=BACKWARD`). No behavioral change to the tests themselves.
+
 ## What's Not Changing
 
-- The existing `go test` / `make remote-test` workflow for ad-hoc remote test runs is untouched.
-- The test code in `remote_test.go`, `assertions_test.go`, and `convert_test.go` is not modified.
+- The existing `go test` / `make remote-test` workflow for ad-hoc remote test runs continues to work as-is.
+- `assertions_test.go` and `convert_test.go` are not modified.
 - The build tag gating (`//go:build remote_correctness`) stays as-is.
