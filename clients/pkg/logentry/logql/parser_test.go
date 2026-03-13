@@ -22,6 +22,7 @@ func TestLex(t *testing.T) {
 		{`{ foo = "bar", bar != "baz" }`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING,
 			COMMA, IDENTIFIER, NEQ, STRING, CLOSE_BRACE}},
 		{`{ foo = "ba\"r" }`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
+		{"{foo=~`bar`}", []int{OPEN_BRACE, IDENTIFIER, RE, STRING, CLOSE_BRACE}},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}
@@ -67,6 +68,10 @@ func TestParse(t *testing.T) {
 			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "foo", "bar")}},
 		},
 		{
+			in:  "{foo=~`bar`}",
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "foo", "bar")}},
+		},
+		{
 			in:  `{ foo !~ "bar" }`,
 			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
 		},
@@ -78,10 +83,25 @@ func TestParse(t *testing.T) {
 			}},
 		},
 		{
+			in: "{job=\"snmptrap\", ip=~`10\\..*`}",
+			exp: &matchersExpr{matchers: []*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "job", "snmptrap"),
+				mustNewMatcher(labels.MatchRegexp, "ip", `10\..*`),
+			}},
+		},
+		{
 			in: `{foo="bar"} |= "baz"`,
 			exp: &filterExpr{
 				left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				ty:    labels.MatchEqual,
+				match: "baz",
+			},
+		},
+		{
+			in: "{foo=\"bar\"} |~ `baz`",
+			exp: &filterExpr{
+				left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+				ty:    labels.MatchRegexp,
 				match: "baz",
 			},
 		},
