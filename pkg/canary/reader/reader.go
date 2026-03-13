@@ -54,8 +54,10 @@ type Reader struct {
 	clientTLSConfig *tls.Config
 	caFile          string
 	addr            string
+	pathPrefix      string
 	user            string
 	pass            string
+	bearerToken     string
 	tenantID        string
 	httpClient      *http.Client
 	queryTimeout    time.Duration
@@ -83,8 +85,10 @@ func NewReader(writer io.Writer,
 	tlsConfig *tls.Config,
 	caFile, certFile, keyFile string,
 	address string,
+	pathPrefix string,
 	user string,
 	pass string,
+	bearerToken string,
 	tenantID string,
 	queryTimeout time.Duration,
 	labelName string,
@@ -96,6 +100,10 @@ func NewReader(writer io.Writer,
 	labels string,
 ) (*Reader, error) {
 	h := http.Header{}
+
+	if (user != "" || pass != "") && bearerToken != "" {
+		return nil, fmt.Errorf("cannot provide both user/pass and bearerToken")
+	}
 
 	// http.DefaultClient will be used in the case that the connection to Loki is http or TLS without client certs.
 	httpClient := http.DefaultClient
@@ -120,6 +128,9 @@ func NewReader(writer io.Writer,
 	if user != "" {
 		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(user+":"+pass)))
 	}
+	if bearerToken != "" {
+		h.Set("Authorization", "Bearer "+bearerToken)
+	}
 	if tenantID != "" {
 		h.Set("X-Scope-OrgID", tenantID)
 	}
@@ -138,8 +149,10 @@ func NewReader(writer io.Writer,
 		clientTLSConfig: tlsConfig,
 		caFile:          caFile,
 		addr:            address,
+		pathPrefix:      pathPrefix,
 		user:            user,
 		pass:            pass,
+		bearerToken:     bearerToken,
 		tenantID:        tenantID,
 		queryTimeout:    queryTimeout,
 		httpClient:      httpClient,
@@ -202,11 +215,18 @@ func (r *Reader) QueryCountOverTime(queryRange string, now time.Time, cache bool
 	u := url.URL{
 		Scheme: scheme,
 		Host:   r.addr,
-		Path:   "/loki/api/v1/query",
 		RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("count_over_time({%v=\"%v\",%v=\"%v\"}[%s])", r.sName, r.sValue, r.lName, r.lVal, queryRange)) +
 			fmt.Sprintf("&time=%d", now.UnixNano()) +
 			"&limit=1000",
 	}
+
+	queryEndpoint := "/loki/api/v1/query"
+	if r.pathPrefix != "" {
+		u.Path = r.pathPrefix + queryEndpoint
+	} else {
+		u.Path = queryEndpoint
+	}
+
 	fmt.Fprintf(r.w, "Querying loki for metric count with query: %v, cache: %v\n", u.String(), cache)
 
 	ctx, cancel := context.WithTimeout(context.Background(), r.queryTimeout)
@@ -219,6 +239,9 @@ func (r *Reader) QueryCountOverTime(queryRange string, now time.Time, cache bool
 
 	if r.user != "" {
 		req.SetBasicAuth(r.user, r.pass)
+	}
+	if r.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+r.bearerToken)
 	}
 	if r.tenantID != "" {
 		req.Header.Set("X-Scope-OrgID", r.tenantID)
@@ -308,10 +331,15 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		labels = fmt.Sprintf("{%s=\"%s\",%s=\"%s\"}", r.sName, r.sValue, r.lName, r.lVal)
 	}
 
+	queryRangeEndpoint := "/loki/api/v1/query_range"
+	if r.pathPrefix != "" {
+		queryRangeEndpoint = r.pathPrefix + queryRangeEndpoint
+	}
+
 	u := url.URL{
 		Scheme: scheme,
 		Host:   r.addr,
-		Path:   "/loki/api/v1/query_range",
+		Path:   queryRangeEndpoint,
 		RawQuery: fmt.Sprintf("start=%d&end=%d", start.UnixNano(), end.UnixNano()) +
 			"&query=" + url.QueryEscape(fmt.Sprintf("%s %v", labels, r.queryAppend)) +
 			"&limit=1000",
@@ -328,6 +356,9 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 
 	if r.user != "" {
 		req.SetBasicAuth(r.user, r.pass)
+	}
+	if r.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+r.bearerToken)
 	}
 	if r.tenantID != "" {
 		req.Header.Set("X-Scope-OrgID", r.tenantID)
@@ -477,8 +508,14 @@ func (r *Reader) closeAndReconnect() {
 		u := url.URL{
 			Scheme:   scheme,
 			Host:     r.addr,
-			Path:     "/loki/api/v1/tail",
 			RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"} %v", r.sName, r.sValue, r.lName, r.lVal, r.queryAppend)),
+		}
+
+		tailEndpoint := "/loki/api/v1/tail"
+		if r.pathPrefix != "" {
+			u.Path = r.pathPrefix + tailEndpoint
+		} else {
+			u.Path = tailEndpoint
 		}
 
 		fmt.Fprintf(r.w, "Connecting to loki at %v, querying for label '%v' with value '%v'\n", u.String(), r.lName, r.lVal)
