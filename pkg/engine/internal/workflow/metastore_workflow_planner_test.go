@@ -28,7 +28,7 @@ func TestPlanWorkflow_MetastorePlan_UsesMergeRootAndPointersPartitions(t *testin
 	start := time.Unix(10, 0)
 	end := start.Add(time.Hour)
 
-	p := physical.NewMetastorePlanner(ms)
+	p := physical.NewMetastorePlanner(ms, 100)
 	plan, err := p.Plan(context.Background(), nil, nil, start, end)
 	require.NoError(t, err)
 
@@ -40,9 +40,15 @@ func TestPlanWorkflow_MetastorePlan_UsesMergeRootAndPointersPartitions(t *testin
 
 	rootNode, err := rootTask.Fragment.Root()
 	require.NoError(t, err)
-	require.IsType(t, &physical.Merge{}, rootNode)
+	require.IsType(t, &physical.Batching{}, rootNode)
 
-	require.Len(t, rootTask.Sources[rootNode], len(ms.indexPaths))
+	// Merge is the child of Batching and is the direct parent of Parallelize,
+	// so sources are keyed by the Merge node.
+	mergeNode := rootTask.Fragment.Children(rootNode)
+	require.Len(t, mergeNode, 1)
+	require.IsType(t, &physical.Merge{}, mergeNode[0])
+
+	require.Len(t, rootTask.Sources[mergeNode[0]], len(ms.indexPaths))
 
 	children := graph.Children(rootTask)
 	require.Len(t, children, len(ms.indexPaths))
@@ -51,9 +57,14 @@ func TestPlanWorkflow_MetastorePlan_UsesMergeRootAndPointersPartitions(t *testin
 	for _, child := range children {
 		childRoot, err := child.Fragment.Root()
 		require.NoError(t, err)
-		require.IsType(t, &physical.PointersScan{}, childRoot)
+		require.IsType(t, &physical.Batching{}, childRoot)
 
-		gotLocations[childRoot.(*physical.PointersScan).Location] = struct{}{}
+		// PointersScan is the child of the wrapping Batching node.
+		batchingChildren := child.Fragment.Children(childRoot)
+		require.Len(t, batchingChildren, 1)
+		require.IsType(t, &physical.PointersScan{}, batchingChildren[0])
+
+		gotLocations[batchingChildren[0].(*physical.PointersScan).Location] = struct{}{}
 	}
 
 	for _, indexPath := range ms.indexPaths {

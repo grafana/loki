@@ -65,3 +65,13 @@ queries:
       - line-filter
       - label-filter
     notes: Tests indexed label filtering using | label=value syntax. Requires streams with multiple labels.
+
+  - description: Log query with impossible filter (guarantees empty results, exercises log result cache)
+    query: '${SELECTOR} |= "this will not hit any line"'
+    time_range:
+      length: 24h
+    directions: backward
+    tags:
+      - line-filter
+      - empty-result
+      - cache-test

@@ -398,7 +398,9 @@ func summarizeObservations(capture *Capture) *observations {
 				// task send/recv durations and task/drain stats
 				TaskRecvDuration.Key(), TaskSendDuration.Key(),
 				TaskRecordsSent.Key(), TaskRowsSent.Key(),
-				TaskDrainRecordsReceived.Key(), TaskDrainBatchesProduced.Key(),
+				TaskDrainRecordsReceived.Key(),
+				TaskBatchingRecordsReceived.Key(), TaskBatchingRowsReceived.Key(),
+				TaskBatchingBatchesProduced.Key(), TaskBatchingRowsWritten.Key(),
 				TaskExternalSourcesCount.Key(), TaskExternalSinksCount.Key(),
 			).
 			prefix("metastore_").
@@ -434,7 +436,9 @@ func summarizeObservations(capture *Capture) *observations {
 			filter(
 				TaskRecvDuration.Key(), TaskSendDuration.Key(),
 				TaskRecordsSent.Key(), TaskRowsSent.Key(),
-				TaskDrainRecordsReceived.Key(), TaskDrainBatchesProduced.Key(),
+				TaskDrainRecordsReceived.Key(),
+				TaskBatchingRecordsReceived.Key(), TaskBatchingRowsReceived.Key(),
+				TaskBatchingBatchesProduced.Key(), TaskBatchingRowsWritten.Key(),
 				TaskExternalSourcesCount.Key(), TaskExternalSinksCount.Key(),
 			).
 			normalizeKeys(),

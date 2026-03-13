@@ -558,6 +558,11 @@ github.com/aws/aws-sdk-go-v2/service/kafka/types
 github.com/aws/aws-sdk-go-v2/service/lightsail
 github.com/aws/aws-sdk-go-v2/service/lightsail/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/lightsail/types
+# github.com/aws/aws-sdk-go-v2/service/rds v1.116.1
+## explicit; go 1.23
+github.com/aws/aws-sdk-go-v2/service/rds
+github.com/aws/aws-sdk-go-v2/service/rds/internal/endpoints
+github.com/aws/aws-sdk-go-v2/service/rds/types
 # github.com/aws/aws-sdk-go-v2/service/s3 v1.96.2
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/s3
@@ -1858,7 +1863,7 @@ github.com/prometheus/otlptranslator
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.310.1-0.20260302160042-1751685dd4f6
+# github.com/prometheus/prometheus v0.310.1-0.20260312203008-8b25b26a7653
 ## explicit; go 1.25.0
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
