@@ -22,6 +22,7 @@ var blockEncodings = []compression.Codec{
 	compression.Snappy,
 	compression.LZ4_256k,
 	compression.Zstd,
+	compression.S2,
 }
 
 func TestBlockOptions_BloomPageSize(t *testing.T) {
