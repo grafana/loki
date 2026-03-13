@@ -569,8 +569,9 @@ func (d *recordBatchLabelDecorator) read(ctx context.Context, alloc *memoryv2.Al
 	}
 
 	// Build our new column
-	labelsArr := columnarv2.NewUTF8Builder(alloc)
 	streamIDCol := arrs[d.streamIDColumnIndex].(*columnarv2.Number[int64])
+	labelsArr := columnarv2.NewUTF8Builder(alloc)
+	labelsArr.Grow(streamIDCol.Len())
 	for i := range streamIDCol.Len() {
 		streamID := streamIDCol.Get(i)
 		labelNames, ok := d.streamIDToLabelNames[streamID]
