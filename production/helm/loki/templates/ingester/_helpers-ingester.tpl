@@ -80,6 +80,18 @@ expects a dict
 {{- end -}}
 
 {{/*
+Returns true if only zone-a should get an HPA when zone-aware replication is enabled.
+Defaults to rollout_operator.enabled when scaleOnlyZoneA is not explicitly set.
+*/}}
+{{- define "loki.ingester.autoscaling.scaleOnlyZoneA" -}}
+{{- if kindIs "bool" .Values.ingester.autoscaling.scaleOnlyZoneA -}}
+{{- .Values.ingester.autoscaling.scaleOnlyZoneA -}}
+{{- else -}}
+{{- .Values.rollout_operator.enabled -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return rollout-group prefix if it is set
 */}}
 {{- define "loki.prefixRolloutGroup" -}}
