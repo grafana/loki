@@ -8,7 +8,9 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
+	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
@@ -152,4 +154,29 @@ func decodeRecords(data []byte) ([]arrow.RecordBatch, error) {
 		records = append(records, rec)
 	}
 	return records, nil
+}
+
+// TaskCacheRegistry maps TaskCacheType identifiers to backing cache stores.
+type TaskCacheRegistry map[physical.TaskCacheType]cache.Cache
+
+// NewTaskCacheRegistry builds a registry that routes each TaskCacheType
+// to an instrumented view of underlying. Returns nil if underlying is nil.
+func NewTaskCacheRegistry(underlying cache.Cache, reg prometheus.Registerer) TaskCacheRegistry {
+	if underlying == nil {
+		return nil
+	}
+	return TaskCacheRegistry{
+		physical.TaskCacheTypeDataObjScan:  cache.Instrument("task-cache-dataobj", underlying, reg),
+		physical.TaskCacheTypePointersScan: cache.Instrument("task-cache-metastore", underlying, reg),
+	}
+}
+
+// GetForType returns the cache for cacheType, or an error if none is registered.
+func (r TaskCacheRegistry) GetForType(cacheType physical.TaskCacheType) (cache.Cache, error) {
+	if r != nil {
+		if c, ok := r[cacheType]; ok {
+			return c, nil
+		}
+	}
+	return nil, fmt.Errorf("no cache registered for type %q", cacheType)
 }

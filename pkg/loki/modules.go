@@ -1559,11 +1559,11 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 	}
 
 	if cache.IsCacheConfigured(t.Cfg.QueryEngine.TasksResultCache.CacheConfig) {
-		c, err := cache.New(t.Cfg.QueryEngine.TasksResultCache.CacheConfig, prometheus.DefaultRegisterer, logger, stats.ResultCache, constants.Loki)
+		tasksCache, err := cache.New(t.Cfg.QueryEngine.TasksResultCache.CacheConfig, prometheus.DefaultRegisterer, logger, stats.ResultCache, constants.Loki)
 		if err != nil {
 			return nil, fmt.Errorf("creating task results cache: %w", err)
 		}
-		workerParams.TaskCache = c
+		workerParams.Executor.TaskCache = tasksCache
 	}
 
 	worker, err := engine_v2.NewWorker(workerParams)

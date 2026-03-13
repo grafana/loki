@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
@@ -55,8 +54,8 @@ type Config struct {
 	// When set, streams are filtered before scanning.
 	StreamFilterer RequestStreamFilterer `yaml:"-"`
 
-	// Cache is an optional store for caching task-level results.
-	Cache cache.Cache
+	// TaskCaches is an optional registry mapping cache types to their backing stores.
+	TaskCaches TaskCacheRegistry
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
@@ -71,7 +70,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		evaluator:          newExpressionEvaluator(),
 		getExternalInputs:  cfg.GetExternalInputs,
 		streamFilterer:     cfg.StreamFilterer,
-		cache:              cfg.Cache,
+		taskCaches:         cfg.TaskCaches,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -100,7 +99,7 @@ type Context struct {
 	mergePrefetchCount int
 
 	streamFilterer RequestStreamFilterer
-	cache          cache.Cache
+	taskCaches     TaskCacheRegistry
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -495,7 +494,13 @@ func (c *Context) executeCache(ctx context.Context, node *physical.Cache, inputs
 	if len(inputs) != 1 {
 		return errorPipeline(ctx, fmt.Errorf("cache expects exactly one input, got %d", len(inputs)))
 	}
-	return newCachingPipeline(c.cache, inputs[0], node.Key)
+
+	cache, err := c.taskCaches.GetForType(node.Cache)
+	if err != nil {
+		level.Error(c.logger).Log("msg", "cache lookup failed when executing the cache pipeline, skipping cache", "err", err)
+	}
+
+	return newCachingPipeline(cache, inputs[0], node.Key)
 }
 
 func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {

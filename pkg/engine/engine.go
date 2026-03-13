@@ -80,7 +80,7 @@ type ExecutorConfig struct {
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
 
-	// TaskCache is an optional task-level result cache.
+	// TaskCache is an optional backing cache for task results.
 	// When set, cache pipelines will use it to read/write results.
 	TaskCache cache.Cache `yaml:"-"`
 }

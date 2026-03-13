@@ -87,7 +87,7 @@ type Config struct {
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
 
-	// TaskCache is an optional task-level result cache passed to each thread.
+	// TaskCache is an optional backing cache for task results.
 	TaskCache cache.Cache `yaml:"-"`
 }
 
@@ -116,6 +116,7 @@ type Worker struct {
 	config     Config
 	logger     log.Logger
 	numThreads int
+	taskCaches executor.TaskCacheRegistry
 
 	initOnce sync.Once
 	svc      services.Service
@@ -164,6 +165,7 @@ func New(config Config) (*Worker, error) {
 		logger:      config.Logger,
 		wireMetrics: wire.NewMetrics(),
 		numThreads:  numThreads,
+		taskCaches:  executor.NewTaskCacheRegistry(config.TaskCache, prometheus.DefaultRegisterer),
 
 		dialer:   config.Dialer,
 		listener: config.Listener,
@@ -204,7 +206,7 @@ func (w *Worker) run(ctx context.Context) error {
 			Bucket:         w.config.Bucket,
 			Metastore:      w.config.Metastore,
 			StreamFilterer: w.config.StreamFilterer,
-			TaskCache:      w.config.TaskCache,
+			TaskCaches:     w.taskCaches,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,
