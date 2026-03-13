@@ -136,7 +136,9 @@ func (j *logfmtStage) Process(_ model.LabelSet, extracted map[string]interface{}
 	}
 
 	if decoder.Err() != nil {
-		level.Error(j.logger).Log("msg", "failed to decode logfmt", "err", decoder.Err())
+		if Debug {
+			level.Debug(j.logger).Log("msg", "failed to decode logfmt", "err", decoder.Err())
+		}
 		return
 	}
 
