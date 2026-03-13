@@ -626,7 +626,7 @@ func accumulateChunksToShards(
 	}
 
 	collectedSeries := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(filteredM)))
-	defer sharding.SizedFPsPool.Put(collectedSeries)
+	defer func() { sharding.SizedFPsPool.Put(collectedSeries) }()
 
 	for fp, chks := range filteredM {
 		x := sharding.SizedFP{Fp: fp}
