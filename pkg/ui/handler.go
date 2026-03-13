@@ -24,7 +24,6 @@ import (
 )
 
 const (
-	proxyScheme       = "http"
 	prefixPath        = "/ui"
 	proxyPath         = prefixPath + "/api/v1/proxy/{nodename}/"
 	clusterPath       = prefixPath + "/api/v1/cluster/nodes"
@@ -104,7 +103,7 @@ func (s *Service) clusterProxyHandler() http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Transport: s.client.Transport,
 		Director: func(r *http.Request) {
-			r.URL.Scheme = proxyScheme
+			r.URL.Scheme = s.urlScheme()
 			vars := mux.Vars(r)
 			nodeName := vars["nodename"]
 			if nodeName == "" {
@@ -236,7 +235,9 @@ func (s *Service) analyzeLabelsHandler() http.Handler {
 			}
 
 			// Proxy to series endpoint on same host
-			r.URL.Scheme = proxyScheme
+			if s.cfg.Proxy.TLSEnabled {
+				r.URL.Scheme = s.urlScheme()
+			}
 			r.URL.Host = s.localAddr
 			r.URL.Path = "/loki/api/v1/series"
 			r.RequestURI = "" // Must be cleared according to Go docs
@@ -611,4 +612,11 @@ func parseObjectKeyFromURI(uri string) (string, error) {
 	}
 
 	return key, nil
+}
+
+func (s *Service) urlScheme() string {
+	if s.cfg.Proxy.TLSEnabled {
+		return "https"
+	}
+	return "http"
 }
