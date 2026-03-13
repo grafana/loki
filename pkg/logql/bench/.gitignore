@@ -17,3 +17,6 @@ generate-k6/cmd/generate-k6
 
 testdata/k6_test_cases_range.json
 testdata/k6_test_cases_instant.json
+
+# Build artifacts
+build/

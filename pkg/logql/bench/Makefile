@@ -1,4 +1,4 @@
-.PHONY: generate bench list run run-debug stream grafana grafana-stop discover remote-test generate-k6
+.PHONY: generate bench list run run-debug stream grafana grafana-stop discover remote-test generate-k6 gotestsum-remote build-correctness-metrics
 
 # Load local secrets from .env (ignored by git).
 # Copy .env.template → .env and fill in real values.
@@ -12,6 +12,11 @@ TENANT ?= test-tenant
 # Discover configuration — override via .env or environment
 DISCOVER_MAX_STREAMS ?= 500
 DISCOVER_CONCURRENCY ?= 5
+
+# gotestsum and correctness-metrics configuration
+GOTESTSUM ?= $(shell which gotestsum 2>/dev/null)
+RANGE_TYPE ?= range
+METADATA_DIR ?= testdata
 
 generate:
 	@echo "Generating benchmark data..."
@@ -200,3 +205,47 @@ generate-k6:
 		--queries-dir queries \
 		--tenant-id $(TENANT_ID) \
 		--output-dir testdata
+
+#####################################
+# Correctness Metrics Binary        #
+#####################################
+
+build-correctness-metrics:
+	@mkdir -p ./pkg/logql/bench/build
+	CGO_ENABLED=0 go build -o ./pkg/logql/bench/build/correctness-metrics ./pkg/logql/bench/cmd/correctness-metrics
+
+#####################################
+# gotestsum Remote Test Runner      #
+#####################################
+
+# gotestsum-remote runs the remote correctness tests via gotestsum,
+# producing JUnit XML output in ./build/results.xml.
+# Requires gotestsum in $PATH: go install gotest.tools/gotestsum@latest
+gotestsum-remote:
+ifndef GOTESTSUM
+	$(error gotestsum not found in PATH — install with: go install gotest.tools/gotestsum@latest)
+endif
+ifndef REMOTE_ADDR_1
+	$(error REMOTE_ADDR_1 is required — add it to .env (see .env.template))
+endif
+ifndef REMOTE_ADDR_2
+	$(error REMOTE_ADDR_2 is required — add it to .env (see .env.template))
+endif
+ifndef REMOTE_ORG_ID
+	$(error REMOTE_ORG_ID is required — add it to .env (see .env.template))
+endif
+	@mkdir -p ./pkg/logql/bench/build
+	$(GOTESTSUM) \
+		--format standard-verbose \
+		--junitfile ./pkg/logql/bench/build/results.xml \
+		-- -tags=remote_correctness -v \
+		./pkg/logql/bench \
+		-run TestRemoteStorageEquality \
+		-timeout $(REMOTE_TIMEOUT) \
+		-addr-1 "$(REMOTE_ADDR_1)" \
+		-addr-2 "$(REMOTE_ADDR_2)" \
+		-org-id "$(REMOTE_ORG_ID)" \
+		-username "$(LOKI_USERNAME)" \
+		-password "$(LOKI_PASSWORD)" \
+		-metadata-dir $(METADATA_DIR) \
+		-remote-range-type $(RANGE_TYPE)
