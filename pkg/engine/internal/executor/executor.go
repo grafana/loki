@@ -114,9 +114,6 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 
 	if c.getExternalInputs != nil {
 		for _, ext := range c.getExternalInputs(ctx, node) {
-			if c.dedupeMetricQueries {
-				ext = newDedupPipeline(ext)
-			}
 			inputs = append(inputs, ext)
 		}
 	}
@@ -418,6 +415,12 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 		return emptyPipeline()
 	}
 
+	if c.dedupeMetricQueries {
+		for i, input := range inputs {
+			inputs[i] = newDedupPipeline(input)
+		}
+	}
+
 	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
 		grouping:       plan.Grouping,
 		startTs:        plan.Start,
@@ -437,6 +440,12 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.VectorAggregation, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
+	}
+
+	if c.dedupeMetricQueries {
+		for i, input := range inputs {
+			inputs[i] = newDedupPipeline(input)
+		}
 	}
 
 	pipeline, err := newVectorAggregationPipeline(inputs, c.evaluator, vectorAggregationOptions{
@@ -473,9 +482,6 @@ func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []
 		return errorPipeline(ctx, err)
 	}
 
-	if c.dedupeMetricQueries {
-		return newDedupPipeline(pipeline)
-	}
 	return pipeline
 }
 
@@ -536,9 +542,6 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 		return errorPipeline(ctx, err)
 	}
 
-	if c.dedupeMetricQueries {
-		return newDedupPipeline(pipeline)
-	}
 	return pipeline
 }
 
