@@ -33,7 +33,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     k.util.configVolumeMount('loki', '/etc/loki') +
     k.util.antiAffinity +
     deployment.mixin.spec.template.spec.securityContext.withFsGroup(10001) +  // 10001 is the group ID assigned to Loki in the Dockerfile
-    deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(4800),
+    deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(300),
 
   read_service:
     k.util.serviceFor($.read_deployment) +
