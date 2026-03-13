@@ -140,29 +140,29 @@ func (r *QueryRegistry) Load(suites ...Suite) error {
 func validateRequirements(req QueryRequirements, queryDesc string) error {
 	// Validate unwrappable fields
 	for _, field := range req.UnwrappableFields {
-		if !slices.Contains(unwrappableFields, field) {
-			return fmt.Errorf("query %q: unwrappable field %q not in bounded set %v", queryDesc, field, unwrappableFields)
+		if !slices.Contains(UnwrappableFields, field) {
+			return fmt.Errorf("query %q: unwrappable field %q not in bounded set %v", queryDesc, field, UnwrappableFields)
 		}
 	}
 
 	// Validate labels
 	for _, label := range req.Labels {
-		if !slices.Contains(labelKeys, label) {
-			return fmt.Errorf("query %q: label %q not in bounded set %v", queryDesc, label, labelKeys)
+		if !slices.Contains(LabelKeys, label) {
+			return fmt.Errorf("query %q: label %q not in bounded set %v", queryDesc, label, LabelKeys)
 		}
 	}
 
 	// Validate keywords
 	for _, keyword := range req.Keywords {
-		if !slices.Contains(filterableKeywords, keyword) {
-			return fmt.Errorf("query %q: keyword %q not in bounded set %v", queryDesc, keyword, filterableKeywords)
+		if !slices.Contains(FilterableKeywords, keyword) {
+			return fmt.Errorf("query %q: keyword %q not in bounded set %v", queryDesc, keyword, FilterableKeywords)
 		}
 	}
 
 	// Validate structured metadata
 	for _, key := range req.StructuredMetadata {
-		if !slices.Contains(structuredMetadataKeys, key) {
-			return fmt.Errorf("query %q: structured metadata key %q not in bounded set %v", queryDesc, key, structuredMetadataKeys)
+		if !slices.Contains(StructuredMetadataKeys, key) {
+			return fmt.Errorf("query %q: structured metadata key %q not in bounded set %v", queryDesc, key, StructuredMetadataKeys)
 		}
 	}
 
@@ -335,6 +335,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 			Step:      step,
 			Source:    def.Source,
 			QueryDesc: def.Description,
+			Tags:      def.Tags,
 		}
 		cases = append(cases, tc)
 	} else {
@@ -348,6 +349,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 				Direction: logproto.FORWARD,
 				Source:    def.Source,
 				QueryDesc: def.Description,
+				Tags:      def.Tags,
 			})
 		case DirectionBackward:
 			cases = append(cases, TestCase{
@@ -357,6 +359,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 				Direction: logproto.BACKWARD,
 				Source:    def.Source,
 				QueryDesc: def.Description,
+				Tags:      def.Tags,
 			})
 		case DirectionBoth:
 			cases = append(cases,
@@ -367,6 +370,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 					Direction: logproto.FORWARD,
 					Source:    def.Source,
 					QueryDesc: def.Description,
+					Tags:      def.Tags,
 				},
 				TestCase{
 					Query:     resolvedQuery,
@@ -375,6 +379,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 					Direction: logproto.BACKWARD,
 					Source:    def.Source,
 					QueryDesc: def.Description,
+					Tags:      def.Tags,
 				},
 			)
 		}

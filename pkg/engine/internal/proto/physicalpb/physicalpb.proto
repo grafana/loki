@@ -50,6 +50,7 @@ message Node {
     Join join = 12;
     Merge merge = 13;
     PointersScan pointers_scan = 14;
+    Batching batching = 15;
   }
 }
 
@@ -282,3 +283,9 @@ message PointersScan {
 // Join represents a join operation in the physical plan.
 // For now it is only an inner join on `timestamp`. Will be expanded later.
 message Join {}
+
+// Batching controls how records are grouped into output batches.
+// It wraps the root of the plan and is added after optimization.
+message Batching {
+  int64 batch_size = 1;
+}
