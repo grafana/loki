@@ -58,6 +58,7 @@ func newDedupPipeline(input Pipeline) Pipeline {
 		}
 
 		if tsIdx < 0 || msgIdx < 0 {
+			// Schema is somehow invalid, return the batch as-is.
 			return batch, nil
 		}
 
@@ -70,7 +71,7 @@ func newDedupPipeline(input Pipeline) Pipeline {
 			return batch, nil
 		}
 
-		lblCols = lblCols[:0]
+		lblCols = lblCols[:0] // clear the slice.
 		canDedup := true
 		for _, idx := range lblIdxs {
 			col, ok := batch.Column(idx).(*array.String)
@@ -103,7 +104,7 @@ func newDedupPipeline(input Pipeline) Pipeline {
 				} else if _, dup := intra[h]; dup {
 					hasDups = true
 				} else {
-					intra[h] = struct{}{}
+					intra[h] = struct{}{} // put hash into intra-batch set.
 				}
 			}
 		}
