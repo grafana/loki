@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -285,6 +286,40 @@ func getValueUsingJSONParser(line []byte, hints []string) []byte {
 	return res
 }
 
+// bytesLookLikeJSONObject returns true if the byte slice looks like a JSON object
+// (starts with '{' and ends with '}' after optional whitespace), so we can try
+// parsing string values (e.g. message payloads) as nested JSON.
+func bytesLookLikeJSONObject(data []byte) bool {
+	if len(data) == 0 {
+		return false
+	}
+	start := 0
+	for start < len(data) && (data[start] == ' ' || data[start] == '\t') {
+		start++
+	}
+	end := len(data) - 1
+	for end > start && (data[end] == ' ' || data[end] == '\t') {
+		end--
+	}
+	return start <= end && data[start] == '{' && data[end] == '}'
+}
+
+// unescapeJSONString interprets b as the content of a JSON string (without the surrounding quotes)
+// and returns the unescaped bytes. Uses json.Unmarshal; returns b unchanged if unmarshal fails.
+func unescapeJSONString(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	quoted := make([]byte, 0, len(b)+2)
+	quoted = append(append(quoted, '"'), b...)
+	quoted = append(quoted, '"')
+	var s string
+	if err := json.Unmarshal(quoted, &s); err != nil {
+		return b
+	}
+	return []byte(s)
+}
+
 func getLevelUsingJSONParser(line []byte, allowedLevelFields map[string]struct{}, maxDepth int) []byte {
 	var result []byte
 	var detectLevel func([]byte, int) error
@@ -301,6 +336,14 @@ func getLevelUsingJSONParser(line []byte, allowedLevelFields map[string]struct{}
 					result = value
 					// ErrKeyFound is used to stop parsing once we find the desired key
 					return errKeyFound
+				}
+				// String value may be JSON (e.g. message field with nested log.level).
+				// jsonparser returns string content without outer quotes; escape sequences (e.g. \") remain.
+				if bytesLookLikeJSONObject(value) {
+					nested := unescapeJSONString(value)
+					if err := detectLevel(nested, depth+1); err == errKeyFound {
+						return err
+					}
 				}
 			case jsonparser.Object:
 				if err := detectLevel(value, depth+1); err != nil {
