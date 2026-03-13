@@ -28,16 +28,16 @@ import (
 // when at least one duplicate is detected.
 func newDedupPipeline(input Pipeline) Pipeline {
 	var (
-		seen      = make(map[uint64]struct{})
-		intra     = make(map[uint64]struct{}) // reused per batch for intra-batch dup detection
-		hasher    = fnv.New64a()
-		buf       [8]byte
-		hashes    []uint64 // scratch space for per-batch hashes, reused across calls
-		lblCols   []*array.String
-		lastNCols int64 // track schema changes by column count (cheap proxy)
-		tsIdx     int
-		msgIdx    int
-		lblIdxs   []int
+		seen            = make(map[uint64]struct{})
+		intra           = make(map[uint64]struct{}) // reused per batch for intra-batch dup detection
+		hasher          = fnv.New64a()
+		buf             [8]byte
+		hashes          []uint64 // scratch space for per-batch hashes, reused across calls
+		lblCols         []*array.String
+		lastFingerprint string // detect schema changes across batches
+		tsIdx           int
+		msgIdx          int
+		lblIdxs         []int
 	)
 
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
@@ -52,9 +52,9 @@ func newDedupPipeline(input Pipeline) Pipeline {
 
 		// Re-resolve column indices when the schema changes. Different
 		// partition workers can send batches with different schemas.
-		if nCols := batch.NumCols(); nCols != lastNCols {
+		if fp := batch.Schema().Fingerprint(); fp != lastFingerprint {
 			tsIdx, msgIdx, lblIdxs = resolveDedupColumns(batch)
-			lastNCols = nCols
+			lastFingerprint = fp
 		}
 
 		if tsIdx < 0 || msgIdx < 0 {
