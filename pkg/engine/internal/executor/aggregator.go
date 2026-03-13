@@ -169,8 +169,8 @@ func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
 		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
 		semconv.FieldFromIdent(semconv.ColumnIdentValue, false),
 	)
-	for _, label := range a.labels {
-		fields = append(fields, label)
+	for _, name := range slices.Sorted(maps.Keys(a.labels)) {
+		fields = append(fields, a.labels[name])
 	}
 	schema := arrow.NewSchema(fields, nil)
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)

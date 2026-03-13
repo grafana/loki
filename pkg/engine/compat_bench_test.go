@@ -11,6 +11,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -77,6 +80,94 @@ func BenchmarkStreamsResultBuilder(b *testing.B) {
 				// Ensure the result is used to prevent compiler optimizations
 				if rb.Len() != bm.numRowsFirstRecord+bm.numRowsSecondRecord {
 					b.Fatalf("expected %d entries, got %d", bm.numRowsFirstRecord+bm.numRowsSecondRecord, rb.Len())
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkStreamsResultBuilder_Build measures the cost of Build() (sort +
+// dedup + stats recount) with varying duplicate ratios.
+func BenchmarkStreamsResultBuilder_Build(b *testing.B) {
+	alloc := memory.NewGoAllocator()
+
+	const (
+		numRows   = 5000
+		numLabels = 10
+		numMeta   = 5
+		numParsed = 8
+	)
+
+	dupRatios := []struct {
+		name    string
+		percent int // 0–100: percentage of second record that duplicates the first
+	}{
+		{"no_duplicates", 0},
+		{"10pct_duplicates", 10},
+		{"50pct_duplicates", 50},
+		{"100pct_duplicates", 100},
+	}
+
+	schema, labelIdents, metaIdents, parsedIdents := prepareSchema(numLabels, numMeta, numParsed)
+	baseTime := time.Unix(0, 1620000000000000000).UTC()
+
+	rec1 := generateRows(labelIdents, metaIdents, parsedIdents, numRows, baseTime).
+		Record(alloc, schema)
+	defer rec1.Release()
+
+	for _, dr := range dupRatios {
+		b.Run(dr.name, func(b *testing.B) {
+			numDup := numRows * dr.percent / 100
+			numUnique := numRows - numDup
+
+			// Build a second record: first numDup rows duplicate rec1's rows
+			// (same timestamps/lines), remaining rows are unique.
+			rows2 := make(arrowtest.Rows, numRows)
+			for i := 0; i < numRows; i++ {
+				row := make(map[string]any)
+				if i < numDup {
+					// Duplicate: reuse the same timestamp and line as rec1
+					row[semconv.ColumnIdentTimestamp.FQN()] = baseTime.Add(time.Duration(i) * time.Nanosecond)
+					row[semconv.ColumnIdentMessage.FQN()] = fmt.Sprintf("log line %d with some additional text to make it more realistic", i)
+				} else {
+					// Unique: offset timestamp so it doesn't collide
+					row[semconv.ColumnIdentTimestamp.FQN()] = baseTime.Add(time.Duration(numRows+i) * time.Nanosecond)
+					row[semconv.ColumnIdentMessage.FQN()] = fmt.Sprintf("log line %d with some additional text to make it more realistic", numRows+i)
+				}
+				for labelIdx, ident := range labelIdents {
+					row[ident.FQN()] = fmt.Sprintf("label_%d_value_%d", labelIdx, i%10)
+				}
+				for metaIdx, ident := range metaIdents {
+					row[ident.FQN()] = fmt.Sprintf("meta_%d_value_%d", metaIdx, i%5)
+				}
+				for parsedIdx, ident := range parsedIdents {
+					row[ident.FQN()] = fmt.Sprintf("parsed_%d_value_%d", parsedIdx, i%3)
+				}
+				rows2[i] = row
+			}
+			rec2 := rows2.Record(alloc, schema)
+			defer rec2.Release()
+
+			expectedEntries := numRows + numUnique
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				rb := newStreamsResultBuilder(logproto.FORWARD, false)
+				rb.CollectRecord(rec1)
+				rb.CollectRecord(rec2)
+
+				md, _ := metadata.NewContext(b.Context())
+				result := rb.Build(stats.Result{}, md)
+
+				streams := result.Data.(logqlmodel.Streams)
+				total := 0
+				for _, s := range streams {
+					total += len(s.Entries)
+				}
+				if total != expectedEntries {
+					b.Fatalf("expected %d entries after dedup, got %d", expectedEntries, total)
 				}
 			}
 		})

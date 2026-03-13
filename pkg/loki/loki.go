@@ -39,6 +39,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	dataobjtsdb "github.com/grafana/loki/v3/pkg/dataobj/tsdb"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
@@ -322,6 +323,9 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend config"))
 		}
 	}
+	if c.Ingester.DelegateStreamLimits && !c.IngestLimits.Enabled {
+		errs = append(errs, errors.New("CONFIG ERROR: ingester.delegate-stream-limits requires ingest-limits service to be enabled (ingest_limits.enabled)"))
+	}
 	if err := c.IngestLimitsFrontendClient.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend_client config"))
 	}
@@ -451,6 +455,7 @@ type Loki struct {
 	dataObjConsumerPartitionRing        *ring.PartitionInstanceRing
 	DataObjConsumerPartitionRingWatcher *ring.PartitionRingWatcher
 	dataObjIndexBuilder                 *dataobjindex.Builder
+	dataObjTSDBBuilder                  *dataobjtsdb.Builder
 	scratchStore                        scratch.Store
 	queryEngineV2                       *engine.Engine
 	queryEngineV2Scheduler              *engine.Scheduler
@@ -802,6 +807,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjConsumerPartitionRing, t.initDataObjConsumerPartitionRing)
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
+	mm.RegisterModule(DataObjTSDBBuilder, t.initDataObjTSDBBuilder)
 	mm.RegisterModule(ScratchStore, t.initScratchStore)
 
 	mm.RegisterModule(All, nil)
@@ -854,6 +860,7 @@ func (t *Loki) setupModuleManager() error {
 		DataObjConsumerPartitionRing: {MemberlistKV, Server, Ring},
 		DataObjConsumer:              {MemberlistKV, ScratchStore, PartitionRing, Server, UI},
 		DataObjIndexBuilder:          {ScratchStore, Server, UIRing},
+		DataObjTSDBBuilder:           {ScratchStore, Server, UIRing},
 		ScratchStore:                 {},
 
 		Read:    {QueryFrontend, Querier},
