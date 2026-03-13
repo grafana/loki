@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -112,4 +114,45 @@ func TestJSONSerializationParseTestCases(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestJSONSerializationApproxTopk(t *testing.T) {
+  expr := &VectorAggregationExpr{
+	Left: &RangeAggregationExpr{
+		Left: &LogRangeExpr{
+			Left: &MatchersExpr{
+				Mts: []*labels.Matcher{
+					{
+						Type:  labels.MatchEqual,
+						Name:  "cluster",
+						Value: "eu-west-1",
+					},
+				},
+			},
+			Interval: 5 * time.Minute,
+			Offset:   0,
+			Unwrap:   nil,
+		},
+		Operation: "rate",
+		Params:    nil,
+		Grouping:  nil,
+		err:       nil,
+		},
+		Grouping: &Grouping{
+			Groups: nil,
+			Without: false,
+		},
+		Params: 0,
+		Operation: "__count_min_sketch__",
+		err: nil,
+	}
+
+	var buf bytes.Buffer
+	err := EncodeJSON(expr, &buf)
+	require.NoError(t, err)
+
+	actual, err := DecodeJSON(buf.String())
+	require.NoError(t, err)
+
+	AssertExpressions(t, expr, actual)
 }
