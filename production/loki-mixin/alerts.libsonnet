@@ -41,14 +41,14 @@
           {
             alert: 'LokiRequestLatency',
             expr: |||
-              %(group_prefix_jobs)s_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"} > 1
+              %(group_prefix_jobs)s_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"} > %(loki_p99_request_latency_threshold_seconds)s
             ||| % $._config,
             'for': '15m',
             labels: {
               severity: 'critical',
             },
             annotations: {
-              summary: 'Loki request error latency is high.',
+              summary: 'Loki request latency is high.',
               description: std.strReplace(|||
                 {{ $labels.cluster }} {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
               |||, 'cluster', $._config.per_cluster_label),
