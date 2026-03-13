@@ -471,8 +471,12 @@ func (e *Engine) dualResolve(ctx context.Context, tenantID string, logger log.Lo
 		level.Info(logger).Log("msg", "dual-resolve: index-gateway not configured, skipping")
 	}
 
+	queryLength := params.End().Sub(params.Start())
+
 	level.Info(logger).Log(
 		"msg", "dual-resolve completed",
+		"query", params.QueryString(),
+		"query_length", queryLength.String(),
 		"metastore_section_resolved", metastoreSectionResolved,
 		"metastore_duration", metastoreDuration.String(),
 		"metastore_error", fmt.Sprintf("%v", metastoreErr),
