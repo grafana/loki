@@ -38,6 +38,31 @@ func assertResultNotEmpty(t *testing.T, data parser.Value, message string) {
 	}
 }
 
+func assertResultEmpty(t *testing.T, data parser.Value, message string) {
+	t.Helper()
+	switch v := data.(type) {
+	case promql.Vector:
+		require.Empty(t, v, message)
+	case promql.Matrix:
+		require.Empty(t, v, message)
+		isEmpty := true
+		for _, series := range v {
+			if len(series.Floats) > 0 || len(series.Histograms) > 0 {
+				isEmpty = false
+				break
+			}
+		}
+		require.True(t, isEmpty, message+" - matrix has series with data points")
+	case promql.Scalar:
+		// Scalars always have a value, so they should be 0
+		require.Equal(t, v, v.V, 0)
+	case logqlmodel.Streams:
+		require.Empty(t, v, message)
+	default:
+		t.Fatalf("unknown result type: %T", data)
+	}
+}
+
 // assertDataEqualWithTolerance compares two parser.Value instances with floating point tolerance
 func assertDataEqualWithTolerance(t *testing.T, expected, actual parser.Value, tolerance float64) {
 	t.Helper()

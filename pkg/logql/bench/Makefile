@@ -180,7 +180,7 @@ ifndef REMOTE_ORG_ID
 	$(error REMOTE_ORG_ID is required — add it to .env (see .env.template))
 endif
 	go test -tags=remote_correctness -v \
-		./pkg/logql/bench \
+		. \
 		-run TestRemoteStorageEquality \
 		-timeout $(REMOTE_TIMEOUT) \
 		-addr-1 "$(REMOTE_ADDR_1)" \
@@ -239,7 +239,7 @@ endif
 		--format standard-verbose \
 		--junitfile ./build/results.xml \
 		-- -tags=remote_correctness -v \
-		./pkg/logql/bench \
+		. \
 		-run TestRemoteStorageEquality \
 		-timeout $(REMOTE_TIMEOUT) \
 		-addr-1 "$(REMOTE_ADDR_1)" \
