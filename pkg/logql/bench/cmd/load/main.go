@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -14,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/bench"
 )
 
@@ -26,6 +28,7 @@ func main() {
 		dataDir     = flag.String("data-dir", bench.DefaultDataDir, "Path to generated data directory")
 		queriesDir  = flag.String("queries-dir", "./queries", "Path to queries directory")
 		limit       = flag.Int("limit", 100, "Max lines per query response")
+		apiAddr     = flag.String("api-addr", ":8080", "Address for the control API server")
 	)
 	flag.Parse()
 
@@ -41,22 +44,29 @@ func main() {
 	defer stop()
 
 	var stats Stats
+	history := newStatsHistory(120)
 
-	var wg sync.WaitGroup
-	for i := range *concurrency {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			worker(ctx, workerConfig{
-				id:    i,
-				addr:  *addr,
-				orgID: *orgID,
-				limit: *limit,
-				cases: cases,
-				stats: &stats,
-			})
-		}()
+	pool := &workerPool{
+		baseCtx: ctx,
+		addr:    *addr,
+		orgID:   *orgID,
+		limit:   *limit,
+		cases:   cases,
+		stats:   &stats,
 	}
+	pool.SetConcurrency(*concurrency)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/concurrency", pool.handleConcurrency)
+	mux.HandleFunc("/stats", history.handleStats)
+
+	apiServer := &http.Server{Addr: *apiAddr, Handler: mux}
+	go func() {
+		fmt.Fprintf(os.Stderr, "API server listening on %s\n", *apiAddr)
+		if err := apiServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fmt.Fprintf(os.Stderr, "API server error: %v\n", err)
+		}
+	}()
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -66,11 +76,15 @@ func main() {
 	for {
 		select {
 		case <-ctx.Done():
-			wg.Wait()
+			pool.Wait()
 			elapsed := time.Since(start)
 			fmt.Fprintln(os.Stderr)
 			fmt.Fprintln(os.Stderr, "=== Summary ===")
 			printStats(os.Stderr, stats.snapshot(), elapsed)
+
+			shutCtx, shutCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_ = apiServer.Shutdown(shutCtx)
+			shutCancel()
 			return
 		case <-ticker.C:
 			snap := stats.snapshot()
@@ -78,10 +92,234 @@ func main() {
 			fmt.Fprintf(os.Stderr, "--- %s ---\n", elapsed.Truncate(time.Second))
 			printStats(os.Stderr, snap, elapsed)
 			printDelta(os.Stderr, snap, lastSnap)
+
+			history.record(snap, lastSnap, elapsed, pool.Concurrency())
 			lastSnap = snap
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Worker pool with dynamic concurrency
+// ---------------------------------------------------------------------------
+
+type workerPool struct {
+	mu      sync.Mutex
+	workers []poolWorker
+	nextID  int
+	wg      sync.WaitGroup
+
+	baseCtx context.Context
+	addr    string
+	orgID   string
+	limit   int
+	cases   []bench.TestCase
+	stats   *Stats
+}
+
+type poolWorker struct {
+	cancel context.CancelFunc
+}
+
+func (p *workerPool) SetConcurrency(n int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	cur := len(p.workers)
+	if n == cur {
+		return
+	}
+
+	if n > cur {
+		for i := cur; i < n; i++ {
+			ctx, cancel := context.WithCancel(p.baseCtx)
+			pw := poolWorker{cancel: cancel}
+			p.workers = append(p.workers, pw)
+
+			id := p.nextID
+			p.nextID++
+			p.wg.Add(1)
+			go func() {
+				defer p.wg.Done()
+				worker(ctx, workerConfig{
+					id:    id,
+					addr:  p.addr,
+					orgID: p.orgID,
+					limit: p.limit,
+					cases: p.cases,
+					stats: p.stats,
+				})
+			}()
+		}
+	} else {
+		for i := n; i < cur; i++ {
+			p.workers[i].cancel()
+		}
+		p.workers = p.workers[:n]
+	}
+
+	fmt.Fprintf(os.Stderr, "concurrency updated: %d -> %d\n", cur, n)
+}
+
+func (p *workerPool) Concurrency() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.workers)
+}
+
+func (p *workerPool) Wait() {
+	p.wg.Wait()
+}
+
+func (p *workerPool) handleConcurrency(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	switch r.Method {
+	case http.MethodGet:
+		_ = json.NewEncoder(w).Encode(map[string]int{"concurrency": p.Concurrency()})
+
+	case http.MethodPost:
+		raw := r.FormValue("concurrency")
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"status":  "error",
+				"message": "concurrency must be a non-negative integer",
+			})
+			return
+		}
+		p.SetConcurrency(n)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status":      "success",
+			"concurrency": n,
+		})
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Stats history ring buffer
+// ---------------------------------------------------------------------------
+
+type statsEntry struct {
+	Timestamp   time.Time `json:"timestamp"`
+	ElapsedSec  float64   `json:"elapsed_s"`
+	Concurrency int       `json:"concurrency"`
+
+	Total   int64   `json:"total"`
+	OK      int64   `json:"ok"`
+	HTTP4xx int64   `json:"http_4xx"`
+	HTTP5xx int64   `json:"http_5xx"`
+	Errors  int64   `json:"errors"`
+	QPS     float64 `json:"qps"`
+
+	LatencyMinMs int64 `json:"latency_min_ms"`
+	LatencyAvgMs int64 `json:"latency_avg_ms"`
+	LatencyMaxMs int64 `json:"latency_max_ms"`
+
+	DeltaTotal   int64   `json:"delta_total"`
+	DeltaOK      int64   `json:"delta_ok"`
+	DeltaErrors  int64   `json:"delta_errors"`
+	DeltaAvgMs   int64   `json:"delta_avg_ms"`
+	DeltaQPS     float64 `json:"delta_qps"`
+}
+
+type statsHistory struct {
+	mu      sync.Mutex
+	entries []statsEntry
+	maxSize int
+}
+
+func newStatsHistory(maxSize int) *statsHistory {
+	return &statsHistory{maxSize: maxSize}
+}
+
+func (h *statsHistory) record(snap, prev statsSnapshot, elapsed time.Duration, concurrency int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	var avgMs int64
+	if snap.total > 0 {
+		avgMs = snap.totalMs / snap.total
+	}
+
+	dt := snap.total - prev.total
+	var deltaAvg int64
+	if dt > 0 {
+		deltaAvg = (snap.totalMs - prev.totalMs) / dt
+	}
+
+	var deltaQPS float64
+	deltaOK := snap.success - prev.success
+	if len(h.entries) > 0 {
+		prevTime := h.entries[len(h.entries)-1].Timestamp
+		interval := time.Since(prevTime).Seconds()
+		if interval > 0 {
+			deltaQPS = float64(deltaOK) / interval
+		}
+	}
+
+	entry := statsEntry{
+		Timestamp:   time.Now(),
+		ElapsedSec:  elapsed.Seconds(),
+		Concurrency: concurrency,
+
+		Total:   snap.total,
+		OK:      snap.success,
+		HTTP4xx: snap.http4xx,
+		HTTP5xx: snap.http5xx,
+		Errors:  snap.errors,
+		QPS:     float64(snap.success) / elapsed.Seconds(),
+
+		LatencyMinMs: snap.minMs,
+		LatencyAvgMs: avgMs,
+		LatencyMaxMs: snap.maxMs,
+
+		DeltaTotal:  dt,
+		DeltaOK:     deltaOK,
+		DeltaErrors: snap.errors - prev.errors,
+		DeltaAvgMs:  deltaAvg,
+		DeltaQPS:    deltaQPS,
+	}
+
+	h.entries = append(h.entries, entry)
+	if len(h.entries) > h.maxSize {
+		h.entries = h.entries[len(h.entries)-h.maxSize:]
+	}
+}
+
+func (h *statsHistory) handleStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	h.mu.Lock()
+	entries := make([]statsEntry, len(h.entries))
+	copy(entries, h.entries)
+	h.mu.Unlock()
+
+	n := 20
+	if raw := r.URL.Query().Get("n"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			n = parsed
+		}
+	}
+	if n > len(entries) {
+		n = len(entries)
+	}
+	entries = entries[len(entries)-n:]
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(entries)
+}
+
+// ---------------------------------------------------------------------------
+// Existing helpers (unchanged)
+// ---------------------------------------------------------------------------
 
 func parseSuites(s string) []bench.Suite {
 	switch s {
@@ -126,7 +364,12 @@ func loadCases(queriesDir, dataDir string, suites []bench.Suite) []bench.TestCas
 			fmt.Fprintf(os.Stderr, "warning: skipping query %q: %v\n", def.Description, err)
 			continue
 		}
-		all = append(all, expanded...)
+		for _, tc := range expanded {
+			if tc.Kind() == "log" && tc.Direction == logproto.FORWARD {
+				continue
+			}
+			all = append(all, tc)
+		}
 	}
 	return all
 }
