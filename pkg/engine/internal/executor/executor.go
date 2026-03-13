@@ -325,6 +325,7 @@ func (c *Context) executePointersScan(ctx context.Context, node *physical.Pointe
 			location:      string(node.Location),
 			req:           req,
 			prefetchBytes: c.prefetchBytes,
+			batchSize:     int(c.batchSize),
 		})
 		if err != nil {
 			return errorPipeline(ctx, err)

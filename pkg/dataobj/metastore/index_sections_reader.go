@@ -48,6 +48,8 @@ type indexSectionsReader struct {
 	// Bloom filter predicates (will be filtered to remove stream labels after streams are resolved)
 	predicates []*labels.Matcher
 
+	batchSize int
+
 	// Reader state
 	initialized        bool
 	hasData            bool // Whether initialization pulled data to read
@@ -79,6 +81,7 @@ func newIndexSectionsReader(
 	start, end time.Time,
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
+	batchSize int,
 ) *indexSectionsReader {
 	// Only keep equal predicates for bloom filtering
 	var equalPredicates []*labels.Matcher
@@ -88,11 +91,16 @@ func newIndexSectionsReader(
 		}
 	}
 
+	if batchSize <= 0 {
+		batchSize = 8192
+	}
+
 	return &indexSectionsReader{
 		logger:             logger,
 		obj:                obj,
 		matchers:           matchers,
 		predicates:         equalPredicates,
+		batchSize:          batchSize,
 		start:              start,
 		end:                end,
 		matchingStreamIDs:  make(map[int64]struct{}),
@@ -473,7 +481,7 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 		}
 
 		for {
-			rec, err := sr.Read(ctx, 8192)
+			rec, err := sr.Read(ctx, r.batchSize)
 			if err != nil && !errors.Is(err, io.EOF) {
 				return fmt.Errorf("reading streams record batch: %w", err)
 			}
@@ -580,7 +588,7 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 			return nil, fmt.Errorf("pointers schema missing stream_id column")
 		}
 
-		rec, err := pr.Read(ctx, 8192)
+		rec, err := pr.Read(ctx, r.batchSize)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return nil, err
 		}
@@ -796,7 +804,7 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 		}
 
 		for {
-			rec, err := br.Read(ctx, 8192)
+			rec, err := br.Read(ctx, r.batchSize)
 			if err != nil && !errors.Is(err, io.EOF) {
 				return nil, fmt.Errorf("reading bloom record batch: %w", err)
 			}
