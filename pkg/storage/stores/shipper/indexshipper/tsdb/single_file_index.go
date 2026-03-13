@@ -171,6 +171,10 @@ func NewTSDBIndex(reader IndexReader) *TSDBIndex {
 	}
 }
 
+func (i *TSDBIndex) SetSectionRefTable(t sectionref.SectionRefLookup) {
+	i.sectionRefTable = t
+}
+
 func (i *TSDBIndex) Close() error {
 	if i.sectionRefTable != nil {
 		i.sectionRefTable.Close()
