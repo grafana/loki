@@ -8,7 +8,7 @@ import (
 
 var errInvalidMatchType = errors.New("unable to marshal unrecognized match type")
 
-// LabelMatcherToPromLabel transforms a protobuf label matcher to a upstream Prometheus label.Matcher
+// LabelMatcherToPromLabel transforms a simple label matcher to a upstream Prometheus label.Matcher
 func LabelMatcherToPromLabel(labelMatcherProto *LabelMatcher) (*labels.Matcher, error) {
 	var matchType labels.MatchType
 	switch labelMatcherProto.Type {
@@ -31,7 +31,7 @@ func LabelMatcherToPromLabel(labelMatcherProto *LabelMatcher) (*labels.Matcher, 
 	return matcher, nil
 }
 
-// LabelMatcherFromPromLabel transforms a upstream Prometheus label.Matcher to a protobuf representation
+// LabelMatcherFromPromLabel transforms a upstream Prometheus label.Matcher to a simple representation
 func LabelMatcherFromPromLabel(matcher *labels.Matcher) (*LabelMatcher, error) {
 	var matchType LabelMatcherType
 	switch matcher.Type {
