@@ -1,4 +1,4 @@
-.PHONY: generate bench list run run-debug stream grafana grafana-stop discover
+.PHONY: generate bench list run run-debug stream grafana grafana-stop discover remote-test generate-k6 gotestsum-remote build-correctness-metrics
 
 # Load local secrets from .env (ignored by git).
 # Copy .env.template → .env and fill in real values.
@@ -12,6 +12,11 @@ TENANT ?= test-tenant
 # Discover configuration — override via .env or environment
 DISCOVER_MAX_STREAMS ?= 500
 DISCOVER_CONCURRENCY ?= 5
+
+# gotestsum and correctness-metrics configuration
+GOTESTSUM ?= $(shell which gotestsum 2>/dev/null)
+RANGE_TYPE ?= range
+METADATA_DIR ?= testdata
 
 generate:
 	@echo "Generating benchmark data..."
@@ -146,4 +151,101 @@ endif
 		--max-streams $(DISCOVER_MAX_STREAMS) \
 		--concurrency $(DISCOVER_CONCURRENCY) \
 		--output testdata \
-		--queries-dir queries
+		--queries-dir queries \
+		$(if $(DISCOVER_FROM),--from "$(DISCOVER_FROM)") \
+		$(if $(DISCOVER_TO),--to "$(DISCOVER_TO)")
+
+###########################
+# Remote Correctness Test #
+###########################
+
+# Default timeout for remote correctness tests
+REMOTE_TIMEOUT ?= 30m
+
+# remote-test compares query results between two live Loki endpoints.
+# Requires:
+#   1. Discovered metadata in testdata/ (run `make discover` first)
+#   2. Secrets in .env (see .env.template):
+#      REMOTE_ADDR_1, REMOTE_ADDR_2  — two Loki endpoints to compare
+#      REMOTE_ORG_ID                 — tenant org ID
+#      LOKI_USERNAME, LOKI_PASSWORD  — HTTP basic auth
+remote-test:
+ifndef REMOTE_ADDR_1
+	$(error REMOTE_ADDR_1 is required — add it to .env (see .env.template))
+endif
+ifndef REMOTE_ADDR_2
+	$(error REMOTE_ADDR_2 is required — add it to .env (see .env.template))
+endif
+ifndef REMOTE_ORG_ID
+	$(error REMOTE_ORG_ID is required — add it to .env (see .env.template))
+endif
+	go test -tags=remote_correctness -v \
+		. \
+		-run TestRemoteStorageEquality \
+		-timeout $(REMOTE_TIMEOUT) \
+		-addr-1 "$(REMOTE_ADDR_1)" \
+		-addr-2 "$(REMOTE_ADDR_2)" \
+		-org-id "$(REMOTE_ORG_ID)" \
+		-username "$(LOKI_USERNAME)" \
+		-password "$(LOKI_PASSWORD)" \
+		-metadata-dir testdata
+
+#############################
+# k6 Test Case Generation   #
+#############################
+
+TENANT_ID ?= 29
+
+# generate-k6 resolves query registry templates against discovered metadata
+# and outputs JSON files for the k6 Goldfish comparison test suite.
+# Requires: discovered metadata in testdata/ (run `make discover` first)
+generate-k6:
+	go run ./cmd/generate-k6/main.go \
+		--metadata-dir testdata \
+		--queries-dir queries \
+		--tenant-id $(TENANT_ID) \
+		--output-dir testdata
+
+#####################################
+# Correctness Metrics Binary        #
+#####################################
+
+build-correctness-metrics:
+	@mkdir -p ./build
+	CGO_ENABLED=0 go build -o ./build/correctness-metrics ./cmd/correctness-metrics
+
+#####################################
+# gotestsum Remote Test Runner      #
+#####################################
+
+# gotestsum-remote runs the remote correctness tests via gotestsum,
+# producing JUnit XML output in ./build/results.xml.
+# Requires gotestsum in $PATH: go install gotest.tools/gotestsum@latest
+gotestsum-remote:
+ifndef GOTESTSUM
+	$(error gotestsum not found in PATH — install with: go install gotest.tools/gotestsum@latest)
+endif
+ifndef REMOTE_ADDR_1
+	$(error REMOTE_ADDR_1 is required — add it to .env (see .env.template))
+endif
+ifndef REMOTE_ADDR_2
+	$(error REMOTE_ADDR_2 is required — add it to .env (see .env.template))
+endif
+ifndef REMOTE_ORG_ID
+	$(error REMOTE_ORG_ID is required — add it to .env (see .env.template))
+endif
+	@mkdir -p ./build
+	$(GOTESTSUM) \
+		--format standard-verbose \
+		--junitfile ./build/results.xml \
+		-- -tags=remote_correctness -v \
+		. \
+		-run TestRemoteStorageEquality \
+		-timeout $(REMOTE_TIMEOUT) \
+		-addr-1 "$(REMOTE_ADDR_1)" \
+		-addr-2 "$(REMOTE_ADDR_2)" \
+		-org-id "$(REMOTE_ORG_ID)" \
+		-username "$(LOKI_USERNAME)" \
+		-password "$(LOKI_PASSWORD)" \
+		-metadata-dir $(METADATA_DIR) \
+		-remote-range-type $(RANGE_TYPE)
