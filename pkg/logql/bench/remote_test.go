@@ -173,7 +173,7 @@ func TestRemoteStorageEquality(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		t.Run(fmt.Sprintf("%s/kind=%s", tc.Source, tc.Kind()), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s/kind=%s/direction=%s", tc.Source, tc.Kind(), tc.Direction), func(t *testing.T) {
 			t.Logf("Query: %s", tc.Description())
 
 			var expected, actual parser.Value
