@@ -45,7 +45,8 @@ type Config struct {
 	// When enabled, the tenant's MaxQuerySeries limit is applied; otherwise, no limit is enforced.
 	EnforceQuerySeriesLimit bool `yaml:"enforce_max_query_series_limit" category:"experimental"`
 
-	ResultsCache queryrangebase.ResultsCacheConfig `yaml:"results_cache" category:"experimental"`
+	ResultsCache     queryrangebase.ResultsCacheConfig `yaml:"results_cache" category:"experimental"`
+	TasksResultCache queryrangebase.ResultsCacheConfig `yaml:"tasks_result_cache" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -73,6 +74,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.AlignQueriesWithStep, prefix+"align-queries-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.EnforceQuerySeriesLimit, prefix+"enforce-max-query-series-limit", false, "Experimental: When enabled, the tenant's MaxQuerySeries limit is applied. Otherwise, no limit is enforced.")
 	cfg.ResultsCache.RegisterFlagsWithPrefix(f, prefix+"results-cache.")
+	cfg.TasksResultCache.RegisterFlagsWithPrefix(f, prefix+"tasks-result-cache.")
 }
 
 func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {
