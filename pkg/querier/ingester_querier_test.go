@@ -132,6 +132,15 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 		}
 	}
 
+	/*
+		Unary rpc calls receive ctx populated by the
+		replication set tracker to exit early on reaching quorum or max
+		failures.
+
+		This doesn't apply to the following stream rpc calls given how the code is
+		structured where we are processing the streams outside of
+		the work func, so these contexts must not be cancelled.
+	*/
 	tests = map[string]struct {
 		method string
 		testFn func(*IngesterQuerier) error
