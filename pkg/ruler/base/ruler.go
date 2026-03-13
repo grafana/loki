@@ -80,7 +80,7 @@ type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
 	// This is used for template expansion in alerts, and represents the corresponding Grafana datasource UID.
-	DatasourceUID string `yaml:"datasource_uid"`
+	DatasourceUID string `yaml:"datasource_uid" doc:"deprecated|description=Use -ruler-grafana-datasource-uid. CLI flags and their respective YAML config options instead."`
 	// Labels to add to all alerts
 	ExternalLabels labels.Labels `yaml:"external_labels,omitempty" doc:"description=Labels to add to all alerts."`
 	// GRPC Client configuration.
