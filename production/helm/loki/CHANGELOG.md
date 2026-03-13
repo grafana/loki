@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Add `loadBalancerSourceRanges` support for gateway service
 
 ## 6.55.0
 

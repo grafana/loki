@@ -30,6 +30,10 @@ spec:
   {{- if and (eq "LoadBalancer" .Values.gateway.service.type) .Values.gateway.service.loadBalancerIP }}
   loadBalancerIP: {{ .Values.gateway.service.loadBalancerIP }}
   {{- end }}
+  {{- if and (eq "LoadBalancer" .Values.gateway.service.type) .Values.gateway.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml .Values.gateway.service.loadBalancerSourceRanges | nindent 4 }}
+  {{- end }}
   ports:
     - name: http-metrics
       port: {{ .Values.gateway.service.port }}

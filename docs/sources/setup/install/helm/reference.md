@@ -5390,6 +5390,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>gateway.service.loadBalancerSourceRanges</td>
+			<td>list</td>
+			<td>Load balancer allow traffic from CIDR list if service type is LoadBalancer</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.service.nodePort</td>
 			<td>int</td>
 			<td>Node port if service type is NodePort</td>
