@@ -7952,6 +7952,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memcached.image.registry</td>
+			<td>string</td>
+			<td>Memcached Docker image registry</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcached.image.repository</td>
 			<td>string</td>
 			<td>Memcached Docker image repository</td>
