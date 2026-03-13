@@ -566,7 +566,8 @@ func (n *Cache) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = Cache{
-		Key: cache.Key,
+		Key:   cache.Key,
+		Cache: cache.Cache,
 	}
 	return nil
 }

@@ -427,5 +427,6 @@ func (n *Cache) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.Cache{
 		NodeID: nodeID,
 		Key:    n.Key,
+		Cache:  n.Cache,
 	}, nil
 }

@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 // WorkerConfig represents the configuration for the [Worker].
@@ -61,10 +60,6 @@ type WorkerParams struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer
-
-	// TaskCache is an optional task-level result cache. When set, worker
-	// threads will use it to read/write cached task results.
-	TaskCache cache.Cache
 }
 
 // Worker requests tasks from a [Scheduler] and executes them. Task results are
@@ -147,7 +142,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		Endpoint: params.Endpoint,
 
 		StreamFilterer: params.StreamFilterer,
-		TaskCache:      params.TaskCache,
+		TaskCache:      params.Executor.TaskCache,
 	})
 	if err != nil {
 		return nil, err
