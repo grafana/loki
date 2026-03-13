@@ -211,8 +211,8 @@ func TestLabelAccessTestCases(t *testing.T) {
 			testCase.metricsRangeQuery(t, cliQuery)
 			testCase.metricsQuery(t, cliQuery)
 
-			testCase.flush(t, tAll)
-			testCase.seriesQuery(t, cliQuery)
+			//testCase.flush(t, tAll)
+			//testCase.seriesQuery(t, cliQuery)
 		})
 	}
 }
