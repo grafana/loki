@@ -64,10 +64,11 @@ func parseTestName(name string) (*testLabels, error) {
 type testStatus string
 
 const (
-	statusPass  testStatus = "pass"
-	statusFail  testStatus = "fail"
-	statusError testStatus = "error"
-	statusSkip  testStatus = "skip"
+	statusPass    testStatus = "pass"
+	statusFail    testStatus = "fail"
+	statusError   testStatus = "error"
+	statusSkip    testStatus = "skip"
+	statusUnknown testStatus = "unknown"
 )
 
 // parsedTest holds a single test result with optional parsed labels.
@@ -143,7 +144,7 @@ func parseJUnitXML(data []byte) (*parsedResults, error) {
 			case junit.StatusSkipped:
 				pt.Status = statusSkip
 			default:
-				pt.Status = statusPass
+				pt.Status = statusUnknown
 			}
 
 			labels, parseErr := parseTestName(tc.Name)

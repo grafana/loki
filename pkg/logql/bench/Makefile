@@ -211,8 +211,8 @@ generate-k6:
 #####################################
 
 build-correctness-metrics:
-	@mkdir -p ./pkg/logql/bench/build
-	CGO_ENABLED=0 go build -o ./pkg/logql/bench/build/correctness-metrics ./pkg/logql/bench/cmd/correctness-metrics
+	@mkdir -p ./build
+	CGO_ENABLED=0 go build -o ./build/correctness-metrics ./cmd/correctness-metrics
 
 #####################################
 # gotestsum Remote Test Runner      #
@@ -234,10 +234,10 @@ endif
 ifndef REMOTE_ORG_ID
 	$(error REMOTE_ORG_ID is required — add it to .env (see .env.template))
 endif
-	@mkdir -p ./pkg/logql/bench/build
+	@mkdir -p ./build
 	$(GOTESTSUM) \
 		--format standard-verbose \
-		--junitfile ./pkg/logql/bench/build/results.xml \
+		--junitfile ./build/results.xml \
 		-- -tags=remote_correctness -v \
 		./pkg/logql/bench \
 		-run TestRemoteStorageEquality \

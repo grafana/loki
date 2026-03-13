@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 )
 
@@ -84,8 +85,18 @@ func run() int {
 		return 1
 	}
 
-	log.Printf("Pushed %d metrics (%s) to %s", len(series), summary, *remoteWriteURL)
+	log.Printf("Pushed %d metrics (%s) to %s", len(series), summary, redactURL(*remoteWriteURL))
 	return 0
+}
+
+// redactURL strips any userinfo from a URL to prevent credential leakage in logs.
+func redactURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	u.User = nil
+	return u.String()
 }
 
 func envOrDefault(key, fallback string) string {
