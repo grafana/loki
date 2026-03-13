@@ -427,18 +427,30 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 func (e *Engine) dualResolve(ctx context.Context, tenantID string, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) {
 	plannerCtx := physical.NewContext(params.Start(), params.End())
 
+	var (
+		metastoreSectionResolved    int
+		indexGatewaySectionResolved int
+
+		metastoreErr    error
+		indexGatewayErr error
+
+		metastoreDuration    time.Duration
+		indexGatewayDuration time.Duration
+	)
+
 	if e.metastore != nil {
 		start := time.Now()
 		catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID))
 		p := physical.NewPlanner(plannerCtx, catalog)
 		plan, err := p.Build(logicalPlan)
-		elapsed := time.Since(start)
+
+		metastoreDuration = time.Since(start)
 		if err != nil {
-			level.Warn(logger).Log("msg", "dual-resolve: metastore resolution failed", "err", err, "duration", elapsed)
+			metastoreErr = err
 		} else {
-			sections := countScanTargets(plan)
-			level.Info(logger).Log("msg", "dual-resolve: metastore", "sections", sections, "duration", elapsed)
+			metastoreSectionResolved = countScanTargets(plan)
 		}
+
 	} else {
 		level.Info(logger).Log("msg", "dual-resolve: metastore not configured, skipping")
 	}
@@ -448,16 +460,26 @@ func (e *Engine) dualResolve(ctx context.Context, tenantID string, logger log.Lo
 		catalog := physical.NewTSDBCatalog(e.tsdbSectionsResolver(ctx, tenantID))
 		p := physical.NewPlanner(plannerCtx, catalog)
 		plan, err := p.Build(logicalPlan)
-		elapsed := time.Since(start)
+
+		indexGatewayDuration = time.Since(start)
 		if err != nil {
-			level.Warn(logger).Log("msg", "dual-resolve: index-gateway resolution failed", "err", err, "duration", elapsed)
+			indexGatewayErr = err
 		} else {
-			sections := countScanTargets(plan)
-			level.Info(logger).Log("msg", "dual-resolve: index-gateway", "sections", sections, "duration", elapsed)
+			indexGatewaySectionResolved = countScanTargets(plan)
 		}
 	} else {
 		level.Info(logger).Log("msg", "dual-resolve: index-gateway not configured, skipping")
 	}
+
+	level.Info(logger).Log(
+		"msg", "dual-resolve completed",
+		"metastore_section_resolved", metastoreSectionResolved,
+		"metastore_duration", metastoreDuration.String(),
+		"metastore_error", fmt.Sprintf("%v", metastoreErr),
+		"index_gateway_section_resolved", indexGatewaySectionResolved,
+		"index_gateway_duration", indexGatewayDuration.String(),
+		"index_gateway_error", fmt.Sprintf("%v", indexGatewayErr),
+	)
 }
 
 // countScanTargets counts the total number of DataObjScan targets in a physical plan.
