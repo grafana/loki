@@ -1052,7 +1052,7 @@ Response format:
 This example cURL command
 
 ```bash
-curl -G -s "http://localhost:3100/loki/api/v1/detected_fields" \
+curl -H 'X-Scope-OrgID: <TENANT_ID>' -G -s "http://localhost:3100/loki/api/v1/detected_fields" \
   --data-urlencode 'query={app="myapp"}' \
   --data-urlencode 'start=1609459200000000000' \
   --data-urlencode 'end=1609462800000000000' | jq
@@ -1125,7 +1125,7 @@ Response format:
 This example cURL command
 
 ```bash
-curl -G -s "http://localhost:3100/loki/api/v1/detected_field/level/values" \
+curl -H 'X-Scope-OrgID: <TENANT_ID>' -G -s "http://localhost:3100/loki/api/v1/detected_field/level/values" \
   --data-urlencode 'query={app="myapp"}' \
   --data-urlencode 'start=1609459200000000000' \
   --data-urlencode 'end=1609462800000000000' | jq
