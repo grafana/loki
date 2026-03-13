@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -85,6 +86,9 @@ type Config struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
+
+	// TaskCache is an optional backing cache for task results.
+	TaskCache cache.Cache `yaml:"-"`
 }
 
 // readyRequest is a message sent from a thread to notify the worker that it's
@@ -112,6 +116,7 @@ type Worker struct {
 	config     Config
 	logger     log.Logger
 	numThreads int
+	taskCaches executor.TaskCacheRegistry
 
 	initOnce sync.Once
 	svc      services.Service
@@ -160,6 +165,7 @@ func New(config Config) (*Worker, error) {
 		logger:      config.Logger,
 		wireMetrics: wire.NewMetrics(),
 		numThreads:  numThreads,
+		taskCaches:  executor.NewTaskCacheRegistry(config.TaskCache, prometheus.DefaultRegisterer),
 
 		dialer:   config.Dialer,
 		listener: config.Listener,
@@ -200,6 +206,7 @@ func (w *Worker) run(ctx context.Context) error {
 			Bucket:         w.config.Bucket,
 			Metastore:      w.config.Metastore,
 			StreamFilterer: w.config.StreamFilterer,
+			TaskCaches:     w.taskCaches,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,

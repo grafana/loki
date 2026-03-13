@@ -6,11 +6,10 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	gotrace "runtime/trace"
 	"strconv"
 	"strings"
 	"time"
-
-	gotrace "runtime/trace"
 
 	"github.com/alecthomas/units"
 	"github.com/go-kit/log"
@@ -34,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -79,6 +79,10 @@ type ExecutorConfig struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
+
+	// TaskCache is an optional backing cache for task results.
+	// When set, cache pipelines will use it to read/write results.
+	TaskCache cache.Cache `yaml:"-"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -473,6 +477,8 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 
 		MaxRunningScanTasks:  maxRunningScanTasks,
 		MaxRunningOtherTasks: 0,
+
+		CacheEnabled: cache.IsCacheConfigured(e.cfg.TasksResultCache.CacheConfig),
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),

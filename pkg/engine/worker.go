@@ -142,6 +142,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		Endpoint: params.Endpoint,
 
 		StreamFilterer: params.StreamFilterer,
+		TaskCache:      params.Executor.TaskCache,
 	})
 	if err != nil {
 		return nil, err

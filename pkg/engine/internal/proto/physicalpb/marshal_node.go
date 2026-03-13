@@ -108,6 +108,12 @@ func (n *Node_Batching) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error)
 	return n.Batching.MarshalPhysical(nodeID)
 }
 
+// MarshalPhysical converts a protobuf node into a physical plan node. Returns
+// an error if the conversion fails or is unsupported.
+func (n *Node_Cache) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return n.Cache.MarshalPhysical(nodeID)
+}
+
 // MarshalPhysical converts a protobuf AggregateRange into a physical plan node. Returns
 // an error if the conversion fails or is unsupported.
 func (n *AggregateRange) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
@@ -412,5 +418,15 @@ func (n *Batching) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.Batching{
 		NodeID:    nodeID,
 		BatchSize: n.BatchSize,
+	}, nil
+}
+
+// MarshalPhysical converts a protobuf Cache into a physical plan node. Returns
+// an error if the conversion fails or is unsupported.
+func (n *Cache) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return &physical.Cache{
+		NodeID: nodeID,
+		Key:    n.Key,
+		Cache:  n.Cache,
 	}, nil
 }
