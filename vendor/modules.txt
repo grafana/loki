@@ -1427,6 +1427,9 @@ github.com/jmespath/go-jmespath
 # github.com/joncrlsn/dque v0.0.0-20211108142734-c2ef48c5192a
 ## explicit; go 1.13
 github.com/joncrlsn/dque
+# github.com/joshdk/go-junit v1.0.0
+## explicit; go 1.12
+github.com/joshdk/go-junit
 # github.com/jpillora/backoff v1.0.0
 ## explicit; go 1.13
 github.com/jpillora/backoff
