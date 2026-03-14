@@ -59,6 +59,31 @@ The following sections describe how to use APIs exposed by the library,
 highlighting the use cases with code examples to demonstrate how they are used
 in practice.
 
+### Struct Tags
+
+When using Go structs to define the schema of parquet files, struct fields may
+include a `parquet` tag to configure properties of the parquet column such as
+its name, compression, encoding, and logical type. The first value in the tag
+sets the column name, and additional comma-separated values set options.
+
+```go
+type Record struct {
+    ID        int64     `parquet:"id,delta"`
+    Name      string    `parquet:"name,dict,zstd"`
+    Timestamp int64     `parquet:"timestamp,timestamp(microsecond)"`
+    Score     float64   `parquet:"score,split"`
+    Tags      []string  `parquet:"tags,list"`
+    Optional  *string   `parquet:"optional,optional"`
+}
+```
+
+Map keys and values can be configured with the `parquet-key` and `parquet-value`
+tags, and list elements with the `parquet-element` tag.
+
+For the full reference of supported tags, type constraints, and examples, see
+the [`SchemaOf`](https://pkg.go.dev/github.com/parquet-go/parquet-go#SchemaOf)
+documentation.
+
 ### Writing Parquet Files: [parquet.GenericWriter[T]](https://pkg.go.dev/github.com/parquet-go/parquet-go#GenericWriter)
 
 A parquet file is a collection of rows sharing the same schema, arranged in

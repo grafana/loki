@@ -190,11 +190,7 @@ func (t *intType) EstimateDecodeSize(numValues int, src []byte, enc encoding.Enc
 }
 
 func (t *intType) AssignValue(dst reflect.Value, src Value) error {
-	if t.BitWidth == 64 {
-		return int64Type{}.AssignValue(dst, src)
-	} else {
-		return int32Type{}.AssignValue(dst, src)
-	}
+	return t.baseType().AssignValue(dst, src)
 }
 
 func (t *intType) ConvertValue(val Value, typ Type) (Value, error) {

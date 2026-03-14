@@ -25,6 +25,7 @@ const (
 // However, the readers and writer that they instantiates are intended to be
 // used by a single goroutine.
 type Protocol interface {
+	NewReaderFromBytes(b []byte) Reader
 	NewReader(r io.Reader) Reader
 	NewWriter(w io.Writer) Writer
 	Features() Features
@@ -49,6 +50,7 @@ type Reader interface {
 	ReadList() (List, error)
 	ReadSet() (Set, error)
 	ReadMap() (Map, error)
+	BytesRead() int
 }
 
 // Writer represents a low-level writer of values encoded according to one of

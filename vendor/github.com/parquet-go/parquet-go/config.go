@@ -228,6 +228,7 @@ type WriterConfig struct {
 	Compression                  compress.Codec
 	Sorting                      SortingConfig
 	SkipPageBounds               [][]string
+	SkipPageStatistics           [][]string
 	Encodings                    map[Kind]encoding.Encoding
 	DictionaryMaxBytes           int64
 	SchemaConfig                 *SchemaConfig
@@ -304,6 +305,7 @@ func (c *WriterConfig) ConfigureWriter(config *WriterConfig) {
 		Compression:                  coalesceCompression(c.Compression, config.Compression),
 		Sorting:                      coalesceSortingConfig(c.Sorting, config.Sorting),
 		SkipPageBounds:               coalesceSlices(c.SkipPageBounds, config.SkipPageBounds),
+		SkipPageStatistics:           coalesceSlices(c.SkipPageStatistics, config.SkipPageStatistics),
 		Encodings:                    encodings,
 		SchemaConfig:                 coalesceSchemaConfig(c.SchemaConfig, config.SchemaConfig),
 	}
@@ -709,6 +711,17 @@ func SortingWriterConfig(options ...SortingOption) WriterOption {
 // This option is additive, it may be used multiple times to skip multiple columns.
 func SkipPageBounds(path ...string) WriterOption {
 	return writerOption(func(config *WriterConfig) { config.SkipPageBounds = append(config.SkipPageBounds, path) })
+}
+
+// SkipPageStatistics lists the path to a column that shouldn't have statistics
+// written for pages. This is useful for data blobs, like a raw html file,
+// where the bounds are not meaningful.
+//
+// This option has no effect if DataPageStatistics(false) is used.
+//
+// This option is additive, it may be used multiple times to skip multiple columns.
+func SkipPageStatistics(path ...string) WriterOption {
+	return writerOption(func(config *WriterConfig) { config.SkipPageStatistics = append(config.SkipPageStatistics, path) })
 }
 
 // DefaultEncodingFor creates a configuration option which sets the default encoding
