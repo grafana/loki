@@ -550,6 +550,8 @@ func (s Style) getAsColor(k propKey) color.Color {
 		c = s.borderBottomBgColor
 	case borderLeftBackgroundKey:
 		c = s.borderLeftBgColor
+	case underlineColorKey:
+		c = s.ulColor
 	}
 
 	if c != nil {

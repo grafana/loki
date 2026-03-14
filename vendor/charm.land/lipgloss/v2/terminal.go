@@ -94,19 +94,26 @@ func queryTerminal(
 	pa := ansi.GetParser()
 	defer ansi.PutParser(pa)
 
+	var acc []byte    // Accumulate partial responses before filtering
 	var buf [256]byte // 256 bytes should be enough for most responses
+	var state byte
 	for {
 		n, err := rd.Read(buf[:])
 		if err != nil {
 			return fmt.Errorf("could not read from input: %w", err)
 		}
 
-		var state byte
 		p := buf[:]
 		for n > 0 {
 			seq, _, read, newState := ansi.DecodeSequence(p[:n], state, pa)
-			if !filter(string(seq), pa) {
-				return nil
+			acc = append(acc, seq...)
+
+			if newState == ansi.NormalState {
+				if !filter(string(acc), pa) {
+					return nil
+				}
+
+				acc = acc[:0]
 			}
 
 			state = newState
