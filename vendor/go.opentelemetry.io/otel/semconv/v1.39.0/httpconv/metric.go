@@ -160,7 +160,10 @@ func (m ClientActiveRequests) Add(
 	attrs ...attribute.KeyValue,
 ) {
 	if len(attrs) == 0 {
-		m.Int64UpDownCounter.Add(ctx, incr)
+		m.Int64UpDownCounter.Add(ctx, incr, metric.WithAttributes(
+			attribute.String("server.address", serverAddress),
+			attribute.Int("server.port", serverPort),
+		))
 		return
 	}
 
@@ -300,7 +303,10 @@ func (m ClientConnectionDuration) Record(
 	attrs ...attribute.KeyValue,
 ) {
 	if len(attrs) == 0 {
-		m.Float64Histogram.Record(ctx, val)
+		m.Float64Histogram.Record(ctx, val, metric.WithAttributes(
+			attribute.String("server.address", serverAddress),
+			attribute.Int("server.port", serverPort),
+		))
 		return
 	}
 
@@ -443,7 +449,11 @@ func (m ClientOpenConnections) Add(
 	attrs ...attribute.KeyValue,
 ) {
 	if len(attrs) == 0 {
-		m.Int64UpDownCounter.Add(ctx, incr)
+		m.Int64UpDownCounter.Add(ctx, incr, metric.WithAttributes(
+			attribute.String("http.connection.state", string(connectionState)),
+			attribute.String("server.address", serverAddress),
+			attribute.Int("server.port", serverPort),
+		))
 		return
 	}
 
@@ -592,7 +602,11 @@ func (m ClientRequestBodySize) Record(
 	attrs ...attribute.KeyValue,
 ) {
 	if len(attrs) == 0 {
-		m.Int64Histogram.Record(ctx, val)
+		m.Int64Histogram.Record(ctx, val, metric.WithAttributes(
+			attribute.String("http.request.method", string(requestMethod)),
+			attribute.String("server.address", serverAddress),
+			attribute.Int("server.port", serverPort),
+		))
 		return
 	}
 
@@ -768,7 +782,11 @@ func (m ClientRequestDuration) Record(
 	attrs ...attribute.KeyValue,
 ) {
 	if len(attrs) == 0 {
-		m.Float64Histogram.Record(ctx, val)
+		m.Float64Histogram.Record(ctx, val, metric.WithAttributes(
+			attribute.String("http.request.method", string(requestMethod)),
+			attribute.String("server.address", serverAddress),
+			attribute.Int("server.port", serverPort),
+		))
 		return
 	}
 
@@ -944,7 +962,11 @@ func (m ClientResponseBodySize) Record(
 	attrs ...attribute.KeyValue,
 ) {
 	if len(attrs) == 0 {
-		m.Int64Histogram.Record(ctx, val)
+		m.Int64Histogram.Record(ctx, val, metric.WithAttributes(
+			attribute.String("http.request.method", string(requestMethod)),
+			attribute.String("server.address", serverAddress),
+			attribute.Int("server.port", serverPort),
+		))
 		return
 	}
 
@@ -1118,7 +1140,10 @@ func (m ServerActiveRequests) Add(
 	attrs ...attribute.KeyValue,
 ) {
 	if len(attrs) == 0 {
-		m.Int64UpDownCounter.Add(ctx, incr)
+		m.Int64UpDownCounter.Add(ctx, incr, metric.WithAttributes(
+			attribute.String("http.request.method", string(requestMethod)),
+			attribute.String("url.scheme", urlScheme),
+		))
 		return
 	}
 
@@ -1255,7 +1280,10 @@ func (m ServerRequestBodySize) Record(
 	attrs ...attribute.KeyValue,
 ) {
 	if len(attrs) == 0 {
-		m.Int64Histogram.Record(ctx, val)
+		m.Int64Histogram.Record(ctx, val, metric.WithAttributes(
+			attribute.String("http.request.method", string(requestMethod)),
+			attribute.String("url.scheme", urlScheme),
+		))
 		return
 	}
 
@@ -1439,7 +1467,10 @@ func (m ServerRequestDuration) Record(
 	attrs ...attribute.KeyValue,
 ) {
 	if len(attrs) == 0 {
-		m.Float64Histogram.Record(ctx, val)
+		m.Float64Histogram.Record(ctx, val, metric.WithAttributes(
+			attribute.String("http.request.method", string(requestMethod)),
+			attribute.String("url.scheme", urlScheme),
+		))
 		return
 	}
 
@@ -1623,7 +1654,10 @@ func (m ServerResponseBodySize) Record(
 	attrs ...attribute.KeyValue,
 ) {
 	if len(attrs) == 0 {
-		m.Int64Histogram.Record(ctx, val)
+		m.Int64Histogram.Record(ctx, val, metric.WithAttributes(
+			attribute.String("http.request.method", string(requestMethod)),
+			attribute.String("url.scheme", urlScheme),
+		))
 		return
 	}
 
