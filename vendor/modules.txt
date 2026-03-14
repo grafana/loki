@@ -627,7 +627,7 @@ github.com/axiomhq/hyperloglog
 # github.com/bahlo/generic-list-go v0.2.0
 ## explicit; go 1.18
 github.com/bahlo/generic-list-go
-# github.com/baidubce/bce-sdk-go v0.9.260
+# github.com/baidubce/bce-sdk-go v0.9.261
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
