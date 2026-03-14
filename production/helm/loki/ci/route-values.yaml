@@ -1,0 +1,36 @@
+---
+gateway:
+  route:
+    enabled: true
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    annotations: {}
+    parentRefs:
+      - name: loki-gateway
+        namespace: loki
+    hostnames:
+      - gateway.loki.example.com
+    matches:
+      - path:
+          type: PathPrefix
+          value: /
+loki:
+  commonConfig:
+    replication_factor: 1
+  useTestSchema: true
+  storage:
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+      admin: admin
+read:
+  replicas: 1
+write:
+  replicas: 1
+backend:
+  replicas: 1
+monitoring:
+  lokiCanary:
+    enabled: false
+test:
+  enabled: false
