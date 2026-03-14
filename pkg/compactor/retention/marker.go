@@ -22,6 +22,8 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
+const maxMarkerRetry = 5
+
 var (
 	minListMarkDelay = time.Minute
 	maxMarkPerFile   = int64(100000)
@@ -163,6 +165,8 @@ type markerProcessor struct {
 	wg     sync.WaitGroup
 
 	sweeperMetrics *sweeperMetrics
+
+	failedMarkers map[string]int // NEW: track failures per marker file
 }
 
 func newMarkerReader(markerStorageClient client.ObjectClient, maxParallelism int, minAgeFile time.Duration, sweeperMetrics *sweeperMetrics) (*markerProcessor, error) {
@@ -174,6 +178,7 @@ func newMarkerReader(markerStorageClient client.ObjectClient, maxParallelism int
 		maxParallelism:      maxParallelism,
 		minAgeFile:          minAgeFile,
 		sweeperMetrics:      sweeperMetrics,
+		failedMarkers:       make(map[string]int), // NEW
 	}, nil
 }
 
@@ -215,9 +220,42 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 				r.sweeperMetrics.markerFileCurrentTime.Set(float64(times[i].UnixNano()) / 1e9)
 				allChunksDeleted, err := r.processFile(name, deleteFunc)
 				if err != nil {
-					level.Warn(util_log.Logger).Log("msg", "failed to process marks", "name", name, "err", err)
+
+					r.failedMarkers[name]++
+
+					// skip marker after too many failures
+					if r.failedMarkers[name] >= maxMarkerRetry {
+						level.Error(util_log.Logger).Log(
+							"msg", "skipping marker file after max retries",
+							"name", name,
+							"failures", r.failedMarkers[name],
+							"err", err,
+						)
+
+						// delete bad marker to prevent repeated scanning
+						if err := r.deleteMarksFile(name); err != nil {
+							level.Warn(util_log.Logger).Log(
+								"msg", "failed to delete problematic marker",
+								"name", name,
+								"err", err,
+							)
+						}
+
+						delete(r.failedMarkers, name)
+						continue
+					}
+					level.Warn(util_log.Logger).Log(
+						"msg", "failed to process marks",
+						"name", name,
+						"attempt", r.failedMarkers[name],
+						"err", err,
+					)
+
 					continue
 				}
+				// reset failure counter on success
+				delete(r.failedMarkers, name)
+
 				if allChunksDeleted {
 					// delete marks file if all chunks were deleted successfully.
 					if err := r.deleteMarksFile(name); err != nil {
