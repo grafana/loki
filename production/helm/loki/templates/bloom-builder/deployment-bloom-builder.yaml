@@ -161,7 +161,12 @@ spec:
         - name: temp
           emptyDir: {}
         - name: data
-          emptyDir: {}
+          {{- if .Values.bloomBuilder.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "loki.bloomBuilderPVCName" . }}
+          {{- else }}
+          {{- toYaml .Values.bloomBuilder.persistence.dataVolumeParameters | nindent 10 }}
+          {{- end }}
         {{- with (concat .Values.global.extraVolumes .Values.bloomBuilder.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
