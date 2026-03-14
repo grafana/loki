@@ -1800,6 +1800,28 @@ func (DatafeedSubscriptionState) Values() []DatafeedSubscriptionState {
 	}
 }
 
+type DefaultHttpTokensEnforcedState string
+
+// Enum values for DefaultHttpTokensEnforcedState
+const (
+	DefaultHttpTokensEnforcedStateDisabled     DefaultHttpTokensEnforcedState = "disabled"
+	DefaultHttpTokensEnforcedStateEnabled      DefaultHttpTokensEnforcedState = "enabled"
+	DefaultHttpTokensEnforcedStateNoPreference DefaultHttpTokensEnforcedState = "no-preference"
+)
+
+// Values returns all known values for DefaultHttpTokensEnforcedState. Note that
+// this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (DefaultHttpTokensEnforcedState) Values() []DefaultHttpTokensEnforcedState {
+	return []DefaultHttpTokensEnforcedState{
+		"disabled",
+		"enabled",
+		"no-preference",
+	}
+}
+
 type DefaultInstanceMetadataEndpointState string
 
 // Enum values for DefaultInstanceMetadataEndpointState
@@ -3181,6 +3203,25 @@ func (HostTenancy) Values() []HostTenancy {
 		"default",
 		"dedicated",
 		"host",
+	}
+}
+
+type HttpTokensEnforcedState string
+
+// Enum values for HttpTokensEnforcedState
+const (
+	HttpTokensEnforcedStateDisabled HttpTokensEnforcedState = "disabled"
+	HttpTokensEnforcedStateEnabled  HttpTokensEnforcedState = "enabled"
+)
+
+// Values returns all known values for HttpTokensEnforcedState. Note that this can
+// be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (HttpTokensEnforcedState) Values() []HttpTokensEnforcedState {
+	return []HttpTokensEnforcedState{
+		"disabled",
+		"enabled",
 	}
 }
 
@@ -5082,6 +5123,33 @@ const (
 	InstanceTypeR8id96xlarge       InstanceType = "r8id.96xlarge"
 	InstanceTypeR8idMetal48xl      InstanceType = "r8id.metal-48xl"
 	InstanceTypeR8idMetal96xl      InstanceType = "r8id.metal-96xl"
+	InstanceTypeC8idLarge          InstanceType = "c8id.large"
+	InstanceTypeC8idXlarge         InstanceType = "c8id.xlarge"
+	InstanceTypeC8id2xlarge        InstanceType = "c8id.2xlarge"
+	InstanceTypeC8id4xlarge        InstanceType = "c8id.4xlarge"
+	InstanceTypeC8id8xlarge        InstanceType = "c8id.8xlarge"
+	InstanceTypeC8id12xlarge       InstanceType = "c8id.12xlarge"
+	InstanceTypeC8id16xlarge       InstanceType = "c8id.16xlarge"
+	InstanceTypeC8id24xlarge       InstanceType = "c8id.24xlarge"
+	InstanceTypeC8id32xlarge       InstanceType = "c8id.32xlarge"
+	InstanceTypeC8id48xlarge       InstanceType = "c8id.48xlarge"
+	InstanceTypeC8id96xlarge       InstanceType = "c8id.96xlarge"
+	InstanceTypeC8idMetal48xl      InstanceType = "c8id.metal-48xl"
+	InstanceTypeC8idMetal96xl      InstanceType = "c8id.metal-96xl"
+	InstanceTypeM8idLarge          InstanceType = "m8id.large"
+	InstanceTypeM8idXlarge         InstanceType = "m8id.xlarge"
+	InstanceTypeM8id2xlarge        InstanceType = "m8id.2xlarge"
+	InstanceTypeM8id4xlarge        InstanceType = "m8id.4xlarge"
+	InstanceTypeM8id8xlarge        InstanceType = "m8id.8xlarge"
+	InstanceTypeM8id12xlarge       InstanceType = "m8id.12xlarge"
+	InstanceTypeM8id16xlarge       InstanceType = "m8id.16xlarge"
+	InstanceTypeM8id24xlarge       InstanceType = "m8id.24xlarge"
+	InstanceTypeM8id32xlarge       InstanceType = "m8id.32xlarge"
+	InstanceTypeM8id48xlarge       InstanceType = "m8id.48xlarge"
+	InstanceTypeM8id96xlarge       InstanceType = "m8id.96xlarge"
+	InstanceTypeM8idMetal48xl      InstanceType = "m8id.metal-48xl"
+	InstanceTypeM8idMetal96xl      InstanceType = "m8id.metal-96xl"
+	InstanceTypeHpc8a96xlarge      InstanceType = "hpc8a.96xlarge"
 )
 
 // Values returns all known values for InstanceType. Note that this can be
@@ -6275,6 +6343,33 @@ func (InstanceType) Values() []InstanceType {
 		"r8id.96xlarge",
 		"r8id.metal-48xl",
 		"r8id.metal-96xl",
+		"c8id.large",
+		"c8id.xlarge",
+		"c8id.2xlarge",
+		"c8id.4xlarge",
+		"c8id.8xlarge",
+		"c8id.12xlarge",
+		"c8id.16xlarge",
+		"c8id.24xlarge",
+		"c8id.32xlarge",
+		"c8id.48xlarge",
+		"c8id.96xlarge",
+		"c8id.metal-48xl",
+		"c8id.metal-96xl",
+		"m8id.large",
+		"m8id.xlarge",
+		"m8id.2xlarge",
+		"m8id.4xlarge",
+		"m8id.8xlarge",
+		"m8id.12xlarge",
+		"m8id.16xlarge",
+		"m8id.24xlarge",
+		"m8id.32xlarge",
+		"m8id.48xlarge",
+		"m8id.96xlarge",
+		"m8id.metal-48xl",
+		"m8id.metal-96xl",
+		"hpc8a.96xlarge",
 	}
 }
 

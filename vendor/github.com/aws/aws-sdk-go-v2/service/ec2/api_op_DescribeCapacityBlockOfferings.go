@@ -41,6 +41,12 @@ type DescribeCapacityBlockOfferingsInput struct {
 	// This member is required.
 	CapacityDurationHours *int32
 
+	//  Include all Availability Zones and Local Zones, regardless of your opt-in
+	// status. If you do not use this parameter, the results include available
+	// offerings from all Availability Zones in the Amazon Web Services Region and
+	// Local Zones you are opted into.
+	AllAvailabilityZones *bool
+
 	// Checks whether you have the required permissions for the action, without
 	// actually making the request, and provides an error response. If you have the
 	// required permissions, the error response is DryRunOperation . Otherwise, it is

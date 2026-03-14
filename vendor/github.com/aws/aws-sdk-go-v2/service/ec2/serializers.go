@@ -73614,6 +73614,11 @@ func awsEc2query_serializeOpDocumentDescribeCapacityBlockOfferingsInput(v *Descr
 	object := value.Object()
 	_ = object
 
+	if v.AllAvailabilityZones != nil {
+		objectKey := object.Key("AllAvailabilityZones")
+		objectKey.Boolean(*v.AllAvailabilityZones)
+	}
+
 	if v.CapacityDurationHours != nil {
 		objectKey := object.Key("CapacityDurationHours")
 		objectKey.Integer(*v.CapacityDurationHours)
@@ -84462,6 +84467,11 @@ func awsEc2query_serializeOpDocumentModifyInstanceMetadataDefaultsInput(v *Modif
 	if len(v.HttpTokens) > 0 {
 		objectKey := object.Key("HttpTokens")
 		objectKey.String(string(v.HttpTokens))
+	}
+
+	if len(v.HttpTokensEnforced) > 0 {
+		objectKey := object.Key("HttpTokensEnforced")
+		objectKey.String(string(v.HttpTokensEnforced))
 	}
 
 	if len(v.InstanceMetadataTags) > 0 {
