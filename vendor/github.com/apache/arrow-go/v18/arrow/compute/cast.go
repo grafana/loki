@@ -301,7 +301,7 @@ func CastStruct(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult)
 			out.Buffers[0].Buf, 0)
 	}
 
-	out.Children = make([]exec.ArraySpan, outFieldCount)
+	out.ResizeChildren(outFieldCount)
 	for outFieldIndex, idx := range fieldsToSelect {
 		values := input.Children[idx].MakeArray()
 		defer values.Release()
