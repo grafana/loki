@@ -686,11 +686,14 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 			http.Error(w, "Application is stopping", http.StatusServiceUnavailable)
 			return
 		}
-		if !sm.IsHealthy() {
-			msg := bytes.Buffer{}
-			msg.WriteString("Some services are not Running:\n")
+		byState := sm.ServicesByState()
 
-			byState := sm.ServicesByState()
+		// Only fail readiness if services actually failed.
+		// Services in Starting state are normal during bootstrap.
+		if len(byState[services.Failed]) > 0 {
+			msg := bytes.Buffer{}
+			msg.WriteString("Some services failed:\n")
+
 			for st, ls := range byState {
 				fmt.Fprintf(&msg, "%v: %d\n", st, len(ls))
 			}
