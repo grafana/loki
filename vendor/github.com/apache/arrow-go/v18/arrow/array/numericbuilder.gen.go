@@ -218,7 +218,29 @@ func (b *Int64Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v, 10, 8*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(int64(fval)) || fval < -9223372036854775808.0 || fval >= 9223372036854775808.0 {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -230,7 +252,29 @@ func (b *Int64Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(int64(v))
 	case json.Number:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v.String(), 10, 8*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(int64(fval)) || fval < -9223372036854775808.0 || fval >= 9223372036854775808.0 {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -459,7 +503,29 @@ func (b *Uint64Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v, 10, 8*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint64(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -471,7 +537,29 @@ func (b *Uint64Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(uint64(v))
 	case json.Number:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v.String(), 10, 8*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint64(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -941,7 +1029,31 @@ func (b *Int32Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v, 10, 4*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			minVal := float64(int64(-1) << (4*8 - 1))
+			maxVal := float64(int64(1) << (4*8 - 1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -953,7 +1065,31 @@ func (b *Int32Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(int32(v))
 	case json.Number:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v.String(), 10, 4*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			minVal := float64(int64(-1) << (4*8 - 1))
+			maxVal := float64(int64(1) << (4*8 - 1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -1182,7 +1318,29 @@ func (b *Uint32Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v, 10, 4*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint32(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -1194,7 +1352,29 @@ func (b *Uint32Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(uint32(v))
 	case json.Number:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v.String(), 10, 4*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint32(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -1664,7 +1844,31 @@ func (b *Int16Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v, 10, 2*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			minVal := float64(int64(-1) << (2*8 - 1))
+			maxVal := float64(int64(1) << (2*8 - 1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -1676,7 +1880,31 @@ func (b *Int16Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(int16(v))
 	case json.Number:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v.String(), 10, 2*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			minVal := float64(int64(-1) << (2*8 - 1))
+			maxVal := float64(int64(1) << (2*8 - 1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -1905,7 +2133,29 @@ func (b *Uint16Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v, 10, 2*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint16(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -1917,7 +2167,29 @@ func (b *Uint16Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(uint16(v))
 	case json.Number:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v.String(), 10, 2*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint16(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -2146,7 +2418,31 @@ func (b *Int8Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v, 10, 1*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			minVal := float64(int64(-1) << (1*8 - 1))
+			maxVal := float64(int64(1) << (1*8 - 1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -2158,7 +2454,31 @@ func (b *Int8Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(int8(v))
 	case json.Number:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v.String(), 10, 1*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			minVal := float64(int64(-1) << (1*8 - 1))
+			maxVal := float64(int64(1) << (1*8 - 1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -2387,7 +2707,29 @@ func (b *Uint8Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v, 10, 1*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint8(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -2399,7 +2741,29 @@ func (b *Uint8Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(uint8(v))
 	case json.Number:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v.String(), 10, 1*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint8(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
