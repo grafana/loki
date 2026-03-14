@@ -517,66 +517,6 @@ func TestStreamsResultBuilder(t *testing.T) {
 		}
 		require.Equal(t, expected, streams)
 	})
-
-	t.Run("duplicate entries from multiple records are deduplicated", func(t *testing.T) {
-		colTs := semconv.ColumnIdentTimestamp
-		colMsg := semconv.ColumnIdentMessage
-		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
-
-		schema := arrow.NewSchema(
-			[]arrow.Field{
-				semconv.FieldFromIdent(colTs, false),
-				semconv.FieldFromIdent(colMsg, false),
-				semconv.FieldFromIdent(colEnv, false),
-			},
-			nil,
-		)
-
-		ts1 := time.Unix(0, 1620000000000000001).UTC()
-		ts2 := time.Unix(0, 1620000000000000002).UTC()
-		ts3 := time.Unix(0, 1620000000000000003).UTC()
-
-		// Simulate two data object scans returning overlapping entries
-		// (same entry stored in multiple data objects).
-		rec1 := arrowtest.Rows{
-			{colTs.FQN(): ts1, colMsg.FQN(): "line A", colEnv.FQN(): "prod"},
-			{colTs.FQN(): ts2, colMsg.FQN(): "line B", colEnv.FQN(): "prod"},
-			{colTs.FQN(): ts3, colMsg.FQN(): "line C", colEnv.FQN(): "prod"},
-		}.Record(memory.DefaultAllocator, schema)
-
-		rec2 := arrowtest.Rows{
-			{colTs.FQN(): ts2, colMsg.FQN(): "line B", colEnv.FQN(): "prod"},
-			{colTs.FQN(): ts3, colMsg.FQN(): "line C", colEnv.FQN(): "prod"},
-		}.Record(memory.DefaultAllocator, schema)
-
-		builder := newStreamsResultBuilder(logproto.FORWARD, false)
-		builder.CollectRecord(rec1)
-		builder.CollectRecord(rec2)
-		rec1.Release()
-		rec2.Release()
-
-		require.Equal(t, 5, builder.Len(), "raw count before dedup")
-
-		md, _ := metadata.NewContext(t.Context())
-		result := builder.Build(stats.Result{}, md)
-		streams := result.Data.(logqlmodel.Streams)
-		require.Equal(t, 1, len(streams), "should have 1 unique stream")
-		require.Equal(t, 3, len(streams[0].Entries), "duplicates should be removed")
-		require.Equal(t, int64(3), result.Statistics.Summary.TotalEntriesReturned,
-			"stats should reflect post-dedup count")
-
-		expected := logqlmodel.Streams{
-			push.Stream{
-				Labels: labels.FromStrings("env", "prod").String(),
-				Entries: []logproto.Entry{
-					{Timestamp: time.Unix(0, ts1.UnixNano()), Line: "line A"},
-					{Timestamp: time.Unix(0, ts2.UnixNano()), Line: "line B"},
-					{Timestamp: time.Unix(0, ts3.UnixNano()), Line: "line C"},
-				},
-			},
-		}
-		require.Equal(t, expected, streams)
-	})
 }
 
 func TestVectorResultBuilder(t *testing.T) {

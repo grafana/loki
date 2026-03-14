@@ -344,6 +344,12 @@ query_engine:
     # CLI flag: -query-engine.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
 
+  # Experimental: Enable row-level deduplication at merge points to prevent
+  # over-counting in metric aggregations (rate, count_over_time, etc.) caused by
+  # overlapping data object sections.
+  # CLI flag: -query-engine.dedupe-metric-queries
+  [dedupe_metric_queries: <boolean> | default = false]
+
   # Experimental: Number of worker threads to spawn. Each worker thread runs one
   # task at a time. 0 means to use GOMAXPROCS value.
   # CLI flag: -query-engine.worker-threads

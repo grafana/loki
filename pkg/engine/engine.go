@@ -79,6 +79,11 @@ type ExecutorConfig struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
+
+	// DedupeMetricQueries enables row-level deduplication at merge points to
+	// prevent over-counting in metric aggregations caused by overlapping data
+	// object sections.
+	DedupeMetricQueries bool `yaml:"dedupe_metric_queries" category:"experimental"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -87,6 +92,7 @@ func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	f.Var(&cfg.PrefetchBytes, prefix+"prefetch-bytes", "Experimental: Number of bytes to prefetch when opening a data object for decoding metadata and overlapping section reads. Clamps to at least 16KiB.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
+	f.BoolVar(&cfg.DedupeMetricQueries, prefix+"dedupe-metric-queries", false, "Experimental: Enable row-level deduplication at merge points to prevent over-counting in metric aggregations (rate, count_over_time, etc.) caused by overlapping data object sections.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
 }
 
