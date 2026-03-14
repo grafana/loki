@@ -56,11 +56,11 @@ spec:
             - -addr={{- default (include "loki.host" $) .lokiurl }}
             - -labelname={{ .labelname }}
             - -labelvalue=$(POD_NAME)
-            {{- if $.Values.enterprise.enabled }}
+            {{- if and $.Values.lokiCanary.autoAuth $.Values.enterprise.enabled }}
             - -user=$(USER)
             - -tenant-id=$(USER)
             - -pass=$(PASS)
-            {{- else if $.Values.loki.auth_enabled }}
+            {{- else if and $.Values.lokiCanary.autoAuth $.Values.loki.auth_enabled }}
             - -user={{ $.Values.monitoring.selfMonitoring.tenant.name }}
             - -tenant-id={{ $.Values.monitoring.selfMonitoring.tenant.name }}
             - -pass={{ $.Values.monitoring.selfMonitoring.tenant.password }}
@@ -86,7 +86,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            {{ if $.Values.enterprise.enabled }}
+            {{ if and $.Values.lokiCanary.autoAuth $.Values.enterprise.enabled }}
             - name: USER
               valueFrom:
                 secretKeyRef:
