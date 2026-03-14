@@ -18,8 +18,8 @@
           "subdir": "grafana-builder"
         }
       },
-      "version": "1d31bb1b58a2a2a3ffb2296cd5aa4d5e4ae5576b",
-      "sum": "yxqWcq/N3E/a/XreeU6EuE6X7kYPnG0AspAQFKOjASo="
+      "version": "82760cf7feecf8282c05a1222aade13a85a30560",
+      "sum": "YPaA+KJ6JBW9QpxNvl0iAxnC7gL4jRRvulNl6QRkPU0="
     },
     {
       "source": {
@@ -28,8 +28,8 @@
           "subdir": "mixin-utils"
         }
       },
-      "version": "1d31bb1b58a2a2a3ffb2296cd5aa4d5e4ae5576b",
-      "sum": "LoYq5QxJmUXEtqkEG8CFUBLBhhzDDaNANHc7Gz36ZdM="
+      "version": "82760cf7feecf8282c05a1222aade13a85a30560",
+      "sum": "Yqni3FxJzw4DMlXBFf2mmKU5UEPOzWw0FmIlZbv+89Q="
     },
     {
       "source": {
@@ -38,8 +38,18 @@
           "subdir": "operations/mimir-mixin"
         }
       },
-      "version": "61dd68b7397e197ff6bb81251737ead633fd42b9",
-      "sum": "en5dwfa7Hh4t7pWAoMc1uDXHGStqxqL1Vj+E/5NGwRQ="
+      "version": "376184f772cbe9409059eb32d22f0b8cbd192368",
+      "sum": "otMM8BRbzTMcedkpqaxPqTxLFh3kE3WBYRs9+a8QLPs="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/rollout-operator.git",
+          "subdir": "operations/rollout-operator-mixin"
+        }
+      },
+      "version": "ee4822b061cb7497b7e8a716161dfa0e3230c0ca",
+      "sum": "zz2Sep/VbyrGcKKa3wy0oGIwMq2qEqBiLTVEVmqDMDE="
     },
     {
       "source": {
@@ -48,7 +58,7 @@
           "subdir": "jsonnet/kube-prometheus/lib"
         }
       },
-      "version": "74f4e0cda3f3c2a4e8a1ab7d9bdbee019a47c851",
+      "version": "110c59d94ccff6f3e894c55247df6c218ef6cd7a",
       "sum": "QKRgrgEZ3k9nLmLCrDBaeIGVqQZf+AvZTcnhdLk3TrA="
     }
   ],
