@@ -234,11 +234,15 @@ type CreateSessionInput struct {
 	ServerSideEncryption types.ServerSideEncryption
 
 	// Specifies the mode of the session that will be created, either ReadWrite or
-	// ReadOnly . By default, a ReadWrite session is created. A ReadWrite session is
-	// capable of executing all the Zonal endpoint API operations on a directory
-	// bucket. A ReadOnly session is constrained to execute the following Zonal
-	// endpoint API operations: GetObject , HeadObject , ListObjectsV2 ,
-	// GetObjectAttributes , ListParts , and ListMultipartUploads .
+	// ReadOnly . If no session mode is specified, the default behavior attempts to
+	// create a session with the maximum allowable privilege. It will first attempt to
+	// create a ReadWrite session, and if that is not allowed by permissions, it will
+	// attempt to create a ReadOnly session. If neither session type is allowed, the
+	// request will return an Access Denied error. A ReadWrite session is capable of
+	// executing all the Zonal endpoint API operations on a directory bucket. A
+	// ReadOnly session is constrained to execute the following Zonal endpoint API
+	// operations: GetObject , HeadObject , ListObjectsV2 , GetObjectAttributes ,
+	// ListParts , and ListMultipartUploads .
 	SessionMode types.SessionMode
 
 	noSmithyDocumentSerde

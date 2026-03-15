@@ -19,9 +19,6 @@ import (
 // (ABAC) is not enabled for the bucket. When you [enable ABAC for a general purpose bucket], you can no longer use this
 // operation for that bucket and must use [UntagResource]instead.
 //
-// if ABAC is not enabled for the bucket. When you [enable ABAC for a general purpose bucket], you can no longer use this
-// operation for that bucket and must use [UntagResource]instead.
-//
 // To use this operation, you must have permission to perform the
 // s3:PutBucketTagging action. By default, the bucket owner has this permission and
 // can grant this permission to others.

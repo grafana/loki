@@ -63,7 +63,7 @@ func (v *SignerAdapter) SignRequest(ctx context.Context, r *smithyhttp.Request, 
 		return fmt.Errorf("unexpected identity type: %T", identity)
 	}
 
-	name, ok := smithyhttp.GetSigV4SigningName(&props)
+	name, ok := smithyhttp.GetSigV4ASigningName(&props)
 	if !ok {
 		return fmt.Errorf("sigv4a signing name is required")
 	}

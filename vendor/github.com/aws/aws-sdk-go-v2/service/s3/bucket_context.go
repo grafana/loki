@@ -26,7 +26,7 @@ func (m *putBucketContextMiddleware) HandleSerialize(
 	return next.HandleSerialize(ctx, in)
 }
 
-func (m *putBucketContextMiddleware) bucketFromInput(params interface{}) (string, bool) {
+func (m *putBucketContextMiddleware) bucketFromInput(params any) (string, bool) {
 	v, ok := params.(bucketer)
 	if !ok {
 		return "", false
