@@ -69,11 +69,11 @@ const (
 	// which only does a single read per stream.
 	defaultReadID = 1
 
-	forceDirectConnectivityEnforced = "ENFORCED"
-	forceDirectConnectivityOptedOut = "OPTED_OUT"
-	directConnectivityHeaderKey     = "force_direct_connectivity"
-	requestParamsHeaderKey          = "x-goog-request-params"
-	directPathEndpointPrefix        = "google-c2p:///"
+	forceDirectConnectivityEnforced       = "ENFORCED"
+	directConnectivityHeaderKey           = "force_direct_connectivity"
+	directConnectivityDiagnosticHeaderKey = "direct_connectivity_diagnostic"
+	requestParamsHeaderKey                = "x-goog-request-params"
+	directPathEndpointPrefix              = "google-c2p:///"
 )
 
 // defaultGRPCOptions returns a set of the default client options
@@ -123,6 +123,7 @@ type grpcStorageClient struct {
 	raw      *gapic.Client
 	settings *settings
 	config   *storageConfig
+	dpDiag   string
 }
 
 func enableClientMetrics(ctx context.Context, s *settings, config storageConfig) (*metricsContext, error) {
@@ -177,6 +178,7 @@ func newGRPCStorageClient(ctx context.Context, opts ...storageOption) (*grpcStor
 		option.WithGRPCDialOption(grpc.WithChainUnaryInterceptor(ui)),
 		option.WithGRPCDialOption(grpc.WithChainStreamInterceptor(si)),
 	)
+	c.dpDiag = directPathDiagnostic(ctx, s.clientOption...)
 	g, err := gapic.NewClient(ctx, s.clientOption...)
 	if err != nil {
 		return nil, err
@@ -206,12 +208,9 @@ func (c *grpcStorageClient) routingInterceptors() (grpc.UnaryClientInterceptor, 
 }
 
 func (c *grpcStorageClient) prepareDirectPathMetadata(ctx context.Context, target string) (context.Context, error) {
-	// Check if the connection target supports DirectPath.
-	isDirectPath := true
-	// Target should not be empty in a normal scenario, but treat empty target
-	// as DirectPath compatible for safety.
-	if target != "" && !strings.HasPrefix(target, directPathEndpointPrefix) {
-		isDirectPath = false
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		md = metadata.MD{}
 	}
 
 	// Determine the intended mode based on user configuration.
@@ -220,18 +219,7 @@ func (c *grpcStorageClient) prepareDirectPathMetadata(ctx context.Context, targe
 		value = forceDirectConnectivityEnforced
 	}
 
-	// Downgrade based on connection status.
-	if !isDirectPath {
-		// Downgrade to OPTED_OUT for server-side monitoring.
-		value = forceDirectConnectivityOptedOut
-	}
-
 	dc := directConnectivityHeaderKey + "=" + value
-
-	md, ok := metadata.FromOutgoingContext(ctx)
-	if !ok {
-		md = metadata.MD{}
-	}
 
 	// Inject the header only if we have a value to set.
 	if value != "" {
@@ -241,7 +229,17 @@ func (c *grpcStorageClient) prepareDirectPathMetadata(ctx context.Context, targe
 			md.Set(requestParamsHeaderKey, dc)
 		}
 	}
-
+	// Check if the connection target supports DirectPath.
+	// Target should not be empty in a normal scenario, but treat empty target
+	// as DirectPath incompatible.
+	if !strings.HasPrefix(target, directPathEndpointPrefix) {
+		reason := directConnectivityDiagnosticHeaderKey + "=" + c.dpDiag
+		if vals := md.Get(requestParamsHeaderKey); len(vals) > 0 {
+			md.Set(requestParamsHeaderKey, vals[0]+"&"+reason)
+		} else {
+			md.Set(requestParamsHeaderKey, reason)
+		}
+	}
 	return metadata.NewOutgoingContext(ctx, md), nil
 }
 
@@ -428,7 +426,16 @@ func (c *grpcStorageClient) UpdateBucket(ctx context.Context, bucket string, uat
 		fieldMask.Paths = append(fieldMask.Paths, "iam_config")
 	}
 	if uattrs.Encryption != nil {
-		fieldMask.Paths = append(fieldMask.Paths, "encryption")
+		fieldMask.Paths = append(fieldMask.Paths, "encryption.default_kms_key")
+	}
+	if uattrs.GoogleManagedEncryptionEnforcementConfig != nil {
+		fieldMask.Paths = append(fieldMask.Paths, "encryption.google_managed_encryption_enforcement_config")
+	}
+	if uattrs.CustomerManagedEncryptionEnforcementConfig != nil {
+		fieldMask.Paths = append(fieldMask.Paths, "encryption.customer_managed_encryption_enforcement_config")
+	}
+	if uattrs.CustomerSuppliedEncryptionEnforcementConfig != nil {
+		fieldMask.Paths = append(fieldMask.Paths, "encryption.customer_supplied_encryption_enforcement_config")
 	}
 	if uattrs.Lifecycle != nil {
 		fieldMask.Paths = append(fieldMask.Paths, "lifecycle")
