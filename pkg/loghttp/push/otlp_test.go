@@ -702,6 +702,26 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "with event name",
+			buildLogRecord: func() plog.LogRecord {
+				log := plog.NewLogRecord()
+				log.Body().SetStr("log body")
+				log.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+				log.SetEventName("browser.page_view")
+				return log
+			},
+			expectedResp: push.Entry{
+				Timestamp: now,
+				Line:      "log body",
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  "event_name",
+						Value: "browser.page_view",
+					},
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, res, err := otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig), false, nil)
