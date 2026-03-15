@@ -88,7 +88,7 @@ import (
 type Config struct {
 	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
 	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
-	LBACEnabled  bool                   `yaml:"lbac_enabled,omitempty" category:"experimental"`
+	LBAC         labelaccess.Config    `yaml:"lbac,omitempty" category:"experimental"`
 	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
@@ -165,9 +165,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"Enables authentication through the X-Scope-OrgID header, which must be present if true. "+
 			"If false, the OrgID will always be set to 'fake'.",
 	)
-	f.BoolVar(&c.LBACEnabled, "lbac.enabled", false,
-		"Enables label based access control through the X-Prom-Label-Policy header.",
-	)
+	c.LBAC.RegisterFlags(f)
 	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0,
 		"The amount of virtual memory in bytes to reserve as ballast in order to optimize garbage collection. "+
 			"Larger ballasts result in fewer garbage collection passes, reducing CPU overhead at the cost of heap size. "+
@@ -511,7 +509,7 @@ func (t *Loki) setupAuthMiddleware() {
 			"/grpc.JobQueue/Loop",
 		})
 
-	if t.Cfg.LBACEnabled {
+	if t.Cfg.LBAC.Enabled {
 		level.Info(util_log.Logger).Log("msg", "LBAC enabled")
 		t.HTTPAuthMiddleware = middleware.Merge(
 			t.HTTPAuthMiddleware,
@@ -972,7 +970,7 @@ func (t *Loki) setupModuleManager() error {
 		}
 	}
 
-	if t.Cfg.LBACEnabled {
+	if t.Cfg.LBAC.Enabled {
 		err := t.setupLBAC()
 		if err != nil {
 			return err

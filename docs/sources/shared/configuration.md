@@ -98,9 +98,10 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # CLI flag: -auth.enabled
 [auth_enabled: <boolean> | default = true]
 
-# Enables label based access control through the X-Prom-Label-Policy header.
-# CLI flag: -lbac.enabled
-[lbac_enabled: <boolean> | default = false]
+lbac:
+  # Enables label based access control through the X-Prom-Label-Policy header.
+  # CLI flag: -lbac.enabled
+  [enabled: <boolean> | default = false]
 
 # The amount of virtual memory in bytes to reserve as ballast in order to
 # optimize garbage collection. Larger ballasts result in fewer garbage
