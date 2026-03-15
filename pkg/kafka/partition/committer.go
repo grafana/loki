@@ -4,13 +4,13 @@ import (
 	"context"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
@@ -71,7 +71,7 @@ func newCommitter(offsetManager OffsetManager, partition int32, commitFreq time.
 			Help:        "The last consumed offset successfully committed by the partition reader. Set to -1 if not offset has been committed yet.",
 			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(partition))},
 		}),
-		toCommit: atomic.NewInt64(-1),
+		toCommit: func() *atomic.Int64 { v := &atomic.Int64{}; v.Store(-1); return v }(),
 	}
 
 	// Initialize the last committed offset metric to -1 to signal no offset has been committed yet

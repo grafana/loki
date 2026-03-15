@@ -2,9 +2,9 @@ package ingester
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/prometheus/common/model"
-	"go.uber.org/atomic"
 )
 
 type streamsMap struct {
@@ -19,7 +19,7 @@ func newStreamsMap() *streamsMap {
 		consistencyMtx: sync.RWMutex{},
 		streams:        &sync.Map{},
 		streamsByFP:    &sync.Map{},
-		streamsCounter: atomic.NewInt64(0),
+		streamsCounter: (&atomic.Int64{}),
 	}
 }
 
@@ -48,7 +48,7 @@ func (m *streamsMap) Delete(s *stream) bool {
 	_, loaded := m.streams.LoadAndDelete(s.labelsString)
 	if loaded {
 		m.streamsByFP.Delete(s.fp)
-		m.streamsCounter.Dec()
+		m.streamsCounter.Add(-1)
 		return true
 	}
 	return false
@@ -108,7 +108,7 @@ func (m *streamsMap) store(key interface{}, s *stream) {
 		m.streams.Store(s.labelsString, s)
 	}
 	m.streamsByFP.Store(s.fp, s)
-	m.streamsCounter.Inc()
+	m.streamsCounter.Add(1)
 }
 
 // newStreamFn: Called if not loaded, with consistencyMtx locked. Must not be nil

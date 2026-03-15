@@ -5,6 +5,7 @@ package worker
 import (
 	"context"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -12,7 +13,6 @@ import (
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/pkg/errors"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -35,7 +35,7 @@ import (
 // once the inflight query terminates and the response has been sent.
 func newExecutionContext(workerCtx context.Context, logger log.Logger) (execCtx context.Context, execCancel context.CancelCauseFunc, inflightQuery *atomic.Bool) {
 	execCtx, execCancel = context.WithCancelCause(context.Background())
-	inflightQuery = atomic.NewBool(false)
+	inflightQuery = (&atomic.Bool{})
 
 	go func() {
 		// Wait until it's safe to cancel the execution context, which is when one of the following conditions happen:

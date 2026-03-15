@@ -1,10 +1,10 @@
 package distributor
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/grafana/dskit/ring"
-	"go.uber.org/atomic"
 )
 
 // healthyInstanceDelegate counts the number of healthy instances that are part of the ring

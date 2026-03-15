@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -12,7 +13,6 @@ import (
 	"github.com/grafana/tail/watch"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"go.uber.org/atomic"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/ianaindex"
 	"golang.org/x/text/transform"
@@ -84,7 +84,7 @@ func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, po
 		positions: positions,
 		path:      path,
 		tail:      tail,
-		running:   atomic.NewBool(false),
+		running:   (&atomic.Bool{}),
 		posquit:   make(chan struct{}),
 		posdone:   make(chan struct{}),
 		done:      make(chan struct{}),

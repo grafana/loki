@@ -11,11 +11,11 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	shipper_util "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
@@ -257,7 +257,7 @@ func (r *markerProcessor) processFile(name string, deleteFunc func(ctx context.C
 	var (
 		wg               sync.WaitGroup
 		queue            = make(chan *keyPair)
-		allChunksDeleted = atomic.NewBool(true)
+		allChunksDeleted = func() *atomic.Bool { v := &atomic.Bool{}; v.Store(true); return v }()
 	)
 
 	tempFile, err := os.CreateTemp("", name)

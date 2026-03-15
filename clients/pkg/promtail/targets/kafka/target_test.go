@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/testutils"
 
@@ -45,18 +45,18 @@ func (c *testConsumerGroupHandler) Consume(ctx context.Context, topics []string,
 	return nil
 }
 
-func (c testConsumerGroupHandler) Errors() <-chan error {
+func (c *testConsumerGroupHandler) Errors() <-chan error {
 	return nil
 }
 
-func (c testConsumerGroupHandler) Close() error {
+func (c *testConsumerGroupHandler) Close() error {
 	return nil
 }
 
-func (c testConsumerGroupHandler) Pause(_ map[string][]int32)  {}
-func (c testConsumerGroupHandler) Resume(_ map[string][]int32) {}
-func (c testConsumerGroupHandler) PauseAll()                   {}
-func (c testConsumerGroupHandler) ResumeAll()                  {}
+func (c *testConsumerGroupHandler) Pause(_ map[string][]int32)  {}
+func (c *testConsumerGroupHandler) Resume(_ map[string][]int32) {}
+func (c *testConsumerGroupHandler) PauseAll()                   {}
+func (c *testConsumerGroupHandler) ResumeAll()                  {}
 
 type testSession struct {
 	markedMessage []*sarama.ConsumerMessage

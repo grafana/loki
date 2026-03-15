@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"go.uber.org/atomic"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/ianaindex"
 	"golang.org/x/text/transform"
@@ -88,7 +88,7 @@ func newDecompressor(metrics *Metrics, logger log.Logger, handler api.EntryHandl
 		handler:   api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
 		positions: positions,
 		path:      path,
-		running:   atomic.NewBool(false),
+		running:   (&atomic.Bool{}),
 		posquit:   make(chan struct{}),
 		posdone:   make(chan struct{}),
 		done:      make(chan struct{}),

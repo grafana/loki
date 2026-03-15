@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
@@ -51,8 +51,8 @@ func TestFileTargetSync(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	fakeHandler := make(chan fileTargetEvent)
-	receivedStartWatch := atomic.NewInt32(0)
-	receivedStopWatch := atomic.NewInt32(0)
+	receivedStartWatch := (&atomic.Int32{})
+	receivedStopWatch := (&atomic.Int32{})
 	go func() {
 		for {
 			select {
@@ -368,8 +368,8 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	fakeHandler := make(chan fileTargetEvent)
-	receivedStartWatch := atomic.NewInt32(0)
-	receivedStopWatch := atomic.NewInt32(0)
+	receivedStartWatch := (&atomic.Int32{})
+	receivedStopWatch := (&atomic.Int32{})
 	go func() {
 		for {
 			select {

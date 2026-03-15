@@ -2,11 +2,11 @@ package ingester
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
@@ -39,8 +39,8 @@ func newOwnedStreamService(tenantID string, limiter *Limiter) *ownedStreamServic
 	svc := &ownedStreamService{
 		tenantID:           tenantID,
 		limiter:            limiter,
-		fixedLimit:         atomic.NewInt32(0),
-		ownedStreamCount:   atomic.NewInt64(0),
+		fixedLimit:         (&atomic.Int32{}),
+		ownedStreamCount:   (&atomic.Int64{}),
 		notOwnedStreams:    make(map[model.Fingerprint]any),
 		policyStreamCounts: make(map[string]*atomic.Int64),
 	}
@@ -86,15 +86,15 @@ func (s *ownedStreamService) getFixedLimit() int {
 func (s *ownedStreamService) trackStreamOwnership(fp model.Fingerprint, owned bool, policy string) {
 	// only need to inc the owned count; can use sync atomics.
 	if owned {
-		s.ownedStreamCount.Inc()
+		s.ownedStreamCount.Add(1)
 
 		// Track policy-specific stream count if policy is specified
 		if policy != noPolicy {
 			s.policyLock.Lock()
 			if s.policyStreamCounts[policy] == nil {
-				s.policyStreamCounts[policy] = atomic.NewInt64(0)
+				s.policyStreamCounts[policy] = (&atomic.Int64{})
 			}
-			s.policyStreamCounts[policy].Inc()
+			s.policyStreamCounts[policy].Add(1)
 			s.policyLock.Unlock()
 		}
 		return
@@ -116,13 +116,13 @@ func (s *ownedStreamService) trackRemovedStream(fp model.Fingerprint, policy str
 		delete(s.notOwnedStreams, fp)
 		return
 	}
-	s.ownedStreamCount.Dec()
+	s.ownedStreamCount.Add(-1)
 
 	// Decrement policy-specific stream count if policy is specified
 	if policy != noPolicy {
 		s.policyLock.Lock()
 		if policyCount, exists := s.policyStreamCounts[policy]; exists {
-			policyCount.Dec()
+			policyCount.Add(-1)
 			// Clean up policy if count reaches zero to prevent unbounded map growth
 			if policyCount.Load() == 0 {
 				delete(s.policyStreamCounts, policy)
