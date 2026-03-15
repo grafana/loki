@@ -295,6 +295,10 @@ func (s *Service) starting(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	err = services.StartAndAwaitRunning(ctx, s.consumer)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -304,7 +308,6 @@ func (s *Service) starting(ctx context.Context) (err error) {
 func (s *Service) running(ctx context.Context) error {
 	// Start the eviction goroutine
 	go s.evictOldStreamsPeriodic(ctx)
-	go s.consumer.Run(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -339,6 +342,9 @@ func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 // It returns nil for expected termination cases (context cancellation or client closure)
 // and returns the original error for other failure cases.
 func (s *Service) stopping(failureCase error) error {
+	if err := services.StopAndAwaitTerminated(context.TODO(), s.consumer); err != nil {
+		return err
+	}
 	if s.kafkaReader != nil {
 		s.kafkaReader.Close()
 	}
