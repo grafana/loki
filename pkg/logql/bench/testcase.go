@@ -25,8 +25,8 @@ type TestCase struct {
 // Equal returns true if two TestCases represent the same query execution.
 func (c TestCase) Equal(other TestCase) bool {
 	return c.Query == other.Query &&
-		c.Start == other.Start &&
-		c.End == other.End &&
+		c.Start.Equal(other.Start) &&
+		c.End.Equal(other.End) &&
 		c.Step == other.Step &&
 		c.Direction == other.Direction &&
 		slices.Equal(c.Tags, other.Tags)

@@ -2,9 +2,11 @@ package querytee
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,19 +22,37 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
-// mockGoldfishManager is a mock implementation of goldfish.ManagerInterface for testing
+// mockGoldfishManager is a mock implementation of goldfish.Manager for testing.
+// Fields used from async goroutines (sendCalled, sendCorrelationID) are protected by a mutex.
 type mockGoldfishManager struct {
-	shouldSampleResult bool
+	shouldSampleResult  bool
+	correlationIDResult string
+
+	mu                sync.Mutex
+	sendCalled        bool
+	sendCorrelationID string
 }
 
-func (m *mockGoldfishManager) ShouldSample(_ string) bool {
-	return m.shouldSampleResult
+func (m *mockGoldfishManager) ShouldSample(_ string) (bool, string) {
+	return m.shouldSampleResult, m.correlationIDResult
 }
 
-func (m *mockGoldfishManager) SendToGoldfish(_ *http.Request, _, _ *goldfish.BackendResponse) {}
+func (m *mockGoldfishManager) SendToGoldfish(_ *http.Request, _, _ *goldfish.BackendResponse, correlationID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sendCalled = true
+	m.sendCorrelationID = correlationID
+}
 
 func (m *mockGoldfishManager) Close() error {
 	return nil
+}
+
+// getSendState returns the thread-safe state of SendToGoldfish calls.
+func (m *mockGoldfishManager) getSendState() (bool, string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.sendCalled, m.sendCorrelationID
 }
 
 func TestSplittingHandler_ServeSplits_UnsupportedRequestUsesDefaultHandler(t *testing.T) {
@@ -393,7 +413,8 @@ func TestSplittingHandler_NoSplitLag_UsesFanoutHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	goldfishManager := &mockGoldfishManager{
-		shouldSampleResult: true, // sampling enabled
+		shouldSampleResult:  true, // sampling enabled
+		correlationIDResult: "test-correlation-id",
 	}
 
 	handler, err := NewSplittingHandler(SplittingHandlerConfig{
@@ -456,7 +477,8 @@ func TestSplittingHandler_V1Preferred_SplitsWhenSampling(t *testing.T) {
 	require.NoError(t, err)
 
 	goldfishManager := &mockGoldfishManager{
-		shouldSampleResult: true, // IS sampling
+		shouldSampleResult:  true, // IS sampling
+		correlationIDResult: "test-correlation-id",
 	}
 
 	handler, err := NewSplittingHandler(SplittingHandlerConfig{
@@ -580,6 +602,238 @@ func TestSplittingHandler_SkipFanoutDisabled_AlwaysSplits(t *testing.T) {
 	}
 }
 
+// TestSplittingHandler_ReadsPath_GoldfishCorrelationIDHeader tests that the goldfish correlation ID
+// header is set (or absent) in responses for read requests depending on the sampling decision.
+func TestSplittingHandler_ReadsPath_GoldfishCorrelationIDHeader(t *testing.T) {
+	tests := []struct {
+		name           string
+		shouldSample   bool
+		correlationID  string
+		expectHeader   bool
+		expectedHeader string
+	}{
+		{
+			name:           "sampled read sets goldfish header",
+			shouldSample:   true,
+			correlationID:  "test-uuid",
+			expectHeader:   true,
+			expectedHeader: "test-uuid",
+		},
+		{
+			name:          "non-sampled read omits goldfish header",
+			shouldSample:  false,
+			correlationID: "",
+			expectHeader:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// The header is set by SplittingHandler.writeResponse, which is only reached
+			// when V1Backend is non-nil (otherwise NewSplittingHandler returns early with
+			// a plain fanout wrapper). Use a real V1Backend server to reach that code path.
+			v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
+			}))
+			defer v1Server.Close()
+
+			v1BackendURL, err := url.Parse(v1Server.URL)
+			require.NoError(t, err)
+			v1Backend, err := NewProxyBackend("v1", v1BackendURL, 5*time.Second, true, false)
+			require.NoError(t, err)
+
+			mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+				return &queryrange.LokiResponse{
+					Status: "success",
+					Data:   queryrange.LokiData{ResultType: "streams"},
+				}, nil
+			})
+
+			goldfishManager := &mockGoldfishManager{
+				shouldSampleResult:  tc.shouldSample,
+				correlationIDResult: tc.correlationID,
+			}
+
+			handler, err := NewSplittingHandler(SplittingHandlerConfig{
+				Codec:                     queryrange.DefaultCodec,
+				FanOutHandler:             mockFanOutHandler,
+				GoldfishManager:           goldfishManager,
+				V1Backend:                 v1Backend,
+				SkipFanoutWhenNotSampling: false,
+				RoutingMode:               RoutingModeV1Preferred,
+				SplitStart:                time.Time{},
+				SplitLag:                  0, // no split: goes directly to fanOutHandler
+			}, log.NewNopLogger())
+			require.NoError(t, err)
+
+			lokiReq := &queryrange.LokiInstantRequest{
+				Query:  `{app="test"}`,
+				TimeTs: time.Now(),
+				Limit:  100,
+				Path:   constants.PathLokiQuery,
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "test-tenant")
+			httpReq, err := queryrange.DefaultCodec.EncodeRequest(ctx, lokiReq)
+			require.NoError(t, err)
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httpReq)
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+
+			if tc.expectHeader {
+				require.Equal(t, tc.expectedHeader, recorder.Header().Get(goldfish.GoldfishCorrelationIDHeader),
+					"expected goldfish header to be set")
+			} else {
+				require.Empty(t, recorder.Header().Get(goldfish.GoldfishCorrelationIDHeader),
+					"expected goldfish header to be absent")
+			}
+		})
+	}
+}
+
+// TestSplittingHandler_ReadsPath_GoldfishHeaderOnErrorResponse tests that the goldfish correlation ID
+// header survives error responses on the reads path. When the fanout handler returns an error,
+// writeResponse should still include the header so clients can correlate the request.
+func TestSplittingHandler_ReadsPath_GoldfishHeaderOnErrorResponse(t *testing.T) {
+	// The fanout handler returns an error to simulate a backend failure
+	mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return nil, errors.New("simulated backend failure")
+	})
+
+	v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
+	}))
+	defer v1Server.Close()
+
+	v1BackendURL, err := url.Parse(v1Server.URL)
+	require.NoError(t, err)
+	v1Backend, err := NewProxyBackend("v1", v1BackendURL, 5*time.Second, true, false)
+	require.NoError(t, err)
+
+	goldfishManager := &mockGoldfishManager{
+		shouldSampleResult:  true,
+		correlationIDResult: "error-test-uuid",
+	}
+
+	handler, err := NewSplittingHandler(SplittingHandlerConfig{
+		Codec:                     queryrange.DefaultCodec,
+		FanOutHandler:             mockFanOutHandler,
+		GoldfishManager:           goldfishManager,
+		V1Backend:                 v1Backend,
+		SkipFanoutWhenNotSampling: false,
+		RoutingMode:               RoutingModeV1Preferred,
+		SplitStart:                time.Time{},
+		SplitLag:                  0, // no split: goes directly to fanOutHandler
+	}, log.NewNopLogger())
+	require.NoError(t, err)
+
+	lokiReq := &queryrange.LokiInstantRequest{
+		Query:  `{app="test"}`,
+		TimeTs: time.Now(),
+		Limit:  100,
+		Path:   constants.PathLokiQuery,
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test-tenant")
+	httpReq, err := queryrange.DefaultCodec.EncodeRequest(ctx, lokiReq)
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httpReq)
+
+	// The response should be an error (500)
+	require.Equal(t, http.StatusInternalServerError, recorder.Code, "handler error should result in 500 status")
+
+	// The goldfish header should still be present despite the error
+	require.Equal(t, "error-test-uuid", recorder.Header().Get(goldfish.GoldfishCorrelationIDHeader),
+		"goldfish header must survive error responses so clients can correlate sampled requests")
+}
+
+// TestSplittingHandler_CorrelationIDConsistency tests that the correlation ID in the response header
+// matches the ID passed to SendToGoldfish, ensuring end-to-end consistency.
+func TestSplittingHandler_CorrelationIDConsistency(t *testing.T) {
+	// Two backends: v1 (preferred) and v2 (non-preferred) — both succeed
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"test"},"values":[["1000000000","line"]]}]}}`))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	v1Backend, err := NewProxyBackend("v1", backendURL, 5*time.Second, true, false)
+	require.NoError(t, err)
+	v2Backend, err := NewProxyBackend("v2", backendURL, 5*time.Second, false, true)
+	require.NoError(t, err)
+	backends := []*ProxyBackend{v1Backend, v2Backend}
+
+	goldfishManager := &mockGoldfishManager{
+		shouldSampleResult:  true,
+		correlationIDResult: "consistency-test-uuid",
+	}
+
+	metrics := NewProxyMetrics(nil)
+	logger := log.NewNopLogger()
+
+	handlerFactory := NewHandlerFactory(HandlerFactoryConfig{
+		Backends:        backends,
+		Codec:           queryrange.DefaultCodec,
+		GoldfishManager: goldfishManager,
+		Logger:          logger,
+		Metrics:         metrics,
+		RoutingMode:     RoutingModeV1Preferred,
+		SplitLag:        0, // no split lag: fanout directly
+	})
+
+	endpoint := NewProxyEndpoint(backends, "test", metrics, logger, nil, false)
+	queryHandler, err := handlerFactory.CreateHandler("test", nil)
+	require.NoError(t, err)
+	endpoint.WithQueryHandler(queryHandler)
+	endpoint.WithGoldfish(goldfishManager)
+
+	lokiReq := &queryrange.LokiInstantRequest{
+		Query:  `{app="test"}`,
+		TimeTs: time.Now(),
+		Limit:  100,
+		Path:   constants.PathLokiQuery,
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test-tenant")
+	httpReq, err := queryrange.DefaultCodec.EncodeRequest(ctx, lokiReq)
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	endpoint.ServeHTTP(recorder, httpReq)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	// Wait for async goldfish processing to complete by polling the send state
+	require.Eventually(t, func() bool {
+		sendCalled, _ := goldfishManager.getSendState()
+		return sendCalled
+	}, 5*time.Second, 10*time.Millisecond,
+		"SendToGoldfish should have been called for a 2-backend sampled request")
+
+	headerID := recorder.Header().Get(goldfish.GoldfishCorrelationIDHeader)
+	require.Equal(t, "consistency-test-uuid", headerID,
+		"header should contain the correlation ID")
+
+	// Verify that SendToGoldfish was called with the same ID that appears in the header
+	sendCalled, sendCorrelationID := goldfishManager.getSendState()
+	require.True(t, sendCalled,
+		"SendToGoldfish should have been called for a 2-backend sampled request")
+	require.Equal(t, headerID, sendCorrelationID,
+		"correlation ID in response header must match the ID passed to SendToGoldfish")
+}
+
 // TestSplittingHandler_MultiTenantQuery_RoutesToV1Only tests that multi-tenant queries
 // (X-Scope-OrgID: tenant1|tenant2) are routed exclusively to v1, regardless of routing mode.
 // This is because v2 does not support multi-tenant queries.
@@ -616,7 +870,8 @@ func TestSplittingHandler_MultiTenantQuery_RoutesToV1Only(t *testing.T) {
 			})
 
 			goldfishManager := &mockGoldfishManager{
-				shouldSampleResult: true, // Enable sampling to ensure we're not skipping due to that
+				shouldSampleResult:  true, // Enable sampling to ensure we're not skipping due to that
+				correlationIDResult: "test-correlation-id",
 			}
 
 			handler, err := NewSplittingHandler(SplittingHandlerConfig{
