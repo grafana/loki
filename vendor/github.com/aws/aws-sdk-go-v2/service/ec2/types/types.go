@@ -1478,6 +1478,9 @@ type CapacityBlockExtension struct {
 	// The total price to be paid up front.
 	UpfrontFee *string
 
+	// The type of zone where the Capacity Block extension is located.
+	ZoneType *string
+
 	noSmithyDocumentSerde
 }
 
@@ -1531,6 +1534,9 @@ type CapacityBlockExtensionOffering struct {
 	// The total price of the Capacity Block extension offering, to be paid up front.
 	UpfrontFee *string
 
+	// The type of zone where the Capacity Block extension offering is available.
+	ZoneType *string
+
 	noSmithyDocumentSerde
 }
 
@@ -1579,6 +1585,9 @@ type CapacityBlockOffering struct {
 
 	// The total price to be paid up front.
 	UpfrontFee *string
+
+	// The type of zone where the Capacity Block offering is available.
+	ZoneType *string
 
 	noSmithyDocumentSerde
 }
@@ -8942,6 +8951,11 @@ type InstanceMetadataDefaultsResponse struct {
 	//   - required – IMDSv2 is required, which means that IMDSv1 is disabled, and you
 	//   must use IMDSv2.
 	HttpTokens HttpTokensState
+
+	// Indicates whether to enforce the requirement of IMDSv2 on an instance at the
+	// time of launch. When enforcement is enabled, the instance can't launch unless
+	// IMDSv2 ( HttpTokens ) is set to required .
+	HttpTokensEnforced HttpTokensEnforcedState
 
 	// Indicates whether access to instance tags from the instance metadata is enabled
 	// or disabled. For more information, see [View tags for your EC2 instances using instance metadata]in the Amazon EC2 User Guide.

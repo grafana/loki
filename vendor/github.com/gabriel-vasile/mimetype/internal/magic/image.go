@@ -1,6 +1,10 @@
 package magic
 
-import "bytes"
+import (
+	"bytes"
+	"encoding/binary"
+	"slices"
+)
 
 // Png matches a Portable Network Graphics file.
 // https://www.w3.org/TR/PNG/
@@ -42,7 +46,28 @@ func Gif(raw []byte, _ uint32) bool {
 
 // Bmp matches a bitmap image file.
 func Bmp(raw []byte, _ uint32) bool {
-	return bytes.HasPrefix(raw, []byte{0x42, 0x4D})
+	if len(raw) < 18 {
+		return false
+	}
+	if raw[0] != 'B' || raw[1] != 'M' {
+		return false
+	}
+
+	bmpFormat := binary.LittleEndian.Uint32(raw[14:])
+	// sourced from libmagic Magdir/images
+	possibleFormats := []uint32{
+		48,  // PC bitmap, OS/2 2.x format (DIB header size=48)
+		24,  // PC bitmap, OS/2 2.x format (DIB header size=24)
+		16,  // PC bitmap, OS/2 2.x format (DIB header size=16)
+		64,  // PC bitmap, OS/2 2.x format
+		52,  // PC bitmap, Adobe Photoshop
+		56,  // PC bitmap, Adobe Photoshop with alpha channel mask
+		40,  // PC bitmap, Windows 3.x format
+		124, // PC bitmap, Windows 98/2000 and newer format
+		108, // PC bitmap, Windows 95/NT4 and newer format
+	}
+
+	return slices.Contains(possibleFormats, bmpFormat)
 }
 
 // Ps matches a PostScript file.
