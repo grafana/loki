@@ -291,11 +291,11 @@ message Batching {
   int64 batch_size = 1;
 }
 
-// Cache controls Tsk-level caching.
-// The Cache pipeline will check the key against the cache identified by the `CacheName` field.
+// Cache controls Task-level caching.
+// The Cache pipeline will check the key against the cache identified by the `cache_name` field.
 // The cache stores all record batches produced by the inner pipeline.
 // If the `key` is empty no caching is done.
 message Cache {
   string key = 1;
-  string CacheName = 2;
+  string cache_name = 2;
 }

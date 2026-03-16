@@ -56,7 +56,9 @@ func planWorkflow(tenantID string, plan *physical.Plan, cacheEnabled bool) (dag.
 	}
 
 	if cacheEnabled {
-		injectTaskCaching(tenantID, planner.graph)
+		if err := injectTaskCaching(tenantID, planner.graph); err != nil {
+			return dag.Graph[*Task]{}, err
+		}
 	}
 
 	return planner.graph, nil
@@ -65,15 +67,18 @@ func planWorkflow(tenantID string, plan *physical.Plan, cacheEnabled bool) (dag.
 // injectTaskCaching wraps each cacheable task fragment with a Cache node.
 // A fragment is cacheable when TaskCacheKey returns a non-empty string
 // (requires at least one DataObjScan or PointersScan and no non-cacheable nodes).
-func injectTaskCaching(tenantID string, graph dag.Graph[*Task]) {
+func injectTaskCaching(tenantID string, graph dag.Graph[*Task]) error {
 	for _, root := range graph.Roots() {
-		_ = graph.Walk(root, func(task *Task) error {
+		if err := graph.Walk(root, func(task *Task) error {
 			oldRoot, err := task.Fragment.Root()
 			if err != nil {
-				return nil
+				return err
 			}
 			newRoot, wrapped, err := physical.WrapWithCacheIfSupported(context.Background(), tenantID, task.Fragment)
-			if err != nil || !wrapped {
+			if err != nil {
+				return err
+			}
+			if !wrapped {
 				// The task is not cacheable, so it stays as it is.
 				return nil
 			}
@@ -85,8 +90,11 @@ func injectTaskCaching(tenantID string, graph dag.Graph[*Task]) {
 				delete(task.Sinks, oldRoot)
 			}
 			return nil
-		}, dag.PreOrderWalk)
+		}, dag.PreOrderWalk); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // Process builds a set of tasks from a root physical plan node. Built tasks are

@@ -51,7 +51,7 @@ func NewBasic(cfg ExecutorConfig, ms metastore.Metastore, bucket objstore.Bucket
 		if err != nil {
 			panic(fmt.Sprintf("creating task results cache: %v", err))
 		}
-		taskCaches = executor.NewTaskCacheRegistry(taskCache, prometheus.DefaultRegisterer)
+		taskCaches = executor.NewTaskCacheRegistry(taskCache, reg)
 	}
 
 	return &Basic{
