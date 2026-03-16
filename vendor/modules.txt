@@ -444,8 +444,8 @@ github.com/aws/aws-sdk-go/service/sso/ssoiface
 github.com/aws/aws-sdk-go/service/ssooidc
 github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
-# github.com/aws/aws-sdk-go-v2 v1.41.2
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2 v1.41.3
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/aws
 github.com/aws/aws-sdk-go-v2/aws/arn
 github.com/aws/aws-sdk-go-v2/aws/defaults
@@ -473,8 +473,8 @@ github.com/aws/aws-sdk-go-v2/internal/shareddefaults
 github.com/aws/aws-sdk-go-v2/internal/strings
 github.com/aws/aws-sdk-go-v2/internal/sync/singleflight
 github.com/aws/aws-sdk-go-v2/internal/timeconv
-# github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.5
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.6
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/eventstreamapi
 # github.com/aws/aws-sdk-go-v2/config v1.32.10
@@ -494,17 +494,17 @@ github.com/aws/aws-sdk-go-v2/credentials/stscreds
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds/internal/config
-# github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.18
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.19
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/internal/configsources
-# github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.18
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.19
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/internal/endpoints/v2
 # github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/internal/ini
-# github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.18
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.20
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/internal/v4a
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/crypto
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/v4
@@ -531,20 +531,20 @@ github.com/aws/aws-sdk-go-v2/service/ecs/types
 github.com/aws/aws-sdk-go-v2/service/elasticache
 github.com/aws/aws-sdk-go-v2/service/elasticache/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/elasticache/types
-# github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.5
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.6
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding
-# github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.10
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.11
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/internal/checksum
 # github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.18
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery
-# github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.18
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.19
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url
-# github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.18
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.19
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/arn
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/config
@@ -563,8 +563,8 @@ github.com/aws/aws-sdk-go-v2/service/lightsail/types
 github.com/aws/aws-sdk-go-v2/service/rds
 github.com/aws/aws-sdk-go-v2/service/rds/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/rds/types
-# github.com/aws/aws-sdk-go-v2/service/s3 v1.96.2
-## explicit; go 1.23
+# github.com/aws/aws-sdk-go-v2/service/s3 v1.97.0
+## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/s3
 github.com/aws/aws-sdk-go-v2/service/s3/internal/arn
 github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations
@@ -590,8 +590,8 @@ github.com/aws/aws-sdk-go-v2/service/ssooidc/types
 github.com/aws/aws-sdk-go-v2/service/sts
 github.com/aws/aws-sdk-go-v2/service/sts/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/sts/types
-# github.com/aws/smithy-go v1.24.1
-## explicit; go 1.23
+# github.com/aws/smithy-go v1.24.2
+## explicit; go 1.24
 github.com/aws/smithy-go
 github.com/aws/smithy-go/auth
 github.com/aws/smithy-go/auth/bearer

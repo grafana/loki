@@ -644,6 +644,11 @@ func awsRestxml_serializeOpHttpBindingsCreateBucketInput(v *CreateBucketInput, e
 		encoder.SetHeader(locationName).String(string(v.ACL))
 	}
 
+	if len(v.BucketNamespace) > 0 {
+		locationName := "X-Amz-Bucket-Namespace"
+		encoder.SetHeader(locationName).String(string(v.BucketNamespace))
+	}
+
 	if v.GrantFullControl != nil {
 		locationName := "X-Amz-Grant-Full-Control"
 		encoder.SetHeader(locationName).String(*v.GrantFullControl)
