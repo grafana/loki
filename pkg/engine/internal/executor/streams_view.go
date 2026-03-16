@@ -180,6 +180,11 @@ func (v *streamsView) Labels(ctx context.Context, id int64) ([]labels.Label, err
 			panic(fmt.Sprintf("unexpected column type %T for labels", colValues))
 		}
 
+		// Drop labels with empty values to match classic Loki engine behavior.
+		if label.Value == "" {
+			continue
+		}
+
 		lbs = append(lbs, label)
 	}
 
