@@ -119,7 +119,7 @@ require (
 	github.com/DataDog/sketches-go v1.4.8
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.21.2
-	github.com/IBM/ibm-cos-sdk-go v1.13.0
+	github.com/IBM/ibm-cos-sdk-go v1.14.0
 	github.com/apache/arrow-go/v18 v18.5.1
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.56.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.96.2
