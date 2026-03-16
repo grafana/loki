@@ -8,10 +8,34 @@ weight: 100
 # Single binary meta-monitoring
 
 Meta monitoring for [single binary](https://grafana.com/docs/loki/latest/setup/install/local/) deployments involves some additional configuration. This approach does not use the Kubernetes Monitoring Helm chart.
-  
-## Prometheus
 
-Configure Prometheus to scrape the Loki metrics endpoint, adding the additional labels that are expected by the [mixin](https://grafana.com/docs/loki/latest/operations/meta-monitoring/mixins) dashboards, alerts, and recording rules:
+## Metrics
+
+Configure Alloy or Prometheus to scrape the Loki metrics endpoint, adding the additional labels that are expected by the [mixin](https://grafana.com/docs/loki/latest/operations/meta-monitoring/mixins) dashboards, alerts, and recording rules:
+
+### Alloy
+
+```alloy
+prometheus.scrape "loki" {
+  targets = [{
+    __address__ = "localhost:3100",
+    cluster     = "prod",
+    namespace   = "default",
+    job         = "default/loki-single-binary",
+    pod         = "loki-single-binary",
+    container   = "loki",
+  }]
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.remote_write "default" {
+  endpoint {  
+    url = "<PROMETHEUS_REMOTE_WRITE_URL>"
+  }  
+}
+```
+
+### Prometheus
 
 ```yaml
 scrape_configs:
