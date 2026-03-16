@@ -78,7 +78,7 @@ type Worker struct {
 
 // NewWorker creates a new Worker instance. Use [Worker.Service] to manage the
 // lifecycle of the Worker.
-func NewWorker(params WorkerParams) (*Worker, error) {
+func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) {
 	if params.Config.SchedulerLookupAddress != "" && params.Config.SchedulerLookupInterval == 0 {
 		return nil, errors.New("scheduler lookup interval must be non-zero when a scheduler lookup address is provided")
 	}
@@ -127,12 +127,11 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		return nil, errors.New("either an advertise address or a local scheduler listener must be provided")
 	}
 
-	var taskCache cache.Cache
+	var taskCaches executor.TaskCacheRegistry
 	if cache.IsCacheConfigured(params.Executor.TasksResultCache.CacheConfig) {
-		var err error
-		taskCache, err = cache.New(
+		taskCache, err := cache.New(
 			params.Executor.TasksResultCache.CacheConfig,
-			prometheus.DefaultRegisterer,
+			reg,
 			params.Logger,
 			stats.ResultCache,
 			constants.Loki,
@@ -140,6 +139,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		if err != nil {
 			return nil, fmt.Errorf("creating task results cache: %w", err)
 		}
+		taskCaches = executor.NewTaskCacheRegistry(taskCache, reg)
 	}
 
 	inner, err := worker.New(worker.Config{
@@ -161,7 +161,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		Endpoint: params.Endpoint,
 
 		StreamFilterer: params.StreamFilterer,
-		TaskCache:      taskCache,
+		TaskCaches:     taskCaches,
 	})
 	if err != nil {
 		return nil, err

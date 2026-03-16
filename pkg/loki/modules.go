@@ -1558,7 +1558,7 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		StreamFilterer: t.Cfg.QueryEngine.Executor.StreamFilterer,
 	}
 
-	worker, err := engine_v2.NewWorker(workerParams)
+	worker, err := engine_v2.NewWorker(workerParams, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

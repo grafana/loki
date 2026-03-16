@@ -27,7 +27,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -87,8 +86,8 @@ type Config struct {
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
 
-	// TaskCache is an optional backing cache for task results.
-	TaskCache cache.Cache `yaml:"-"`
+	// TaskCaches is an optional registry of backing caches for task results.
+	TaskCaches executor.TaskCacheRegistry
 }
 
 // readyRequest is a message sent from a thread to notify the worker that it's
@@ -160,17 +159,12 @@ func New(config Config) (*Worker, error) {
 		numThreads = runtime.GOMAXPROCS(0)
 	}
 
-	var taskCaches executor.TaskCacheRegistry
-	if config.TaskCache != nil {
-		taskCaches = executor.NewTaskCacheRegistry(config.TaskCache, prometheus.DefaultRegisterer)
-	}
-
 	return &Worker{
 		config:      config,
 		logger:      config.Logger,
 		wireMetrics: wire.NewMetrics(),
 		numThreads:  numThreads,
-		taskCaches:  taskCaches,
+		taskCaches:  config.TaskCaches,
 
 		dialer:   config.Dialer,
 		listener: config.Listener,
