@@ -31,7 +31,7 @@ func TestTaskCacheKey(t *testing.T) {
 		key, cacheType := TaskCacheKey(ctx, "tenant1", plan)
 		require.NotEmpty(t, key)
 		require.Contains(t, key, "tenant1")
-		require.Equal(t, TaskCacheTypeDataObjScan, cacheType)
+		require.Equal(t, TaskCacheDataObjScan, cacheType)
 	})
 
 	t.Run("same plan produces identical key", func(t *testing.T) {
@@ -118,7 +118,7 @@ func TestTaskCacheKey(t *testing.T) {
 		plan := FromGraph(g)
 		key, cacheType := TaskCacheKey(ctx, "t", plan)
 		require.NotEmpty(t, key)
-		require.Equal(t, TaskCacheTypePointersScan, cacheType)
+		require.Equal(t, TaskCachePointersScan, cacheType)
 	})
 }
 

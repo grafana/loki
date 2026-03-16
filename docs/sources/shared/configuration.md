@@ -344,6 +344,18 @@ query_engine:
     # CLI flag: -query-engine.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
 
+  tasks_result_cache:
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is:
+    # query-engine.tasks-result-cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -query-engine.tasks-result-cache.compression
+    [compression: <string> | default = ""]
+
   # Experimental: Number of worker threads to spawn. Each worker thread runs one
   # task at a time. 0 means to use GOMAXPROCS value.
   # CLI flag: -query-engine.worker-threads
@@ -412,18 +424,6 @@ query_engine:
     # Use compression in cache. The default is an empty value '', which disables
     # compression. Supported values are: 'snappy' and ''.
     # CLI flag: -query-engine.results-cache.compression
-    [compression: <string> | default = ""]
-
-  tasks_result_cache:
-    # The cache_config block configures the cache backend for a specific Loki
-    # component.
-    # The CLI flags prefix for this block configuration is:
-    # query-engine.tasks-result-cache
-    [cache: <cache_config>]
-
-    # Use compression in cache. The default is an empty value '', which disables
-    # compression. Supported values are: 'snappy' and ''.
-    # CLI flag: -query-engine.tasks-result-cache.compression
     [compression: <string> | default = ""]
 
 # The query_scheduler block configures the Loki query scheduler. When configured
