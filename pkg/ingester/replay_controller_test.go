@@ -78,6 +78,68 @@ func TestReplayController(t *testing.T) {
 	require.Equal(t, expected, ops)
 }
 
+// Test that WithBackPressure skips backpressure entirely when ReplayMemoryCeiling is zero.
+func TestReplayControllerZeroCeiling(t *testing.T) {
+	var flushed bool
+	flusher := newDumbFlusher(func() {
+		flushed = true
+	})
+	rc := newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 0}, flusher)
+
+	// Add a large amount of data — with a zero ceiling this should not trigger flushing.
+	rc.Add(1 << 30) // 1GB
+
+	err := rc.WithBackPressure(func() error {
+		rc.Add(1 << 30)
+		return nil
+	})
+
+	require.NoError(t, err)
+	require.False(t, flushed, "flusher should not be called when ReplayMemoryCeiling is zero")
+}
+
+// Test that WithBackPressure returns an error when a flush makes no progress reducing memory.
+func TestReplayControllerNoProgressFlush(t *testing.T) {
+	flusher := newDumbFlusher(nil) // no-op: never calls rc.Sub, so bytes never decrease
+	rc := newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 100}, flusher)
+
+	// Exceed 90% threshold (ceiling = 90).
+	rc.Add(95)
+
+	err := rc.WithBackPressure(func() error {
+		return nil
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "WAL replay flush made no progress")
+}
+
+// Test that WithBackPressure returns an error when flush makes partial progress but then stalls,
+// i.e. subsequent flushes no longer reduce memory below the ceiling.
+func TestReplayControllerPartialProgressFlush(t *testing.T) {
+	var rc *replayController
+	flushCount := 0
+	flusher := newDumbFlusher(func() {
+		flushCount++
+		if flushCount == 1 {
+			// First flush makes partial progress: drops from 200 to 95, still above 90% ceiling.
+			rc.Sub(105)
+		}
+		// Subsequent flushes are no-ops: bytes stay at 95, no further progress.
+	})
+	rc = newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 100}, flusher)
+
+	rc.Add(200) // well above the 90-byte ceiling
+
+	err := rc.WithBackPressure(func() error {
+		return nil
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "WAL replay flush made no progress")
+	require.Equal(t, 2, flushCount, "should have flushed twice: once with progress, once stalled")
+}
+
 // Test to ensure only one flush happens at a time when multiple goroutines call WithBackPressure
 func TestReplayControllerConcurrentFlushes(t *testing.T) {
 	t.Run("multiple goroutines wait for single flush", func(t *testing.T) {

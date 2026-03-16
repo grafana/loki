@@ -1,6 +1,8 @@
 package ingester
 
 import (
+	"fmt"
+
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
 	"go.uber.org/atomic"
@@ -107,10 +109,21 @@ func (c *replayController) flush() {
 // It will call the function as long as there is expected room before the memory cap and will then flush data intermittently
 // when needed.
 func (c *replayController) WithBackPressure(fn func() error) error {
+	ceiling := int(c.cfg.ReplayMemoryCeiling) * 9 / 10
+	if ceiling <= 0 {
+		return fn()
+	}
 	// use 90% as a threshold since we'll be adding to it.
-	for c.Cur() > int(c.cfg.ReplayMemoryCeiling)*9/10 {
+	for c.Cur() > ceiling {
+		before := c.currentBytes.Load()
 		// too much backpressure, flush
 		c.Flush()
+		if c.currentBytes.Load() >= before {
+			return fmt.Errorf("WAL replay flush made no progress: %s in use, ceiling %s; cannot recover",
+				humanize.Bytes(uint64(c.currentBytes.Load())),
+				humanize.Bytes(uint64(ceiling)),
+			)
+		}
 	}
 
 	return fn()
