@@ -47,8 +47,9 @@ type replayController struct {
 	// > 64-bit alignment of 64-bit words accessed atomically. The first word in a
 	// > variable or in an allocated struct, array, or slice can be relied upon to
 	// > be 64-bit aligned.
-	currentBytes atomic.Int64
-	cfg          WALConfig
+	currentBytes    atomic.Int64
+	totalSubtracted atomic.Int64 // monotonically increasing; used to detect flush no-progress without being affected by concurrent Add calls
+	cfg             WALConfig
 	metrics      *ingesterMetrics
 
 	flusher Flusher
@@ -70,8 +71,8 @@ func (c *replayController) Add(x int64) {
 }
 
 func (c *replayController) Sub(x int64) {
+	c.totalSubtracted.Add(x)
 	c.metrics.setRecoveryBytesInUse(c.currentBytes.Sub(x))
-
 }
 
 func (c *replayController) Cur() int {
@@ -115,10 +116,10 @@ func (c *replayController) WithBackPressure(fn func() error) error {
 	}
 	// use 90% as a threshold since we'll be adding to it.
 	for c.Cur() > ceiling {
-		before := c.currentBytes.Load()
+		subtractedBefore := c.totalSubtracted.Load()
 		// too much backpressure, flush
 		c.Flush()
-		if c.currentBytes.Load() >= before {
+		if c.totalSubtracted.Load() == subtractedBefore {
 			return fmt.Errorf("WAL replay flush made no progress: %s in use, ceiling %s; cannot recover",
 				humanize.Bytes(uint64(c.currentBytes.Load())),
 				humanize.Bytes(uint64(ceiling)),

@@ -140,6 +140,35 @@ func TestReplayControllerPartialProgressFlush(t *testing.T) {
 	require.Equal(t, 2, flushCount, "should have flushed twice: once with progress, once stalled")
 }
 
+// Test that WithBackPressure does not spuriously error when concurrent workers refill currentBytes
+// during a flush. The flush made real progress (Sub was called), so no error should be returned
+// even though currentBytes ends up higher than before due to concurrent Add calls.
+func TestReplayControllerNoSpuriousErrorOnConcurrentAdd(t *testing.T) {
+	var rc *replayController
+	flushed := make(chan struct{})
+	flusher := newDumbFlusher(func() {
+		rc.Sub(80) // genuine progress: drops bytes from 95 to 15
+		close(flushed)
+	})
+	rc = newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 100}, flusher)
+	rc.Add(95) // above 90% ceiling
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Simulate a concurrent worker adding bytes while the flush is running,
+		// pushing currentBytes back above the before snapshot.
+		<-flushed
+		rc.Add(85) // refills: 15 + 85 = 100, above the original before=95
+	}()
+
+	err := rc.WithBackPressure(func() error { return nil })
+	wg.Wait()
+
+	require.NoError(t, err, "concurrent Add during flush should not cause a spurious no-progress error")
+}
+
 // Test to ensure only one flush happens at a time when multiple goroutines call WithBackPressure
 func TestReplayControllerConcurrentFlushes(t *testing.T) {
 	t.Run("multiple goroutines wait for single flush", func(t *testing.T) {
