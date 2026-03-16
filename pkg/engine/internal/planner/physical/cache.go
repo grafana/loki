@@ -11,22 +11,22 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
-// TaskCacheType indicates which backing store should be used for a [Cache] node.
-type TaskCacheType = string
+// TaskCacheName indicates which backing store should be used for a [Cache] node.
+type TaskCacheName = string
 
 const (
-	// TaskCacheTypeDataObjScan selects the dataobj cache (for DATAOBJSCAN tasks).
-	TaskCacheTypeDataObjScan TaskCacheType = "dataobj"
-	// TaskCacheTypePointersScan selects the metastore cache (for POINTERSSCAN tasks).
-	TaskCacheTypePointersScan TaskCacheType = "metastore"
+	// TaskCacheDataObjScan selects the dataobj cache (for DATAOBJSCAN tasks).
+	TaskCacheDataObjScan TaskCacheName = "dataobj"
+	// TaskCachePointersScan selects the metastore cache (for POINTERSSCAN tasks).
+	TaskCachePointersScan TaskCacheName = "metastore"
 )
 
 // Cache is a plan node that wraps the root of a cacheable task fragment.
 // When executed, it transparently stores and retrieves results from a cache.
 type Cache struct {
-	NodeID ulid.ULID
-	Key    string
-	Cache  TaskCacheType
+	NodeID    ulid.ULID
+	Key       string
+	CacheName TaskCacheName
 }
 
 // ID returns the ULID that uniquely identifies the node in the plan.
@@ -37,7 +37,7 @@ func (*Cache) Type() NodeType { return NodeTypeCache }
 
 // Clone returns a deep copy of the node with a new unique ID.
 func (c *Cache) Clone() Node {
-	return &Cache{NodeID: ulid.Make(), Key: c.Key, Cache: c.Cache}
+	return &Cache{NodeID: ulid.Make(), Key: c.Key, CacheName: c.CacheName}
 }
 
 // WrapWithCacheIfSupported computes a cache key for plan and, if the plan is
@@ -54,7 +54,7 @@ func WrapWithCacheIfSupported(ctx context.Context, tenantID string, plan *Plan) 
 	if err != nil {
 		return nil, false, err
 	}
-	node := &Cache{NodeID: ulid.Make(), Key: key, Cache: cacheType}
+	node := &Cache{NodeID: ulid.Make(), Key: key, CacheName: cacheType}
 	plan.graph.Add(node)
 	if err := plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: root}); err != nil {
 		return nil, false, err
@@ -74,7 +74,7 @@ func WrapWithCacheIfSupported(ctx context.Context, tenantID string, plan *Plan) 
 // The result is prefixed with the tenantID.
 // The returned TaskCacheType is TaskCacheTypePointersScan when the plan contains a
 // PointersScan and no DataObjScan; otherwise it is TaskCacheTypeDataObjScan.
-func TaskCacheKey(ctx context.Context, tenantID string, plan *Plan) (string, TaskCacheType) {
+func TaskCacheKey(ctx context.Context, tenantID string, plan *Plan) (string, TaskCacheName) {
 	roots := plan.Roots()
 	if len(roots) != 1 {
 		return "", ""
@@ -82,7 +82,7 @@ func TaskCacheKey(ctx context.Context, tenantID string, plan *Plan) (string, Tas
 	root := roots[0]
 
 	var parts []string
-	var hasDataObjScan, hasPointersScan bool
+	var cacheType string
 	var nonCacheable bool
 	_ = plan.DFSWalk(root, func(n Node) error {
 		key := n.CacheKey(ctx)
@@ -92,22 +92,17 @@ func TaskCacheKey(ctx context.Context, tenantID string, plan *Plan) (string, Tas
 		}
 		switch n.(type) {
 		case *DataObjScan:
-			hasDataObjScan = true
+			cacheType = TaskCacheDataObjScan
 		case *PointersScan:
-			hasPointersScan = true
+			cacheType = TaskCachePointersScan
 		}
 		parts = append(parts, key)
 		return nil
 	}, dag.PreOrderWalk)
 
-	hasScan := hasDataObjScan || hasPointersScan
-	if nonCacheable || !hasScan || len(parts) == 0 {
+	// No cache if It's not cacheable, did not contain any scan (cacheType=="") or plan contains no cacheable parts
+	if nonCacheable || cacheType == "" || len(parts) == 0 {
 		return "", ""
-	}
-
-	cacheType := TaskCacheTypeDataObjScan
-	if hasPointersScan && !hasDataObjScan {
-		cacheType = TaskCacheTypePointersScan
 	}
 
 	const separator = " |>>| "

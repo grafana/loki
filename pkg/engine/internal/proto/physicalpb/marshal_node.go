@@ -425,8 +425,8 @@ func (n *Batching) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 // an error if the conversion fails or is unsupported.
 func (n *Cache) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.Cache{
-		NodeID: nodeID,
-		Key:    n.Key,
-		Cache:  n.Cache,
+		NodeID:    nodeID,
+		Key:       n.Key,
+		CacheName: n.CacheName,
 	}, nil
 }

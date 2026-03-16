@@ -197,7 +197,7 @@ func decodeRecords(data []byte) ([]arrow.RecordBatch, error) {
 }
 
 // TaskCacheRegistry maps TaskCacheType identifiers to backing cache stores.
-type TaskCacheRegistry map[physical.TaskCacheType]cache.Cache
+type TaskCacheRegistry map[physical.TaskCacheName]cache.Cache
 
 // NewTaskCacheRegistry builds a registry that routes each TaskCacheType
 // to an instrumented view of underlying. Returns nil if underlying is nil.
@@ -206,13 +206,13 @@ func NewTaskCacheRegistry(underlying cache.Cache, reg prometheus.Registerer) Tas
 		return nil
 	}
 	return TaskCacheRegistry{
-		physical.TaskCacheTypeDataObjScan:  cache.Instrument("task-cache-dataobj", underlying, reg),
-		physical.TaskCacheTypePointersScan: cache.Instrument("task-cache-metastore", underlying, reg),
+		physical.TaskCacheDataObjScan:  cache.Instrument("task-cache-dataobj", underlying, reg),
+		physical.TaskCachePointersScan: cache.Instrument("task-cache-metastore", underlying, reg),
 	}
 }
 
 // GetForType returns the cache for cacheType, or an error if none is registered.
-func (r TaskCacheRegistry) GetForType(cacheType physical.TaskCacheType) (cache.Cache, error) {
+func (r TaskCacheRegistry) GetForType(cacheType physical.TaskCacheName) (cache.Cache, error) {
 	if r != nil {
 		if c, ok := r[cacheType]; ok {
 			return c, nil
