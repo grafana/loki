@@ -24,6 +24,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -43,6 +45,15 @@ func NewBasic(cfg ExecutorConfig, ms metastore.Metastore, bucket objstore.Bucket
 		cfg.RangeConfig = rangeio.DefaultConfig
 	}
 
+	var taskCaches executor.TaskCacheRegistry
+	if cache.IsCacheConfigured(cfg.TasksResultCache.CacheConfig) {
+		taskCache, err := cache.New(cfg.TasksResultCache.CacheConfig, reg, logger, stats.ResultCache, constants.Loki)
+		if err != nil {
+			panic(fmt.Sprintf("creating task results cache: %v", err))
+		}
+		taskCaches = executor.NewTaskCacheRegistry(taskCache, prometheus.DefaultRegisterer)
+	}
+
 	return &Basic{
 		logger:     logger,
 		metrics:    newMetrics(reg),
@@ -50,7 +61,7 @@ func NewBasic(cfg ExecutorConfig, ms metastore.Metastore, bucket objstore.Bucket
 		metastore:  ms,
 		bucket:     bucket,
 		cfg:        cfg,
-		taskCaches: executor.NewTaskCacheRegistry(cfg.TaskCache, prometheus.DefaultRegisterer),
+		taskCaches: taskCaches,
 	}
 }
 

@@ -200,11 +200,8 @@ func decodeRecords(data []byte) ([]arrow.RecordBatch, error) {
 type TaskCacheRegistry map[physical.TaskCacheName]cache.Cache
 
 // NewTaskCacheRegistry builds a registry that routes each TaskCacheType
-// to an instrumented view of underlying. Returns nil if underlying is nil.
+// to an instrumented view of underlying.
 func NewTaskCacheRegistry(underlying cache.Cache, reg prometheus.Registerer) TaskCacheRegistry {
-	if underlying == nil {
-		return nil
-	}
 	return TaskCacheRegistry{
 		physical.TaskCacheDataObjScan:  cache.Instrument("task-cache-dataobj", underlying, reg),
 		physical.TaskCachePointersScan: cache.Instrument("task-cache-metastore", underlying, reg),

@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -80,9 +81,8 @@ type ExecutorConfig struct {
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
 
-	// TaskCache is an optional backing cache for task results.
-	// When set, cache pipelines will use it to read/write results.
-	TaskCache cache.Cache `yaml:"-"`
+	// TasksResultCache configures the backing cache for task results.
+	TasksResultCache queryrangebase.ResultsCacheConfig `yaml:"tasks_result_cache" category:"experimental"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -92,6 +92,7 @@ func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 	f.Var(&cfg.PrefetchBytes, prefix+"prefetch-bytes", "Experimental: Number of bytes to prefetch when opening a data object for decoding metadata and overlapping section reads. Clamps to at least 16KiB.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
+	cfg.TasksResultCache.RegisterFlagsWithPrefix(f, prefix+"tasks-result-cache.")
 }
 
 // Params holds parameters for constructing a new [Engine].
@@ -478,7 +479,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 		MaxRunningScanTasks:  maxRunningScanTasks,
 		MaxRunningOtherTasks: 0,
 
-		CacheEnabled: cache.IsCacheConfigured(e.cfg.TasksResultCache.CacheConfig),
+		CacheEnabled: cache.IsCacheConfigured(e.cfg.Executor.TasksResultCache.CacheConfig),
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),

@@ -22,17 +22,22 @@ func (c *ArrowCodec) SerializeArrowRecord(record arrow.RecordBatch) ([]byte, err
 	if record == nil {
 		return nil, errors.New("nil arrow record")
 	}
+
 	var buf bytes.Buffer
 	writer := ipc.NewWriter(&buf,
 		ipc.WithSchema(record.Schema()),
 		ipc.WithAllocator(c.Allocator),
 	)
+	defer writer.Close()
+
 	if err := writer.Write(record); err != nil {
 		return nil, err
 	}
+
 	if err := writer.Close(); err != nil {
 		return nil, err
 	}
+
 	return buf.Bytes(), nil
 }
 
@@ -41,6 +46,7 @@ func (c *ArrowCodec) DeserializeArrowRecord(data []byte) (arrow.RecordBatch, err
 	if len(data) == 0 {
 		return nil, errors.New("empty arrow data")
 	}
+
 	reader, err := ipc.NewReader(
 		bytes.NewReader(data),
 		ipc.WithAllocator(c.Allocator),
@@ -48,12 +54,14 @@ func (c *ArrowCodec) DeserializeArrowRecord(data []byte) (arrow.RecordBatch, err
 	if err != nil {
 		return nil, err
 	}
-	defer reader.Release()
+
 	if !reader.Next() {
 		if err := reader.Err(); err != nil {
 			return nil, err
 		}
 		return nil, errors.New("no record in arrow data")
 	}
-	return reader.RecordBatch(), nil
+
+	rec := reader.RecordBatch()
+	return rec, nil
 }

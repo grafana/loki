@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/oklog/ulid/v2"

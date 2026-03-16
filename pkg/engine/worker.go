@@ -2,6 +2,7 @@ package engine
 
 import (
 	"flag"
+	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -18,6 +19,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // WorkerConfig represents the configuration for the [Worker].
@@ -123,6 +127,21 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		return nil, errors.New("either an advertise address or a local scheduler listener must be provided")
 	}
 
+	var taskCache cache.Cache
+	if cache.IsCacheConfigured(params.Executor.TasksResultCache.CacheConfig) {
+		var err error
+		taskCache, err = cache.New(
+			params.Executor.TasksResultCache.CacheConfig,
+			prometheus.DefaultRegisterer,
+			params.Logger,
+			stats.ResultCache,
+			constants.Loki,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("creating task results cache: %w", err)
+		}
+	}
+
 	inner, err := worker.New(worker.Config{
 		Logger:    params.Logger,
 		Bucket:    params.Bucket,
@@ -142,7 +161,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		Endpoint: params.Endpoint,
 
 		StreamFilterer: params.StreamFilterer,
-		TaskCache:      params.Executor.TaskCache,
+		TaskCache:      taskCache,
 	})
 	if err != nil {
 		return nil, err

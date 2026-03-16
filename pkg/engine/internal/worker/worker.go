@@ -160,12 +160,17 @@ func New(config Config) (*Worker, error) {
 		numThreads = runtime.GOMAXPROCS(0)
 	}
 
+	var taskCaches executor.TaskCacheRegistry
+	if config.TaskCache != nil {
+		taskCaches = executor.NewTaskCacheRegistry(config.TaskCache, prometheus.DefaultRegisterer)
+	}
+
 	return &Worker{
 		config:      config,
 		logger:      config.Logger,
 		wireMetrics: wire.NewMetrics(),
 		numThreads:  numThreads,
-		taskCaches:  executor.NewTaskCacheRegistry(config.TaskCache, prometheus.DefaultRegisterer),
+		taskCaches:  taskCaches,
 
 		dialer:   config.Dialer,
 		listener: config.Listener,
