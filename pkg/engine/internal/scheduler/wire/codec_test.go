@@ -349,13 +349,13 @@ func TestProtobufCodec_ErrorCases(t *testing.T) {
 	})
 
 	t.Run("nil arrow record serialization", func(t *testing.T) {
-		_, err := codec.serializeArrowRecord(nil)
+		_, err := codec.SerializeArrowRecord(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil arrow record")
 	})
 
 	t.Run("empty arrow data deserialization", func(t *testing.T) {
-		_, err := codec.deserializeArrowRecord([]byte{})
+		_, err := codec.DeserializeArrowRecord([]byte{})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "empty arrow data")
 	})
@@ -410,11 +410,11 @@ func TestProtobufCodec_ArrowRecordSerialization(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			original := tt.createRecord()
 
-			data, err := codec.serializeArrowRecord(original)
+			data, err := codec.SerializeArrowRecord(original)
 			require.NoError(t, err)
 			require.NotEmpty(t, data)
 
-			deserialized, err := codec.deserializeArrowRecord(data)
+			deserialized, err := codec.DeserializeArrowRecord(data)
 			require.NoError(t, err)
 			require.NotNil(t, deserialized)
 

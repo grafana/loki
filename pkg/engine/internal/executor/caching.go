@@ -3,16 +3,18 @@ package executor
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/ipc"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	arrowcodec "github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire/arrow"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
@@ -135,28 +137,61 @@ func (s *arrowCacheAdapter) set(ctx context.Context, key string, records []arrow
 	return s.cache.Store(ctx, []string{key}, [][]byte{buf})
 }
 
+// encodeRecords serializes a slice of Arrow record batches into a single byte
+// buffer using the following framed format:
+//
+//	[8 bytes: record count (big-endian uint64)]
+//	for each record:
+//	  [8 bytes: record length (big-endian uint64)]
+//	  [N bytes: Arrow IPC stream encoding of the record]
 func encodeRecords(records []arrow.RecordBatch) ([]byte, error) {
 	var buf bytes.Buffer
-	w := ipc.NewWriter(&buf, ipc.WithSchema(records[0].Schema()))
-	defer w.Close()
-	for _, rec := range records {
-		if err := w.Write(rec); err != nil {
-			return nil, err
+	var hdr [8]byte
+
+	binary.BigEndian.PutUint64(hdr[:], uint64(len(records)))
+	buf.Write(hdr[:])
+
+	for i, rec := range records {
+		data, err := arrowcodec.DefaultArrowCodec.SerializeArrowRecord(rec)
+		if err != nil {
+			return nil, fmt.Errorf("encoding record %d: %w", i, err)
 		}
+		binary.BigEndian.PutUint64(hdr[:], uint64(len(data)))
+		buf.Write(hdr[:])
+		buf.Write(data)
 	}
 	return buf.Bytes(), nil
 }
 
+// decodeRecords is the inverse of encodeRecords; see encodeRecords for the
+// wire format.
 func decodeRecords(data []byte) ([]arrow.RecordBatch, error) {
-	r, err := ipc.NewReader(bytes.NewReader(data))
-	if err != nil {
+	if len(data) < 8 {
+		return nil, fmt.Errorf("cache buffer too short")
+	}
+	r := bytes.NewReader(data)
+	var hdr [8]byte
+
+	if _, err := io.ReadFull(r, hdr[:]); err != nil {
 		return nil, err
 	}
+	n := int(binary.BigEndian.Uint64(hdr[:]))
 
-	var records []arrow.RecordBatch
-	for r.Next() {
-		rec := r.RecordBatch()
-		records = append(records, rec)
+	records := make([]arrow.RecordBatch, n)
+	for i := range records {
+		if _, err := io.ReadFull(r, hdr[:]); err != nil {
+			return nil, fmt.Errorf("reading length of record %d: %w", i, err)
+		}
+		sz := int(binary.BigEndian.Uint64(hdr[:]))
+		buf := make([]byte, sz)
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return nil, fmt.Errorf("reading record %d: %w", i, err)
+		}
+		rec, err := arrowcodec.DefaultArrowCodec.DeserializeArrowRecord(buf)
+		if err != nil {
+			return nil, fmt.Errorf("decoding record %d: %w", i, err)
+		}
+		records[i] = rec
 	}
 	return records, nil
 }
