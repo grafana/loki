@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 var testFields = []arrow.Field{
@@ -44,7 +45,7 @@ func TestCachingPipeline(t *testing.T) {
 
 	require.Len(t, batches, 2, "expected 2 batches from inner pipeline")
 	require.Equal(t, 1, c.setCalls, "Store should have been called once on EOF")
-	require.Contains(t, c.data, "test-key", "cache should contain the key")
+	require.Contains(t, c.data, cache.HashKey("test-key"), "cache should contain the key")
 
 	// Second pass: cache hit — inner pipeline must never be opened.
 	hit := newCachingPipeline(c, &failPipeline{}, "test-key", log.NewNopLogger())

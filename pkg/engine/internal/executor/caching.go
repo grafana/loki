@@ -15,7 +15,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	arrowcodec "github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire/arrow"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // newCachingPipeline wraps inner in a [cachingPipeline] backed by c.
@@ -27,7 +30,7 @@ func newCachingPipeline(c cache.Cache, inner Pipeline, key string, logger log.Lo
 	return &cachingPipeline{
 		inner:  inner,
 		store:  &arrowCacheAdapter{cache: c},
-		key:    key,
+		key:    cache.HashKey(key),
 		logger: logger,
 	}
 }
@@ -199,13 +202,33 @@ func decodeRecords(data []byte) ([]arrow.RecordBatch, error) {
 // TaskCacheRegistry maps TaskCacheType identifiers to backing cache stores.
 type TaskCacheRegistry map[physical.TaskCacheName]cache.Cache
 
-// NewTaskCacheRegistry builds a registry that routes each TaskCacheType
-// to an instrumented view of underlying.
-func NewTaskCacheRegistry(underlying cache.Cache, reg prometheus.Registerer) TaskCacheRegistry {
-	return TaskCacheRegistry{
-		physical.TaskCacheDataObjScan:  cache.Instrument("task-cache-dataobj", underlying, reg),
-		physical.TaskCachePointersScan: cache.Instrument("task-cache-metastore", underlying, reg),
+// NewTaskCacheRegistry builds a registry that creates one independent cache per
+// task type, using type-specific prefixes derived from cfg.CacheConfig.Prefix.
+// Returns nil, nil when caching is not configured.
+func NewTaskCacheRegistry(cfg queryrangebase.ResultsCacheConfig, reg prometheus.Registerer, logger log.Logger) (TaskCacheRegistry, error) {
+	if !cache.IsCacheConfigured(cfg.CacheConfig) {
+		return nil, nil
 	}
+
+	newCache := func(suffix string) (cache.Cache, error) {
+		cfgCopy := cfg.CacheConfig
+		cfgCopy.Prefix += suffix
+		return cache.New(cfgCopy, reg, logger, stats.ResultCache, constants.Loki)
+	}
+
+	dataobj, err := newCache("dataobj.")
+	if err != nil {
+		return nil, fmt.Errorf("creating dataobj task cache: %w", err)
+	}
+	metastore, err := newCache("metastore.")
+	if err != nil {
+		return nil, fmt.Errorf("creating metastore task cache: %w", err)
+	}
+
+	return TaskCacheRegistry{
+		physical.TaskCacheDataObjScan:  dataobj,
+		physical.TaskCachePointersScan: metastore,
+	}, nil
 }
 
 // GetForType returns the cache for cacheType, or an error if none is registered.

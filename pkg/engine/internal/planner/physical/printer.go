@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 // BuildTree converts a physical plan node and its children into a tree structure
@@ -151,6 +152,7 @@ func toTreeNode(n Node) *tree.Node {
 		}
 	case *Cache:
 		treeNode.Properties = []tree.Property{
+			tree.NewProperty("hashed_key", false, cache.HashKey(node.Key)),
 			tree.NewProperty("key", false, node.Key),
 		}
 	}
