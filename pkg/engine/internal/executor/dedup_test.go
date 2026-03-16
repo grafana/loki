@@ -179,18 +179,31 @@ func BenchmarkDedupPipeline(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			rows := make(arrowtest.Rows, tc.numRows)
-			dupThreshold := int(tc.dupRate * 100)
+			// Assign each row a unique timestamp first.
 			for i := range tc.numRows {
-				isDup := i > 0 && (i%100) < dupThreshold
-				t := int64(i)
-				if isDup {
-					t = int64(i - 1)
-				}
 				rows[i] = map[string]any{
-					tsFQN:  ts(t),
+					tsFQN:  ts(int64(i)),
 					msgFQN: "msg",
 					envFQN: "prod",
 				}
+			}
+			// Scatter duplicates evenly across the batch by copying
+			// from a deterministic earlier row. This exercises the
+			// intra-batch dup detection map more realistically than
+			// consecutive duplicates would.
+			dupCount := int(float64(tc.numRows) * tc.dupRate)
+			stride := 1
+			if dupCount > 0 {
+				stride = tc.numRows / dupCount
+			}
+			for i := stride; i < tc.numRows && dupCount > 0; i += stride {
+				src := i / 2 // copy from a non-adjacent earlier row
+				rows[i] = map[string]any{
+					tsFQN:  rows[src][tsFQN],
+					msgFQN: rows[src][msgFQN],
+					envFQN: rows[src][envFQN],
+				}
+				dupCount--
 			}
 
 			b.ResetTimer()
