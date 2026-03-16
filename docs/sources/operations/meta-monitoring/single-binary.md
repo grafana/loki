@@ -7,11 +7,11 @@ weight: 100
 
 # Single binary meta-monitoring
 
-Meta monitoring for [single binary](https://grafana.com/docs/loki/latest/setup/install/local/) deployments involves some additional configuration. This approach does not use the Kubernetes Monitoring Helm chart.
+Meta monitoring for [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) deployments involves some additional configuration. This approach does not use the Kubernetes Monitoring Helm chart.
 
 ## Metrics
 
-Configure Alloy or Prometheus to scrape the Loki metrics endpoint, adding the additional labels that are expected by the [mixin](https://grafana.com/docs/loki/latest/operations/meta-monitoring/mixins) dashboards, alerts, and recording rules:
+Configure Alloy or Prometheus to scrape the Loki metrics endpoint, adding the additional labels that are expected by the [mixin](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/mixins) dashboards, alerts, and recording rules:
 
 ### Alloy
 
@@ -52,36 +52,36 @@ scrape_configs:
 
 ## Mixins
 
-To generate the [mixins](https://grafana.com/docs/loki/latest/operations/meta-monitoring/mixins):
+To generate the [mixins](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/mixins):
 
-1. Install [jb](https://github.com/jsonnet-bundler/jsonnet-bundler)
-2. Install [mixtool](https://github.com/monitoring-mixins/mixtool)
-3. Clone the Loki repository from Github
+1. Install [jb](https://github.com/jsonnet-bundler/jsonnet-bundler).
+2. Install [mixtool](https://github.com/monitoring-mixins/mixtool).
+3. Clone the Loki repository from Github.
 
    ```bash
    git clone https://github.com/grafana/loki
    cd loki
    ```
 
-4. Create the output directory
+4. Create the output directory.
 
     ```bash
     mkdir loki/production/loki-mixin-compiled-single-binary
     ```
 
-5. Navigate to the mixin directory
+5. Navigate to the mixin directory.
 
    ```bash
    cd loki/production/loki-mixin
    ```
 
-6. Use `jb` to install mixin dependencies and generate the `vender` directory
+6. Use `jb` to install mixin dependencies and generate the `vender` directory.
 
    ```bash
    jb install
    ```
 
-7. Create the mixin configuration file `single-binary.libsonnet`
+7. Create the mixin configuration file `single-binary.libsonnet`.
 
     ```bash
     cat <<EOF > single-binary.libsonnet
@@ -109,7 +109,7 @@ To generate the [mixins](https://grafana.com/docs/loki/latest/operations/meta-mo
     EOF
     ```
 
-8. Generate dashboards, alerts, and recording rules
+8. Generate dashboards, alerts, and recording rules.
 
     ```bash
     mixtool generate all \
@@ -119,5 +119,5 @@ To generate the [mixins](https://grafana.com/docs/loki/latest/operations/meta-mo
       single-binary.libsonnet
      ```
 
-9. See the generated dashboards, alerts, and recording rules in the `loki/production/loki-mixin-compiled-single-binary` directory
-10. Follow the instructions in the [Install Mixins](https://grafana.com/docs/loki/latest/operations/meta-monitoring/mixins) documentation to set up the dashboards, alerts, and recordings
+9. See the generated dashboards, alerts, and recording rules in the `loki/production/loki-mixin-compiled-single-binary` directory.
+10. Follow the instructions in the [Install Mixins](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/mixins) documentation to set up the dashboards, alerts, and recordings.
