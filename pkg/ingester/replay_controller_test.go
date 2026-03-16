@@ -142,13 +142,20 @@ func TestReplayControllerPartialProgressFlush(t *testing.T) {
 
 // Test that WithBackPressure does not spuriously error when concurrent workers refill currentBytes
 // during a flush. The flush made real progress (Sub was called), so no error should be returned
-// even though currentBytes ends up higher than before due to concurrent Add calls.
+// even though currentBytes ends up higher than the pre-flush snapshot due to concurrent Add calls.
+//
+// Sequence:
+//  1. bytes=95 > ceiling=90, enter loop; old code snapshots before=95
+//  2. Flush runs: Sub(80) → bytes=15; concurrent goroutine adds 85 → bytes=100
+//  3. Old check: currentBytes(100) >= before(95) → spurious error
+//  4. New check: totalSubtracted increased → no error, loop continues and drains on next flush
 func TestReplayControllerNoSpuriousErrorOnConcurrentAdd(t *testing.T) {
 	var rc *replayController
+	var once sync.Once
 	flushed := make(chan struct{})
 	flusher := newDumbFlusher(func() {
-		rc.Sub(80) // genuine progress: drops bytes from 95 to 15
-		close(flushed)
+		rc.Sub(80)                         // genuine progress each flush
+		once.Do(func() { close(flushed) }) // signal the concurrent goroutine only on first flush
 	})
 	rc = newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 100}, flusher)
 	rc.Add(95) // above 90% ceiling
@@ -157,10 +164,11 @@ func TestReplayControllerNoSpuriousErrorOnConcurrentAdd(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		// Simulate a concurrent worker adding bytes while the flush is running,
-		// pushing currentBytes back above the before snapshot.
+		// Simulate a concurrent worker adding bytes while the first flush is running,
+		// pushing currentBytes back above the pre-flush snapshot (100 > before=95).
+		// The loop will flush again and drain normally; no error should be returned.
 		<-flushed
-		rc.Add(85) // refills: 15 + 85 = 100, above the original before=95
+		rc.Add(85) // 15 + 85 = 100, above the original before=95
 	}()
 
 	err := rc.WithBackPressure(func() error { return nil })

@@ -50,7 +50,7 @@ type replayController struct {
 	currentBytes    atomic.Int64
 	totalSubtracted atomic.Int64 // monotonically increasing; used to detect flush no-progress without being affected by concurrent Add calls
 	cfg             WALConfig
-	metrics      *ingesterMetrics
+	metrics         *ingesterMetrics
 
 	flusher Flusher
 	flushSF singleflight.Group
