@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // newCachingPipeline wraps inner in a [cachingPipeline] backed by c.
@@ -52,10 +53,20 @@ type cachingPipeline struct {
 
 // Open implements Pipeline.
 func (p *cachingPipeline) Open(ctx context.Context) error {
-	records, hit, err := p.store.get(ctx, p.key)
+	region := xcap.RegionFromContext(ctx)
+
+	records, bufSize, hit, err := p.store.get(ctx, p.key)
 	if err == nil && hit {
 		p.cached = records
 		p.hit = true
+		region.Record(xcap.TaskCacheHits.Observe(1))
+		region.Record(xcap.TaskCacheBatches.Observe(int64(len(records))))
+		region.Record(xcap.TaskCacheBytes.Observe(int64(bufSize)))
+		var rows int64
+		for _, rec := range records {
+			rows += rec.NumRows()
+		}
+		region.Record(xcap.TaskCacheRows.Observe(rows))
 		return nil
 	}
 
@@ -64,6 +75,7 @@ func (p *cachingPipeline) Open(ctx context.Context) error {
 		level.Error(p.logger).Log("msg", "cache fetch failed, falling back to inner pipeline", "err", err)
 	}
 
+	region.Record(xcap.TaskCacheMisses.Observe(1))
 	// Cache miss; open the inner pipeline for reads
 	return p.inner.Open(ctx)
 }
@@ -86,8 +98,18 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	rec, err := p.inner.Read(ctx)
 	if err != nil {
 		if errors.Is(err, EOF) {
-			if setErr := p.store.set(ctx, p.key, p.cached); setErr != nil {
+			bufSize, setErr := p.store.set(ctx, p.key, p.cached)
+			if setErr != nil {
 				level.Error(p.logger).Log("msg", "failed to store results in cache", "err", setErr)
+			} else {
+				region := xcap.RegionFromContext(ctx)
+				region.Record(xcap.TaskCacheBatches.Observe(int64(len(p.cached))))
+				region.Record(xcap.TaskCacheBytes.Observe(int64(bufSize)))
+				var rows int64
+				for _, r := range p.cached {
+					rows += r.NumRows()
+				}
+				region.Record(xcap.TaskCacheRows.Observe(rows))
 			}
 		}
 		return nil, err
@@ -111,33 +133,37 @@ type arrowCacheAdapter struct {
 	cache cache.Cache
 }
 
-func (s *arrowCacheAdapter) get(ctx context.Context, key string) ([]arrow.RecordBatch, bool, error) {
-	found, bufs, missing, err := s.cache.Fetch(ctx, []string{key})
+// get fetches cached records for key. Returns the decoded records, the raw
+// buffer size in bytes, whether a cache entry was found, and any error.
+func (s *arrowCacheAdapter) get(ctx context.Context, key string) ([]arrow.RecordBatch, int, bool, error) {
+	found, buffs, missing, err := s.cache.Fetch(ctx, []string{key})
 	if err != nil {
-		return nil, false, err
+		return nil, 0, false, err
 	}
 	if len(missing) > 0 || len(found) == 0 {
-		return nil, false, nil
+		return nil, 0, false, nil
 	}
-	if len(bufs[0]) == 0 {
-		return nil, true, nil // cached empty result
+	if len(buffs[0]) == 0 {
+		return nil, 0, true, nil // cached empty result
 	}
-	records, err := decodeRecords(bufs[0])
+	records, err := decodeRecords(buffs[0])
 	if err != nil {
-		return nil, false, fmt.Errorf("decoding cached records: %w", err)
+		return nil, 0, false, fmt.Errorf("decoding cached records: %w", err)
 	}
-	return records, true, nil
+	return records, len(buffs[0]), true, nil
 }
 
-func (s *arrowCacheAdapter) set(ctx context.Context, key string, records []arrow.RecordBatch) error {
+// set encodes and stores records under key. Returns the encoded buffer size in
+// bytes and any error.
+func (s *arrowCacheAdapter) set(ctx context.Context, key string, records []arrow.RecordBatch) (int, error) {
 	if len(records) == 0 {
-		return s.cache.Store(ctx, []string{key}, [][]byte{{}})
+		return 0, s.cache.Store(ctx, []string{key}, [][]byte{{}})
 	}
 	buf, err := encodeRecords(records)
 	if err != nil {
-		return fmt.Errorf("encoding records for cache: %w", err)
+		return 0, fmt.Errorf("encoding records for cache: %w", err)
 	}
-	return s.cache.Store(ctx, []string{key}, [][]byte{buf})
+	return len(buf), s.cache.Store(ctx, []string{key}, [][]byte{buf})
 }
 
 // encodeRecords serializes a slice of Arrow record batches into a single byte
