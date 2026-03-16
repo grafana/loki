@@ -8,6 +8,8 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -16,14 +18,15 @@ import (
 
 // newCachingPipeline wraps inner in a [cachingPipeline] backed by c.
 // If c is nil, inner is returned unchanged (no caching).
-func newCachingPipeline(c cache.Cache, inner Pipeline, key string) Pipeline {
+func newCachingPipeline(c cache.Cache, inner Pipeline, key string, logger log.Logger) Pipeline {
 	if c == nil {
 		return inner
 	}
 	return &cachingPipeline{
-		inner: inner,
-		store: &arrowCacheAdapter{cache: c},
-		key:   key,
+		inner:  inner,
+		store:  &arrowCacheAdapter{cache: c},
+		key:    key,
+		logger: logger,
 	}
 }
 
@@ -36,6 +39,7 @@ type cachingPipeline struct {
 	inner  Pipeline
 	store  *arrowCacheAdapter
 	key    string
+	logger log.Logger
 	cached []arrow.RecordBatch // records served from cache (hit path) or collected to put them on the cache (miss path)
 	pos    int                 // current position in cached slice (hit path)
 	hit    bool                // true when Open found a cache hit
@@ -44,13 +48,15 @@ type cachingPipeline struct {
 // Open implements Pipeline.
 func (p *cachingPipeline) Open(ctx context.Context) error {
 	records, hit, err := p.store.get(ctx, p.key)
-	if err != nil {
-		return err
-	}
-	if hit {
+	if err == nil && hit {
 		p.cached = records
 		p.hit = true
 		return nil
+	}
+
+	// On error, log it and fall through to the inner pipeline
+	if err != nil {
+		level.Error(p.logger).Log("msg", "cache fetch failed, falling back to inner pipeline", "err", err)
 	}
 
 	// Cache miss; open the inner pipeline for reads
@@ -75,9 +81,9 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	rec, err := p.inner.Read(ctx)
 	if err != nil {
 		if errors.Is(err, EOF) {
-			// Best-effort: populate the cache. Ignore errors so the caller
-			// still receives EOF and can proceed.
-			_ = p.store.set(ctx, p.key, p.cached)
+			if setErr := p.store.set(ctx, p.key, p.cached); setErr != nil {
+				level.Error(p.logger).Log("msg", "failed to store results in cache", "err", setErr)
+			}
 		}
 		return nil, err
 	}
@@ -108,6 +114,9 @@ func (s *arrowCacheAdapter) get(ctx context.Context, key string) ([]arrow.Record
 	if len(missing) > 0 || len(found) == 0 {
 		return nil, false, nil
 	}
+	if len(bufs[0]) == 0 {
+		return nil, true, nil // cached empty result
+	}
 	records, err := decodeRecords(bufs[0])
 	if err != nil {
 		return nil, false, fmt.Errorf("decoding cached records: %w", err)
@@ -117,7 +126,7 @@ func (s *arrowCacheAdapter) get(ctx context.Context, key string) ([]arrow.Record
 
 func (s *arrowCacheAdapter) set(ctx context.Context, key string, records []arrow.RecordBatch) error {
 	if len(records) == 0 {
-		return nil
+		return s.cache.Store(ctx, []string{key}, [][]byte{{}})
 	}
 	buf, err := encodeRecords(records)
 	if err != nil {
@@ -134,9 +143,6 @@ func encodeRecords(records []arrow.RecordBatch) ([]byte, error) {
 		if err := w.Write(rec); err != nil {
 			return nil, err
 		}
-	}
-	if err := w.Close(); err != nil {
-		return nil, err
 	}
 	return buf.Bytes(), nil
 }

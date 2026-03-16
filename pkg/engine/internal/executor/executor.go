@@ -501,7 +501,7 @@ func (c *Context) executeCache(ctx context.Context, node *physical.Cache, inputs
 		level.Error(c.logger).Log("msg", "cache lookup failed when executing the cache pipeline, skipping cache", "err", err)
 	}
 
-	return newCachingPipeline(cache, inputs[0], node.Key)
+	return newCachingPipeline(cache, inputs[0], node.Key, c.logger)
 }
 
 func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {

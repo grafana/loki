@@ -292,10 +292,10 @@ message Batching {
 }
 
 // Cache controls Tsk-level caching.
-// The Cache pipeline will check the key against the cache identified by the `cache` field.
+// The Cache pipeline will check the key against the cache identified by the `CacheName` field.
 // The cache stores all record batches produced by the inner pipeline.
 // If the `key` is empty no caching is done.
 message Cache {
   string key = 1;
-  string cache = 2;
+  string CacheName = 2;
 }

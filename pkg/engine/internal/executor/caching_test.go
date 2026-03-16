@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -26,7 +27,7 @@ func TestCachingPipeline(t *testing.T) {
 	require.NoError(t, err)
 
 	// First pass: cache miss — inner pipeline is read and results are stored.
-	miss := newCachingPipeline(c, NewBufferedPipeline(rec1, rec2), "test-key")
+	miss := newCachingPipeline(c, NewBufferedPipeline(rec1, rec2), "test-key", log.NewNopLogger())
 	require.NoError(t, miss.Open(ctx))
 	require.False(t, miss.(*cachingPipeline).hit, "expected cache miss")
 
@@ -46,7 +47,7 @@ func TestCachingPipeline(t *testing.T) {
 	require.Contains(t, c.data, "test-key", "cache should contain the key")
 
 	// Second pass: cache hit — inner pipeline must never be opened.
-	hit := newCachingPipeline(c, &failPipeline{}, "test-key")
+	hit := newCachingPipeline(c, &failPipeline{}, "test-key", log.NewNopLogger())
 	require.NoError(t, hit.Open(ctx))
 	require.True(t, hit.(*cachingPipeline).hit, "expected cache hit")
 

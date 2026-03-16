@@ -198,11 +198,13 @@ func (s *DataObjScan) CacheKey(_ context.Context) string {
 	for i, p := range s.Predicates {
 		predicates[i] = p.String()
 	}
-	return fmt.Sprintf("DataObjScan{location=%s,section=%d,stream_ids=[%s],projections=[%s],predicates=[%s]}",
+	return fmt.Sprintf("DataObjScan{location=%s,section=%d,stream_ids=[%s],projections=[%s],predicates=[%s],max_time_range_start=%s,max_time_range_end=%s}",
 		s.Location, s.Section,
 		strings.Join(streamIDs, ","),
 		strings.Join(projections, ","),
-		strings.Join(predicates, ","))
+		strings.Join(predicates, ","),
+		s.MaxTimeRange.Start.UTC().Format(time.RFC3339Nano),
+		s.MaxTimeRange.End.UTC().Format(time.RFC3339Nano))
 }
 
 func (s *PointersScan) CacheKey(_ context.Context) string {
