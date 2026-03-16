@@ -25,10 +25,14 @@ const (
 	// SSES3 config type constant to configure S3 server side encryption with AES-256
 	// https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html
 	SSES3 = "SSE-S3"
+
+	// SSECType config type constant to configure S3 server side encryption with customer provided keys
+	// https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html
+	SSEC = "SSE-C"
 )
 
 var (
-	supportedSSETypes          = []string{SSEKMS, SSES3}
+	supportedSSETypes          = []string{SSEKMS, SSES3, SSEC}
 	supportedStorageClasses    = s3_types.ObjectStorageClassStandard.Values()
 	supportedBucketLookupTypes = thanosS3BucketLookupTypesValues()
 )
@@ -45,6 +49,7 @@ var (
 	errUnsupportedSSEType      = errors.New("unsupported S3 SSE type")
 	errUnsupportedStorageClass = fmt.Errorf("unsupported S3 storage class (supported values: %s)", strings.Join(supportedBucketLookupTypesToString(supportedStorageClasses), ", "))
 	errInvalidSSEContext       = errors.New("invalid S3 SSE encryption context")
+	errInvalidSSECKey          = errors.New("invalid S3 SSE-C encryption key: must be 32 bytes (256 bits) long")
 	errInvalidEndpointPrefix   = errors.New("the endpoint must not prefixed with the bucket name")
 	errInvalidSTSEndpoint      = errors.New("sts-endpoint must be a valid url")
 )
@@ -137,9 +142,12 @@ func (cfg *Config) Validate() error {
 // SSEConfig configures S3 server side encryption
 // struct that is going to receive user input (through config file or CLI)
 type SSEConfig struct {
-	Type                 string `yaml:"type"`
+	Type string `yaml:"type"`
+	// sse-kms
 	KMSKeyID             string `yaml:"kms_key_id"`
 	KMSEncryptionContext string `yaml:"kms_encryption_context"`
+	// see-c (not b64 encoded)
+	CustomerEncryptionKey string `yaml:"encryption_key"`
 }
 
 func (cfg *SSEConfig) RegisterFlags(f *flag.FlagSet) {
@@ -151,6 +159,7 @@ func (cfg *SSEConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Type, prefix+"type", "", fmt.Sprintf("Enable AWS Server Side Encryption. Supported values: %s.", strings.Join(supportedSSETypes, ", ")))
 	f.StringVar(&cfg.KMSKeyID, prefix+"kms-key-id", "", "KMS Key ID used to encrypt objects in S3")
 	f.StringVar(&cfg.KMSEncryptionContext, prefix+"kms-encryption-context", "", "KMS Encryption Context used for object encryption. It expects JSON formatted string.")
+	f.StringVar(&cfg.CustomerEncryptionKey, prefix+"encryption-key", "", "SSE-C Encryption Key used for object encryption.")
 }
 
 func (cfg *SSEConfig) Validate() error {
@@ -158,8 +167,15 @@ func (cfg *SSEConfig) Validate() error {
 		return errUnsupportedSSEType
 	}
 
-	if _, err := parseKMSEncryptionContext(cfg.KMSEncryptionContext); err != nil {
-		return errInvalidSSEContext
+	switch cfg.Type {
+	case SSEKMS:
+		if _, err := parseKMSEncryptionContext(cfg.KMSEncryptionContext); err != nil {
+			return errInvalidSSEContext
+		}
+	case SSEC:
+		if len(cfg.CustomerEncryptionKey) != 32 {
+			return errInvalidSSECKey
+		}
 	}
 
 	return nil
@@ -185,6 +201,11 @@ func (cfg *SSEConfig) BuildThanosConfig() (s3.SSEConfig, error) {
 		return s3.SSEConfig{
 			Type: s3.SSES3,
 		}, nil
+	case SSEC:
+		return s3.SSEConfig{
+			Type:          s3.SSEC,
+			EncryptionKey: cfg.CustomerEncryptionKey,
+		}, nil
 	default:
 		return s3.SSEConfig{}, errUnsupportedSSEType
 	}
@@ -208,6 +229,8 @@ func (cfg *SSEConfig) BuildMinioConfig() (encrypt.ServerSide, error) {
 		return encrypt.NewSSEKMS(cfg.KMSKeyID, encryptionCtx)
 	case SSES3:
 		return encrypt.NewSSE(), nil
+	case SSEC:
+		return encrypt.NewSSEC([]byte(cfg.CustomerEncryptionKey))
 	default:
 		return nil, errUnsupportedSSEType
 	}

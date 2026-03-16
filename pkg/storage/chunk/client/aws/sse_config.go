@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"crypto/md5"
 	"encoding/base64"
 	"encoding/json"
 
@@ -10,16 +11,20 @@ import (
 )
 
 const (
-	sseKMSType = "aws:kms"
-	sseS3Type  = "AES256"
+	sseKMSEncryptionType = "aws:kms"
+	sseS3EncryptionType  = "AES256"
+	sseCEncryptionType   = "AES256"
 )
 
 // SSEParsedConfig configures server side encryption (SSE)
 // struct used internally to configure AWS S3
 type SSEParsedConfig struct {
-	ServerSideEncryption string
-	KMSKeyID             *string
-	KMSEncryptionContext *string
+	SSEType                     string
+	ServerSideEncryption        string
+	KMSKeyID                    *string
+	KMSEncryptionContext        *string
+	CustomerEncryptionKeyB64    *string
+	CustomerEncryptionKeyMD5B64 *string
 }
 
 // NewSSEParsedConfig creates a struct to configure server side encryption (SSE)
@@ -27,7 +32,8 @@ func NewSSEParsedConfig(cfg bucket_s3.SSEConfig) (*SSEParsedConfig, error) {
 	switch cfg.Type {
 	case bucket_s3.SSES3:
 		return &SSEParsedConfig{
-			ServerSideEncryption: sseS3Type,
+			SSEType:              string(bucket_s3.SSES3),
+			ServerSideEncryption: sseS3EncryptionType,
 		}, nil
 	case bucket_s3.SSEKMS:
 		if cfg.KMSKeyID == "" {
@@ -40,9 +46,31 @@ func NewSSEParsedConfig(cfg bucket_s3.SSEConfig) (*SSEParsedConfig, error) {
 		}
 
 		return &SSEParsedConfig{
-			ServerSideEncryption: sseKMSType,
+			SSEType:              string(bucket_s3.SSEKMS),
+			ServerSideEncryption: sseKMSEncryptionType,
 			KMSKeyID:             &cfg.KMSKeyID,
 			KMSEncryptionContext: parsedKMSEncryptionContext,
+		}, nil
+	case bucket_s3.SSEC:
+		if cfg.CustomerEncryptionKey == "" {
+			return nil, errors.New("customer encryption key must be passed when SSE-C encryption is selected")
+		}
+		if len(cfg.CustomerEncryptionKey) != 32 {
+			return nil, errors.New("customer encryption key must be 32 bytes long")
+		}
+
+		encryptionKeyBytes := []byte(cfg.CustomerEncryptionKey)
+
+		keyHash := md5.Sum(encryptionKeyBytes)
+
+		encryptionKeyBase64 := base64.StdEncoding.EncodeToString(encryptionKeyBytes)
+		keyHashBase64 := base64.StdEncoding.EncodeToString(keyHash[:])
+
+		return &SSEParsedConfig{
+			SSEType:                     string(bucket_s3.SSEC),
+			ServerSideEncryption:        sseCEncryptionType,
+			CustomerEncryptionKeyB64:    &encryptionKeyBase64,
+			CustomerEncryptionKeyMD5B64: &keyHashBase64,
 		}, nil
 	default:
 		return nil, errors.New("SSE type is empty or invalid")
