@@ -33,13 +33,13 @@ import (
 )
 
 // isNullValue determines if a reflect.Value represents a null value for parquet encoding.
-// This handles various types that can represent null including:
+// Only nil-able types can be null:
 // - Invalid reflect values
 // - Nil pointers/interfaces/slices/maps
 // - json.RawMessage containing "null"
 // - *jsonlite.Value with Kind == jsonlite.Null
-// - nil *structpb.Struct, *structpb.ListValue, *structpb.Value
-// - Zero values for value types
+// - *structpb.Value with NullValue kind
+// Value types (bool, int, float, string, struct, etc.) are never null.
 func isNullValue(value reflect.Value) bool {
 	switch value.Kind() {
 	case reflect.Invalid:
@@ -71,7 +71,7 @@ func isNullValue(value reflect.Value) bool {
 		return value.IsNil()
 
 	default:
-		return value.IsZero()
+		return false
 	}
 }
 
@@ -493,8 +493,6 @@ func writeValueFuncOfMap(columnIndex int16, node Node) (int16, writeValueFunc) {
 	keyValue := mapKeyValueOf(node)
 	keyValueType := keyValue.GoType()
 	keyValueElem := keyValueType.Elem()
-	keyType := keyValueElem.Field(0).Type
-	valueType := keyValueElem.Field(1).Type
 	nextColumnIndex, writeValue := writeValueFuncOf(columnIndex, schemaOf(keyValueElem))
 	zeroKeyValue := reflect.Zero(keyValueElem)
 
@@ -525,13 +523,24 @@ func writeValueFuncOfMap(columnIndex int16, node Node) (int16, writeValueFunc) {
 			levels.repetitionDepth++
 			levels.definitionLevel++
 
-			elem := reflect.New(keyValueElem).Elem()
+			// Determine the key-value struct type once, using the first
+			// element to discover the actual key/value Go types.
+			var kvType reflect.Type
+			for mapKey, mapVal := range m.Range {
+				kvType = makeKeyValueType(keyValueElem, reflect.TypeOf(mapKey.Interface()), reflect.TypeOf(mapVal.Interface()))
+				break
+			}
+			if kvType == nil {
+				kvType = keyValueElem
+			}
+
+			elem := reflect.New(kvType).Elem()
 			k := elem.Field(0)
 			v := elem.Field(1)
 
 			for mapKey, mapVal := range m.Range {
-				k.Set(reflect.ValueOf(mapKey.Interface()).Convert(keyType))
-				v.Set(reflect.ValueOf(mapVal.Interface()).Convert(valueType))
+				k.Set(reflect.ValueOf(mapKey.Interface()).Convert(k.Type()))
+				v.Set(reflect.ValueOf(mapVal.Interface()).Convert(v.Type()))
 				writeValue(columns, levels, elem)
 				levels.repetitionLevel = levels.repetitionDepth
 			}
@@ -550,15 +559,15 @@ func writeValueFuncOfMap(columnIndex int16, node Node) (int16, writeValueFunc) {
 		mapKey := reflect.New(mapType.Key()).Elem()
 		mapElem := reflect.New(mapType.Elem()).Elem()
 
-		elem := reflect.New(keyValueElem).Elem()
+		elem := reflect.New(makeKeyValueType(keyValueElem, mapType.Key(), mapType.Elem())).Elem()
 		k := elem.Field(0)
 		v := elem.Field(1)
 
 		for it := mapValue.MapRange(); it.Next(); {
 			mapKey.SetIterKey(it)
 			mapElem.SetIterValue(it)
-			k.Set(mapKey.Convert(keyType))
-			v.Set(mapElem.Convert(valueType))
+			k.Set(mapKey.Convert(k.Type()))
+			v.Set(mapElem.Convert(v.Type()))
 			writeValue(columns, levels, elem)
 			levels.repetitionLevel = levels.repetitionDepth
 		}
@@ -593,7 +602,12 @@ func writeValueFuncOfGroup(columnIndex int16, node Node) (int16, writeValueFunc)
 				v := new(string)
 				for i := range writers {
 					w := &writers[i]
-					*v = m[w.fieldName]
+					s, ok := m[w.fieldName]
+					if !ok {
+						w.writeValue(columns, levels, reflect.Value{})
+						continue
+					}
+					*v = s
 					w.writeValue(columns, levels, reflect.ValueOf(v).Elem())
 				}
 

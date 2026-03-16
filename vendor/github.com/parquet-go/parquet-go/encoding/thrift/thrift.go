@@ -127,6 +127,12 @@ func (m Map) String() string {
 }
 
 func TypeOf(t reflect.Type) Type {
+	// Check if type implements Value interface first
+	if t.Implements(valueType) {
+		zv := reflect.Zero(t).Interface().(Value)
+		return zv.Type()
+	}
+
 	switch t.Kind() {
 	case reflect.Bool:
 		return BOOL
