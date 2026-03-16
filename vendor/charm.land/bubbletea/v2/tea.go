@@ -19,6 +19,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -987,12 +988,14 @@ func (p *Program) Run() (returnModel Model, returnErr error) {
 	if p.disableInput {
 		p.input = nil
 	} else if p.input == nil {
-		// Always open the TTY for input.
-		ttyIn, _, err := OpenTTY()
-		if err != nil {
-			return p.initialModel, fmt.Errorf("bubbletea: error opening TTY: %w", err)
+		p.input = os.Stdin
+		if !term.IsTerminal(os.Stdin.Fd()) {
+			ttyIn, _, err := OpenTTY()
+			if err != nil {
+				return p.initialModel, fmt.Errorf("bubbletea: error opening TTY: %w", err)
+			}
+			p.input = ttyIn
 		}
-		p.input = ttyIn
 	}
 
 	// Handle signals.
@@ -1049,8 +1052,8 @@ func (p *Program) Run() (returnModel Model, returnErr error) {
 			// issue where when a PTY session is detected, and we don't
 			// allocate a real PTY, the terminal settings (Termios and WinCon)
 			// don't change and the we end up working in cooked mode instead of
-			// raw mode.
-			mapNl := false // p.ttyInput == nil
+			// raw mode. See issue #1572.
+			mapNl := runtime.GOOS != "windows" && p.ttyInput == nil
 			r.setOptimizations(p.useHardTabs, p.useBackspace, mapNl)
 			p.renderer = r
 		}
