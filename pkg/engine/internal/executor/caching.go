@@ -129,6 +129,7 @@ func (s *arrowCacheAdapter) set(ctx context.Context, key string, records []arrow
 func encodeRecords(records []arrow.RecordBatch) ([]byte, error) {
 	var buf bytes.Buffer
 	w := ipc.NewWriter(&buf, ipc.WithSchema(records[0].Schema()))
+	defer w.Close()
 	for _, rec := range records {
 		if err := w.Write(rec); err != nil {
 			return nil, err
@@ -145,12 +146,10 @@ func decodeRecords(data []byte) ([]arrow.RecordBatch, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer r.Release()
 
 	var records []arrow.RecordBatch
 	for r.Next() {
-		rec := r.Record()
-		rec.Retain()
+		rec := r.RecordBatch()
 		records = append(records, rec)
 	}
 	return records, nil
