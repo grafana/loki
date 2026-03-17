@@ -121,6 +121,14 @@ func DefaultLokiStackSpec(size lokiv1.LokiStackSizeType) *lokiv1.LokiStackSpec {
 // ApplyDefaultSettings manipulates the options to conform to
 // build specifications
 func ApplyDefaultSettings(opts *Options) error {
+	// Handle the deprecated field opt.Stack.ReplicationFactor.
+	if (opts.Stack.Replication == nil || opts.Stack.Replication.Factor == 0) && opts.Stack.ReplicationFactor > 0 { // nolint:staticcheck
+		if opts.Stack.Replication == nil {
+			opts.Stack.Replication = &lokiv1.ReplicationSpec{}
+		}
+		opts.Stack.Replication.Factor = opts.Stack.ReplicationFactor // nolint:staticcheck
+	}
+
 	spec := DefaultLokiStackSpec(opts.Stack.Size)
 
 	if err := mergo.Merge(spec, opts.Stack, mergo.WithOverride); err != nil {

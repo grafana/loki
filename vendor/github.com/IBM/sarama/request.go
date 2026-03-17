@@ -217,6 +217,8 @@ func allocateBody(key, version int16) protocolBody {
 		return &DescribeUserScramCredentialsRequest{Version: version}
 	case apiKeyAlterUserScramCredentials:
 		return &AlterUserScramCredentialsRequest{Version: version}
+	case apiKeyDescribeCluster:
+		return &DescribeClusterRequest{Version: version}
 		// 52: VoteRequest
 		// 53: BeginQuorumEpochRequest
 		// 54: EndQuorumEpochRequest

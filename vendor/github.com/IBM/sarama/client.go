@@ -685,9 +685,16 @@ func (client *client) randomizeSeedBrokers(addrs []string) {
 }
 
 func (client *client) updateBroker(brokers []*Broker) {
+	if client.brokers == nil {
+		return
+	}
+
 	currentBroker := make(map[int32]*Broker, len(brokers))
 
 	for _, broker := range brokers {
+		if broker == nil {
+			continue
+		}
 		currentBroker[broker.ID()] = broker
 		if client.brokers[broker.ID()] == nil { // add new broker
 			client.brokers[broker.ID()] = broker

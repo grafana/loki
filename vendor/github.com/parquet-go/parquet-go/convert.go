@@ -283,7 +283,7 @@ func (c *conversion) Convert(rows []Row) (int, error) {
 				// Fix: If we have a zero Value{}, convert it to a properly typed value
 				// For optional fields, keep as null (kind = 0)
 				// For required fields, convert to typed zero value
-				if columnValues[i].Kind() == Kind(0) && !conv.isOptional {
+				if columnValues[i].IsNull() && !conv.isOptional {
 					columnValues[i] = ZeroValue(conv.targetKind)
 				}
 

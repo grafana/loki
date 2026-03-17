@@ -1,3 +1,8 @@
+# v1.56.0 (2026-02-23)
+
+* **Feature**: This change supports the creation of multi-account global tables. It adds one new arguments to UpdateTable, GlobalTableSettingsReplicationMode.
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.55.0 (2026-02-03)
 
 * **Feature**: This change supports the creation of multi-account global tables. It adds two new arguments to CreateTable, GlobalTableSourceArn and GlobalTableSettingsReplicationMode. DescribeTable is also updated to include information about GlobalTableSettingsReplicationMode.

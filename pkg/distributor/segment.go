@@ -15,12 +15,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-// A SegmentationKey is a special partition key that attempts to equally
+// A segmentationKey is a special partition key that attempts to equally
 // distribute load while preserving stream locality for tenants.
-type SegmentationKey string
+type segmentationKey string
 
 // Sum64 returns a 64 bit, non-cryptographic hash of the key.
-func (key SegmentationKey) Sum64() uint64 {
+func (key segmentationKey) Sum64() uint64 {
 	h := fnv.New64a()
 	// Use a reserved word here to avoid any possible hash conflicts with
 	// streams.
@@ -29,20 +29,20 @@ func (key SegmentationKey) Sum64() uint64 {
 	return h.Sum64()
 }
 
-// GetSegmentationKey returns the segmentation key for the stream or an error.
-func GetSegmentationKey(stream KeyedStream) (SegmentationKey, error) {
+// getSegmentationKey returns the segmentation key for the stream or an error.
+func getSegmentationKey(stream KeyedStream) (segmentationKey, error) {
 	labels, err := syntax.ParseLabels(stream.Stream.Labels)
 	if err != nil {
 		return "", err
 	}
 	if serviceName := labels.Get("service_name"); serviceName != "" {
-		return SegmentationKey(serviceName), nil
+		return segmentationKey(serviceName), nil
 	}
-	return SegmentationKey("unknown_service"), nil
+	return segmentationKey("unknown_service"), nil
 }
 
-// SegmentationPartitionResolver resolves the partition for a segmentation key.
-type SegmentationPartitionResolver struct {
+// segmentationPartitionResolver resolves the partition for a segmentation key.
+type segmentationPartitionResolver struct {
 	perPartitionRateBytes uint64
 	ringReader            ring.PartitionRingReader
 	logger                log.Logger
@@ -53,9 +53,9 @@ type SegmentationPartitionResolver struct {
 	total           prometheus.Counter
 }
 
-// NewSegmentationPartitionResolver returns a new SegmentationPartitionResolver.
-func NewSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *SegmentationPartitionResolver {
-	return &SegmentationPartitionResolver{
+// newSegmentationPartitionResolver returns a new segmentationPartitionResolver.
+func newSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *segmentationPartitionResolver {
+	return &segmentationPartitionResolver{
 		perPartitionRateBytes: perPartitionRateBytes,
 		ringReader:            ringReader,
 		failed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
@@ -74,7 +74,7 @@ func NewSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader r
 	}
 }
 
-func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key SegmentationKey, rateBytes, tenantRateBytes uint64) (int32, error) {
+func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key segmentationKey, rateBytes, tenantRateBytes uint64) (int32, error) {
 	r.total.Inc()
 	// We use a snapshot of the partition ring to ensure resolving the
 	// partition for a segmentation key is determinstic even if the ring
@@ -119,7 +119,7 @@ func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 }
 
 // getTenantRing returns a subring for the tenant based on their rate limit.
-func (r *SegmentationPartitionResolver) getTenantSubring(_ context.Context, ring *ring.PartitionRing, tenant string, tenantRateBytes uint64) (*ring.PartitionRing, error) {
+func (r *segmentationPartitionResolver) getTenantSubring(_ context.Context, ring *ring.PartitionRing, tenant string, tenantRateBytes uint64) (*ring.PartitionRing, error) {
 	if tenantRateBytes == 0 {
 		// If the tenant has no limit, return the full ring.
 		return ring, nil
@@ -134,7 +134,7 @@ func (r *SegmentationPartitionResolver) getTenantSubring(_ context.Context, ring
 	return ring.ShuffleShard(tenant, int(partitions))
 }
 
-func (r *SegmentationPartitionResolver) getSegmentationKeySubring(_ context.Context, ring *ring.PartitionRing, key SegmentationKey, rateBytes uint64) (*ring.PartitionRing, error) {
+func (r *segmentationPartitionResolver) getSegmentationKeySubring(_ context.Context, ring *ring.PartitionRing, key segmentationKey, rateBytes uint64) (*ring.PartitionRing, error) {
 	if rateBytes == 0 {
 		// If the rate is 0, return the full ring.
 		return ring, nil

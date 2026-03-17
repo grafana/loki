@@ -34,6 +34,14 @@ go get github.com/pb33f/libopenapi-validator
 go run github.com/pb33f/libopenapi-validator/cmd/validate@latest [--regexengine] [--yaml2json] <file>
 ```
 
+## Install pre-commit hook
+
+To install the pre-commit hook, run the following command in your terminal:
+
+```bash
+pre-commit install
+```
+
 ### Options
 
 #### --regexengine

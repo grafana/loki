@@ -341,6 +341,35 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 				},
 			},
 		},
+		{
+			"query_range",
+			func() (*http.Request, error) {
+				req, err := http.NewRequest(
+					http.MethodGet,
+					fmt.Sprintf(`/query_range?start=%d&end=%d&query={foo="bar"}&step=10&limit=200&direction=FORWARD`, start.UnixNano(), end.UnixNano()),
+					nil,
+				)
+				if err == nil {
+					req.Header.Set(cacheControlHeader, noCacheVal)
+				}
+				return req, err
+			},
+			&LokiRequest{
+				Query:     `{foo="bar"}`,
+				Limit:     200,
+				Step:      10000, // step is expected in ms
+				Direction: logproto.FORWARD,
+				Path:      "/query_range",
+				StartTs:   start,
+				EndTs:     end,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"}`),
+				},
+				CachingOptions: queryrangebase.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

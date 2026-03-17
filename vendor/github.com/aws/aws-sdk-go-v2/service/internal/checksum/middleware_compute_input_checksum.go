@@ -108,13 +108,7 @@ func (m *ComputeInputPayloadChecksum) HandleFinalize(
 	out middleware.FinalizeOutput, metadata middleware.Metadata, err error,
 ) {
 	var checksum string
-	algorithm, ok, err := getInputAlgorithm(ctx)
-	if err != nil {
-		return out, metadata, err
-	}
-	if !ok {
-		return next.HandleFinalize(ctx, in)
-	}
+	var algorithm Algorithm
 
 	req, ok := in.Request.(*smithyhttp.Request)
 	if !ok {
@@ -142,6 +136,14 @@ func (m *ComputeInputPayloadChecksum) HandleFinalize(
 			checksum = req.Header.Get(header)
 			return next.HandleFinalize(ctx, in)
 		}
+	}
+
+	algorithm, ok, err = getInputAlgorithm(ctx)
+	if err != nil {
+		return out, metadata, err
+	}
+	if !ok {
+		return next.HandleFinalize(ctx, in)
 	}
 
 	computePayloadHash := m.EnableComputePayloadHash
@@ -263,16 +265,6 @@ func (m *AddInputChecksumTrailer) HandleFinalize(
 ) (
 	out middleware.FinalizeOutput, metadata middleware.Metadata, err error,
 ) {
-	algorithm, ok, err := getInputAlgorithm(ctx)
-	if err != nil {
-		return out, metadata, computeInputTrailingChecksumError{
-			Msg: "failed to get algorithm",
-			Err: err,
-		}
-	} else if !ok {
-		return next.HandleFinalize(ctx, in)
-	}
-
 	if enabled, _ := middleware.GetStackValue(ctx, useTrailer{}).(bool); !enabled {
 		return next.HandleFinalize(ctx, in)
 	}
@@ -295,6 +287,16 @@ func (m *AddInputChecksumTrailer) HandleFinalize(
 		if strings.HasPrefix(strings.ToLower(header), "x-amz-checksum-") {
 			return next.HandleFinalize(ctx, in)
 		}
+	}
+
+	algorithm, ok, err := getInputAlgorithm(ctx)
+	if err != nil {
+		return out, metadata, computeInputTrailingChecksumError{
+			Msg: "failed to get algorithm",
+			Err: err,
+		}
+	} else if !ok {
+		return next.HandleFinalize(ctx, in)
 	}
 
 	stream := req.GetStream()

@@ -645,10 +645,25 @@ func syncMapToMap[K comparable, V any](sm *sync.Map) map[K]V {
 
 // ClearHashCache clears the hash cache - useful for testing and memory management
 func ClearHashCache() {
-	nodeHashCache.Range(func(key, value interface{}) bool {
-		nodeHashCache.Delete(key)
-		return true
-	})
+	nodeHashCache.Clear()
+}
+
+// ClearNodePools replaces the sync.Pool instances that hold *yaml.Node pointers
+// with fresh pools. After a document lifecycle ends, pooled slices and maps
+// still reference the parsed YAML tree, preventing GC from collecting it.
+// Call this (via libopenapi.ClearAllCaches) to release those references.
+func ClearNodePools() {
+	stackPool = sync.Pool{
+		New: func() interface{} {
+			s := make([]*yaml.Node, 0, 128)
+			return &s
+		},
+	}
+	visitedPool = sync.Pool{
+		New: func() interface{} {
+			return make(map[*yaml.Node]struct{}, 64)
+		},
+	}
 }
 
 // hasherPool pools maphash.Hash instances to avoid allocations.

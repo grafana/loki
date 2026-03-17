@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	gotrace "runtime/trace"
+
 	"github.com/alecthomas/units"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -172,6 +174,9 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	defer capture.End()
 	startTime := time.Now()
 
+	ctx, task := gotrace.NewTask(ctx, "Engine.Execute")
+	defer task.End()
+
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return logqlmodel.Result{}, httpgrpc.Error(http.StatusBadRequest, err.Error())
@@ -203,6 +208,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		span.SetStatus(codes.Error, "failed to create logical plan")
 		return logqlmodel.Result{}, ErrNotSupported
 	}
+	gotrace.Log(ctx, "logical_planning", "done")
 
 	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, tenantID, logger, params, logicalPlan)
 	if err != nil {
@@ -210,6 +216,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		span.SetStatus(codes.Error, "failed to create physical plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
+	gotrace.Log(ctx, "physical_planning", "done")
 
 	// Enable admission lanes only for log queries
 	useAdmissionLanes := !isMetricQuery(params.GetExpression())
@@ -221,6 +228,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 	defer wf.Close()
+	gotrace.Log(ctx, "workflow_planning", "done")
 
 	pipeline, err := wf.Run(ctx)
 	if err != nil {
@@ -232,6 +240,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	}
 	defer pipeline.Close()
 
+	gotrace.Log(ctx, "collect_result", "start")
 	builder, durExecution, err := e.collectResult(ctx, logger, params, pipeline)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
@@ -251,6 +260,8 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		"duration_execution", durExecution,
 		"duration_full", durFull,
 	}
+
+	gotrace.Log(ctx, "collect_result", "done")
 
 	// Close the pipeline to calculate the stats.
 	pipeline.Close()
@@ -381,6 +392,13 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 		return nil, 0, ErrNotSupported
 	}
 
+	physicalPlan, err = physical.WrapWithBatching(physicalPlan, e.cfg.Executor.BatchSize)
+	if err != nil {
+		level.Warn(logger).Log("msg", "failed to wrap physical plan with batching", "err", err)
+		span.RecordError(err)
+		return nil, 0, ErrNotSupported
+	}
+
 	duration := timer.ObserveDuration()
 	level.Info(logger).Log(
 		"msg", "finished physical planning",
@@ -393,7 +411,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 }
 
 func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string) physical.MetastoreSectionsResolver {
-	planner := physical.NewMetastorePlanner(e.metastore)
+	planner := physical.NewMetastorePlanner(e.metastore, e.cfg.Executor.BatchSize)
 	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
 		ctx, span := xcap.StartSpan(ctx, tracer, "engine.metastoreResolver")
 		defer span.End()

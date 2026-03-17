@@ -82,10 +82,39 @@ type Rolodex struct {
 	safeCircularReferences     []*CircularReferenceResult
 	infiniteCircularReferences []*CircularReferenceResult
 	ignoredCircularReferences  []*CircularReferenceResult
+	debouncedSafeCircRefs      []*CircularReferenceResult // cached result from GetSafeCircularReferences
+	debouncedIgnoredCircRefs   []*CircularReferenceResult // cached result from GetIgnoredCircularReferences
+	circRefCacheLock           sync.Mutex                 // protects debounced cache fields
 	logger                     *slog.Logger
 	id                         string // unique ID for the rolodex, can be used to identify it in logs or other contexts.
 	globalSchemaIdRegistry     map[string]*SchemaIdEntry
 	schemaIdRegistryLock       sync.RWMutex
+}
+
+// Release nils all fields that can pin YAML node trees, SpecIndex objects, or
+// circular reference results in memory. Acquires locks for fields that are
+// protected elsewhere. Call this once all consumers of the rolodex are finished.
+func (r *Rolodex) Release() {
+	if r == nil {
+		return
+	}
+	r.indexLock.Lock()
+	r.indexes = nil
+	r.indexMap = nil
+	r.rootIndex = nil
+	r.indexLock.Unlock()
+
+	r.circRefCacheLock.Lock()
+	r.debouncedSafeCircRefs = nil
+	r.debouncedIgnoredCircRefs = nil
+	r.circRefCacheLock.Unlock()
+
+	r.rootNode = nil
+	r.caughtErrors = nil
+	r.safeCircularReferences = nil
+	r.infiniteCircularReferences = nil
+	r.ignoredCircularReferences = nil
+	r.globalSchemaIdRegistry = nil
 }
 
 // NewRolodex creates a new rolodex with the provided index configuration.
@@ -127,29 +156,41 @@ func (r *Rolodex) GetId() string {
 // GetIgnoredCircularReferences returns a list of circular references that were ignored during the indexing process.
 // These can be an array or polymorphic references. Will return an empty slice if no ignored circular references are found.
 func (r *Rolodex) GetIgnoredCircularReferences() []*CircularReferenceResult {
-	debounced := make(map[string]*CircularReferenceResult)
-	var debouncedResults []*CircularReferenceResult
 	if r == nil {
-		return debouncedResults
+		return nil
 	}
+	r.circRefCacheLock.Lock()
+	defer r.circRefCacheLock.Unlock()
+	if r.debouncedIgnoredCircRefs != nil {
+		return r.debouncedIgnoredCircRefs
+	}
+	if len(r.ignoredCircularReferences) == 0 {
+		return nil
+	}
+	debounced := make(map[string]*CircularReferenceResult)
 	for _, c := range r.ignoredCircularReferences {
 		if _, ok := debounced[c.LoopPoint.FullDefinition]; !ok {
 			debounced[c.LoopPoint.FullDefinition] = c
 		}
 	}
+	debouncedResults := make([]*CircularReferenceResult, 0, len(debounced))
 	for _, v := range debounced {
 		debouncedResults = append(debouncedResults, v)
 	}
+	r.debouncedIgnoredCircRefs = debouncedResults
 	return debouncedResults
 }
 
 // GetSafeCircularReferences returns a list of circular references that were found to be safe during the indexing process.
 // These can be an array or polymorphic references. Will return an empty slice if no safe circular references are found.
 func (r *Rolodex) GetSafeCircularReferences() []*CircularReferenceResult {
-	debounced := make(map[string]*CircularReferenceResult)
-	var debouncedResults []*CircularReferenceResult
 	if r == nil {
-		return debouncedResults
+		return nil
+	}
+	r.circRefCacheLock.Lock()
+	defer r.circRefCacheLock.Unlock()
+	if r.debouncedSafeCircRefs != nil {
+		return r.debouncedSafeCircRefs
 	}
 
 	// if this rolodex has not been manually checked for circular references or resolved,
@@ -170,20 +211,24 @@ func (r *Rolodex) GetSafeCircularReferences() []*CircularReferenceResult {
 		}
 	}
 
+	debounced := make(map[string]*CircularReferenceResult)
 	for _, c := range r.safeCircularReferences {
 		if _, ok := debounced[c.LoopPoint.FullDefinition]; !ok {
 			debounced[c.LoopPoint.FullDefinition] = c
 		}
 	}
+	debouncedResults := make([]*CircularReferenceResult, 0, len(debounced))
 	for _, v := range debounced {
 		debouncedResults = append(debouncedResults, v)
 	}
+	r.debouncedSafeCircRefs = debouncedResults
 	return debouncedResults
 }
 
 // SetSafeCircularReferences sets the safe circular references for the rolodex.
 func (r *Rolodex) SetSafeCircularReferences(refs []*CircularReferenceResult) {
 	r.safeCircularReferences = refs
+	r.debouncedSafeCircRefs = nil // invalidate cache
 }
 
 // GetIndexingDuration returns the duration it took to index the rolodex.
@@ -524,6 +569,9 @@ func (r *Rolodex) CheckForCircularReferences() {
 			)
 		}
 		r.circChecked = true
+		// invalidate debounced caches since underlying slices were mutated
+		r.debouncedSafeCircRefs = nil
+		r.debouncedIgnoredCircRefs = nil
 	}
 }
 
@@ -558,6 +606,9 @@ func (r *Rolodex) Resolve() {
 		res.ResolvePendingNodes()
 	}
 	r.resolved = true
+	// invalidate debounced caches since underlying slices were mutated
+	r.debouncedSafeCircRefs = nil
+	r.debouncedIgnoredCircRefs = nil
 }
 
 // BuildIndexes builds the indexes in the rolodex, this is generally not required unless manually building a rolodex.

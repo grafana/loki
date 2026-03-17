@@ -112,6 +112,8 @@ func Test_planWorkflow(t *testing.T) {
 		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: rangeAgg})
 
 		physicalPlan := physical.FromGraph(physicalGraph)
+		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
+		require.NoError(t, err)
 
 		graph, err := planWorkflow("", physicalPlan)
 		require.NoError(t, err)
@@ -123,16 +125,18 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000001
 │ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 │
-│ VectorAggregation operation=invalid group_by=()
-│     └── @source stream=00000000000000000000000003
+│ Batching batch_size=500
+│ └── VectorAggregation operation=invalid group_by=()
+│         └── @source stream=00000000000000000000000003
 └
 ┌ Task 00000000000000000000000002
 │ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 │
-│ RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000003
-│ └── DataObjScan location= streams=0 section_id=0 projections=()
-│         └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── DataObjScan location= streams=0 section_id=0 projections=()
+│             └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
 `)
 
@@ -202,6 +206,8 @@ func Test_planWorkflow(t *testing.T) {
 		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: project, Child: scanSet})
 
 		physicalPlan := physical.FromGraph(physicalGraph)
+		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
+		require.NoError(t, err)
 
 		graph, err := planWorkflow("", physicalPlan)
 		require.NoError(t, err)
@@ -213,44 +219,49 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000001
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ VectorAggregation operation=invalid group_by=()
-│     └── @source stream=00000000000000000000000006
+│ Batching batch_size=500
+│ └── VectorAggregation operation=invalid group_by=()
+│         └── @source stream=00000000000000000000000006
 └
 ┌ Task 00000000000000000000000002
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
-│     ├── @source stream=00000000000000000000000007
-│     ├── @source stream=00000000000000000000000008
-│     ├── @source stream=00000000000000000000000009
-│     └── @sink stream=00000000000000000000000006
+│ Batching batch_size=500
+│ │   └── @sink stream=00000000000000000000000006
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         ├── @source stream=00000000000000000000000007
+│         ├── @source stream=00000000000000000000000008
+│         └── @source stream=00000000000000000000000009
 └
 ┌ Task 00000000000000000000000003
 │ @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 │
-│ Filter
+│ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000007
-│ └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
-│     └── DataObjScan location=a streams=0 section_id=0 projections=()
-│             └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│ └── Filter
+│     └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
+│         └── DataObjScan location=a streams=0 section_id=0 projections=()
+│                 └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
 ┌ Task 00000000000000000000000004
 │ @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
 │
-│ Filter
+│ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000008
-│ └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
-│     └── DataObjScan location=b streams=0 section_id=0 projections=()
-│             └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
+│ └── Filter
+│     └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
+│         └── DataObjScan location=b streams=0 section_id=0 projections=()
+│                 └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
 └
 ┌ Task 00000000000000000000000005
 │ @max_time_range start=1970-01-01T00:00:00Z end=1970-01-01T00:00:50Z
 │
-│ Filter
+│ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000009
-│ └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
-│     └── DataObjScan location=c streams=0 section_id=0 projections=()
-│             └── @max_time_range start=1970-01-01T00:00:00Z end=1970-01-01T00:00:50Z
+│ └── Filter
+│     └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
+│         └── DataObjScan location=c streams=0 section_id=0 projections=()
+│                 └── @max_time_range start=1970-01-01T00:00:00Z end=1970-01-01T00:00:50Z
 └
 `)
 
@@ -291,6 +302,8 @@ func Test_planWorkflow(t *testing.T) {
 		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: scanSet})
 
 		physicalPlan := physical.FromGraph(physicalGraph)
+		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
+		require.NoError(t, err)
 
 		graph, err := planWorkflow("", physicalPlan)
 		require.NoError(t, err)
@@ -302,29 +315,33 @@ func Test_planWorkflow(t *testing.T) {
 		// - Task 1: Global VectorAgg reading from 2 streams (one per partition)
 		// - Task 2: RangeAgg + Scan for partition "a"
 		// - Task 3: RangeAgg + Scan for partition "b"
+		// All task fragments are wrapped with a Batching node.
 		expectOuptut := strings.TrimSpace(`
 ┌ Task 00000000000000000000000001
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ VectorAggregation operation=sum group_by=()
-│     ├── @source stream=00000000000000000000000004
-│     └── @source stream=00000000000000000000000005
+│ Batching batch_size=500
+│ └── VectorAggregation operation=sum group_by=()
+│         ├── @source stream=00000000000000000000000004
+│         └── @source stream=00000000000000000000000005
 └
 ┌ Task 00000000000000000000000002
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000004
-│ └── DataObjScan location=a streams=0 section_id=0 projections=()
-│         └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│ └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── DataObjScan location=a streams=0 section_id=0 projections=()
+│             └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
 ┌ Task 00000000000000000000000003
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000005
-│ └── DataObjScan location=b streams=0 section_id=0 projections=()
-│         └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
+│ └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── DataObjScan location=b streams=0 section_id=0 projections=()
+│             └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
 └
 `)
 

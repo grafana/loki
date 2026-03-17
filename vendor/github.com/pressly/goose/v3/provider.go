@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"math"
 	"strconv"
 	"strings"
@@ -124,9 +125,7 @@ func newProvider(
 	}
 	versionToGoMigration := make(map[int64]*Migration)
 	// Add user-registered Go migrations from the provider.
-	for version, m := range cfg.registered {
-		versionToGoMigration[version] = m
-	}
+	maps.Copy(versionToGoMigration, cfg.registered)
 	// Skip adding global Go migrations if explicitly disabled.
 	if cfg.disableGlobalRegistry {
 		// TODO(mf): let's add a warn-level log here to inform users if len(global) > 0. Would like

@@ -69,7 +69,7 @@ type DataObjTee struct {
 	rateBatcher  *rateBatcher // nil if batching is disabled
 	limits       Limits
 	kafkaClient  *kgo.Client
-	resolver     *SegmentationPartitionResolver
+	resolver     *segmentationPartitionResolver
 	logger       log.Logger
 
 	// Metrics.
@@ -82,7 +82,7 @@ type DataObjTee struct {
 // NewDataObjTee returns a new DataObjTee.
 func NewDataObjTee(
 	cfg *DataObjTeeConfig,
-	resolver *SegmentationPartitionResolver,
+	resolver *segmentationPartitionResolver,
 	limitsClient *ingestLimits,
 	limits Limits,
 	kafkaClient *kgo.Client,
@@ -131,10 +131,10 @@ func NewDataObjTee(
 	return t, nil
 }
 
-// A SegmentedStream is a KeyedStream with a segmentation key.
-type SegmentedStream struct {
+// A segmentedStream is a KeyedStream with a segmentation key.
+type segmentedStream struct {
 	KeyedStream
-	SegmentationKey     SegmentationKey
+	SegmentationKey     segmentationKey
 	SegmentationKeyHash uint64
 }
 
@@ -145,15 +145,15 @@ func (t *DataObjTee) Register(_ context.Context, _ string, streams []KeyedStream
 
 // Duplicate implements the [Tee] interface.
 func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []KeyedStream, pushTracker *PushTracker) {
-	segmentationKeyStreams := make([]SegmentedStream, 0, len(streams))
+	segmentationKeyStreams := make([]segmentedStream, 0, len(streams))
 	for _, stream := range streams {
-		segmentationKey, err := GetSegmentationKey(stream)
+		segmentationKey, err := getSegmentationKey(stream)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to get segmentation key", "err", err)
 			t.streamFailures.Inc()
 			return
 		}
-		segmentationKeyStreams = append(segmentationKeyStreams, SegmentedStream{
+		segmentationKeyStreams = append(segmentationKeyStreams, segmentedStream{
 			KeyedStream:         stream,
 			SegmentationKey:     segmentationKey,
 			SegmentationKeyHash: segmentationKey.Sum64(),
@@ -186,13 +186,13 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 	tenantRateBytesLimit := uint64(max(t.limits.IngestionRateBytes(tenant), 0))
 
 	for _, s := range segmentationKeyStreams {
-		go func(stream SegmentedStream) {
+		go func(stream segmentedStream) {
 			t.duplicate(ctx, tenant, stream, fastRates[stream.SegmentationKeyHash], tenantRateBytesLimit, pushTracker)
 		}(s)
 	}
 }
 
-func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream SegmentedStream, rateBytes, tenantRateBytes uint64, pushTracker *PushTracker) {
+func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmentedStream, rateBytes, tenantRateBytes uint64, pushTracker *PushTracker) {
 	t.streams.Inc()
 
 	partition, err := t.resolver.Resolve(ctx, tenant, stream.SegmentationKey, rateBytes, tenantRateBytes)

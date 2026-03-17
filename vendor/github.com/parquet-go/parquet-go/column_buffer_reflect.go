@@ -1,10 +1,14 @@
 package parquet
 
 import (
+	"bytes"
 	"cmp"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"maps"
+	"math"
+	"math/big"
 	"math/bits"
 	"reflect"
 	"sort"
@@ -37,11 +41,10 @@ import (
 // - nil *structpb.Struct, *structpb.ListValue, *structpb.Value
 // - Zero values for value types
 func isNullValue(value reflect.Value) bool {
-	if !value.IsValid() {
-		return true
-	}
-
 	switch value.Kind() {
+	case reflect.Invalid:
+		return true
+
 	case reflect.Pointer, reflect.Interface:
 		if value.IsNil() {
 			return true
@@ -705,12 +708,11 @@ func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) 
 	return columnIndex + 1, func(columns []ColumnBuffer, levels columnLevels, value reflect.Value) {
 		col := columns[columnIndex]
 	writeValue:
-		if !value.IsValid() {
+		switch value.Kind() {
+		case reflect.Invalid:
 			col.writeNull(levels)
 			return
-		}
 
-		switch value.Kind() {
 		case reflect.Pointer, reflect.Interface:
 			if value.IsNil() {
 				col.writeNull(levels)
@@ -755,6 +757,8 @@ func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) 
 				writeProtoAny(col, levels, msg, node)
 			case geom.T:
 				writeGeometry(col, levels, msg, node)
+			case *big.Float:
+				writeBigFloat(col, levels, msg, node)
 			default:
 				value = value.Elem()
 				goto writeValue
@@ -790,10 +794,23 @@ func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) 
 			return
 
 		case reflect.Float32:
+			typ := node.Type()
+			logicalType := typ.LogicalType()
+			if logicalType != nil && logicalType.Decimal != nil {
+				decimalValue(col, levels, typ, value, logicalType.Decimal.Scale)
+				return
+			}
 			col.writeFloat(levels, float32(value.Float()))
 			return
 
 		case reflect.Float64:
+			typ := node.Type()
+			logicalType := typ.LogicalType()
+			if logicalType != nil && logicalType.Decimal != nil {
+				decimalValue(col, levels, typ, value, logicalType.Decimal.Scale)
+				return
+			}
+
 			col.writeDouble(levels, value.Float())
 			return
 
@@ -906,4 +923,109 @@ func writeUUID(col ColumnBuffer, levels columnLevels, str string, typ Type) {
 	buf.Append(parsedUUID[:]...)
 	col.writeByteArray(levels, buf.Slice())
 	buf.Reset()
+}
+
+func decimalValue(col ColumnBuffer, levels columnLevels, typ Type, value reflect.Value, scale int32) {
+	val := int64(math.Round(value.Float() * math.Pow10(int(scale))))
+	switch typ.Kind() {
+	case Int32:
+		col.writeInt32(levels, int32(val))
+	case Int64:
+		col.writeInt64(levels, val)
+	case ByteArray:
+		col.writeByteArray(levels, numberToByteArray(val))
+	}
+}
+
+func numberToByteArray(data any) []byte {
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.BigEndian, data)
+	if err != nil {
+		panic(err)
+	}
+	return buf.Bytes()
+}
+
+func writeBigFloat(col ColumnBuffer, levels columnLevels, f *big.Float, node Node) {
+	typ := node.Type()
+	logicalType := typ.LogicalType()
+	if logicalType == nil || logicalType.Decimal == nil {
+		panic("writeBigFloat requires a decimal logical type")
+	}
+
+	scale := int(logicalType.Decimal.Scale)
+	// Compute minimum precision needed: decimal precision * log2(10) ≈ precision * 3.32
+	// We use precision * 4 + 64 for safety margin
+	minPrec := uint(logicalType.Decimal.Precision)*4 + 64
+	prec := max(f.Prec(), minPrec)
+	scaleFactor := new(big.Float).SetPrec(prec)
+	scaleFactor.SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(scale)), nil))
+	scaled := new(big.Float).SetPrec(prec).Mul(f, scaleFactor)
+	// Round to nearest integer (add 0.5 and truncate for positive, subtract 0.5 for negative)
+	half := new(big.Float).SetPrec(prec).SetFloat64(0.5)
+	if scaled.Sign() >= 0 {
+		scaled.Add(scaled, half)
+	} else {
+		scaled.Sub(scaled, half)
+	}
+	unscaled, _ := scaled.Int(nil)
+
+	b := bigIntToByteArray(unscaled)
+	if typ.Kind() == FixedLenByteArray {
+		b = padToFixedLen(b, typ.Length(), unscaled.Sign() < 0)
+	}
+	col.writeByteArray(levels, b)
+}
+
+func bigIntToByteArray(i *big.Int) []byte {
+	if i.Sign() >= 0 {
+		b := i.Bytes()
+		// Add leading zero byte if high bit is set to avoid being interpreted as negative
+		if len(b) > 0 && b[0]&0x80 != 0 {
+			b = append([]byte{0}, b...)
+		}
+		return b
+	}
+	// Negative: convert to two's complement
+	// Get the absolute value bytes
+	abs := new(big.Int).Abs(i)
+	b := abs.Bytes()
+	// Add a leading zero byte to ensure we have room for sign
+	if len(b) == 0 || b[0]&0x80 != 0 {
+		b = append([]byte{0}, b...)
+	}
+	// Invert all bits
+	for j := range b {
+		b[j] = ^b[j]
+	}
+	// Add 1
+	carry := byte(1)
+	for j := len(b) - 1; j >= 0 && carry > 0; j-- {
+		sum := b[j] + carry
+		b[j] = sum
+		if sum != 0 {
+			carry = 0
+		}
+	}
+	return b
+}
+
+func padToFixedLen(b []byte, length int, negative bool) []byte {
+	if len(b) == length {
+		return b
+	}
+	if len(b) > length {
+		panic(fmt.Sprintf("decimal value requires %d bytes but fixed length is %d", len(b), length))
+	}
+	padByte := byte(0x00)
+	if negative {
+		padByte = 0xFF
+	}
+	result := make([]byte, length)
+	padding := length - len(b)
+	for i := range padding {
+		result[i] = padByte
+	}
+	copy(result[padding:], b)
+	return result
 }

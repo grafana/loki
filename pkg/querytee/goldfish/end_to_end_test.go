@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func TestGoldfishEndToEnd(t *testing.T) {
@@ -37,12 +39,18 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	defer manager.Close()
 
 	// Test sampling decisions
-	assert.True(t, manager.ShouldSample("tenant1"))
-	assert.False(t, manager.ShouldSample("tenant2"))
-	assert.True(t, manager.ShouldSample("tenant3")) // Uses default rate
+	sampled1, corrID1 := manager.ShouldSample("tenant1")
+	assert.True(t, sampled1)
+	assert.NotEmpty(t, corrID1)
+	sampled2, corrID2 := manager.ShouldSample("tenant2")
+	assert.False(t, sampled2)
+	assert.Empty(t, corrID2)
+	sampled3, corrID3 := manager.ShouldSample("tenant3") // Uses default rate
+	assert.True(t, sampled3)
+	assert.NotEmpty(t, corrID3)
 
 	// Create test HTTP request
-	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}&start=1700000000&end=1700001000", nil)
+	req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}&start=1700000000&end=1700001000", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
 	// Simulate responses from Cell A and Cell B
@@ -119,7 +127,7 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	}
 
 	// Send to Goldfish for processing
-	manager.SendToGoldfish(req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp, "test-correlation-id")
 
 	// Wait for async processing
 	time.Sleep(100 * time.Millisecond)
@@ -132,7 +140,7 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	sample := storage.samples[0]
 	assert.Equal(t, "tenant1", sample.TenantID)
 	assert.Equal(t, "{job=\"test\"}", sample.Query)
-	assert.Equal(t, "query_range", sample.QueryType)
+	assert.Equal(t, logql.QueryTypeLimited, sample.QueryType)
 	assert.Equal(t, 200, sample.CellAStatusCode)
 	assert.Equal(t, 200, sample.CellBStatusCode)
 	assert.Equal(t, int64(50), sample.CellAStats.ExecTimeMs)
@@ -169,7 +177,7 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 	require.NoError(t, err)
 	defer manager.Close()
 
-	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}", nil)
+	req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
 	// Different log lines between cells - this will produce different hashes
@@ -239,7 +247,7 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 		SpanID:      "",
 	}
 
-	manager.SendToGoldfish(req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp, "test-correlation-id")
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -265,7 +273,7 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 	require.NoError(t, err)
 	defer manager.Close()
 
-	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}", nil)
+	req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
 	// Different log lines between cells - this will produce different hashes
@@ -329,14 +337,14 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 		SpanID:      "",
 	}
 
-	manager.SendToGoldfish(req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp, "test-correlation-id")
 
 	time.Sleep(100 * time.Millisecond)
 
 	assert.Len(t, storage.results, 1)
 	result := storage.results[0]
 
-	assert.Equal(t, goldfish.ComparisonStatusMismatch, result.ComparisonStatus)
+	assert.Equal(t, goldfish.ComparisonStatusMatchWithinTolerance, result.ComparisonStatus)
 	// Verify that the mismatch is due to floating point variance within tolerance
 	assert.True(t, result.MatchWithinTolerance, "Result should indicate match within tolerance")
 
@@ -357,7 +365,7 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 	require.NoError(t, err)
 	defer manager.Close()
 
-	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}", nil)
+	req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
 	// Cell A response with new engine warning
@@ -431,7 +439,7 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 		SpanID:      "",
 	}
 
-	manager.SendToGoldfish(req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp, "test-correlation-id")
 
 	time.Sleep(100 * time.Millisecond)
 

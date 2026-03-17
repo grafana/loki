@@ -1152,6 +1152,21 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 							throwInvalidTag(t, name, option+args)
 						}
 						setNode(TimeAdjusted(timeUnit, adjusted))
+					case reflect.Ptr:
+						// Support *time.Duration with time tag
+						if t.Elem() == reflect.TypeFor[time.Duration]() {
+							timeUnit, adjusted, err := parseTimestampArgs(args)
+							if err != nil {
+								throwInvalidTag(t, name, option+args)
+							}
+							if args == "()" {
+								timeUnit = Nanosecond
+								adjusted = true
+							}
+							setNode(Optional(TimeAdjusted(timeUnit, adjusted)))
+						} else {
+							throwInvalidTag(t, name, option)
+						}
 					default:
 						throwInvalidTag(t, name, option)
 					}

@@ -307,7 +307,25 @@ func writeRowsFuncOfPointer(t reflect.Type, schema *Schema, path columnPath, tag
 func writeRowsFuncOfSlice(t reflect.Type, schema *Schema, path columnPath, tagReplacements []StructTagOption) writeRowsFunc {
 	elemType := t.Elem()
 	elemSize := uintptr(elemType.Size())
+
+	// If the current node is a LIST, we need to drill down to the element
+	// to find the schema node for the slice elements.
+	if node := findByPath(schema, path); node != nil && isList(node) {
+		path = path.append("list", "element")
+	}
+
 	writeRows := writeRowsFuncOf(elemType, schema, path, tagReplacements)
+
+	// Check if the element schema node is optional.
+	// This handles the case of `parquet-element:",optional"` tag where
+	// the list elements themselves are optional (non-pointer basic types).
+	// For pointer types (like []*string), the pointer handling already
+	// takes care of optionality via writeRowsFuncOfPointer.
+	if elemType.Kind() != reflect.Ptr {
+		if node := findByPath(schema, path); node != nil && node.Optional() {
+			writeRows = writeRowsFuncOfOptional(elemType, schema, path, writeRows)
+		}
+	}
 
 	return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
 		type sliceHeader struct {
@@ -638,14 +656,18 @@ func writeRowsFuncOfMap(t reflect.Type, schema *Schema, path columnPath, tagRepl
 }
 
 func writeRowsFuncOfJSON(t reflect.Type, schema *Schema, path columnPath) writeRowsFunc {
-	// If this is a string or a byte array write directly.
-	switch t.Kind() {
-	case reflect.String:
-		return writeRowsFuncOfRequired(t, schema, path)
-	case reflect.Slice:
-		if t.Elem().Kind() == reflect.Uint8 {
-			return writeRowsFuncOfRequired(t, schema, path)
+	// If this is a string or a byte array, write directly.
+	if t.Kind() == reflect.String || (t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8) {
+		column, _ := schema.Lookup(path...)
+		isOptional := column.Node.Optional()
+
+		// This fast-path avoids the optional checks, so check here and wrap the writer
+		// if required.
+		writer := writeRowsFuncOfRequired(t, schema, path)
+		if isOptional {
+			writer = writeRowsFuncOfOptional(t, schema, path, writer)
 		}
+		return writer
 	}
 
 	columnIndex := findColumnIndex(schema, schema, path)

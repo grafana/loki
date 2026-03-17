@@ -56,7 +56,7 @@ func TestRateBatcher_Add_AccumulatesStreams(t *testing.T) {
 	)
 
 	// Add some streams.
-	streams := []SegmentedStream{
+	streams := []segmentedStream{
 		{
 			KeyedStream: KeyedStream{
 				Stream: logproto.Stream{
@@ -107,7 +107,7 @@ func TestRateBatcher_AccumulatesSize(t *testing.T) {
 	)
 
 	// Add stream with some entries.
-	stream1 := []SegmentedStream{
+	stream1 := []segmentedStream{
 		{
 			KeyedStream: KeyedStream{
 				Stream: logproto.Stream{
@@ -120,7 +120,7 @@ func TestRateBatcher_AccumulatesSize(t *testing.T) {
 	}
 
 	// Add stream again with more entries.
-	stream2 := []SegmentedStream{
+	stream2 := []segmentedStream{
 		{
 			KeyedStream: KeyedStream{
 				Stream: logproto.Stream{
@@ -159,8 +159,8 @@ func TestRateBatcher_MultipleTenants(t *testing.T) {
 	)
 
 	// Add streams for multiple tenants.
-	batcher.Add("tenant1", []SegmentedStream{{SegmentationKeyHash: 123}})
-	batcher.Add("tenant2", []SegmentedStream{{SegmentationKeyHash: 456}})
+	batcher.Add("tenant1", []segmentedStream{{SegmentationKeyHash: 123}})
+	batcher.Add("tenant2", []segmentedStream{{SegmentationKeyHash: 456}})
 
 	batcher.flush(context.Background())
 
@@ -213,7 +213,7 @@ func TestRateBatcher_ServiceLifecycle(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(ctx, batcher))
 
 	// Add some streams.
-	batcher.Add("tenant1", []SegmentedStream{{SegmentationKeyHash: 123}})
+	batcher.Add("tenant1", []segmentedStream{{SegmentationKeyHash: 123}})
 
 	// Wait for automatic flush.
 	time.Sleep(100 * time.Millisecond)
@@ -244,8 +244,8 @@ func TestRateBatcher_StoresRatesFromFlush(t *testing.T) {
 	require.Equal(t, uint64(0), rate)
 
 	// Add streams and flush.
-	batcher.Add("tenant1", []SegmentedStream{{SegmentationKeyHash: 123}})
-	batcher.Add("tenant1", []SegmentedStream{{SegmentationKeyHash: 456}})
+	batcher.Add("tenant1", []segmentedStream{{SegmentationKeyHash: 123}})
+	batcher.Add("tenant1", []segmentedStream{{SegmentationKeyHash: 456}})
 	batcher.flush(context.Background())
 
 	// After flush, rates should be stored (mock returns 1000 for all).
@@ -276,7 +276,7 @@ func TestRateBatcher_AddReturnsRates(t *testing.T) {
 	)
 
 	// First Add returns 0 for all (no prior flush).
-	rates := batcher.Add("tenant1", []SegmentedStream{
+	rates := batcher.Add("tenant1", []segmentedStream{
 		{SegmentationKeyHash: 123},
 		{SegmentationKeyHash: 456},
 	})
@@ -287,7 +287,7 @@ func TestRateBatcher_AddReturnsRates(t *testing.T) {
 	batcher.flush(context.Background())
 
 	// Second Add returns last known rates.
-	rates = batcher.Add("tenant1", []SegmentedStream{
+	rates = batcher.Add("tenant1", []segmentedStream{
 		{SegmentationKeyHash: 123},
 		{SegmentationKeyHash: 456},
 		{SegmentationKeyHash: 789}, // New stream, unknown rate.
@@ -310,7 +310,7 @@ func TestRateBatcher_RatesUpdatedOnSubsequentFlush(t *testing.T) {
 	)
 
 	// First flush.
-	batcher.Add("tenant1", []SegmentedStream{{SegmentationKeyHash: 123}})
+	batcher.Add("tenant1", []segmentedStream{{SegmentationKeyHash: 123}})
 	batcher.flush(context.Background())
 	require.Equal(t, uint64(1000), batcher.GetRate("tenant1", 123))
 
@@ -320,7 +320,7 @@ func TestRateBatcher_RatesUpdatedOnSubsequentFlush(t *testing.T) {
 	client.mu.Unlock()
 
 	// Second flush updates the rate.
-	batcher.Add("tenant1", []SegmentedStream{{SegmentationKeyHash: 123}})
+	batcher.Add("tenant1", []segmentedStream{{SegmentationKeyHash: 123}})
 	batcher.flush(context.Background())
 	require.Equal(t, uint64(5000), batcher.GetRate("tenant1", 123))
 }
@@ -337,7 +337,7 @@ func TestRateBatcher_RatesClearedForInactiveStreams(t *testing.T) {
 	)
 
 	// First flush with streams 123 and 456.
-	batcher.Add("tenant1", []SegmentedStream{
+	batcher.Add("tenant1", []segmentedStream{
 		{SegmentationKeyHash: 123},
 		{SegmentationKeyHash: 456},
 	})
@@ -346,7 +346,7 @@ func TestRateBatcher_RatesClearedForInactiveStreams(t *testing.T) {
 	require.Equal(t, uint64(1000), batcher.GetRate("tenant1", 456))
 
 	// Second flush with only stream 123 (456 became inactive).
-	batcher.Add("tenant1", []SegmentedStream{{SegmentationKeyHash: 123}})
+	batcher.Add("tenant1", []segmentedStream{{SegmentationKeyHash: 123}})
 	batcher.flush(context.Background())
 
 	// Stream 123 still has a rate.
