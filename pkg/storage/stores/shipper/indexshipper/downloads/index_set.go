@@ -133,9 +133,10 @@ func (t *indexSet) Init(forQuerying bool, logger log.Logger) (err error) {
 
 		fullPath := filepath.Join(t.cacheLocation, entry.Name())
 		// if we fail to open an index file, lets skip it and let sync operation re-download the file from storage.
+		openStart := time.Now()
 		idx, err := t.openIndexFileFunc(fullPath)
 		if err != nil {
-			level.Error(logger).Log("msg", fmt.Sprintf("failed to open existing index file %s, removing the file and continuing without it to let the sync operation catch up", fullPath), "err", err)
+			level.Error(logger).Log("msg", fmt.Sprintf("failed to open existing index file %s, removing the file and continuing without it to let the sync operation catch up", fullPath), "err", err, "duration", time.Since(openStart))
 			// Sometimes files get corrupted when the process gets killed in the middle of a download operation which can cause problems in reading the file.
 			// Implementation of openIndexFileFunc should take care of gracefully handling corrupted files.
 			// Let us just remove the file and let the sync operation re-download it.
@@ -144,6 +145,7 @@ func (t *indexSet) Init(forQuerying bool, logger log.Logger) (err error) {
 			}
 			continue
 		}
+		level.Info(logger).Log("msg", "opened local index file", "file", entry.Name(), "duration", time.Since(openStart))
 
 		t.index[entry.Name()] = idx
 	}
@@ -354,10 +356,13 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 		}
 
 		filePath := filepath.Join(t.cacheLocation, fileName)
+		openStart := time.Now()
 		idx, err := t.openIndexFileFunc(filePath)
 		if err != nil {
+			level.Error(t.logger).Log("msg", "failed to open downloaded index file", "file", fileName, "duration", time.Since(openStart), "err", err)
 			return err
 		}
+		level.Info(t.logger).Log("msg", "opened downloaded index file", "file", fileName, "duration", time.Since(openStart))
 
 		t.index[fileName] = idx
 	}

@@ -721,10 +721,14 @@ func (g *Gateway) GetDataobjSections(ctx context.Context, req *logproto.GetDatao
 		return nil, err
 	}
 
+	start := time.Now()
 	sections, err := g.dataobjResolver.GetDataobjSections(ctx, instanceID, req.From, req.Through, nil, matchers...)
+	duration := time.Since(start)
 	if err != nil {
+		level.Error(g.log).Log("msg", "GetDataobjSections failed", "tenant", instanceID, "duration", duration, "err", err)
 		return nil, err
 	}
+	level.Info(g.log).Log("msg", "GetDataobjSections completed", "tenant", instanceID, "sections", len(sections), "duration", duration)
 
 	result := &logproto.GetDataobjSectionsResponse{
 		Sections: make([]logproto.DataobjSectionRef, 0, len(sections)),

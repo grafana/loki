@@ -98,20 +98,24 @@ type TSDBFile struct {
 
 func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
 	logger := util_log.Logger
+	path := id.Path()
 
-	level.Debug(logger).Log("msg", "loading TSDB file", "path", id.Path())
+	level.Debug(logger).Log("msg", "loading TSDB file", "path", path)
 
-	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path())
+	start := time.Now()
+	idx, getRawFileReader, err := NewTSDBIndexFromFile(path)
 	if err != nil {
 		return nil, err
 	}
+	level.Info(logger).Log("msg", "loaded TSDB index", "path", path, "duration", time.Since(start))
 
 	// TODO: register a different index.OpenIndexFileFunc for dataobj TSDB files
 	// during indexshipper init.
-	sectionsPath := id.Path() + ".sections"
+	sectionsPath := path + ".sections"
+	start = time.Now()
 	if table, mmapErr := sectionref.OpenMmap(sectionsPath); mmapErr == nil {
 		idx.sectionRefTable = table
-		level.Debug(logger).Log("msg", "loaded sections companion", "path", sectionsPath, "entries", table.Len())
+		level.Info(logger).Log("msg", "loaded sections companion", "path", sectionsPath, "entries", table.Len(), "duration", time.Since(start))
 	} else if errors.Is(mmapErr, os.ErrNotExist) {
 		level.Debug(logger).Log("msg", "no sections companion found", "path", sectionsPath)
 	} else {
@@ -553,6 +557,7 @@ func (i *TSDBIndex) GetDataobjSections(
 	fpFilter index.FingerprintFilter,
 	matchers ...*labels.Matcher,
 ) ([]index.DataobjSectionRef, error) {
+	start := time.Now()
 	logger := util_log.Logger
 
 	if i.sectionRefTable == nil {
@@ -576,16 +581,20 @@ func (i *TSDBIndex) GetDataobjSections(
 	sections := make(map[sectionKey]*accumulator)
 
 	var (
-		failedLookup bool
-		seriesCount  int
-		chunkCount   int
+		failedLookup   bool
+		seriesCount    int
+		chunkCount     int
+		lookupDuration time.Duration
 	)
 
+	forSeriesStart := time.Now()
 	if err := i.ForSeries(ctx, userID, fpFilter, from, through, func(_ labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 		seriesCount++
 		for _, chk := range chks {
 			chunkCount++
+			lookupStart := time.Now()
 			ref, ok := i.sectionRefTable.Lookup(chk.Checksum)
+			lookupDuration += time.Since(lookupStart)
 			if !ok {
 				level.Warn(logger).Log("msg", "TSDBIndex.GetDataobjSections: failed to lookup section ref", "checksum", chk.Checksum)
 				failedLookup = true
@@ -620,11 +629,24 @@ func (i *TSDBIndex) GetDataobjSections(
 		}
 		return false
 	}, matchers...); err != nil {
-		return nil, err
+		duration := time.Since(start)
+		level.Error(logger).Log("msg", "TSDBIndex.GetDataobjSections ForSeries failed",
+			"user", userID, "duration", duration,
+			"for_series_duration", time.Since(forSeriesStart),
+			"lookup_duration", lookupDuration,
+			"series_so_far", seriesCount, "chunks_so_far", chunkCount, "err", err)
+		return nil, fmt.Errorf("GetDataobjSections failed after %s: %w", duration, err)
 	}
+	forSeriesDuration := time.Since(forSeriesStart)
 
 	if failedLookup {
-		return nil, fmt.Errorf("failed to lookup section ref for at least one chunk; cannot resolve dataobj sections")
+		duration := time.Since(start)
+		level.Warn(logger).Log("msg", "TSDBIndex.GetDataobjSections lookup failure",
+			"user", userID, "duration", duration,
+			"for_series_duration", forSeriesDuration,
+			"lookup_duration", lookupDuration,
+			"series_matched", seriesCount, "chunks_matched", chunkCount)
+		return nil, fmt.Errorf("GetDataobjSections lookup failed after %s: failed to lookup section ref for at least one chunk", duration)
 	}
 
 	res := make([]index.DataobjSectionRef, 0, len(sections))
@@ -637,7 +659,15 @@ func (i *TSDBIndex) GetDataobjSections(
 		res = append(res, acc.ref)
 	}
 
-	level.Debug(logger).Log("msg", "TSDBIndex.GetDataobjSections completed", "user", userID, "series_matched", seriesCount, "chunks_matched", chunkCount, "sections_resolved", len(res))
+	level.Info(logger).Log("msg", "TSDBIndex.GetDataobjSections completed",
+		"user", userID,
+		"duration", time.Since(start),
+		"for_series_duration", forSeriesDuration,
+		"lookup_duration", lookupDuration,
+		"series_matched", seriesCount,
+		"chunks_matched", chunkCount,
+		"sections_resolved", len(res),
+	)
 
 	return res, nil
 }
