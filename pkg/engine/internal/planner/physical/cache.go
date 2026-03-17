@@ -222,7 +222,7 @@ func (s *DataObjScan) CacheKey(_ context.Context) string {
 func (s *PointersScan) CacheKey(_ context.Context) string {
 	predicates := make([]string, len(s.Predicates))
 	for i, p := range s.Predicates {
-		predicates[i] = p.String()
+		predicates[i] = p.Clamp(s.MaxTimeRange()).String()
 	}
 	var selector string
 	if s.Selector != nil {
