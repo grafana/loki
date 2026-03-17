@@ -456,6 +456,10 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 	return g.boundedShards(ctx, request, server, instanceID, p)
 }
 
+func (g *Gateway) GetDataobjSections(_ context.Context, _ *logproto.GetDataobjSectionsRequest) (*logproto.GetDataobjSectionsResponse, error) {
+	return nil, fmt.Errorf("GetDataobjSections is not implemented on this index gateway instance")
+}
+
 // boundedShards handles bounded shard requests, optionally returning precomputed chunks.
 func (g *Gateway) boundedShards(
 	ctx context.Context,

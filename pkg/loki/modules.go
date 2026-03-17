@@ -1436,6 +1436,15 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		Metastore: ms,
 	}
 
+	if t.Cfg.QueryEngine.DualResolveMaxConcurrency > 0 {
+		igwClient, err := t.newEngineGatewayClient(logger)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to create index gateway client for dual-resolve, disabling", "err", err)
+		} else {
+			params.IndexGateway = igwClient
+		}
+	}
+
 	if t.Cfg.QueryEngine.EnableDeleteReqFiltering {
 		client, err := t.deleteRequestsClient("query-engine", t.Overrides)
 		if err != nil {
@@ -1478,6 +1487,15 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 
 	t.queryEngineV2 = engine
 	return nil, nil
+}
+
+func (t *Loki) newEngineGatewayClient(logger log.Logger) (*indexgateway.GatewayClient, error) {
+	gwCfg := t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig
+	gwCfg.Mode = t.Cfg.IndexGateway.Mode
+	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode && t.indexGatewayRingManager != nil {
+		gwCfg.Ring = t.indexGatewayRingManager.Ring
+	}
+	return indexgateway.NewGatewayClient(gwCfg, prometheus.DefaultRegisterer, t.Overrides, logger, constants.Loki)
 }
 
 func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {

@@ -46,6 +46,9 @@ type Config struct {
 	EnforceQuerySeriesLimit bool `yaml:"enforce_max_query_series_limit" category:"experimental"`
 
 	ResultsCache resultscache.Config `yaml:"results_cache" category:"experimental"`
+	// DualResolveMaxConcurrency controls the maximum number of concurrent
+	// asynchronous index-gateway dual-resolve comparisons. 0 disables dual-resolve.
+	DualResolveMaxConcurrency int `yaml:"dual_resolve_max_concurrency" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -73,6 +76,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.AlignQueriesWithStep, prefix+"align-queries-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.EnforceQuerySeriesLimit, prefix+"enforce-max-query-series-limit", false, "Experimental: When enabled, the tenant's MaxQuerySeries limit is applied. Otherwise, no limit is enforced.")
 	cfg.ResultsCache.RegisterFlagsWithPrefix(f, prefix+"results-cache.")
+	f.IntVar(&cfg.DualResolveMaxConcurrency, prefix+"dual-resolve-max-concurrency", 10, "Experimental: Maximum number of concurrent async index-gateway dual-resolve comparisons. 0 disables dual-resolve.")
 }
 
 func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {

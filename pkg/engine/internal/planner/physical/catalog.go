@@ -2,6 +2,7 @@ package physical
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -36,7 +37,7 @@ type TimeRange struct {
 	End   time.Time
 }
 
-func newTimeRange(start, end time.Time) (TimeRange, error) {
+func NewTimeRange(start, end time.Time) (TimeRange, error) {
 	if end.Before(start) {
 		return TimeRange{}, fmt.Errorf("cannot have end time (%v) before start time (%v)", end, start)
 	}
@@ -129,7 +130,7 @@ func filterForShard(shard ShardInfo, sections []*metastore.DataobjSectionDescrip
 		if int(s.SectionIdx)%int(shard.Of) == int(shard.Shard) {
 			ds.Streams = s.StreamIDs
 			ds.Sections = []int{int(s.SectionIdx)}
-			tr, err := newTimeRange(s.Start, s.End)
+			tr, err := NewTimeRange(s.Start, s.End)
 			if err != nil {
 				return nil, err
 			}
@@ -244,3 +245,34 @@ func convertBinaryOp(t types.BinaryOp) (labels.MatchType, error) {
 }
 
 var _ Catalog = (*MetastoreCatalog)(nil)
+
+// TSDBSectionsResolver resolves data object sections from a TSDB-backed
+// index gateway. The matchers string uses LogQL selector syntax.
+type TSDBSectionsResolver func(matchers string, start, end time.Time) ([]DataObjSections, error)
+
+// TSDBCatalog is an implementation of [Catalog] backed by a TSDB index gateway.
+type TSDBCatalog struct {
+	sectionsResolver TSDBSectionsResolver
+}
+
+// NewTSDBCatalog creates a new instance of [TSDBCatalog] for query planning.
+func NewTSDBCatalog(sectionsResolver TSDBSectionsResolver) *TSDBCatalog {
+	return &TSDBCatalog{
+		sectionsResolver: sectionsResolver,
+	}
+}
+
+func (c *TSDBCatalog) ResolveDataObjSections(selector Expression, _ []Expression, _ ShardInfo, start, end time.Time) ([]DataObjSections, error) {
+	matchers, err := expressionToMatchers(selector, false)
+	if err != nil {
+		return nil, fmt.Errorf("convert selector to matchers: %w", err)
+	}
+	matcherStrings := make([]string, 0, len(matchers))
+	for _, m := range matchers {
+		matcherStrings = append(matcherStrings, m.String())
+	}
+	matcherExpr := "{" + strings.Join(matcherStrings, ",") + "}"
+	return c.sectionsResolver(matcherExpr, start, end)
+}
+
+var _ Catalog = (*TSDBCatalog)(nil)

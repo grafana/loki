@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -28,7 +29,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -108,6 +111,12 @@ func (cfg *TaskCacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 		"Experimental: Maximum size for a task result to be cacheable. 0 means no limit.")
 }
 
+// IndexGatewayClient is an optional interface for querying the index gateway
+// for data object section resolution. Used by the dual-resolve comparison path.
+type IndexGatewayClient interface {
+	GetDataobjSections(ctx context.Context, in *logproto.GetDataobjSectionsRequest) (*logproto.GetDataobjSectionsResponse, error)
+}
+
 // Params holds parameters for constructing a new [Engine].
 type Params struct {
 	Logger     log.Logger            // Logger for optional log messages.
@@ -119,6 +128,8 @@ type Params struct {
 	Metastore    metastore.Metastore // Metastore to access the indexes
 	Limits       logql.Limits        // Limits to apply to engine queries.
 	DeleteGetter deletion.Getter     // DeleteGetter to fetch delete requests for query-time filtering.
+
+	IndexGateway IndexGatewayClient // Optional index gateway client for dual-resolve comparisons.
 }
 
 // validate validates p and applies defaults.
@@ -151,7 +162,10 @@ type Engine struct {
 	limits       logql.Limits    // Limits to apply to engine queries.
 	deleteGetter deletion.Getter // DeleteGetter to fetch delete requests for query-time filtering.
 
-	metastore metastore.Metastore
+	metastore    metastore.Metastore
+	indexGateway IndexGatewayClient
+
+	dualResolveSem chan struct{}
 }
 
 // New creates a new Engine.
@@ -169,7 +183,12 @@ func New(params Params) (*Engine, error) {
 		limits:       params.Limits,
 		deleteGetter: params.DeleteGetter,
 
-		metastore: params.Metastore,
+		metastore:    params.Metastore,
+		indexGateway: params.IndexGateway,
+	}
+
+	if maxConc := params.Config.DualResolveMaxConcurrency; maxConc > 0 && e.indexGateway != nil {
+		e.dualResolveSem = make(chan struct{}, maxConc)
 	}
 
 	return e, nil
@@ -388,12 +407,8 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 
 	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID, cacheEnabled))
 
-	// TODO(rfratto): It feels strange that we need to past the start/end time
-	// to the physical planner. Isn't it already represented by the logical
-	// plan?
 	plannerCtx := physical.NewContext(params.Start(), params.End())
 
-	// Get the tenant's MaxQuerySeries limit and pass it to the planner context if enforcement is enabled
 	if e.cfg.EnforceQuerySeriesLimit {
 		plannerCtx = plannerCtx.WithMaxQuerySeries(e.limits.MaxQuerySeries(ctx, tenantID))
 	}
@@ -421,6 +436,8 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	}
 
 	duration := timer.ObserveDuration()
+	msSections := countScanTargets(physicalPlan)
+
 	level.Info(logger).Log(
 		"msg", "finished physical planning",
 		"plan", physical.PrintAsTree(physicalPlan),
@@ -428,7 +445,113 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	)
 
 	span.AddEvent("finished physical planning", trace.WithAttributes(attribute.Stringer("duration", duration)))
+
+	e.maybeDualResolve(logger, tenantID, params, logicalPlan, plannerCtx, msSections, duration)
+
 	return physicalPlan, duration, nil
+}
+
+// maybeDualResolve kicks off an async index-gateway comparison if dual-resolve
+// is enabled and there is capacity available. It never blocks the caller.
+func (e *Engine) maybeDualResolve(
+	logger log.Logger,
+	tenantID string,
+	params logql.Params,
+	logicalPlan *logical.Plan,
+	plannerCtx *physical.Context,
+	msSections int,
+	msDuration time.Duration,
+) {
+	if e.dualResolveSem == nil {
+		return
+	}
+
+	select {
+	case e.dualResolveSem <- struct{}{}:
+		go func() {
+			defer func() { <-e.dualResolveSem }()
+			defer func() {
+				if r := recover(); r != nil {
+					level.Error(logger).Log("msg", "panic in dual-resolve goroutine", "panic", fmt.Sprintf("%v", r))
+				}
+			}()
+
+			resolveCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+
+			start := time.Now()
+			catalog := physical.NewTSDBCatalog(e.tsdbSectionsResolver(resolveCtx, tenantID))
+			p := physical.NewPlanner(plannerCtx, catalog)
+			igwPlan, igwErr := p.Build(logicalPlan)
+			igwDuration := time.Since(start)
+
+			igwSections := 0
+			if igwErr == nil {
+				igwSections = countScanTargets(igwPlan)
+			}
+
+			level.Info(logger).Log(
+				"msg", "dual-resolve comparison",
+				"query", params.QueryString(),
+				"query_length", params.End().Sub(params.Start()),
+				"metastore_sections", msSections,
+				"metastore_duration", msDuration,
+				"index_gateway_sections", igwSections,
+				"index_gateway_duration", igwDuration,
+				"index_gateway_error", fmt.Sprintf("%v", igwErr),
+			)
+		}()
+	default:
+		e.metrics.dualResolveDropped.Inc()
+	}
+}
+
+// tsdbSectionsResolver returns a resolver function that queries the index
+// gateway for data object sections matching the given matchers/time range.
+func (e *Engine) tsdbSectionsResolver(ctx context.Context, tenantID string) physical.TSDBSectionsResolver {
+	return func(matchers string, start, end time.Time) ([]physical.DataObjSections, error) {
+		resp, err := e.indexGateway.GetDataobjSections(ctx, &logproto.GetDataobjSectionsRequest{
+			From:     model.TimeFromUnix(start.Unix()),
+			Through:  model.TimeFromUnix(end.Unix()),
+			Matchers: matchers,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("index gateway GetDataobjSections: %w", err)
+		}
+
+		result := make([]physical.DataObjSections, 0, len(resp.Sections))
+		for _, s := range resp.Sections {
+			tr, err := physical.NewTimeRange(s.MinTime.Time(), s.MaxTime.Time())
+			if err != nil {
+				return nil, fmt.Errorf("invalid time range in section ref: %w", err)
+			}
+			result = append(result, physical.DataObjSections{
+				Location:  physical.DataObjLocation(s.Path),
+				Streams:   s.StreamIds,
+				Sections:  []int{int(s.SectionId)},
+				TimeRange: tr,
+			})
+		}
+		return result, nil
+	}
+}
+
+// countScanTargets counts the number of ScanTypeDataObject targets in a plan.
+func countScanTargets(plan *physical.Plan) int {
+	count := 0
+	for _, root := range plan.Roots() {
+		_ = plan.DFSWalk(root, func(n physical.Node) error {
+			if ss, ok := n.(*physical.ScanSet); ok {
+				for _, t := range ss.Targets {
+					if t.Type == physical.ScanTypeDataObject {
+						count++
+					}
+				}
+			}
+			return nil
+		}, dag.PreOrderWalk)
+	}
+	return count
 }
 
 func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string, cacheEnabled bool) physical.MetastoreSectionsResolver {
