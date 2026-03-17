@@ -14,8 +14,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/klauspost/compress/snappy"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"

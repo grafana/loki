@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/golang/snappy"
+	"github.com/klauspost/compress/snappy"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )

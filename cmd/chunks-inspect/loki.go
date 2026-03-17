@@ -8,7 +8,7 @@ import (
 	"hash/crc32"
 	"io"
 
-	"github.com/golang/snappy"
+	"github.com/klauspost/compress/snappy"
 	"github.com/klauspost/compress/flate"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4"

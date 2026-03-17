@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/golang/snappy"
+	"github.com/klauspost/compress/snappy"
 )
 
 type ChunkHeader struct {

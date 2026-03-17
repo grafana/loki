@@ -6,9 +6,9 @@ import (
 	"runtime"
 	"sync"
 
-	snappylib "github.com/golang/snappy"
 	flatelib "github.com/klauspost/compress/flate"
 	gziplib "github.com/klauspost/compress/gzip"
+	snappylib "github.com/klauspost/compress/snappy"
 	zstdlib "github.com/klauspost/compress/zstd"
 	lz4lib "github.com/pierrec/lz4/v4"
 )

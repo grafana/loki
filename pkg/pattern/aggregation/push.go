@@ -14,8 +14,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/golang/snappy"
 	"github.com/prometheus/common/config"
+	"github.com/klauspost/compress/snappy"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel"

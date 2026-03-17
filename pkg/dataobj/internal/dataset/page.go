@@ -9,7 +9,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/golang/snappy"
+	"github.com/klauspost/compress/snappy"
 	"github.com/klauspost/compress/zstd"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"

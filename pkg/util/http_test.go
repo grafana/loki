@@ -139,7 +139,7 @@ func TestStreamWriteYAMLResponse(t *testing.T) {
 }
 
 func TestParseProtoReader(t *testing.T) {
-	// 47 bytes compressed and 53 uncompressed
+	// The uncompressed payload size is stable; compressed size may vary by Snappy implementation.
 	req := &logproto.PreallocWriteRequest{
 		WriteRequest: logproto.WriteRequest{
 			Timeseries: []logproto.PreallocTimeseries{
@@ -166,13 +166,13 @@ func TestParseProtoReader(t *testing.T) {
 		expectErr      bool
 		useBytesBuffer bool
 	}{
-		{"rawSnappy", util.RawSnappy, 53, false, false},
+		{"rawSnappy", util.RawSnappy, 64, false, false},
 		{"noCompression", util.NoCompression, 53, false, false},
 		{"too big rawSnappy", util.RawSnappy, 10, true, false},
 		{"too big decoded rawSnappy", util.RawSnappy, 50, true, false},
 		{"too big noCompression", util.NoCompression, 10, true, false},
 
-		{"bytesbuffer rawSnappy", util.RawSnappy, 53, false, true},
+		{"bytesbuffer rawSnappy", util.RawSnappy, 64, false, true},
 		{"bytesbuffer noCompression", util.NoCompression, 53, false, true},
 		{"bytesbuffer too big rawSnappy", util.RawSnappy, 10, true, true},
 		{"bytesbuffer too big decoded rawSnappy", util.RawSnappy, 50, true, true},

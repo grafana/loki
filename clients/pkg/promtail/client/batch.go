@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
+	"github.com/klauspost/compress/snappy"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
