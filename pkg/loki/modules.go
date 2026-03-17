@@ -1436,7 +1436,7 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		Metastore: ms,
 	}
 
-	if t.Cfg.QueryEngine.DualResolveMaxConcurrency > 0 {
+	if t.Cfg.QueryEngine.DualResolveMaxConcurrency > 0 || t.Cfg.QueryEngine.UseIndexGatewayPlanning {
 		igwClient, err := t.newEngineGatewayClient(logger)
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to create index gateway client for dual-resolve, disabling", "err", err)

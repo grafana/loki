@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
@@ -193,7 +194,7 @@ func TestMaybeDualResolve_Disabled(t *testing.T) {
 
 	// dualResolveSem is nil, should be a no-op
 	e.maybeDualResolve(
-		log.NewNopLogger(), "tenant", nil, nil, nil, 0, 0,
+		log.NewNopLogger(), "tenant", nil, nil, nil, nil, 0,
 	)
 }
 
@@ -210,8 +211,9 @@ func TestMaybeDualResolve_DropsWhenFull(t *testing.T) {
 	// Fill the semaphore
 	e.dualResolveSem <- struct{}{}
 
+	params := fakeParams{start: time.Now().Add(-time.Hour), end: time.Now()}
 	e.maybeDualResolve(
-		log.NewNopLogger(), "tenant", nil, nil, nil, 0, 0,
+		log.NewNopLogger(), "tenant", params, nil, nil, nil, 0,
 	)
 
 	// Verify the dropped counter was incremented
@@ -252,8 +254,9 @@ func TestMaybeDualResolve_RunsAsync(t *testing.T) {
 	// Use a real planner context
 	plannerCtx := physical.NewContext(time.Now().Add(-time.Hour), time.Now())
 
+	params := fakeParams{start: time.Now().Add(-time.Hour), end: time.Now()}
 	e.maybeDualResolve(
-		log.NewNopLogger(), "tenant", nil, nil, plannerCtx, 5, time.Millisecond,
+		log.NewNopLogger(), "tenant", params, nil, plannerCtx, nil, time.Millisecond,
 	)
 
 	// Wait for the goroutine to finish by waiting for the semaphore to be drained
@@ -321,5 +324,256 @@ func TestEngine_DualResolveSemaphore_Initialization(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, e.dualResolveSem)
 		require.Equal(t, 5, cap(e.dualResolveSem))
+	})
+}
+
+func TestExtractScanSections(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	tr1 := physical.TimeRange{Start: now, End: now.Add(10 * time.Second)}
+	tr2 := physical.TimeRange{Start: now.Add(-time.Minute), End: now}
+
+	var g dag.Graph[physical.Node]
+	ss := g.Add(&physical.ScanSet{
+		Targets: []*physical.ScanTarget{
+			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+				Location: "obj1", Section: 0, StreamIDs: []int64{10, 20}, MaxTimeRange: tr1,
+			}},
+			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+				Location: "obj2", Section: 3, StreamIDs: []int64{5}, MaxTimeRange: tr2,
+			}},
+			{Type: physical.ScanTypePointers, Pointers: &physical.PointersScan{}},
+		},
+	})
+	limit := g.Add(&physical.Limit{Fetch: 10})
+	_ = g.AddEdge(dag.Edge[physical.Node]{Parent: limit, Child: ss})
+	plan := physical.FromGraph(g)
+
+	sections := extractScanSections(plan)
+	require.Len(t, sections, 2)
+	require.Equal(t, sectionKey{Location: "obj1", Section: 0}, sections[0].Key)
+	require.Equal(t, []int64{10, 20}, sections[0].StreamIDs)
+	require.Equal(t, tr1, sections[0].TimeRange)
+	require.Equal(t, sectionKey{Location: "obj2", Section: 3}, sections[1].Key)
+	require.Equal(t, []int64{5}, sections[1].StreamIDs)
+	require.Equal(t, tr2, sections[1].TimeRange)
+}
+
+func TestCompareSections(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	tr := physical.TimeRange{Start: now, End: now.Add(10 * time.Second)}
+
+	t.Run("exact match", func(t *testing.T) {
+		ms := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{1, 2}, TimeRange: tr},
+			{Key: sectionKey{"obj2", 1}, StreamIDs: []int64{3}, TimeRange: tr},
+		}
+		igw := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{2, 1}, TimeRange: tr},
+			{Key: sectionKey{"obj2", 1}, StreamIDs: []int64{3}, TimeRange: tr},
+		}
+		cmp := compareSections(ms, igw)
+		require.Equal(t, 2, cmp.MsCount)
+		require.Equal(t, 2, cmp.IgwCount)
+		require.True(t, cmp.IgwSupersetOfMs)
+		require.Empty(t, cmp.MissingFromIgw)
+		require.Empty(t, cmp.StreamMismatches)
+		require.Empty(t, cmp.TimeMismatches)
+	})
+
+	t.Run("igw is superset", func(t *testing.T) {
+		ms := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{1}, TimeRange: tr},
+		}
+		igw := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{1}, TimeRange: tr},
+			{Key: sectionKey{"obj2", 1}, StreamIDs: []int64{2}, TimeRange: tr},
+		}
+		cmp := compareSections(ms, igw)
+		require.Equal(t, 1, cmp.MsCount)
+		require.Equal(t, 2, cmp.IgwCount)
+		require.True(t, cmp.IgwSupersetOfMs)
+		require.Empty(t, cmp.MissingFromIgw)
+		require.Empty(t, cmp.StreamMismatches)
+		require.Empty(t, cmp.TimeMismatches)
+	})
+
+	t.Run("missing sections from igw", func(t *testing.T) {
+		ms := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{1}, TimeRange: tr},
+			{Key: sectionKey{"obj2", 1}, StreamIDs: []int64{2}, TimeRange: tr},
+		}
+		igw := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{1}, TimeRange: tr},
+		}
+		cmp := compareSections(ms, igw)
+		require.Equal(t, 2, cmp.MsCount)
+		require.Equal(t, 1, cmp.IgwCount)
+		require.False(t, cmp.IgwSupersetOfMs)
+		require.Equal(t, []sectionKey{{"obj2", 1}}, cmp.MissingFromIgw)
+		require.Empty(t, cmp.StreamMismatches)
+		require.Empty(t, cmp.TimeMismatches)
+	})
+
+	t.Run("stream id mismatches", func(t *testing.T) {
+		ms := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{1, 2, 3}, TimeRange: tr},
+		}
+		igw := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{1, 2, 4}, TimeRange: tr},
+		}
+		cmp := compareSections(ms, igw)
+		require.Equal(t, 1, cmp.MsCount)
+		require.Equal(t, 1, cmp.IgwCount)
+		require.True(t, cmp.IgwSupersetOfMs)
+		require.Empty(t, cmp.MissingFromIgw)
+		require.Equal(t, []sectionKey{{"obj1", 0}}, cmp.StreamMismatches)
+		require.Empty(t, cmp.TimeMismatches)
+	})
+
+	t.Run("time range mismatches", func(t *testing.T) {
+		trDifferent := physical.TimeRange{Start: now.Add(-time.Minute), End: now}
+		ms := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{1, 2}, TimeRange: tr},
+			{Key: sectionKey{"obj2", 1}, StreamIDs: []int64{3}, TimeRange: tr},
+		}
+		igw := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{1, 2}, TimeRange: trDifferent},
+			{Key: sectionKey{"obj2", 1}, StreamIDs: []int64{3}, TimeRange: tr},
+		}
+		cmp := compareSections(ms, igw)
+		require.Equal(t, 2, cmp.MsCount)
+		require.Equal(t, 2, cmp.IgwCount)
+		require.True(t, cmp.IgwSupersetOfMs)
+		require.Empty(t, cmp.MissingFromIgw)
+		require.Empty(t, cmp.StreamMismatches)
+		require.Equal(t, []sectionKey{{"obj1", 0}}, cmp.TimeMismatches)
+	})
+
+	t.Run("sub-millisecond difference is tolerated", func(t *testing.T) {
+		trNano := physical.TimeRange{Start: now.Add(123 * time.Nanosecond), End: now.Add(time.Hour).Add(456 * time.Nanosecond)}
+		trMilli := physical.TimeRange{Start: now.Truncate(time.Millisecond), End: now.Add(time.Hour).Truncate(time.Millisecond)}
+		ms := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{1}, TimeRange: trNano},
+		}
+		igw := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{1}, TimeRange: trMilli},
+		}
+		cmp := compareSections(ms, igw)
+		require.Empty(t, cmp.TimeMismatches)
+	})
+
+	t.Run("both missing and mismatched", func(t *testing.T) {
+		ms := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{1, 2}, TimeRange: tr},
+			{Key: sectionKey{"obj2", 1}, StreamIDs: []int64{3}, TimeRange: tr},
+			{Key: sectionKey{"obj3", 2}, StreamIDs: []int64{5}, TimeRange: tr},
+		}
+		igw := []resolvedSection{
+			{Key: sectionKey{"obj1", 0}, StreamIDs: []int64{1, 99}, TimeRange: tr},
+		}
+		cmp := compareSections(ms, igw)
+		require.Equal(t, 3, cmp.MsCount)
+		require.Equal(t, 1, cmp.IgwCount)
+		require.False(t, cmp.IgwSupersetOfMs)
+		require.Len(t, cmp.MissingFromIgw, 2)
+		require.Len(t, cmp.StreamMismatches, 1)
+		require.Equal(t, sectionKey{"obj1", 0}, cmp.StreamMismatches[0])
+		require.Empty(t, cmp.TimeMismatches)
+	})
+
+	t.Run("empty inputs", func(t *testing.T) {
+		cmp := compareSections(nil, nil)
+		require.Equal(t, 0, cmp.MsCount)
+		require.Equal(t, 0, cmp.IgwCount)
+		require.True(t, cmp.IgwSupersetOfMs)
+		require.Empty(t, cmp.MissingFromIgw)
+		require.Empty(t, cmp.StreamMismatches)
+		require.Empty(t, cmp.TimeMismatches)
+	})
+}
+
+func TestValidate_UseIndexGatewayPlanning(t *testing.T) {
+	newScheduler := func(t *testing.T) *Scheduler {
+		t.Helper()
+		s, err := scheduler.New(scheduler.Config{
+			Logger:   log.NewNopLogger(),
+			Listener: &wire.Local{Address: wire.LocalScheduler},
+		})
+		require.NoError(t, err)
+		return &Scheduler{inner: s}
+	}
+
+	t.Run("errors when enabled without gateway client", func(t *testing.T) {
+		p := Params{
+			Logger:     log.NewNopLogger(),
+			Registerer: prometheus.NewRegistry(),
+			Config: Config{
+				UseIndexGatewayPlanning: true,
+				Executor:                ExecutorConfig{BatchSize: 100},
+			},
+			Scheduler: newScheduler(t),
+			Metastore: fakeMetastore{},
+		}
+		_, err := New(p)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "index gateway client is required")
+	})
+
+	t.Run("succeeds when enabled with gateway client", func(t *testing.T) {
+		p := Params{
+			Logger:     log.NewNopLogger(),
+			Registerer: prometheus.NewRegistry(),
+			Config: Config{
+				UseIndexGatewayPlanning: true,
+				Executor:                ExecutorConfig{BatchSize: 100},
+			},
+			Scheduler:    newScheduler(t),
+			Metastore:    fakeMetastore{},
+			IndexGateway: &fakeIndexGatewayClient{},
+		}
+		e, err := New(p)
+		require.NoError(t, err)
+		require.NotNil(t, e)
+	})
+
+	t.Run("succeeds when disabled without gateway client", func(t *testing.T) {
+		p := Params{
+			Logger:     log.NewNopLogger(),
+			Registerer: prometheus.NewRegistry(),
+			Config: Config{
+				UseIndexGatewayPlanning: false,
+				Executor:                ExecutorConfig{BatchSize: 100},
+			},
+			Scheduler: newScheduler(t),
+			Metastore: fakeMetastore{},
+		}
+		e, err := New(p)
+		require.NoError(t, err)
+		require.NotNil(t, e)
+	})
+}
+
+func TestTSDBCoversQuery(t *testing.T) {
+	tsdbDate := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	t.Run("unset date always returns true", func(t *testing.T) {
+		cfg := Config{}
+		require.True(t, cfg.TSDBCoversQuery(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)))
+		require.True(t, cfg.TSDBCoversQuery(time.Now()))
+	})
+
+	t.Run("query after TSDB start date", func(t *testing.T) {
+		cfg := Config{TSDBStartDate: flagext.Time(tsdbDate)}
+		require.True(t, cfg.TSDBCoversQuery(tsdbDate.Add(24*time.Hour)))
+	})
+
+	t.Run("query exactly at TSDB start date", func(t *testing.T) {
+		cfg := Config{TSDBStartDate: flagext.Time(tsdbDate)}
+		require.True(t, cfg.TSDBCoversQuery(tsdbDate))
+	})
+
+	t.Run("query before TSDB start date", func(t *testing.T) {
+		cfg := Config{TSDBStartDate: flagext.Time(tsdbDate)}
+		require.False(t, cfg.TSDBCoversQuery(tsdbDate.Add(-24*time.Hour)))
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	gotrace "runtime/trace"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/otel"
@@ -148,6 +150,9 @@ func (p *Params) validate() error {
 	}
 	if p.Config.Executor.BatchSize <= 0 {
 		return fmt.Errorf("invalid batch size for query engine. must be greater than 0, got %d", p.Config.Executor.BatchSize)
+	}
+	if p.Config.UseIndexGatewayPlanning && p.IndexGateway == nil {
+		return errors.New("index gateway client is required when use-index-gateway-planning is enabled")
 	}
 	return nil
 }
@@ -405,7 +410,12 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID, cacheEnabled))
+	var catalog physical.Catalog
+	if e.cfg.UseIndexGatewayPlanning && e.indexGateway != nil && e.cfg.TSDBCoversQuery(params.Start()) {
+		catalog = physical.NewTSDBCatalog(e.tsdbSectionsResolver(ctx, tenantID))
+	} else {
+		catalog = physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID, cacheEnabled))
+	}
 
 	plannerCtx := physical.NewContext(params.Start(), params.End())
 
@@ -436,7 +446,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	}
 
 	duration := timer.ObserveDuration()
-	msSections := countScanTargets(physicalPlan)
+	msSections := extractScanSections(physicalPlan)
 
 	level.Info(logger).Log(
 		"msg", "finished physical planning",
@@ -459,10 +469,13 @@ func (e *Engine) maybeDualResolve(
 	params logql.Params,
 	logicalPlan *logical.Plan,
 	plannerCtx *physical.Context,
-	msSections int,
+	msSections []resolvedSection,
 	msDuration time.Duration,
 ) {
 	if e.dualResolveSem == nil {
+		return
+	}
+	if !e.cfg.TSDBCoversQuery(params.Start()) {
 		return
 	}
 
@@ -476,7 +489,7 @@ func (e *Engine) maybeDualResolve(
 				}
 			}()
 
-			resolveCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			resolveCtx, cancel := context.WithTimeout(user.InjectOrgID(context.Background(), tenantID), 2*time.Minute)
 			defer cancel()
 
 			start := time.Now()
@@ -485,21 +498,56 @@ func (e *Engine) maybeDualResolve(
 			igwPlan, igwErr := p.Build(logicalPlan)
 			igwDuration := time.Since(start)
 
-			igwSections := 0
+			var cmp comparisonResult
 			if igwErr == nil {
-				igwSections = countScanTargets(igwPlan)
+				igwSections := extractScanSections(igwPlan)
+				cmp = compareSections(msSections, igwSections)
+			} else {
+				cmp.MsCount = len(msSections)
 			}
 
 			level.Info(logger).Log(
 				"msg", "dual-resolve comparison",
 				"query", params.QueryString(),
 				"query_length", params.End().Sub(params.Start()),
-				"metastore_sections", msSections,
+				"metastore_sections", cmp.MsCount,
 				"metastore_duration", msDuration,
-				"index_gateway_sections", igwSections,
+				"index_gateway_sections", cmp.IgwCount,
 				"index_gateway_duration", igwDuration,
 				"index_gateway_error", fmt.Sprintf("%v", igwErr),
+				"igw_superset_of_ms", cmp.IgwSupersetOfMs,
+				"missing_from_igw", len(cmp.MissingFromIgw),
+				"stream_id_mismatches", len(cmp.StreamMismatches),
+				"time_mismatches", len(cmp.TimeMismatches),
 			)
+
+			if len(cmp.MissingFromIgw) > 0 {
+				limit := min(len(cmp.MissingFromIgw), 5)
+				level.Warn(logger).Log(
+					"msg", "dual-resolve: sections missing from index-gateway",
+					"query", params.QueryString(),
+					"count", len(cmp.MissingFromIgw),
+					"first_few", fmt.Sprintf("%v", cmp.MissingFromIgw[:limit]),
+				)
+			}
+			if len(cmp.StreamMismatches) > 0 {
+				limit := min(len(cmp.StreamMismatches), 5)
+				level.Warn(logger).Log(
+					"msg", "dual-resolve: stream ID mismatches",
+					"query", params.QueryString(),
+					"count", len(cmp.StreamMismatches),
+					"first_few", fmt.Sprintf("%v", cmp.StreamMismatches[:limit]),
+				)
+			}
+			if len(cmp.TimeMismatches) > 0 {
+				limit := min(len(cmp.TimeMismatches), 5)
+				level.Warn(logger).Log(
+					"msg", "dual-resolve: time range mismatches",
+					"query", params.QueryString(),
+					"count", len(cmp.TimeMismatches),
+					"first_few", fmt.Sprintf("%v", cmp.TimeMismatches[:limit]),
+				)
+			}
 		}()
 	default:
 		e.metrics.dualResolveDropped.Inc()
@@ -536,22 +584,111 @@ func (e *Engine) tsdbSectionsResolver(ctx context.Context, tenantID string) phys
 	}
 }
 
-// countScanTargets counts the number of ScanTypeDataObject targets in a plan.
-func countScanTargets(plan *physical.Plan) int {
-	count := 0
+type sectionKey struct {
+	Location string
+	Section  int
+}
+
+func (k sectionKey) String() string {
+	return fmt.Sprintf("%s/%d", k.Location, k.Section)
+}
+
+type resolvedSection struct {
+	Key       sectionKey
+	StreamIDs []int64
+	TimeRange physical.TimeRange
+}
+
+// extractScanSections walks a physical plan and returns details of every
+// DataObject scan target, including location, section index, and stream IDs.
+func extractScanSections(plan *physical.Plan) []resolvedSection {
+	var sections []resolvedSection
 	for _, root := range plan.Roots() {
 		_ = plan.DFSWalk(root, func(n physical.Node) error {
 			if ss, ok := n.(*physical.ScanSet); ok {
 				for _, t := range ss.Targets {
-					if t.Type == physical.ScanTypeDataObject {
-						count++
+					if t.Type == physical.ScanTypeDataObject && t.DataObject != nil {
+					sections = append(sections, resolvedSection{
+						Key: sectionKey{
+							Location: string(t.DataObject.Location),
+							Section:  t.DataObject.Section,
+						},
+						StreamIDs: t.DataObject.StreamIDs,
+						TimeRange: t.DataObject.MaxTimeRange,
+					})
 					}
 				}
 			}
 			return nil
 		}, dag.PreOrderWalk)
 	}
-	return count
+	return sections
+}
+
+// countScanTargets counts the number of ScanTypeDataObject targets in a plan.
+func countScanTargets(plan *physical.Plan) int {
+	return len(extractScanSections(plan))
+}
+
+// comparisonResult holds the outcome of comparing metastore and IGW sections.
+type comparisonResult struct {
+	MsCount          int
+	IgwCount         int
+	IgwSupersetOfMs  bool
+	MissingFromIgw   []sectionKey
+	StreamMismatches []sectionKey
+	TimeMismatches   []sectionKey
+}
+
+// compareSections checks whether the index-gateway resolved sections are a
+// superset of the metastore sections, and whether stream IDs and time ranges
+// match for sections present in both.
+func compareSections(msSections, igwSections []resolvedSection) comparisonResult {
+	type igwEntry struct {
+		StreamIDs []int64
+		TimeRange physical.TimeRange
+	}
+
+	igwMap := make(map[sectionKey]igwEntry, len(igwSections))
+	for _, s := range igwSections {
+		ids := make([]int64, len(s.StreamIDs))
+		copy(ids, s.StreamIDs)
+		slices.Sort(ids)
+		igwMap[s.Key] = igwEntry{StreamIDs: ids, TimeRange: s.TimeRange}
+	}
+
+	var (
+		missingFromIgw   []sectionKey
+		streamMismatches []sectionKey
+		timeMismatches   []sectionKey
+	)
+
+	for _, ms := range msSections {
+		entry, found := igwMap[ms.Key]
+		if !found {
+			missingFromIgw = append(missingFromIgw, ms.Key)
+			continue
+		}
+		msIDs := make([]int64, len(ms.StreamIDs))
+		copy(msIDs, ms.StreamIDs)
+		slices.Sort(msIDs)
+		if !slices.Equal(msIDs, entry.StreamIDs) {
+			streamMismatches = append(streamMismatches, ms.Key)
+		}
+		if !ms.TimeRange.Start.Truncate(time.Millisecond).Equal(entry.TimeRange.Start.Truncate(time.Millisecond)) ||
+			!ms.TimeRange.End.Truncate(time.Millisecond).Equal(entry.TimeRange.End.Truncate(time.Millisecond)) {
+			timeMismatches = append(timeMismatches, ms.Key)
+		}
+	}
+
+	return comparisonResult{
+		MsCount:          len(msSections),
+		IgwCount:         len(igwSections),
+		IgwSupersetOfMs:  len(missingFromIgw) == 0,
+		MissingFromIgw:   missingFromIgw,
+		StreamMismatches: streamMismatches,
+		TimeMismatches:   timeMismatches,
+	}
 }
 
 func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string, cacheEnabled bool) physical.MetastoreSectionsResolver {
