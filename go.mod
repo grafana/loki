@@ -46,7 +46,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // remember to update loki-build-image/Dockerfile too
 	github.com/gogo/status v1.1.1
 	github.com/golang/protobuf v1.5.4
-	github.com/golang/snappy v1.0.0
+	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/go-cmp v0.7.0
 	github.com/google/renameio/v2 v2.0.2
 	github.com/google/uuid v1.6.0
