@@ -165,7 +165,6 @@ func (b *rateBatcher) Add(ctx context.Context, tenant string, streams []segmente
 		unknownSeen[hash] = struct{}{}
 		unknownStreams = append(unknownStreams, &proto.StreamMetadata{
 			StreamHash:      hash,
-			TotalSize:       uint64(stream.Stream.Size()),
 			IngestionPolicy: stream.Policy,
 		})
 	}

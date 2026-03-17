@@ -483,3 +483,48 @@ func TestRateBatcher_FallbackDeduplicatesHashes(t *testing.T) {
 	require.Len(t, client.requests[0].Streams, 1)
 	client.mu.Unlock()
 }
+
+func TestRateBatcher_FallbackDoesNotDoubleCountSize(t *testing.T) {
+	client := &mockUpdateRatesClient{}
+	batcher := newRateBatcher(
+		RateBatcherConfig{
+			BatchWindow: time.Hour,
+		},
+		client,
+		log.NewNopLogger(),
+		prometheus.NewRegistry(),
+	)
+
+	stream := segmentedStream{
+		KeyedStream: KeyedStream{
+			Stream: logproto.Stream{
+				Labels:  `{app="test"}`,
+				Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "hello world"}},
+			},
+			Policy: "default",
+		},
+		SegmentationKeyHash: 100,
+	}
+	expectedSize := uint64(stream.Stream.Size())
+	require.NotZero(t, expectedSize, "test stream must have non-zero size")
+
+	// Add triggers a fallback for the unknown hash, then flush sends the batch.
+	batcher.Add(context.Background(), "tenant1", []segmentedStream{stream})
+	batcher.flush(context.Background())
+
+	// Sum TotalSize reported for hash 100 across ALL requests (fallback + flush).
+	// If the fallback also reported TotalSize, this sum would be 2x expectedSize.
+	client.mu.Lock()
+	var totalReported uint64
+	for _, req := range client.requests {
+		for _, s := range req.Streams {
+			if s.StreamHash == 100 {
+				totalReported += s.TotalSize
+			}
+		}
+	}
+	client.mu.Unlock()
+
+	require.Equal(t, expectedSize, totalReported,
+		"TotalSize for hash 100 should be reported exactly once across all requests; got %d, want %d", totalReported, expectedSize)
+}
