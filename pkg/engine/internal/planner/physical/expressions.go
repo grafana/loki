@@ -3,6 +3,7 @@ package physical
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -44,6 +45,7 @@ type Expression interface {
 	Clone() Expression
 	Type() ExpressionType
 	isExpr()
+	Clamp(t TimeRange) Expression
 }
 
 func cloneExpressions[E Expression](exprs []E) []E {
@@ -118,6 +120,10 @@ func (*UnaryExpr) Type() ExpressionType {
 	return ExprTypeUnary
 }
 
+func (e *UnaryExpr) Clamp(t TimeRange) Expression {
+	return e
+}
+
 // BinaryExpr is an expression that implements the [BinaryExpression] interface.
 type BinaryExpr struct {
 	Left, Right Expression
@@ -145,6 +151,33 @@ func (*BinaryExpr) Type() ExpressionType {
 	return ExprTypeBinary
 }
 
+func (e *BinaryExpr) Clamp(t TimeRange) Expression {
+	col, ok := e.Left.(*ColumnExpr)
+	if !ok || col.Ref.Column != types.ColumnNameBuiltinTimestamp || col.Ref.Type != types.ColumnTypeBuiltin {
+		return e
+	}
+	lit, ok := e.Right.(*LiteralExpr)
+	if !ok || lit.ValueType() != types.Loki.Timestamp {
+		return e
+	}
+	ts, ok := lit.Value().(types.Timestamp)
+	if !ok {
+		return e
+	}
+	t2 := time.Unix(0, int64(ts))
+	switch e.Op {
+	case types.BinaryOpGte, types.BinaryOpGt:
+		if t2.Before(t.Start) {
+			ts = types.Timestamp(t.Start.UnixNano())
+		}
+	case types.BinaryOpLt, types.BinaryOpLte:
+		if t2.After(t.End) {
+			ts = types.Timestamp(t.End.UnixNano())
+		}
+	}
+	return e
+}
+
 // LiteralExpr is an expression that implements the [LiteralExpression] interface.
 type LiteralExpr struct {
 	inner types.Literal
@@ -167,6 +200,11 @@ func (e *LiteralExpr) String() string {
 // Type returns the type of the [LiteralExpr].
 func (*LiteralExpr) Type() ExpressionType {
 	return ExprTypeLiteral
+}
+
+func (e *LiteralExpr) Clamp(t TimeRange) Expression {
+
+	return e
 }
 
 // ValueType returns the kind of value represented by the literal.
@@ -221,6 +259,11 @@ func (e *ColumnExpr) Type() ExpressionType {
 	return ExprTypeColumn
 }
 
+func (e *ColumnExpr) Clamp(t TimeRange) Expression {
+
+	return e
+}
+
 // VariadicExpr is an expression that implements the [FunctionExpression] interface.
 type VariadicExpr struct {
 	// Op is the function operation to apply to the parameters
@@ -252,4 +295,9 @@ func (e *VariadicExpr) String() string {
 // Type returns the type of the [VariadicExpr].
 func (*VariadicExpr) Type() ExpressionType {
 	return ExprTypeVariadic
+}
+
+func (e *VariadicExpr) Clamp(t TimeRange) Expression {
+
+	return e
 }

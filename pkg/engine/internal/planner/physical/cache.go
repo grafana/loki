@@ -208,7 +208,7 @@ func (s *DataObjScan) CacheKey(_ context.Context) string {
 	}
 	predicates := make([]string, len(s.Predicates))
 	for i, p := range s.Predicates {
-		predicates[i] = p.String()
+		predicates[i] = p.Clamp(s.MaxTimeRange).String()
 	}
 	return fmt.Sprintf("DataObjScan{location=%s,section=%d,stream_ids=[%s],projections=[%s],predicates=[%s],max_time_range_start=%s,max_time_range_end=%s}",
 		s.Location, s.Section,
