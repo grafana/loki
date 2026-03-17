@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -58,13 +59,22 @@ const dayWindow = 24 * time.Hour
 // them by day, and adds the series to retained per-day index_tsdb.Builders.
 // The builders are accumulated across calls; call Store to flush them.
 func (b *dataobjTSDBBuilder) Append(ctx context.Context, obj *dataobj.Object, objectPath string) error {
-	streamLabels, err := collectStreamLabels(ctx, obj)
-	if err != nil {
-		return err
-	}
+	g, gctx := errgroup.WithContext(ctx)
 
-	streamSectionMetas, err := collectSectionMetas(ctx, obj, objectPath)
-	if err != nil {
+	var streamLabels map[streamKey]labels.Labels
+	var streamSectionMetas map[streamKey][]sectionref.SectionMeta
+
+	g.Go(func() error {
+		var err error
+		streamLabels, err = collectStreamLabels(gctx, obj)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		streamSectionMetas, err = collectSectionMetas(gctx, obj, objectPath)
+		return err
+	})
+	if err := g.Wait(); err != nil {
 		return err
 	}
 	if len(streamSectionMetas) == 0 {

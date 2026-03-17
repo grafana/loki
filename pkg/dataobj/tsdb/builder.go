@@ -1,9 +1,11 @@
 package tsdb
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -202,6 +204,7 @@ func (p *Builder) tryFlush(ctx context.Context) error {
 	if time.Since(p.lastFlush) > flushInterval {
 		if err := p.tsdbBuilder.Store(ctx); err != nil {
 			level.Error(p.logger).Log("msg", "failed to store tsdb builder", "err", err)
+			return err
 		}
 		err := p.client.CommitRecords(ctx, p.processedRecords...)
 		if err != nil {
@@ -211,9 +214,10 @@ func (p *Builder) tryFlush(ctx context.Context) error {
 			return err
 		}
 		p.metrics.incCommitsTotal()
+		elapsed := time.Since(p.lastFlush)
 		p.lastFlush = time.Now()
 		p.processedRecords = p.processedRecords[:0]
-		level.Info(p.logger).Log("msg", "flushed tsdb builder", "time", time.Since(p.lastFlush))
+		level.Info(p.logger).Log("msg", "flushed tsdb builder", "duration", elapsed)
 	}
 	return nil
 }
@@ -238,9 +242,15 @@ func (p *Builder) processRecord(ctx context.Context, record *kgo.Record) {
 		return
 	}
 
-	obj, err := dataobj.FromBucket(calcCtx, p.readBucket, metastoreEvent.ObjectPath, 4*1024*1024)
+	objectBytes, err := downloadObject(calcCtx, p.readBucket, metastoreEvent.ObjectPath)
 	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to create object", "err", err)
+		level.Error(p.logger).Log("msg", "failed to download object", "err", err)
+		return
+	}
+
+	obj, err := dataobj.FromReaderAt(bytes.NewReader(objectBytes), int64(len(objectBytes)))
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to parse object", "err", err)
 		return
 	}
 
@@ -257,6 +267,32 @@ func (p *Builder) processRecord(ctx context.Context, record *kgo.Record) {
 		level.Error(p.logger).Log("msg", "failed to flush tsdb builder", "err", err)
 		return
 	}
+}
+
+// downloadObject downloads a full object from the bucket into memory.
+// Pre-allocates the buffer based on object attributes when possible.
+func downloadObject(ctx context.Context, bucket objstore.Bucket, path string) ([]byte, error) {
+	reader, err := bucket.Get(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("fetching object from storage: %w", err)
+	}
+	defer reader.Close()
+
+	attrs, err := bucket.Attributes(ctx, path)
+	if err == nil && attrs.Size > 0 {
+		buf := make([]byte, attrs.Size)
+		_, err = io.ReadFull(reader, buf)
+		if err != nil {
+			return nil, fmt.Errorf("reading object: %w", err)
+		}
+		return buf, nil
+	}
+
+	object, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("reading object: %w", err)
+	}
+	return object, nil
 }
 
 func (p *Builder) cleanupPartition(partition int32) {

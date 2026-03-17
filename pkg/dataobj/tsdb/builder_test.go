@@ -140,6 +140,11 @@ func TestTSDBBuilder(t *testing.T) {
 			Value:     eventBytes,
 			Partition: int32(0),
 		})
+
+		// Store after each record so each gets its own TSDB file
+		// (tryFlush only triggers after flushInterval, which won't
+		// elapse in tests).
+		require.NoError(t, p.tsdbBuilder.Store(ctx))
 	}
 
 	// There should be 2 files per object (a tsdb and section ref table)
