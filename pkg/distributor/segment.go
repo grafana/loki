@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"math/rand"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
@@ -48,9 +47,8 @@ type segmentationPartitionResolver struct {
 	logger                log.Logger
 
 	// Metrics.
-	failed          prometheus.Counter
-	randomlySharded prometheus.Counter
-	total           prometheus.Counter
+	failed prometheus.Counter
+	total  prometheus.Counter
 }
 
 // newSegmentationPartitionResolver returns a new segmentationPartitionResolver.
@@ -61,10 +59,6 @@ func newSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader r
 		failed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_segmentation_partition_resolver_keys_failed_total",
 			Help: "Total number of segmentation keys that could not be resolved.",
-		}),
-		randomlySharded: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_distributor_segmentation_partition_resolver_keys_randomly_sharded_total",
-			Help: "Total number of segmentation keys that fell back to a randomly choosing an active partition due to absent rate.",
 		}),
 		total: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_segmentation_partition_resolver_keys_total",
@@ -79,35 +73,35 @@ func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 	// We use a snapshot of the partition ring to ensure resolving the
 	// partition for a segmentation key is determinstic even if the ring
 	// changes.
-	ring := r.ringReader.PartitionRing()
-	if ring.ActivePartitionsCount() == 0 {
+	snapshot := r.ringReader.PartitionRing()
+	if snapshot.ActivePartitionsCount() == 0 {
 		// If there are no active partitions then we cannot write to any
 		// partition as we do not know if the partition we chose will have a
 		// consumer.
 		r.failed.Inc()
 		return 0, errors.New("no active partitions")
 	}
-	// Get a subring for the tenant based on their ingestion rate limit.
-	// This ensures that streams are not only co-located within the same
-	// segmentation key, but also segmentation keys for a tenant are as
-	// co-located as possible.
-	subring, err := r.getTenantSubring(ctx, ring, tenant, tenantRateBytes)
+	// Get a subring for the tenant based on their rate limit. This ensures
+	// that segmentation keys for a tenant are as co-located as possible.
+	subring, err := r.getTenantSubring(ctx, snapshot, tenant, tenantRateBytes)
 	if err != nil {
 		r.failed.Inc()
 		return 0, fmt.Errorf("failed to get tenant subring: %w", err)
 	}
 	// If rate bytes is 0, then we were unable to determine the rate (bytes/sec)
-	// for the segmentation key. When this happens we fallback to randomly
-	// selecting an active partition and incrementing the fallback metric.
+	// for the segmentation key. When this happens we can write the segmentation
+	// key to a specific partition.
 	if rateBytes == 0 {
-		r.randomlySharded.Inc()
-		activePartitionIDs := subring.ActivePartitionIDs()
-		rand.Shuffle(len(activePartitionIDs), func(i, j int) {
-			activePartitionIDs[i], activePartitionIDs[j] = activePartitionIDs[j], activePartitionIDs[i]
-		})
-		return activePartitionIDs[0], nil
+		return subring.ActivePartitionForKey(uint32(key.Sum64()))
 	}
-	subring, err = r.getSegmentationKeySubring(ctx, subring, key, rateBytes)
+	// Calculate the number of partitions needed for the current rate.
+	partitions := partitionsForRate(rateBytes, r.perPartitionRateBytes, uint64(subring.ActivePartitionsCount()))
+	if partitions == 1 {
+		// This is an optimization that reduces the number of expensive shuffle shards
+		// that need to be done.
+		return subring.ActivePartitionForKey(uint32(key.Sum64()))
+	}
+	subring, err = subring.ShuffleShard(string(key), partitions)
 	if err != nil {
 		r.failed.Inc()
 		return 0, fmt.Errorf("failed to get segmentation key subring: %w", err)
@@ -133,19 +127,12 @@ func (r *segmentationPartitionResolver) getTenantSubring(_ context.Context, ring
 	return ring.ShuffleShard(tenant, int(partitions))
 }
 
-func (r *segmentationPartitionResolver) getSegmentationKeySubring(_ context.Context, ring *ring.PartitionRing, key segmentationKey, rateBytes uint64) (*ring.PartitionRing, error) {
-	if rateBytes == 0 {
-		// If the rate is 0, return the full ring.
-		return ring, nil
-	}
-	// Use the rate of the segmentation key to shuffle shard the active
-	// partitions. The number of partitions in the shuffle is calculated as
-	// current rate divided by the expected per-tenant rate per partition.
-	partitions := rateBytes / r.perPartitionRateBytes
+// partitionsForRates returns the number of partitions for the rate.
+func partitionsForRate(rateBytes, perPartitionRateBytes, numPartitions uint64) int {
+	partitions := rateBytes / perPartitionRateBytes
 	// Must be at least 1 partition.
 	partitions = max(partitions, 1)
-	// Must not exceed the number of active partitions.
-	partitions = min(partitions, uint64(ring.ActivePartitionsCount()))
-	// Shuffle shard.
-	return ring.ShuffleShard(string(key), int(partitions))
+	// Must not exceed the total number of partitions.
+	partitions = min(partitions, numPartitions)
+	return int(partitions)
 }
