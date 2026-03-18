@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"hash/fnv"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,7 +20,7 @@ type segmentationKey string
 
 // Sum64 returns a 64 bit, non-cryptographic hash of the key.
 func (key segmentationKey) Sum64() uint64 {
-	h := fnv.New64a()
+	h := xxhash.New()
 	// Use a reserved word here to avoid any possible hash conflicts with
 	// streams.
 	h.Write([]byte("__loki_segmentation_key__"))
