@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
@@ -135,6 +136,31 @@ func TestTaskCacheKey(t *testing.T) {
 		require.NotEmpty(t, key)
 		require.Equal(t, TaskCacheMetastore, cacheType)
 	})
+}
+
+func TestDataObjScanCacheKeyClampsTimestampPredicates(t *testing.T) {
+	ctx := t.Context()
+	start := time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC)
+	end := time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC)
+	early := types.Timestamp(time.Date(2026, 3, 11, 12, 41, 44, 719000000, time.UTC).UnixNano())
+	late := types.Timestamp(time.Date(2026, 3, 18, 9, 41, 44, 976217699, time.UTC).UnixNano())
+	col := newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
+
+	scan := &DataObjScan{
+		Location:  "objects/fc/obj",
+		Section:   57,
+		StreamIDs: []int64{155, 377},
+		Predicates: []Expression{
+			&BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte},
+			&BinaryExpr{Left: col, Right: NewLiteral(late), Op: types.BinaryOpLt},
+		},
+		MaxTimeRange: TimeRange{Start: start, End: end},
+	}
+	key := scan.CacheKey(ctx)
+	require.Contains(t, key, util.FormatTimeRFC3339Nano(start))
+	require.Contains(t, key, util.FormatTimeRFC3339Nano(end))
+	require.NotContains(t, key, util.FormatTimeRFC3339Nano(time.Unix(0, int64(early))))
+	require.NotContains(t, key, util.FormatTimeRFC3339Nano(time.Unix(0, int64(late))))
 }
 
 func TestWrapWithCacheIfSupported(t *testing.T) {

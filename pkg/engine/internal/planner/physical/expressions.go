@@ -151,7 +151,10 @@ func (*BinaryExpr) Type() ExpressionType {
 	return ExprTypeBinary
 }
 
-func (e *BinaryExpr) Clamp(t TimeRange) Expression {
+func (e *BinaryExpr) Clamp(tr TimeRange) Expression {
+	if tr.IsZero() {
+		return e
+	}
 	col, ok := e.Left.(*ColumnExpr)
 	if !ok || col.Ref.Column != types.ColumnNameBuiltinTimestamp || col.Ref.Type != types.ColumnTypeBuiltin {
 		return e
@@ -165,17 +168,25 @@ func (e *BinaryExpr) Clamp(t TimeRange) Expression {
 		return e
 	}
 	t2 := time.Unix(0, int64(ts))
+	orig := ts
 	switch e.Op {
 	case types.BinaryOpGte, types.BinaryOpGt:
-		if t2.Before(t.Start) {
-			ts = types.Timestamp(t.Start.UnixNano())
+		if t2.Before(tr.Start) {
+			ts = types.Timestamp(tr.Start.UnixNano())
 		}
 	case types.BinaryOpLt, types.BinaryOpLte:
-		if t2.After(t.End) {
-			ts = types.Timestamp(t.End.UnixNano())
+		if t2.After(tr.End) {
+			ts = types.Timestamp(tr.End.UnixNano())
 		}
 	}
-	return e
+	if ts == orig {
+		return e
+	}
+	return &BinaryExpr{
+		Left:  e.Left,
+		Right: NewLiteral(ts),
+		Op:    e.Op,
+	}
 }
 
 // LiteralExpr is an expression that implements the [LiteralExpression] interface.
