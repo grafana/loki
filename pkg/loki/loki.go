@@ -88,7 +88,7 @@ import (
 type Config struct {
 	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
 	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
-	LBAC         labelaccess.Config    `yaml:"lbac,omitempty" category:"experimental"`
+	LBAC         labelaccess.Config     `yaml:"lbac,omitempty" category:"experimental"`
 	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
@@ -556,7 +556,6 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 // dependencies
 func (t *Loki) ListTargets() {
 	green := color.New(color.FgGreen, color.Bold)
-	red := color.New(color.FgRed)
 	if rt.GOOS == "windows" {
 		green.DisableColor()
 	}
@@ -566,8 +565,6 @@ func (t *Loki) ListTargets() {
 		for _, n := range t.ModuleManager.DependenciesForModule(m) {
 			if t.ModuleManager.IsUserVisibleModule(n) {
 				fmt.Fprintln(os.Stdout, " ", n)
-			} else {
-				fmt.Fprintln(os.Stdout, " ", red.Sprint(n))
 			}
 		}
 	}
