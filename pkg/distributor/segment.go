@@ -123,14 +123,8 @@ func (r *segmentationPartitionResolver) getTenantSubring(_ context.Context, ring
 		// If the tenant has no limit, return the full ring.
 		return ring, nil
 	}
-	// The size of the subring is calculated as the tenant's ingestion rate
-	// limit divided by the expected per-tenant rate per partition.
-	partitions := tenantRateBytes / r.perPartitionRateBytes
-	// Must be at least 1 partition.
-	partitions = max(partitions, 1)
-	// Must not exceed the number of active partitions.
-	partitions = min(partitions, uint64(ring.ActivePartitionsCount()))
-	return ring.ShuffleShard(tenant, int(partitions))
+	numShuffleShardPartitions := numPartitionsForRate(tenantRateBytes, r.perPartitionRateBytes, ring.ActivePartitionsCount())
+	return ring.ShuffleShard(tenant, numShuffleShardPartitions)
 }
 
 func (r *segmentationPartitionResolver) getSegmentationKeySubring(_ context.Context, ring *ring.PartitionRing, key segmentationKey, rateBytes uint64) (*ring.PartitionRing, error) {
@@ -138,14 +132,19 @@ func (r *segmentationPartitionResolver) getSegmentationKeySubring(_ context.Cont
 		// If the rate is 0, return the full ring.
 		return ring, nil
 	}
-	// Use the rate of the segmentation key to shuffle shard the active
-	// partitions. The number of partitions in the shuffle is calculated as
-	// current rate divided by the expected per-tenant rate per partition.
-	partitions := rateBytes / r.perPartitionRateBytes
+	numShuffleShardPartitions := numPartitionsForRate(rateBytes, r.perPartitionRateBytes, ring.ActivePartitionsCount())
+	return ring.ShuffleShard(string(key), numShuffleShardPartitions)
+}
+
+// numPartitionsForRate returns the number of partitions needed to keep within
+// perPartitionRateBytes. It cannot exceed the total number of partitions.
+func numPartitionsForRate(rateBytes, perPartitionRateBytes uint64, numPartitions int) int {
+	partitions := rateBytes / perPartitionRateBytes
 	// Must be at least 1 partition.
 	partitions = max(partitions, 1)
-	// Must not exceed the number of active partitions.
-	partitions = min(partitions, uint64(ring.ActivePartitionsCount()))
-	// Shuffle shard.
-	return ring.ShuffleShard(string(key), int(partitions))
+	// Must not exceed the total number of partitions.
+	partitions = min(partitions, uint64(numPartitions))
+	// We can convert back to int here because partitions is guaranteed to be less
+	// than or equal to the number of partitions, which is an int.
+	return int(partitions)
 }
