@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
@@ -34,10 +35,25 @@ func getSegmentationKey(stream KeyedStream) (segmentationKey, error) {
 	if err != nil {
 		return "", err
 	}
-	if serviceName := labels.Get("service_name"); serviceName != "" {
-		return segmentationKey(serviceName), nil
+	sb := strings.Builder{}
+	if cluster := labels.Get("cluster"); cluster != "" {
+		sb.WriteString(cluster)
+	} else {
+		sb.WriteString("unknown_cluster")
 	}
-	return segmentationKey("unknown_service"), nil
+	sb.WriteString("/")
+	if namespace := labels.Get("namespace"); namespace != "" {
+		sb.WriteString(namespace)
+	} else {
+		sb.WriteString("unknown_namespace")
+	}
+	sb.WriteString("/")
+	if serviceName := labels.Get("service_name"); serviceName != "" {
+		sb.WriteString(serviceName)
+	} else {
+		sb.WriteString("unknown_service")
+	}
+	return segmentationKey(sb.String()), nil
 }
 
 // segmentationPartitionResolver resolves the partition for a segmentation key.
@@ -89,13 +105,13 @@ func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 		return 0, fmt.Errorf("failed to get tenant subring: %w", err)
 	}
 	// If rate bytes is 0, then we were unable to determine the rate (bytes/sec)
-	// for the segmentation key. When this happens we can write the segmentation
-	// key to a specific partition.
+	// for the segmentation key. When this happens we can write the entire
+	// segmentation key to an active partition.
 	if rateBytes == 0 {
 		return subring.ActivePartitionForKey(uint32(key.Sum64()))
 	}
 	// Calculate the number of partitions needed for the current rate.
-	partitions := partitionsForRate(rateBytes, r.perPartitionRateBytes, uint64(subring.ActivePartitionsCount()))
+	partitions := numPartitionsForRate(rateBytes, r.perPartitionRateBytes, subring.ActivePartitionsCount())
 	if partitions == 1 {
 		// This is an optimization that reduces the number of expensive shuffle shards
 		// that need to be done.
@@ -114,25 +130,20 @@ func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 // getTenantRing returns a subring for the tenant based on their rate limit.
 func (r *segmentationPartitionResolver) getTenantSubring(_ context.Context, ring *ring.PartitionRing, tenant string, tenantRateBytes uint64) (*ring.PartitionRing, error) {
 	if tenantRateBytes == 0 {
-		// If the tenant has no limit, return the full ring.
 		return ring, nil
 	}
-	// The size of the subring is calculated as the tenant's ingestion rate
-	// limit divided by the expected per-tenant rate per partition.
-	partitions := tenantRateBytes / r.perPartitionRateBytes
-	// Must be at least 1 partition.
-	partitions = max(partitions, 1)
-	// Must not exceed the number of active partitions.
-	partitions = min(partitions, uint64(ring.ActivePartitionsCount()))
-	return ring.ShuffleShard(tenant, int(partitions))
+	numActivePartitions := ring.ActivePartitionsCount()
+	numShardPartitions := numPartitionsForRate(tenantRateBytes, r.perPartitionRateBytes, numActivePartitions)
+	return ring.ShuffleShard(tenant, numShardPartitions)
 }
 
-// partitionsForRates returns the number of partitions for the rate.
-func partitionsForRate(rateBytes, perPartitionRateBytes, numPartitions uint64) int {
+// numPartitionsForRate returns the number of partitions needed to keep within
+// perPartitionRateBytes. It cannot exceed the total number of partitions.
+func numPartitionsForRate(rateBytes, perPartitionRateBytes uint64, numPartitions int) int {
 	partitions := rateBytes / perPartitionRateBytes
 	// Must be at least 1 partition.
 	partitions = max(partitions, 1)
 	// Must not exceed the total number of partitions.
-	partitions = min(partitions, numPartitions)
+	partitions = min(partitions, uint64(numPartitions))
 	return int(partitions)
 }
