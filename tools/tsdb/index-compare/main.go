@@ -2,12 +2,13 @@ package main
 
 import (
 	"compress/gzip"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"io"
 	"math"
 	"os"
-	"sort"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -19,10 +20,16 @@ type fileStats struct {
 	label            string
 	compressedSize   int64
 	uncompressedSize int64
-	totalSeries      int
-	totalChunks      int64
-	chunksPerSeries  []int
-	uniqueChecksums  map[uint32]struct{}
+
+	totalSeries        int
+	totalChunks        int64
+	maxChunksPerSeries int
+
+	sidecarCompressedSize   int64
+	sidecarUncompressedSize int64
+	sidecarEntries          uint32
+	sidecarUniquePaths      uint32
+	sidecarPresent          bool
 }
 
 func main() {
@@ -30,26 +37,34 @@ func main() {
 	chunksPath := flag.String("chunks", "", "path to the chunk-based compacted .tsdb.gz file")
 	flag.Parse()
 
-	if *dataobjPath == "" || *chunksPath == "" {
-		fmt.Fprintln(os.Stderr, "usage: index-compare --dataobj <path.tsdb.gz> --chunks <path.tsdb.gz>")
+	if *dataobjPath == "" && *chunksPath == "" {
+		fmt.Fprintln(os.Stderr, "usage: index-compare [--dataobj <path.tsdb.gz>] [--chunks <path.tsdb.gz>]")
 		os.Exit(1)
 	}
 
-	fmt.Println("=== Analyzing chunk-based TSDB ===")
-	chunkStats, err := analyzeFile(*chunksPath, "chunks")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error analyzing chunks file: %v\n", err)
-		os.Exit(1)
+	var allStats []*fileStats
+
+	if *chunksPath != "" {
+		fmt.Fprintf(os.Stderr, "=== Analyzing chunks TSDB ===\n")
+		s, err := analyzeFile(*chunksPath, "chunks")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error analyzing chunks file: %v\n", err)
+			os.Exit(1)
+		}
+		allStats = append(allStats, s)
 	}
 
-	fmt.Println("\n=== Analyzing dataobj TSDB ===")
-	dataobjStats, err := analyzeFile(*dataobjPath, "dataobj")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error analyzing dataobj file: %v\n", err)
-		os.Exit(1)
+	if *dataobjPath != "" {
+		fmt.Fprintf(os.Stderr, "\n=== Analyzing dataobj TSDB ===\n")
+		s, err := analyzeFile(*dataobjPath, "dataobj")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error analyzing dataobj file: %v\n", err)
+			os.Exit(1)
+		}
+		allStats = append(allStats, s)
 	}
 
-	printComparison(chunkStats, dataobjStats)
+	printResults(allStats)
 }
 
 func analyzeFile(gzPath, label string) (*fileStats, error) {
@@ -59,14 +74,20 @@ func analyzeFile(gzPath, label string) (*fileStats, error) {
 	}
 
 	stats := &fileStats{
-		label:           label,
-		compressedSize:  info.Size(),
-		uniqueChecksums: make(map[uint32]struct{}),
+		label:          label,
+		compressedSize: info.Size(),
 	}
 
-	fmt.Printf("compressed size: %s\n", humanBytes(stats.compressedSize))
-	fmt.Println("decompressing to temp file...")
+	fmt.Fprintf(os.Stderr, "  compressed: %s\n", humanBytes(stats.compressedSize))
 
+	// Analyze sidecar if present.
+	sidecarPath := deriveSidecarPath(gzPath)
+	if sidecarPath != "" {
+		analyzeSidecar(stats, sidecarPath)
+	}
+
+	// Decompress TSDB.
+	fmt.Fprintf(os.Stderr, "  decompressing TSDB...\n")
 	tmpFile, err := decompressToTemp(gzPath)
 	if err != nil {
 		return nil, fmt.Errorf("decompress: %w", err)
@@ -74,7 +95,6 @@ func analyzeFile(gzPath, label string) (*fileStats, error) {
 	defer func() {
 		name := tmpFile.Name()
 		tmpFile.Close()
-		fmt.Printf("cleaning up temp file: %s\n", name)
 		os.Remove(name)
 	}()
 
@@ -83,18 +103,18 @@ func analyzeFile(gzPath, label string) (*fileStats, error) {
 		return nil, fmt.Errorf("stat temp: %w", err)
 	}
 	stats.uncompressedSize = tmpInfo.Size()
-	fmt.Printf("uncompressed size: %s\n", humanBytes(stats.uncompressedSize))
+	fmt.Fprintf(os.Stderr, "  uncompressed: %s\n", humanBytes(stats.uncompressedSize))
 
 	tmpFile.Close()
 
-	fmt.Println("opening TSDB index...")
+	// Open and iterate.
+	fmt.Fprintf(os.Stderr, "  iterating series...\n")
 	reader, err := index.NewFileReader(tmpFile.Name())
 	if err != nil {
 		return nil, fmt.Errorf("open index: %w", err)
 	}
 	defer reader.Close()
 
-	fmt.Println("iterating series...")
 	p, err := reader.Postings("", nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("get postings: %w", err)
@@ -105,7 +125,6 @@ func analyzeFile(gzPath, label string) (*fileStats, error) {
 		chks []index.ChunkMeta
 	)
 
-	seriesCount := 0
 	for p.Next() {
 		chks = chks[:0]
 		_, err := reader.Series(p.At(), 0, math.MaxInt64, &ls, &chks)
@@ -113,26 +132,111 @@ func analyzeFile(gzPath, label string) (*fileStats, error) {
 			return nil, fmt.Errorf("read series: %w", err)
 		}
 
-		nChunks := len(chks)
+		n := len(chks)
 		stats.totalSeries++
-		stats.totalChunks += int64(nChunks)
-		stats.chunksPerSeries = append(stats.chunksPerSeries, nChunks)
-
-		for i := range chks {
-			stats.uniqueChecksums[chks[i].Checksum] = struct{}{}
+		stats.totalChunks += int64(n)
+		if n > stats.maxChunksPerSeries {
+			stats.maxChunksPerSeries = n
 		}
 
-		seriesCount++
-		if seriesCount%100000 == 0 {
-			fmt.Printf("  processed %d series (%d chunks so far)...\n", seriesCount, stats.totalChunks)
+		if stats.totalSeries%500000 == 0 {
+			fmt.Fprintf(os.Stderr, "    %d series, %d chunks...\n", stats.totalSeries, stats.totalChunks)
 		}
 	}
 	if err := p.Err(); err != nil {
 		return nil, fmt.Errorf("postings iteration: %w", err)
 	}
 
-	fmt.Printf("done: %d series, %d chunk metas\n", stats.totalSeries, stats.totalChunks)
+	fmt.Fprintf(os.Stderr, "  done: %d series, %d chunks\n", stats.totalSeries, stats.totalChunks)
 	return stats, nil
+}
+
+// deriveSidecarPath converts a .tsdb.gz path to the corresponding .tsdb.sections.gz path.
+func deriveSidecarPath(tsdbGzPath string) string {
+	if strings.HasSuffix(tsdbGzPath, ".tsdb.gz") {
+		return strings.TrimSuffix(tsdbGzPath, ".gz") + ".sections.gz"
+	}
+	return ""
+}
+
+// analyzeSidecar parses the sidecar .sections.gz file header to extract
+// path count and entry count without loading the full table into memory.
+func analyzeSidecar(stats *fileStats, path string) {
+	info, err := os.Stat(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  sidecar: not found (%s)\n", path)
+		return
+	}
+
+	stats.sidecarPresent = true
+	stats.sidecarCompressedSize = info.Size()
+	fmt.Fprintf(os.Stderr, "  sidecar compressed: %s\n", humanBytes(stats.sidecarCompressedSize))
+
+	fmt.Fprintf(os.Stderr, "  decompressing sidecar...\n")
+	tmpFile, err := decompressToTemp(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  sidecar decompress failed: %v\n", err)
+		return
+	}
+	defer func() {
+		name := tmpFile.Name()
+		tmpFile.Close()
+		os.Remove(name)
+	}()
+
+	tmpInfo, err := tmpFile.Stat()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  sidecar stat failed: %v\n", err)
+		return
+	}
+	stats.sidecarUncompressedSize = tmpInfo.Size()
+	fmt.Fprintf(os.Stderr, "  sidecar uncompressed: %s\n", humanBytes(stats.sidecarUncompressedSize))
+
+	// Parse just the header to get pathCount and entryCount without loading everything.
+	pathCount, entryCount, err := parseSidecarHeader(tmpFile.Name())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  sidecar header parse failed: %v\n", err)
+		return
+	}
+
+	stats.sidecarUniquePaths = pathCount
+	stats.sidecarEntries = entryCount
+	fmt.Fprintf(os.Stderr, "  sidecar entries: %d, unique paths: %d\n", entryCount, pathCount)
+}
+
+// parseSidecarHeader reads only the pathCount and entryCount from the binary
+// format without loading the full entry table. The format is:
+//
+//	[uint32 pathCount] [paths...] [uint32 entryCount] [entries...]
+func parseSidecarHeader(filePath string) (pathCount, entryCount uint32, err error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer f.Close()
+
+	// Read pathCount.
+	if err := binary.Read(f, binary.LittleEndian, &pathCount); err != nil {
+		return 0, 0, fmt.Errorf("reading path count: %w", err)
+	}
+
+	// Skip over all path strings: each is [uint16 len][string bytes].
+	for i := uint32(0); i < pathCount; i++ {
+		var slen uint16
+		if err := binary.Read(f, binary.LittleEndian, &slen); err != nil {
+			return 0, 0, fmt.Errorf("reading path %d length: %w", i, err)
+		}
+		if _, err := f.Seek(int64(slen), io.SeekCurrent); err != nil {
+			return 0, 0, fmt.Errorf("skipping path %d: %w", i, err)
+		}
+	}
+
+	// Read entryCount.
+	if err := binary.Read(f, binary.LittleEndian, &entryCount); err != nil {
+		return 0, 0, fmt.Errorf("reading entry count: %w", err)
+	}
+
+	return pathCount, entryCount, nil
 }
 
 func decompressToTemp(gzPath string) (*os.File, error) {
@@ -148,111 +252,101 @@ func decompressToTemp(gzPath string) (*os.File, error) {
 	}
 	defer gz.Close()
 
-	tmp, err := os.CreateTemp("", "tsdb-compare-*.tsdb")
+	tmp, err := os.CreateTemp("", "tsdb-compare-*")
 	if err != nil {
 		return nil, err
 	}
 
-	n, err := io.Copy(tmp, gz)
-	if err != nil {
+	if _, err := io.Copy(tmp, gz); err != nil {
 		tmp.Close()
 		os.Remove(tmp.Name())
-		return nil, fmt.Errorf("decompress copy (%d bytes written): %w", n, err)
+		return nil, fmt.Errorf("decompress: %w", err)
 	}
 
-	fmt.Printf("decompressed %s to %s\n", humanBytes(n), tmp.Name())
 	return tmp, nil
 }
 
-func printComparison(chunkStats, dataobjStats *fileStats) {
-	sort.Ints(chunkStats.chunksPerSeries)
-	sort.Ints(dataobjStats.chunksPerSeries)
-
-	fmt.Println("\n========================================")
-	fmt.Println("         TSDB COMPARISON RESULTS")
-	fmt.Println("========================================")
-
+func printResults(allStats []*fileStats) {
+	fmt.Println()
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', tabwriter.AlignRight)
 
-	fmt.Fprintf(w, "\t%s\t%s\t\n", "chunks", "dataobj")
-	fmt.Fprintf(w, "compressed size\t%s\t%s\t\n", humanBytes(chunkStats.compressedSize), humanBytes(dataobjStats.compressedSize))
-	fmt.Fprintf(w, "uncompressed size\t%s\t%s\t\n", humanBytes(chunkStats.uncompressedSize), humanBytes(dataobjStats.uncompressedSize))
-	fmt.Fprintf(w, "total series\t%d\t%d\t\n", chunkStats.totalSeries, dataobjStats.totalSeries)
-	fmt.Fprintf(w, "total chunk metas\t%d\t%d\t\n", chunkStats.totalChunks, dataobjStats.totalChunks)
-
-	if chunkStats.totalSeries > 0 && dataobjStats.totalSeries > 0 {
-		chunkAvg := float64(chunkStats.totalChunks) / float64(chunkStats.totalSeries)
-		dataobjAvg := float64(dataobjStats.totalChunks) / float64(dataobjStats.totalSeries)
-		fmt.Fprintf(w, "avg chunks/series\t%.1f\t%.1f\t\n", chunkAvg, dataobjAvg)
+	// Header.
+	fmt.Fprintf(w, "\t")
+	for _, s := range allStats {
+		fmt.Fprintf(w, "%s\t", s.label)
 	}
+	fmt.Fprintln(w)
 
-	fmt.Fprintf(w, "median chunks/series\t%d\t%d\t\n",
-		percentile(chunkStats.chunksPerSeries, 50),
-		percentile(dataobjStats.chunksPerSeries, 50))
-	fmt.Fprintf(w, "p95 chunks/series\t%d\t%d\t\n",
-		percentile(chunkStats.chunksPerSeries, 95),
-		percentile(dataobjStats.chunksPerSeries, 95))
-	fmt.Fprintf(w, "p99 chunks/series\t%d\t%d\t\n",
-		percentile(chunkStats.chunksPerSeries, 99),
-		percentile(dataobjStats.chunksPerSeries, 99))
-	fmt.Fprintf(w, "max chunks/series\t%d\t%d\t\n",
-		maxVal(chunkStats.chunksPerSeries),
-		maxVal(dataobjStats.chunksPerSeries))
+	// TSDB sizes.
+	printRow(w, "compressed size", allStats, func(s *fileStats) string { return humanBytes(s.compressedSize) })
+	printRow(w, "uncompressed size", allStats, func(s *fileStats) string { return humanBytes(s.uncompressedSize) })
 
-	fmt.Fprintf(w, "series > 100 chunks\t%d\t%d\t\n",
-		countOver(chunkStats.chunksPerSeries, 100),
-		countOver(dataobjStats.chunksPerSeries, 100))
-	fmt.Fprintf(w, "series > 1k chunks\t%d\t%d\t\n",
-		countOver(chunkStats.chunksPerSeries, 1000),
-		countOver(dataobjStats.chunksPerSeries, 1000))
-	fmt.Fprintf(w, "series > 10k chunks\t%d\t%d\t\n",
-		countOver(chunkStats.chunksPerSeries, 10000),
-		countOver(dataobjStats.chunksPerSeries, 10000))
+	// Sidecar.
+	printRow(w, "sidecar compressed", allStats, func(s *fileStats) string {
+		if !s.sidecarPresent {
+			return "N/A"
+		}
+		return humanBytes(s.sidecarCompressedSize)
+	})
+	printRow(w, "sidecar uncompressed", allStats, func(s *fileStats) string {
+		if !s.sidecarPresent {
+			return "N/A"
+		}
+		return humanBytes(s.sidecarUncompressedSize)
+	})
+	printRow(w, "sidecar entries", allStats, func(s *fileStats) string {
+		if !s.sidecarPresent {
+			return "N/A"
+		}
+		return fmt.Sprintf("%d", s.sidecarEntries)
+	})
+	printRow(w, "sidecar unique paths", allStats, func(s *fileStats) string {
+		if !s.sidecarPresent {
+			return "N/A"
+		}
+		return fmt.Sprintf("%d", s.sidecarUniquePaths)
+	})
 
-	fmt.Fprintf(w, "unique checksums\t%d\t%d\t\n",
-		len(chunkStats.uniqueChecksums), len(dataobjStats.uniqueChecksums))
-
-	estChunkBytes := chunkStats.totalChunks * 14
-	estDataobjBytes := dataobjStats.totalChunks * 14
-	fmt.Fprintf(w, "est. chunk data bytes\t%s\t%s\t\n",
-		humanBytes(estChunkBytes), humanBytes(estDataobjBytes))
+	// Series / chunks.
+	printRow(w, "total series", allStats, func(s *fileStats) string { return fmt.Sprintf("%d", s.totalSeries) })
+	printRow(w, "total chunk metas", allStats, func(s *fileStats) string { return fmt.Sprintf("%d", s.totalChunks) })
+	printRow(w, "avg chunks/series", allStats, func(s *fileStats) string {
+		if s.totalSeries == 0 {
+			return "0"
+		}
+		return fmt.Sprintf("%.1f", float64(s.totalChunks)/float64(s.totalSeries))
+	})
+	printRow(w, "max chunks/series", allStats, func(s *fileStats) string { return fmt.Sprintf("%d", s.maxChunksPerSeries) })
 
 	w.Flush()
 
-	if chunkStats.totalChunks > 0 {
-		fmt.Printf("\n--- Amplification factor (dataobj / chunks) ---\n")
-		fmt.Printf("  compressed size:   %.2fx\n", float64(dataobjStats.compressedSize)/float64(chunkStats.compressedSize))
-		fmt.Printf("  uncompressed size: %.2fx\n", float64(dataobjStats.uncompressedSize)/float64(chunkStats.uncompressedSize))
-		fmt.Printf("  chunk metas:       %.2fx\n", float64(dataobjStats.totalChunks)/float64(chunkStats.totalChunks))
-		if chunkStats.totalSeries > 0 && dataobjStats.totalSeries > 0 {
-			chunkAvg := float64(chunkStats.totalChunks) / float64(chunkStats.totalSeries)
-			dataobjAvg := float64(dataobjStats.totalChunks) / float64(dataobjStats.totalSeries)
-			fmt.Printf("  avg chunks/series: %.2fx\n", dataobjAvg/chunkAvg)
+	// Amplification factors if we have both.
+	if len(allStats) == 2 {
+		a, b := allStats[0], allStats[1]
+		fmt.Printf("\n--- Amplification (%s / %s) ---\n", b.label, a.label)
+		if a.compressedSize > 0 {
+			fmt.Printf("  compressed size:   %.2fx\n", float64(b.compressedSize)/float64(a.compressedSize))
+		}
+		if a.uncompressedSize > 0 {
+			fmt.Printf("  uncompressed size: %.2fx\n", float64(b.uncompressedSize)/float64(a.uncompressedSize))
+		}
+		if a.totalChunks > 0 {
+			fmt.Printf("  chunk metas:       %.2fx\n", float64(b.totalChunks)/float64(a.totalChunks))
+		}
+		if a.totalSeries > 0 && b.totalSeries > 0 {
+			avgA := float64(a.totalChunks) / float64(a.totalSeries)
+			avgB := float64(b.totalChunks) / float64(b.totalSeries)
+			fmt.Printf("  avg chunks/series: %.2fx\n", avgB/avgA)
 		}
 	}
 }
 
-func percentile(sorted []int, p int) int {
-	if len(sorted) == 0 {
-		return 0
+func printRow(w *tabwriter.Writer, label string, allStats []*fileStats, fn func(*fileStats) string) {
+	fmt.Fprintf(w, "%s\t", label)
+	for _, s := range allStats {
+		fmt.Fprintf(w, "%s\t", fn(s))
 	}
-	idx := len(sorted) * p / 100
-	if idx >= len(sorted) {
-		idx = len(sorted) - 1
-	}
-	return sorted[idx]
-}
-
-func maxVal(sorted []int) int {
-	if len(sorted) == 0 {
-		return 0
-	}
-	return sorted[len(sorted)-1]
-}
-
-func countOver(sorted []int, threshold int) int {
-	idx := sort.SearchInts(sorted, threshold+1)
-	return len(sorted) - idx
+	fmt.Fprintln(w)
 }
 
 func humanBytes(b int64) string {
