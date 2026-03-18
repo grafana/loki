@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"hash/adler32"
+	"hash/fnv"
 	"net/http"
 	"net/url"
 	"sort"
@@ -34,24 +34,22 @@ var (
 // LabelPolicySet is used
 type LabelPolicySet map[string][]*types.LabelPolicy
 
-// hash iterates through the tenant map in ascending order and returns a base32 string of
-// and adler hash of all of the tenants
+// hash iterates through the tenant map in ascending order and returns a decimal string of
+// an FNV-64a hash of all of the tenants
 func (l LabelPolicySet) hash() string {
 	tenants := make([]string, 0, len(l))
 	for t := range l {
 		tenants = append(tenants, t)
 	}
-	h := adler32.New()
+	h := fnv.New64a()
 	sort.Strings(tenants)
 	for _, t := range tenants {
 		_, _ = h.Write([]byte(t))
 		for _, p := range l[t] {
-			data := p.String()
-			data = data[:len(data)-1]
 			_, _ = h.Write([]byte(p.String()))
 		}
 	}
-	return fmt.Sprintf("%d", h.Sum32())
+	return fmt.Sprintf("%d", h.Sum64())
 }
 
 func (l LabelPolicySet) String() string {
@@ -167,7 +165,7 @@ func ExtractLabelMatchersFromHeaders(headers http.Header) (LabelPolicySet, error
 	// Iterate through each set header value
 	for _, headerValue := range headerValues {
 		// Split the header value on a comma and iterate through each policy.
-		for _, v := range strings.Split(headerValue, ",") {
+		for v := range strings.SplitSeq(headerValue, ",") {
 			instanceName, policy, err := policyFromHeaderValue(v)
 			if err != nil {
 				return nil, err
