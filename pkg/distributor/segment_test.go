@@ -161,7 +161,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 	})
 }
 
-func TestSegmentationPartitionResolver_GetTenantSubring(t *testing.T) {
+func TestSegmentationPartitionResolver_TenantShuffleShard(t *testing.T) {
 	// Set up a fake partition ring with two active partitions.
 	ringWithActivePartitions := mockPartitionRingReader{}
 	ring, err := ring.NewPartitionRing(ring.PartitionRingDesc{
@@ -199,7 +199,7 @@ func TestSegmentationPartitionResolver_GetTenantSubring(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		resolver := newSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
 		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.getTenantSubring(t.Context(), ring, "tenant", 0)
+		subring, err := resolver.tenantShuffleShard(t.Context(), ring, "tenant", 0)
 		require.NoError(t, err)
 		require.Equal(t, ring, subring)
 	})
@@ -208,7 +208,7 @@ func TestSegmentationPartitionResolver_GetTenantSubring(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		resolver := newSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
 		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.getTenantSubring(t.Context(), ring, "tenant", 1024)
+		subring, err := resolver.tenantShuffleShard(t.Context(), ring, "tenant", 1024)
 		require.NoError(t, err)
 		require.Equal(t, 1, subring.ActivePartitionsCount())
 	})
@@ -217,69 +217,7 @@ func TestSegmentationPartitionResolver_GetTenantSubring(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		resolver := newSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
 		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.getTenantSubring(t.Context(), ring, "tenant", 2048)
-		require.NoError(t, err)
-		require.Equal(t, 2, subring.ActivePartitionsCount())
-	})
-}
-
-func TestSegmentationPartitionResolver_GetSegmentationKeySubring(t *testing.T) {
-	// Set up a fake partition ring with two active partitions.
-	ringWithActivePartitions := mockPartitionRingReader{}
-	ring, err := ring.NewPartitionRing(ring.PartitionRingDesc{
-		Partitions: map[int32]ring.PartitionDesc{
-			1: {
-				Id:             1,
-				Tokens:         []uint32{1},
-				State:          ring.PartitionActive,
-				StateTimestamp: time.Now().Unix(),
-			},
-			2: {
-				Id:             2,
-				Tokens:         []uint32{2},
-				State:          ring.PartitionActive,
-				StateTimestamp: time.Now().Unix(),
-			},
-		},
-		Owners: map[string]ring.OwnerDesc{
-			"owner1": {
-				OwnedPartition:   1,
-				State:            ring.OwnerActive,
-				UpdatedTimestamp: time.Now().Unix(),
-			},
-			"owner2": {
-				OwnedPartition:   2,
-				State:            ring.OwnerActive,
-				UpdatedTimestamp: time.Now().Unix(),
-			},
-		},
-	})
-	require.NoError(t, err)
-	ringWithActivePartitions.ring = ring
-
-	t.Run("no rate returns full ring", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		resolver := newSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
-		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.getSegmentationKeySubring(t.Context(), ring, segmentationKey("test"), 0)
-		require.NoError(t, err)
-		require.Equal(t, ring, subring)
-	})
-
-	t.Run("rate equals partition rate returns subring with one partition", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		resolver := newSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
-		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.getSegmentationKeySubring(t.Context(), ring, segmentationKey("test"), 1024)
-		require.NoError(t, err)
-		require.Equal(t, 1, subring.ActivePartitionsCount())
-	})
-
-	t.Run("rate exceeds partition rate returns subring with all partitions", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		resolver := newSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
-		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.getSegmentationKeySubring(t.Context(), ring, segmentationKey("test"), 2048)
+		subring, err := resolver.tenantShuffleShard(t.Context(), ring, "tenant", 2048)
 		require.NoError(t, err)
 		require.Equal(t, 2, subring.ActivePartitionsCount())
 	})

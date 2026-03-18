@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"math/rand"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
@@ -48,9 +47,8 @@ type segmentationPartitionResolver struct {
 	logger                log.Logger
 
 	// Metrics.
-	failed          prometheus.Counter
-	randomlySharded prometheus.Counter
-	total           prometheus.Counter
+	resolveFailed prometheus.Counter
+	resolveTotal  prometheus.Counter
 }
 
 // newSegmentationPartitionResolver returns a new segmentationPartitionResolver.
@@ -58,15 +56,11 @@ func newSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader r
 	return &segmentationPartitionResolver{
 		perPartitionRateBytes: perPartitionRateBytes,
 		ringReader:            ringReader,
-		failed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		resolveFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_segmentation_partition_resolver_keys_failed_total",
 			Help: "Total number of segmentation keys that could not be resolved.",
 		}),
-		randomlySharded: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_distributor_segmentation_partition_resolver_keys_randomly_sharded_total",
-			Help: "Total number of segmentation keys that fell back to a randomly choosing an active partition due to absent rate.",
-		}),
-		total: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		resolveTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_segmentation_partition_resolver_keys_total",
 			Help: "Total number of segmentation keys passed to the resolver.",
 		}),
@@ -75,7 +69,7 @@ func newSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader r
 }
 
 func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateBytes uint64) (int32, error) {
-	r.total.Inc()
+	r.resolveTotal.Inc()
 	// We use a snapshot of the partition ring to ensure resolving the
 	// partition for a segmentation key is determinstic even if the ring
 	// changes.
@@ -84,32 +78,32 @@ func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 		// If there are no active partitions then we cannot write to any
 		// partition as we do not know if the partition we chose will have a
 		// consumer.
-		r.failed.Inc()
+		r.resolveFailed.Inc()
 		return 0, errors.New("no active partitions")
 	}
 	// Get a subring for the tenant based on their ingestion rate limit.
 	// This ensures that streams are not only co-located within the same
 	// segmentation key, but also segmentation keys for a tenant are as
 	// co-located as possible.
-	subring, err := r.getTenantSubring(ctx, ring, tenant, tenantRateBytes)
+	subring, err := r.tenantShuffleShard(ctx, ring, tenant, tenantRateBytes)
 	if err != nil {
-		r.failed.Inc()
-		return 0, fmt.Errorf("failed to get tenant subring: %w", err)
+		r.resolveFailed.Inc()
+		return 0, fmt.Errorf("failed to shuffle shard tenant: %w", err)
 	}
-	// If rate bytes is 0, then we were unable to determine the rate (bytes/sec)
-	// for the segmentation key. When this happens we fallback to randomly
-	// selecting an active partition and incrementing the fallback metric.
+	// If the rate is 0, we cannot make a decision to shuffle shard the segmentation
+	// key. We fallback to choosing a partition for the segmentation key.
 	if rateBytes == 0 {
-		r.randomlySharded.Inc()
-		activePartitionIDs := subring.ActivePartitionIDs()
-		rand.Shuffle(len(activePartitionIDs), func(i, j int) {
-			activePartitionIDs[i], activePartitionIDs[j] = activePartitionIDs[j], activePartitionIDs[i]
-		})
-		return activePartitionIDs[0], nil
+		return subring.ActivePartitionForKey(uint32(key.Sum64()))
 	}
-	subring, err = r.getSegmentationKeySubring(ctx, subring, key, rateBytes)
+	numShuffleShardPartitions := numPartitionsForRate(rateBytes, r.perPartitionRateBytes, subring.ActivePartitionsCount())
+	// If the segmentation key is small enough that it does not need to be sharded,
+	// we can avoid doing an expensive shuffle shard.
+	if numShuffleShardPartitions == 1 {
+		return subring.ActivePartitionForKey(uint32(key.Sum64()))
+	}
+	subring, err = subring.ShuffleShard(string(key), numShuffleShardPartitions)
 	if err != nil {
-		r.failed.Inc()
+		r.resolveFailed.Inc()
 		return 0, fmt.Errorf("failed to get segmentation key subring: %w", err)
 	}
 	// TODO(grobinson): We need to use a different method that does not depend on
@@ -117,23 +111,14 @@ func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 	return subring.ActivePartitionForKey(hashKey)
 }
 
-// getTenantRing returns a subring for the tenant based on their rate limit.
-func (r *segmentationPartitionResolver) getTenantSubring(_ context.Context, ring *ring.PartitionRing, tenant string, tenantRateBytes uint64) (*ring.PartitionRing, error) {
+// tenantShuffleShard returns a subring for the tenant based on their rate limit.
+func (r *segmentationPartitionResolver) tenantShuffleShard(_ context.Context, ring *ring.PartitionRing, tenant string, tenantRateBytes uint64) (*ring.PartitionRing, error) {
+	// If the tenant has no limit, return the full ring.
 	if tenantRateBytes == 0 {
-		// If the tenant has no limit, return the full ring.
 		return ring, nil
 	}
 	numShuffleShardPartitions := numPartitionsForRate(tenantRateBytes, r.perPartitionRateBytes, ring.ActivePartitionsCount())
 	return ring.ShuffleShard(tenant, numShuffleShardPartitions)
-}
-
-func (r *segmentationPartitionResolver) getSegmentationKeySubring(_ context.Context, ring *ring.PartitionRing, key segmentationKey, rateBytes uint64) (*ring.PartitionRing, error) {
-	if rateBytes == 0 {
-		// If the rate is 0, return the full ring.
-		return ring, nil
-	}
-	numShuffleShardPartitions := numPartitionsForRate(rateBytes, r.perPartitionRateBytes, ring.ActivePartitionsCount())
-	return ring.ShuffleShard(string(key), numShuffleShardPartitions)
 }
 
 // numPartitionsForRate returns the number of partitions needed to keep within
