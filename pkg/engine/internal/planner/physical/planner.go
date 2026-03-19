@@ -767,10 +767,11 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("ParallelPushdown", plan).withRules(
 				&parallelPushdown{plan: plan},
 			),
-			newOptimization("ScanTimeRangePushup", plan).withRules(
-				&scanTimeRangePushup{plan: plan}),
 			newOptimization("ClampPredicates", plan).withRules(
 				&clampPredicates{plan: plan}),
+			// needs to happen after ClampPredicates
+			newOptimization("ScanTimeRangePushup", plan).withRules(
+				&scanTimeRangePushup{plan: plan}),
 			// Perform cleanups at the very end.
 			newOptimization("Cleanup", plan).withRules(
 				&removeNoopFilter{plan: plan},
