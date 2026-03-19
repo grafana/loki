@@ -121,7 +121,7 @@ require (
 	github.com/IBM/go-sdk-core/v5 v5.21.2
 	github.com/IBM/ibm-cos-sdk-go v1.13.0
 	github.com/apache/arrow-go/v18 v18.5.2
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.56.0
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.56.2
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.97.1
 	github.com/axiomhq/hyperloglog v0.2.6
 	github.com/bits-and-blooms/bloom/v3 v3.7.1
@@ -192,7 +192,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/elasticache v1.51.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.12 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.18 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.20 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.20 // indirect
 	github.com/aws/aws-sdk-go-v2/service/kafka v1.48.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/lightsail v1.50.11 // indirect
