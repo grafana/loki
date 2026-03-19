@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/integration/cluster"
 	"github.com/grafana/loki/v3/pkg/labelaccess"
 	"github.com/grafana/loki/v3/pkg/labelaccess/types"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
@@ -229,9 +230,7 @@ func TestAggregatedMetricsTestCases(t *testing.T) {
 				labelaccess.PolicyFromSelectorString(`{classification!="secret"}`),
 			},
 			labelValues: map[string][]string{
-				"classification": {"confidential", "secret"},
-				"env":            {"dev", "prod"},
-				"job":            {"varlog"},
+				"job": {"varlog"},
 			},
 			lines: []string{`ts=1 bytes=1024 count=10 job="varlog" service_name="varlog_service" env="dev" classification="confidential"`,
 				`ts=4 bytes=8192 count=40 job="varlog" service_name="varlog_service" env="prod" classification="notsecret"`},
@@ -257,7 +256,7 @@ func TestAggregatedMetricsTestCases(t *testing.T) {
 			},
 		},
 	}
-	t.Skip("This test is not complete")
+	//t.Skip("This test is not complete")
 	for _, testCase := range aggregatedMetricsTestCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			if testCase.createCluster == nil {
@@ -319,6 +318,7 @@ func (tc *testQueryAndLabelResults) ingestAggregatedMetrics(t *testing.T, tAll *
 	require.NoError(t, cliWrite.PushLogLine(
 		`ts=1 bytes=1024 count=10 job="varlog" service_name="varlog_service" env="dev" classification="confidential"`,
 		tc.now,
+		nil,
 		aggMetricLabels,
 	))
 
@@ -326,6 +326,7 @@ func (tc *testQueryAndLabelResults) ingestAggregatedMetrics(t *testing.T, tAll *
 	require.NoError(t, cliWrite.PushLogLine(
 		`ts=2 bytes=2048 count=20 job="varlog" service_name="varlog_service" env="dev" classification="secret"`,
 		tc.now.Add(-time.Second),
+		nil,
 		aggMetricLabels,
 	))
 
@@ -333,6 +334,7 @@ func (tc *testQueryAndLabelResults) ingestAggregatedMetrics(t *testing.T, tAll *
 	require.NoError(t, cliWrite.PushLogLine(
 		`ts=3 bytes=4096 count=30 job="varlog" service_name="varlog_service" env="prod" classification="secret"`,
 		tc.now.Add(-2*time.Second),
+		nil,
 		aggMetricLabels,
 	))
 
@@ -340,6 +342,7 @@ func (tc *testQueryAndLabelResults) ingestAggregatedMetrics(t *testing.T, tAll *
 	require.NoError(t, cliWrite.PushLogLine(
 		`ts=4 bytes=8192 count=40 job="varlog" service_name="varlog_service" env="prod" classification="notsecret"`,
 		tc.now.Add(-3*time.Second),
+		nil,
 		aggMetricLabels,
 	))
 
@@ -350,7 +353,8 @@ func (tc *testQueryAndLabelResults) aggregatedMetricsQuery(t *testing.T, qc *cli
 	t.Run("aggregated-metrics-query", func(t *testing.T) {
 
 		// query the available lines
-		output, err := qc.RunRangeQuery(context.Background(), aggregatedLogsQuery)
+		output, err := qc.RunRangeQuery(context.Background(), aggregatedLogsQuery,
+			client.Header{Name: "X-Query-Tags", Value: "source=" + constants.LogsDrilldownAppName})
 		require.NoError(t, err)
 		assert.Equal(t, "success", output.Status)
 		assert.Equal(t, "streams", output.Data.ResultType)
