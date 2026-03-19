@@ -48,22 +48,47 @@ type StringMatcher struct {
 
 // Match returns true if input matches the criteria in the given StringMatcher.
 func (sm StringMatcher) Match(input string) bool {
-	if sm.ignoreCase {
-		input = strings.ToLower(input)
-	}
 	switch {
 	case sm.exactMatch != nil:
+		if sm.ignoreCase {
+			input = strings.ToLower(input)
+		}
 		return input == *sm.exactMatch
 	case sm.prefixMatch != nil:
+		if sm.ignoreCase {
+			input = strings.ToLower(input)
+		}
 		return strings.HasPrefix(input, *sm.prefixMatch)
 	case sm.suffixMatch != nil:
+		if sm.ignoreCase {
+			input = strings.ToLower(input)
+		}
 		return strings.HasSuffix(input, *sm.suffixMatch)
+	case sm.containsMatch != nil:
+		if sm.ignoreCase {
+			input = strings.ToLower(input)
+		}
+		return strings.Contains(input, *sm.containsMatch)
 	case sm.regexMatch != nil:
 		return grpcutil.FullMatchWithRegex(sm.regexMatch, input)
-	case sm.containsMatch != nil:
-		return strings.Contains(input, *sm.containsMatch)
 	}
 	return false
+}
+
+// newStrPtr allocates a new string that holds the value of input and returns a
+// pointer to it. ignoreCase controls if a lower case version of input is used.
+func newStrPtr(input *string, ignoreCase bool) *string {
+	if input == nil {
+		return nil
+	}
+
+	s := new(string)
+	if ignoreCase {
+		*s = strings.ToLower(*input)
+	} else {
+		*s = *input
+	}
+	return s
 }
 
 // StringMatcherFromProto is a helper function to create a StringMatcher from
@@ -78,26 +103,17 @@ func StringMatcherFromProto(matcherProto *v3matcherpb.StringMatcher) (StringMatc
 	matcher := StringMatcher{ignoreCase: matcherProto.GetIgnoreCase()}
 	switch mt := matcherProto.GetMatchPattern().(type) {
 	case *v3matcherpb.StringMatcher_Exact:
-		matcher.exactMatch = &mt.Exact
-		if matcher.ignoreCase {
-			*matcher.exactMatch = strings.ToLower(*matcher.exactMatch)
-		}
+		matcher.exactMatch = newStrPtr(&mt.Exact, matcher.ignoreCase)
 	case *v3matcherpb.StringMatcher_Prefix:
 		if matcherProto.GetPrefix() == "" {
 			return StringMatcher{}, errors.New("empty prefix is not allowed in StringMatcher")
 		}
-		matcher.prefixMatch = &mt.Prefix
-		if matcher.ignoreCase {
-			*matcher.prefixMatch = strings.ToLower(*matcher.prefixMatch)
-		}
+		matcher.prefixMatch = newStrPtr(&mt.Prefix, matcher.ignoreCase)
 	case *v3matcherpb.StringMatcher_Suffix:
 		if matcherProto.GetSuffix() == "" {
 			return StringMatcher{}, errors.New("empty suffix is not allowed in StringMatcher")
 		}
-		matcher.suffixMatch = &mt.Suffix
-		if matcher.ignoreCase {
-			*matcher.suffixMatch = strings.ToLower(*matcher.suffixMatch)
-		}
+		matcher.suffixMatch = newStrPtr(&mt.Suffix, matcher.ignoreCase)
 	case *v3matcherpb.StringMatcher_SafeRegex:
 		regex := matcherProto.GetSafeRegex().GetRegex()
 		re, err := regexp.Compile(regex)
@@ -109,40 +125,59 @@ func StringMatcherFromProto(matcherProto *v3matcherpb.StringMatcher) (StringMatc
 		if matcherProto.GetContains() == "" {
 			return StringMatcher{}, errors.New("empty contains is not allowed in StringMatcher")
 		}
-		matcher.containsMatch = &mt.Contains
-		if matcher.ignoreCase {
-			*matcher.containsMatch = strings.ToLower(*matcher.containsMatch)
-		}
+		matcher.containsMatch = newStrPtr(&mt.Contains, matcher.ignoreCase)
 	default:
 		return StringMatcher{}, fmt.Errorf("unrecognized string matcher: %+v", matcherProto)
 	}
 	return matcher, nil
 }
 
-// StringMatcherForTesting is a helper function to create a StringMatcher based
-// on the given arguments. Intended only for testing purposes.
-func StringMatcherForTesting(exact, prefix, suffix, contains *string, regex *regexp.Regexp, ignoreCase bool) StringMatcher {
-	sm := StringMatcher{
-		exactMatch:    exact,
-		prefixMatch:   prefix,
-		suffixMatch:   suffix,
-		regexMatch:    regex,
-		containsMatch: contains,
+// NewExactStringMatcher creates a string matcher that requires the input string
+// to exactly match the pattern specified here. The match will be case
+// insensitive if ignore_case is true.
+func NewExactStringMatcher(pattern string, ignoreCase bool) StringMatcher {
+	return StringMatcher{
+		exactMatch: newStrPtr(&pattern, ignoreCase),
+		ignoreCase: ignoreCase,
+	}
+}
+
+// NewPrefixStringMatcher creates a string matcher that requires the input
+// string to contain the prefix specified here. The match will be case
+// insensitive if ignore_case is true.
+func NewPrefixStringMatcher(prefix string, ignoreCase bool) StringMatcher {
+	return StringMatcher{
+		prefixMatch: newStrPtr(&prefix, ignoreCase),
+		ignoreCase:  ignoreCase,
+	}
+}
+
+// NewSuffixStringMatcher creates a string matcher that requires the input
+// string to contain the suffix specified here. The match will be case
+// insensitive if ignore_case is true.
+func NewSuffixStringMatcher(suffix string, ignoreCase bool) StringMatcher {
+	return StringMatcher{
+		suffixMatch: newStrPtr(&suffix, ignoreCase),
+		ignoreCase:  ignoreCase,
+	}
+}
+
+// NewContainsStringMatcher creates a string matcher that requires the input
+// string to contain the pattern specified here. The match will be case
+// insensitive if ignore_case is true.
+func NewContainsStringMatcher(pattern string, ignoreCase bool) StringMatcher {
+	return StringMatcher{
+		containsMatch: newStrPtr(&pattern, ignoreCase),
 		ignoreCase:    ignoreCase,
 	}
-	if ignoreCase {
-		switch {
-		case sm.exactMatch != nil:
-			*sm.exactMatch = strings.ToLower(*exact)
-		case sm.prefixMatch != nil:
-			*sm.prefixMatch = strings.ToLower(*prefix)
-		case sm.suffixMatch != nil:
-			*sm.suffixMatch = strings.ToLower(*suffix)
-		case sm.containsMatch != nil:
-			*sm.containsMatch = strings.ToLower(*contains)
-		}
+}
+
+// NewRegexStringMatcher creates a string matcher that requires the input string
+// to match the regular expression specified here.
+func NewRegexStringMatcher(regex *regexp.Regexp) StringMatcher {
+	return StringMatcher{
+		regexMatch: regex,
 	}
-	return sm
 }
 
 // ExactMatch returns the value of the configured exact match or an empty string

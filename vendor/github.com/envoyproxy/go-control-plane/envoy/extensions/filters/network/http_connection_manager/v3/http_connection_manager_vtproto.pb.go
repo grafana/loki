@@ -697,6 +697,18 @@ func (m *HttpConnectionManager) MarshalToSizedBufferVTStrict(dAtA []byte) (int, 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.StreamFlushTimeout != nil {
+		size, err := (*durationpb.Duration)(m.StreamFlushTimeout).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3
+		i--
+		dAtA[i] = 0xda
+	}
 	if m.Http1SafeMaxConnectionDuration {
 		i--
 		if m.Http1SafeMaxConnectionDuration {
@@ -3006,6 +3018,10 @@ func (m *HttpConnectionManager) SizeVT() (n int) {
 	}
 	if m.Http1SafeMaxConnectionDuration {
 		n += 3
+	}
+	if m.StreamFlushTimeout != nil {
+		l = (*durationpb.Duration)(m.StreamFlushTimeout).SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
