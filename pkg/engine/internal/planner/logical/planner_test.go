@@ -102,19 +102,21 @@ func TestConvertAST_Success(t *testing.T) {
 %6 = OR %4 %5
 %7 = MATCH_STR builtin.message "metric.go"
 %8 = MATCH_STR builtin.message "foo"
-%9 = AND %7 %8
-%10 = NOT_MATCH_RE builtin.message "(a|b|c)"
-%11 = AND %9 %10
-%12 = MAKETABLE [selector=%3, predicates=[%6, %11], shard=0_of_1]
-%13 = GTE builtin.timestamp 1970-01-01T01:00:00Z
-%14 = SELECT %12 [predicate=%13]
-%15 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%9 = MATCH_STR builtin.message "bar"
+%10 = OR %8 %9
+%11 = AND %7 %10
+%12 = NOT_MATCH_RE builtin.message "(a|b|c)"
+%13 = AND %11 %12
+%14 = MAKETABLE [selector=%3, predicates=[%6, %13], shard=0_of_1]
+%15 = GTE builtin.timestamp 1970-01-01T01:00:00Z
 %16 = SELECT %14 [predicate=%15]
-%17 = SELECT %16 [predicate=%6]
-%18 = SELECT %17 [predicate=%11]
-%19 = TOPK %18 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
-%20 = LOGQL_COMPAT %19
-RETURN %20
+%17 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%18 = SELECT %16 [predicate=%17]
+%19 = SELECT %18 [predicate=%6]
+%20 = SELECT %19 [predicate=%13]
+%21 = TOPK %20 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%22 = LOGQL_COMPAT %21
+RETURN %22
 `
 
 	require.Equal(t, expected, logicalPlan.String())
@@ -123,6 +125,84 @@ RETURN %20
 	PrintTree(&sb, logicalPlan.Value())
 
 	t.Logf("\n%s\n", sb.String())
+}
+
+func TestConvertAST_LineFilterOr(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    string
+		contains []string
+	}{
+		{
+			name:  "simple or",
+			query: `{app="loki"} |= "foo" or "bar"`,
+			contains: []string{
+				`MATCH_STR builtin.message "foo"`,
+				`MATCH_STR builtin.message "bar"`,
+				"OR %",
+			},
+		},
+		{
+			name:  "or with regex",
+			query: `{app="loki"} |~ "(?i)abc" or "(?i)def"`,
+			contains: []string{
+				`MATCH_RE builtin.message "(?i)abc"`,
+				`MATCH_RE builtin.message "(?i)def"`,
+				"OR %",
+			},
+		},
+		{
+			name:  "three-way or",
+			query: `{app="loki"} |= "a" or "b" or "c"`,
+			contains: []string{
+				`MATCH_STR builtin.message "a"`,
+				`MATCH_STR builtin.message "b"`,
+				`MATCH_STR builtin.message "c"`,
+				"OR %",
+			},
+		},
+		{
+			name:  "or preceded by and",
+			query: `{app="loki"} |= "first" |= "foo" or "bar"`,
+			contains: []string{
+				`MATCH_STR builtin.message "first"`,
+				`MATCH_STR builtin.message "foo"`,
+				`MATCH_STR builtin.message "bar"`,
+				"OR %",
+				"AND %",
+			},
+		},
+		{
+			name:  "negative filter or becomes and",
+			query: `{app="loki"} != "foo" or "bar"`,
+			contains: []string{
+				`NOT_MATCH_STR builtin.message "foo"`,
+				`NOT_MATCH_STR builtin.message "bar"`,
+				"AND %",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			q := &query{
+				statement: tc.query,
+				start:     3600,
+				end:       7200,
+				direction: logproto.BACKWARD,
+				limit:     1000,
+			}
+			plan, err := BuildPlan(context.Background(), q)
+			require.NoError(t, err)
+
+			planStr := plan.String()
+			t.Logf("\n%s\n", planStr)
+
+			for _, substr := range tc.contains {
+				require.Contains(t, planStr, substr, "plan should contain %q", substr)
+			}
+		})
+	}
 }
 
 func TestConvertAST_MetricQuery_Success(t *testing.T) {
