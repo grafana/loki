@@ -288,48 +288,69 @@ func TestScanTimeRangePushup(t *testing.T) {
 }
 
 func TestClampExpression(t *testing.T) {
-	tr := TimeRange{
-		Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
-		End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
-	}
 	col := newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
 	early := types.Timestamp(time.Date(2026, 3, 11, 12, 41, 44, 719000000, time.UTC).UnixNano())
 	late := types.Timestamp(time.Date(2026, 3, 18, 9, 41, 44, 976217699, time.UTC).UnixNano())
-
-	t.Run("GTE before range clamps to start", func(t *testing.T) {
-		e := &BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte}
-		got, clamped := clampExpression(e, tr)
-		require.True(t, clamped)
-		want := fmt.Sprintf("GTE(%s, %s)", col, util.FormatTimeRFC3339Nano(tr.Start))
-		require.Equal(t, want, got.String())
-		require.Equal(t, fmt.Sprintf("GTE(%s, %s)", col, util.FormatTimeRFC3339Nano(time.Unix(0, int64(early)))), e.String())
-	})
-
-	t.Run("LT after range clamps to end", func(t *testing.T) {
-		e := &BinaryExpr{Left: col, Right: NewLiteral(late), Op: types.BinaryOpLt}
-		got, clamped := clampExpression(e, tr)
-		require.True(t, clamped)
-		want := fmt.Sprintf("LT(%s, %s)", col, util.FormatTimeRFC3339Nano(tr.End))
-		require.Equal(t, want, got.String())
-	})
-
-	t.Run("zero TimeRange leaves expression unchanged", func(t *testing.T) {
-		e := &BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte}
-		got, clamped := clampExpression(e, TimeRange{})
-		require.False(t, clamped)
-		require.Equal(t, e.String(), got.String())
-	})
-
-	t.Run("non-timestamp binary expr unchanged", func(t *testing.T) {
-		e := &BinaryExpr{
-			Left:  newColumnExpr("level", types.ColumnTypeLabel),
-			Right: NewLiteral("info"),
-			Op:    types.BinaryOpEq,
-		}
-		got, clamped := clampExpression(e, tr)
-		require.False(t, clamped)
-		require.Equal(t, e.String(), got.String())
-	})
+	tests := []struct {
+		desc    string
+		e       Expression
+		tr      TimeRange
+		clamped bool
+		want    string
+	}{
+		{
+			desc: "GTE before range clamps to start",
+			e:    &BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte},
+			tr: TimeRange{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
+			},
+			clamped: true,
+			want:    fmt.Sprintf("GTE(%s, %s)", col, util.FormatTimeRFC3339Nano(time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC))),
+		},
+		{
+			desc: "LT after range clamps to end",
+			e:    &BinaryExpr{Left: col, Right: NewLiteral(late), Op: types.BinaryOpLt},
+			tr: TimeRange{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
+			},
+			clamped: true,
+			want:    fmt.Sprintf("LT(%s, %s)", col, util.FormatTimeRFC3339Nano(time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC))),
+		},
+		{
+			desc:    "zero TimeRange leaves expression unchanged",
+			e:       &BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte},
+			tr:      TimeRange{},
+			clamped: false,
+			want:    (&BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte}).String(),
+		},
+		{
+			desc: "non-timestamp binary expr unchange",
+			e: &BinaryExpr{
+				Left:  newColumnExpr("level", types.ColumnTypeLabel),
+				Right: NewLiteral("info"),
+				Op:    types.BinaryOpEq,
+			},
+			tr: TimeRange{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
+			},
+			clamped: false,
+			want: (&BinaryExpr{
+				Left:  newColumnExpr("level", types.ColumnTypeLabel),
+				Right: NewLiteral("info"),
+				Op:    types.BinaryOpEq,
+			}).String(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got, clamped := clampExpression(tt.e, tt.tr)
+			require.Equal(t, tt.clamped, clamped)
+			require.Equal(t, tt.want, got.String())
+		})
+	}
 }
 
 func TestGroupByPushdown(t *testing.T) {
