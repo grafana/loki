@@ -134,6 +134,10 @@ func (p *cachingPipeline) Close() {
 type arrowCacheAdapter struct {
 	cache          cache.Cache
 	snappyCompress bool
+
+	// maxSizeBytes is the maximum size of the cache entry.
+	// A value of 0 means no limit.
+	maxSizeBytes uint64
 }
 
 // Get fetches cached records for key. Returns the decoded records, the raw
@@ -258,7 +262,7 @@ type ArrowCache interface {
 }
 
 // TaskCacheRegistry maps TaskCacheType identifiers to backing cache stores.
-type TaskCacheRegistry map[physical.TaskCacheName]ArrowCache
+type TaskCacheRegistry map[physical.TaskCacheName]*arrowCacheAdapter
 
 // NewTaskCacheRegistry builds a registry that creates one independent cache per
 // task type, using type-specific prefixes derived from cfg.CacheConfig.Prefix.
@@ -268,7 +272,7 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 		return nil, nil
 	}
 
-	newCache := func(suffix string) (ArrowCache, error) {
+	newCache := func(suffix string) (*arrowCacheAdapter, error) {
 		cfgCopy := cfg.CacheConfig
 		cfgCopy.Prefix += suffix
 		c, err := cache.New(cfgCopy, reg, logger, stats.TaskResultCache, constants.Loki)
@@ -300,10 +304,10 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 	}, nil
 }
 
-// GetForType returns the cache for cacheType, or an error if none is registered.
-func (r TaskCacheRegistry) GetForType(cacheType physical.TaskCacheName) (ArrowCache, error) {
+func (r TaskCacheRegistry) GetForTypeWithMaxSize(cacheType physical.TaskCacheName, maxSizeBytes uint64) (ArrowCache, error) {
 	if r != nil {
 		if c, ok := r[cacheType]; ok {
+			c.maxSizeBytes = maxSizeBytes
 			return c, nil
 		}
 	}

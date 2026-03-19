@@ -82,7 +82,7 @@ type ExecutorConfig struct {
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
 
 	// TasksResultCache configures the backing cache for task results.
-	TasksResultCache resultscache.Config `yaml:"tasks_result_cache" category:"experimental"`
+	TasksResultCache TaskCacheConfig `yaml:"tasks_result_cache" category:"experimental"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -92,7 +92,20 @@ func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 	f.Var(&cfg.PrefetchBytes, prefix+"prefetch-bytes", "Experimental: Number of bytes to prefetch when opening a data object for decoding metadata and overlapping section reads. Clamps to at least 16KiB.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
-	cfg.TasksResultCache.RegisterFlagsWithPrefix(f, prefix+"tasks-result-cache.")
+	cfg.TasksResultCache.RegisterFlagsWithPrefix(prefix+"tasks-result-cache.", f)
+}
+
+// TaskCacheConfig extends resultscache.Config with additional task-cache-specific settings.
+type TaskCacheConfig struct {
+	resultscache.Config `yaml:",inline"`
+	MaxCacheableSize    flagext.Bytes `yaml:"max_cacheable_size_bytes" category:"experimental"`
+}
+
+// RegisterFlagsWithPrefix registers flags for TaskCacheConfig with the given prefix.
+func (cfg *TaskCacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.Config.RegisterFlagsWithPrefix(f, prefix)
+	f.Var(&cfg.MaxCacheableSize, prefix+"max-cacheable-size-bytes",
+		"Experimental: Maximum size in bytes of a single task result that can be stored in the cache. 0 means no limit.")
 }
 
 // Params holds parameters for constructing a new [Engine].
@@ -479,7 +492,8 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 		MaxRunningScanTasks:  maxRunningScanTasks,
 		MaxRunningOtherTasks: 0,
 
-		CacheEnabled: cache.IsCacheConfigured(e.cfg.Executor.TasksResultCache.CacheConfig),
+		CacheEnabled:     cache.IsCacheConfigured(e.cfg.Executor.TasksResultCache.CacheConfig),
+		MaxCacheableSize: uint64(e.cfg.Executor.TasksResultCache.MaxCacheableSize),
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),

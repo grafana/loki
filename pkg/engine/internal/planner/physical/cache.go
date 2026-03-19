@@ -24,9 +24,10 @@ const (
 // Cache is a plan node that wraps the root of a cacheable task fragment.
 // When executed, it transparently stores and retrieves results from a cache.
 type Cache struct {
-	NodeID    ulid.ULID
-	Key       string
-	CacheName TaskCacheName
+	NodeID       ulid.ULID
+	Key          string
+	CacheName    TaskCacheName
+	MaxSizeBytes uint64
 }
 
 // ID returns the ULID that uniquely identifies the node in the plan.
@@ -37,13 +38,13 @@ func (*Cache) Type() NodeType { return NodeTypeCache }
 
 // Clone returns a deep copy of the node with a new unique ID.
 func (c *Cache) Clone() Node {
-	return &Cache{NodeID: ulid.Make(), Key: c.Key, CacheName: c.CacheName}
+	return &Cache{NodeID: ulid.Make(), Key: c.Key, CacheName: c.CacheName, MaxSizeBytes: c.MaxSizeBytes}
 }
 
 // WrapWithCacheIfSupported computes a cache key for plan and, if the plan is
 // cacheable, inserts a [Cache] node as the new root. It modifies plan in-place.
 // Returns the new Cache root node and true on a cache wrap, nil and false otherwise.
-func WrapWithCacheIfSupported(ctx context.Context, tenantID string, plan *Plan) (Node, bool, error) {
+func WrapWithCacheIfSupported(ctx context.Context, tenantID string, plan *Plan, maxSizeBytes uint64) (Node, bool, error) {
 	key, cacheType := TaskCacheKey(ctx, tenantID, plan)
 	if key == "" {
 		// This plan does not support caching.
@@ -54,7 +55,7 @@ func WrapWithCacheIfSupported(ctx context.Context, tenantID string, plan *Plan) 
 	if err != nil {
 		return nil, false, err
 	}
-	node := &Cache{NodeID: ulid.Make(), Key: key, CacheName: cacheType}
+	node := &Cache{NodeID: ulid.Make(), Key: key, CacheName: cacheType, MaxSizeBytes: maxSizeBytes}
 	plan.graph.Add(node)
 	if err := plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: root}); err != nil {
 		return nil, false, err

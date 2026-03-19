@@ -31,7 +31,7 @@ func TestTaskCacheKey(t *testing.T) {
 		key, cacheType := TaskCacheKey(ctx, "tenant1", plan)
 		require.NotEmpty(t, key)
 		require.Contains(t, key, "tenant1")
-		require.Equal(t, TaskCacheDataObjScan, cacheType)
+		require.Equal(t, TaskCacheLogsScan, cacheType)
 	})
 
 	t.Run("same plan produces identical key", func(t *testing.T) {
@@ -118,7 +118,7 @@ func TestTaskCacheKey(t *testing.T) {
 		plan := FromGraph(g)
 		key, cacheType := TaskCacheKey(ctx, "t", plan)
 		require.NotEmpty(t, key)
-		require.Equal(t, TaskCachePointersScan, cacheType)
+		require.Equal(t, TaskCacheMetastore, cacheType)
 	})
 }
 
@@ -128,7 +128,7 @@ func TestWrapWithCacheIfSupported(t *testing.T) {
 		g.Add(&DataObjScan{Location: "loc1"})
 		plan := FromGraph(g)
 
-		node, ok, err := WrapWithCacheIfSupported(context.Background(), "tenant1", plan)
+		node, ok, err := WrapWithCacheIfSupported(context.Background(), "tenant1", plan, 0)
 		require.NoError(t, err)
 		require.True(t, ok)
 

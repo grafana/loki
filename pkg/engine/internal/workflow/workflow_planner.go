@@ -22,11 +22,17 @@ type planner struct {
 	streamWriters map[*Stream]*Task // Lookup of stream to which task writes to it
 }
 
+// cacheParams bundles cache-related configuration for workflow planning.
+type cacheParams struct {
+	enabled      bool
+	maxSizeBytes uint64
+}
+
 // planWorkflow partitions a physical plan into a graph of tasks.
 //
 // planWorkflow returns an error if the provided physical plan does not
 // have exactly one root node, or if the physical plan cannot be partitioned.
-func planWorkflow(tenantID string, plan *physical.Plan, cacheEnabled bool) (dag.Graph[*Task], error) {
+func planWorkflow(tenantID string, plan *physical.Plan, cache cacheParams) (dag.Graph[*Task], error) {
 	root, err := plan.Root()
 	if err != nil {
 		return dag.Graph[*Task]{}, err
@@ -55,8 +61,8 @@ func planWorkflow(tenantID string, plan *physical.Plan, cacheEnabled bool) (dag.
 		return dag.Graph[*Task]{}, err
 	}
 
-	if cacheEnabled {
-		if err := injectTaskCaching(tenantID, planner.graph); err != nil {
+	if cache.enabled {
+		if err := injectTaskCaching(tenantID, planner.graph, cache.maxSizeBytes); err != nil {
 			return dag.Graph[*Task]{}, err
 		}
 	}
@@ -67,14 +73,14 @@ func planWorkflow(tenantID string, plan *physical.Plan, cacheEnabled bool) (dag.
 // injectTaskCaching wraps each cacheable task fragment with a Cache node.
 // A fragment is cacheable when TaskCacheKey returns a non-empty string
 // (requires at least one DataObjScan or PointersScan and no non-cacheable nodes).
-func injectTaskCaching(tenantID string, graph dag.Graph[*Task]) error {
+func injectTaskCaching(tenantID string, graph dag.Graph[*Task], maxSizeBytes uint64) error {
 	for _, root := range graph.Roots() {
 		if err := graph.Walk(root, func(task *Task) error {
 			oldRoot, err := task.Fragment.Root()
 			if err != nil {
 				return err
 			}
-			newRoot, wrapped, err := physical.WrapWithCacheIfSupported(context.Background(), tenantID, task.Fragment)
+			newRoot, wrapped, err := physical.WrapWithCacheIfSupported(context.Background(), tenantID, task.Fragment, maxSizeBytes)
 			if err != nil {
 				return err
 			}

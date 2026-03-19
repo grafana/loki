@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	humanize "github.com/dustin/go-humanize"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
@@ -152,11 +154,19 @@ func toTreeNode(n Node) *tree.Node {
 		}
 	case *Cache:
 		treeNode.Properties = []tree.Property{
+			tree.NewProperty("max_cacheable_size", false, formatMaxCacheableSize(node.MaxSizeBytes)),
 			tree.NewProperty("hashed_key", false, cache.HashKey(node.Key)),
 			tree.NewProperty("key", false, node.Key),
 		}
 	}
 	return treeNode
+}
+
+func formatMaxCacheableSize(maxSizeBytes uint64) string {
+	if maxSizeBytes == 0 {
+		return "unlimited"
+	}
+	return humanize.IBytes(maxSizeBytes)
 }
 
 func toAnySlice[T any](s []T) []any {
