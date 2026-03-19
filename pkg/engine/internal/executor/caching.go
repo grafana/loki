@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
@@ -16,8 +17,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	arrowcodec "github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire/arrow"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -231,7 +232,7 @@ type TaskCacheRegistry map[physical.TaskCacheName]cache.Cache
 // NewTaskCacheRegistry builds a registry that creates one independent cache per
 // task type, using type-specific prefixes derived from cfg.CacheConfig.Prefix.
 // Returns nil, nil when caching is not configured.
-func NewTaskCacheRegistry(cfg queryrangebase.ResultsCacheConfig, reg prometheus.Registerer, logger log.Logger) (TaskCacheRegistry, error) {
+func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, logger log.Logger) (TaskCacheRegistry, error) {
 	if !cache.IsCacheConfigured(cfg.CacheConfig) {
 		return nil, nil
 	}
@@ -239,7 +240,14 @@ func NewTaskCacheRegistry(cfg queryrangebase.ResultsCacheConfig, reg prometheus.
 	newCache := func(suffix string) (cache.Cache, error) {
 		cfgCopy := cfg.CacheConfig
 		cfgCopy.Prefix += suffix
-		return cache.New(cfgCopy, reg, logger, stats.ResultCache, constants.Loki)
+		c, err := cache.New(cfgCopy, reg, logger, stats.ResultCache, constants.Loki)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create cache: %w", err)
+		}
+		if strings.EqualFold(cfg.Compression, "snappy") {
+			c = cache.NewSnappy(c, logger)
+		}
+		return c, nil
 	}
 
 	dataobj, err := newCache("dataobj.")

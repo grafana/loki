@@ -33,8 +33,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -82,7 +82,7 @@ type ExecutorConfig struct {
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
 
 	// TasksResultCache configures the backing cache for task results.
-	TasksResultCache queryrangebase.ResultsCacheConfig `yaml:"tasks_result_cache" category:"experimental"`
+	TasksResultCache resultscache.Config `yaml:"tasks_result_cache" category:"experimental"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
