@@ -38,7 +38,7 @@ import (
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/endpointsharding"
-	"google.golang.org/grpc/balancer/pickfirst/pickfirstleaf"
+	"google.golang.org/grpc/balancer/pickfirst"
 	"google.golang.org/grpc/balancer/weightedroundrobin/internal"
 	"google.golang.org/grpc/balancer/weightedtarget"
 	"google.golang.org/grpc/connectivity"
@@ -62,7 +62,7 @@ var (
 		Description:    "EXPERIMENTAL. Number of scheduler updates in which there were not enough endpoints with valid weight, which caused the WRR policy to fall back to RR behavior.",
 		Unit:           "{update}",
 		Labels:         []string{"grpc.target"},
-		OptionalLabels: []string{"grpc.lb.locality"},
+		OptionalLabels: []string{"grpc.lb.locality", "grpc.lb.backend_service"},
 		Default:        false,
 	})
 
@@ -71,7 +71,7 @@ var (
 		Description:    "EXPERIMENTAL. Number of endpoints from each scheduler update that don't yet have usable weight information (i.e., either the load report has not yet been received, or it is within the blackout period).",
 		Unit:           "{endpoint}",
 		Labels:         []string{"grpc.target"},
-		OptionalLabels: []string{"grpc.lb.locality"},
+		OptionalLabels: []string{"grpc.lb.locality", "grpc.lb.backend_service"},
 		Default:        false,
 	})
 
@@ -80,7 +80,7 @@ var (
 		Description:    "EXPERIMENTAL. Number of endpoints from each scheduler update whose latest weight is older than the expiration period.",
 		Unit:           "{endpoint}",
 		Labels:         []string{"grpc.target"},
-		OptionalLabels: []string{"grpc.lb.locality"},
+		OptionalLabels: []string{"grpc.lb.locality", "grpc.lb.backend_service"},
 		Default:        false,
 	})
 	endpointWeightsMetric = estats.RegisterFloat64Histo(estats.MetricDescriptor{
@@ -88,7 +88,7 @@ var (
 		Description:    "EXPERIMENTAL. Weight of each endpoint, recorded on every scheduler update. Endpoints without usable weights will be recorded as weight 0.",
 		Unit:           "{endpoint}",
 		Labels:         []string{"grpc.target"},
-		OptionalLabels: []string{"grpc.lb.locality"},
+		OptionalLabels: []string{"grpc.lb.locality", "grpc.lb.backend_service"},
 		Default:        false,
 	})
 )
@@ -109,9 +109,11 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		scToWeight:       make(map[balancer.SubConn]*endpointWeight),
 	}
 
-	b.child = endpointsharding.NewBalancer(b, bOpts, balancer.Get(pickfirstleaf.Name).Build, endpointsharding.Options{})
+	b.child = endpointsharding.NewBalancer(b, bOpts, balancer.Get(pickfirst.Name).Build, endpointsharding.Options{})
 	b.logger = prefixLogger(b)
-	b.logger.Infof("Created")
+	if b.logger.V(2) {
+		b.logger.Infof("Created")
+	}
 	return b
 }
 
@@ -173,6 +175,7 @@ func (b *wrrBalancer) updateEndpointsLocked(endpoints []resolver.Endpoint) {
 				metricsRecorder: b.metricsRecorder,
 				target:          b.target,
 				locality:        b.locality,
+				clusterName:     b.clusterName,
 			}
 			for _, addr := range endpoint.Addresses {
 				b.addressWeights.Set(addr, ew)
@@ -211,6 +214,7 @@ type wrrBalancer struct {
 	mu               sync.Mutex
 	cfg              *lbConfig // active config
 	locality         string
+	clusterName      string
 	stopPicker       *grpcsync.Event
 	addressWeights   *resolver.AddressMapV2[*endpointWeight]
 	endpointToWeight *resolver.EndpointMap[*endpointWeight]
@@ -219,7 +223,7 @@ type wrrBalancer struct {
 
 func (b *wrrBalancer) UpdateClientConnState(ccs balancer.ClientConnState) error {
 	if b.logger.V(2) {
-		b.logger.Infof("UpdateCCS: %v", ccs)
+		b.logger.Infof("Received update from resolver with state: %+v", ccs)
 	}
 	cfg, ok := ccs.BalancerConfig.(*lbConfig)
 	if !ok {
@@ -231,6 +235,7 @@ func (b *wrrBalancer) UpdateClientConnState(ccs balancer.ClientConnState) error 
 	b.mu.Lock()
 	b.cfg = cfg
 	b.locality = weightedtarget.LocalityFromResolverState(ccs.ResolverState)
+	b.clusterName = backendServiceFromState(ccs.ResolverState)
 	b.updateEndpointsLocked(ccs.ResolverState.Endpoints)
 	b.mu.Unlock()
 
@@ -239,11 +244,15 @@ func (b *wrrBalancer) UpdateClientConnState(ccs balancer.ClientConnState) error 
 	return b.child.UpdateClientConnState(balancer.ClientConnState{
 		// Make pickfirst children use health listeners for outlier detection to
 		// work.
-		ResolverState: pickfirstleaf.EnableHealthListener(ccs.ResolverState),
+		ResolverState: pickfirst.EnableHealthListener(ccs.ResolverState),
 	})
 }
 
 func (b *wrrBalancer) UpdateState(state balancer.State) {
+	if b.logger.V(2) {
+		b.logger.Infof("Received update from child policy with state: %+v", state)
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -282,13 +291,14 @@ func (b *wrrBalancer) UpdateState(state balancer.State) {
 	}
 
 	p := &picker{
-		v:               rand.Uint32(), // start the scheduler at a random point
 		cfg:             b.cfg,
 		weightedPickers: readyPickersWeight,
 		metricsRecorder: b.metricsRecorder,
 		locality:        b.locality,
 		target:          b.target,
+		clusterName:     b.clusterName,
 	}
+	p.idx.Store(rand.Uint32()) // start the scheduler at a random point
 
 	b.stopPicker = grpcsync.NewEvent()
 	p.start(b.stopPicker)
@@ -320,7 +330,7 @@ func (b *wrrBalancer) NewSubConn(addrs []resolver.Address, opts balancer.NewSubC
 	if !ok {
 		// SubConn state updates can come in for a no longer relevant endpoint
 		// weight (from the old system after a new config update is applied).
-		return nil, fmt.Errorf("balancer is being closed; no new SubConns allowed")
+		return nil, fmt.Errorf("wrr: balancer is being closed; no new SubConns allowed")
 	}
 	sc, err := b.ClientConn.NewSubConn([]resolver.Address{addr}, opts)
 	if err != nil {
@@ -331,6 +341,9 @@ func (b *wrrBalancer) NewSubConn(addrs []resolver.Address, opts balancer.NewSubC
 }
 
 func (b *wrrBalancer) ResolverError(err error) {
+	if b.logger.V(2) {
+		b.logger.Infof("Received error from resolver: %v", err)
+	}
 	// Will cause inline picker update from endpoint sharding.
 	b.child.ResolverError(err)
 }
@@ -340,6 +353,10 @@ func (b *wrrBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.Sub
 }
 
 func (b *wrrBalancer) updateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+	if b.logger.V(2) {
+		b.logger.Infof("Received update from SubConn %v with state: %+v", sc, state)
+	}
+
 	b.mu.Lock()
 	ew := b.scToWeight[sc]
 	// updates from a no longer relevant SubConn update, nothing to do here but
@@ -401,6 +418,9 @@ func (b *wrrBalancer) Close() {
 		}
 	}
 	b.child.Close()
+	if b.logger.V(2) {
+		b.logger.Infof("Shutdown")
+	}
 }
 
 func (b *wrrBalancer) ExitIdle() {
@@ -412,7 +432,7 @@ func (b *wrrBalancer) ExitIdle() {
 // to those weights.
 type picker struct {
 	scheduler unsafe.Pointer // *scheduler; accessed atomically
-	v         uint32         // incrementing value used by the scheduler; accessed atomically
+	idx       atomic.Uint32  // incrementing value used by the scheduler
 	cfg       *lbConfig      // active config when picker created
 
 	weightedPickers []pickerWeightedEndpoint // all READY pickers
@@ -420,6 +440,7 @@ type picker struct {
 	// The following fields are immutable.
 	target          string
 	locality        string
+	clusterName     string
 	metricsRecorder estats.MetricsRecorder
 }
 
@@ -441,7 +462,6 @@ func (p *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	pickedPicker := p.weightedPickers[sched.nextIndex()]
 	pr, err := pickedPicker.picker.Pick(info)
 	if err != nil {
-		logger.Errorf("ready picker returned error: %v", err)
 		return balancer.PickResult{}, err
 	}
 	if !p.cfg.EnableOOBLoadReport {
@@ -459,7 +479,7 @@ func (p *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 }
 
 func (p *picker) inc() uint32 {
-	return atomic.AddUint32(&p.v, 1)
+	return p.idx.Add(1)
 }
 
 func (p *picker) regenerateScheduler() {
@@ -499,6 +519,7 @@ type endpointWeight struct {
 	target          string
 	metricsRecorder estats.MetricsRecorder
 	locality        string
+	clusterName     string
 
 	// The following fields are only accessed on calls into the LB policy, and
 	// do not need a mutex.
@@ -602,14 +623,14 @@ func (w *endpointWeight) weight(now time.Time, weightExpirationPeriod, blackoutP
 
 	if recordMetrics {
 		defer func() {
-			endpointWeightsMetric.Record(w.metricsRecorder, weight, w.target, w.locality)
+			endpointWeightsMetric.Record(w.metricsRecorder, weight, w.target, w.locality, w.clusterName)
 		}()
 	}
 
 	// The endpoint has not received a load report (i.e. just turned READY with
 	// no load report).
 	if w.lastUpdated.Equal(time.Time{}) {
-		endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality)
+		endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality, w.clusterName)
 		return 0
 	}
 
@@ -618,7 +639,7 @@ func (w *endpointWeight) weight(now time.Time, weightExpirationPeriod, blackoutP
 	// start getting data again in the future, and return 0.
 	if now.Sub(w.lastUpdated) >= weightExpirationPeriod {
 		if recordMetrics {
-			endpointWeightStaleMetric.Record(w.metricsRecorder, 1, w.target, w.locality)
+			endpointWeightStaleMetric.Record(w.metricsRecorder, 1, w.target, w.locality, w.clusterName)
 		}
 		w.nonEmptySince = time.Time{}
 		return 0
@@ -627,10 +648,27 @@ func (w *endpointWeight) weight(now time.Time, weightExpirationPeriod, blackoutP
 	// If we don't have at least blackoutPeriod worth of data, return 0.
 	if blackoutPeriod != 0 && (w.nonEmptySince.Equal(time.Time{}) || now.Sub(w.nonEmptySince) < blackoutPeriod) {
 		if recordMetrics {
-			endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality)
+			endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality, w.clusterName)
 		}
 		return 0
 	}
 
 	return w.weightVal
+}
+
+type backendServiceKey struct{}
+
+// SetBackendService stores the backendService on the resolver state so
+// that it can be used later as a label in wrr metrics.
+func SetBackendService(state resolver.State, backendService string) resolver.State {
+	state.Attributes = state.Attributes.WithValue(backendServiceKey{}, backendService)
+	return state
+}
+
+// getBackendServiceFromState retrieves the cluster name stored as an attribute
+// in the resolver state.
+func backendServiceFromState(state resolver.State) string {
+	v := state.Attributes.Value(backendServiceKey{})
+	name, _ := v.(string)
+	return name
 }

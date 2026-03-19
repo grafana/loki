@@ -8,6 +8,7 @@ package tracev3
 
 import (
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
+	wrapperspb "github.com/planetscale/vtprotobuf/types/known/wrapperspb"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
@@ -48,6 +49,16 @@ func (m *OpenTelemetryConfig) MarshalToSizedBufferVTStrict(dAtA []byte) (int, er
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.MaxCacheSize != nil {
+		size, err := (*wrapperspb.UInt32Value)(m.MaxCacheSize).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
 	}
 	if m.Sampler != nil {
 		if vtmsg, ok := interface{}(m.Sampler).(interface {
@@ -199,6 +210,10 @@ func (m *OpenTelemetryConfig) SizeVT() (n int) {
 		} else {
 			l = proto.Size(m.Sampler)
 		}
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.MaxCacheSize != nil {
+		l = (*wrapperspb.UInt32Value)(m.MaxCacheSize).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)

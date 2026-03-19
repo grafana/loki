@@ -80,6 +80,17 @@ func (m *TlsParameters) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
+	if len(m.GetCompliancePolicies()) > 1 {
+		err := TlsParametersValidationError{
+			field:  "CompliancePolicies",
+			reason: "value must contain no more than 1 item(s)",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
 	if len(errors) > 0 {
 		return TlsParametersMultiError(errors)
 	}
