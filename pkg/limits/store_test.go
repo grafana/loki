@@ -155,8 +155,8 @@ func TestUsageStore_UpdateRates(t *testing.T) {
 	rates, err := s.UpdateRates("tenant", metadata, time1)
 	require.NoError(t, err)
 	expected := make([]rateBucket, 1, 5)
-	expected[0].timestamp = time1.UnixNano()
-	expected[0].size = 100
+	expected[0].ts = time1.UnixNano()
+	expected[0].value = 100
 	require.Len(t, rates, 1)
 	require.Equal(t, expected, rates[0].rateBuckets)
 	// Update the first bucket with the same metadata but 1 second later.
@@ -164,7 +164,7 @@ func TestUsageStore_UpdateRates(t *testing.T) {
 	time2 := clock.Now()
 	rates, err = s.UpdateRates("tenant", metadata, time2)
 	require.NoError(t, err)
-	expected[0].size = 200
+	expected[0].value = 200
 	require.Equal(t, expected, rates[0].rateBuckets)
 	// Advance the clock forward to the next bucket. Should update the second
 	// bucket and leave the first bucket unmodified.
@@ -175,8 +175,8 @@ func TestUsageStore_UpdateRates(t *testing.T) {
 	// As the clock is now 1 second ahead of the bucket start time, we must
 	// truncate the expected time to the start of the bucket.
 	expected = append(expected, rateBucket{})
-	expected[1].timestamp = time3.Truncate(time.Minute).UnixNano()
-	expected[1].size = 100
+	expected[1].ts = time3.Truncate(time.Minute).UnixNano()
+	expected[1].value = 100
 	require.Equal(t, expected, rates[0].rateBuckets)
 	// Advance the clock to the last bucket.
 	clock.Advance(3 * time.Minute)
@@ -184,8 +184,8 @@ func TestUsageStore_UpdateRates(t *testing.T) {
 	rates, err = s.UpdateRates("tenant", metadata, time4)
 	require.NoError(t, err)
 	expected = append(expected, rateBucket{})
-	expected[2].timestamp = time4.Truncate(time.Minute).UnixNano()
-	expected[2].size = 100
+	expected[2].ts = time4.Truncate(time.Minute).UnixNano()
+	expected[2].value = 100
 	require.Equal(t, expected, rates[0].rateBuckets)
 	// Advance the clock one last one. It should wrap around to the start of
 	// the list and replace the original bucket with time1.
@@ -193,8 +193,8 @@ func TestUsageStore_UpdateRates(t *testing.T) {
 	time5 := clock.Now()
 	rates, err = s.UpdateRates("tenant", metadata, time5)
 	require.NoError(t, err)
-	expected[0].timestamp = time5.Truncate(time.Minute).UnixNano()
-	expected[0].size = 100
+	expected[0].ts = time5.Truncate(time.Minute).UnixNano()
+	expected[0].value = 100
 	require.Equal(t, expected, rates[0].rateBuckets)
 }
 

@@ -28,7 +28,7 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for _, stream := range s.usage.TenantActiveStreams(tenant) {
 		streams++
 		for _, bucket := range stream.rateBuckets {
-			sumBuckets += bucket.size
+			sumBuckets += bucket.value
 		}
 		streamsByPolicy[stream.policy]++
 	}

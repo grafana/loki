@@ -97,13 +97,6 @@ type streamUsage struct {
 	policy string
 }
 
-// RateBucket represents the bytes received during a specific time interval
-// It is used to calculate the rate limit for a stream.
-type rateBucket struct {
-	timestamp int64  // start of the interval
-	size      uint64 // bytes received during this interval
-}
-
 type stripeLock struct {
 	sync.RWMutex
 	// Padding to avoid multiple locks being on the same cache line.
@@ -440,11 +433,11 @@ func (s *usageStore) updateWithBuckets(i int, tenant string, partition int32, po
 	// bucket outside the rate window. If it is, we must reset it before we
 	// can re-use it.
 	bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
-	if bucket.timestamp < bucketStart {
-		bucket.timestamp = bucketStart
-		bucket.size = 0
+	if bucket.ts < bucketStart {
+		bucket.ts = bucketStart
+		bucket.value = 0
 	}
-	bucket.size += metadata.TotalSize
+	bucket.value += metadata.TotalSize
 	stream.rateBuckets[bucketIdx] = bucket
 	s.stripes[i][tenant][partition][policyBucket][streamHash] = stream
 }
@@ -557,7 +550,7 @@ func (s *usageStore) setForTests(tenant string, stream streamUsage) {
 func getActiveRateBuckets(buckets []rateBucket, withinRateWindow func(int64) bool) []rateBucket {
 	result := make([]rateBucket, 0, len(buckets))
 	for _, bucket := range buckets {
-		if withinRateWindow(bucket.timestamp) {
+		if withinRateWindow(bucket.ts) {
 			result = append(result, bucket)
 		}
 	}

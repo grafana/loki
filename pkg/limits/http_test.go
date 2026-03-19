@@ -24,8 +24,8 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 		hash:      0x1,
 		totalSize: 100,
 		rateBuckets: []rateBucket{{
-			timestamp: clock.Now().UnixNano(),
-			size:      1,
+			ts:    clock.Now().UnixNano(),
+			value: 1,
 		}},
 		lastSeenAt: clock.Now().UnixNano(),
 	})

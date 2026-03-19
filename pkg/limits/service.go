@@ -49,6 +49,7 @@ type Service struct {
 	consumer            *consumer
 	producer            *producer
 	usage               *usageStore
+	rates               *rateStore
 	logger              log.Logger
 
 	// Metrics.
@@ -86,6 +87,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create usage store: %w", err)
 	}
+	s.rates = newRateStore(cfg.RateWindow, cfg.BucketSize)
 	// Initialize lifecycler
 	s.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, s, RingName, RingKey, true, logger, reg)
 	if err != nil {
@@ -196,25 +198,23 @@ func (s *Service) UpdateRates(
 	// We do not replicate data to Kafka here as we really need to figure out
 	// how to reduce the volume during replay (the reason we added
 	// LastProducedAt for streams).
-	updated, err := s.usage.UpdateRates(req.Tenant, req.Streams, s.clock.Now())
-	if err != nil {
-		return nil, err
+	now := s.clock.Now()
+	params := make(rateRecordBatchParams, 0, len(req.Streams))
+	for _, s := range req.Streams {
+		params = append(params, rateRecordBatchParam{
+			scope: fmt.Sprintf("tenant:%s", req.Tenant),
+			key:   s.StreamHash,
+			value: s.TotalSize,
+			ts:    now,
+		})
 	}
-	resp := proto.UpdateRatesResponse{
-		Results: make([]*proto.UpdateRatesResult, len(updated)),
-	}
-	for i, stream := range updated {
-		var totalSize uint64
-		for _, bucket := range stream.rateBuckets {
-			totalSize += bucket.size
-		}
-		// The average rate is calculated over the total number of
-		// populated buckets. This allows us to calculate accurate rates
-		// without empty buckets pulling down the average.
-		averageRate := totalSize / (uint64(s.cfg.BucketSize.Seconds()) * uint64(len(stream.rateBuckets)))
-		resp.Results[i] = &proto.UpdateRatesResult{
-			StreamHash: stream.hash,
-			Rate:       averageRate,
+	s.rates.RecordBatch(params)
+	rates := s.rates.RatesForScope(fmt.Sprintf("tenant:%s", req.Tenant))
+	resp := proto.UpdateRatesResponse{Results: make([]*proto.UpdateRatesResult, len(rates))}
+	for key, value := range rates {
+		resp.Results[key] = &proto.UpdateRatesResult{
+			StreamHash: key,
+			Rate:       uint64(value),
 		}
 	}
 	return &resp, nil
