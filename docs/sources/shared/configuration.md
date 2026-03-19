@@ -356,9 +356,9 @@ query_engine:
     # CLI flag: -query-engine.tasks-result-cache.compression
     [compression: <string> | default = ""]
 
-    # Experimental: Maximum size in bytes of a single task result that can be
-    # stored in the cache. 0 means no limit.
-    # CLI flag: -query-engine.tasks-result-cache.max-cacheable-size-bytes
+    # Experimental: Maximum size for a task result to be cacheable. 0 means no
+    # limit.
+    # CLI flag: -query-engine.tasks-result-cache.max-cacheable-size
     [max_cacheable_size_bytes: <int> | default = 0B]
 
   # Experimental: Number of worker threads to spawn. Each worker thread runs one

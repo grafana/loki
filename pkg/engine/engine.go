@@ -104,8 +104,8 @@ type TaskCacheConfig struct {
 // RegisterFlagsWithPrefix registers flags for TaskCacheConfig with the given prefix.
 func (cfg *TaskCacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Config.RegisterFlagsWithPrefix(f, prefix)
-	f.Var(&cfg.MaxCacheableSize, prefix+"max-cacheable-size-bytes",
-		"Experimental: Maximum size in bytes of a single task result that can be stored in the cache. 0 means no limit.")
+	f.Var(&cfg.MaxCacheableSize, prefix+"max-cacheable-size",
+		"Experimental: Maximum size for a task result to be cacheable. 0 means no limit.")
 }
 
 // Params holds parameters for constructing a new [Engine].
