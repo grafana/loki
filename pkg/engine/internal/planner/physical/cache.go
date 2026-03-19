@@ -15,10 +15,10 @@ import (
 type TaskCacheName = string
 
 const (
-	// TaskCacheDataObjScan selects the dataobj cache (for DATAOBJSCAN tasks).
-	TaskCacheDataObjScan TaskCacheName = "dataobj"
-	// TaskCachePointersScan selects the metastore cache (for POINTERSSCAN tasks).
-	TaskCachePointersScan TaskCacheName = "metastore"
+	// TaskCacheLogsScan selects the logscan cache (for tasks that contain one DataObjScan).
+	TaskCacheLogsScan TaskCacheName = "logscan"
+	// TaskCacheMetastore selects the metastore cache (for POINTERSSCAN tasks).
+	TaskCacheMetastore TaskCacheName = "metastore"
 )
 
 // Cache is a plan node that wraps the root of a cacheable task fragment.
@@ -92,9 +92,9 @@ func TaskCacheKey(ctx context.Context, tenantID string, plan *Plan) (string, Tas
 		}
 		switch n.(type) {
 		case *DataObjScan:
-			cacheType = TaskCacheDataObjScan
+			cacheType = TaskCacheLogsScan
 		case *PointersScan:
-			cacheType = TaskCachePointersScan
+			cacheType = TaskCacheMetastore
 		}
 		parts = append(parts, key)
 		return nil

@@ -7,6 +7,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
+	"github.com/golang/snappy"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -27,8 +28,10 @@ func TestCachingPipeline(t *testing.T) {
 	rec2, err := CSVToArrow(testFields, "d\ne")
 	require.NoError(t, err)
 
+	arrowStore := &arrowCacheAdapter{cache: c}
+
 	// First pass: cache miss — inner pipeline is read and results are stored.
-	miss := newCachingPipeline(c, NewBufferedPipeline(rec1, rec2), "test-key", log.NewNopLogger())
+	miss := newCachingPipeline(arrowStore, NewBufferedPipeline(rec1, rec2), "test-key", log.NewNopLogger())
 	require.NoError(t, miss.Open(ctx))
 	require.False(t, miss.(*cachingPipeline).hit, "expected cache miss")
 
@@ -48,7 +51,7 @@ func TestCachingPipeline(t *testing.T) {
 	require.Contains(t, c.data, cache.HashKey("test-key"), "cache should contain the key")
 
 	// Second pass: cache hit — inner pipeline must never be opened.
-	hit := newCachingPipeline(c, &failPipeline{}, "test-key", log.NewNopLogger())
+	hit := newCachingPipeline(arrowStore, &failPipeline{}, "test-key", log.NewNopLogger())
 	require.NoError(t, hit.Open(ctx))
 	require.True(t, hit.(*cachingPipeline).hit, "expected cache hit")
 
@@ -64,6 +67,48 @@ func TestCachingPipeline(t *testing.T) {
 	hit.Close()
 
 	require.Len(t, cachedBatches, len(batches), "cached result should have same number of batches")
+}
+
+func TestArrowCacheAdapterSnappyRoundTrip(t *testing.T) {
+	ctx := t.Context()
+	mem := newMockCache()
+	ad := &arrowCacheAdapter{
+		cache:          mem,
+		snappyCompress: true,
+	}
+	key := "snappy-key"
+
+	t.Run("non-empty", func(t *testing.T) {
+		rec, err := CSVToArrow(testFields, "x\ny")
+		require.NoError(t, err)
+		stored, err := ad.Set(ctx, key, []arrow.RecordBatch{rec})
+		require.NoError(t, err)
+		require.Greater(t, stored, 0)
+		raw := mem.data[key]
+		require.NotEmpty(t, raw)
+		_, err = snappy.Decode(nil, raw)
+		require.NoError(t, err, "stored payload should be snappy-compressed")
+
+		got, sz, hit, err := ad.Get(ctx, key)
+		require.NoError(t, err)
+		require.True(t, hit)
+		require.Equal(t, stored, sz)
+		require.Len(t, got, 1)
+		require.Equal(t, rec.NumRows(), got[0].NumRows())
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		emptyKey := "empty-snappy"
+		stored, err := ad.Set(ctx, emptyKey, nil)
+		require.NoError(t, err)
+		require.Zero(t, stored, "empty entries are stored uncompressed")
+		require.Empty(t, mem.data[emptyKey])
+		got, sz, hit, err := ad.Get(ctx, emptyKey)
+		require.NoError(t, err)
+		require.True(t, hit)
+		require.Zero(t, sz)
+		require.Empty(t, got)
+	})
 }
 
 // failPipeline panics if Open or Read is called; used to assert inner pipeline
@@ -116,4 +161,4 @@ func (m *mockCache) Fetch(_ context.Context, keys []string) (found []string, buf
 
 func (m *mockCache) Stop() {}
 
-func (m *mockCache) GetCacheType() stats.CacheType { return stats.ResultCache }
+func (m *mockCache) GetCacheType() stats.CacheType { return stats.TaskResultCache }

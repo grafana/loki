@@ -12,6 +12,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -23,15 +24,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// newCachingPipeline wraps inner in a [cachingPipeline] backed by c.
-// If c is nil, inner is returned unchanged (no caching).
-func newCachingPipeline(c cache.Cache, inner Pipeline, key string, logger log.Logger) Pipeline {
-	if c == nil {
+// newCachingPipeline wraps inner in a [cachingPipeline] backed by store.
+// If store is nil, inner is returned unchanged (no caching).
+func newCachingPipeline(store ArrowCache, inner Pipeline, key string, logger log.Logger) Pipeline {
+	if store == nil {
 		return inner
 	}
 	return &cachingPipeline{
 		inner:  inner,
-		store:  &arrowCacheAdapter{cache: c},
+		store:  store,
 		key:    cache.HashKey(key),
 		logger: logger,
 	}
@@ -44,7 +45,7 @@ func newCachingPipeline(c cache.Cache, inner Pipeline, key string, logger log.Lo
 // On a cache miss: Read streams through the inner pipeline and the store is populated on EOF.
 type cachingPipeline struct {
 	inner  Pipeline
-	store  *arrowCacheAdapter
+	store  ArrowCache
 	key    string
 	logger log.Logger
 	cached []arrow.RecordBatch // records served from cache (hit path) or collected to put them on the cache (miss path)
@@ -56,7 +57,7 @@ type cachingPipeline struct {
 func (p *cachingPipeline) Open(ctx context.Context) error {
 	region := xcap.RegionFromContext(ctx)
 
-	records, bufSize, hit, err := p.store.get(ctx, p.key)
+	records, bufSize, hit, err := p.store.Get(ctx, p.key)
 	if err == nil && hit {
 		p.cached = records
 		p.hit = true
@@ -99,7 +100,7 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	rec, err := p.inner.Read(ctx)
 	if err != nil {
 		if errors.Is(err, EOF) {
-			bufSize, setErr := p.store.set(ctx, p.key, p.cached)
+			bufSize, setErr := p.store.Set(ctx, p.key, p.cached)
 			if setErr != nil {
 				level.Error(p.logger).Log("msg", "failed to store results in cache", "err", setErr)
 			} else {
@@ -131,12 +132,13 @@ func (p *cachingPipeline) Close() {
 // arrowCacheAdapter adapts a [cache.Cache] (byte-oriented) to Arrow record
 // batch reads/writes using Arrow IPC stream encoding.
 type arrowCacheAdapter struct {
-	cache cache.Cache
+	cache          cache.Cache
+	snappyCompress bool
 }
 
-// get fetches cached records for key. Returns the decoded records, the raw
+// Get fetches cached records for key. Returns the decoded records, the raw
 // buffer size in bytes, whether a cache entry was found, and any error.
-func (s *arrowCacheAdapter) get(ctx context.Context, key string) ([]arrow.RecordBatch, int, bool, error) {
+func (s *arrowCacheAdapter) Get(ctx context.Context, key string) ([]arrow.RecordBatch, int, bool, error) {
 	found, buffs, missing, err := s.cache.Fetch(ctx, []string{key})
 	if err != nil {
 		return nil, 0, false, err
@@ -147,24 +149,44 @@ func (s *arrowCacheAdapter) get(ctx context.Context, key string) ([]arrow.Record
 	if len(buffs[0]) == 0 {
 		return nil, 0, true, nil // cached empty result
 	}
-	records, err := decodeRecords(buffs[0])
+
+	payload := buffs[0]
+	if s.snappyCompress {
+		var decErr error
+		payload, decErr = snappy.Decode(nil, buffs[0])
+		if decErr != nil {
+			return nil, 0, false, fmt.Errorf("snappy-decode cache entry: %w", decErr)
+		}
+	}
+
+	records, err := s.decodeRecords(payload)
 	if err != nil {
 		return nil, 0, false, fmt.Errorf("decoding cached records: %w", err)
 	}
 	return records, len(buffs[0]), true, nil
 }
 
-// set encodes and stores records under key. Returns the encoded buffer size in
+// Set encodes and stores records under key. Returns the encoded buffer size in
 // bytes and any error.
-func (s *arrowCacheAdapter) set(ctx context.Context, key string, records []arrow.RecordBatch) (int, error) {
+func (s *arrowCacheAdapter) Set(ctx context.Context, key string, records []arrow.RecordBatch) (int, error) {
 	if len(records) == 0 {
 		return 0, s.cache.Store(ctx, []string{key}, [][]byte{{}})
 	}
-	buf, err := encodeRecords(records)
+
+	buf, err := s.encodeRecords(records)
 	if err != nil {
 		return 0, fmt.Errorf("encoding records for cache: %w", err)
 	}
-	return len(buf), s.cache.Store(ctx, []string{key}, [][]byte{buf})
+
+	if s.snappyCompress {
+		buf = snappy.Encode(nil, buf)
+	}
+
+	if err := s.cache.Store(ctx, []string{key}, [][]byte{buf}); err != nil {
+		return 0, err
+	}
+
+	return len(buf), nil
 }
 
 // encodeRecords serializes a slice of Arrow record batches into a single byte
@@ -174,7 +196,7 @@ func (s *arrowCacheAdapter) set(ctx context.Context, key string, records []arrow
 //	for each record:
 //	  [8 bytes: record length (big-endian uint64)]
 //	  [N bytes: Arrow IPC stream encoding of the record]
-func encodeRecords(records []arrow.RecordBatch) ([]byte, error) {
+func (s *arrowCacheAdapter) encodeRecords(records []arrow.RecordBatch) ([]byte, error) {
 	var buf bytes.Buffer
 	var hdr [8]byte
 
@@ -195,7 +217,7 @@ func encodeRecords(records []arrow.RecordBatch) ([]byte, error) {
 
 // decodeRecords is the inverse of encodeRecords; see encodeRecords for the
 // wire format.
-func decodeRecords(data []byte) ([]arrow.RecordBatch, error) {
+func (s *arrowCacheAdapter) decodeRecords(data []byte) ([]arrow.RecordBatch, error) {
 	if len(data) < 8 {
 		return nil, fmt.Errorf("cache buffer too short")
 	}
@@ -226,8 +248,17 @@ func decodeRecords(data []byte) ([]arrow.RecordBatch, error) {
 	return records, nil
 }
 
+type ArrowCache interface {
+	// Get returns the cached records for key, if any.
+	// It also returns the cached buffer size in bytes, and a boolean indicating whether a cache entry was found.
+	Get(ctx context.Context, key string) ([]arrow.RecordBatch, int, bool, error)
+	// Set stores records under key.
+	// It returns the encoded buffer size in bytes.
+	Set(ctx context.Context, key string, records []arrow.RecordBatch) (int, error)
+}
+
 // TaskCacheRegistry maps TaskCacheType identifiers to backing cache stores.
-type TaskCacheRegistry map[physical.TaskCacheName]cache.Cache
+type TaskCacheRegistry map[physical.TaskCacheName]ArrowCache
 
 // NewTaskCacheRegistry builds a registry that creates one independent cache per
 // task type, using type-specific prefixes derived from cfg.CacheConfig.Prefix.
@@ -237,22 +268,26 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 		return nil, nil
 	}
 
-	newCache := func(suffix string) (cache.Cache, error) {
+	newCache := func(suffix string) (ArrowCache, error) {
 		cfgCopy := cfg.CacheConfig
 		cfgCopy.Prefix += suffix
-		c, err := cache.New(cfgCopy, reg, logger, stats.ResultCache, constants.Loki)
+		c, err := cache.New(cfgCopy, reg, logger, stats.TaskResultCache, constants.Loki)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create cache: %w", err)
 		}
-		if strings.EqualFold(cfg.Compression, "snappy") {
-			c = cache.NewSnappy(c, logger)
-		}
-		return c, nil
+
+		// We don't wrap the cache with cache.NewSnappy, but defer the snappy encoding to arrowCacheAdapter,
+		// So we can keep track of the size of the entry we put in the cache.
+		// This is so we can support configuring the maximum size of the cache entry.
+		return &arrowCacheAdapter{
+			cache:          c,
+			snappyCompress: strings.EqualFold(cfg.Compression, "snappy"),
+		}, nil
 	}
 
-	dataobj, err := newCache("dataobj.")
+	logscan, err := newCache("logscan.")
 	if err != nil {
-		return nil, fmt.Errorf("creating dataobj task cache: %w", err)
+		return nil, fmt.Errorf("creating logscan task cache: %w", err)
 	}
 	metastore, err := newCache("metastore.")
 	if err != nil {
@@ -260,13 +295,13 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 	}
 
 	return TaskCacheRegistry{
-		physical.TaskCacheDataObjScan:  dataobj,
-		physical.TaskCachePointersScan: metastore,
+		physical.TaskCacheLogsScan:  logscan,
+		physical.TaskCacheMetastore: metastore,
 	}, nil
 }
 
 // GetForType returns the cache for cacheType, or an error if none is registered.
-func (r TaskCacheRegistry) GetForType(cacheType physical.TaskCacheName) (cache.Cache, error) {
+func (r TaskCacheRegistry) GetForType(cacheType physical.TaskCacheName) (ArrowCache, error) {
 	if r != nil {
 		if c, ok := r[cacheType]; ok {
 			return c, nil
