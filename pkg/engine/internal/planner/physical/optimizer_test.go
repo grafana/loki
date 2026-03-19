@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
@@ -243,6 +245,90 @@ func TestLimitPushdown(t *testing.T) {
 
 		actual := PrintAsTree(plan)
 		require.Equal(t, orig, actual)
+	})
+}
+
+func TestScanTimeRangePushup(t *testing.T) {
+	t.Run("pushup time range to RangeAggregation", func(t *testing.T) {
+		plan := &Plan{}
+		{
+			dataObjScan := plan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 14, 16, 45, 29, 0, time.UTC),
+				End: time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC)}})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 53, 30, 0, time.UTC),
+				Step:  time.Minute, Range: time.Minute})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
+		}
+
+		// apply optimisations
+		optimizations := []*optimization{
+			newOptimization("scan time range pushup", plan).withRules(
+				&scanTimeRangePushup{plan: plan},
+			),
+		}
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+
+		expectedPlan := &Plan{}
+		{
+			dataObjScan := expectedPlan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 14, 16, 45, 29, 0, time.UTC),
+				End: time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC)}})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
+				Start: time.Date(2026, 3, 14, 16, 45, 29, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC),
+				Step:  time.Minute, Range: time.Minute})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+}
+
+func TestClampExpression(t *testing.T) {
+	tr := TimeRange{
+		Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+		End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
+	}
+	col := newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
+	early := types.Timestamp(time.Date(2026, 3, 11, 12, 41, 44, 719000000, time.UTC).UnixNano())
+	late := types.Timestamp(time.Date(2026, 3, 18, 9, 41, 44, 976217699, time.UTC).UnixNano())
+
+	t.Run("GTE before range clamps to start", func(t *testing.T) {
+		e := &BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte}
+		got, clamped := clampExpression(e, tr)
+		require.True(t, clamped)
+		want := fmt.Sprintf("GTE(%s, %s)", col, util.FormatTimeRFC3339Nano(tr.Start))
+		require.Equal(t, want, got.String())
+		require.Equal(t, fmt.Sprintf("GTE(%s, %s)", col, util.FormatTimeRFC3339Nano(time.Unix(0, int64(early)))), e.String())
+	})
+
+	t.Run("LT after range clamps to end", func(t *testing.T) {
+		e := &BinaryExpr{Left: col, Right: NewLiteral(late), Op: types.BinaryOpLt}
+		got, clamped := clampExpression(e, tr)
+		require.True(t, clamped)
+		want := fmt.Sprintf("LT(%s, %s)", col, util.FormatTimeRFC3339Nano(tr.End))
+		require.Equal(t, want, got.String())
+	})
+
+	t.Run("zero TimeRange leaves expression unchanged", func(t *testing.T) {
+		e := &BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte}
+		got, clamped := clampExpression(e, TimeRange{})
+		require.False(t, clamped)
+		require.Equal(t, e.String(), got.String())
+	})
+
+	t.Run("non-timestamp binary expr unchanged", func(t *testing.T) {
+		e := &BinaryExpr{
+			Left:  newColumnExpr("level", types.ColumnTypeLabel),
+			Right: NewLiteral("info"),
+			Op:    types.BinaryOpEq,
+		}
+		got, clamped := clampExpression(e, tr)
+		require.False(t, clamped)
+		require.Equal(t, e.String(), got.String())
 	})
 }
 
