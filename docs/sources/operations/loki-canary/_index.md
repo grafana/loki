@@ -331,7 +331,7 @@ All options:
   -labelvalue string
     	The unique label value for this instance of loki-canary to use in the log selector (default "loki-canary")
   -listen-addr
-      Address which loki-canary should expose metrics
+    	Address which loki-canary should expose metrics
   -max-wait duration
     	Duration to keep querying Loki for missing websocket entries before reporting them missing (default 5m0s)
   -metric-test-interval duration
