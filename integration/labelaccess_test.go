@@ -234,29 +234,8 @@ func TestAggregatedMetricsTestCases(t *testing.T) {
 			},
 			lines: []string{`ts=1 bytes=1024 count=10 job="varlog" service_name="varlog_service" env="dev" classification="confidential"`,
 				`ts=4 bytes=8192 count=40 job="varlog" service_name="varlog_service" env="prod" classification="notsecret"`},
-			streams: []map[string]string{
-				{
-					"classification": "confidential",
-					"env":            "dev",
-					"job":            "varlog",
-				},
-				{
-					"classification": "secret",
-					"env":            "prod",
-					"job":            "varlog",
-				},
-				{
-					"classification": "secret",
-					"env":            "dev",
-					"job":            "varlog",
-				},
-				{
-					"job": "varlog",
-				},
-			},
 		},
 	}
-	//t.Skip("This test is not complete")
 	for _, testCase := range aggregatedMetricsTestCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			if testCase.createCluster == nil {
@@ -269,9 +248,6 @@ func TestAggregatedMetricsTestCases(t *testing.T) {
 
 			testCase.aggregatedMetricsQuery(t, cliQuery)
 			testCase.labelValuesQuery(t, cliQuery)
-			//testCase.seriesQuery(t, cliQuery)
-			//testCase.metricsRangeQuery(t, cliQuery)
-			//testCase.metricsQuery(t, cliQuery)
 		})
 	}
 }
@@ -367,25 +343,7 @@ func (tc *testQueryAndLabelResults) aggregatedMetricsQuery(t *testing.T, qc *cli
 			}
 		}
 		assert.ElementsMatch(t, tc.lines, actualLines)
-		//assert.ElementsMatch(t, tc.streams, streams)
 	})
-
-	//	require.Len(t, output.Data.Stream, 2)
-	//	require.Equal(t, "varlog_service", output.Data.Stream[0].Stream["__aggregated_metric__"])
-	//
-	//	expected := []string{
-	//		`ts=1 bytes=1024 count=10 job="varlog" service_name="varlog_service" env="dev" classification="confidential"`,
-	//		`ts=4 bytes=8192 count=40 job="varlog" service_name="varlog_service" env="prod" classification="notsecret"`,
-	//	}
-	//
-	//	actual := []string{}
-	//	for _, stream := range output.Data.Stream {
-	//		for _, v := range stream.Values {
-	//			actual = append(actual, v[1])
-	//		}
-	//	}
-	//
-	//	require.ElementsMatch(t, expected, actual)
 }
 
 func (tc *testQueryAndLabelResults) cliQuery(t *testing.T, tAll *cluster.Component) *client.Client {
