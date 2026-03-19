@@ -132,6 +132,7 @@ func (p *cachingPipeline) Close() {
 // arrowCacheAdapter adapts a [cache.Cache] (byte-oriented) to Arrow record
 // batch reads/writes using Arrow IPC stream encoding.
 type arrowCacheAdapter struct {
+	logger         log.Logger
 	cache          cache.Cache
 	snappyCompress bool
 
@@ -184,6 +185,11 @@ func (s *arrowCacheAdapter) Set(ctx context.Context, key string, records []arrow
 
 	if s.snappyCompress {
 		buf = snappy.Encode(nil, buf)
+	}
+
+	if s.maxSizeBytes > 0 && uint64(len(buf)) > s.maxSizeBytes {
+		level.Debug(s.logger).Log("msg", "cache entry too large. won't cache", "key", key, "size", len(buf), "max_size", s.maxSizeBytes)
+		return 0, nil
 	}
 
 	if err := s.cache.Store(ctx, []string{key}, [][]byte{buf}); err != nil {
@@ -286,6 +292,7 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 		return &arrowCacheAdapter{
 			cache:          c,
 			snappyCompress: strings.EqualFold(cfg.Compression, "snappy"),
+			logger:         logger,
 		}, nil
 	}
 
