@@ -44,6 +44,7 @@ func main() {
 	sName := flag.String("streamname", "stream", "The stream name for this instance of loki-canary to use in the log selector")
 	sValue := flag.String("streamvalue", "stdout", "The unique stream value for this instance of loki-canary to use in the log selector")
 	port := flag.Int("port", 3500, "Port which loki-canary should expose metrics")
+	listenAddr := flag.String("listen-addr", "", "Address which loki-canary should expose metrics")
 	addr := flag.String("addr", "", "The Loki server URL:Port, e.g. loki:3100")
 	push := flag.Bool("push", false, "Push the logs directly to given Loki address")
 	useTLS := flag.Bool("tls", false, "Does the loki connection use TLS?")
@@ -229,7 +230,7 @@ func main() {
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
 		srv := &http.Server{
-			Addr:              ":" + strconv.Itoa(*port),
+			Addr:              *listenAddr + ":" + strconv.Itoa(*port),
 			Handler:           nil, // uses default mux from http.Handle calls above
 			ReadTimeout:       120 * time.Second,
 			WriteTimeout:      120 * time.Second,
