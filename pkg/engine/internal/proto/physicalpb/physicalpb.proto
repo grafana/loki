@@ -300,5 +300,5 @@ message Batching {
 message Cache {
   string key = 1;
   string cache_name = 2;
-  uint64 max_cacheable_size_bytes  = 3;
+  uint64 max_cacheable_size_bytes = 3;
 }
