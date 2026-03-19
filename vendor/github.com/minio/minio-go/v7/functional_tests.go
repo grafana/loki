@@ -2004,7 +2004,6 @@ func testPutObjectWithAutoChecksums() {
 	// Save the data
 	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 	args["objectName"] = objectName
-	c.TraceOn(os.Stdout)
 
 	cmpChecksum := func(got, want string) {
 		if want != got {
@@ -5285,6 +5284,25 @@ func testGetObjectReadAtFunctional() {
 	}
 	offset += 512
 
+	readOffset := 0
+	bufRead := make([]byte, 512)
+	// Read (again) using the regular read function.
+	// Should not have been affected by ReadAt.
+	m, err = io.ReadFull(r, bufRead)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "ReadFull failed", err)
+		return
+	}
+	if m != len(bufRead) {
+		logError(testName, function, args, startTime, "", "ReadFull read shorter bytes before reaching EOF, expected "+string(len(bufRead))+", got "+string(m), err)
+		return
+	}
+	if !bytes.Equal(bufRead, buf[readOffset:readOffset+len(bufRead)]) {
+		logError(testName, function, args, startTime, "", "Incorrect Read from offset", err)
+		return
+	}
+	readOffset += len(bufRead)
+
 	st, err := r.Stat()
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Stat failed", err)
@@ -5309,6 +5327,23 @@ func testGetObjectReadAtFunctional() {
 		logError(testName, function, args, startTime, "", "Incorrect read between two ReadAt from same offset", err)
 		return
 	}
+
+	// Read (again) using the regular read function.
+	// Should not have been affected by ReadAt.
+	m, err = io.ReadFull(r, bufRead)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "ReadFull (2) failed", err)
+		return
+	}
+	if m != len(bufRead) {
+		logError(testName, function, args, startTime, "", "ReadFull read shorter bytes before reaching EOF", err)
+		return
+	}
+	if !bytes.Equal(bufRead, buf[readOffset:readOffset+len(bufRead)]) {
+		logError(testName, function, args, startTime, "", "Incorrect Read from offset", err)
+		return
+	}
+	readOffset += len(bufRead)
 
 	offset += 512
 	m, err = r.ReadAt(buf3, offset)
