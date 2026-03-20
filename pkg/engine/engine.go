@@ -200,6 +200,8 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		return logqlmodel.Result{}, httpgrpc.Error(http.StatusBadRequest, err.Error())
 	}
 
+	cacheEnabled := cache.IsCacheConfigured(e.cfg.Executor.TasksResultCache.CacheConfig) && !params.CachingOptions().Disabled
+
 	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.Execute",
 		trace.WithAttributes(
 			attribute.String("type", string(logql.GetRangeType(params))),
@@ -209,6 +211,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 			attribute.Stringer("step", params.Step()),
 			attribute.Stringer("length", params.End().Sub(params.Start())),
 			attribute.StringSlice("shards", params.Shards()),
+			attribute.Bool("cache_disabled", cacheEnabled),
 		),
 	)
 	defer span.End()
@@ -228,7 +231,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	}
 	gotrace.Log(ctx, "logical_planning", "done")
 
-	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, tenantID, logger, params, logicalPlan)
+	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, tenantID, logger, params, logicalPlan, cacheEnabled)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		span.SetStatus(codes.Error, "failed to create physical plan")
@@ -239,7 +242,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// Enable admission lanes only for log queries
 	useAdmissionLanes := !isMetricQuery(params.GetExpression())
 
-	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan, useAdmissionLanes)
+	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan, useAdmissionLanes, cacheEnabled)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		span.SetStatus(codes.Error, "failed to create execution plan")
@@ -379,11 +382,11 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 }
 
 // buildPhysicalPlan builds a physical plan from the given logical plan.
-func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) (*physical.Plan, time.Duration, error) {
+func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger log.Logger, params logql.Params, logicalPlan *logical.Plan, cacheEnabled bool) (*physical.Plan, time.Duration, error) {
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID))
+	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID, cacheEnabled))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -428,7 +431,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	return physicalPlan, duration, nil
 }
 
-func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string) physical.MetastoreSectionsResolver {
+func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string, cacheEnabled bool) physical.MetastoreSectionsResolver {
 	planner := physical.NewMetastorePlanner(e.metastore, e.cfg.Executor.BatchSize)
 	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
 		ctx, span := xcap.StartSpan(ctx, tracer, "engine.metastoreResolver")
@@ -442,7 +445,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 		// Disable admission lanes for metastore queries
 		useAdmissionLanes := false
 
-		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan, useAdmissionLanes)
+		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan, useAdmissionLanes, cacheEnabled)
 		if err != nil {
 			return nil, fmt.Errorf("metastore: build workflow: %w", err)
 		}
@@ -475,7 +478,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 }
 
 // buildWorkflow builds a workflow from the given physical plan.
-func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.Logger, physicalPlan *physical.Plan, useAdmissionLanes bool) (*workflow.Workflow, time.Duration, error) {
+func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.Logger, physicalPlan *physical.Plan, useAdmissionLanes bool, cacheEnabled bool) (*workflow.Workflow, time.Duration, error) {
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
 
@@ -492,7 +495,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 		MaxRunningScanTasks:  maxRunningScanTasks,
 		MaxRunningOtherTasks: 0,
 
-		CacheEnabled:     cache.IsCacheConfigured(e.cfg.Executor.TasksResultCache.CacheConfig),
+		CacheEnabled:     cacheEnabled,
 		MaxCacheableSize: uint64(e.cfg.Executor.TasksResultCache.MaxCacheableSize),
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
