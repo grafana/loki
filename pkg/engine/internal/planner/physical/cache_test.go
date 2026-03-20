@@ -112,6 +112,21 @@ func TestTaskCacheKey(t *testing.T) {
 		require.Empty(t, key)
 	})
 
+	t.Run("DataObjScan + RangeAggregation returns TaskCacheLogsScanRangeAggr", func(t *testing.T) {
+		var g dag.Graph[Node]
+		s := g.Add(scan())
+		agg := g.Add(&RangeAggregation{
+			Operation: types.RangeAggregationTypeCount,
+			Start:     time.Unix(0, 0).UTC(),
+			End:       time.Unix(100, 0).UTC(),
+		})
+		_ = g.AddEdge(dag.Edge[Node]{Parent: agg, Child: s})
+		plan := FromGraph(g)
+		key, cacheType := TaskCacheKey(ctx, "t", plan)
+		require.NotEmpty(t, key)
+		require.Equal(t, TaskCacheLogsScanRangeAggr, cacheType)
+	})
+
 	t.Run("PointersScan plan returns POINTERSSCAN cache type", func(t *testing.T) {
 		var g dag.Graph[Node]
 		g.Add(&PointersScan{Location: "gs://bucket/meta"})

@@ -19,6 +19,8 @@ const (
 	TaskCacheLogsScan TaskCacheName = "logscan"
 	// TaskCacheMetastore selects the metastore cache (for POINTERSSCAN tasks).
 	TaskCacheMetastore TaskCacheName = "metastore"
+	// TaskCacheLogsScanRangeAggr selects the logscan-rangeaggr cache (DataObjScan + RangeAggregation, i.e. metric queries).
+	TaskCacheLogsScanRangeAggr TaskCacheName = "logscan-rangeaggr"
 )
 
 // Cache is a plan node that wraps the root of a cacheable task fragment.
@@ -85,6 +87,8 @@ func TaskCacheKey(ctx context.Context, tenantID string, plan *Plan) (string, Tas
 	var parts []string
 	var cacheType string
 	var nonCacheable bool
+	var hasDataObjScan, hasRangeAggr, hasPointersScan bool
+
 	_ = plan.DFSWalk(root, func(n Node) error {
 		key := n.CacheKey(ctx)
 		if key == "" {
@@ -93,13 +97,25 @@ func TaskCacheKey(ctx context.Context, tenantID string, plan *Plan) (string, Tas
 		}
 		switch n.(type) {
 		case *DataObjScan:
-			cacheType = TaskCacheLogsScan
+			hasDataObjScan = true
 		case *PointersScan:
-			cacheType = TaskCacheMetastore
+			hasPointersScan = true
+		case *RangeAggregation:
+			hasRangeAggr = true
 		}
 		parts = append(parts, key)
 		return nil
 	}, dag.PreOrderWalk)
+
+	// Resolve cache type
+	switch {
+	case hasPointersScan:
+		cacheType = TaskCacheMetastore
+	case hasDataObjScan && hasRangeAggr:
+		cacheType = TaskCacheLogsScanRangeAggr
+	case hasDataObjScan:
+		cacheType = TaskCacheLogsScan
+	}
 
 	// No cache if It's not cacheable, did not contain any scan (cacheType=="") or plan contains no cacheable parts
 	if nonCacheable || cacheType == "" || len(parts) == 0 {

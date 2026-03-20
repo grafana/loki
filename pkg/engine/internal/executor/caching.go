@@ -304,10 +304,15 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 	if err != nil {
 		return nil, fmt.Errorf("creating metastore task cache: %w", err)
 	}
+	logscanRangeAggr, err := newCache("logscan-rangeaggr.")
+	if err != nil {
+		return nil, fmt.Errorf("creating logscan-rangeaggr task cache: %w", err)
+	}
 
 	return TaskCacheRegistry{
-		physical.TaskCacheLogsScan:  logscan,
-		physical.TaskCacheMetastore: metastore,
+		physical.TaskCacheLogsScan:          logscan,
+		physical.TaskCacheLogsScanRangeAggr: logscanRangeAggr,
+		physical.TaskCacheMetastore:         metastore,
 	}, nil
 }
 
