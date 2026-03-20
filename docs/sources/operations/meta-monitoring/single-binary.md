@@ -39,15 +39,15 @@ prometheus.remote_write "default" {
 
 ```yaml
 scrape_configs:
-    - job_name: loki
-        static_configs:
-          - targets: ['localhost:3100']
-            labels:
-              cluster: prod
-              namespace: default
-              job: default/loki-single-binary
-              pod: loki-single-binary
-              container: loki
+  - job_name: loki
+    static_configs:
+      - targets: ['localhost:3100']
+        labels:
+          cluster: prod
+          namespace: default
+          job: default/loki-single-binary
+          pod: loki-single-binary
+          container: loki
 ```
 
 ## Mixins
@@ -58,10 +58,10 @@ To generate the [mixins](https://grafana.com/docs/loki/<LOKI_VERSION>/operations
 2. Install [mixtool](https://github.com/monitoring-mixins/mixtool).
 3. Clone the Loki repository from Github.
 
-   ```bash
-   git clone https://github.com/grafana/loki
-   cd loki
-   ```
+    ```bash
+    git clone https://github.com/grafana/loki
+    cd loki
+    ```
 
 4. Create the output directory.
 
@@ -71,15 +71,15 @@ To generate the [mixins](https://grafana.com/docs/loki/<LOKI_VERSION>/operations
 
 5. Navigate to the mixin directory.
 
-   ```bash
-   cd loki/production/loki-mixin
-   ```
+    ```bash
+    cd loki/production/loki-mixin
+    ```
 
 6. Use `jb` to install mixin dependencies and generate the `vender` directory.
 
-   ```bash
-   jb install
-   ```
+    ```bash
+    jb install
+    ```
 
 7. Create the mixin configuration file `single-binary.libsonnet`.
 
