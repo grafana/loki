@@ -290,13 +290,13 @@ func TestIndexBuilder_stalePartition(t *testing.T) {
 
 	// Wait for stale partition to be flushed
 	for i := 0; i < 100; i++ {
-		if len(readAllSectionPointers(t, bucket)) == 30 {
+		if len(readAllSectionPointers(t, bucket)) == 30 && len(p.partitionStates[0].events) == 0 {
 			break
 		}
 		time.Sleep(time.Millisecond)
 	}
-	require.Equal(t, 30, len(readAllSectionPointers(t, bucket)))
 
+	require.Equal(t, 30, len(readAllSectionPointers(t, bucket)))
 	require.Equal(t, 0, len(p.partitionStates[0].events)) // Events should be gone now they've been processed
 }
 
