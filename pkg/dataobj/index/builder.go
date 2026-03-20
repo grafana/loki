@@ -440,6 +440,8 @@ func (p *Builder) flushPartition(ctx context.Context, partition int32) {
 			}
 			level.Error(p.logger).Log("msg", "failed to commit flush records", "partition", partition, "err", err)
 		}
+
+		p.markEventsCompleted(partition, len(records))
 	}()
 }
 
