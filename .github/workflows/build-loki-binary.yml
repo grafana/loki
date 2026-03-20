@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         goos: [linux]
-        goarch: [amd64, arm64, arm]
+        goarch: [amd64, arm64, arm, riscv64]
         binary:
           - name: loki
             path: ./cmd/loki
