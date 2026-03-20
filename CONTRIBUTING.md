@@ -1,164 +1,210 @@
-# Contribute
+# Contributing to Loki
 
-Loki uses GitHub to manage reviews of pull requests:
+Thank you for your interest in contributing to Loki! This guide covers everything you need to get started, from setting up a development environment to submitting your first pull request.
 
-- If you have a trivial fix or improvement, go ahead and create a pull request.
-- If you plan to do something more involved, discuss your ideas on the relevant GitHub issue.
-- Make sure to follow the prerequisites below before marking your PR as ready for review.
+> **Note:** Promtail is considered feature-complete. Future log collection development happens in [Grafana Alloy](https://github.com/grafana/alloy).
 
-**Note that Promtail is considered to be feature complete, and future development for logs collection will be in [Grafana Alloy](https://github.com/grafana/alloy)**
+## Table of contents
 
-## Loki Improvement Documents (LIDs)
+- [Getting help](#getting-help)
+- [Before you contribute](#before-you-contribute)
+- [Ways to contribute](#ways-to-contribute)
+- [Development setup](#development-setup)
+- [Submitting a pull request](#submitting-a-pull-request)
+- [Dependency management](#dependency-management)
+- [Coding standards](#coding-standards)
+- [Contribute to documentation](#contribute-to-documentation)
+- [Contribute to Helm chart](#contribute-to-helm-chart)
 
-Before creating a large pull request to change or add functionality, please create a _Loki Improvement Document (LID)_. We use LIDs to discuss and vet ideas submitted by maintainers or the community in an open and transparent way. As of Jan 2023, we are starting with a lightweight LID process and we may add more structure, inspired by Python's [PEP](https://peps.python.org/pep-0001/) and Kafka's [KIP](https://cwiki.apache.org/confluence/display/KAFKA/Kafka+Improvement+Proposals) approaches.
+## Getting help
 
-LIDs must be created as a pull request using [this template](docs/sources/community/lids/template.md).
+Before opening an issue or pull request, check whether your question or idea has already been discussed:
 
-## Pull Request Prerequisites/Checklist
+- **Slack**: Join the `#loki` channel on [Grafana Labs Slack](https://slack.grafana.com/)
+- **Community forum**: Post in the [Grafana Loki category](https://community.grafana.com) on community.grafana.com
+- **Community call**: Monthly on the first Thursday, alternating EU (12:00 UTC) and US (17:00 UTC) — refer to the [agenda doc](https://docs.google.com/document/d/1MNjiHQxwFukm2J4NJRWyRgRIiK7VpokYyATzJ5ce-O8/edit?usp=sharing) for the calendar invite
+- **Mailing list**: [loki-developers](https://groups.google.com/forum/#!forum/loki-developers) for development discussion
 
-**NOTE:** The Loki team has adopted the use of [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for commit messages. 
+## Before you contribute
 
-1. Your PR title is in the conventional commits form `<change type>: Your change`.
-   1. It uses a complete phrase or sentence. The PR title will appear in a changelog, so help other people understand what your change will be.
-   1. It starts with an imperative verb. Example: Fix the latency between System A and System B.
-   2. It uses Sentence case, not Title Case.
-2. It has a clear description saying what it does and why. Your PR description is a reviewers first impression of your changes.
-3. Your PR branch is sync'ed with main
-4. Your PR documents upgrading steps under `docs/sources/setup/upgrade/_index.md` if it changes:
-   * Default configuration values
-   * Metric names or label names
-   * Changes existing log lines that may be used in dashboard or alerts. e.g: logs lines in any `metrics.go` files might be used in building dashboards or alerts.
-   * Configuration parameters
-   * Any breaking changes to HTTP or gRPC API endpoints
-   * Any other change that would require special attention or extra steps to upgrade
+- Read the [Code of Conduct](CODE_OF_CONDUCT.md). All contributors are expected to follow it.
+- Check [open issues](https://github.com/grafana/loki/issues) and [pull requests](https://github.com/grafana/loki/pulls) to avoid duplicating work.
+- For questions about project direction and governance, refer to [governance](docs/sources/community/governance.md) and [MAINTAINERS.md](MAINTAINERS.md).
 
-Please document clearly what changed AND what needs to be done in the upgrade guide.
+## Ways to contribute
 
-**NOTE:** A member of the Loki repo maintainers must approve and run the continuous integration (CI) workflows for community contributions.
+- **Bug reports**: Use the [GitHub issue tracker](https://github.com/grafana/loki/issues/new/choose) and fill in the appropriate template.
+- **Feature requests**: For small improvements, open an issue. For significant changes, create a [Loki Improvement Document (LID)](#loki-improvement-documents-lids) first.
+- **Code changes**: Refer to [Development setup](#development-setup) and [Submitting a pull request](#submitting-a-pull-request).
+- **Documentation**: Refer to [Contribute to documentation](#contribute-to-documentation).
+- **Helm chart**: Refer to [Contribute to Helm chart](#contribute-to-helm-chart).
 
-## Setup
+## Development setup
 
-A common problem arises in local environments when you want your module to use a locally modified dependency:
-How do you make Go understand you don't want to fetch upstream dependencies but use local ones?
-You could modify `go.mod` and use `replace` directives, but it's highly harming *Developer Experience* as you
-need to roll back your `go.mod` before committing.
+### Prerequisites
 
-Things get even worse when you host multiple modules on the same repository as Go will ignore modifications
-made locally to a module B when building a dependent module A.
-Below are some solutions you can use if you happen to stumble on those problems.
+- **Go** 1.25 or later (check `go.mod` for the exact minimum version in use)
+- **Docker** or **Podman** (for integration tests and docs preview)
+- **Git**
+- **Make**
 
-### Go 1.18 workspaces
-
-```bash
-$ git clone <FORK_URL>
-$ go work init     # Init your go.work file
-$ go work use -r . # Recursively add sub-modules in the use clause of your go.work file
-```
-
-Since Go 1.18, we are able to launch build commands in a mode called *workspace*. Conceptually,
-a workspace is an **untracked** file adding `replace` directives to your `go.mod` at runtime.
-By default, Go will use the *workspace* mode when a `go.work` file is present, but you can have
-different *workspaces* and specify which one to use with the `GOWORK` environment variable.
-
-For more info, take a look at the [Proposal](https://go.googlesource.com/proposal/+/master/design/45713-workspace.md)
-and the [Reference](https://go.dev/ref/mod#workspaces).
-
-#### Go 1.17 `vendor` folder
-
-Since Go 1.17, the `vendor` folder excludes `go.mod` file from dependencies and includes version information
-in `modules.txt`. The removal of `go.mod` files inside the folder means Go won't try to use the
-upstream version of our dependencies.
-
-### Prior to Go 1.18
-
-Prior to Go 1.18, you would need to add your fork as a remote on the original **\$GOPATH**/src/github.com/grafana/loki clone, so:
+### Clone and build
 
 ```bash
-$ go get github.com/grafana/loki
-$ cd $GOPATH/src/github.com/grafana/loki # GOPATH is $HOME/go by default.
-
-$ git remote add <FORK_NAME> <FORK_URL>
+git clone https://github.com/grafana/loki.git
+cd loki
 ```
 
-Notice: `go get` return `package github.com/grafana/loki: no Go files in /go/src/github.com/grafana/loki` is normal.
+The preferred way to build is with `make`:
 
-## Contribute to helm
+| Command | Output |
+|---|---|
+| `make loki` | `./cmd/loki/loki` |
+| `make logcli` | `./cmd/logcli/logcli` |
+| `make loki-canary` | `./cmd/loki-canary/loki-canary` |
+| `make all` | all of the above |
+| `make loki-image` | Docker image for Loki |
 
-Please follow the [Loki Helm Chart CONTRIBUTING.md](./production/helm/loki/CONTRIBUTING.md).
+### Running tests
+
+```bash
+make test              # unit tests
+make test-integration  # integration tests (requires Docker, takes ~15 min)
+make lint              # run linters (golangci-lint)
+```
+
+### Working with local dependency overrides
+
+Use [Go workspaces](https://go.dev/ref/mod#workspaces) to use a locally modified version of a dependency without touching `go.mod`:
+
+```bash
+go work init
+go work use -r .   # recursively add sub-modules
+```
+
+The `go.work` file is gitignored and does not affect other contributors.
+
+## Submitting a pull request
+
+### Loki Improvement Documents (LIDs)
+
+Before opening a large pull request to add or significantly change functionality, create a _Loki Improvement Document (LID)_. LIDs allow the community to discuss and vet ideas in an open, transparent way, inspired by Python's [PEP](https://peps.python.org/pep-0001/) and Kafka's [KIP](https://cwiki.apache.org/confluence/display/KAFKA/Kafka+Improvement+Proposals) processes.
+
+Create a LID as a pull request using the [LID template](docs/sources/community/lids/template.md).
+
+### Commit messages
+
+Loki uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Every commit message must follow the format `<type>: description`, for example:
+
+```
+fix: correct chunk iterator off-by-one error
+feat(querier): add partition-aware query path
+docs: update upgrade guide for 3.x
+```
+
+### PR checklist
+
+Before marking a PR as ready for review:
+
+1. **Title** follows conventional commits format, uses sentence case, and starts with an imperative verb. The title appears in the changelog — write it for a reader without context (for example, `Fix latency spike when querying across multiple ingesters`).
+2. **Description** clearly explains what the change does and why.
+3. **Branch** is synced with `main`.
+4. **Tests** are added or updated where appropriate.
+5. **Upgrade guide** at `docs/sources/setup/upgrade/_index.md` is updated if the change affects any of:
+   - Default configuration values
+   - Metric or label names
+   - Log lines used in dashboards or alerts (e.g., lines in `metrics.go` files)
+   - Configuration parameters
+   - HTTP or gRPC API endpoints
+   - Any other change requiring operator attention during an upgrade
+6. **Deprecated/deleted config**: If a configuration option is deprecated or removed, update `tools/deprecated-config-checker/deprecated-config.yaml` or `deleted-config.yaml` respectively ([example PR](https://github.com/grafana/loki/pull/10840/commits/0d4416a4b03739583349934b96f272fb4f685d15)).
+7. **Documentation** is added or updated for any user-visible change, and follows the [Grafana Writers' Toolkit](https://grafana.com/docs/writers-toolkit/write/).
+
+**Note:** A maintainer must approve and trigger CI for community contributions.
+
+**Note:** For automated agent PRs, append 🤖🤖🤖 to the PR title to opt into the dedicated agent review process.
 
 ## Dependency management
 
-We use [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies on external packages.
-This requires a working Go environment with version 1.15 or greater and git installed.
+Loki uses [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) for dependency management.
 
-To add or update a new dependency, use the `go get` command:
+To add or update a dependency:
 
 ```bash
-# Pick the latest tagged release.
+# Pick the latest tagged release
 go get example.com/some/module/pkg
 
-# Pick a specific version.
+# Pin a specific version
 go get example.com/some/module/pkg@vX.Y.Z
-```
 
-Tidy up the `go.mod` and `go.sum` files:
-
-```bash
+# Tidy and vendor
 go mod tidy
 go mod vendor
 git add go.mod go.sum vendor
 git commit
 ```
 
-You have to commit the changes to `go.mod` and `go.sum` before submitting the pull request.
+Always commit changes to `go.mod`, `go.sum`, and `vendor/` together in the same commit.
 
-## Coding Standards
+## Coding standards
 
-### go imports
-imports should follow `std libs`, `externals libs` and `local packages` format
+Refer to [CODING_STANDARDS.md](CODING_STANDARDS.md) for the full style guide. The most important rule at a glance:
 
-Example
-```
+**Go import grouping** — three groups separated by blank lines: standard library, external packages, internal packages:
+
+```go
 import (
-	"fmt"
-	"math"
+    "fmt"
+    "math"
 
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+    "github.com/prometheus/common/model"
+    "github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+    "github.com/grafana/loki/v3/pkg/logproto"
+    "github.com/grafana/loki/v3/pkg/logql"
 )
 ```
+
+Run `make lint` before submitting — it enforces import ordering and other style rules automatically.
 
 ## Contribute to documentation
 
 We're glad you're here to help make our technical documentation even better for Loki users.
 
+Loki's documentation lives in `docs/sources/` and is published to [grafana.com/docs/loki/latest](https://grafana.com/docs/loki/latest/).
+
 The Grafana docs team has created a [Writers' Toolkit](https://grafana.com/docs/writers-toolkit/) that includes information about how we write docs, a [Style Guide](https://grafana.com/docs/writers-toolkit/write/style-guide/), and templates to help you contribute to the Loki documentation.
 
 The Loki documentation is written using the CommonMark flavor of markdown, including some extended features. For more information about markdown, you can see the [CommonMark specification](https://spec.commonmark.org/), and a [quick reference guide](https://commonmark.org/help/) for CommonMark.
 
-Loki uses the static site generator [Hugo](https://gohugo.io/) to generate the documentation. Loki uses a continuous integration (CI) action to sync documentation to the [Grafana website](https://grafana.com/docs/loki/latest). The CI is triggered on every merge to main in the `docs` subfolder.
+Loki uses the static site generator [Hugo](https://gohugo.io/) to generate the documentation. Loki uses a continuous integration (CI) action to sync documentation to the Grafana. The CI is triggered on every merge to `main` in the `docs` subfolder.
+
+If your changes need to be immediately published to the latest release, you must add the appropriate backport label to your PR, for example, `backport-release-2.9.x`. If the changes in your PR can be automatically backported, the backport label will trigger GrafanaBot to create the backport PR, otherwise you will need to create a PR to manually backport your changes.
+
+* [Latest release](https://grafana.com/docs/loki/latest/)
+* [Upcoming release](https://grafana.com/docs/loki/next/), at the tip of the `main` branch
+
+### Preview docs locally
 
 You can preview the documentation locally after installing [Docker](https://www.docker.com/) or [Podman](https://podman.io/).
 
-To get a local preview of the documentation:
-1. Run Docker (or Podman).
-2. Navigate to the directory with the makefile, `/loki/docs`.
-3. Run the command `make docs`. This uses the `grafana/docs` image which internally uses Hugo to generate the static site.
-4. Open http://localhost:3002/docs/loki/latest/ to review your changes.
+```bash
+# Navigate to the docs/ folder with the Makefile
+cd docs
+# Run the make target
+# This uses the grafana/docs image to generate the site
+make docs
+# Open http://localhost:3002/docs/loki/latest/ to review your changes
+```
 
-**Remember:** If running `make docs` command gave you the following error.
-
-   - `path /tmp/make-docs.Dcq is not shared from the host and is not known to Docker.`
-   - `You can configure shared paths from Docker -> Preferences... -> Resources -> File Sharing.`
+> If running `make docs` command gave you the following error.
+> - `path /tmp/make-docs.Dcq is not shared from the host and is not known to Docker.`
+> - `You can configure shared paths from Docker -> Preferences... -> Resources -> File Sharing.`
 
 Then you can go to Docker Desktop settings and open the resources, add the temporary directory path `/tmp`.
 
 > Note that `make docs` uses a lot of memory. If it crashes, increase the memory allocated to Docker and try again.
 
-Also note that PRs are merged to the main branch.  If your changes need to be immediately published to the latest release, you must add the appropriate backport label to your PR, for example, `backport-release-2.9.x`.  If the changes in your PR can be automatically backported, the backport label will trigger GrafanaBot to create the backport PR, otherwise you will need to create a PR to manually backport your changes.
+## Contribute to Helm chart
 
-* [Latest release](https://grafana.com/docs/loki/latest/)
-* [Upcoming release](https://grafana.com/docs/loki/next/), at the tip of the main branch
+Refer to [production/helm/loki/CONTRIBUTING.md](production/helm/loki/CONTRIBUTING.md) for chart-specific guidelines.
