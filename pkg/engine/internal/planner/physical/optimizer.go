@@ -201,13 +201,33 @@ func (r *scanTimeRangePushup) applyToTargets(node Node, timeRange TimeRange) boo
 	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
-		if node.Start.Compare(timeRange.Start) < 0 {
-			node.Start = timeRange.Start
+		if node.Step == 0 {
+			if node.Start.Compare(timeRange.Start) < 0 {
+				node.Start = timeRange.Start
+				changed = true
+			}
+			if node.End.Compare(timeRange.End) > 0 {
+				node.End = timeRange.End
+				changed = true
+			}
+		} else {
+			trSteppedStart := time.UnixMilli((timeRange.Start.UnixMilli() / node.Step.Milliseconds()) * node.Step.Milliseconds()).UTC()
+			for trSteppedStart.Compare(timeRange.Start) < 0 { // should only happen at most once, but just in case
+				trSteppedStart = trSteppedStart.Add(node.Step)
+			}
+			trSteppedEnd := time.UnixMilli((timeRange.End.UnixMilli() / node.Step.Milliseconds()) * node.Step.Milliseconds()).UTC()
+			for trSteppedEnd.Compare(timeRange.End) > 0 {
+				trSteppedEnd = trSteppedEnd.Add(-node.Step)
+			}
+			if node.Start.Compare(trSteppedStart) < 0 {
+				node.Start = trSteppedStart
+				changed = true
+			}
+			if node.End.Compare(trSteppedEnd) > 0 {
+				node.End = trSteppedEnd
+				changed = true
+			}
 		}
-		if node.End.Compare(timeRange.End) > 0 {
-			node.End = timeRange.End
-		}
-		changed = true
 	}
 
 	// Continue to parents

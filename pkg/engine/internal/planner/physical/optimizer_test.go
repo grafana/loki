@@ -249,7 +249,43 @@ func TestLimitPushdown(t *testing.T) {
 }
 
 func TestScanTimeRangePushup(t *testing.T) {
-	t.Run("pushup time range to RangeAggregation", func(t *testing.T) {
+	t.Run("pushup time range to RangeAggregation with zero step", func(t *testing.T) {
+		plan := &Plan{}
+		{
+			dataObjScan := plan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 14, 16, 45, 29, 0, time.UTC),
+				End: time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC)}})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 53, 30, 0, time.UTC),
+				Step:  0, Range: time.Minute})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
+		}
+
+		// apply optimisations
+		optimizations := []*optimization{
+			newOptimization("scan time range pushup", plan).withRules(
+				&scanTimeRangePushup{plan: plan},
+			),
+		}
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+
+		expectedPlan := &Plan{}
+		{
+			dataObjScan := expectedPlan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 14, 16, 45, 29, 0, time.UTC),
+				End: time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC)}})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
+				Start: time.Date(2026, 3, 14, 16, 45, 29, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC),
+				Step:  time.Minute, Range: time.Minute})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+	t.Run("non-zero step rounds scan time range in RangeAggregation", func(t *testing.T) {
 		plan := &Plan{}
 		{
 			dataObjScan := plan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 14, 16, 45, 29, 0, time.UTC),
@@ -275,9 +311,45 @@ func TestScanTimeRangePushup(t *testing.T) {
 			dataObjScan := expectedPlan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 14, 16, 45, 29, 0, time.UTC),
 				End: time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC)}})
 			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
-				Start: time.Date(2026, 3, 14, 16, 45, 29, 0, time.UTC),
-				End:   time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC),
+				Start: time.Date(2026, 3, 14, 16, 45, 0, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 46, 0, 0, time.UTC),
 				Step:  time.Minute, Range: time.Minute})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+	t.Run("unusual step still rounds scan time range in RangeAggregation", func(t *testing.T) {
+		plan := &Plan{}
+		{
+			dataObjScan := plan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 20, 17, 53, 41, 0, time.UTC),
+				End: time.Date(2026, 3, 20, 17, 54, 49, 0, time.UTC)}})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Start: time.Date(2026, 3, 20, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 20, 18, 53, 30, 0, time.UTC),
+				Step:  63 * time.Second, Range: time.Minute})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
+		}
+
+		// apply optimisations
+		optimizations := []*optimization{
+			newOptimization("scan time range pushup", plan).withRules(
+				&scanTimeRangePushup{plan: plan},
+			),
+		}
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+
+		expectedPlan := &Plan{}
+		{
+			dataObjScan := expectedPlan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 20, 17, 53, 41, 0, time.UTC),
+				End: time.Date(2026, 3, 20, 17, 54, 49, 0, time.UTC)}})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
+				Start: time.Date(2026, 3, 20, 17, 53, 42, 0, time.UTC),
+				End:   time.Date(2026, 3, 20, 17, 54, 45, 0, time.UTC),
+				Step:  63 * time.Second, Range: time.Minute})
 			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
 		}
 
