@@ -111,6 +111,86 @@ func TestArrowCacheAdapterSnappyRoundTrip(t *testing.T) {
 	})
 }
 
+func TestArrowCacheAdapterMaxCacheableSize(t *testing.T) {
+	ctx := t.Context()
+
+	// Build a record large enough to produce a non-trivial payload.
+	rows := make([]string, 30)
+	for i := range rows {
+		rows[i] = "abcdefgh"
+	}
+	csv := ""
+	for i, r := range rows {
+		if i > 0 {
+			csv += "\n"
+		}
+		csv += r
+	}
+	rec, err := CSVToArrow(testFields, csv)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name           string
+		snappyCompress bool
+	}{
+		{name: "without snappy", snappyCompress: false},
+		{name: "with snappy", snappyCompress: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Measure actual encoded size using an unconstrained adapter.
+			probe := newMockCache()
+			probeAd := &arrowCacheAdapter{
+				cache:          probe,
+				snappyCompress: tc.snappyCompress,
+				logger:         log.NewNopLogger(),
+			}
+			actualSize, err := probeAd.Set(ctx, "probe-key", []arrow.RecordBatch{rec})
+			require.NoError(t, err)
+			require.Greater(t, actualSize, 0, "expected non-zero encoded size")
+
+			t.Run("limit below encoded size", func(t *testing.T) {
+				mc := newMockCache()
+				ad := &arrowCacheAdapter{
+					cache:          mc,
+					snappyCompress: tc.snappyCompress,
+					maxSizeBytes:   uint64(actualSize) - 1,
+					logger:         log.NewNopLogger(),
+				}
+
+				stored, err := ad.Set(ctx, "key", []arrow.RecordBatch{rec})
+				require.NoError(t, err)
+				require.Zero(t, stored, "should return 0 when entry exceeds max size")
+				require.Equal(t, 0, mc.setCalls, "underlying Store must not be called")
+
+				_, _, hit, err := ad.Get(ctx, "key")
+				require.NoError(t, err)
+				require.False(t, hit, "cache should miss since nothing was stored")
+			})
+
+			t.Run("limit at encoded size", func(t *testing.T) {
+				mc := newMockCache()
+				ad := &arrowCacheAdapter{
+					cache:          mc,
+					snappyCompress: tc.snappyCompress,
+					maxSizeBytes:   uint64(actualSize),
+					logger:         log.NewNopLogger(),
+				}
+
+				stored, err := ad.Set(ctx, "key", []arrow.RecordBatch{rec})
+				require.NoError(t, err)
+				require.Equal(t, actualSize, stored, "should return full encoded size")
+
+				got, sz, hit, err := ad.Get(ctx, "key")
+				require.NoError(t, err)
+				require.True(t, hit, "cache should hit")
+				require.Equal(t, actualSize, sz)
+				require.Len(t, got, 1)
+				require.Equal(t, rec.NumRows(), got[0].NumRows())
+			})
+		})
+	}
+}
+
 // failPipeline panics if Open or Read is called; used to assert inner pipeline
 // is never accessed on a cache hit.
 type failPipeline struct {
