@@ -185,11 +185,17 @@ func (r *scanTimeRangePushup) apply(root Node) bool {
 	for _, n := range nodes {
 		dataObjScan, ok := n.(*DataObjScan)
 		if ok {
-			r.applyToTargets(dataObjScan, dataObjScan.MaxTimeRange)
+			applied := r.applyToTargets(dataObjScan, dataObjScan.MaxTimeRange)
+			if applied {
+				changed = true
+			}
 		} else {
 			pointersScan, ok := n.(*PointersScan)
 			if ok {
-				r.applyToTargets(pointersScan, pointersScan.MaxTimeRange())
+				applied := r.applyToTargets(pointersScan, pointersScan.MaxTimeRange())
+				if applied {
+					changed = true
+				}
 			}
 		}
 	}
@@ -873,6 +879,17 @@ func canShardAggregation(vec *VectorAggregation, rng *RangeAggregation) bool {
 	return false
 }
 
+func WorkflowOptimizations(plan *Plan) []*optimization {
+	return []*optimization{
+		newOptimization("ClampPredicates", plan).withRules(
+			&clampPredicates{plan: plan}),
+		// needs to happen after ClampPredicates
+		newOptimization("ScanTimeRangePushup", plan).withRules(
+			&scanTimeRangePushup{plan: plan}),
+	}
+
+}
+
 // optimization represents a single optimization pass and can hold multiple rules.
 type optimization struct {
 	plan  *Plan
@@ -923,11 +940,11 @@ type optimizer struct {
 	optimisations []*optimization
 }
 
-func newOptimizer(plan *Plan, passes []*optimization) *optimizer {
+func NewOptimizer(plan *Plan, passes []*optimization) *optimizer {
 	return &optimizer{plan: plan, optimisations: passes}
 }
 
-func (o *optimizer) optimize(node Node) {
+func (o *optimizer) Optimize(node Node) {
 	for _, optimisation := range o.optimisations {
 		optimisation.optimize(node)
 	}
