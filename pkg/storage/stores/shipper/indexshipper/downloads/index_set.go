@@ -286,7 +286,17 @@ func (t *indexSet) cleanupDB(fileName string) error {
 
 	delete(t.index, fileName)
 
-	return os.Remove(filePath)
+	if err := os.Remove(filePath); err != nil {
+		return err
+	}
+
+	// Also remove companion .sections sidecar file if it exists.
+	sectionsPath := filePath + sectionsExtension
+	if err := os.Remove(sectionsPath); err != nil && !os.IsNotExist(err) {
+		level.Warn(t.logger).Log("msg", "failed to remove sections companion file", "path", sectionsPath, "err", err)
+	}
+
+	return nil
 }
 
 func (t *indexSet) Sync(ctx context.Context) (err error) {
@@ -405,6 +415,14 @@ func (t *indexSet) checkStorageForUpdates(ctx context.Context, lock, bypassListC
 		// We do not ever upload files in the object store with the same name but different contents so we do not consider downloading modified files again.
 		_, ok := t.index[normalized]
 		if !ok {
+			// Sidecar .sections files are not tracked in t.index (they are loaded
+			// as companions to .tsdb files, not as standalone indexes). Check the
+			// local filesystem instead to avoid re-downloading them every sync cycle.
+			if strings.HasSuffix(normalized, sectionsExtension) {
+				if _, statErr := os.Stat(filepath.Join(t.cacheLocation, normalized)); statErr == nil {
+					continue
+				}
+			}
 			toDownload = append(toDownload, file)
 		}
 	}
