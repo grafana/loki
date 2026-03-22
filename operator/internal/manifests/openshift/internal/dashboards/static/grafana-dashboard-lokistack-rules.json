@@ -1,0 +1,33 @@
+{
+   "groups": [
+      {
+         "name": "loki_rules",
+         "rules": [
+            {
+               "expr": "sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job, route)",
+               "record": "job_route:loki_request_duration_seconds_bucket:sum_rate"
+            },
+            {
+               "expr": "sum(rate(loki_request_duration_seconds_sum[1m])) by (job, route)",
+               "record": "job_route:loki_request_duration_seconds_sum:sum_rate"
+            },
+            {
+               "expr": "sum(rate(loki_request_duration_seconds_count[1m])) by (job, route)",
+               "record": "job_route:loki_request_duration_seconds_count:sum_rate"
+            },
+            {
+               "expr": "sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, namespace, job, route)",
+               "record": "namespace_job_route:loki_request_duration_seconds_bucket:sum_rate"
+            },
+            {
+               "expr": "sum(rate(loki_request_duration_seconds_sum[1m])) by (namespace, job, route)",
+               "record": "namespace_job_route:loki_request_duration_seconds_sum:sum_rate"
+            },
+            {
+               "expr": "sum(rate(loki_request_duration_seconds_count[1m])) by (namespace, job, route)",
+               "record": "namespace_job_route:loki_request_duration_seconds_count:sum_rate"
+            }
+         ]
+      }
+   ]
+}

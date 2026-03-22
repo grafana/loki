@@ -1,0 +1,28 @@
+overrides:
+  "foo": &tenant_overrides
+    ingestion_rate_mb: 100
+    unordered_writes: true # DEPRECATED
+    enforce_metric_name: true # DELETED
+    ruler_evaluation_delay_duration: 1m # DELETED
+    ruler_remote_write_url: "push.123abc.net" # DEPRECATED
+    ruler_remote_write_timeout: 1m # DEPRECATED
+    ruler_remote_write_headers: [ "foo", "bar" ] # DEPRECATED
+    ruler_remote_write_relabel_configs: "foo" # DEPRECATED
+    ruler_remote_write_queue_capacity: 10 # DEPRECATED
+    ruler_remote_write_queue_min_shards: 10 # DEPRECATED
+    ruler_remote_write_queue_max_shards: 100 # DEPRECATED
+    ruler_remote_write_queue_max_samples_per_send: 50 # DEPRECATED
+    ruler_remote_write_queue_batch_send_deadline: 10m # DEPRECATED
+    ruler_remote_write_queue_min_backoff: 1m # DEPRECATED
+    ruler_remote_write_queue_max_backoff: 5m # DEPRECATED
+    ruler_remote_write_queue_retry_on_ratelimit: true # DEPRECATED
+    ruler_remote_write_sigv4_config: # DEPRECATED
+      region: "wherever"
+    per_tenant_override_config: ./overrides.yaml # DEPRECATED
+    per_tenant_override_period: 5s # DEPRECATED
+    allow_deletes: true # DEPRECATED
+  "bar": *tenant_overrides
+
+multi_kv_config:
+  primary: ""
+  mirror_enabled: null

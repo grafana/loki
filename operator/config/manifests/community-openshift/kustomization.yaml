@@ -1,0 +1,4 @@
+resources:
+- ../../overlays/community-openshift
+- ../../samples
+- ../../scorecard

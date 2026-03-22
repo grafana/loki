@@ -1,0 +1,35 @@
+---
+enterprise:
+  enabled: true
+  config: |
+    auth:
+      type: trust
+    auth_enabled: false
+    cluster_name: {{ .Release.Name }}
+    license:
+      path: /etc/loki/license/license.jwt
+loki:
+  commonConfig:
+    replication_factor: 1
+  image:
+    tag: "main-5e53303"
+storage:
+  type: local
+read:
+  replicas: 1
+write:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 100Mi
+backend:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 100Mi
+monitoring:
+  serviceMonitor:
+    labels:
+      release: "prometheus"
+test:
+  prometheusAddress: "http://prometheus-kube-prometheus-prometheus.prometheus.svc.cluster.local.:9090"

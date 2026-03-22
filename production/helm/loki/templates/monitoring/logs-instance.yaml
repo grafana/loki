@@ -1,0 +1,30 @@
+{{- if .Values.monitoring.selfMonitoring.enabled }}
+{{- with .Values.monitoring.selfMonitoring.logsInstance }}
+apiVersion: monitoring.grafana.com/v1alpha1
+kind: LogsInstance
+metadata:
+  name: {{ include "loki.fullname" $ }}
+  namespace: {{ include "loki.namespace" $ }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "loki.labels" $ | nindent 4 }}
+    {{- with .labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  clients:
+    {{- include "loki.logsInstanceClient" $ | nindent 4}}
+    {{- with .clients}}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+
+  podLogsNamespaceSelector: {}
+
+  podLogsSelector:
+    matchLabels:
+      {{- include "loki.selectorLabels" $ | nindent 6 }}
+{{- end -}}
+{{- end -}}

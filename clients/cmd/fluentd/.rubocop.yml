@@ -1,0 +1,35 @@
+require: rubocop-rspec
+
+AllCops:
+  TargetRubyVersion: 2.7
+  NewCops: disable
+  Exclude:
+    - 'bin/**'
+    - 'test/**/*.rb'
+
+Metrics/BlockLength:
+  Exclude:
+    - 'Rakefile'
+    - '**/*.rake'
+    - 'spec/**/*.rb'
+  Max: 60
+Metrics/MethodLength:
+  Max: 50
+Layout/LineLength:
+  Max: 120
+Metrics/ClassLength:
+  Max: 150
+Metrics/AbcSize:
+  Max: 35
+Style/GuardClause:
+  Enabled: false
+RSpec/ExampleLength:
+  Max: 100
+RSpec/MultipleExpectations:
+  Max: 12
+Style/HashEachMethods:
+  Enabled: true
+Style/HashTransformKeys:
+  Enabled: true
+Style/HashTransformValues:
+  Enabled: true

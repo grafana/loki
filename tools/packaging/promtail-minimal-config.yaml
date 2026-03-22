@@ -1,0 +1,24 @@
+# This minimal config scrape only single log file.
+# Primarily used in rpm/deb packaging where promtail service can be started during system init process.
+# And too much scraping during init process can overload the complete system.
+# https://github.com/grafana/loki/issues/11398
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+- url: http://localhost:3100/loki/api/v1/push
+
+scrape_configs:
+- job_name: system
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: varlogs
+      #NOTE: Need to be modified to scrape any additional logs of the system.
+      __path__: /var/log/messages

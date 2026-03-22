@@ -1,0 +1,37 @@
+{{- if .Values.tableManager.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.fullname" . }}-table-manager
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+    {{- with .Values.loki.serviceLabels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.tableManager.service.labels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    app.kubernetes.io/component: table-manager
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.tableManager.service.annotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http-metrics
+      port: {{ .Values.loki.server.http_listen_port }}
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: {{ .Values.loki.server.grpc_listen_port }}
+      targetPort: grpc
+      protocol: TCP
+  selector:
+    {{- include "loki.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: table-manager
+{{- end }}

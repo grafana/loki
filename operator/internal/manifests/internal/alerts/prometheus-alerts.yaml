@@ -1,0 +1,246 @@
+---
+groups:
+- name: logging_loki.alerts
+  rules:
+  - alert: LokiRequestErrors
+    annotations:
+      description: |-
+        {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
+      summary: "At least 10% of requests are responded by 5xx server errors."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Request-Errors"
+    expr: |
+      sum(
+        job_namespace_route_statuscode:loki_request_duration_seconds_count:irate1m{status_code=~"5.."}
+      ) by (job, namespace, route)
+      /
+      sum(
+        job_namespace_route_statuscode:loki_request_duration_seconds_count:irate1m
+      ) by (job, namespace, route)
+      * 100
+      > 10
+    for: 15m
+    labels:
+      severity: critical
+  - alert: LokiStackWriteRequestErrors
+    annotations:
+      description: |-
+        {{ printf "%.2f" $value }}% of write requests from {{ $labels.job }} in {{ $labels.namespace }} are returned with server errors.
+      summary: "At least 10% of write requests to the lokistack-gateway are responded with 5xx server errors."
+      runbook_url: "[[ .RunbookURL ]]#LokiStack-Write-Request-Errors"
+    expr: |
+      sum(
+        code_handler_job_namespace:lokistack_gateway_http_requests:irate1m{code=~"5..", handler="push"}
+      ) by (job, namespace)
+      /
+      sum(
+        code_handler_job_namespace:lokistack_gateway_http_requests:irate1m{handler="push"}
+      ) by (job, namespace)
+      * 100
+      > 10
+    for: 15m
+    labels:
+      severity: critical
+  - alert: LokiStackReadRequestErrors
+    annotations:
+      description: |-
+        {{ printf "%.2f" $value }}% of query requests from {{ $labels.job }} in {{ $labels.namespace }} are returned with server errors.
+      summary: "At least 10% of query requests to the lokistack-gateway are responded with 5xx server errors."
+      runbook_url: "[[ .RunbookURL ]]#LokiStack-Read-Request-Errors"
+    expr: |
+      sum(
+        code_handler_job_namespace:lokistack_gateway_http_requests:irate1m{code=~"5..", handler=~"query|query_range|label|labels|label_values"}
+      ) by (job, namespace)
+      /
+      sum(
+        code_handler_job_namespace:lokistack_gateway_http_requests:irate1m{handler=~"query|query_range|label|labels|label_values"}
+      ) by (job, namespace)
+      * 100
+      > 10
+    for: 15m
+    labels:
+      severity: critical
+  - alert: LokiRequestPanics
+    annotations:
+      description: |-
+        {{ $labels.job }} is experiencing an increase of {{ $value }} panics.
+      summary: "A panic was triggered."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Request-Panics"
+    expr: |
+      sum(
+        increase(
+          loki_panic_total[10m]
+        )
+      ) by (job, namespace)
+      > 0
+    labels:
+      severity: critical
+  - alert: LokiRequestLatency
+    annotations:
+      description: |-
+        {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
+      summary: "The 99th percentile is experiencing high latency (higher than 1 second)."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Request-Latency"
+    expr: |
+      histogram_quantile(0.99,
+        sum(
+          irate(
+            loki_request_duration_seconds_bucket{route!~"(?i).*tail.*"}[2m]
+          )
+        ) by (job, le, namespace, route)
+      )
+      > 1
+    for: 15m
+    labels:
+      severity: critical
+  - alert: LokiTenantRateLimit
+    annotations:
+      description: |-
+        {{ $labels.job }} {{ $labels.route }} is experiencing 429 errors.
+      summary: "At least 10% of requests are responded with the rate limit error code."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Tenant-Rate-Limit"
+    expr: |
+      sum(
+        job_namespace_route_statuscode:loki_request_duration_seconds_count:irate1m{status_code="429"}
+      ) by (job, namespace, route)
+      /
+      sum(
+        job_namespace_route_statuscode:loki_request_duration_seconds_count:irate1m
+      ) by (job, namespace, route)
+      * 100
+      > 10
+    for: 15m
+    labels:
+      severity: warning
+  - alert: LokiStorageSlowWrite
+    annotations:
+      description: |-
+        The storage path is experiencing slow write response rates.
+      summary: "The storage path is experiencing slow write response rates."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Write"
+    expr: |
+      histogram_quantile(0.99,
+        sum(
+          job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{operation="WRITE"}
+        ) by (job, le, namespace)
+      )
+      > 1
+    for: 15m
+    labels:
+      severity: warning
+  - alert: LokiStorageSlowRead
+    annotations:
+      description: |-
+        The storage path is experiencing slow read response rates.
+      summary: "The storage path is experiencing slow read response rates."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Read"
+    expr: |
+      histogram_quantile(0.99,
+        sum(
+          job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{operation="Shipper.Query"}
+        ) by (job, le, namespace)
+      )
+      > 5
+    for: 15m
+    labels:
+      severity: warning
+  - alert: LokiWritePathHighLoad
+    annotations:
+      description: |-
+        The write path is experiencing high load.
+      summary: "The write path is experiencing high load, causing backpressure storage flushing."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Write-Path-High-Load"
+    expr: |
+      sum(
+        loki_ingester_wal_replay_flushing
+      ) by (job, namespace)
+      > 0
+    for: 15m
+    labels:
+      severity: warning
+  - alert: LokiReadPathHighLoad
+    annotations:
+      description: |-
+        The read path is experiencing high load.
+      summary: "The read path has high volume of queries, causing longer response times."
+      runbook_url: "[[ .RunbookURL ]]#Loki-Read-Path-High-Load"
+    expr: |
+      histogram_quantile(0.99,
+        sum(
+          rate(
+            loki_logql_querystats_latency_seconds_bucket[5m]
+          )
+        ) by (job, le, namespace)
+      )
+      > 30
+    for: 15m
+    labels:
+      severity: warning
+  - alert: LokiDiscardedSamplesWarning
+    annotations:
+      description: |-
+        Loki in namespace {{ $labels.namespace }} is discarding samples in the "{{ $labels.tenant }}" tenant during ingestion.
+        Samples are discarded because of "{{ $labels.reason }}" at a rate of {{ .Value | humanize }} samples per second.
+      summary: Loki is discarding samples during ingestion because they fail validation.
+      runbook_url: "[[ .RunbookURL]]#Loki-Discarded-Samples-Warning"
+    expr: |
+      sum by(namespace, tenant, reason) (
+        irate(loki_discarded_samples_total{
+          reason!="rate_limited",
+          reason!="per_stream_rate_limit",
+          reason!="stream_limit"}[2m])
+      )
+      > 0
+    for: 15m
+    labels:
+      severity: warning
+  - alert: LokiIngesterFlushFailureRateCritical
+    annotations:
+      summary: "Loki ingester has critical flush failure rate"
+      description: |
+        Loki ingester {{ $labels.pod }} in the namespace {{ $labels.namespace }} has a critical flush failure rate of
+        {{ $value | humanizePercentage }} over the last 5 minutes. This requires immediate attention as data is
+        not being flushed to the storage. Validate if the storage configuration is still valid and if the storage is
+        still reachable. Current failure rate: {{ $value | humanizePercentage }} Threshold: 20%
+    expr: |
+      sum (
+        rate(loki_ingester_chunks_flush_failures_total[5m])
+        /
+        rate(loki_ingester_chunks_flush_requests_total[5m])
+      ) by (namespace, pod)
+      > 0.20
+    for: 15m
+    labels:
+      severity: critical
+  - alert: LokistackSchemaUpgradesRequired
+    annotations:
+      description: |-
+        The LokiStack "{{ $labels.stack_name }}" in namespace "{{ $labels.stack_namespace }}" is using a storage schema
+        configuration that does not contain the latest schema version. It is recommended to update the schema
+        configuration to update the schema version to the latest version in the future.
+      summary: "One or more of the deployed LokiStacks contains an outdated storage schema configuration."
+      runbook_url: "[[ .RunbookURL ]]#Lokistack-Schema-Upgrades-Required"
+    expr: |
+      sum (
+        lokistack_status_condition{reason="StorageNeedsSchemaUpdate",status="true"}
+      ) by (stack_namespace, stack_name)
+      > 0
+    for: 1m
+    labels:
+      severity: warning
+  - alert: LokistackComponentsNotReadyWarning
+    annotations:
+      description: |-
+        The LokiStack "{{ $labels.stack_name }}" in namespace "{{ $labels.namespace }}" has components that are not ready.
+      summary: "One or more LokiStack components are not ready."
+      runbook_url: "[[ .RunbookURL ]]#Lokistack-Components-Not-Ready-Warning"
+    expr: |
+      sum (
+        label_replace(
+          lokistack_status_condition{condition="Ready", status="false"},
+          "namespace", "$1", "stack_namespace", "(.+)"
+        )
+      ) by (stack_name, namespace)
+      > 0
+    for: 15m
+    labels:
+      severity: warning

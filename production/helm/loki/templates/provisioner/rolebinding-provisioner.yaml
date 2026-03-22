@@ -1,0 +1,26 @@
+{{ if and .Values.enterprise.provisioner.enabled .Values.enterprise.enabled}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: {{ if not .Values.rbac.namespaced }}Cluster{{ end }}RoleBinding
+metadata:
+  name: {{ template "enterprise-logs.provisionerFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "enterprise-logs.provisionerLabels" . | nindent 4 }}
+    {{- with .Values.enterprise.provisioner.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    {{- with .Values.enterprise.provisioner.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    "helm.sh/hook": {{ .Values.enterprise.provisioner.hookType | quote }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: {{ if not .Values.rbac.namespaced }}Cluster{{ end }}Role
+  name: {{ template "enterprise-logs.provisionerFullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "enterprise-logs.provisionerFullname" . }}
+    namespace: {{ include "loki.namespace" $ }}
+{{- end }}

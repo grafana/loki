@@ -1,0 +1,82 @@
+.uptodate
+.uptodate-debug
+.pkg
+.cache
+*.output
+*.tgz
+*.exe
+__debug_bin*
+requirements.lock
+mixin/vendor/
+cmd/loki/loki
+cmd/logcli/logcli
+clients/cmd/promtail/promtail
+cmd/loki/loki-debug
+cmd/lokitool/lokitool
+clients/cmd/promtail/promtail-debug
+clients/cmd/docker-driver/docker-driver
+cmd/loki-canary/loki-canary
+cmd/loki-canary-test/loki-canary-test
+clients/cmd/fluent-bit/out_grafana_loki.so
+clients/cmd/fluent-bit/out_grafana_loki.h
+cmd/migrate/migrate
+cmd/querytee/querytee
+/loki
+/promtail
+/logcli
+/loki-canary
+dlv
+rootfs/
+dist
+!pkg/dataobj/explorer/dist
+!pkg/ui/frontend/dist
+*coverage.txt
+*test_results.txt
+.DS_Store
+.aws-sam
+.idea
+pkg/loki/wal
+tools/dev/kafka/data/
+pkg/ui/frontend/node_modules/*
+pkg/ui/frontend/.vite/*
+
+# Submodule added by `act` CLI
+_shared-workflows-dockerhub-login
+
+# emacs
+.#*
+
+# terraform
+.terraform*
+*.tfstate*
+*.tfvars
+
+# vscode
+.vscode
+!.vscode/launch.json
+
+# zed
+.zed
+
+# nix
+nix/result
+/result
+
+# snyk
+.dccache
+
+# helm test
+production/helm/loki/src/helm-test/helm-test
+
+# Go telemetry
+.config
+
+# Profiling files
+*.prof
+cpu.prof
+mem.prof
+*.pprof
+
+**/.claude/settings.local.json
+
+host-*.json

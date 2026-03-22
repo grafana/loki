@@ -1,0 +1,229 @@
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if $isSimpleScalable }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "loki.writeFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.writeLabels" . | nindent 4 }}
+    app.kubernetes.io/part-of: memberlist
+  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.write.annotations))}}
+  annotations:
+    {{- with .Values.loki.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.write.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+spec:
+{{- if not .Values.write.autoscaling.enabled }}
+  {{- if eq .Values.deploymentMode "SingleBinary" }}
+  replicas: 0
+  {{- else }}
+  replicas: {{ .Values.write.replicas }}
+  {{- end }}
+{{- end }}
+  podManagementPolicy: {{ .Values.write.podManagementPolicy }}
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+  serviceName: {{ include "loki.writeFullname" . }}-headless
+  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
+  {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.write.persistence.enableStatefulSetAutoDeletePVC) (.Values.write.persistence.volumeClaimsEnabled) }}
+  {{/*
+    Data on the write nodes is easy to replace, so we want to always delete PVCs to make
+    operation easier, and will rely on re-fetching data when needed.
+  */}}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Delete
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "loki.writeSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/config.yaml") }}
+        {{- with .Values.loki.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.write.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "loki.writeLabels" . | nindent 8 }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.write.podLabels }}
+        {{- tpl (toYaml .) $ | nindent 8 }}
+        {{- end }}
+        app.kubernetes.io/part-of: memberlist
+    spec:
+      serviceAccountName: {{ include "loki.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{ include "loki.enableServiceLinks" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- include "loki.writePriorityClassName" . | nindent 6 }}
+      securityContext:
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.write.terminationGracePeriodSeconds }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.write.hostUsers) }}
+      hostUsers: {{ .Values.write.hostUsers }}
+      {{- end }}
+      {{- with .Values.write.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: loki
+          image: {{ include "loki.image" . }}
+          imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
+          args:
+            - -config.file=/etc/loki/config/config.yaml
+            - -target={{ .Values.write.targetModule }}
+            {{- with (concat .Values.global.extraArgs .Values.write.extraArgs) | uniq }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http-metrics
+              containerPort: {{ .Values.loki.server.http_listen_port }}
+              protocol: TCP
+            - name: grpc
+              containerPort: {{ .Values.loki.server.grpc_listen_port }}
+              protocol: TCP
+            - name: http-memberlist
+              containerPort: 7946
+              protocol: TCP
+          {{- with (concat .Values.global.extraEnv .Values.write.extraEnv) | uniq }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.write.extraEnvFrom) | uniq }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- with .Values.loki.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.loki.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.loki.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.write.lifecycle }}
+          lifecycle:
+            {{- toYaml .Values.write.lifecycle | nindent 12 }}
+          {{- else if .Values.write.autoscaling.enabled }}
+          lifecycle:
+            preStop:
+              httpGet:
+                path: "/ingester/shutdown?terminate=false&flush=true"
+                port: http-metrics
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki/config
+            - name: runtime-config
+              mountPath: /etc/loki/runtime-config
+            - name: data
+              mountPath: /var/loki
+            {{- if .Values.enterprise.enabled }}
+            - name: license
+              mountPath: /etc/loki/license
+            {{- end }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.write.extraVolumeMounts) | uniq }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.write.resources | nindent 12 }}
+        {{- with .Values.write.extraContainers }}
+        {{- toYaml . | nindent 8}}
+        {{- end }}
+      {{- with .Values.write.affinity }}
+      affinity:
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
+      {{- end }}
+      {{- with .Values.write.dnsConfig | default .Values.loki.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.write.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.write.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
+      {{- end }}
+      {{- with .Values.write.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        {{- if not .Values.write.persistence.volumeClaimsEnabled }}
+        - name: data
+        {{- toYaml .Values.write.persistence.dataVolumeParameters | nindent 10 }}
+        {{- end}}
+        - name: config
+          {{- include "loki.configVolume" . | nindent 10 }}
+        - name: runtime-config
+          configMap:
+            name: {{ template "loki.name" . }}-runtime
+        {{- if .Values.enterprise.enabled }}
+        - name: license
+          secret:
+          {{- if .Values.enterprise.useExternalLicense }}
+            secretName: {{ .Values.enterprise.externalLicenseName }}
+          {{- else }}
+            secretName: enterprise-logs-license
+          {{- end }}
+        {{- end }}
+        {{- with (concat .Values.global.extraVolumes .Values.write.extraVolumes) | uniq }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+  {{- if .Values.write.persistence.volumeClaimsEnabled }}
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+        {{- with .Values.write.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.write.persistence.labels }}
+        labels:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      spec:
+        accessModes:
+          {{- toYaml .Values.write.persistence.accessModes | nindent 10 }}
+        {{- with .Values.write.persistence.storageClass }}
+        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        {{- with .Values.write.persistence.volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.write.persistence.size | quote }}
+        {{- with .Values.write.persistence.selector }}
+        selector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+    {{- with .Values.write.extraVolumeClaimTemplates }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+{{- end }}

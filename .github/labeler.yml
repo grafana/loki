@@ -1,0 +1,13 @@
+type/docs:
+- changed-files:
+  - any-glob-to-any-file: 'docs/**/*'
+  - any-glob-to-any-file: 'operator/docs/*'
+sig/operator:
+- changed-files:
+  - any-glob-to-any-file: 'operator/**/*'
+kind/feature:
+- changed-files:
+  - any-glob-to-any-file: 'operator/docs/enhancements/*'
+area/helm:
+- changed-files:
+  - any-glob-to-any-file: 'production/helm/**/*'

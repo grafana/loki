@@ -1,0 +1,46 @@
+name: operator images
+
+on:
+  push:
+    paths:
+      - 'operator/**'
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  publish-grafana-operator:
+    uses: ./.github/workflows/operator-reusable-image-build.yml
+    with:
+      dockerfile: "operator/Dockerfile"
+      registry: "docker.io"
+      organization: "grafana"
+      image_name: "loki-operator"
+      tag: "latest"
+
+  publish-openshift-operator:
+    uses: ./.github/workflows/operator-reusable-image-build.yml
+    with:
+      dockerfile: "operator/Dockerfile"
+      registry: "quay.io"
+      organization: "openshift-logging"
+      image_name: "loki-operator"
+      tag: "latest"
+
+  publish-openshift-bundle:
+    uses: ./.github/workflows/operator-reusable-image-build.yml
+    with:
+      dockerfile: "operator/bundle/openshift/bundle.Dockerfile"
+      registry: "quay.io"
+      organization: "openshift-logging"
+      image_name: "loki-operator-bundle"
+      tag: "latest"
+
+  publish-openshift-size-calculator:
+    uses: ./.github/workflows/operator-reusable-image-build.yml
+    with:
+      dockerfile: "operator/calculator.Dockerfile"
+      registry: "quay.io"
+      organization: "openshift-logging"
+      image_name: "storage-size-calculator"
+      tag: "latest"

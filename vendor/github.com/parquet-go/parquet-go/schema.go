@@ -1,0 +1,1349 @@
+package parquet
+
+import (
+	"encoding/json"
+	"fmt"
+	"hash/maphash"
+	"maps"
+	"math"
+	"reflect"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/parquet-go/parquet-go/compress"
+	"github.com/parquet-go/parquet-go/deprecated"
+	"github.com/parquet-go/parquet-go/encoding"
+	"github.com/parquet-go/parquet-go/format"
+	"github.com/parquet-go/parquet-go/internal/memory"
+)
+
+// Schema represents a parquet schema created from a Go value.
+//
+// Schema implements the Node interface to represent the root node of a parquet
+// schema.
+//
+// Schema values are safe to use concurrently from multiple goroutines but must
+// be passed by referenced after being created because their internal state
+// contains synchronization primitives that are not safe to copy.
+type Schema struct {
+	name  string
+	root  Node
+	funcs onceValue[schemaFuncs]
+	state onceValue[schemaState]
+	cache onceValue[schemaCache]
+}
+
+type schemaFuncs struct {
+	deconstruct deconstructFunc
+	reconstruct reconstructFunc
+}
+
+type schemaState struct {
+	mapping columnMapping
+	columns [][]string
+}
+
+type schemaCache struct {
+	hashSeed   maphash.Seed
+	writeValue cacheMap[uint64, writeValueFunc]
+}
+
+type cacheMap[K comparable, V any] struct {
+	value atomic.Value // map[K]V
+}
+
+func (c *cacheMap[K, V]) load(k K, f func() V) V {
+	oldMap, _ := c.value.Load().(map[K]V)
+	value, ok := oldMap[k]
+	if ok {
+		return value
+	}
+	value = f()
+	newMap := make(map[K]V, len(oldMap)+1)
+	maps.Copy(newMap, oldMap)
+	newMap[k] = value
+	c.value.Store(newMap)
+	return value
+}
+
+type onceValue[T any] struct {
+	once  sync.Once
+	value *T
+}
+
+func (v *onceValue[T]) load(f func() *T) *T {
+	v.once.Do(func() { v.value = f() })
+	return v.value
+}
+
+// SchemaOf constructs a parquet schema from a Go value.
+//
+// The function can construct parquet schemas from struct or pointer-to-struct
+// values only. A panic is raised if a Go value of a different type is passed
+// to this function.
+//
+// When creating a parquet Schema from a Go value, the struct fields may contain
+// a "parquet" tag to describe properties of the parquet node. The "parquet" tag
+// follows the conventional format of Go struct tags: a comma-separated list of
+// values describe the options, with the first one defining the name of the
+// parquet column.
+//
+// The following options are also supported in the "parquet" struct tag:
+//
+//	optional     | make the parquet column optional (any type)
+//	snappy       | sets the parquet column compression codec to snappy (any type)
+//	gzip         | sets the parquet column compression codec to gzip (any type)
+//	brotli       | sets the parquet column compression codec to brotli (any type)
+//	lz4          | sets the parquet column compression codec to lz4 (any type)
+//	zstd         | sets the parquet column compression codec to zstd (any type)
+//	uncompressed | explicitly sets no compression (any type)
+//	plain        | enables the plain encoding (no-op default, any type)
+//	dict         | enables dictionary encoding on the parquet column (any leaf type)
+//	delta        | enables delta encoding: DeltaBinaryPacked for int32, int64, int, uint, uint32, uint64, time.Time; DeltaByteArray for string, []byte, [N]byte
+//	list         | for slice types, use the parquet LIST logical type
+//	enum         | for string types, use the parquet ENUM logical type
+//	bytes        | for string types, use no parquet logical type
+//	string       | for []byte types, use the parquet STRING logical type
+//	json         | for string, []byte, and map types, use the parquet JSON logical type
+//	uuid         | for string and [16]byte types, use the parquet UUID logical type
+//	decimal      | for int32, int64, []byte, and [N]byte types, use the parquet DECIMAL logical type
+//	date         | for int32, time.Time, and *time.Time types, use the DATE logical type
+//	time         | for int32, int64, time.Duration, and *time.Duration types, use the TIME logical type
+//	timestamp    | for int64, time.Time, and *time.Time types, use the TIMESTAMP logical type (default millisecond precision)
+//	split        | for float32 and float64 types, use the BYTE_STREAM_SPLIT encoding
+//	geometry     | for []byte types, use the GEOMETRY logical type; use geometry(crs) to set the CRS
+//	geography    | for []byte types, use the GEOGRAPHY logical type; use geography(crs:algorithm) to set the CRS and edge algorithm
+//	int(n)       | for integer types, use the parquet INT logical type with the given bit width (8, 16, 32, or 64)
+//	uint(n)      | for integer types, use the parquet UINT logical type with the given bit width (8, 16, 32, or 64)
+//	id(n)        | where n is int denoting a column field id. Example id(2) for a column with field id of 2
+//
+// When "optional" is used on a bare slice (without the "list" tag), it applies to the
+// repeated elements, not the slice itself. When combined with the "list" tag, "optional"
+// applies to the list as a whole; use the parquet-element tag to make list elements
+// optional (e.g. parquet-element:",optional").
+//
+// # The date logical type is an int32 value of the number of days since the unix epoch
+//
+// The time and timestamp precision can be changed by defining which precision to use
+// as an argument. Supported precisions are: nanosecond, millisecond and microsecond.
+// Note that for the time tag, int32 only supports millisecond precision, while int64
+// supports microsecond and nanosecond precision. Example:
+//
+//	type Message struct {
+//	  TimestampMicros int64 `parquet:"timestamp_micros,timestamp(microsecond)"
+//	}
+//
+// Both the time and timestamp tags accept an optional second parameter
+// to set the `isAdjustedToUTC` annotation of the parquet logical type.
+// Valid values are "utc" or "local". If not specified, the default value
+// for this annotation will be "utc", which will set the `isAdjustedToUTC` annotation
+// value to true. Example:
+//
+//	type Message struct {
+//	  TimestampMicrosAdjusted int64 `parquet:"timestamp_micros_adjusted,timestamp(microsecond:utc)"
+//	  TimestampMicrosNotAdjusted int64 `parquet:"timestamp_micros_not_adjusted,timestamp(microsecond:local)"
+//	}
+//
+// The decimal tag must be followed by two integer parameters, the first integer
+// representing the scale and the second the precision; for example:
+//
+//	type Item struct {
+//		Cost int64 `parquet:"cost,decimal(0:3)"`
+//	}
+//
+// Invalid combination of struct tags and Go types, or repeating options will
+// cause the function to panic.
+//
+// As a special case, if the field tag is "-", the field is omitted from the schema
+// and the data will not be written into the parquet file(s).
+// Note that a field with name "-" can still be generated using the tag "-,".
+//
+// The configuration of Parquet maps are done via two tags:
+//   - The `parquet-key` tag allows to configure the key of a map.
+//   - The `parquet-value` tag allows users to configure a map's values, for example to declare their native Parquet types.
+//
+// When configuring a Parquet map, the `parquet` tag will configure the map itself.
+//
+// For example, the following will set the int64 key of the map to be a timestamp:
+//
+//	type Actions struct {
+//	  Action map[int64]string `parquet:"," parquet-key:",timestamp"`
+//	}
+//
+// To configure the element of a list, use the `parquet-element` tag. For example, the following will
+// set the id of the element field to 2:
+//
+//	type Item struct {
+//	  Attributes []string `parquet:",id(1),list" parquet-element:",id(2)"`
+//	}
+//
+// Note that the name of the element cannot be changed.
+//
+// The schema name is the Go type name of the value.
+func SchemaOf(model any, opts ...SchemaOption) *Schema {
+	cfg := SchemaConfig{}
+	for _, opt := range opts {
+		opt.ConfigureSchema(&cfg)
+	}
+	return schemaOf(dereference(reflect.TypeOf(model)), cfg.StructTags...)
+}
+
+var cachedSchemas sync.Map // map[reflect.Type]*Schema
+
+func schemaOf(model reflect.Type, tagReplacements ...StructTagOption) *Schema {
+	cacheable := len(tagReplacements) == 0
+
+	if cacheable {
+		cached, _ := cachedSchemas.Load(model)
+		schema, _ := cached.(*Schema)
+		if schema != nil {
+			return schema
+		}
+	}
+
+	if model.Kind() != reflect.Struct {
+		panic("cannot construct parquet schema from value of type " + model.String())
+	}
+
+	schema := NewSchema(model.Name(), nodeOf(nil, model, noTags, tagReplacements))
+
+	if cacheable {
+		if actual, loaded := cachedSchemas.LoadOrStore(model, schema); loaded {
+			schema = actual.(*Schema)
+		}
+	}
+	return schema
+}
+
+// NewSchema constructs a new Schema object with the given name and root node.
+//
+// The function panics if Node contains more leaf columns than supported by the
+// package (see parquet.MaxColumnIndex).
+func NewSchema(name string, root Node) *Schema {
+	return &Schema{name: name, root: root}
+}
+
+func dereference(t reflect.Type) reflect.Type {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t
+}
+
+func makeDeconstructFunc(node Node) (deconstruct deconstructFunc) {
+	if schema, _ := node.(*Schema); schema != nil {
+		return schema.lazyLoadFuncs().deconstruct
+	}
+	if !node.Leaf() {
+		_, deconstruct = deconstructFuncOf(0, node)
+	}
+	return deconstruct
+}
+
+func makeReconstructFunc(node Node) (reconstruct reconstructFunc) {
+	if schema, _ := node.(*Schema); schema != nil {
+		return schema.lazyLoadFuncs().reconstruct
+	}
+	if !node.Leaf() {
+		_, reconstruct = reconstructFuncOf(0, node)
+	}
+	return reconstruct
+}
+
+func (s *Schema) lazyLoadFuncs() *schemaFuncs {
+	return s.funcs.load(func() *schemaFuncs {
+		return &schemaFuncs{
+			deconstruct: makeDeconstructFunc(s.root),
+			reconstruct: makeReconstructFunc(s.root),
+		}
+	})
+}
+
+func (s *Schema) lazyLoadState() *schemaState {
+	return s.state.load(func() *schemaState {
+		mapping, columns := columnMappingOf(s.root)
+		return &schemaState{
+			mapping: mapping,
+			columns: columns,
+		}
+	})
+}
+
+func (s *Schema) lazyLoadCache() *schemaCache {
+	return s.cache.load(func() *schemaCache {
+		return &schemaCache{
+			hashSeed: maphash.MakeSeed(),
+		}
+	})
+}
+
+// ConfigureRowGroup satisfies the RowGroupOption interface, allowing Schema
+// instances to be passed to row group constructors to pre-declare the schema of
+// the output parquet file.
+func (s *Schema) ConfigureRowGroup(config *RowGroupConfig) { config.Schema = s }
+
+// ConfigureReader satisfies the ReaderOption interface, allowing Schema
+// instances to be passed to NewReader to pre-declare the schema of rows
+// read from the reader.
+func (s *Schema) ConfigureReader(config *ReaderConfig) { config.Schema = s }
+
+// ConfigureWriter satisfies the WriterOption interface, allowing Schema
+// instances to be passed to NewWriter to pre-declare the schema of the
+// output parquet file.
+func (s *Schema) ConfigureWriter(config *WriterConfig) { config.Schema = s }
+
+// ID returns field id of the root node.
+func (s *Schema) ID() int { return s.root.ID() }
+
+// String returns a parquet schema representation of s.
+func (s *Schema) String() string { return sprint(s.name, s.root) }
+
+// Name returns the name of s.
+func (s *Schema) Name() string { return s.name }
+
+// Type returns the parquet type of s.
+func (s *Schema) Type() Type { return s.root.Type() }
+
+// Optional returns false since the root node of a parquet schema is always required.
+func (s *Schema) Optional() bool { return s.root.Optional() }
+
+// Repeated returns false since the root node of a parquet schema is always required.
+func (s *Schema) Repeated() bool { return s.root.Repeated() }
+
+// Required returns true since the root node of a parquet schema is always required.
+func (s *Schema) Required() bool { return s.root.Required() }
+
+// Leaf returns true if the root node of the parquet schema is a leaf column.
+func (s *Schema) Leaf() bool { return s.root.Leaf() }
+
+// Fields returns the list of fields on the root node of the parquet schema.
+func (s *Schema) Fields() []Field { return s.root.Fields() }
+
+// Encoding returns the encoding set on the root node of the parquet schema.
+func (s *Schema) Encoding() encoding.Encoding { return s.root.Encoding() }
+
+// Compression returns the compression codec set on the root node of the parquet
+// schema.
+func (s *Schema) Compression() compress.Codec { return s.root.Compression() }
+
+// GoType returns the Go type that best represents the schema.
+func (s *Schema) GoType() reflect.Type { return s.root.GoType() }
+
+// Deconstruct deconstructs a Go value and appends it to a row.
+//
+// The method panics is the structure of the go value does not match the
+// parquet schema.
+func (s *Schema) Deconstruct(row Row, value any) Row {
+	state := s.lazyLoadState()
+	funcs := s.lazyLoadFuncs()
+	columns := make([][]Value, len(state.columns))
+	values := make([]Value, len(state.columns))
+
+	for i := range columns {
+		columns[i] = values[i : i : i+1]
+	}
+
+	v := reflect.ValueOf(value)
+	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			v = reflect.Value{}
+			break
+		}
+		v = v.Elem()
+	}
+	funcs.deconstruct(columns, columnLevels{}, v)
+	return appendRow(row, columns)
+}
+
+// Reconstruct reconstructs a Go value from a row.
+//
+// The go value passed as first argument must be a non-nil pointer for the
+// row to be decoded into.
+//
+// The method panics if the structure of the go value and parquet row do not
+// match.
+func (s *Schema) Reconstruct(value any, row Row) error {
+	v := reflect.ValueOf(value)
+	if !v.IsValid() {
+		panic("cannot reconstruct row into go value of type <nil>")
+	}
+	if v.Kind() != reflect.Ptr {
+		panic("cannot reconstruct row into go value of non-pointer type " + v.Type().String())
+	}
+	if v.IsNil() {
+		panic("cannot reconstruct row into nil pointer of type " + v.Type().String())
+	}
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		v = v.Elem()
+	}
+
+	b := valuesSliceBufferPool.Get(
+		func() *valuesSliceBuffer {
+			return &valuesSliceBuffer{
+				values: make([][]Value, 0, 64),
+			}
+		},
+		func(v *valuesSliceBuffer) { v.values = v.values[:0] },
+	)
+
+	state := s.lazyLoadState()
+	funcs := s.lazyLoadFuncs()
+	columns := b.reserve(len(state.columns))
+	row.Range(func(columnIndex int, columnValues []Value) bool {
+		if columnIndex < len(columns) {
+			columns[columnIndex] = columnValues
+		}
+		return true
+	})
+	// we avoid the defer penalty by releasing b manually
+	err := funcs.reconstruct(v, columnLevels{}, columns)
+	b.release()
+	return err
+}
+
+type valuesSliceBuffer struct {
+	values [][]Value
+}
+
+func (v *valuesSliceBuffer) reserve(n int) [][]Value {
+	if n <= cap(v.values) {
+		return v.values[:n]
+	}
+	// we can try to keep growing by the power of two, but we care more about the
+	// memory footprint so  this should suffice.
+	//
+	// The nature of reads tends to be from similar number of columns.The less work
+	// we do here the better performance we can get.
+	v.values = make([][]Value, n)
+	return v.values
+}
+
+func (v *valuesSliceBuffer) release() {
+	valuesSliceBufferPool.Put(v)
+}
+
+var valuesSliceBufferPool memory.Pool[valuesSliceBuffer]
+
+// Lookup returns the leaf column at the given path.
+//
+// The path is the sequence of column names identifying a leaf column (not
+// including the root).
+//
+// If the path was not found in the mapping, or if it did not represent a
+// leaf column of the parquet schema, the boolean will be false.
+func (s *Schema) Lookup(path ...string) (LeafColumn, bool) {
+	leaf := s.lazyLoadState().mapping.lookup(path)
+	return LeafColumn{
+		Node:               leaf.node,
+		Path:               leaf.path,
+		ColumnIndex:        int(leaf.columnIndex),
+		MaxRepetitionLevel: int(leaf.maxRepetitionLevel),
+		MaxDefinitionLevel: int(leaf.maxDefinitionLevel),
+	}, leaf.node != nil
+}
+
+// Columns returns the list of column paths available in the schema.
+//
+// The method always returns the same slice value across calls to ColumnPaths,
+// applications should treat it as immutable.
+func (s *Schema) Columns() [][]string { return s.lazyLoadState().columns }
+
+// Comparator constructs a comparator function which orders rows according to
+// the list of sorting columns passed as arguments.
+func (s *Schema) Comparator(sortingColumns ...SortingColumn) func(Row, Row) int {
+	return compareRowsFuncOf(s, sortingColumns)
+}
+
+func (s *Schema) forEachNode(do func(name string, node Node)) {
+	forEachNodeOf(s.Name(), s, do)
+}
+
+type structNode struct {
+	gotype reflect.Type
+	fields []structField
+}
+
+func structNodeOf(path []string, t reflect.Type, tagReplacements []StructTagOption) *structNode {
+	// Collect struct fields first so we can order them before generating the
+	// column indexes.
+	fields := structFieldsOf(path, t, tagReplacements)
+
+	s := &structNode{
+		gotype: t,
+		fields: make([]structField, len(fields)),
+	}
+
+	for i := range fields {
+		field := structField{name: fields[i].Name, index: fields[i].Index}
+		tags := fromStructTag(fields[i].Tag)
+		field.Node = makeNodeOf(append(path, fields[i].Name), fields[i].Type, fields[i].Name, tags, tagReplacements)
+
+		s.fields[i] = field
+	}
+
+	return s
+}
+
+// structFieldsOf returns the list of fields for the given path and type. Struct tags are replaced
+// and fields potentially renamed using the provided options.
+func structFieldsOf(path []string, t reflect.Type, tagReplacements []StructTagOption) []reflect.StructField {
+	return appendStructFields(path, t, nil, nil, 0, tagReplacements)
+}
+
+func appendStructFields(path []string, t reflect.Type, fields []reflect.StructField, index []int, offset uintptr, tagReplacements []StructTagOption) []reflect.StructField {
+	for i, n := 0, t.NumField(); i < n; i++ {
+		f := t.Field(i)
+
+		// Tag replacements if present.
+		// Embedded anonymous fields do not extend the
+		// column path and tags are not used.
+		if !f.Anonymous {
+			fpath := append(path, f.Name)
+			for _, opt := range tagReplacements {
+				if slices.Equal(fpath, opt.ColumnPath) {
+					f.Tag = opt.StructTag
+				}
+			}
+		}
+
+		ftags := fromStructTag(f.Tag)
+
+		if tag := ftags.parquet; tag != "" {
+			name, _ := split(tag)
+			if tag != "-," && name == "-" {
+				continue
+			}
+			if name != "" {
+				f.Name = name
+			}
+		}
+
+		// If no explicit parquet name was set, check for protobuf tag name.
+		// This allows protobuf-generated structs to use their proto field names
+		// (typically snake_case) as parquet column names.
+		if f.Name == t.Field(i).Name { // Name wasn't changed by parquet tag
+			if protoName := protoFieldNameFromTag(f.Tag); protoName != "" {
+				f.Name = protoName
+			}
+		}
+
+		fieldIndex := index[:len(index):len(index)]
+		fieldIndex = append(fieldIndex, i)
+
+		f.Offset += offset
+
+		if f.Anonymous {
+			fields = appendStructFields(path, f.Type, fields, fieldIndex, f.Offset, tagReplacements)
+		} else if f.IsExported() {
+			f.Index = fieldIndex
+			fields = append(fields, f)
+		}
+	}
+	return fields
+}
+
+func (s *structNode) Optional() bool { return false }
+
+func (s *structNode) Repeated() bool { return false }
+
+func (s *structNode) Required() bool { return true }
+
+func (s *structNode) Leaf() bool { return false }
+
+func (s *structNode) Encoding() encoding.Encoding { return nil }
+
+func (s *structNode) Compression() compress.Codec { return nil }
+
+func (s *structNode) GoType() reflect.Type { return s.gotype }
+
+func (s *structNode) ID() int { return 0 }
+
+func (s *structNode) String() string { return sprint("", s) }
+
+func (s *structNode) Type() Type { return groupType{} }
+
+func (s *structNode) Fields() []Field {
+	fields := make([]Field, len(s.fields))
+	for i := range s.fields {
+		fields[i] = &s.fields[i]
+	}
+	return fields
+}
+
+// fieldByIndex is like reflect.Value.FieldByIndex but returns the zero-value of
+// reflect.Value if one of the fields was a nil pointer instead of panicking.
+func fieldByIndex(v reflect.Value, index []int) reflect.Value {
+	for _, i := range index {
+		if v = v.Field(i); v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+			if v.IsNil() {
+				v.Set(reflect.New(v.Type().Elem()))
+				v = v.Elem()
+				break
+			} else {
+				v = v.Elem()
+			}
+		}
+	}
+	return v
+}
+
+type structField struct {
+	Node
+	name  string
+	index []int
+}
+
+func (f *structField) Name() string { return f.name }
+
+func (f *structField) Value(base reflect.Value) reflect.Value {
+	switch base.Kind() {
+	case reflect.Map:
+		return base.MapIndex(reflect.ValueOf(&f.name).Elem())
+	case reflect.Ptr:
+		if base.IsNil() {
+			base.Set(reflect.New(base.Type().Elem()))
+		}
+		return fieldByIndex(base.Elem(), f.index)
+	default:
+		if len(f.index) == 1 {
+			return base.Field(f.index[0])
+		} else {
+			return fieldByIndex(base, f.index)
+		}
+	}
+}
+
+func nodeString(t reflect.Type, name string, tag ...string) string {
+	return fmt.Sprintf("%s %s %v", name, t.String(), tag)
+}
+
+func throwInvalidTag(t reflect.Type, name string, tag string) {
+	panic(tag + " is an invalid parquet tag: " + nodeString(t, name, tag))
+}
+
+func throwUnknownTag(t reflect.Type, name string, tag string) {
+	panic(tag + " is an unrecognized parquet tag: " + nodeString(t, name, tag))
+}
+
+func throwInvalidNode(t reflect.Type, msg, name string, parquetTags parquetTags) {
+	tags := make([]string, 0, 3) // A node can have at most 3 tags.
+	if parquetTags.parquet != "" {
+		tags = append(tags, parquetTags.parquet)
+	}
+	if parquetTags.parquetKey != "" {
+		tags = append(tags, parquetTags.parquetKey)
+	}
+	if parquetTags.parquetValue != "" {
+		tags = append(tags, parquetTags.parquetValue)
+	}
+	if parquetTags.parquetElement != "" {
+		tags = append(tags, parquetTags.parquetElement)
+	}
+	panic(msg + ": " + nodeString(t, name, tags...))
+}
+
+// FixedLenByteArray decimals are sized based on precision
+// this function calculates the necessary byte array size.
+func decimalFixedLenByteArraySize(precision int) int {
+	return int(math.Ceil((math.Log10(2) + float64(precision)) / math.Log10(256)))
+}
+
+func forEachStructTagOption(sf reflect.StructField, do func(t reflect.Type, option, args string)) {
+	if tag := fromStructTag(sf.Tag).parquet; tag != "" {
+		_, tag = split(tag) // skip the field name
+		for tag != "" {
+			option := ""
+			args := ""
+			option, tag = split(tag)
+			option, args = splitOptionArgs(option)
+			ft := sf.Type
+			if ft.Kind() == reflect.Ptr {
+				ft = ft.Elem()
+			}
+			do(ft, option, args)
+		}
+	}
+}
+
+func nodeOf(path []string, t reflect.Type, tags parquetTags, tagReplacements []StructTagOption) Node {
+	switch t {
+	case reflect.TypeFor[deprecated.Int96]():
+		return Leaf(Int96Type)
+	case reflect.TypeFor[uuid.UUID]():
+		return UUID()
+	case reflect.TypeFor[time.Time]():
+		return Timestamp(Nanosecond)
+	}
+
+	var n Node
+	switch t.Kind() {
+	case reflect.Bool:
+		n = Leaf(BooleanType)
+
+	case reflect.Int, reflect.Int64:
+		n = Int(64)
+
+	case reflect.Int8, reflect.Int16, reflect.Int32:
+		n = Int(t.Bits())
+
+	case reflect.Uint, reflect.Uintptr, reflect.Uint64:
+		n = Uint(64)
+
+	case reflect.Uint8, reflect.Uint16, reflect.Uint32:
+		n = Uint(t.Bits())
+
+	case reflect.Float32:
+		n = Leaf(FloatType)
+
+	case reflect.Float64:
+		n = Leaf(DoubleType)
+
+	case reflect.String:
+		n = String()
+
+	case reflect.Ptr:
+		n = Optional(nodeOf(path, t.Elem(), noTags, tagReplacements))
+
+	case reflect.Slice:
+		if elem := t.Elem(); elem.Kind() == reflect.Uint8 { // []byte?
+			n = Leaf(ByteArrayType)
+		} else {
+			n = Repeated(nodeOf(path, elem, noTags, tagReplacements))
+		}
+
+	case reflect.Array:
+		if t.Elem().Kind() == reflect.Uint8 {
+			n = Leaf(FixedLenByteArrayType(t.Len()))
+		}
+
+	case reflect.Map:
+		mapTag := tags.parquet
+		if strings.Contains(mapTag, "json") {
+			n = JSON()
+		} else {
+			n = Map(
+				makeNodeOf(append(path, "key_value", "key"), t.Key(), t.Name(), tags.getMapKeyNodeTags(), tagReplacements),
+				makeNodeOf(append(path, "key_value", "value"), t.Elem(), t.Name(), tags.getMapValueNodeTags(), tagReplacements),
+			)
+		}
+
+		forEachTagOption([]string{mapTag}, func(option, args string) {
+			switch option {
+			case "", "json":
+				return
+			case "optional":
+				n = Optional(n)
+			case "id":
+				id, err := parseIDArgs(args)
+				if err != nil {
+					throwInvalidTag(t, "map", option)
+				}
+				n = FieldID(n, id)
+			default:
+				throwUnknownTag(t, "map", option)
+			}
+		})
+
+	case reflect.Struct:
+		return structNodeOf(path, t, tagReplacements)
+
+	case reflect.Interface:
+		return (Group)(nil)
+	}
+
+	if n == nil {
+		panic("cannot create parquet node from go value of type " + t.String())
+	}
+
+	return &goNode{Node: n, gotype: t}
+}
+
+func split(s string) (head, tail string) {
+	if i := strings.IndexByte(s, ','); i < 0 {
+		head = s
+	} else {
+		head, tail = s[:i], s[i+1:]
+	}
+	return
+}
+
+func splitOptionArgs(s string) (option, args string) {
+	if i := strings.IndexByte(s, '('); i >= 0 {
+		option = s[:i]
+		args = s[i:]
+	} else {
+		option = s
+		args = "()"
+	}
+	return
+}
+
+func parseDecimalArgs(args string) (scale, precision int, err error) {
+	if !strings.HasPrefix(args, "(") || !strings.HasSuffix(args, ")") {
+		return 0, 0, fmt.Errorf("malformed decimal args: %s", args)
+	}
+	args = strings.TrimPrefix(args, "(")
+	args = strings.TrimSuffix(args, ")")
+	parts := strings.Split(args, ":")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("malformed decimal args: (%s)", args)
+	}
+	s, err := strconv.ParseInt(parts[0], 10, 32)
+	if err != nil {
+		return 0, 0, err
+	}
+	p, err := strconv.ParseInt(parts[1], 10, 32)
+	if err != nil {
+		return 0, 0, err
+	}
+	return int(s), int(p), nil
+}
+
+func parseIDArgs(args string) (int, error) {
+	if !strings.HasPrefix(args, "(") || !strings.HasSuffix(args, ")") {
+		return 0, fmt.Errorf("malformed id args: %s", args)
+	}
+	args = strings.TrimPrefix(args, "(")
+	args = strings.TrimSuffix(args, ")")
+	return strconv.Atoi(args)
+}
+
+func parseTimestampArgs(args string) (unit TimeUnit, isUTCNormalized bool, err error) {
+	if !strings.HasPrefix(args, "(") || !strings.HasSuffix(args, ")") {
+		return nil, false, fmt.Errorf("malformed timestamp args: %s", args)
+	}
+
+	args = strings.TrimPrefix(args, "(")
+	args = strings.TrimSuffix(args, ")")
+
+	if len(args) == 0 {
+		return Millisecond, true, nil
+	}
+
+	parts := strings.Split(args, ":")
+	if len(parts) > 2 {
+		return nil, false, fmt.Errorf("malformed timestamp args: (%s)", args)
+	}
+
+	unit, err = parseTimeUnit(parts[0])
+	if err != nil {
+		return nil, false, err
+	}
+
+	adjusted := true
+	if len(parts) > 1 {
+		adjusted, err = parseUTCNormalization(parts[1])
+		if err != nil {
+			return nil, false, err
+		}
+	}
+
+	return unit, adjusted, nil
+}
+
+func parseTimeUnit(arg string) (TimeUnit, error) {
+	switch arg {
+	case "millisecond":
+		return Millisecond, nil
+	case "microsecond":
+		return Microsecond, nil
+	case "nanosecond":
+		return Nanosecond, nil
+	default:
+	}
+
+	return nil, fmt.Errorf("unknown time unit: %s", arg)
+}
+
+func parseUTCNormalization(arg string) (isUTCNormalized bool, err error) {
+	switch arg {
+	case "utc":
+		return true, nil
+	case "local":
+		return false, nil
+	default:
+		return false, fmt.Errorf("unknown utc normalization: %s", arg)
+	}
+}
+
+func parseGeometryArgs(args string) (crs string, err error) {
+	if !strings.HasPrefix(args, "(") || !strings.HasSuffix(args, ")") {
+		return "", fmt.Errorf("malformed geometry args: %s", args)
+	}
+	args = strings.TrimPrefix(args, "(")
+	args = strings.TrimSuffix(args, ")")
+	return args, nil
+}
+
+func parseGeographyArgs(args string) (crs string, alg format.EdgeInterpolationAlgorithm, err error) {
+	if !strings.HasPrefix(args, "(") || !strings.HasSuffix(args, ")") {
+		return "", 0, fmt.Errorf("malformed geography args: %s", args)
+	}
+	args = strings.TrimPrefix(args, "(")
+	args = strings.TrimSuffix(args, ")")
+
+	// geography has up to two arguments: the CRS and and the edge interpolation
+	// algorithm.
+	parts := strings.Split(args, ":")
+
+	switch len(parts) {
+	case 1:
+		crs = parts[0]
+		return crs, alg, nil
+	case 2:
+		crs = parts[0]
+		err = alg.FromString(parts[1])
+		if err != nil {
+			return "", 0, err
+		}
+		return crs, alg, nil
+	case 3:
+		// CRS very likely contains a colon, so we join all parts except the last one.
+		crs = strings.Join(parts[:2], ":")
+	default:
+		return "", 0, fmt.Errorf("malformed geography args: (%s)", args)
+	}
+
+	return crs, alg, nil
+}
+
+type goNode struct {
+	Node
+	gotype reflect.Type
+}
+
+func (n *goNode) GoType() reflect.Type { return n.gotype }
+
+var (
+	_ RowGroupOption = (*Schema)(nil)
+	_ ReaderOption   = (*Schema)(nil)
+	_ WriterOption   = (*Schema)(nil)
+)
+
+func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, tagReplacements []StructTagOption) Node {
+	var (
+		node       Node
+		optional   bool
+		list       bool
+		encoded    encoding.Encoding
+		compressed compress.Codec
+		fieldID    int
+	)
+
+	setNode := func(n Node) {
+		if node != nil {
+			throwInvalidNode(t, "struct field has multiple logical parquet types declared", name, tags)
+		}
+		node = n
+	}
+
+	setOptional := func() {
+		if optional {
+			throwInvalidNode(t, "struct field has multiple declaration of the optional tag", name, tags)
+		}
+		optional = true
+	}
+
+	setList := func() {
+		if list {
+			throwInvalidNode(t, "struct field has multiple declaration of the list tag", name, tags)
+		}
+		list = true
+	}
+
+	setEncoding := func(e encoding.Encoding) {
+		if encoded != nil {
+			throwInvalidNode(t, "struct field has encoding declared multiple time", name, tags)
+		}
+		encoded = e
+	}
+
+	setCompression := func(c compress.Codec) {
+		if compressed != nil {
+			throwInvalidNode(t, "struct field has compression codecs declared multiple times", name, tags)
+		}
+		compressed = c
+	}
+
+	if t.Kind() == reflect.Map {
+		node = nodeOf(path, t, tags, tagReplacements)
+	} else {
+		forEachTagOption([]string{tags.parquet}, func(option, args string) {
+			switch option {
+			case "":
+				return
+			case "optional":
+				setOptional()
+
+			case "snappy":
+				setCompression(&Snappy)
+
+			case "gzip":
+				setCompression(&Gzip)
+
+			case "brotli":
+				setCompression(&Brotli)
+
+			case "lz4":
+				setCompression(&Lz4Raw)
+
+			case "zstd":
+				setCompression(&Zstd)
+
+			case "uncompressed":
+				setCompression(&Uncompressed)
+
+			case "plain":
+				setEncoding(&Plain)
+
+			case "dict":
+				setEncoding(&RLEDictionary)
+
+			case "json":
+				setNode(JSON())
+
+			case "delta":
+				switch t.Kind() {
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+					reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+					setEncoding(&DeltaBinaryPacked)
+				case reflect.String:
+					setEncoding(&DeltaByteArray)
+				case reflect.Slice:
+					if t.Elem().Kind() == reflect.Uint8 { // []byte?
+						setEncoding(&DeltaByteArray)
+					} else {
+						throwInvalidTag(t, name, option)
+					}
+				case reflect.Array:
+					if t.Elem().Kind() == reflect.Uint8 { // [N]byte?
+						setEncoding(&DeltaByteArray)
+					} else {
+						throwInvalidTag(t, name, option)
+					}
+				default:
+					switch t {
+					case reflect.TypeFor[time.Time]():
+						setEncoding(&DeltaBinaryPacked)
+					default:
+						throwInvalidTag(t, name, option)
+					}
+				}
+
+			case "split":
+				switch t.Kind() {
+				case reflect.Float32, reflect.Float64:
+					setEncoding(&ByteStreamSplit)
+				default:
+					throwInvalidTag(t, name, option)
+				}
+
+			case "list":
+				switch t.Kind() {
+				case reflect.Slice:
+					if t == reflect.TypeFor[json.RawMessage]() {
+						throwInvalidTag(t, name, option)
+					}
+					element := makeNodeOf(append(path, "list", "element"), t.Elem(), t.Name(), tags.getListElementNodeTags(), tagReplacements)
+					setNode(element)
+					setList()
+				default:
+					throwInvalidTag(t, name, option)
+				}
+
+			case "enum":
+				switch t.Kind() {
+				case reflect.String:
+					setNode(Enum())
+				default:
+					throwInvalidTag(t, name, option)
+				}
+
+			case "uuid":
+				switch t.Kind() {
+				case reflect.Array:
+					if t.Elem().Kind() != reflect.Uint8 || t.Len() != 16 {
+						throwInvalidTag(t, name, option)
+					}
+					setNode(UUID())
+				case reflect.String:
+					setNode(UUID())
+				default:
+					throwInvalidTag(t, name, option)
+				}
+
+			case "decimal":
+				scale, precision, err := parseDecimalArgs(args)
+				if err != nil {
+					throwInvalidTag(t, name, option+args)
+				}
+				var baseType Type
+				switch t.Kind() {
+				case reflect.Int32:
+					baseType = Int32Type
+				case reflect.Int64:
+					baseType = Int64Type
+				case reflect.Array, reflect.Slice:
+					baseType = FixedLenByteArrayType(decimalFixedLenByteArraySize(precision))
+				default:
+					throwInvalidTag(t, name, option)
+				}
+
+				setNode(Decimal(scale, precision, baseType))
+
+			case "string":
+				switch {
+				case t.Kind() == reflect.String:
+				case t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8:
+				default:
+					throwInvalidTag(t, name, option)
+				}
+				setNode(String())
+
+			case "bytes":
+				switch {
+				case t.Kind() == reflect.String:
+				case t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8:
+				default:
+					throwInvalidTag(t, name, option)
+				}
+				setNode(Leaf(ByteArrayType))
+
+			case "date":
+				switch t.Kind() {
+				case reflect.Int32:
+					setNode(Date())
+				case reflect.Ptr:
+					// Support *time.Time with date tag
+					if t.Elem() == reflect.TypeFor[time.Time]() {
+						setNode(Optional(Date()))
+					} else {
+						throwInvalidTag(t, name, option)
+					}
+				default:
+					switch t {
+					case reflect.TypeFor[time.Time]():
+						setNode(Date())
+					default:
+						throwInvalidTag(t, name, option)
+					}
+				}
+
+			case "time":
+				// Handle time.Duration specially - it can use any time unit
+				// (millisecond, microsecond, or nanosecond) and TimeAdjusted()
+				// will automatically select the correct physical type
+				if t == reflect.TypeFor[time.Duration]() {
+					timeUnit, adjusted, err := parseTimestampArgs(args)
+					if err != nil {
+						throwInvalidTag(t, name, option+args)
+					}
+					// If no args provided, default to nanosecond for time.Duration
+					if args == "()" {
+						timeUnit = Nanosecond
+						adjusted = true
+					}
+					setNode(TimeAdjusted(timeUnit, adjusted))
+				} else {
+					switch t.Kind() {
+					case reflect.Int32:
+						timeUnit, adjusted, err := parseTimestampArgs(args)
+						if err != nil || timeUnit.Duration() < time.Millisecond {
+							throwInvalidTag(t, name, option+args)
+						}
+						setNode(TimeAdjusted(timeUnit, adjusted))
+					case reflect.Int64:
+						timeUnit, adjusted, err := parseTimestampArgs(args)
+						if err != nil || timeUnit.Duration() == time.Millisecond {
+							throwInvalidTag(t, name, option+args)
+						}
+						setNode(TimeAdjusted(timeUnit, adjusted))
+					case reflect.Ptr:
+						// Support *time.Duration with time tag
+						if t.Elem() == reflect.TypeFor[time.Duration]() {
+							timeUnit, adjusted, err := parseTimestampArgs(args)
+							if err != nil {
+								throwInvalidTag(t, name, option+args)
+							}
+							if args == "()" {
+								timeUnit = Nanosecond
+								adjusted = true
+							}
+							setNode(Optional(TimeAdjusted(timeUnit, adjusted)))
+						} else {
+							throwInvalidTag(t, name, option)
+						}
+					default:
+						throwInvalidTag(t, name, option)
+					}
+				}
+
+			case "timestamp":
+				switch t.Kind() {
+				case reflect.Int64:
+					timeUnit, adjusted, err := parseTimestampArgs(args)
+					if err != nil {
+						throwInvalidTag(t, name, option+args)
+					}
+					setNode(TimestampAdjusted(timeUnit, adjusted))
+				case reflect.Ptr:
+					// Support *time.Time with timestamp tags
+					if t.Elem() == reflect.TypeFor[time.Time]() {
+						timeUnit, adjusted, err := parseTimestampArgs(args)
+						if err != nil {
+							throwInvalidTag(t, name, option+args)
+						}
+						// Wrap in Optional for schema correctness (nil pointers = NULL values)
+						setNode(Optional(TimestampAdjusted(timeUnit, adjusted)))
+					} else {
+						throwInvalidTag(t, name, option)
+					}
+				default:
+					switch t {
+					case reflect.TypeFor[time.Time]():
+						timeUnit, adjusted, err := parseTimestampArgs(args)
+						if err != nil {
+							throwInvalidTag(t, name, option+args)
+						}
+						setNode(TimestampAdjusted(timeUnit, adjusted))
+					default:
+						throwInvalidTag(t, name, option)
+					}
+				}
+
+			case "int":
+				bitWidth, err := parseIntBitWidthArgs(args)
+				if err != nil {
+					throwInvalidTag(t, name, option+args)
+				}
+				kind := t.Kind()
+				if kind == reflect.Ptr {
+					kind = t.Elem().Kind()
+				}
+				switch kind {
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+					reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+					if t.Kind() == reflect.Ptr {
+						setNode(Optional(Int(bitWidth)))
+					} else {
+						setNode(Int(bitWidth))
+					}
+				default:
+					throwInvalidTag(t, name, option)
+				}
+
+			case "uint":
+				bitWidth, err := parseIntBitWidthArgs(args)
+				if err != nil {
+					throwInvalidTag(t, name, option+args)
+				}
+				kind := t.Kind()
+				if kind == reflect.Ptr {
+					kind = t.Elem().Kind()
+				}
+				switch kind {
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+					reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+					if t.Kind() == reflect.Ptr {
+						setNode(Optional(Uint(bitWidth)))
+					} else {
+						setNode(Uint(bitWidth))
+					}
+				default:
+					throwInvalidTag(t, name, option)
+				}
+
+			case "id":
+				id, err := parseIDArgs(args)
+				if err != nil {
+					throwInvalidNode(t, "struct field has field id that is not a valid int", name, tags)
+				}
+				fieldID = id
+
+			case "geometry":
+				crs, err := parseGeometryArgs(args)
+				if err != nil {
+					throwInvalidTag(t, name, option+args)
+				}
+				setNode(Geometry(crs))
+			case "geography":
+				crs, alg, err := parseGeographyArgs(args)
+				if err != nil {
+					throwInvalidTag(t, name, option+args)
+				}
+				setNode(Geography(crs, alg))
+			}
+		})
+	}
+
+	// Special case: an "optional" struct tag on a slice applies to the
+	// individual items, not the overall list. The least messy way to
+	// deal with this is at this level, instead of passing down optional
+	// information into the nodeOf function, and then passing back whether an
+	// optional tag was applied.
+	if node == nil && t.Kind() == reflect.Slice {
+		isUint8 := t.Elem().Kind() == reflect.Uint8
+		// Note for strings "optional" applies only to the entire BYTE_ARRAY and
+		// not each individual byte.
+		if optional && !isUint8 {
+			node = Repeated(Optional(nodeOf(path, t.Elem(), tags, tagReplacements)))
+			// Don't also apply "optional" to the whole list.
+			optional = false
+		}
+	}
+
+	if node == nil {
+		node = nodeOf(path, t, tags, tagReplacements)
+	}
+
+	if compressed != nil {
+		node = Compressed(node, compressed)
+	}
+
+	if encoded != nil {
+		node = Encoded(node, encoded)
+	}
+
+	if list {
+		node = List(node)
+	}
+
+	if node.Repeated() && !list {
+		repeated := node.GoType().Elem()
+		if repeated.Kind() == reflect.Slice {
+			// Special case: allow [][]uint8 as seen in a logical map of strings
+			if repeated.Elem().Kind() != reflect.Uint8 {
+				panic("unhandled nested slice on parquet schema without list tag")
+			}
+		}
+	}
+
+	if optional {
+		node = Optional(node)
+	}
+	if fieldID != 0 {
+		node = FieldID(node, fieldID)
+	}
+	return node
+}
+
+func forEachTagOption(tags []string, do func(option, args string)) {
+	for _, tag := range tags {
+		_, tag = split(tag) // skip the field name
+		for tag != "" {
+			option := ""
+			option, tag = split(tag)
+			var args string
+			option, args = splitOptionArgs(option)
+			do(option, args)
+		}
+	}
+}

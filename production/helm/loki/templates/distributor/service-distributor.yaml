@@ -1,0 +1,39 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.distributorFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.distributorLabels" . | nindent 4 }}
+    {{- with .Values.distributor.serviceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.distributor.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  type: {{ .Values.distributor.serviceType }}
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+      {{- if .Values.distributor.appProtocol.grpc }}
+      appProtocol: {{ .Values.distributor.appProtocol.grpc }}
+      {{- end }}
+  selector:
+    {{- include "loki.distributorSelectorLabels" . | nindent 4 }}
+{{- with .Values.distributor.trafficDistribution | default .Values.loki.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+{{- end }}
+{{- end -}}

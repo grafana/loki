@@ -1,0 +1,121 @@
+{{ if and .Values.enterprise.provisioner.enabled .Values.enterprise.enabled }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "enterprise-logs.provisionerFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "enterprise-logs.provisionerLabels" . | nindent 4 }}
+    {{- with .Values.enterprise.provisioner.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    {{- with .Values.enterprise.provisioner.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    "helm.sh/hook": {{ .Values.enterprise.provisioner.hookType | quote }}
+    "helm.sh/hook-weight": "15"
+spec:
+  backoffLimit: 6
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        {{- include "enterprise-logs.provisionerSelectorLabels" . | nindent 8 }}
+        {{- with .Values.enterprise.provisioner.labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.enterprise.provisioner.annotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.enterprise.provisioner.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.enterprise.provisioner.hostUsers) }}
+      hostUsers: {{ .Values.enterprise.provisioner.hostUsers }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.enterprise.provisioner.securityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: provisioner
+          image: {{ template "enterprise-logs.provisionerImage" . }}
+          imagePullPolicy: {{ .Values.enterprise.provisioner.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -exuc
+            - |
+              echo "================================================================================"
+              echo "Starting provisioner. Any configured tenants will be provisioned below."
+              echo "If you need to manually provision a tenant, see the following documentation: "
+              echo "https://github.com/grafana/loki/blob/main/production/helm/loki/docs/examples/enterprise/README.md"
+              echo "================================================================================"
+              {{- range .Values.enterprise.provisioner.additionalTenants }}
+              echo "\nProvisioning tenant: {{ .name }}..."
+              /usr/bin/provisioner \
+                -cluster-name={{ include "loki.clusterName" $ }} \
+                -api-url={{ tpl $.Values.enterprise.provisioner.apiUrl $ }} \
+                -tenant={{ .name }} \
+                -access-policy=write-{{ .name }}:{{ .name }}:logs:write \
+                -access-policy=read-{{ .name }}:{{ .name }}:logs:read \
+                -token=write-{{ .name }} \
+                -token=read-{{ .name }}
+              {{- end -}}
+
+              {{- with .Values.monitoring.selfMonitoring.tenant }}
+              echo "\nProvisioning self-monitoring tenant: {{ .name }}..."
+              /usr/bin/provisioner \
+                -cluster-name={{ include "loki.clusterName" $ }} \
+                -api-url={{ tpl $.Values.enterprise.provisioner.apiUrl $ }} \
+                -tenant={{ .name }} \
+                -access-policy=self-monitoring:{{ .name }}:logs:write,logs:read \
+                -token=self-monitoring
+              {{- end }}
+              echo "\n================================================================================"
+              echo "Provisioning complete."
+              echo "================================================================================"
+          volumeMounts:
+            {{- with .Values.enterprise.provisioner.extraVolumeMounts }}
+              {{ toYaml . | nindent 12 }}
+            {{- end }}
+            - name: admin-token
+              mountPath: /bootstrap/token
+              subPath: token
+          {{- with .Values.enterprise.provisioner.env }}
+          env:
+            {{ toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext: {{- toYaml .Values.enterprise.provisioner.containerSecurityContext | nindent 12 }}
+      {{- with .Values.enterprise.provisioner.affinity }}
+      affinity:
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
+      {{- end }}
+      {{- with .Values.enterprise.provisioner.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.enterprise.provisioner.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: OnFailure
+      serviceAccount: {{ include "enterprise-logs.provisionerFullname" . }}
+      serviceAccountName: {{ include "enterprise-logs.provisionerFullname" . }}
+      volumes:
+        - name: admin-token
+          secret:
+            secretName: "{{ include "enterprise-logs.adminTokenSecret" . }}"
+        {{- if .Values.enterprise.provisioner.extraVolumes }}
+        {{- toYaml .Values.enterprise.provisioner.extraVolumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.global.extraVolumes }}
+        {{- toYaml .Values.global.extraVolumes | nindent 8 }}
+        {{- end }}
+{{- end }}

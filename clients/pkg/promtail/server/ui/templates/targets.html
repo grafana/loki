@@ -1,0 +1,104 @@
+{{define "head"}}
+<link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/css/targets.css?v={{ buildVersion }}">
+<script src="{{ pathPrefix }}/static/js/targets.js?v={{ buildVersion }}"></script>
+{{end}}
+
+
+{{define "content"}}
+  <div class="container-fluid">
+    <h1>Targets</h1>
+    <div id="showTargets" class="btn-group btn-group-toggle" data-toggle="buttons">
+      <label class="btn btn-primary">
+        <input type="radio" name="targets" id="all-targets" autocomplete="off" checked> All
+      </label>
+      <label class="btn btn-primary">
+        <input type="radio" name="targets" id="unready-targets" autocomplete="off"> Unready
+      </label>
+      </br>
+  </div>
+
+    {{range $job, $pool := .TargetPools}}
+    {{$ready := numReady $pool}}
+    {{$total := len $pool}}
+
+    <div class="table-container">
+      <h2 class="job_header{{if lt $ready $total}} danger{{end}}">
+        <a id="job-{{$job}}" href="#job-{{$job}}">{{$job}} ({{$ready}}/{{$total}} ready)</a>
+        <button type="button" class="targets expanded-table btn btn-primary">show less</button>
+      </h2>
+      <table class="table table-sm table-bordered table-striped table-hover">
+        <thead class="job_details">
+          <tr>
+            <th>Type</th>
+            <th>Ready</th>
+            <th>Labels</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{range $pool}}
+          <tr>
+            <td class="type">
+              <span >{{.Type}}</a><br>
+            </td>
+            <td class="state">
+              <span class="alert alert-{{ if .Ready }}success{{else}}danger{{end}} state_indicator text-uppercase">
+                {{.Ready}}
+              </span>
+            </td>
+            <td class="labels">
+              <span class="cursor-pointer" data-toggle="tooltip" title="" data-html=true data-original-title="<b>Before relabeling:</b>{{range $k, $v := .DiscoveredLabels}}<br>{{$ev := $v | html}}{{$k}}=&quot;{{$ev}}&quot;{{end}}">
+                {{range $label, $value := .Labels}}
+                  <span class="badge badge-primary">{{$label}}="{{$value}}"</span>
+                {{else}}
+                  <span class="badge badge-default">none</span>
+                {{end}}
+              </span>
+            </td>
+            <td class="details">
+              {{if eq .Type "File"}}
+                {{$files := fileTargetDetails .Details}}
+                <table class="table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Path</th>
+                        <th scope="col">Position</th>
+                      </tr>
+                    </thead>
+                  <tbody>
+                {{range $path, $position := $files}}
+                  <tr>
+                    <td>{{$path}}</td>
+                    <td>{{$position}}</td>
+                  </tr>
+                {{end}}
+                </tbody>
+              </table>
+              {{else if eq .Type "Journal" }}
+                {{$files := journalTargetDetails .Details}}
+                <table class="table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Key</th>
+                        <th scope="col">Value</th>
+                      </tr>
+                    </thead>
+                  <tbody>
+                {{range $path, $position := $files}}
+                  <tr>
+                    <td>{{$path}}</td>
+                    <td>{{$position}}</td>
+                  </tr>
+                {{end}}
+                </tbody>
+              </table>
+              {{end}}
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{ end }}
+  </div>
+{{end}}

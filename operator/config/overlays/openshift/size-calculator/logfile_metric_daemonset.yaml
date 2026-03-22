@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: log-file-metric-exporter
+  labels:
+    name: log-file-metric-exporter
+spec:
+  selector:
+    matchLabels:
+      name: log-file-metric-exporter
+  template:
+    metadata:
+      labels:
+        name: log-file-metric-exporter
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+        - name: log-file-metric-exporter
+          image: quay.io/openshift-logging/log-file-metric-exporter:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/local/bin/log-file-metric-exporter
+            - -verbosity=2
+            - -dir=/var/log/containers
+            - -http=:2112
+            - -keyFile=/var/run/secrets/serving-cert/tls.key
+            - -crtFile=/var/run/secrets/serving-cert/tls.crt
+          ports:
+            - containerPort: 2112
+              name: logfile-metrics
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /var/run/secrets/serving-cert
+              name: log-file-metric-exporter-metrics
+            - mountPath: /var/log
+              name: logfile-varlog
+          securityContext:
+            seLinuxOptions:
+              type: spc_t
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+      serviceAccount: log-file-metric-exporter
+      volumes:
+        - name: log-file-metric-exporter-metrics
+          secret:
+            defaultMode: 420
+            optional: true
+            secretName: log-file-metric-exporter-metrics
+        - name: logfile-varlog
+          hostPath:
+            path: /var/log
+        - name: storage-size-calculator-ca-bundle
+          configMap:
+            name: storage-size-calculator-ca-bundle

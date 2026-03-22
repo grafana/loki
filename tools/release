@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+DRONE_TAG_NO_V=${DRONE_TAG#v}
+export DRONE_TAG_NO_V
+
+ghr \
+  -t "${GITHUB_TOKEN}" \
+  -u "${DRONE_REPO_OWNER}" \
+  -r "${DRONE_REPO_NAME}" \
+  -c "${DRONE_COMMIT}" \
+  -b="$(cat ./tools/release-note.md | envsubst)" \
+  -delete -draft \
+  "${DRONE_TAG}" ./dist/

@@ -1,0 +1,63 @@
+{{- with .Values.monitoring.serviceMonitor }}
+{{- if and ($.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/ServiceMonitor") .enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "loki.fullname" $ }}
+  namespace: {{ include "loki.namespace" $ }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "loki.labels" $ | nindent 4 }}
+    {{- with .labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with .namespaceSelector }}
+  namespaceSelector:
+  {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "loki.selectorLabels" $ | nindent 6 }}
+    matchExpressions:
+      - key: prometheus.io/service-monitor
+        operator: NotIn
+        values:
+          - "false"
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      {{- with .interval }}
+      interval: {{ . }}
+      {{- end }}
+      {{- with .scrapeTimeout }}
+      scrapeTimeout: {{ . }}
+      {{- end }}
+      relabelings:
+        - sourceLabels: [job]
+          action: replace
+          replacement: "{{ include "loki.namespace" $ }}/$1"
+          targetLabel: job
+        - action: replace
+          replacement: "{{ include "loki.clusterLabel" $ }}"
+          targetLabel: cluster
+        {{- with .relabelings }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .scheme }}
+      scheme: {{ . }}
+      {{- end }}
+      {{- with .tlsConfig }}
+      tlsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,168 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if (and $isDistributed (gt (int .Values.bloomPlanner.replicas) 0)) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "loki.bloomBuilderFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.bloomBuilderLabels" . | nindent 4 }}
+  {{- with .Values.loki.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+{{- if not .Values.bloomBuilder.autoscaling.enabled }}
+  replicas: {{ .Values.bloomBuilder.replicas }}
+{{- end }}
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "loki.bloomBuilderSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- include "loki.config.checksum" . | nindent 8 }}
+        {{- with .Values.loki.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.bloomBuilder.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "loki.bloomBuilderLabels" . | nindent 8 }}
+        app.kubernetes.io/part-of: memberlist
+        {{- with merge (dict) .Values.loki.podLabels .Values.bloomBuilder.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "loki.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.bloomBuilder.dnsConfig | default .Values.loki.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.bloomBuilder.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.bloomBuilder.hostUsers) }}
+      hostUsers: {{ .Values.bloomBuilder.hostUsers }}
+      {{- end }}
+      {{- include "loki.bloomBuilderPriorityClassName" . | nindent 6 }}
+      securityContext:
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.bloomBuilder.terminationGracePeriodSeconds }}
+      {{- with .Values.bloomBuilder.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: bloom-builder
+          image: {{ include "loki.image" . }}
+          imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
+          {{- if or .Values.loki.command .Values.bloomBuilder.command }}
+          command:
+            - {{ coalesce .Values.bloomBuilder.command .Values.loki.command | quote }}
+          {{- end }}
+          args:
+            - -config.file=/etc/loki/config/config.yaml
+            - -target=bloom-builder
+            {{- with (concat .Values.global.extraArgs .Values.bloomBuilder.extraArgs) | uniq }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http-metrics
+              containerPort: 3100
+              protocol: TCP
+            - name: grpc
+              containerPort: 9095
+              protocol: TCP
+            - name: http-memberlist
+              containerPort: 7946
+              protocol: TCP
+          {{- with (concat .Values.global.extraEnv .Values.bloomBuilder.extraEnv) | uniq }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.bloomBuilder.extraEnvFrom) | uniq }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- with .Values.loki.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.loki.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.loki.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki/config
+            - name: runtime-config
+              mountPath: /etc/loki/runtime-config
+            {{- if .Values.enterprise.enabled }}
+            - name: license
+              mountPath: /etc/loki/license
+            {{- end }}
+            - name: temp
+              mountPath: /tmp
+            - name: data
+              mountPath: /var/loki
+            {{- with (concat .Values.global.extraVolumeMounts .Values.bloomBuilder.extraVolumeMounts) | uniq }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.bloomBuilder.resources | nindent 12 }}
+        {{- if .Values.bloomBuilder.extraContainers }}
+        {{- toYaml .Values.bloomBuilder.extraContainers | nindent 8}}
+        {{- end }}
+      {{- with .Values.bloomBuilder.affinity }}
+      affinity:
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
+      {{- end }}
+      {{- with .Values.bloomBuilder.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.bloomBuilder.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: config
+          {{- include "loki.configVolume" . | nindent 10 }}
+        - name: runtime-config
+          configMap:
+            name: {{ template "loki.name" . }}-runtime
+        {{- if .Values.enterprise.enabled }}
+        - name: license
+          secret:
+          {{- if .Values.enterprise.useExternalLicense }}
+            secretName: {{ .Values.enterprise.externalLicenseName }}
+          {{- else }}
+            secretName: enterprise-logs-license
+          {{- end }}
+        {{- end }}
+        - name: temp
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
+        {{- with (concat .Values.global.extraVolumes .Values.bloomBuilder.extraVolumes) | uniq }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end -}}

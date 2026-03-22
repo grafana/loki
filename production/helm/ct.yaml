@@ -1,0 +1,11 @@
+---
+remote: origin
+target-branch: main
+chart-dirs:
+  - production/helm
+chart-repos:
+  - grafana=https://grafana.github.io/helm-charts
+  - minio=https://charts.min.io
+  - prometheus-community=https://prometheus-community.github.io/helm-charts
+check-version-increment: false
+validate-maintainers: false

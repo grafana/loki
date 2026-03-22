@@ -1,0 +1,20 @@
+groups:
+  - name: Sample Rule Group
+    interval: 5s
+    rules:
+      - record: generated_logs:rate1m
+        expr: sum by (http_method) (rate({job="generated-logs"}[1m]))
+        labels:
+          source: "recording rule"
+      - record: scalar
+        expr: 10
+        labels:
+          source: "static"
+      - alert: NoGeneratedLogs
+        expr: absent_over_time({job="generated-logs"}[1m])
+        labels:
+          source: "alerting rule"
+      - alert: AlwaysFiring
+        expr: absent_over_time({job="blah"}[1m])
+        labels:
+          source: "alerting rule"

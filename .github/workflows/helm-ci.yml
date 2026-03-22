@@ -1,0 +1,221 @@
+---
+name: helm-ci
+on:
+  pull_request:
+    paths:
+      - "production/helm/**"
+      - ".github/workflows/helm-ci.yml"
+
+env:
+  CT_CONFIGFILE: production/helm/ct.yaml
+  INTEGRATION_TESTS_DIR: production/helm/loki/test/integration
+
+jobs:
+# Temporarily disabled linting because this step doesn't easily support passing GO tags yet.
+#  call-lint:
+#    permissions:
+#      contents: "read"
+#      id-token: "write"
+#      pull-requests: "write"
+#    uses: grafana/helm-charts/.github/workflows/linter.yml@main
+#    with:
+#      filter_regex_include: .*production/helm/loki/.*
+#      golang_ci_lint_file: production/helm/loki/.golangci.yaml
+  call-test:
+    name: Test Helm Chart
+    runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.18.6
+
+      # Python is required because `ct lint` runs Yamale (https://github.com/23andMe/Yamale) and
+      # yamllint (https://github.com/adrienverge/yamllint) which require Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.13
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@0d28d3144d3a25ea2cc349d6e59901c4ff469b3b # v2.7.0
+      - name: Run chart-testing (list-changed)
+        id: list-changed
+        run: |
+          changed=$(ct list-changed --config "${CT_CONFIGFILE}")
+          if [[ -n "$changed" ]]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run chart-testing (lint)
+        run: ct lint --config "${CT_CONFIGFILE}" --check-version-increment=false
+        timeout-minutes: 10
+
+      - name: Create kind cluster
+        uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3 # v1.12.0
+        if: steps.list-changed.outputs.changed == 'true'
+
+      - name: Install prometheus operator
+        id: install-prometheus
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          kubectl create namespace prometheus
+
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm install --debug prometheus prometheus-community/kube-prometheus-stack \
+            --namespace prometheus \
+            --set grafana.enabled=false \
+            --set prometheus.prometheusSpec.serviceMonitorSelector.matchLabels.release=prometheus \
+            --set prometheus.prometheusSpec.scrapeConfigNamespaceSelector.matchLabels.release=prometheus
+
+          kubectl --namespace prometheus get pods -l "release=prometheus"
+          kubectl --namespace prometheus get services -l "release=prometheus"
+
+      - name: Run chart-testing (install)
+        run: |
+          changed=$(ct list-changed --config "${CT_CONFIGFILE}")
+          if [[ "$changed" == "charts/enterprise-metrics" ]]; then
+            # Do not run `ct install` for enterprise-metrics
+            exit 0
+          fi
+          ct install --config "${CT_CONFIGFILE}"
+
+  list-integration-tests:
+    name: List integration tests
+    runs-on: ubuntu-latest
+    outputs:
+      tests: ${{ steps.list_tests.outputs.tests }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: 'false'
+
+      - name: List tests
+        id: list_tests
+        working-directory: "${{ env.INTEGRATION_TESTS_DIR }}"
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          tests=$(find . -name test-plan.yaml -exec dirname {} \; | sed -e "s/^\.\///g")
+          echo "Tests: ${tests}"
+          echo "tests=$(echo "${tests}" | jq --raw-input --slurp --compact-output 'split("\n") | map(select(. != ""))')" >> "${GITHUB_OUTPUT}"
+
+  run-integration-tests:
+    name: Integration Test
+    needs: list-integration-tests
+    runs-on: ubuntu-latest
+    if: needs.list-integration-tests.outputs.tests != '[]'
+    strategy:
+      matrix:
+        test: ${{ fromJson(needs.list-integration-tests.outputs.tests) }}
+      fail-fast: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          path: source
+          persist-credentials: 'false'
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          path: helm-chart-toolbox
+          repository: grafana/helm-chart-toolbox
+          persist-credentials: 'false'
+
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.18.6
+
+      - name: Install Flux CLI
+        uses: fluxcd/flux2/action@6bf37f6a560fd84982d67f853162e4b3c2235edb  # v2.6.4
+
+      - name: Install Kind CLI
+        uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3  # v1.12.0
+        with:
+          install_only: true
+
+      - name: Install Minikube CLI
+        uses: medyagh/setup-minikube@e3c7f79eb1e997eabccc536a6cf318a2b0fe19d9  # v0.0.20
+        with:
+          start: false
+
+      - name: Run test
+        run: |
+          # Enable verbose output only if runner debug mode is enabled
+          if [ "${{ runner.debug }}" == "1" ]; then
+            set -x
+            echo "=== Debug mode enabled - verbose output active ==="
+          fi
+          
+          echo "=== Starting Helm Test ==="
+          echo "Test directory: ${TEST_DIRECTORY}"
+          helm-chart-toolbox/tools/helm-test/helm-test "${TEST_DIRECTORY}" || {
+            EXIT_CODE=$?
+            echo "=== Test failed with exit code: $EXIT_CODE ==="
+            echo "=== Attempting to gather debug information ==="
+            
+            # Try to get cluster info if kubectl is available
+            if command -v kubectl &> /dev/null; then
+              echo "=== Kubernetes Cluster Debug Info ==="
+              echo "--- Cluster nodes ---"
+              kubectl get nodes -o wide || true
+              echo "--- All namespaces ---"
+              kubectl get namespaces || true
+              echo "--- Helm releases ---"
+              helm list -A || true
+              echo "--- Helm release status (if exists) ---"
+              helm status loki -n loki || echo "Helm release 'loki' not found or failed"
+              echo "--- All resources in loki namespace ---"
+              kubectl get all -n loki || true
+              echo "--- Pods in loki namespace ---"
+              kubectl get pods -n loki -o wide || true
+              echo "--- Pod status details ---"
+              kubectl get pods -n loki -o json | jq -r '.items[] | "\(.metadata.name): phase=\(.status.phase), reason=\(.status.reason // "none"), message=\(.status.message // "none")"' || true
+              echo "--- Events in loki namespace (last 100) ---"
+              kubectl get events -n loki --sort-by='.lastTimestamp' | tail -100 || true
+              echo "--- Failed/Error pods details ---"
+              kubectl get pods -n loki -o json | jq -r '.items[] | select(.status.phase != "Running" and .status.phase != "Succeeded") | "\(.metadata.name): \(.status.phase) - \(.status.reason // "no reason")"' || true
+              echo "--- Describe failed pods ---"
+              for pod in $(kubectl get pods -n loki -o json | jq -r '.items[] | select(.status.phase != "Running" and .status.phase != "Succeeded") | .metadata.name'); do
+                echo "=== Describe pod: $pod ==="
+                kubectl describe pod -n loki "$pod" || true
+              done
+              echo "--- Pod logs for failed pods ---"
+              for pod in $(kubectl get pods -n loki -o json | jq -r '.items[] | select(.status.phase != "Running" and .status.phase != "Succeeded") | .metadata.name'); do
+                echo "=== Logs for pod: $pod ==="
+                kubectl logs -n loki "$pod" --tail=200 || true
+                echo "=== Previous logs for pod: $pod ==="
+                kubectl logs -n loki "$pod" --previous --tail=200 || true
+              done
+              
+              # Only show all pod logs if debug mode is enabled (can be very verbose)
+              if [ "${{ runner.debug }}" == "1" ]; then
+                echo "--- All pod logs (last 50 lines each) ---"
+                for pod in $(kubectl get pods -n loki -o json | jq -r '.items[] | .metadata.name'); do
+                  echo "=== Logs for pod: $pod ==="
+                  kubectl logs -n loki "$pod" --tail=50 || true
+                done
+              fi
+            fi
+            
+            exit $EXIT_CODE
+          }
+        env:
+          TEST_DIRECTORY: "source/${{ env.INTEGRATION_TESTS_DIR }}/${{ matrix.test }}"
+          DELETE_CLUSTER: true
+          # Enable verbose output for helm-test only if runner debug mode is enabled
+          DEBUG: ${{ runner.debug == '1' && 'true' || 'false' }}
+          VERBOSE: ${{ runner.debug == '1' && 'true' || 'false' }}

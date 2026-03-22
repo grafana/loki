@@ -1,0 +1,32 @@
+name: operator scorecard
+
+on:
+  push:
+    paths:
+      - 'operator/**'
+    branches: [ main ]
+  pull_request:
+    paths:
+      - 'operator/**'
+
+jobs:
+  build:
+    name: scorecard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: ./operator/go.mod
+        cache-dependency-path: ./operator/go.sum
+    - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+      with:
+        version: "v0.30.0"
+    - name: Run scorecard
+      run: make scorecard
+      working-directory: ./operator

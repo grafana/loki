@@ -1,0 +1,21 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed (gt (int .Values.queryFrontend.replicas) 1) }}
+{{- if kindIs "invalid" .Values.queryFrontend.maxUnavailable }}
+{{- fail "`.Values.queryFrontend.maxUnavailable` must be set when `.Values.queryFrontend.replicas` is greater than 1." }}
+{{- else }}
+apiVersion: {{ include "loki.pdb.apiVersion" . }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "loki.queryFrontendFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.queryFrontendLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "loki.queryFrontendSelectorLabels" . | nindent 6 }}
+  {{- with .Values.queryFrontend.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
+{{- end }}
+{{- end }}

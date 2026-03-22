@@ -1,0 +1,18 @@
+[build]
+  publish = "website/public"
+  functions = "functions"
+
+[build.environment]
+  # HUGO_VERSION = "..." is set by bingo which allows reproducible local environment.
+  NODE_VERSION = "22.10.0"
+  NPM_VERSION = "10.9.0"
+  GO_VERSION = "1.25.7"
+
+[context.production]
+  command = "(env && mkdir /tmp/gobin && make web GOBIN=/tmp/gobin) || (sleep 30; false)"
+
+[context.deploy-preview]
+  command = "(env && mkdir /tmp/gobin && make web GOBIN=/tmp/gobin WEBSITE_BASE_URL=${DEPLOY_PRIME_URL}) || (sleep 30; false)"
+
+[context.branch-deploy]
+  command = "(env && mkdir /tmp/gobin && make web GOBIN=/tmp/gobin WEBSITE_BASE_URL=${DEPLOY_PRIME_URL}) || (sleep 30; false)"

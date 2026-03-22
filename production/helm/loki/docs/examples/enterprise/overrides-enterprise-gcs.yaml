@@ -1,0 +1,70 @@
+enterprise:
+  enabled: true
+  useExternalLicense: true
+  externalLicenseName: gel-secrets
+  # If using provisioner, specify the admin token secret
+  # adminToken:
+  #   secret: loki-admin-token
+loki:
+  auth_enabled: true
+
+  storage:
+    type: gcs
+    bucketNames:
+      chunks: {YOUR_GCS_BUCKET}
+      ruler: {YOUR_GCS_BUCKET}
+      admin: {YOUR_GCS_BUCKET}
+
+minio:
+  enabled: false
+
+write:
+  extraEnv:
+    - name: GOOGLE_APPLICATION_CREDENTIALS
+      value: "/etc/gel_secrets/gcp_service_account.json"
+  extraVolumeMounts:
+    - name: gel-secrets
+      mountPath: "/etc/gel_secrets"
+  extraVolumes:
+    - name: gel-secrets
+      secret:
+        secretName: gel-secrets
+        items:
+        - key: license.jwt
+          path: license.jwt
+        - key: gcp_service_account.json
+          path: gcp_service_account.json
+
+read:
+  extraEnv:
+    - name: GOOGLE_APPLICATION_CREDENTIALS
+      value: "/etc/gel_secrets/gcp_service_account.json"
+  extraVolumeMounts:
+    - name: gel-secrets
+      mountPath: "/etc/gel_secrets"
+  extraVolumes:
+    - name: gel-secrets
+      secret:
+        secretName: gel-secrets
+        items:
+        - key: license.jwt
+          path: license.jwt
+        - key: gcp_service_account.json
+          path: gcp_service_account.json
+
+gateway:
+  extraEnv:
+    - name: GOOGLE_APPLICATION_CREDENTIALS
+      value: "/etc/gel_secrets/gcp_service_account.json"
+  extraVolumeMounts:
+    - name: gel-secrets
+      mountPath: "/etc/gel_secrets"
+  extraVolumes:
+    - name: gel-secrets
+      secret:
+        secretName: gel-secrets
+        items:
+        - key: license.jwt
+          path: license.jwt
+        - key: gcp_service_account.json
+          path: gcp_service_account.json

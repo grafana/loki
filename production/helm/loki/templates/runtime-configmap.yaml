@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "loki.name" . }}-runtime
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+data:
+  runtime-config.yaml: |
+    {{- tpl (toYaml .Values.loki.runtimeConfig) . | nindent 4 }}

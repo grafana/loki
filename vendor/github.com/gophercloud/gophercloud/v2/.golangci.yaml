@@ -1,0 +1,19 @@
+---
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - gofmt
+    - goimports
+    - govet
+    - staticcheck
+    - unparam
+    - unused
+
+issues:
+  exclude:
+    - SA1006  # printf-style function with dynamic format string and no further arguments should use print-style function instead (staticcheck)
+  exclude-rules:
+    - linters:
+        - staticcheck
+      text: 'SA1019: (x509.EncryptPEMBlock|strings.Title)'

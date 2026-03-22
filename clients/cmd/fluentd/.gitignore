@@ -1,0 +1,9 @@
+Gemfile.lock
+.rspec_status
+# rbenv
+.ruby-version
+# bundler
+.bundle/
+vendor/
+# simplecov
+coverage/

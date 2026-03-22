@@ -1,0 +1,186 @@
+package sarama
+
+import "time"
+
+type ScramMechanismType int8
+
+const (
+	SCRAM_MECHANISM_UNKNOWN ScramMechanismType = iota // 0
+	SCRAM_MECHANISM_SHA_256                           // 1
+	SCRAM_MECHANISM_SHA_512                           // 2
+)
+
+func (s ScramMechanismType) String() string {
+	switch s {
+	case 1:
+		return SASLTypeSCRAMSHA256
+	case 2:
+		return SASLTypeSCRAMSHA512
+	default:
+		return "Unknown"
+	}
+}
+
+type DescribeUserScramCredentialsResponse struct {
+	// Version 0 is currently only supported
+	Version int16
+
+	ThrottleTime time.Duration
+
+	ErrorCode    KError
+	ErrorMessage *string
+
+	Results []*DescribeUserScramCredentialsResult
+}
+
+func (r *DescribeUserScramCredentialsResponse) setVersion(v int16) {
+	r.Version = v
+}
+
+type DescribeUserScramCredentialsResult struct {
+	User string
+
+	ErrorCode    KError
+	ErrorMessage *string
+
+	CredentialInfos []*UserScramCredentialsResponseInfo
+}
+
+type UserScramCredentialsResponseInfo struct {
+	Mechanism  ScramMechanismType
+	Iterations int32
+}
+
+func (r *DescribeUserScramCredentialsResponse) encode(pe packetEncoder) error {
+	pe.putDurationMs(r.ThrottleTime)
+
+	pe.putKError(r.ErrorCode)
+	if err := pe.putNullableString(r.ErrorMessage); err != nil {
+		return err
+	}
+
+	if err := pe.putArrayLength(len(r.Results)); err != nil {
+		return err
+	}
+	for _, u := range r.Results {
+		if err := pe.putString(u.User); err != nil {
+			return err
+		}
+		pe.putInt16(int16(u.ErrorCode))
+		if err := pe.putNullableString(u.ErrorMessage); err != nil {
+			return err
+		}
+
+		if err := pe.putArrayLength(len(u.CredentialInfos)); err != nil {
+			return err
+		}
+		for _, c := range u.CredentialInfos {
+			pe.putInt8(int8(c.Mechanism))
+			pe.putInt32(c.Iterations)
+			pe.putEmptyTaggedFieldArray()
+		}
+
+		pe.putEmptyTaggedFieldArray()
+	}
+
+	pe.putEmptyTaggedFieldArray()
+	return nil
+}
+
+func (r *DescribeUserScramCredentialsResponse) decode(pd packetDecoder, version int16) (err error) {
+	if r.ThrottleTime, err = pd.getDurationMs(); err != nil {
+		return err
+	}
+
+	r.ErrorCode, err = pd.getKError()
+	if err != nil {
+		return err
+	}
+
+	if r.ErrorMessage, err = pd.getNullableString(); err != nil {
+		return err
+	}
+
+	numUsers, err := pd.getArrayLength()
+	if err != nil {
+		return err
+	}
+
+	if numUsers > 0 {
+		r.Results = make([]*DescribeUserScramCredentialsResult, numUsers)
+		for i := 0; i < numUsers; i++ {
+			r.Results[i] = &DescribeUserScramCredentialsResult{}
+			if r.Results[i].User, err = pd.getString(); err != nil {
+				return err
+			}
+
+			r.Results[i].ErrorCode, err = pd.getKError()
+			if err != nil {
+				return err
+			}
+			if r.Results[i].ErrorMessage, err = pd.getNullableString(); err != nil {
+				return err
+			}
+
+			numCredentialInfos, err := pd.getArrayLength()
+			if err != nil {
+				return err
+			}
+
+			r.Results[i].CredentialInfos = make([]*UserScramCredentialsResponseInfo, numCredentialInfos)
+			for j := 0; j < numCredentialInfos; j++ {
+				r.Results[i].CredentialInfos[j] = &UserScramCredentialsResponseInfo{}
+				scramMechanism, err := pd.getInt8()
+				if err != nil {
+					return err
+				}
+				r.Results[i].CredentialInfos[j].Mechanism = ScramMechanismType(scramMechanism)
+				if r.Results[i].CredentialInfos[j].Iterations, err = pd.getInt32(); err != nil {
+					return err
+				}
+				if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+					return err
+				}
+			}
+
+			if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+				return err
+			}
+		}
+	}
+
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
+}
+
+func (r *DescribeUserScramCredentialsResponse) key() int16 {
+	return apiKeyDescribeUserScramCredentials
+}
+
+func (r *DescribeUserScramCredentialsResponse) version() int16 {
+	return r.Version
+}
+
+func (r *DescribeUserScramCredentialsResponse) headerVersion() int16 {
+	return 2
+}
+
+func (r *DescribeUserScramCredentialsResponse) isValidVersion() bool {
+	return r.Version == 0
+}
+
+func (r *DescribeUserScramCredentialsResponse) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *DescribeUserScramCredentialsResponse) isFlexibleVersion(version int16) bool {
+	return version >= 0
+}
+
+func (r *DescribeUserScramCredentialsResponse) requiredVersion() KafkaVersion {
+	return V2_7_0_0
+}
+
+func (r *DescribeUserScramCredentialsResponse) throttleTime() time.Duration {
+	return r.ThrottleTime
+}

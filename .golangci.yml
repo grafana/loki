@@ -1,0 +1,110 @@
+# This file contains all available configuration options
+# with their default values.
+version: "2"
+# options for analysis running
+run:
+  # default concurrency is a available CPU number
+  concurrency: 16
+  # define go version
+  go: "1.24"
+  # list of build tags, all linters use it. Default is empty list.
+  build-tags:
+    - cgo
+    - integration
+    - slicelabels
+  # exit code when at least one issue was found, default is 1
+  issues-exit-code: 1
+  # include test files or not, default is true
+  tests: true
+# output configuration options
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+      colors: true
+linters:
+  enable:
+    - copyloopvar
+    - depguard
+    - errcheck
+    - gochecksumtype
+    - goconst
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - unconvert
+  disable:
+    - unparam
+    - unused
+  settings:
+    depguard:
+      rules:
+        Main:
+          deny:
+            - pkg: github.com/go-kit/kit/log
+              desc: Use github.com/go-kit/log instead of github.com/go-kit/kit/log
+    goconst:
+      min-occurrences: 5
+    misspell:
+      ignore-rules:
+        - strat
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - revive
+        path: (.*)\.go$
+        text: "avoid meaningless package names"
+      - linters:
+          - revive
+        path: (.*)\.go$
+        text: "avoid package names that conflict with Go standard library"
+      - path: pkg/scheduler/scheduler.go
+        text: "SA1019: msg.GetHttpRequest is deprecated: Do not use"
+      - linters:
+          - goconst
+        path: (.+)_test\.go
+      - path: (.+)\.go$
+        text: Error return value of .*log\.Logger\)\.Log\x60 is not checked
+      - path: (.+)\.go$
+        text: Error return value of .*.Log.* is not checked
+      - path: (.+)\.go$
+        text: Error return value of `` is not checked
+      - path: (.+)\.go$
+        text: Error return value of `.*WriteString` is not checked
+    paths:
+      - .*.pb.go
+      - .*.y.go
+      - .*.rl.go
+      - .*.deepcopy.go
+      - win_eventlog$
+      - operator
+issues:
+  fix: true
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/grafana/loki/pkg
+        - github.com/grafana/loki/tools
+  exclusions:
+    generated: lax
+    paths:
+      - .*.pb.go
+      - .*.y.go
+      - .*.rl.go
+      - .*.deepcopy.go
+      - win_eventlog$
+      - operator

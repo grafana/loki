@@ -1,0 +1,40 @@
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.backendFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.backendLabels" . | nindent 4 }}
+    {{- with .Values.loki.serviceLabels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.backend.service.labels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.backend.service.annotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  type: {{ .Values.backend.service.type }}
+  ports:
+    - name: http-metrics
+      port: {{ .Values.loki.server.http_listen_port }}
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: {{ .Values.loki.server.grpc_listen_port }}
+      targetPort: grpc
+      protocol: TCP
+  selector:
+    {{- include "loki.backendSelectorLabels" . | nindent 4 }}
+{{- with .Values.backend.service.trafficDistribution | default .Values.loki.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+{{- end }}
+{{- end }}

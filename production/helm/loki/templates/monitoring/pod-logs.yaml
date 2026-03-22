@@ -1,0 +1,62 @@
+---
+{{- if .Values.monitoring.selfMonitoring.enabled }}
+{{- with .Values.monitoring.selfMonitoring.podLogs }}
+apiVersion: {{ .apiVersion }}
+kind: PodLogs
+metadata:
+  name: {{ include "loki.fullname" $ }}
+  namespace: {{ include "loki.namespace" $ }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "loki.labels" $ | nindent 4 }}
+    {{- with .labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  pipelineStages:
+    - cri: { }
+    {{- with .additionalPipelineStages }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  relabelings:
+    - action: replace
+      sourceLabels:
+        - __meta_kubernetes_pod_node_name
+      targetLabel: __host__
+    - action: labelmap
+      regex: __meta_kubernetes_pod_label_(.+)
+    - action: replace
+      replacement: "$1"
+      separator: "-"
+      sourceLabels:
+        - __meta_kubernetes_pod_label_app_kubernetes_io_name
+        - __meta_kubernetes_pod_label_app_kubernetes_io_component
+      targetLabel: __service__
+    - action: replace
+      replacement: "$1"
+      separator: "/"
+      sourceLabels:
+        - __meta_kubernetes_namespace
+        - __service__
+      targetLabel: job
+    - action: replace
+      sourceLabels:
+        - __meta_kubernetes_pod_container_name
+      targetLabel: container
+    - action: replace
+      replacement: "{{ include "loki.clusterLabel" $ }}"
+      targetLabel: cluster
+    {{- with .relabelings }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  namespaceSelector:
+    matchNames:
+      - {{ include "loki.namespace" $ }}
+  selector:
+    matchLabels:
+      {{- include "loki.selectorLabels" $ | nindent 6 }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,43 @@
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: log-file-metric-exporter-scc
+allowPrivilegedContainer: true
+requiredDropCapabilities:
+  - MKNOD
+  - CHOWN
+  - DAC_OVERRIDE
+  - FSETID
+  - FOWNER
+  - SETGID
+  - SETUID
+  - SETPCAP
+  - NET_BIND_SERVICE
+  - KILL
+allowHostDirVolumePlugin: true
+allowHostPorts: false
+runAsUser:
+  type: RunAsAny
+users: []
+allowHostIPC: false
+seLinuxContext:
+  type: RunAsAny
+readOnlyRootFilesystem: false
+fsGroup:
+  type: RunAsAny
+groups:
+  - 'system:cluster-admins'
+defaultAddCapabilities: null
+supplementalGroups:
+  type: RunAsAny
+volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - persistentVolumeClaim
+  - projected
+  - secret
+allowHostPID: false
+allowHostNetwork: false
+allowPrivilegeEscalation: true
+allowedCapabilities: null

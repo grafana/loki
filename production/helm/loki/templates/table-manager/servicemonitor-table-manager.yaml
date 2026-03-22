@@ -1,0 +1,59 @@
+{{- if .Values.tableManager.enabled }}
+{{- with .Values.serviceMonitor }}
+{{- if .enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "loki.tableManagerFullname" $ }}
+  {{- if .namespace }}
+  namespace: {{ .namespace }}
+  {{- else }}
+  namespace: {{ include "loki.namespace" $ }}
+  {{- end }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "loki.tableManagerLabels" $ | nindent 4 }}
+    {{- with .labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with .namespaceSelector }}
+  namespaceSelector:
+  {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "loki.tableManagerSelectorLabels" $ | nindent 6 }}
+  endpoints:
+    - port: http-metrics
+      {{- with .interval }}
+      interval: {{ . }}
+      {{- end }}
+      {{- with .scrapeTimeout }}
+      scrapeTimeout: {{ . }}
+      {{- end }}
+      {{- with .relabelings }}
+      relabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .scheme }}
+      scheme: {{ . }}
+      {{- end }}
+      {{- with .tlsConfig }}
+      tlsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- with .targetLabels }}
+  targetLabels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

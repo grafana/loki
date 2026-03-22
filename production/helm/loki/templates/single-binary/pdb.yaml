@@ -1,0 +1,16 @@
+{{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
+{{- if and .Values.podDisruptionBudget $isSingleBinary -}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "loki.fullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "loki.singleBinarySelectorLabels" . | nindent 6 }}
+{{ toYaml .Values.podDisruptionBudget | indent 2 }}
+{{- end }}

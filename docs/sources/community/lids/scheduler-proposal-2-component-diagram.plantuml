@@ -1,0 +1,59 @@
+skinparam componentStyle rectangle
+
+package Frontend {
+    () RoundTripper as QF
+}
+
+package Scheduler {
+    () FrontendLoop as FL
+
+    component RequestQueue {
+        [L3 Queue] as Z1
+        [L3 Queue] as Z2
+        [L3 Queue] as Z3
+        [L3 Queue] as Z4
+        [L2 Queue] as Y1
+        [L2 Queue] as Y2
+        [L2 Queue] as Y3
+        [L1 Queue] as X1
+        [L1 Queue] as X2
+        [L1 Queue] as X3
+        [L0 Queue] as R1
+        [L0 Queue] as R2
+    }
+
+    () QuerierLoop as Q1
+    () QuerierLoop as Q2
+
+    Z1 ..>> Y1
+    Z2 ..>> Y1
+    Z3 ..>> Y2
+    Z4 ..>> Y2
+    Y1 ..>> X1
+    Y2 ..>> X2
+    Y3 ..>> X2
+    X1 ..>> R1
+    X2 ..>> R2
+    X3 ..>> R2
+}
+
+QF -->> FL
+FL -->> Z1
+FL -->> Z2
+FL -->> Z3
+FL -->> Z4
+FL -->> Y3
+FL -->> X2
+FL -->> X3
+
+package Querier {
+    [Worker] as W1
+    [Worker] as W2
+}
+
+R1 -->> Q1
+Q1 -->> W1
+
+R2 -->> Q1
+R2 -->> Q2
+Q2 -->> W2

@@ -1,0 +1,1 @@
+{{- include "loki.memcached.service" (dict "ctx" $  "memcacheConfig" .Values.resultsCache "valuesSection" "resultsCache" "component" "results-cache" ) }}

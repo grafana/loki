@@ -1,0 +1,29 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.memberlist" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.memberlist.service.annotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: tcp
+      port: 7946
+      targetPort: http-memberlist
+      protocol: TCP
+  {{- with .Values.memberlist.service.publishNotReadyAddresses }}
+  publishNotReadyAddresses: {{ . }}
+  {{- end }}
+  selector:
+    {{- include "loki.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/part-of: memberlist

@@ -1,0 +1,30 @@
+---
+loki:
+  commonConfig:
+    replication_factor: 1
+  useTestSchema: true
+  storage:
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+      admin: admin
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3100"
+read:
+  replicas: 1
+write:
+  replicas: 1
+backend:
+  replicas: 1
+monitoring:
+  enabled: true
+  selfMonitoring:
+    enabled: true
+    grafanaAgent:
+      installOperator: true
+  serviceMonitor:
+    labels:
+      release: "prometheus"
+test:
+  prometheusAddress: "http://prometheus-kube-prometheus-prometheus.prometheus.svc.cluster.local.:9090"

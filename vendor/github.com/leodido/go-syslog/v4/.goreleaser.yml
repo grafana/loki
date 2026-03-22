@@ -1,0 +1,16 @@
+release:
+  prerelease: auto
+  draft: false
+  name_template: "v{{.Version}}"
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - skip: true
+
+# Docs at https://goreleaser.com/customization/changelog
+changelog:
+  use: github-native
+  sort: asc

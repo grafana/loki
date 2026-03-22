@@ -1,0 +1,15 @@
+version: "3"
+services:
+  nginx:
+    image: grafana/grafana
+    logging:
+      driver: loki
+      options:
+        loki-url: http://host.docker.internal:3100/loki/api/v1/push
+        loki-pipeline-stages: |
+          - regex:
+              expression: '(level|lvl|severity)=(?P<level>\w+)'
+          - labels:
+              level:
+    ports:
+      - "3000:3000"

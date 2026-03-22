@@ -1,0 +1,10 @@
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: lokistack-sample
+spec:
+  size: 1x.small
+  storage:
+    secret:
+      name: test
+  storageClassName: standard

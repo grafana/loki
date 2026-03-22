@@ -1,0 +1,35 @@
+{{- if or (or .Values.rbac.pspEnabled .Values.rbac.sccEnabled) (and .Values.rbac.namespaced .Values.sidecar.rules.enabled) }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "loki.name" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+rules:
+  {{- if .Values.rbac.pspEnabled }}
+  - apiGroups:
+      - policy
+    resources:
+      - podsecuritypolicies
+    verbs:
+      - use
+    resourceNames:
+      - {{ include "loki.name" . }}
+  {{- end }}
+  {{- if .Values.rbac.sccEnabled }}
+  - apiGroups:
+      - security.openshift.io
+    resources:
+      - securitycontextconstraints
+    verbs:
+      - use
+    resourceNames:
+      - {{ include "loki.name" . }}
+  {{- end }}
+  {{- if and .Values.rbac.namespaced .Values.sidecar.rules.enabled }}
+  - apiGroups: [""] # "" indicates the core API group
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "watch", "list"]
+  {{- end }}
+{{- end }}

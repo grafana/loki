@@ -1,0 +1,29 @@
+grafana:
+  enabled: true
+  service:
+    type: LoadBalancer
+    port: 3000
+  adminPassword: admin
+
+prometheus:
+  enabled: true
+  pushgateway:
+    enabled: false
+  server:
+    service:
+      type: LoadBalancer
+      servicePort: 9090
+
+promtail:
+  enabled: true
+  image:
+    pullPolicy: Never
+
+fluent-bit:
+  enable: false
+
+loki:
+  image:
+    pullPolicy: Never
+  service:
+    type: LoadBalancer

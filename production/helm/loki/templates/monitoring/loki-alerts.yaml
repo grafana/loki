@@ -1,0 +1,22 @@
+{{- with .Values.monitoring.rules }}
+{{- if and ($.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/PrometheusRule") .enabled .alerting }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    {{- include "loki.labels" $ | nindent 4 }}
+    {{- with .labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  name: {{ include "loki.fullname" $ }}-loki-alerts
+  namespace: {{ .namespace | default (include "loki.namespace" $) }}
+spec:
+  groups:
+  {{- include "loki.ruleGroupToYaml" (tpl ($.Files.Get "src/alerts.yaml.tpl") $ | fromYaml).groups | indent 4 }}
+{{- end }}
+{{- end }}

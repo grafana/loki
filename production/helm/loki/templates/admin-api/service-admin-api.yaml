@@ -1,0 +1,30 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled $isDistributed }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "enterprise-logs.adminApiFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "enterprise-logs.adminApiLabels" . | nindent 4 }}
+    {{- with .Values.adminApi.service.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    {{- with .Values.adminApi.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http-metrics
+      port: 3100
+      protocol: TCP
+      targetPort: http-metrics
+    - name: grpc
+      port: 9095
+      protocol: TCP
+      targetPort: grpc
+  selector:
+    {{- include "enterprise-logs.adminApiSelectorLabels" . | nindent 4 }}
+{{- end }}

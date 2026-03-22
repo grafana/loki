@@ -1,0 +1,145 @@
+{{- with .Values.lokiCanary -}}
+{{- if .enabled -}}
+---
+apiVersion: apps/v1
+kind: {{ .kind }}
+metadata:
+  name: {{ include "loki-canary.fullname" $ }}
+  namespace: {{ include "loki.namespace" $ }}
+  labels:
+    {{- include "loki-canary.labels" $ | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "loki-canary.selectorLabels" $ | nindent 6 }}
+  {{- if eq .kind "Deployment" }}
+  replicas: {{ .replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  revisionHistoryLimit: {{ $.Values.loki.revisionHistoryLimit }}
+  {{- else }}
+  {{- with .updateStrategy }}
+  updateStrategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+  template:
+    metadata:
+      {{- with .annotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "loki-canary.selectorLabels" $ | nindent 8 }}
+        {{- with .podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "loki-canary.fullname" $ }}
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- include "loki-canary.priorityClassName" $ | nindent 6 }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" $)) (kindIs "bool" .hostUsers) }}
+      hostUsers: {{ .hostUsers }}
+      {{- end }}
+      securityContext:
+        {{- include "loki.podSecurityContext" $ | nindent 8 }}
+      containers:
+        - name: loki-canary
+          image: {{ include "loki-canary.image" $ }}
+          imagePullPolicy: {{ $.Values.loki.image.pullPolicy }}
+          args:
+            - -addr={{- default (include "loki.host" $) .lokiurl }}
+            - -labelname={{ .labelname }}
+            - -labelvalue=$(POD_NAME)
+            {{- if $.Values.enterprise.enabled }}
+            - -user=$(USER)
+            - -tenant-id=$(USER)
+            - -pass=$(PASS)
+            {{- else if $.Values.loki.auth_enabled }}
+            - -user={{ $.Values.monitoring.selfMonitoring.tenant.name }}
+            - -tenant-id={{ $.Values.monitoring.selfMonitoring.tenant.name }}
+            - -pass={{ $.Values.monitoring.selfMonitoring.tenant.password }}
+            {{- end }}
+            {{- if .push }}
+            - -push=true
+            {{- end }}
+            {{- with .extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- toYaml $.Values.loki.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            {{- with $.Values.lokiCanary.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http-metrics
+              containerPort: 3500
+              protocol: TCP
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{ if $.Values.enterprise.enabled }}
+            - name: USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}
+                  key: username
+            - name: PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}
+                  key: password
+            {{- end -}}
+            {{- with .extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .resources}}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .dnsConfig | default $.Values.loki.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      {{- with $.Values.lokiCanary.extraVolumes }}
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}

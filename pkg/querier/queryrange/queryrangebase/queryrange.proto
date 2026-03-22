@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package queryrangebase;
+
+import "gogoproto/gogo.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "pkg/logproto/logproto.proto";
+import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
+import "pkg/storage/chunk/cache/resultscache/types.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase";
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message PrometheusRequest {
+  string path = 1;
+  google.protobuf.Timestamp start = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  int64 step = 4;
+  google.protobuf.Duration timeout = 5 [
+    (gogoproto.stdduration) = true,
+    (gogoproto.nullable) = false
+  ];
+  string query = 6;
+  resultscache.CachingOptions cachingOptions = 7 [(gogoproto.nullable) = false];
+  repeated definitions.PrometheusRequestHeader Headers = 8 [(gogoproto.jsontag) = "-"];
+}
+
+message PrometheusResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  PrometheusData Data = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "data,omitempty"
+  ];
+  string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
+  string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
+  repeated definitions.PrometheusResponseHeader Headers = 5 [(gogoproto.jsontag) = "-"];
+  repeated string Warnings = 6 [(gogoproto.jsontag) = "warnings,omitempty"];
+}
+
+message PrometheusData {
+  string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
+  repeated SampleStream Result = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "result"
+  ];
+}
+
+message SampleStream {
+  repeated logproto.LegacyLabelPair labels = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "metric",
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.LabelAdapter"
+  ];
+  repeated logproto.LegacySample samples = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "values"
+  ];
+}

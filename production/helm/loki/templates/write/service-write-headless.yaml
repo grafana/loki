@@ -1,0 +1,41 @@
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if $isSimpleScalable }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.writeFullname" . }}-headless
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.writeSelectorLabels" . | nindent 4 }}
+    {{- with .Values.loki.serviceLabels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.write.service.labels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    variant: headless
+    prometheus.io/service-monitor: "false"
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.write.service.annotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: http-metrics
+      port: {{ .Values.loki.server.http_listen_port }}
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: {{ .Values.loki.server.grpc_listen_port }}
+      targetPort: grpc
+      protocol: TCP
+      appProtocol: tcp
+  selector:
+    {{- include "loki.writeSelectorLabels" . | nindent 4 }}
+{{- end }}

@@ -1,0 +1,43 @@
+---
+loki:
+  querier:
+    multi_tenant_queries_enabled: true
+enterprise:
+  enabled: true
+  adminToken:
+    secret: "gel-admin-token"
+  useExternalLicense: true
+  externalLicenseName: gel-license
+  provisioner:
+    provisionedSecretPrefix: "provisioned-secret"
+monitoring:
+  dashboards:
+    enabled: false
+  rules:
+    enabled: false
+  selfMonitoring:
+    tenant:
+      name: loki
+    logsInstance:
+      clients:
+        - url: https://logs-prod-us-central1.grafana.net/loki/api/v1/push
+          basicAuth:
+            username:
+              name: grafana-cloud-logs-credentials
+              key: username
+            password:
+              name: grafana-cloud-logs-credentials
+              key: password
+  serviceMonitor:
+    metricsInstance:
+      remoteWrite:
+        - url: https://prometheus-blocks-prod-us-central1.grafana.net/api/prom/push
+          basicAuth:
+            username:
+              name: grafana-cloud-metrics-credentials
+              key: username
+            password:
+              name: grafana-cloud-metrics-credentials
+              key: password
+minio:
+  enabled: true

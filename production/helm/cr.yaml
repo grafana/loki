@@ -1,0 +1,4 @@
+git-repo: helm-charts
+owner: grafana
+skip-existing: true
+release-name-template: "helm-{{ .Name }}-{{ .Version }}"

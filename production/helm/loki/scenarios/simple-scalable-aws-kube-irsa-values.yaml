@@ -1,0 +1,66 @@
+loki:
+  # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
+  storage:
+    # Loki requires a bucket for chunks and the ruler. GEL requires a third bucket for the admin API.
+    # Please provide these values if you are using object storage.
+    bucketNames:
+      chunks: aws-s3-chunks-bucket
+      ruler: aws-s3-ruler-bucket
+      admin: aws-s3-admin-bucket
+    type: s3
+    s3:
+      region: eu-central-1
+  # -- Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas
+  schemaConfig:
+    configs:
+      - from: "2023-09-19"
+        index:
+          period: 1d
+          prefix: tsdb_index_
+        object_store: s3
+        schema: v13
+        store: tsdb
+######################################################################################################################
+#
+# Enterprise Loki Configs
+#
+######################################################################################################################
+
+# -- Configuration for running Enterprise Loki
+enterprise:
+  # Enable enterprise features, license must be provided
+  enabled: true
+  # -- Grafana Enterprise Logs license
+  license:
+    contents: "content of licence"
+  # -- Admin token secret for provisioner (must be created externally)
+  adminToken:
+    secret: loki-admin-token
+  # -- Configuration for `provisioner` target
+  provisioner:
+    # -- Additional annotations for the `provisioner` Job
+    annotations: {
+      eks.amazonaws.com/role-arn: arn:aws:iam::2222222:role/test-role
+    }
+######################################################################################################################
+#
+# Service Accounts and Kubernetes RBAC
+#
+######################################################################################################################
+serviceAccount:
+  # -- Annotations for the service account
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::2222222:role/test-role
+
+# Configuration for the write pod(s)
+write:
+  persistence:
+    storageClass: gp2
+# --  Configuration for the read pod(s)
+read:
+  persistence:
+    storageClass: gp2
+# --  Configuration for the backend pod(s)
+backend:
+  persistence:
+    storageClass: gp2

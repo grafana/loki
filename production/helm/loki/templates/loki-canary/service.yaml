@@ -1,0 +1,34 @@
+{{- with .Values.lokiCanary -}}
+{{- if .enabled -}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki-canary.fullname" $ }}
+  namespace: {{ include "loki.namespace" $ }}
+  labels:
+    {{- include "loki-canary.labels" $ | nindent 4 }}
+    {{- with $.Values.loki.serviceLabels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .service.labels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+  annotations:
+    {{- with $.Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .service.annotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http-metrics
+      port: 3500
+      targetPort: http-metrics
+      protocol: TCP
+  selector:
+    {{- include "loki-canary.selectorLabels" $ | nindent 4 }}
+{{- end -}}
+{{- end -}}

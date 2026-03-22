@@ -1,0 +1,47 @@
+{{- if .Values.config }}
+{{- fail "Top level 'config' is not allowed. Most common configuration sections are exposed under the `loki` section. If you need to override the whole config, provide the configuration as a string that can contain template expressions under `loki.config`. Alternatively, you can provide the configuration as an external secret." }}
+{{- end }}
+
+{{- if and (not .Values.lokiCanary.enabled) .Values.test.enabled }}
+{{- fail "Helm test requires the Loki Canary to be enabled"}}
+{{- end }}
+
+{{- $singleBinaryReplicas := int .Values.singleBinary.replicas }}
+{{- $isUsingFilesystem := eq (include "loki.isUsingObjectStorage" .) "false" }}
+{{- $atLeastOneScalableReplica := or (gt (int .Values.backend.replicas) 0) (gt (int .Values.read.replicas) 0) (gt (int .Values.write.replicas) 0) }}
+{{- $atLeastOneDistributedReplica := or (gt (int .Values.ingester.replicas) 0) (gt (int .Values.distributor.replicas) 0) (gt (int .Values.querier.replicas) 0) (gt (int .Values.queryFrontend.replicas) 0) (gt (int .Values.queryScheduler.replicas) 0) (gt (int .Values.indexGateway.replicas) 0) (gt (int .Values.compactor.replicas) 0) (gt (int .Values.ruler.replicas) 0) }}
+
+{{- if and $isUsingFilesystem (gt $singleBinaryReplicas 1) }}
+{{- fail "Cannot run more than 1 Single Binary replica without an object storage backend."}}
+{{- end }}
+
+{{- if and $isUsingFilesystem (and (eq $singleBinaryReplicas 0) (or $atLeastOneScalableReplica $atLeastOneDistributedReplica)) }}
+{{- fail "Cannot run scalable targets (backend, read, write) or distributed targets without an object storage backend."}}
+{{- end }}
+
+{{- if and $atLeastOneScalableReplica $atLeastOneDistributedReplica (ne .Values.deploymentMode "SimpleScalable<->Distributed") }}
+{{- fail "You have more than zero replicas configured for scalable targets (backend, read, write) and distributed targets. If this was intentional change the deploymentMode to the transitional 'SimpleScalable<->Distributed' mode" }}
+{{- end }}
+
+{{- if and (gt $singleBinaryReplicas 0) $atLeastOneDistributedReplica }}
+{{- fail "You have more than zero replicas configured for both the single binary and distributed targets, there is no transition mode between these targets please change one or the other to zero or transition to the SimpleScalable mode first."}}
+{{- end }}
+
+{{- if and (gt $singleBinaryReplicas 0) $atLeastOneScalableReplica (ne .Values.deploymentMode "SingleBinary<->SimpleScalable") }}
+{{- fail "You have more than zero replicas configured for both the single binary and simple scalable targets. If this was intentional change the deploymentMode to the transitional 'SingleBinary<->SimpleScalable' mode"}}
+{{- end }}
+
+{{- if and (or (not (empty .Values.loki.schemaConfig)) (not (empty .Values.loki.structuredConfig.schema_config))) .Values.loki.useTestSchema }}
+{{- fail "loki.useTestSchema must be false if loki.schemaConfig or loki.structuredConfig.schema_config are defined."}}
+{{- end }}
+
+
+{{- if and (empty .Values.loki.schemaConfig) (empty .Values.loki.structuredConfig.schema_config) (not .Values.loki.useTestSchema) }}
+{{- fail "You must provide a schema_config for Loki, one is not provided as this will be individual for every Loki cluster. See https://grafana.com/docs/loki/latest/operations/storage/schema/ for schema information. For quick testing (with no persistence) add `--set loki.useTestSchema=true`"}}
+{{- end }}
+
+{{- if and .Values.enterprise.enabled .Values.enterprise.provisioner.enabled }}
+{{- if not .Values.enterprise.adminToken.secret }}
+{{- fail "enterprise.adminToken.secret must be set when enterprise.provisioner.enabled is true. Please create an admin token secret and specify its name." }}
+{{- end }}
+{{- end }}

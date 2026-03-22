@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "dependencies": [
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/grafonnet-lib.git",
+          "subdir": "grafonnet"
+        }
+      },
+      "version": "a1d61cce1da59c71409b99b5c7568511fec661ea",
+      "sum": "342u++/7rViR/zj2jeJOjshzglkZ1SY+hFNuyCBFMdc="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/jsonnet-libs.git",
+          "subdir": "grafana-builder"
+        }
+      },
+      "version": "5a573cd6b179ac3ce46bcf74db290a941f6f5f0d",
+      "sum": "YPaA+KJ6JBW9QpxNvl0iAxnC7gL4jRRvulNl6QRkPU0="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/jsonnet-libs.git",
+          "subdir": "mixin-utils"
+        }
+      },
+      "version": "5a573cd6b179ac3ce46bcf74db290a941f6f5f0d",
+      "sum": "kgoIxOkFlpadoT9+HnMZ4LMdaS1HJsAAUQEe1eUg22E="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/loki.git",
+          "subdir": "production/loki-mixin"
+        }
+      },
+      "version": "1967a6a3fd5589f0f1e9be14cdd5637ecf0b65d3",
+      "sum": "eWbTcw/pDtp0PmKktHzTxMH4uS+7UwDmbKOypRyxlCM="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/mimir.git",
+          "subdir": "operations/mimir-mixin"
+        }
+      },
+      "version": "34b078fbd5e790f27796430d3c498e9b07bc0532",
+      "sum": "otMM8BRbzTMcedkpqaxPqTxLFh3kE3WBYRs9+a8QLPs="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/rollout-operator.git",
+          "subdir": "operations/rollout-operator-mixin"
+        }
+      },
+      "version": "ee4822b061cb7497b7e8a716161dfa0e3230c0ca",
+      "sum": "zz2Sep/VbyrGcKKa3wy0oGIwMq2qEqBiLTVEVmqDMDE="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/prometheus-operator/kube-prometheus.git",
+          "subdir": "jsonnet/kube-prometheus/lib"
+        }
+      },
+      "version": "110c59d94ccff6f3e894c55247df6c218ef6cd7a",
+      "sum": "QKRgrgEZ3k9nLmLCrDBaeIGVqQZf+AvZTcnhdLk3TrA="
+    }
+  ],
+  "legacyImports": false
+}

@@ -1,0 +1,16 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+clients:
+  - url: http://localhost:3100/loki/api/v1/push
+
+scrape_configs:
+- job_name: windows
+  windows_events:
+    use_incoming_timestamp: false
+    bookmark_path: "./bookmark.xml"
+    eventlog_name: "Application"
+    xpath_query: '*'
+    labels:
+      job: windows

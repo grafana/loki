@@ -1,0 +1,46 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.gatewayFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.gatewayLabels" . | nindent 4 }}
+    {{- with .Values.loki.serviceLabels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.gateway.service.labels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- if not (and .Values.enterprise.enabled .Values.enterprise.gelGateway) }}
+    prometheus.io/service-monitor: "false"
+    {{- end }}
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.gateway.service.annotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  type: {{ .Values.gateway.service.type }}
+  {{- with .Values.gateway.service.clusterIP }}
+  clusterIP: {{ . }}
+  {{- end }}
+  {{- if and (eq "LoadBalancer" .Values.gateway.service.type) .Values.gateway.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.gateway.service.loadBalancerIP }}
+  {{- end }}
+  ports:
+    - name: http-metrics
+      port: {{ .Values.gateway.service.port }}
+      targetPort: http-metrics
+      {{- if and (eq "NodePort" .Values.gateway.service.type) .Values.gateway.service.nodePort }}
+      nodePort: {{ .Values.gateway.service.nodePort }}
+      {{- end }}
+      protocol: TCP
+  selector:
+    {{- include "loki.gatewaySelectorLabels" . | nindent 4 }}
+{{- with .Values.gateway.service.trafficDistribution | default .Values.loki.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+{{- end }}
+{{- end }}

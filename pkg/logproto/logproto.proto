@@ -1,0 +1,506 @@
+syntax = "proto3";
+
+package logproto;
+
+import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+import "pkg/logqlmodel/stats/stats.proto";
+import "pkg/push/push.proto";
+import "pkg/storage/chunk/cache/resultscache/types.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/logproto";
+
+service Querier {
+  rpc Query(QueryRequest) returns (stream QueryResponse) {}
+
+  rpc QuerySample(SampleQueryRequest) returns (stream SampleQueryResponse) {}
+
+  rpc Label(LabelRequest) returns (LabelResponse) {}
+
+  rpc Tail(TailRequest) returns (stream TailResponse) {}
+
+  rpc Series(SeriesRequest) returns (SeriesResponse) {}
+
+  rpc TailersCount(TailersCountRequest) returns (TailersCountResponse) {}
+
+  rpc GetChunkIDs(GetChunkIDsRequest) returns (GetChunkIDsResponse) {}
+
+  // Note: this MUST be the same as the variant defined in
+  // indexgateway.proto on the IndexGateway service.
+  rpc GetStats(IndexStatsRequest) returns (IndexStatsResponse) {}
+  // Note: this MUST be the same as the variant defined in
+  // indexgateway.proto on the IndexGateway service.
+  rpc GetVolume(VolumeRequest) returns (VolumeResponse) {}
+
+  rpc GetDetectedFields(DetectedFieldsRequest) returns (DetectedFieldsResponse) {}
+
+  rpc GetDetectedLabels(DetectedLabelsRequest) returns (LabelToValuesResponse) {}
+}
+
+message LabelToValuesResponse {
+  map<string, UniqueLabelValues> labels = 1;
+}
+
+message UniqueLabelValues {
+  repeated string values = 1;
+}
+
+service StreamData {
+  rpc GetStreamRates(StreamRatesRequest) returns (StreamRatesResponse) {}
+}
+
+message StreamRatesRequest {}
+
+message StreamRatesResponse {
+  repeated StreamRate streamRates = 1;
+}
+
+message StreamRate {
+  uint64 streamHash = 1;
+  uint64 streamHashNoShard = 2;
+  int64 rate = 3; // rate in plain bytes.
+  string tenant = 4;
+  uint32 pushes = 5;
+}
+
+message QueryRequest {
+  string selector = 1 [deprecated = true];
+  uint32 limit = 2;
+  google.protobuf.Timestamp start = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  Direction direction = 5;
+  reserved 6;
+  repeated string shards = 7 [(gogoproto.jsontag) = "shards,omitempty"];
+  repeated Delete deletes = 8;
+  Plan plan = 9 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/plan.QueryPlan"];
+  // If populated, these represent the chunk references that the querier should
+  // use to fetch the data, plus any other chunks reported by ingesters.
+  ChunkRefGroup storeChunks = 10 [(gogoproto.jsontag) = "storeChunks"];
+}
+
+message SampleQueryRequest {
+  string selector = 1 [deprecated = true]; // mark as reserved once we've fully migrated to plan.
+  google.protobuf.Timestamp start = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
+  repeated Delete deletes = 5;
+  Plan plan = 6 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/plan.QueryPlan"];
+  // If populated, these represent the chunk references that the querier should
+  // use to fetch the data, plus any other chunks reported by ingesters.
+  ChunkRefGroup storeChunks = 10 [(gogoproto.jsontag) = "storeChunks"];
+}
+
+// TODO(owen-d): fix. This will break rollouts as soon as the internal repr is changed.
+message Plan {
+  bytes raw = 1;
+}
+
+message Delete {
+  string selector = 1;
+  int64 start = 2;
+  int64 end = 3;
+}
+
+message QueryResponse {
+  repeated StreamAdapter streams = 1 [
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Stream",
+    (gogoproto.nullable) = true
+  ];
+  stats.Ingester stats = 2 [(gogoproto.nullable) = false];
+  repeated string warnings = 3;
+}
+
+message SampleQueryResponse {
+  repeated Series series = 1 [
+    (gogoproto.customtype) = "Series",
+    (gogoproto.nullable) = true
+  ];
+  stats.Ingester stats = 2 [(gogoproto.nullable) = false];
+  repeated string warnings = 3;
+}
+
+enum Direction {
+  FORWARD = 0;
+  BACKWARD = 1;
+}
+
+message LabelRequest {
+  string name = 1;
+  bool values = 2; // True to fetch label values, false for fetch labels names.
+  google.protobuf.Timestamp start = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = true
+  ];
+  google.protobuf.Timestamp end = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = true
+  ];
+  string query = 5; // Naming this query instead of match because this should be with queryrangebase.Request interface
+}
+
+message LabelResponse {
+  repeated string values = 1;
+}
+
+message Sample {
+  int64 timestamp = 1 [(gogoproto.jsontag) = "ts"];
+  double value = 2 [(gogoproto.jsontag) = "value"];
+  uint64 hash = 3 [(gogoproto.jsontag) = "hash"];
+}
+
+// LegacySample exists for backwards compatibility reasons and is deprecated. Do not use.
+message LegacySample {
+  double value = 1;
+  int64 timestamp_ms = 2;
+}
+
+message Series {
+  string labels = 1 [(gogoproto.jsontag) = "labels"];
+  repeated Sample samples = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "samples"
+  ];
+  uint64 streamHash = 3 [(gogoproto.jsontag) = "streamHash"];
+}
+
+message TailRequest {
+  string query = 1 [deprecated = true];
+  reserved 2;
+  uint32 delayFor = 3;
+  uint32 limit = 4;
+  google.protobuf.Timestamp start = 5 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  Plan plan = 6 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/plan.QueryPlan"];
+}
+
+message TailResponse {
+  StreamAdapter stream = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Stream"];
+  repeated DroppedStream droppedStreams = 2;
+}
+
+message SeriesRequest {
+  google.protobuf.Timestamp start = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  repeated string groups = 3;
+  repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
+}
+
+message SeriesResponse {
+  repeated SeriesIdentifier series = 1 [(gogoproto.nullable) = false];
+}
+
+message SeriesIdentifier {
+  message LabelsEntry {
+    string key = 1;
+    string value = 2;
+  }
+  repeated LabelsEntry labels = 1 [(gogoproto.nullable) = false];
+}
+
+message DroppedStream {
+  google.protobuf.Timestamp from = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp to = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  string labels = 3;
+}
+
+message LabelPair {
+  string name = 1;
+  string value = 2;
+}
+
+// LegacyLabelPair exists for backwards compatibility reasons and is deprecated. Do not use.
+// Use LabelPair instead.
+message LegacyLabelPair {
+  bytes name = 1;
+  bytes value = 2;
+}
+
+message Chunk {
+  bytes data = 1;
+}
+
+message TailersCountRequest {}
+
+message TailersCountResponse {
+  uint32 count = 1;
+}
+
+message GetChunkIDsRequest {
+  string matchers = 1;
+  google.protobuf.Timestamp start = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+}
+
+message GetChunkIDsResponse {
+  repeated string chunkIDs = 1;
+}
+
+// ChunkRef contains the metadata to reference a Chunk.
+// It is embedded by the Chunk type itself and used to generate the Chunk
+// checksum. So it is imported to take care of the JSON representation of the
+// resulting Go struct.
+message ChunkRef {
+  uint64 fingerprint = 1 [(gogoproto.jsontag) = "fingerprint"];
+  string user_id = 2 [
+    (gogoproto.customname) = "UserID",
+    (gogoproto.jsontag) = "userID"
+  ];
+  int64 from = 3 [
+    (gogoproto.jsontag) = "from",
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 4 [
+    (gogoproto.jsontag) = "through",
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+
+  // The checksum is not written to the external storage. We use crc32,
+  // Castagnoli table. See http://www.evanjones.ca/crc32c.html.
+  uint32 checksum = 5 [(gogoproto.jsontag) = "-"];
+}
+
+message ChunkRefGroup {
+  repeated ChunkRef refs = 1 [(gogoproto.jsontag) = "refs"];
+}
+
+message LabelValuesForMetricNameRequest {
+  string metric_name = 1;
+  string label_name = 2;
+  int64 from = 3 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 4 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 5;
+}
+
+message LabelNamesForMetricNameRequest {
+  string metric_name = 1;
+  int64 from = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 3 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 4;
+}
+
+// TODO(owen-d): fix. This will break rollouts as soon as the internal repr is changed.
+message LineFilter {
+  bytes raw = 1;
+}
+
+message GetChunkRefRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+  // TODO(salvacorts): Delete this field once the weekly release is done.
+  repeated LineFilter filters = 4 [
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logql/syntax.LineFilter",
+    (gogoproto.nullable) = false
+  ];
+  Plan plan = 5 [
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/plan.QueryPlan",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message GetChunkRefResponse {
+  repeated ChunkRef refs = 1;
+  stats.Index stats = 2 [(gogoproto.nullable) = false];
+}
+
+message GetSeriesRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+}
+
+message GetSeriesResponse {
+  repeated IndexSeries series = 1 [(gogoproto.nullable) = false];
+}
+
+// Series calls to the TSDB Index
+message IndexSeries {
+  repeated LabelPair labels = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "LabelAdapter"
+  ];
+}
+
+message QueryIndexResponse {
+  string QueryKey = 1;
+  repeated Row rows = 2;
+}
+
+message Row {
+  bytes rangeValue = 1;
+  bytes value = 2;
+}
+
+message QueryIndexRequest {
+  repeated IndexQuery Queries = 1;
+}
+
+message IndexQuery {
+  string tableName = 1;
+  string hashValue = 2;
+  bytes rangeValuePrefix = 3;
+  bytes rangeValueStart = 4;
+  bytes valueEqual = 5;
+}
+
+message IndexStatsRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+  // TODO(owen-d): add shards to grpc calls so we don't have
+  // to extract via labels
+}
+
+message IndexStatsResponse {
+  uint64 streams = 1 [(gogoproto.jsontag) = "streams"];
+  uint64 chunks = 2 [(gogoproto.jsontag) = "chunks"];
+  uint64 bytes = 3 [(gogoproto.jsontag) = "bytes"];
+  uint64 entries = 4 [(gogoproto.jsontag) = "entries"];
+}
+
+message VolumeRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+  int32 limit = 4;
+  int64 step = 5;
+  repeated string targetLabels = 6;
+  string aggregateBy = 7;
+  resultscache.CachingOptions cachingOptions = 8 [(gogoproto.nullable) = false];
+}
+
+message VolumeResponse {
+  repeated Volume volumes = 1 [(gogoproto.nullable) = false];
+  int32 limit = 2;
+}
+
+message Volume {
+  string name = 1 [(gogoproto.jsontag) = "name"];
+  uint64 volume = 3 [(gogoproto.jsontag) = "volume"];
+}
+
+message DetectedFieldsRequest {
+  google.protobuf.Timestamp start = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  string query = 3; // Naming this query instead of match because this should be with queryrangebase.Request interface
+  uint32 lineLimit = 4;
+  uint32 limit = 5;
+  int64 step = 6;
+  bool values = 7; // True to fetch detected field values, false for fetch detected field label names.
+  string name = 8; // Name of the detected field to fetch values for.
+}
+
+message DetectedFieldsResponse {
+  repeated DetectedField fields = 1 [(gogoproto.jsontag) = "fields,omitempty"];
+  uint32 limit = 2 [(gogoproto.jsontag) = "limit,omitempty"];
+  repeated string values = 3 [(gogoproto.jsontag) = "values,omitempty"];
+}
+
+// TODO: make the detected field include the serialized sketch
+// we only want cardinality in the JSON response
+message DetectedField {
+  string label = 1;
+  string type = 2 [(gogoproto.casttype) = "DetectedFieldType"];
+  uint64 cardinality = 3;
+  repeated string parsers = 4 [(gogoproto.jsontag) = "parsers"];
+  bytes sketch = 5 [(gogoproto.jsontag) = "sketch,omitempty"];
+  repeated string jsonPath = 6 [(gogoproto.jsontag) = "jsonPath,omitempty"]; // Array representing original JSON path (e.g., ["user", "id"] for field "user_id")
+}
+
+message DetectedLabelsRequest {
+  google.protobuf.Timestamp start = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  string query = 3;
+}
+
+message DetectedLabelsResponse {
+  repeated DetectedLabel detectedLabels = 1;
+}
+
+message DetectedLabel {
+  string label = 1;
+  uint64 cardinality = 2;
+  bytes sketch = 3 [(gogoproto.jsontag) = "sketch,omitempty"];
+}

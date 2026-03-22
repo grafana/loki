@@ -1,0 +1,59 @@
+{{- if and .Values.gateway.enabled -}}
+{{- if .Values.gateway.ingress.enabled -}}
+{{- $ingressApiIsStable := eq (include "loki.ingress.isStable" .) "true" -}}
+{{- $ingressSupportsIngressClassName := eq (include "loki.ingress.supportsIngressClassName" .) "true" -}}
+{{- $ingressSupportsPathType := eq (include "loki.ingress.supportsPathType" .) "true" -}}
+apiVersion: {{ include "loki.ingress.apiVersion" . }}
+kind: Ingress
+metadata:
+  name: {{ include "loki.gatewayFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.gatewayLabels" . | nindent 4 }}
+    {{- range $labelKey, $labelValue := .Values.gateway.ingress.labels }}
+    {{ $labelKey }}: {{ $labelValue | toYaml }}
+    {{- end }}
+  {{- with .Values.gateway.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if and $ingressSupportsIngressClassName .Values.gateway.ingress.ingressClassName }}
+  ingressClassName: {{ .Values.gateway.ingress.ingressClassName }}
+  {{- end -}}
+  {{- if .Values.gateway.ingress.tls }}
+  tls:
+    {{- range .Values.gateway.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ tpl . $ | quote }}
+        {{- end }}
+      {{- with .secretName }}
+      secretName: {{ . }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.gateway.ingress.hosts }}
+    - host: {{ tpl .host $ | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            {{- if $ingressSupportsPathType }}
+            pathType: {{ .pathType }}
+            {{- end }}
+            backend:
+              {{- if $ingressApiIsStable }}
+              service:
+                name: {{ include "loki.gatewayFullname" $ }}
+                port:
+                  number: {{ $.Values.gateway.service.port }}
+              {{- else }}
+              serviceName: {{ include "loki.gatewayFullname" $ }}
+              servicePort: {{ $.Values.gateway.service.port }}
+              {{- end }}
+          {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}

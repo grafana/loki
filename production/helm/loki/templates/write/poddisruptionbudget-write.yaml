@@ -1,0 +1,17 @@
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if and $isSimpleScalable (gt (int .Values.write.replicas) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "loki.writeFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.writeLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "loki.writeSelectorLabels" . | nindent 6 }}
+  {{- with .Values.write.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
+{{- end }}

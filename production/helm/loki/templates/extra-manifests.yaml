@@ -1,0 +1,15 @@
+{{- /* Normalize extraObjects to a list, easier to loop over */ -}}
+{{- $extraObjects := .Values.extraObjects | default (list) -}}
+
+{{- if kindIs "map" $extraObjects -}}
+  {{- $extraObjects = values $extraObjects -}}
+{{- end -}}
+
+{{- range $extraObjects }}
+---
+  {{- if kindIs "map" . }}
+    {{- tpl (toYaml .) $ | nindent 0 }}
+  {{- else if kindIs "string" . }}
+    {{- tpl . $ | nindent 0 }}
+  {{- end }}
+{{- end }}

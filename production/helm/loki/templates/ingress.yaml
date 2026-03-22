@@ -1,0 +1,40 @@
+{{- if .Values.ingress.enabled }}
+{{- $ingressSupportsIngressClassName := eq (include "loki.ingress.supportsIngressClassName" .) "true" -}}
+apiVersion: {{ include "loki.ingress.apiVersion" . }}
+kind: Ingress
+metadata:
+  name: {{ include "loki.fullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+    {{- with .Values.ingress.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if and $ingressSupportsIngressClassName .Values.ingress.ingressClassName }}
+  ingressClassName: {{ .Values.ingress.ingressClassName }}
+  {{- end -}}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- range .Values.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ tpl . $ | quote }}
+        {{- end }}
+      {{- with .secretName }}
+      secretName: {{ . }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range $.Values.ingress.hosts }}
+    - host: {{ tpl . $ | quote }}
+      http:
+        paths:
+          {{- include "loki.ingress.servicePaths" $ | indent 10}}
+    {{- end }}
+{{- end }}

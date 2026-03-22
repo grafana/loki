@@ -1,0 +1,19 @@
+*.rdb
+testdata/*
+.idea/
+.DS_Store
+*.tar.gz
+*.dic
+redis8tests.sh
+coverage.txt
+**/coverage.txt
+.vscode
+tmp/*
+*.test
+extra/redisotel-native/metrics-collector-app/
+# maintenanceNotifications upgrade documentation (temporary)
+maintenanceNotifications/docs/
+
+# Docker-generated files (TLS certificates, cluster data, etc.)
+dockers/*/tls/
+dockers/osscluster-tls/

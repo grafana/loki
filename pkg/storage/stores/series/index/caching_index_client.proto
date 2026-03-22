@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package index;
+
+import "gogoproto/gogo.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message CacheEntry {
+  bytes Column = 1 [
+    (gogoproto.customtype) = "Bytes",
+    (gogoproto.nullable) = false
+  ];
+  bytes Value = 2 [
+    (gogoproto.customtype) = "Bytes",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message ReadBatch {
+  repeated CacheEntry entries = 1 [(gogoproto.nullable) = false];
+  string key = 2;
+
+  // The time at which the key expires.
+  int64 expiry = 3;
+
+  // The number of entries; used for cardinality limiting.
+  // entries will be empty when this is set.
+  int32 cardinality = 4;
+}

@@ -1,0 +1,100 @@
+{{- if .Values.monitoring.selfMonitoring.enabled }}
+{{- with .Values.monitoring.selfMonitoring.grafanaAgent }}
+apiVersion: monitoring.grafana.com/v1alpha1
+kind: GrafanaAgent
+metadata:
+  name: {{ include "loki.fullname" $ }}
+  namespace: {{ include "loki.namespace" $ }}
+  labels:
+    {{- include "loki.labels" $ | nindent 4 }}
+    {{- with .labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  serviceAccountName: {{ include "loki.fullname" $ }}-grafana-agent
+  enableConfigReadAPI: {{ .enableConfigReadAPI }}
+  {{- include "grafana-agent.priorityClassName" $ | nindent 2 }}
+  logs:
+    instanceSelector:
+      matchLabels:
+        {{- include "loki.selectorLabels" $ | nindent 8 }}
+  {{- with $.Values.monitoring.serviceMonitor}}
+  {{- if .metricsInstance.remoteWrite}}
+  metrics:
+    instanceSelector:
+      matchLabels:
+        {{- include "loki.selectorLabels" $ | nindent 8 }}
+  {{- end }}
+  {{- end }}
+  {{- with .resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "loki.fullname" $ }}-grafana-agent
+  namespace: {{ .namespace | default (include "loki.namespace" $) }}
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "loki.fullname" $ }}-grafana-agent
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  - nodes/proxy
+  - nodes/metrics
+  - services
+  - endpoints
+  - pods
+  - events
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - list
+  - watch
+- nonResourceURLs:
+  - /metrics
+  - /metrics/cadvisor
+  verbs:
+  - get
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "loki.fullname" $ }}-grafana-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "loki.fullname" $ }}-grafana-agent
+subjects:
+- kind: ServiceAccount
+  name: {{ include "loki.fullname" $ }}-grafana-agent
+  namespace: {{ .namespace | default (include "loki.namespace" $) }}
+{{- end}}
+{{- end}}

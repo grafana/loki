@@ -1,0 +1,22 @@
+directory: charts
+repositories:
+- name: grafana
+  url: https://grafana.github.io/grafana/helm-charts
+- name: prometheus-community
+  url: https://prometheus-community.github.io/helm-charts
+- name: minio
+  url: https://charts.min.io
+requires:
+- chart: grafana/promtail
+  version: 3.8.1
+- chart: grafana/grafana
+  version: 6.20.1
+- chart: prometheus-community/prometheus
+  version: 24.0.0
+- chart: minio/minio
+  version: 4.0.12
+- chart: grafana/loki-distributed
+  version: 0.42.0
+- chart: prometheus-community/kube-prometheus-stack
+  version: 49.0.0
+version: 1

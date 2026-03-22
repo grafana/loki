@@ -1,0 +1,42 @@
+{{- if .Values.rbac.sccEnabled }}
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: {{ include "loki.name" . }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+allowHostDirVolumePlugin: {{ .Values.rbac.sccAllowHostDirVolumePlugin }}
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegeEscalation: true
+allowPrivilegedContainer: false
+allowedCapabilities: []
+defaultAddCapabilities: null
+fsGroup:
+  type: RunAsAny
+groups: []
+priority: null
+readOnlyRootFilesystem: false
+requiredDropCapabilities:
+  - ALL
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: MustRunAs
+seccompProfiles:
+  - '*'
+supplementalGroups:
+  type: RunAsAny
+volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  {{- if .Values.rbac.sccAllowHostDirVolumePlugin }}
+  - hostPath
+  {{- end }}
+  - persistentVolumeClaim
+  - projected
+  - secret
+{{- end }}
