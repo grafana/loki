@@ -8,7 +8,7 @@ local grafana = import 'grafonnet/grafana.libsonnet';
   then $._config.per_instance_label + '=~".*compactor-worker.*"'
   else 'container="compactor-worker"',
   local worker_job_matcher = if $._config.meta_monitoring.enabled
-  then '".*compactor-worker"' % $._config.ssd.pod_prefix_matcher
+  then '".*compactor-worker"'
   else 'compactor-worker',
 
   local compactor_pod_matcher = if $._config.meta_monitoring.enabled
