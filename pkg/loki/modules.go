@@ -88,6 +88,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
+	shipperstorage "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	boltdbcompactor "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/storage/types"
@@ -567,7 +568,34 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	}
 
 	if t.Cfg.Querier.MultiTenantQueriesEnabled {
-		t.Querier = querier.NewMultiTenantQuerier(t.Querier, util_log.Logger)
+		multiTenantQuerier := querier.NewMultiTenantQuerier(t.Querier, util_log.Logger)
+		t.Querier = multiTenantQuerier
+
+		// If wildcard tenant queries are enabled, wrap with WildcardTenantQuerier
+		if t.Cfg.Querier.WildcardTenantQueriesEnabled {
+			// Create index storage client for tenant discovery
+			// Use the active period config to determine the object store and index prefix
+			periodConfigs := t.Cfg.SchemaConfig.Configs
+			if len(periodConfigs) > 0 {
+				activePeriodIdx := config.ActivePeriodConfig(periodConfigs)
+				activePeriod := periodConfigs[activePeriodIdx]
+
+				// Only enable wildcard queries for object storage index types (TSDB, boltdb-shipper)
+				if config.IsObjectStorageIndex(activePeriod.IndexType) {
+					objectClient, err := storage.NewObjectClient(activePeriod.ObjectType, "querier-tenant-discovery", t.Cfg.StorageConfig, t.ClientMetrics)
+					if err != nil {
+						level.Warn(logger).Log("msg", "failed to create object client for tenant discovery, wildcard queries disabled", "err", err)
+					} else {
+						indexStorageClient := shipperstorage.NewIndexStorageClient(objectClient, activePeriod.IndexTables.PathPrefix)
+						tenantDiscovery := querier.NewStorageTenantDiscovery(indexStorageClient, logger, t.Cfg.Querier.WildcardTenantCacheTTL)
+						t.Querier = querier.NewWildcardTenantQuerier(multiTenantQuerier, tenantDiscovery, logger)
+						level.Info(logger).Log("msg", "wildcard tenant queries enabled", "cache_ttl", t.Cfg.Querier.WildcardTenantCacheTTL)
+					}
+				} else {
+					level.Warn(logger).Log("msg", "wildcard tenant queries require object storage index type (tsdb or boltdb-shipper)", "index_type", activePeriod.IndexType)
+				}
+			}
+		}
 	}
 
 	querierWorkerServiceConfig := querier.WorkerServiceConfig{
