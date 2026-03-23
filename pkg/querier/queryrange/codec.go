@@ -1271,16 +1271,7 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 	case *logproto.ShardsRequest:
 		return resp.GetShardsResponse().WithHeaders(headers), nil
 	case *DetectedLabelsRequest:
-		// DetectedLabelsRequest responses contain DetectedLabelsResponse protobuf message
-		// that cannot be wrapped in QueryResponse, so decode directly
-		var detectedResp logproto.DetectedLabelsResponse
-		if err := detectedResp.Unmarshal(buf); err != nil {
-			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding detected labels response: %v", err)
-		}
-		return &DetectedLabelsResponse{
-			Response: &detectedResp,
-			Headers:  headers,
-		}, nil
+		return resp.GetDetectedLabels().WithHeaders(headers), nil
 	default:
 		switch concrete := resp.Response.(type) {
 		case *QueryResponse_Prom:
