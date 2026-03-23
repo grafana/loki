@@ -53,20 +53,26 @@ type Config struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer RequestStreamFilterer `yaml:"-"`
+
+	// DedupeMetricQueries enables row-level deduplication at merge points to
+	// prevent over-counting in metric aggregations (rate, count_over_time, etc.)
+	// caused by overlapping data object sections.
+	DedupeMetricQueries bool
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
-		plan:               plan,
-		batchSize:          cfg.BatchSize,
-		prefetchBytes:      cfg.PrefetchBytes,
-		mergePrefetchCount: cfg.MergePrefetchCount,
-		bucket:             cfg.Bucket,
-		metastore:          cfg.Metastore,
-		logger:             logger,
-		evaluator:          newExpressionEvaluator(),
-		getExternalInputs:  cfg.GetExternalInputs,
-		streamFilterer:     cfg.StreamFilterer,
+		plan:                plan,
+		batchSize:           cfg.BatchSize,
+		prefetchBytes:       cfg.PrefetchBytes,
+		mergePrefetchCount:  cfg.MergePrefetchCount,
+		bucket:              cfg.Bucket,
+		metastore:           cfg.Metastore,
+		logger:              logger,
+		evaluator:           newExpressionEvaluator(),
+		getExternalInputs:   cfg.GetExternalInputs,
+		streamFilterer:      cfg.StreamFilterer,
+		dedupeMetricQueries: cfg.DedupeMetricQueries,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -95,6 +101,8 @@ type Context struct {
 	mergePrefetchCount int
 
 	streamFilterer RequestStreamFilterer
+
+	dedupeMetricQueries bool
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -105,7 +113,9 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	}
 
 	if c.getExternalInputs != nil {
-		inputs = append(inputs, c.getExternalInputs(ctx, node)...)
+		for _, ext := range c.getExternalInputs(ctx, node) {
+			inputs = append(inputs, ext)
+		}
 	}
 
 	switch n := node.(type) {
@@ -406,6 +416,12 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 		return emptyPipeline()
 	}
 
+	if c.dedupeMetricQueries {
+		for i, input := range inputs {
+			inputs[i] = newDedupPipeline(input)
+		}
+	}
+
 	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
 		grouping:       plan.Grouping,
 		startTs:        plan.Start,
@@ -425,6 +441,12 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.VectorAggregation, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
+	}
+
+	if c.dedupeMetricQueries {
+		for i, input := range inputs {
+			inputs[i] = newDedupPipeline(input)
+		}
 	}
 
 	pipeline, err := newVectorAggregationPipeline(inputs, c.evaluator, vectorAggregationOptions{

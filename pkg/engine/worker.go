@@ -141,7 +141,8 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 
 		Endpoint: params.Endpoint,
 
-		StreamFilterer: params.StreamFilterer,
+		StreamFilterer:      params.StreamFilterer,
+		DedupeMetricQueries: params.Executor.DedupeMetricQueries,
 	})
 	if err != nil {
 		return nil, err

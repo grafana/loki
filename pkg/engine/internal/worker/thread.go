@@ -74,12 +74,13 @@ func (s threadState) String() string {
 
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
-	BatchSize      int64
-	PrefetchBytes  int64
-	Bucket         objstore.Bucket
-	Metastore      metastore.Metastore
-	Logger         log.Logger
-	StreamFilterer executor.RequestStreamFilterer
+	BatchSize           int64
+	PrefetchBytes       int64
+	Bucket              objstore.Bucket
+	Metastore           metastore.Metastore
+	Logger              log.Logger
+	StreamFilterer      executor.RequestStreamFilterer
+	DedupeMetricQueries bool
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -157,11 +158,12 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	)
 
 	cfg := executor.Config{
-		BatchSize:      t.BatchSize,
-		PrefetchBytes:  t.PrefetchBytes,
-		Bucket:         bucket.NewXCapBucket(t.Bucket),
-		Metastore:      t.Metastore,
-		StreamFilterer: t.StreamFilterer,
+		BatchSize:           t.BatchSize,
+		PrefetchBytes:       t.PrefetchBytes,
+		Bucket:              bucket.NewXCapBucket(t.Bucket),
+		Metastore:           t.Metastore,
+		StreamFilterer:      t.StreamFilterer,
+		DedupeMetricQueries: t.DedupeMetricQueries,
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
