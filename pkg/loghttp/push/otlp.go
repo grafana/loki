@@ -493,6 +493,13 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 			return true
 		}
 
+		// If the dedicated OTLP EventName field is set, skip any log attribute
+		// also named event_name to avoid duplicate entries. The first-class field
+		// takes precedence over the attribute.
+		if k == OTLPEventName && log.EventName() != "" {
+			return true
+		}
+
 		attributeAsLabels, err := attributeToLabels(k, v, "")
 		if err != nil {
 			rangeErr = err
