@@ -5,7 +5,7 @@ go 1.25.7
 require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/dustin/go-humanize v1.0.1
-	github.com/fatih/color v1.18.0
+	github.com/fatih/color v1.19.0
 	github.com/grafana/loki/v3 v3.0.0-20260311215855-e22a9bed508b
 	github.com/prometheus/prometheus v0.310.1-0.20260320085417-166d20151c0d
 )
@@ -53,7 +53,7 @@ require (
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
 	golang.org/x/mod v0.33.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260209163413-e7419c687ee4 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
