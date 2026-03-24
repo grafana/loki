@@ -86,22 +86,23 @@ type ClusterStatus struct {
 	// Denotes whether this cluster was added via API or configured statically.
 	AddedViaApi bool `protobuf:"varint,2,opt,name=added_via_api,json=addedViaApi,proto3" json:"added_via_api,omitempty"`
 	// The success rate threshold used in the last interval.
-	// If
-	// :ref:`outlier_detection.split_external_local_origin_errors<envoy_v3_api_field_config.cluster.v3.OutlierDetection.split_external_local_origin_errors>`
-	// is “false“, all errors: externally and locally generated were used to calculate the threshold.
-	// If
-	// :ref:`outlier_detection.split_external_local_origin_errors<envoy_v3_api_field_config.cluster.v3.OutlierDetection.split_external_local_origin_errors>`
-	// is “true“, only externally generated errors were used to calculate the threshold.
-	// The threshold is used to eject hosts based on their success rate. See
-	// :ref:`Cluster outlier detection <arch_overview_outlier_detection>` documentation for details.
 	//
-	// Note: this field may be omitted in any of the three following cases:
+	//   - If :ref:`outlier_detection.split_external_local_origin_errors<envoy_v3_api_field_config.cluster.v3.OutlierDetection.split_external_local_origin_errors>`
+	//     is “false“, all errors: externally and locally generated were used to calculate the threshold.
+	//   - If :ref:`outlier_detection.split_external_local_origin_errors<envoy_v3_api_field_config.cluster.v3.OutlierDetection.split_external_local_origin_errors>`
+	//     is “true“, only externally generated errors were used to calculate the threshold.
 	//
-	//  1. There were not enough hosts with enough request volume to proceed with success rate based
-	//     outlier ejection.
-	//  2. The threshold is computed to be < 0 because a negative value implies that there was no
-	//     threshold for that interval.
-	//  3. Outlier detection is not enabled for this cluster.
+	// The threshold is used to eject hosts based on their success rate. For more information, see the
+	// :ref:`Cluster outlier detection <arch_overview_outlier_detection>` documentation.
+	//
+	// .. note::
+	//
+	//	This field may be omitted in any of the three following cases:
+	//
+	//	1. There were not enough hosts with enough request volume to proceed with success rate based outlier ejection.
+	//	2. The threshold is computed to be < 0 because a negative value implies that there was no threshold for that
+	//	   interval.
+	//	3. Outlier detection is not enabled for this cluster.
 	SuccessRateEjectionThreshold *v3.Percent `protobuf:"bytes,3,opt,name=success_rate_ejection_threshold,json=successRateEjectionThreshold,proto3" json:"success_rate_ejection_threshold,omitempty"`
 	// Mapping from host address to the host's current status.
 	HostStatuses []*HostStatus `protobuf:"bytes,4,rep,name=host_statuses,json=hostStatuses,proto3" json:"host_statuses,omitempty"`
@@ -110,16 +111,17 @@ type ClusterStatus struct {
 	// This field should be interpreted only when
 	// :ref:`outlier_detection.split_external_local_origin_errors<envoy_v3_api_field_config.cluster.v3.OutlierDetection.split_external_local_origin_errors>`
 	// is “true“. The threshold is used to eject hosts based on their success rate.
-	// See :ref:`Cluster outlier detection <arch_overview_outlier_detection>` documentation for
-	// details.
 	//
-	// Note: this field may be omitted in any of the three following cases:
+	// For more information, see the :ref:`Cluster outlier detection <arch_overview_outlier_detection>` documentation.
 	//
-	//  1. There were not enough hosts with enough request volume to proceed with success rate based
-	//     outlier ejection.
-	//  2. The threshold is computed to be < 0 because a negative value implies that there was no
-	//     threshold for that interval.
-	//  3. Outlier detection is not enabled for this cluster.
+	// .. note::
+	//
+	//	This field may be omitted in any of the three following cases:
+	//
+	//	1. There were not enough hosts with enough request volume to proceed with success rate based outlier ejection.
+	//	2. The threshold is computed to be < 0 because a negative value implies that there was no threshold for that
+	//	   interval.
+	//	3. Outlier detection is not enabled for this cluster.
 	LocalOriginSuccessRateEjectionThreshold *v3.Percent `protobuf:"bytes,5,opt,name=local_origin_success_rate_ejection_threshold,json=localOriginSuccessRateEjectionThreshold,proto3" json:"local_origin_success_rate_ejection_threshold,omitempty"`
 	// :ref:`Circuit breaking <arch_overview_circuit_break>` settings of the cluster.
 	CircuitBreakers *v31.CircuitBreakers `protobuf:"bytes,6,opt,name=circuit_breakers,json=circuitBreakers,proto3" json:"circuit_breakers,omitempty"`
@@ -230,19 +232,19 @@ type HostStatus struct {
 	Stats []*SimpleMetric `protobuf:"bytes,2,rep,name=stats,proto3" json:"stats,omitempty"`
 	// The host's current health status.
 	HealthStatus *HostHealthStatus `protobuf:"bytes,3,opt,name=health_status,json=healthStatus,proto3" json:"health_status,omitempty"`
-	// Request success rate for this host over the last calculated interval.
-	// If
-	// :ref:`outlier_detection.split_external_local_origin_errors<envoy_v3_api_field_config.cluster.v3.OutlierDetection.split_external_local_origin_errors>`
-	// is “false“, all errors: externally and locally generated were used in success rate
-	// calculation. If
-	// :ref:`outlier_detection.split_external_local_origin_errors<envoy_v3_api_field_config.cluster.v3.OutlierDetection.split_external_local_origin_errors>`
-	// is “true“, only externally generated errors were used in success rate calculation.
-	// See :ref:`Cluster outlier detection <arch_overview_outlier_detection>` documentation for
-	// details.
+	// The success rate for this host during the last measurement interval.
 	//
-	// Note: the message will not be present if host did not have enough request volume to calculate
-	// success rate or the cluster did not have enough hosts to run through success rate outlier
-	// ejection.
+	//   - If :ref:`outlier_detection.split_external_local_origin_errors<envoy_v3_api_field_config.cluster.v3.OutlierDetection.split_external_local_origin_errors>`
+	//     is “false“, all errors: externally and locally generated were used in success rate calculation.
+	//   - If :ref:`outlier_detection.split_external_local_origin_errors<envoy_v3_api_field_config.cluster.v3.OutlierDetection.split_external_local_origin_errors>`
+	//     is “true“, only externally generated errors were used in success rate calculation.
+	//
+	// For more information, see the :ref:`Cluster outlier detection <arch_overview_outlier_detection>` documentation.
+	//
+	// .. note::
+	//
+	//	The message will be missing if the host didn't receive enough traffic to calculate a reliable success rate, or
+	//	if the cluster had too few hosts to apply outlier ejection based on success rate.
 	SuccessRate *v3.Percent `protobuf:"bytes,4,opt,name=success_rate,json=successRate,proto3" json:"success_rate,omitempty"`
 	// The host's weight. If not configured, the value defaults to 1.
 	Weight uint32 `protobuf:"varint,5,opt,name=weight,proto3" json:"weight,omitempty"`
@@ -250,18 +252,19 @@ type HostStatus struct {
 	Hostname string `protobuf:"bytes,6,opt,name=hostname,proto3" json:"hostname,omitempty"`
 	// The host's priority. If not configured, the value defaults to 0 (highest priority).
 	Priority uint32 `protobuf:"varint,7,opt,name=priority,proto3" json:"priority,omitempty"`
-	// Request success rate for this host over the last calculated
-	// interval when only locally originated errors are taken into account and externally originated
-	// errors were treated as success.
-	// This field should be interpreted only when
-	// :ref:`outlier_detection.split_external_local_origin_errors<envoy_v3_api_field_config.cluster.v3.OutlierDetection.split_external_local_origin_errors>`
-	// is “true“.
-	// See :ref:`Cluster outlier detection <arch_overview_outlier_detection>` documentation for
-	// details.
+	// The success rate for this host during the last interval, considering only locally generated errors. Externally
+	// generated errors are treated as successes.
 	//
-	// Note: the message will not be present if host did not have enough request volume to calculate
-	// success rate or the cluster did not have enough hosts to run through success rate outlier
-	// ejection.
+	// This field is only relevant when
+	// :ref:`outlier_detection.split_external_local_origin_errors<envoy_v3_api_field_config.cluster.v3.OutlierDetection.split_external_local_origin_errors>`
+	// is set to “true“.
+	//
+	// For more information, see the :ref:`Cluster outlier detection <arch_overview_outlier_detection>` documentation.
+	//
+	// .. note::
+	//
+	//	The message will be missing if the host didn't receive enough traffic to compute a success rate, or if the
+	//	cluster didn't have enough hosts to perform outlier ejection based on success rate.
 	LocalOriginSuccessRate *v3.Percent `protobuf:"bytes,8,opt,name=local_origin_success_rate,json=localOriginSuccessRate,proto3" json:"local_origin_success_rate,omitempty"`
 	// locality of the host.
 	Locality *v32.Locality `protobuf:"bytes,9,opt,name=locality,proto3" json:"locality,omitempty"`
@@ -378,15 +381,19 @@ type HostHealthStatus struct {
 	// The host has been removed from service discovery, but is being stabilized due to active
 	// health checking.
 	PendingDynamicRemoval bool `protobuf:"varint,5,opt,name=pending_dynamic_removal,json=pendingDynamicRemoval,proto3" json:"pending_dynamic_removal,omitempty"`
-	// The host has not yet been health checked.
+	// The host is awaiting first health check.
 	PendingActiveHc bool `protobuf:"varint,6,opt,name=pending_active_hc,json=pendingActiveHc,proto3" json:"pending_active_hc,omitempty"`
 	// The host should be excluded from panic, spillover, etc. calculations because it was explicitly
 	// taken out of rotation via protocol signal and is not meant to be routed to.
 	ExcludedViaImmediateHcFail bool `protobuf:"varint,7,opt,name=excluded_via_immediate_hc_fail,json=excludedViaImmediateHcFail,proto3" json:"excluded_via_immediate_hc_fail,omitempty"`
-	// The host failed active HC due to timeout.
+	// The host failed active health check due to timeout.
 	ActiveHcTimeout bool `protobuf:"varint,8,opt,name=active_hc_timeout,json=activeHcTimeout,proto3" json:"active_hc_timeout,omitempty"`
-	// Health status as reported by EDS. Note: only HEALTHY and UNHEALTHY are currently supported
-	// here.
+	// Health status as reported by EDS.
+	//
+	// .. note::
+	//
+	//	Currently, only ``HEALTHY`` and ``UNHEALTHY`` are supported.
+	//
 	// [#comment:TODO(mrice32): pipe through remaining EDS health status possibilities.]
 	EdsHealthStatus v32.HealthStatus `protobuf:"varint,3,opt,name=eds_health_status,json=edsHealthStatus,proto3,enum=envoy.config.core.v3.HealthStatus" json:"eds_health_status,omitempty"`
 }

@@ -1072,6 +1072,13 @@ func (m *Principal) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if msg, ok := m.Identifier.(*Principal_Custom); ok {
+		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
 	if msg, ok := m.Identifier.(*Principal_SourcedMetadata); ok {
 		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -1540,6 +1547,41 @@ func (m *Principal_SourcedMetadata) MarshalToSizedBufferVTStrict(dAtA []byte) (i
 		i = protohelpers.EncodeVarint(dAtA, i, 0)
 		i--
 		dAtA[i] = 0x6a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Principal_Custom) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *Principal_Custom) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Custom != nil {
+		if vtmsg, ok := interface{}(m.Custom).(interface {
+			MarshalToSizedBufferVTStrict([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.Custom)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+		}
+		i--
+		dAtA[i] = 0x72
+	} else {
+		i = protohelpers.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x72
 	}
 	return len(dAtA) - i, nil
 }
@@ -2250,6 +2292,26 @@ func (m *Principal_SourcedMetadata) SizeVT() (n int) {
 	_ = l
 	if m.SourcedMetadata != nil {
 		l = m.SourcedMetadata.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Principal_Custom) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Custom != nil {
+		if size, ok := interface{}(m.Custom).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.Custom)
+		}
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	} else {
 		n += 2

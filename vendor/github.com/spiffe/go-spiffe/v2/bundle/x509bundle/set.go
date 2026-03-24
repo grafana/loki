@@ -1,6 +1,7 @@
 package x509bundle
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 
@@ -98,7 +99,7 @@ func (s *Set) GetX509BundleForTrustDomain(trustDomain spiffeid.TrustDomain) (*Bu
 
 	bundle, ok := s.bundles[trustDomain]
 	if !ok {
-		return nil, x509bundleErr.New("no X.509 bundle for trust domain %q", trustDomain)
+		return nil, wrapX509bundleErr(fmt.Errorf("no X.509 bundle for trust domain %q", trustDomain))
 	}
 
 	return bundle, nil
