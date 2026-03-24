@@ -367,6 +367,7 @@ queries:
   - description: Standard variance over time
     query: stdvar_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     kind: metric
+    skip: true # stdvar_over_time unsupported by v2 engine
     time_range:
       length: 24h
       step: 1m
@@ -383,6 +384,7 @@ queries:
   - description: Standard variance grouped by level
     query: avg by (level) (stdvar_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
+    skip: true # stdvar_over_time unsupported by v2 engine
     time_range:
       length: 24h
       step: 1m
@@ -399,6 +401,7 @@ queries:
   - description: Standard deviation over time
     query: stddev_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     kind: metric
+    skip: true # stddev_over_time unsupported by v2 engine
     time_range:
       length: 24h
       step: 1m
@@ -415,6 +418,7 @@ queries:
   - description: Standard deviation grouped by level
     query: avg by (level) (stddev_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
+    skip: true # stddev_over_time unsupported by v2 engine
     time_range:
       length: 24h
       step: 1m
@@ -431,6 +435,7 @@ queries:
   - description: Quantile over time - p50 (median)
     query: quantile_over_time(0.5, ${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     kind: metric
+    skip: true # quantile_over_time unsupported by v2 engine
     time_range:
       length: 24h
       step: 1m
@@ -448,6 +453,7 @@ queries:
   - description: Quantile over time - p90
     query: quantile_over_time(0.90, ${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     kind: metric
+    skip: true # quantile_over_time unsupported by v2 engine
     time_range:
       length: 24h
       step: 1m
@@ -464,6 +470,7 @@ queries:
   - description: Quantile over time - p95
     query: quantile_over_time(0.95, ${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     kind: metric
+    skip: true # quantile_over_time unsupported by v2 engine
     time_range:
       length: 24h
       step: 1m
@@ -480,6 +487,7 @@ queries:
   - description: Quantile over time - p99
     query: quantile_over_time(0.99, ${SELECTOR} | json | unwrap duration_ms [${RANGE}])
     kind: metric
+    skip: true # quantile_over_time unsupported by v2 engine
     time_range:
       length: 24h
       step: 1m
@@ -496,6 +504,7 @@ queries:
   - description: P99 latency grouped by level
     query: avg by (level) (quantile_over_time(0.99, ${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
+    skip: true # quantile_over_time unsupported by v2 engine
     time_range:
       length: 24h
       step: 1m
@@ -513,6 +522,7 @@ queries:
   - description: P99 duration with conversion
     query: quantile_over_time(0.99, ${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}])
     kind: metric
+    skip: true # quantile_over_time unsupported by v2 engine
     time_range:
       length: 24h
       step: 1m

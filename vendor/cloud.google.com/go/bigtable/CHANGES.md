@@ -1,5 +1,29 @@
 # Changes
 
+## [1.43.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.43.0) (2026-03-16)
+
+### Features
+
+* Add support for creating Instance with tags (#13459) ([1bce843](https://github.com/googleapis/google-cloud-go/commit/1bce843ee44d51199ee49bb710bc9100be73b2fa))
+* Use direct access when supported. Guarded by enabling… (#13873) ([5ea1f5f](https://github.com/googleapis/google-cloud-go/commit/5ea1f5f97fd541b76cd80dd7f7b60414143e034f))
+* add connection factory to abstract connection (#13755) ([b08ea15](https://github.com/googleapis/google-cloud-go/commit/b08ea15ff49563db93438e59c7ec78f49fc0a7bf))
+* add handling of longupdown metrics aka gauge (#13871) ([519ed9b](https://github.com/googleapis/google-cloud-go/commit/519ed9b0ab2bfd991d9d4fdc30ac86934aec66d9))
+* add load balancing penalty for channel (#14149) ([bb64998](https://github.com/googleapis/google-cloud-go/commit/bb649988e1c66b4c0c8d1a2606c106eb1acd6f8b))
+* add pacemaker in connpool (#13862) ([9af047f](https://github.com/googleapis/google-cloud-go/commit/9af047f755d35a26e09c050d9ec58ba01394572a))
+* add preemptive connection recycler (#13860) ([6b69ee3](https://github.com/googleapis/google-cloud-go/commit/6b69ee38312b8af52fa96d70576d0094b1b6ff5f))
+* cap increase in conn for dynamic chan pool (#14144) ([e0701a4](https://github.com/googleapis/google-cloud-go/commit/e0701a465804d6992dfd887a6d2d04f31e31ac10))
+* derive conn pool from resolver (#14147) ([b903e29](https://github.com/googleapis/google-cloud-go/commit/b903e2996ecb09c14d88556c16b17e0d5b7ea190))
+* make downscalling less aggressive (#14123) ([7ac72cc](https://github.com/googleapis/google-cloud-go/commit/7ac72cc8c896df83e0399cee4f4ef614a4396a8a))
+* make pow of 2 default lb policy (#14131) ([b5f7bf2](https://github.com/googleapis/google-cloud-go/commit/b5f7bf275b02122680f0b8f66c42854f46f03588))
+* populate ip protocol for direct access checker and rename a method to be concise (#14011) ([9c5e655](https://github.com/googleapis/google-cloud-go/commit/9c5e65518f50ba77271797a5cc8150c88f9b2cc3))
+* support tiered storage (#13793) ([39a25b9](https://github.com/googleapis/google-cloud-go/commit/39a25b92424fdbc083fd387d647ff8e07999a8d5))
+* switch to rand v2 (#14008) ([ee6f425](https://github.com/googleapis/google-cloud-go/commit/ee6f4251b9c6285fcf7d46a324f1c638f610c97f))
+
+### Bug Fixes
+
+* refactor bigtable.go into separate file path per interfaces (#13818) ([c8ae2e2](https://github.com/googleapis/google-cloud-go/commit/c8ae2e2a0a89e378892414af4db41ccd9b40bc9e))
+* slighly change instruction for direct access (#14119) ([7dd4948](https://github.com/googleapis/google-cloud-go/commit/7dd4948dde25b811cbf2679a011a7a24dd2e6220))
+
 ## [1.42.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.42.0) (2026-02-04)
 
 ### Features

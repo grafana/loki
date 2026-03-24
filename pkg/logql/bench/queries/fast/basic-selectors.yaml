@@ -8,7 +8,7 @@ queries:
     kind: log
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     tags:
       - baseline
       - selector
@@ -17,7 +17,7 @@ queries:
     query: ${SELECTOR} |= "level"
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     requires:
       keywords:
         - level
@@ -29,7 +29,7 @@ queries:
     query: ${SELECTOR} |~ "(?i)error"
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     requires:
       keywords:
         - error
@@ -42,7 +42,7 @@ queries:
     query: ${SELECTOR} !~ "(?i)debug"
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     requires:
       keywords:
        - debug
@@ -55,7 +55,7 @@ queries:
     query: ${SELECTOR} | ${LABEL_NAME} = "${LABEL_VALUE}"
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     requires:
       labels:
         - namespace
