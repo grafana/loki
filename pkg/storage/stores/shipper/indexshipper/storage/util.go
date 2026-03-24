@@ -75,6 +75,12 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 		return err
 	}
 
+	// Drop the temp file's buffer cache pages — they will be re-read
+	// sequentially for decompression and are not needed after that.
+	if err := fadviseDropCache(ftmp); err != nil {
+		level.Warn(logger).Log("msg", "fadvise DONTNEED failed for temp file", "file", tmpName, "err", err)
+	}
+
 	dlTime := time.Since(start)
 	level.Info(logger).Log("msg", "downloaded file", "total_time", dlTime)
 	start = time.Now()
@@ -113,6 +119,14 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 	_, err = io.Copy(f, objectReader)
 	if err != nil {
 		return err
+	}
+
+	// Drop the destination file's buffer cache pages. The file will be
+	// re-opened via mmap for querying; the write-path pages are never
+	// needed again and would otherwise evict mmap'd index pages under
+	// memory pressure.
+	if err := fadviseDropCache(f); err != nil {
+		level.Warn(logger).Log("msg", "fadvise DONTNEED failed for destination file", "file", destination, "err", err)
 	}
 
 	fStat, err := f.Stat()

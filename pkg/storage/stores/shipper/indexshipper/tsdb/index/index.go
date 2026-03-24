@@ -1597,6 +1597,12 @@ func (r *Reader) Close() error {
 	return r.c.Close()
 }
 
+// MmapBytes returns the raw mmap'd byte slice backing the index. Callers can
+// use this to issue madvise hints (e.g. MADV_WILLNEED) for prefetching.
+func (r *Reader) MmapBytes() []byte {
+	return r.b.Range(0, r.b.Len())
+}
+
 func (r *Reader) lookupSymbol(o uint32) (string, error) {
 	if s, ok := r.nameSymbols[o]; ok {
 		return s, nil

@@ -233,6 +233,12 @@ func (t *MmapSectionRefTable) Len() int {
 	return int(t.entryCount)
 }
 
+// MmapBytes returns the raw mmap'd byte slice backing the table. Callers can
+// use this to issue madvise hints (e.g. MADV_WILLNEED) for prefetching.
+func (t *MmapSectionRefTable) MmapBytes() []byte {
+	return t.data
+}
+
 func (t *MmapSectionRefTable) Close() error {
 	if t.file != nil {
 		return t.file.Close()

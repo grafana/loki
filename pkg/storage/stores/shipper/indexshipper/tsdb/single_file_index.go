@@ -124,6 +124,12 @@ func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
 		return nil, fmt.Errorf("opening sections table %s: %w", sectionsPath, mmapErr)
 	}
 
+	// Pre-warm mmap'd pages asynchronously to avoid major page faults
+	// on first query access.
+	if err := idx.Prefetch(); err != nil {
+		level.Warn(logger).Log("msg", "madvise WILLNEED failed", "path", path, "err", err)
+	}
+
 	return &TSDBFile{
 		Identifier:       id,
 		Index:            idx,
@@ -186,6 +192,28 @@ func (i *TSDBIndex) Close() error {
 		i.sectionRefTable.Close()
 	}
 	return i.reader.Close()
+}
+
+// Prefetch issues MADV_WILLNEED hints for the TSDB index and its companion
+// .sections sidecar (if present), causing the kernel to asynchronously
+// prefetch mmap'd pages into physical memory. This avoids synchronous major
+// page faults on first query access after a file is opened. Errors are
+// returned but are best-effort; callers should log and continue.
+func (i *TSDBIndex) Prefetch() error {
+	type mmapBytesProvider interface {
+		MmapBytes() []byte
+	}
+	if p, ok := i.reader.(mmapBytesProvider); ok {
+		if err := madviseWillNeed(p.MmapBytes()); err != nil {
+			return fmt.Errorf("madvise TSDB index: %w", err)
+		}
+	}
+	if t, ok := i.sectionRefTable.(*sectionref.MmapSectionRefTable); ok {
+		if err := madviseWillNeed(t.MmapBytes()); err != nil {
+			return fmt.Errorf("madvise sections table: %w", err)
+		}
+	}
+	return nil
 }
 
 func (i *TSDBIndex) Bounds() (model.Time, model.Time) {
