@@ -5805,6 +5805,16 @@ func awsAwsjson10_serializeOpDocumentCreateTableInput(v *CreateTableInput, value
 		}
 	}
 
+	if len(v.GlobalTableSettingsReplicationMode) > 0 {
+		ok := object.Key("GlobalTableSettingsReplicationMode")
+		ok.String(string(v.GlobalTableSettingsReplicationMode))
+	}
+
+	if v.GlobalTableSourceArn != nil {
+		ok := object.Key("GlobalTableSourceArn")
+		ok.String(*v.GlobalTableSourceArn)
+	}
+
 	if v.KeySchema != nil {
 		ok := object.Key("KeySchema")
 		if err := awsAwsjson10_serializeDocumentKeySchema(v.KeySchema, ok); err != nil {
@@ -7336,6 +7346,11 @@ func awsAwsjson10_serializeOpDocumentUpdateTableInput(v *UpdateTableInput, value
 		if err := awsAwsjson10_serializeDocumentGlobalSecondaryIndexUpdateList(v.GlobalSecondaryIndexUpdates, ok); err != nil {
 			return err
 		}
+	}
+
+	if len(v.GlobalTableSettingsReplicationMode) > 0 {
+		ok := object.Key("GlobalTableSettingsReplicationMode")
+		ok.String(string(v.GlobalTableSettingsReplicationMode))
 	}
 
 	if v.GlobalTableWitnessUpdates != nil {

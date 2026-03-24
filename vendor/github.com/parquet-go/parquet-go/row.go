@@ -434,7 +434,7 @@ func deconstructFuncOfOptional(columnIndex int16, node Node) (int16, deconstruct
 	columnIndex, deconstruct := deconstructFuncOf(columnIndex, Required(node))
 	return columnIndex, func(columns [][]Value, levels columnLevels, value reflect.Value) {
 		if value.IsValid() {
-			if value.IsZero() {
+			if isNullValue(value) {
 				value = reflect.Value{}
 			} else {
 				if value.Kind() == reflect.Ptr {
@@ -483,6 +483,20 @@ func deconstructFuncOfList(columnIndex int16, node Node) (int16, deconstructFunc
 	return deconstructFuncOf(columnIndex, Repeated(listElementOf(node)))
 }
 
+// makeKeyValueType returns a key-value struct type for use with actual map
+// key/value types. If the schema's synthetic value type is already convertible
+// to actualVal, keyValueElem is returned unchanged.
+func makeKeyValueType(keyValueElem reflect.Type, actualKey, actualVal reflect.Type) reflect.Type {
+	schemaVal := keyValueElem.Field(1).Type
+	if actualVal == schemaVal || actualVal.ConvertibleTo(schemaVal) {
+		return keyValueElem
+	}
+	return reflect.StructOf([]reflect.StructField{
+		{Name: keyValueElem.Field(0).Name, Type: actualKey, Tag: keyValueElem.Field(0).Tag},
+		{Name: keyValueElem.Field(1).Name, Type: actualVal, Tag: keyValueElem.Field(1).Tag},
+	})
+}
+
 //go:noinline
 func deconstructFuncOfMap(columnIndex int16, node Node) (int16, deconstructFunc) {
 	keyValue := mapKeyValueOf(node)
@@ -500,7 +514,7 @@ func deconstructFuncOfMap(columnIndex int16, node Node) (int16, deconstructFunc)
 		levels.repetitionDepth++
 		levels.definitionLevel++
 
-		elem := reflect.New(keyValueElem).Elem()
+		elem := reflect.New(makeKeyValueType(keyValueElem, mapValue.Type().Key(), mapValue.Type().Elem())).Elem()
 		k := elem.Field(0)
 		v := elem.Field(1)
 
@@ -705,7 +719,99 @@ func reconstructFuncOfRequired(columnIndex int16, node Node) (int16, reconstruct
 }
 
 func reconstructFuncOfList(columnIndex int16, node Node) (int16, reconstructFunc) {
-	return reconstructFuncOf(columnIndex, Repeated(listElementOf(node)))
+	elem := listElementOf(node)
+	// If the list element is optional (e.g., from `parquet-element:",optional"`),
+	// we need to handle it specially because the normal path through
+	// reconstructFuncOfRepeated would wrap the node with Required() which
+	// hides the Optional property.
+	if elem.Optional() {
+		return reconstructFuncOfRepeatedOptional(columnIndex, elem)
+	}
+	return reconstructFuncOf(columnIndex, Repeated(elem))
+}
+
+// reconstructFuncOfRepeatedOptional handles the case where list elements are optional.
+// This is needed because reconstructFuncOfRepeated uses Required() which hides
+// the Optional property of the inner node.
+//
+//go:noinline
+func reconstructFuncOfRepeatedOptional(columnIndex int16, node Node) (int16, reconstructFunc) {
+	// node is Optional(X), get the inner reconstruction for the required version
+	nextColumnIndex, reconstruct := reconstructFuncOf(columnIndex, Required(node))
+
+	return nextColumnIndex, func(value reflect.Value, levels columnLevels, columns [][]Value) error {
+		// Increment both for the repeated and optional levels
+		levels.repetitionDepth++
+		levels.definitionLevel += 2 // +1 for repeated, +1 for optional
+
+		// Handle empty groups (no columns)
+		if len(columns) == 0 || len(columns[0]) == 0 {
+			setMakeSlice(value, 0)
+			return nil
+		}
+
+		// Check if the list itself is null (definition level less than the repeated level)
+		// We need to check against (levels.definitionLevel - 1) because that's the repeated level
+		if columns[0][0].definitionLevel < levels.definitionLevel-1 {
+			setMakeSlice(value, 0)
+			return nil
+		}
+
+		values := make([][]Value, len(columns))
+		column := columns[0]
+		n := 0
+
+		for i, column := range columns {
+			values[i] = column[0:0:len(column)]
+		}
+
+		for i := 0; i < len(column); {
+			i++
+			n++
+
+			for i < len(column) && column[i].repetitionLevel > levels.repetitionDepth {
+				i++
+			}
+		}
+
+		value = setMakeSlice(value, n)
+
+		for i := range n {
+			for j, column := range values {
+				column = column[:cap(column)]
+				if len(column) == 0 {
+					continue
+				}
+
+				k := 1
+				for k < len(column) && column[k].repetitionLevel > levels.repetitionDepth {
+					k++
+				}
+
+				values[j] = column[:k]
+			}
+
+			// Check if this element is null (definition level indicates null)
+			// An element is null if its definition level is less than the max (which includes optional)
+			elemValue := value.Index(i)
+			if len(values) > 0 && len(values[0]) > 0 && values[0][0].definitionLevel < levels.definitionLevel {
+				// Element is null, leave as zero value
+				elemValue.SetZero()
+			} else {
+				if err := reconstruct(elemValue, levels, values); err != nil {
+					return err
+				}
+			}
+
+			for j, column := range values {
+				values[j] = column[len(column):len(column):cap(column)]
+			}
+
+			levels.repetitionLevel = levels.repetitionDepth
+		}
+
+		return nil
+	}
 }
 
 //go:noinline
@@ -762,7 +868,11 @@ func reconstructFuncOfMap(columnIndex int16, node Node) (int16, reconstructFunc)
 			value = m // track map instead of any for read[any]()
 		}
 
-		elem := reflect.New(keyValueElem).Elem()
+		actualVal := v
+		if valueIsList || v.Kind() == reflect.Interface {
+			actualVal = keyValueElem.Field(1).Type
+		}
+		elem := reflect.New(makeKeyValueType(keyValueElem, k, actualVal)).Elem()
 		for range n {
 			for j, column := range values {
 				column = column[:cap(column)]

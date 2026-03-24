@@ -49,8 +49,8 @@ func TestAllocator_Trim(t *testing.T) {
 }
 
 func TestAllocator_AllocateFromParent(t *testing.T) {
-	parent := memory.MakeAllocator(nil)
-	child := memory.MakeAllocator(parent)
+	parent := memory.NewAllocator(nil)
+	child := memory.NewAllocator(parent)
 
 	defer child.Reset()
 	defer parent.Reset()
@@ -95,8 +95,8 @@ func TestAllocator_AllocateFromParent(t *testing.T) {
 
 func TestAllocator_reuse_returned_child_memory(t *testing.T) {
 	var (
-		parent = memory.MakeAllocator(nil)
-		child  = memory.MakeAllocator(parent)
+		parent = memory.NewAllocator(nil)
+		child  = memory.NewAllocator(parent)
 	)
 
 	// Have the child allocator pull some memory from its parent and immediately
@@ -108,7 +108,7 @@ func TestAllocator_reuse_returned_child_memory(t *testing.T) {
 	// used by the child since the previous reset.
 	parent.Reset()
 
-	child = memory.MakeAllocator(parent)
+	child = memory.NewAllocator(parent)
 	actual := child.Allocate(64)
 
 	// NOTE(rfratto): We can't use require.Equal here since that doesn't care

@@ -7660,6 +7660,7 @@ X__builtin_nanl
 X__builtin_object_size
 X__builtin_popcount
 X__builtin_popcountl
+X__builtin_popcountll
 X__builtin_prefetch
 X__builtin_printf
 X__builtin_rintf

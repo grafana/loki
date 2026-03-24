@@ -2,6 +2,7 @@ package compute
 
 import (
 	"fmt"
+	"iter"
 
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
 
@@ -26,7 +27,7 @@ func computeValiditySA(alloc *memory.Allocator, leftNull bool, right memory.Bitm
 	switch {
 	case leftNull:
 		// If the scalar value is null, everything is null.
-		validity := memory.MakeBitmap(alloc, maxSize)
+		validity := memory.NewBitmap(alloc, maxSize)
 		validity.AppendCount(false, maxSize)
 		return validity
 
@@ -36,7 +37,7 @@ func computeValiditySA(alloc *memory.Allocator, leftNull bool, right memory.Bitm
 
 	default:
 		// left is valid, so the final bitmap depends on the values from right.
-		validity := memory.MakeBitmap(alloc, maxSize)
+		validity := memory.NewBitmap(alloc, maxSize)
 		validity.AppendBitmap(right)
 		return validity
 	}
@@ -55,7 +56,7 @@ func computeValidityAS(alloc *memory.Allocator, left memory.Bitmap, rightNull bo
 	switch {
 	case rightNull:
 		// If the scalar value is null, everything is null.
-		validity := memory.MakeBitmap(alloc, maxSize)
+		validity := memory.NewBitmap(alloc, maxSize)
 		validity.AppendCount(false, maxSize)
 		return validity
 
@@ -65,7 +66,7 @@ func computeValidityAS(alloc *memory.Allocator, left memory.Bitmap, rightNull bo
 
 	default:
 		// right is valid, so the final bitmap depends on the values from left.
-		validity := memory.MakeBitmap(alloc, maxSize)
+		validity := memory.NewBitmap(alloc, maxSize)
 		validity.AppendBitmap(left)
 		return validity
 	}
@@ -86,15 +87,22 @@ func computeValidityAA(alloc *memory.Allocator, left, right memory.Bitmap) (memo
 
 	switch {
 	case leftLen > 0 && rightLen > 0:
-		validity := memory.MakeBitmap(alloc, outLen)
+		validity := memory.NewBitmap(alloc, outLen)
 		validity.Resize(outLen)
 
+		var (
+			leftBytes, leftOffset   = left.Bytes()
+			rightBytes, rightOffset = right.Bytes()
+			outBytes, outOffset     = validity.Bytes()
+		)
+
 		bitutil.BitmapAnd(
-			left.Bytes(),
-			right.Bytes(),
-			0 /* left offset */, 0, /* right offset */
-			validity.Bytes(),
-			0,             /* out offset */
+			leftBytes,
+			rightBytes,
+			int64(leftOffset),
+			int64(rightOffset),
+			outBytes,
+			int64(outOffset),
 			int64(outLen), /* num values */
 		)
 
@@ -102,13 +110,13 @@ func computeValidityAA(alloc *memory.Allocator, left, right memory.Bitmap) (memo
 
 	case leftLen > 0:
 		// Make a copy of the left validity; everything from right is valid.
-		validity := memory.MakeBitmap(alloc, left.Len())
+		validity := memory.NewBitmap(alloc, left.Len())
 		validity.AppendBitmap(left)
 		return validity, nil
 
 	case rightLen > 0:
 		// Make a copy of the right validity; everything from left is valid.
-		validity := memory.MakeBitmap(alloc, right.Len())
+		validity := memory.NewBitmap(alloc, right.Len())
 		validity.AppendBitmap(right)
 		return validity, nil
 
@@ -117,4 +125,19 @@ func computeValidityAA(alloc *memory.Allocator, left, right memory.Bitmap) (memo
 	}
 
 	panic("unreachable")
+}
+
+// iterTrue returns an iterator that provides indices of the set bits in provided [bitmap].
+// If all bits are set (bitmap.Len() == 0) it fallbacks to a simple iterator over
+// all the elements.
+func iterTrue(bitmap memory.Bitmap, bitmapLen int) iter.Seq[int] {
+	if bitmap.Len() == 0 {
+		return func(yield func(int) bool) {
+			for i := range bitmapLen {
+				yield(i)
+			}
+		}
+	}
+
+	return bitmap.IterValues(true)
 }

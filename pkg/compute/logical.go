@@ -15,7 +15,7 @@ import (
 // Special cases:
 //
 //   - The negation of null is null.
-func Not(alloc *memory.Allocator, input columnar.Datum) (columnar.Datum, error) {
+func Not(alloc *memory.Allocator, input columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	if got, want := input.Kind(), columnar.KindBool; got != want {
 		return nil, fmt.Errorf("invalid input kind %s, expected %s", got, want)
 	}
@@ -24,7 +24,8 @@ func Not(alloc *memory.Allocator, input columnar.Datum) (columnar.Datum, error) 
 	case *columnar.BoolScalar:
 		return notScalar(input), nil
 	case *columnar.Bool:
-		return notArray(alloc, input), nil
+		out := notArray(alloc, input)
+		return applySelectionToBoolArray(alloc, out, selection)
 	default:
 		panic(fmt.Sprintf("unexpected input type %T", input))
 	}
@@ -43,17 +44,22 @@ func notArray(alloc *memory.Allocator, input *columnar.Bool) *columnar.Bool {
 	var validity memory.Bitmap
 	if input.Nulls() > 0 {
 		// Only copy the validity bitmap from input if it has any nulls.
-		validity = memory.MakeBitmap(alloc, count)
+		validity = memory.NewBitmap(alloc, count)
 		validity.AppendBitmap(input.Validity())
 	}
 
-	valuesBitmap := memory.MakeBitmap(alloc, count)
+	valuesBitmap := memory.NewBitmap(alloc, count)
 	valuesBitmap.Resize(count)
 
 	inputBitmap := input.Values()
-	bitutil.InvertBitmap(inputBitmap.Bytes(), 0, count, valuesBitmap.Bytes(), 0)
 
-	return columnar.MakeBool(valuesBitmap, validity)
+	var (
+		inputBytes, inputOffset   = inputBitmap.Bytes()
+		valuesBytes, valuesOffset = valuesBitmap.Bytes()
+	)
+
+	bitutil.InvertBitmap(inputBytes, inputOffset, count, valuesBytes, valuesOffset)
+	return columnar.NewBool(valuesBitmap, validity)
 }
 
 // And computes the logical AND of two input boolean datums. And returns an
@@ -63,8 +69,8 @@ func notArray(alloc *memory.Allocator, input *columnar.Bool) *columnar.Bool {
 // Special cases:
 //
 //   - If either side of the AND is null, the result is null.
-func And(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
-	return dispatchLogical(alloc, logicalAndKernel, left, right)
+func And(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+	return dispatchLogical(alloc, logicalAndKernel, left, right, selection)
 }
 
 // Or computes the logical OR of two input boolean datums. Or returns an error
@@ -74,11 +80,11 @@ func And(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, e
 // Special cases:
 //
 //   - If either side of the OR is null, the result is null.
-func Or(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
-	return dispatchLogical(alloc, logicalOrKernel, left, right)
+func Or(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+	return dispatchLogical(alloc, logicalOrKernel, left, right, selection)
 }
 
-func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right columnar.Datum) (columnar.Datum, error) {
+func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	if got, want := left.Kind(), columnar.KindBool; got != want {
 		return nil, fmt.Errorf("invalid input kind %s, expected %s", got, want)
 	} else if left.Kind() != right.Kind() {
@@ -92,11 +98,17 @@ func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right 
 	case leftScalar && rightScalar:
 		return logicalSS(kernel, left.(*columnar.BoolScalar), right.(*columnar.BoolScalar)), nil
 	case leftScalar && !rightScalar:
-		return logicalSA(alloc, kernel, left.(*columnar.BoolScalar), right.(*columnar.Bool)), nil
+		out := logicalSA(alloc, kernel, left.(*columnar.BoolScalar), right.(*columnar.Bool))
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && rightScalar:
-		return logicalAS(alloc, kernel, left.(*columnar.Bool), right.(*columnar.BoolScalar)), nil
+		out := logicalAS(alloc, kernel, left.(*columnar.Bool), right.(*columnar.BoolScalar))
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && !rightScalar:
-		return logicalAA(alloc, kernel, left.(*columnar.Bool), right.(*columnar.Bool))
+		out, err := logicalAA(alloc, kernel, left.(*columnar.Bool), right.(*columnar.Bool))
+		if err != nil {
+			return nil, err
+		}
+		return applySelectionToBoolArray(alloc, out, selection)
 	}
 
 	panic("unreachable")
@@ -115,16 +127,16 @@ func logicalSA(alloc *memory.Allocator, kernel logicalKernel, left *columnar.Boo
 	if left.Null {
 		// When left is null, the result is all nulls (set to the length of
 		// right).
-		values := memory.MakeBitmap(alloc, right.Len())
+		values := memory.NewBitmap(alloc, right.Len())
 		values.AppendCount(false, right.Len()) // Append all false to avoid garbage data in results.
 
-		return columnar.MakeBool(values, validity)
+		return columnar.NewBool(values, validity)
 	}
 
-	values := memory.MakeBitmap(alloc, right.Len())
+	values := memory.NewBitmap(alloc, right.Len())
 	kernel.DoSA(&values, left.Value, right.Values())
 
-	return columnar.MakeBool(values, validity)
+	return columnar.NewBool(values, validity)
 }
 
 func logicalAS(alloc *memory.Allocator, kernel logicalKernel, left *columnar.Bool, right *columnar.BoolScalar) *columnar.Bool {
@@ -133,16 +145,16 @@ func logicalAS(alloc *memory.Allocator, kernel logicalKernel, left *columnar.Boo
 	if right.Null {
 		// When right is null, the result is all nulls (set to the length of
 		// left).
-		values := memory.MakeBitmap(alloc, left.Len())
+		values := memory.NewBitmap(alloc, left.Len())
 		values.AppendCount(false, left.Len()) // Append all false to avoid garbage data in results.
 
-		return columnar.MakeBool(values, validity)
+		return columnar.NewBool(values, validity)
 	}
 
-	values := memory.MakeBitmap(alloc, left.Len())
+	values := memory.NewBitmap(alloc, left.Len())
 	kernel.DoAS(&values, left.Values(), right.Value)
 
-	return columnar.MakeBool(values, validity)
+	return columnar.NewBool(values, validity)
 }
 
 func logicalAA(alloc *memory.Allocator, kernel logicalKernel, left, right *columnar.Bool) (*columnar.Bool, error) {
@@ -155,8 +167,8 @@ func logicalAA(alloc *memory.Allocator, kernel logicalKernel, left, right *colum
 		return nil, err
 	}
 
-	values := memory.MakeBitmap(alloc, left.Len())
+	values := memory.NewBitmap(alloc, left.Len())
 	kernel.DoAA(&values, left.Values(), right.Values())
 
-	return columnar.MakeBool(values, validity), nil
+	return columnar.NewBool(values, validity), nil
 }

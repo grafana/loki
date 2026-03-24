@@ -32,7 +32,7 @@ type UTF8 struct {
 
 var _ Array = (*UTF8)(nil)
 
-// MakeUTF8 creates a new UTF8 array from the given data, offsets, and
+// NewUTF8 creates a new UTF8 array from the given data, offsets, and
 // optional validity bitmap.
 //
 // UTF8 arrays made from memory owned by a [memory.Allocator] are invalidated
@@ -43,9 +43,9 @@ var _ Array = (*UTF8)(nil)
 // validated for correctness.
 //
 // If validity is of length zero, all elements are considered valid. Otherwise,
-// MakeUTF8 panics if the number of elements does not match the length of
+// NewUTF8 panics if the number of elements does not match the length of
 // validity.
-func MakeUTF8(data []byte, offsets []int32, validity memory.Bitmap) *UTF8 {
+func NewUTF8(data []byte, offsets []int32, validity memory.Bitmap) *UTF8 {
 	arr := &UTF8{
 		validity: validity,
 		offsets:  offsets,
@@ -72,6 +72,14 @@ func (arr *UTF8) init() {
 // Len returns the total number of elements in the array.
 func (arr *UTF8) Len() int { return arr.length }
 
+// DataLen returns the total length of the data in the array.
+func (arr *UTF8) DataLen() int {
+	if arr.length == 0 {
+		return 0
+	}
+	return int(arr.offsets[arr.length] - arr.offsets[0])
+}
+
 // Nulls returns the number of null elements in the array. The number of
 // non-null elements can be calculated from Len() - Nulls().
 func (arr *UTF8) Nulls() int { return arr.nullCount }
@@ -96,7 +104,8 @@ func (arr *UTF8) IsNull(i int) bool {
 	return !arr.validity.Get(i)
 }
 
-// Data returns the underlying packed UTF8 bytes.
+// Data returns the underlying packed UTF8 bytes. If arr is a slice, Data may
+// include bytes beyond the offset ranges from the original array.
 func (arr *UTF8) Data() []byte { return arr.data }
 
 // Offsets returns the underlying offsets array.
@@ -122,6 +131,32 @@ func (arr *UTF8) Validity() memory.Bitmap { return arr.validity }
 // Kind returns the kind of Array being represented.
 func (arr *UTF8) Kind() Kind { return KindUTF8 }
 
+// Slice returns a slice of arr from i to j.
+//
+// A sliced UTF8 array creates a slice of the offsets and validity buffers, but
+// not the data buffer, permitting the offsets to continue to be valid without
+// needing to normalize them to start at 0.
+//
+// It is recommended to normalize the offsets and remove unused memory in the
+// data buffer before serializing UTF8 for network communication.
+func (arr *UTF8) Slice(i, j int) Array {
+	if i < 0 || j < i || j > arr.Len() {
+		panic(errorSliceBounds{i, j, arr.Len()})
+	}
+
+	// Unlike with all other Arrays, we only slice the arr.offsets buffer, which
+	// relative to the start of arr.data.
+	//
+	// Slicing both arr.offsets and arr.data would cause the offsets to be
+	// incorrect.
+	var (
+		validity = sliceValidity(arr.validity, i, j)
+		data     = arr.data
+		offsets  = arr.offsets[i : j+1]
+	)
+	return NewUTF8(data, offsets, validity)
+}
+
 func (arr *UTF8) isDatum() {}
 func (arr *UTF8) isArray() {}
 
@@ -143,9 +178,9 @@ var _ Builder = (*UTF8Builder)(nil)
 func NewUTF8Builder(alloc *memory.Allocator) *UTF8Builder {
 	return &UTF8Builder{
 		alloc:    alloc,
-		validity: memory.MakeBitmap(alloc, 0),
-		offsets:  memory.MakeBuffer[int32](alloc, 0),
-		data:     memory.MakeBuffer[byte](alloc, 0),
+		validity: memory.NewBitmap(alloc, 0),
+		offsets:  memory.NewBuffer[int32](alloc, 0),
+		data:     memory.NewBuffer[byte](alloc, 0),
 	}
 }
 
@@ -246,10 +281,10 @@ func (b *UTF8Builder) BuildArray() Array { return b.Build() }
 func (b *UTF8Builder) Build() *UTF8 {
 	// Move the original bitmaps to the constructed array, then reset the
 	// builder's bitmaps since they've been moved.
-	arr := MakeUTF8(b.data.Data(), b.offsets.Data(), b.validity)
-	b.validity = memory.MakeBitmap(b.alloc, 0)
-	b.offsets = memory.MakeBuffer[int32](b.alloc, 0)
-	b.data = memory.MakeBuffer[byte](b.alloc, 0)
+	arr := NewUTF8(b.data.Data(), b.offsets.Data(), b.validity)
+	b.validity = memory.NewBitmap(b.alloc, 0)
+	b.offsets = memory.NewBuffer[int32](b.alloc, 0)
+	b.data = memory.NewBuffer[byte](b.alloc, 0)
 	b.lastOffset = 0
 	return arr
 }

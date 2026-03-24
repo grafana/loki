@@ -86,14 +86,10 @@ func Create(db *sql.DB, dir, name, migrationType string) error {
 }
 
 var sqlMigrationTemplate = template.Must(template.New("goose.sql-migration").Parse(`-- +goose Up
--- +goose StatementBegin
 SELECT 'up SQL query';
--- +goose StatementEnd
 
 -- +goose Down
--- +goose StatementBegin
 SELECT 'down SQL query';
--- +goose StatementEnd
 `))
 
 var goSQLMigrationTemplate = template.Must(template.New("goose.go-migration").Parse(`package migrations

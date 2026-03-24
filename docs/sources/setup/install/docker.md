@@ -122,5 +122,7 @@ Run the following commands in your command line. They work for Windows or Linux 
 
 1. Verify that Loki is up and running.
 
-    - To view readiness, navigate to http://localhost:3100/ready.
-    - To view metrics, navigate to http://localhost:3100/metrics.
+    - To view read path readiness, navigate to http://localhost:3101/ready.
+    - To view read path metrics, navigate to http://localhost:3101/metrics.
+    - To view write path readiness, navigate to http://localhost:3102/ready.
+    - To view write path metrics, navigate to http://localhost:3102/metrics.

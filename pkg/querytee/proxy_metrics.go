@@ -6,9 +6,10 @@ import (
 )
 
 const (
-	comparisonSuccess = "success"
-	comparisonFailed  = "fail"
-	comparisonSkipped = "skipped"
+	comparisonMatch    = "match"
+	comparisonMismatch = "mismatch"
+	comparisonFailed   = "fail"
+	comparisonSkipped  = "skipped"
 
 	unknownIssuer = "unknown"
 	canaryIssuer  = "loki-canary"
@@ -51,7 +52,7 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Namespace: "cortex_querytee",
 			Name:      "responses_compared_total",
 			Help:      "Total number of responses compared per route and backend name by result.",
-		}, []string{"backend", "backend_alias", "route", "result", "issuer"}),
+		}, []string{"backend", "backend_alias", "route", "result", "issuer", "tenant"}),
 		missingMetrics: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex_querytee",
 			Name:      "missing_metrics_series",

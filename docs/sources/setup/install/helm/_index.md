@@ -29,7 +29,7 @@ Loki is designed to be run in two states:
 * [Microservices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode): For workloads that require high availability and scalability. Loki is deployed in this mode internally at Grafana Labs.
 
 {{< admonition type="tip" >}}
-Loki can also be deployed in [Simple Scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable). For the best possible experience in production, we recommend deploying Loki in *microservices* mode.
+Loki can also be deployed in [Simple Scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable). But Simple Scalable Deployment (SSD) mode is being deprecated. For the best possible experience in production, we recommend deploying Loki in *microservices* mode.
 {{< /admonition >}}
 
 ## Cloud Deployment Guides

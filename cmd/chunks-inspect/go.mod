@@ -6,7 +6,7 @@ toolchain go1.24.0
 
 require (
 	github.com/golang/snappy v1.0.0
-	github.com/klauspost/compress v1.18.3
+	github.com/klauspost/compress v1.18.4
 	github.com/pierrec/lz4 v2.6.1+incompatible
 )
 

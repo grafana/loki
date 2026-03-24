@@ -145,6 +145,10 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("start", false, node.Start.Format(time.RFC3339Nano)),
 			tree.NewProperty("end", false, node.End.Format(time.RFC3339Nano)),
 		}
+	case *Batching:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("batch_size", false, node.BatchSize),
+		}
 	}
 	return treeNode
 }

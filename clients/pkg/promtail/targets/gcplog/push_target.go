@@ -3,6 +3,7 @@ package gcplog
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -134,6 +135,10 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 
 	entry, err := translate(pushMessage, h.config.Labels, h.config.UseIncomingTimestamp, h.config.UseFullLine, h.relabelConfigs, r.Header.Get("X-Scope-OrgID"))
 	if err != nil {
+		if errors.Is(err, errEntryDropped) {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		h.metrics.gcpPushErrors.WithLabelValues("translation").Inc()
 		level.Warn(h.logger).Log("msg", "failed to translate gcp push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)

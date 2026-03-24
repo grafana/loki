@@ -1,3 +1,16 @@
+# v1.7.7 (2026-03-13)
+
+* **Bug Fix**: Replace usages of the old ioutil/ package throughout the SDK.
+
+# v1.7.6 (2026-03-03)
+
+* **Bug Fix**: Modernize non codegen files with go fix
+* **Dependency Update**: Bump minimum Go version to 1.24
+
+# v1.7.5 (2026-02-23)
+
+* No change notes available for this release.
+
 # v1.7.4 (2025-12-02)
 
 * **Dependency Update**: Upgrade to smithy-go v1.24.0. Notably this version of the library reduces the allocation footprint of the middleware system. We observe a ~10% reduction in allocations per SDK call with this change.

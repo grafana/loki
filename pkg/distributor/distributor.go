@@ -308,7 +308,7 @@ func New(
 		)
 
 		if cfg.DataObjTeeConfig.Enabled {
-			resolver := NewSegmentationPartitionResolver(
+			resolver := newSegmentationPartitionResolver(
 				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
 				dataObjConsumerPartitionRing,
 				registerer,
@@ -327,6 +327,10 @@ func New(
 				return nil, fmt.Errorf("failed to create data object tee: %w", err)
 			}
 			tee = WrapTee(tee, dataObjTee)
+
+			if rateBatcher := dataObjTee.RateBatcher(); rateBatcher != nil {
+				servs = append(servs, rateBatcher)
+			}
 		}
 	}
 

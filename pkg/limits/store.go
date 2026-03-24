@@ -419,7 +419,13 @@ func (s *usageStore) updateWithBuckets(i int, tenant string, partition int32, po
 		stream.totalSize = 0
 		stream.policy = policyBucket
 		stream.rateBuckets = make([]rateBucket, s.numBuckets)
+	} else if len(stream.rateBuckets) == 0 {
+		// If the stream exists but rateBuckets is not initialized (e.g., created via Update()),
+		// initialize it now. This can happen when ExceedsLimits creates a stream, then
+		// UpdateRates is called for the same stream.
+		stream.rateBuckets = make([]rateBucket, s.numBuckets)
 	}
+
 	seenAtUnixNano := seenAt.UnixNano()
 	if stream.lastSeenAt <= seenAtUnixNano {
 		stream.lastSeenAt = seenAtUnixNano

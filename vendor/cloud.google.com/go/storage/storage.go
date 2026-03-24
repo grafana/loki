@@ -408,7 +408,7 @@ func (s bucketBoundHostname) path(bucket, object string) string {
 }
 
 // PathStyle is the default style, and will generate a URL of the form
-// "<host-name>/<bucket-name>/<object-name>". By default, <host-name> is
+// "{host-name}/{bucket-name}/{object-name}". By default, {host-name} is
 // storage.googleapis.com, but setting an endpoint on the storage Client or
 // through STORAGE_EMULATOR_HOST overrides this. Setting Hostname on
 // SignedURLOptions or PostPolicyV4Options overrides everything else.
@@ -417,7 +417,7 @@ func PathStyle() URLStyle {
 }
 
 // VirtualHostedStyle generates a URL relative to the bucket's virtual
-// hostname, e.g. "<bucket-name>.storage.googleapis.com/<object-name>".
+// hostname, e.g. "{bucket-name}.storage.googleapis.com/{object-name}".
 func VirtualHostedStyle() URLStyle {
 	return virtualHostedStyle{}
 }
@@ -425,7 +425,7 @@ func VirtualHostedStyle() URLStyle {
 // BucketBoundHostname generates a URL with a custom hostname tied to a
 // specific GCS bucket. The desired hostname should be passed in using the
 // hostname argument. Generated urls will be of the form
-// "<bucket-bound-hostname>/<object-name>". See
+// "{bucket-bound-hostname}/{object-name}". See
 // https://cloud.google.com/storage/docs/request-endpoints#cname and
 // https://cloud.google.com/load-balancing/docs/https/adding-backend-buckets-to-load-balancers
 // for details. Note that for CNAMEs, only HTTP is supported, so Insecure must
@@ -452,7 +452,7 @@ type SignedURLOptions struct {
 
 	// PrivateKey is the Google service account private key. It is obtainable
 	// from the Google Developers Console.
-	// At https://console.developers.google.com/project/<your-project-id>/apiui/credential,
+	// At https://console.developers.google.com/project/{your-project-id}/apiui/credential,
 	// create a service account client ID or reuse one of your existing service account
 	// credentials. Click on the "Generate new P12 key" to generate and download
 	// a new private key. Once you download the P12 file, use the following command
@@ -1210,8 +1210,6 @@ func (o *ObjectHandle) Restore(ctx context.Context, opts *RestoreOptions) (*Obje
 // Any preconditions set on the ObjectHandle will be applied for the source
 // object. Set preconditions on the destination object using
 // [MoveObjectDestination.Conditions].
-//
-// This API is in preview and is not yet publicly available.
 func (o *ObjectHandle) Move(ctx context.Context, destination MoveObjectDestination) (*ObjectAttrs, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
@@ -1552,7 +1550,7 @@ type ObjectAttrs struct {
 
 	// Owner is the owner of the object. This field is read-only.
 	//
-	// If non-zero, it is in the form of "user-<userId>".
+	// If non-zero, it is in the form of "user-{userId}".
 	Owner string
 
 	// Size is the length of the object's content. This field is read-only.
@@ -2499,6 +2497,33 @@ func (wb *withMaxAttempts) apply(config *retryConfig) {
 	config.maxAttempts = &wb.maxAttempts
 }
 
+// WithMaxRetryDuration configures the maximum duration for which requests can be retried.
+// Once this deadline is reached, no further retry attempts will be made, and the last
+// error will be returned.
+// For example, if you set WithMaxRetryDuration(10*time.Second), retries will stop after
+// 10 seconds even if the maximum number of attempts hasn't been reached.
+// Without this setting, operations will continue retrying until either the maximum
+// number of attempts is exhausted or the passed context is terminated by cancellation
+// or timeout.
+// A value of 0 allows infinite retries (subject to other constraints).
+//
+// Note: This does not apply to Writer operations. For Writer operations,
+// use Writer.ChunkRetryDeadline to control per-chunk retry timeouts, and use
+// context timeout or cancellation to control the overall upload timeout.
+func WithMaxRetryDuration(maxRetryDuration time.Duration) RetryOption {
+	return &withMaxRetryDuration{
+		maxRetryDuration: maxRetryDuration,
+	}
+}
+
+type withMaxRetryDuration struct {
+	maxRetryDuration time.Duration
+}
+
+func (wb *withMaxRetryDuration) apply(config *retryConfig) {
+	config.maxRetryDuration = wb.maxRetryDuration
+}
+
 // RetryPolicy describes the available policies for which operations should be
 // retried. The default is `RetryIdempotent`.
 type RetryPolicy int
@@ -2574,7 +2599,6 @@ type retryConfig struct {
 	maxAttempts *int
 	// maxRetryDuration, if set, specifies a deadline after which the request
 	// will no longer be retried. A value of 0 allows infinite retries.
-	// maxRetryDuration is currently only set by Writer.ChunkRetryDeadline.
 	maxRetryDuration time.Duration
 }
 

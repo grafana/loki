@@ -3,7 +3,8 @@ kind: ProjectConfig
 health:
   healthProbeBindAddress: :8081
 metrics:
-  bindAddress: 127.0.0.1:8080
+  bindAddress: :8080
+  secure: false
 webhook:
   port: 9443
 leaderElection:

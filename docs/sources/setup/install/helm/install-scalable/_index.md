@@ -11,11 +11,16 @@ keywords:
 
 # Install the simple scalable Helm chart
 
+{{< admonition type="note" >}}
+Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released.
+{{< /admonition >}}
+
 This Helm Chart deploys Grafana Loki in [simple scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) within a Kubernetes cluster.
 
-This chart configures Loki to run `read`, `write`, and `backend` targets in a [scalable mode](../../../../get-started/deployment-modes/#simple-scalable). Loki’s simple scalable deployment mode separates execution paths into read, write, and backend targets.
+This chart configures Loki to run `read`, `write`, and `backend` targets in a [scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable). Loki’s simple scalable deployment mode separates execution paths into read, write, and backend targets.
 
 The default Helm chart deploys the following components:
+
 - Read component (3 replicas)
 - Write component (3 replicas)
 - Backend component (3 replicas)
@@ -25,7 +30,7 @@ The default Helm chart deploys the following components:
 - Index and Chunk cache (1 replica)
 
 {{< admonition type="note" >}}
-We do not recommended running scalable mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
+We do not recommended running scalable mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example.
 {{< /admonition >}}
 
 ## Prerequisites
@@ -37,20 +42,19 @@ We do not recommended running scalable mode with `filesystem` storage. For the p
 
 The following steps show how to deploy the Loki Helm chart in simple scalable mode using the included MinIO as the storage backend. Our recommendation is to start here for development and testing purposes. Then configure Loki with an object storage provider when moving to production.
 
-
 1. Add [Grafana's chart repository](https://github.com/grafana/helm-charts) to Helm:
 
    ```bash
    helm repo add grafana https://grafana.github.io/helm-charts
    ```
 
-2. Update the chart repository:
+1. Update the chart repository:
 
    ```bash
    helm repo update
    ```
 
-3. Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in test mode using MinIO as storage:
+1. Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in test mode using MinIO as storage:
 
     ```yaml
       loki:
@@ -94,14 +98,17 @@ The following steps show how to deploy the Loki Helm chart in simple scalable mo
 
 1. Install or upgrade the Loki deployment.
 
-     - To install:
-        ```bash
-       helm install --values values.yaml loki grafana/loki
-       ```
-    - To upgrade:
-       ```bash
-       helm upgrade --values values.yaml loki grafana/loki
-       ```
+ - To install:
+
+   ```bash
+   helm install --values values.yaml loki grafana/loki
+   ```
+
+ - To upgrade:
+
+   ```bash
+   helm upgrade --values values.yaml loki grafana/loki
+   ```
 
 ## Object Storage Configuration
 
@@ -238,12 +245,13 @@ write:
 minio:
   enabled: false
 
+```
 
-``` 
 {{< /collapse >}}
 
-To configure other storage providers, refer to the [Helm Chart Reference](../reference/).
+To configure other storage providers, refer to the [Helm Chart Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/).
 
-## Next Steps 
-* Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).
-* Monitor the Loki deployment using the [Meta Monitoring Helm chart](/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/)
+## Next Steps
+
+* Configure an agent to [send log data to Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/).
+* Monitor the Loki deployment using the [Meta Monitoring Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/)

@@ -28,7 +28,7 @@ type AlterUserScramCredentialsUpsert struct {
 
 	// This field is never transmitted over the wire
 	// @see: https://tools.ietf.org/html/rfc5802
-	Password []byte
+	Password []byte // #nosec G117 -- SCRAM API requires this exported field name; value is not marshaled or logged.
 }
 
 func (r *AlterUserScramCredentialsRequest) encode(pe packetEncoder) error {

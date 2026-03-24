@@ -1,4 +1,4 @@
-// Copyright 2024 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -26,4 +26,8 @@ func NewBufioWriterWithSize(f *os.File, size int) (BufWriter, error) {
 
 func NewDirectIOWriter(*os.File, int) (BufWriter, error) {
 	return nil, errDirectIOUnsupported
+}
+
+func UncachedIOSupported() bool {
+	return false
 }

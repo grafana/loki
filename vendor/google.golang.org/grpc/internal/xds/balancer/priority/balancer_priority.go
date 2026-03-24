@@ -174,7 +174,7 @@ func (b *priorityBalancer) switchToChild(child *childBalancer, priority int) {
 
 // handleChildStateUpdate start/close priorities based on the connectivity
 // state.
-func (b *priorityBalancer) handleChildStateUpdate(childName string, s balancer.State) {
+func (b *priorityBalancer) handleChildStateUpdate(childName string, newState balancer.State) {
 	// Update state in child. The updated picker will be sent to parent later if
 	// necessary.
 	child, ok := b.children[childName]
@@ -183,15 +183,16 @@ func (b *priorityBalancer) handleChildStateUpdate(childName string, s balancer.S
 		return
 	}
 	if !child.started {
-		b.logger.Warningf("Ignoring update from child policy %q which is not in started state: %+v", childName, s)
+		b.logger.Warningf("Ignoring update from child policy %q which is not in started state: %+v", childName, newState)
 		return
 	}
-	child.state = s
+	oldState := child.state
+	child.state = newState
 
 	// We start/stop the init timer of this child based on the new connectivity
 	// state. syncPriority() later will need the init timer (to check if it's
 	// nil or not) to decide which child to switch to.
-	switch s.ConnectivityState {
+	switch newState.ConnectivityState {
 	case connectivity.Ready, connectivity.Idle:
 		child.reportedTF = false
 		child.stopInitTimer()
@@ -199,7 +200,19 @@ func (b *priorityBalancer) handleChildStateUpdate(childName string, s balancer.S
 		child.reportedTF = true
 		child.stopInitTimer()
 	case connectivity.Connecting:
-		if !child.reportedTF {
+		// The init timer is created when the child is created and is reset when
+		// it reports Ready or Idle. Most child policies start off in
+		// Connecting, but ring_hash starts off in Idle and moves to Connecting
+		// when a request comes in. To support such cases, we restart the init
+		// timer when we see Connecting, but only if the child has not reported
+		// TransientFailure more recently than it reported Ready or Idle. See
+		// gRFC A42 for details on why ring_hash is special and what provisions
+		// are required to make it work as a child of the priority LB policy.
+		//
+		// We don't want to restart the timer if the child was already in
+		// Connecting, because we want failover to happen once the timer elapses
+		// even when the child is still in Connecting.
+		if !child.reportedTF && oldState.ConnectivityState != connectivity.Connecting {
 			child.startInitTimer()
 		}
 	default:

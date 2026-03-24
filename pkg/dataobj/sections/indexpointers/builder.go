@@ -26,6 +26,12 @@ type IndexPointer struct {
 	EndTs   time.Time
 }
 
+// TenantIndexPointer is meant to collectively hold IndexPointer with the ID of the tenant it belongs to.
+type TenantIndexPointer struct {
+	Tenant string
+	IndexPointer
+}
+
 type Builder struct {
 	metrics      *Metrics
 	pageSize     int

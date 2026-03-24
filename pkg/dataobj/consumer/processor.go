@@ -3,8 +3,8 @@ package consumer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
-	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -29,22 +29,22 @@ type builder interface {
 	CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
 }
 
-// A flusher allows mocking of flushes in tests.
-type flusher interface {
-	FlushAsync(ctx context.Context, builder builder, startTime time.Time, offset int64, done func(error))
+// A flushCommitter allows mocking of flushes in tests.
+type flushCommitter interface {
+	Flush(ctx context.Context, builder builder, reason string, offset int64, earliestRecordTime time.Time) error
 }
 
 // A processor receives records and builds data objects from them.
 type processor struct {
 	*services.BasicService
-	builder     builder
-	decoder     *kafka.Decoder
-	recordsChan chan *kgo.Record
-	flusher     flusher
+	builder        builder
+	decoder        *kafka.Decoder
+	records        chan *kgo.Record
+	flushCommitter flushCommitter
 
-	// offset contains the offset of the last record appended to the data object
+	// lastOffset contains the offset of the last record appended to the data object
 	// builder. It is used to commit the correct offset after a flush.
-	offset int64
+	lastOffset int64
 
 	// idleFlushTimeout is the maximum amount of time to wait for more data. If no
 	// records are received within this timeout, the current data object builder
@@ -73,19 +73,16 @@ type processor struct {
 	// to the data object builder. It is required for the metastore index.
 	earliestRecordTime time.Time
 
-	// Metrics
-	metrics *partitionOffsetMetrics
+	metrics *metrics
 	logger  log.Logger
 }
 
 func newProcessor(
 	builder builder,
+	records chan *kgo.Record,
+	flushCommitter flushCommitter,
 	idleFlushTimeout time.Duration,
 	maxBuilderAge time.Duration,
-	topic string,
-	partition int32,
-	recordsChan chan *kgo.Record,
-	flusher flusher,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) *processor {
@@ -93,26 +90,15 @@ func newProcessor(
 	if err != nil {
 		panic(err)
 	}
-
-	reg = prometheus.WrapRegistererWith(prometheus.Labels{
-		"topic":     topic,
-		"partition": strconv.Itoa(int(partition)),
-	}, reg)
-
-	metrics := newPartitionOffsetMetrics()
-	if err := metrics.register(reg); err != nil {
-		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
-	}
-
 	p := &processor{
 		builder:          builder,
-		logger:           logger,
 		decoder:          decoder,
-		metrics:          metrics,
+		records:          records,
+		flushCommitter:   flushCommitter,
 		idleFlushTimeout: idleFlushTimeout,
 		maxBuilderAge:    maxBuilderAge,
-		recordsChan:      recordsChan,
-		flusher:          flusher,
+		metrics:          newMetrics(reg),
+		logger:           logger,
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p
@@ -139,18 +125,22 @@ func (p *processor) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			level.Info(p.logger).Log("msg", "stopping partition processor, context canceled")
+			level.Info(p.logger).Log("msg", "context canceled")
 			// We don't return ctx.Err() here as it manifests as a service failure
-			// when shutting down.
+			// when stopping the service.
 			return nil
-		case record, ok := <-p.recordsChan:
+		case rec, ok := <-p.records:
 			if !ok {
-				level.Info(p.logger).Log("msg", "stopping partition processor, channel closed")
+				level.Info(p.logger).Log("msg", "channel closed")
 				return nil
 			}
-			p.processRecord(ctx, record)
-		// This partition is idle, flush it.
+			if err := p.processRecord(ctx, rec); err != nil {
+				level.Error(p.logger).Log("msg", "failed to process record", "err", err)
+				p.observeRecordErr(rec)
+			}
 		case <-time.After(p.idleFlushTimeout):
+			// This partition is idle, flush it.
+			p.metrics.setConsumptionLag(0)
 			if _, err := p.idleFlush(ctx); err != nil {
 				level.Error(p.logger).Log("msg", "failed to idle flush", "err", err)
 			}
@@ -158,63 +148,48 @@ func (p *processor) Run(ctx context.Context) error {
 	}
 }
 
-func (p *processor) processRecord(ctx context.Context, record *kgo.Record) {
+func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
+	// We use the current time to calculate a number of metrics, such as
+	// consumption lag, the age of the data object builder, etc.
 	now := time.Now()
-	p.metrics.processedRecords.Inc()
+	p.observeRecord(rec, now)
 
-	// Update offset metric at the end of processing
-	defer p.metrics.updateOffset(record.Offset)
-
-	if record.Timestamp.Before(p.earliestRecordTime) || p.earliestRecordTime.IsZero() {
-		p.earliestRecordTime = record.Timestamp
-	}
-
-	// Observe processing delay
-	p.metrics.observeProcessingDelay(record.Timestamp)
-
-	tenant := string(record.Key)
-	stream, err := p.decoder.DecodeWithoutLabels(record.Value)
+	// Try to decode the stream in the record.
+	tenant := string(rec.Key)
+	stream, err := p.decoder.DecodeWithoutLabels(rec.Value)
 	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to decode record", "err", err)
-		return
+		// This is an unrecoverable error and no amount of retries will fix it.
+		return fmt.Errorf("failed to decode stream: %w", err)
 	}
-
-	p.metrics.processedBytes.Add(float64(stream.Size()))
 
 	if p.shouldFlushDueToMaxAge() {
-		p.metrics.incFlushesTotal(FlushReasonMaxAge)
-		if err := p.flush(ctx); err != nil {
-			p.metrics.flushFailures.Inc()
-			level.Error(p.logger).Log("msg", "failed to flush and commit dataobj that reached max age", "err", err)
-			return
+		if err := p.flush(ctx, flushReasonMaxAge); err != nil {
+			return fmt.Errorf("failed to flush: %w", err)
 		}
 	}
 
 	if err := p.builder.Append(tenant, stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
-			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
-			p.metrics.incAppendFailures()
-			return
+			return fmt.Errorf("failed to append stream: %w", err)
 		}
-
-		p.metrics.incFlushesTotal(FlushReasonBuilderFull)
-		if err := p.flush(ctx); err != nil {
-			p.metrics.flushFailures.Inc()
-			level.Error(p.logger).Log("msg", "failed to flush and commit", "err", err)
-			return
+		if err := p.flush(ctx, flushReasonBuilderFull); err != nil {
+			return fmt.Errorf("failed to flush and commit: %w", err)
 		}
-
 		if err := p.builder.Append(tenant, stream); err != nil {
-			level.Error(p.logger).Log("msg", "failed to append stream after flushing", "err", err)
-			p.metrics.incAppendFailures()
+			return fmt.Errorf("failed to append stream after flushing: %w", err)
 		}
 	}
 
+	if p.earliestRecordTime.IsZero() || rec.Timestamp.Before(p.earliestRecordTime) {
+		p.earliestRecordTime = rec.Timestamp
+	}
 	if p.firstAppend.IsZero() {
 		p.firstAppend = now
 	}
 	p.lastAppend = now
-	p.offset = record.Offset
+	p.lastOffset = rec.Offset
+
+	return nil
 }
 
 func (p *processor) shouldFlushDueToMaxAge() bool {
@@ -232,9 +207,7 @@ func (p *processor) idleFlush(ctx context.Context) (bool, error) {
 	if !p.needsIdleFlush() {
 		return false, nil
 	}
-	p.metrics.incFlushesTotal(FlushReasonIdle)
-	if err := p.flush(ctx); err != nil {
-		p.metrics.flushFailures.Inc()
+	if err := p.flush(ctx, flushReasonIdle); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -243,33 +216,36 @@ func (p *processor) idleFlush(ctx context.Context) (bool, error) {
 // needsIdleFlush returns true if the partition has exceeded the idle timeout
 // and the builder has some data buffered.
 func (p *processor) needsIdleFlush() bool {
-	// This is a safety check to make sure we never flush empty data objects.
-	// It should never happen that lastModified is non-zero while the builder
-	// is either uninitialized or empty.
-	if p.builder == nil || p.builder.GetEstimatedSize() == 0 {
+	if p.lastAppend.IsZero() {
 		return false
 	}
-	if p.lastAppend.IsZero() {
+	// This is a safety check to make sure we never flush empty data objects.
+	// It should never happen that lastAppend is non-zero while the builder
+	// is empty.
+	if p.builder.GetEstimatedSize() == 0 {
 		return false
 	}
 	return time.Since(p.lastAppend) > p.idleFlushTimeout
 }
 
-func (p *processor) flush(ctx context.Context) error {
-	var (
-		err  error
-		done = make(chan struct{})
-	)
+func (p *processor) flush(ctx context.Context, reason string) error {
 	defer func() {
 		// Reset the state to prepare for building the next data object.
 		p.earliestRecordTime = time.Time{}
 		p.firstAppend = time.Time{}
 		p.lastAppend = time.Time{}
 	}()
-	p.flusher.FlushAsync(ctx, p.builder, p.earliestRecordTime, p.offset, func(flushErr error) {
-		err = flushErr
-		close(done)
-	})
-	<-done
-	return err
+	return p.flushCommitter.Flush(ctx, p.builder, reason, p.lastOffset, p.earliestRecordTime)
+}
+
+func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
+	p.metrics.records.Inc()
+	p.metrics.receivedBytes.Add(float64(len(rec.Value)))
+	p.metrics.setLastOffset(rec.Offset)
+	p.metrics.setConsumptionLag(now.Sub(rec.Timestamp))
+}
+
+func (p *processor) observeRecordErr(rec *kgo.Record) {
+	p.metrics.recordFailures.Inc()
+	p.metrics.discardedBytes.Add(float64(len(rec.Value)))
 }

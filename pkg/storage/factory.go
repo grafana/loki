@@ -308,6 +308,10 @@ type Config struct {
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
 	EnableAsyncStore bool          `yaml:"-"`
 	AsyncStoreConfig AsyncStoreCfg `yaml:"-"`
+
+	// ObjectClientDecorator, if set, wraps every ObjectClient after creation.
+	// This is intended for testing (e.g. injecting latency simulation).
+	ObjectClientDecorator func(client.ObjectClient) client.ObjectClient `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -664,6 +668,10 @@ func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMet
 	actual, err := internalNewObjectClient(name, cfg, clientMetrics)
 	if err != nil {
 		return nil, err
+	}
+
+	if cfg.ObjectClientDecorator != nil {
+		actual = cfg.ObjectClientDecorator(actual)
 	}
 
 	if cfg.ObjectPrefix == "" {

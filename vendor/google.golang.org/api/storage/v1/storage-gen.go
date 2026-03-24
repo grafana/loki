@@ -1,4 +1,4 @@
-// Copyright 2025 Google LLC.
+// Copyright 2026 Google LLC.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -1732,6 +1732,8 @@ func (s Channel) MarshalJSON() ([]byte, error) {
 
 // ComposeRequest: A Compose request.
 type ComposeRequest struct {
+	// DeleteSourceObjects: If true, the source objects will be deleted.
+	DeleteSourceObjects bool `json:"deleteSourceObjects,omitempty"`
 	// Destination: Properties of the resulting object.
 	Destination *Object `json:"destination,omitempty"`
 	// Kind: The kind of item this is.
@@ -1739,15 +1741,15 @@ type ComposeRequest struct {
 	// SourceObjects: The list of source objects that will be concatenated into a
 	// single object.
 	SourceObjects []*ComposeRequestSourceObjects `json:"sourceObjects,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "Destination") to
+	// ForceSendFields is a list of field names (e.g. "DeleteSourceObjects") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "Destination") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
+	// NullFields is a list of field names (e.g. "DeleteSourceObjects") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
@@ -2877,6 +2879,10 @@ type RelocateBucketRequest struct {
 	// DestinationCustomPlacementConfig: The bucket's new custom placement
 	// configuration if relocating to a Custom Dual Region.
 	DestinationCustomPlacementConfig *RelocateBucketRequestDestinationCustomPlacementConfig `json:"destinationCustomPlacementConfig,omitempty"`
+	// DestinationKmsKeyName: Resource name of a Cloud KMS key, of the form
+	// projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key. If
+	// set, is used to encrypt all objects in the destination bucket.
+	DestinationKmsKeyName string `json:"destinationKmsKeyName,omitempty"`
 	// DestinationLocation: The new location the bucket will be relocated to.
 	DestinationLocation string `json:"destinationLocation,omitempty"`
 	// ValidateOnly: If true, validate the operation, but do not actually relocate
@@ -7167,6 +7173,124 @@ func (c *FoldersDeleteCall) Do(opts ...googleapi.CallOption) error {
 	return nil
 }
 
+type FoldersDeleteRecursiveCall struct {
+	s          *Service
+	bucket     string
+	folder     string
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// DeleteRecursive: Deletes a folder recursively. Only applicable to buckets
+// with hierarchical namespace enabled.
+//
+// - bucket: Name of the bucket in which the folder resides.
+// - folder: Name of a folder.
+func (r *FoldersService) DeleteRecursive(bucket string, folder string) *FoldersDeleteRecursiveCall {
+	c := &FoldersDeleteRecursiveCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.folder = folder
+	return c
+}
+
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// If set, only deletes the folder if its metageneration matches this value.
+func (c *FoldersDeleteRecursiveCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *FoldersDeleteRecursiveCall {
+	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
+	return c
+}
+
+// IfMetagenerationNotMatch sets the optional parameter
+// "ifMetagenerationNotMatch": If set, only deletes the folder if its
+// metageneration does not match this value.
+func (c *FoldersDeleteRecursiveCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *FoldersDeleteRecursiveCall {
+	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *FoldersDeleteRecursiveCall) Fields(s ...googleapi.Field) *FoldersDeleteRecursiveCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *FoldersDeleteRecursiveCall) Context(ctx context.Context) *FoldersDeleteRecursiveCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *FoldersDeleteRecursiveCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *FoldersDeleteRecursiveCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/folders/{folder}/deleteRecursive")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+		"folder": c.folder,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.folders.deleteRecursive", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.folders.deleteRecursive" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GoogleLongrunningOperation.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *FoldersDeleteRecursiveCall) Do(opts ...googleapi.CallOption) (*GoogleLongrunningOperation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GoogleLongrunningOperation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.folders.deleteRecursive", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
 type FoldersGetCall struct {
 	s            *Service
 	bucket       string
@@ -9913,6 +10037,14 @@ func (c *ObjectsComposeCall) DestinationPredefinedAcl(destinationPredefinedAcl s
 	return c
 }
 
+// DropContextGroups sets the optional parameter "dropContextGroups": Specifies
+// which groups of Object Contexts from the source object(s) should be dropped
+// from the destination object.
+func (c *ObjectsComposeCall) DropContextGroups(dropContextGroups ...string) *ObjectsComposeCall {
+	c.urlParams_.SetMulti("dropContextGroups", append([]string{}, dropContextGroups...))
+	return c
+}
+
 // IfGenerationMatch sets the optional parameter "ifGenerationMatch": Makes the
 // operation conditional on whether the object's current generation matches the
 // given value. Setting to 0 makes the operation succeed only if there are no
@@ -10994,6 +11126,14 @@ func (c *ObjectsInsertCall) Header() http.Header {
 
 func (c *ObjectsInsertCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	// Set auto checksum in case of a single chunk upload if enabled.
+	if c.object != nil &&
+		c.object.Crc32c == "" &&
+		c.mediaInfo_ != nil &&
+		c.mediaInfo_.UploadType() == "multipart" &&
+		c.mediaInfo_.ChecksumEnabled() {
+		c.object.Crc32c = c.mediaInfo_.GetAutoChecksum()
+	}
 	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.object)
 	if err != nil {
 		return nil, err
@@ -12006,6 +12146,14 @@ func (c *ObjectsRewriteCall) DestinationKmsKeyName(destinationKmsKeyName string)
 // access.
 func (c *ObjectsRewriteCall) DestinationPredefinedAcl(destinationPredefinedAcl string) *ObjectsRewriteCall {
 	c.urlParams_.Set("destinationPredefinedAcl", destinationPredefinedAcl)
+	return c
+}
+
+// DropContextGroups sets the optional parameter "dropContextGroups": Specifies
+// which groups of Object Contexts from the source object should be dropped
+// from the destination object.
+func (c *ObjectsRewriteCall) DropContextGroups(dropContextGroups ...string) *ObjectsRewriteCall {
+	c.urlParams_.SetMulti("dropContextGroups", append([]string{}, dropContextGroups...))
 	return c
 }
 

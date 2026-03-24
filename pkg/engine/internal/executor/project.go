@@ -12,10 +12,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *expressionEvaluator, region *xcap.Region) (Pipeline, error) {
+func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *expressionEvaluator) (Pipeline, error) {
 	// Shortcut for ALL=true DROP=false EXPAND=false
 	if proj.All && !proj.Drop && !proj.Expand {
 		return input, nil
@@ -56,7 +55,7 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 				// Keep only if type matches
 				return ref.Column == ident.ShortName() && ref.Type == ident.ColumnType()
 			})
-		}, input, region)
+		}, input)
 	}
 
 	// Create DROP projection pipeline:
@@ -71,23 +70,23 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 				// Drop only if type matches
 				return ref.Column == ident.ShortName() && ref.Type == ident.ColumnType()
 			})
-		}, input, region)
+		}, input)
 	}
 
 	// Create EXPAND projection pipeline:
 	// Keep all columns and expand the ones referenced in proj.Expressions.
 	// TODO: as implemented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
 	if proj.All && proj.Expand && len(expandExprs) > 0 {
-		return newExpandPipeline(expandExprs[0], evaluator, input, region)
+		return newExpandPipeline(expandExprs[0], evaluator, input)
 	}
 
 	return nil, errNotImplemented
 }
 
-func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef, *semconv.Identifier) bool, input Pipeline, region *xcap.Region) (*GenericPipeline, error) {
+func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef, *semconv.Identifier) bool, input Pipeline) (*GenericPipeline, error) {
 	identCache := semconv.NewIdentifierCache()
 
-	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
 		}
@@ -119,13 +118,13 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 		metadata := batch.Schema().Metadata()
 		schema := arrow.NewSchema(fields, &metadata)
 		return array.NewRecordBatch(schema, columns, batch.NumRows()), nil
-	}, region, input), nil
+	}, input), nil
 }
 
-func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline, region *xcap.Region) (*GenericPipeline, error) {
+func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
 	identCache := semconv.NewIdentifierCache()
 
-	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
 		}
@@ -176,11 +175,8 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 				if idx := slices.IndexFunc(outputFields, func(f arrow.Field) bool {
 					return f.Name == newField.Name
 				}); idx != -1 {
-					if newField.Name == semconv.ColumnIdentError.FQN() || newField.Name == semconv.ColumnIdentErrorDetails.FQN() {
-						outputCols[idx] = mergeErrors(outputCols[idx].(*array.String), arrCasted.Field(i).(*array.String))
-					} else {
-						panic(fmt.Sprintf("column duplicates %s", newField.Name))
-					}
+					outputCols[idx] = mergeColumns(outputCols[idx], arrCasted.Field(i))
+					outputFields[idx] = newField
 				} else {
 					outputCols = append(outputCols, arrCasted.Field(i))
 					outputFields = append(outputFields, newField)
@@ -196,25 +192,35 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 		metadata := schema.Metadata()
 		outputSchema := arrow.NewSchema(outputFields, &metadata)
 		return array.NewRecordBatch(outputSchema, outputCols, batch.NumRows()), nil
-	}, region, input), nil
+	}, input), nil
 }
 
-// mergeErrors merges string columns into a semicolon separated list of values.
-func mergeErrors(a, b *array.String) *array.String {
-	builder := array.NewStringBuilder(memory.DefaultAllocator)
-	builder.Reserve(a.Len())
+// mergeColumns merges two columns by preferring non-null and non-empty values from the new column (b).
+// If b has a null or empty value at index i, keep the value from a at that index.
+// If b has a non-null and non-empty value at index i, use the value from b (overwriting a).
+func mergeColumns(a, b arrow.Array) arrow.Array {
+	// Only handle string arrays for now (which is what parsers produce)
+	aStr, aOk := a.(*array.String)
+	bStr, bOk := b.(*array.String)
 
-	for i := range a.Len() {
-		aVal := a.Value(i)
-		bVal := b.Value(i)
-		if bVal != "" {
-			if aVal != "" {
-				builder.Append(fmt.Sprintf("%s; %s", aVal, bVal))
+	if !aOk || !bOk {
+		// If not both strings, just return b (overwrite behavior)
+		return b
+	}
+
+	builder := array.NewStringBuilder(memory.DefaultAllocator)
+	builder.Reserve(aStr.Len())
+
+	for i := range aStr.Len() {
+		if bStr.IsNull(i) || bStr.Value(i) == "" {
+			// New value is null or empty, keep old value
+			if aStr.IsNull(i) {
+				builder.AppendNull()
 			} else {
-				builder.Append(bVal)
+				builder.Append(aStr.Value(i))
 			}
 		} else {
-			builder.Append(aVal)
+			builder.Append(bStr.Value(i))
 		}
 	}
 

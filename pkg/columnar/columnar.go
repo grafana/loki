@@ -40,6 +40,13 @@ type Array interface {
 	// bytes (such as padding past the length up to the capacity of buffers).
 	Size() int
 
+	// Slice returns a slice of the Array from index i to j. Slice panics if j <
+	// i or if the slice is outside the valid range of the Array. The returned
+	// slice has a length of j-i and shares memory with the original Array.
+	//
+	// Slice panics if the following invariant is not met: 0 <= i <= j <= arr.Len()
+	Slice(i, j int) Array
+
 	// Validity returns the validity bitmap of the array. The returned bitmap
 	// may be of length 0 if there are no nulls.
 	//

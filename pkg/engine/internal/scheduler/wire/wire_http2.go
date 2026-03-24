@@ -3,6 +3,7 @@ package wire
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -24,15 +25,10 @@ type HTTP2Listener struct {
 	logger log.Logger
 	addr   net.Addr
 
-	connCh    chan *incomingHTTP2Conn
+	incoming  chan *http2Conn
 	closeOnce sync.Once
 	closed    chan struct{}
 	codec     *protobufCodec
-}
-
-type incomingHTTP2Conn struct {
-	conn *http2Conn
-	w    http.ResponseWriter
 }
 
 var (
@@ -41,20 +37,11 @@ var (
 )
 
 type http2ListenerOpts struct {
-	// MaxPendingConns defines the maximum number of pending connections (which are not Accepted yet).
-	MaxPendingConns uint
-
 	// Logger is used for logging.
 	Logger log.Logger
 }
 
 type HTTP2ListenerOptFunc func(*http2ListenerOpts)
-
-func WithHTTP2ListenerMaxPendingConns(maxPendingConns uint) HTTP2ListenerOptFunc {
-	return func(o *http2ListenerOpts) {
-		o.MaxPendingConns = maxPendingConns
-	}
-}
 
 func WithHTTP2ListenerLogger(logger log.Logger) HTTP2ListenerOptFunc {
 	return func(o *http2ListenerOpts) {
@@ -65,8 +52,7 @@ func WithHTTP2ListenerLogger(logger log.Logger) HTTP2ListenerOptFunc {
 // NewHTTP2Listener creates a new HTTP/2 listener on the specified address.
 func NewHTTP2Listener(addr net.Addr, optFuncs ...HTTP2ListenerOptFunc) *HTTP2Listener {
 	opts := http2ListenerOpts{
-		MaxPendingConns: 10,
-		Logger:          log.NewNopLogger(),
+		Logger: log.NewNopLogger(),
 	}
 	for _, optFunc := range optFuncs {
 		optFunc(&opts)
@@ -76,9 +62,9 @@ func NewHTTP2Listener(addr net.Addr, optFuncs ...HTTP2ListenerOptFunc) *HTTP2Lis
 		addr:   addr,
 		logger: opts.Logger,
 
-		connCh: make(chan *incomingHTTP2Conn, opts.MaxPendingConns),
-		closed: make(chan struct{}),
-		codec:  defaultFrameCodec,
+		incoming: make(chan *http2Conn),
+		closed:   make(chan struct{}),
+		codec:    defaultFrameCodec,
 	}
 
 	return l
@@ -121,12 +107,10 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := newHTTP2Conn(l.Addr(), remoteAddr, r.Body, w, rc, l.codec)
+	conn := newHTTP2Conn(r.Context(), l.Addr(), remoteAddr, r.Body, w, rc, l.codec)
 	defer conn.Close()
 
-	incomingConn := &incomingHTTP2Conn{conn: conn, w: w}
-
-	// Try to enqueue the connection without blocking indefinitely
+	// Wait until connection is accepted by HTTP2Listener.Accept(ctx)
 	select {
 	case <-l.closed:
 		err := conn.Close()
@@ -137,8 +121,19 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		http.Error(w, "listener closed", http.StatusServiceUnavailable)
-	case l.connCh <- incomingConn:
-		// read loop exits if a connection is closed or the context is canceled
+
+	case <-r.Context().Done():
+		level.Debug(l.logger).Log("msg", "request context cancelled", err, r.Context().Err())
+		return
+
+	case l.incoming <- conn:
+		// connection accepted
+		w.WriteHeader(http.StatusOK)
+		err := conn.responseController.Flush()
+		if err != nil {
+			level.Error(l.logger).Log("msg", "failed to flush response controller", "err", err.Error())
+			return
+		}
 		conn.readLoop(r.Context())
 	}
 }
@@ -150,13 +145,8 @@ func (l *HTTP2Listener) Accept(ctx context.Context) (Conn, error) {
 		return nil, ctx.Err()
 	case <-l.closed:
 		return nil, net.ErrClosed
-	case incomingConn := <-l.connCh:
-		incomingConn.w.WriteHeader(http.StatusOK)
-		err := incomingConn.conn.responseController.Flush()
-		if err != nil {
-			return nil, fmt.Errorf("flush response: %w", err)
-		}
-		return incomingConn.conn, nil
+	case conn := <-l.incoming:
+		return conn, nil
 	}
 }
 
@@ -175,6 +165,8 @@ func (l *HTTP2Listener) Addr() net.Addr {
 
 // http2Conn implements Conn for HTTP/2-based connections.
 type http2Conn struct {
+	ctx context.Context
+
 	localAddr  net.Addr
 	remoteAddr net.Addr
 
@@ -198,8 +190,9 @@ type incomingFrame struct {
 
 var _ Conn = (*http2Conn)(nil)
 
-// newHTTP2Conn creates a new HTTP/2 connection.
+// newHTTP2Conn creates a new HTTP/2 connection tied to the lifetime of ctx.
 func newHTTP2Conn(
+	ctx context.Context,
 	localAddr net.Addr,
 	remoteAddr net.Addr,
 	reader io.ReadCloser,
@@ -208,6 +201,7 @@ func newHTTP2Conn(
 	codec *protobufCodec,
 ) *http2Conn {
 	c := &http2Conn{
+		ctx:                ctx,
 		localAddr:          localAddr,
 		remoteAddr:         remoteAddr,
 		codec:              codec,
@@ -236,7 +230,12 @@ func (c *http2Conn) readLoop(ctx context.Context) {
 
 // Send sends a frame over the connection.
 func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
 	select {
+	case <-c.ctx.Done():
+		return ErrConnClosed
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-c.closed:
@@ -244,17 +243,19 @@ func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
 	default:
 	}
 
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
-
-	if err := c.codec.EncodeTo(c.writer, frame); err != nil {
+	err := c.codec.EncodeTo(c.writer, frame)
+	if err != nil && isHTTP2Error(err) {
+		return ErrConnClosed
+	} else if err != nil {
 		return fmt.Errorf("write frame: %w", err)
 	}
 
 	// Flush after each frame to ensure immediate delivery
 	if c.responseController != nil {
 		err := c.responseController.Flush()
-		if err != nil {
+		if err != nil && isHTTP2Error(err) {
+			return ErrConnClosed
+		} else if err != nil {
 			return fmt.Errorf("flush response: %w", err)
 		}
 	}
@@ -265,6 +266,8 @@ func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
 // Recv receives a frame from the connection.
 func (c *http2Conn) Recv(ctx context.Context) (Frame, error) {
 	select {
+	case <-c.ctx.Done():
+		return nil, ErrConnClosed
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-c.closed:
@@ -276,6 +279,9 @@ func (c *http2Conn) Recv(ctx context.Context) (Frame, error) {
 
 // Close closes the connection.
 func (c *http2Conn) Close() error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
 	var err error
 	c.closeOnce.Do(func() {
 		close(c.closed)
@@ -352,6 +358,7 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, from, to net.Addr) (Conn, error)
 
 	// Create connection
 	conn := newHTTP2Conn(
+		req.Context(),
 		from,
 		to,
 		resp.Body,
@@ -374,4 +381,29 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, from, to net.Addr) (Conn, error)
 	}
 
 	return conn, nil
+}
+
+// https://github.com/golang/net/blob/master/http2/server.go#L68-L73
+var http2Errors = map[string]struct{}{
+	"http2: stream closed":                              {},
+	"body closed by handler":                            {},
+	"http2: request body closed due to handler exiting": {},
+	"client disconnected":                               {},
+}
+
+// isHTTP2Error returns true if err represents one of the known http2 errors that leads to a
+// broken connection.
+func isHTTP2Error(err error) bool {
+	// NOTE(rfratto): At the time of writing, the http2 package doesn't have a
+	// guaranteed way to check its errors, so we look
+	// at the error message instead.
+	for {
+		next := errors.Unwrap(err)
+		if next == nil {
+			break
+		}
+		err = next
+	}
+	_, res := http2Errors[err.Error()]
+	return res
 }

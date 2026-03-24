@@ -7,39 +7,45 @@ import (
 	"strings"
 )
 
-type flags int16
+// Flags controls encoding/decoding behavior.
+type Flags int16
 
+// Flag constants for struct field handling.
 const (
-	enum      flags = 1 << 0
-	union     flags = 1 << 1
-	required  flags = 1 << 2
-	optional  flags = 1 << 3
-	strict    flags = 1 << 4
-	writeZero flags = 1 << 5
+	Enum      Flags = 1 << 0
+	Union     Flags = 1 << 1
+	Required  Flags = 1 << 2
+	Optional  Flags = 1 << 3
+	Strict    Flags = 1 << 4
+	WriteZero Flags = 1 << 5
+	ValueType Flags = 1 << 6 // indicates field implements Value interface
 
+	// Internal protocol feature flags
 	featuresBitOffset  = 8
-	useDeltaEncoding   = flags(UseDeltaEncoding) << featuresBitOffset
-	coalesceBoolFields = flags(CoalesceBoolFields) << featuresBitOffset
+	useDeltaEncoding   = Flags(UseDeltaEncoding) << featuresBitOffset
+	coalesceBoolFields = Flags(CoalesceBoolFields) << featuresBitOffset
 
-	structFlags   flags = enum | union | required | optional | writeZero
-	encodeFlags   flags = strict | protocolFlags
-	decodeFlags   flags = strict | protocolFlags
-	protocolFlags flags = useDeltaEncoding | coalesceBoolFields
+	decodeFlags   Flags = Strict | protocolFlags
+	protocolFlags Flags = useDeltaEncoding | coalesceBoolFields
 )
 
-func (f flags) have(x flags) bool {
+// Have returns true if f has all the bits in x.
+func (f Flags) Have(x Flags) bool {
 	return (f & x) == x
 }
 
-func (f flags) only(x flags) flags {
+// Only returns only the bits in f that are also in x.
+func (f Flags) Only(x Flags) Flags {
 	return f & x
 }
 
-func (f flags) with(x flags) flags {
+// With returns f with the bits in x set.
+func (f Flags) With(x Flags) Flags {
 	return f | x
 }
 
-func (f flags) without(x flags) flags {
+// Without returns f with the bits in x cleared.
+func (f Flags) Without(x Flags) Flags {
 	return f & ^x
 }
 
@@ -47,7 +53,7 @@ type structField struct {
 	typ   reflect.Type
 	index []int
 	id    int16
-	flags flags
+	flags Flags
 }
 
 func forEachStructField(t reflect.Type, index []int, do func(structField)) {
@@ -79,30 +85,30 @@ func forEachStructField(t reflect.Type, index []int, do func(structField)) {
 			continue
 		}
 		tags := strings.Split(tag, ",")
-		flags := flags(0)
+		flags := Flags(0)
 
 		for _, opt := range tags[1:] {
 			switch opt {
 			case "enum":
-				flags = flags.with(enum)
+				flags = flags.With(Enum)
 			case "union":
-				flags = flags.with(union)
+				flags = flags.With(Union)
 			case "required":
-				flags = flags.with(required)
+				flags = flags.With(Required)
 			case "optional":
-				flags = flags.with(optional)
+				flags = flags.With(Optional)
 			case "writezero":
-				flags = flags.with(writeZero)
+				flags = flags.With(WriteZero)
 			default:
 				panic(fmt.Errorf("thrift struct field contains an unknown tag option %q in `thrift:\"%s\"`", opt, tag))
 			}
 		}
 
-		if flags.have(optional | required) {
+		if flags.Have(Optional | Required) {
 			panic(fmt.Errorf("thrift struct field cannot be both optional and required in `thrift:\"%s\"`", tag))
 		}
 
-		if flags.have(union) {
+		if flags.Have(Union) {
 			if f.Type.Kind() != reflect.Interface {
 				panic(fmt.Errorf("thrift union tag found on a field which is not an interface type `thrift:\"%s\"`", tag))
 			}
@@ -117,13 +123,18 @@ func forEachStructField(t reflect.Type, index []int, do func(structField)) {
 				flags: flags,
 			})
 		} else {
-			if flags.have(enum) {
+			if flags.Have(Enum) {
 				switch f.Type.Kind() {
 				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 				case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 				default:
 					panic(fmt.Errorf("thrift enum tag found on a field which is not an integer type `thrift:\"%s\"`", tag))
 				}
+			}
+
+			// Detect types implementing Value interface
+			if f.Type.Implements(valueType) {
+				flags = flags.With(ValueType)
 			}
 
 			if id, err := strconv.ParseInt(tags[0], 10, 16); err != nil {

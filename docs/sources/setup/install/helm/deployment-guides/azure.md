@@ -13,9 +13,10 @@ This guide shows how to deploy a minimally viable Loki in **microservice** mode 
 - Full access to Azure Blob Storage
 - Sufficient permissions to create federated credentials and roles in Azure AD (Active Directory)
 
-There are three primary ways to authenticate Loki with Azure:
+There are four primary ways to authenticate Loki with Azure:
 
 - Hard coding a connection string - this is the simplest method but is not recommended for production environments.
+- Service principal
 - Managed identity
 - Federated token
 
@@ -24,7 +25,7 @@ In this guide, we will use the federated token method to deploy Loki on Azure. T
 ## Considerations
 
 {{< admonition type="caution" >}}
-This guide was accurate at the time it was last updated on **8th of January, 2025**.  As cloud providers frequently update their services and offerings, as a best practice, you should refer to the [Azure documentation](https://learn.microsoft.com/en-us/azure/) before creating your storage account and assigning roles.
+This guide was accurate at the time it was last updated on **6th of February, 2026**.  As cloud providers frequently update their services and offerings, as a best practice, you should refer to the [Azure documentation](https://learn.microsoft.com/en-us/azure/) before creating your storage account and assigning roles.
 {{< /admonition >}}
 
 - **AD Role:** In this tutorial we will create a role in Azure Active Directory (Azure AD) to allow Loki to read and write from Azure Blob Storage. This role will be assigned to the Loki service account. You may want to adjust the permissions based on your requirements.
@@ -272,15 +273,19 @@ loki:
          index:
            prefix: loki_index_
            period: 24h
-   storage_config:
+   storage:
+     type: azure
+     bucketNames:
+       chunks: "<CHUNK-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-chunks)
+       ruler: "<RULER-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-ruler)
+       # admin: "admin-loki-devrel" # Your actual Azure Blob Storage container name (loki-azure-dev-admin)
      azure:
-      account_name: "<INSERT-STORAGE-ACCOUNT-NAME>" 
-      container_name: "<CHUNK-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-chunks)
-      use_federated_token: true # Use federated token for authentication
+       accountName: <INSERT-STORAGE-ACCOUNT-NAME>
+       useFederatedToken: true # Use federated token for authentication
    ingester:
-       chunk_encoding: snappy
+     chunk_encoding: snappy
    pattern_ingester:
-       enabled: true
+     enabled: true
    limits_config:
      allow_structured_metadata: true
      volume_enabled: true
@@ -289,27 +294,11 @@ loki:
      retention_enabled: true 
      delete_request_store: azure
    ruler:
-    enable_api: true
-    storage:
-      type: azure
-      azure:
-        account_name: <INSERT-STORAGE-ACCOUNT-NAME>
-        container_name: <RULER-CONTAINER-NAME> # Your actual Azure Blob Storage container name (loki-azure-dev-ruler)
-        use_federated_token: true # Use federated token for authentication
-      alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
+     enable_api: true
+     alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
 
    querier:
-      max_concurrent: 4
-
-   storage:
-      type: azure
-      bucketNames:
-        chunks: "<CHUNK-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-chunks)
-        ruler: "<RULER-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-ruler)
-        # admin: "admin-loki-devrel" # Your actual Azure Blob Storage container name (loki-azure-dev-admin)
-      azure:
-        accountName: <INSERT-STORAGE-ACCOUNT-NAME>
-        useFederatedToken: true # Use federated token for authentication
+     max_concurrent: 4
 
 # Define the Azure workload identity
 serviceAccount:
@@ -327,38 +316,39 @@ ingester:
   enabled: false
 
 querier:
- replicas: 3
- maxUnavailable: 2
+  replicas: 3
+  maxUnavailable: 2
 
 queryFrontend:
- replicas: 2
- maxUnavailable: 1
+  replicas: 2
+  maxUnavailable: 1
 
 queryScheduler:
- replicas: 2
+  replicas: 2
 
 distributor:
- replicas: 3
- maxUnavailable: 2
+  replicas: 3
+  maxUnavailable: 2
+
 compactor:
- replicas: 1
+  replicas: 1
 
 indexGateway:
- replicas: 2
- maxUnavailable: 1
+  replicas: 2
+  maxUnavailable: 1
 
 ruler:
- replicas: 1
- maxUnavailable: 1
+  replicas: 1
+  maxUnavailable: 1
 
 
 # This exposes the Loki gateway so it can be written to and queried externaly
 gateway:
- service:
-   type: LoadBalancer
- basicAuth: 
-     enabled: true
-     existingSecret: loki-basic-auth
+  service:
+    type: LoadBalancer
+  basicAuth: 
+    enabled: true
+    existingSecret: loki-basic-auth
 
 # Since we are using basic auth, we need to pass the username and password to the canary
 lokiCanary:
@@ -379,17 +369,17 @@ lokiCanary:
 
 # Enable minio for storage
 minio:
- enabled: false
+  enabled: false
 
 backend:
- replicas: 0
+  replicas: 0
 read:
- replicas: 0
+  replicas: 0
 write:
- replicas: 0
+  replicas: 0
 
 singleBinary:
- replicas: 0
+  replicas: 0
 ```
 
 {{< admonition type="caution" >}}
@@ -401,7 +391,7 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
 - **Loki Config vs. Values Config:**
   - The `values.yaml` file contains a section called `loki`, which contains a direct representation of the Loki configuration file.
   - This section defines the Loki configuration, including the schema, storage, and querier configuration.
-  - The key configuration to focus on for chunks is the `storage_config` section, where you define the Azure container name and storage account. This tells Loki where to store the chunks.
+  - The key configuration to focus on for chunks is the `storage` section, where you define the Azure container name and storage account. This tells Loki where to store the chunks.
   - The `ruler` section defines the configuration for the ruler, including the Azure container name and storage account. This tells Loki where to store the alert and recording rules.
   - For the full Loki configuration, refer to the [Loki Configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/) documentation.
 

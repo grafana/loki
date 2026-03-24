@@ -75,15 +75,39 @@ func TestConcat_UTF8(t *testing.T) {
 	columnartest.RequireArraysEqual(t, expect, actual)
 }
 
+func TestConcat_UTF8_Slices(t *testing.T) {
+	// Variable-sized types like UTF8 don't slice as "naturally" as fixed-size
+	// types: it slices the offsets array but not the data array. Because of
+	// this, we need to add a special test for concatenating UTF8 to ensure that
+	// it handles it properly.
+
+	var alloc memory.Allocator
+
+	in := []columnar.Array{
+		columnartest.Array(t, columnar.KindUTF8, &alloc, "hello", "world", "foo", "bar").Slice(1, 3),
+		columnartest.Array(t, columnar.KindUTF8, &alloc),
+		columnartest.Array(t, columnar.KindUTF8, &alloc, "baz", nil),
+	}
+
+	expect := columnartest.Array(
+		t, columnar.KindUTF8, &alloc,
+		"world", "foo", "baz", nil,
+	)
+
+	actual, err := columnar.Concat(&alloc, in)
+	require.NoError(t, err)
+	columnartest.RequireArraysEqual(t, expect, actual)
+}
+
 func BenchmarkConcat(b *testing.B) {
 	b.Run("kind=Null", func(b *testing.B) {
 		var alloc memory.Allocator
 
 		var in []columnar.Array
 		for range 128 {
-			validity := memory.MakeBitmap(&alloc, 128)
+			validity := memory.NewBitmap(&alloc, 128)
 			validity.AppendCount(false, 128)
-			in = append(in, columnar.MakeNull(validity))
+			in = append(in, columnar.NewNull(validity))
 		}
 
 		var loopAlloc memory.Allocator
@@ -106,8 +130,8 @@ func BenchmarkConcat(b *testing.B) {
 
 		var in []columnar.Array
 		for i := range 128 {
-			values := memory.MakeBitmap(&alloc, 128)
-			validity := memory.MakeBitmap(&alloc, 128)
+			values := memory.NewBitmap(&alloc, 128)
+			validity := memory.NewBitmap(&alloc, 128)
 
 			// Alternate values and validity for variety
 			for j := range 128 {
@@ -115,7 +139,7 @@ func BenchmarkConcat(b *testing.B) {
 				validity.Append(j%10 != 0) // Every 10th element is null
 			}
 
-			in = append(in, columnar.MakeBool(values, validity))
+			in = append(in, columnar.NewBool(values, validity))
 		}
 
 		var loopAlloc memory.Allocator
@@ -139,7 +163,7 @@ func BenchmarkConcat(b *testing.B) {
 		var in []columnar.Array
 		for i := range 128 {
 			values := make([]int64, 128)
-			validity := memory.MakeBitmap(&alloc, 128)
+			validity := memory.NewBitmap(&alloc, 128)
 
 			// Alternate values and validity for variety
 			for j := range 128 {
@@ -147,7 +171,7 @@ func BenchmarkConcat(b *testing.B) {
 				validity.Append(j%10 != 0) // Every 10th element is null
 			}
 
-			in = append(in, columnar.MakeNumber[int64](values, validity))
+			in = append(in, columnar.NewNumber[int64](values, validity))
 		}
 
 		var loopAlloc memory.Allocator

@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -32,6 +33,7 @@ import (
 var (
 	engineLogs      = flag.Bool("engine-logs", false, "include engine logs in verbose output")
 	remoteTransport = flag.Bool("remote-transport", false, "run engine with remote transport over loopback interface")
+	storageLatency  = flag.Duration("storage-latency", 0*time.Millisecond, "simulated per-request object storage latency (e.g. 10ms)")
 )
 
 // DataObjV2EngineStore uses the new engine for querying. It assumes the engine
@@ -73,12 +75,16 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 	}
 
 	storeDir := filepath.Join(dataDir, "dataobj")
-	bucketClient, err := filesystem.NewBucket(storeDir)
-	registerer := prometheus.NewRegistry()
-	ms := metastore.NewObjectMetastore(bucketClient, metastoreCfg, logger, metastore.NewObjectMetastoreMetrics(registerer))
+	fsBucket, err := filesystem.NewBucket(storeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create filesystem bucket for DataObjV2EngineStore: %w", err)
 	}
+	var bucketClient objstore.Bucket = fsBucket
+	if *storageLatency > 0 {
+		bucketClient = newLatencyBucket(fsBucket, *storageLatency)
+	}
+	registerer := prometheus.NewRegistry()
+	ms := metastore.NewObjectMetastore(bucketClient, metastoreCfg, logger, metastore.NewObjectMetastoreMetrics(registerer))
 
 	var (
 		schedSrv  *server.Server
@@ -261,4 +267,49 @@ func (uw *unescapeWriter) Write(p []byte) (int, error) {
 	}
 
 	return len(p), nil
+}
+
+// latencyBucket wraps an objstore.Bucket and injects a configurable delay
+// before each read operation to simulate object storage latency (e.g. S3/GCS).
+type latencyBucket struct {
+	objstore.Bucket
+	latency time.Duration
+}
+
+func newLatencyBucket(bucket objstore.Bucket, latency time.Duration) *latencyBucket {
+	return &latencyBucket{Bucket: bucket, latency: latency}
+}
+
+func (b *latencyBucket) delay() {
+	time.Sleep(b.latency)
+}
+
+func (b *latencyBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	b.delay()
+	return b.Bucket.Get(ctx, name)
+}
+
+func (b *latencyBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	b.delay()
+	return b.Bucket.GetRange(ctx, name, off, length)
+}
+
+func (b *latencyBucket) Exists(ctx context.Context, name string) (bool, error) {
+	b.delay()
+	return b.Bucket.Exists(ctx, name)
+}
+
+func (b *latencyBucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
+	b.delay()
+	return b.Bucket.Attributes(ctx, name)
+}
+
+func (b *latencyBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+	b.delay()
+	return b.Bucket.Iter(ctx, dir, f, options...)
+}
+
+func (b *latencyBucket) IterWithAttributes(ctx context.Context, dir string, f func(objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	b.delay()
+	return b.Bucket.IterWithAttributes(ctx, dir, f, options...)
 }

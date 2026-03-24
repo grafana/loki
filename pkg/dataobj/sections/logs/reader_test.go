@@ -107,6 +107,21 @@ func TestReader(t *testing.T) {
 	}
 }
 
+func TestReader_ReadBeforeOpen(t *testing.T) {
+	sec := buildSection(t, []logs.Record{
+		{StreamID: 1, Timestamp: unixTime(10), Line: []byte("hello")},
+	})
+
+	r := logs.NewReader(logs.ReaderOptions{
+		Columns:   sec.Columns(),
+		Allocator: memory.DefaultAllocator,
+	})
+
+	rec, err := r.Read(context.Background(), 128)
+	require.Nil(t, rec)
+	require.ErrorContains(t, err, "reader not opened")
+}
+
 func buildSection(t *testing.T, recs []logs.Record) *logs.Section {
 	t.Helper()
 
@@ -137,6 +152,9 @@ func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
 func readTable(ctx context.Context, r *logs.Reader) (arrow.Table, error) {
 	var recs []arrow.RecordBatch
+	if err := r.Open(ctx); err != nil {
+		return nil, err
+	}
 
 	for {
 		rec, err := r.Read(ctx, 128)

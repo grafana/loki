@@ -451,9 +451,6 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 	default:
 	}
 
-	dur := prometheus.NewTimer(b.metrics.sortDurationSeconds)
-	defer dur.ObserveDuration()
-
 	sort := parseSortOrder(b.cfg.DataobjSortOrder)
 
 	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)

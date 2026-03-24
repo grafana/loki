@@ -2668,9 +2668,7 @@ func validateOpCreateTableInput(v *CreateTableInput) error {
 		return nil
 	}
 	invalidParams := smithy.InvalidParamsError{Context: "CreateTableInput"}
-	if v.AttributeDefinitions == nil {
-		invalidParams.Add(smithy.NewErrParamRequired("AttributeDefinitions"))
-	} else if v.AttributeDefinitions != nil {
+	if v.AttributeDefinitions != nil {
 		if err := validateAttributeDefinitions(v.AttributeDefinitions); err != nil {
 			invalidParams.AddNested("AttributeDefinitions", err.(smithy.InvalidParamsError))
 		}
@@ -2678,9 +2676,7 @@ func validateOpCreateTableInput(v *CreateTableInput) error {
 	if v.TableName == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("TableName"))
 	}
-	if v.KeySchema == nil {
-		invalidParams.Add(smithy.NewErrParamRequired("KeySchema"))
-	} else if v.KeySchema != nil {
+	if v.KeySchema != nil {
 		if err := validateKeySchema(v.KeySchema); err != nil {
 			invalidParams.AddNested("KeySchema", err.(smithy.InvalidParamsError))
 		}

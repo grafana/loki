@@ -16,8 +16,8 @@ import (
 const (
 	// Special offsets in Kafka that refer to the start or end offset for
 	// a partition.
-	OffsetStart = -2
-	OffsetEnd   = -1
+	OffsetStart = int64(-2)
+	OffsetEnd   = int64(-1)
 )
 
 type Committer struct {
@@ -120,7 +120,7 @@ func (r *OffsetReader) LastCommittedOffset(ctx context.Context, partition int32)
 		level.Debug(r.logger).Log(
 			"msg", "malformed response, setting to start offset",
 		)
-		return int64(OffsetStart), nil
+		return OffsetStart, nil
 	}
 	partitionRes := fetchRes.Groups[0].Topics[0].Partitions[0]
 	if err := kerr.ErrorForCode(partitionRes.ErrorCode); err != nil {
@@ -135,7 +135,7 @@ func (r *OffsetReader) ResumeOffset(ctx context.Context, partition int32) (int64
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch last committed offset: %w", err)
 	}
-	initialOffset := int64(OffsetStart)
+	initialOffset := OffsetStart
 	if lastCommittedOffset >= 0 {
 		initialOffset = lastCommittedOffset + 1
 	}
@@ -146,7 +146,7 @@ func (r *OffsetReader) ResumeOffset(ctx context.Context, partition int32) (int64
 func (r *OffsetReader) EndOffset(ctx context.Context, partition int32) (int64, error) {
 	partitionReq := kmsg.NewListOffsetsRequestTopicPartition()
 	partitionReq.Partition = partition
-	partitionReq.Timestamp = int64(OffsetEnd)
+	partitionReq.Timestamp = OffsetEnd
 
 	topicReq := kmsg.NewListOffsetsRequestTopic()
 	topicReq.Topic = r.topic

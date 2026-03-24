@@ -6,11 +6,13 @@ package libc // import "modernc.org/libc"
 
 import (
 	"golang.org/x/sys/windows"
-	"modernc.org/libc/errno"
-	"modernc.org/libc/sys/types"
+	"math"
 	"os"
 	"strings"
 	"unsafe"
+
+	"modernc.org/libc/errno"
+	"modernc.org/libc/sys/types"
 )
 
 // int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
@@ -626,4 +628,15 @@ func Xstrspn(tls *TLS, s uintptr, c uintptr) size_t { /* strspn.c:6:8: */
 	for ; *(*int8)(unsafe.Pointer(s)) != 0 && *(*size_t)(unsafe.Pointer(bp + uintptr(size_t(*(*uint8)(unsafe.Pointer(s)))/(uint64(8)*uint64(unsafe.Sizeof(size_t(0)))))*8))&(size_t(uint64(1))<<(size_t(*(*uint8)(unsafe.Pointer(s)))%(uint64(8)*uint64(unsafe.Sizeof(size_t(0)))))) != 0; s++ {
 	}
 	return size_t((int64(s) - int64(a)) / 1)
+}
+
+func Xstrtod(t *TLS, s uintptr, p uintptr) float64 {
+	if __ccgo_strace {
+		trc("tls=%v s=%v p=%v, (%v:)", t, s, p, origin(2))
+	}
+	_, r2, err := procStrtod.Call(uintptr(s), uintptr(p))
+	if err != windows.NOERROR {
+		t.setErrno(err)
+	}
+	return math.Float64frombits(uint64(r2))
 }

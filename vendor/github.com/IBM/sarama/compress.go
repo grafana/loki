@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	snappy "github.com/eapache/go-xerial-snappy"
 	"github.com/klauspost/compress/gzip"
+	snappy "github.com/klauspost/compress/snappy/xerial"
 	"github.com/pierrec/lz4/v4"
 )
 
@@ -116,7 +116,7 @@ func compress(cc CompressionCodec, level int, data []byte) ([]byte, error) {
 	case CompressionGZIP:
 		return gzipCompress(level, data)
 	case CompressionSnappy:
-		return snappy.Encode(data), nil
+		return snappy.Encode(nil, data), nil
 	case CompressionLZ4:
 		return lz4Compress(data)
 	case CompressionZSTD:

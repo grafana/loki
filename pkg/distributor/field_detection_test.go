@@ -1408,3 +1408,112 @@ func Test_detectLevelFromLogLine(t *testing.T) {
 		})
 	}
 }
+
+func Test_detectLevelFromLogLine_earliestPosition(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		log      string
+		expected string
+	}{
+		{
+			name:     "info before warning and error in arguments picks info",
+			log:      "2024-01-01T10:00:00Z info request failed -l warning --log-level misc:error",
+			expected: constants.LogLevelInfo,
+		},
+		{
+			name:     "warning appears before info positionally wins despite lower pattern priority",
+			log:      "warning: degraded, info follows",
+			expected: constants.LogLevelWarn,
+		},
+		{
+			name:     "error appears before info positionally wins",
+			log:      "[error] something went wrong, info available",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "key:value colon prefix does not match, later bounded keyword wins",
+			log:      "component=misc:error [info] processed",
+			expected: constants.LogLevelInfo,
+		},
+		{
+			name:     "first occurrence of keyword is unbounded, second is bounded",
+			log:      "fooerror [error] message",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "all occurrences unbounded returns unknown",
+			log:      "fooerror errorbar misc:error error_code",
+			expected: constants.LogLevelUnknown,
+		},
+		// nginx error log: level in [brackets] after timestamp
+		{
+			name:     "nginx error log with [error] bracket",
+			log:      "2024/01/01 10:00:00 [error] 1234#1234: *1 connect() failed (111: Connection refused) while connecting to upstream",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "nginx warn log with [warn] bracket",
+			log:      "2024/01/01 10:00:00 [warn] 1234#1234: upstream server temporarily disabled while reading response header from upstream",
+			expected: constants.LogLevelWarn,
+		},
+		{
+			name:     "nginx access log with error in url path returns unknown",
+			log:      `192.168.1.1 - - [01/Jan/2024:10:00:00 +0000] "GET /api/error-handler HTTP/1.1" 500 1234 "-" "curl/7.68.0"`,
+			expected: constants.LogLevelUnknown,
+		},
+		// apache httpd error log: level in second [brackets] after date
+		{
+			name:     "apache httpd error log",
+			log:      "[Mon Jan 01 10:00:00.000000 2024] [error] [pid 1234] File does not exist: /var/www/html/favicon.ico",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "apache httpd warn log",
+			log:      "[Mon Jan 01 10:00:00.000000 2024] [warn] [pid 1234] RSA server certificate CommonName does not match",
+			expected: constants.LogLevelWarn,
+		},
+		// spring boot: uppercase level between timestamp and PID, message may repeat level words
+		{
+			name:     "spring boot INFO log",
+			log:      "2024-01-01 10:00:00.000  INFO 1234 --- [main] com.example.App : Starting application on host",
+			expected: constants.LogLevelInfo,
+		},
+		{
+			name:     "spring boot ERROR where message also contains error",
+			log:      "2024-01-01 10:00:00.000 ERROR 1234 --- [main] com.example.App : Application startup failed due to connection error",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "spring boot INFO where class name contains error but is not a standalone keyword",
+			log:      "2024-01-01 10:00:00.000  INFO 1234 --- [main] com.example.ErrorController : Handling request for /api/error-resource",
+			expected: constants.LogLevelInfo,
+		},
+		// log4j: level after timestamp, followed by logger name and message
+		{
+			name:     "log4j WARN log",
+			log:      "2024-01-01 10:00:00,000 WARN  com.example.service.UserService - Failed to load user preferences, using defaults",
+			expected: constants.LogLevelWarn,
+		},
+		{
+			name:     "log4j ERROR where logger name and message both contain error",
+			log:      "2024-01-01 10:00:00,000 ERROR com.example.service.DatabaseService - Connection failed after error: timeout",
+			expected: constants.LogLevelError,
+		},
+		// istio/envoy: tab-separated fields, level is second field; message may contain metric names like error_rate
+		{
+			name:     "istio warn log with error_rate metric in message",
+			log:      "2024-01-01T10:00:00.000000Z\twarn\tads\tcluster update: warning threshold exceeded, error_rate=0.05",
+			expected: constants.LogLevelWarn,
+		},
+		{
+			name:     "envoy info log with warning and misc:error flags in command args",
+			log:      "2024-01-01T10:00:00.000000Z    info    Envoy command: [-c /etc/envoy.json -l warning --component-log-level misc:error --concurrency 2]",
+			expected: constants.LogLevelInfo,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := detectLevelFromLogLine(tc.log)
+			require.Equal(t, tc.expected, result, "log: %q", tc.log)
+		})
+	}
+}

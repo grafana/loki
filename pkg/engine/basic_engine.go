@@ -172,6 +172,15 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			return nil, ErrNotSupported
 		}
 
+		plan, err = physical.WrapWithBatching(plan, e.cfg.BatchSize)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to wrap physical plan with batching", "err", err)
+			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "failed to wrap physical plan with batching")
+			return nil, ErrNotSupported
+		}
+
 		durPhysicalPlanning = timer.ObserveDuration()
 		level.Info(logger).Log(
 			"msg", "finished physical planning",
@@ -264,6 +273,10 @@ func IsQuerySupported(params logql.Params) bool {
 }
 
 func collectResult(ctx context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
+	if err := pipeline.Open(ctx); err != nil {
+		return err
+	}
+
 	for {
 		rec, err := pipeline.Read(ctx)
 		if err != nil {

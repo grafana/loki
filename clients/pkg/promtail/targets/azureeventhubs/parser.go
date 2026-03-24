@@ -200,12 +200,13 @@ func (e *messageParser) getLabels(logRecord *azureMonitorResourceLog, relabelCon
 		Value: logRecord.Category,
 	})
 
-	var processed labels.Labels
+	lb := labels.NewBuilder(lbs)
 	if len(relabelConfig) > 0 {
-		processed, _ = relabel.Process(lbs, relabelConfig...)
-	} else {
-		processed = lbs
+		if keep := relabel.ProcessBuilder(lb, relabelConfig...); !keep {
+			return nil
+		}
 	}
+	processed := lb.Labels()
 
 	// final labelset that will be sent to loki
 	resultLabels := make(model.LabelSet)

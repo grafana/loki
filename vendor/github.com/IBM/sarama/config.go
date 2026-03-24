@@ -95,7 +95,7 @@ type Config struct {
 			// SASL/PLAIN or SASL/SCRAM authentication
 			User string
 			// Password for SASL/PLAIN authentication
-			Password string
+			Password string // #nosec G117 -- public SASL config schema; callers set this credential explicitly.
 			// authz id used for SASL/SCRAM authentication
 			SCRAMAuthzID string
 			// SCRAMClientGeneratorFunc is a generator of a user provided implementation of a SCRAM
@@ -327,6 +327,7 @@ type Config struct {
 			}
 			Rebalance struct {
 				// Strategy for allocating topic partitions to members.
+				//
 				// Deprecated: Strategy exists for historical compatibility
 				// and should not be used. Please use GroupStrategies.
 				Strategy BalanceStrategy

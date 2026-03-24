@@ -50,8 +50,21 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix(prefix, f, util_log.Logger)
 	cfg.PartitionRingConfig.RegisterFlagsWithPrefix(prefix, f)
 	cfg.UploaderConfig.RegisterFlagsWithPrefix(prefix, f)
-
-	f.StringVar(&cfg.Topic, prefix+"topic", "", "The name of the Kafka topic")
-	f.DurationVar(&cfg.IdleFlushTimeout, prefix+"idle-flush-timeout", 60*60*time.Second, "The maximum amount of time to wait in seconds before flushing an object that is no longer receiving new writes")
-	f.DurationVar(&cfg.MaxBuilderAge, prefix+"max-builder-age", time.Hour, "The maximum amount of time to accumulate data in a builder before flushing it. Defaults to 1 hour.")
+	f.StringVar(
+		&cfg.Topic,
+		prefix+"topic",
+		"",
+		"The name of the Kafka topic.",
+	)
+	f.DurationVar(
+		&cfg.IdleFlushTimeout,
+		prefix+"idle-flush-timeout",
+		time.Hour,
+		"The maximum amount of time to wait in seconds before flushing an object that is no longer receiving new writes.",
+	)
+	f.DurationVar(&cfg.MaxBuilderAge,
+		prefix+"max-builder-age",
+		time.Hour,
+		"The maximum amount of time to accumulate data in a builder before flushing it. Defaults to 1 hour.",
+	)
 }

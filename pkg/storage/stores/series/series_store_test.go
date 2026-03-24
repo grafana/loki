@@ -399,7 +399,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 
 			for _, tc := range testCases {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
-					matchers, err := parser.ParseMetricSelector(tc.query)
+					matchers, err := parser.NewParser(parser.Options{}).ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -528,7 +528,7 @@ func Test_GetSeries(t *testing.T) {
 
 			for _, tc := range testCases {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
-					matchers, err := parser.ParseMetricSelector(tc.query)
+					matchers, err := parser.NewParser(parser.Options{}).ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -584,7 +584,7 @@ func Test_GetSeriesShard(t *testing.T) {
 		for _, tc := range testCases {
 			t.Run(fmt.Sprintf("%s / %s / %s", tc.query, "v12", storeCase.name), func(t *testing.T) {
 				t.Log("========= Running query", tc.query, "with schema", "v12")
-				matchers, err := parser.ParseMetricSelector(tc.query)
+				matchers, err := parser.NewParser(parser.Options{}).ParseMetricSelector(tc.query)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -659,7 +659,7 @@ func TestChunkStoreError(t *testing.T) {
 				store, _ := newTestChunkStore(t, schema)
 				defer store.Stop()
 
-				matchers, err := parser.ParseMetricSelector(tc.query)
+				matchers, err := parser.NewParser(parser.Options{}).ParseMetricSelector(tc.query)
 				require.NoError(t, err)
 
 				// Query with ordinary time-range

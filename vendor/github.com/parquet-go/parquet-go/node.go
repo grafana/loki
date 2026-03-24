@@ -1,8 +1,10 @@
 package parquet
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -10,6 +12,7 @@ import (
 	"github.com/parquet-go/parquet-go/compress"
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding"
+	"github.com/parquet-go/parquet-go/encoding/thrift"
 	"github.com/parquet-go/parquet-go/format"
 )
 
@@ -224,22 +227,16 @@ func (n *leafNode) Compression() compress.Codec { return nil }
 
 func (n *leafNode) GoType() reflect.Type { return goTypeOfLeaf(n) }
 
-var repetitionTypes = [...]format.FieldRepetitionType{
-	0: format.Required,
-	1: format.Optional,
-	2: format.Repeated,
-}
-
-func fieldRepetitionTypePtrOf(node Node) *format.FieldRepetitionType {
+func fieldRepetitionTypeNullOf(node Node) thrift.Null[format.FieldRepetitionType] {
 	switch {
 	case node.Required():
-		return &repetitionTypes[format.Required]
+		return thrift.New(format.Required)
 	case node.Optional():
-		return &repetitionTypes[format.Optional]
+		return thrift.New(format.Optional)
 	case node.Repeated():
-		return &repetitionTypes[format.Repeated]
+		return thrift.New(format.Repeated)
 	default:
-		return nil
+		return thrift.Null[format.FieldRepetitionType]{}
 	}
 }
 
@@ -321,7 +318,36 @@ func (f *groupField) Value(base reflect.Value) reflect.Value {
 			return reflect.ValueOf(nil)
 		}
 	}
-	return base.MapIndex(reflect.ValueOf(&f.name).Elem())
+	switch base.Kind() {
+	case reflect.Struct:
+		return groupFieldByName(base, f.name)
+	case reflect.Ptr:
+		if base.IsNil() {
+			base.Set(reflect.New(base.Type().Elem()))
+		}
+		return groupFieldByName(base.Elem(), f.name)
+	default:
+		return base.MapIndex(reflect.ValueOf(&f.name).Elem())
+	}
+}
+
+// groupFieldByName looks up a struct field by its parquet tag name,
+// falling back to matching the Go field name directly.
+func groupFieldByName(base reflect.Value, name string) reflect.Value {
+	t := base.Type()
+	for i := range t.NumField() {
+		f := t.Field(i)
+		if tag := f.Tag.Get("parquet"); tag != "" {
+			fieldName, _ := split(tag)
+			if fieldName == name {
+				return base.Field(i)
+			}
+		}
+		if f.Name == name {
+			return base.Field(i)
+		}
+	}
+	return reflect.Value{}
 }
 
 func goTypeOf(node Node) reflect.Type {
@@ -381,18 +407,70 @@ func goTypeOfLeaf(node Node) reflect.Type {
 func goTypeOfGroup(node Node) reflect.Type {
 	fields := node.Fields()
 	structFields := make([]reflect.StructField, len(fields))
+	names := make(map[string]struct{}, len(fields))
 	for i, field := range fields {
-		structFields[i].Name = exportedStructFieldName(field.Name())
+		if strings.IndexByte(field.Name(), ',') != -1 {
+			// Ruh-roh! We cannot create a valid Go identifier, but neither can we
+			// create a valid Go struct tag for mapping a synthetic field name.
+			panic(fmt.Sprintf("schema node contains an invalid name %q: fields must not have commas in their name", field.Name()))
+		}
+		name := exportedStructFieldName(field.Name())
+		for {
+			if _, alreadyUsed := names[name]; !alreadyUsed {
+				break
+			}
+			name += "_" // add suffix to fix collision
+		}
+		names[name] = struct{}{}
+		structFields[i].Name = name
 		structFields[i].Type = field.GoType()
-		// TODO: can we reconstruct a struct tag that would be valid if a value
-		// of this type were passed to SchemaOf?
+		structFields[i].Tag = reflect.StructTag(`parquet:` + strconv.Quote(field.Name()))
 	}
 	return reflect.StructOf(structFields)
 }
 
 func exportedStructFieldName(name string) string {
 	firstRune, size := utf8.DecodeRuneInString(name)
-	return string([]rune{unicode.ToUpper(firstRune)}) + name[size:]
+	if unicode.IsUpper(firstRune) {
+		return sanitize(name)
+	}
+	upperFirstRune := unicode.ToUpper(firstRune)
+	if upperFirstRune == firstRune {
+		// First character was not a letter, so just trying to upper-case the first
+		// character won't export the field. We need to add an upper-case prefix instead.
+		return "X" + sanitize(name)
+	}
+	return string([]rune{upperFirstRune}) + sanitize(name[size:])
+}
+
+// sanitize replaces any character that are invalid in a Go identifier with "_".
+func sanitize(name string) string {
+	if isSanitized(name) {
+		// Fast path: name is fine, no need to allocate or compute anything.
+		return name
+	}
+	var newName strings.Builder
+	for _, r := range name {
+		if isValidInGoIdent(r) {
+			newName.WriteRune(r)
+		} else {
+			newName.WriteByte('_')
+		}
+	}
+	return newName.String()
+}
+
+func isSanitized(name string) bool {
+	for _, r := range name {
+		if !isValidInGoIdent(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isValidInGoIdent(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
 func isList(node Node) bool {
@@ -421,20 +499,24 @@ func numLeafColumns(node Node, columnIndex int) int {
 
 func listElementOf(node Node) Node {
 	if !node.Leaf() {
-		if list := fieldByName(node, "list"); list != nil {
-			if elem := fieldByName(list, "element"); elem != nil {
-				return elem
-			}
-			// TODO: It should not be named "item", but some versions of pyarrow
-			//       and some versions of polars used that instead of "element".
-			//       https://issues.apache.org/jira/browse/ARROW-11497
-			//       https://github.com/pola-rs/polars/issues/17100
-			if elem := fieldByName(list, "item"); elem != nil {
-				return elem
+		// The spec says the outer group should be named "list" and the inner
+		// element should be named "element", but many implementations use
+		// different names (e.g. "bag"/"array_element", "list"/"item").
+		// Per the spec's backward compatibility rules, we should not enforce
+		// specific names when reading.
+		//
+		// A LIST node should have exactly one child (the repeated group),
+		// and that group should have exactly one child (the element).
+		if fields := node.Fields(); len(fields) == 1 {
+			repeatedGroup := fields[0]
+			if !repeatedGroup.Leaf() && repeatedGroup.Repeated() {
+				if elems := repeatedGroup.Fields(); len(elems) == 1 {
+					return elems[0]
+				}
 			}
 		}
 	}
-	panic("node with logical type LIST is not composed of a repeated .list.element")
+	panic("node with logical type LIST is not composed of a repeated group with a single element")
 }
 
 func mapKeyValueOf(node Node) Node {

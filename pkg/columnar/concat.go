@@ -39,9 +39,9 @@ func Concat(alloc *memory.Allocator, in []Array) (Array, error) {
 
 func concatNull(alloc *memory.Allocator, in []Array) (Array, error) {
 	totalLen := getTotalLen(in)
-	validity := memory.MakeBitmap(alloc, totalLen)
+	validity := memory.NewBitmap(alloc, totalLen)
 	validity.AppendCount(false, totalLen)
-	return MakeNull(validity), nil
+	return NewNull(validity), nil
 }
 
 func getTotalLen(in []Array) int {
@@ -56,8 +56,8 @@ func concatBool(alloc *memory.Allocator, in []Array) (Array, error) {
 	totalLen := getTotalLen(in)
 
 	var (
-		validity = memory.MakeBitmap(alloc, totalLen)
-		values   = memory.MakeBitmap(alloc, totalLen)
+		validity = memory.NewBitmap(alloc, totalLen)
+		values   = memory.NewBitmap(alloc, totalLen)
 	)
 
 	for _, arr := range in {
@@ -70,7 +70,7 @@ func concatBool(alloc *memory.Allocator, in []Array) (Array, error) {
 	}
 
 	cleanValidity(&validity)
-	return MakeBool(values, validity), nil
+	return NewBool(values, validity), nil
 }
 
 // appendValidityBitmap appends the validity bitmap of srcArray into dst. If
@@ -97,8 +97,8 @@ func concatNumber[T Numeric](alloc *memory.Allocator, in []Array) (Array, error)
 	totalLen := getTotalLen(in)
 
 	var (
-		validity = memory.MakeBitmap(alloc, totalLen)
-		values   = memory.MakeBuffer[T](alloc, totalLen)
+		validity = memory.NewBitmap(alloc, totalLen)
+		values   = memory.NewBuffer[T](alloc, totalLen)
 	)
 
 	for _, arr := range in {
@@ -111,21 +111,24 @@ func concatNumber[T Numeric](alloc *memory.Allocator, in []Array) (Array, error)
 	}
 
 	cleanValidity(&validity)
-	return MakeNumber[T](values.Data(), validity), nil
+	return NewNumber[T](values.Data(), validity), nil
 }
 
+// concatUTF8 concatenates UTF8 arrays, normalizing offsets to be zero-based.
 func concatUTF8(alloc *memory.Allocator, in []Array) (Array, error) {
 	totalLen := getTotalLen(in)
 
 	var totalDataLen int
 	for _, arr := range in {
-		totalDataLen += len(arr.(*UTF8).Data())
+		// NOTE(rfratto): This is more accurate than len(arr.(*UTF8).Data()),
+		// which doesn't account arr being a slice.
+		totalDataLen += arr.(*UTF8).DataLen()
 	}
 
 	var (
-		validity   = memory.MakeBitmap(alloc, totalLen)
-		offsetsBuf = memory.MakeBuffer[int32](alloc, totalLen+1) // +1 for first offset
-		data       = memory.MakeBuffer[byte](alloc, totalDataLen)
+		validity   = memory.NewBitmap(alloc, totalLen)
+		offsetsBuf = memory.NewBuffer[int32](alloc, totalLen+1) // +1 for first offset
+		data       = memory.NewBuffer[byte](alloc, totalDataLen)
 	)
 
 	offsetsBuf.Resize(totalLen + 1)
@@ -144,12 +147,25 @@ func concatUTF8(alloc *memory.Allocator, in []Array) (Array, error) {
 
 		appendValidityBitmap(&validity, arr)
 
-		utf8Array := arr.(*UTF8)
-		data.Append(utf8Array.Data()...)
+		var (
+			utf8Array   = arr.(*UTF8)
+			fullArrData = utf8Array.Data()
+			arrOffsets  = utf8Array.Offsets()
 
-		// Appending arrOffsets requires more caution, since all arrOffsets need to be
-		// adjusted based on the most recent offset.
-		arrOffsets := utf8Array.Offsets()
+			// arrData holds the subset of data used by arrOffsets.
+			//
+			// This is smaller than fullArrData when arr is a slice, where
+			// arrOffsets points to a subset of data.
+			//
+			// This reduces the amount of data we write, but is also needed for
+			// correctness, as we need everything in the final data buffer to be
+			// contiguous with no gaps.
+			arrData = fullArrData[arrOffsets[0]:arrOffsets[len(arrOffsets)-1]]
+		)
+
+		// We're going to normalize offsets and data as we write, so we need to
+		// shrink arrData to what's actually used.
+		data.Append(arrData...)
 
 		// We don't want to append the first offset from an array; it's always
 		// the last offset we already added. Appending the first offset would
@@ -178,5 +194,5 @@ func concatUTF8(alloc *memory.Allocator, in []Array) (Array, error) {
 	}
 
 	cleanValidity(&validity)
-	return MakeUTF8(data.Data(), offsets, validity), nil
+	return NewUTF8(data.Data(), offsets, validity), nil
 }

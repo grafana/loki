@@ -11,6 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/matchutil"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -109,6 +110,23 @@ func init() {
 			}
 		}
 		return !reg.Match([]byte(a)), nil
+	}})
+
+	// Functions for [types.BinaryOpEqCaseInsensitive]
+	binaryFunctions.register(types.BinaryOpEqCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+		return matchutil.EqualUpper([]byte(a), []byte(b)), nil
+	}})
+	// Functions for [types.BinaryOpNotEqCaseInsensitive]
+	binaryFunctions.register(types.BinaryOpNotEqCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+		return !matchutil.EqualUpper([]byte(a), []byte(b)), nil
+	}})
+	// Functions for [types.BinaryOpMatchSubstrCaseInsensitive]
+	binaryFunctions.register(types.BinaryOpMatchSubstrCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+		return matchutil.ContainsUpper([]byte(a), []byte(b)), nil
+	}})
+	// Functions for [types.BinaryOpNotMatchSubstrCaseInsensitive]
+	binaryFunctions.register(types.BinaryOpNotMatchSubstrCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+		return !matchutil.ContainsUpper([]byte(a), []byte(b)), nil
 	}})
 
 	// Functions for [types.UnaryOpNot]

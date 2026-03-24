@@ -237,6 +237,7 @@ type Database struct {
 	ProjectID                string                     `json:"project_id,omitempty"`
 	StorageSizeMib           uint64                     `json:"storage_size_mib,omitempty"`
 	MetricsEndpoints         []*ServiceAddress          `json:"metrics_endpoints,omitempty"`
+	DOSettings               *DOSettings                `json:"do_settings,omitempty"`
 }
 
 // DatabaseCA represents a database ca.
@@ -261,6 +262,11 @@ type DatabaseConnection struct {
 type ServiceAddress struct {
 	Host string `json:"host"`
 	Port int    `json:"port"`
+}
+
+// DOSettings contains DigitalOcean-specific settings for a database cluster.
+type DOSettings struct {
+	ServiceCnames []string `json:"service_cnames,omitempty"`
 }
 
 // DatabaseUser represents a user in the database
@@ -347,6 +353,7 @@ type DatabaseCreateRequest struct {
 	ProjectID          string                        `json:"project_id"`
 	StorageSizeMib     uint64                        `json:"storage_size_mib,omitempty"`
 	Rules              []*DatabaseCreateFirewallRule `json:"rules"`
+	DOSettings         *DOSettings                   `json:"do_settings,omitempty"`
 }
 
 // DatabaseResizeRequest can be used to initiate a database resize operation.
@@ -470,6 +477,7 @@ type DatabaseReplica struct {
 	Tags               []string            `json:"tags,omitempty"`
 	StorageSizeMib     uint64              `json:"storage_size_mib,omitempty"`
 	Size               string              `json:"size"`
+	DOSettings         *DOSettings         `json:"do_settings,omitempty"`
 }
 
 // DatabasePool represents a database connection pool
@@ -527,12 +535,13 @@ type DatabaseCreateDBRequest struct {
 
 // DatabaseCreateReplicaRequest is used to create a new read-only replica
 type DatabaseCreateReplicaRequest struct {
-	Name               string   `json:"name"`
-	Region             string   `json:"region"`
-	Size               string   `json:"size"`
-	PrivateNetworkUUID string   `json:"private_network_uuid"`
-	Tags               []string `json:"tags,omitempty"`
-	StorageSizeMib     uint64   `json:"storage_size_mib,omitempty"`
+	Name               string      `json:"name"`
+	Region             string      `json:"region"`
+	Size               string      `json:"size"`
+	PrivateNetworkUUID string      `json:"private_network_uuid"`
+	Tags               []string    `json:"tags,omitempty"`
+	StorageSizeMib     uint64      `json:"storage_size_mib,omitempty"`
+	DOSettings         *DOSettings `json:"do_settings,omitempty"`
 }
 
 // DatabaseUpdateFirewallRulesRequest is used to set the firewall rules for a database

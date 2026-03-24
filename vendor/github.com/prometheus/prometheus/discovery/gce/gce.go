@@ -1,4 +1,4 @@
-// Copyright 2015 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -171,7 +171,7 @@ func (d *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 	}
 
 	ilc := d.isvc.List(d.project, d.zone)
-	if len(d.filter) > 0 {
+	if d.filter != "" {
 		ilc = ilc.Filter(d.filter)
 	}
 	err := ilc.Pages(ctx, func(l *compute.InstanceList) error {

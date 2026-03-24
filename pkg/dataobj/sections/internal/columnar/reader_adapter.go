@@ -15,21 +15,21 @@ import (
 // [columnar.RecordBatch] values from a reader that only supports reads through
 // a slice of [dataset.Row].
 type ReaderAdapter struct {
-	inner    *dataset.Reader
+	inner    *dataset.RowReader
 	colTypes []datasetmd.PhysicalType
 
 	buf []dataset.Row
 }
 
 // NewReaderAdapter creates a ReaderAdapter with the provided dataset reader options.
-func NewReaderAdapter(innerOpts dataset.ReaderOptions) *ReaderAdapter {
-	r := &ReaderAdapter{inner: dataset.NewReader(innerOpts)}
+func NewReaderAdapter(innerOpts dataset.RowReaderOptions) *ReaderAdapter {
+	r := &ReaderAdapter{inner: dataset.NewRowReader(innerOpts)}
 	r.Reset(innerOpts)
 	return r
 }
 
 // Reset reinitializes the adapter with new reader options.
-func (r *ReaderAdapter) Reset(opts dataset.ReaderOptions) {
+func (r *ReaderAdapter) Reset(opts dataset.RowReaderOptions) {
 	r.inner.Reset(opts)
 
 	slicegrow.GrowToCap(r.colTypes, len(opts.Columns))
@@ -39,6 +39,11 @@ func (r *ReaderAdapter) Reset(opts dataset.ReaderOptions) {
 	}
 }
 
+// Open initializes the underlying dataset row reader.
+func (r *ReaderAdapter) Open(ctx context.Context) error {
+	return r.inner.Open(ctx)
+}
+
 // Close closes the underlying reader.
 func (r *ReaderAdapter) Close() error {
 	return r.inner.Close()
@@ -46,7 +51,7 @@ func (r *ReaderAdapter) Close() error {
 
 // Read reads up to batchSize rows from the underlying dataset reader and
 // returns them as a [columnar.RecordBatch].
-func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batchSize int) (columnar.RecordBatch, error) {
+func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batchSize int) (*columnar.RecordBatch, error) {
 	r.buf = slicegrow.GrowToCap(r.buf, batchSize)
 	r.buf = r.buf[:batchSize]
 
@@ -56,7 +61,7 @@ func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batch
 	for _, colType := range r.colTypes {
 		switch colType {
 		case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
-			return columnar.RecordBatch{}, fmt.Errorf("undefined physical type: %v", colType)
+			return nil, fmt.Errorf("undefined physical type: %v", colType)
 
 		case datasetmd.PHYSICAL_TYPE_INT64:
 			builder := columnar.NewNumberBuilder[int64](alloc)
@@ -89,7 +94,7 @@ func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batch
 
 			switch colType {
 			case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
-				return columnar.RecordBatch{}, fmt.Errorf("unsupported column type: %s", colType)
+				return nil, fmt.Errorf("unsupported column type: %s", colType)
 			case datasetmd.PHYSICAL_TYPE_INT64:
 				builder.(*columnar.NumberBuilder[int64]).AppendValue(val.Int64())
 			case datasetmd.PHYSICAL_TYPE_UINT64:
@@ -107,5 +112,5 @@ func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batch
 
 	// We only return readErr after processing n so that we properly handle n>0
 	// while also getting an error such as io.EOF.
-	return columnar.NewRecordBatch(int64(n), arrs), readErr
+	return columnar.NewRecordBatch(nil, int64(n), arrs), readErr
 }

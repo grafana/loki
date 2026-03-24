@@ -104,6 +104,16 @@ func (m *Router) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.RejectConnectRequestEarlyData != nil {
+		size, err := (*wrapperspb.BoolValue)(m.RejectConnectRequestEarlyData).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x52
+	}
 	if m.UpstreamLogOptions != nil {
 		size, err := m.UpstreamLogOptions.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -295,6 +305,10 @@ func (m *Router) SizeVT() (n int) {
 	}
 	if m.UpstreamLogOptions != nil {
 		l = m.UpstreamLogOptions.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.RejectConnectRequestEarlyData != nil {
+		l = (*wrapperspb.BoolValue)(m.RejectConnectRequestEarlyData).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
