@@ -1,6 +1,7 @@
 package tsdb
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -550,6 +552,12 @@ func (i *TSDBIndex) Volume(
 // lookup table and returns fully resolved dataobj section references grouped
 // by (Path, SectionID). SeriesIDs are read from the sidecar SectionRefTable
 // and collected per section.
+//
+// The implementation uses a two-phase approach to improve mmap locality:
+//   - Phase 1 walks the TSDB index (only TSDB mmap pages are hot) using
+//     forSeriesNoLabels to skip unnecessary symbol table reads.
+//   - Phase 2 resolves collected checksums against the .sections sidecar
+//     (only sidecar mmap pages are hot), sorted for sequential access.
 func (i *TSDBIndex) GetDataobjSections(
 	ctx context.Context,
 	userID string,
@@ -567,7 +575,51 @@ func (i *TSDBIndex) GetDataobjSections(
 
 	level.Debug(logger).Log("msg", "TSDBIndex.GetDataobjSections starting", "user", userID, "from", from, "through", through, "table_entries", i.sectionRefTable.Len())
 
-	// key to uniquely identify a dataobj section.
+	// Phase 1: Walk the TSDB index and collect chunk metadata.
+	// Uses forSeriesNoLabels to avoid decoding labels / hitting the symbol table.
+	type collectedChunk struct {
+		checksum uint32
+		from     model.Time
+		through  model.Time
+		kb       uint32
+		entries  uint32
+	}
+
+	var (
+		collected   []collectedChunk
+		seriesCount int
+	)
+
+	forSeriesStart := time.Now()
+	if err := i.forSeriesNoLabels(ctx, fpFilter, from, through, func(_ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+		seriesCount++
+		for _, chk := range chks {
+			collected = append(collected, collectedChunk{
+				checksum: chk.Checksum,
+				from:     chk.From(),
+				through:  chk.Through(),
+				kb:       chk.KB,
+				entries:  chk.Entries,
+			})
+		}
+		return false
+	}, matchers...); err != nil {
+		duration := time.Since(start)
+		level.Error(logger).Log("msg", "TSDBIndex.GetDataobjSections ForSeries failed",
+			"user", userID, "duration", duration,
+			"for_series_duration", time.Since(forSeriesStart),
+			"series_so_far", seriesCount, "chunks_so_far", len(collected), "err", err)
+		return nil, fmt.Errorf("GetDataobjSections failed after %s: %w", duration, err)
+	}
+	forSeriesDuration := time.Since(forSeriesStart)
+
+	// Sort by checksum so Phase 2 accesses the .sections entry region
+	// sequentially, improving readahead and reducing page faults.
+	slices.SortFunc(collected, func(a, b collectedChunk) int {
+		return cmp.Compare(a.checksum, b.checksum)
+	})
+
+	// Phase 2: Resolve checksums against the .sections sidecar table.
 	type sectionKey struct {
 		Path      string
 		SectionID int
@@ -580,74 +632,45 @@ func (i *TSDBIndex) GetDataobjSections(
 
 	sections := make(map[sectionKey]*accumulator)
 
-	var (
-		failedLookup   bool
-		seriesCount    int
-		chunkCount     int
-		lookupDuration time.Duration
-	)
-
-	forSeriesStart := time.Now()
-	if err := i.ForSeries(ctx, userID, fpFilter, from, through, func(_ labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
-		seriesCount++
-		for _, chk := range chks {
-			chunkCount++
-			lookupStart := time.Now()
-			ref, ok := i.sectionRefTable.Lookup(chk.Checksum)
-			lookupDuration += time.Since(lookupStart)
-			if !ok {
-				level.Warn(logger).Log("msg", "TSDBIndex.GetDataobjSections: failed to lookup section ref", "checksum", chk.Checksum)
-				failedLookup = true
-				return true
-			}
-
-			k := sectionKey{Path: ref.Path, SectionID: ref.SectionID}
-
-			acc, ok := sections[k]
-			if !ok {
-				acc = &accumulator{
-					ref: index.DataobjSectionRef{
-						Path:      ref.Path,
-						SectionID: ref.SectionID,
-						MinTime:   chk.From(),
-						MaxTime:   chk.Through(),
-						KB:        chk.KB,
-						Entries:   chk.Entries,
-					},
-					streamSet: make(map[int64]struct{}),
-				}
-				sections[k] = acc
-			} else {
-				if chk.From() < acc.ref.MinTime {
-					acc.ref.MinTime = chk.From()
-				}
-				if chk.Through() > acc.ref.MaxTime {
-					acc.ref.MaxTime = chk.Through()
-				}
-			}
-			acc.streamSet[int64(ref.SeriesID)] = struct{}{}
+	lookupStart := time.Now()
+	for _, c := range collected {
+		ref, ok := i.sectionRefTable.Lookup(c.checksum)
+		if !ok {
+			duration := time.Since(start)
+			level.Warn(logger).Log("msg", "TSDBIndex.GetDataobjSections: failed to lookup section ref",
+				"checksum", c.checksum, "user", userID, "duration", duration,
+				"for_series_duration", forSeriesDuration,
+				"series_matched", seriesCount, "chunks_matched", len(collected))
+			return nil, fmt.Errorf("GetDataobjSections lookup failed after %s: failed to lookup section ref for checksum %d", duration, c.checksum)
 		}
-		return false
-	}, matchers...); err != nil {
-		duration := time.Since(start)
-		level.Error(logger).Log("msg", "TSDBIndex.GetDataobjSections ForSeries failed",
-			"user", userID, "duration", duration,
-			"for_series_duration", time.Since(forSeriesStart),
-			"lookup_duration", lookupDuration,
-			"series_so_far", seriesCount, "chunks_so_far", chunkCount, "err", err)
-		return nil, fmt.Errorf("GetDataobjSections failed after %s: %w", duration, err)
-	}
-	forSeriesDuration := time.Since(forSeriesStart)
 
-	if failedLookup {
-		duration := time.Since(start)
-		level.Warn(logger).Log("msg", "TSDBIndex.GetDataobjSections lookup failure",
-			"user", userID, "duration", duration,
-			"for_series_duration", forSeriesDuration,
-			"lookup_duration", lookupDuration,
-			"series_matched", seriesCount, "chunks_matched", chunkCount)
-		return nil, fmt.Errorf("GetDataobjSections lookup failed after %s: failed to lookup section ref for at least one chunk", duration)
+		k := sectionKey{Path: ref.Path, SectionID: ref.SectionID}
+
+		acc, ok := sections[k]
+		if !ok {
+			acc = &accumulator{
+				ref: index.DataobjSectionRef{
+					Path:      ref.Path,
+					SectionID: ref.SectionID,
+					MinTime:   c.from,
+					MaxTime:   c.through,
+					KB:        c.kb,
+					Entries:   c.entries,
+				},
+				streamSet: make(map[int64]struct{}),
+			}
+			sections[k] = acc
+		} else {
+			if c.from < acc.ref.MinTime {
+				acc.ref.MinTime = c.from
+			}
+			if c.through > acc.ref.MaxTime {
+				acc.ref.MaxTime = c.through
+			}
+		}
+		acc.streamSet[int64(ref.SeriesID)] = struct{}{}
 	}
+	lookupDuration := time.Since(lookupStart)
 
 	res := make([]index.DataobjSectionRef, 0, len(sections))
 	for _, acc := range sections {
@@ -665,7 +688,7 @@ func (i *TSDBIndex) GetDataobjSections(
 		"for_series_duration", forSeriesDuration,
 		"lookup_duration", lookupDuration,
 		"series_matched", seriesCount,
-		"chunks_matched", chunkCount,
+		"chunks_matched", len(collected),
 		"sections_resolved", len(res),
 	)
 
