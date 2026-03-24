@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.13](https://github.com/grafana/loki/compare/v3.5.12...v3.5.13) (2026-03-24)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/buger/jsonparser to v1.1.2 [security] (release-3.5.x) ([#21202](https://github.com/grafana/loki/issues/21202)) ([3fc747e](https://github.com/grafana/loki/commit/3fc747e3f26fbd2f2ee4e7108b860ac5e6027679))
+
 ## [3.5.12](https://github.com/grafana/loki/compare/v3.5.11...v3.5.12) (2026-03-12)
 
 
