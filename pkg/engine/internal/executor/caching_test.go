@@ -224,12 +224,12 @@ func TestCachingPipelinePassthrough(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
-		name            string
-		records         []arrow.RecordBatch
-		wantBatches     int
-		wantStoreCalls  int
-		wantKeyInCache  bool
-		cacheKey        string
+		name           string
+		records        []arrow.RecordBatch
+		wantBatches    int
+		wantStoreCalls int
+		wantKeyInCache bool
+		cacheKey       string
 	}{
 		{
 			name:           "non-empty response is not cached",
