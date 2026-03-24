@@ -28,7 +28,7 @@ func TestCachingPipeline(t *testing.T) {
 	rec2, err := CSVToArrow(testFields, "d\ne")
 	require.NoError(t, err)
 
-	arrowStore := &arrowCacheAdapter{cache: c}
+	arrowStore := &arrowCacheAdapter{cache: c, maxSizeBytes: ^uint64(0)}
 
 	// First pass: cache miss — inner pipeline is read and results are stored.
 	miss := newCachingPipeline(arrowStore, NewBufferedPipeline(rec1, rec2), "test-key", log.NewNopLogger())
@@ -75,6 +75,7 @@ func TestArrowCacheAdapterSnappyRoundTrip(t *testing.T) {
 	ad := &arrowCacheAdapter{
 		cache:          mem,
 		snappyCompress: true,
+		maxSizeBytes:   ^uint64(0),
 	}
 	key := "snappy-key"
 
@@ -129,6 +130,26 @@ func TestArrowCacheAdapterMaxCacheableSize(t *testing.T) {
 	rec, err := CSVToArrow(testFields, csv)
 	require.NoError(t, err)
 
+	t.Run("limit of zero (only cache empty)", func(t *testing.T) {
+		mc := newMockCache()
+		ad := &arrowCacheAdapter{
+			cache:        mc,
+			maxSizeBytes: 0,
+			logger:       log.NewNopLogger(),
+		}
+
+		stored, err := ad.Set(ctx, "key", []arrow.RecordBatch{rec})
+		require.NoError(t, err)
+		require.Zero(t, stored, "should return 0 for non-empty result when maxSizeBytes==0")
+		require.Equal(t, 0, mc.setCalls, "underlying Store must not be called for non-empty result")
+
+		// Empty records (nil) should still be stored even with maxSizeBytes==0.
+		storedEmpty, err := ad.Set(ctx, "empty-key", nil)
+		require.NoError(t, err)
+		require.Zero(t, storedEmpty)
+		require.Equal(t, 1, mc.setCalls, "underlying Store must be called for empty result")
+	})
+
 	for _, tc := range []struct {
 		name           string
 		snappyCompress bool
@@ -143,6 +164,7 @@ func TestArrowCacheAdapterMaxCacheableSize(t *testing.T) {
 				cache:          probe,
 				snappyCompress: tc.snappyCompress,
 				logger:         log.NewNopLogger(),
+				maxSizeBytes:   ^uint64(0),
 			}
 			actualSize, err := probeAd.Set(ctx, "probe-key", []arrow.RecordBatch{rec})
 			require.NoError(t, err)
@@ -187,6 +209,66 @@ func TestArrowCacheAdapterMaxCacheableSize(t *testing.T) {
 				require.Len(t, got, 1)
 				require.Equal(t, rec.NumRows(), got[0].NumRows())
 			})
+		})
+	}
+}
+
+func TestCachingPipelinePassthrough(t *testing.T) {
+	ctx := t.Context()
+
+	rec1, err := CSVToArrow(testFields, "a\nb")
+	require.NoError(t, err)
+	rec2, err := CSVToArrow(testFields, "c\nd")
+	require.NoError(t, err)
+	rec3, err := CSVToArrow(testFields, "e\nf")
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name            string
+		records         []arrow.RecordBatch
+		wantBatches     int
+		wantStoreCalls  int
+		wantKeyInCache  bool
+		cacheKey        string
+	}{
+		{
+			name:           "non-empty response is not cached",
+			records:        []arrow.RecordBatch{rec1, rec2, rec3},
+			wantBatches:    3,
+			wantStoreCalls: 0,
+			wantKeyInCache: false,
+			cacheKey:       "pt-key",
+		},
+		{
+			name:           "empty response is cached",
+			records:        nil,
+			wantBatches:    0,
+			wantStoreCalls: 1,
+			wantKeyInCache: true,
+			cacheKey:       "empty-key",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mc := newMockCache()
+			arrowStore := &arrowCacheAdapter{cache: mc, logger: log.NewNopLogger()}
+
+			p := newCachingPipeline(arrowStore, NewBufferedPipeline(tc.records...), tc.cacheKey, log.NewNopLogger())
+			require.NoError(t, p.Open(ctx))
+
+			var batches []arrow.RecordBatch
+			for {
+				rec, err := p.Read(ctx)
+				if errors.Is(err, EOF) {
+					break
+				}
+				require.NoError(t, err)
+				batches = append(batches, rec)
+			}
+			p.Close()
+
+			require.Len(t, batches, tc.wantBatches)
+			require.Equal(t, tc.wantStoreCalls, mc.setCalls)
+			require.Equal(t, tc.wantKeyInCache, mc.data[cache.HashKey(tc.cacheKey)] != nil)
 		})
 	}
 }

@@ -66,7 +66,7 @@ type Options struct {
 	CacheEnabled bool
 
 	// MaxCacheableSize is the maximum size in bytes of a task result that can be
-	// stored in the cache. 0 means no limit.
+	// stored in the cache. 0 means only empty responses are cached.
 	MaxCacheableSize uint64
 }
 

@@ -44,13 +44,14 @@ func newCachingPipeline(store ArrowCache, inner Pipeline, key string, logger log
 // On a cache hit: Open reads from the store; Read serves stored records without calling Read on the inner pipeline.
 // On a cache miss: Read streams through the inner pipeline and the store is populated on EOF.
 type cachingPipeline struct {
-	inner  Pipeline
-	store  ArrowCache
-	key    string
-	logger log.Logger
-	cached []arrow.RecordBatch // records served from cache (hit path) or collected to put them on the cache (miss path)
-	pos    int                 // current position in cached slice (hit path)
-	hit    bool                // true when Open found a cache hit
+	inner       Pipeline
+	store       ArrowCache
+	key         string
+	logger      log.Logger
+	cached      []arrow.RecordBatch // records served from cache (hit path) or collected to put them on the cache (miss path)
+	pos         int                 // current position in cached slice (hit path)
+	hit         bool                // true when Open found a cache hit
+	passthrough bool                // true once we know we won't cache (store.MaxSizeBytes()==0 + non-empty)
 }
 
 // Open implements Pipeline.
@@ -99,7 +100,7 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	// Cache miss; read from the inner pipeline
 	rec, err := p.inner.Read(ctx)
 	if err != nil {
-		if errors.Is(err, EOF) {
+		if errors.Is(err, EOF) && !p.passthrough {
 			bufSize, setErr := p.store.Set(ctx, p.key, p.cached)
 			if setErr != nil {
 				level.Error(p.logger).Log("msg", "failed to store results in cache", "err", setErr)
@@ -115,6 +116,18 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 			}
 		}
 		return nil, err
+	}
+
+	// short-circuit: maxSizeBytes==0 means only cache empty responses.
+	// Once we see a non-nil batch the response is non-empty; stop buffering
+	// and pass subsequent reads straight through.
+	if !p.passthrough && p.store.MaxSizeBytes() == 0 && rec.NumRows() > 0 {
+		p.passthrough = true
+		p.cached = nil // release any accumulated memory
+	}
+
+	if p.passthrough {
+		return rec, nil // don't buffer; skip store.Set on EOF path
 	}
 
 	// Store response for caching once Read completes (EOF from the inner pipeline)
@@ -137,7 +150,7 @@ type arrowCacheAdapter struct {
 	snappyCompress bool
 
 	// maxSizeBytes is the maximum size of the cache entry.
-	// A value of 0 means no limit.
+	// A value of 0 means only empty responses are cached.
 	maxSizeBytes uint64
 }
 
@@ -178,6 +191,14 @@ func (s *arrowCacheAdapter) Set(ctx context.Context, key string, records []arrow
 		return 0, s.cache.Store(ctx, []string{key}, [][]byte{{}})
 	}
 
+	// maxSizeBytes == 0 means only empty responses may be cached.
+	if s.maxSizeBytes == 0 {
+		if s.logger != nil {
+			level.Debug(s.logger).Log("msg", "non-empty result won't be cached (max_cacheable_size=0)", "key", key)
+		}
+		return 0, nil
+	}
+
 	buf, err := s.encodeRecords(records)
 	if err != nil {
 		return 0, fmt.Errorf("encoding records for cache: %w", err)
@@ -197,6 +218,11 @@ func (s *arrowCacheAdapter) Set(ctx context.Context, key string, records []arrow
 	}
 
 	return len(buf), nil
+}
+
+// MaxSizeBytes implements ArrowCache.
+func (s *arrowCacheAdapter) MaxSizeBytes() uint64 {
+	return s.maxSizeBytes
 }
 
 // encodeRecords serializes a slice of Arrow record batches into a single byte
@@ -265,6 +291,10 @@ type ArrowCache interface {
 	// Set stores records under key.
 	// It returns the encoded buffer size in bytes.
 	Set(ctx context.Context, key string, records []arrow.RecordBatch) (int, error)
+	// MaxSizeBytes returns the maximum encoded size of a cache entry.
+	// A value of 0 means only empty responses are cached.
+	// Useful for callers to short-circuit caching when the response is known to exceed the max cache size.
+	MaxSizeBytes() uint64
 }
 
 // TaskCacheRegistry maps TaskCacheType identifiers to backing cache stores.

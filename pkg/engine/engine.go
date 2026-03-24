@@ -98,14 +98,14 @@ func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 // TaskCacheConfig extends resultscache.Config with additional task-cache-specific settings.
 type TaskCacheConfig struct {
 	resultscache.Config `yaml:",inline"`
-	MaxCacheableSize    flagext.Bytes `yaml:"max_cacheable_size_bytes" category:"experimental"`
+	MaxCacheableSize    flagext.Bytes `yaml:"max_cacheable_size" category:"experimental"`
 }
 
 // RegisterFlagsWithPrefix registers flags for TaskCacheConfig with the given prefix.
 func (cfg *TaskCacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Config.RegisterFlagsWithPrefix(f, prefix)
 	f.Var(&cfg.MaxCacheableSize, prefix+"max-cacheable-size",
-		"Experimental: Maximum size for a task result to be cacheable. 0 means no limit.")
+		"Experimental: Maximum size for a task result to be cacheable. 0 means only empty responses are cached.")
 }
 
 // Params holds parameters for constructing a new [Engine].
