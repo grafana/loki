@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -31,6 +32,17 @@ const (
 	AppendUnordered = iota
 	AppendOrdered
 )
+
+var sharedCompressionOptions = make([]*dataset.CompressionOptions, zstd.EncoderLevelFromZstd(math.MaxInt))
+
+func zstdCompressionOpts(encLevel zstd.EncoderLevel) *dataset.CompressionOptions {
+	if sharedCompressionOptions[encLevel] == nil {
+		sharedCompressionOptions[encLevel] = &dataset.CompressionOptions{
+			Zstd: []zstd.EOption{zstd.WithEncoderLevel(encLevel)},
+		}
+	}
+	return sharedCompressionOptions[encLevel]
+}
 
 type SortOrder int
 
@@ -151,9 +163,7 @@ func recordSize(record Record) int {
 
 	size++    // One byte per stream ID (for uvarint).
 	size += 8 // Eight bytes for timestamp.
-	record.Metadata.Range(func(metadata labels.Label) {
-		size += len(metadata.Value)
-	})
+	size += int(record.Metadata.ByteSize())
 	size += len(record.Line)
 
 	return size
@@ -171,12 +181,7 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 		panic("must not call flushRecords multiple times for a single section when using AppendOrdered strategy")
 	}
 
-	// Our stripes are intermediate tables that don't need to have the best
-	// compression. To maintain high throughput on appends, we use the fastest
-	// compression for a stripe. Better compression is then used for sections.
-	compressionOpts := &dataset.CompressionOptions{
-		Zstd: []zstd.EOption{zstd.WithEncoderLevel(encLevel)},
-	}
+	compressionOpts := zstdCompressionOpts(encLevel)
 
 	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
 	b.stripes = append(b.stripes, stripe)
@@ -192,9 +197,7 @@ func (b *Builder) flushSection() *table {
 		return nil
 	}
 
-	compressionOpts := &dataset.CompressionOptions{
-		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedDefault)},
-	}
+	compressionOpts := zstdCompressionOpts(zstd.SpeedDefault)
 
 	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.stripes, b.opts.StripeMergeLimit, b.opts.SortOrder)
 	if err != nil {
