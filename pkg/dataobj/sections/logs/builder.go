@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -33,15 +34,21 @@ const (
 	AppendOrdered
 )
 
-var sharedCompressionOptions = make([]*dataset.CompressionOptions, zstd.EncoderLevelFromZstd(math.MaxInt)+1)
+var (
+	sharedZstdCompressionOptions = make([]*dataset.CompressionOptions, zstd.EncoderLevelFromZstd(math.MaxInt)+1)
+	sharedZstdOptionsMutex       = &sync.Mutex{}
+)
 
 func zstdCompressionOpts(encLevel zstd.EncoderLevel) *dataset.CompressionOptions {
-	if sharedCompressionOptions[encLevel] == nil {
-		sharedCompressionOptions[encLevel] = &dataset.CompressionOptions{
+	sharedZstdOptionsMutex.Lock()
+	defer sharedZstdOptionsMutex.Unlock()
+
+	if sharedZstdCompressionOptions[encLevel] == nil {
+		sharedZstdCompressionOptions[encLevel] = &dataset.CompressionOptions{
 			Zstd: []zstd.EOption{zstd.WithEncoderLevel(encLevel)},
 		}
 	}
-	return sharedCompressionOptions[encLevel]
+	return sharedZstdCompressionOptions[encLevel]
 }
 
 type SortOrder int
