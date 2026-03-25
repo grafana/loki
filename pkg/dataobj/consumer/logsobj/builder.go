@@ -130,7 +130,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	// Set defaults for base builder configuration
 	_ = cfg.TargetPageSize.Set("2MB")
 	_ = cfg.TargetObjectSize.Set("1GB")
-	_ = cfg.BufferSize.Set("16MB")
+	_ = cfg.BufferSize.Set("64MB")
 	_ = cfg.TargetSectionSize.Set("128MB")
 	cfg.BuilderBaseConfig.RegisterFlagsWithPrefix(prefix, f)
 
