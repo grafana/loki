@@ -176,7 +176,8 @@ type Builder struct {
 	cfg     BuilderConfig
 	metrics *builderMetrics
 
-	labelCache *lru.Cache[string, labels.Labels]
+	labelCache     *lru.Cache[string, labels.Labels]
+	scratchBuilder labels.ScratchBuilder // reused for convertMetadata
 
 	currentSizeEstimate int
 
@@ -289,7 +290,7 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 		lb.Append(logs.Record{
 			StreamID:  cachedStream.ID,
 			Timestamp: entry.Timestamp,
-			Metadata:  convertMetadata(entry.StructuredMetadata),
+			Metadata:  b.convertMetadata(entry.StructuredMetadata),
 			Line:      unsafeStringToBytes(entry.Line),
 		})
 
@@ -365,19 +366,18 @@ func unsafeStringToBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
-func convertMetadata(md push.LabelsAdapter) labels.Labels {
+func (b *Builder) convertMetadata(md push.LabelsAdapter) labels.Labels {
 	if len(md) == 0 {
 		return labels.EmptyLabels()
 	}
 
-	l := labels.NewScratchBuilder(len(md))
-
+	b.scratchBuilder.Reset()
 	for _, label := range md {
-		l.Add(label.Name, label.Value)
+		b.scratchBuilder.Add(label.Name, label.Value)
 	}
 
-	l.Sort()
-	return l.Labels()
+	b.scratchBuilder.Sort()
+	return b.scratchBuilder.Labels()
 }
 
 func (b *Builder) estimatedSize() int {
