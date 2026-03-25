@@ -220,7 +220,7 @@ func (b *Builder) flushSection() *table {
 }
 
 func (b *Builder) flushSectionOrdered() *table {
-	b.flushRecords(zstd.SpeedDefault)
+	b.flushRecords(zstd.SpeedFastest)
 
 	if len(b.stripes) == 0 {
 		return nil
