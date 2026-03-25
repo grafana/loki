@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"unsafe"
 
 	"github.com/facette/natsort"
 	"github.com/grafana/dskit/flagext"
@@ -285,7 +286,7 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 			StreamID:  streamID,
 			Timestamp: entry.Timestamp,
 			Metadata:  convertMetadata(entry.StructuredMetadata),
-			Line:      []byte(entry.Line),
+			Line:      unsafeStringToBytes(entry.Line),
 		})
 
 		// If our logs section has gotten big enough, we want to flush it to the
@@ -348,6 +349,15 @@ func streamSizeEstimate(stream logproto.Stream) int {
 		}
 	}
 	return size
+}
+
+// unsafeStringToBytes converts a string to a byte slice without copying.
+// The caller must not modify the returned slice.
+func unsafeStringToBytes(s string) []byte {
+	if len(s) == 0 {
+		return nil
+	}
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
 func convertMetadata(md push.LabelsAdapter) labels.Labels {
