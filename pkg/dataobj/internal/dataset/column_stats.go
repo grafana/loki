@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/axiomhq/hyperloglog"
@@ -30,7 +31,8 @@ type columnStatsBuilder struct {
 	opts StatisticsOptions
 
 	// for cardinality
-	hll *hyperloglog.Sketch
+	hll        *hyperloglog.Sketch
+	marshalBuf []byte // reusable buffer to avoid allocations in Append
 }
 
 // ColumnStatsBuilder is for column-level statistics
@@ -51,17 +53,18 @@ func newColumnStatsBuilder(opts StatisticsOptions) (*columnStatsBuilder, error) 
 
 func (csb *columnStatsBuilder) Append(value Value) {
 	if csb.opts.StoreCardinalityStats && !value.IsNil() && !value.IsZero() {
-		buf, err := value.MarshalBinary()
-		if err != nil {
-			panic(fmt.Sprintf(
-				"failed to marshal value for cardinality stats of type %s: %s",
-				value.Type(), err,
-			))
+		// Reuse buffer to avoid per-value allocations.
+		csb.marshalBuf = csb.marshalBuf[:0]
+		csb.marshalBuf = binary.AppendUvarint(csb.marshalBuf, uint64(value.Type()))
+		switch value.Type() {
+		case datasetmd.PHYSICAL_TYPE_INT64:
+			csb.marshalBuf = binary.AppendVarint(csb.marshalBuf, value.Int64())
+		case datasetmd.PHYSICAL_TYPE_UINT64:
+			csb.marshalBuf = binary.AppendUvarint(csb.marshalBuf, value.Uint64())
+		case datasetmd.PHYSICAL_TYPE_BINARY:
+			csb.marshalBuf = append(csb.marshalBuf, value.Binary()...)
 		}
-
-		// TODO(owen-d): improve efficiency, ideally we don't need to marshal
-		// into an intermediate buffer.
-		csb.hll.Insert(buf)
+		csb.hll.Insert(csb.marshalBuf)
 	}
 }
 
