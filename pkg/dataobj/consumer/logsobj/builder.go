@@ -237,6 +237,7 @@ func (b *Builder) initBuilder(tenant string) {
 			PageMaxRowCount:  b.cfg.MaxPageRows,
 			BufferSize:       int(b.cfg.BufferSize),
 			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
+			AppendStrategy:   logs.AppendOrdered,
 			SortOrder:        parseSortOrder(b.cfg.DataobjSortOrder),
 		})
 		lb.SetTenant(tenant)
