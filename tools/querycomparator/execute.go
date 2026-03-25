@@ -266,7 +266,7 @@ func doLocalQueryWithV2EngineScheduler(params logql.LiteralParams, bucket objsto
 		Executor: engine.ExecutorConfig{
 			BatchSize: 128,
 		},
-	})
+	}, prometheus.DefaultRegisterer)
 	if err != nil {
 		return logqlmodel.Result{}, fmt.Errorf("creating worker: %w", err)
 	} else if err := services.StartAndAwaitRunning(ctx, worker.Service()); err != nil {
@@ -339,7 +339,7 @@ func doLocalQueryWithV2EngineSchedulerRemote(params logql.LiteralParams, bucket 
 		Executor: engine.ExecutorConfig{
 			BatchSize: 128,
 		},
-	})
+	}, prometheus.DefaultRegisterer)
 	if err != nil {
 		return logqlmodel.Result{}, fmt.Errorf("creating worker: %w", err)
 	} else if err := services.StartAndAwaitRunning(ctx, worker.Service()); err != nil {

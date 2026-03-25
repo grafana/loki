@@ -36,17 +36,17 @@ var (
 func TestProcessor_BuilderMaxAge(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var (
-			ctx          = t.Context()
-			reg          = prometheus.NewRegistry()
-			builder      = newTestBuilder(t, reg)
-			flushManager = &mockFlushManager{}
-			proc         = newProcessor(builder, nil, flushManager, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+			ctx            = t.Context()
+			reg            = prometheus.NewRegistry()
+			builder        = newTestBuilder(t, reg)
+			flushCommitter = &mockFlushCommitter{}
+			proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
 		)
 
 		// Since no records have been pushed, the first append time should be zero,
 		// and no flush should have occurred.
 		require.True(t, proc.firstAppend.IsZero())
-		require.Equal(t, 0, flushManager.flushes)
+		require.Equal(t, 0, flushCommitter.flushes)
 
 		// Process a record containing some log lines. No flush should occur because
 		// the builder has not reached the maximum age.
@@ -56,7 +56,7 @@ func TestProcessor_BuilderMaxAge(t *testing.T) {
 		// should have occurred.
 		require.Equal(t, time.Now(), proc.firstAppend)
 		require.Equal(t, time.Now(), proc.lastAppend)
-		require.Equal(t, 0, flushManager.flushes)
+		require.Equal(t, 0, flushCommitter.flushes)
 
 		// Advance time past the maximum age. A flush should occur, and the
 		// the log lines from the record should be appended to the next data
@@ -69,7 +69,7 @@ func TestProcessor_BuilderMaxAge(t *testing.T) {
 		require.Equal(t, time.Now(), proc.firstAppend)
 		require.Equal(t, time.Now(), proc.lastAppend)
 		require.NotEqual(t, proc.builder.GetEstimatedSize(), 0)
-		require.Equal(t, 1, flushManager.flushes)
+		require.Equal(t, 1, flushCommitter.flushes)
 
 		// Advance time one last time and push some more logs. No flush should
 		// occur because the next builder has not reached the maximum age.
@@ -78,25 +78,25 @@ func TestProcessor_BuilderMaxAge(t *testing.T) {
 		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now())))
 		require.Equal(t, expectedLastFlushed, proc.firstAppend)
 		require.Equal(t, time.Now(), proc.lastAppend)
-		require.Equal(t, 1, flushManager.flushes)
+		require.Equal(t, 1, flushCommitter.flushes)
 	})
 }
 
 func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var (
-			ctx          = t.Context()
-			reg          = prometheus.NewRegistry()
-			builder      = newTestBuilder(t, reg)
-			flushManager = &mockFlushManager{}
-			proc         = newProcessor(builder, nil, flushManager, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+			ctx            = t.Context()
+			reg            = prometheus.NewRegistry()
+			builder        = newTestBuilder(t, reg)
+			flushCommitter = &mockFlushCommitter{}
+			proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
 		)
 
 		// The idle flush timeout has not been exceeded, no flush should occur.
 		flushed, err := proc.idleFlush(ctx)
 		require.NoError(t, err)
 		require.False(t, flushed)
-		require.Equal(t, 0, flushManager.flushes)
+		require.Equal(t, 0, flushCommitter.flushes)
 
 		// Advance time past the idle flush time. No flush should occur because
 		// the builder is empty.
@@ -104,7 +104,7 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 		flushed, err = proc.idleFlush(ctx)
 		require.NoError(t, err)
 		require.False(t, flushed)
-		require.Equal(t, 0, flushManager.flushes)
+		require.Equal(t, 0, flushCommitter.flushes)
 
 		// Process a record containing some log lines. No flush should occur because
 		// when log lines are appended to the builder it resets the idle timeout.
@@ -113,14 +113,14 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 		flushed, err = proc.idleFlush(ctx)
 		require.NoError(t, err)
 		require.False(t, flushed)
-		require.Equal(t, 0, flushManager.flushes)
+		require.Equal(t, 0, flushCommitter.flushes)
 
 		// Advance time past the idle timeout. A flush should occur.
 		time.Sleep(6 * time.Minute)
 		flushed, err = proc.idleFlush(ctx)
 		require.NoError(t, err)
 		require.True(t, flushed)
-		require.Equal(t, 1, flushManager.flushes)
+		require.Equal(t, 1, flushCommitter.flushes)
 	})
 }
 
@@ -131,9 +131,9 @@ func (f *failureFlusher) Flush(_ context.Context, _ builder, _ string) (string, 
 	return "", errors.New("mock error")
 }
 
-type failureFlushManager struct{}
+type failureFlushCommitter struct{}
 
-func (m *failureFlushManager) Flush(_ context.Context, _ builder, _ string, _ int64, _ time.Time) error {
+func (m *failureFlushCommitter) Flush(_ context.Context, _ builder, _ string, _ int64, _ time.Time) error {
 	return errors.New("mock error")
 }
 
@@ -141,15 +141,15 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 	t.Run("should succeed", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			var (
-				ctx          = t.Context()
-				reg          = prometheus.NewRegistry()
-				builder      = newTestBuilder(t, reg)
-				flushManager = &mockFlushManager{}
-				proc         = newProcessor(builder, nil, flushManager, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+				ctx            = t.Context()
+				reg            = prometheus.NewRegistry()
+				builder        = newTestBuilder(t, reg)
+				flushCommitter = &mockFlushCommitter{}
+				proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
 			)
 
 			// No flush should have occurred.
-			require.Equal(t, 0, flushManager.flushes)
+			require.Equal(t, 0, flushCommitter.flushes)
 
 			// Process a record containing some log lines. No flush should occur.
 			rec1 := newTestRecord(t, "tenant", time.Now())
@@ -161,7 +161,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 			// Advance time and force a flush.
 			time.Sleep(time.Second)
 			require.NoError(t, proc.flush(ctx, "test"))
-			require.Equal(t, 1, flushManager.flushes)
+			require.Equal(t, 1, flushCommitter.flushes)
 
 			// The following fields should be reset at the end of every flush.
 			require.True(t, proc.firstAppend.IsZero())
@@ -173,11 +173,11 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 	t.Run("should fail", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			var (
-				ctx          = t.Context()
-				reg          = prometheus.NewRegistry()
-				builder      = newTestBuilder(t, reg)
-				flushManager = &failureFlushManager{}
-				proc         = newProcessor(builder, nil, flushManager, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+				ctx            = t.Context()
+				reg            = prometheus.NewRegistry()
+				builder        = newTestBuilder(t, reg)
+				flushCommitter = &failureFlushCommitter{}
+				proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
 			)
 
 			// Process a record containing some log lines. No flush should occur.

@@ -159,6 +159,20 @@ To add new query types:
 1. Modify the `GenerateTestCases` method in `generator_query.go`
 2. Add new query patterns that test different aspects of LogQL
 
+## Remote Correctness Tests
+
+Compare query results between two live Loki endpoints. Requires metadata
+from `make discover` and the `remote_correctness` build tag.
+
+    go test -tags=remote_correctness -v ./pkg/logql/bench \
+        -addr-1=http://loki-baseline:3100 \
+        -addr-2=http://loki-test:3100 \
+        -org-id=my-tenant \
+        -username=admin -password=secret \
+        -metadata-dir=pkg/logql/bench/testdata
+
+Use `-run` to filter queries (same as TestStorageEquality).
+
 ## Troubleshooting
 
 - If you see "Data directory is empty" errors, run `make generate` first

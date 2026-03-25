@@ -1,6 +1,6 @@
 # Bubble Tea v2 Upgrade Guide
 
-This guide covers everything you need to change when upgrading from Bubble Tea v1 to v2. For a tour of all the exciting new features, check out the [What's New](WHATS_NEW_V2.md) doc.
+This guide covers everything you need to change when upgrading from Bubble Tea v1 to v2. For a tour of all the exciting new features, check out the [What's New](https://github.com/charmbracelet/bubbletea/releases/tag/v2.0.0) doc.
 
 > [!NOTE]
 > We don't take API changes lightly and strive to make the upgrade process as simple as possible. If something feels way off, let us know.
@@ -568,6 +568,6 @@ Have thoughts on the v2 upgrade? We'd _love_ to hear about it. Let us know on…
 
 Part of [Charm](https://charm.land).
 
-<a href="https://charm.land/"><img alt="The Charm logo" src="https://stuff.charm.land/charm-badge.jpg" width="400"></a>
+<a href="https://charm.land/"><img alt="The Charm logo" src="https://stuff.charm.sh/charm-badge.jpg" width="400"></a>
 
 Charm热爱开源 • Charm loves open source • نحنُ نحب المصادر المفتوحة

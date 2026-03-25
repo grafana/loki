@@ -344,6 +344,23 @@ query_engine:
     # CLI flag: -query-engine.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
 
+  tasks_result_cache:
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is:
+    # query-engine.tasks-result-cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -query-engine.tasks-result-cache.compression
+    [compression: <string> | default = ""]
+
+    # Experimental: Maximum size for a task result to be cacheable. 0 means only
+    # empty responses are cached.
+    # CLI flag: -query-engine.tasks-result-cache.max-cacheable-size
+    [max_cacheable_size: <int> | default = 0B]
+
   # Experimental: Number of worker threads to spawn. Each worker thread runs one
   # task at a time. 0 means to use GOMAXPROCS value.
   # CLI flag: -query-engine.worker-threads
@@ -2404,6 +2421,7 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `query-engine.results-cache`
+- `query-engine.tasks-result-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
 - `store.index-cache-read`
@@ -7899,6 +7917,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`
 - `query-engine.results-cache.memcached`
+- `query-engine.tasks-result-cache.memcached`
 - `query-scheduler.grpc-client-config`
 - `query-scheduler.ring.etcd`
 - `reporting.tls-config`

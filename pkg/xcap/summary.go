@@ -402,6 +402,9 @@ func summarizeObservations(capture *Capture) *observations {
 				TaskBatchingRecordsReceived.Key(), TaskBatchingRowsReceived.Key(),
 				TaskBatchingBatchesProduced.Key(), TaskBatchingRowsWritten.Key(),
 				TaskExternalSourcesCount.Key(), TaskExternalSinksCount.Key(),
+				// task cache stats
+				TaskCacheHits.Key(), TaskCacheMisses.Key(),
+				TaskCacheBatches.Key(), TaskCacheRows.Key(), TaskCacheBytes.Key(),
 			).
 			prefix("metastore_").
 			normalizeKeys(),
@@ -440,6 +443,9 @@ func summarizeObservations(capture *Capture) *observations {
 				TaskBatchingRecordsReceived.Key(), TaskBatchingRowsReceived.Key(),
 				TaskBatchingBatchesProduced.Key(), TaskBatchingRowsWritten.Key(),
 				TaskExternalSourcesCount.Key(), TaskExternalSinksCount.Key(),
+				// task cache stats
+				TaskCacheHits.Key(), TaskCacheMisses.Key(),
+				TaskCacheBatches.Key(), TaskCacheRows.Key(), TaskCacheBytes.Key(),
 			).
 			normalizeKeys(),
 	)

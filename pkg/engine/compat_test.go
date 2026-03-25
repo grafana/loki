@@ -473,6 +473,68 @@ func TestStreamsResultBuilder(t *testing.T) {
 		}
 		require.Equal(t, expected, streams)
 	})
+	t.Run("labels with empty values are dropped from stream labels", func(t *testing.T) {
+		colTs := semconv.ColumnIdentTimestamp
+		colMsg := semconv.ColumnIdentMessage
+		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
+		colRegion := semconv.NewIdentifier("region", types.ColumnTypeLabel, types.Loki.String)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colTs, false),
+				semconv.FieldFromIdent(colMsg, false),
+				semconv.FieldFromIdent(colEnv, true),
+				semconv.FieldFromIdent(colRegion, true),
+			},
+			nil,
+		)
+		rows := arrowtest.Rows{
+			{
+				colTs.FQN():     time.Unix(0, 1620000000000000001).UTC(),
+				colMsg.FQN():    "log line 1",
+				colEnv.FQN():    "prod",
+				colRegion.FQN(): "us-west",
+			},
+			{
+				colTs.FQN():     time.Unix(0, 1620000000000000002).UTC(),
+				colMsg.FQN():    "log line 2",
+				colEnv.FQN():    "prod",
+				colRegion.FQN(): "",
+			},
+			{
+				colTs.FQN():     time.Unix(0, 1620000000000000003).UTC(),
+				colMsg.FQN():    "log line 3",
+				colEnv.FQN():    "",
+				colRegion.FQN(): "us-east",
+			},
+		}
+
+		record := rows.Record(memory.DefaultAllocator, schema)
+
+		pipeline := executor.NewBufferedPipeline(record)
+		defer pipeline.Close()
+
+		builder := newStreamsResultBuilder(logproto.FORWARD, false)
+		err := collectResult(context.Background(), pipeline, builder)
+
+		require.NoError(t, err)
+		require.Equal(t, 3, builder.Len())
+
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
+		streams := result.Data.(logqlmodel.Streams)
+
+		require.Equal(t, 3, len(streams), "should have 3 unique streams (empty label values dropped)")
+
+		streamLabels := make([]string, len(streams))
+		for i, s := range streams {
+			streamLabels[i] = s.Labels
+		}
+		require.Contains(t, streamLabels, labels.FromStrings("env", "prod", "region", "us-west").String())
+		require.Contains(t, streamLabels, labels.FromStrings("env", "prod").String())
+		require.Contains(t, streamLabels, labels.FromStrings("region", "us-east").String())
+	})
+
 	t.Run("categorize labels does not consider metadata or parsed keys when building output streams", func(t *testing.T) {
 		colTs := semconv.ColumnIdentTimestamp
 		colMsg := semconv.ColumnIdentMessage

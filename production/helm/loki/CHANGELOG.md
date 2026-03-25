@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Update README chart migration notice from future tense to past tense
 
 ## 6.55.0
 

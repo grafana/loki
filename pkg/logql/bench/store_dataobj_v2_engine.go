@@ -152,7 +152,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		},
 		Executor:  cfg,
 		Metastore: ms,
-	})
+	}, prometheus.NewRegistry())
 
 	if err != nil {
 		return nil, fmt.Errorf("creating worker: %w", err)

@@ -1,6 +1,35 @@
 # Changes
 
 
+## [1.61.3](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.61.3) (2026-03-13)
+
+### Documentation
+
+* Fix godoc formatting (#14169) ([428b228](https://github.com/googleapis/google-cloud-go/commit/428b228814dc78b1b92c83868e1a58bb32ea71f0))
+
+## [1.61.2](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.61.2) (2026-03-12)
+
+### Bug Fixes
+
+* fix dependency version for auth library (#14156) ([cb354ba](https://github.com/googleapis/google-cloud-go/commit/cb354ba5691eade26d14ace3c04d79f3363c0526))
+
+## [1.61.1](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.61.1) (2026-03-11)
+
+## [1.61.0](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.61.0) (2026-03-10)
+
+### Features
+
+* add a DeleteFolderRecursive API definition ([6f31019](https://github.com/googleapis/google-cloud-go/commit/6f310199e136b133bb4fadaa353e264e809db6d7))
+* add bucket encryption enforcement configuration (#13874) ([245c8d7](https://github.com/googleapis/google-cloud-go/commit/245c8d7638756f3ec7c55b32b8a0f924814e8547))
+* add multistream options to MRD (#13758) ([4557675](https://github.com/googleapis/google-cloud-go/commit/4557675e058e042c614a46b55c1b2346d378204b))
+* add multistream support to MRD (#13792) ([ffa7268](https://github.com/googleapis/google-cloud-go/commit/ffa7268c6195f11f404b0c976b3c7c836df26294))
+
+### Bug Fixes
+
+* Fix TM download dir corner case (#14142) ([87cdcc9](https://github.com/googleapis/google-cloud-go/commit/87cdcc9f756881f90337d222fe3707234d1a2c71))
+* Omit auto checksum in final request when MD5 is given (#14024) ([d404777](https://github.com/googleapis/google-cloud-go/commit/d40477749f0d54c88dd92fd992c9401732ef8d50))
+* optimize gRPC writer with zero-copy and lazy allocation (#13481) ([df64147](https://github.com/googleapis/google-cloud-go/commit/df64147605e961803c7ea839bc080ffd1b814ac9))
+
 ## [1.60.0](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.60.0) (2026-02-10)
 
 ### Features

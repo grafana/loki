@@ -1007,6 +1007,144 @@ The result is a list of patterns detected in the logs, with the number of sample
 The pattern format is the same as the [LogQL](../../query/) pattern filter and parser and can be used in queries for filtering matching logs.
 Each sample is a tuple of timestamp (second) and count.
 
+## Detected fields
+
+```bash
+GET /loki/api/v1/detected_fields
+POST /loki/api/v1/detected_fields
+```
+
+The `/loki/api/v1/detected_fields` endpoint returns fields that Loki has detected in log lines matching the given stream selector, along with the inferred type, estimated cardinality, and the parser that was used to extract the field.
+This endpoint is useful for discovering the structure of your logs without running a full log query.
+
+URL query parameters:
+
+- `query`: The [LogQL](../../query/) stream selector to match. Example: `{app="myapp", environment="dev"}`. This parameter is required.
+- `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is optional. If omitted, it defaults to `end - since`.
+- `end=<nanosecond Unix epoch>`: End timestamp. This parameter is optional. If omitted, it defaults to the current server time.
+- `since=<duration>`: Relative time range (for example, `1h`, `5m`). This parameter is optional and is used when `start` is omitted to compute `start = end - since`. If both `start` and `since` are omitted, `since` defaults to `1h`.
+- `step=<duration string or float number of seconds>`: Step between sample windows. This parameter is optional.
+- `line_limit=<integer>`: Maximum number of log lines to scan per shard. Defaults to 100. This parameter is optional.
+- `limit=<integer>`: Maximum number of fields to return. Defaults to 1000. The query parameter `field_limit` is also accepted as an alias for backwards compatibility. This parameter is optional.
+
+You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header.
+
+Response format:
+
+```bash
+{
+  "fields": [
+    {
+      "label": <string>,
+      "type": <string|int|float|boolean|duration|bytes>,
+      "cardinality": <integer>,
+      "parsers": [<string>],
+      "jsonPath": <string, optional>,
+      "sketch": <object, optional>
+    }
+  ],
+  "limit": <integer>
+}
+```
+
+### Examples
+
+This example cURL command
+
+```bash
+curl -H 'X-Scope-OrgID: <TENANT_ID>' -G -s "http://localhost:3100/loki/api/v1/detected_fields" \
+  --data-urlencode 'query={app="myapp"}' \
+  --data-urlencode 'start=1609459200000000000' \
+  --data-urlencode 'end=1609462800000000000' | jq
+```
+
+gave this response:
+
+```json
+{
+  "fields": [
+    {
+      "label": "level",
+      "type": "string",
+      "cardinality": 3,
+      "parsers": ["logfmt"]
+    },
+    {
+      "label": "duration",
+      "type": "duration",
+      "cardinality": 152,
+      "parsers": ["logfmt"]
+    },
+    {
+      "label": "status",
+      "type": "int",
+      "cardinality": 5,
+      "parsers": ["logfmt"]
+    }
+  ],
+  "limit": 1000
+}
+```
+
+## Detected field values
+
+```bash
+GET /loki/api/v1/detected_field/{name}/values
+POST /loki/api/v1/detected_field/{name}/values
+```
+
+The `/loki/api/v1/detected_field/{name}/values` endpoint returns the values observed for a specific detected field matching the given stream selector.
+`{name}` is the name of the field to retrieve values for.
+
+URL query parameters:
+
+- `query`: The [LogQL](../../query/) stream selector to match. Example: `{app="myapp", environment="dev"}`. This parameter is required.
+- `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is optional. If omitted, it defaults to `end - since`.
+- `end=<nanosecond Unix epoch>`: End timestamp. This parameter is optional. If omitted, it defaults to the current server time.
+- `since=<duration>`: Relative time range (for example, `1h`, `5m`). This parameter is optional and is used when `start` is omitted to compute `start = end - since`. If both `start` and `since` are omitted, `since` defaults to `1h`.
+- `step=<duration string or float number of seconds>`: Step between sample windows. This parameter is optional.
+- `line_limit=<integer>`: Maximum number of log lines to scan per shard. Defaults to 100. This parameter is optional.
+- `limit=<integer>`: Maximum number of values to return. Defaults to 1000. The query parameter `field_limit` is also accepted as an alias. This parameter is optional.
+
+You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header.
+
+Response format:
+
+```bash
+{
+  "values": [
+    <string>,
+    ...
+  ],
+  "limit": <integer>
+}
+```
+
+### Examples
+
+This example cURL command
+
+```bash
+curl -H 'X-Scope-OrgID: <TENANT_ID>' -G -s "http://localhost:3100/loki/api/v1/detected_field/level/values" \
+  --data-urlencode 'query={app="myapp"}' \
+  --data-urlencode 'start=1609459200000000000' \
+  --data-urlencode 'end=1609462800000000000' | jq
+```
+
+gave this response:
+
+```json
+{
+  "values": [
+    "debug",
+    "info",
+    "warn",
+    "error"
+  ],
+  "limit": 1000
+}
+```
+
 ## Stream logs
 
 ```bash

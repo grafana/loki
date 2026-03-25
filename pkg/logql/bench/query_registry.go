@@ -335,6 +335,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 			Step:      step,
 			Source:    def.Source,
 			QueryDesc: def.Description,
+			Tags:      def.Tags,
 		}
 		cases = append(cases, tc)
 	} else {
@@ -348,6 +349,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 				Direction: logproto.FORWARD,
 				Source:    def.Source,
 				QueryDesc: def.Description,
+				Tags:      def.Tags,
 			})
 		case DirectionBackward:
 			cases = append(cases, TestCase{
@@ -357,6 +359,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 				Direction: logproto.BACKWARD,
 				Source:    def.Source,
 				QueryDesc: def.Description,
+				Tags:      def.Tags,
 			})
 		case DirectionBoth:
 			cases = append(cases,
@@ -367,6 +370,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 					Direction: logproto.FORWARD,
 					Source:    def.Source,
 					QueryDesc: def.Description,
+					Tags:      def.Tags,
 				},
 				TestCase{
 					Query:     resolvedQuery,
@@ -375,6 +379,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 					Direction: logproto.BACKWARD,
 					Source:    def.Source,
 					QueryDesc: def.Description,
+					Tags:      def.Tags,
 				},
 			)
 		}

@@ -1,5 +1,12 @@
 # Changes
 
+## [2.18.0](https://github.com/googleapis/google-cloud-go/releases/tag/v2.18.0) (2026-03-09)
+
+### Features
+
+* add callctx telemetry helpers (#472) ([fa319ff](https://github.com/googleapis/google-cloud-go/commit/fa319ffc309366ab21e41f5d7480f450eedd2be9))
+* move gax-go to use 1.25 as the lower bound of support (#469) ([01594ca](https://github.com/googleapis/google-cloud-go/commit/01594ca54717eebe7229a5168ef41be61191a720))
+
 ## [2.17.0](https://github.com/googleapis/google-cloud-go/releases/tag/v2.17.0) (2026-02-03)
 
 ### Features

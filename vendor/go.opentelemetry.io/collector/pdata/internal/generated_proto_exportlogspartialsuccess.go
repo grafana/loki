@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -29,7 +30,7 @@ var (
 )
 
 func NewExportLogsPartialSuccess() *ExportLogsPartialSuccess {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ExportLogsPartialSuccess{}
 	}
 	return protoPoolExportLogsPartialSuccess.Get().(*ExportLogsPartialSuccess)
@@ -40,7 +41,7 @@ func DeleteExportLogsPartialSuccess(orig *ExportLogsPartialSuccess, nullable boo
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
