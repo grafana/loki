@@ -45,98 +45,98 @@ func NewMetrics(sectionType dataobj.SectionType) *Metrics {
 
 	return &Metrics{
 		columnMetadataSize: newNativeHistogram(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_column_metadata_size",
+			Name: "dataobj_encoding_dataset_column_metadata_size",
 			Help: "Distribution of column metadata size per encoded dataset column.",
 
 			ConstLabels: sectionLabels,
 		}),
 
 		columnMetadataTotalSize: newNativeHistogram(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_column_metadata_total_size",
+			Name: "dataobj_encoding_dataset_column_metadata_total_size",
 			Help: "Distribution of metadata size across all columns per encoded section.",
 
 			ConstLabels: sectionLabels,
 		}),
 
 		columnCount: newNativeHistogram(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_column_count",
+			Name: "dataobj_encoding_dataset_column_count",
 			Help: "Distribution of column counts per encoded dataset section.",
 
 			ConstLabels: sectionLabels,
 		}),
 
 		columnCompressedBytes: newNativeHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_column_compressed_bytes",
+			Name: "dataobj_encoding_dataset_column_compressed_bytes",
 			Help: "Distribution of compressed bytes per encoded dataset column.",
 
 			ConstLabels: sectionLabels,
 		}, []string{"column_type"}),
 
 		columnUncompressedBytes: newNativeHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_column_uncompressed_bytes",
+			Name: "dataobj_encoding_dataset_column_uncompressed_bytes",
 			Help: "Distribution of uncompressed bytes per encoded dataset column.",
 
 			ConstLabels: sectionLabels,
 		}, []string{"column_type"}),
 
 		columnCompressionRatio: newNativeHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_column_compression_ratio",
+			Name: "dataobj_encoding_dataset_column_compression_ratio",
 			Help: "Distribution of compression ratio per encoded dataset column. Not reported when compression is disabled.",
 
 			ConstLabels: sectionLabels,
 		}, []string{"column_type", "compression_type"}),
 
 		columnRows: newNativeHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_column_rows",
+			Name: "dataobj_encoding_dataset_column_rows",
 			Help: "Distribution of row counts per encoded dataset column.",
 
 			ConstLabels: sectionLabels,
 		}, []string{"column_type"}),
 
 		columnValues: newNativeHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_column_values",
+			Name: "dataobj_encoding_dataset_column_values",
 			Help: "Distribution of value counts per encoded dataset column.",
 
 			ConstLabels: sectionLabels,
 		}, []string{"column_type"}),
 
 		pageCount: newNativeHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_page_count",
+			Name: "dataobj_encoding_dataset_page_count",
 			Help: "Distribution of page count per encoded dataset column.",
 
 			ConstLabels: sectionLabels,
 		}, []string{"column_type"}),
 
 		pageCompressedBytes: newNativeHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_page_compressed_bytes",
+			Name: "dataobj_encoding_dataset_page_compressed_bytes",
 			Help: "Distribution of compressed bytes per encoded dataset page.",
 
 			ConstLabels: sectionLabels,
 		}, []string{"column_type"}),
 
 		pageUncompressedBytes: newNativeHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_page_uncompressed_bytes",
+			Name: "dataobj_encoding_dataset_page_uncompressed_bytes",
 			Help: "Distribution of uncompressed bytes per encoded dataset page.",
 
 			ConstLabels: sectionLabels,
 		}, []string{"column_type"}),
 
 		pageCompressionRatio: newNativeHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_page_compression_ratio",
+			Name: "dataobj_encoding_dataset_page_compression_ratio",
 			Help: "Distribution of compression ratio per encoded dataset page. Not reported when compression is disabled.",
 
 			ConstLabels: sectionLabels,
 		}, []string{"column_type", "compression_type"}),
 
 		pageRows: newNativeHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_page_rows",
+			Name: "dataobj_encoding_dataset_page_rows",
 			Help: "Distribution of row counts per encoded dataset page",
 
 			ConstLabels: sectionLabels,
 		}, []string{"column_type"}),
 
 		pageValues: newNativeHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_dataobj_encoding_dataset_page_values",
+			Name: "dataobj_encoding_dataset_page_values",
 			Help: "Distribution of value counts per encoded dataset page",
 
 			ConstLabels: sectionLabels,
@@ -148,7 +148,14 @@ func NewMetrics(sectionType dataobj.SectionType) *Metrics {
 func (m *Metrics) Register(reg prometheus.Registerer) error {
 	var errs []error
 	errs = append(errs, reg.Register(m.columnMetadataSize))
-	errs = append(errs, reg.Register(m.columnMetadataTotalSize))
+	fmt.Printf("Dan - Registering metric %v\n", m.columnMetadataTotalSize.Desc().String())
+	err := reg.Register(m.columnMetadataTotalSize)
+	if err != nil {
+		fmt.Printf("Dan - Failed to register metric due to %v\n", err)
+	} else {
+		fmt.Println("Dan - Successfully registered")
+	}
+	errs = append(errs, err)
 	errs = append(errs, reg.Register(m.columnCount))
 	errs = append(errs, reg.Register(m.columnCompressedBytes))
 	errs = append(errs, reg.Register(m.columnUncompressedBytes))

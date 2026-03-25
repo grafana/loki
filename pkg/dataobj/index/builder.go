@@ -143,7 +143,8 @@ func NewIndexBuilder(
 
 	indexStorageBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
 
-	if err := builder.RegisterMetrics(builderReg); err != nil {
+	wrappedReg := prometheus.WrapRegistererWithPrefix("loki_dataobj_index_builder_", builderReg)
+	if err := builder.RegisterMetrics(wrappedReg); err != nil {
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
 
