@@ -36,7 +36,7 @@ const (
 
 var (
 	sharedZstdCompressionOptions = make([]*dataset.CompressionOptions, zstd.EncoderLevelFromZstd(math.MaxInt)+1)
-	sharedZstdOptionsMutex       = &sync.Mutex{}
+	sharedZstdOptionsMutex       = sync.Mutex{}
 )
 
 func zstdCompressionOpts(encLevel zstd.EncoderLevel) *dataset.CompressionOptions {
