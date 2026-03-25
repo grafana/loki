@@ -118,7 +118,7 @@ func newBenchBuilder(b *testing.B) *logsobj.Builder {
 			TargetObjectSize:        8 * 1024 * 1024 * 1024, // 8GB - don't trigger flush during bench
 			TargetSectionSize:       128 * 1024 * 1024,      // 128MB
 			BufferSize:              16 * 1024 * 1024,        // 16MB
-			SectionStripeMergeLimit: 8,
+			SectionStripeMergeLimit: 16,
 		},
 		DataobjSortOrder: "stream-asc",
 	}
