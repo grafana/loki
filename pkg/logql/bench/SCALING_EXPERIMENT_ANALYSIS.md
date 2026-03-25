@@ -36,7 +36,7 @@ To test different thread counts without restarting services, we implemented a ru
 
 ```
 GET  /query-engine/worker/threads        → returns current thread count
-POST /query-engine/worker/threads         → sets thread count (form field: worker_threads)
+POST /query-engine/worker/threads        → sets thread count (form field: worker_threads)
 ```
 
 To change threads on all workers at once:
@@ -233,19 +233,6 @@ With 32 threads and 64 concurrent queries generating ~3,456 tasks, there are ~10
 
 With 3 workers (96 threads), the same 3,456 tasks have ~36 tasks per thread. Queries complete slowly (10.9 s avg latency) but they do complete — the higher thread count prevents the stall.
 
-### 5.4 Dispatch Ordering and Deadlock
-
-The deadlock is a dependency inversion in the task dispatch order:
-
-```go
-// pkg/engine/internal/workflow/workflow.go
-for _, taskType := range []taskType{
-    taskTypeOther,  // parents dispatched FIRST — but they DEPEND on scans
-    taskTypeScan,   // scans dispatched SECOND — but parents BLOCK waiting for them
-}
-```
-
-With ≤2 threads, parent tasks fill all slots and block. Scan tasks cannot run. The fix is to reverse this order: dispatch `taskTypeScan` first so leaf tasks are already running (or queued ahead of parents) when parent tasks start waiting.
 
 ---
 
@@ -257,28 +244,3 @@ With ≤2 threads, parent tasks fill all slots and block. Scan tasks cannot run.
 | Thread scaling (1 worker) | Good from 4→32 threads; plateau at 64; decline at 128 |
 | Horizontal scaling (1→3 workers) | **Negative**: −23% QPS, +69% latency |
 | Per-task remote overhead | **6.4× slower** than local execution |
-| Deadlock threshold | ≤2 threads always deadlocks (any concurrency, any worker count) |
-
----
-
-## 7. Recommendations
-
-### Fix task dispatch ordering
-
-Reverse the dispatch order in `workflow.go` to send scan tasks before parent tasks. This eliminates deadlock and allows the system to operate safely with fewer threads.
-
-### Reduce distributed execution overhead
-
-The 6.4× per-task overhead is the primary barrier to horizontal scaling. Approaches:
-
-- **Co-locate dependent tasks**: schedule a query's scan and parent tasks on the same worker to keep stream data in-process rather than relaying through gRPC.
-- **Batch wire messages**: aggregate multiple task assignments and results to amortize per-message overhead.
-- **Worker-local caching**: cache data object sections in worker memory to avoid repeated storage reads.
-
-### Add admission control
-
-The engine should limit the number of concurrent queries based on available worker capacity to prevent task starvation. A simple formula: `max_concurrent ≈ total_threads / avg_tasks_per_query`. For 32 threads and ~54 tasks/query, the system should not accept more than ~10–15 concurrent queries.
-
-### Dependency-aware scheduling
-
-The current fair queue distributes tasks without considering dependencies. A scheduler that keeps a query's tasks on the same worker and prioritizes leaf tasks over parent tasks would both prevent deadlock by design and reduce stream relay overhead.
