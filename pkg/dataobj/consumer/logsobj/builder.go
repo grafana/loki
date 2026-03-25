@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"runtime"
 
 	"github.com/facette/natsort"
 	"github.com/grafana/dskit/flagext"
@@ -600,6 +601,9 @@ func (b *Builder) Reset() {
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
 	b.state = builderStateEmpty
+
+	// Run a GC after the flush to reclaim memory.
+	runtime.GC()
 }
 
 // RegisterMetrics registers metrics about builder to report to reg. All
