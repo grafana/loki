@@ -36,6 +36,10 @@ type BuilderOptions struct {
 
 	// StatisticsOptions holds optional configuration for statistics.
 	Statistics StatisticsOptions
+
+	// SkipCRC disables CRC32 checksum computation during page building.
+	// Useful for intermediate pages that will be merged and rewritten.
+	SkipCRC bool
 }
 
 // StatisticsOptions customizes the collection of statistics for a column.

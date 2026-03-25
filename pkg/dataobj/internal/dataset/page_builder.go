@@ -295,7 +295,10 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 		return nil, fmt.Errorf("writing values buffer: %w", err)
 	}
 
-	checksum := crc32.Checksum(finalData.Bytes(), checksumTable)
+	var checksum uint32
+	if !b.opts.SkipCRC {
+		checksum = crc32.Checksum(finalData.Bytes(), checksumTable)
+	}
 
 	page := MemPage{
 		Desc: PageDesc{

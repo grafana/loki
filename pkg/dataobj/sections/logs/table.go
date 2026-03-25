@@ -120,6 +120,10 @@ type tableBuffer struct {
 	// Useful for intermediate stripes where stats are recomputed during merge.
 	skipStats bool
 
+	// skipCRC disables CRC32 checksums for pages. Useful for intermediate
+	// stripes that are always read from memory.
+	skipCRC bool
+
 	streamID  *dataset.ColumnBuilder
 	timestamp *dataset.ColumnBuilder
 
@@ -149,6 +153,7 @@ func (b *tableBuffer) StreamID(pageSize, pageRowCount int) *dataset.ColumnBuilde
 			StoreRangeStats:       !b.skipStats,
 			StoreCardinalityStats: !b.skipStats,
 		},
+		SkipCRC: b.skipCRC,
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
@@ -179,6 +184,7 @@ func (b *tableBuffer) Timestamp(pageSize, pageRowCount int) *dataset.ColumnBuild
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: !b.skipStats,
 		},
+		SkipCRC: b.skipCRC,
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
@@ -223,6 +229,7 @@ func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressi
 			StoreRangeStats:       !b.skipStats,
 			StoreCardinalityStats: !b.skipStats,
 		},
+		SkipCRC: b.skipCRC,
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
@@ -269,6 +276,7 @@ func (b *tableBuffer) Message(pageSize, pageRowCount int, compressionOpts *datas
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: false,
 		},
+		SkipCRC: b.skipCRC,
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,

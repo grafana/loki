@@ -90,8 +90,10 @@ type openedPage struct {
 // release resources associated with the page. The openedPage must not be
 // used after closing.
 func (p *MemPage) open(compression datasetmd.CompressionType) (openedPage, io.Closer, error) {
-	if actual := crc32.Checksum(p.Data, checksumTable); p.Desc.CRC32 != actual {
-		return openedPage{}, nil, fmt.Errorf("invalid CRC32 checksum %x, expected %x", actual, p.Desc.CRC32)
+	if p.Desc.CRC32 != 0 {
+		if actual := crc32.Checksum(p.Data, checksumTable); p.Desc.CRC32 != actual {
+			return openedPage{}, nil, fmt.Errorf("invalid CRC32 checksum %x, expected %x", actual, p.Desc.CRC32)
+		}
 	}
 
 	bitmapSize, n := binary.Uvarint(p.Data)

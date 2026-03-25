@@ -137,6 +137,7 @@ func NewBuilder(metrics *Metrics, opts BuilderOptions) *Builder {
 	// merge. Skip compression for stripes to avoid this double work.
 	b.stripeBuffer.binaryCompression = datasetmd_v2.COMPRESSION_TYPE_NONE
 	b.stripeBuffer.skipStats = true
+	b.stripeBuffer.skipCRC = true
 	return b
 }
 
