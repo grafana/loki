@@ -24,7 +24,7 @@ var root = newMIME("application/octet-stream", "",
 	woff2, otf, ttc, eot, wasm, shx, dbf, dcm, rar, djvu, mobi, lit, bpg, cbor,
 	sqlite3, dwg, nes, lnk, macho, qcp, icns, hdr, mrc, mdb, accdb, zstd, cab,
 	rpm, xz, lzip, torrent, cpio, tzif, xcf, pat, gbr, glb, cabIS, jxr, parquet,
-	oneNote, chm, wpd, dxf, grib, zlib,
+	oneNote, chm, wpd, dxf, grib, zlib, inf, hlp, fm, bufr,
 	// Keep text last because it is the slowest check.
 	text,
 )
@@ -174,8 +174,8 @@ var (
 	aMp4 = newMIME("audio/mp4", ".mp4", magic.AMp4).
 		alias("audio/x-mp4a")
 	m4a = newMIME("audio/x-m4a", ".m4a", magic.M4a)
-	m3u = newMIME("application/vnd.apple.mpegurl", ".m3u", magic.M3u).
-		alias("audio/mpegurl")
+	m3u = newMIME("application/vnd.apple.mpegurl", ".m3u", magic.M3U).
+		alias("audio/mpegurl", "application/x-mpegurl")
 	m4v  = newMIME("video/x-m4v", ".m4v", magic.M4v)
 	mj2  = newMIME("video/mj2", ".mj2", magic.Mj2)
 	dvb  = newMIME("video/vnd.dvb.file", ".dvb", magic.Dvb)
@@ -290,4 +290,8 @@ var (
 	rfc822  = newMIME("message/rfc822", ".eml", magic.RFC822)
 	grib    = newMIME("application/grib", ".grb", magic.GRIB)
 	zlib    = newMIME("application/zlib", "", magic.Zlib)
+	inf     = newMIME("application/x-os2-inf", ".inf", magic.Inf)
+	hlp     = newMIME("application/x-os2-hlp", ".hlp", magic.Hlp)
+	fm      = newMIME("application/vnd.framemaker", ".fm", magic.FrameMaker)
+	bufr    = newMIME("application/bufr", ".bufr", magic.BUFR)
 )

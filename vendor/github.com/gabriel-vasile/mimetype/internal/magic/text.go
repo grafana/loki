@@ -352,6 +352,9 @@ func GLTF(raw []byte, limit uint32) bool {
 	return jsonHelper(raw, limit, json.QueryGLTF, json.TokObject)
 }
 
+// jsonHelper parses raw and tries to match the q query against it. wantToks
+// ensures we're not wasting time parsing an input that would not pass anyway,
+// ex: the input is a valid JSON array, but we're looking for a JSON object.
 func jsonHelper(raw scan.Bytes, limit uint32, q string, wantToks ...int) bool {
 	firstNonWS := raw.FirstNonWS()
 
@@ -376,7 +379,7 @@ func jsonHelper(raw scan.Bytes, limit uint32, q string, wantToks ...int) bool {
 
 	// If a section of the file was provided, check if all of it was inspected.
 	// In other words, check that if there was a problem parsing, that problem
-	// occurred at the last byte in the input.
+	// occurred after the last byte in the input.
 	return inspected == lraw && lraw > 0
 }
 
@@ -387,7 +390,6 @@ func NdJSON(raw []byte, limit uint32) bool {
 	lCount, objOrArr := 0, 0
 
 	s := scan.Bytes(raw)
-	s.DropLastLine(limit)
 	var l scan.Bytes
 	for len(s) != 0 {
 		l = s.Line()

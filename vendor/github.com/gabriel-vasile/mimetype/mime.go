@@ -1,7 +1,7 @@
 package mimetype
 
 import (
-	"mime"
+	stdmime "mime"
 	"slices"
 	"strings"
 
@@ -52,8 +52,8 @@ func (m *MIME) Parent() *MIME {
 func (m *MIME) Is(expectedMIME string) bool {
 	// Parsing is needed because some detected MIME types contain parameters
 	// that need to be stripped for the comparison.
-	expectedMIME, _, _ = mime.ParseMediaType(expectedMIME)
-	found, _, _ := mime.ParseMediaType(m.mime)
+	expectedMIME, _, _ = stdmime.ParseMediaType(expectedMIME)
+	found, _, _ := stdmime.ParseMediaType(m.mime)
 
 	if expectedMIME == found {
 		return true
@@ -118,7 +118,7 @@ func (m *MIME) match(in []byte, readLimit uint32) *MIME {
 
 // flatten transforms an hierarchy of MIMEs into a slice of MIMEs.
 func (m *MIME) flatten() []*MIME {
-	out := []*MIME{m}
+	out := []*MIME{m} //nolint:prealloc
 	for _, c := range m.children {
 		out = append(out, c.flatten()...)
 	}
@@ -196,6 +196,7 @@ func (m *MIME) lookup(mime string) *MIME {
 // The sub-format will be detected if all the detectors in the parent chain return true.
 // The extension should include the leading dot, as in ".html".
 func (m *MIME) Extend(detector func(raw []byte, limit uint32) bool, mime, extension string, aliases ...string) {
+	mime, _, _ = stdmime.ParseMediaType(mime)
 	c := &MIME{
 		mime:      mime,
 		extension: extension,
