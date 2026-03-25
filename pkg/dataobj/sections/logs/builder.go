@@ -33,7 +33,7 @@ const (
 	AppendOrdered
 )
 
-var sharedCompressionOptions = make([]*dataset.CompressionOptions, zstd.EncoderLevelFromZstd(math.MaxInt))
+var sharedCompressionOptions = make([]*dataset.CompressionOptions, zstd.EncoderLevelFromZstd(math.MaxInt)+1)
 
 func zstdCompressionOpts(encLevel zstd.EncoderLevel) *dataset.CompressionOptions {
 	if sharedCompressionOptions[encLevel] == nil {
