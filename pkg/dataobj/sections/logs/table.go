@@ -116,9 +116,9 @@ type tableBuffer struct {
 	// (message, metadata). When zero (UNSPECIFIED), defaults to ZSTD.
 	binaryCompression datasetmd.CompressionType
 
-	// skipCardinalityStats disables cardinality stats collection. Useful for
-	// intermediate stripes where stats are recomputed during merge.
-	skipCardinalityStats bool
+	// skipStats disables all statistics collection (range and cardinality).
+	// Useful for intermediate stripes where stats are recomputed during merge.
+	skipStats bool
 
 	streamID  *dataset.ColumnBuilder
 	timestamp *dataset.ColumnBuilder
@@ -146,8 +146,8 @@ func (b *tableBuffer) StreamID(pageSize, pageRowCount int) *dataset.ColumnBuilde
 		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
 		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
-			StoreRangeStats:       true,
-			StoreCardinalityStats: !b.skipCardinalityStats,
+			StoreRangeStats:       !b.skipStats,
+			StoreCardinalityStats: !b.skipStats,
 		},
 	})
 	if err != nil {
@@ -177,7 +177,7 @@ func (b *tableBuffer) Timestamp(pageSize, pageRowCount int) *dataset.ColumnBuild
 		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
 		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
-			StoreRangeStats: true,
+			StoreRangeStats: !b.skipStats,
 		},
 	})
 	if err != nil {
@@ -220,8 +220,8 @@ func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressi
 		Compression:        compression,
 		CompressionOptions: compressionOpts,
 		Statistics: dataset.StatisticsOptions{
-			StoreRangeStats:       true,
-			StoreCardinalityStats: !b.skipCardinalityStats,
+			StoreRangeStats:       !b.skipStats,
+			StoreCardinalityStats: !b.skipStats,
 		},
 	})
 	if err != nil {
