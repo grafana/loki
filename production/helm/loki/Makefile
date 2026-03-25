@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := all
 .PHONY: lint lint-yaml install-distributed install-single-binary uninstall update-chart update
 
-# Optional image override, example: make install-distributed IMAGE=grafana/loki:2.9.0
+# Optional image override, example: make install-distributed IMAGE=grafana/loki:v3.7.0
 IMAGE ?=
 
 # Optional helm arguments, example: make install-distributed ARGS="--set loki.auth.enabled=true"

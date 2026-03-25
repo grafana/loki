@@ -30,13 +30,13 @@ The configuration files associated with these installation instructions run Loki
 1. Copy and paste the following command into your command line to download `loki-local-config.yaml` to your `loki` directory. If necessary, update the Loki version numbers in the commands to match your version of Loki.
 
     ```bash
-    wget https://raw.githubusercontent.com/grafana/loki/v3.6.0/cmd/loki/loki-local-config.yaml -O loki-config.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/vv3.7.0/cmd/loki/loki-local-config.yaml -O loki-config.yaml
     ```
 
 1. Copy and paste the following command into your command line to start the Docker container using the configuration file you downloaded in the previous step. If necessary, update the Loki version numbers in the commands to match your version of Loki.
 
     ```bash
-    docker run --name loki -d -v $(pwd):/mnt/config -p 3100:3100 grafana/loki:3.6.0 -config.file=/mnt/config/loki-config.yaml
+    docker run --name loki -d -v $(pwd):/mnt/config -p 3100:3100 grafana/loki:v3.7.0 -config.file=/mnt/config/loki-config.yaml
     ```
 
     {{< admonition type="note" >}}
@@ -56,7 +56,7 @@ The configuration files associated with these installation instructions run Loki
     ```bash
 
     CONTAINER ID   IMAGE                    COMMAND                  CREATED              STATUS              PORTS                                       NAMES
-    cece1df84519   grafana/loki:3.6.0       "/usr/bin/loki -conf…"   About a minute ago   Up About a minute   0.0.0.0:3100->3100/tcp, :::3100->3100/tcp   loki
+    cece1df84519   grafana/loki:v3.7.0       "/usr/bin/loki -conf…"   About a minute ago   Up About a minute   0.0.0.0:3100->3100/tcp, :::3100->3100/tcp   loki
     ```
 
 1. Verify that Loki is up and running.
@@ -70,13 +70,13 @@ The configuration files associated with these installation instructions run Loki
 
 ```bash
 cd "<local-path>"
-wget https://raw.githubusercontent.com/grafana/loki/v3.6.0/cmd/loki/loki-local-config.yaml -O loki-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/vv3.7.0/cmd/loki/loki-local-config.yaml -O loki-config.yaml
 ```
 
 1. Copy and paste the following command into your command line to start the Docker container using the configuration file you downloaded in the previous step. Note that you will need to replace the `<local-path>` in the commands with your local path. If necessary, update the Loki version numbers in the commands to match your version of Loki.
 
 ```bash
-docker run --name loki -v <local-path>:/mnt/config -p 3100:3100 grafana/loki:3.6.0 --config.file=/mnt/config/loki-config.yaml
+docker run --name loki -v <local-path>:/mnt/config -p 3100:3100 grafana/loki:v3.7.0 --config.file=/mnt/config/loki-config.yaml
 ```
 
 To send logs to Loki, consider using [Grafana Alloy](https://grafana.com/docs/alloy/latest/).
@@ -100,9 +100,9 @@ Run the following commands in your command line. They work for Windows or Linux 
 1. Copy and paste the following commands into your command line to download the `docker-compose.yaml` and `alloy-local-config.yaml` files. If necessary, update the Loki version numbers in the commands to match your version of Loki.
 
     ```bash
-    wget https://raw.githubusercontent.com/grafana/loki/v3.6.0/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
-    wget https://raw.githubusercontent.com/grafana/loki/v3.6.0/examples/getting-started/alloy-local-config.yaml -O alloy-local-config.yaml
-    wget https://raw.githubusercontent.com/grafana/loki/v3.6.0/examples/getting-started/loki-config.yaml -O loki-config.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/vv3.7.0/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/vv3.7.0/examples/getting-started/alloy-local-config.yaml -O alloy-local-config.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/vv3.7.0/examples/getting-started/loki-config.yaml -O loki-config.yaml
     ```
 
 1. With `loki` as the current working directory, run the following 'docker-compose` command:
