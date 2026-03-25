@@ -20,8 +20,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/file"
+	pkg_util "github.com/grafana/loki/v3/clients/pkg/util"
 
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -67,21 +66,21 @@ const (
 )
 
 var (
-	defaultClientConfig = client.Config{
-		BatchWait: client.BatchWait,
-		BatchSize: client.BatchSize,
+	defaultClientConfig = pkg_util.Config{
+		BatchWait: pkg_util.BatchWait,
+		BatchSize: pkg_util.BatchSize,
 		BackoffConfig: backoff.Config{
-			MinBackoff: client.MinBackoff,
-			MaxBackoff: client.MaxBackoff,
-			MaxRetries: client.MaxRetries,
+			MinBackoff: pkg_util.MinBackoff,
+			MaxBackoff: pkg_util.MaxBackoff,
+			MaxRetries: pkg_util.MaxRetries,
 		},
-		Timeout: client.Timeout,
+		Timeout: pkg_util.Timeout,
 	}
 )
 
 type config struct {
 	labels       model.LabelSet
-	clientConfig client.Config
+	clientConfig pkg_util.Config
 	pipeline     PipelineConfig
 }
 
@@ -283,7 +282,7 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	if err == nil {
 		labels[defaultHostLabelName] = model.LabelValue(host)
 	}
-	labels[file.FilenameLabel] = model.LabelValue(logCtx.LogPath)
+	labels["filename"] = model.LabelValue(logCtx.LogPath)
 
 	// Process relabel configs.
 	if relabelString, ok := logCtx.Config[cfgRelabelKey]; ok && relabelString != "" {
