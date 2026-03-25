@@ -20,7 +20,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
-	pkg_util "github.com/grafana/loki/v3/clients/pkg/util"
+	clients_util "github.com/grafana/loki/v3/clients/pkg/util"
 
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -66,21 +66,21 @@ const (
 )
 
 var (
-	defaultClientConfig = pkg_util.Config{
-		BatchWait: pkg_util.BatchWait,
-		BatchSize: pkg_util.BatchSize,
+	defaultClientConfig = clients_util.Config{
+		BatchWait: clients_util.BatchWait,
+		BatchSize: clients_util.BatchSize,
 		BackoffConfig: backoff.Config{
-			MinBackoff: pkg_util.MinBackoff,
-			MaxBackoff: pkg_util.MaxBackoff,
-			MaxRetries: pkg_util.MaxRetries,
+			MinBackoff: clients_util.MinBackoff,
+			MaxBackoff: clients_util.MaxBackoff,
+			MaxRetries: clients_util.MaxRetries,
 		},
-		Timeout: pkg_util.Timeout,
+		Timeout: clients_util.Timeout,
 	}
 )
 
 type config struct {
 	labels       model.LabelSet
-	clientConfig pkg_util.Config
+	clientConfig clients_util.Config
 	pipeline     PipelineConfig
 }
 
