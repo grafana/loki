@@ -203,7 +203,7 @@ func (r *Reader) QueryCountOverTime(queryRange string, now time.Time, cache bool
 		Scheme: scheme,
 		Host:   r.addr,
 		Path:   "/loki/api/v1/query",
-		RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("count_over_time({%v=\"%v\",%v=\"%v\"}[%s])", r.sName, r.sValue, r.lName, r.lVal, queryRange)) +
+		RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("count_over_time({%v=\"%v\",%v=\"%v\"}[%s] %v)", r.sName, r.sValue, r.lName, r.lVal, queryRange, r.queryAppend)) +
 			fmt.Sprintf("&time=%d", now.UnixNano()) +
 			"&limit=1000",
 	}
