@@ -54,7 +54,7 @@ Grafana Loki does not come with any included authentication layer. You must run 
    Copy and paste the following command into your command line to download a generic configuration file.
 
    Use the Git references that match your downloaded Loki version to get the correct configuration file.
-   For example, if you are using Loki version 3.6.0, you need to use the `https://raw.githubusercontent.com/grafana/loki/v3.6.0/cmd/loki/loki-local-config.yaml` URL to download the configuration file.
+   For example, if you are using Loki version 3.7.0, you need to use the `https://raw.githubusercontent.com/grafana/loki/v3.7.0/cmd/loki/loki-local-config.yaml` URL to download the configuration file.
 
    ```bash
    wget https://raw.githubusercontent.com/grafana/loki/main/cmd/loki/loki-local-config.yaml
