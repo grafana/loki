@@ -205,7 +205,7 @@ func (b *Builder) flushSection() *table {
 		return nil
 	}
 
-	compressionOpts := zstdCompressionOpts(zstd.SpeedDefault)
+	compressionOpts := zstdCompressionOpts(zstd.SpeedFastest)
 
 	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.stripes, b.opts.StripeMergeLimit, b.opts.SortOrder)
 	if err != nil {
