@@ -112,6 +112,10 @@ func (t *table) CompressedSize() int {
 // A tableBuffer holds a set of column builders used for constructing tables.
 // The zero value is ready for use.
 type tableBuffer struct {
+	// binaryCompression controls the compression type for binary columns
+	// (message, metadata). When zero (UNSPECIFIED), defaults to ZSTD.
+	binaryCompression datasetmd.CompressionType
+
 	streamID  *dataset.ColumnBuilder
 	timestamp *dataset.ColumnBuilder
 
@@ -197,6 +201,10 @@ func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressi
 		return builder
 	}
 
+	compression := b.binaryCompression
+	if compression == datasetmd.COMPRESSION_TYPE_UNSPECIFIED {
+		compression = datasetmd.COMPRESSION_TYPE_ZSTD
+	}
 	col, err := dataset.NewColumnBuilder(key, dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
@@ -205,7 +213,7 @@ func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressi
 			Logical:  ColumnTypeMetadata.String(),
 		},
 		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
+		Compression:        compression,
 		CompressionOptions: compressionOpts,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats:       true,
@@ -235,6 +243,10 @@ func (b *tableBuffer) Message(pageSize, pageRowCount int, compressionOpts *datas
 		return b.message
 	}
 
+	msgCompression := b.binaryCompression
+	if msgCompression == datasetmd.COMPRESSION_TYPE_UNSPECIFIED {
+		msgCompression = datasetmd.COMPRESSION_TYPE_ZSTD
+	}
 	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
@@ -243,7 +255,7 @@ func (b *tableBuffer) Message(pageSize, pageRowCount int, compressionOpts *datas
 			Logical:  ColumnTypeMessage.String(),
 		},
 		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
+		Compression:        msgCompression,
 		CompressionOptions: compressionOpts,
 
 		// We explicitly don't have range stats for the message column:

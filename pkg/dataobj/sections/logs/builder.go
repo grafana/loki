@@ -129,10 +129,14 @@ func NewBuilder(metrics *Metrics, opts BuilderOptions) *Builder {
 		metrics = NewMetrics()
 	}
 
-	return &Builder{
+	b := &Builder{
 		metrics: metrics,
 		opts:    opts,
 	}
+	// Stripes are intermediate — they get compressed then decompressed during
+	// merge. Skip compression for stripes to avoid this double work.
+	b.stripeBuffer.binaryCompression = datasetmd_v2.COMPRESSION_TYPE_NONE
+	return b
 }
 
 // Tenant returns the optional tenant that owns the builder.
