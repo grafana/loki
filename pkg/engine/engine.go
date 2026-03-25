@@ -97,8 +97,8 @@ func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 
 // TaskCacheConfig extends resultscache.Config with additional task-cache-specific settings.
 type TaskCacheConfig struct {
-	resultscache.Config              `yaml:",inline"`
-	TaskResultMaxCacheableSize       flagext.Bytes `yaml:"task_result_max_cacheable_size" category:"experimental"`
+	resultscache.Config               `yaml:",inline"`
+	TaskResultMaxCacheableSize        flagext.Bytes `yaml:"task_result_max_cacheable_size" category:"experimental"`
 	DataObjScanResultMaxCacheableSize flagext.Bytes `yaml:"dataobjscan_result_max_cacheable_size" category:"experimental"`
 }
 
@@ -498,9 +498,9 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 		MaxRunningScanTasks:  maxRunningScanTasks,
 		MaxRunningOtherTasks: 0,
 
-		CacheEnabled:              cacheEnabled,
-		MaxTaskCacheSize:          uint64(e.cfg.Executor.TasksResultCache.TaskResultMaxCacheableSize),
-		MaxDataObjScanCacheSize:   uint64(e.cfg.Executor.TasksResultCache.DataObjScanResultMaxCacheableSize),
+		CacheEnabled:            cacheEnabled,
+		MaxTaskCacheSize:        uint64(e.cfg.Executor.TasksResultCache.TaskResultMaxCacheableSize),
+		MaxDataObjScanCacheSize: uint64(e.cfg.Executor.TasksResultCache.DataObjScanResultMaxCacheableSize),
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),

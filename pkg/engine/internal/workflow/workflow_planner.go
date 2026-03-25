@@ -24,8 +24,8 @@ type planner struct {
 
 // cacheParams bundles cache-related configuration for workflow planning.
 type cacheParams struct {
-	enabled               bool
-	taskCacheMaxSizeBytes uint64
+	enabled                 bool
+	taskCacheMaxSizeBytes   uint64
 	dataObjScanMaxSizeBytes uint64
 }
 
