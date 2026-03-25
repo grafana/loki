@@ -132,6 +132,30 @@ func (b *Builder) Record(streamLabels labels.Labels, ts time.Time, recordSize in
 	return stream.ID
 }
 
+// GetOrAddStream looks up or creates a stream for the given labels and returns
+// a pointer to it. Use [Builder.RecordToStream] for subsequent entries in the
+// same stream to avoid redundant hash lookups.
+func (b *Builder) GetOrAddStream(streamLabels labels.Labels) *Stream {
+	return b.getOrAddStream(streamLabels)
+}
+
+// RecordToStream records an entry directly to a previously-looked-up stream,
+// avoiding repeated label hashing. The caller must ensure stream was obtained
+// from [Builder.GetOrAddStream] on the same Builder.
+func (b *Builder) RecordToStream(stream *Stream, ts time.Time, recordSize int64) {
+	ts = ts.UTC()
+	b.observeRecord(ts)
+
+	if stream.MinTimestamp.IsZero() || ts.Before(stream.MinTimestamp) {
+		stream.MinTimestamp = ts
+	}
+	if stream.MaxTimestamp.IsZero() || ts.After(stream.MaxTimestamp) {
+		stream.MaxTimestamp = ts
+	}
+	stream.Rows++
+	stream.UncompressedSize += recordSize
+}
+
 func (b *Builder) observeRecord(ts time.Time) {
 	b.metrics.recordsTotal.Inc()
 

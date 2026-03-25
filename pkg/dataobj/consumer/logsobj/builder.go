@@ -274,16 +274,20 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 
 	b.metrics.appends.Inc()
 
+	// Look up the stream once, then use RecordToStream for each entry to avoid
+	// re-hashing labels on every entry.
+	cachedStream := sb.GetOrAddStream(ls)
+
 	for _, entry := range stream.Entries {
 		sz := int64(len(entry.Line))
 		for _, md := range entry.StructuredMetadata {
 			sz += int64(len(md.Value))
 		}
 
-		streamID := sb.Record(ls, entry.Timestamp, sz)
+		sb.RecordToStream(cachedStream, entry.Timestamp, sz)
 
 		lb.Append(logs.Record{
-			StreamID:  streamID,
+			StreamID:  cachedStream.ID,
 			Timestamp: entry.Timestamp,
 			Metadata:  convertMetadata(entry.StructuredMetadata),
 			Line:      unsafeStringToBytes(entry.Line),
