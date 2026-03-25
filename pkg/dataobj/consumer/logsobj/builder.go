@@ -272,8 +272,6 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 	sb, lb := b.streams[tenant], b.logs[tenant]
 
 	b.metrics.appends.Inc()
-	timer := prometheus.NewTimer(b.metrics.appendTime)
-	defer timer.ObserveDuration()
 
 	for _, entry := range stream.Entries {
 		sz := int64(len(entry.Line))
