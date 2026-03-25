@@ -66,24 +66,26 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 
 // sortRecords sorts the set of records according to the specified sort order.
 func sortRecords(records []Record, sortOrder SortOrder) {
-	slices.SortFunc(records, func(a, b Record) int {
-		switch sortOrder {
-		case SortStreamASC:
-			// Sort by [streamID ASC, timestamp DESC]
+	switch sortOrder {
+	case SortStreamASC:
+		slices.SortFunc(records, func(a, b Record) int {
 			if res := cmp.Compare(a.StreamID, b.StreamID); res != 0 {
 				return res
 			}
-			return b.Timestamp.Compare(a.Timestamp)
-		case SortTimestampDESC:
-			// Sort by [timestamp DESC, streamID ASC]
-			if res := b.Timestamp.Compare(a.Timestamp); res != 0 {
+			// Timestamp DESC: compare b before a, using UnixNano for speed.
+			return cmp.Compare(b.Timestamp.UnixNano(), a.Timestamp.UnixNano())
+		})
+	case SortTimestampDESC:
+		slices.SortFunc(records, func(a, b Record) int {
+			// Timestamp DESC: compare b before a, using UnixNano for speed.
+			if res := cmp.Compare(b.Timestamp.UnixNano(), a.Timestamp.UnixNano()); res != 0 {
 				return res
 			}
 			return cmp.Compare(a.StreamID, b.StreamID)
-		default:
-			panic("invalid sort order")
-		}
-	})
+		})
+	default:
+		panic("invalid sort order")
+	}
 }
 
 func equalRecords(a, b Record) bool {
