@@ -351,6 +351,10 @@ func streamSizeEstimate(stream logproto.Stream) int {
 }
 
 func convertMetadata(md push.LabelsAdapter) labels.Labels {
+	if len(md) == 0 {
+		return labels.EmptyLabels()
+	}
+
 	l := labels.NewScratchBuilder(len(md))
 
 	for _, label := range md {
