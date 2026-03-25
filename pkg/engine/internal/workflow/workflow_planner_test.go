@@ -217,21 +217,21 @@ func Test_planWorkflow(t *testing.T) {
 				Targets: []*physical.ScanTarget{
 					{
 						Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
-						Location:     "a",
-						MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
-					},
-					},
-					{
-						Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
-						Location:     "b",
-						MaxTimeRange: physical.TimeRange{Start: time.Unix(20, 0).UTC(), End: time.Unix(60, 0).UTC()},
-					},
+							Location:     "a",
+							MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
+						},
 					},
 					{
 						Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
-						Location:     "c",
-						MaxTimeRange: physical.TimeRange{Start: time.Unix(0, 0).UTC(), End: time.Unix(50, 0).UTC()},
+							Location:     "b",
+							MaxTimeRange: physical.TimeRange{Start: time.Unix(20, 0).UTC(), End: time.Unix(60, 0).UTC()},
+						},
 					},
+					{
+						Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+							Location:     "c",
+							MaxTimeRange: physical.TimeRange{Start: time.Unix(0, 0).UTC(), End: time.Unix(50, 0).UTC()},
+						},
 					},
 				},
 			})
@@ -532,16 +532,16 @@ func Test_planWorkflow(t *testing.T) {
 			Targets: []*physical.ScanTarget{
 				{
 					Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
-					Location:     "a",
-					MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
-					Predicates: []physical.Expression{
-						&physical.BinaryExpr{
-							Left:  &physical.ColumnExpr{Ref: semconv.ColumnIdentError.ColumnRef()},
-							Right: physical.NewLiteral(""),
-							Op:    types.BinaryOpNeq,
+						Location:     "a",
+						MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
+						Predicates: []physical.Expression{
+							&physical.BinaryExpr{
+								Left:  &physical.ColumnExpr{Ref: semconv.ColumnIdentError.ColumnRef()},
+								Right: physical.NewLiteral(""),
+								Op:    types.BinaryOpNeq,
+							},
 						},
 					},
-				},
 				},
 			},
 		})
