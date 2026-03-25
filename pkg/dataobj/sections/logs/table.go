@@ -116,6 +116,10 @@ type tableBuffer struct {
 	// (message, metadata). When zero (UNSPECIFIED), defaults to ZSTD.
 	binaryCompression datasetmd.CompressionType
 
+	// skipCardinalityStats disables cardinality stats collection. Useful for
+	// intermediate stripes where stats are recomputed during merge.
+	skipCardinalityStats bool
+
 	streamID  *dataset.ColumnBuilder
 	timestamp *dataset.ColumnBuilder
 
@@ -143,7 +147,7 @@ func (b *tableBuffer) StreamID(pageSize, pageRowCount int) *dataset.ColumnBuilde
 		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats:       true,
-			StoreCardinalityStats: true,
+			StoreCardinalityStats: !b.skipCardinalityStats,
 		},
 	})
 	if err != nil {
@@ -217,7 +221,7 @@ func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressi
 		CompressionOptions: compressionOpts,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats:       true,
-			StoreCardinalityStats: true,
+			StoreCardinalityStats: !b.skipCardinalityStats,
 		},
 	})
 	if err != nil {

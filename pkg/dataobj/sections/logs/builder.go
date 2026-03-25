@@ -136,6 +136,7 @@ func NewBuilder(metrics *Metrics, opts BuilderOptions) *Builder {
 	// Stripes are intermediate — they get compressed then decompressed during
 	// merge. Skip compression for stripes to avoid this double work.
 	b.stripeBuffer.binaryCompression = datasetmd_v2.COMPRESSION_TYPE_NONE
+	b.stripeBuffer.skipCardinalityStats = true
 	return b
 }
 
