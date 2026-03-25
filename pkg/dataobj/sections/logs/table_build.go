@@ -23,6 +23,9 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 		messageBuilder   = buf.Message(pageSize, pageRowCount, compressionOpts)
 	)
 
+	// Cache metadata column builders by name to avoid repeated map lookups.
+	metadataCache := make(map[string]*dataset.ColumnBuilder, 8)
+
 	var prev Record
 	row := 0
 	for _, record := range records {
@@ -43,7 +46,11 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 		record.Metadata.Range(func(md labels.Label) {
 			// Passing around md.Value as an unsafe slice is safe here: appending
 			// values is always read-only and the byte slice will never be mutated.
-			metadataBuilder := buf.Metadata(md.Name, pageSize, pageRowCount, compressionOpts)
+			metadataBuilder, ok := metadataCache[md.Name]
+			if !ok {
+				metadataBuilder = buf.Metadata(md.Name, pageSize, pageRowCount, compressionOpts)
+				metadataCache[md.Name] = metadataBuilder
+			}
 			_ = metadataBuilder.Append(row, dataset.BinaryValue(unsafeSlice(md.Value, 0)))
 		})
 		row++
