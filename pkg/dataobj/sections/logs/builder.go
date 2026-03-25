@@ -147,9 +147,6 @@ func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // Append adds a new entry to b.
 func (b *Builder) Append(entry Record) {
-	b.metrics.appendsTotal.Inc()
-	b.metrics.recordCount.Inc()
-
 	b.records = append(b.records, entry)
 	b.recordsSize += recordSize(entry)
 
@@ -179,6 +176,11 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 	if len(b.records) == 0 {
 		return
 	}
+
+	// Batch metric updates — avoid per-entry atomic increments.
+	n := float64(len(b.records))
+	b.metrics.appendsTotal.Add(n)
+	b.metrics.recordCount.Add(n)
 
 	// We can panic in case flushRecords is called multiple times before flushing a section
 	// when using the [AppendOrdered] strategy, because that should not happen and is
