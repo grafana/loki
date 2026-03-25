@@ -1,4 +1,4 @@
-FROM golang:1.25.8-bullseye AS builder
+FROM golang:1.25-bullseye AS builder
 
 COPY . /src
 
