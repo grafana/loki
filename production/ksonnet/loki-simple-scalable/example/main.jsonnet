@@ -8,7 +8,7 @@ local k = import 'ksonnet-util/kausal.libsonnet',
 
 loki {
   _images+:: {
-    loki: 'grafana/loki:v3.7.0',
+    loki: 'grafana/loki:3.7.0',
   },
 
   _config+:: {

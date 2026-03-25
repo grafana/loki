@@ -133,7 +133,7 @@ Loki Canary is also provided as a Docker container image:
 
 ```bash
 # change tag to the most recent release
-$ docker pull grafana/loki-canary:v3.7.0
+$ docker pull grafana/loki-canary:3.7.0
 ```
 
 ### Kubernetes

@@ -87,7 +87,7 @@ For release 3.3 the components are:
 You can see the complete list of targets for your version of Loki by running Loki with the flag `-list-targets`, for example:
 
 ```bash
-docker run docker.io/grafana/loki:v3.7.0 -config.file=/etc/loki/local-config.yaml -list-targets
+docker run docker.io/grafana/loki:3.7.0 -config.file=/etc/loki/local-config.yaml -list-targets
 ```
 {{< /admonition >}}
 
