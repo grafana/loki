@@ -166,15 +166,12 @@ func (b *Builder) Append(entry Record) {
 }
 
 func recordSize(record Record) int {
-	var size int
-
-	size++    // One byte per stream ID (for uvarint).
-	size += 8 // Eight bytes for timestamp.
-	record.Metadata.Range(func(metadata labels.Label) {
-		size += len(metadata.Value)
-	})
-	size += len(record.Line)
-
+	size := 1 + 8 + len(record.Line) // streamID (uvarint) + timestamp + line
+	if !record.Metadata.IsEmpty() {
+		record.Metadata.Range(func(metadata labels.Label) {
+			size += len(metadata.Value)
+		})
+	}
 	return size
 }
 
