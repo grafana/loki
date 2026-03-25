@@ -43,25 +43,32 @@ func NewBasic(cfg ExecutorConfig, ms metastore.Metastore, bucket objstore.Bucket
 		cfg.RangeConfig = rangeio.DefaultConfig
 	}
 
+	taskCaches, err := executor.NewTaskCacheRegistry(cfg.TasksResultCache.Config, reg, logger)
+	if err != nil {
+		panic(fmt.Sprintf("creating task results cache: %v", err))
+	}
+
 	return &Basic{
-		logger:    logger,
-		metrics:   newMetrics(reg),
-		limits:    limits,
-		metastore: ms,
-		bucket:    bucket,
-		cfg:       cfg,
+		logger:     logger,
+		metrics:    newMetrics(reg),
+		limits:     limits,
+		metastore:  ms,
+		bucket:     bucket,
+		cfg:        cfg,
+		taskCaches: taskCaches,
 	}
 }
 
 // Basic is a basic LogQL evaluation engine. Evaluation is performed
 // sequentially, with no local or distributed parallelism.
 type Basic struct {
-	logger    log.Logger
-	metrics   *metrics
-	limits    logql.Limits
-	metastore metastore.Metastore
-	bucket    objstore.Bucket
-	cfg       ExecutorConfig
+	logger     log.Logger
+	metrics    *metrics
+	limits     logql.Limits
+	metastore  metastore.Metastore
+	bucket     objstore.Bucket
+	cfg        ExecutorConfig
+	taskCaches executor.TaskCacheRegistry
 }
 
 // Query implements [logql.Engine].
@@ -211,6 +218,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			Bucket:             e.bucket,
 			Metastore:          e.metastore,
 			StreamFilterer:     e.cfg.StreamFilterer,
+			TaskCaches:         e.taskCaches,
 		}
 
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)

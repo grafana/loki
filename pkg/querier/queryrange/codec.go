@@ -1886,7 +1886,7 @@ func (p paramsRangeWrapper) Shards() []string {
 }
 
 func (p paramsRangeWrapper) CachingOptions() resultscache.CachingOptions {
-	return resultscache.CachingOptions{}
+	return p.LokiRequest.CachingOptions
 }
 
 type paramsInstantWrapper struct {

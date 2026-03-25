@@ -384,6 +384,47 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 	}
 }
 
+func TestParamsFromRequest_CachingOptions(t *testing.T) {
+	expr := syntax.MustParseExpr(`{foo="bar"}`)
+
+	tests := []struct {
+		name string
+		req  queryrangebase.Request
+	}{
+		{
+			name: "LokiRequest",
+			req: &LokiRequest{
+				Query:   `{foo="bar"}`,
+				StartTs: start,
+				EndTs:   end,
+				Plan:    &plan.QueryPlan{AST: expr},
+				CachingOptions: queryrangebase.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
+		{
+			name: "LokiInstantRequest",
+			req: &LokiInstantRequest{
+				Query:  `{foo="bar"}`,
+				TimeTs: start,
+				Plan:   &plan.QueryPlan{AST: expr},
+				CachingOptions: queryrangebase.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params, err := ParamsFromRequest(tt.req)
+			require.NoError(t, err)
+			require.True(t, params.CachingOptions().Disabled, "expected CachingOptions.Disabled to be true")
+		})
+	}
+}
+
 func Test_codec_DecodeResponse(t *testing.T) {
 	tests := []struct {
 		name    string
