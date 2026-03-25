@@ -74,6 +74,10 @@ type Builder struct {
 	globalMinTimestamp time.Time // Minimum timestamp across all streams, used for metrics.
 	globalMaxTimestamp time.Time // Maximum timestamp across all streams, used for metrics.
 
+	// recordCount tracks the number of records added since last metric flush.
+	// Flushed to metrics.recordsTotal in flushMetrics.
+	recordCount int
+
 	// orderedStreams is used for consistently iterating over the list of
 	// streams. It contains streamed added in append order.
 	ordered []*Stream
@@ -144,7 +148,8 @@ func (b *Builder) GetOrAddStream(streamLabels labels.Labels) *Stream {
 // from [Builder.GetOrAddStream] on the same Builder.
 func (b *Builder) RecordToStream(stream *Stream, ts time.Time, recordSize int64) {
 	ts = ts.UTC()
-	b.observeRecord(ts)
+	b.recordCount++
+	b.updateGlobalTimestamps(ts)
 
 	if stream.MinTimestamp.IsZero() || ts.Before(stream.MinTimestamp) {
 		stream.MinTimestamp = ts
@@ -158,14 +163,29 @@ func (b *Builder) RecordToStream(stream *Stream, ts time.Time, recordSize int64)
 
 func (b *Builder) observeRecord(ts time.Time) {
 	b.metrics.recordsTotal.Inc()
+	b.updateGlobalTimestamps(ts)
+}
 
+func (b *Builder) updateGlobalTimestamps(ts time.Time) {
 	if ts.Before(b.globalMinTimestamp) || b.globalMinTimestamp.IsZero() {
 		b.globalMinTimestamp = ts
-		b.metrics.minTimestamp.Set(float64(ts.Unix()))
 	}
 	if ts.After(b.globalMaxTimestamp) || b.globalMaxTimestamp.IsZero() {
 		b.globalMaxTimestamp = ts
-		b.metrics.maxTimestamp.Set(float64(ts.Unix()))
+	}
+}
+
+// FlushMetrics flushes batched record counts to prometheus metrics.
+func (b *Builder) FlushMetrics() {
+	if b.recordCount > 0 {
+		b.metrics.recordsTotal.Add(float64(b.recordCount))
+		b.recordCount = 0
+	}
+	if !b.globalMinTimestamp.IsZero() {
+		b.metrics.minTimestamp.Set(float64(b.globalMinTimestamp.Unix()))
+	}
+	if !b.globalMaxTimestamp.IsZero() {
+		b.metrics.maxTimestamp.Set(float64(b.globalMaxTimestamp.Unix()))
 	}
 }
 

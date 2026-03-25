@@ -304,6 +304,7 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 		}
 	}
 
+	sb.FlushMetrics()
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 	return nil
