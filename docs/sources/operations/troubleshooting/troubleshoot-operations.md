@@ -1814,7 +1814,7 @@ The compressed or decompressed body of an HTTP push request to the distributor e
     max_decompressed_size: 10737418240  # 10GB decompressed
   ```
 
-- **Reduce push batch sizes** in your log shipping client (Alloy, Promtail, etc.) to send smaller individual requests.
+- **Reduce push batch sizes** in your log shipping client (Alloy, etc.) to send smaller individual requests.
 
 - **Reduce the amount of data per request** by lowering the batch size or flush interval in your client.
 

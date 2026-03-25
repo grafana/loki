@@ -85,8 +85,8 @@ too far in the past can cause issues with the spot check test.
 
 
 When using `out-of-order-percentage` you also need to make use of pipeline stages
-in your Promtail configuration in order to set the timestamps correctly as the logs are pushed
-to Loki. The `client/promtail/pipelines` docs have examples of how to do this.
+in your Alloy configuration in order to set the timestamps correctly as the logs are pushed
+to Loki. The [Alloy `loki.process`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/) docs have examples of how to do this.
 
 #### Metric Test
 
