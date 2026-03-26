@@ -143,7 +143,7 @@ func TestWrapWithCacheIfSupported(t *testing.T) {
 		g.Add(&DataObjScan{Location: "loc1"})
 		plan := FromGraph(g)
 
-		node, ok, err := WrapWithCacheIfSupported(context.Background(), "tenant1", plan, 0)
+		node, ok, err := WrapWithCacheIfSupported(context.Background(), "tenant1", plan, 0, "")
 		require.NoError(t, err)
 		require.True(t, ok)
 

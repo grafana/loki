@@ -68,6 +68,10 @@ type Options struct {
 	// MaxCacheableSize is the maximum size in bytes of a task result that can be
 	// stored in the cache. 0 means only empty responses are cached.
 	MaxCacheableSize uint64
+
+	// CacheCompression is the compression codec to use when encoding cache entries
+	// (e.g. "snappy"). An empty string means no compression.
+	CacheCompression string
 }
 
 var _ fmt.Stringer = (*Workflow)(nil)
@@ -111,6 +115,7 @@ func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*
 	graph, err := planWorkflow(opts.Tenant, plan, cacheParams{
 		enabled:      opts.CacheEnabled,
 		maxSizeBytes: opts.MaxCacheableSize,
+		compression:  opts.CacheCompression,
 	})
 	if err != nil {
 		return nil, err

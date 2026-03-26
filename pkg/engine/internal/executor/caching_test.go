@@ -7,7 +7,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
-	"github.com/golang/snappy"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -28,10 +27,8 @@ func TestCachingPipeline(t *testing.T) {
 	rec2, err := CSVToArrow(testFields, "d\ne")
 	require.NoError(t, err)
 
-	arrowStore := &arrowCacheAdapter{cache: c, maxSizeBytes: ^uint64(0)}
-
 	// First pass: cache miss — inner pipeline is read and results are stored.
-	miss := newCachingPipeline(arrowStore, NewBufferedPipeline(rec1, rec2), "test-key", log.NewNopLogger())
+	miss := newCachingPipeline(c, NewBufferedPipeline(rec1, rec2), "test-key", ^uint64(0), "", log.NewNopLogger())
 	require.NoError(t, miss.Open(ctx))
 	require.False(t, miss.(*cachingPipeline).hit, "expected cache miss")
 
@@ -51,7 +48,7 @@ func TestCachingPipeline(t *testing.T) {
 	require.Contains(t, c.data, cache.HashKey("test-key"), "cache should contain the key")
 
 	// Second pass: cache hit — inner pipeline must never be opened.
-	hit := newCachingPipeline(arrowStore, &failPipeline{}, "test-key", log.NewNopLogger())
+	hit := newCachingPipeline(c, &failPipeline{}, "test-key", ^uint64(0), "", log.NewNopLogger())
 	require.NoError(t, hit.Open(ctx))
 	require.True(t, hit.(*cachingPipeline).hit, "expected cache hit")
 
@@ -69,53 +66,70 @@ func TestCachingPipeline(t *testing.T) {
 	require.Len(t, cachedBatches, len(batches), "cached result should have same number of batches")
 }
 
-func TestArrowCacheAdapterSnappyRoundTrip(t *testing.T) {
-	ctx := t.Context()
-	mem := newMockCache()
-	ad := &arrowCacheAdapter{
-		cache:          mem,
-		snappyCompress: true,
-		maxSizeBytes:   ^uint64(0),
-	}
-	key := "snappy-key"
+func TestRecordEncoderDecoder(t *testing.T) {
+	rec1, err := CSVToArrow(testFields, "x\ny")
+	require.NoError(t, err)
 
-	t.Run("non-empty", func(t *testing.T) {
-		rec, err := CSVToArrow(testFields, "x\ny")
-		require.NoError(t, err)
-		stored, err := ad.Set(ctx, key, []arrow.RecordBatch{rec})
-		require.NoError(t, err)
-		require.Greater(t, stored, 0)
-		raw := mem.data[key]
-		require.NotEmpty(t, raw)
-		_, err = snappy.Decode(nil, raw)
-		require.NoError(t, err, "stored payload should be snappy-compressed")
+	t.Run("no compression round-trip", func(t *testing.T) {
+		enc := newRecordEncoder("")
+		require.NoError(t, enc.Append(rec1))
+		require.Greater(t, enc.Size(), uint64(0))
 
-		got, sz, hit, err := ad.Get(ctx, key)
+		payload, err := enc.Commit()
 		require.NoError(t, err)
-		require.True(t, hit)
-		require.Equal(t, stored, sz)
-		require.Len(t, got, 1)
-		require.Equal(t, rec.NumRows(), got[0].NumRows())
+		require.NotEmpty(t, payload)
+
+		dec, err := newRecordDecoder(payload)
+		require.NoError(t, err)
+		require.Equal(t, 1, dec.Len())
+
+		got, err := dec.Next()
+		require.NoError(t, err)
+		require.Equal(t, rec1.NumRows(), got.NumRows())
+
+		_, err = dec.Next()
+		require.ErrorIs(t, err, EOF)
 	})
 
-	t.Run("empty", func(t *testing.T) {
-		emptyKey := "empty-snappy"
-		stored, err := ad.Set(ctx, emptyKey, nil)
+	t.Run("snappy round-trip", func(t *testing.T) {
+		enc := newRecordEncoder("snappy")
+		require.NoError(t, enc.Append(rec1))
+
+		payload, err := enc.Commit()
 		require.NoError(t, err)
-		require.Zero(t, stored, "empty entries are stored uncompressed")
-		require.Empty(t, mem.data[emptyKey])
-		got, sz, hit, err := ad.Get(ctx, emptyKey)
+
+		dec, err := newRecordDecoder(payload)
 		require.NoError(t, err)
-		require.True(t, hit)
-		require.Zero(t, sz)
-		require.Empty(t, got)
+		require.Equal(t, 1, dec.Len())
+
+		got, err := dec.Next()
+		require.NoError(t, err)
+		require.Equal(t, rec1.NumRows(), got.NumRows())
+	})
+
+	t.Run("empty result", func(t *testing.T) {
+		enc := newRecordEncoder("snappy")
+		payload, err := enc.Commit()
+		require.NoError(t, err)
+
+		dec, err := newRecordDecoder(payload)
+		require.NoError(t, err)
+		require.Equal(t, 0, dec.Len())
+
+		_, err = dec.Next()
+		require.ErrorIs(t, err, EOF)
+	})
+
+	t.Run("zero-length buffer is treated as empty", func(t *testing.T) {
+		dec, err := newRecordDecoder([]byte{})
+		require.NoError(t, err)
+		require.Equal(t, 0, dec.Len())
 	})
 }
 
-func TestArrowCacheAdapterMaxCacheableSize(t *testing.T) {
+func TestCachingPipelineMaxCacheableSize(t *testing.T) {
 	ctx := t.Context()
 
-	// Build a record large enough to produce a non-trivial payload.
 	rows := make([]string, 30)
 	for i := range rows {
 		rows[i] = "abcdefgh"
@@ -130,84 +144,68 @@ func TestArrowCacheAdapterMaxCacheableSize(t *testing.T) {
 	rec, err := CSVToArrow(testFields, csv)
 	require.NoError(t, err)
 
-	t.Run("limit of zero (only cache empty)", func(t *testing.T) {
+	// Measure the actual encoded frame size.
+	probe := newRecordEncoder("")
+	require.NoError(t, probe.Append(rec))
+	actualSize := probe.Size()
+	require.Greater(t, int(actualSize), 0)
+
+	t.Run("limit of zero caches only empty responses", func(t *testing.T) {
 		mc := newMockCache()
-		ad := &arrowCacheAdapter{
-			cache:        mc,
-			maxSizeBytes: 0,
-			logger:       log.NewNopLogger(),
-		}
 
-		stored, err := ad.Set(ctx, "key", []arrow.RecordBatch{rec})
-		require.NoError(t, err)
-		require.Zero(t, stored, "should return 0 for non-empty result when maxSizeBytes==0")
-		require.Equal(t, 0, mc.setCalls, "underlying Store must not be called for non-empty result")
+		// Non-empty record: should NOT be cached.
+		p := newCachingPipeline(mc, NewBufferedPipeline(rec), "key", 0, "", log.NewNopLogger())
+		require.NoError(t, p.Open(ctx))
+		drainPipeline(t, p)
+		p.Close()
+		require.Equal(t, 0, mc.setCalls, "non-empty record must not be cached when maxSizeBytes==0")
 
-		// Empty records (nil) should still be stored even with maxSizeBytes==0.
-		storedEmpty, err := ad.Set(ctx, "empty-key", nil)
-		require.NoError(t, err)
-		require.Zero(t, storedEmpty)
-		require.Equal(t, 1, mc.setCalls, "underlying Store must be called for empty result")
+		// Empty response (no records): should be cached.
+		p2 := newCachingPipeline(mc, NewBufferedPipeline(), "empty-key", 0, "", log.NewNopLogger())
+		require.NoError(t, p2.Open(ctx))
+		drainPipeline(t, p2)
+		p2.Close()
+		require.Equal(t, 1, mc.setCalls, "empty response must be cached even when maxSizeBytes==0")
 	})
 
 	for _, tc := range []struct {
 		name           string
-		snappyCompress bool
+		compression    string
 	}{
-		{name: "without snappy", snappyCompress: false},
-		{name: "with snappy", snappyCompress: true},
+		{name: "without snappy", compression: ""},
+		{name: "with snappy", compression: "snappy"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// Measure actual encoded size using an unconstrained adapter.
-			probe := newMockCache()
-			probeAd := &arrowCacheAdapter{
-				cache:          probe,
-				snappyCompress: tc.snappyCompress,
-				logger:         log.NewNopLogger(),
-				maxSizeBytes:   ^uint64(0),
-			}
-			actualSize, err := probeAd.Set(ctx, "probe-key", []arrow.RecordBatch{rec})
-			require.NoError(t, err)
-			require.Greater(t, actualSize, 0, "expected non-zero encoded size")
+			// Measure encoded size for this compression.
+			enc := newRecordEncoder(tc.compression)
+			require.NoError(t, enc.Append(rec))
+			encodedSize := enc.Size()
 
 			t.Run("limit below encoded size", func(t *testing.T) {
 				mc := newMockCache()
-				ad := &arrowCacheAdapter{
-					cache:          mc,
-					snappyCompress: tc.snappyCompress,
-					maxSizeBytes:   uint64(actualSize) - 1,
-					logger:         log.NewNopLogger(),
-				}
-
-				stored, err := ad.Set(ctx, "key", []arrow.RecordBatch{rec})
-				require.NoError(t, err)
-				require.Zero(t, stored, "should return 0 when entry exceeds max size")
-				require.Equal(t, 0, mc.setCalls, "underlying Store must not be called")
-
-				_, _, hit, err := ad.Get(ctx, "key")
-				require.NoError(t, err)
-				require.False(t, hit, "cache should miss since nothing was stored")
+				p := newCachingPipeline(mc, NewBufferedPipeline(rec), "key", encodedSize-1, tc.compression, log.NewNopLogger())
+				require.NoError(t, p.Open(ctx))
+				drainPipeline(t, p)
+				p.Close()
+				require.Equal(t, 0, mc.setCalls, "must not cache when entry exceeds max size")
 			})
 
 			t.Run("limit at encoded size", func(t *testing.T) {
 				mc := newMockCache()
-				ad := &arrowCacheAdapter{
-					cache:          mc,
-					snappyCompress: tc.snappyCompress,
-					maxSizeBytes:   uint64(actualSize),
-					logger:         log.NewNopLogger(),
-				}
+				p := newCachingPipeline(mc, NewBufferedPipeline(rec), "key", encodedSize, tc.compression, log.NewNopLogger())
+				require.NoError(t, p.Open(ctx))
+				drainPipeline(t, p)
+				p.Close()
+				require.Equal(t, 1, mc.setCalls, "must cache when entry fits within max size")
 
-				stored, err := ad.Set(ctx, "key", []arrow.RecordBatch{rec})
-				require.NoError(t, err)
-				require.Equal(t, actualSize, stored, "should return full encoded size")
-
-				got, sz, hit, err := ad.Get(ctx, "key")
-				require.NoError(t, err)
-				require.True(t, hit, "cache should hit")
-				require.Equal(t, actualSize, sz)
-				require.Len(t, got, 1)
-				require.Equal(t, rec.NumRows(), got[0].NumRows())
+				// Verify round-trip.
+				hit := newCachingPipeline(mc, &failPipeline{}, "key", encodedSize, tc.compression, log.NewNopLogger())
+				require.NoError(t, hit.Open(ctx))
+				require.True(t, hit.(*cachingPipeline).hit)
+				batches := drainPipeline(t, hit)
+				hit.Close()
+				require.Len(t, batches, 1)
+				require.Equal(t, rec.NumRows(), batches[0].NumRows())
 			})
 		})
 	}
@@ -250,20 +248,10 @@ func TestCachingPipelinePassthrough(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mc := newMockCache()
-			arrowStore := &arrowCacheAdapter{cache: mc, logger: log.NewNopLogger()}
 
-			p := newCachingPipeline(arrowStore, NewBufferedPipeline(tc.records...), tc.cacheKey, log.NewNopLogger())
+			p := newCachingPipeline(mc, NewBufferedPipeline(tc.records...), tc.cacheKey, 0, "", log.NewNopLogger())
 			require.NoError(t, p.Open(ctx))
-
-			var batches []arrow.RecordBatch
-			for {
-				rec, err := p.Read(ctx)
-				if errors.Is(err, EOF) {
-					break
-				}
-				require.NoError(t, err)
-				batches = append(batches, rec)
-			}
+			batches := drainPipeline(t, p)
 			p.Close()
 
 			require.Len(t, batches, tc.wantBatches)
@@ -271,6 +259,21 @@ func TestCachingPipelinePassthrough(t *testing.T) {
 			require.Equal(t, tc.wantKeyInCache, mc.data[cache.HashKey(tc.cacheKey)] != nil)
 		})
 	}
+}
+
+// drainPipeline reads all records from p until EOF and returns them.
+func drainPipeline(t *testing.T, p Pipeline) []arrow.RecordBatch {
+	t.Helper()
+	var batches []arrow.RecordBatch
+	for {
+		rec, err := p.Read(context.Background())
+		if errors.Is(err, EOF) {
+			break
+		}
+		require.NoError(t, err)
+		batches = append(batches, rec)
+	}
+	return batches
 }
 
 // failPipeline panics if Open or Read is called; used to assert inner pipeline

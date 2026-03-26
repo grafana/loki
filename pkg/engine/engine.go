@@ -497,6 +497,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 
 		CacheEnabled:     cacheEnabled,
 		MaxCacheableSize: uint64(e.cfg.Executor.TasksResultCache.MaxCacheableSize),
+		CacheCompression: e.cfg.Executor.TasksResultCache.Compression,
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),

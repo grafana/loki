@@ -26,6 +26,7 @@ type planner struct {
 type cacheParams struct {
 	enabled      bool
 	maxSizeBytes uint64
+	compression  string
 }
 
 // planWorkflow partitions a physical plan into a graph of tasks.
@@ -62,7 +63,7 @@ func planWorkflow(tenantID string, plan *physical.Plan, cache cacheParams) (dag.
 	}
 
 	if cache.enabled {
-		if err := injectTaskCaching(tenantID, planner.graph, cache.maxSizeBytes); err != nil {
+		if err := injectTaskCaching(tenantID, planner.graph, cache.maxSizeBytes, cache.compression); err != nil {
 			return dag.Graph[*Task]{}, err
 		}
 	}
@@ -73,14 +74,14 @@ func planWorkflow(tenantID string, plan *physical.Plan, cache cacheParams) (dag.
 // injectTaskCaching wraps each cacheable task fragment with a Cache node.
 // A fragment is cacheable when TaskCacheKey returns a non-empty string
 // (requires at least one DataObjScan or PointersScan and no non-cacheable nodes).
-func injectTaskCaching(tenantID string, graph dag.Graph[*Task], maxSizeBytes uint64) error {
+func injectTaskCaching(tenantID string, graph dag.Graph[*Task], maxSizeBytes uint64, compression string) error {
 	for _, root := range graph.Roots() {
 		if err := graph.Walk(root, func(task *Task) error {
 			oldRoot, err := task.Fragment.Root()
 			if err != nil {
 				return err
 			}
-			newRoot, wrapped, err := physical.WrapWithCacheIfSupported(context.Background(), tenantID, task.Fragment, maxSizeBytes)
+			newRoot, wrapped, err := physical.WrapWithCacheIfSupported(context.Background(), tenantID, task.Fragment, maxSizeBytes, compression)
 			if err != nil {
 				return err
 			}
