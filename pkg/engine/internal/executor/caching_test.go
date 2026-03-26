@@ -334,7 +334,7 @@ func makeBenchRecords(tb testing.TB, n, rowsPerRecord int) []arrow.RecordBatch {
 			bldr.Append(s)
 		}
 		col := bldr.NewArray()
-		records[i] = array.NewRecord(schema, []arrow.Array{col}, int64(rowsPerRecord))
+		records[i] = array.NewRecordBatch(schema, []arrow.Array{col}, int64(rowsPerRecord))
 		col.Release()
 		bldr.Release()
 	}
