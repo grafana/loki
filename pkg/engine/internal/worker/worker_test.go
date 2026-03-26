@@ -58,7 +58,7 @@ func Test(t *testing.T) {
 			Line:      "Hello, world!",
 		}, {
 			Timestamp: time.Date(2025, time.January, 1, 0, 0, 1, 0, time.UTC),
-			Line:      "Goodbye, world!",
+			Line:      "Goodbye, world!", // missing from output
 		}},
 	})
 	builder.Close()

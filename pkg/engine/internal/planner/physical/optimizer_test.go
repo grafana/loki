@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
@@ -113,8 +115,8 @@ func TestPredicatePushdown(t *testing.T) {
 		),
 	}
 
-	o := newOptimizer(plan, optimizations)
-	o.optimize(plan.Roots()[0])
+	o := NewOptimizer(plan, optimizations)
+	o.Optimize(plan.Roots()[0])
 	actual := PrintAsTree(plan)
 
 	optimized := &Plan{}
@@ -175,8 +177,8 @@ func TestLimitPushdown(t *testing.T) {
 				&limitPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -238,12 +240,189 @@ func TestLimitPushdown(t *testing.T) {
 				&limitPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		actual := PrintAsTree(plan)
 		require.Equal(t, orig, actual)
 	})
+}
+
+func TestScanTimeRangePushup(t *testing.T) {
+	t.Run("pushup time range to RangeAggregation with zero step", func(t *testing.T) {
+		plan := &Plan{}
+		{
+			dataObjScan := plan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 14, 16, 45, 29, 0, time.UTC),
+				End: time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC)}})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 53, 30, 0, time.UTC),
+				Step:  0, Range: time.Minute})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
+		}
+
+		// apply optimisations
+		optimizations := []*optimization{
+			newOptimization("scan time range pushup", plan).withRules(
+				&scanTimeRangePushup{plan: plan},
+			),
+		}
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
+
+		expectedPlan := &Plan{}
+		{
+			dataObjScan := expectedPlan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 14, 16, 45, 29, 0, time.UTC),
+				End: time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC)}})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
+				Start: time.Date(2026, 3, 14, 16, 45, 29, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC),
+				Step:  0, Range: time.Minute})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+	t.Run("non-zero step rounds scan time range in RangeAggregation", func(t *testing.T) {
+		plan := &Plan{}
+		{
+			dataObjScan := plan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 14, 16, 44, 29, 0, time.UTC),
+				End: time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC)}})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 53, 30, 0, time.UTC),
+				Step:  time.Minute, Range: time.Minute})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
+		}
+
+		// apply optimisations
+		optimizations := []*optimization{
+			newOptimization("scan time range pushup", plan).withRules(
+				&scanTimeRangePushup{plan: plan},
+			),
+		}
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
+
+		expectedPlan := &Plan{}
+		{
+			dataObjScan := expectedPlan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 14, 16, 44, 29, 0, time.UTC),
+				End: time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC)}})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
+				Start: time.Date(2026, 3, 14, 16, 45, 0, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 46, 0, 0, time.UTC),
+				Step:  time.Minute, Range: time.Minute})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+	t.Run("unusual step still rounds scan time range in RangeAggregation", func(t *testing.T) {
+		plan := &Plan{}
+		{
+			dataObjScan := plan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 20, 17, 53, 41, 0, time.UTC),
+				End: time.Date(2026, 3, 20, 17, 54, 49, 0, time.UTC)}})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Start: time.Date(2026, 3, 20, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 20, 18, 53, 30, 0, time.UTC),
+				Step:  63 * time.Second, Range: time.Minute})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
+		}
+
+		// apply optimisations
+		optimizations := []*optimization{
+			newOptimization("scan time range pushup", plan).withRules(
+				&scanTimeRangePushup{plan: plan},
+			),
+		}
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
+
+		expectedPlan := &Plan{}
+		{
+			dataObjScan := expectedPlan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 20, 17, 53, 41, 0, time.UTC),
+				End: time.Date(2026, 3, 20, 17, 54, 49, 0, time.UTC)}})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
+				Start: time.Date(2026, 3, 20, 17, 53, 42, 0, time.UTC),
+				End:   time.Date(2026, 3, 20, 17, 54, 45, 0, time.UTC),
+				Step:  63 * time.Second, Range: time.Minute})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+}
+
+func TestClampExpression(t *testing.T) {
+	col := newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
+	early := types.Timestamp(time.Date(2026, 3, 11, 12, 41, 44, 719000000, time.UTC).UnixNano())
+	late := types.Timestamp(time.Date(2026, 3, 18, 9, 41, 44, 976217699, time.UTC).UnixNano())
+	tests := []struct {
+		desc    string
+		e       Expression
+		tr      TimeRange
+		clamped bool
+		want    string
+	}{
+		{
+			desc: "GTE before range clamps to start",
+			e:    &BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte},
+			tr: TimeRange{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
+			},
+			clamped: true,
+			want:    fmt.Sprintf("GTE(%s, %s)", col, util.FormatTimeRFC3339Nano(time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC))),
+		},
+		{
+			desc: "LT after range clamps to end",
+			e:    &BinaryExpr{Left: col, Right: NewLiteral(late), Op: types.BinaryOpLt},
+			tr: TimeRange{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
+			},
+			clamped: true,
+			want:    fmt.Sprintf("LT(%s, %s)", col, util.FormatTimeRFC3339Nano(time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC))),
+		},
+		{
+			desc:    "zero TimeRange leaves expression unchanged",
+			e:       &BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte},
+			tr:      TimeRange{},
+			clamped: false,
+			want:    (&BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte}).String(),
+		},
+		{
+			desc: "non-timestamp binary expr unchange",
+			e: &BinaryExpr{
+				Left:  newColumnExpr("level", types.ColumnTypeLabel),
+				Right: NewLiteral("info"),
+				Op:    types.BinaryOpEq,
+			},
+			tr: TimeRange{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
+			},
+			clamped: false,
+			want: (&BinaryExpr{
+				Left:  newColumnExpr("level", types.ColumnTypeLabel),
+				Right: NewLiteral("info"),
+				Op:    types.BinaryOpEq,
+			}).String(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got, clamped := clampExpression(tt.e, tt.tr)
+			require.Equal(t, tt.clamped, clamped)
+			require.Equal(t, tt.want, got.String())
+		})
+	}
 }
 
 func TestGroupByPushdown(t *testing.T) {
@@ -285,8 +464,8 @@ func TestGroupByPushdown(t *testing.T) {
 				&groupByPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -353,8 +532,8 @@ func TestGroupByPushdown(t *testing.T) {
 				&groupByPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		actual := PrintAsTree(plan)
 		require.Equal(t, orig, actual)
@@ -393,8 +572,8 @@ func TestProjectionPushdown(t *testing.T) {
 				&projectionPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -462,8 +641,8 @@ func TestProjectionPushdown(t *testing.T) {
 				&projectionPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -533,8 +712,8 @@ func TestProjectionPushdown(t *testing.T) {
 				&projectionPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -882,8 +1061,8 @@ func TestRemoveNoopFilter(t *testing.T) {
 		),
 	}
 
-	o := newOptimizer(plan, optimizations)
-	o.optimize(plan.Roots()[0])
+	o := NewOptimizer(plan, optimizations)
+	o.Optimize(plan.Roots()[0])
 	actual := PrintAsTree(plan)
 
 	optimized := &Plan{}
@@ -982,11 +1161,11 @@ func Test_parallelPushdown(t *testing.T) {
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
 		}
 
-		opt := newOptimizer(&plan, []*optimization{
+		opt := NewOptimizer(&plan, []*optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
 		root, _ := plan.graph.Root()
-		opt.optimize(root)
+		opt.Optimize(root)
 
 		var expectedPlan Plan
 		{
@@ -1019,7 +1198,7 @@ func Test_parallelPushdown(t *testing.T) {
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
 		}
 
-		opt := newOptimizer(&plan, []*optimization{
+		opt := NewOptimizer(&plan, []*optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
 		root, _ := plan.graph.Root()
@@ -1035,7 +1214,7 @@ func Test_parallelPushdown(t *testing.T) {
 		//         TopK # Shard from second iteration
 		//           TopK # Shard from third iteration
 		//             DataObjScan
-		opt.optimize(root)
+		opt.Optimize(root)
 
 		var expectedPlan Plan
 		{
@@ -1070,11 +1249,11 @@ func Test_parallelPushdown(t *testing.T) {
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
 		}
 
-		opt := newOptimizer(&plan, []*optimization{
+		opt := NewOptimizer(&plan, []*optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
 		root, _ := plan.graph.Root()
-		opt.optimize(root)
+		opt.Optimize(root)
 
 		var expectedPlan Plan
 		{

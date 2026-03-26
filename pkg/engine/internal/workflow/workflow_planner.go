@@ -61,6 +61,13 @@ func planWorkflow(tenantID string, plan *physical.Plan, cache cacheParams) (dag.
 		return dag.Graph[*Task]{}, err
 	}
 
+	for _, root := range planner.graph.Roots() {
+		planner.graph.Walk(root, func(t *Task) error {
+			optimize(t)
+			return nil
+		}, dag.PostOrderWalk)
+	}
+
 	if cache.enabled {
 		if err := injectTaskCaching(tenantID, planner.graph, cache.maxSizeBytes); err != nil {
 			return dag.Graph[*Task]{}, err
@@ -68,6 +75,13 @@ func planWorkflow(tenantID string, plan *physical.Plan, cache cacheParams) (dag.
 	}
 
 	return planner.graph, nil
+}
+
+func optimize(t *Task) {
+	for _, root := range t.Fragment.Roots() {
+		optimizer := physical.NewOptimizer(t.Fragment, physical.WorkflowOptimizations(t.Fragment))
+		optimizer.Optimize(root)
+	}
 }
 
 // injectTaskCaching wraps each cacheable task fragment with a Cache node.
@@ -383,6 +397,7 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 		shardedPlan := templateTask.Fragment.Graph().Clone()
 		shardedPlan.Inject(shardableNode, shard)
 		shardedPlan.Eliminate(shardableNode)
+		cloneAllParents(shard, shardedPlan, templateTask, map[physical.Node]bool{})
 
 		// The sources of the template task need to be replaced with new unique
 		// streams.
@@ -445,6 +460,32 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 
 	p.graph.Eliminate(templateTask)
 	return partitions, nil
+}
+
+// takes a starting node and a graph and recursively replaces
+// all parents of that node in the graph with clones.
+func cloneAllParents(node physical.Node, graph *dag.Graph[physical.Node], task *Task, visited map[physical.Node]bool) {
+	visited[node] = true
+	parents := graph.Parents(node)
+	for _, parent := range parents {
+		if visited[parent] {
+			continue
+		}
+		clone := parent.Clone()
+		_, ok := task.Sources[parent]
+		if ok {
+			tmp := task.Sources[parent]
+			task.Sources[clone] = tmp
+			delete(task.Sources, parent)
+		}
+		graph.Inject(parent, clone)
+		graph.Eliminate(parent)
+		visited[clone] = true
+		cloneParents := graph.Parents(clone)
+		for _, p := range cloneParents {
+			cloneAllParents(p, graph, task, visited)
+		}
+	}
 }
 
 // findShardableNode finds the first node in the graph that can be split into

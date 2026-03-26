@@ -429,7 +429,7 @@ func Test_planWorkflow(t *testing.T) {
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000004
-│ └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ └── RangeAggregation operation=count start=1970-01-01T00:00:10Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
 │     └── DataObjScan location=a streams=0 section_id=0 projections=()
 │             └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
@@ -438,7 +438,7 @@ func Test_planWorkflow(t *testing.T) {
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000005
-│ └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ └── RangeAggregation operation=count start=1970-01-01T00:00:20Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
 │     └── DataObjScan location=b streams=0 section_id=0 projections=()
 │             └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
 └
@@ -468,20 +468,20 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000002
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ Cache max_cacheable_size=1.0 MiB hashed_key=502e8c56ecf762f4 key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
+│ Cache max_cacheable_size=1.0 MiB hashed_key=0b7ae7b5f552e5b6 key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:10Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
 │ │   └── @sink stream=00000000000000000000000004
 │ └── Batching batch_size=500
-│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── RangeAggregation operation=count start=1970-01-01T00:00:10Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
 │         └── DataObjScan location=a streams=0 section_id=0 projections=()
 │                 └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
 ┌ Task 00000000000000000000000003
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ Cache max_cacheable_size=1.0 MiB hashed_key=9888d9ec9f19e11e key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│ Cache max_cacheable_size=1.0 MiB hashed_key=73d7a06ab8903dbb key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:20Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
 │ │   └── @sink stream=00000000000000000000000005
 │ └── Batching batch_size=500
-│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── RangeAggregation operation=count start=1970-01-01T00:00:20Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
 │         └── DataObjScan location=b streams=0 section_id=0 projections=()
 │                 └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
 └
