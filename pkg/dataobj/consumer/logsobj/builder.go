@@ -6,12 +6,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+
 	"github.com/facette/natsort"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
-	"io"
 
 	"github.com/grafana/loki/pkg/push"
 
@@ -235,7 +236,6 @@ func (b *Builder) initBuilder(tenant string) {
 			PageMaxRowCount:  b.cfg.MaxPageRows,
 			BufferSize:       int(b.cfg.BufferSize),
 			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-			AppendStrategy:   logs.AppendOrdered,
 			SortOrder:        parseSortOrder(b.cfg.DataobjSortOrder),
 		})
 		lb.SetTenant(tenant)
@@ -284,7 +284,7 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 			sz += int64(len(md.Value))
 		}
 
-		sb.RecordToStream(cachedStream, entry.Timestamp, sz)
+		sb.RecordForStream(cachedStream, entry.Timestamp, sz)
 
 		lb.Append(logs.Record{
 			StreamID:  cachedStream.ID,

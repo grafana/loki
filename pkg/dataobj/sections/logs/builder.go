@@ -135,7 +135,6 @@ func NewBuilder(metrics *Metrics, opts BuilderOptions) *Builder {
 	}
 	// Stripes are intermediate — they get compressed then decompressed during
 	// merge. Skip compression for stripes to avoid this double work.
-	b.stripeBuffer.binaryCompression = datasetmd_v2.COMPRESSION_TYPE_NONE
 	b.stripeBuffer.skipStats = true
 	b.stripeBuffer.skipCRC = true
 	return b
@@ -197,14 +196,7 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 
 	compressionOpts := zstdCompressionOpts(encLevel)
 
-	// When using AppendOrdered, the output is the final section (no merge step),
-	// so use the sectionBuffer which has proper compression and stats enabled.
-	buf := &b.stripeBuffer
-	if b.opts.AppendStrategy == AppendOrdered {
-		buf = &b.sectionBuffer
-	}
-	stripe := buildTable(buf, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
-	b.stripes = append(b.stripes, stripe)
+	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
 	b.stripesUncompressedSize += stripe.UncompressedSize()
 	b.stripesCompressedSize += stripe.CompressedSize()
 
@@ -232,7 +224,7 @@ func (b *Builder) flushSection() *table {
 }
 
 func (b *Builder) flushSectionOrdered() *table {
-	b.flushRecords(zstd.SpeedFastest)
+	b.flushRecords(zstd.SpeedDefault)
 
 	if len(b.stripes) == 0 {
 		return nil

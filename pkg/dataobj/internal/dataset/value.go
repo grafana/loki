@@ -185,12 +185,15 @@ func (v *Value) Zero() {
 //   - [datasetmd.PHYSICAL_TYPE_BINARY] encodes the string as a sequence of bytes.
 //
 // NULL values encode as nil.
-func (v Value) MarshalBinary() (data []byte, err error) {
+//
+// Optionally, a target buffer can be provided to avoid allocating a new buffer.
+// If target is nil, a new buffer will be allocated.
+func (v Value) MarshalBinary(target []byte) (data []byte, err error) {
 	if v.IsNil() {
 		return nil, nil
 	}
 
-	buf := binary.AppendUvarint(nil, uint64(v.Type()))
+	buf := binary.AppendUvarint(target, uint64(v.Type()))
 
 	switch v.Type() {
 	case datasetmd.PHYSICAL_TYPE_INT64:

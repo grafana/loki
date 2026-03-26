@@ -1,7 +1,6 @@
 package dataset
 
 import (
-	"encoding/binary"
 	"fmt"
 
 	"github.com/axiomhq/hyperloglog"
@@ -55,16 +54,11 @@ func (csb *columnStatsBuilder) Append(value Value) {
 	if csb.opts.StoreCardinalityStats && !value.IsNil() && !value.IsZero() {
 		// Reuse buffer to avoid per-value allocations.
 		csb.marshalBuf = csb.marshalBuf[:0]
-		csb.marshalBuf = binary.AppendUvarint(csb.marshalBuf, uint64(value.Type()))
-		switch value.Type() {
-		case datasetmd.PHYSICAL_TYPE_INT64:
-			csb.marshalBuf = binary.AppendVarint(csb.marshalBuf, value.Int64())
-		case datasetmd.PHYSICAL_TYPE_UINT64:
-			csb.marshalBuf = binary.AppendUvarint(csb.marshalBuf, value.Uint64())
-		case datasetmd.PHYSICAL_TYPE_BINARY:
-			csb.marshalBuf = append(csb.marshalBuf, value.Binary()...)
+		buf, err := value.MarshalBinary(csb.marshalBuf)
+		if err != nil {
+			panic(fmt.Sprintf("failed to marshal value for cardinality stats of type %s: %s", value.Type(), err))
 		}
-		csb.hll.Insert(csb.marshalBuf)
+		csb.hll.Insert(buf)
 	}
 }
 
@@ -109,10 +103,10 @@ func (csb *columnStatsBuilder) buildRangeStats(pages []*MemPage, dst *datasetmd.
 	}
 
 	var err error
-	if dst.MinValue, err = minValue.MarshalBinary(); err != nil {
+	if dst.MinValue, err = minValue.MarshalBinary(nil); err != nil {
 		panic(fmt.Sprintf("ColumnStatsBuilder.buildStats: failed to marshal min value: %s", err))
 	}
-	if dst.MaxValue, err = maxValue.MarshalBinary(); err != nil {
+	if dst.MaxValue, err = maxValue.MarshalBinary(nil); err != nil {
 		panic(fmt.Sprintf("ColumnStatsBuilder.buildStats: failed to marshal max value: %s", err))
 	}
 }

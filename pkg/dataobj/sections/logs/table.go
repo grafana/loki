@@ -112,11 +112,7 @@ func (t *table) CompressedSize() int {
 // A tableBuffer holds a set of column builders used for constructing tables.
 // The zero value is ready for use.
 type tableBuffer struct {
-	// binaryCompression controls the compression type for binary columns
-	// (message, metadata). When zero (UNSPECIFIED), defaults to ZSTD.
-	binaryCompression datasetmd.CompressionType
-
-	// skipStats disables all statistics collection (range and cardinality).
+	// skipStats disables statistics collection (range and cardinality) for all non-timestamp columns.
 	// Useful for intermediate stripes where stats are recomputed during merge.
 	skipStats bool
 
@@ -182,7 +178,7 @@ func (b *tableBuffer) Timestamp(pageSize, pageRowCount int) *dataset.ColumnBuild
 		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
 		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
-			StoreRangeStats: !b.skipStats,
+			StoreRangeStats: true,
 		},
 		SkipCRC: b.skipCRC,
 	})
@@ -211,10 +207,6 @@ func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressi
 		return builder
 	}
 
-	compression := b.binaryCompression
-	if compression == datasetmd.COMPRESSION_TYPE_UNSPECIFIED {
-		compression = datasetmd.COMPRESSION_TYPE_ZSTD
-	}
 	col, err := dataset.NewColumnBuilder(key, dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
@@ -223,7 +215,7 @@ func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressi
 			Logical:  ColumnTypeMetadata.String(),
 		},
 		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:        compression,
+		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
 		CompressionOptions: compressionOpts,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats:       !b.skipStats,
@@ -254,10 +246,6 @@ func (b *tableBuffer) Message(pageSize, pageRowCount int, compressionOpts *datas
 		return b.message
 	}
 
-	msgCompression := b.binaryCompression
-	if msgCompression == datasetmd.COMPRESSION_TYPE_UNSPECIFIED {
-		msgCompression = datasetmd.COMPRESSION_TYPE_ZSTD
-	}
 	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
@@ -266,7 +254,7 @@ func (b *tableBuffer) Message(pageSize, pageRowCount int, compressionOpts *datas
 			Logical:  ColumnTypeMessage.String(),
 		},
 		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:        msgCompression,
+		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
 		CompressionOptions: compressionOpts,
 
 		// We explicitly don't have range stats for the message column:

@@ -41,6 +41,7 @@ type processor struct {
 	decoder        *kafka.Decoder
 	records        chan *kgo.Record
 	flushCommitter flushCommitter
+	stream         logproto.Stream
 
 	// lastOffset contains the offset of the last record appended to the data object
 	// builder. It is used to commit the correct offset after a flush.
@@ -156,7 +157,7 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 
 	// Try to decode the stream in the record.
 	tenant := string(rec.Key)
-	stream, err := p.decoder.DecodeWithoutLabels(rec.Value)
+	err := p.decoder.DecodeWithoutLabels(rec.Value, &p.stream)
 	if err != nil {
 		// This is an unrecoverable error and no amount of retries will fix it.
 		return fmt.Errorf("failed to decode stream: %w", err)
@@ -168,14 +169,14 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 		}
 	}
 
-	if err := p.builder.Append(tenant, stream); err != nil {
+	if err := p.builder.Append(tenant, p.stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
 			return fmt.Errorf("failed to append stream: %w", err)
 		}
 		if err := p.flush(ctx, flushReasonBuilderFull); err != nil {
 			return fmt.Errorf("failed to flush and commit: %w", err)
 		}
-		if err := p.builder.Append(tenant, stream); err != nil {
+		if err := p.builder.Append(tenant, p.stream); err != nil {
 			return fmt.Errorf("failed to append stream after flushing: %w", err)
 		}
 	}

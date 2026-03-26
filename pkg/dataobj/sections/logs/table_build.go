@@ -23,9 +23,6 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 		messageBuilder   = buf.Message(pageSize, pageRowCount, compressionOpts)
 	)
 
-	// Cache metadata column builders by name to avoid repeated map lookups.
-	metadataCache := make(map[string]*dataset.ColumnBuilder, 8)
-
 	var prev Record
 	row := 0
 	for _, record := range records {
@@ -46,11 +43,7 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 		record.Metadata.Range(func(md labels.Label) {
 			// Passing around md.Value as an unsafe slice is safe here: appending
 			// values is always read-only and the byte slice will never be mutated.
-			metadataBuilder, ok := metadataCache[md.Name]
-			if !ok {
-				metadataBuilder = buf.Metadata(md.Name, pageSize, pageRowCount, compressionOpts)
-				metadataCache[md.Name] = metadataBuilder
-			}
+			metadataBuilder := buf.Metadata(md.Name, pageSize, pageRowCount, compressionOpts)
 			_ = metadataBuilder.Append(row, dataset.BinaryValue(unsafeSlice(md.Value, 0)))
 		})
 		row++
@@ -66,26 +59,24 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 
 // sortRecords sorts the set of records according to the specified sort order.
 func sortRecords(records []Record, sortOrder SortOrder) {
-	switch sortOrder {
-	case SortStreamASC:
-		slices.SortFunc(records, func(a, b Record) int {
+	slices.SortFunc(records, func(a, b Record) int {
+		switch sortOrder {
+		case SortStreamASC:
+			// Sort by [streamID ASC, timestamp DESC]
 			if res := cmp.Compare(a.StreamID, b.StreamID); res != 0 {
 				return res
 			}
-			// Timestamp DESC: compare b before a, using UnixNano for speed.
-			return cmp.Compare(b.Timestamp.UnixNano(), a.Timestamp.UnixNano())
-		})
-	case SortTimestampDESC:
-		slices.SortFunc(records, func(a, b Record) int {
-			// Timestamp DESC: compare b before a, using UnixNano for speed.
-			if res := cmp.Compare(b.Timestamp.UnixNano(), a.Timestamp.UnixNano()); res != 0 {
+			return b.Timestamp.Compare(a.Timestamp)
+		case SortTimestampDESC:
+			// Sort by [timestamp DESC, streamID ASC]
+			if res := b.Timestamp.Compare(a.Timestamp); res != 0 {
 				return res
 			}
 			return cmp.Compare(a.StreamID, b.StreamID)
-		})
-	default:
-		panic("invalid sort order")
-	}
+		default:
+			panic("invalid sort order")
+		}
+	})
 }
 
 func equalRecords(a, b Record) bool {

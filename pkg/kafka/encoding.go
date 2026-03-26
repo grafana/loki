@@ -16,13 +16,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-var (
-	encoderPool = sync.Pool{
-		New: func() any {
-			return &logproto.Stream{}
-		},
-	}
-)
+var encoderPool = sync.Pool{
+	New: func() any {
+		return &logproto.Stream{}
+	},
+}
 
 // Encode converts a logproto.Stream into one or more Kafka records.
 // It handles splitting large streams into multiple records if necessary.
@@ -176,19 +174,19 @@ func (d *Decoder) Decode(data []byte) (logproto.Stream, labels.Labels, error) {
 }
 
 // DecodeWithoutLabels converts a Kafka record's byte data back into a logproto.Stream without parsing labels.
-// The returned stream reuses internal buffers; callers must finish processing
-// the stream before calling DecodeWithoutLabels again.
-func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
+// The stream data is written to the provided stream pointer, which is cleared before unmarshalling.
+func (d *Decoder) DecodeWithoutLabels(data []byte, stream *logproto.Stream) error {
 	if len(data) == 0 {
-		return logproto.Stream{}, errors.New("empty data received")
+		return errors.New("empty data received")
 	}
 
-	d.stream.Entries = d.stream.Entries[:0]
-	if err := d.stream.Unmarshal(data); err != nil {
-		return logproto.Stream{}, fmt.Errorf("failed to unmarshal stream: %w", err)
+	// The stream labels & hash will be overwritten by the unmarshalled data.
+	stream.Entries = stream.Entries[:0]
+	if err := stream.Unmarshal(data); err != nil {
+		return fmt.Errorf("failed to unmarshal stream: %w", err)
 	}
 
-	return *d.stream, nil
+	return nil
 }
 
 // sovPush calculates the size of varint-encoded uint64.

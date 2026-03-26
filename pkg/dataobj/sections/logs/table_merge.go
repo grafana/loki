@@ -99,10 +99,6 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 	tree := loser.New(tableSequences, maxValue, tableSequenceAt, CompareForSortOrder(sort), tableSequenceClose)
 	defer tree.Close()
 
-	// Cache metadata column builders by *tableColumn pointer to avoid
-	// interface-keyed map lookups on every row.
-	metadataCache := make(map[*tableColumn]*dataset.ColumnBuilder, 8)
-
 	var prev dataset.Row
 	for tree.Next() {
 		seq := tree.Winner()
@@ -132,11 +128,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 			case ColumnTypeTimestamp:
 				_ = timestampBuilder.Append(rows, value)
 			case ColumnTypeMetadata:
-				columnBuilder, ok := metadataCache[tc]
-				if !ok {
-					columnBuilder = buf.Metadata(tc.Desc.Tag, pageSize, pageRowCount, compressionOpts)
-					metadataCache[tc] = columnBuilder
-				}
+				columnBuilder := buf.Metadata(tc.Desc.Tag, pageSize, pageRowCount, compressionOpts)
 				_ = columnBuilder.Append(rows, value)
 			case ColumnTypeMessage:
 				_ = messageBuilder.Append(rows, value)

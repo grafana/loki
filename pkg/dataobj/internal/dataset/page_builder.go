@@ -329,11 +329,11 @@ func (b *pageBuilder) buildStats() *datasetmd.Statistics {
 }
 
 func (b *pageBuilder) buildRangeStats(dst *datasetmd.Statistics) {
-	minValueBytes, err := b.minValue.MarshalBinary()
+	minValueBytes, err := b.minValue.MarshalBinary(nil)
 	if err != nil {
 		panic(fmt.Sprintf("pageBuilder.buildStats: failed to marshal min value: %s", err))
 	}
-	maxValueBytes, err := b.maxValue.MarshalBinary()
+	maxValueBytes, err := b.maxValue.MarshalBinary(nil)
 	if err != nil {
 		panic(fmt.Sprintf("pageBuilder.buildStats: failed to marshal max value: %s", err))
 	}
