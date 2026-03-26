@@ -7,6 +7,34 @@ import (
 	smithy "github.com/aws/smithy-go"
 )
 
+//	You might receive this error for several reasons. For details, see the
+//
+// description of this API operation.
+type AccessDenied struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *AccessDenied) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *AccessDenied) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *AccessDenied) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "AccessDenied"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *AccessDenied) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
 // The requested bucket name is not available. The bucket namespace is shared by
 // all users of the system. Select a different name and try again.
 type BucketAlreadyExists struct {
@@ -167,16 +195,8 @@ func (e *InvalidObjectState) ErrorCode() string {
 }
 func (e *InvalidObjectState) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
-// You may receive this error in multiple cases. Depending on the reason for the
-// error, you may receive one of the messages below:
-//
-//   - Cannot specify both a write offset value and user-defined object metadata
-//     for existing objects.
-//
-//   - Checksum Type mismatch occurred, expected checksum Type: sha1, actual
-//     checksum Type: crc32c.
-//
-//   - Request body cannot be empty when 'write offset' is specified.
+// A parameter or header in your request isn't valid. For details, see the
+// description of this API operation.
 type InvalidRequest struct {
 	Message *string
 

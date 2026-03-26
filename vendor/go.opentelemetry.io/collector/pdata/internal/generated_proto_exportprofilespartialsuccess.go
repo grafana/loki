@@ -11,13 +11,14 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // ExportPartialSuccess represents the details of a partially successful export request.
 type ExportProfilesPartialSuccess struct {
-	RejectedProfiles int64
 	ErrorMessage     string
+	RejectedProfiles int64
 }
 
 var (
@@ -29,7 +30,7 @@ var (
 )
 
 func NewExportProfilesPartialSuccess() *ExportProfilesPartialSuccess {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ExportProfilesPartialSuccess{}
 	}
 	return protoPoolExportProfilesPartialSuccess.Get().(*ExportProfilesPartialSuccess)
@@ -40,7 +41,7 @@ func DeleteExportProfilesPartialSuccess(orig *ExportProfilesPartialSuccess, null
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -65,7 +66,6 @@ func CopyExportProfilesPartialSuccess(dest, src *ExportProfilesPartialSuccess) *
 		dest = NewExportProfilesPartialSuccess()
 	}
 	dest.RejectedProfiles = src.RejectedProfiles
-
 	dest.ErrorMessage = src.ErrorMessage
 
 	return dest
@@ -155,9 +155,10 @@ func (orig *ExportProfilesPartialSuccess) SizeProto() int {
 	var n int
 	var l int
 	_ = l
-	if orig.RejectedProfiles != 0 {
+	if orig.RejectedProfiles != int64(0) {
 		n += 1 + proto.Sov(uint64(orig.RejectedProfiles))
 	}
+
 	l = len(orig.ErrorMessage)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
@@ -169,7 +170,7 @@ func (orig *ExportProfilesPartialSuccess) MarshalProto(buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	if orig.RejectedProfiles != 0 {
+	if orig.RejectedProfiles != int64(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.RejectedProfiles))
 		pos--
 		buf[pos] = 0x8
@@ -209,7 +210,6 @@ func (orig *ExportProfilesPartialSuccess) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.RejectedProfiles = int64(num)
 
 		case 2:

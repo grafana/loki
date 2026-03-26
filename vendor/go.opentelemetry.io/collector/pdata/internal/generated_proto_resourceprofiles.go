@@ -11,14 +11,15 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // ResourceProfiles is a collection of profiles from a Resource.
 type ResourceProfiles struct {
+	SchemaUrl     string
 	Resource      Resource
 	ScopeProfiles []*ScopeProfiles
-	SchemaUrl     string
 }
 
 var (
@@ -30,7 +31,7 @@ var (
 )
 
 func NewResourceProfiles() *ResourceProfiles {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ResourceProfiles{}
 	}
 	return protoPoolResourceProfiles.Get().(*ResourceProfiles)
@@ -41,11 +42,10 @@ func DeleteResourceProfiles(orig *ResourceProfiles, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
-
 	DeleteResource(&orig.Resource, false)
 	for i := range orig.ScopeProfiles {
 		DeleteScopeProfiles(orig.ScopeProfiles[i], true)
@@ -184,6 +184,7 @@ func (orig *ResourceProfiles) SizeProto() int {
 		l = orig.ScopeProfiles[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	l = len(orig.SchemaUrl)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l

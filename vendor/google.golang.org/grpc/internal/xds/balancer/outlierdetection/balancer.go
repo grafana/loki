@@ -457,19 +457,11 @@ func incrementCounter(sc balancer.SubConn, info balancer.DoneInfo) {
 		return
 	}
 
-	// scw.endpointInfo and callCounter.activeBucket can be written to
-	// concurrently (the pointers themselves). Thus, protect the reads here with
-	// atomics to prevent data corruption. There exists a race in which you read
-	// the endpointInfo or active bucket pointer and then that pointer points to
-	// deprecated memory. If this goroutine yields the processor, in between
-	// reading the endpointInfo pointer and writing to the active bucket,
-	// UpdateAddresses can switch the endpointInfo the scw points to. Writing to
-	// an outdated endpoint is a very small race and tolerable. After reading
-	// callCounter.activeBucket in this picker a swap call can concurrently
-	// change what activeBucket points to. A50 says to swap the pointer, which
-	// will cause this race to write to deprecated memory the interval timer
-	// algorithm will never read, which makes this race alright.
-	epInfo := scw.endpointInfo.Load()
+	// After reading callCounter.activeBucket in this picker a swap call can
+	// concurrently change what activeBucket points to. A50 says to swap the
+	// pointer, which will cause this race to write to deprecated memory the
+	// interval timer algorithm will never read, which makes this race alright.
+	epInfo := scw.endpointInfo
 	if epInfo == nil {
 		return
 	}
@@ -510,7 +502,7 @@ func (b *outlierDetectionBalancer) NewSubConn(addrs []resolver.Address, opts bal
 		return scw, nil
 	}
 	epInfo.sws = append(epInfo.sws, scw)
-	scw.endpointInfo.Store(epInfo)
+	scw.endpointInfo = epInfo
 	if !epInfo.latestEjectionTimestamp.IsZero() {
 		scw.eject()
 	}
@@ -521,28 +513,12 @@ func (b *outlierDetectionBalancer) RemoveSubConn(sc balancer.SubConn) {
 	b.logger.Errorf("RemoveSubConn(%v) called unexpectedly", sc)
 }
 
-// appendIfPresent appends the scw to the endpoint, if the address is present in
-// the Outlier Detection balancers address map. Returns nil if not present, and
-// the map entry if present.
-//
-// Caller must hold b.mu.
-func (b *outlierDetectionBalancer) appendIfPresent(addr string, scw *subConnWrapper) *endpointInfo {
-	epInfo, ok := b.addrs[addr]
-	if !ok {
-		return nil
-	}
-
-	epInfo.sws = append(epInfo.sws, scw)
-	scw.endpointInfo.Store(epInfo)
-	return epInfo
-}
-
 // removeSubConnFromEndpointMapEntry removes the scw from its map entry if
 // present.
 //
 // Caller must hold b.mu.
 func (b *outlierDetectionBalancer) removeSubConnFromEndpointMapEntry(scw *subConnWrapper) {
-	epInfo := scw.endpointInfo.Load()
+	epInfo := scw.endpointInfo
 	if epInfo == nil {
 		return
 	}
@@ -554,61 +530,20 @@ func (b *outlierDetectionBalancer) removeSubConnFromEndpointMapEntry(scw *subCon
 	}
 }
 
-func (b *outlierDetectionBalancer) UpdateAddresses(sc balancer.SubConn, addrs []resolver.Address) {
-	scw, ok := sc.(*subConnWrapper)
-	if !ok {
-		// Return, shouldn't happen if passed up scw
-		return
-	}
-
-	b.ClientConn.UpdateAddresses(scw.SubConn, addrs)
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	// Note that 0 addresses is a valid update/state for a SubConn to be in.
-	// This is correctly handled by this algorithm (handled as part of a non singular
-	// old address/new address).
-	switch {
-	case len(scw.addresses) == 1 && len(addrs) == 1: // single address to single address
-		// If the updated address is the same, then there is nothing to do
-		// past this point.
-		if scw.addresses[0].Addr == addrs[0].Addr {
-			return
-		}
-		b.removeSubConnFromEndpointMapEntry(scw)
-		endpointInfo := b.appendIfPresent(addrs[0].Addr, scw)
-		if endpointInfo == nil { // uneject unconditionally because could have come from an ejected endpoint
-			scw.uneject()
-			break
-		}
-		if endpointInfo.latestEjectionTimestamp.IsZero() { // relay new updated subconn state
-			scw.uneject()
-		} else {
-			scw.eject()
-		}
-	case len(scw.addresses) == 1: // single address to multiple/no addresses
-		b.removeSubConnFromEndpointMapEntry(scw)
-		addrInfo := scw.endpointInfo.Load()
-		if addrInfo != nil {
-			addrInfo.callCounter.clear()
-		}
-		scw.uneject()
-	case len(addrs) == 1: // multiple/no addresses to single address
-		endpointInfo := b.appendIfPresent(addrs[0].Addr, scw)
-		if endpointInfo != nil && !endpointInfo.latestEjectionTimestamp.IsZero() {
-			scw.eject()
-		}
-	} // otherwise multiple/no addresses to multiple/no addresses; ignore
-
-	scw.addresses = addrs
+func (b *outlierDetectionBalancer) UpdateAddresses(sc balancer.SubConn, _ []resolver.Address) {
+	b.logger.Errorf("UpdateAddresses(%v) called unexpectedly", sc)
 }
 
-// handleSubConnUpdate stores the recent state and forward the update
-// if the SubConn is not ejected.
+// handleSubConnUpdate stores the recent state and forward the update.
 func (b *outlierDetectionBalancer) handleSubConnUpdate(u *scUpdate) {
 	scw := u.scw
 	scw.clearHealthListener()
 	b.child.updateSubConnState(scw, u.state)
+	if u.state.ConnectivityState == connectivity.Shutdown {
+		b.mu.Lock()
+		b.removeSubConnFromEndpointMapEntry(scw)
+		b.mu.Unlock()
+	}
 }
 
 func (b *outlierDetectionBalancer) handleSubConnHealthUpdate(u *scHealthUpdate) {

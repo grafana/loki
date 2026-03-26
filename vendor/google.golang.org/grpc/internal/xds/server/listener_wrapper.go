@@ -59,8 +59,7 @@ type ServingModeCallback func(addr net.Addr, mode connectivity.ServingMode, err 
 // XDSClient wraps the methods on the XDSClient which are required by
 // the listenerWrapper.
 type XDSClient interface {
-	WatchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) (cancel func())
-	WatchResourceV2(typeURL, resourceName string, watcher xdsclient.ResourceWatcher) (cancel func())
+	WatchResource(typeURL, resourceName string, watcher xdsclient.ResourceWatcher) (cancel func())
 	BootstrapConfig() *bootstrap.Config
 }
 

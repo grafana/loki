@@ -2,6 +2,7 @@ package mimetype
 
 import (
 	"mime"
+	"slices"
 	"strings"
 
 	"github.com/gabriel-vasile/mimetype/internal/charset"
@@ -58,10 +59,8 @@ func (m *MIME) Is(expectedMIME string) bool {
 		return true
 	}
 
-	for _, alias := range m.aliases {
-		if alias == expectedMIME {
-			return true
-		}
+	if slices.Contains(m.aliases, expectedMIME) {
+		return true
 	}
 
 	return false
@@ -180,10 +179,8 @@ func (m *MIME) lookup(mime string) *MIME {
 	if mime == m.mime {
 		return m
 	}
-	for _, n := range m.aliases {
-		if n == mime {
-			return m
-		}
+	if slices.Contains(m.aliases, mime) {
+		return m
 	}
 
 	for _, c := range m.children {

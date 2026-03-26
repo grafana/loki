@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/grafana/dskit/flagext"
@@ -388,14 +389,14 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 			entry: logproto.Entry{
 				Line: "this is a critical message",
 			},
-			expectedLogLevel: constants.LogLevelUnknown,
+			expectedLogLevel: constants.LogLevelCritical, // Changed from Unknown to Critical
 		},
 		{
 			name: "non otlp with CRITICAL keyword in log line",
 			entry: logproto.Entry{
 				Line: "this is a CRITICAL message",
 			},
-			expectedLogLevel: constants.LogLevelUnknown,
+			expectedLogLevel: constants.LogLevelCritical, // Changed from Unknown to Critical
 		},
 		{
 			name: "non otlp with critical: prefix in log line",
@@ -617,7 +618,7 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			detectedLogLevel := ld.detectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata))
-			require.Equal(t, tc.expectedLogLevel, detectedLogLevel)
+			require.Equal(t, tc.expectedLogLevel, detectedLogLevel, "log line: %s", tc.entry.Line)
 		})
 	}
 }
@@ -707,14 +708,14 @@ func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
 			entry: logproto.Entry{
 				Line: "this is a critical message",
 			},
-			expectedLogLevel: constants.LogLevelUnknown,
+			expectedLogLevel: constants.LogLevelCritical,
 		},
 		{
 			name: "non otlp with CRITICAL keyword in log line",
 			entry: logproto.Entry{
 				Line: "this is a CRITICAL message",
 			},
-			expectedLogLevel: constants.LogLevelUnknown,
+			expectedLogLevel: constants.LogLevelCritical,
 		},
 		{
 			name: "non otlp with critical: prefix in log line",
@@ -1114,6 +1115,405 @@ func TestGetLevelUsingJsonParser(t *testing.T) {
 			if string(got) != tt.want {
 				t.Errorf("getLevelUsingJsonParser() = %v, want %v", string(got), tt.want)
 			}
+		})
+	}
+}
+
+func Test_detectLevelFromLogLine(t *testing.T) {
+	for _, level := range []struct {
+		word  string
+		level string
+	}{
+		{word: "trace", level: constants.LogLevelTrace},
+		{word: "debug", level: constants.LogLevelDebug},
+		{word: "info", level: constants.LogLevelInfo},
+		{word: "warn", level: constants.LogLevelWarn},
+		{word: "warning", level: constants.LogLevelWarn},
+		{word: "error", level: constants.LogLevelError},
+		{word: "err", level: constants.LogLevelError},
+		{word: "fatal", level: constants.LogLevelFatal},
+		{word: "critical", level: constants.LogLevelCritical},
+		{word: "unknown", level: constants.LogLevelUnknown},
+	} {
+		tests := []struct {
+			name     string
+			log      string
+			expected string
+		}{
+			{
+				name:     fmt.Sprintf("detect %s level", level.word),
+				log:      fmt.Sprintf("this is a %s message", level.word),
+				expected: level.level,
+			},
+			{
+				name:     fmt.Sprintf("detect %s level uppercase", strings.ToUpper(level.word)),
+				log:      fmt.Sprintf("this is a %s message", strings.ToUpper(level.word)),
+				expected: level.level,
+			},
+			{
+				name:     fmt.Sprintf("detect %s level at start of string", level.word),
+				log:      fmt.Sprintf("%s occurred", level.word),
+				expected: level.level,
+			},
+			{
+				name:     fmt.Sprintf("detect %s level at end of string", level.word),
+				log:      fmt.Sprintf("an %s", level.word),
+				expected: level.level,
+			},
+			{
+				name:     fmt.Sprintf("detect %s level with space before", level.word),
+				log:      fmt.Sprintf("this is an %s message", level.word),
+				expected: level.level,
+			},
+			{
+				name:     fmt.Sprintf("detect %s level with colon", level.word),
+				log:      fmt.Sprintf("%s: something happened", level.word),
+				expected: level.level,
+			},
+			{
+				name:     fmt.Sprintf("detect %s level with punctuation after", level.word),
+				log:      fmt.Sprintf("%s, something happened", level.word),
+				expected: level.level,
+			},
+			{
+				name:     fmt.Sprintf("detect %s level with special characters", level.word),
+				log:      fmt.Sprintf("%s! something happened", level.word),
+				expected: level.level,
+			},
+			{
+				name:     fmt.Sprintf("detect %s level with parentheses", level.word),
+				log:      fmt.Sprintf("(%s) something happened", level.word),
+				expected: level.level,
+			},
+			{
+				name:     fmt.Sprintf("detect %s level with brackets", level.word),
+				log:      fmt.Sprintf("[%s] something happened", level.word),
+				expected: level.level,
+			},
+			{
+				name:     fmt.Sprintf("nginx like log with %s", level.word),
+				log:      fmt.Sprintf("2024-01-01T10:00:00Z %s: connection failed", level.word),
+				expected: level.level,
+			},
+			{
+				name:     fmt.Sprintf("bracket pattern [%s]", level.word),
+				log:      fmt.Sprintf("[%s] connection failed", level.word),
+				expected: level.level,
+			},
+			{
+				name:     fmt.Sprintf("bracket pattern [%s]", strings.ToUpper(level.word)),
+				log:      fmt.Sprintf("[%s] connection failed", strings.ToUpper(level.word)),
+				expected: level.level,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result := detectLevelFromLogLine(tt.log)
+				require.Equal(t, tt.expected, result, "log: %q", tt.log)
+			})
+		}
+	}
+
+	additionalTestCases := []struct {
+		name     string
+		log      string
+		expected string
+	}{
+		{
+			name:     "terror should not match error",
+			log:      "this is a terror attack",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "errors should not match error",
+			log:      "there were multiple errors",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "error123 should not match error",
+			log:      "error123 occurred",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "123error should not match error",
+			log:      "123error occurred",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "errorCode should not match error",
+			log:      "errorCode is invalid",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "myError should not match error",
+			log:      "myError occurred",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "debugging should not match debug",
+			log:      "debugging the issue",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "debugger should not match debug",
+			log:      "debugger attached",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "information should not match info",
+			log:      "information is available",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "informative should not match info",
+			log:      "informative message",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "warnings should not match warn",
+			log:      "warnings issued",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "criticality should not match critical",
+			log:      "criticality assessment",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "fatalism should not match fatal",
+			log:      "fatalism philosophy",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "tracer should not match trace",
+			log:      "tracer bullet",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "traced should not match trace",
+			log:      "traced the issue",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "empty string",
+			log:      "",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "no level word",
+			log:      "this is a regular log message",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "JSON string with error",
+			log:      `{"message": "error occurred"}`,
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "JSON string with error in key",
+			log:      `{"error": "something"}`,
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "JSON string with errorCode should not match",
+			log:      `{"errorCode": 123}`,
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "logfmt with error",
+			log:      `msg="error occurred"`,
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "logfmt with errorCode should not match",
+			log:      `errorCode=123`,
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "error with equals sign",
+			log:      "error=something",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "logfmt level",
+			log:      "level=error",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "bracket pattern [terror] should not match error",
+			log:      "[terror] attack occurred",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "bracket pattern [errors] should not match error",
+			log:      "[errors] occurred",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "bracket pattern [errorCode] should not match error",
+			log:      "[errorCode] is invalid",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "bracket pattern [debugging] should not match debug",
+			log:      "[debugging] the issue",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "bracket pattern [information] should not match info",
+			log:      "[information] is available",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "bracket pattern in JSON string",
+			log:      `{"message": "[error] occurred"}`,
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "bracket pattern in logfmt string",
+			log:      `msg="[error] occurred"`,
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "error_code should not match error",
+			log:      "error_code is 500",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "log_error should not match error",
+			log:      "log_error function called",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "trace_id should not match trace",
+			log:      "trace_id is abc123",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "stack_trace should not match trace",
+			log:      "stack_trace printed",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "error surrounded by underscores should not match",
+			log:      "some_error_code is invalid",
+			expected: constants.LogLevelUnknown,
+		},
+	}
+	for _, tt := range additionalTestCases {
+		t.Run(tt.name, func(t *testing.T) {
+			result := detectLevelFromLogLine(tt.log)
+			require.Equal(t, tt.expected, result, "log: %q", tt.log)
+		})
+	}
+}
+
+func Test_detectLevelFromLogLine_earliestPosition(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		log      string
+		expected string
+	}{
+		{
+			name:     "info before warning and error in arguments picks info",
+			log:      "2024-01-01T10:00:00Z info request failed -l warning --log-level misc:error",
+			expected: constants.LogLevelInfo,
+		},
+		{
+			name:     "warning appears before info positionally wins despite lower pattern priority",
+			log:      "warning: degraded, info follows",
+			expected: constants.LogLevelWarn,
+		},
+		{
+			name:     "error appears before info positionally wins",
+			log:      "[error] something went wrong, info available",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "key:value colon prefix does not match, later bounded keyword wins",
+			log:      "component=misc:error [info] processed",
+			expected: constants.LogLevelInfo,
+		},
+		{
+			name:     "first occurrence of keyword is unbounded, second is bounded",
+			log:      "fooerror [error] message",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "all occurrences unbounded returns unknown",
+			log:      "fooerror errorbar misc:error error_code",
+			expected: constants.LogLevelUnknown,
+		},
+		// nginx error log: level in [brackets] after timestamp
+		{
+			name:     "nginx error log with [error] bracket",
+			log:      "2024/01/01 10:00:00 [error] 1234#1234: *1 connect() failed (111: Connection refused) while connecting to upstream",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "nginx warn log with [warn] bracket",
+			log:      "2024/01/01 10:00:00 [warn] 1234#1234: upstream server temporarily disabled while reading response header from upstream",
+			expected: constants.LogLevelWarn,
+		},
+		{
+			name:     "nginx access log with error in url path returns unknown",
+			log:      `192.168.1.1 - - [01/Jan/2024:10:00:00 +0000] "GET /api/error-handler HTTP/1.1" 500 1234 "-" "curl/7.68.0"`,
+			expected: constants.LogLevelUnknown,
+		},
+		// apache httpd error log: level in second [brackets] after date
+		{
+			name:     "apache httpd error log",
+			log:      "[Mon Jan 01 10:00:00.000000 2024] [error] [pid 1234] File does not exist: /var/www/html/favicon.ico",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "apache httpd warn log",
+			log:      "[Mon Jan 01 10:00:00.000000 2024] [warn] [pid 1234] RSA server certificate CommonName does not match",
+			expected: constants.LogLevelWarn,
+		},
+		// spring boot: uppercase level between timestamp and PID, message may repeat level words
+		{
+			name:     "spring boot INFO log",
+			log:      "2024-01-01 10:00:00.000  INFO 1234 --- [main] com.example.App : Starting application on host",
+			expected: constants.LogLevelInfo,
+		},
+		{
+			name:     "spring boot ERROR where message also contains error",
+			log:      "2024-01-01 10:00:00.000 ERROR 1234 --- [main] com.example.App : Application startup failed due to connection error",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "spring boot INFO where class name contains error but is not a standalone keyword",
+			log:      "2024-01-01 10:00:00.000  INFO 1234 --- [main] com.example.ErrorController : Handling request for /api/error-resource",
+			expected: constants.LogLevelInfo,
+		},
+		// log4j: level after timestamp, followed by logger name and message
+		{
+			name:     "log4j WARN log",
+			log:      "2024-01-01 10:00:00,000 WARN  com.example.service.UserService - Failed to load user preferences, using defaults",
+			expected: constants.LogLevelWarn,
+		},
+		{
+			name:     "log4j ERROR where logger name and message both contain error",
+			log:      "2024-01-01 10:00:00,000 ERROR com.example.service.DatabaseService - Connection failed after error: timeout",
+			expected: constants.LogLevelError,
+		},
+		// istio/envoy: tab-separated fields, level is second field; message may contain metric names like error_rate
+		{
+			name:     "istio warn log with error_rate metric in message",
+			log:      "2024-01-01T10:00:00.000000Z\twarn\tads\tcluster update: warning threshold exceeded, error_rate=0.05",
+			expected: constants.LogLevelWarn,
+		},
+		{
+			name:     "envoy info log with warning and misc:error flags in command args",
+			log:      "2024-01-01T10:00:00.000000Z    info    Envoy command: [-c /etc/envoy.json -l warning --component-log-level misc:error --concurrency 2]",
+			expected: constants.LogLevelInfo,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := detectLevelFromLogLine(tc.log)
+			require.Equal(t, tc.expected, result, "log: %q", tc.log)
 		})
 	}
 }

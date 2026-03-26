@@ -53,8 +53,8 @@ import (
 // if your header value is my file.txt , containing two spaces after my , you must
 // URL encode this value to my%20%20file.txt .
 //
-// [BucketKeyEnabled]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_BucketKeyEnabled.html
-// [BlockedEncryptionTypes]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_BlockedEncryptionTypes.html
+// [BucketKeyEnabled]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ServerSideEncryptionRule.html#AmazonS3-Type-ServerSideEncryptionRule-BucketKeyEnabled
+// [BlockedEncryptionTypes]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ServerSideEncryptionRule.html#AmazonS3-Type-ServerSideEncryptionRule-BlockedEncryptionTypes
 // [DeleteBucketEncryption]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketEncryption.html
 // [PutBucketEncryption]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketEncryption.html
 // [Setting default server-side encryption behavior for directory buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-bucket-encryption.html

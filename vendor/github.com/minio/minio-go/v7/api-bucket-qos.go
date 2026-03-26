@@ -25,7 +25,7 @@ import (
 	"strings"
 
 	"github.com/minio/minio-go/v7/pkg/s3utils"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // QOSConfigVersionCurrent is the current version of the QoS configuration.

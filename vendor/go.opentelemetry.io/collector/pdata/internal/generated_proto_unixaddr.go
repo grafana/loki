@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -28,7 +29,7 @@ var (
 )
 
 func NewUnixAddr() *UnixAddr {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &UnixAddr{}
 	}
 	return protoPoolUnixAddr.Get().(*UnixAddr)
@@ -39,7 +40,7 @@ func DeleteUnixAddr(orig *UnixAddr, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -64,7 +65,6 @@ func CopyUnixAddr(dest, src *UnixAddr) *UnixAddr {
 		dest = NewUnixAddr()
 	}
 	dest.Name = src.Name
-
 	dest.Net = src.Net
 
 	return dest
@@ -154,10 +154,12 @@ func (orig *UnixAddr) SizeProto() int {
 	var n int
 	var l int
 	_ = l
+
 	l = len(orig.Name)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	l = len(orig.Net)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l

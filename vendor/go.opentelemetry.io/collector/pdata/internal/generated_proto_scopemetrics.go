@@ -11,14 +11,15 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // ScopeMetrics is a collection of metrics from a LibraryInstrumentation.
 type ScopeMetrics struct {
-	Scope     InstrumentationScope
-	Metrics   []*Metric
 	SchemaUrl string
+	Metrics   []*Metric
+	Scope     InstrumentationScope
 }
 
 var (
@@ -30,7 +31,7 @@ var (
 )
 
 func NewScopeMetrics() *ScopeMetrics {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ScopeMetrics{}
 	}
 	return protoPoolScopeMetrics.Get().(*ScopeMetrics)
@@ -41,11 +42,10 @@ func DeleteScopeMetrics(orig *ScopeMetrics, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
-
 	DeleteInstrumentationScope(&orig.Scope, false)
 	for i := range orig.Metrics {
 		DeleteMetric(orig.Metrics[i], true)
@@ -184,6 +184,7 @@ func (orig *ScopeMetrics) SizeProto() int {
 		l = orig.Metrics[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	l = len(orig.SchemaUrl)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l

@@ -7,105 +7,81 @@ import (
 	"io"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-// forEachStreamSectionPointer iterates over all the section pointers that point to one of the
-// [streamIDs] in a given [indexObj] that overlap [sStart, sEnd] (inclusive) time range and
-// calls [f] on every found SectionPointer.
-func forEachStreamSectionPointer(
+func forEachIndexPointer(
 	ctx context.Context,
-	indexObj *dataobj.Object,
+	object *dataobj.Object,
 	sStart, sEnd *scalar.Timestamp,
-	streamIDs []int64,
-	f func(pointers.SectionPointer),
+	f func(pointer indexpointers.IndexPointer),
 ) error {
 	targetTenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return fmt.Errorf("extracting org ID: %w", err)
 	}
-	var reader pointers.Reader
+	var reader indexpointers.Reader
 	defer reader.Close()
 
-	// prepare streamIDs scalars only once, they are used in the predicate later
-	var sStreamIDs []scalar.Scalar
-	for _, streamID := range streamIDs {
-		sStreamIDs = append(sStreamIDs, scalar.NewInt64Scalar(streamID))
-	}
-
-	const batchSize = 128
-	buf := make([]pointers.SectionPointer, batchSize)
+	const batchSize = 1024
+	buf := make([]indexpointers.IndexPointer, batchSize)
 
 	// iterate over the sections and fill buf column by column
 	// once the read operation is over invoke client's [f] on every read row (numRows not always the same as len(buf))
-	for _, section := range indexObj.Sections().Filter(pointers.CheckSection) {
+	for _, section := range object.Sections().Filter(indexpointers.CheckSection) {
 		if section.Tenant != targetTenant {
 			continue
 		}
 
-		sec, err := pointers.Open(ctx, section)
+		sec, err := indexpointers.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening section: %w", err)
 		}
 
-		pointerCols, err := findPointersColumnsByTypes(
-			sec.Columns(),
-			pointers.ColumnTypePath,
-			pointers.ColumnTypeSection,
-			pointers.ColumnTypeStreamID,
-			pointers.ColumnTypeStreamIDRef,
-			pointers.ColumnTypeMinTimestamp,
-			pointers.ColumnTypeMaxTimestamp,
-			pointers.ColumnTypeRowCount,
-			pointers.ColumnTypeUncompressedSize,
-		)
-		if err != nil {
-			return fmt.Errorf("finding pointers columns: %w", err)
-		}
-
 		var (
-			colStreamID     *pointers.Column
-			colMinTimestamp *pointers.Column
-			colMaxTimestamp *pointers.Column
+			colPath         *indexpointers.Column
+			colMinTimestamp *indexpointers.Column
+			colMaxTimestamp *indexpointers.Column
 		)
 
-		for _, c := range pointerCols {
-			if c.Type == pointers.ColumnTypeStreamID {
-				colStreamID = c
+		for _, c := range sec.Columns() {
+			if c.Type == indexpointers.ColumnTypePath {
+				colPath = c
 			}
-			if c.Type == pointers.ColumnTypeMinTimestamp {
+			if c.Type == indexpointers.ColumnTypeMinTimestamp {
 				colMinTimestamp = c
 			}
-			if c.Type == pointers.ColumnTypeMaxTimestamp {
+			if c.Type == indexpointers.ColumnTypeMaxTimestamp {
 				colMaxTimestamp = c
 			}
-			if colStreamID != nil && colMinTimestamp != nil && colMaxTimestamp != nil {
+			if colPath != nil && colMinTimestamp != nil && colMaxTimestamp != nil {
 				break
 			}
 		}
 
-		if colStreamID == nil || colMinTimestamp == nil || colMaxTimestamp == nil {
-			return fmt.Errorf(
-				"one of mandatory columns is missing: (streamID=%t, minTimestamp=%t, maxTimestamp=%t)",
-				colStreamID == nil, colMinTimestamp == nil, colMaxTimestamp == nil,
-			)
+		if colPath == nil || colMinTimestamp == nil || colMaxTimestamp == nil {
+			return fmt.Errorf("one of the mandatory columns is missing: (path=%t, minTimestamp=%t, maxTimestamp=%t)", colPath == nil, colMinTimestamp == nil, colMaxTimestamp == nil)
 		}
 
-		reader.Reset(pointers.ReaderOptions{
-			Columns: pointerCols,
-			Predicates: []pointers.Predicate{
-				pointers.WhereTimeRangeOverlapsWith(colMinTimestamp, colMaxTimestamp, sStart, sEnd),
-				pointers.InPredicate{
-					Column: colStreamID,
-					Values: sStreamIDs,
-				},
+		reader.Reset(indexpointers.ReaderOptions{
+			Columns: sec.Columns(),
+			Predicates: []indexpointers.Predicate{
+				indexpointers.WhereTimeRangeOverlapsWith(colMinTimestamp, colMaxTimestamp, sStart, sEnd),
 			},
 		})
+		if err := reader.Open(ctx); err != nil {
+			return fmt.Errorf("opening index pointers reader: %w", err)
+		}
 
 		for {
 			rec, readErr := reader.Read(ctx, batchSize)
@@ -119,64 +95,32 @@ func forEachStreamSectionPointer(
 
 			for colIdx := range int(rec.NumCols()) {
 				col := rec.Column(colIdx)
-				pointerCol := pointerCols[colIdx]
+				pointerCol := sec.Columns()[colIdx]
 
 				switch pointerCol.Type {
-				case pointers.ColumnTypePath:
+				case indexpointers.ColumnTypePath:
+					values := col.(*array.String)
 					for rIdx := range numRows {
 						if col.IsNull(rIdx) {
 							continue
 						}
-						buf[rIdx].Path = col.(*array.String).Value(rIdx)
+						buf[rIdx].Path = values.Value(rIdx)
 					}
-				case pointers.ColumnTypeSection:
+				case indexpointers.ColumnTypeMinTimestamp:
+					values := col.(*array.Timestamp)
 					for rIdx := range numRows {
 						if col.IsNull(rIdx) {
 							continue
 						}
-						buf[rIdx].Section = col.(*array.Int64).Value(rIdx)
+						buf[rIdx].StartTs = time.Unix(0, int64(values.Value(rIdx)))
 					}
-				case pointers.ColumnTypeStreamID:
+				case indexpointers.ColumnTypeMaxTimestamp:
+					values := col.(*array.Timestamp)
 					for rIdx := range numRows {
 						if col.IsNull(rIdx) {
 							continue
 						}
-						buf[rIdx].StreamID = col.(*array.Int64).Value(rIdx)
-					}
-				case pointers.ColumnTypeStreamIDRef:
-					for rIdx := range numRows {
-						if col.IsNull(rIdx) {
-							continue
-						}
-						buf[rIdx].StreamIDRef = col.(*array.Int64).Value(rIdx)
-					}
-				case pointers.ColumnTypeMinTimestamp:
-					for rIdx := range numRows {
-						if col.IsNull(rIdx) {
-							continue
-						}
-						buf[rIdx].StartTs = time.Unix(0, int64(col.(*array.Timestamp).Value(rIdx)))
-					}
-				case pointers.ColumnTypeMaxTimestamp:
-					for rIdx := range numRows {
-						if col.IsNull(rIdx) {
-							continue
-						}
-						buf[rIdx].EndTs = time.Unix(0, int64(col.(*array.Timestamp).Value(rIdx)))
-					}
-				case pointers.ColumnTypeRowCount:
-					for rIdx := range numRows {
-						if col.IsNull(rIdx) {
-							continue
-						}
-						buf[rIdx].LineCount = col.(*array.Int64).Value(rIdx)
-					}
-				case pointers.ColumnTypeUncompressedSize:
-					for rIdx := range numRows {
-						if col.IsNull(rIdx) {
-							continue
-						}
-						buf[rIdx].UncompressedSize = col.(*array.Int64).Value(rIdx)
+						buf[rIdx].EndTs = time.Unix(0, int64(values.Value(rIdx)))
 					}
 				default:
 					continue
@@ -191,6 +135,172 @@ func forEachStreamSectionPointer(
 				break
 			}
 		}
+	}
+
+	return nil
+}
+
+func findPointersColumnsByTypes(allColumns []*pointers.Column, columnTypes ...pointers.ColumnType) ([]*pointers.Column, error) {
+	result := make([]*pointers.Column, 0, len(columnTypes))
+
+	for _, c := range allColumns {
+		for _, neededType := range columnTypes {
+			if neededType != c.Type {
+				continue
+			}
+
+			result = append(result, c)
+		}
+	}
+
+	return result, nil
+}
+
+// buildStreamReaderPredicate builds predicates for the stream reader
+// using the provided time range and label matchers.
+func buildStreamReaderPredicate(sec *streams.Section, sStart, sEnd *scalar.Timestamp, matchers []*labels.Matcher) ([]streams.Predicate, error) {
+	var (
+		minTsColumn  *streams.Column
+		maxTsColumn  *streams.Column
+		labelColumns = make(map[string]*streams.Column)
+	)
+
+	for _, col := range sec.Columns() {
+		switch col.Type {
+		case streams.ColumnTypeMinTimestamp:
+			minTsColumn = col
+		case streams.ColumnTypeMaxTimestamp:
+			maxTsColumn = col
+		case streams.ColumnTypeLabel:
+			labelColumns[col.Name] = col
+		}
+	}
+
+	if minTsColumn == nil || maxTsColumn == nil {
+		return nil, errors.New("buildStreamReaderPredicate: section is missing required columns")
+	}
+
+	var predicates []streams.Predicate
+	predicates = append(predicates, buildTimeRangePredicate(minTsColumn, maxTsColumn, sStart, sEnd))
+	for _, matcher := range matchers {
+		predicates = append(predicates, buildLabelPredicate(matcher, labelColumns))
+	}
+
+	return predicates, nil
+}
+
+// buildTimeRangePredicate builds a predicate for time range overlap.
+// A stream's [minTs, maxTs] overlaps with query [start, end] if:
+// maxTs >= start AND minTs <= end
+func buildTimeRangePredicate(minTsColumn, maxTsColumn *streams.Column, start, end *scalar.Timestamp) streams.Predicate {
+	// maxTs >= start
+	maxCheck := streams.NotPredicate{
+		Inner: streams.LessThanPredicate{
+			Column: maxTsColumn,
+			Value:  start,
+		},
+	}
+
+	// minTs <= end
+	minCheck := streams.NotPredicate{
+		Inner: streams.GreaterThanPredicate{
+			Column: minTsColumn,
+			Value:  end,
+		},
+	}
+
+	return streams.AndPredicate{
+		Left:  maxCheck,
+		Right: minCheck,
+	}
+}
+
+// buildLabelPredicate builds a predicate for a label matcher.
+func buildLabelPredicate(matcher *labels.Matcher, columns map[string]*streams.Column) streams.Predicate {
+	col := columns[matcher.Name]
+
+	switch matcher.Type {
+	case labels.MatchEqual:
+		if col == nil && matcher.Value != "" {
+			// Column(NULL) == "value" is always false
+			return streams.FalsePredicate{}
+		} else if col == nil && matcher.Value == "" {
+			// Column(NULL) == "" is always true
+			return streams.TruePredicate{}
+		}
+
+		buf := memory.NewBufferBytes([]byte(matcher.Value))
+		return streams.EqualPredicate{
+			Column: col,
+			Value:  scalar.NewBinaryScalar(buf, arrow.BinaryTypes.Binary),
+		}
+
+	case labels.MatchNotEqual:
+		if col == nil && matcher.Value != "" {
+			// Column(NULL) != "value" is always true
+			return streams.TruePredicate{}
+		} else if col == nil && matcher.Value == "" {
+			// Column(NULL) != "" is always false
+			return streams.FalsePredicate{}
+		}
+
+		buf := memory.NewBufferBytes([]byte(matcher.Value))
+		return streams.NotPredicate{
+			Inner: streams.EqualPredicate{
+				Column: col,
+				Value:  scalar.NewBinaryScalar(buf, arrow.BinaryTypes.Binary),
+			},
+		}
+
+	case labels.MatchRegexp:
+		if col == nil {
+			// Column(NULL) is treated as empty string.
+			// Return true if regex matches "", false otherwise.
+			if matcher.Matches("") {
+				return streams.TruePredicate{}
+			}
+			return streams.FalsePredicate{}
+		}
+
+		return streams.FuncPredicate{
+			Column: col,
+			Keep: func(_ *streams.Column, value scalar.Scalar) bool {
+				return matcher.Matches(string(getBytes(value)))
+			},
+		}
+
+	case labels.MatchNotRegexp:
+		if col == nil {
+			// Column(NULL) is treated as empty string.
+			// Return true if regex does NOT match "", false otherwise.
+			if !matcher.Matches("") {
+				return streams.TruePredicate{}
+			}
+			return streams.FalsePredicate{}
+		}
+
+		return streams.FuncPredicate{
+			Column: col,
+			Keep: func(_ *streams.Column, value scalar.Scalar) bool {
+				return !matcher.Matches(string(getBytes(value)))
+			},
+		}
+
+	default:
+		panic(fmt.Sprintf("buildLabelPredicate: unsupported label matcher type %s", matcher.Type))
+	}
+}
+
+func getBytes(value scalar.Scalar) []byte {
+	if !value.IsValid() {
+		return nil
+	}
+
+	switch value := value.(type) {
+	case *scalar.Binary:
+		return value.Data()
+	case *scalar.String:
+		return value.Data()
 	}
 
 	return nil

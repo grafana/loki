@@ -247,7 +247,7 @@ type FileWriter struct {
 	codec           flatbuf.CompressionType
 	compressNP      int
 	compressors     []compressor
-	minSpaceSavings *float64
+	minSpaceSavings float64
 
 	// map of the last written dictionaries by id
 	// so we can avoid writing the same dictionary over and over

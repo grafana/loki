@@ -1,4 +1,4 @@
-// Copyright 2020 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -67,19 +67,35 @@ func NewFastRegexMatcher(v string) (*FastRegexMatcher, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Simplify the syntax tree to run faster.
-		parsed = parsed.Simplify()
+
+		parsed = optimizeAlternatingSimpleContains(parsed)
+
 		m.re, err = regexp.Compile("^(?s:" + parsed.String() + ")$")
 		if err != nil {
 			return nil, err
 		}
+
+		// Remove any capture operations before trying to optimize the remaining operations.
+		clearCapture(parsed)
+
 		if parsed.Op == syntax.OpConcat {
 			m.prefix, m.suffix, m.contains = optimizeConcatRegex(parsed)
 		}
 		if matches, caseSensitive := findSetMatches(parsed); caseSensitive {
 			m.setMatches = matches
 		}
-		m.stringMatcher = stringMatcherFromRegexp(parsed)
+
+		// Check if we have a pattern like .*-.*-.*.
+		// If so, then we can rely on the containsInOrder check in compileMatchStringFunction,
+		// so no further inspection of the string is required.
+		// We can't do this in stringMatcherFromRegexpInternal as we only want to apply this
+		// if the top-level pattern satisfies this requirement.
+		if isSimpleConcatenationPattern(parsed) {
+			m.stringMatcher = trueMatcher{}
+		} else {
+			m.stringMatcher = stringMatcherFromRegexp(parsed)
+		}
+
 		m.matchString = m.compileMatchStringFunction()
 	}
 
@@ -318,7 +334,7 @@ func (m *FastRegexMatcher) GetRegexString() string {
 // this function returns an optimized StringMatcher or nil if the regex
 // cannot be optimized in this way, and a list of setMatches up to maxSetMatches.
 func optimizeAlternatingLiterals(s string) (StringMatcher, []string) {
-	if len(s) == 0 {
+	if s == "" {
 		return emptyStringMatcher{}, nil
 	}
 
@@ -356,6 +372,43 @@ func optimizeAlternatingLiterals(s string) (StringMatcher, []string) {
 	return multiMatcher, multiMatcher.setMatches()
 }
 
+// optimizeAlternatingSimpleContains checks to see if a regex is a series of alternations that take the form .*literal.*
+// In these cases, the regex itself can be rewritten as .*(foo|bar).*,
+// which can result in a significant performance improvement at execution.
+func optimizeAlternatingSimpleContains(r *syntax.Regexp) *syntax.Regexp {
+	if r.Op != syntax.OpAlternate {
+		return r
+	}
+	containsLiterals := make([]*syntax.Regexp, 0, len(r.Sub))
+	for _, sub := range r.Sub {
+		// If any subexpression does not take the form .*literal.*, we should not try to optimize this
+		if sub.Op != syntax.OpConcat || len(sub.Sub) != 3 {
+			return r
+		}
+		concatSubs := sub.Sub
+		if !isCaseSensitiveLiteral(concatSubs[1]) || !isMatchAny(concatSubs[0]) || !isMatchAny(concatSubs[2]) {
+			return r
+		}
+		containsLiterals = append(containsLiterals, concatSubs[1])
+	}
+
+	// Only rewrite the regex if there's more than one literal
+	if len(containsLiterals) > 1 {
+		returnRegex := &syntax.Regexp{Op: syntax.OpConcat}
+		prefixAnyMatcher := &syntax.Regexp{Op: syntax.OpStar, Sub: []*syntax.Regexp{{Op: syntax.OpAnyChar}}, Flags: syntax.Perl | syntax.DotNL}
+		suffixAnyMatcher := &syntax.Regexp{Op: syntax.OpStar, Sub: []*syntax.Regexp{{Op: syntax.OpAnyChar}}, Flags: syntax.Perl | syntax.DotNL}
+		alts := &syntax.Regexp{Op: syntax.OpAlternate}
+		alts.Sub = containsLiterals
+		returnRegex.Sub = []*syntax.Regexp{
+			prefixAnyMatcher,
+			alts,
+			suffixAnyMatcher,
+		}
+		return returnRegex
+	}
+	return r
+}
+
 // optimizeConcatRegex returns literal prefix/suffix text that can be safely
 // checked against the label value before running the regexp matcher.
 func optimizeConcatRegex(r *syntax.Regexp) (prefix, suffix string, contains []string) {
@@ -372,7 +425,7 @@ func optimizeConcatRegex(r *syntax.Regexp) (prefix, suffix string, contains []st
 	}
 
 	if len(sub) == 0 {
-		return
+		return prefix, suffix, contains
 	}
 
 	// Given Prometheus regex matchers are always anchored to the begin/end
@@ -393,7 +446,7 @@ func optimizeConcatRegex(r *syntax.Regexp) (prefix, suffix string, contains []st
 		}
 	}
 
-	return
+	return prefix, suffix, contains
 }
 
 // StringMatcher is a matcher that matches a string in place of a regular expression.
@@ -568,6 +621,40 @@ func stringMatcherFromRegexpInternal(re *syntax.Regexp) StringMatcher {
 	return nil
 }
 
+// isSimpleConcatenationPattern returns true if re contains only literals or wildcard matchers,
+// and starts and ends with a wildcard matcher (eg. .*-.*-.*).
+func isSimpleConcatenationPattern(re *syntax.Regexp) bool {
+	if re.Op != syntax.OpConcat {
+		return false
+	}
+
+	if len(re.Sub) < 2 {
+		return false
+	}
+
+	first := re.Sub[0]
+	last := re.Sub[len(re.Sub)-1]
+	if !isMatchAny(first) || !isMatchAny(last) {
+		return false
+	}
+
+	for _, re := range re.Sub[1 : len(re.Sub)-1] {
+		if !isMatchAny(re) && !isCaseSensitiveLiteral(re) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func isMatchAny(re *syntax.Regexp) bool {
+	return re.Op == syntax.OpStar && re.Sub[0].Op == syntax.OpAnyChar
+}
+
+func isCaseSensitiveLiteral(re *syntax.Regexp) bool {
+	return re.Op == syntax.OpLiteral && isCaseSensitive(re)
+}
+
 // containsStringMatcher matches a string if it contains any of the substrings.
 // If left and right are not nil, it's a contains operation where left and right must match.
 // If left is nil, it's a hasPrefix operation and right must match.
@@ -696,7 +783,7 @@ func (m *literalSuffixStringMatcher) Matches(s string) bool {
 type emptyStringMatcher struct{}
 
 func (emptyStringMatcher) Matches(s string) bool {
-	return len(s) == 0
+	return s == ""
 }
 
 // orStringMatcher matches any of the sub-matchers.
@@ -912,12 +999,12 @@ func (m *anyNonEmptyStringMatcher) Matches(s string) bool {
 	if m.matchNL {
 		// It's OK if the string contains a newline so we just need to make
 		// sure it's non-empty.
-		return len(s) > 0
+		return s != ""
 	}
 
 	// We need to make sure it non-empty and doesn't contain a newline.
 	// Since the newline is an ASCII character, we can use strings.IndexByte().
-	return len(s) > 0 && strings.IndexByte(s, '\n') == -1
+	return s != "" && strings.IndexByte(s, '\n') == -1
 }
 
 // zeroOrOneCharacterStringMatcher is a StringMatcher which matches zero or one occurrence
@@ -937,7 +1024,7 @@ func (m *zeroOrOneCharacterStringMatcher) Matches(s string) bool {
 	}
 
 	// No need to check for the newline if the string is empty or matching a newline is OK.
-	if m.matchNL || len(s) == 0 {
+	if m.matchNL || s == "" {
 		return true
 	}
 

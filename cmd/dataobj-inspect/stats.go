@@ -5,13 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/dustin/go-humanize"
 	"github.com/fatih/color"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/tools"
 )
@@ -73,6 +76,10 @@ func (cmd *statsCommand) printObjStats(ctx context.Context, obj *dataobj.Object)
 	)
 	for offset, sec := range obj.Sections() {
 		switch {
+		case indexpointers.CheckSection(sec):
+			cmd.printIndexPointersSectionStats(ctx, offset, sec)
+		case pointers.CheckSection(sec):
+			cmd.printPointersSectionStats(ctx, offset, sec)
 		case streams.CheckSection(sec):
 			cmd.printStreamsSectionStats(ctx, offset, sec)
 		case logs.CheckSection(sec):
@@ -80,6 +87,72 @@ func (cmd *statsCommand) printObjStats(ctx context.Context, obj *dataobj.Object)
 		default:
 			exitWithErr(errors.New("unknown section"))
 		}
+	}
+}
+
+func (cmd *statsCommand) printIndexPointersSectionStats(ctx context.Context, offset int, sec *dataobj.Section) {
+	indexPointersSec, err := indexpointers.Open(ctx, sec)
+	if err != nil {
+		exitWithErr(fmt.Errorf("failed to open indexpointers section: %w", err))
+	}
+	stats, err := indexpointers.ReadStats(ctx, indexPointersSec)
+	if err != nil {
+		exitWithErr(fmt.Errorf("failed to read section stats: %w", err))
+	}
+	bold := color.New(color.Bold)
+	bold.Println("IndexPointers section:")
+	bold.Printf(
+		"\toffset: %d, tenant: %s, columns: %d, compressed size: %v, uncompressed size %v [%s – %s]\n",
+		offset,
+		sec.Tenant,
+		len(stats.Columns),
+		humanize.Bytes(stats.CompressedSize),
+		humanize.Bytes(stats.UncompressedSize),
+		stats.MinTimestamp.UTC().Format(time.RFC3339Nano),
+		stats.MaxTimestamp.UTC().Format(time.RFC3339Nano),
+	)
+	for _, col := range stats.Columns {
+		fmt.Printf(
+			"\t\tname: %s, type: %v, %d populated rows, %v compressed (%v), %v\n",
+			col.Name,
+			col.Type,
+			col.ValuesCount,
+			humanize.Bytes(col.CompressedSize),
+			col.Compression[17:],
+			humanize.Bytes(col.UncompressedSize))
+	}
+}
+
+func (cmd *statsCommand) printPointersSectionStats(ctx context.Context, offset int, sec *dataobj.Section) {
+	pointersSec, err := pointers.Open(ctx, sec)
+	if err != nil {
+		exitWithErr(fmt.Errorf("failed to open pointers section: %w", err))
+	}
+	stats, err := pointers.ReadStats(ctx, pointersSec)
+	if err != nil {
+		exitWithErr(fmt.Errorf("failed to read section stats: %w", err))
+	}
+	bold := color.New(color.Bold)
+	bold.Println("Pointers section:")
+	bold.Printf(
+		"\toffset: %d, tenant: %s, columns: %d, compressed size: %v, uncompressed size %v [%s – %s]\n",
+		offset,
+		sec.Tenant,
+		len(stats.Columns),
+		humanize.Bytes(stats.CompressedSize),
+		humanize.Bytes(stats.UncompressedSize),
+		stats.MinTimestamp.UTC().Format(time.RFC3339Nano),
+		stats.MaxTimestamp.UTC().Format(time.RFC3339Nano),
+	)
+	for _, col := range stats.Columns {
+		fmt.Printf(
+			"\t\tname: %s, type: %v, %d populated rows, %v compressed (%v), %v\n",
+			col.Name,
+			col.Type,
+			col.ValuesCount,
+			humanize.Bytes(col.CompressedSize),
+			col.Compression[17:],
+			humanize.Bytes(col.UncompressedSize))
 	}
 }
 

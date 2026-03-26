@@ -10,10 +10,8 @@ requirements.lock
 mixin/vendor/
 cmd/loki/loki
 cmd/logcli/logcli
-clients/cmd/promtail/promtail
 cmd/loki/loki-debug
 cmd/lokitool/lokitool
-clients/cmd/promtail/promtail-debug
 clients/cmd/docker-driver/docker-driver
 cmd/loki-canary/loki-canary
 cmd/loki-canary-test/loki-canary-test
@@ -22,7 +20,6 @@ clients/cmd/fluent-bit/out_grafana_loki.h
 cmd/migrate/migrate
 cmd/querytee/querytee
 /loki
-/promtail
 /logcli
 /loki-canary
 dlv
@@ -53,6 +50,10 @@ _shared-workflows-dockerhub-login
 
 # vscode
 .vscode
+!.vscode/launch.json
+
+# zed
+.zed
 
 # nix
 nix/result

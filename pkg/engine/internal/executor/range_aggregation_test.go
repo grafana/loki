@@ -8,6 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -23,6 +24,10 @@ var (
 	colLvl = "utf8.metadata.severity"
 	colVal = "float64.generated.value"
 )
+
+func init() {
+	assertions.Enabled = true
+}
 
 func TestRangeAggregationPipeline_instant(t *testing.T) {
 	// input schema with timestamp, partition-by columns and non-partition columns
@@ -56,19 +61,22 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 	}
 
 	opts := rangeAggregationOptions{
-		partitionBy: []physical.ColumnExpression{
-			&physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "env",
-					Type:   types.ColumnTypeAmbiguous,
+		grouping: physical.Grouping{
+			Columns: []physical.ColumnExpression{
+				&physical.ColumnExpr{
+					Ref: types.ColumnRef{
+						Column: "env",
+						Type:   types.ColumnTypeAmbiguous,
+					},
+				},
+				&physical.ColumnExpr{
+					Ref: types.ColumnRef{
+						Column: "service",
+						Type:   types.ColumnTypeAmbiguous,
+					},
 				},
 			},
-			&physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "service",
-					Type:   types.ColumnTypeAmbiguous,
-				},
-			},
+			Without: false,
 		},
 		startTs:       time.Unix(20, 0).UTC(),
 		endTs:         time.Unix(20, 0).UTC(),
@@ -78,7 +86,7 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 
 	inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
 	inputB := NewArrowtestPipeline(schema, rowsPipelineB...)
-	pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, nil)
+	pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
 	require.NoError(t, err)
 	defer pipeline.Close()
 
@@ -138,7 +146,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		}}
 	)
 
-	partitionBy := []physical.ColumnExpression{
+	groupBy := []physical.ColumnExpression{
 		&physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "env",
@@ -155,7 +163,10 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 	t.Run("aligned windows", func(t *testing.T) {
 		opts := rangeAggregationOptions{
-			partitionBy:   partitionBy,
+			grouping: physical.Grouping{
+				Columns: groupBy,
+				Without: false,
+			},
 			startTs:       time.Unix(10, 0),
 			endTs:         time.Unix(40, 0),
 			rangeInterval: 10 * time.Second,
@@ -165,7 +176,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, nil)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -202,7 +213,10 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 	t.Run("overlapping windows", func(t *testing.T) {
 		opts := rangeAggregationOptions{
-			partitionBy:   partitionBy,
+			grouping: physical.Grouping{
+				Columns: groupBy,
+				Without: false,
+			},
 			startTs:       time.Unix(10, 0),
 			endTs:         time.Unix(40, 0),
 			rangeInterval: 10 * time.Second,
@@ -212,7 +226,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, nil)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -263,7 +277,10 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 	t.Run("non-overlapping windows", func(t *testing.T) {
 		opts := rangeAggregationOptions{
-			partitionBy:   partitionBy,
+			grouping: physical.Grouping{
+				Columns: groupBy,
+				Without: false,
+			},
 			startTs:       time.Unix(10, 0),
 			endTs:         time.Unix(40, 0),
 			rangeInterval: 5 * time.Second,
@@ -273,7 +290,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, nil)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -469,13 +486,13 @@ func TestMatcher(t *testing.T) {
 	t.Run("gappedMatcher", func(t *testing.T) {
 		opts := rangeAggregationOptions{
 			startTs:       time.Unix(100, 0),
-			endTs:         time.Unix(300, 0),
+			endTs:         time.Unix(360, 0),
 			rangeInterval: 80 * time.Second,
 			step:          100 * time.Second, // step > rangeInterval
 			operation:     types.RangeAggregationTypeCount,
 		}
 
-		// Create windows that align with lower/upper bounds and step
+		// Create windows that align with lower bound and step, but not upper bound
 		windows := []window{
 			{start: time.Unix(20, 0), end: time.Unix(100, 0)},
 			{start: time.Unix(120, 0), end: time.Unix(200, 0)},
@@ -511,6 +528,11 @@ func TestMatcher(t *testing.T) {
 				expected:  nil, // lower bound is exclusive
 			},
 			{
+				name:      "timestamp outside of the last window but within bounds",
+				timestamp: time.Unix(320, 0),
+				expected:  nil,
+			},
+			{
 				name:      "timestamp exactly at end of window 0",
 				timestamp: time.Unix(100, 0),
 				expected:  []window{windows[0]}, // should return window as upperbound is inclusive
@@ -528,6 +550,11 @@ func TestMatcher(t *testing.T) {
 			{
 				name:      "timestamp just before upperbound",
 				timestamp: f.bounds.end.Add(-1 * time.Nanosecond),
+				expected:  nil,
+			},
+			{
+				name:      "timestamp just before the last window end",
+				timestamp: time.Unix(300, 0).Add(-1 * time.Nanosecond),
 				expected:  []window{windows[2]},
 			},
 			{

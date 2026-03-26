@@ -11,13 +11,14 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // ExportPartialSuccess represents the details of a partially successful export request.
 type ExportLogsPartialSuccess struct {
-	RejectedLogRecords int64
 	ErrorMessage       string
+	RejectedLogRecords int64
 }
 
 var (
@@ -29,7 +30,7 @@ var (
 )
 
 func NewExportLogsPartialSuccess() *ExportLogsPartialSuccess {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ExportLogsPartialSuccess{}
 	}
 	return protoPoolExportLogsPartialSuccess.Get().(*ExportLogsPartialSuccess)
@@ -40,7 +41,7 @@ func DeleteExportLogsPartialSuccess(orig *ExportLogsPartialSuccess, nullable boo
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -65,7 +66,6 @@ func CopyExportLogsPartialSuccess(dest, src *ExportLogsPartialSuccess) *ExportLo
 		dest = NewExportLogsPartialSuccess()
 	}
 	dest.RejectedLogRecords = src.RejectedLogRecords
-
 	dest.ErrorMessage = src.ErrorMessage
 
 	return dest
@@ -155,9 +155,10 @@ func (orig *ExportLogsPartialSuccess) SizeProto() int {
 	var n int
 	var l int
 	_ = l
-	if orig.RejectedLogRecords != 0 {
+	if orig.RejectedLogRecords != int64(0) {
 		n += 1 + proto.Sov(uint64(orig.RejectedLogRecords))
 	}
+
 	l = len(orig.ErrorMessage)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
@@ -169,7 +170,7 @@ func (orig *ExportLogsPartialSuccess) MarshalProto(buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	if orig.RejectedLogRecords != 0 {
+	if orig.RejectedLogRecords != int64(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.RejectedLogRecords))
 		pos--
 		buf[pos] = 0x8
@@ -209,7 +210,6 @@ func (orig *ExportLogsPartialSuccess) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.RejectedLogRecords = int64(num)
 
 		case 2:

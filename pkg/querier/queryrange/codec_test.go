@@ -341,6 +341,35 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 				},
 			},
 		},
+		{
+			"query_range",
+			func() (*http.Request, error) {
+				req, err := http.NewRequest(
+					http.MethodGet,
+					fmt.Sprintf(`/query_range?start=%d&end=%d&query={foo="bar"}&step=10&limit=200&direction=FORWARD`, start.UnixNano(), end.UnixNano()),
+					nil,
+				)
+				if err == nil {
+					req.Header.Set(cacheControlHeader, noCacheVal)
+				}
+				return req, err
+			},
+			&LokiRequest{
+				Query:     `{foo="bar"}`,
+				Limit:     200,
+				Step:      10000, // step is expected in ms
+				Direction: logproto.FORWARD,
+				Path:      "/query_range",
+				StartTs:   start,
+				EndTs:     end,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"}`),
+				},
+				CachingOptions: queryrangebase.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -351,6 +380,47 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 			got, err := DefaultCodec.DecodeRequest(ctx, req, nil)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestParamsFromRequest_CachingOptions(t *testing.T) {
+	expr := syntax.MustParseExpr(`{foo="bar"}`)
+
+	tests := []struct {
+		name string
+		req  queryrangebase.Request
+	}{
+		{
+			name: "LokiRequest",
+			req: &LokiRequest{
+				Query:   `{foo="bar"}`,
+				StartTs: start,
+				EndTs:   end,
+				Plan:    &plan.QueryPlan{AST: expr},
+				CachingOptions: queryrangebase.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
+		{
+			name: "LokiInstantRequest",
+			req: &LokiInstantRequest{
+				Query:  `{foo="bar"}`,
+				TimeTs: start,
+				Plan:   &plan.QueryPlan{AST: expr},
+				CachingOptions: queryrangebase.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params, err := ParamsFromRequest(tt.req)
+			require.NoError(t, err)
+			require.True(t, params.CachingOptions().Disabled, "expected CachingOptions.Disabled to be true")
 		})
 	}
 }
@@ -1994,6 +2064,8 @@ var (
 			}
 		},
 		"index": {
+			"bloomFilterTime": 0,
+			"chunkRefsLookupTime": 0,
 			"postFilterChunks": 0,
 			"totalChunks": 0,
 			"totalStreams": 0,

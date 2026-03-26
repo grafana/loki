@@ -867,8 +867,9 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 				SharedStore:    lokiv1.ObjectStorageSecretS3,
 				CredentialMode: lokiv1.CredentialModeToken,
 				S3: &S3StorageConfig{
-					STS:      true,
 					Audience: "test",
+					Region:   "test-region",
+					STS:      true,
 				},
 			},
 			dpl: &appsv1.Deployment{
@@ -919,6 +920,10 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											Name:  "AWS_WEB_IDENTITY_TOKEN_FILE",
 											Value: "/var/run/secrets/storage/serviceaccount/token",
 										},
+										{
+											Name:  "AWS_REGION",
+											Value: "test-region",
+										},
 									},
 								},
 							},
@@ -960,7 +965,8 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 				SharedStore:    lokiv1.ObjectStorageSecretS3,
 				CredentialMode: lokiv1.CredentialModeTokenCCO,
 				S3: &S3StorageConfig{
-					STS: true,
+					Region: "test-region",
+					STS:    true,
 				},
 				OpenShift: OpenShiftOptions{
 					Enabled: true,
@@ -1011,6 +1017,10 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										{
 											Name:  "AWS_SDK_LOAD_CONFIG",
 											Value: "true",
+										},
+										{
+											Name:  "AWS_REGION",
+											Value: "test-region",
 										},
 									},
 								},
@@ -2065,7 +2075,8 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 				SharedStore:    lokiv1.ObjectStorageSecretS3,
 				CredentialMode: lokiv1.CredentialModeTokenCCO,
 				S3: &S3StorageConfig{
-					STS: true,
+					Region: "test-region",
+					STS:    true,
 				},
 				OpenShift: OpenShiftOptions{
 					Enabled: true,
@@ -2116,6 +2127,10 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 										{
 											Name:  "AWS_SDK_LOAD_CONFIG",
 											Value: "true",
+										},
+										{
+											Name:  "AWS_REGION",
+											Value: "test-region",
 										},
 									},
 								},

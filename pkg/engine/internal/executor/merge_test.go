@@ -62,14 +62,15 @@ func TestMerge(t *testing.T) {
 				inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
 			}
 
-			m, err := newMergePipeline(inputs, maxPrefetch, nil)
+			m, err := newMergePipeline(inputs, maxPrefetch)
 			require.NoError(t, err)
 			defer m.Close()
 
 			ctx := t.Context()
-			var actualRows []arrowtest.Rows
+			require.NoError(t, m.Open(ctx))
 
 			// Read all records from the merge pipeline
+			var actualRows []arrowtest.Rows
 			for {
 				rec, err := m.Read(ctx)
 				if errors.Is(err, EOF) {
@@ -96,7 +97,7 @@ func TestMerge(t *testing.T) {
 				inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
 			}
 
-			m, err := newMergePipeline(inputs, maxPrefetch, nil)
+			m, err := newMergePipeline(inputs, maxPrefetch)
 			require.NoError(t, err)
 			defer m.Close()
 

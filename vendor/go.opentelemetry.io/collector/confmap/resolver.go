@@ -243,13 +243,13 @@ func (mr *Resolver) Watch() <-chan error {
 //
 // Should never be called concurrently with itself or Get.
 func (mr *Resolver) Shutdown(ctx context.Context) error {
-	close(mr.watcher)
-
 	var errs error
 	errs = multierr.Append(errs, mr.closeIfNeeded(ctx))
 	for _, p := range mr.providers {
 		errs = multierr.Append(errs, p.Shutdown(ctx))
 	}
+
+	close(mr.watcher)
 
 	return errs
 }

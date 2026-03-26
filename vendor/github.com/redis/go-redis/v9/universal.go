@@ -8,6 +8,7 @@ import (
 
 	"github.com/redis/go-redis/v9/auth"
 	"github.com/redis/go-redis/v9/maintnotifications"
+	"github.com/redis/go-redis/v9/push"
 )
 
 // UniversalOptions information is required by UniversalClient to establish
@@ -57,7 +58,18 @@ type UniversalOptions struct {
 	MinRetryBackoff time.Duration
 	MaxRetryBackoff time.Duration
 
-	DialTimeout           time.Duration
+	DialTimeout time.Duration
+
+	// DialerRetries is the maximum number of retry attempts when dialing fails.
+	//
+	// default: 5
+	DialerRetries int
+
+	// DialerRetryTimeout is the backoff duration between retry attempts.
+	//
+	// default: 100 milliseconds
+	DialerRetryTimeout time.Duration
+
 	ReadTimeout           time.Duration
 	WriteTimeout          time.Duration
 	ContextTimeoutEnabled bool
@@ -79,13 +91,19 @@ type UniversalOptions struct {
 	// PoolFIFO uses FIFO mode for each node connection pool GET/PUT (default LIFO).
 	PoolFIFO bool
 
-	PoolSize        int
-	PoolTimeout     time.Duration
-	MinIdleConns    int
-	MaxIdleConns    int
-	MaxActiveConns  int
-	ConnMaxIdleTime time.Duration
-	ConnMaxLifetime time.Duration
+	PoolSize int
+
+	// MaxConcurrentDials is the maximum number of concurrent connection creation goroutines.
+	// If <= 0, defaults to PoolSize. If > PoolSize, it will be capped at PoolSize.
+	MaxConcurrentDials int
+
+	PoolTimeout           time.Duration
+	MinIdleConns          int
+	MaxIdleConns          int
+	MaxActiveConns        int
+	ConnMaxIdleTime       time.Duration
+	ConnMaxLifetime       time.Duration
+	ConnMaxLifetimeJitter time.Duration
 
 	TLSConfig *tls.Config
 
@@ -120,6 +138,10 @@ type UniversalOptions struct {
 	FailingTimeoutSeconds int
 
 	UnstableResp3 bool
+
+	// PushNotificationProcessor is the processor for handling push notifications.
+	// If nil, a default processor will be created for RESP3 connections.
+	PushNotificationProcessor push.NotificationProcessor
 
 	// IsClusterMode can be used when only one Addrs is provided (e.g. Elasticache supports setting up cluster mode with configuration endpoint).
 	IsClusterMode bool
@@ -156,32 +178,37 @@ func (o *UniversalOptions) Cluster() *ClusterOptions {
 		MinRetryBackoff: o.MinRetryBackoff,
 		MaxRetryBackoff: o.MaxRetryBackoff,
 
-		DialTimeout:           o.DialTimeout,
-		ReadTimeout:           o.ReadTimeout,
-		WriteTimeout:          o.WriteTimeout,
+		DialTimeout:        o.DialTimeout,
+		DialerRetries:      o.DialerRetries,
+		DialerRetryTimeout: o.DialerRetryTimeout,
+		ReadTimeout:        o.ReadTimeout,
+		WriteTimeout:       o.WriteTimeout,
+
 		ContextTimeoutEnabled: o.ContextTimeoutEnabled,
 
 		ReadBufferSize:  o.ReadBufferSize,
 		WriteBufferSize: o.WriteBufferSize,
 
-		PoolFIFO: o.PoolFIFO,
-
-		PoolSize:        o.PoolSize,
-		PoolTimeout:     o.PoolTimeout,
-		MinIdleConns:    o.MinIdleConns,
-		MaxIdleConns:    o.MaxIdleConns,
-		MaxActiveConns:  o.MaxActiveConns,
-		ConnMaxIdleTime: o.ConnMaxIdleTime,
-		ConnMaxLifetime: o.ConnMaxLifetime,
+		PoolFIFO:              o.PoolFIFO,
+		PoolSize:              o.PoolSize,
+		MaxConcurrentDials:    o.MaxConcurrentDials,
+		PoolTimeout:           o.PoolTimeout,
+		MinIdleConns:          o.MinIdleConns,
+		MaxIdleConns:          o.MaxIdleConns,
+		MaxActiveConns:        o.MaxActiveConns,
+		ConnMaxIdleTime:       o.ConnMaxIdleTime,
+		ConnMaxLifetime:       o.ConnMaxLifetime,
+		ConnMaxLifetimeJitter: o.ConnMaxLifetimeJitter,
 
 		TLSConfig: o.TLSConfig,
 
-		DisableIdentity:          o.DisableIdentity,
-		DisableIndentity:         o.DisableIndentity,
-		IdentitySuffix:           o.IdentitySuffix,
-		FailingTimeoutSeconds:    o.FailingTimeoutSeconds,
-		UnstableResp3:            o.UnstableResp3,
-		MaintNotificationsConfig: o.MaintNotificationsConfig,
+		DisableIdentity:           o.DisableIdentity,
+		DisableIndentity:          o.DisableIndentity,
+		IdentitySuffix:            o.IdentitySuffix,
+		FailingTimeoutSeconds:     o.FailingTimeoutSeconds,
+		UnstableResp3:             o.UnstableResp3,
+		PushNotificationProcessor: o.PushNotificationProcessor,
+		MaintNotificationsConfig:  o.MaintNotificationsConfig,
 	}
 }
 
@@ -217,31 +244,37 @@ func (o *UniversalOptions) Failover() *FailoverOptions {
 		MinRetryBackoff: o.MinRetryBackoff,
 		MaxRetryBackoff: o.MaxRetryBackoff,
 
-		DialTimeout:           o.DialTimeout,
-		ReadTimeout:           o.ReadTimeout,
-		WriteTimeout:          o.WriteTimeout,
+		DialTimeout:        o.DialTimeout,
+		DialerRetries:      o.DialerRetries,
+		DialerRetryTimeout: o.DialerRetryTimeout,
+		ReadTimeout:        o.ReadTimeout,
+		WriteTimeout:       o.WriteTimeout,
+
 		ContextTimeoutEnabled: o.ContextTimeoutEnabled,
 
 		ReadBufferSize:  o.ReadBufferSize,
 		WriteBufferSize: o.WriteBufferSize,
 
-		PoolFIFO:        o.PoolFIFO,
-		PoolSize:        o.PoolSize,
-		PoolTimeout:     o.PoolTimeout,
-		MinIdleConns:    o.MinIdleConns,
-		MaxIdleConns:    o.MaxIdleConns,
-		MaxActiveConns:  o.MaxActiveConns,
-		ConnMaxIdleTime: o.ConnMaxIdleTime,
-		ConnMaxLifetime: o.ConnMaxLifetime,
+		PoolFIFO:              o.PoolFIFO,
+		PoolSize:              o.PoolSize,
+		MaxConcurrentDials:    o.MaxConcurrentDials,
+		PoolTimeout:           o.PoolTimeout,
+		MinIdleConns:          o.MinIdleConns,
+		MaxIdleConns:          o.MaxIdleConns,
+		MaxActiveConns:        o.MaxActiveConns,
+		ConnMaxIdleTime:       o.ConnMaxIdleTime,
+		ConnMaxLifetime:       o.ConnMaxLifetime,
+		ConnMaxLifetimeJitter: o.ConnMaxLifetimeJitter,
 
 		TLSConfig: o.TLSConfig,
 
 		ReplicaOnly: o.ReadOnly,
 
-		DisableIdentity:  o.DisableIdentity,
-		DisableIndentity: o.DisableIndentity,
-		IdentitySuffix:   o.IdentitySuffix,
-		UnstableResp3:    o.UnstableResp3,
+		DisableIdentity:           o.DisableIdentity,
+		DisableIndentity:          o.DisableIndentity,
+		IdentitySuffix:            o.IdentitySuffix,
+		UnstableResp3:             o.UnstableResp3,
+		PushNotificationProcessor: o.PushNotificationProcessor,
 		// Note: MaintNotificationsConfig not supported for FailoverOptions
 	}
 }
@@ -271,30 +304,36 @@ func (o *UniversalOptions) Simple() *Options {
 		MinRetryBackoff: o.MinRetryBackoff,
 		MaxRetryBackoff: o.MaxRetryBackoff,
 
-		DialTimeout:           o.DialTimeout,
-		ReadTimeout:           o.ReadTimeout,
-		WriteTimeout:          o.WriteTimeout,
+		DialTimeout:        o.DialTimeout,
+		DialerRetries:      o.DialerRetries,
+		DialerRetryTimeout: o.DialerRetryTimeout,
+		ReadTimeout:        o.ReadTimeout,
+		WriteTimeout:       o.WriteTimeout,
+
 		ContextTimeoutEnabled: o.ContextTimeoutEnabled,
 
 		ReadBufferSize:  o.ReadBufferSize,
 		WriteBufferSize: o.WriteBufferSize,
 
-		PoolFIFO:        o.PoolFIFO,
-		PoolSize:        o.PoolSize,
-		PoolTimeout:     o.PoolTimeout,
-		MinIdleConns:    o.MinIdleConns,
-		MaxIdleConns:    o.MaxIdleConns,
-		MaxActiveConns:  o.MaxActiveConns,
-		ConnMaxIdleTime: o.ConnMaxIdleTime,
-		ConnMaxLifetime: o.ConnMaxLifetime,
+		PoolFIFO:              o.PoolFIFO,
+		PoolSize:              o.PoolSize,
+		MaxConcurrentDials:    o.MaxConcurrentDials,
+		PoolTimeout:           o.PoolTimeout,
+		MinIdleConns:          o.MinIdleConns,
+		MaxIdleConns:          o.MaxIdleConns,
+		MaxActiveConns:        o.MaxActiveConns,
+		ConnMaxIdleTime:       o.ConnMaxIdleTime,
+		ConnMaxLifetime:       o.ConnMaxLifetime,
+		ConnMaxLifetimeJitter: o.ConnMaxLifetimeJitter,
 
 		TLSConfig: o.TLSConfig,
 
-		DisableIdentity:          o.DisableIdentity,
-		DisableIndentity:         o.DisableIndentity,
-		IdentitySuffix:           o.IdentitySuffix,
-		UnstableResp3:            o.UnstableResp3,
-		MaintNotificationsConfig: o.MaintNotificationsConfig,
+		DisableIdentity:           o.DisableIdentity,
+		DisableIndentity:          o.DisableIndentity,
+		IdentitySuffix:            o.IdentitySuffix,
+		UnstableResp3:             o.UnstableResp3,
+		PushNotificationProcessor: o.PushNotificationProcessor,
+		MaintNotificationsConfig:  o.MaintNotificationsConfig,
 	}
 }
 

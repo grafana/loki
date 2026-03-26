@@ -2,6 +2,8 @@ package xcap
 
 import (
 	"context"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 type ctxKeyType string
@@ -26,9 +28,9 @@ func contextWithCapture(ctx context.Context, capture *Capture) context.Context {
 	return context.WithValue(ctx, captureKey, capture)
 }
 
-// regionFromContext returns the current Region from the context, or nil if no Region
+// RegionFromContext returns the current Region from the context, or nil if no Region
 // is present.
-func regionFromContext(ctx context.Context) *Region {
+func RegionFromContext(ctx context.Context) *Region {
 	v, ok := ctx.Value(regionKey).(*Region)
 	if !ok {
 		return nil
@@ -36,7 +38,18 @@ func regionFromContext(ctx context.Context) *Region {
 	return v
 }
 
-// contextWithRegion returns a new context with the given Region.
-func contextWithRegion(ctx context.Context, region *Region) context.Context {
+// ContextWithRegion returns a new context with the given Region.
+func ContextWithRegion(ctx context.Context, region *Region) context.Context {
 	return context.WithValue(ctx, regionKey, region)
+}
+
+// ContextWithSpan injects span into ctx via [trace.ContextWithSpan].
+// If span is an [*Span] with a linked [Region], the Region is also
+// injected so that [RegionFromContext] returns it downstream.
+func ContextWithSpan(ctx context.Context, span trace.Span) context.Context {
+	ctx = trace.ContextWithSpan(ctx, span)
+	if s, ok := span.(*Span); ok && s.region != nil {
+		ctx = ContextWithRegion(ctx, s.region)
+	}
+	return ctx
 }

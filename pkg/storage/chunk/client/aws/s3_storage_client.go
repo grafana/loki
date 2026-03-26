@@ -71,7 +71,7 @@ type S3Config struct {
 	S3               flagext.URLValue
 	S3ForcePathStyle bool
 
-	BucketNames      string
+	BucketNames      string              `yaml:"bucketnames"`
 	Endpoint         string              `yaml:"endpoint"`
 	Region           string              `yaml:"region"`
 	AccessKeyID      string              `yaml:"access_key_id"`
@@ -274,56 +274,87 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.C
 		return nil, err
 	}
 
-	var s3InitializationError error
-	s3Client := s3.NewFromConfig(awsCfg, func(s3Options *s3.Options) {
-		if cfg.S3.URL != nil {
-			key, secret := CredentialsFromURL(cfg.S3.URL)
+	fn, err := s3ClientConfigFunc(cfg, hedgingCfg, hedging)
+	if err != nil {
+		return nil, err
+	}
 
+	return s3.NewFromConfig(awsCfg, fn), nil
+}
+
+func s3ClientConfigFunc(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (func(*s3.Options), error) {
+	httpClient, err := mountS3HTTPClient(cfg, hedgingCfg, hedging)
+	if err != nil {
+		return nil, err
+	}
+
+	awsURL := cfg.S3.URL
+	return func(opts *s3.Options) {
+		if awsURL != nil {
 			// Only set credentials if they were provided in the URL
 			// Otherwise, let AWS SDK use the default credential chain
+			key, secret := credentialsFromURL(awsURL)
 			if key != "" || secret != "" {
-				s3Options.Credentials = credentials.NewStaticCredentialsProvider(key, secret, "")
+				opts.Credentials = credentials.NewStaticCredentialsProvider(key, secret, "")
 			}
-		} else {
-			s3Options.Region = "dummy"
+
+			if strings.Contains(awsURL.Host, ".") {
+				endpoint := awsURL.Host
+				switch awsURL.Scheme {
+				case "https", "http":
+					// https://<key>:<secret>@s3.us-east-0.amazonaws.com/<bucketname>
+					// http://<key>:<secret>@s3.us-east-0.amazonaws.com/<bucketname>
+					endpoint = fmt.Sprintf("%s://%s", awsURL.Scheme, awsURL.Host)
+				case "s3":
+					// s3://<key>:<secret>@s3.us-east-0.amazonaws.com/<bucketname>
+					// In case of an s3:// URL, we want to be backwards compatible and always assume insecure http,
+					// even though it would probably more correct to check cfg.Insecure.
+					endpoint = fmt.Sprintf("http://%s", awsURL.Host)
+				}
+				opts.BaseEndpoint = aws.String(endpoint)
+			} else {
+				// s3://<key>:<secret>@us-east-0/<bucketname>
+				opts.Region = awsURL.Host
+			}
+		}
+		if opts.Region == "" {
+			// Not sure why this is needed, but test otherwise time out when run in CI
+			opts.Region = InvalidAWSRegion
 		}
 
-		if cfg.DisableDualstack {
-			s3Options.EndpointOptions.UseDualStackEndpoint = aws.DualStackEndpointStateDisabled
-		}
-
-		s3Options.RetryMaxAttempts = 0                // We do our own retries, so we can monitor them
-		s3Options.UsePathStyle = cfg.S3ForcePathStyle // support for Path Style S3 url if has the flag
+		opts.RetryMaxAttempts = 0                // We do our own retries, so we can monitor them
+		opts.UsePathStyle = cfg.S3ForcePathStyle // support for Path Style S3 url if has the flag
 
 		if cfg.Endpoint != "" {
-			s3Options.BaseEndpoint = &cfg.Endpoint
+			endpoint := cfg.Endpoint
+			if !strings.Contains(cfg.Endpoint, "://") {
+				if cfg.Insecure {
+					endpoint = fmt.Sprintf("http://%s", cfg.Endpoint)
+				} else {
+					endpoint = fmt.Sprintf("https://%s", cfg.Endpoint)
+				}
+			}
+			opts.BaseEndpoint = aws.String(endpoint)
 		}
 
 		if cfg.Insecure {
-			s3Options.EndpointOptions.DisableHTTPS = true
+			opts.EndpointOptions.DisableHTTPS = true
+		}
+
+		if cfg.DisableDualstack {
+			opts.EndpointOptions.UseDualStackEndpoint = aws.DualStackEndpointStateDisabled
 		}
 
 		if cfg.Region != "" {
-			s3Options.Region = cfg.Region
+			opts.Region = cfg.Region
 		}
 
 		if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
-			s3Options.Credentials = credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey.String(), cfg.SessionToken.String())
+			opts.Credentials = credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey.String(), cfg.SessionToken.String())
 		}
 
-		httpClient, err := mountS3HTTPClient(cfg, hedgingCfg, hedging)
-		if err != nil {
-			s3InitializationError = err
-			return
-		}
-		s3Options.HTTPClient = httpClient
-	})
-
-	if s3InitializationError != nil {
-		return nil, s3InitializationError
-	}
-
-	return s3Client, s3InitializationError
+		opts.HTTPClient = httpClient
+	}, nil
 }
 
 func buckets(cfg S3Config) ([]string, error) {

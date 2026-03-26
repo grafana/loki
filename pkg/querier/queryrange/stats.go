@@ -12,8 +12,10 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/middleware"
+	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -146,12 +148,30 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				switch r := resp.(type) {
 				case *LokiResponse:
 					responseStats = &r.Statistics
-					totalEntries = int(logqlmodel.Streams(r.Data.Result).Lines())
+					res = logqlmodel.Streams(r.Data.Result)
+					totalEntries = int(res.(logqlmodel.Streams).Lines())
 					queryType = queryTypeLog
 				case *LokiPromResponse:
 					responseStats = &r.Statistics
+
 					if r.Response != nil {
 						totalEntries = len(r.Response.Data.Result)
+						// Convert the response to promql_parser.Value for stats calculation
+						switch r.Response.Data.ResultType {
+						case loghttp.ResultTypeVector:
+							res = sampleStreamToVector(r.Response.Data.Result)
+						case loghttp.ResultTypeMatrix:
+							res = sampleStreamToMatrix(r.Response.Data.Result)
+						case loghttp.ResultTypeScalar:
+							// Scalar is represented as a single SampleStream with one sample
+							if len(r.Response.Data.Result) > 0 && len(r.Response.Data.Result[0].Samples) > 0 {
+								sample := r.Response.Data.Result[0].Samples[0]
+								res = promql.Scalar{
+									T: sample.TimestampMs,
+									V: sample.Value,
+								}
+							}
+						}
 					}
 
 					queryType = queryTypeMetric

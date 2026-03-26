@@ -1,4 +1,23 @@
-# 2.0.0 - 2025-10-19
+# Changes
+
+## 2.1.0 - 2025-12-22
+
+- Added support for the GeoIP Anonymous Plus database. This database provides
+  VPN detection with confidence scoring, provider identification, and temporal
+  tracking via the new `AnonymousPlus()` method.
+- Deprecated `IsLegitimateProxy` on `EnterpriseTraits`. MaxMind has deprecated
+  this field and it will be removed in the next major release.
+- Deprecated `StaticIPScore` on `EnterpriseTraits`. This field was added in
+  error and has never been populated. It will be removed in the next major
+  release.
+
+## 2.0.1 - 2025-11-26
+
+- Upgraded `github.com/oschwald/geoip2-golang/v2` to 2.1.1, which fixes an
+  issue that prevented a unclosed memory-mapped file from being unmapped
+  when the reader was garbage collected.
+
+## 2.0.0 - 2025-10-19
 
 - **BREAKING CHANGE**: Lookup methods now require `netip.Addr`, return typed
   `Names`, and provide `HasData()` helpers while always populating
@@ -14,20 +33,20 @@
 - **BREAKING CHANGE**: Removed deprecated `FromBytes` method. Use `OpenBytes`
   instead.
 
-# 2.0.0-beta.4 - 2025-08-23
+## 2.0.0-beta.4 - 2025-08-23
 
 - Updated maxminddb dependency to v2.0.0-beta.9.
 - Added `OpenBytes` method to match the API changes in maxminddb v2.0.0-beta.9.
 - Deprecated `FromBytes` method. Use `OpenBytes` instead. `FromBytes` will be
   removed in a future version.
 
-# 2.0.0-beta.3 - 2025-07-07
+## 2.0.0-beta.3 - 2025-07-07
 
-- Add support for `GeoIP-City-Redacted-US` and `GeoIP-Enterprise-Redacted-US`.
+- Added support for `GeoIP-City-Redacted-US` and `GeoIP-Enterprise-Redacted-US`.
   Requested by Tom Anderson. GitHub #134.
 - Upgrade `github.com/oschwald/maxminddb-golang/v2` to `v2.0.0-beta.7`.
 
-# 2.0.0-beta.2 - 2025-06-28
+## 2.0.0-beta.2 - 2025-06-28
 
 - **BREAKING CHANGE**: Replaced `IsZero()` methods with `HasData()` methods on
   all result structs (including Names). The new methods provide clearer
@@ -50,7 +69,7 @@
   incorrectly treated as "no data". Added `Location.HasCoordinates()` method
   for safe coordinate access. Reported by Nick Bruun. GitHub #5.
 
-# 2.0.0-beta.1 - 2025-06-22
+## 2.0.0-beta.1 - 2025-06-22
 
 - **BREAKING CHANGE**: Updated to use `maxminddb-golang/v2` which provides
   significant performance improvements and a more modern API.
@@ -93,7 +112,7 @@
 - Updated linting rules to support both v1 and v2 import paths during the
   transition period.
 
-## Migration Guide
+### Migration Guide
 
 To migrate from v1 to v2:
 
@@ -171,7 +190,7 @@ To migrate from v1 to v2:
    }
    ```
 
-# 1.11.0 - 2024-06-03
+## 1.11.0 - 2024-06-03
 
 - Go 1.21 or greater is now required.
 - The new `is_anycast` output is now supported on the GeoIP2 Country, City, and
@@ -180,31 +199,31 @@ To migrate from v1 to v2:
 
 Note: 1.10.0 was accidentally skipped.
 
-# 1.9.0 - 2023-06-18
+## 1.9.0 - 2023-06-18
 
 - Rearrange fields in structs to reduce memory usage. Although this does reduce
   readability, these structs are often created at very rates, making the
   trade-off worth it.
 
-# 1.8.0 - 2022-08-07
+## 1.8.0 - 2022-08-07
 
 - Set Go version to 1.18 in go.mod.
 
-# 1.7.0 - 2022-03-26
+## 1.7.0 - 2022-03-26
 
 - Set the minimum Go version in the go.mod file to 1.17.
 - Updated dependencies.
 
-# 1.6.1 - 2022-01-28
+## 1.6.1 - 2022-01-28
 
 - This is a re-release with the changes that were supposed to be in 1.6.0.
 
-# 1.6.0 - 2022-01-28
+## 1.6.0 - 2022-01-28
 
 - Add support for new `mobile_country_code` and `mobile_network_code` outputs
   on GeoIP2 ISP and GeoIP2 Enterprise.
 
-# 1.5.0 - 2021-02-20
+## 1.5.0 - 2021-02-20
 
 - Add `StaticIPScore` field to Enterprise. Pull request by Pierre Bonzel.
   GitHub [#54](https://github.com/oschwald/geoip2-golang/issues/54).
@@ -213,7 +232,7 @@ Note: 1.10.0 was accidentally skipped.
 - Support DBIP-ASN-Lite database. Requested by Muhammad Hussein Fattahizadeh.
   GitHub [#69](https://github.com/oschwald/geoip2-golang/issues/69).
 
-# 1.4.0 - 2019-12-25
+## 1.4.0 - 2019-12-25
 
 - This module now uses Go modules. Requested by Axel Etcheverry. GitHub
   [#52](https://github.com/oschwald/geoip2-golang/issues/52).
@@ -225,15 +244,15 @@ Note: 1.10.0 was accidentally skipped.
   before using it. GitHub
   [#51](https://github.com/oschwald/geoip2-golang/issues/51).
 
-# 1.3.0 - 2019-08-28
+## 1.3.0 - 2019-08-28
 
 - Added support for the GeoIP2 Enterprise database.
 
-# 1.2.1 - 2018-02-25
+## 1.2.1 - 2018-02-25
 
 - HTTPS is now used for the test data submodule rather than the Git protocol
 
-# 1.2.0 - 2018-02-19
+## 1.2.0 - 2018-02-19
 
 - The country structs for `geoip2.City` and `geoip2.Country` now have an
   `IsInEuropeanUnion` boolean field. This is true when the associated country
@@ -242,13 +261,13 @@ Note: 1.10.0 was accidentally skipped.
 - Switch from Go Check to Testify. Closes
   [#27](https://github.com/oschwald/geoip2-golang/issues/27)
 
-# 1.1.0 - 2017-04-23
+## 1.1.0 - 2017-04-23
 
 - Add support for the GeoLite2 ASN database.
 - Add support for the GeoIP2 City by Continent databases. GitHub
   [#26](https://github.com/oschwald/geoip2-golang/issues/26).
 
-# 1.0.0 - 2016-11-09
+## 1.0.0 - 2016-11-09
 
 New release for those using tagged releases. Closes
 [#21](https://github.com/oschwald/geoip2-golang/issues/21).

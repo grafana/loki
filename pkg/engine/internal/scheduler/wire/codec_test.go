@@ -3,8 +3,10 @@ package wire
 import (
 	"errors"
 	"net"
+	"net/http"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -30,7 +32,7 @@ func TestProtobufCodec_Frames(t *testing.T) {
 		"NackFrame with error": {
 			frame: NackFrame{
 				ID:    44,
-				Error: errors.New("test error"),
+				Error: Errorf(http.StatusInternalServerError, "test error"),
 			},
 		},
 		"DiscardFrame": {
@@ -38,7 +40,7 @@ func TestProtobufCodec_Frames(t *testing.T) {
 		},
 	}
 
-	codec := &protobufCodec{memory.DefaultAllocator}
+	codec := DefaultFrameCodec
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -65,6 +67,9 @@ func TestProtobufCodec_Messages(t *testing.T) {
 	}{
 		"WorkerHelloMessage": {
 			message: WorkerHelloMessage{Threads: 4},
+		},
+		"WorkerSubscribeMessage": {
+			message: WorkerSubscribeMessage{},
 		},
 		"WorkerReadyMessage": {
 			message: WorkerReadyMessage{},
@@ -126,6 +131,18 @@ func TestProtobufCodec_Messages(t *testing.T) {
 				},
 			},
 		},
+		"TaskStatusMessage with Running state and ContributingTimeRange": {
+			message: TaskStatusMessage{
+				ID: taskULID,
+				Status: workflow.TaskStatus{
+					State: workflow.TaskStateRunning,
+					ContributingTimeRange: workflow.ContributingTimeRange{
+						Timestamp: time.Now().Add(-time.Minute),
+						LessThan:  true,
+					},
+				},
+			},
+		},
 		"TaskStatusMessage with Completed state": {
 			message: TaskStatusMessage{
 				ID: taskULID,
@@ -175,7 +192,7 @@ func TestProtobufCodec_Messages(t *testing.T) {
 		},
 	}
 
-	codec := &protobufCodec{memory.DefaultAllocator}
+	codec := DefaultFrameCodec
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -197,7 +214,7 @@ func TestProtobufCodec_Messages(t *testing.T) {
 
 func TestProtobufCodec_StreamDataMessage(t *testing.T) {
 	streamULID := ulid.Make()
-	codec := &protobufCodec{memory.DefaultAllocator}
+	codec := DefaultFrameCodec
 
 	originalRecord := createTestArrowRecord()
 
@@ -240,7 +257,7 @@ func TestProtobufCodec_TaskStates(t *testing.T) {
 		workflow.TaskStateFailed,
 	}
 
-	codec := &protobufCodec{memory.DefaultAllocator}
+	codec := DefaultFrameCodec
 
 	for _, state := range states {
 		t.Run(state.String(), func(t *testing.T) {
@@ -278,7 +295,7 @@ func TestProtobufCodec_StreamStates(t *testing.T) {
 		workflow.StreamStateClosed,
 	}
 
-	codec := &protobufCodec{memory.DefaultAllocator}
+	codec := DefaultFrameCodec
 
 	for _, state := range states {
 		t.Run(state.String(), func(t *testing.T) {
@@ -305,7 +322,7 @@ func TestProtobufCodec_StreamStates(t *testing.T) {
 }
 
 func TestProtobufCodec_ErrorCases(t *testing.T) {
-	codec := &protobufCodec{memory.DefaultAllocator}
+	codec := DefaultFrameCodec
 
 	t.Run("nil frame to protobuf", func(t *testing.T) {
 		_, err := codec.frameToPbFrame(nil)
@@ -332,80 +349,16 @@ func TestProtobufCodec_ErrorCases(t *testing.T) {
 	})
 
 	t.Run("nil arrow record serialization", func(t *testing.T) {
-		_, err := codec.serializeArrowRecord(nil)
+		_, err := codec.SerializeArrowRecord(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil arrow record")
 	})
 
 	t.Run("empty arrow data deserialization", func(t *testing.T) {
-		_, err := codec.deserializeArrowRecord([]byte{})
+		_, err := codec.DeserializeArrowRecord([]byte{})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "empty arrow data")
 	})
-}
-
-func TestProtobufCodec_ArrowRecordSerialization(t *testing.T) {
-	codec := &protobufCodec{memory.DefaultAllocator}
-
-	tests := map[string]struct {
-		createRecord func() arrow.RecordBatch
-	}{
-		"simple int64 record": {
-			createRecord: createTestArrowRecord,
-		},
-		"empty record": {
-			createRecord: func() arrow.RecordBatch {
-				schema := arrow.NewSchema([]arrow.Field{
-					{Name: "id", Type: arrow.PrimitiveTypes.Int64, Nullable: false},
-				}, nil)
-
-				builder := array.NewInt64Builder(memory.DefaultAllocator)
-				data := builder.NewArray()
-
-				return array.NewRecordBatch(schema, []arrow.Array{data}, 0)
-			},
-		},
-		"multiple columns": {
-			createRecord: func() arrow.RecordBatch {
-				schema := arrow.NewSchema([]arrow.Field{
-					{Name: "id", Type: arrow.PrimitiveTypes.Int64, Nullable: false},
-					{Name: "value", Type: arrow.PrimitiveTypes.Float64, Nullable: false},
-				}, nil)
-
-				idBuilder := array.NewInt64Builder(memory.DefaultAllocator)
-				idBuilder.Append(1)
-				idBuilder.Append(2)
-
-				valBuilder := array.NewFloat64Builder(memory.DefaultAllocator)
-				valBuilder.Append(1.5)
-				valBuilder.Append(2.5)
-
-				idData := idBuilder.NewArray()
-
-				valData := valBuilder.NewArray()
-
-				return array.NewRecordBatch(schema, []arrow.Array{idData, valData}, 2)
-			},
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			original := tt.createRecord()
-
-			data, err := codec.serializeArrowRecord(original)
-			require.NoError(t, err)
-			require.NotEmpty(t, data)
-
-			deserialized, err := codec.deserializeArrowRecord(data)
-			require.NoError(t, err)
-			require.NotNil(t, deserialized)
-
-			assert.True(t, original.Schema().Equal(deserialized.Schema()))
-			assert.Equal(t, original.NumRows(), deserialized.NumRows())
-			assert.Equal(t, original.NumCols(), deserialized.NumCols())
-		})
-	}
 }
 
 func createTestArrowRecord() arrow.RecordBatch {

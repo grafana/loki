@@ -659,6 +659,24 @@ func getOperation(path string) string {
 
 // NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests.
 func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig RouterConfig, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
+	var cacheMiddleware base.Middleware
+	if cfg.CacheResults {
+		queryCacheMiddleware, err := NewLogResultCache(
+			log,
+			limits,
+			c,
+			func(_ context.Context, r base.Request) bool {
+				return !r.GetCachingOptions().Disabled
+			},
+			NewDefaultLogCacheKeyGenerator(limits, cfg.Transformer),
+			metrics.LogResultCacheMetrics,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error creating log result cache middleware: %v", err)
+		}
+		cacheMiddleware = queryCacheMiddleware
+	}
+
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
 		retryNextHandler := next
@@ -682,21 +700,11 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 			SplitByIntervalMiddleware(schema.Configs, limits, merger, newDefaultSplitter(limits, iqo), metrics.SplitByMetrics),
 		}
 
-		if cfg.CacheResults {
-			queryCacheMiddleware := NewLogResultCache(
-				log,
-				limits,
-				c,
-				func(_ context.Context, r base.Request) bool {
-					return !r.GetCachingOptions().Disabled
-				},
-				cfg.Transformer,
-				metrics.LogResultCacheMetrics,
-			)
+		if cfg.CacheResults && cacheMiddleware != nil {
 			chunksEngineMWs = append(
 				chunksEngineMWs,
 				base.InstrumentMiddleware("log_results_cache", metrics.InstrumentMiddlewareMetrics),
-				queryCacheMiddleware,
+				cacheMiddleware,
 			)
 		}
 
@@ -732,7 +740,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 
 		// route query range supported by v2 engine to the new engine handler.
 		if routerConfig.Enabled {
-			engineRouterMiddleware := newEngineRouterMiddleware(routerConfig, chunksEngineMWs, merger, true, log)
+			engineRouterMiddleware := NewEngineRouterMiddleware(routerConfig, chunksEngineMWs, merger, false, log)
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,
 				base.InstrumentMiddleware("v2_engine_router", metrics.InstrumentMiddlewareMetrics),
@@ -797,7 +805,7 @@ func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig
 
 		// route query range supported by v2 engine to the new engine handler.
 		if routerConfig.Enabled {
-			engineRouterMiddleware := newEngineRouterMiddleware(routerConfig, chunksEngineMWs, merger, false, log)
+			engineRouterMiddleware := NewEngineRouterMiddleware(routerConfig, chunksEngineMWs, merger, false, log)
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,
 				base.InstrumentMiddleware("v2_engine_router", metrics.InstrumentMiddlewareMetrics),
@@ -1084,7 +1092,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 
 		// route query range supported by v2 engine to the new engine handler.
 		if routerConfig.Enabled && !disableEngineRouter {
-			engineRouterMiddleware := newEngineRouterMiddleware(routerConfig, chunksEngineMWs, merger, true, log)
+			engineRouterMiddleware := NewEngineRouterMiddleware(routerConfig, chunksEngineMWs, merger, true, log)
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,
 				base.InstrumentMiddleware("v2_engine_router", metrics.InstrumentMiddlewareMetrics),

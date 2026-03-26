@@ -19,14 +19,13 @@ type builderMetrics struct {
 	targetPageSize   prometheus.Gauge
 	targetObjectSize prometheus.Gauge
 
+	appends       prometheus.Counter
 	appendTime    prometheus.Histogram
 	buildTime     prometheus.Histogram
 	flushFailures prometheus.Counter
 
 	sizeEstimate prometheus.Gauge
 	builtSize    prometheus.Histogram
-
-	sortDurationSeconds prometheus.Histogram
 }
 
 // newBuilderMetrics creates a new set of [builderMetrics] for instrumenting
@@ -37,26 +36,19 @@ func newBuilderMetrics() *builderMetrics {
 		streams: streams.NewMetrics(),
 		dataobj: dataobj.NewMetrics(),
 		targetPageSize: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "config_target_page_size_bytes",
-
+			Name: "loki_dataobj_config_target_page_size_bytes",
 			Help: "Configured target page size in bytes.",
 		}),
-
 		targetObjectSize: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "config_target_object_size_bytes",
-
+			Name: "loki_dataobj_config_target_object_size_bytes",
 			Help: "Configured target object size in bytes.",
 		}),
-
+		appends: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_appends_total",
+			Help: "Total number of appends.",
+		}),
 		appendTime: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "append_time_seconds",
-
+			Name: "loki_dataobj_append_time_seconds",
 			Help: "Time taken appending a set of log lines in a stream to a data object.",
 
 			Buckets:                         prometheus.DefBuckets,
@@ -64,12 +56,8 @@ func newBuilderMetrics() *builderMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-
 		buildTime: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "build_time_seconds",
-
+			Name: "loki_dataobj_build_time_seconds",
 			Help: "Time taken building a data object to flush.",
 
 			Buckets:                         prometheus.DefBuckets,
@@ -77,45 +65,21 @@ func newBuilderMetrics() *builderMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-
 		sizeEstimate: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "size_estimate_bytes",
-
+			Name: "loki_dataobj_size_estimate_bytes",
 			Help: "Current estimated size of the data object in bytes.",
 		}),
-
 		builtSize: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "built_size_bytes",
-
+			Name: "loki_dataobj_built_size_bytes",
 			Help: "Distribution of constructed data object sizes in bytes.",
 
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-
 		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "flush_failures_total",
-
+			Name: "loki_dataobj_flush_failures_total",
 			Help: "Total number of flush failures.",
-		}),
-
-		sortDurationSeconds: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "sort_duration_seconds",
-
-			Help: "Time taken sorting logs object-wide after flushing.",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
 		}),
 	}
 }
@@ -137,14 +101,13 @@ func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 	errs = append(errs, reg.Register(m.targetPageSize))
 	errs = append(errs, reg.Register(m.targetObjectSize))
 
+	errs = append(errs, reg.Register(m.appends))
 	errs = append(errs, reg.Register(m.appendTime))
 	errs = append(errs, reg.Register(m.buildTime))
 
 	errs = append(errs, reg.Register(m.sizeEstimate))
 	errs = append(errs, reg.Register(m.builtSize))
 	errs = append(errs, reg.Register(m.flushFailures))
-
-	errs = append(errs, reg.Register(m.sortDurationSeconds))
 
 	return errors.Join(errs...)
 }
@@ -158,12 +121,11 @@ func (m *builderMetrics) Unregister(reg prometheus.Registerer) {
 	reg.Unregister(m.targetPageSize)
 	reg.Unregister(m.targetObjectSize)
 
+	reg.Unregister(m.appends)
 	reg.Unregister(m.appendTime)
 	reg.Unregister(m.buildTime)
 
 	reg.Unregister(m.sizeEstimate)
 	reg.Unregister(m.builtSize)
 	reg.Unregister(m.flushFailures)
-
-	reg.Unregister(m.sortDurationSeconds)
 }

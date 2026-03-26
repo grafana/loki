@@ -15,9 +15,12 @@ import (
 
 // This operation is not supported for directory buckets.
 //
-// Removes the PublicAccessBlock configuration for an Amazon S3 bucket. To use
-// this operation, you must have the s3:PutBucketPublicAccessBlock permission. For
-// more information about permissions, see [Permissions Related to Bucket Subresource Operations]and [Managing Access Permissions to Your Amazon S3 Resources].
+// Removes the PublicAccessBlock configuration for an Amazon S3 bucket. This
+// operation removes the bucket-level configuration only. The effective public
+// access behavior will still be governed by account-level settings (which may
+// inherit from organization-level policies). To use this operation, you must have
+// the s3:PutBucketPublicAccessBlock permission. For more information about
+// permissions, see [Permissions Related to Bucket Subresource Operations]and [Managing Access Permissions to Your Amazon S3 Resources].
 //
 // The following operations are related to DeletePublicAccessBlock :
 //

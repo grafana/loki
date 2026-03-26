@@ -89,7 +89,6 @@ func ConsumeLen(buf []byte, pos int) (int, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	//nolint:gosec
 	length := int(num)
 	if length < 0 {
 		return 0, 0, ErrInvalidLength
@@ -116,9 +115,7 @@ func ConsumeTag(buf []byte, pos int) (int32, WireType, int, error) {
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	//nolint:gosec
 	fieldNum := int32(tag >> 3)
-	//nolint:gosec
 	wireType := int8(tag & 0x7)
 	if fieldNum <= 0 {
 		return 0, 0, 0, fmt.Errorf("proto: Link: illegal field=%d (tag=%d, pos=%d)", fieldNum, tag, pos)

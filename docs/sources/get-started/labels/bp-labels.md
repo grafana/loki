@@ -23,7 +23,7 @@ To avoid those issues, don't add a label for something until you know you need i
 If you often parse a label from a log line at query time, the label has a high cardinality, and extracting that label is expensive in terms of performance; consider extracting the label on the client side
 attaching it as [structured metadata](../structured-metadata/) to log lines .
 
-From early on, we have set a label dynamically using Promtail pipelines for `level`. This seemed intuitive for us as we often wanted to only show logs for `level="error"`; however, we are re-evaluating this now as writing a query. `{app="loki"} |= "level=error"` is proving to be just as fast for many of our applications as `{app="loki",level="error"}`.
+From early on, we have set a label dynamically using client pipelines for `level`. This seemed intuitive for us as we often wanted to only show logs for `level="error"`; however, we are re-evaluating this now as writing a query. `{app="loki"} |= "level=error"` is proving to be just as fast for many of our applications as `{app="loki",level="error"}`.
 
 This may seem surprising, but if applications have medium to low volume, that label causes one application's logs to be split into up to five streams, which means 5x chunks being stored.  And loading chunks has an overhead associated with it. Imagine now if that query were `{app="loki",level!="debug"}`. That would have to load **way** more chunks than `{app="loki"} != "level=debug"`.
 
@@ -50,7 +50,7 @@ As a general rule, you should try to keep any single tenant in Loki to less than
 
 ## Be aware of dynamic labels applied by clients
 
-Loki has several client options: [Grafana Alloy](https://grafana.com/docs/alloy/latest/), [Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentd/), [Fluent Bit](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/), a [Docker plugin](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/docker-driver/), and more.
+Loki has several client options: [Grafana Alloy](https://grafana.com/docs/alloy/latest/) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentd/), [Fluent Bit](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/), a [Docker plugin](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/docker-driver/), and more.
 
 Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied.
 Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality.

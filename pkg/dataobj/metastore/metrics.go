@@ -108,7 +108,7 @@ func (p *tocMetrics) observeMetastoreProcessing(recordTimestamp time.Time) {
 	}
 }
 
-type objectMetastoreMetrics struct {
+type ObjectMetastoreMetrics struct {
 	indexObjectsTotal                   prometheus.Histogram
 	streamFilterTotalDuration           prometheus.Histogram
 	streamFilterSections                prometheus.Histogram
@@ -122,8 +122,8 @@ type objectMetastoreMetrics struct {
 	resolvedSectionsRatio               prometheus.Histogram
 }
 
-func newObjectMetastoreMetrics() *objectMetastoreMetrics {
-	metrics := &objectMetastoreMetrics{
+func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetrics {
+	metrics := &ObjectMetastoreMetrics{
 		indexObjectsTotal: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_index_objects_total",
 			Help:                            "Total number of objects to be searched for a Metastore query",
@@ -213,11 +213,15 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 			NativeHistogramMinResetDuration: 0,
 		}),
 	}
+	metrics.register(reg)
 
 	return metrics
 }
 
-func (p *objectMetastoreMetrics) register(reg prometheus.Registerer) {
+func (p *ObjectMetastoreMetrics) register(reg prometheus.Registerer) {
+	if reg == nil {
+		return
+	}
 	reg.MustRegister(p.indexObjectsTotal)
 	reg.MustRegister(p.streamFilterTotalDuration)
 	reg.MustRegister(p.streamFilterSections)

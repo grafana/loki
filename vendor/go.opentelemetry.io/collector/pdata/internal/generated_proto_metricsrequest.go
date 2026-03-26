@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -30,7 +31,7 @@ var (
 )
 
 func NewMetricsRequest() *MetricsRequest {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &MetricsRequest{}
 	}
 	return protoPoolMetricsRequest.Get().(*MetricsRequest)
@@ -41,11 +42,10 @@ func DeleteMetricsRequest(orig *MetricsRequest, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
-
 	DeleteRequestContext(orig.RequestContext, true)
 	DeleteMetricsData(&orig.MetricsData, false)
 
@@ -173,7 +173,7 @@ func (orig *MetricsRequest) SizeProto() int {
 	}
 	l = orig.MetricsData.SizeProto()
 	n += 1 + proto.Sov(uint64(l)) + l
-	if orig.FormatVersion != 0 {
+	if orig.FormatVersion != uint32(0) {
 		n += 5
 	}
 	return n
@@ -196,7 +196,7 @@ func (orig *MetricsRequest) MarshalProto(buf []byte) int {
 	pos--
 	buf[pos] = 0x1a
 
-	if orig.FormatVersion != 0 {
+	if orig.FormatVersion != uint32(0) {
 		pos -= 4
 		binary.LittleEndian.PutUint32(buf[pos:], uint32(orig.FormatVersion))
 		pos--

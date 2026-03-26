@@ -1,4 +1,4 @@
-// Copyright 2025 Google LLC.
+// Copyright 2026 Google LLC.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -839,6 +839,8 @@ type FolderOperationError struct {
 	// to delete contains active resources.
 	//   "DELETED_FOLDER_HEIGHT_VIOLATION" - The attempted action would violate the
 	// max deleted folder depth constraint.
+	//   "FOLDER_TO_DELETE_CONFIGURED_CAPABILITY_VIOLATION" - The folder being
+	// deleted has a configured capability.
 	ErrorMessageId string `json:"errorMessageId,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ErrorMessageId") to
 	// unconditionally include in API requests. By default, fields with empty or

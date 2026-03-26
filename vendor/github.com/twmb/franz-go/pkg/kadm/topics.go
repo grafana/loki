@@ -26,7 +26,11 @@ func (cl *Client) ListTopics(
 	if err != nil {
 		return nil, err
 	}
-	t.FilterInternal()
+	// Only filter internal topics when listing all topics (no specific topics requested).
+	// If specific topics are named, include them even if they are internal.
+	if len(topics) == 0 {
+		t.FilterInternal()
+	}
 	return t, nil
 }
 

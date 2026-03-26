@@ -83,7 +83,7 @@ func (ac *admissionControl) get(ty taskType) *admissionLane {
 
 func isScanTask(task *Task) bool {
 	for node := range task.Fragment.Graph().Nodes() {
-		if node.Type() == physical.NodeTypeDataObjScan {
+		if node.Type() == physical.NodeTypeDataObjScan || node.Type() == physical.NodeTypePointersScan {
 			return true
 		}
 	}

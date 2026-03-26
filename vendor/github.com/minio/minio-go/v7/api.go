@@ -43,6 +43,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/minio/minio-go/v7/pkg/kvcache"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/minio/minio-go/v7/pkg/signer"
 	"github.com/minio/minio-go/v7/pkg/singleflight"
 	"golang.org/x/net/publicsuffix"
@@ -160,7 +161,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.96"
+	libraryVersion = "v7.0.98"
 )
 
 // User Agent should always following the below style.
@@ -636,11 +637,11 @@ func (c *Client) do(req *http.Request) (resp *http.Response, err error) {
 }
 
 // List of success status.
-var successStatus = map[int]struct{}{
-	http.StatusOK:             {},
-	http.StatusNoContent:      {},
-	http.StatusPartialContent: {},
-}
+var successStatus = set.CreateIntSet(
+	http.StatusOK,
+	http.StatusNoContent,
+	http.StatusPartialContent,
+)
 
 // executeMethod - instantiates a given method, and retries the
 // request upon any error up to maxRetries attempts in a binomially
@@ -722,7 +723,7 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 			return nil, err
 		}
 
-		_, success := successStatus[res.StatusCode]
+		success := successStatus.Contains(res.StatusCode)
 		if success && !metadata.expect200OKWithError {
 			// We do not expect 2xx to return an error return.
 			return res, nil

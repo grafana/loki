@@ -11,14 +11,15 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // ScopeLogs is a collection of logs from a LibraryInstrumentation.
 type ScopeLogs struct {
-	Scope      InstrumentationScope
-	LogRecords []*LogRecord
 	SchemaUrl  string
+	LogRecords []*LogRecord
+	Scope      InstrumentationScope
 }
 
 var (
@@ -30,7 +31,7 @@ var (
 )
 
 func NewScopeLogs() *ScopeLogs {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ScopeLogs{}
 	}
 	return protoPoolScopeLogs.Get().(*ScopeLogs)
@@ -41,11 +42,10 @@ func DeleteScopeLogs(orig *ScopeLogs, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
-
 	DeleteInstrumentationScope(&orig.Scope, false)
 	for i := range orig.LogRecords {
 		DeleteLogRecord(orig.LogRecords[i], true)
@@ -184,6 +184,7 @@ func (orig *ScopeLogs) SizeProto() int {
 		l = orig.LogRecords[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	l = len(orig.SchemaUrl)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l

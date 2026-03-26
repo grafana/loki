@@ -25,12 +25,12 @@ import (
 
 func TestStreamsResultBuilder(t *testing.T) {
 	t.Run("empty builder returns non-nil result", func(t *testing.T) {
-		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
 		md, _ := metadata.NewContext(t.Context())
 		require.NotNil(t, builder.Build(stats.Result{}, md).Data)
 	})
 
-	t.Run("rows without log line, timestamp, or labels are ignored", func(t *testing.T) {
+	t.Run("rows without timestamp, or labels are ignored", func(t *testing.T) {
 		colTs := semconv.ColumnIdentTimestamp
 		colMsg := semconv.ColumnIdentMessage
 		colEnv := semconv.NewIdentifier("env", types.ColumnTypeMetadata, types.Loki.String)
@@ -66,11 +66,11 @@ func TestStreamsResultBuilder(t *testing.T) {
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
 
-		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
-		require.Equal(t, 0, builder.Len(), "expected no entries to be collected")
+		require.Equal(t, 1, builder.Len(), "expected 1 entry to be collected")
 	})
 
 	t.Run("successful conversion of labels, log line, timestamp, and structured metadata ", func(t *testing.T) {
@@ -147,7 +147,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
 
-		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
@@ -244,7 +244,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		record2 := rows2.Record(memory.DefaultAllocator, schema)
 		defer record2.Release()
 
-		builder := newStreamsResultBuilder(logproto.FORWARD)
+		builder := newStreamsResultBuilder(logproto.FORWARD, false)
 
 		// Collect first record
 		builder.CollectRecord(record1)
@@ -300,7 +300,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 			nil,
 		)
 
-		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
 
 		// First record: 5 rows (buffer grows to 5)
 		rows1 := make(arrowtest.Rows, 5)
@@ -370,7 +370,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 			nil,
 		)
 
-		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
 
 		// First record: 3 valid rows
 		rows1 := make(arrowtest.Rows, 3)
@@ -447,7 +447,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		}
 
 		record := rows.Record(memory.DefaultAllocator, schema)
-		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
 		builder.CollectRecord(record)
 		record.Release()
 		require.Equal(t, 2, builder.Len())
@@ -468,6 +468,172 @@ func TestStreamsResultBuilder(t *testing.T) {
 				Labels: labels.FromStrings("Aparsed", "A", "env", "prod", "metadata", "md value", "Zparsed", "Z").String(),
 				Entries: []logproto.Entry{
 					{Line: "log line", Timestamp: time.Unix(0, 1620000000000000000), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("metadata", "md value")), Parsed: logproto.FromLabelsToLabelAdapters(labels.FromStrings("Aparsed", "A", "Zparsed", "Z"))},
+				},
+			},
+		}
+		require.Equal(t, expected, streams)
+	})
+	t.Run("labels with empty values are dropped from stream labels", func(t *testing.T) {
+		colTs := semconv.ColumnIdentTimestamp
+		colMsg := semconv.ColumnIdentMessage
+		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
+		colRegion := semconv.NewIdentifier("region", types.ColumnTypeLabel, types.Loki.String)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colTs, false),
+				semconv.FieldFromIdent(colMsg, false),
+				semconv.FieldFromIdent(colEnv, true),
+				semconv.FieldFromIdent(colRegion, true),
+			},
+			nil,
+		)
+		rows := arrowtest.Rows{
+			{
+				colTs.FQN():     time.Unix(0, 1620000000000000001).UTC(),
+				colMsg.FQN():    "log line 1",
+				colEnv.FQN():    "prod",
+				colRegion.FQN(): "us-west",
+			},
+			{
+				colTs.FQN():     time.Unix(0, 1620000000000000002).UTC(),
+				colMsg.FQN():    "log line 2",
+				colEnv.FQN():    "prod",
+				colRegion.FQN(): "",
+			},
+			{
+				colTs.FQN():     time.Unix(0, 1620000000000000003).UTC(),
+				colMsg.FQN():    "log line 3",
+				colEnv.FQN():    "",
+				colRegion.FQN(): "us-east",
+			},
+		}
+
+		record := rows.Record(memory.DefaultAllocator, schema)
+
+		pipeline := executor.NewBufferedPipeline(record)
+		defer pipeline.Close()
+
+		builder := newStreamsResultBuilder(logproto.FORWARD, false)
+		err := collectResult(context.Background(), pipeline, builder)
+
+		require.NoError(t, err)
+		require.Equal(t, 3, builder.Len())
+
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
+		streams := result.Data.(logqlmodel.Streams)
+
+		require.Equal(t, 3, len(streams), "should have 3 unique streams (empty label values dropped)")
+
+		streamLabels := make([]string, len(streams))
+		for i, s := range streams {
+			streamLabels[i] = s.Labels
+		}
+		require.Contains(t, streamLabels, labels.FromStrings("env", "prod", "region", "us-west").String())
+		require.Contains(t, streamLabels, labels.FromStrings("env", "prod").String())
+		require.Contains(t, streamLabels, labels.FromStrings("region", "us-east").String())
+	})
+
+	t.Run("categorize labels does not consider metadata or parsed keys when building output streams", func(t *testing.T) {
+		colTs := semconv.ColumnIdentTimestamp
+		colMsg := semconv.ColumnIdentMessage
+		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
+		colMetadata := semconv.NewIdentifier("metadata", types.ColumnTypeMetadata, types.Loki.String)
+		colParsed := semconv.NewIdentifier("parsed", types.ColumnTypeParsed, types.Loki.String)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colTs, false),
+				semconv.FieldFromIdent(colMsg, false),
+				semconv.FieldFromIdent(colEnv, false),
+				semconv.FieldFromIdent(colMetadata, false),
+				semconv.FieldFromIdent(colParsed, false),
+			},
+			nil,
+		)
+		rows := arrowtest.Rows{
+			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colMsg.FQN(): "log line", colEnv.FQN(): "prod", colMetadata.FQN(): "a md value", colParsed.FQN(): "a parsed value"},
+			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colMsg.FQN(): "log line", colEnv.FQN(): "prod", colMetadata.FQN(): "another md value", colParsed.FQN(): "another parsed value"},
+		}
+
+		record := rows.Record(memory.DefaultAllocator, schema)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, true)
+		builder.CollectRecord(record)
+		record.Release()
+		require.Equal(t, 2, builder.Len())
+
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
+		streams := result.Data.(logqlmodel.Streams)
+		require.Equal(t, 1, len(streams), "should have 1 unique stream")
+
+		expected := logqlmodel.Streams{
+			push.Stream{
+				Labels: labels.FromStrings("env", "prod").String(),
+				Entries: []logproto.Entry{
+					{Line: "log line", Timestamp: time.Unix(0, 1620000000000000000), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("metadata", "a md value")), Parsed: logproto.FromLabelsToLabelAdapters(labels.FromStrings("parsed", "a parsed value"))},
+					{Line: "log line", Timestamp: time.Unix(0, 1620000000000000000), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("metadata", "another md value")), Parsed: logproto.FromLabelsToLabelAdapters(labels.FromStrings("parsed", "another parsed value"))},
+				},
+			},
+		}
+		require.Equal(t, expected, streams)
+	})
+
+	t.Run("duplicate entries from multiple records are deduplicated", func(t *testing.T) {
+		colTs := semconv.ColumnIdentTimestamp
+		colMsg := semconv.ColumnIdentMessage
+		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colTs, false),
+				semconv.FieldFromIdent(colMsg, false),
+				semconv.FieldFromIdent(colEnv, false),
+			},
+			nil,
+		)
+
+		ts1 := time.Unix(0, 1620000000000000001).UTC()
+		ts2 := time.Unix(0, 1620000000000000002).UTC()
+		ts3 := time.Unix(0, 1620000000000000003).UTC()
+
+		// Simulate two data object scans returning overlapping entries
+		// (same entry stored in multiple data objects).
+		rec1 := arrowtest.Rows{
+			{colTs.FQN(): ts1, colMsg.FQN(): "line A", colEnv.FQN(): "prod"},
+			{colTs.FQN(): ts2, colMsg.FQN(): "line B", colEnv.FQN(): "prod"},
+			{colTs.FQN(): ts3, colMsg.FQN(): "line C", colEnv.FQN(): "prod"},
+		}.Record(memory.DefaultAllocator, schema)
+
+		rec2 := arrowtest.Rows{
+			{colTs.FQN(): ts2, colMsg.FQN(): "line B", colEnv.FQN(): "prod"},
+			{colTs.FQN(): ts3, colMsg.FQN(): "line C", colEnv.FQN(): "prod"},
+		}.Record(memory.DefaultAllocator, schema)
+
+		builder := newStreamsResultBuilder(logproto.FORWARD, false)
+		builder.CollectRecord(rec1)
+		builder.CollectRecord(rec2)
+		rec1.Release()
+		rec2.Release()
+
+		require.Equal(t, 5, builder.Len(), "raw count before dedup")
+
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
+		streams := result.Data.(logqlmodel.Streams)
+		require.Equal(t, 1, len(streams), "should have 1 unique stream")
+		require.Equal(t, 3, len(streams[0].Entries), "duplicates should be removed")
+		require.Equal(t, int64(3), result.Statistics.Summary.TotalEntriesReturned,
+			"stats should reflect post-dedup count")
+
+		expected := logqlmodel.Streams{
+			push.Stream{
+				Labels: labels.FromStrings("env", "prod").String(),
+				Entries: []logproto.Entry{
+					{Timestamp: time.Unix(0, ts1.UnixNano()), Line: "line A"},
+					{Timestamp: time.Unix(0, ts2.UnixNano()), Line: "line B"},
+					{Timestamp: time.Unix(0, ts3.UnixNano()), Line: "line C"},
 				},
 			},
 		}

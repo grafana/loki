@@ -1,6 +1,13 @@
 # Changes
 
 
+## [1.5.3](https://github.com/googleapis/google-cloud-go/compare/iam/v1.5.2...iam/v1.5.3) (2025-10-08)
+
+
+### Bug Fixes
+
+* **iam:** Upgrade gRPC service registration func ([9dd3adf](https://github.com/googleapis/google-cloud-go/commit/9dd3adf2bb0d57dff8d85f89a29e8cea03274c29))
+
 ## [1.5.2](https://github.com/googleapis/google-cloud-go/compare/iam/v1.5.1...iam/v1.5.2) (2025-04-15)
 
 

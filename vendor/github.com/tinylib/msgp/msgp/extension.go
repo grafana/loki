@@ -181,7 +181,7 @@ func (mw *Writer) writeExtensionHeader(length int, extType int8) error {
 				return err
 			}
 			mw.buf[o] = mext8
-			mw.buf[o+1] = byte(uint8(length))
+			mw.buf[o+1] = byte(length)
 			mw.buf[o+2] = byte(extType)
 		case length < math.MaxUint16:
 			o, err := mw.require(4)
@@ -342,7 +342,7 @@ func (m *Reader) peekExtensionHeader() (offset int, length int, extType int8, er
 		}
 		offset = 3
 		extType = int8(p[2])
-		length = int(uint8(p[1]))
+		length = int(p[1])
 
 	case mext16:
 		p, err = m.R.Peek(4)
@@ -461,7 +461,7 @@ func AppendExtension(b []byte, e Extension) ([]byte, error) {
 		case l < math.MaxUint8:
 			o, n = ensure(b, l+3)
 			o[n] = mext8
-			o[n+1] = byte(uint8(l))
+			o[n+1] = byte(l)
 			o[n+2] = byte(e.ExtensionType())
 			n += 3
 		case l < math.MaxUint16:
@@ -534,7 +534,7 @@ func readExt(b []byte) (typ int8, remain []byte, data []byte, err error) {
 		sz = 16
 		off = 2
 	case mext8:
-		sz = int(uint8(b[1]))
+		sz = int(b[1])
 		typ = int8(b[2])
 		off = 3
 		if sz == 0 {

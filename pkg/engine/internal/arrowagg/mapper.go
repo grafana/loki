@@ -81,14 +81,15 @@ func newMapping(schema *arrow.Schema, to []arrow.Field) *mapping {
 		fieldIdxs := schema.FieldIndices(target.Name)
 		if len(fieldIdxs) == 0 {
 			continue
-		} else if len(fieldIdxs) > 1 {
-			// this should not occur as FQN should make field names unique.
-			panic("mapper: multiple fields with the same name in schema")
 		}
 
-		// this check might be unnecessary given FQN uniqueness?
-		if schema.Field(fieldIdxs[0]).Equal(target) {
-			mapping.lookups[i] = fieldIdxs[0]
+		// Multiple parsers (e.g., logfmt and json) can create duplicate field names.
+		// Find the first field that matches the target exactly.
+		for _, idx := range fieldIdxs {
+			if schema.Field(idx).Equal(target) {
+				mapping.lookups[i] = idx
+				break
+			}
 		}
 	}
 

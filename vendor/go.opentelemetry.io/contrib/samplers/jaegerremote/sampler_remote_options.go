@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-
 	"go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -39,6 +38,7 @@ type config struct {
 	updaters                []samplerUpdater
 	posParams               perOperationSamplerParams
 	logger                  logr.Logger
+	attributesDisabled      bool
 }
 
 func getEnvOptions() ([]Option, []error) {
@@ -88,15 +88,10 @@ func getEnvOptions() ([]Option, []error) {
 // newConfig returns an appropriately configured config.
 func newConfig(options ...Option) config {
 	c := config{
-		sampler:                 newProbabilisticSampler(0.001),
 		samplingServerURL:       defaultSamplingServerURL,
 		samplingRefreshInterval: defaultSamplingRefreshInterval,
 		samplingFetcher:         newHTTPSamplingStrategyFetcher(defaultSamplingServerURL),
 		samplingParser:          new(samplingStrategyParserImpl),
-		updaters: []samplerUpdater{
-			new(probabilisticSamplerUpdater),
-			new(rateLimitingSamplerUpdater),
-		},
 		posParams: perOperationSamplerParams{
 			MaxOperations:            defaultSamplingMaxOperations,
 			OperationNameLateBinding: defaultSamplingOperationNameLateBinding,
@@ -116,11 +111,20 @@ func newConfig(options ...Option) config {
 	for _, err := range errs {
 		c.logger.Error(err, "env variable parsing failure")
 	}
+	c.updaters = []samplerUpdater{
+		&perOperationSamplerUpdater{
+			MaxOperations:            c.posParams.MaxOperations,
+			OperationNameLateBinding: c.posParams.OperationNameLateBinding,
+			attributesDisabled:       c.attributesDisabled,
+		},
+		&probabilisticSamplerUpdater{attributesDisabled: c.attributesDisabled},
+		&rateLimitingSamplerUpdater{attributesDisabled: c.attributesDisabled},
+	}
 
-	c.updaters = append([]samplerUpdater{&perOperationSamplerUpdater{
-		MaxOperations:            c.posParams.MaxOperations,
-		OperationNameLateBinding: c.posParams.OperationNameLateBinding,
-	}}, c.updaters...)
+	if c.sampler == nil {
+		c.sampler = newProbabilisticSampler(0.001, c.attributesDisabled)
+	}
+
 	return c
 }
 
@@ -193,16 +197,16 @@ func WithSamplingStrategyFetcher(fetcher SamplingStrategyFetcher) Option {
 	})
 }
 
+// WithAttributesDisabled configures the sampler to disable setting attributes jaeger.sampler.type and jaeger.sampler.param.
+func WithAttributesDisabled() Option {
+	return optionFunc(func(c *config) {
+		c.attributesDisabled = true
+	})
+}
+
 // samplingStrategyParser creates a Option that initializes sampling strategy parser.
 func withSamplingStrategyParser(parser samplingStrategyParser) Option {
 	return optionFunc(func(c *config) {
 		c.samplingParser = parser
-	})
-}
-
-// withUpdaters creates a Option that initializes sampler updaters.
-func withUpdaters(updaters ...samplerUpdater) Option {
-	return optionFunc(func(c *config) {
-		c.updaters = updaters
 	})
 }

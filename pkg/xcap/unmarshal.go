@@ -3,8 +3,6 @@ package xcap
 import (
 	"fmt"
 
-	"go.opentelemetry.io/otel/attribute"
-
 	"github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
 
@@ -62,35 +60,17 @@ func fromProtoRegion(protoRegion *proto.Region, statIndexToStat map[uint32]Stati
 		}
 	}
 
-	// Unmarshal region ID from proto, or generate a new one if not set
 	var regionID identifier
 	copy(regionID[:], protoRegion.Id)
 
-	// Unmarshal parent ID from proto
 	var parentID identifier
 	copy(parentID[:], protoRegion.ParentId)
-
-	// Unmarshal attributes from proto
-	attributes := make([]attribute.KeyValue, 0)
-	if protoRegion.Attributes != nil {
-		attributes = make([]attribute.KeyValue, 0, len(protoRegion.Attributes))
-		for _, protoAttr := range protoRegion.Attributes {
-			attr, err := unmarshalAttribute(protoAttr)
-			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal attribute %s: %w", protoAttr.Key, err)
-			}
-			attributes = append(attributes, attr)
-		}
-	}
 
 	region := &Region{
 		id:           regionID,
 		parentID:     parentID,
 		name:         protoRegion.Name,
-		startTime:    protoRegion.StartTime,
-		endTime:      protoRegion.EndTime,
 		observations: observations,
-		attributes:   attributes,
 		ended:        true, // Regions from proto are always ended
 	}
 
@@ -172,26 +152,5 @@ func unmarshalAggregationType(protoType proto.AggregationType) (AggregationType,
 		return AggregationTypeFirst, nil
 	default:
 		return AggregationTypeInvalid, fmt.Errorf("unknown aggregation type: %v", protoType)
-	}
-}
-
-// unmarshalAttribute converts a protobuf attribute to an OpenTelemetry attribute.
-func unmarshalAttribute(protoAttr *proto.Attribute) (attribute.KeyValue, error) {
-	if protoAttr == nil || protoAttr.Value == nil {
-		return attribute.KeyValue{}, fmt.Errorf("invalid attribute")
-	}
-
-	key := attribute.Key(protoAttr.Key)
-	switch v := protoAttr.Value.Kind.(type) {
-	case *proto.AttributeValue_StringValue:
-		return key.String(v.StringValue), nil
-	case *proto.AttributeValue_IntValue:
-		return key.Int64(v.IntValue), nil
-	case *proto.AttributeValue_FloatValue:
-		return key.Float64(v.FloatValue), nil
-	case *proto.AttributeValue_BoolValue:
-		return key.Bool(v.BoolValue), nil
-	default:
-		return attribute.KeyValue{}, fmt.Errorf("unsupported attribute value type: %T", protoAttr.Value.Kind)
 	}
 }

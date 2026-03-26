@@ -31,6 +31,7 @@ import (
 	xdsinternal "google.golang.org/grpc/internal/xds"
 	"google.golang.org/grpc/internal/xds/clients"
 	"google.golang.org/grpc/internal/xds/xdsclient"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -144,7 +145,15 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		pr.SubConn = scw.SubConn
 		// If locality ID isn't found in the wrapper, an empty locality ID will
 		// be used.
-		lID = scw.localityID()
+		lID = scw.localityID
+
+		if scw.hostname != "" && autoHostRewriteEnabled(info.Ctx) {
+			if pr.Metadata == nil {
+				pr.Metadata = metadata.Pairs(":authority", scw.hostname)
+			} else {
+				pr.Metadata.Set(":authority", scw.hostname)
+			}
+		}
 	}
 
 	if err != nil {
@@ -193,4 +202,26 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	}
 
 	return pr, err
+}
+
+// autoHostRewriteKey is the context key used to store the value of
+// route's autoHostRewrite in the RPC context.
+type autoHostRewriteKey struct{}
+
+// autoHostRewriteEnabled retrieves the autoHostRewrite value from the provided context.
+func autoHostRewriteEnabled(ctx context.Context) bool {
+	v, _ := ctx.Value(autoHostRewriteKey{}).(bool)
+	return v
+}
+
+// AutoHostRewriteEnabledForTesting returns the value of autoHostRewrite field;
+// to be used for testing only.
+func AutoHostRewriteEnabledForTesting(ctx context.Context) bool {
+	return autoHostRewriteEnabled(ctx)
+}
+
+// EnableAutoHostRewrite adds the autoHostRewrite value to the context for
+// the xds_cluster_impl LB policy to pick.
+func EnableAutoHostRewrite(ctx context.Context) context.Context {
+	return context.WithValue(ctx, autoHostRewriteKey{}, true)
 }

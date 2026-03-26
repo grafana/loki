@@ -384,6 +384,6 @@ func (i *instance) writeAggregatedMetrics(
 			sturcturedMetadata,
 		)
 
-		i.metrics.metricSamples.WithLabelValues(service).Inc()
+		i.metrics.metricSamples.WithLabelValues(i.instanceID).Inc()
 	}
 }

@@ -680,7 +680,7 @@ func processNetworkFilters(filters []*v3listenerpb.Filter) (*FilterChain, error)
 					// server-side." - A36
 					// Can specify v3 here, as will never get to this function
 					// if v2.
-					routeU, err := generateRDSUpdateFromRouteConfiguration(hcm.GetRouteConfig())
+					routeU, err := generateRDSUpdateFromRouteConfiguration(hcm.GetRouteConfig(), nil)
 					if err != nil {
 						return nil, fmt.Errorf("failed to parse inline RDS resp: %v", err)
 					}

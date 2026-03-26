@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
@@ -156,7 +157,7 @@ func Test_SeriesCleaner(t *testing.T) {
 				}
 
 				// remove series for c1 without __name__ label, which should work just fine
-				return cleaner.CleanupSeries([]byte(c1.UserID), labels.NewBuilder(c1.Metric).Del(labels.MetricName).Labels())
+				return cleaner.CleanupSeries([]byte(c1.UserID), labels.NewBuilder(c1.Metric).Del(model.MetricNameLabel).Labels())
 			})
 			require.NoError(t, err)
 
@@ -200,7 +201,7 @@ func encodeBase64Bytes(bytes []byte) []byte {
 
 // Backwards-compatible with model.Metric.String()
 func labelsString(ls labels.Labels) string {
-	metricName := ls.Get(labels.MetricName)
+	metricName := ls.Get(model.MetricNameLabel)
 	if metricName != "" && ls.Len() == 1 {
 		return metricName
 	}
@@ -211,7 +212,7 @@ func labelsString(ls labels.Labels) string {
 	b.WriteByte('{')
 	i := 0
 	ls.Range(func(l labels.Label) {
-		if l.Name == labels.MetricName {
+		if l.Name == model.MetricNameLabel {
 			return // (will continue Range loop, not abort)
 		}
 		if i > 0 {

@@ -1,21 +1,11 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package analysis
 
 import (
 	"fmt"
+	"maps"
 	slashpath "path"
 	"strconv"
 	"strings"
@@ -111,33 +101,33 @@ func (p *patternAnalysis) addSchemaPattern(key, pattern string) {
 }
 
 type enumAnalysis struct {
-	parameters map[string][]interface{}
-	headers    map[string][]interface{}
-	items      map[string][]interface{}
-	schemas    map[string][]interface{}
-	allEnums   map[string][]interface{}
+	parameters map[string][]any
+	headers    map[string][]any
+	items      map[string][]any
+	schemas    map[string][]any
+	allEnums   map[string][]any
 }
 
-func (p *enumAnalysis) addEnum(key string, enum []interface{}) {
+func (p *enumAnalysis) addEnum(key string, enum []any) {
 	p.allEnums["#"+key] = enum
 }
 
-func (p *enumAnalysis) addParameterEnum(key string, enum []interface{}) {
+func (p *enumAnalysis) addParameterEnum(key string, enum []any) {
 	p.parameters["#"+key] = enum
 	p.addEnum(key, enum)
 }
 
-func (p *enumAnalysis) addHeaderEnum(key string, enum []interface{}) {
+func (p *enumAnalysis) addHeaderEnum(key string, enum []any) {
 	p.headers["#"+key] = enum
 	p.addEnum(key, enum)
 }
 
-func (p *enumAnalysis) addItemsEnum(key string, enum []interface{}) {
+func (p *enumAnalysis) addItemsEnum(key string, enum []any) {
 	p.items["#"+key] = enum
 	p.addEnum(key, enum)
 }
 
-func (p *enumAnalysis) addSchemaEnum(key string, enum []interface{}) {
+func (p *enumAnalysis) addSchemaEnum(key string, enum []any) {
 	p.schemas["#"+key] = enum
 	p.addEnum(key, enum)
 }
@@ -174,13 +164,13 @@ func New(doc *spec.Swagger) *Spec {
 	return a
 }
 
-// SecurityRequirement is a representation of a security requirement for an operation
+// SecurityRequirement is a representation of a security requirement for an operation.
 type SecurityRequirement struct {
 	Name   string
 	Scopes []string
 }
 
-// SecurityRequirementsFor gets the security requirements for the operation
+// SecurityRequirementsFor gets the security requirements for the operation.
 func (s *Spec) SecurityRequirementsFor(operation *spec.Operation) [][]SecurityRequirement {
 	if s.spec.Security == nil && operation.Security == nil {
 		return nil
@@ -214,7 +204,7 @@ func (s *Spec) SecurityRequirementsFor(operation *spec.Operation) [][]SecurityRe
 	return result
 }
 
-// SecurityDefinitionsForRequirements gets the matching security definitions for a set of requirements
+// SecurityDefinitionsForRequirements gets the matching security definitions for a set of requirements.
 func (s *Spec) SecurityDefinitionsForRequirements(requirements []SecurityRequirement) map[string]spec.SecurityScheme {
 	result := make(map[string]spec.SecurityScheme)
 
@@ -229,7 +219,7 @@ func (s *Spec) SecurityDefinitionsForRequirements(requirements []SecurityRequire
 	return result
 }
 
-// SecurityDefinitionsFor gets the matching security definitions for a set of requirements
+// SecurityDefinitionsFor gets the matching security definitions for a set of requirements.
 func (s *Spec) SecurityDefinitionsFor(operation *spec.Operation) map[string]spec.SecurityScheme {
 	requirements := s.SecurityRequirementsFor(operation)
 	if len(requirements) == 0 {
@@ -260,7 +250,7 @@ func (s *Spec) SecurityDefinitionsFor(operation *spec.Operation) map[string]spec
 	return result
 }
 
-// ConsumesFor gets the mediatypes for the operation
+// ConsumesFor gets the mediatypes for the operation.
 func (s *Spec) ConsumesFor(operation *spec.Operation) []string {
 	if len(operation.Consumes) == 0 {
 		cons := make(map[string]struct{}, len(s.spec.Consumes))
@@ -279,7 +269,7 @@ func (s *Spec) ConsumesFor(operation *spec.Operation) []string {
 	return s.structMapKeys(cons)
 }
 
-// ProducesFor gets the mediatypes for the operation
+// ProducesFor gets the mediatypes for the operation.
 func (s *Spec) ProducesFor(operation *spec.Operation) []string {
 	if len(operation.Produces) == 0 {
 		prod := make(map[string]struct{}, len(s.spec.Produces))
@@ -410,7 +400,7 @@ func (s *Spec) SafeParamsFor(method, path string, callmeOnError ErrorOnParamFunc
 	return res
 }
 
-// OperationForName gets the operation for the given id
+// OperationForName gets the operation for the given id.
 func (s *Spec) OperationForName(operationID string) (string, string, *spec.Operation, bool) {
 	for method, pathItem := range s.operations {
 		for path, op := range pathItem {
@@ -423,7 +413,7 @@ func (s *Spec) OperationForName(operationID string) (string, string, *spec.Opera
 	return "", "", nil, false
 }
 
-// OperationFor the given method and path
+// OperationFor the given method and path.
 func (s *Spec) OperationFor(method, path string) (*spec.Operation, bool) {
 	if mp, ok := s.operations[strings.ToUpper(method)]; ok {
 		op, fn := mp[path]
@@ -434,12 +424,12 @@ func (s *Spec) OperationFor(method, path string) (*spec.Operation, bool) {
 	return nil, false
 }
 
-// Operations gathers all the operations specified in the spec document
+// Operations gathers all the operations specified in the spec document.
 func (s *Spec) Operations() map[string]map[string]*spec.Operation {
 	return s.operations
 }
 
-// AllPaths returns all the paths in the swagger spec
+// AllPaths returns all the paths in the swagger spec.
 func (s *Spec) AllPaths() map[string]spec.PathItem {
 	if s.spec == nil || s.spec.Paths == nil {
 		return nil
@@ -448,7 +438,7 @@ func (s *Spec) AllPaths() map[string]spec.PathItem {
 	return s.spec.Paths.Paths
 }
 
-// OperationIDs gets all the operation ids based on method an dpath
+// OperationIDs gets all the operation ids based on method an dpath.
 func (s *Spec) OperationIDs() []string {
 	if len(s.operations) == 0 {
 		return nil
@@ -468,7 +458,7 @@ func (s *Spec) OperationIDs() []string {
 	return result
 }
 
-// OperationMethodPaths gets all the operation ids based on method an dpath
+// OperationMethodPaths gets all the operation ids based on method an dpath.
 func (s *Spec) OperationMethodPaths() []string {
 	if len(s.operations) == 0 {
 		return nil
@@ -484,22 +474,22 @@ func (s *Spec) OperationMethodPaths() []string {
 	return result
 }
 
-// RequiredConsumes gets all the distinct consumes that are specified in the specification document
+// RequiredConsumes gets all the distinct consumes that are specified in the specification document.
 func (s *Spec) RequiredConsumes() []string {
 	return s.structMapKeys(s.consumes)
 }
 
-// RequiredProduces gets all the distinct produces that are specified in the specification document
+// RequiredProduces gets all the distinct produces that are specified in the specification document.
 func (s *Spec) RequiredProduces() []string {
 	return s.structMapKeys(s.produces)
 }
 
-// RequiredSecuritySchemes gets all the distinct security schemes that are specified in the swagger spec
+// RequiredSecuritySchemes gets all the distinct security schemes that are specified in the swagger spec.
 func (s *Spec) RequiredSecuritySchemes() []string {
 	return s.structMapKeys(s.authSchemes)
 }
 
-// SchemaRef is a reference to a schema
+// SchemaRef is a reference to a schema.
 type SchemaRef struct {
 	Name     string
 	Ref      spec.Ref
@@ -508,7 +498,7 @@ type SchemaRef struct {
 }
 
 // SchemasWithAllOf returns schema references to all schemas that are defined
-// with an allOf key
+// with an allOf key.
 func (s *Spec) SchemasWithAllOf() (result []SchemaRef) {
 	for _, v := range s.allOfs {
 		result = append(result, v)
@@ -517,7 +507,7 @@ func (s *Spec) SchemasWithAllOf() (result []SchemaRef) {
 	return
 }
 
-// AllDefinitions returns schema references for all the definitions that were discovered
+// AllDefinitions returns schema references for all the definitions that were discovered.
 func (s *Spec) AllDefinitions() (result []SchemaRef) {
 	for _, v := range s.allSchemas {
 		result = append(result, v)
@@ -526,7 +516,7 @@ func (s *Spec) AllDefinitions() (result []SchemaRef) {
 	return
 }
 
-// AllDefinitionReferences returns json refs for all the discovered schemas
+// AllDefinitionReferences returns json refs for all the discovered schemas.
 func (s *Spec) AllDefinitionReferences() (result []string) {
 	for _, v := range s.references.schemas {
 		result = append(result, v.String())
@@ -535,7 +525,7 @@ func (s *Spec) AllDefinitionReferences() (result []string) {
 	return
 }
 
-// AllParameterReferences returns json refs for all the discovered parameters
+// AllParameterReferences returns json refs for all the discovered parameters.
 func (s *Spec) AllParameterReferences() (result []string) {
 	for _, v := range s.references.parameters {
 		result = append(result, v.String())
@@ -544,7 +534,7 @@ func (s *Spec) AllParameterReferences() (result []string) {
 	return
 }
 
-// AllResponseReferences returns json refs for all the discovered responses
+// AllResponseReferences returns json refs for all the discovered responses.
 func (s *Spec) AllResponseReferences() (result []string) {
 	for _, v := range s.references.responses {
 		result = append(result, v.String())
@@ -553,7 +543,7 @@ func (s *Spec) AllResponseReferences() (result []string) {
 	return
 }
 
-// AllPathItemReferences returns the references for all the items
+// AllPathItemReferences returns the references for all the items.
 func (s *Spec) AllPathItemReferences() (result []string) {
 	for _, v := range s.references.pathItems {
 		result = append(result, v.String())
@@ -574,7 +564,7 @@ func (s *Spec) AllItemsReferences() (result []string) {
 	return
 }
 
-// AllReferences returns all the references found in the document, with possible duplicates
+// AllReferences returns all the references found in the document, with possible duplicates.
 func (s *Spec) AllReferences() (result []string) {
 	for _, v := range s.references.allRefs {
 		result = append(result, v.String())
@@ -583,7 +573,7 @@ func (s *Spec) AllReferences() (result []string) {
 	return
 }
 
-// AllRefs returns all the unique references found in the document
+// AllRefs returns all the unique references found in the document.
 func (s *Spec) AllRefs() (result []spec.Ref) {
 	set := make(map[string]struct{})
 	for _, v := range s.references.allRefs {
@@ -602,62 +592,62 @@ func (s *Spec) AllRefs() (result []spec.Ref) {
 }
 
 // ParameterPatterns returns all the patterns found in parameters
-// the map is cloned to avoid accidental changes
+// the map is cloned to avoid accidental changes.
 func (s *Spec) ParameterPatterns() map[string]string {
 	return cloneStringMap(s.patterns.parameters)
 }
 
 // HeaderPatterns returns all the patterns found in response headers
-// the map is cloned to avoid accidental changes
+// the map is cloned to avoid accidental changes.
 func (s *Spec) HeaderPatterns() map[string]string {
 	return cloneStringMap(s.patterns.headers)
 }
 
 // ItemsPatterns returns all the patterns found in simple array items
-// the map is cloned to avoid accidental changes
+// the map is cloned to avoid accidental changes.
 func (s *Spec) ItemsPatterns() map[string]string {
 	return cloneStringMap(s.patterns.items)
 }
 
 // SchemaPatterns returns all the patterns found in schemas
-// the map is cloned to avoid accidental changes
+// the map is cloned to avoid accidental changes.
 func (s *Spec) SchemaPatterns() map[string]string {
 	return cloneStringMap(s.patterns.schemas)
 }
 
 // AllPatterns returns all the patterns found in the spec
-// the map is cloned to avoid accidental changes
+// the map is cloned to avoid accidental changes.
 func (s *Spec) AllPatterns() map[string]string {
 	return cloneStringMap(s.patterns.allPatterns)
 }
 
 // ParameterEnums returns all the enums found in parameters
-// the map is cloned to avoid accidental changes
-func (s *Spec) ParameterEnums() map[string][]interface{} {
+// the map is cloned to avoid accidental changes.
+func (s *Spec) ParameterEnums() map[string][]any {
 	return cloneEnumMap(s.enums.parameters)
 }
 
 // HeaderEnums returns all the enums found in response headers
-// the map is cloned to avoid accidental changes
-func (s *Spec) HeaderEnums() map[string][]interface{} {
+// the map is cloned to avoid accidental changes.
+func (s *Spec) HeaderEnums() map[string][]any {
 	return cloneEnumMap(s.enums.headers)
 }
 
 // ItemsEnums returns all the enums found in simple array items
-// the map is cloned to avoid accidental changes
-func (s *Spec) ItemsEnums() map[string][]interface{} {
+// the map is cloned to avoid accidental changes.
+func (s *Spec) ItemsEnums() map[string][]any {
 	return cloneEnumMap(s.enums.items)
 }
 
 // SchemaEnums returns all the enums found in schemas
-// the map is cloned to avoid accidental changes
-func (s *Spec) SchemaEnums() map[string][]interface{} {
+// the map is cloned to avoid accidental changes.
+func (s *Spec) SchemaEnums() map[string][]any {
 	return cloneEnumMap(s.enums.schemas)
 }
 
 // AllEnums returns all the enums found in the spec
-// the map is cloned to avoid accidental changes
-func (s *Spec) AllEnums() map[string][]interface{} {
+// the map is cloned to avoid accidental changes.
+func (s *Spec) AllEnums() map[string][]any {
 	return cloneEnumMap(s.enums.allEnums)
 }
 
@@ -733,11 +723,11 @@ func (s *Spec) reset() {
 	s.patterns.items = make(map[string]string, allocLargeMap)
 	s.patterns.schemas = make(map[string]string, allocLargeMap)
 	s.patterns.allPatterns = make(map[string]string, allocLargeMap)
-	s.enums.parameters = make(map[string][]interface{}, allocLargeMap)
-	s.enums.headers = make(map[string][]interface{}, allocLargeMap)
-	s.enums.items = make(map[string][]interface{}, allocLargeMap)
-	s.enums.schemas = make(map[string][]interface{}, allocLargeMap)
-	s.enums.allEnums = make(map[string][]interface{}, allocLargeMap)
+	s.enums.parameters = make(map[string][]any, allocLargeMap)
+	s.enums.headers = make(map[string][]any, allocLargeMap)
+	s.enums.items = make(map[string][]any, allocLargeMap)
+	s.enums.schemas = make(map[string][]any, allocLargeMap)
+	s.enums.allEnums = make(map[string][]any, allocLargeMap)
 }
 
 func (s *Spec) reload() {
@@ -1051,18 +1041,14 @@ func (s *Spec) analyzeSchema(name string, schema *spec.Schema, prefix string) {
 
 func cloneStringMap(source map[string]string) map[string]string {
 	res := make(map[string]string, len(source))
-	for k, v := range source {
-		res[k] = v
-	}
+	maps.Copy(res, source)
 
 	return res
 }
 
-func cloneEnumMap(source map[string][]interface{}) map[string][]interface{} {
-	res := make(map[string][]interface{}, len(source))
-	for k, v := range source {
-		res[k] = v
-	}
+func cloneEnumMap(source map[string][]any) map[string][]any {
+	res := make(map[string][]any, len(source))
+	maps.Copy(res, source)
 
 	return res
 }

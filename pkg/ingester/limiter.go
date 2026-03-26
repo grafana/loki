@@ -209,22 +209,27 @@ type streamCountLimiter struct {
 	limiter                    *Limiter
 	defaultStreamCountSupplier supplier[int]
 	ownedStreamSvc             *ownedStreamService
+	delegateStreamLimits       bool
 }
 
 var noopFixedLimitSupplier = func() int {
 	return 0
 }
 
-func newStreamCountLimiter(tenantID string, defaultStreamCountSupplier supplier[int], limiter *Limiter, service *ownedStreamService) *streamCountLimiter {
+func newStreamCountLimiter(tenantID string, defaultStreamCountSupplier supplier[int], limiter *Limiter, service *ownedStreamService, delegateStreamLimits bool) *streamCountLimiter {
 	return &streamCountLimiter{
 		tenantID:                   tenantID,
 		limiter:                    limiter,
 		defaultStreamCountSupplier: defaultStreamCountSupplier,
 		ownedStreamSvc:             service,
+		delegateStreamLimits:       delegateStreamLimits,
 	}
 }
 
 func (l *streamCountLimiter) AssertNewStreamAllowed(tenantID string, policy string) error {
+	if l.delegateStreamLimits {
+		return nil
+	}
 	streamCountSupplier, fixedLimitSupplier := l.getSuppliers(tenantID, policy)
 	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit := l.getCurrentLimit(tenantID, policy, fixedLimitSupplier)
 	actualStreamsCount := streamCountSupplier()

@@ -239,8 +239,10 @@ func (c *consumer) waitAndAddPoller() {
 	}
 	c.pollWaitMu.Lock()
 	defer c.pollWaitMu.Unlock()
-	for c.pollWaitState>>32 != 0 {
-		c.pollWaitC.Wait()
+	if c.pollWaitState&math.MaxUint32 == 0 {
+		for c.pollWaitState>>32 != 0 {
+			c.pollWaitC.Wait()
+		}
 	}
 	// Rebalance always takes priority, but if there are no active
 	// rebalances, our poll blocks rebalances.
@@ -280,7 +282,7 @@ func (c *consumer) waitAndAddRebalance() {
 	for c.pollWaitState&math.MaxUint32 != 0 {
 		if !blockedCalled {
 			if c.cl.cfg.onBlocked != nil {
-				c.cl.cfg.onBlocked(c.cl.ctx, c.cl)
+				go c.cl.cfg.onBlocked(c.cl.ctx, c.cl)
 			}
 			blockedCalled = true
 		}
@@ -440,10 +442,12 @@ func (cl *Client) PollRecords(ctx context.Context, maxPollRecords int) Fetches {
 	c.g.undirtyUncommitted()
 
 	// If the user gave us a canceled context, we bail immediately after
-	// un-dirty-ing marked records.
+	// un-dirty-ing marked records. We still need to add a poller to block
+	// rebalances if configured, since we are returning a fetch.
 	if ctx != nil {
 		select {
 		case <-ctx.Done():
+			c.waitAndAddPoller()
 			return NewErrFetch(ctx.Err())
 		default:
 		}
@@ -549,9 +553,11 @@ func (cl *Client) PollRecords(ctx context.Context, maxPollRecords int) Fetches {
 	select {
 	case <-cl.ctx.Done():
 		exit()
+		c.waitAndAddPoller()
 		return NewErrFetch(ErrClientClosed)
 	case <-ctx.Done():
 		exit()
+		c.waitAndAddPoller()
 		return NewErrFetch(ctx.Err())
 	case <-done:
 	}
@@ -674,7 +680,7 @@ func (cl *Client) ResumeFetchPartitions(topicPartitions map[string][]int32) {
 // If using transactions, it is advised to just use a GroupTransactSession and
 // avoid this function entirely.
 //
-// If using group consuming, It is strongly recommended to use this function
+// If using group consuming, it is strongly recommended to use this function
 // outside of the context of a PollFetches loop and only when you know the
 // group is not revoked (i.e., block any concurrent revoke while issuing this
 // call) and to not use this concurrent with committing. Any other usage is
@@ -699,10 +705,10 @@ func (cl *Client) setOffsets(setOffsets map[string]map[int32]EpochOffset, log bo
 	var tps *topicsPartitions
 	switch {
 	case c.d != nil:
-		assigns = c.d.getSetAssigns(setOffsets)
+		assigns = c.d.applySetOffsets(setOffsets)
 		tps = c.d.tps
 	case c.g != nil:
-		assigns = c.g.getSetAssigns(setOffsets)
+		assigns = c.g.applySetOffsets(setOffsets)
 		tps = c.g.tps
 	}
 	if len(assigns) == 0 {
@@ -795,7 +801,7 @@ func (cl *Client) AddConsumeTopics(topics ...string) {
 	cl.triggerUpdateMetadataNow("from AddConsumeTopics")
 }
 
-// GetConsumeTopics retrives a list of current topics being consumed.
+// GetConsumeTopics retrieves a list of current topics being consumed.
 func (cl *Client) GetConsumeTopics() []string {
 	c := &cl.consumer
 	if c.g == nil && c.d == nil {
@@ -1149,7 +1155,7 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 
 			// First, if the request is exact, get rid of the relative
 			// portion. We are modifying a copy of the offset, i.e. we
-			// are appropriately not modfying 'assignments' itself.
+			// are appropriately not modifying 'assignments' itself.
 			if offset.at >= 0 {
 				offset.at += offset.relative
 				if offset.at < 0 {
@@ -1759,7 +1765,7 @@ func (c *consumer) startNewSession(tps *topicsPartitions) *consumerSession {
 		sns.source.maybeConsume()
 	})
 
-	// At this point, any source that was not consuming becauase it saw the
+	// At this point, any source that was not consuming because it saw the
 	// session was stopped has been notified to potentially start consuming
 	// again. The session is alive.
 
@@ -1767,7 +1773,7 @@ func (c *consumer) startNewSession(tps *topicsPartitions) *consumerSession {
 }
 
 // This function is responsible for issuing ListOffsets or
-// OffsetForLeaderEpoch. These requests's responses  are only handled within
+// OffsetForLeaderEpoch. These requests's responses are only handled within
 // the context of a consumer session.
 func (s *consumerSession) listOrEpoch(waiting listOrEpochLoads, immediate bool, why string) {
 	defer s.decWorker()

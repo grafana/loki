@@ -1,0 +1,14 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+
+  # Run golangci-lint as a pre-commit hook to catch issues before they are pushed
+  # See https://golangci-lint.run/ for more information
+  - repo: local
+    hooks:
+      - id: golangci-lint
+        name: Lint Go code
+        entry: go tool golangci-lint run
+        language: system
+        pass_filenames: false
+        types: [go]

@@ -69,13 +69,16 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 			return nil, err
 		}
 
-		r := dataset.NewReader(dataset.ReaderOptions{
+		r := dataset.NewRowReader(dataset.RowReaderOptions{
 			Dataset: t,
 			Columns: dsetColumns,
 
 			// The table is in memory, so don't prefetch.
 			Prefetch: false,
 		})
+		if err := r.Open(context.Background()); err != nil {
+			return nil, fmt.Errorf("opening dataset row reader: %w", err)
+		}
 
 		tableSequences = append(tableSequences, &tableSequence{
 			columns:         dsetColumns,
@@ -150,7 +153,7 @@ var _ loser.Sequence = (*tableSequence)(nil)
 func tableSequenceAt(seq *tableSequence) result.Result[dataset.Row] { return seq.At() }
 func tableSequenceClose(seq *tableSequence)                         { seq.Close() }
 
-func NewDatasetSequence(r *dataset.Reader, bufferSize int) DatasetSequence {
+func NewDatasetSequence(r *dataset.RowReader, bufferSize int) DatasetSequence {
 	return DatasetSequence{
 		r:   r,
 		buf: make([]dataset.Row, bufferSize),
@@ -160,7 +163,7 @@ func NewDatasetSequence(r *dataset.Reader, bufferSize int) DatasetSequence {
 type DatasetSequence struct {
 	curValue result.Result[dataset.Row]
 
-	r *dataset.Reader
+	r *dataset.RowReader
 
 	buf  []dataset.Row
 	off  int // Offset into buf

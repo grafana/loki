@@ -34,7 +34,7 @@ func Test_planWorkflow(t *testing.T) {
 
 		physicalPlan := physical.FromGraph(physicalGraph)
 
-		graph, err := planWorkflow("", physicalPlan)
+		graph, err := planWorkflow("", physicalPlan, cacheParams{})
 		require.NoError(t, err)
 		require.Equal(t, 1, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -72,7 +72,7 @@ func Test_planWorkflow(t *testing.T) {
 
 		physicalPlan := physical.FromGraph(physicalGraph)
 
-		graph, err := planWorkflow("", physicalPlan)
+		graph, err := planWorkflow("", physicalPlan, cacheParams{})
 		require.NoError(t, err)
 		require.Equal(t, 1, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -82,7 +82,7 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000001
 │ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 │
-│ RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s
+│ RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
 │ └── DataObjScan location= streams=0 section_id=0 projections=()
 │         └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
@@ -112,8 +112,10 @@ func Test_planWorkflow(t *testing.T) {
 		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: rangeAgg})
 
 		physicalPlan := physical.FromGraph(physicalGraph)
+		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
+		require.NoError(t, err)
 
-		graph, err := planWorkflow("", physicalPlan)
+		graph, err := planWorkflow("", physicalPlan, cacheParams{})
 		require.NoError(t, err)
 		require.Equal(t, 2, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -123,21 +125,56 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000001
 │ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 │
-│ VectorAggregation operation=invalid
-│     └── @source stream=00000000000000000000000003
+│ Batching batch_size=500
+│ └── VectorAggregation operation=invalid group_by=()
+│         └── @source stream=00000000000000000000000003
 └
 ┌ Task 00000000000000000000000002
 │ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 │
-│ RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s
+│ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000003
-│ └── DataObjScan location= streams=0 section_id=0 projections=()
-│         └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── DataObjScan location= streams=0 section_id=0 projections=()
+│             └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
 `)
 
 		actualOutput := Sprint(&Workflow{graph: graph})
 		require.Equal(t, strings.TrimSpace(expectOuptut), strings.TrimSpace(actualOutput))
+
+		t.Run("with caching", func(t *testing.T) {
+			ulidGen := ulidGenerator{}
+
+			graph, err := planWorkflow("", physicalPlan, cacheParams{enabled: true, maxSizeBytes: 1 * 1024 * 1024})
+			require.NoError(t, err)
+			require.Equal(t, 2, graph.Len())
+			requireUniqueStreams(t, graph)
+			generateConsistentULIDs(&ulidGen, graph)
+
+			expectOutput := strings.TrimSpace(`
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ └── VectorAggregation operation=invalid group_by=()
+│         └── @source stream=00000000000000000000000003
+└
+┌ Task 00000000000000000000000002
+│ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
+│
+│ Cache max_cacheable_size=1.0 MiB hashed_key=0dbee591f4bc143d key= |>>| Batching |>>| RangeAggregation{operation=invalid,start=1970-01-01T00:00:30Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
+│ │   └── @sink stream=00000000000000000000000003
+│ └── Batching batch_size=500
+│     └── RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         └── DataObjScan location= streams=0 section_id=0 projections=()
+│                 └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+└
+`)
+
+			actualOutput := Sprint(&Workflow{graph: graph})
+			require.Equal(t, strings.TrimSpace(expectOutput), strings.TrimSpace(actualOutput))
+		})
 	})
 
 	t.Run("split on parallelize", func(t *testing.T) {
@@ -173,17 +210,23 @@ func Test_planWorkflow(t *testing.T) {
 			)
 			scanSet = physicalGraph.Add(&physical.ScanSet{
 				Targets: []*physical.ScanTarget{
-					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
-						Location:     "a",
-						MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()}},
+					{
+						Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+							Location:     "a",
+							MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
+						},
 					},
-					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
-						Location:     "b",
-						MaxTimeRange: physical.TimeRange{Start: time.Unix(20, 0).UTC(), End: time.Unix(60, 0).UTC()}},
+					{
+						Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+							Location:     "b",
+							MaxTimeRange: physical.TimeRange{Start: time.Unix(20, 0).UTC(), End: time.Unix(60, 0).UTC()},
+						},
 					},
-					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
-						Location:     "c",
-						MaxTimeRange: physical.TimeRange{Start: time.Unix(0, 0).UTC(), End: time.Unix(50, 0).UTC()}},
+					{
+						Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+							Location:     "c",
+							MaxTimeRange: physical.TimeRange{Start: time.Unix(0, 0).UTC(), End: time.Unix(50, 0).UTC()},
+						},
 					},
 				},
 			})
@@ -196,8 +239,10 @@ func Test_planWorkflow(t *testing.T) {
 		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: project, Child: scanSet})
 
 		physicalPlan := physical.FromGraph(physicalGraph)
+		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
+		require.NoError(t, err)
 
-		graph, err := planWorkflow("", physicalPlan)
+		graph, err := planWorkflow("", physicalPlan, cacheParams{})
 		require.NoError(t, err)
 		require.Equal(t, 5, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -207,44 +252,305 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000001
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ VectorAggregation operation=invalid
-│     └── @source stream=00000000000000000000000006
+│ Batching batch_size=500
+│ └── VectorAggregation operation=invalid group_by=()
+│         └── @source stream=00000000000000000000000006
 └
 ┌ Task 00000000000000000000000002
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s
-│     ├── @source stream=00000000000000000000000007
-│     ├── @source stream=00000000000000000000000008
-│     ├── @source stream=00000000000000000000000009
-│     └── @sink stream=00000000000000000000000006
+│ Batching batch_size=500
+│ │   └── @sink stream=00000000000000000000000006
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         ├── @source stream=00000000000000000000000007
+│         ├── @source stream=00000000000000000000000008
+│         └── @source stream=00000000000000000000000009
 └
 ┌ Task 00000000000000000000000003
 │ @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 │
-│ Filter
+│ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000007
-│ └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
-│     └── DataObjScan location=a streams=0 section_id=0 projections=()
-│             └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│ └── Filter
+│     └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
+│         └── DataObjScan location=a streams=0 section_id=0 projections=()
+│                 └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
 ┌ Task 00000000000000000000000004
 │ @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
 │
-│ Filter
+│ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000008
-│ └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
-│     └── DataObjScan location=b streams=0 section_id=0 projections=()
-│             └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
+│ └── Filter
+│     └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
+│         └── DataObjScan location=b streams=0 section_id=0 projections=()
+│                 └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
 └
 ┌ Task 00000000000000000000000005
 │ @max_time_range start=1970-01-01T00:00:00Z end=1970-01-01T00:00:50Z
 │
-│ Filter
+│ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000009
-│ └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
-│     └── DataObjScan location=c streams=0 section_id=0 projections=()
-│             └── @max_time_range start=1970-01-01T00:00:00Z end=1970-01-01T00:00:50Z
+│ └── Filter
+│     └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
+│         └── DataObjScan location=c streams=0 section_id=0 projections=()
+│                 └── @max_time_range start=1970-01-01T00:00:00Z end=1970-01-01T00:00:50Z
+└
+`)
+
+		actualOutput := Sprint(&Workflow{graph: graph})
+		require.Equal(t, strings.TrimSpace(expectOuptut), strings.TrimSpace(actualOutput))
+
+		t.Run("with caching", func(t *testing.T) {
+			ulidGen := ulidGenerator{}
+
+			graph, err := planWorkflow("", physicalPlan, cacheParams{enabled: true, maxSizeBytes: 1 * 1024 * 1024})
+			require.NoError(t, err)
+			require.Equal(t, 5, graph.Len())
+			requireUniqueStreams(t, graph)
+			generateConsistentULIDs(&ulidGen, graph)
+
+			expectOutput := strings.TrimSpace(`
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ └── VectorAggregation operation=invalid group_by=()
+│         └── @source stream=00000000000000000000000006
+└
+┌ Task 00000000000000000000000002
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ │   └── @sink stream=00000000000000000000000006
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         ├── @source stream=00000000000000000000000007
+│         ├── @source stream=00000000000000000000000008
+│         └── @source stream=00000000000000000000000009
+└
+┌ Task 00000000000000000000000003
+│ @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│
+│ Cache max_cacheable_size=1.0 MiB hashed_key=c993ba951c1c73ef key= |>>| Batching |>>| Filter{predicates=[]} |>>| Projection{all=true,mode=expand,expressions=[PARSE_LOGFMT(builtin.message)]} |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
+│ │   └── @sink stream=00000000000000000000000007
+│ └── Batching batch_size=500
+│     └── Filter
+│         └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
+│             └── DataObjScan location=a streams=0 section_id=0 projections=()
+│                     └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+└
+┌ Task 00000000000000000000000004
+│ @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
+│
+│ Cache max_cacheable_size=1.0 MiB hashed_key=9332cb1201f497a1 key= |>>| Batching |>>| Filter{predicates=[]} |>>| Projection{all=true,mode=expand,expressions=[PARSE_LOGFMT(builtin.message)]} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│ │   └── @sink stream=00000000000000000000000008
+│ └── Batching batch_size=500
+│     └── Filter
+│         └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
+│             └── DataObjScan location=b streams=0 section_id=0 projections=()
+│                     └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
+└
+┌ Task 00000000000000000000000005
+│ @max_time_range start=1970-01-01T00:00:00Z end=1970-01-01T00:00:50Z
+│
+│ Cache max_cacheable_size=1.0 MiB hashed_key=aea367473a8b42dc key= |>>| Batching |>>| Filter{predicates=[]} |>>| Projection{all=true,mode=expand,expressions=[PARSE_LOGFMT(builtin.message)]} |>>| DataObjScan{location=c,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:00Z,max_time_range_end=1970-01-01T00:00:50Z}
+│ │   └── @sink stream=00000000000000000000000009
+│ └── Batching batch_size=500
+│     └── Filter
+│         └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
+│             └── DataObjScan location=c streams=0 section_id=0 projections=()
+│                     └── @max_time_range start=1970-01-01T00:00:00Z end=1970-01-01T00:00:50Z
+└
+`)
+
+			actualOutput := Sprint(&Workflow{graph: graph})
+			require.Equal(t, strings.TrimSpace(expectOutput), strings.TrimSpace(actualOutput))
+		})
+	})
+
+	t.Run("split vector aggregation parallelism", func(t *testing.T) {
+		ulidGen := ulidGenerator{}
+
+		var (
+			physicalGraph dag.Graph[physical.Node]
+			vecAgg        = physicalGraph.Add(&physical.VectorAggregation{
+				Operation: types.VectorAggregationTypeSum,
+			})
+			parallelize = physicalGraph.Add(&physical.Parallelize{})
+			rangeAgg    = physicalGraph.Add(&physical.RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Start:     time.Unix(5, 0).UTC(),
+				End:       time.Unix(45, 0).UTC(),
+			})
+			scanSet = physicalGraph.Add(&physical.ScanSet{
+				Targets: []*physical.ScanTarget{
+					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+						Location:     "a",
+						MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()}},
+					},
+					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+						Location:     "b",
+						MaxTimeRange: physical.TimeRange{Start: time.Unix(20, 0).UTC(), End: time.Unix(60, 0).UTC()}},
+					},
+				},
+			})
+		)
+
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vecAgg, Child: parallelize})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: rangeAgg})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: scanSet})
+
+		physicalPlan := physical.FromGraph(physicalGraph)
+		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
+		require.NoError(t, err)
+
+		graph, err := planWorkflow("", physicalPlan, cacheParams{})
+		require.NoError(t, err)
+		require.Equal(t, 3, graph.Len()) // 1 global + 2 local (one per scan target)
+		requireUniqueStreams(t, graph)
+		generateConsistentULIDs(&ulidGen, graph)
+
+		// The workflow should have:
+		// - Task 1: Global VectorAgg reading from 2 streams (one per partition)
+		// - Task 2: RangeAgg + Scan for partition "a"
+		// - Task 3: RangeAgg + Scan for partition "b"
+		// All task fragments are wrapped with a Batching node.
+		expectOuptut := strings.TrimSpace(`
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ └── VectorAggregation operation=sum group_by=()
+│         ├── @source stream=00000000000000000000000004
+│         └── @source stream=00000000000000000000000005
+└
+┌ Task 00000000000000000000000002
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ │   └── @sink stream=00000000000000000000000004
+│ └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── DataObjScan location=a streams=0 section_id=0 projections=()
+│             └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+└
+┌ Task 00000000000000000000000003
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ │   └── @sink stream=00000000000000000000000005
+│ └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── DataObjScan location=b streams=0 section_id=0 projections=()
+│             └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
+└
+`)
+
+		actualOutput := Sprint(&Workflow{graph: graph})
+		require.Equal(t, strings.TrimSpace(expectOuptut), strings.TrimSpace(actualOutput))
+
+		t.Run("with caching", func(t *testing.T) {
+			ulidGen := ulidGenerator{}
+
+			graph, err := planWorkflow("", physicalPlan, cacheParams{enabled: true, maxSizeBytes: 1 * 1024 * 1024})
+			require.NoError(t, err)
+			require.Equal(t, 3, graph.Len())
+			requireUniqueStreams(t, graph)
+			generateConsistentULIDs(&ulidGen, graph)
+
+			expectOutput := strings.TrimSpace(`
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ └── VectorAggregation operation=sum group_by=()
+│         ├── @source stream=00000000000000000000000004
+│         └── @source stream=00000000000000000000000005
+└
+┌ Task 00000000000000000000000002
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Cache max_cacheable_size=1.0 MiB hashed_key=502e8c56ecf762f4 key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
+│ │   └── @sink stream=00000000000000000000000004
+│ └── Batching batch_size=500
+│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         └── DataObjScan location=a streams=0 section_id=0 projections=()
+│                 └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+└
+┌ Task 00000000000000000000000003
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Cache max_cacheable_size=1.0 MiB hashed_key=9888d9ec9f19e11e key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│ │   └── @sink stream=00000000000000000000000005
+│ └── Batching batch_size=500
+│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         └── DataObjScan location=b streams=0 section_id=0 projections=()
+│                 └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
+└
+`)
+
+			actualOutput := Sprint(&Workflow{graph: graph})
+			require.Equal(t, strings.TrimSpace(expectOutput), strings.TrimSpace(actualOutput))
+		})
+	})
+
+	t.Run("Predicates on the ScanSet are combined with the predicate pushed down to the DataObjScan", func(t *testing.T) {
+		ulidGen := ulidGenerator{}
+
+		var physicalGraph dag.Graph[physical.Node]
+
+		parallelize := physicalGraph.Add(&physical.Parallelize{})
+		topk := physicalGraph.Add(&physical.TopK{
+			SortBy:    &physical.ColumnExpr{Ref: semconv.ColumnIdentTimestamp.ColumnRef()},
+			Ascending: false,
+			K:         100,
+		})
+		scanSet := physicalGraph.Add(&physical.ScanSet{
+			Predicates: []physical.Expression{
+				&physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: semconv.ColumnIdentTimestamp.ColumnRef()},
+					Right: physical.NewLiteral(time.Unix(5, 0).UTC().UnixNano()),
+					Op:    types.BinaryOpGt,
+				},
+			},
+			Targets: []*physical.ScanTarget{
+				{
+					Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+						Location:     "a",
+						MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
+						Predicates: []physical.Expression{
+							&physical.BinaryExpr{
+								Left:  &physical.ColumnExpr{Ref: semconv.ColumnIdentError.ColumnRef()},
+								Right: physical.NewLiteral(""),
+								Op:    types.BinaryOpNeq,
+							},
+						},
+					},
+				},
+			},
+		})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: topk, Child: parallelize})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: scanSet})
+
+		physicalPlan := physical.FromGraph(physicalGraph)
+
+		graph, err := planWorkflow("", physicalPlan, cacheParams{})
+		require.NoError(t, err)
+		require.Equal(t, 2, graph.Len())
+		requireUniqueStreams(t, graph)
+		generateConsistentULIDs(&ulidGen, graph)
+
+		expectOuptut := strings.TrimSpace(`
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│
+│ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=100
+│     └── @source stream=00000000000000000000000003
+└
+┌ Task 00000000000000000000000002
+│ @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│
+│ DataObjScan location=a streams=0 section_id=0 projections=() predicate[0]=GT(builtin.timestamp, 5000000000) predicate[1]=NEQ(generated.__error__, "")
+│     ├── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│     └── @sink stream=00000000000000000000000003
 └
 `)
 

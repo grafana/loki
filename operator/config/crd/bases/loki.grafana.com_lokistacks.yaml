@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: lokistacks.loki.grafana.com
 spec:
   group: loki.grafana.com
@@ -3845,6 +3845,89 @@ spec:
                           type: object
                         type: array
                     type: object
+                  disableIngress:
+                    description: |-
+                      DisableIngress disables automatic creation of external access resources (Route / Ingress).
+                      When true, no Route or Ingress will be created for the gateway.
+                    type: boolean
+                  gateway:
+                    description: Gateway defines the configuration specific to Gateway
+                      server
+                    properties:
+                      tls:
+                        description: TLS defines the TLS configuration for the Gateway
+                          server.
+                        properties:
+                          ca:
+                            description: CA can be used to specify a custom list of
+                              trusted certificate authorities.
+                            properties:
+                              configMapName:
+                                description: ConfigMapName contains the name of the
+                                  ConfigMap containing the referenced value.
+                                type: string
+                              key:
+                                description: Name of the key used to get the value
+                                  in either the referenced ConfigMap or Secret.
+                                type: string
+                              secretName:
+                                description: SecretName contains the name of the Secret
+                                  containing the referenced value.
+                                type: string
+                            required:
+                            - key
+                            type: object
+                            x-kubernetes-validations:
+                            - message: Either configMapName or secretName needs to
+                                be set
+                              rule: has(self.configMapName) || has(self.secretName)
+                            - message: Only one of configMapName and secretName can
+                                be set
+                              rule: '!(has(self.configMapName) && has(self.secretName))'
+                          certificate:
+                            description: Certificate points to the server certificate
+                              to use.
+                            properties:
+                              configMapName:
+                                description: ConfigMapName contains the name of the
+                                  ConfigMap containing the referenced value.
+                                type: string
+                              key:
+                                description: Name of the key used to get the value
+                                  in either the referenced ConfigMap or Secret.
+                                type: string
+                              secretName:
+                                description: SecretName contains the name of the Secret
+                                  containing the referenced value.
+                                type: string
+                            required:
+                            - key
+                            type: object
+                            x-kubernetes-validations:
+                            - message: Either configMapName or secretName needs to
+                                be set
+                              rule: has(self.configMapName) || has(self.secretName)
+                            - message: Only one of configMapName and secretName can
+                                be set
+                              rule: '!(has(self.configMapName) && has(self.secretName))'
+                          privateKey:
+                            description: PrivateKey points to the private key of the
+                              server certificate.
+                            properties:
+                              key:
+                                description: Key contains the name of the key inside
+                                  the referenced Secret.
+                                type: string
+                              secretName:
+                                description: SecretName contains the name of the Secret
+                                  containing the referenced value.
+                                type: string
+                            required:
+                            - key
+                            - secretName
+                            type: object
+                        type: object
+                    type: object
                   mode:
                     default: openshift-logging
                     description: Mode defines the mode in which lokistack-gateway
@@ -3875,14 +3958,15 @@ spec:
                         description: OTLP contains settings for ingesting data using
                           OTLP in the OpenShift tenancy mode.
                         properties:
-                          disableRecommendedAttributes:
+                          enableConsoleLabels:
                             description: |-
-                              DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
+                              EnableConsoleLabels can be used to add a set of additional stream labels to the OTLP input. These labels are
+                              currently used by the logs console in OpenShift.
 
-                              Enabling this setting removes the "recommended attributes" from the stream labels. This requires an update
-                              to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.
+                              This is not different from manually adding some or all of the attributes to the set of stream labels using the
+                              normal OTLP configuration.
 
-                              The recommended attributes are:
+                              The additional attributes which are converted to stream labels are:
 
                                - k8s.container.name
                                - k8s.cronjob.name
@@ -3896,9 +3980,6 @@ spec:
                                - kubernetes.host
                                - kubernetes.pod_name
                                - service.name
-
-                              This option is supposed to be combined with a custom attribute configuration listing the stream labels that
-                              should continue to exist.
 
                               See also: https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes
                             type: boolean

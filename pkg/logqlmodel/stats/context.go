@@ -80,6 +80,8 @@ const (
 	BloomFilterCache          CacheType = "bloom-filter"          //nolint:staticcheck
 	BloomBlocksCache          CacheType = "bloom-blocks"          //nolint:staticcheck
 	BloomMetasCache           CacheType = "bloom-metas"           //nolint:staticcheck
+	EngineLogResultCache      CacheType = "engine-log-result"     //nolint:staticcheck
+	TaskResultCache           CacheType = "task-result"           //nolint:staticcheck
 )
 
 // NewContext creates a new statistics context
@@ -295,6 +297,8 @@ func (i *Index) Merge(m Index) {
 	i.PostFilterChunks += m.PostFilterChunks
 	i.ShardsDuration += m.ShardsDuration
 	i.TotalStreams += m.TotalStreams
+	i.ChunkRefsLookupTime += m.ChunkRefsLookupTime
+	i.BloomFilterTime += m.BloomFilterTime
 	if m.UsedBloomFilters {
 		i.UsedBloomFilters = m.UsedBloomFilters
 	}
@@ -344,7 +348,7 @@ func (r *Result) Merge(m Result) {
 	r.Index.Merge(m.Index)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
 		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime),
-		int(r.Summary.TotalEntriesReturned))
+		int(r.Summary.TotalEntriesReturned+m.Summary.TotalEntriesReturned))
 }
 
 // ConvertSecondsToNanoseconds converts time.Duration representation of seconds (float64)

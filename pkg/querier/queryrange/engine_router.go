@@ -7,7 +7,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -23,8 +22,8 @@ import (
 type RouterConfig struct {
 	Enabled bool
 
-	Start time.Time     // Start time of the v2 engine
-	Lag   time.Duration // Lag after which v2 engine has data
+	// V2Range returns the valid query range for v2 engine.
+	V2Range func() (start, end time.Time)
 
 	// Validate function to check if the query is supported by the engine.
 	Validate func(params logql.Params) bool
@@ -41,27 +40,22 @@ type engineReqResp struct {
 
 // engineRouter handles splitting queries between V1 and V2 engines
 type engineRouter struct {
-	v2Start time.Time
-	v2Lag   time.Duration
-
 	forMetricQuery bool
 
 	v1Next queryrangebase.Handler
 	v2Next queryrangebase.Handler
 
-	checkV2 func(params logql.Params) bool
+	v2Range      func() (start, end time.Time)
+	validV2Query func(params logql.Params) bool
 
 	merger queryrangebase.Merger
 
 	logger log.Logger
-
-	// Used for tests.
-	clock quartz.Clock
 }
 
-// newEngineRouterMiddleware creates a middleware that splits and routes part of the query
+// NewEngineRouterMiddleware creates a middleware that splits and routes part of the query
 // to v2 engine if the query is supported by it.
-func newEngineRouterMiddleware(
+func NewEngineRouterMiddleware(
 	v2RouterConfig RouterConfig,
 	v1Chain []queryrangebase.Middleware,
 	merger queryrangebase.Merger,
@@ -74,21 +68,19 @@ func newEngineRouterMiddleware(
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &engineRouter{
-			v2Start:        v2RouterConfig.Start,
-			v2Lag:          v2RouterConfig.Lag,
+			v2Range:        v2RouterConfig.V2Range,
 			v1Next:         queryrangebase.MergeMiddlewares(v1Chain...).Wrap(next),
 			v2Next:         v2RouterConfig.Handler,
-			checkV2:        v2RouterConfig.Validate,
+			validV2Query:   v2RouterConfig.Validate,
 			merger:         merger,
 			logger:         logger,
 			forMetricQuery: metricQuery,
-			clock:          quartz.NewReal(),
 		}
 	})
 }
 
 func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	start, end := e.v2Start, e.getEnd()
+	start, end := e.v2Range()
 	// if query is entirely before or after v2 engine range, process using next handler.
 	// ignore any boundary overlap, splitting requests that fall on bounary would result in tiny requests.
 	if !e.isOverlappingV2range(r, start, end) {
@@ -101,7 +93,7 @@ func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryr
 	}
 
 	// Unsupported queries should be entirely executed by chunks.
-	if !e.checkV2(params) {
+	if !e.validV2Query(params) {
 		return e.v1Next.Do(ctx, r)
 	}
 
@@ -146,75 +138,126 @@ func (e engineRouter) isOverlappingV2range(r queryrangebase.Request, start, end 
 	return true
 }
 
-// the end time of the v2 engine based on current timestamp and v2 engine lag
-func (e engineRouter) getEnd() time.Time {
-	return e.clock.Now().UTC().Add(-e.v2Lag)
-}
-
-// splitOverlapping breaks down the request into multiple ranges based on the V2 engine time range.
-// It returns a max of 3 requests:
-// - one for the range before V2 engine
-// - one for the range overlapping V2 engine range
-// - one for the range after V2 engine
+// splitOverlapping creates a set of requests to be made. Returned requests are
+// split up to the boundary of the v2 engine's time range (v2Start, v2End).
+//
+// splitOverlapping can create 1 to 3 splits depending on the overlap between
+// the requested time range and the v2 engine's time range:
+//
+//   - A split for v2 is created for timestamps that overlap with v2Start and
+//     v2End.
+//   - If necessary, a pre-v2 split is created for timestamps before v2Start.
+//   - If necessary, a post-v2 split is created for timestamps after v2End.
+//
+// If engineRouter is used for metric queries, the split for v2 will be aligned
+// to the requested step: the start time will be shifted up to the next step
+// boundary, and the end time will be rounded down to the previous step
+// boundary.
 func (e *engineRouter) splitOverlapping(r queryrangebase.Request, v2Start, v2End time.Time) []*engineReqResp {
-	var (
-		reqs []*engineReqResp
+	if !e.isOverlappingV2range(r, v2Start, v2End) {
+		// This line should be unreachable, since [engineRouter.Do] already
+		// makes sure there is at least some overlap. However, we keep this line
+		// for safety so that logsSplit doesn't produce incorrect splits.
+		return []*engineReqResp{{
+			lokiResult: lokiResult{
+				req: r,
+				ch:  make(chan *packedResp),
+			},
+			isV2Engine: false,
+		}}
+	}
 
-		stepNs = r.GetStep() * int64(time.Millisecond)
-		gap    = time.Duration(stepNs)
+	// step determines alignment for splits.
+	//
+	// step is only used for metrics queries, which produce a set of samples
+	// from r.GetStart() to r.GetEnd() incremented by step. For logs queries,
+	// step is left as the zero value.
+	var step time.Duration
+
+	if e.forMetricQuery {
+		// Get the step (in milliseconds) from the request.
+		step = time.Duration(r.GetStep() * int64(time.Millisecond))
+	}
+
+	var (
+		// Align v2Start and v2End to the requested step. This is a no-op for logs
+		// queries, as the step is 0.
+		alignedV2Start, alignedV2End = alignV2Range(step, v2Start, v2End)
+
+		// v2SplitStart is clamped to the earliest timestamp which is still
+		// serviceable by v2.
+		v2SplitStart = maxTime(alignedV2Start, r.GetStart())
+
+		// v2SplitEnd is clamped to the latest timestamp which is still
+		// serviceable by v2.
+		v2SplitEnd = minTime(alignedV2End, r.GetEnd())
 	)
 
-	// metric query splits are separated by a gap of 1 step. This is to ensure a step is included only in a single split.
-	if !e.forMetricQuery {
-		gap = 0
-	}
+	var splits []*engineReqResp
 
-	// align the ranges by step before splitting.
-	start, end := alignStartEnd(stepNs, r.GetStart(), r.GetEnd())
-	v2Start, v2End = alignStartEnd(stepNs, v2Start, v2End)
+	// We need a pre-v2 split if the request starts before v2.
+	if r.GetStart().Before(v2SplitStart) {
+		// For metric queries, two splits must not share an instant (determined
+		// by step). To avoid this, we shift back the end by one step.
+		//
+		// To avoid this resulting in end < start, we clamp it to the starting
+		// time.
+		preV2SplitEnd := maxTime(r.GetStart(), v2SplitStart.Add(-step))
 
-	// chunk req before V2 engine range
-	if start.Before(v2Start) {
-		reqs = append(reqs, &engineReqResp{
+		splits = append(splits, &engineReqResp{
 			lokiResult: lokiResult{
-				req: r.WithStartEnd(start, v2Start.Add(-gap)), // add gap between splits
+				req: r.WithStartEnd(r.GetStart(), preV2SplitEnd),
 				ch:  make(chan *packedResp),
 			},
 			isV2Engine: false,
 		})
 	}
 
-	addSplitGap := false
-	// chunk req after V2 engine range
-	if end.After(v2End) {
-		reqs = append(reqs, &engineReqResp{
+	// Create the v2 split.
+	{
+		splits = append(splits, &engineReqResp{
 			lokiResult: lokiResult{
-				req: r.WithStartEnd(v2End, end),
+				req: r.WithStartEnd(v2SplitStart, v2SplitEnd),
+				ch:  make(chan *packedResp),
+			},
+			isV2Engine: true,
+		})
+	}
+
+	// We need a post-v2 split if v2 ends before the request ends.
+	if v2SplitEnd.Before(r.GetEnd()) {
+		// For metric queries, two splits must not share an instant (determined
+		// by step). To avoid this, we shift the start forward by one step.
+		//
+		// To avoid this resulting in end < start, we clamp it to the ending
+		// time.
+		postV2SplitStart := minTime(v2SplitEnd.Add(step), r.GetEnd())
+
+		// The start must be one step *after* v2SplitEnd.
+		splits = append(splits, &engineReqResp{
+			lokiResult: lokiResult{
+				req: r.WithStartEnd(postV2SplitStart, r.GetEnd()),
 				ch:  make(chan *packedResp),
 			},
 			isV2Engine: false,
 		})
-
-		// add gap after v2 query only if there is a chunk query after it.
-		addSplitGap = true
 	}
 
-	if start.After(v2Start) {
-		v2Start = start
-	}
-	if end.Before(v2End) {
-		v2End = end
-	} else if addSplitGap {
-		v2End = v2End.Add(-gap)
-	}
+	return splits
+}
 
-	return append(reqs, &engineReqResp{
-		lokiResult: lokiResult{
-			req: r.WithStartEnd(v2Start, v2End),
-			ch:  make(chan *packedResp),
-		},
-		isV2Engine: true,
-	})
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
+}
+
+func maxTime(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }
 
 func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp) {
@@ -279,22 +322,39 @@ func (e *engineRouter) process(ctx context.Context, inputs []*engineReqResp, lim
 					}
 				}
 			}
-
 		}
 	}
 
 	return responses, nil
 }
 
-// alignStartEnd aligns start and end times to step boundaries.
-func alignStartEnd(stepNs int64, start, end time.Time) (time.Time, time.Time) {
-	startNs := start.UnixNano()
-	endNs := end.UnixNano()
-
-	startNs -= startNs % stepNs // round down
-	if mod := endNs % stepNs; mod != 0 {
-		endNs += stepNs - mod // round up
+// alignV2Range aligns v2Start and v2End to the given step.
+//
+// - If v2Start is not aligned to step, it is rounded up to the next step boundary.
+// - If v2End is not aligned to step, it is rounded down to the previous step boundary.
+//
+// If step is 0, no alignment is done.
+func alignV2Range(step time.Duration, v2Start, v2End time.Time) (v2AlignedStart, v2AlignedEnd time.Time) {
+	if step == 0 {
+		// No alignment to perform.
+		return v2Start, v2End
 	}
 
-	return time.Unix(0, startNs), time.Unix(0, endNs)
+	if mod := v2Start.UnixNano() % step.Nanoseconds(); mod != 0 {
+		// Round the start time up.
+		v2AlignedStart = v2Start.Add(step - time.Duration(mod))
+	} else {
+		// Start time is already aligned.
+		v2AlignedStart = v2Start
+	}
+
+	if mod := v2End.UnixNano() % step.Nanoseconds(); mod != 0 {
+		// Round the end time down to the previous step boundary.
+		v2AlignedEnd = v2End.Add(-time.Duration(mod))
+	} else {
+		// End time is already aligned.
+		v2AlignedEnd = v2End
+	}
+
+	return v2AlignedStart, v2AlignedEnd
 }

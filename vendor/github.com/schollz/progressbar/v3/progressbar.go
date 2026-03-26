@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"net/http"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +79,8 @@ type config struct {
 
 	// whether the output is expected to contain color codes
 	colorCodes bool
+	// custom colors to use for colorCodes
+	customColors map[string]string
 
 	// show rate of change in kB/sec or MB/sec
 	showBytes bool
@@ -280,6 +282,14 @@ func OptionEnableColorCodes(colorCodes bool) Option {
 	}
 }
 
+// OptionSetCutomColorCodes overrides DefaultColors for color codes
+// using mitchellh/colorstring.Colorize in func customColorstringColor
+func OptionSetCustomColorCodes(customColors map[string]string) Option {
+	return func(p *ProgressBar) {
+		p.config.customColors = customColors
+	}
+}
+
 // OptionSetElapsedTime will enable elapsed time. Always enabled if OptionSetPredictTime is true.
 func OptionSetElapsedTime(elapsedTime bool) Option {
 	return func(p *ProgressBar) {
@@ -449,17 +459,15 @@ func NewOptions64(max int64, options ...Option) *ProgressBar {
 		go func() {
 			ticker := time.NewTicker(b.config.spinnerChangeInterval)
 			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					if b.IsFinished() {
-						return
-					}
-					if b.IsStarted() {
-						b.lock.Lock()
-						b.render()
-						b.lock.Unlock()
-					}
+
+			for range ticker.C {
+				if b.IsFinished() {
+					return
+				}
+				if b.IsStarted() {
+					b.lock.Lock()
+					b.render()
+					b.lock.Unlock()
 				}
 			}
 		}()
@@ -806,6 +814,13 @@ func (p *ProgressBar) Describe(description string) {
 	if p.config.invisible {
 		return
 	}
+	// if already finished, re-render with the new description
+	if p.state.finished && !p.config.clearOnFinish && !p.config.useANSICodes {
+		clearProgressBar(p.config, p.state)
+		io.Copy(p.config.writer, &p.config.stdBuffer)
+		renderProgressBar(p.config, &p.state)
+		return
+	}
 	p.render()
 }
 
@@ -939,7 +954,13 @@ func (p *ProgressBar) render() error {
 		if p.config.maxDetailRow > 0 {
 			p.renderDetails()
 			// put the cursor back to the last line of the details
-			writeString(p.config, fmt.Sprintf("\u001B[%dB\r\u001B[%dC", p.config.maxDetailRow, len(p.state.details[len(p.state.details)-1])))
+			var lastDetailLength int
+			if len(p.state.details) == 0 {
+				lastDetailLength = 0
+			} else {
+				lastDetailLength = len(p.state.details[len(p.state.details)-1])
+			}
+			writeString(p.config, fmt.Sprintf("\u001B[%dB\r\u001B[%dC", p.config.maxDetailRow, lastDetailLength))
 		}
 		if p.config.onCompletion != nil {
 			p.config.onCompletion()
@@ -976,14 +997,12 @@ func (p *ProgressBar) render() error {
 func (p *ProgressBar) lengthUnknown() {
 	p.config.ignoreLength = true
 	p.config.max = int64(p.config.width)
-	p.config.predictTime = false
 }
 
 // lengthKnown sets the progress bar to do not ignore the length
 func (p *ProgressBar) lengthKnown(max int64) {
 	p.config.ignoreLength = false
 	p.config.max = max
-	p.config.predictTime = true
 }
 
 // State returns the current state
@@ -1014,36 +1033,68 @@ func (p *ProgressBar) State() State {
 
 // StartHTTPServer starts an HTTP server dedicated to serving progress bar updates. This allows you to
 // display the status in various UI elements, such as an OS status bar with an `xbar` extension.
-// It is recommended to run this function in a separate goroutine to avoid blocking the main thread.
+// When the progress bar is finished, call `server.Shutdown()` or `server.Close()` to shut it down manually.
 //
 // hostPort specifies the address and port to bind the server to, for example, "0.0.0.0:19999".
-func (p *ProgressBar) StartHTTPServer(hostPort string) {
-	// for advanced users, we can return the data as json
-	http.HandleFunc("/state", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/json")
-		// since the state is a simple struct, we can just ignore the error
+func (p *ProgressBar) StartHTTPServer(hostPort string) *http.Server {
+	mux := http.NewServeMux()
+
+	// register routes
+	mux.HandleFunc("/state", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		bs, _ := json.Marshal(p.State())
 		w.Write(bs)
 	})
-	// for others, we just return the description in a plain text format
-	http.HandleFunc("/desc", func(w http.ResponseWriter, r *http.Request) {
+
+	mux.HandleFunc("/desc", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
+		state := p.State()
 		fmt.Fprintf(w,
 			"%d/%d, %.2f%%, %s left",
-			p.State().CurrentNum, p.State().Max, p.State().CurrentPercent*100,
-			(time.Second * time.Duration(p.State().SecondsLeft)).String(),
+			state.CurrentNum, state.Max, state.CurrentPercent*100,
+			(time.Second * time.Duration(state.SecondsLeft)).String(),
 		)
 	})
-	log.Fatal(http.ListenAndServe(hostPort, nil))
+
+	// create the server instance
+	server := &http.Server{
+		Addr:    hostPort,
+		Handler: mux,
+	}
+
+	// start the server in a goroutine and ignore errors
+	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				fmt.Println("encounter panic: ", err)
+			}
+		}()
+
+		_ = server.ListenAndServe()
+	}()
+
+	// return the server instance for use by the caller
+	return server
+}
+
+// use customstring.Colorize to customize color palette
+func customColorstringColor(col map[string]string, str string) string {
+	cs := colorstring.Colorize{Colors: col, Reset: true}
+	return cs.Color(str)
 }
 
 // regex matching ansi escape codes
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
-func getStringWidth(c config, str string, colorize bool) int {
+func getStringWidth(c config, str string) int {
 	if c.colorCodes {
 		// convert any color codes in the progress bar into the respective ANSI codes
-		str = colorstring.Color(str)
+		// if customColors have been option set - create cs with Colorize
+		if len(c.customColors) > 0 {
+			str = customColorstringColor(c.customColors, str)
+		} else {
+			str = colorstring.Color(str)
+		}
 	}
 
 	// the width of the string, if printed to the console
@@ -1168,7 +1219,7 @@ func renderProgressBar(c config, s *state) (int, error) {
 	}
 
 	if c.fullWidth && !c.ignoreLength {
-		width, err := termWidth()
+		width, err := termWidth(c.writer)
 		if err != nil {
 			width = 80
 		}
@@ -1186,7 +1237,7 @@ func renderProgressBar(c config, s *state) (int, error) {
 			amend += 1 // another space
 		}
 
-		c.width = width - getStringWidth(c, c.description, true) - 10 - amend - sb.Len() - len(leftBrac) - len(rightBrac)
+		c.width = width - getStringWidth(c, c.description) - 10 - amend - sb.Len() - len(leftBrac) - len(rightBrac)
 		s.currentSaucerSize = int(float64(s.currentPercent) / 100.0 * float64(c.width))
 	}
 	if (s.currentSaucerSize > 0 || s.currentPercent > 0) && c.theme.BarStartFilled != "" {
@@ -1330,12 +1381,21 @@ func renderProgressBar(c config, s *state) (int, error) {
 
 	if c.colorCodes {
 		// convert any color codes in the progress bar into the respective ANSI codes
-		str = colorstring.Color(str)
+		// if customColors have been option set - create cs with Colorize
+		if len(c.customColors) > 0 {
+			str = customColorstringColor(c.customColors, str)
+		} else {
+			str = colorstring.Color(str)
+		}
+	}
+
+	if c.useANSICodes {
+		str = str + "\033[0K"
 	}
 
 	s.rendered = str
 
-	return getStringWidth(c, str, false), writeString(c, str)
+	return getStringWidth(c, str), writeString(c, str)
 }
 
 func clearProgressBar(c config, s state) error {
@@ -1349,6 +1409,9 @@ func clearProgressBar(c config, s state) error {
 	// fill the empty content
 	// to overwrite the progress bar and jump
 	// back to the beginning of the line
+	if runtime.GOOS == "windows" {
+		return writeString(c, "\r")
+	}
 	str := fmt.Sprintf("\r%s\r", strings.Repeat(" ", s.maxLineWidth))
 	return writeString(c, str)
 	// the following does not show correctly if the previous line is longer than subsequent line
@@ -1394,7 +1457,7 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 // Close the reader when it implements io.Closer
 func (r *Reader) Close() (err error) {
 	if closer, ok := r.Reader.(io.Closer); ok {
-		return closer.Close()
+		err = closer.Close()
 	}
 	r.bar.Finish()
 	return
@@ -1456,12 +1519,15 @@ func logn(n, b float64) float64 {
 
 // termWidth function returns the visible width of the current terminal
 // and can be redefined for testing
-var termWidth = func() (width int, err error) {
-	width, _, err = term.GetSize(int(os.Stdout.Fd()))
-	if err == nil {
-		return width, nil
+var termWidth = func(w io.Writer) (width int, err error) {
+	if f, ok := w.(*os.File); ok {
+		width, _, err = term.GetSize(int(f.Fd()))
+		if err == nil {
+			return width, nil
+		}
+	} else {
+		err = errors.New("output is not a *os.File")
 	}
-
 	return 0, err
 }
 

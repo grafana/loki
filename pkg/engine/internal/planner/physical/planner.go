@@ -27,6 +27,9 @@ type Context struct {
 	rangeInterval time.Duration
 	direction     SortOrder
 	v1Compatible  bool
+
+	// maxQuerySeries is the maximum number of unique series allowed for metric queries.
+	maxQuerySeries int
 }
 
 func NewContext(from, through time.Time) *Context {
@@ -38,10 +41,11 @@ func NewContext(from, through time.Time) *Context {
 
 func (pc *Context) Clone() *Context {
 	return &Context{
-		from:          pc.from,
-		through:       pc.through,
-		rangeInterval: pc.rangeInterval,
-		direction:     pc.direction,
+		from:           pc.from,
+		through:        pc.through,
+		rangeInterval:  pc.rangeInterval,
+		direction:      pc.direction,
+		maxQuerySeries: pc.maxQuerySeries,
 	}
 }
 
@@ -61,6 +65,13 @@ func (pc *Context) WithTimeRange(from, through time.Time) *Context {
 	cloned := pc.Clone()
 	cloned.from = from
 	cloned.through = through
+	return cloned
+}
+
+// WithMaxQuerySeries sets the maximum number of unique series allowed for metric queries.
+func (pc *Context) WithMaxQuerySeries(maxQuerySeries int) *Context {
+	cloned := pc.Clone()
+	cloned.maxQuerySeries = maxQuerySeries
 	return cloned
 }
 
@@ -189,15 +200,15 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 
 	from, through := ctx.GetResolveTimeRange()
 
-	filteredShardDescriptors, err := p.catalog.ResolveShardDescriptorsWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
+	dataObjs, err := p.catalog.ResolveDataObjSections(p.convertPredicate(lp.Selector), predicates, ShardInfo{Shard: shard.Shard, Of: shard.Of}, from, through)
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
-		return filteredShardDescriptors[i].TimeRange.End.After(filteredShardDescriptors[j].TimeRange.End)
+	sort.Slice(dataObjs, func(i, j int) bool {
+		return dataObjs[i].TimeRange.End.After(dataObjs[j].TimeRange.End)
 	})
 	if ctx.direction == ASC {
-		slices.Reverse(filteredShardDescriptors)
+		slices.Reverse(dataObjs)
 	}
 
 	// Scan work can be parallelized across multiple workers, so we wrap
@@ -212,18 +223,43 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 	}
 	p.plan.graph.Add(scanSet)
 
-	for _, desc := range filteredShardDescriptors {
-		for _, section := range desc.Sections {
+	for _, dataObj := range dataObjs {
+		// TODO: Labels are tracked per stream in the dataObj so that this can eventually be smarter.
+		// If we track labels per stream in the ScanTarget, and disambiguate per streamID when
+		// actually scanning, we can be more precise. For now we just disambiguate columns as metadata
+		// when they aren't in any of the label sets seen for this query.
+		ambiguousLbls := map[string]struct{}{}
+		for _, lbls := range dataObj.PredicatesInStreams {
+			for _, lbl := range lbls {
+				ambiguousLbls[lbl] = struct{}{}
+			}
+		}
+
+		lblNames := make([]string, 0, len(ambiguousLbls))
+		for lblName := range ambiguousLbls {
+			lblNames = append(lblNames, lblName)
+		}
+
+		predicatesToPushdown := make([]Expression, 0, len(predicates))
+		for _, predicate := range predicates {
+			p, disambiguated := disambiguateExpression(predicate, lblNames)
+			if disambiguated {
+				predicatesToPushdown = append(predicatesToPushdown, p)
+			}
+		}
+
+		for _, section := range dataObj.Sections {
 			scanSet.Targets = append(scanSet.Targets, &ScanTarget{
 				Type: ScanTypeDataObject,
 
 				DataObject: &DataObjScan{
 					NodeID: ulid.Make(),
 
-					Location:     desc.Location,
-					StreamIDs:    desc.Streams,
+					Location:     dataObj.Location,
+					StreamIDs:    dataObj.Streams,
 					Section:      section,
-					MaxTimeRange: desc.TimeRange,
+					MaxTimeRange: dataObj.TimeRange,
+					Predicates:   predicatesToPushdown,
 				},
 			})
 		}
@@ -340,7 +376,9 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 	for i := range lp.Expressions {
 		expressions[i] = p.convertPredicate(lp.Expressions[i])
 		if funcExpr, ok := lp.Expressions[i].(*logical.FunctionOp); ok {
-			if funcExpr.Op == types.VariadicOpParseJSON || funcExpr.Op == types.VariadicOpParseLogfmt {
+			if funcExpr.Op == types.VariadicOpParseJSON ||
+				funcExpr.Op == types.VariadicOpParseLogfmt ||
+				funcExpr.Op == types.VariadicOpParseRegexp {
 				needsCompat = true
 			}
 		}
@@ -403,20 +441,24 @@ func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) (Node, error) {
 }
 
 func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) (Node, error) {
-	partitionBy := make([]ColumnExpression, len(r.PartitionBy))
-	for i, col := range r.PartitionBy {
-		partitionBy[i] = &ColumnExpr{Ref: col.Ref}
+	grouping := make([]ColumnExpression, len(r.Grouping.Columns))
+	for i, col := range r.Grouping.Columns {
+		grouping[i] = &ColumnExpr{Ref: col.Ref}
 	}
 
 	node := &RangeAggregation{
 		NodeID: ulid.Make(),
 
-		PartitionBy: partitionBy,
-		Operation:   r.Operation,
-		Start:       r.Start,
-		End:         r.End,
-		Range:       r.RangeInterval,
-		Step:        r.Step,
+		Grouping: Grouping{
+			Columns: grouping,
+			Without: r.Grouping.Without,
+		},
+		Operation:      r.Operation,
+		Start:          r.Start,
+		End:            r.End,
+		Range:          r.RangeInterval,
+		Step:           r.Step,
+		MaxQuerySeries: ctx.maxQuerySeries,
 	}
 	p.plan.graph.Add(node)
 
@@ -433,16 +475,20 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 
 // Convert [logical.VectorAggregation] into one [VectorAggregation] node.
 func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) (Node, error) {
-	groupBy := make([]ColumnExpression, len(lp.GroupBy))
-	for i, col := range lp.GroupBy {
-		groupBy[i] = &ColumnExpr{Ref: col.Ref}
+	grouping := make([]ColumnExpression, len(lp.Grouping.Columns))
+	for i, col := range lp.Grouping.Columns {
+		grouping[i] = &ColumnExpr{Ref: col.Ref}
 	}
 
 	node := &VectorAggregation{
 		NodeID: ulid.Make(),
 
-		GroupBy:   groupBy,
-		Operation: lp.Operation,
+		Grouping: Grouping{
+			Columns: grouping,
+			Without: lp.Grouping.Without,
+		},
+		Operation:      lp.Operation,
+		MaxQuerySeries: ctx.maxQuerySeries,
 	}
 	p.plan.graph.Add(node)
 	child, err := p.process(lp.Table, ctx)
@@ -640,6 +686,67 @@ func (p *Planner) wrapNodeWith(node Node, wrapper Node) (Node, error) {
 	return wrapper, nil
 }
 
+// disambiguateExpression recursively updates ColumnTypeAmbiguous references
+// to ColumnTypeMetadata if the column name does not exist in the provided label set
+func disambiguateExpression(expr Expression, conflictingLabels []string) (Expression, bool) {
+	if expr == nil {
+		return nil, false
+	}
+
+	switch e := expr.(type) {
+	case *BinaryExpr:
+		leftExpr, leftChanged := disambiguateExpression(e.Left, conflictingLabels)
+		rightExpr, rightChanged := disambiguateExpression(e.Right, conflictingLabels)
+		if !leftChanged && !rightChanged {
+			return e, false
+		}
+
+		return &BinaryExpr{
+			Left:  leftExpr,
+			Right: rightExpr,
+			Op:    e.Op,
+		}, true
+	case *ColumnExpr:
+		if e.Ref.Type == types.ColumnTypeAmbiguous && !slices.Contains(conflictingLabels, e.Ref.Column) {
+			return &ColumnExpr{
+				Ref: types.ColumnRef{
+					Column: e.Ref.Column,
+					Type:   types.ColumnTypeMetadata,
+				},
+			}, true
+		}
+		return e, false
+	case *UnaryExpr:
+		leftExpr, leftChanged := disambiguateExpression(e.Left, conflictingLabels)
+		if !leftChanged {
+			return e, false
+		}
+
+		return &UnaryExpr{
+			Left: leftExpr,
+			Op:   e.Op,
+		}, true
+	case *VariadicExpr:
+		anyChanged := false
+		newExprs := make([]Expression, len(e.Expressions))
+		for i, subExpr := range e.Expressions {
+			exp, changed := disambiguateExpression(subExpr, conflictingLabels)
+			newExprs[i] = exp
+			anyChanged = anyChanged || changed
+		}
+		if !anyChanged {
+			return e, false
+		}
+
+		return &VariadicExpr{
+			Op:          e.Op,
+			Expressions: newExprs,
+		}, true
+	default:
+		return e, false
+	}
+}
+
 // Optimize runs optimization passes over the plan, modifying it
 // if any optimizations can be applied.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
@@ -651,7 +758,7 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
-			newOptimization("groupByPushdown", plan).withRules(
+			newOptimization("GroupByPushdown", plan).withRules(
 				&groupByPushdown{plan: plan},
 			),
 			newOptimization("ProjectionPushdown", plan).withRules(

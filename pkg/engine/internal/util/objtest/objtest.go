@@ -152,7 +152,7 @@ func (b *Builder) buildIndex(ctx context.Context) error {
 			return nil
 		}
 
-		reader, err := dataobj.FromBucket(ctx, b.bucket, name)
+		reader, err := dataobj.FromBucket(ctx, b.bucket, name, 0)
 		if err != nil {
 			return fmt.Errorf("reading object: %w", err)
 		}

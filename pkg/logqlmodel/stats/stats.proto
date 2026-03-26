@@ -114,6 +114,14 @@ message Index {
   bool usedBloomFilters = 4 [(gogoproto.jsontag) = "usedBloomFilters"];
   // Total unique streams matched
   int64 totalStreams = 5 [(gogoproto.jsontag) = "totalStreams"];
+  // Time spent fetching chunk refs from index in seconds.
+  // In addition to internal calculations this is also returned by the HTTP API.
+  // Grafana expects time values to be returned in seconds as float.
+  double chunkRefsLookupTime = 6 [(gogoproto.jsontag) = "chunkRefsLookupTime"];
+  // Time spent filtering chunks with bloom gateway in seconds.
+  // In addition to internal calculations this is also returned by the HTTP API.
+  // Grafana expects time values to be returned in seconds as float.
+  double bloomFilterTime = 7 [(gogoproto.jsontag) = "bloomFilterTime"];
 }
 
 message Querier {

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 func TestCapture_AddRegion(t *testing.T) {
@@ -250,99 +249,6 @@ func TestCapture_GetAllStatistics(t *testing.T) {
 			}
 
 			require.ElementsMatch(t, tt.wantStats, gotStats)
-		})
-	}
-}
-
-func TestCapture_LinkRegions(t *testing.T) {
-	tests := []struct {
-		name            string
-		setup           func() *Capture
-		linkAttribute   string
-		resolveParent   func(string) (string, bool)
-		expectedParents map[string]string // child -> parent mapping
-	}{
-		{
-			name: "link regions without parent using link attribute",
-			setup: func() *Capture {
-				ctx, capture := NewCapture(context.Background(), nil)
-				// Create root regions with link attributes
-				_, _ = StartRegion(ctx, "region1", WithRegionAttributes(
-					attribute.String("link.id", "id1"),
-				))
-				_, _ = StartRegion(ctx, "region2", WithRegionAttributes(
-					attribute.String("link.id", "id2"),
-				))
-				_, _ = StartRegion(ctx, "region3", WithRegionAttributes(
-					attribute.String("link.id", "id3"),
-				))
-				return capture
-			},
-			linkAttribute: "link.id",
-			resolveParent: func(id string) (string, bool) {
-				// id2 and id3 link to id1
-				if id == "id2" || id == "id3" {
-					return "id1", true
-				}
-				return "", false
-			},
-			expectedParents: map[string]string{
-				"region2": "region1",
-				"region3": "region1",
-			},
-		},
-		{
-			name: "do not change parent if region already has one",
-			setup: func() *Capture {
-				ctx, capture := NewCapture(context.Background(), nil)
-				// Create a root region first
-				_, _ = StartRegion(ctx, "root", WithRegionAttributes(
-					attribute.String("link.id", "root-id"),
-				))
-				// Create a region with a parent (via context chain)
-				ctx, _ = StartRegion(ctx, "parent", WithRegionAttributes(
-					attribute.String("link.id", "parent-id"),
-				))
-				// This region already has a parent
-				_, _ = StartRegion(ctx, "child", WithRegionAttributes(
-					attribute.String("link.id", "child-id"),
-				))
-				return capture
-			},
-			linkAttribute: "link.id",
-			resolveParent: func(id string) (string, bool) {
-				// Try to link child-id to root-id, but child already has a parent
-				if id == "child-id" {
-					return "root-id", true
-				}
-				return "", false
-			},
-			expectedParents: map[string]string{
-				"child": "parent", // Should remain unchanged
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			capture := tt.setup()
-			capture.LinkRegions(tt.linkAttribute, tt.resolveParent)
-
-			regions := capture.Regions()
-			gotRegions := make(map[string]*Region)
-			for _, r := range regions {
-				gotRegions[r.name] = r
-			}
-
-			// Validate parent-child relationships
-			for childName, parentName := range tt.expectedParents {
-				child, ok := gotRegions[childName]
-				require.True(t, ok, "child region %q should exist", childName)
-				parent, ok := gotRegions[parentName]
-				require.True(t, ok, "parent region %q should exist", parentName)
-
-				require.Equal(t, parent.id, child.parentID, "region %q should have parentID matching %q's ID", childName, parentName)
-			}
 		})
 	}
 }

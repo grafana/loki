@@ -224,6 +224,7 @@ func (c *httpStorageClient) ListBuckets(ctx context.Context, project string, opt
 		req.Projection("full")
 		req.Prefix(it.Prefix)
 		req.PageToken(pageToken)
+		req.ReturnPartialSuccess(it.ReturnPartialSuccess)
 		if pageSize > 0 {
 			req.MaxResults(int64(pageSize))
 		}
@@ -242,6 +243,7 @@ func (c *httpStorageClient) ListBuckets(ctx context.Context, project string, opt
 			}
 			it.buckets = append(it.buckets, b)
 		}
+		it.unreachable = resp.Unreachable
 		return resp.NextPageToken, nil
 	}
 
@@ -363,6 +365,12 @@ func (c *httpStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 		req.IncludeTrailingDelimiter(it.query.IncludeTrailingDelimiter)
 		req.MatchGlob(it.query.MatchGlob)
 		req.IncludeFoldersAsPrefixes(it.query.IncludeFoldersAsPrefixes)
+
+		// Cannot pass empty filter
+		if it.query.Filter != "" {
+			req.Filter(it.query.Filter)
+		}
+
 		if selection := it.query.toFieldSelection(); selection != "" {
 			req.Fields("nextPageToken", googleapi.Field(selection))
 		}
@@ -516,6 +524,19 @@ func (c *httpStorageClient) UpdateObject(ctx context.Context, params *updateObje
 			forceSendFields = append(forceSendFields, "Retention")
 		}
 	}
+
+	if uattrs.Contexts != nil && uattrs.Contexts.Custom != nil {
+		if len(uattrs.Contexts.Custom) == 0 {
+			// To delete all contexts, "Contexts" must be added to nullFields.
+			// Sending empty Custom map in the request body is a no-op without this.
+			nullFields = append(nullFields, "Contexts")
+		} else {
+			attrs.Contexts = uattrs.Contexts
+			// This is to ensure any new values or deletions are updated
+			forceSendFields = append(forceSendFields, "Contexts")
+		}
+	}
+
 	rawObj := attrs.toRawObject(params.bucket)
 	rawObj.ForceSendFields = forceSendFields
 	rawObj.NullFields = nullFields
@@ -962,11 +983,48 @@ func (c *httpStorageClient) newRangeReaderJSON(ctx context.Context, params *newR
 	return parseReadResponse(res, params, reopen)
 }
 
+// httpInternalWriter writes data for an HTTP upload. For single-shot uploads,
+// it also calculates the CRC32C checksum of the data and validates it against
+// the checksum returned by the server.
 type httpInternalWriter struct {
 	*io.PipeWriter
+	chunkSize          int
+	checksumDisabled   bool
+	fullObjectChecksum uint32
+	// In single-shot mode, the server-provided checksum is received on this
+	// channel for validation after the upload is complete.
+	serverChecksumChan chan uint32
 }
 
-func (hiw httpInternalWriter) Flush() (int64, error) {
+// validateChecksum validates the computed checksum against the server-provided checksum.
+func (hiw *httpInternalWriter) validateChecksumFromServer() error {
+	serverChecksum, ok := <-hiw.serverChecksumChan
+	// Do not check for channel closure as error is already set on the writer
+	// if serverChecksumChan is closed without checksum
+	if ok && hiw.fullObjectChecksum != serverChecksum {
+		return fmt.Errorf("storage: object checksum mismatch: computed %q, server %q; the bucket may contain corrupted object", encodeUint32(hiw.fullObjectChecksum), encodeUint32(serverChecksum))
+	}
+	return nil
+}
+
+func (hiw *httpInternalWriter) Write(data []byte) (n int, err error) {
+	if !hiw.checksumDisabled && hiw.chunkSize == 0 {
+		hiw.fullObjectChecksum = crc32.Update(hiw.fullObjectChecksum, crc32cTable, data)
+	}
+	return hiw.PipeWriter.Write(data)
+}
+
+func (hiw *httpInternalWriter) Close() error {
+	if err := hiw.PipeWriter.Close(); err != nil {
+		return err
+	}
+	if !hiw.checksumDisabled && hiw.chunkSize == 0 {
+		return hiw.validateChecksumFromServer()
+	}
+	return nil
+}
+
+func (hiw *httpInternalWriter) Flush() (int64, error) {
 	return 0, errors.New("Writer.Flush is only supported for gRPC-based clients")
 }
 
@@ -995,10 +1053,18 @@ func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 	}
 
 	pr, pw := io.Pipe()
-
+	var (
+		serverChecksumChan = make(chan uint32, 1)
+		checksumDisabled   = params.disableAutoChecksum || params.sendCRC32C
+	)
+	if !checksumDisabled {
+		mediaOpts = append(mediaOpts, googleapi.EnableAutoChecksum())
+	}
 	go func() {
-		defer close(params.donec)
-
+		defer func() {
+			close(params.donec)
+			close(serverChecksumChan)
+		}()
 		rawObj := attrs.toRawObject(params.bucket)
 		if params.sendCRC32C {
 			rawObj.Crc32c = encodeUint32(attrs.CRC32C)
@@ -1060,10 +1126,18 @@ func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 			pr.CloseWithError(err)
 			return
 		}
-		setObj(newObject(resp))
+		newObj := newObject(resp)
+		if !checksumDisabled && params.chunkSize == 0 {
+			serverChecksumChan <- newObj.CRC32C
+		}
+		setObj(newObj)
 	}()
-
-	return httpInternalWriter{pw}, nil
+	return &httpInternalWriter{
+		PipeWriter:         pw,
+		chunkSize:          params.chunkSize,
+		serverChecksumChan: serverChecksumChan,
+		checksumDisabled:   checksumDisabled,
+	}, nil
 }
 
 // IAM methods.

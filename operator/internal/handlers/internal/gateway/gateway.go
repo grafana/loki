@@ -48,6 +48,10 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 		}
 	}
 
+	if err = validateTLSConfig(ctx, k, stack); err != nil {
+		return "", tenants, err
+	}
+
 	switch stack.Spec.Tenants.Mode {
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		baseDomain, err = getOpenShiftBaseDomain(ctx, k)

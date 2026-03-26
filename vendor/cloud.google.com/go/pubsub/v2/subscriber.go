@@ -137,6 +137,14 @@ type ReceiveSettings struct {
 	// it is recommended to decrease this value so as to not run into OOM issues.
 	MaxOutstandingBytes int
 
+	// EnablePerStreamFlowControl enables enforcing the MaxOutstandingMessages and
+	// MaxOutstandingBytes flow control settings per stream instead of across
+	// streams and applying per subscriber client.
+	// Defaults to false for backwards compatibility.
+	// It is recommended this is enabled, and will default to true in the next
+	// major version.
+	EnablePerStreamFlowControl bool
+
 	// NumGoroutines sets the number of StreamingPull streams to pull messages
 	// from the subscription.
 	//
@@ -258,13 +266,25 @@ func (s *Subscriber) Receive(ctx context.Context, f func(context.Context, *Messa
 		maxOutstandingBytes:    maxBytes,
 		clientID:               s.clientID,
 	}
-	fc := newSubscriberFlowController(FlowControlSettings{
-		MaxOutstandingMessages: maxCount,
-		MaxOutstandingBytes:    maxBytes,
-		LimitExceededBehavior:  FlowControlBlock,
-	})
 
-	sched := scheduler.NewReceiveScheduler(maxCount)
+	var clientFlowController flowController
+	// When using the legacy per-client flow control, limits
+	// are applied per-client rather than per stream/iterator.
+	if !s.ReceiveSettings.EnablePerStreamFlowControl {
+		clientFlowController = newSubscriberFlowController(FlowControlSettings{
+			MaxOutstandingMessages: maxCount,
+			MaxOutstandingBytes:    maxBytes,
+			LimitExceededBehavior:  FlowControlBlock,
+		})
+	}
+
+	var schedulerLimit int
+	if s.ReceiveSettings.EnablePerStreamFlowControl {
+		schedulerLimit = maxCount * numGoroutines
+	} else {
+		schedulerLimit = maxCount
+	}
+	sched := scheduler.NewReceiveScheduler(schedulerLimit)
 
 	// Wait for all goroutines started by Receive to return, so instead of an
 	// obscure goroutine leak we have an obvious blocked call to Receive.
@@ -294,6 +314,17 @@ func (s *Subscriber) Receive(ctx context.Context, f func(context.Context, *Messa
 		iter := newMessageIterator(s.c.SubscriptionAdminClient, s.name, po)
 		iter.enableTracing = s.enableTracing
 
+		var fc flowController
+		if s.ReceiveSettings.EnablePerStreamFlowControl {
+			fc = newSubscriberFlowController(FlowControlSettings{
+				MaxOutstandingMessages: maxCount,
+				MaxOutstandingBytes:    maxBytes,
+				LimitExceededBehavior:  FlowControlBlock,
+			})
+		} else {
+			fc = clientFlowController
+		}
+
 		// We cannot use errgroup from Receive here. Receive might already be
 		// calling group.Wait, and group.Wait cannot be called concurrently with
 		// group.Go. We give each receive() its own WaitGroup instead.
@@ -308,7 +339,6 @@ func (s *Subscriber) Receive(ctx context.Context, f func(context.Context, *Messa
 			defer wg.Wait()
 			defer cancel2()
 			for {
-				var maxToPull int32 // maximum number of messages to pull
 				// If the context is done, don't pull more messages.
 				select {
 				case <-ctx.Done():
@@ -329,7 +359,7 @@ func (s *Subscriber) Receive(ctx context.Context, f func(context.Context, *Messa
 					default:
 					}
 
-					msgs, err := iter.receive(maxToPull)
+					msgs, err := iter.receive()
 					if errors.Is(err, io.EOF) {
 						errChan <- nil
 						return

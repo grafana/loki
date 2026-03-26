@@ -630,7 +630,7 @@ memberlist:
 				assert.Equal(t, "testbucket", actual.Bucket)
 				assert.Equal(t, "https://example.com", actual.Endpoint)
 				assert.Equal(t, "abc123", actual.AccessKeyID)
-				assert.Equal(t, "def789", actual.SecretAccessKey)
+				assert.Equal(t, flagext.SecretWithValue("def789"), actual.SecretAccessKey)
 			}
 
 			// should remain empty

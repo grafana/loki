@@ -3,15 +3,20 @@ package executor
 import (
 	"testing"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 func TestJSONParser_Process(t *testing.T) {
 	tests := []struct {
-		name          string
-		line          []byte
-		requestedKeys []string
-		want          map[string]string
+		name               string
+		line               []byte
+		requestedKeyLookup map[string]struct{}
+		want               map[string]string
 	}{
 		{
 			"multi depth",
@@ -172,7 +177,7 @@ func TestJSONParser_Process(t *testing.T) {
 		{
 			"requested keys filtering - top level",
 			[]byte(`{"app":"foo","namespace":"prod","level":"info"}`),
-			[]string{"app", "level"},
+			map[string]struct{}{"app": {}, "level": {}},
 			map[string]string{
 				"app":   "foo",
 				"level": "info",
@@ -181,7 +186,7 @@ func TestJSONParser_Process(t *testing.T) {
 		{
 			"requested keys filtering - nested",
 			[]byte(`{"app":"foo","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
-			[]string{"app", "pod_uuid"},
+			map[string]struct{}{"app": {}, "pod_uuid": {}},
 			map[string]string{
 				"app":      "foo",
 				"pod_uuid": "foo",
@@ -213,7 +218,7 @@ func TestJSONParser_Process(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			j := newJSONParser()
-			result, err := j.process(tt.line, tt.requestedKeys)
+			result, err := j.process(tt.line, tt.requestedKeyLookup)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, result)
 		})
@@ -240,6 +245,79 @@ func TestJSONParser_Process_Malformed(t *testing.T) {
 			require.Empty(t, result)
 		})
 	}
+}
+
+func TestBuildJSONColumns(t *testing.T) {
+	t.Run("with requested keys", func(t *testing.T) {
+		// Create input with multiple lines to ensure reuse
+		input := arrowtest.Rows{
+			{"line": `{"app":"foo","level":"info","msg":"first"}`},
+			{"line": `{"app":"bar","level":"debug","msg":"second","extra":"data"}`},
+			{"line": `{"app":"baz","level":"warn","msg":"third","nested":{"key":"value"}}`},
+		}
+		inputRecord := input.Record(memory.DefaultAllocator, input.Schema())
+		defer inputRecord.Release()
+
+		lineCol := inputRecord.Column(0).(*array.String)
+		requestedKeys := []string{"app", "level", "nested_key"}
+
+		headers, columns := buildJSONColumns(lineCol, requestedKeys)
+
+		// Create a record from the parsed columns for easy comparison
+		fields := make([]arrow.Field, len(headers))
+		for i, h := range headers {
+			fields[i] = arrow.Field{Name: h, Type: arrow.BinaryTypes.String, Nullable: true}
+		}
+		schema := arrow.NewSchema(fields, nil)
+		outputRecord := array.NewRecordBatch(schema, columns, int64(lineCol.Len()))
+		defer outputRecord.Release()
+
+		actual, err := arrowtest.RecordRows(outputRecord)
+		require.NoError(t, err)
+
+		expect := arrowtest.Rows{
+			{"app": "foo", "level": "info", "nested_key": nil},
+			{"app": "bar", "level": "debug", "nested_key": nil},
+			{"app": "baz", "level": "warn", "nested_key": "value"},
+		}
+
+		require.Equal(t, expect, actual)
+	})
+
+	t.Run("without requested keys", func(t *testing.T) {
+		input := arrowtest.Rows{
+			{"line": `{"a":"1","b":"2"}`},
+			{"line": `{"c":"3","d":"4"}`},
+		}
+		inputRecord := input.Record(memory.DefaultAllocator, input.Schema())
+		defer inputRecord.Release()
+
+		lineCol := inputRecord.Column(0).(*array.String)
+
+		headers, columns := buildJSONColumns(lineCol, nil)
+
+		// Create a record from the parsed columns
+		fields := make([]arrow.Field, len(headers))
+		for i, h := range headers {
+			fields[i] = arrow.Field{Name: h, Type: arrow.BinaryTypes.String, Nullable: true}
+		}
+		schema := arrow.NewSchema(fields, nil)
+		outputRecord := array.NewRecordBatch(schema, columns, int64(lineCol.Len()))
+		defer outputRecord.Release()
+
+		actual, err := arrowtest.RecordRows(outputRecord)
+		require.NoError(t, err)
+
+		// Should extract all keys across all lines
+		require.ElementsMatch(t, headers, []string{"a", "b", "c", "d"})
+
+		expect := arrowtest.Rows{
+			{"a": "1", "b": "2", "c": nil, "d": nil},
+			{"a": nil, "b": nil, "c": "3", "d": "4"},
+		}
+
+		require.Equal(t, expect, actual)
+	})
 }
 
 func BenchmarkJSONParser_Process(b *testing.B) {

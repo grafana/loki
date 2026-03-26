@@ -163,7 +163,7 @@ func (xc *xdsChannel) unsubscribe(typ ResourceType, name string) {
 		}
 		return
 	}
-	xc.ads.Unsubscribe(typ, name)
+	xc.ads.unsubscribe(typ, name)
 }
 
 // The following onADSXxx() methods implement the StreamEventHandler interface

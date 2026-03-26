@@ -34,11 +34,19 @@ import (
 type Timestamp struct {
 	array
 	values []arrow.Timestamp
+	layout string
 }
 
 // NewTimestampData creates a new Timestamp from Data.
 func NewTimestampData(data arrow.ArrayData) *Timestamp {
-	a := &Timestamp{}
+	return NewTimestampDataWithValueStrLayout(data, time.RFC3339Nano)
+}
+
+// NewTimestampDataWithValueStrLayout creates a new Timestamp from Data with a custom ValueStr layout.
+// The layout is passed to the time.Time.Format method.
+// This is useful for cases where consumers expect a non standard layout
+func NewTimestampDataWithValueStrLayout(data arrow.ArrayData, layout string) *Timestamp {
+	a := &Timestamp{layout: layout}
 	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
@@ -93,7 +101,11 @@ func (a *Timestamp) ValueStr(i int) string {
 	}
 
 	toTime, _ := a.DataType().(*arrow.TimestampType).GetToTimeFunc()
-	return toTime(a.values[i]).Format(time.RFC3339Nano)
+	layout := a.layout
+	if layout == "" {
+		layout = time.RFC3339Nano
+	}
+	return toTime(a.values[i]).Format(layout)
 }
 
 func (a *Timestamp) GetOneForMarshal(i int) interface{} {
@@ -130,10 +142,18 @@ type TimestampBuilder struct {
 	dtype   *arrow.TimestampType
 	data    *memory.Buffer
 	rawData []arrow.Timestamp
+	layout  string
 }
 
 func NewTimestampBuilder(mem memory.Allocator, dtype *arrow.TimestampType) *TimestampBuilder {
-	tb := &TimestampBuilder{builder: builder{mem: mem}, dtype: dtype}
+	return NewTimestampBuilderWithValueStrLayout(mem, dtype, time.RFC3339Nano)
+}
+
+// NewTimestampBuilderWithValueStrLayout creates a new TimestampBuilder with a custom ValueStr layout.
+// The layout is passed to the time.Time.Format method.
+// This is useful for cases where consumers expect a non standard layout
+func NewTimestampBuilderWithValueStrLayout(mem memory.Allocator, dtype *arrow.TimestampType, layout string) *TimestampBuilder {
+	tb := &TimestampBuilder{builder: builder{mem: mem}, dtype: dtype, layout: layout}
 	tb.refCount.Add(1)
 	return tb
 }
@@ -266,7 +286,7 @@ func (b *TimestampBuilder) NewArray() arrow.Array {
 // so it can be used to build a new array.
 func (b *TimestampBuilder) NewTimestampArray() (a *Timestamp) {
 	data := b.newData()
-	a = NewTimestampData(data)
+	a = NewTimestampDataWithValueStrLayout(data, b.layout)
 	data.Release()
 	return
 }

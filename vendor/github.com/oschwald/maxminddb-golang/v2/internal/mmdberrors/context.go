@@ -127,8 +127,8 @@ func (p *PathBuilder) ParseAndExtend(path string) {
 		path = path[1:]
 	}
 
-	segments := strings.Split(path, "/")
-	for _, segment := range segments {
+	segments := strings.SplitSeq(path, "/")
+	for segment := range segments {
 		if segment != "" {
 			p.segments = append(p.segments, segment)
 		}

@@ -14,7 +14,7 @@ func NewNoopStorage() *NoopStorage {
 }
 
 // StoreQuerySample is a no-op
-func (n *NoopStorage) StoreQuerySample(_ context.Context, _ *QuerySample) error {
+func (n *NoopStorage) StoreQuerySample(_ context.Context, _ *QuerySample, _ *ComparisonResult) error {
 	return nil
 }
 

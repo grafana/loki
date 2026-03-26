@@ -19,6 +19,7 @@
 package xdsclient
 
 import (
+	"context"
 	"fmt"
 
 	"google.golang.org/grpc/internal/xds/clients/xdsclient/internal/xdsresource"
@@ -41,9 +42,11 @@ func (w *wrappingWatcher) ResourceError(err error, done func()) {
 
 // WatchResource starts watching the specified resource.
 //
-// typeURL specifies the resource type implementation to use. The watch fails
-// if there is no resource type implementation for the given typeURL. See the
-// ResourceTypes field in the Config struct used to create the XDSClient.
+// The watch fails to start if:
+//   - There is no ResourceType implementation for the given typeURL in the
+//     ResourceTypes field of the Config struct used to create the XDSClient.
+//   - The provided resourceName contains an authority that is not present in the
+//     Authorities field.
 //
 // The returned function cancels the watch and prevents future calls to the
 // watcher.
@@ -61,8 +64,10 @@ func (c *XDSClient) WatchResource(typeURL, resourceName string, watcher Resource
 
 	rType, ok := c.config.ResourceTypes[typeURL]
 	if !ok {
-		logger.Warningf("ResourceType implementation for resource type url %v is not found", rType.TypeURL)
-		watcher.ResourceError(fmt.Errorf("ResourceType implementation for resource type url %v is not found", rType.TypeURL), func() {})
+		logger.Warningf("ResourceType implementation for resource type url %q is not found", rType.TypeURL)
+		c.serializer.TrySchedule(func(context.Context) {
+			watcher.ResourceError(fmt.Errorf("no ResourceType implementation found for typeURL %q", rType.TypeURL), func() {})
+		})
 		return func() {}
 	}
 
@@ -70,7 +75,9 @@ func (c *XDSClient) WatchResource(typeURL, resourceName string, watcher Resource
 	a := c.getAuthorityForResource(n)
 	if a == nil {
 		logger.Warningf("Watch registered for name %q of type %q, authority %q is not found", rType.TypeName, resourceName, n.Authority)
-		watcher.ResourceError(fmt.Errorf("authority %q not found in bootstrap config for resource %q", n.Authority, resourceName), func() {})
+		c.serializer.TrySchedule(func(context.Context) {
+			watcher.ResourceError(fmt.Errorf("authority %q not found in the config for resource %q", n.Authority, resourceName), func() {})
+		})
 		return func() {}
 	}
 	// The watchResource method on the authority is invoked with n.String()

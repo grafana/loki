@@ -469,6 +469,9 @@ func Y__builtin_popcount(t *TLS, x uint32) (_2 int32)
 func Y__builtin_popcountl(t *TLS, x ulong) (_2 int32)
 
 //go:noescape
+func Y__builtin_popcountll(t *TLS, x uint64) (_2 int32)
+
+//go:noescape
 func Y__builtin_prefetch(t *TLS, addr, args uintptr)
 
 //go:noescape
@@ -5028,7 +5031,7 @@ func Ystrlcat(tls *TLS, d uintptr, s uintptr, n Tsize_t) (r Tsize_t)
 func Ystrlcpy(tls *TLS, d uintptr, s uintptr, n Tsize_t) (r Tsize_t)
 
 //go:noescape
-func Ystrlen(tls *TLS, s uintptr) (r Tsize_t)
+func Ystrlen(t *TLS, s uintptr) (r Tsize_t)
 
 //go:noescape
 func Ystrncasecmp(tls *TLS, _l uintptr, _r uintptr, n Tsize_t) (r1 int32)

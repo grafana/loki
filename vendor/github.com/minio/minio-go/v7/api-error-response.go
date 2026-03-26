@@ -129,7 +129,7 @@ func httpRespToErrorResponse(resp *http.Response, bucketName, objectName string)
 		Server:     resp.Header.Get("Server"),
 	}
 
-	_, success := successStatus[resp.StatusCode]
+	success := successStatus.Contains(resp.StatusCode)
 
 	errBody, err := xmlDecodeAndBody(resp.Body, &errResp)
 	// Xml decoding failed with no body, fall back to HTTP headers.
