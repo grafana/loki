@@ -523,7 +523,7 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 func encodeInt64Value(t *testing.T, v int64) []byte {
 	t.Helper()
 
-	data, err := Int64Value(v).MarshalBinary()
+	data, err := Int64Value(v).MarshalBinary(nil)
 	require.NoError(t, err)
 	return data
 }

@@ -71,60 +71,66 @@ func TestGetPredicateSelectivity(t *testing.T) {
 		},
 		{
 			name: "GreaterThan selectivity using min/max range",
-			predicate: dataset.GreaterThanPredicate{Column: (&testColumn{
-				min: 0,
-				max: 100,
-			}).ToMemColumn(t),
+			predicate: dataset.GreaterThanPredicate{
+				Column: (&testColumn{
+					min: 0,
+					max: 100,
+				}).ToMemColumn(t),
 				Value: dataset.Int64Value(70),
 			},
 			want: selectivityScore(0.3),
 		},
 		{
 			name: "GreaterThan with operand greater than max value should have zero selectivity",
-			predicate: dataset.GreaterThanPredicate{Column: (&testColumn{
-				min: 0,
-				max: 50,
-			}).ToMemColumn(t),
+			predicate: dataset.GreaterThanPredicate{
+				Column: (&testColumn{
+					min: 0,
+					max: 50,
+				}).ToMemColumn(t),
 				Value: dataset.Int64Value(51),
 			},
 			want: selectivityScore(0.0),
 		},
 		{
 			name: "GreaterThan with operand less than min value should match all rows",
-			predicate: dataset.GreaterThanPredicate{Column: (&testColumn{
-				min: 10,
-				max: 50,
-			}).ToMemColumn(t),
+			predicate: dataset.GreaterThanPredicate{
+				Column: (&testColumn{
+					min: 10,
+					max: 50,
+				}).ToMemColumn(t),
 				Value: dataset.Int64Value(0),
 			},
 			want: selectivityScore(1.0),
 		},
 		{
 			name: "LessThan selectivity using min/max range",
-			predicate: dataset.LessThanPredicate{Column: (&testColumn{
-				min: 0,
-				max: 100,
-			}).ToMemColumn(t),
+			predicate: dataset.LessThanPredicate{
+				Column: (&testColumn{
+					min: 0,
+					max: 100,
+				}).ToMemColumn(t),
 				Value: dataset.Int64Value(70),
 			},
 			want: selectivityScore(0.7),
 		},
 		{
 			name: "LessThan with operand less than min value should have zero selectivity",
-			predicate: dataset.LessThanPredicate{Column: (&testColumn{
-				min: 20,
-				max: 50,
-			}).ToMemColumn(t),
+			predicate: dataset.LessThanPredicate{
+				Column: (&testColumn{
+					min: 20,
+					max: 50,
+				}).ToMemColumn(t),
 				Value: dataset.Int64Value(10),
 			},
 			want: selectivityScore(0.0),
 		},
 		{
 			name: "LessThan with operand greater than max value should match all rows",
-			predicate: dataset.LessThanPredicate{Column: (&testColumn{
-				min: 0,
-				max: 50,
-			}).ToMemColumn(t),
+			predicate: dataset.LessThanPredicate{
+				Column: (&testColumn{
+					min: 0,
+					max: 50,
+				}).ToMemColumn(t),
 				Value: dataset.Int64Value(60),
 			},
 			want: selectivityScore(1.0),
@@ -371,7 +377,7 @@ func TestOrderPredicates(t *testing.T) {
 
 func makeTestInt64Value(t *testing.T, v int64) []byte {
 	t.Helper()
-	b, err := dataset.Int64Value(v).MarshalBinary()
+	b, err := dataset.Int64Value(v).MarshalBinary(nil)
 	if err != nil {
 		t.Fatalf("failed to marshal int64 value %d: %v", v, err)
 	}

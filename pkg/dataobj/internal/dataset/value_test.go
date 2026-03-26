@@ -131,7 +131,7 @@ func TestValue_MarshalBinary(t *testing.T) {
 		var expect dataset.Value
 		require.True(t, expect.IsNil())
 
-		b, err := expect.MarshalBinary()
+		b, err := expect.MarshalBinary(nil)
 		require.NoError(t, err)
 
 		var actual dataset.Value
@@ -143,7 +143,7 @@ func TestValue_MarshalBinary(t *testing.T) {
 		expect := dataset.Int64Value(-1234)
 		require.Equal(t, datasetmd.PHYSICAL_TYPE_INT64, expect.Type())
 
-		b, err := expect.MarshalBinary()
+		b, err := expect.MarshalBinary(nil)
 		require.NoError(t, err)
 
 		var actual dataset.Value
@@ -156,7 +156,7 @@ func TestValue_MarshalBinary(t *testing.T) {
 		expect := dataset.Uint64Value(1234)
 		require.Equal(t, datasetmd.PHYSICAL_TYPE_UINT64, expect.Type())
 
-		b, err := expect.MarshalBinary()
+		b, err := expect.MarshalBinary(nil)
 		require.NoError(t, err)
 
 		var actual dataset.Value
@@ -170,7 +170,7 @@ func TestValue_MarshalBinary(t *testing.T) {
 			expect := dataset.BinaryValue([]byte{})
 			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, expect.Type())
 
-			b, err := expect.MarshalBinary()
+			b, err := expect.MarshalBinary(nil)
 			require.NoError(t, err)
 
 			var actual dataset.Value
@@ -183,7 +183,7 @@ func TestValue_MarshalBinary(t *testing.T) {
 			expect := dataset.BinaryValue([]byte("hello, world!"))
 			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, expect.Type())
 
-			b, err := expect.MarshalBinary()
+			b, err := expect.MarshalBinary(nil)
 			require.NoError(t, err)
 
 			var actual dataset.Value
