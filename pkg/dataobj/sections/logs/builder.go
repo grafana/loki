@@ -135,8 +135,8 @@ func NewBuilder(metrics *Metrics, opts BuilderOptions) *Builder {
 	}
 	// Stripes are intermediate — they get compressed then decompressed during
 	// merge. Skip compression for stripes to avoid this double work.
-	b.stripeBuffer.skipStats = true
-	b.stripeBuffer.skipCRC = true
+	b.stripeBuffer.skipStats = opts.AppendStrategy != AppendOrdered
+	b.stripeBuffer.skipCRC = opts.AppendStrategy != AppendOrdered
 	return b
 }
 
@@ -225,10 +225,6 @@ func (b *Builder) flushSection() *table {
 }
 
 func (b *Builder) flushSectionOrdered() *table {
-	// This is the final write to an ordered section, so we need to enable CRC and stats.
-	b.stripeBuffer.skipCRC = false
-	b.stripeBuffer.skipStats = false
-
 	b.flushRecords(zstd.SpeedDefault)
 
 	if len(b.stripes) == 0 {
