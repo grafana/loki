@@ -1348,9 +1348,12 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 			TLSClientConfig: cfg,
 		}
 
-		tp.Rewrite = func(pr *httputil.ProxyRequest) {
-			pr.SetURL(tailURL)
-			pr.Out.Host = tailURL.Host
+		//nolint:staticcheck // SA1019: Director is deprecated in favor of Rewrite, but migrating requires careful testing.
+		director := tp.Director
+		//nolint:staticcheck // SA1019
+		tp.Director = func(req *http.Request) {
+			director(req)
+			req.Host = tailURL.Host
 		}
 
 		defaultHandler = httpMiddleware.Wrap(tp)
