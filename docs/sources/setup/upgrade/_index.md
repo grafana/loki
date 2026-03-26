@@ -45,6 +45,27 @@ Supported clients should check the configuration options for max send message si
 
 ## Helm Chart Upgrades
 
+### Helm Chart 6.50.0 - Always prepend configured registry in image references
+
+The dot-based heuristic introduced in Helm chart 6.50.0 to detect an embedded registry in the `repository` field has been removed. Previously, if the `repository` value contained a dot (e.g., `mirror.gcr.io/grafana/loki`), any configured `registry` (both service-level and `global.imageRegistry`) was silently ignored.
+
+The chart now always prepends the configured registry, which is consistent with the behavior before Helm chart 6.50.0 and with other Grafana Helm charts.
+
+**Action required:** If you are embedding a full registry path in the `repository` field (e.g., `loki.image.repository: private.registry.com/grafana/loki`), split it into separate `registry` and `repository` fields:
+
+```yaml
+# Before (deprecated pattern)
+loki:
+  image:
+    repository: private.registry.com/grafana/loki
+
+# After
+loki:
+  image:
+    registry: private.registry.com
+    repository: grafana/loki
+```
+
 ### Helm Chart 6.50.0 - Respect the global registry in the sidecar image
 
 If you prefixed the sidecar container with a private registry (`sidecar.image.repository`), this is no longer necessary and is deprecated as the global registry is used starting with Helm chart 6.46.1. Therefore please use `global.imageRegistry` or alternatively, `sidecar.image.registry` for more fine-grained control.
