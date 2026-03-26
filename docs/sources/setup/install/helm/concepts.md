@@ -47,7 +47,7 @@ By default and inspired by Grafana's [Tanka setup](https://github.com/grafana/lo
 installs the gateway component which is an NGINX that exposes the Loki API and automatically proxies requests to the correct
 Loki components (read or write, or single instance in the case of filesystem storage).
 The gateway must be enabled if an Ingress is required, since the Ingress exposes the gateway only.
-If the gateway is enabled, Grafana and log shipping agents, such as Promtail, should be configured to use the gateway.
+If the gateway is enabled, Grafana and log shipping agents, such as Grafana Alloy, should be configured to use the gateway.
 If NetworkPolicies are enabled, they are more restrictive if the gateway is enabled.
 
 ## Caching
