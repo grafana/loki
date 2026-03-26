@@ -144,7 +144,7 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 				Streams: []logproto.Stream{{}},
 			}
 			for recordWithIndex := range workChan {
-				err := kc.decoder.DecodeWithoutLabels(recordWithIndex.record.Content, &pushReq.Streams[0])
+				err := kc.decoder.DecodeWithoutLabelsTarget(recordWithIndex.record.Content, &pushReq.Streams[0])
 				if err != nil {
 					level.Error(kc.logger).Log("msg", "failed to decode record", "error", err)
 					continue

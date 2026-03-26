@@ -157,7 +157,7 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 
 	// Try to decode the stream in the record.
 	tenant := string(rec.Key)
-	err := p.decoder.DecodeWithoutLabels(rec.Value, &p.stream)
+	err := p.decoder.DecodeWithoutLabelsTarget(rec.Value, &p.stream)
 	if err != nil {
 		// This is an unrecoverable error and no amount of retries will fix it.
 		return fmt.Errorf("failed to decode stream: %w", err)
