@@ -3,10 +3,15 @@ package executor
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
+	"github.com/golang/snappy"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -127,92 +132,16 @@ func TestRecordEncoderDecoder(t *testing.T) {
 	})
 }
 
-func TestCachingPipelineMaxCacheableSize(t *testing.T) {
+func TestCachingPipelineCaching(t *testing.T) {
 	ctx := t.Context()
 
 	rows := make([]string, 30)
 	for i := range rows {
 		rows[i] = "abcdefgh"
 	}
-	csv := ""
-	for i, r := range rows {
-		if i > 0 {
-			csv += "\n"
-		}
-		csv += r
-	}
-	rec, err := CSVToArrow(testFields, csv)
+	bigCSV := strings.Join(rows, "\n")
+	bigRec, err := CSVToArrow(testFields, bigCSV)
 	require.NoError(t, err)
-
-	// Measure the actual encoded frame size.
-	probe := newRecordEncoder("")
-	require.NoError(t, probe.Append(rec))
-	actualSize := probe.Size()
-	require.Greater(t, int(actualSize), 0)
-
-	t.Run("limit of zero caches only empty responses", func(t *testing.T) {
-		mc := newMockCache()
-
-		// Non-empty record: should NOT be cached.
-		p := newCachingPipeline(mc, NewBufferedPipeline(rec), "key", 0, "", log.NewNopLogger())
-		require.NoError(t, p.Open(ctx))
-		drainPipeline(t, p)
-		p.Close()
-		require.Equal(t, 0, mc.setCalls, "non-empty record must not be cached when maxSizeBytes==0")
-
-		// Empty response (no records): should be cached.
-		p2 := newCachingPipeline(mc, NewBufferedPipeline(), "empty-key", 0, "", log.NewNopLogger())
-		require.NoError(t, p2.Open(ctx))
-		drainPipeline(t, p2)
-		p2.Close()
-		require.Equal(t, 1, mc.setCalls, "empty response must be cached even when maxSizeBytes==0")
-	})
-
-	for _, tc := range []struct {
-		name           string
-		compression    string
-	}{
-		{name: "without snappy", compression: ""},
-		{name: "with snappy", compression: "snappy"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			// Measure encoded size for this compression.
-			enc := newRecordEncoder(tc.compression)
-			require.NoError(t, enc.Append(rec))
-			encodedSize := enc.Size()
-
-			t.Run("limit below encoded size", func(t *testing.T) {
-				mc := newMockCache()
-				p := newCachingPipeline(mc, NewBufferedPipeline(rec), "key", encodedSize-1, tc.compression, log.NewNopLogger())
-				require.NoError(t, p.Open(ctx))
-				drainPipeline(t, p)
-				p.Close()
-				require.Equal(t, 0, mc.setCalls, "must not cache when entry exceeds max size")
-			})
-
-			t.Run("limit at encoded size", func(t *testing.T) {
-				mc := newMockCache()
-				p := newCachingPipeline(mc, NewBufferedPipeline(rec), "key", encodedSize, tc.compression, log.NewNopLogger())
-				require.NoError(t, p.Open(ctx))
-				drainPipeline(t, p)
-				p.Close()
-				require.Equal(t, 1, mc.setCalls, "must cache when entry fits within max size")
-
-				// Verify round-trip.
-				hit := newCachingPipeline(mc, &failPipeline{}, "key", encodedSize, tc.compression, log.NewNopLogger())
-				require.NoError(t, hit.Open(ctx))
-				require.True(t, hit.(*cachingPipeline).hit)
-				batches := drainPipeline(t, hit)
-				hit.Close()
-				require.Len(t, batches, 1)
-				require.Equal(t, rec.NumRows(), batches[0].NumRows())
-			})
-		})
-	}
-}
-
-func TestCachingPipelinePassthrough(t *testing.T) {
-	ctx := t.Context()
 
 	rec1, err := CSVToArrow(testFields, "a\nb")
 	require.NoError(t, err)
@@ -221,42 +150,88 @@ func TestCachingPipelinePassthrough(t *testing.T) {
 	rec3, err := CSVToArrow(testFields, "e\nf")
 	require.NoError(t, err)
 
+	sizeOf := func(rec arrow.RecordBatch, compression string) uint64 {
+		enc := newRecordEncoder(compression)
+		_ = enc.Append(rec)
+		return enc.Size()
+	}
+
 	for _, tc := range []struct {
-		name           string
-		records        []arrow.RecordBatch
-		wantBatches    int
-		wantStoreCalls int
-		wantKeyInCache bool
-		cacheKey       string
+		name              string
+		records           []arrow.RecordBatch
+		maxSizeBytes      uint64
+		compression       string
+		wantCacheSetCalls int
+		wantBatches       int
+		wantRoundTrip     bool
 	}{
 		{
-			name:           "non-empty response is not cached",
-			records:        []arrow.RecordBatch{rec1, rec2, rec3},
-			wantBatches:    3,
-			wantStoreCalls: 0,
-			wantKeyInCache: false,
-			cacheKey:       "pt-key",
+			name:              "non-empty response not cached at limit zero",
+			records:           []arrow.RecordBatch{rec1, rec2, rec3},
+			maxSizeBytes:      0,
+			wantCacheSetCalls: 0,
+			wantBatches:       3,
 		},
 		{
-			name:           "empty response is cached",
-			records:        nil,
-			wantBatches:    0,
-			wantStoreCalls: 1,
-			wantKeyInCache: true,
-			cacheKey:       "empty-key",
+			name:              "empty response cached at limit zero",
+			records:           nil,
+			maxSizeBytes:      0,
+			wantCacheSetCalls: 1,
+			wantBatches:       0,
+		},
+		{
+			name:              "no compression: limit below encoded size",
+			records:           []arrow.RecordBatch{bigRec},
+			maxSizeBytes:      sizeOf(bigRec, "") - 1,
+			wantCacheSetCalls: 0,
+			wantBatches:       1,
+		},
+		{
+			name:              "no compression: limit at encoded size",
+			records:           []arrow.RecordBatch{bigRec},
+			maxSizeBytes:      sizeOf(bigRec, ""),
+			wantCacheSetCalls: 1,
+			wantBatches:       1,
+			wantRoundTrip:     true,
+		},
+		{
+			name:              "snappy: limit below encoded size",
+			records:           []arrow.RecordBatch{bigRec},
+			maxSizeBytes:      sizeOf(bigRec, "snappy") - 1,
+			compression:       "snappy",
+			wantCacheSetCalls: 0,
+			wantBatches:       1,
+		},
+		{
+			name:              "snappy: limit at encoded size",
+			records:           []arrow.RecordBatch{bigRec},
+			maxSizeBytes:      sizeOf(bigRec, "snappy"),
+			compression:       "snappy",
+			wantCacheSetCalls: 1,
+			wantBatches:       1,
+			wantRoundTrip:     true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mc := newMockCache()
 
-			p := newCachingPipeline(mc, NewBufferedPipeline(tc.records...), tc.cacheKey, 0, "", log.NewNopLogger())
+			p := newCachingPipeline(mc, NewBufferedPipeline(tc.records...), "key", tc.maxSizeBytes, tc.compression, log.NewNopLogger())
 			require.NoError(t, p.Open(ctx))
 			batches := drainPipeline(t, p)
 			p.Close()
 
 			require.Len(t, batches, tc.wantBatches)
-			require.Equal(t, tc.wantStoreCalls, mc.setCalls)
-			require.Equal(t, tc.wantKeyInCache, mc.data[cache.HashKey(tc.cacheKey)] != nil)
+			require.Equal(t, tc.wantCacheSetCalls, mc.setCalls)
+
+			if tc.wantRoundTrip {
+				hit := newCachingPipeline(mc, &failPipeline{}, "key", tc.maxSizeBytes, tc.compression, log.NewNopLogger())
+				require.NoError(t, hit.Open(ctx))
+				require.True(t, hit.(*cachingPipeline).hit)
+				cached := drainPipeline(t, hit)
+				hit.Close()
+				require.Len(t, cached, tc.wantBatches)
+				require.Equal(t, tc.records[0].NumRows(), cached[0].NumRows())
+			}
 		})
 	}
 }
@@ -327,3 +302,150 @@ func (m *mockCache) Fetch(_ context.Context, keys []string) (found []string, buf
 func (m *mockCache) Stop() {}
 
 func (m *mockCache) GetCacheType() stats.CacheType { return stats.TaskResultCache }
+
+const (
+	benchRecordCount   = 1_000
+	benchRowsPerRecord = 8_192
+	// Each value is 64 bytes → 8192 rows × 64 B ≈ 512 KiB raw per record
+	// 1000 records × 512 KiB ≈ 500 MiB total before compression
+	benchValueLen = 64
+)
+
+// makeBenchRecords generates n Arrow records using a string column. Each record
+// has rowsPerRecord rows; every value is benchValueLen bytes long and encodes
+// the row index so the data is non-trivially compressible but not all identical.
+func makeBenchRecords(tb testing.TB, n, rowsPerRecord int) []arrow.RecordBatch {
+	tb.Helper()
+
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "val", Type: arrow.BinaryTypes.String},
+	}, nil)
+
+	records := make([]arrow.RecordBatch, n)
+	for i := range records {
+		bldr := array.NewStringBuilder(memory.NewGoAllocator())
+		for r := 0; r < rowsPerRecord; r++ {
+			s := fmt.Sprintf("rec-%06d-row-%06d-%040x", i, r, r*1_000_003+i)
+			if len(s) < benchValueLen {
+				s += fmt.Sprintf("%0*d", benchValueLen-len(s), 0)
+			} else {
+				s = s[:benchValueLen]
+			}
+			bldr.Append(s)
+		}
+		col := bldr.NewArray()
+		records[i] = array.NewRecord(schema, []arrow.Array{col}, int64(rowsPerRecord))
+		col.Release()
+		bldr.Release()
+	}
+	return records
+}
+
+// totalRawBytes is a rough measure of uncompressed data fed to b.SetBytes.
+const totalRawBytes = benchRecordCount * benchRowsPerRecord * benchValueLen
+
+func BenchmarkEncode_WholeSnappy(b *testing.B) {
+	records := makeBenchRecords(b, benchRecordCount, benchRowsPerRecord)
+
+	// Whole-buffer snappy: encode all records into one uncompressed framed
+	// buffer, then compress the entire buffer in a single snappy.Encode call.
+	// This mirrors the OLD arrowCacheAdapter approach.
+	encodeWhole := func() ([]byte, error) {
+		enc := newRecordEncoder("") // no per-record compression
+		for _, rec := range records {
+			if err := enc.Append(rec); err != nil {
+				return nil, err
+			}
+		}
+		payload, err := enc.Commit()
+		if err != nil {
+			return nil, err
+		}
+		return snappy.Encode(nil, payload), nil
+	}
+
+	b.SetBytes(totalRawBytes)
+	b.ResetTimer()
+
+	var lastEncoded []byte
+	for i := 0; i < b.N; i++ {
+		enc, err := encodeWhole()
+		require.NoError(b, err)
+		lastEncoded = enc
+	}
+	b.ReportMetric(float64(len(lastEncoded)), "compressed_bytes")
+}
+
+func BenchmarkEncode_PerRecordSnappy(b *testing.B) {
+	records := makeBenchRecords(b, benchRecordCount, benchRowsPerRecord)
+
+	b.SetBytes(totalRawBytes)
+	b.ResetTimer()
+
+	var lastEncoded []byte
+	for i := 0; i < b.N; i++ {
+		enc := newRecordEncoder("snappy")
+		for _, rec := range records {
+			require.NoError(b, enc.Append(rec))
+		}
+		payload, err := enc.Commit()
+		require.NoError(b, err)
+		lastEncoded = payload
+	}
+	b.ReportMetric(float64(len(lastEncoded)), "compressed_bytes")
+}
+
+func BenchmarkDecode_WholeSnappy(b *testing.B) {
+	records := makeBenchRecords(b, benchRecordCount, benchRowsPerRecord)
+	enc := newRecordEncoder("")
+	for _, rec := range records {
+		require.NoError(b, enc.Append(rec))
+	}
+	payload, err := enc.Commit()
+	require.NoError(b, err)
+	encoded := snappy.Encode(nil, payload)
+
+	b.SetBytes(totalRawBytes)
+	b.ReportMetric(float64(len(encoded)), "compressed_bytes")
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		buf, err := snappy.Decode(nil, encoded)
+		require.NoError(b, err)
+		dec, err := newRecordDecoder(buf)
+		require.NoError(b, err)
+		for {
+			rec, err := dec.Next()
+			if err != nil {
+				break
+			}
+			_ = rec
+		}
+	}
+}
+
+func BenchmarkDecode_PerRecordSnappy(b *testing.B) {
+	records := makeBenchRecords(b, benchRecordCount, benchRowsPerRecord)
+	enc := newRecordEncoder("snappy")
+	for _, rec := range records {
+		require.NoError(b, enc.Append(rec))
+	}
+	encoded, err := enc.Commit()
+	require.NoError(b, err)
+
+	b.SetBytes(totalRawBytes)
+	b.ReportMetric(float64(len(encoded)), "compressed_bytes")
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		dec, err := newRecordDecoder(encoded)
+		require.NoError(b, err)
+		for {
+			rec, err := dec.Next()
+			if err != nil {
+				break
+			}
+			_ = rec
+		}
+	}
+}

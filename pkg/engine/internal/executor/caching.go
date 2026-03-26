@@ -111,11 +111,13 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 			p.cachedRows += rec.NumRows()
 			p.cachedRecords++
 		}
+
 		if errors.Is(err, EOF) {
 			region := xcap.RegionFromContext(ctx)
 			region.Record(xcap.TaskCacheBatches.Observe(p.cachedRecords))
 			region.Record(xcap.TaskCacheRows.Observe(p.cachedRows))
 		}
+
 		return rec, err
 	}
 
