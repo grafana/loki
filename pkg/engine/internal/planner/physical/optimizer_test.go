@@ -388,7 +388,7 @@ func TestClampExpression(t *testing.T) {
 				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
 			},
 			clamped: true,
-			want:    fmt.Sprintf("LT(%s, %s)", col, util.FormatTimeRFC3339Nano(time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC))),
+			want:    fmt.Sprintf("LT(%s, %s)", col, util.FormatTimeRFC3339Nano(time.Date(2026, 3, 14, 16, 48, 0, 1, time.UTC))),
 		},
 		{
 			desc:    "zero TimeRange leaves expression unchanged",
