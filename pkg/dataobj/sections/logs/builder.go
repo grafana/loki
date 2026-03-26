@@ -225,6 +225,10 @@ func (b *Builder) flushSection() *table {
 }
 
 func (b *Builder) flushSectionOrdered() *table {
+	// This is the final write to an ordered section, so we need to enable CRC and stats.
+	b.stripeBuffer.skipCRC = false
+	b.stripeBuffer.skipStats = false
+
 	b.flushRecords(zstd.SpeedDefault)
 
 	if len(b.stripes) == 0 {
