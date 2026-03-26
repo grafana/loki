@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/fatih/color"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -50,12 +52,43 @@ func (cmd *dumpCommand) dumpFile(name string) {
 			continue
 		}
 		switch {
+		case indexpointers.CheckSection(sec):
+			cmd.dumpIndexPointersSection(context.TODO(), offset, sec)
 		case streams.CheckSection(sec):
 			cmd.dumpStreamsSection(context.TODO(), offset, sec)
 		case logs.CheckSection(sec):
 			cmd.dumpLogsSection(context.TODO(), offset, sec)
 		default:
 			fmt.Printf("unknown section: %s\n", sec.Type)
+		}
+	}
+}
+
+func (cmd *dumpCommand) dumpIndexPointersSection(ctx context.Context, offset int, sec *dataobj.Section) {
+	indexPtrsSec, err := indexpointers.Open(ctx, sec)
+	if err != nil {
+		exitWithErr(err)
+	}
+	bold := color.New(color.Bold)
+	bold.Println("IndexPointers section:")
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
+
+	tmp := make([]indexpointers.IndexPointer, 512)
+	r := indexpointers.NewRowReader(indexPtrsSec)
+	defer r.Close()
+	if err = r.Open(ctx); err != nil {
+		exitWithErr(fmt.Errorf("failed to open row reader: %w", err))
+	}
+	for {
+		n, err := r.Read(ctx, tmp)
+		if err != nil && !errors.Is(err, io.EOF) {
+			exitWithErr(err)
+		}
+		if n == 0 && errors.Is(err, io.EOF) {
+			return
+		}
+		for _, s := range tmp[:n] {
+			bold.Printf("\t\tpath: %s, start: %s, end: %s\n", s.Path, s.StartTs.UTC().Format(time.RFC3339Nano), s.EndTs.UTC().Format(time.RFC3339Nano))
 		}
 	}
 }
