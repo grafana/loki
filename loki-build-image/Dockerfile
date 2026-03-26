@@ -10,11 +10,11 @@ ARG GOLANG_BASE_IMAGE=golang:${GO_VERSION}-trixie
 # Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
 FROM ${GOLANG_BASE_IMAGE} AS helm
 ARG TARGETARCH
-ARG HELM_VER="v3.2.3"
+ARG HELM_VER="v3.20.1"
 RUN curl -L "https://get.helm.sh/helm-${HELM_VER}-linux-$TARGETARCH.tar.gz" | tar zx && \
     install -t /usr/local/bin "linux-$TARGETARCH/helm"
 RUN BIN=$([ "$TARGETARCH" = "arm64" ] && echo "helm-docs_Linux_arm64" || echo "helm-docs_Linux_x86_64") &&  \
-    curl -L "https://github.com/norwoodj/helm-docs/releases/download/v1.11.2/$BIN.tar.gz" | tar zx && \
+    curl -L "https://github.com/norwoodj/helm-docs/releases/download/v1.14.2/$BIN.tar.gz" | tar zx && \
     install -t /usr/local/bin helm-docs
 
 FROM alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659 AS lychee
@@ -29,12 +29,12 @@ RUN apk add --no-cache curl && \
 FROM alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659 AS golangci
 RUN apk add --no-cache curl && \
     cd / && \
-    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v2.10.1
+    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v2.11.4
 
 FROM alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659 AS buf
 ARG TARGETOS
 RUN apk add --no-cache curl && \
-    curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.4.0/buf-$TARGETOS-$(uname -m)" -o "/usr/bin/buf" && \
+    curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.66.1/buf-$TARGETOS-$(uname -m)" -o "/usr/bin/buf" && \
     chmod +x "/usr/bin/buf"
 
 FROM alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659 AS docker
@@ -42,7 +42,7 @@ RUN apk add --no-cache docker-cli docker-cli-buildx
 
 FROM ${GOLANG_BASE_IMAGE} AS drone
 ARG TARGETARCH
-RUN curl -L "https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_linux_$TARGETARCH".tar.gz | tar zx && \
+RUN curl -L "https://github.com/harness/drone-cli/releases/download/v1.9.0/drone_linux_$TARGETARCH".tar.gz | tar zx && \
     install -t /usr/local/bin drone
 
 # Install faillint used to lint go imports in CI.
@@ -60,23 +60,23 @@ RUN GO111MODULE=on go install github.com/go-delve/delve/cmd/dlv@latest
 # Install ghr used to push binaries and template the release
 # This collides with the version of go tools used in the base image, thus we install it in its own image and copy it over.
 FROM ${GOLANG_BASE_IMAGE} AS ghr
-RUN GO111MODULE=on go install github.com/tcnksm/ghr@9349474
+RUN GO111MODULE=on go install github.com/tcnksm/ghr@v0.18.0
 
 # Install nfpm (https://nfpm.goreleaser.com) for creating .deb and .rpm packages.
 FROM ${GOLANG_BASE_IMAGE} AS nfpm
-RUN GO111MODULE=on go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.11.3
+RUN GO111MODULE=on go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.45.2
 
 # Install gotestsum
 FROM ${GOLANG_BASE_IMAGE} AS gotestsum
-RUN GO111MODULE=on go install gotest.tools/gotestsum@v1.8.2
+RUN GO111MODULE=on go install gotest.tools/gotestsum@v1.13.0
 
 # Install tools used to compile jsonnet.
 FROM ${GOLANG_BASE_IMAGE} AS jsonnet
 RUN GO111MODULE=on go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.5.1
-RUN GO111MODULE=on go install github.com/monitoring-mixins/mixtool/cmd/mixtool@16dc166166d91e93475b86b9355a4faed2400c18
+RUN GO111MODULE=on go install github.com/monitoring-mixins/mixtool/cmd/mixtool@latest
 RUN GO111MODULE=on go install github.com/google/go-jsonnet/cmd/jsonnet@v0.20.0
 
-FROM aquasec/trivy AS trivy
+FROM aquasec/trivy:0.69.3 AS trivy
 
 FROM ${GOLANG_BASE_IMAGE}
 RUN apt-get update && \
@@ -122,7 +122,7 @@ COPY --from=trivy /usr/local/bin/trivy /usr/bin/trivy
 # file for it to detect and switch to Go Modules automatically.
 # It's possible this can be revisited in newer versions of Go if the behavior around GOPATH vs GO111MODULES changes
 RUN GO111MODULE=on go install github.com/golang/protobuf/protoc-gen-go@v1.3.1
-RUN GO111MODULE=on go install github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0
+RUN GO111MODULE=on go install github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.2
 # Due to the lack of a proper release tag, we use the commit hash of
 # https://github.com/golang/tools/releases v0.1.7
 RUN GO111MODULE=on go install golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69
