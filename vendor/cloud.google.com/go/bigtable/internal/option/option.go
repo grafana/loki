@@ -180,10 +180,8 @@ func parseLoadBalancingStrategy(strategyStr string) LoadBalancingStrategy {
 		return PowerOfTwoLeastInFlight
 	case "ROUND_ROBIN":
 		return RoundRobin
-	case "":
-		return RoundRobin // Default if env var is not set
 	default:
-		return RoundRobin // Default for unknown values
+		return PowerOfTwoLeastInFlight // Default for unknown values
 	}
 }
 
@@ -233,27 +231,33 @@ func Debugf(logger *log.Logger, format string, v ...interface{}) {
 
 // DynamicChannelPoolConfig holds the parameters for dynamic channel pool scaling.
 type DynamicChannelPoolConfig struct {
-	Enabled              bool          // Whether dynamic scaling is enabled.
-	MinConns             int           // Minimum conns allowed
-	MaxConns             int           // Maximum conns allowed.
-	AvgLoadHighThreshold float64       // Average weighted load per connection to trigger scale-up.
-	AvgLoadLowThreshold  float64       // Average weighted load per connection to trigger scale-down.
-	MinScalingInterval   time.Duration // Minimum time between scaling operations (both up and down).
-	CheckInterval        time.Duration // How often to check if scaling is needed.
-	MaxRemoveConns       int           // Maximum number of connections to remove at once.
+	Enabled                          bool          // Whether dynamic scaling is enabled.
+	MinConns                         int           // Minimum conns allowed
+	MaxConns                         int           // Maximum conns allowed.
+	AvgLoadHighThreshold             float64       // Average weighted load per connection to trigger scale-up.
+	AvgLoadLowThreshold              float64       // Average weighted load per connection to trigger scale-down.
+	MinScalingInterval               time.Duration // Minimum time between scaling operations (both up and down).
+	CheckInterval                    time.Duration // How often to check if scaling is needed.
+	MaxRemoveConns                   int           // Maximum number of connections to remove at once.
+	ContinuousDownscaleRunsThreshold int           // Continous downscale signals for downscale to actually occur
+	MaxScaleUpPercentage             int           // MaxScaleUpPercentage limits the maximum number of connections added during a single
+	// scale-up event, expressed as a percentage of the current pool size.
+	// E.g., 30 means a maximum increase of 30%.
 }
 
 // DefaultDynamicChannelPoolConfig is default settings for dynamic channel pool
 func DefaultDynamicChannelPoolConfig() DynamicChannelPoolConfig {
 	return DynamicChannelPoolConfig{
-		Enabled:              true, // Enabled by default
-		MinConns:             10,
-		MaxConns:             200,
-		AvgLoadHighThreshold: 50,
-		AvgLoadLowThreshold:  5,
-		MinScalingInterval:   1 * time.Minute,
-		CheckInterval:        30 * time.Second,
-		MaxRemoveConns:       2, // Only Cap for removals
+		Enabled:                          true, // Enabled by default
+		MinConns:                         10,
+		MaxConns:                         200,
+		AvgLoadHighThreshold:             50,
+		AvgLoadLowThreshold:              5,
+		MinScalingInterval:               1 * time.Minute,
+		CheckInterval:                    30 * time.Second,
+		MaxRemoveConns:                   2, // Only Cap for removals
+		ContinuousDownscaleRunsThreshold: 3,
+		MaxScaleUpPercentage:             30,
 	}
 }
 
@@ -269,5 +273,25 @@ func DefaultMetricsReporterConfig() MetricsReporterConfig {
 	return MetricsReporterConfig{
 		Enabled:           true,
 		ReportingInterval: 1 * time.Minute,
+	}
+}
+
+// ConnectionRecycleConfig controls the behavior of the connection recycler.
+type ConnectionRecycleConfig struct {
+	// MaxAge is the base lifespan of a connection.
+	MaxAge time.Duration
+	// Jitter is the random buffer added to MaxAge which can allow for connection to be recycled.
+	MaxJitter time.Duration
+	// RunFrequency determines how often the recycler checks for expired connections.
+	RunFrequency time.Duration
+}
+
+// DefaultConnectionRecycleConfig returns the default configuration:
+// MaxAge: 45 minutes, Jitter: 5 minutes, RunFrequency: 1 minute, Enabled: true.
+func DefaultConnectionRecycleConfig() ConnectionRecycleConfig {
+	return ConnectionRecycleConfig{
+		MaxAge:       45 * time.Minute,
+		MaxJitter:    5 * time.Minute,
+		RunFrequency: 1 * time.Minute,
 	}
 }

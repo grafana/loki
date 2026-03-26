@@ -91,9 +91,9 @@ func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 		return 0, fmt.Errorf("failed to shuffle shard tenant: %w", err)
 	}
 	// If the rate is 0, we cannot make a decision to shuffle shard the segmentation
-	// key. We fallback to choosing a partition for the segmentation key.
+	// key. We fallback to choosing a partition for the hash key.
 	if rateBytes == 0 {
-		return subring.ActivePartitionForKey(uint32(key.Sum64()))
+		return subring.ActivePartitionForKey(hashKey)
 	}
 	numShuffleShardPartitions := numPartitionsForRate(rateBytes, r.perPartitionRateBytes, subring.ActivePartitionsCount())
 	// If the segmentation key is small enough that it does not need to be sharded,

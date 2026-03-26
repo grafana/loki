@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -738,6 +739,37 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDataobjSectionDescriptorMerge_NilMapPanic is a regression test for
+// https://github.com/grafana/loki/pull/21268
+func TestDataobjSectionDescriptorMerge_NilMapPanic(t *testing.T) {
+	ptr1 := pointers.SectionPointer{
+		Path:        "test-path",
+		Section:     0,
+		StreamIDRef: 1,
+		StartTs:     now.Add(-2 * time.Hour),
+		EndTs:       now.Add(-1 * time.Hour),
+		LineCount:   10,
+	}
+	ptr2 := pointers.SectionPointer{
+		Path:        "test-path",
+		Section:     0,
+		StreamIDRef: 2,
+		StartTs:     now.Add(-3 * time.Hour),
+		EndTs:       now,
+		LineCount:   5,
+	}
+
+	// Create descriptor with no ambiguous labels.
+	desc := NewSectionDescriptor(ptr1, nil)
+
+	// Before the fix this panicked with "assignment to entry in nil map".
+	require.NotPanics(t, func() {
+		desc.Merge(ptr2, []string{"env"})
+	})
+
+	require.Equal(t, []string{"env"}, desc.AmbiguousPredicatesByStream[ptr2.StreamIDRef])
 }
 
 func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, time.Time, time.Time, Metastore)) {

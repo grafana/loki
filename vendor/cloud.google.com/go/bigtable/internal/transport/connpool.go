@@ -21,7 +21,7 @@ import (
 	"io"
 	"log"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"net/url"
 	"slices"
@@ -31,12 +31,15 @@ import (
 	"time"
 
 	btpb "cloud.google.com/go/bigtable/apiv2/bigtablepb"
+	"github.com/googleapis/gax-go/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	gtransport "google.golang.org/api/transport/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/alts"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 
 	btopt "cloud.google.com/go/bigtable/internal/option"
 
@@ -47,6 +50,8 @@ import (
 // We cap the max draining timeout to 30mins as there might be a long running stream (such as full table scan).
 var maxDrainingTimeout = 30 * time.Minute
 
+const artificialLoadIfError = 10
+const artificialLoadPenalizedTimer = 5 * time.Second
 const requestParamsHeader = "x-goog-request-params"
 
 // ipProtocol represents the type of IP protocol used.
@@ -101,6 +106,20 @@ func WithAppProfile(appProfile string) BigtableChannelPoolOption {
 func WithMeterProvider(mp metric.MeterProvider) BigtableChannelPoolOption {
 	return func(p *BigtableChannelPool) {
 		p.meterProvider = mp
+	}
+}
+
+// WithDirectAccessDialer provides the dialer for direct access
+func WithDirectAccessDialer(directAccessDialer func() (*BigtableConn, error)) BigtableChannelPoolOption {
+	return func(p *BigtableChannelPool) {
+		p.directAccessDialer = directAccessDialer
+	}
+}
+
+// WithDirectAccessFeatureFlagsMetadata provides the feature flags required for DirectAccess
+func WithDirectAccessFeatureFlagsMetadata(directAccessFeatureFlagsMD metadata.MD) BigtableChannelPoolOption {
+	return func(p *BigtableChannelPool) {
+		p.directAccessFeatureFlagsMD = directAccessFeatureFlagsMD
 	}
 }
 
@@ -235,6 +254,7 @@ type connEntry struct {
 	streamingLoad atomic.Int32 // In-flight streaming requests
 	errorCount    atomic.Int64 // Errors since the last metric report
 	drainingState atomic.Bool  // True if the connection is being gracefully drained.
+	penaltyExpiry atomic.Int64 // penaltyExpiry stores the UnixNano timestamp of when the penalty ends
 
 }
 
@@ -254,6 +274,25 @@ func (e *connEntry) createdAt() int64 {
 		return 0
 	}
 	return e.conn.creationTime()
+}
+
+// applyErrorPenalty checks if the error warrants a load balancing penalty,
+// and if so, sets an expiration time for the artificial load.
+func (e *connEntry) applyErrorPenalty(err error) {
+	if err == nil {
+		return
+	}
+
+	code := status.Code(err)
+
+	// Penalize errors that typically indicate target-specific health or capacity issues.
+	if code == codes.Unavailable ||
+		code == codes.ResourceExhausted ||
+		code == codes.Internal {
+		// A simple Store is safe here; concurrent updates is fine here.
+		newExpiry := time.Now().Add(artificialLoadPenalizedTimer).UnixNano()
+		e.penaltyExpiry.Store(newExpiry)
+	}
 }
 
 // isDraining atomically checks if the connection is in the draining state.
@@ -298,7 +337,18 @@ func (p *BigtableChannelPool) waitForDrainAndClose(entry *connEntry) {
 func (e *connEntry) calculateConnLoad() int32 {
 	unary := e.unaryLoad.Load()
 	streaming := e.streamingLoad.Load()
-	return unary + streaming
+	load := unary + streaming
+
+	expiry := e.penaltyExpiry.Load()
+	if expiry > 0 {
+		if time.Now().UnixNano() < expiry {
+			load += artificialLoadIfError // Apply the artificial penalty weight
+		} else {
+			// restore to zero
+			e.penaltyExpiry.CompareAndSwap(expiry, 0)
+		}
+	}
+	return load
 }
 
 // BigtableChannelPool implements ConnPool and routes requests to the connection
@@ -320,9 +370,18 @@ type BigtableChannelPool struct {
 	appProfile     string
 	instanceName   string
 	featureFlagsMD metadata.MD
-	meterProvider  metric.MeterProvider
+
+	factory *connectionFactory // Use the factory for connection creation
+
+	meterProvider metric.MeterProvider
 	// configs
 	metricsConfig btopt.MetricsReporterConfig
+
+	directAccessFeatureFlagsMD metadata.MD
+	directAccessDialer         func() (*BigtableConn, error)
+
+	// Add the cached gauge instrument
+	daEligibleGauge metric.Int64Gauge
 
 	// background monitors
 	monitors []Monitor
@@ -367,6 +426,46 @@ func NewBigtableChannelPool(ctx context.Context, connPoolSize int, strategy btop
 		opt(pool)
 	}
 
+	// make the da guage lifetime, optional
+	if pool.meterProvider != nil {
+		meter := pool.meterProvider.Meter(clientMeterName)
+		var err error
+		pool.daEligibleGauge, err = meter.Int64Gauge(
+			"direct_access/compatible",
+			metric.WithDescription("Reports 1 if the environment is eligible for DirectPath, 0 otherwise. Based on a connection attempt at startup."),
+			metric.WithUnit("1"),
+		)
+		if err != nil {
+			btopt.Debugf(pool.logger, "bigtable_connpool: failed to create direct_access/compatible metric: %v", err)
+		}
+	}
+
+	// All standard dialers and feature flags
+	factoryDial := dial
+	factoryFeatureFlagsMD := pool.featureFlagsMD
+
+	var firstConn *BigtableConn
+
+	if pool.directAccessDialer != nil {
+		var isDirectAccess bool
+		if firstConn, isDirectAccess = pool.checkIfDirectAccessCompatible(); isDirectAccess {
+			btopt.Debugf(pool.logger, "bigtable_connpool: Direct Access is available. Using Direct Access now.")
+			factoryDial = pool.directAccessDialer
+			factoryFeatureFlagsMD = pool.directAccessFeatureFlagsMD
+		} else {
+			btopt.Debugf(pool.logger, "bigtable_connpool: Direct Access is not available. Falling back to cloud path.")
+		}
+	}
+
+	// Initialize the connectionFactory
+	pool.factory = &connectionFactory{
+		dial:           factoryDial,
+		instanceName:   pool.instanceName,
+		appProfile:     pool.appProfile,
+		featureFlagsMD: factoryFeatureFlagsMD,
+		logger:         pool.logger,
+	}
+
 	// Set the selection function based on the strategy
 	switch strategy {
 	case btopt.LeastInFlight:
@@ -378,7 +477,8 @@ func NewBigtableChannelPool(ctx context.Context, connPoolSize int, strategy btop
 	}
 
 	var exitSignal error
-
+	btopt.Debugf(pool.logger, "bigtable_connpool: Creating conn pool with %d connections", connPoolSize)
+	// TODO: Replace this logic with addConnections(...).
 	initialConns := make([]*connEntry, connPoolSize)
 	for i := 0; i < connPoolSize; i++ {
 		select {
@@ -391,21 +491,20 @@ func NewBigtableChannelPool(ctx context.Context, connPoolSize int, strategy btop
 			break
 		}
 
-		conn, err := dial()
+		var entry *connEntry
+		var err error
+
+		if i == 0 && firstConn != nil {
+			entry = &connEntry{conn: firstConn}
+		} else {
+			entry, err = pool.factory.newEntry(ctx)
+		}
+
 		if err != nil {
 			exitSignal = err
 			break
 		}
-
-		entry := &connEntry{conn: conn}
-		initialConns[i] = entry // Note, we keep non primed conns in conns
-		// Prime the new connection in a non-blocking goroutine to warm it up.
-		go func(e *connEntry) {
-			err := e.conn.Prime(ctx, pool.instanceName, pool.appProfile, pool.featureFlagsMD)
-			if err != nil {
-				btopt.Debugf(pool.logger, "bigtable_connpool: failed to prime initial connection: %v\n", err)
-			}
-		}(entry)
+		initialConns[i] = entry
 	}
 	if exitSignal != nil {
 		btopt.Debugf(pool.logger, "bigtable_connpool: error during initial connection creation: %v\n", exitSignal)
@@ -429,6 +528,11 @@ func NewBigtableChannelPool(ctx context.Context, connPoolSize int, strategy btop
 	} else {
 		btopt.Debugf(pool.logger, "bigtable_connpool: failed to create metrics reporter: %v\n", err)
 	}
+
+	// Initialize and register the Pacemaker
+	pacemaker := NewPacemaker(pool.meterProvider, pool.logger)
+	pool.monitors = append(pool.monitors, pacemaker)
+
 	pool.startMonitors()
 
 	// record the client startup time
@@ -437,6 +541,50 @@ func NewBigtableChannelPool(ctx context.Context, connPoolSize int, strategy btop
 	pool.recordClientStartUp(clientCreationTimestamp, transportType)
 
 	return pool, nil
+}
+
+// checkIfDirectAccessCompatible attempts to create a single connection using the directAccessDialer,
+// primes it, and checks if direct access was successful
+func (p *BigtableChannelPool) checkIfDirectAccessCompatible() (*BigtableConn, bool) {
+	conn, err := p.directAccessDialer()
+	if err != nil {
+		btopt.Debugf(p.logger, "bigtable_connpool: Direct Access failed: %v", err)
+		return nil, false
+	}
+
+	err = conn.Prime(p.poolCtx, p.instanceName, p.appProfile, p.directAccessFeatureFlagsMD)
+	if err != nil {
+		btopt.Debugf(p.logger, "bigtable_connpool: Prime() failed during Direct Access check: %v", err)
+		conn.Close()
+		p.reportDirectAccessMetric(false, "")
+		return nil, false
+	}
+
+	if conn.isALTSConn.Load() {
+		ipProtocol := conn.ipProtocol()
+		p.reportDirectAccessMetric(true, ipProtocol)
+		return conn, true
+	}
+
+	// If not ALTS, discard
+	conn.Close()
+	// sent empty ip protocol
+	p.reportDirectAccessMetric(false, "")
+	return nil, false
+}
+
+// reportDirectAccessMetric records the direct_access/compatible metric.
+func (p *BigtableChannelPool) reportDirectAccessMetric(isEligible bool, ipPreference string) {
+	// Check if the instrument was successfully created during pool initialization
+	if p.daEligibleGauge == nil {
+		return
+	}
+	val := int64(0)
+	if isEligible {
+		val = 1
+	}
+	p.daEligibleGauge.Record(p.poolCtx, val, metric.WithAttributes(
+		attribute.String("ip_preference", ipPreference)))
 }
 
 func (p *BigtableChannelPool) recordClientStartUp(clientCreationTimestamp time.Time, transportType string) {
@@ -530,25 +678,13 @@ func (p *BigtableChannelPool) replaceConnection(oldEntry *connEntry) {
 		return
 	default:
 	}
-	newConn, err := p.dial()
+	newEntry, err := p.factory.newEntry(p.poolCtx)
 	if err != nil {
-		btopt.Debugf(p.logger, "bigtable_connpool: Failed to redial connection at index %d: %v\n", idx, err)
+		btopt.Debugf(p.logger, "bigtable_connpool: Failed to replace connection at index %d: %v. Closing new conn. Old connection remains (draining).\n", idx, err)
 		return
 	}
 
-	err = newConn.Prime(p.poolCtx, p.instanceName, p.appProfile, p.featureFlagsMD)
-
-	if err != nil {
-		btopt.Debugf(p.logger, "bigtable_connpool: Failed to prime replacement connection at index %d: %v. Closing new conn. Old connection remains (draining).\n", idx, err)
-		newConn.Close() //
-		return          // Abort
-	}
-
 	btopt.Debugf(p.logger, "bigtable_connpool: Successfully primed new connection. Replacing connection at index %d\n", idx)
-	newEntry := &connEntry{
-		conn: newConn,
-	}
-
 	// Copy-on-write
 	newConns := make([]*connEntry, len(currentConns))
 	copy(newConns, currentConns)
@@ -572,6 +708,7 @@ func (p *BigtableChannelPool) Invoke(ctx context.Context, method string, args in
 	err = entry.conn.Invoke(ctx, method, args, reply, opts...)
 	if err != nil {
 		entry.errorCount.Add(1)
+		entry.applyErrorPenalty(err) // Apply penalty on error
 	}
 	return err
 
@@ -633,8 +770,8 @@ func (p *BigtableChannelPool) selectLeastLoadedRandomOfTwo() (*connEntry, error)
 
 	// Retry numConns * 2 times in worst case.
 	for i := 0; i < numConns*2 && numConns > 1; i++ {
-		idx1 := rand.Intn(numConns)
-		idx2 := rand.Intn(numConns)
+		idx1 := rand.IntN(numConns)
+		idx2 := rand.IntN(numConns)
 
 		entry1 := conns[idx1]
 		entry2 := conns[idx2]
@@ -722,6 +859,7 @@ func (s *refCountedStream) SendMsg(m interface{}) error {
 	err := s.ClientStream.SendMsg(m)
 	if err != nil {
 		s.entry.errorCount.Add(1)
+		s.entry.applyErrorPenalty(err)
 		s.decrementLoad()
 	}
 	return err
@@ -734,6 +872,7 @@ func (s *refCountedStream) RecvMsg(m interface{}) error {
 		// io.EOF is a normal stream termination, not an error to be counted.
 		if !errors.Is(err, io.EOF) {
 			s.entry.errorCount.Add(1)
+			s.entry.applyErrorPenalty(err)
 		}
 		s.decrementLoad()
 	}
@@ -785,20 +924,13 @@ func (p *BigtableChannelPool) addConnections(increaseDelta, maxConns int) bool {
 			default:
 			}
 
-			conn, err := p.dial()
+			entry, err := p.factory.newEntry(p.poolCtx)
 			if err != nil {
-				btopt.Debugf(p.logger, "bigtable_connpool: Failed to dial new connection for scale up: %v\n", err)
+				btopt.Debugf(p.logger, "bigtable_connpool: Failed to add new connection: %v. Connection will not be added.\n", err)
 				return
 			}
 
-			err = conn.Prime(p.poolCtx, p.instanceName, p.appProfile, p.featureFlagsMD)
-			if err != nil {
-				btopt.Debugf(p.logger, "bigtable_connpool: Failed to prime new connection: %v. Connection will not be added.\n", err)
-				conn.Close()
-				return
-			}
-
-			results <- &connEntry{conn: conn}
+			results <- entry
 		}()
 	}
 	// Goroutine to close the results channel once all workers are done.
@@ -901,6 +1033,72 @@ func (p *BigtableChannelPool) removeConnections(decreaseDelta, minConns, maxRemo
 		go p.waitForDrainAndClose(entry)
 	}
 	return len(connsToDrain) > 0
+
+}
+
+// connectionFactory is responsible for creating and priming new Bigtable connections.
+// TODO remove these members from BigtableConnPool struct
+type connectionFactory struct {
+	dial           func() (*BigtableConn, error)
+	instanceName   string
+	appProfile     string
+	featureFlagsMD metadata.MD
+	logger         *log.Logger
+}
+
+// newEntry creates a new connection, primes it, and returns it as a connEntry.
+// Blocks until the connection is successfully primed, or returns an error.
+func (cf *connectionFactory) newEntry(ctx context.Context) (*connEntry, error) {
+	conn, err := cf.dial()
+	if err != nil {
+		return nil, fmt.Errorf("factory dial failed: %w", err)
+	}
+
+	if err := cf.primeWithRetry(ctx, conn); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("bigtable_connpool:  connection factory prime failed: %w", err)
+	}
+
+	return &connEntry{conn: conn}, nil
+}
+
+// primeWithRetry attempts to prime the connection, retrying with exponential backoff.
+func (cf *connectionFactory) primeWithRetry(ctx context.Context, conn *BigtableConn) error {
+	backoffPolicy := gax.Backoff{
+		Initial:    100 * time.Millisecond,
+		Max:        2 * time.Second,
+		Multiplier: 1.2,
+	}
+	maxAttempts := 3
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+
+		// ctx.Done() returns a error
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("bigtable_connpool:  error before prime attempt %d: %w", attempt, err)
+		}
+
+		lastErr = conn.Prime(ctx, cf.instanceName, cf.appProfile, cf.featureFlagsMD)
+		if lastErr == nil {
+			return nil
+		}
+
+		if attempt == maxAttempts-1 {
+			// no need to pause(), short circuit
+			break
+		}
+
+		pause := backoffPolicy.Pause()
+		btopt.Debugf(cf.logger, "bigtable_connpool: Prime failed with  error on attempt %d, retrying in %v: %v", attempt+1, pause, lastErr)
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context done while backing off for prime: %w", ctx.Err())
+		case <-time.After(pause):
+		}
+	}
+
+	return fmt.Errorf("factory prime failed after %d attempts: %w", maxAttempts, lastErr)
 
 }
 

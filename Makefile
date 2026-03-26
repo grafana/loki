@@ -72,7 +72,6 @@ LOKI_IMAGE             := $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
 CANARY_IMAGE           := $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 QUERY_TEE_IMAGE        := $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
 LOGCLI_IMAGE           := $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG)
-PROMTAIL_IMAGE         := $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)
 LOGQL_ANALYZER_IMAGE   := $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG)
 OPERATOR_IMAGE         := $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
 
@@ -123,12 +122,12 @@ endef
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-45s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary loki-canary-boringcrypto lint test clean yacc protos touch-protobuf-sources
+.PHONY: all images check-generated-files logcli loki loki-debug loki-canary loki-canary-boringcrypto lint test clean yacc protos touch-protobuf-sources
 .PHONY: format check-format
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-test
 .PHONY: fluentd-image, fluentd-test
-.PHONY: promtail-image loki-image build-image build-image-push
+.PHONY: loki-image build-image build-image-push
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
@@ -160,10 +159,6 @@ YACC_GOS := $(patsubst %.y,%.y.go,$(YACC_DEFS))
 RAGEL_DEFS := $(shell find . $(DONT_FIND) -type f -name *.rl -print)
 RAGEL_GOS := $(patsubst %.rl,%.rl.go,$(RAGEL_DEFS))
 
-# Promtail UI files
-PROMTAIL_GENERATED_FILE := clients/pkg/promtail/server/ui/assets_vfsdata.go
-PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name assets_vfsdata.go -prune -o -print)
-
 # Documentation source path
 DOC_SOURCES_PATH := docs/sources
 DOC_TEMPLATE_PATH := docs/templates
@@ -182,11 +177,11 @@ binfmt:
 ################
 # Main Targets #
 ################
-all: promtail logcli loki loki-canary ## build all executables (loki, logcli, promtail, loki-canary)
+all: logcli loki loki-canary ## build all executables (loki, logcli, loki-canary)
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
-check-generated-files: yacc ragel fmt-proto protos clients/pkg/promtail/server/ui/assets_vfsdata.go
-	@if ! (git diff --exit-code $(YACC_GOS) $(RAGEL_GOS) $(PROTO_DEFS) $(PROTO_GOS) $(PROMTAIL_GENERATED_FILE)); then \
+check-generated-files: yacc ragel fmt-proto protos
+	@if ! (git diff --exit-code $(YACC_GOS) $(RAGEL_GOS) $(PROTO_DEFS) $(PROTO_GOS)); then \
 		echo "\nChanges found in generated files"; \
 		echo "Run 'make check-generated-files' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \
@@ -275,45 +270,6 @@ lokitool: cmd/lokitool/lokitool ## build lokitool executable
 cmd/lokitool/lokitool:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/lokitool
 
-############
-# Promtail #
-############
-
-PROMTAIL_CGO := 0
-PROMTAIL_GO_FLAGS := $(GO_FLAGS)
-PROMTAIL_DEBUG_GO_FLAGS := $(DEBUG_GO_FLAGS)
-
-# Validate GOHOSTOS=linux && GOOS=linux to use CGO.
-ifeq ($(GOHOSTOS),linux)
-ifeq ($(GOOS),linux)
-ifneq ($(CGO_ENABLED), 0)
-PROMTAIL_CGO = 1
-endif
-PROMTAIL_GO_FLAGS = $(DYN_GO_FLAGS)
-PROMTAIL_DEBUG_GO_FLAGS = $(DEBUG_DYN_GO_FLAGS)
-endif
-endif
-ifeq ($(PROMTAIL_JOURNAL_ENABLED), true)
-PROMTAIL_GO_EXTRA_TAGS = ,promtail_journal_enabled
-endif
-.PHONY: clients/cmd/promtail/promtail clients/cmd/promtail/promtail-debug
-promtail: clients/cmd/promtail/promtail ## build promtail executable
-promtail-debug: clients/cmd/promtail/promtail-debug ## build debug promtail executable
-
-promtail-clean-assets:
-	rm -rf clients/pkg/promtail/server/ui/assets_vfsdata.go
-
-# Rule to generate promtail static assets file
-$(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
-	@echo ">> writing assets"
-	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./clients/pkg/promtail/server/ui
-
-clients/cmd/promtail/promtail:
-	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS)$(PROMTAIL_GO_EXTRA_TAGS) -o $@ ./$(@D)
-
-clients/cmd/promtail/promtail-debug:
-	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS)$(PROMTAIL_GO_EXTRA_TAGS) -o $@ ./$(@D)
-
 #########
 # Mixin #
 #########
@@ -362,17 +318,11 @@ ifeq ($(SKIP_ARM),true)
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/lokitool
-	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
-	CGO_ENABLED=1 $(CGO_GOX) -tags promtail_journal_enabled -osarch="linux/amd64" ./clients/cmd/promtail
 else
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/lokitool
-	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
-	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm64" ./clients/cmd/promtail
-	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm" ./clients/cmd/promtail
-	CGO_ENABLED=1 $(CGO_GOX) -tags promtail_journal_enabled -osarch="linux/amd64" ./clients/cmd/promtail
 endif
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
@@ -387,8 +337,8 @@ publish: packages
 # Lint #
 ########
 ifeq ($(UNAME_S),Linux)
-LINT_FLAGS=--timeout=15m --build-tags=linux,promtail_journal_enabled
-GOFLAGS=-tags=linux,promtail_journal_enabled
+LINT_FLAGS=--timeout=15m --build-tags=linux
+GOFLAGS=-tags=linux
 else
 LINT_FLAGS=--timeout=15m
 GOFLAGS=""
@@ -437,7 +387,6 @@ clean: ## clean the generated files
 	rm -rf clients/cmd/docker-driver/rootfs
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
-	rm -rf clients/cmd/promtail/promtail
 	rm -rf cmd/logcli/logcli
 	rm -rf cmd/logql-analyzer/logql-analyzer
 	rm -rf cmd/loki-canary/loki-canary
@@ -622,13 +571,7 @@ push-bigtable-backup: bigtable-backup
 # Images #
 ##########
 
-images: promtail-image loki-image loki-canary-image helm-test-image docker-driver
-
-# Promtail image
-promtail-image: ## build the promtail docker image
-	$(OCI_BUILD) -t $(PROMTAIL_IMAGE) -f clients/cmd/promtail/Dockerfile .
-promtail-debug-image: ## build the promtail debug docker image
-	$(OCI_BUILD) -t $(PROMTAIL_IMAGE)-debug -f clients/cmd/promtail/Dockerfile.debug .
+images: loki-image loki-canary-image helm-test-image docker-driver
 
 # Loki image
 loki-image: ## build the loki docker image
@@ -863,7 +806,6 @@ trivy: loki-image build-image
 snyk: loki-image build-image
 	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
 	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) --file=loki-build-image/Dockerfile
-	snyk container test $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) --file=clients/cmd/promtail/Dockerfile
 	snyk code test
 
 .PHONY: scan-vulnerabilities
