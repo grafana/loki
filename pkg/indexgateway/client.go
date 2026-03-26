@@ -400,6 +400,20 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 	return res, nil
 }
 
+func (s *GatewayClient) GetDataobjSections(ctx context.Context, in *logproto.GetDataobjSectionsRequest) (*logproto.GetDataobjSectionsResponse, error) {
+	var (
+		resp *logproto.GetDataobjSectionsResponse
+		err  error
+	)
+	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
+		resp, err = client.GetDataobjSections(ctx, in)
+		return err
+	}, func(addrs []string) []string {
+		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
+	})
+	return resp, err
+}
+
 // TODO(owen-d): this was copied from ingester_querier.go -- move it to a shared pkg
 // isUnimplementedCallError tells if the GRPC error is a gRPC error with code Unimplemented.
 func isUnimplementedCallError(err error) bool {
