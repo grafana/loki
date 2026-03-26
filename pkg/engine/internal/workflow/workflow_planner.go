@@ -62,10 +62,12 @@ func planWorkflow(tenantID string, plan *physical.Plan, cache cacheParams) (dag.
 	}
 
 	for _, root := range planner.graph.Roots() {
-		planner.graph.Walk(root, func(t *Task) error {
+		if err := planner.graph.Walk(root, func(t *Task) error {
 			optimize(t)
 			return nil
-		}, dag.PostOrderWalk)
+		}, dag.PostOrderWalk); err != nil {
+			return dag.Graph[*Task]{}, err
+		}
 	}
 
 	if cache.enabled {

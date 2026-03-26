@@ -751,7 +751,7 @@ func disambiguateExpression(expr Expression, conflictingLabels []string) (Expres
 // if any optimizations can be applied.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	for i, root := range plan.Roots() {
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
 			),

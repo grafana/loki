@@ -109,7 +109,7 @@ func dummyPlan() *Plan {
 
 func TestPredicatePushdown(t *testing.T) {
 	plan := dummyPlan()
-	optimizations := []*optimization{
+	optimizations := []*Optimization{
 		newOptimization("predicate pushdown", plan).withRules(
 			&predicatePushdown{plan},
 		),
@@ -172,7 +172,7 @@ func TestLimitPushdown(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("limit pushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
@@ -235,7 +235,7 @@ func TestLimitPushdown(t *testing.T) {
 		orig := PrintAsTree(plan)
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("limit pushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
@@ -262,7 +262,7 @@ func TestScanTimeRangePushup(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("scan time range pushup", plan).withRules(
 				&scanTimeRangePushup{plan: plan},
 			),
@@ -298,7 +298,7 @@ func TestScanTimeRangePushup(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("scan time range pushup", plan).withRules(
 				&scanTimeRangePushup{plan: plan},
 			),
@@ -334,7 +334,7 @@ func TestScanTimeRangePushup(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("scan time range pushup", plan).withRules(
 				&scanTimeRangePushup{plan: plan},
 			),
@@ -459,7 +459,7 @@ func TestGroupByPushdown(t *testing.T) {
 		}
 
 		// apply optimisation
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("groupBy pushdown", plan).withRules(
 				&groupByPushdown{plan: plan},
 			),
@@ -527,7 +527,7 @@ func TestGroupByPushdown(t *testing.T) {
 		orig := PrintAsTree(plan)
 
 		// apply optimisation
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("projection pushdown", plan).withRules(
 				&groupByPushdown{plan: plan},
 			),
@@ -567,7 +567,7 @@ func TestProjectionPushdown(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("projection pushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
@@ -636,7 +636,7 @@ func TestProjectionPushdown(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("projection pushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
@@ -707,7 +707,7 @@ func TestProjectionPushdown(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("projection pushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
@@ -1055,7 +1055,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 
 func TestRemoveNoopFilter(t *testing.T) {
 	plan := dummyPlan()
-	optimizations := []*optimization{
+	optimizations := []*Optimization{
 		newOptimization("noop filter", plan).withRules(
 			&removeNoopFilter{plan},
 		),
@@ -1161,7 +1161,7 @@ func Test_parallelPushdown(t *testing.T) {
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
 		}
 
-		opt := NewOptimizer(&plan, []*optimization{
+		opt := NewOptimizer(&plan, []*Optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
 		root, _ := plan.graph.Root()
@@ -1198,7 +1198,7 @@ func Test_parallelPushdown(t *testing.T) {
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
 		}
 
-		opt := NewOptimizer(&plan, []*optimization{
+		opt := NewOptimizer(&plan, []*Optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
 		root, _ := plan.graph.Root()
@@ -1249,7 +1249,7 @@ func Test_parallelPushdown(t *testing.T) {
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
 		}
 
-		opt := NewOptimizer(&plan, []*optimization{
+		opt := NewOptimizer(&plan, []*Optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
 		root, _ := plan.graph.Root()
