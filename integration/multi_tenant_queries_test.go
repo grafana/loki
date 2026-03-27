@@ -16,7 +16,6 @@ import (
 
 func TestMultiTenantQuery(t *testing.T) {
 	t.Skip("This test is flaky on CI but it's hardly reproducible locally.")
-	//t.Skip("This test is flaky on CI but it's hardly reproducible locally.")
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
