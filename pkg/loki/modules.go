@@ -2437,9 +2437,11 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	}
 
 	if t.Cfg.DataObj.Consumer.IngestMode == consumer.IngestModeInMemory {
+		level.Warn(util_log.Logger).Log("msg", "inmemory ingest mode is experimental — no durability guarantees, single-replica only; each replica holds independent data")
 		level.Info(util_log.Logger).Log("msg", "initializing inmemory dataobj consumer")
 		svc, err := consumer.NewInMemory(
 			t.Cfg.DataObj.Consumer,
+			t.Cfg.DataObj.Metastore,
 			store,
 			t.scratchStore,
 			prometheus.DefaultRegisterer,
