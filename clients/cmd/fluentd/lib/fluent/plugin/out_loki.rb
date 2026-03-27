@@ -147,7 +147,21 @@ module Fluent
       end
 
       def load_client_cert
-        @cert = OpenSSL::X509::Certificate.new(File.read(@cert)) if @cert
+        if @cert
+          raw = File.read(@cert)
+          pem_certs = raw.scan(/-----BEGIN CERTIFICATE-----(?:.|\n)+?-----END CERTIFICATE-----/)
+          if pem_certs.empty?
+            # No PEM blocks found — fall back to OpenSSL's native parsing,
+            # which handles DER-encoded (binary) certificates.
+            @cert = OpenSSL::X509::Certificate.new(raw)
+          else
+            # PEM file: use the first cert as the client certificate,
+            # and any remaining certs as the intermediate CA chain.
+            @cert = OpenSSL::X509::Certificate.new(pem_certs[0])
+            remaining = pem_certs[1..]
+            @extra_chain_cert = remaining.map { |c| OpenSSL::X509::Certificate.new(c) } unless remaining.empty?
+          end
+        end
         @key = OpenSSL::PKey.read(File.read(@key)) if @key
       end
 
@@ -197,12 +211,17 @@ module Fluent
           )
         end
 
-        # Optionally present client certificate
+        # Optionally present client certificate (with intermediate chain if available)
         if !@cert.nil? && !@key.nil?
           opts = opts.merge(
             cert: @cert,
             key: @key
           )
+          if @extra_chain_cert
+            opts = opts.merge(
+              extra_chain_cert: @extra_chain_cert
+            )
+          end
         end
 
         # For server certificate verification: set custom CA bundle.
