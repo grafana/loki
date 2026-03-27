@@ -6,6 +6,7 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/services"
+
 	"github.com/grafana/loki/v3/pkg/labelaccess"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
