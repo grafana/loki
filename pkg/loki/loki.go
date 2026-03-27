@@ -459,9 +459,9 @@ type Loki struct {
 	// dataObjInMemoryRecordsChan is non-nil when DataObj.Consumer.IngestMode == IngestModeInMemory.
 	// It is set by initDataObjConsumer and consumed by initDistributor.
 	dataObjInMemoryRecordsChan chan *kgo.Record
-	scratchStore                        scratch.Store
-	queryEngineV2                       *engine.Engine
-	queryEngineV2Scheduler              *engine.Scheduler
+	scratchStore               scratch.Store
+	queryEngineV2              *engine.Engine
+	queryEngineV2Scheduler     *engine.Scheduler
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -706,7 +706,9 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 
 		// Ingester has a special check that makes sure that it was able to register into the ring,
 		// and that all other ring entries are OK too.
-		if t.Ingester != nil {
+		// In inmemory dataobj mode the write path bypasses the ingester entirely, so skip this gate.
+		inMemoryDataObjMode := t.Cfg.DataObj.Enabled && t.Cfg.DataObj.Consumer.IngestMode == consumer.IngestModeInMemory
+		if t.Ingester != nil && !inMemoryDataObjMode {
 			if err := t.Ingester.CheckReady(r.Context()); err != nil {
 				http.Error(w, fmt.Sprintf("Ingester not ready: %s", err), http.StatusServiceUnavailable)
 				return
