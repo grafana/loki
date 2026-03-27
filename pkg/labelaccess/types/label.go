@@ -8,6 +8,7 @@ import (
 
 type LabelMatcherType int32
 
+//nolint:revive // Converted from protobuf
 const (
 	LABEL_MATCHER_TYPE_UNSPECIFIED LabelMatcherType = 0
 	LABEL_MATCHER_TYPE_EQ          LabelMatcherType = 1
@@ -16,20 +17,12 @@ const (
 	LABEL_MATCHER_TYPE_NRE         LabelMatcherType = 4
 )
 
-var LabelMatcherType_name = map[int32]string{
+var LabelMatcherTypeName = map[int32]string{
 	0: "LABEL_MATCHER_TYPE_UNSPECIFIED",
 	1: "LABEL_MATCHER_TYPE_EQ",
 	2: "LABEL_MATCHER_TYPE_NEQ",
 	3: "LABEL_MATCHER_TYPE_RE",
 	4: "LABEL_MATCHER_TYPE_NRE",
-}
-
-var LabelMatcherType_value = map[string]int32{
-	"LABEL_MATCHER_TYPE_UNSPECIFIED": 0,
-	"LABEL_MATCHER_TYPE_EQ":          1,
-	"LABEL_MATCHER_TYPE_NEQ":         2,
-	"LABEL_MATCHER_TYPE_RE":          3,
-	"LABEL_MATCHER_TYPE_NRE":         4,
 }
 
 // LabelMatcher is a simple representation of a label matcher, originally
@@ -47,45 +40,45 @@ type LabelPolicy struct {
 }
 
 func (x LabelMatcherType) String() string {
-	s, ok := LabelMatcherType_name[int32(x)]
+	s, ok := LabelMatcherTypeName[int32(x)]
 	if ok {
 		return s
 	}
 	return strconv.Itoa(int(x))
 }
 
-func (this *LabelMatcher) String() string {
-	if this == nil {
+func (m *LabelMatcher) String() string {
+	if m == nil {
 		return "nil"
 	}
 	s := strings.Join([]string{`&LabelMatcher{`,
-		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
-		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
-		`Value:` + fmt.Sprintf("%v", this.Value) + `,`,
+		`Type:` + fmt.Sprintf("%v", m.Type) + `,`,
+		`Name:` + fmt.Sprintf("%v", m.Name) + `,`,
+		`Value:` + fmt.Sprintf("%v", m.Value) + `,`,
 		`}`,
 	}, "")
 	return s
 }
 
-func (this *LabelMatcher) GoString() string {
-	if this == nil {
+func (m *LabelMatcher) GoString() string {
+	if m == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 7)
 	s = append(s, "&types.LabelMatcher{")
-	s = append(s, "Type: "+fmt.Sprintf("%#v", this.Type)+",\n")
-	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
-	s = append(s, "Value: "+fmt.Sprintf("%#v", this.Value)+",\n")
+	s = append(s, "Type: "+fmt.Sprintf("%#v", m.Type)+",\n")
+	s = append(s, "Name: "+fmt.Sprintf("%#v", m.Name)+",\n")
+	s = append(s, "Value: "+fmt.Sprintf("%#v", m.Value)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
 
-func (this *LabelPolicy) String() string {
-	if this == nil {
+func (p *LabelPolicy) String() string {
+	if p == nil {
 		return "nil"
 	}
 	repeatedStringForSelector := "[]*LabelMatcher{"
-	for _, f := range this.Selector {
+	for _, f := range p.Selector {
 		repeatedStringForSelector += strings.Replace(f.String(), "LabelMatcher", "LabelMatcher", 1) + ","
 	}
 	repeatedStringForSelector += "}"

@@ -335,9 +335,8 @@ func (tc *testQueryAndLabelResults) aggregatedMetricsQuery(t *testing.T, qc *cli
 		assert.Equal(t, "success", output.Status)
 		assert.Equal(t, "streams", output.Data.ResultType)
 
-		var actualLines, streams []string
+		var actualLines []string
 		for _, row := range output.Data.Stream {
-			streams = append(streams, labels.FromMap(row.Stream).String())
 			for _, lines := range row.Values {
 				actualLines = append(actualLines, lines[1])
 			}
@@ -346,7 +345,7 @@ func (tc *testQueryAndLabelResults) aggregatedMetricsQuery(t *testing.T, qc *cli
 	})
 }
 
-func (tc *testQueryAndLabelResults) cliQuery(t *testing.T, tAll *cluster.Component) *client.Client {
+func (tc *testQueryAndLabelResults) cliQuery(_ *testing.T, tAll *cluster.Component) *client.Client {
 	headers := buildLBACPolicyHeaders(tc.tenantID, tc.labelPolicies)
 
 	cliQuery := client.New(
@@ -385,15 +384,13 @@ func (tc *testQueryAndLabelResults) logsQuery(t *testing.T, qc *client.Client) {
 		assert.Equal(t, "success", output.Status)
 		assert.Equal(t, "streams", output.Data.ResultType)
 
-		var actualLines, streams []string
+		var actualLines []string
 		for _, row := range output.Data.Stream {
-			streams = append(streams, labels.FromMap(row.Stream).String())
 			for _, lines := range row.Values {
 				actualLines = append(actualLines, lines[1])
 			}
 		}
 		assert.ElementsMatch(t, tc.lines, actualLines)
-		//assert.ElementsMatch(t, tc.streams, streams)
 	})
 }
 

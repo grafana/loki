@@ -10,15 +10,15 @@ type ErrorAPI struct {
 	Error  string `json:"error"`
 }
 
-func WritePromError(w http.ResponseWriter, error string, code int) {
+func WritePromError(w http.ResponseWriter, errorMessage string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(code)
 
-	defaultErrorMessage := `{"status": "error", "error": "` + error + `"}`
+	defaultErrorMessage := `{"status": "error", "error": "` + errorMessage + `"}`
 	errorAPI := &ErrorAPI{
 		Status: "error",
-		Error:  error,
+		Error:  errorMessage,
 	}
 	errorAPIBytes, err := json.Marshal(errorAPI)
 	if err != nil {

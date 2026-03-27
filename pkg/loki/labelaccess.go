@@ -13,19 +13,19 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-func (t *Loki) setupLBAC() error {
-	t.Codec = labelaccess.NewCodec(t.Codec)
+func (l *Loki) setupLBAC() error {
+	l.Codec = labelaccess.NewCodec(l.Codec)
 
-	t.ModuleManager.RegisterModule(AuthMiddleware, t.initAuthMiddleware, modules.UserInvisibleModule)
-	t.ModuleManager.RegisterModule(LabelAccess, t.initStoreChunkFilterer)
-	t.ModuleManager.RegisterModule(LabelAccessStoreWrapper, t.initLabelAccessStoreWrapper, modules.UserInvisibleModule)
-	t.ModuleManager.RegisterModule(LabelAccessIngesterWrapper, t.initLabelAccessIngesterWrapper)
-	t.ModuleManager.RegisterModule(LabelAccessV2Engine, t.initLabelAccessV2Engine, modules.UserInvisibleModule)
-	t.ModuleManager.RegisterModule(LabelAccessInterceptors, t.initLabelAccessInterceptors, modules.UserInvisibleModule)
-	t.ModuleManager.RegisterModule(LabelAccessTripperware, t.initLabelAccessMiddleware, modules.UserInvisibleModule)
-	t.ModuleManager.RegisterModule(Filterers, t.initFilterers, modules.UserInvisibleModule)
-	t.ModuleManager.RegisterModule(LabelAccessUserIDTransformer, t.initLabelAccessUserIDTransformer, modules.UserInvisibleModule)
-	t.ModuleManager.RegisterModule(AuthTripperware, t.initAuthTripperware, modules.UserInvisibleModule)
+	l.ModuleManager.RegisterModule(AuthMiddleware, l.initAuthMiddleware, modules.UserInvisibleModule)
+	l.ModuleManager.RegisterModule(LabelAccess, l.initStoreChunkFilterer)
+	l.ModuleManager.RegisterModule(LabelAccessStoreWrapper, l.initLabelAccessStoreWrapper, modules.UserInvisibleModule)
+	l.ModuleManager.RegisterModule(LabelAccessIngesterWrapper, l.initLabelAccessIngesterWrapper)
+	l.ModuleManager.RegisterModule(LabelAccessV2Engine, l.initLabelAccessV2Engine, modules.UserInvisibleModule)
+	l.ModuleManager.RegisterModule(LabelAccessInterceptors, l.initLabelAccessInterceptors, modules.UserInvisibleModule)
+	l.ModuleManager.RegisterModule(LabelAccessTripperware, l.initLabelAccessMiddleware, modules.UserInvisibleModule)
+	l.ModuleManager.RegisterModule(Filterers, l.initFilterers, modules.UserInvisibleModule)
+	l.ModuleManager.RegisterModule(LabelAccessUserIDTransformer, l.initLabelAccessUserIDTransformer, modules.UserInvisibleModule)
+	l.ModuleManager.RegisterModule(AuthTripperware, l.initAuthTripperware, modules.UserInvisibleModule)
 
 	lbacDeps := map[string][]string{
 		AuthMiddleware:          {Server},
@@ -44,7 +44,7 @@ func (t *Loki) setupLBAC() error {
 	}
 
 	for mod, targets := range lbacDeps {
-		if err := t.ModuleManager.AddDependency(mod, targets...); err != nil {
+		if err := l.ModuleManager.AddDependency(mod, targets...); err != nil {
 			return err
 		}
 	}
