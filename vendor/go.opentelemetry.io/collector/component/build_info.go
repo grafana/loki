@@ -14,6 +14,9 @@ type BuildInfo struct {
 
 	// Version string.
 	Version string
+
+	// prevent unkeyed literal initialization
+	_ struct{}
 }
 
 // NewDefaultBuildInfo returns a default BuildInfo.

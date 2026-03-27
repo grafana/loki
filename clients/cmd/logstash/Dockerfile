@@ -1,12 +1,12 @@
-FROM logstash:9.0.2
+FROM logstash:9.3.2@sha256:b1e953e7da9185efc6f190bacc254cf290eb9ca5f9dfbc82e77ad31bec6cd6ab
 
 USER logstash
-ENV PATH /usr/share/logstash/vendor/jruby/bin:/usr/share/logstash/vendor/bundle/jruby/2.5.0/bin:/usr/share/logstash/jdk/bin:$PATH
+ENV PATH /usr/share/logstash/vendor/jruby/bin:/usr/share/logstash/vendor/bundle/jruby/3.1.0/bin:/usr/share/logstash/jdk/bin:$PATH
 ENV LOGSTASH_PATH /usr/share/logstash
-ENV GEM_PATH /usr/share/logstash/vendor/bundle/jruby/2.5.0
-ENV GEM_HOME /usr/share/logstash/vendor/bundle/jruby/2.5.0
+ENV GEM_PATH /usr/share/logstash/vendor/bundle/jruby/3.1.0
+ENV GEM_HOME /usr/share/logstash/vendor/bundle/jruby/3.1.0
 
-RUN gem install bundler:2.3.6
+RUN gem install bundler -v 2.6.9
 
 COPY --chown=logstash:logstash ./clients/cmd/logstash/ /home/logstash/
 WORKDIR /home/logstash/

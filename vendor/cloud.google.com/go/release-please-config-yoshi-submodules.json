@@ -81,6 +81,9 @@
         "binaryauthorization": {
             "component": "binaryauthorization"
         },
+        "capacityplanner": {
+            "component": "capacityplanner"
+        },
         "certificatemanager": {
             "component": "certificatemanager"
         },
@@ -125,6 +128,9 @@
         },
         "config": {
             "component": "config"
+        },
+        "configdelivery": {
+            "component": "configdelivery"
         },
         "contactcenterinsights": {
             "component": "contactcenterinsights"
@@ -177,9 +183,6 @@
         "discoveryengine": {
             "component": "discoveryengine"
         },
-        "dlp": {
-            "component": "dlp"
-        },
         "documentai": {
             "component": "documentai"
         },
@@ -206,6 +209,9 @@
         },
         "functions": {
             "component": "functions"
+        },
+        "geminidataanalytics": {
+            "component": "geminidataanalytics"
         },
         "gkebackup": {
             "component": "gkebackup"
@@ -246,14 +252,23 @@
         "language": {
             "component": "language"
         },
+        "licensemanager": {
+            "component": "licensemanager"
+        },
         "lifesciences": {
             "component": "lifesciences"
+        },
+        "locationfinder": {
+            "component": "locationfinder"
         },
         "longrunning": {
             "component": "longrunning"
         },
         "lustre": {
             "component": "lustre"
+        },
+        "maintenance": {
+            "component": "maintenance"
         },
         "managedidentities": {
             "component": "managedidentities"

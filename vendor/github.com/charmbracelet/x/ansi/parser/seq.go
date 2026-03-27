@@ -78,7 +78,7 @@ func Subparams(params []int, i int) []int {
 	// Count the number of parameters before the given parameter index.
 	var count int
 	var j int
-	for j = 0; j < len(params); j++ {
+	for j = range params {
 		if count == i {
 			break
 		}
@@ -116,7 +116,7 @@ func Subparams(params []int, i int) []int {
 // sub-parameters.
 func Len(params []int) int {
 	var n int
-	for i := 0; i < len(params); i++ {
+	for i := range params {
 		if !HasMore(params, i) {
 			n++
 		}
@@ -128,7 +128,7 @@ func Len(params []int) int {
 // function for each parameter.
 // The function should return false to stop the iteration.
 func Range(params []int, fn func(i int, param int, hasMore bool) bool) {
-	for i := 0; i < len(params); i++ {
+	for i := range params {
 		if !fn(i, Param(params, i), HasMore(params, i)) {
 			break
 		}

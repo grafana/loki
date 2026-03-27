@@ -4,7 +4,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
-func init() { regKey(8, 0, 8) }
+func init() { regKey(8, 0, 9) }
 
 func (c *Cluster) handleOffsetCommit(creq *clientReq) (kmsg.Response, error) {
 	req := creq.kreq.(*kmsg.OffsetCommitRequest)

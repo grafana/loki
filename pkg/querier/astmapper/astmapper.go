@@ -25,7 +25,7 @@ type MultiMapper struct {
 
 // Map implements ASTMapper
 func (m *MultiMapper) Map(node parser.Node) (parser.Node, error) {
-	var result parser.Node = node
+	var result = node
 	var err error
 
 	if len(m.mappers) == 0 {
@@ -58,7 +58,7 @@ func NewMultiMapper(xs ...ASTMapper) *MultiMapper {
 
 // CloneNode is a helper function to clone a node.
 func CloneNode(node parser.Node) (parser.Node, error) {
-	return parser.ParseExpr(node.String())
+	return parser.NewParser(parser.Options{}).ParseExpr(node.String())
 }
 
 // NodeMapper either maps a single AST node or returns the unaltered node.

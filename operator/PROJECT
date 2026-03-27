@@ -1,4 +1,3 @@
-componentConfig: true
 domain: grafana.com
 layout:
 - go.kubebuilder.io/v4

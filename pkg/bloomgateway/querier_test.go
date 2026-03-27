@@ -158,33 +158,33 @@ func TestGroupChunkRefs(t *testing.T) {
 	}
 	seriesMap := make(map[uint64]labels.Labels)
 	for _, s := range series {
-		seriesMap[s.Hash()] = s
+		seriesMap[labels.StableHash(s)] = s
 	}
 
 	chunkRefs := []*logproto.ChunkRef{
-		{Fingerprint: series[0].Hash(), UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
-		{Fingerprint: series[0].Hash(), UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
-		{Fingerprint: series[1].Hash(), UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
-		{Fingerprint: series[1].Hash(), UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
-		{Fingerprint: series[2].Hash(), UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
-		{Fingerprint: series[2].Hash(), UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
+		{Fingerprint: labels.StableHash(series[0]), UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
+		{Fingerprint: labels.StableHash(series[0]), UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
+		{Fingerprint: labels.StableHash(series[1]), UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
+		{Fingerprint: labels.StableHash(series[1]), UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
+		{Fingerprint: labels.StableHash(series[2]), UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
+		{Fingerprint: labels.StableHash(series[2]), UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
 	}
 
 	result := groupChunkRefs(seriesMap, chunkRefs, nil)
 	require.Equal(t, []*logproto.GroupedChunkRefs{
-		{Fingerprint: series[0].Hash(), Tenant: "tenant", Refs: []*logproto.ShortRef{
+		{Fingerprint: labels.StableHash(series[0]), Tenant: "tenant", Refs: []*logproto.ShortRef{
 			{From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
 			{From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
 		}, Labels: &logproto.IndexSeries{
 			Labels: logproto.FromLabelsToLabelAdapters(series[0]),
 		}},
-		{Fingerprint: series[1].Hash(), Tenant: "tenant", Refs: []*logproto.ShortRef{
+		{Fingerprint: labels.StableHash(series[1]), Tenant: "tenant", Refs: []*logproto.ShortRef{
 			{From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
 			{From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
 		}, Labels: &logproto.IndexSeries{
 			Labels: logproto.FromLabelsToLabelAdapters(series[1]),
 		}},
-		{Fingerprint: series[2].Hash(), Tenant: "tenant", Refs: []*logproto.ShortRef{
+		{Fingerprint: labels.StableHash(series[2]), Tenant: "tenant", Refs: []*logproto.ShortRef{
 			{From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
 			{From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
 		}, Labels: &logproto.IndexSeries{
@@ -203,7 +203,7 @@ func BenchmarkGroupChunkRefs(b *testing.B) {
 
 	for i := 0; i < n; i++ {
 		s := labels.FromStrings("app", fmt.Sprintf("%d", i))
-		sFP := s.Hash()
+		sFP := labels.StableHash(s)
 		series[sFP] = s
 		for j := 0; j < m; j++ {
 			chunkRefs = append(chunkRefs, &logproto.ChunkRef{

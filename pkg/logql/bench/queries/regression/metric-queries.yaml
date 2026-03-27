@@ -1,0 +1,226 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  - description: Sum over time with duration conversion
+    query: sum(sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - sum_over_time
+      - logfmt
+      - duration-conversion
+    notes: Basic unwrap of duration field with sum aggregation
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+  - description: Average over time with duration conversion
+    query: avg(avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - avg_over_time
+      - logfmt
+      - duration-conversion
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+  - description: Rate of unwrapped values
+    query: rate(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - rate
+      - logfmt
+      - duration-conversion
+    notes: Rate shows per-second rate of change
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+  - description: Duration seconds conversion with avg
+    query: sum by (level) (avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - avg_over_time
+      - logfmt
+      - duration-conversion
+      - grouping
+    notes: Converts duration string to seconds, groups by level
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+      detected_fields:
+        - level
+  - description: Duration seconds with sum over time
+    query: sum(sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - sum_over_time
+      - logfmt
+      - duration-conversion
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+  - description: Average of duration seconds conversion
+    query: avg(avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - avg_over_time
+      - logfmt
+      - duration-conversion
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+  - description: Bytes conversion with sum
+    query: sum(sum_over_time(${SELECTOR} | logfmt | unwrap bytes [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - sum_over_time
+      - logfmt
+      - bytes-field
+    notes: Sum total bytes processed
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - bytes
+  - description: Bytes grouped by level
+    query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | unwrap bytes [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - sum_over_time
+      - logfmt
+      - bytes-field
+      - grouping
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - bytes
+  - description: Logfmt size unwrap
+    query: sum(sum_over_time(${SELECTOR} | logfmt | size != "" | unwrap size [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - sum_over_time
+      - logfmt
+      - integer-field
+    notes: Unwrap integer size field from logfmt logs (loki/mimir services)
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - size
+  - description: Min over time with unwrap
+    query: min(min_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - min_over_time
+      - logfmt
+      - duration-conversion
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+  - description: Max over time with unwrap
+    query: max(max_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - max_over_time
+      - logfmt
+      - duration-conversion
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
+  - description: Logfmt size unwrap
+    query: avg(avg_over_time(${SELECTOR} | logfmt | size != "" | unwrap size [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - avg_over_time
+      - logfmt
+      - size-field
+    notes: Average size from logfmt streams (loki/mimir services)
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - size
+  - description: Logfmt status unwrap
+    query: avg(avg_over_time(${SELECTOR} | logfmt | unwrap status [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - avg_over_time
+      - logfmt
+      - status-field
+    notes: Average status code from logfmt streams
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - status
+  - description: HTTP status code distribution
+    query: sum by (level) (count_over_time(${SELECTOR} | json [${RANGE}]))
+    skip: true # TODO(twhitney): JSONParserErr: generated data contains log lines the json parser cannot handle
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - json
+      - status-field
+      - grouping
+    notes: Count of requests by status code
+    requires:
+      log_format: json
+      detected_fields:
+        - level

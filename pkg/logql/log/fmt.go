@@ -249,7 +249,7 @@ func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]b
 			smp.Put(m)
 		}
 	}()
-	if err := lf.Template.Execute(lf.buf, m); err != nil {
+	if err := lf.Execute(lf.buf, m); err != nil {
 		lbs.SetErr(errTemplateFormat)
 		lbs.SetErrorDetails(err.Error())
 		return line, true

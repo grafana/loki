@@ -7,6 +7,7 @@ package common
 //  - linux (amd64, arm)
 //  - freebsd (amd64)
 //  - windows (amd64)
+//  - aix (ppc64)
 
 import (
 	"bufio"
@@ -23,6 +24,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -49,7 +51,7 @@ func (i Invoke) Command(name string, arg ...string) ([]byte, error) {
 	return i.CommandWithContext(ctx, name, arg...)
 }
 
-func (i Invoke) CommandWithContext(ctx context.Context, name string, arg ...string) ([]byte, error) {
+func (Invoke) CommandWithContext(ctx context.Context, name string, arg ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, arg...)
 
 	var buf bytes.Buffer
@@ -115,7 +117,7 @@ func ReadLines(filename string) ([]string, error) {
 }
 
 // ReadLine reads a file and returns the first occurrence of a line that is prefixed with prefix.
-func ReadLine(filename string, prefix string) (string, error) {
+func ReadLine(filename, prefix string) (string, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return "", err
@@ -156,7 +158,7 @@ func ReadLinesOffsetN(filename string, offset uint, n int) ([]string, error) {
 	for i := uint(0); i < uint(n)+offset || n < 0; i++ {
 		line, err := r.ReadString('\n')
 		if err != nil {
-			if err == io.EOF && len(line) > 0 {
+			if err == io.EOF && line != "" {
 				ret = append(ret, strings.Trim(line, "\n"))
 			}
 			break
@@ -290,22 +292,14 @@ func StringsHas(target []string, src string) bool {
 
 // StringsContains checks the src in any string of the target string slice
 func StringsContains(target []string, src string) bool {
-	for _, t := range target {
-		if strings.Contains(t, src) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(target, func(s string) bool {
+		return strings.Contains(s, src)
+	})
 }
 
 // IntContains checks the src in any int of the target int slice.
 func IntContains(target []int, src int) bool {
-	for _, t := range target {
-		if src == t {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(target, src)
 }
 
 // get struct attributes.
@@ -340,7 +334,7 @@ func PathExists(filename string) bool {
 
 // PathExistsWithContents returns the filename exists and it is not empty
 func PathExistsWithContents(filename string) bool {
-	info, err := os.Stat(filename)
+	info, err := os.Stat(filename) //nolint:gosec // filename is constructed from system paths, not user input
 	if err != nil {
 		return false
 	}
@@ -349,7 +343,7 @@ func PathExistsWithContents(filename string) bool {
 
 // GetEnvWithContext retrieves the environment variable key. If it does not exist it returns the default.
 // The context may optionally contain a map superseding os.EnvKey.
-func GetEnvWithContext(ctx context.Context, key string, dfault string, combineWith ...string) string {
+func GetEnvWithContext(ctx context.Context, key, dfault string, combineWith ...string) string {
 	var value string
 	if env, ok := ctx.Value(common.EnvKey).(common.EnvMap); ok {
 		value = env[common.EnvKeyType(key)]
@@ -365,7 +359,7 @@ func GetEnvWithContext(ctx context.Context, key string, dfault string, combineWi
 }
 
 // GetEnv retrieves the environment variable key. If it does not exist it returns the default.
-func GetEnv(key string, dfault string, combineWith ...string) string {
+func GetEnv(key, dfault string, combineWith ...string) string {
 	value := os.Getenv(key)
 	if value == "" {
 		value = dfault
@@ -449,7 +443,7 @@ func HostRootWithContext(ctx context.Context, combineWith ...string) string {
 }
 
 // getSysctrlEnv sets LC_ALL=C in a list of env vars for use when running
-// sysctl commands (see DoSysctrl).
+// sysctl commands.
 func getSysctrlEnv(env []string) []string {
 	foundLC := false
 	for i, line := range env {
@@ -470,4 +464,12 @@ func Round(val float64, n int) float64 {
 	pow10 := math.Pow(10, float64(n))
 	// Multiply the value by pow10, round it, then divide it by pow10
 	return math.Round(val*pow10) / pow10
+}
+
+func TimeSince(ts uint64) uint64 {
+	return uint64(time.Now().Unix()) - ts
+}
+
+func TimeSinceMillis(ts uint64) uint64 {
+	return uint64(time.Now().UnixMilli()) - ts
 }

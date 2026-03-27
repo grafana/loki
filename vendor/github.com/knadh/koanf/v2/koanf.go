@@ -7,18 +7,20 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"sync"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/maps"
 	"github.com/mitchellh/copystructure"
-	"github.com/go-viper/mapstructure/v2"
 )
 
 // Koanf is the configuration apparatus.
 type Koanf struct {
-	confMap     map[string]interface{}
-	confMapFlat map[string]interface{}
+	confMap     map[string]any
+	confMapFlat map[string]any
 	keyMap      KeyMap
 	conf        Conf
+	mu          sync.RWMutex
 }
 
 // Conf is the Koanf configuration.
@@ -77,20 +79,20 @@ func New(delim string) *Koanf {
 // NewWithConf returns a new instance of Koanf based on the Conf.
 func NewWithConf(conf Conf) *Koanf {
 	return &Koanf{
-		confMap:     make(map[string]interface{}),
-		confMapFlat: make(map[string]interface{}),
+		confMap:     make(map[string]any),
+		confMapFlat: make(map[string]any),
 		keyMap:      make(KeyMap),
 		conf:        conf,
 	}
 }
 
-// Load takes a Provider that either provides a parsed config map[string]interface{}
+// Load takes a Provider that either provides a parsed config map[string]any
 // in which case pa (Parser) can be nil, or raw bytes to be parsed, where a Parser
 // can be provided to parse. Additionally, options can be passed which modify the
 // load behavior, such as passing a custom merge function.
 func (ko *Koanf) Load(p Provider, pa Parser, opts ...Option) error {
 	var (
-		mp  map[string]interface{}
+		mp  map[string]any
 		err error
 	)
 
@@ -123,10 +125,12 @@ func (ko *Koanf) Load(p Provider, pa Parser, opts ...Option) error {
 // Keys returns the slice of all flattened keys in the loaded configuration
 // sorted alphabetically.
 func (ko *Koanf) Keys() []string {
+	ko.mu.RLock()
 	out := make([]string, 0, len(ko.confMapFlat))
 	for k := range ko.confMapFlat {
 		out = append(out, k)
 	}
+	ko.mu.RUnlock()
 	sort.Strings(out)
 	return out
 }
@@ -134,25 +138,31 @@ func (ko *Koanf) Keys() []string {
 // KeyMap returns a map of flattened keys and the individual parts of the
 // key as slices. eg: "parent.child.key" => ["parent", "child", "key"].
 func (ko *Koanf) KeyMap() KeyMap {
+	ko.mu.RLock()
 	out := make(KeyMap, len(ko.keyMap))
 	for key, parts := range ko.keyMap {
 		out[key] = make([]string, len(parts))
 		copy(out[key], parts)
 	}
+	ko.mu.RUnlock()
 	return out
 }
 
 // All returns a map of all flattened key paths and their values.
 // Note that it uses maps.Copy to create a copy that uses
 // json.Marshal which changes the numeric types to float64.
-func (ko *Koanf) All() map[string]interface{} {
+func (ko *Koanf) All() map[string]any {
+	ko.mu.RLock()
+	defer ko.mu.RUnlock()
 	return maps.Copy(ko.confMapFlat)
 }
 
 // Raw returns a copy of the full raw conf map.
 // Note that it uses maps.Copy to create a copy that uses
 // json.Marshal which changes the numeric types to float64.
-func (ko *Koanf) Raw() map[string]interface{} {
+func (ko *Koanf) Raw() map[string]any {
+	ko.mu.RLock()
+	defer ko.mu.RUnlock()
 	return maps.Copy(ko.confMap)
 }
 
@@ -160,9 +170,13 @@ func (ko *Koanf) Raw() map[string]interface{} {
 // of the config map with keys sorted alphabetically.
 func (ko *Koanf) Sprint() string {
 	b := bytes.Buffer{}
-	for _, k := range ko.Keys() {
-		b.WriteString(fmt.Sprintf("%s -> %v\n", k, ko.confMapFlat[k]))
+	keys := ko.Keys()
+	ko.mu.RLock()
+	for _, k := range keys {
+		v := ko.confMapFlat[k]
+		b.WriteString(fmt.Sprintf("%s -> %v\n", k, v))
 	}
+	ko.mu.RUnlock()
 	return b.String()
 }
 
@@ -179,10 +193,10 @@ func (ko *Koanf) Print() {
 // instance with the config map `sub.a.b` where everything above
 // `parent.child` are cut out.
 func (ko *Koanf) Cut(path string) *Koanf {
-	out := make(map[string]interface{})
+	out := make(map[string]any)
 
 	// Cut only makes sense if the requested key path is a map.
-	if v, ok := ko.Get(path).(map[string]interface{}); ok {
+	if v, ok := ko.Get(path).(map[string]any); ok {
 		out = v
 	}
 
@@ -213,7 +227,7 @@ func (ko *Koanf) MergeAt(in *Koanf, path string) error {
 	}
 
 	// Unflatten the config map with the given key path.
-	n := maps.Unflatten(map[string]interface{}{
+	n := maps.Unflatten(map[string]any{
 		path: in.Raw(),
 	}, ko.conf.Delim)
 
@@ -221,9 +235,9 @@ func (ko *Koanf) MergeAt(in *Koanf, path string) error {
 }
 
 // Set sets the value at a specific key.
-func (ko *Koanf) Set(key string, val interface{}) error {
+func (ko *Koanf) Set(key string, val any) error {
 	// Unflatten the config map with the given key path.
-	n := maps.Unflatten(map[string]interface{}{
+	n := maps.Unflatten(map[string]any{
 		key: val,
 	}, ko.conf.Delim)
 
@@ -240,24 +254,25 @@ func (ko *Koanf) Marshal(p Parser) ([]byte, error) {
 // the mapstructure lib. If no path is specified, the whole map is unmarshalled.
 // `koanf` is the struct field tag used to match field names. To customize,
 // use UnmarshalWithConf(). It uses the mitchellh/mapstructure package.
-func (ko *Koanf) Unmarshal(path string, o interface{}) error {
+func (ko *Koanf) Unmarshal(path string, o any) error {
 	return ko.UnmarshalWithConf(path, o, UnmarshalConf{})
 }
 
 // UnmarshalWithConf is like Unmarshal but takes configuration params in UnmarshalConf.
 // See mitchellh/mapstructure's DecoderConfig for advanced customization
 // of the unmarshal behaviour.
-func (ko *Koanf) UnmarshalWithConf(path string, o interface{}, c UnmarshalConf) error {
+func (ko *Koanf) UnmarshalWithConf(path string, o any, c UnmarshalConf) error {
 	if c.DecoderConfig == nil {
 		c.DecoderConfig = &mapstructure.DecoderConfig{
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
 				mapstructure.StringToTimeDurationHookFunc(),
 				textUnmarshalerHookFunc()),
 			Metadata:         nil,
-			Result:           o,
 			WeaklyTypedInput: true,
 		}
 	}
+
+	c.DecoderConfig.Result = o
 
 	if c.Tag == "" {
 		c.DecoderConfig.TagName = "koanf"
@@ -273,7 +288,7 @@ func (ko *Koanf) UnmarshalWithConf(path string, o interface{}, c UnmarshalConf) 
 	// Unmarshal using flat key paths.
 	mp := ko.Get(path)
 	if c.FlatPaths {
-		if f, ok := mp.(map[string]interface{}); ok {
+		if f, ok := mp.(map[string]any); ok {
 			fmp, _ := maps.Flatten(f, nil, ko.conf.Delim)
 			mp = fmp
 		}
@@ -286,10 +301,13 @@ func (ko *Koanf) UnmarshalWithConf(path string, o interface{}, c UnmarshalConf) 
 // Clears all keys/values if no path is specified.
 // Every empty, key on the path, is recursively deleted.
 func (ko *Koanf) Delete(path string) {
+	ko.mu.Lock()
+	defer ko.mu.Unlock()
+
 	// No path. Erase the entire map.
 	if path == "" {
-		ko.confMap = make(map[string]interface{})
-		ko.confMapFlat = make(map[string]interface{})
+		ko.confMap = make(map[string]any)
+		ko.confMapFlat = make(map[string]any)
 		ko.keyMap = make(KeyMap)
 		return
 	}
@@ -306,20 +324,23 @@ func (ko *Koanf) Delete(path string) {
 	ko.keyMap = populateKeyParts(ko.keyMap, ko.conf.Delim)
 }
 
-// Get returns the raw, uncast interface{} value of a given key path
+// Get returns the raw, uncast any value of a given key path
 // in the config map. If the key path does not exist, nil is returned.
-func (ko *Koanf) Get(path string) interface{} {
+func (ko *Koanf) Get(path string) any {
 	// No path. Return the whole conf map.
 	if path == "" {
 		return ko.Raw()
 	}
 
 	// Does the path exist?
+	ko.mu.RLock()
 	p, ok := ko.keyMap[path]
 	if !ok {
+		ko.mu.RUnlock()
 		return nil
 	}
 	res := maps.Search(ko.confMap, p)
+	ko.mu.RUnlock()
 
 	// Non-reference types are okay to return directly.
 	// Other types are "copied" with maps.Copy or json.Marshal
@@ -328,19 +349,26 @@ func (ko *Koanf) Get(path string) interface{} {
 	switch v := res.(type) {
 	case int, int8, int16, int32, int64, float32, float64, string, bool:
 		return v
-	case map[string]interface{}:
+	case map[string]any:
 		return maps.Copy(v)
+	case nil:
+		return nil
+	}
+
+	// Skil nil pointers before copying.
+	if rv := reflect.ValueOf(res); rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return res
 	}
 
 	out, _ := copystructure.Copy(&res)
-	if ptrOut, ok := out.(*interface{}); ok {
+	if ptrOut, ok := out.(*any); ok {
 		return *ptrOut
 	}
 	return out
 }
 
 // Slices returns a list of Koanf instances constructed out of a
-// []map[string]interface{} interface at the given path.
+// []map[string]any interface at the given path.
 func (ko *Koanf) Slices(path string) []*Koanf {
 	out := []*Koanf{}
 	if path == "" {
@@ -348,13 +376,13 @@ func (ko *Koanf) Slices(path string) []*Koanf {
 	}
 
 	// Does the path exist?
-	sl, ok := ko.Get(path).([]interface{})
+	sl, ok := ko.Get(path).([]any)
 	if !ok {
 		return out
 	}
 
 	for _, s := range sl {
-		mp, ok := s.(map[string]interface{})
+		mp, ok := s.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -369,7 +397,9 @@ func (ko *Koanf) Slices(path string) []*Koanf {
 
 // Exists returns true if the given key path exists in the conf map.
 func (ko *Koanf) Exists(path string) bool {
+	ko.mu.RLock()
 	_, ok := ko.keyMap[path]
+	ko.mu.RUnlock()
 	return ok
 }
 
@@ -385,7 +415,7 @@ func (ko *Koanf) MapKeys(path string) []string {
 		return out
 	}
 
-	mp, ok := o.(map[string]interface{})
+	mp, ok := o.(map[string]any)
 	if !ok {
 		return out
 	}
@@ -402,7 +432,10 @@ func (ko *Koanf) Delim() string {
 	return ko.conf.Delim
 }
 
-func (ko *Koanf) merge(c map[string]interface{}, opts *options) error {
+func (ko *Koanf) merge(c map[string]any, opts *options) error {
+	ko.mu.Lock()
+	defer ko.mu.Unlock()
+
 	maps.IntfaceKeysToStrings(c)
 	if opts.merge != nil {
 		if err := opts.merge(c, ko.confMap); err != nil {
@@ -427,7 +460,7 @@ func (ko *Koanf) merge(c map[string]interface{}, opts *options) error {
 // converts and returns int64. If it's any other type,
 // forces it to a string and attempts to do a strconv.Atoi
 // to get an integer out.
-func toInt64(v interface{}) (int64, error) {
+func toInt64(v any) (int64, error) {
 	switch i := v.(type) {
 	case int:
 		return int64(i), nil
@@ -450,10 +483,10 @@ func toInt64(v interface{}) (int64, error) {
 	return int64(f), nil
 }
 
-// toInt64 takes a `v interface{}` value and if it is a float type,
+// toInt64 takes a `v any` value and if it is a float type,
 // converts and returns a `float64`. If it's any other type, forces it to a
 // string and attempts to get a float out using `strconv.ParseFloat`.
-func toFloat64(v interface{}) (float64, error) {
+func toFloat64(v any) (float64, error) {
 	switch i := v.(type) {
 	case float32:
 		return float64(i), nil
@@ -473,7 +506,7 @@ func toFloat64(v interface{}) (float64, error) {
 // toBool takes an interface value and if it is a bool type,
 // returns it. If it's any other type, forces it to a string and attempts
 // to parse it as a bool using strconv.ParseBool.
-func toBool(v interface{}) (bool, error) {
+func toBool(v any) (bool, error) {
 	if b, ok := v.(bool); ok {
 		return b, nil
 	}
@@ -519,8 +552,8 @@ func textUnmarshalerHookFunc() mapstructure.DecodeHookFuncType {
 	return func(
 		f reflect.Type,
 		t reflect.Type,
-		data interface{},
-	) (interface{}, error) {
+		data any,
+	) (any, error) {
 		if f.Kind() != reflect.String {
 			return data, nil
 		}

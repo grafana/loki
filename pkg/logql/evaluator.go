@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"golang.org/x/sync/errgroup"
@@ -176,14 +177,14 @@ func (p LiteralParams) CachingOptions() resultscache.CachingOptions {
 
 // GetRangeType returns whether a query is an instant query or range query
 func GetRangeType(q Params) QueryRangeType {
-	if q.Start() == q.End() && q.Step() == 0 {
+	if q.Start().Equal(q.End()) && q.Step() == 0 {
 		return InstantType
 	}
 	return RangeType
 }
 
 // ParamsWithExpressionOverride overrides the query expression so that the query
-// string and the expression can differ. This is useful for for query planning
+// string and the expression can differ. This is useful for query planning
 // when plan my not match externally available logql syntax
 type ParamsWithExpressionOverride struct {
 	Params
@@ -461,7 +462,7 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 			if e.expr.Grouping.Without {
 				e.lb.Reset(metric)
 				e.lb.Del(e.expr.Grouping.Groups...)
-				e.lb.Del(labels.MetricName)
+				e.lb.Del(model.MetricNameLabel)
 				m = e.lb.Labels()
 			} else {
 				b := labels.NewScratchBuilder(len(e.expr.Grouping.Groups))
@@ -487,27 +488,28 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 			if e.expr.Params > inputVecLen {
 				resultSize = inputVecLen
 			}
-			if e.expr.Operation == syntax.OpTypeStdvar || e.expr.Operation == syntax.OpTypeStddev {
+			switch e.expr.Operation {
+			case syntax.OpTypeStdvar, syntax.OpTypeStddev:
 				result[groupingKey].value = 0.0
-			} else if e.expr.Operation == syntax.OpTypeTopK {
+			case syntax.OpTypeTopK:
 				result[groupingKey].heap = make(vectorByValueHeap, 0, resultSize)
 				heap.Push(&result[groupingKey].heap, &promql.Sample{
 					F:      s.F,
 					Metric: s.Metric,
 				})
-			} else if e.expr.Operation == syntax.OpTypeBottomK {
+			case syntax.OpTypeBottomK:
 				result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0, resultSize)
 				heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
 					F:      s.F,
 					Metric: s.Metric,
 				})
-			} else if e.expr.Operation == syntax.OpTypeSortDesc {
+			case syntax.OpTypeSortDesc:
 				result[groupingKey].heap = make(vectorByValueHeap, 0)
 				heap.Push(&result[groupingKey].heap, &promql.Sample{
 					F:      s.F,
 					Metric: s.Metric,
 				})
-			} else if e.expr.Operation == syntax.OpTypeSort {
+			case syntax.OpTypeSort:
 				result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0)
 				heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
 					F:      s.F,
@@ -942,12 +944,12 @@ func (e *BinOpStepEvaluator) Error() error {
 
 func matchingSignature(sample promql.Sample, opts *syntax.BinOpOptions) uint64 {
 	if opts == nil || opts.VectorMatching == nil {
-		return sample.Metric.Hash()
+		return labels.StableHash(sample.Metric)
 	} else if opts.VectorMatching.On {
-		return labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels().Hash()
+		return labels.StableHash(labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels())
 	}
 
-	return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels().Hash()
+	return labels.StableHash(labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels())
 }
 
 func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) (promql.Vector, error) {
@@ -997,7 +999,7 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 				}
 				matchedSigs[sig] = nil
 			} else {
-				insertSig := metric.Hash()
+				insertSig := labels.StableHash(metric)
 				if !exists {
 					insertedSigs = map[uint64]struct{}{}
 					matchedSigs[sig] = insertedSigs
@@ -1329,7 +1331,7 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 
 	empty := []string{}
 	for _, ma := range lm {
-		if ma.Name == labels.MetricName {
+		if ma.Name == model.MetricNameLabel {
 			continue
 		}
 		if ma.Type == labels.MatchEqual && !m.Has(ma.Name) {
@@ -1517,7 +1519,7 @@ func (it *bufferedVariantsIterator) Next(index int) bool {
 
 // getVariantIndex determines the variant index for a given sample based on the "__variant__" label
 func (it *bufferedVariantsIterator) getVariantIndex(lbls string) int {
-	metric, err := parser.ParseMetric(lbls)
+	metric, err := parser.NewParser(parser.Options{}).ParseMetric(lbls)
 	if err != nil {
 		it.err = err
 		return -1

@@ -8,7 +8,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
-func init() { regKey(3, 0, 12) }
+func init() { regKey(3, 0, 13) }
 
 func (c *Cluster) handleMetadata(kreq kmsg.Request) (kmsg.Response, error) {
 	req := kreq.(*kmsg.MetadataRequest)

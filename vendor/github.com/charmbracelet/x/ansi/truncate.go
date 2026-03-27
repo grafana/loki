@@ -1,17 +1,16 @@
 package ansi
 
 import (
-	"bytes"
+	"strings"
 
 	"github.com/charmbracelet/x/ansi/parser"
-	"github.com/mattn/go-runewidth"
-	"github.com/rivo/uniseg"
+	"github.com/clipperhouse/displaywidth"
+	"github.com/clipperhouse/uax29/v2/graphemes"
 )
 
 // Cut the string, without adding any prefix or tail strings. This function is
 // aware of ANSI escape codes and will not break them, and accounts for
-// wide-characters (such as East-Asian characters and emojis). Note that the
-// [left] parameter is inclusive, while [right] isn't.
+// wide-characters (such as East-Asian characters and emojis).
 // This treats the text as a sequence of graphemes.
 func Cut(s string, left, right int) string {
 	return cut(GraphemeWidth, s, left, right)
@@ -19,8 +18,10 @@ func Cut(s string, left, right int) string {
 
 // CutWc the string, without adding any prefix or tail strings. This function is
 // aware of ANSI escape codes and will not break them, and accounts for
-// wide-characters (such as East-Asian characters and emojis). Note that the
-// [left] parameter is inclusive, while [right] isn't.
+// wide-characters (such as East-Asian characters and emojis).
+// Note that the [left] parameter is inclusive, while [right] isn't,
+// which is to say it'll return `[left, right)`.
+//
 // This treats the text as a sequence of wide characters and runes.
 func CutWc(s string, left, right int) string {
 	return cut(WcWidth, s, left, right)
@@ -41,7 +42,7 @@ func cut(m Method, s string, left, right int) string {
 	if left == 0 {
 		return truncate(s, right, "")
 	}
-	return truncateLeft(Truncate(s, right, ""), left, "")
+	return truncateLeft(truncate(s, right, ""), left, "")
 }
 
 // Truncate truncates a string to a given length, adding a tail to the end if
@@ -73,12 +74,11 @@ func truncate(m Method, s string, length int, tail string) string {
 		return ""
 	}
 
-	var cluster []byte
-	var buf bytes.Buffer
+	var cluster string
+	var buf strings.Builder
 	curWidth := 0
 	ignoring := false
 	pstate := parser.GroundState // initial state
-	b := []byte(s)
 	i := 0
 
 	// Here we iterate over the bytes of the string and collect printable
@@ -87,18 +87,15 @@ func truncate(m Method, s string, length int, tail string) string {
 	//
 	// Once we reach the given length, we start ignoring characters and only
 	// collect ANSI escape codes until we reach the end of string.
-	for i < len(b) {
-		state, action := parser.Table.Transition(pstate, b[i])
+	for i < len(s) {
+		state, action := parser.Table.Transition(pstate, s[i])
 		if state == parser.Utf8State {
 			// This action happens when we transition to the Utf8State.
 			var width int
-			cluster, _, width, _ = uniseg.FirstGraphemeCluster(b[i:], -1)
-			if m == WcWidth {
-				width = runewidth.StringWidth(string(cluster))
-			}
-
+			cluster, width = FirstGraphemeCluster(s[i:], m)
 			// increment the index by the length of the cluster
 			i += len(cluster)
+			curWidth += width
 
 			// Are we ignoring? Skip to the next byte
 			if ignoring {
@@ -107,17 +104,16 @@ func truncate(m Method, s string, length int, tail string) string {
 
 			// Is this gonna be too wide?
 			// If so write the tail and stop collecting.
-			if curWidth+width > length && !ignoring {
+			if curWidth > length && !ignoring {
 				ignoring = true
 				buf.WriteString(tail)
 			}
 
-			if curWidth+width > length {
+			if curWidth > length {
 				continue
 			}
 
-			curWidth += width
-			buf.Write(cluster)
+			buf.WriteString(cluster)
 
 			// Done collecting, now we're back in the ground state.
 			pstate = parser.GroundState
@@ -142,8 +138,16 @@ func truncate(m Method, s string, length int, tail string) string {
 			// collects printable ASCII
 			curWidth++
 			fallthrough
+		case parser.ExecuteAction:
+			// execute action will be things like \n, which, if outside the cut,
+			// should be ignored.
+			if ignoring {
+				i++
+				continue
+			}
+			fallthrough
 		default:
-			buf.WriteByte(b[i])
+			buf.WriteByte(s[i])
 			i++
 		}
 
@@ -184,27 +188,23 @@ func truncateLeft(m Method, s string, n int, prefix string) string {
 		return s
 	}
 
-	var cluster []byte
-	var buf bytes.Buffer
+	var cluster string
+	var buf strings.Builder
 	curWidth := 0
 	ignoring := true
 	pstate := parser.GroundState
-	b := []byte(s)
 	i := 0
 
-	for i < len(b) {
+	for i < len(s) {
 		if !ignoring {
-			buf.Write(b[i:])
+			buf.WriteString(s[i:])
 			break
 		}
 
-		state, action := parser.Table.Transition(pstate, b[i])
+		state, action := parser.Table.Transition(pstate, s[i])
 		if state == parser.Utf8State {
 			var width int
-			cluster, _, width, _ = uniseg.FirstGraphemeCluster(b[i:], -1)
-			if m == WcWidth {
-				width = runewidth.StringWidth(string(cluster))
-			}
+			cluster, width = FirstGraphemeCluster(s[i:], m)
 
 			i += len(cluster)
 			curWidth += width
@@ -214,12 +214,12 @@ func truncateLeft(m Method, s string, n int, prefix string) string {
 				buf.WriteString(prefix)
 			}
 
-			if ignoring {
-				continue
+			if curWidth > n {
+				buf.WriteString(cluster)
 			}
 
-			if curWidth > n {
-				buf.Write(cluster)
+			if ignoring {
+				continue
 			}
 
 			pstate = parser.GroundState
@@ -241,8 +241,16 @@ func truncateLeft(m Method, s string, n int, prefix string) string {
 			}
 
 			fallthrough
+		case parser.ExecuteAction:
+			// execute action will be things like \n, which, if outside the cut,
+			// should be ignored.
+			if ignoring {
+				i++
+				continue
+			}
+			fallthrough
 		default:
-			buf.WriteByte(b[i])
+			buf.WriteByte(s[i])
 			i++
 		}
 
@@ -261,22 +269,22 @@ func truncateLeft(m Method, s string, n int, prefix string) string {
 // You can use this with [Truncate], [TruncateLeft], and [Cut].
 func ByteToGraphemeRange(str string, byteStart, byteStop int) (charStart, charStop int) {
 	bytePos, charPos := 0, 0
-	gr := uniseg.NewGraphemes(str)
+	gr := graphemes.FromString(str)
 	for byteStart > bytePos {
 		if !gr.Next() {
 			break
 		}
-		bytePos += len(gr.Str())
-		charPos += max(1, gr.Width())
+		bytePos += len(gr.Value())
+		charPos += max(1, displaywidth.String(gr.Value()))
 	}
 	charStart = charPos
 	for byteStop > bytePos {
 		if !gr.Next() {
 			break
 		}
-		bytePos += len(gr.Str())
-		charPos += max(1, gr.Width())
+		bytePos += len(gr.Value())
+		charPos += max(1, displaywidth.String(gr.Value()))
 	}
 	charStop = charPos
-	return
+	return charStart, charStop
 }

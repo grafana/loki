@@ -1,7 +1,6 @@
 package index
 
 import (
-	"sort"
 	"testing"
 	"time"
 
@@ -112,13 +111,12 @@ func TestMultiIndex(t *testing.T) {
 	multi, err := NewMultiInvertedIndex(testPeriodConfigs, factor)
 	require.Nil(t, err)
 
-	lbs := []logproto.LabelAdapter{
-		{Name: "foo", Value: "foo"},
-		{Name: "bar", Value: "bar"},
-		{Name: "buzz", Value: "buzz"},
-	}
-	sort.Sort(logproto.FromLabelAdaptersToLabels(lbs))
-	fp := model.Fingerprint((logproto.FromLabelAdaptersToLabels(lbs).Hash()))
+	lbs := logproto.FromLabelsToLabelAdapters(labels.New(
+		labels.Label{Name: "foo", Value: "foo"},
+		labels.Label{Name: "bar", Value: "bar"},
+		labels.Label{Name: "buzz", Value: "buzz"},
+	))
+	fp := model.Fingerprint(labels.StableHash(logproto.FromLabelAdaptersToLabels(lbs)))
 
 	ls := multi.Add(lbs, fp)
 

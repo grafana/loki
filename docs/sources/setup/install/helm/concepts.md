@@ -22,7 +22,11 @@ The Loki chart supports three methods of deployment:
 - [Simple Scalable](../install-scalable/)
 - [Microservice](../install-microservices/)
 
-By default, the chart installs in [Simple Scalable](../install-scalable/) mode. This is the recommended method for most users. To understand the differences between deployment methods, see the [Loki deployment modes](../../../../get-started/deployment-modes/) documentation.
+By default, the chart installs in [Simple Scalable](../install-scalable/) mode. For the best possible experience in production, we now recommend deploying Loki in *microservices* mode. To understand the differences between deployment methods, see the [Loki deployment modes](../../../../get-started/deployment-modes/) documentation.
+
+{{< admonition type="note" >}}
+Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released.
+{{< /admonition >}}
 
 ## Monitoring Loki
 
@@ -43,7 +47,7 @@ By default and inspired by Grafana's [Tanka setup](https://github.com/grafana/lo
 installs the gateway component which is an NGINX that exposes the Loki API and automatically proxies requests to the correct
 Loki components (read or write, or single instance in the case of filesystem storage).
 The gateway must be enabled if an Ingress is required, since the Ingress exposes the gateway only.
-If the gateway is enabled, Grafana and log shipping agents, such as Promtail, should be configured to use the gateway.
+If the gateway is enabled, Grafana and log shipping agents, such as Grafana Alloy, should be configured to use the gateway.
 If NetworkPolicies are enabled, they are more restrictive if the gateway is enabled.
 
 ## Caching

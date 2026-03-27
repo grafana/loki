@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -60,6 +60,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	}
 	ingester.On("Tail", mock.Anything, &request).Return(clients, nil)
 	ingester.On("TailersCount", mock.Anything).Return([]uint32{0}, nil)
+	ingester.On("TailDisconnectedIngesters", mock.Anything, mock.Anything, mock.Anything).Return(map[string]logproto.Querier_TailClient{}, nil).Maybe()
 
 	// Setup log selector mock
 	logSelector := newMockTailLogSelector()
@@ -73,7 +74,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	}
 
 	// Create tail querier
-	tailQuerier := NewQuerier(ingester, logSelector, newMockDeleteGettter("test", []deletion.DeleteRequest{}), limits, 7*24*time.Hour, NewMetrics(nil), log.NewNopLogger())
+	tailQuerier := NewQuerier(ingester, logSelector, newMockDeleteGettter("test", []deletionproto.DeleteRequest{}), limits, 7*24*time.Hour, NewMetrics(nil), log.NewNopLogger())
 
 	// Run test
 	ctx := user.InjectOrgID(context.Background(), "test")
@@ -153,6 +154,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			}
 			ingester.On("Tail", mock.Anything, &request).Return(clients, testData.ingesterError)
 			ingester.On("TailersCount", mock.Anything).Return([]uint32{testData.tailersCount}, testData.ingesterError)
+			ingester.On("TailDisconnectedIngesters", mock.Anything, mock.Anything, mock.Anything).Return(map[string]logproto.Querier_TailClient{}, nil).Maybe()
 
 			// Setup log selector mock
 			logSelector := newMockTailLogSelector()
@@ -165,7 +167,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			}
 
 			// Create tail querier
-			tailQuerier := NewQuerier(ingester, logSelector, newMockDeleteGettter("test", []deletion.DeleteRequest{}), limits, 7*24*time.Hour, NewMetrics(nil), log.NewNopLogger())
+			tailQuerier := NewQuerier(ingester, logSelector, newMockDeleteGettter("test", []deletionproto.DeleteRequest{}), limits, 7*24*time.Hour, NewMetrics(nil), log.NewNopLogger())
 
 			// Run
 			_, err := tailQuerier.Tail(ctx, &request, false)

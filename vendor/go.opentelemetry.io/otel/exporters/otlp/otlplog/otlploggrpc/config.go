@@ -563,7 +563,7 @@ func loadCertificates(certPath, keyPath string) ([]tls.Certificate, error) {
 func insecureFromScheme(prev setting[bool], scheme string) setting[bool] {
 	if scheme == "https" {
 		return newSetting(false)
-	} else if len(scheme) > 0 {
+	} else if scheme != "" {
 		return newSetting(true)
 	}
 

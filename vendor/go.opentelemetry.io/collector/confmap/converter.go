@@ -16,6 +16,9 @@ type ConverterSettings struct {
 	// when instantiating a Converter with a ConverterFactory,
 	// nil Logger references should be replaced with a no-op Logger.
 	Logger *zap.Logger
+
+	// prevent unkeyed literal initialization
+	_ struct{}
 }
 
 // ConverterFactory defines a factory that can be used to instantiate

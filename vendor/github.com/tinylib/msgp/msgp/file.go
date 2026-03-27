@@ -1,7 +1,4 @@
 //go:build (linux || darwin || dragonfly || freebsd || illumos || netbsd || openbsd) && !appengine && !tinygo
-// +build linux darwin dragonfly freebsd illumos netbsd openbsd
-// +build !appengine
-// +build !tinygo
 
 package msgp
 

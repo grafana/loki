@@ -426,7 +426,7 @@ func (e *PipelineExpr) HasFilter() bool {
 			return true
 		case *LineFilterExpr:
 			// ignore empty matchers as they match everything
-			if !((v.Ty == log.LineMatchEqual || v.Ty == log.LineMatchRegexp) && v.Match == "") {
+			if (v.Ty != log.LineMatchEqual && v.Ty != log.LineMatchRegexp) || v.Match != "" {
 				return true
 			}
 		default:
@@ -497,7 +497,7 @@ func newOrLineFilterExpr(left, right *LineFilterExpr) *LineFilterExpr {
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
 	// NOTE: When parsing "or" chains in linefilter, particularly variations of NOT filters (!= or !~), we need to transform
 	// say (!= "foo" or "bar "baz") => (!="foo" != "bar" != "baz")
-	if right.Or != nil && !(right.Ty == log.LineMatchEqual || right.Ty == log.LineMatchRegexp || right.Ty == log.LineMatchPattern) {
+	if right.Or != nil && (right.Ty != log.LineMatchEqual && right.Ty != log.LineMatchRegexp && right.Ty != log.LineMatchPattern) {
 		right.Or.IsOrChild = false
 		tmp := right.Or
 		right.Or = nil
@@ -856,10 +856,31 @@ func (e *DropLabelsExpr) Stage() (log.Stage, error) {
 	return log.NewDropLabels(e.dropLabels), nil
 }
 
+func (e *DropLabelsExpr) HasNamedMatchers() bool {
+	for _, dropLabel := range e.dropLabels {
+		if dropLabel.Matcher != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *DropLabelsExpr) Names() []string {
+	names := []string{}
+	for _, dropLabel := range e.dropLabels {
+		if dropLabel.Name != "" {
+			names = append(names, dropLabel.Name)
+		} else if dropLabel.Matcher != nil {
+			names = append(names, dropLabel.Matcher.Name)
+		}
+	}
+	return names
+}
+
 func (e *DropLabelsExpr) String() string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpDrop))
+	fmt.Fprintf(&sb, "%s %s ", OpPipe, OpDrop)
 
 	for i, dropLabel := range e.dropLabels {
 		if dropLabel.Matcher != nil {
@@ -899,7 +920,7 @@ func (e *KeepLabelsExpr) Stage() (log.Stage, error) {
 func (e *KeepLabelsExpr) String() string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpKeep))
+	fmt.Fprintf(&sb, "%s %s ", OpPipe, OpKeep)
 
 	for i, keepLabel := range e.keepLabels {
 		if keepLabel.Matcher != nil {
@@ -964,7 +985,7 @@ func (e *LabelFmtExpr) Stage() (log.Stage, error) {
 func (e *LabelFmtExpr) String() string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFmtLabel))
+	fmt.Fprintf(&sb, "%s %s ", OpPipe, OpFmtLabel)
 
 	for i, f := range e.Formats {
 		sb.WriteString(f.Name)
@@ -1003,7 +1024,7 @@ func (j *JSONExpressionParserExpr) Stage() (log.Stage, error) {
 
 func (j *JSONExpressionParserExpr) String() string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeJSON))
+	fmt.Fprintf(&sb, "%s %s ", OpPipe, OpParserTypeJSON)
 	for i, exp := range j.Expressions {
 		sb.WriteString(exp.Identifier)
 		sb.WriteString("=")
@@ -1055,7 +1076,7 @@ func (l *LogfmtExpressionParserExpr) Stage() (log.Stage, error) {
 
 func (l *LogfmtExpressionParserExpr) String() string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeLogfmt))
+	fmt.Fprintf(&sb, "%s %s ", OpPipe, OpParserTypeLogfmt)
 	if l.Strict {
 		sb.WriteString(OpStrict)
 		sb.WriteString(" ")
@@ -1120,12 +1141,12 @@ type UnwrapExpr struct {
 func (u UnwrapExpr) String() string {
 	var sb strings.Builder
 	if u.Operation != "" {
-		sb.WriteString(fmt.Sprintf(" %s %s %s(%s)", OpPipe, OpUnwrap, u.Operation, u.Identifier))
+		fmt.Fprintf(&sb, " %s %s %s(%s)", OpPipe, OpUnwrap, u.Operation, u.Identifier)
 	} else {
-		sb.WriteString(fmt.Sprintf(" %s %s %s", OpPipe, OpUnwrap, u.Identifier))
+		fmt.Fprintf(&sb, " %s %s %s", OpPipe, OpUnwrap, u.Identifier)
 	}
 	for _, f := range u.PostFilters {
-		sb.WriteString(fmt.Sprintf(" %s %s", OpPipe, f))
+		fmt.Fprintf(&sb, " %s %s", OpPipe, f)
 	}
 	return sb.String()
 }
@@ -1153,7 +1174,7 @@ func (r LogRangeExpr) String() string {
 	if r.Unwrap != nil {
 		sb.WriteString(r.Unwrap.String())
 	}
-	sb.WriteString(fmt.Sprintf("[%v]", model.Duration(r.Interval)))
+	fmt.Fprintf(&sb, "[%v]", model.Duration(r.Interval))
 	if r.Offset != 0 {
 		offsetExpr := OffsetExpr{Offset: r.Offset}
 		sb.WriteString(offsetExpr.String())
@@ -1208,7 +1229,7 @@ type OffsetExpr struct {
 
 func (o *OffsetExpr) String() string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(" %s %s", OpOffset, o.Offset.String()))
+	fmt.Fprintf(&sb, " %s %s", OpOffset, o.Offset.String())
 	return sb.String()
 }
 
@@ -1774,9 +1795,10 @@ func (e *BinOpExpr) String() string {
 		}
 		if e.Opts.VectorMatching != nil {
 			group := ""
-			if e.Opts.VectorMatching.Card == CardManyToOne {
+			switch e.Opts.VectorMatching.Card {
+			case CardManyToOne:
 				group = OpGroupLeft
-			} else if e.Opts.VectorMatching.Card == CardOneToMany {
+			case CardOneToMany:
 				group = OpGroupRight
 			}
 			if e.Opts.VectorMatching.Include != nil {
@@ -2365,7 +2387,7 @@ func (e *VectorExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(OpTypeVector)
 	sb.WriteString("(")
-	sb.WriteString(fmt.Sprintf("%f", e.Val))
+	fmt.Fprintf(&sb, "%f", e.Val)
 	sb.WriteString(")")
 	return sb.String()
 }

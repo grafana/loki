@@ -8,8 +8,12 @@ type ACLCmdable interface {
 	ACLLog(ctx context.Context, count int64) *ACLLogCmd
 	ACLLogReset(ctx context.Context) *StatusCmd
 
+	ACLGenPass(ctx context.Context, bit int) *StringCmd
+
 	ACLSetUser(ctx context.Context, username string, rules ...string) *StatusCmd
 	ACLDelUser(ctx context.Context, username string) *IntCmd
+	ACLUsers(ctx context.Context) *StringSliceCmd
+	ACLWhoAmI(ctx context.Context) *StringCmd
 	ACLList(ctx context.Context) *StringSliceCmd
 
 	ACLCat(ctx context.Context) *StringSliceCmd
@@ -61,6 +65,29 @@ func (c cmdable) ACLSetUser(ctx context.Context, username string, rules ...strin
 		args[i+3] = rule
 	}
 	cmd := NewStatusCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) ACLGenPass(ctx context.Context, bit int) *StringCmd {
+	args := make([]interface{}, 0, 3)
+	args = append(args, "acl", "genpass")
+	if bit > 0 {
+		args = append(args, bit)
+	}
+	cmd := NewStringCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) ACLUsers(ctx context.Context) *StringSliceCmd {
+	cmd := NewStringSliceCmd(ctx, "acl", "users")
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) ACLWhoAmI(ctx context.Context) *StringCmd {
+	cmd := NewStringCmd(ctx, "acl", "whoami")
 	_ = c(ctx, cmd)
 	return cmd
 }

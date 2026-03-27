@@ -260,7 +260,7 @@ func (r *Attempt) handleAttempt(
 	// Get a retry token that will be released after the
 	releaseRetryToken, retryTokenErr := r.retryer.GetRetryToken(ctx, err)
 	if retryTokenErr != nil {
-		return out, attemptResult, nopRelease, retryTokenErr
+		return out, attemptResult, nopRelease, errors.Join(err, retryTokenErr)
 	}
 
 	//------------------------------

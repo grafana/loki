@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 )
 
 const (
@@ -55,7 +55,7 @@ type Processor interface {
 
 type Entry struct {
 	Extracted map[string]interface{}
-	api.Entry
+	util.Entry
 }
 
 // Stage can receive entries via an inbound channel and forward mutated entries to an outbound channel.
@@ -98,7 +98,7 @@ func (s stageProcessor) Run(in chan Entry) chan Entry {
 		s.Process(e.Labels, e.Extracted, &e.Timestamp, &e.Line)
 
 		if Inspect {
-			s.inspector.inspect(s.Processor.Name(), before, e)
+			s.inspector.inspect(s.Name(), before, e)
 		}
 
 		return e

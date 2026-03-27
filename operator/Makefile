@@ -21,7 +21,7 @@ LOKI_OPERATOR_NS ?= kubernetes-operators
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.8.0
+VERSION ?= 0.10.0
 CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
 
@@ -189,8 +189,7 @@ lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and a
 	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/prometheus-*.yaml
 
 .PHONY: fmt
-fmt: $(GOFUMPT) ## Run gofumpt on source code.
-	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -w {} \;
+fmt: lint-fix ## Format the source code (alias for lint-fix).
 
 .PHONY: oci-build
 oci-build: ## Build the image
@@ -224,13 +223,8 @@ ifndef ignore-not-found
 endif
 
 .PHONY: quickstart
-ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
 quickstart: $(KIND) ## Quickstart full dev environment on local kind cluster
 	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
-else
-quickstart: oci-build oci-push $(KIND)
-	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
-endif
 
 .PHONY: quickstart-cleanup
 quickstart-cleanup: $(KIND) ## Cleanup for quickstart set up
@@ -257,31 +251,38 @@ deploy: manifests $(KUSTOMIZE) ## Deploy controller in the configured Kubernetes
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/overlays/development | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
+OLM_IMG = $(REGISTRY_BASE)/loki-operator:$(OLM_VERSION)
+OLM_BUNDLE_IMG = $(REGISTRY_BASE)/loki-operator-bundle:$(OLM_VERSION)
+DEV_VERSION := 0.0.1-$(shell date +"%Y%m%d%H%M%S")-$(shell git rev-parse --short HEAD)
+OLM_VERSION ?= $(DEV_VERSION)
+
 # Build and push the bundle image to a container registry.
 .PHONY: olm-deploy-bundle
-olm-deploy-bundle: bundle bundle-build
-	$(MAKE) oci-push IMG=$(BUNDLE_IMG)
+olm-deploy-bundle:
+	$(MAKE) bundle bundle-build VERSION=$(OLM_VERSION)
+	$(MAKE) oci-push IMG=$(OLM_BUNDLE_IMG)
 
 # Build and push the operator image to a container registry.
 .PHONY: olm-deploy-operator
-olm-deploy-operator: oci-build oci-push
+olm-deploy-operator:
+	$(MAKE) oci-build oci-push IMG=$(OLM_IMG)
 
 .PHONY: olm-deploy
-ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
+ifeq ($(or $(findstring openshift-logging,$(OLM_IMG)),$(findstring openshift-logging,$(OLM_BUNDLE_IMG))),openshift-logging)
 olm-deploy:  ## Deploy the operator bundle and the operator via OLM into an Kubernetes cluster selected via KUBECONFIG.
 	$(error Set variable REGISTRY_BASE to use a custom container registry org account for local development)
 else
 olm-deploy: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
-	$(OPERATOR_SDK) run bundle -n $(LOKI_OPERATOR_NS) --install-mode AllNamespaces $(BUNDLE_IMG) --security-context-config restricted
+	$(OPERATOR_SDK) run bundle -n $(LOKI_OPERATOR_NS) --install-mode AllNamespaces $(OLM_BUNDLE_IMG) --security-context-config restricted
 endif
 
 .PHONY: olm-upgrade
-ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
+ifeq ($(or $(findstring openshift-logging,$(OLM_IMG)),$(findstring openshift-logging,$(OLM_BUNDLE_IMG))),openshift-logging)
 olm-upgrade:  ## Upgrade the operator bundle and the operator via OLM into an Kubernetes cluster selected via KUBECONFIG.
 	$(error Set variable REGISTRY_BASE to use a custom container registry org account for local development)
 else
 olm-upgrade: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
-	$(OPERATOR_SDK) run bundle-upgrade -n $(LOKI_OPERATOR_NS) $(BUNDLE_IMG)
+	$(OPERATOR_SDK) run bundle-upgrade -n $(LOKI_OPERATOR_NS) $(OLM_BUNDLE_IMG)
 endif
 
 .PHONY: olm-undeploy
@@ -335,7 +336,7 @@ docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET) $(GEN_CRD_API_REFERENCE_
 web-pre: docs/operator/api.md docs/operator/feature-gates.md ## Build the markdown API files of the loki-operator.dev website
 	@echo ">> preprocessing docs for website"
 	@git submodule update --init --recursive
-	cd $(WEBSITE_DIR)/themes/doks/ && npm install && rm -rf content
+	cd $(WEBSITE_DIR)/themes/doks/ && npm ci && rm -rf content
 
 .PHONY: web
 web: $(HUGO) | web-pre ## Run production build of the loki-operator.dev website

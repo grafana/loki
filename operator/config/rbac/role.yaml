@@ -62,6 +62,7 @@ rules:
   - config.openshift.io
   resources:
   - apiservers
+  - clusterversions
   - dnses
   - proxies
   verbs:
@@ -76,6 +77,14 @@ rules:
   - create
   - get
   - update
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - loki.grafana.com
   resources:
@@ -139,8 +148,10 @@ rules:
   - networking.k8s.io
   resources:
   - ingresses
+  - networkpolicies
   verbs:
   - create
+  - delete
   - get
   - list
   - update

@@ -7,12 +7,13 @@ import (
 	"runtime"
 	"sync"
 
+	"context"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
-	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -33,6 +34,9 @@ func (NoopWALReader) Record() []byte { return nil }
 func (NoopWALReader) Close() error   { return nil }
 
 func newCheckpointReader(dir string, logger log.Logger) (WALReader, io.Closer, error) {
+	// Proactively clean up stale checkpoints at startup before recovery
+	cleanupCheckpointsAtStartup(dir, logger)
+
 	lastCheckpointDir, idx, err := lastCheckpoint(dir)
 	if err != nil {
 		return nil, nil, err
@@ -48,6 +52,32 @@ func newCheckpointReader(dir string, logger log.Logger) (WALReader, io.Closer, e
 		return nil, nil, err
 	}
 	return wlog.NewReader(r), r, nil
+}
+
+// cleanupCheckpointsAtStartup performs cleanup of stale checkpoint data at startup.
+// This includes removing incomplete .tmp checkpoint directories from failed attempts, and
+// removing old completed checkpoints that have been superseded. The most recent valid
+// checkpoint is always protected to ensure a recovery point exists.
+func cleanupCheckpointsAtStartup(dir string, logger log.Logger) {
+	// First, clean up any stale .tmp checkpoint directories from failed checkpoint attempts.
+	// These are always safe to delete at startup since they represent incomplete operations.
+	cleanupStaleTmpCheckpoints(dir, logger)
+
+	// Find the most recent valid checkpoint to protect it from deletion
+	_, latestCheckpointIdx, err := lastCheckpoint(dir)
+	if err != nil {
+		level.Error(logger).Log("msg", "unable to find latest checkpoint for startup checkpoint cleanu, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "err", err)
+		return
+	}
+
+	if latestCheckpointIdx < 0 {
+		// No checkpoints exist, nothing to clean up
+		return
+	}
+
+	// Delegate to the shared cleanup function, protecting the latest checkpoint.
+	// This will remove any old checkpoints that are superseded by the latest one.
+	cleanupOldCheckpoints(dir, latestCheckpointIdx, logger)
 }
 
 type Recoverer interface {
@@ -89,7 +119,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 		stream, err := inst.getOrCreateStream(context.Background(), logproto.Stream{
 			Labels: logproto.FromLabelAdaptersToLabels(series.Labels).String(),
-		}, nil)
+		}, nil, "loki")
 
 		if err != nil {
 			return err
@@ -143,6 +173,7 @@ func (r *ingesterRecoverer) SetStream(ctx context.Context, userID string, series
 			Labels: series.Labels.String(),
 		},
 		nil,
+		"loki",
 	)
 	if err != nil {
 		return err
@@ -169,7 +200,7 @@ func (r *ingesterRecoverer) Push(userID string, entries wal.RefEntries) error {
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true, false, r.ing.customStreamsTracker)
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true, false, r.ing.customStreamsTracker, "loki")
 		r.ing.replayController.Add(int64(bytesAdded))
 		if err != nil && err == ErrEntriesExist {
 			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))

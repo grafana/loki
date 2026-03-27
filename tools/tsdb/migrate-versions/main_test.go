@@ -63,12 +63,12 @@ func TestMigrateTables(t *testing.T) {
 	// setup some tables
 	for i := currTableNum - 5; i <= currTableNum; i++ {
 		b := tsdb.NewBuilder(index.FormatV2)
-		b.AddSeries(labels.Labels{
-			{
+		b.AddSeries(labels.New(
+			labels.Label{
 				Name:  "table_name",
 				Value: currTableName,
 			},
-		}, 1, []index.ChunkMeta{
+		), 1, []index.ChunkMeta{
 			{
 				Checksum: 1,
 				MinTime:  0,
@@ -123,7 +123,7 @@ func TestMigrateTables(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, indexFiles, 1)
 
-				dst := filepath.Join(t.TempDir(), strings.Trim(indexFiles[0].Name, gzipExtension))
+				dst := filepath.Join(t.TempDir(), strings.TrimSuffix(indexFiles[0].Name, gzipExtension))
 				err = shipperstorage.DownloadFileFromStorage(
 					dst,
 					true,

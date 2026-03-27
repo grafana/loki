@@ -82,16 +82,12 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 	// avoid sha256 with non-v4 signature request or
 	// HTTPS connection.
 	hashAlgos, hashSums := c.hashMaterials(opts.SendContentMd5, !opts.DisableContentSha256)
-	if len(hashSums) == 0 {
-		addAutoChecksumHeaders(&opts)
-	}
 
 	// Initiate a new multipart upload.
 	uploadID, err := c.newUploadID(ctx, bucketName, objectName, opts)
 	if err != nil {
 		return UploadInfo{}, err
 	}
-	delete(opts.UserMetadata, "X-Amz-Checksum-Algorithm")
 
 	defer func() {
 		if err != nil {
@@ -145,11 +141,15 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 		if hashSums["sha256"] != nil {
 			sha256Hex = hex.EncodeToString(hashSums["sha256"])
 		}
-		if len(hashSums) == 0 {
+		if opts.AutoChecksum.IsSet() {
 			crc.Reset()
 			crc.Write(buf[:length])
 			cSum := crc.Sum(nil)
 			customHeader.Set(opts.AutoChecksum.Key(), base64.StdEncoding.EncodeToString(cSum))
+			customHeader.Set(amzChecksumAlgo, opts.AutoChecksum.String())
+			if opts.AutoChecksum.FullObjectRequested() {
+				customHeader.Set(amzChecksumMode, ChecksumFullObjectMode.String())
+			}
 		}
 
 		p := uploadPartParams{bucketName: bucketName, objectName: objectName, uploadID: uploadID, reader: rd, partNumber: partNumber, md5Base64: md5Base64, sha256Hex: sha256Hex, size: int64(length), sse: opts.ServerSideEncryption, streamSha256: !opts.DisableContentSha256, customHeader: customHeader}

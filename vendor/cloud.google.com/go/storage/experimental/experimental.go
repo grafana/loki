@@ -33,15 +33,23 @@ import (
 // It sets how often to emit metrics [metric.WithInterval] when using
 // [metric.NewPeriodicReader]
 // When using Cloud Monitoring interval must be at minimum 1 [time.Minute].
+// This option is ignored if WithMeterProvider is also set.
 func WithMetricInterval(metricInterval time.Duration) option.ClientOption {
 	return internal.WithMetricInterval.(func(time.Duration) option.ClientOption)(metricInterval)
 }
 
 // WithMetricExporter provides a [option.ClientOption] that may be passed to [storage.NewGRPCClient].
 // Set an alternate client-side metric Exporter to emit metrics through.
-// Must implement [metric.Exporter]
+// Must implement [metric.Exporter]. This option is ignored if WithMeterProvider is also set.
 func WithMetricExporter(ex *metric.Exporter) option.ClientOption {
 	return internal.WithMetricExporter.(func(*metric.Exporter) option.ClientOption)(ex)
+}
+
+// WithMeterProvider provides a [option.ClientOption] that may be passed to [storage.NewGRPCClient].
+// Set an alternate client-side meter provider to emit metrics through.
+// This option takes precedence over WithMetricExporter and WithMetricInterval.
+func WithMeterProvider(mp *metric.MeterProvider) option.ClientOption {
+	return internal.WithMeterProvider.(func(*metric.MeterProvider) option.ClientOption)(mp)
 }
 
 // WithReadStallTimeout provides a [option.ClientOption] that may be passed to [storage.NewClient].
@@ -98,4 +106,12 @@ func WithGRPCBidiReads() option.ClientOption {
 // account manager if interested.
 func WithZonalBucketAPIs() option.ClientOption {
 	return internal.WithZonalBucketAPIs.(func() option.ClientOption)()
+}
+
+// WithDirectConnectivityEnforced provides an [option.ClientOption] that may be passed to
+// [cloud.google.com/go/storage.NewGRPCClient].
+// It sets the gRPC client to use direct path connectivity for all requests and may fail
+// if direct path connectivity cannot be established for a request.
+func WithDirectConnectivityEnforced() option.ClientOption {
+	return internal.WithDirectConnectivityEnforced.(func() option.ClientOption)()
 }

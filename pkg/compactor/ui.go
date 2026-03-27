@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/dskit/middleware"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 )
 
 func (c *Compactor) Handler() (string, http.Handler) {
@@ -46,20 +47,19 @@ func (c *Compactor) Handler() (string, http.Handler) {
 }
 
 type DeleteRequestResponse struct {
-	RequestID    string `json:"request_id"`
-	StartTime    int64  `json:"start_time"`
-	EndTime      int64  `json:"end_time"`
-	Query        string `json:"query"`
-	Status       string `json:"status"`
-	CreatedAt    int64  `json:"created_at"`
-	UserID       string `json:"user_id"`
-	DeletedLines int32  `json:"deleted_lines"`
+	RequestID string `json:"request_id"`
+	StartTime int64  `json:"start_time"`
+	EndTime   int64  `json:"end_time"`
+	Query     string `json:"query"`
+	Status    string `json:"status"`
+	CreatedAt int64  `json:"created_at"`
+	UserID    string `json:"user_id"`
 }
 
 func (c *Compactor) handleListDeleteRequests(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	if status == "" {
-		status = string(deletion.StatusReceived)
+		status = string(deletionproto.StatusReceived)
 	}
 
 	ctx := r.Context()
@@ -76,7 +76,7 @@ func (c *Compactor) handleListDeleteRequests(w http.ResponseWriter, r *http.Requ
 	// Filter requests by status
 	filtered := requests[:0]
 	for _, req := range requests {
-		if req.Status == deletion.DeleteRequestStatus(status) {
+		if req.Status == deletionproto.DeleteRequestStatus(status) {
 			filtered = append(filtered, req)
 		}
 	}
@@ -95,14 +95,13 @@ func (c *Compactor) handleListDeleteRequests(w http.ResponseWriter, r *http.Requ
 	response := make([]DeleteRequestResponse, 0, len(requests))
 	for _, req := range requests {
 		response = append(response, DeleteRequestResponse{
-			RequestID:    req.RequestID,
-			StartTime:    int64(req.StartTime),
-			EndTime:      int64(req.EndTime),
-			Query:        req.Query,
-			Status:       string(req.Status),
-			CreatedAt:    int64(req.CreatedAt),
-			UserID:       req.UserID,
-			DeletedLines: req.DeletedLines,
+			RequestID: req.RequestID,
+			StartTime: int64(req.StartTime),
+			EndTime:   int64(req.EndTime),
+			Query:     req.Query,
+			Status:    string(req.Status),
+			CreatedAt: int64(req.CreatedAt),
+			UserID:    req.UserID,
 		})
 	}
 

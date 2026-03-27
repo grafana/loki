@@ -421,3 +421,47 @@ func (t *Tags) AppendEach(dst []byte) []byte {
 	})
 	return dst
 }
+
+////////////////////////
+// DEPRECATED RENAMES //
+////////////////////////
+
+// Deprecated: this was renamed to ControlRecordKeyTypeSnapshotHeader.
+const ControlRecordKeyTypeLeaderChange = ControlRecordKeyTypeSnapshotHeader
+
+type (
+	// Deprecated: this was renamed to ListConfigResourcesRequest.
+	ListClientMetricsResourcesRequest = ListConfigResourcesRequest
+	// Deprecated: this was renamed to ListConfigResourcesResponse.
+	ListClientMetricsResourcesResponse = ListConfigResourcesResponse
+	// Deprecated: this was renamed to ListConfigResourcesResponseConfigResource.
+	ListClientMetricsResourcesResponseClientMetricsResource = ListConfigResourcesResponseConfigResource
+)
+
+// Deprecated: this was renamed to ListConfigResources.
+var ListClientMetricsResources Key = 74
+
+// Deprecated: this was renamed to NewPtrListConfigResourcesRequest.
+func NewPtrListClientMetricsResourcesRequest() *ListClientMetricsResourcesRequest {
+	return NewPtrListConfigResourcesRequest()
+}
+
+// Deprecated: this was renamed to NewListConfigResourcesRequest.
+func NewListClientMetricsResourcesRequest() ListClientMetricsResourcesRequest {
+	return NewListConfigResourcesRequest()
+}
+
+// Deprecated: this was renamed to NewListConfigResourcesResponseConfigResource.
+func NewListClientMetricsResourcesResponseClientMetricsResource() ListClientMetricsResourcesResponseClientMetricsResource {
+	return NewListConfigResourcesResponseConfigResource()
+}
+
+// Deprecated: this was renamed to NewPtrListConfigResourcesResponse.
+func NewPtrListClientMetricsResourcesResponse() *ListClientMetricsResourcesResponse {
+	return NewPtrListConfigResourcesResponse()
+}
+
+// Deprecated: this was renamed to NewListConfigResourcesResponse.
+func NewListClientMetricsResourcesResponse() ListClientMetricsResourcesResponse {
+	return NewListConfigResourcesResponse()
+}

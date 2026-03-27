@@ -33,8 +33,8 @@ import (
 )
 
 var (
-	fooLabelsWithName = labels.Labels{{Name: "foo", Value: "bar"}, {Name: "__name__", Value: "logs"}}
-	fooLabels         = labels.Labels{{Name: "foo", Value: "bar"}}
+	fooLabelsWithName = labels.New(labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "__name__", Value: "logs"})
+	fooLabels         = labels.New(labels.Label{Name: "foo", Value: "bar"})
 )
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
@@ -103,9 +103,9 @@ func newChunk(chunkFormat byte, headBlockFmt chunkenc.HeadBlockFmt, stream logpr
 	if err != nil {
 		panic(err)
 	}
-	if !lbs.Has(labels.MetricName) {
+	if !lbs.Has(model.MetricNameLabel) {
 		builder := labels.NewBuilder(lbs)
-		builder.Set(labels.MetricName, "logs")
+		builder.Set(model.MetricNameLabel, "logs")
 		lbs = builder.Labels()
 	}
 	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
@@ -202,7 +202,7 @@ Outer:
 					continue Outer
 				}
 			}
-			l := labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels()
+			l := labels.NewBuilder(c.Metric).Del(model.MetricNameLabel).Labels()
 			if m.f != nil {
 				if m.f.ForRequest(ctx).ShouldFilter(l) {
 					continue
@@ -278,6 +278,14 @@ func (m *mockChunkStore) GetShards(_ context.Context, _ string, _, _ model.Time,
 
 func (m *mockChunkStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
+}
+
+func (m *mockChunkStore) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
+}
+
+func (m *mockChunkStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	return nil, nil
 }
 
 func (m *mockChunkStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {

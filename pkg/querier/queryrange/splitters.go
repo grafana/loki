@@ -321,7 +321,7 @@ func (s *metricQuerySplitter) alignStartEnd(step int64, start, end time.Time) (t
 func (s *metricQuerySplitter) buildMetricSplits(step int64, interval time.Duration, start, end time.Time, factory func(start, end time.Time)) {
 	for splStart := start; splStart.Before(end); splStart = s.nextIntervalBoundary(splStart, step, interval).Add(time.Duration(step) * time.Millisecond) {
 		splEnd := s.nextIntervalBoundary(splStart, step, interval)
-		if splEnd.Add(time.Duration(step)*time.Millisecond).After(end) || splEnd.Add(time.Duration(step)*time.Millisecond) == end {
+		if splEnd.Add(time.Duration(step)*time.Millisecond).After(end) || splEnd.Add(time.Duration(step)*time.Millisecond).Equal(end) {
 			splEnd = end
 		}
 		factory(splStart, splEnd)

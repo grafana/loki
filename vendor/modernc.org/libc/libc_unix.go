@@ -1298,21 +1298,6 @@ func Xstrftime(tls *TLS, s uintptr, n size_t, f uintptr, tm uintptr) (r size_t) 
 
 }
 
-func Xgmtime_r(tls *TLS, t uintptr, tm uintptr) (r uintptr) {
-	if __ccgo_strace {
-		trc("tls=%v t=%v tm=%v, (%v:)", tls, t, tm, origin(2))
-		defer func() { trc("-> %v", r) }()
-	}
-	if x___secs_to_tm(tls, int64(*(*time_t)(unsafe.Pointer(t))), tm) < 0 {
-		*(*int32)(unsafe.Pointer(X__errno_location(tls))) = int32(errno.EOVERFLOW)
-		return uintptr(0)
-	}
-	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_isdst = 0
-	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_gmtoff = 0
-	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_zone = uintptr(unsafe.Pointer(&x___utc))
-	return tm
-}
-
 func x___secs_to_tm(tls *TLS, t int64, tm uintptr) (r int32) {
 	var c_cycles, leap, months, q_cycles, qc_cycles, remdays, remsecs, remyears, wday, yday int32
 	var days, secs, years int64
@@ -1384,21 +1369,5 @@ func x___secs_to_tm(tls *TLS, t int64, tm uintptr) (r int32) {
 	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_hour = remsecs / int32(3600)
 	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_min = remsecs / int32(60) % int32(60)
 	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_sec = remsecs % int32(60)
-	return 0
-}
-
-// int clock_gettime(clockid_t clk_id, struct timespec *tp);
-func Xclock_gettime(t *TLS, clk_id int32, tp uintptr) int32 {
-	if __ccgo_strace {
-		trc("t=%v clk_id=%v tp=%v, (%v:)", t, clk_id, tp, origin(2))
-	}
-	var ts unix.Timespec
-	if err := unix.ClockGettime(clk_id, &ts); err != nil {
-		t.setErrno(err)
-		trc("FAIL: %v", err)
-		return -1
-	}
-
-	*(*unix.Timespec)(unsafe.Pointer(tp)) = ts
 	return 0
 }

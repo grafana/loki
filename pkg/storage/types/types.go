@@ -1,4 +1,4 @@
-package types
+package types //nolint:revive
 
 var SupportedIndexTypes = []string{
 	BoltDBShipperType,

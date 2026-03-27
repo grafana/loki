@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
+
 package normalize
 
 import (
@@ -15,7 +18,7 @@ import (
 //
 // NOTE(windows):
 // * refs are assumed to have been normalized with drive letter lower cased (from go-openapi/spec)
-// * "/ in paths may appear as escape sequences
+// * "/ in paths may appear as escape sequences.
 func RebaseRef(baseRef string, ref string) string {
 	baseRef, _ = url.PathUnescape(baseRef)
 	ref, _ = url.PathUnescape(ref)
@@ -67,7 +70,7 @@ func RebaseRef(baseRef string, ref string) string {
 //
 // NOTE(windows):
 // * refs are assumed to have been normalized with drive letter lower cased (from go-openapi/spec)
-// * "/ in paths may appear as escape sequences
+// * "/ in paths may appear as escape sequences.
 func Path(ref spec.Ref, basePath string) string {
 	uri, _ := url.PathUnescape(ref.String())
 	if ref.HasFragmentOnly || filepath.IsAbs(uri) {

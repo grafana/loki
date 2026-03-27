@@ -7,12 +7,17 @@ import (
 // BuildGatewayObjects returns a list of auxiliary openshift/k8s objects
 // for lokistack gateway deployments on OpenShift.
 func BuildGatewayObjects(opts Options) []client.Object {
-	return []client.Object{
-		BuildRoute(opts),
+	objs := []client.Object{
 		BuildGatewayCAConfigMap(opts),
 		BuildMonitoringRole(opts),
 		BuildMonitoringRoleBinding(opts),
 	}
+
+	if opts.BuildOpts.ExternalAccessEnabled {
+		objs = append(objs, BuildRoute(opts))
+	}
+
+	return objs
 }
 
 // BuildGatewayTenantModeObjects returns a list of auxiliary openshift/k8s objects

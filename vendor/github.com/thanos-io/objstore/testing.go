@@ -287,7 +287,7 @@ func (d *delayingBucket) Get(ctx context.Context, name string) (io.ReadCloser, e
 	return d.bkt.Get(ctx, name)
 }
 
-func (b *delayingBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+func (b *delayingBucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
 	panic("unimplemented: delayingBucket.GetAndReplace")
 }
 

@@ -14,7 +14,7 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	seriesindex "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
@@ -150,12 +150,20 @@ func (c *CompactedIndex) ForEachSeries(ctx context.Context, callback retention.S
 	return ForEachSeries(ctx, bucket, c.periodConfig, callback)
 }
 
-func (c *CompactedIndex) IndexChunk(chunk chunk.Chunk) (bool, error) {
+func (c *CompactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, sizeInKB uint32, logEntriesCount uint32) (bool, error) {
 	if err := c.setupIndexProcessors(); err != nil {
 		return false, err
 	}
 
-	return c.chunkIndexer.IndexChunk(chunk)
+	return c.chunkIndexer.IndexChunk(chunkRef, lbls, sizeInKB, logEntriesCount)
+}
+
+func (c *CompactedIndex) ChunkExists(userID []byte, lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error) {
+	if err := c.setupIndexProcessors(); err != nil {
+		return false, err
+	}
+
+	return c.seriesCleaner.ChunkExists(userID, lbls, chunkRef)
 }
 
 func (c *CompactedIndex) CleanupSeries(userID []byte, lbls labels.Labels) error {
@@ -166,9 +174,9 @@ func (c *CompactedIndex) CleanupSeries(userID []byte, lbls labels.Labels) error 
 	return c.seriesCleaner.CleanupSeries(userID, lbls)
 }
 
-func (c *CompactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error {
+func (c *CompactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) (bool, error) {
 	if err := c.setupIndexProcessors(); err != nil {
-		return err
+		return false, err
 	}
 
 	return c.seriesCleaner.RemoveChunk(from, through, userID, labels, chunkID)
@@ -238,8 +246,8 @@ func newChunkIndexer(bucket *bbolt.Bucket, periodConfig config.PeriodConfig, tab
 }
 
 // IndexChunk indexes a chunk if it belongs to the same table by seeing if table name in built index entries match c.tableName.
-func (c *chunkIndexer) IndexChunk(newChunk chunk.Chunk) (bool, error) {
-	entries, err := c.seriesStoreSchema.GetChunkWriteEntries(newChunk.From, newChunk.Through, newChunk.UserID, "logs", newChunk.Metric, c.scfg.ExternalKey(newChunk.ChunkRef))
+func (c *chunkIndexer) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, _ uint32, _ uint32) (bool, error) {
+	entries, err := c.seriesStoreSchema.GetChunkWriteEntries(chunkRef.From, chunkRef.Through, chunkRef.UserID, "logs", lbls, c.scfg.ExternalKey(chunkRef))
 	if err != nil {
 		return false, err
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -50,8 +51,8 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 }
 
 func TestGetMutateFunc_ReturnErrOnNotSupportedType(t *testing.T) {
-	got := &corev1.Endpoints{}
-	want := &corev1.Endpoints{}
+	got := &discoveryv1.EndpointSlice{}
+	want := &discoveryv1.EndpointSlice{}
 	f := MutateFuncFor(got, want, nil)
 
 	require.Error(t, f())

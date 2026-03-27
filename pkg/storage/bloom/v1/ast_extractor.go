@@ -70,12 +70,13 @@ func buildLabelMatcher(filter log.LabelFilterer) LabelMatcher {
 	switch filter := filter.(type) {
 
 	case *log.LineFilterLabelFilter:
-		if filter.Type == labels.MatchEqual {
+		switch filter.Type {
+		case labels.MatchEqual:
 			return KeyValueMatcher{
 				Key:   filter.Name,
 				Value: filter.Value,
 			}
-		} else if filter.Type == labels.MatchRegexp {
+		case labels.MatchRegexp:
 			reg, err := regexsyn.Parse(filter.Value, regexsyn.Perl)
 			if err != nil {
 				return UnsupportedLabelMatcher{}

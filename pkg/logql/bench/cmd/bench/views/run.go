@@ -9,10 +9,10 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // Storage type constants
@@ -85,7 +85,7 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "up", "k":
 			if m.showDiff {
@@ -94,7 +94,7 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 				} else {
 					m.DiffViewport.ScrollUp(1)
 				}
-			} else if m.Viewport.Height > 0 {
+			} else if m.Viewport.Height() > 0 {
 				m.Viewport.ScrollUp(1)
 			}
 			return m, nil
@@ -105,7 +105,7 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 				} else {
 					m.DiffViewport.ScrollDown(1)
 				}
-			} else if m.Viewport.Height > 0 {
+			} else if m.Viewport.Height() > 0 {
 				m.Viewport.ScrollDown(1)
 			}
 			return m, nil
@@ -116,18 +116,18 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 				} else {
 					m.DiffViewport.HalfPageUp()
 				}
-			} else if m.Viewport.Height > 0 {
+			} else if m.Viewport.Height() > 0 {
 				m.Viewport.HalfPageUp()
 			}
 			return m, nil
-		case "pgdown", " ":
+		case "pgdown", "space":
 			if m.showDiff {
 				if m.DiffViewport.AtBottom() {
 					m.Viewport.HalfPageDown()
 				} else {
 					m.DiffViewport.HalfPageDown()
 				}
-			} else if m.Viewport.Height > 0 {
+			} else if m.Viewport.Height() > 0 {
 				m.Viewport.HalfPageDown()
 			}
 			return m, nil
@@ -158,7 +158,7 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "enter", "r":
 			if !m.Running {
 				m.Output = "" // Clear output before starting new run
-				if m.Viewport.Height > 0 {
+				if m.Viewport.Height() > 0 {
 					m.Viewport.SetContent("")
 				}
 				log.Println("starting benchmark")
@@ -203,10 +203,8 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if m.showDiff {
 				height = (m.height - m.verticalMarginHeight) / 2
 			}
-			m.Viewport = viewport.New(m.width, height)
-			m.DiffViewport = viewport.New(m.width, height)
-			m.Viewport.YPosition = headerHeight // Place viewport below header
-			m.DiffViewport.YPosition = headerHeight + height
+			m.Viewport = viewport.New(viewport.WithWidth(m.width), viewport.WithHeight(height))
+			m.DiffViewport = viewport.New(viewport.WithWidth(m.width), viewport.WithHeight(height))
 			m.Viewport.Style = ViewportStyle
 			m.DiffViewport.Style = ViewportStyle
 			m.Viewport.SetContent("\n  Press ENTER to start the benchmark run\n")
@@ -361,7 +359,7 @@ func (m *RunView) headerView() string {
 
 	separator := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
-		Render(strings.Repeat("─", m.Viewport.Width))
+		Render(strings.Repeat("─", m.Viewport.Width()))
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		header,
@@ -387,7 +385,7 @@ func (m *RunView) storageTypeDisplay() string {
 func (m *RunView) footerView() string {
 	separator := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
-		Render(strings.Repeat("─", m.Viewport.Width))
+		Render(strings.Repeat("─", m.Viewport.Width()))
 
 	controls := []string{
 		"↑/↓: scroll",
@@ -656,15 +654,13 @@ func (m *RunView) StopAllProfiling() tea.Cmd {
 }
 
 func (m *RunView) updateViewportDimensions() {
-	headerHeight := lipgloss.Height(m.headerView())
 	height := m.height - m.verticalMarginHeight
 	if m.showDiff {
 		height = (m.height - m.verticalMarginHeight) / 2
 	}
 
-	m.Viewport.Width = m.width
-	m.DiffViewport.Width = m.width
-	m.Viewport.Height = height
-	m.DiffViewport.Height = height
-	m.DiffViewport.YPosition = headerHeight + height
+	m.Viewport.SetWidth(m.width)
+	m.DiffViewport.SetWidth(m.width)
+	m.Viewport.SetHeight(height)
+	m.DiffViewport.SetHeight(height)
 }

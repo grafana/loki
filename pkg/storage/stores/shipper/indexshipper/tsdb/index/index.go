@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	stderrors "errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
@@ -34,12 +35,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 
 	"github.com/grafana/dskit/multierror"
 
 	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
 const (
@@ -416,11 +417,11 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 
 	lastHash := w.lastSeriesHash
 	// Ensure series are sorted by the priorities: [`hash(labels)`, `labels`]
-	if (labelHash < lastHash && len(w.lastSeries) > 0) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {
+	if (labelHash < lastHash && !w.lastSeries.IsEmpty()) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {
 		return errors.Errorf("out-of-order series added with label set %q", lset)
 	}
 
-	if ref < w.lastRef && len(w.lastSeries) != 0 {
+	if ref < w.lastRef && !w.lastSeries.IsEmpty() {
 		return errors.Errorf("series with reference greater than %d already added", ref)
 	}
 	// We add padding to 16 bytes to increase the addressable space we get through 4 byte
@@ -435,9 +436,9 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 
 	w.buf2.Reset()
 	w.buf2.PutBE64(labelHash)
-	w.buf2.PutUvarint(len(lset))
+	w.buf2.PutUvarint(lset.Len())
 
-	for _, l := range lset {
+	err := lset.Validate(func(l labels.Label) error {
 		var err error
 		cacheEntry, ok := w.symbolCache[l.Name]
 		nameIndex := cacheEntry.index
@@ -463,6 +464,10 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 			}
 		}
 		w.buf2.PutUvarint32(valueIndex)
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 
 	w.addChunks(chunks, &w.buf2, &w.buf1, ChunkPageSize)
@@ -472,7 +477,7 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 
 	w.buf2.PutHash(w.crc32)
 
-	w.lastSeries = append(w.lastSeries[:0], lset...)
+	w.lastSeries.CopyFrom(lset)
 	w.lastSeriesHash = labelHash
 	w.lastRef = ref
 
@@ -1256,10 +1261,10 @@ func NewFileReader(path string) (*Reader, error) {
 	}
 	r, err := newReader(RealByteSlice(f.Bytes()), f)
 	if err != nil {
-		return nil, tsdb_errors.NewMulti(
+		return nil, stderrors.Join(
 			err,
 			f.Close(),
-		).Err()
+		)
 	}
 
 	return r, nil
@@ -2130,11 +2135,11 @@ func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) err
 	return d.Err()
 }
 
-func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) (*encoding.Decbuf, uint64, error) {
-	*lbls = (*lbls)[:0]
-	if chks != nil {
-		*chks = (*chks)[:0]
-	}
+// prepSeries returns series labels for a series, only returning selected `by` label names.
+// If `by` is nil, it returns all labels for the series.
+func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
+	builder := labelpool.Get()
+	defer labelpool.Put(builder)
 
 	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
 
@@ -2153,60 +2158,48 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 		if err != nil {
 			return nil, 0, errors.Wrap(err, "lookup label name")
 		}
+
+		if by != nil {
+			if _, ok := by[ln]; !ok {
+				continue
+			}
+		}
+
 		lv, err := dec.LookupSymbol(lvo)
 		if err != nil {
 			return nil, 0, errors.Wrap(err, "lookup label value")
 		}
 
-		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
+		builder.Add(ln, lv)
 	}
+
+	// Commit built labels.
+	builder.Sort()
+	*lbls = builder.Labels()
 	return &d, fprint, nil
 }
 
-// prepSeriesBy returns series labels and chunks for a series and only returning selected `by` label names.
-// If `by` is empty, it returns all labels for the series.
-func (dec *Decoder) prepSeriesBy(b []byte, lbls *labels.Labels, chks *[]ChunkMeta, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
-	if by == nil {
-		return dec.prepSeries(b, lbls, chks)
-	}
-	*lbls = (*lbls)[:0]
-	if chks != nil {
-		*chks = (*chks)[:0]
-	}
-
+// skipSeriesLabels reads past the label section in buffer b, ready to read chunks after that.
+func (dec *Decoder) skipSeriesLabels(b []byte) (*encoding.Decbuf, uint64, error) {
 	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
 
 	fprint := d.Be64()
 	k := d.Uvarint()
 
-	for i := 0; i < k; i++ {
-		lno := uint32(d.Uvarint())
-		lvo := uint32(d.Uvarint())
+	for range k {
+		_ = d.Uvarint()
+		_ = d.Uvarint()
 
 		if d.Err() != nil {
 			return nil, 0, errors.Wrap(d.Err(), "read series label offsets")
 		}
-		// todo(cyriltovena): we could cache this by user requests spanning multiple prepSeries calls.
-		ln, err := dec.LookupSymbol(lno)
-		if err != nil {
-			return nil, 0, errors.Wrap(err, "lookup label name")
-		}
-		if _, ok := by[ln]; !ok {
-			continue
-		}
-
-		lv, err := dec.LookupSymbol(lvo)
-		if err != nil {
-			return nil, 0, errors.Wrap(err, "lookup label value")
-		}
-
-		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
 	}
+
 	return &d, fprint, nil
 }
 
 func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
-	d, fp, err := dec.prepSeriesBy(b, lbls, nil, by)
+	d, fp, err := dec.prepSeries(b, lbls, by)
 	if err != nil {
 		return 0, ChunkStats{}, err
 	}
@@ -2235,7 +2228,7 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 	nMarkers := d.Uvarint()
 
 	relevantPages := chunkPageMarkersPool.Get(nMarkers)
-	defer chunkPageMarkersPool.Put(relevantPages)
+	defer func() { chunkPageMarkersPool.Put(relevantPages) }()
 	for i := 0; i < nMarkers; i++ {
 		var marker chunkPageMarker
 		marker.decode(d)
@@ -2331,7 +2324,7 @@ func (dec *Decoder) accumulateChunkStats(d *encoding.Decbuf, nChunks int, from, 
 func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (res ChunkStats, err error) {
 	// prior to v3, chunks needed iteration for stats aggregation
 	chks := ChunkMetasPool.Get()
-	defer ChunkMetasPool.Put(chks)
+	defer func() { ChunkMetasPool.Put(chks) }()
 	err = dec.readChunks(FormatV2, d, seriesRef, from, through, &chks)
 	if err != nil {
 		return ChunkStats{}, err
@@ -2348,15 +2341,25 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 	return res, nil
 }
 
-// Series decodes a series entry from the given byte slice into lset and chks.
-func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
-	d, fprint, err := dec.prepSeries(b, lbls, chks)
+// Series decodes a series entry from the given byte slice into lbls and chks.
+// lbls can be nil, indicating the caller only wants the chunks.
+func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (fprint uint64, err error) {
+	var d *encoding.Decbuf
+	if lbls == nil {
+		d, fprint, err = dec.skipSeriesLabels(b)
+	} else {
+		d, fprint, err = dec.prepSeries(b, lbls, nil)
+	}
 	if err != nil {
 		return 0, err
 	}
 
+	*chks = (*chks)[:0]
 	// read chunks based on fmt
 	if err := dec.readChunks(version, d, seriesRef, from, through, chks); err != nil {
+		if lbls == nil {
+			return 0, errors.Wrapf(err, "series footprint %x", fprint)
+		}
 		return 0, errors.Wrapf(err, "series %s", lbls.String())
 	}
 	return fprint, nil
@@ -2512,7 +2515,7 @@ func readChunkMetaWithForcedMintime(d *encoding.Decbuf, mint int64, chunkMeta *C
 }
 
 func yoloString(b []byte) string {
-	return *((*string)(unsafe.Pointer(&b))) // #nosec G103 -- we know the string is not mutated
+	return *((*string)(unsafe.Pointer(&b))) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 func overlap(from, through, chkFrom, chkThrough int64) bool {

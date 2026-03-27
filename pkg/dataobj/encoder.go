@@ -4,114 +4,90 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-
-	"github.com/gogo/protobuf/proto"
+	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 var (
-	magic = []byte("THOR")
+	magic = []byte("DOBJ")
+
+	// legacyMagic is the magic bytes used in the original dataobj format where
+	// file metadata was kept at the bottom of the file.
+	legacyMagic = []byte("THOR")
 )
 
 const (
 	fileFormatVersion = 0x1
 )
 
-// Legacy section types; these can be removed once support for the Kind field
-// is completely removed.
-var (
-	legacySectionTypeInvalid = SectionType{}
-	legacySectionTypeStreams = SectionType{"github.com/grafana/loki", "streams"}
-	legacySectionTypeLogs    = SectionType{"github.com/grafana/loki", "logs"}
-)
-
-// TODO(rfratto): the memory footprint of [Encoder] can very slowly grow in
-// memory as [bufpool] is filled with buffers with increasing capacity:
-// each encoding pass has a different number of elements, shuffling which
-// elements of the hierarchy get which pooled buffers.
-//
-// This means that elements that require more bytes will grow the capacity of
-// the buffer and put the buffer back into the pool. Even if further encoding
-// passes don't need that many bytes, the buffer is kept alive with its larger
-// footprint. Given enough time, all buffers in the pool will have a large
-// capacity.
-//
-// The bufpool package provides bucketed pools as a solution to, but this
-// requires knowing how many bytes are needed.
-//
-// Encoder can eventually be moved to the bucketed pools by calculating a
-// rolling maximum of encoding size used per element across usages of an
-// Encoder instance. This would then allow larger buffers to be eventually
-// reclaimed regardless of how often encoding is done.
-
 // encoder encodes a data object. Data objects are hierarchical, split into
 // distinct sections that contain their own hierarchy.
-//
-// To support hierarchical encoding, a set of Open* methods are provided to
-// open a child element. Only one child element may be open at a given time;
-// call Commit or Discard on a child element to close it.
 type encoder struct {
-	startOffset int // Byte offset in the file where data starts after the header.
+	totalBytes int // Total bytes buffered in store so far.
 
-	sections []*filemd.SectionInfo
+	store    scratch.Store
+	sections []sectionInfo // Sections buffered in store.
 
 	typesReady       bool
 	dictionary       []string
 	dictionaryLookup map[string]uint32
 	rawTypes         []*filemd.SectionType
 	typeRefLookup    map[SectionType]uint32
+}
 
-	data *bytes.Buffer
+type sectionInfo struct {
+	Type SectionType
+
+	Data     sectionRegion
+	Metadata sectionRegion
+
+	Tenant string // Owning tenant of the section, if any.
+
+	// ExtensionData holds additional encoded info about the section, written to
+	// the file-level metadata.
+	ExtensionData []byte
 }
 
 // newEncoder creates a new Encoder which writes a data object to the provided
 // writer.
-func newEncoder() *encoder {
-	return &encoder{startOffset: len(magic)}
+func newEncoder(store scratch.Store) *encoder {
+	return &encoder{
+		store: store,
+	}
 }
 
 // AppendSection appends a section to the data object. AppendSection panics if
 // typ is not SectionTypeLogs or SectionTypeStreams.
-func (enc *encoder) AppendSection(typ SectionType, data, metadata []byte) {
-	if enc.data == nil {
-		// Lazily initialize enc.data. This allows an Encoder to persist for the
-		// lifetime of a dataobj.Builder without holding onto memory when no data
-		// is present.
-		enc.data = bufpool.GetUnsized()
+func (enc *encoder) AppendSection(typ SectionType, opts *WriteSectionOptions, data, metadata []byte) {
+	var (
+		dataHandle     = enc.store.Put(data)
+		metadataHandle = enc.store.Put(metadata)
+	)
+
+	si := sectionInfo{
+		Type: typ,
+
+		Data:     sectionRegion{Handle: dataHandle, Size: len(data)},
+		Metadata: sectionRegion{Handle: metadataHandle, Size: len(metadata)},
+	}
+	if opts != nil {
+		si.Tenant = opts.Tenant
+		si.ExtensionData = slices.Clone(opts.ExtensionData) // Avoid retaining references to caller memory.
 	}
 
-	info := &filemd.SectionInfo{
-		TypeRef: enc.getTypeRef(typ),
-		Layout: &filemd.SectionLayout{
-			Data: &filemd.Region{
-				Offset: uint64(enc.startOffset + enc.data.Len()),
-				Length: uint64(len(data)),
-			},
-
-			Metadata: &filemd.Region{
-				Offset: uint64(enc.startOffset + enc.data.Len() + len(data)),
-				Length: uint64(len(metadata)),
-			},
-		},
-	}
-
-	// bytes.Buffer.Write never fails.
-	enc.data.Grow(len(data) + len(metadata))
-	_, _ = enc.data.Write(data)
-	_, _ = enc.data.Write(metadata)
-
-	enc.sections = append(enc.sections, info)
+	enc.sections = append(enc.sections, si)
+	enc.totalBytes += len(data) + len(metadata)
 }
 
 // getTypeRef returns the type reference for the given type or creates a new
 // one.
 func (enc *encoder) getTypeRef(typ SectionType) uint32 {
 	if !enc.typesReady {
-		enc.initLegacyTypeRefs()
+		enc.initTypeRefs()
 	}
 
 	ref, ok := enc.typeRefLookup[typ]
@@ -123,45 +99,41 @@ func (enc *encoder) getTypeRef(typ SectionType) uint32 {
 				NamespaceRef: enc.getDictionaryKey(typ.Namespace),
 				KindRef:      enc.getDictionaryKey(typ.Kind),
 			},
+			Version: typ.Version,
 		})
 		return enc.typeRefLookup[typ]
 	}
 	return ref
 }
 
-func (enc *encoder) initLegacyTypeRefs() {
-	// Reserve the zero index in the dictionary for an invalid entry. This is
-	// only required for the type refs, but it's still easier to debug.
-	enc.dictionary = []string{"", "github.com/grafana/loki", "streams", "logs"}
-
-	enc.dictionaryLookup = map[string]uint32{
-		"":                        0,
-		"github.com/grafana/loki": 1,
-		"streams":                 2,
-		"logs":                    3,
-	}
+func (enc *encoder) initTypeRefs() {
+	enc.initDictionary()
 
 	enc.rawTypes = []*filemd.SectionType{
 		{NameRef: nil}, // Invalid type.
-		{NameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 2}}, // Streams.
-		{NameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 3}}, // Logs.
 	}
 
-	enc.typeRefLookup = map[SectionType]uint32{
-		legacySectionTypeInvalid: 0,
-		legacySectionTypeStreams: 1,
-		legacySectionTypeLogs:    2,
-	}
+	var invalidType SectionType // Zero value for SectionType is reserved for invalid types.
+	enc.typeRefLookup = map[SectionType]uint32{invalidType: 0}
 
 	enc.typesReady = true
+}
+
+func (enc *encoder) initDictionary() {
+	if len(enc.dictionary) > 0 && len(enc.dictionaryLookup) > 0 {
+		return // Already initialized.
+	}
+
+	// Reserve the zero index in the dictionary for an invalid entry. This is
+	// only required for the type refs, but it's still easier to debug.
+	enc.dictionary = []string{""}
+	enc.dictionaryLookup = map[string]uint32{"": 0}
 }
 
 // getDictionaryKey returns the dictionary key for the given text or creates a
 // new entry.
 func (enc *encoder) getDictionaryKey(text string) uint32 {
-	if enc.dictionaryLookup == nil {
-		enc.dictionaryLookup = make(map[string]uint32)
-	}
+	enc.initDictionary()
 
 	key, ok := enc.dictionaryLookup[text]
 	if ok {
@@ -174,90 +146,167 @@ func (enc *encoder) getDictionaryKey(text string) uint32 {
 	return key
 }
 
-// MetadataSize returns an estimate of the current size of the metadata for the
-// data object. MetadataSize does not include the size of data appended or the
-// currently open stream.
-func (enc *encoder) MetadataSize() int { return proto.Size(enc.Metadata()) }
+func (enc *encoder) Metadata() (*filemd.Metadata, error) {
+	enc.initDictionary()
 
-func (enc *encoder) Metadata() proto.Message {
-	sections := enc.sections[:len(enc.sections):cap(enc.sections)]
-	return &filemd.Metadata{
-		Sections: sections,
+	// relativeOffset is the offset where regions are written relative to the
+	// "body" of the file (e.g., after the header).
+	//
+	// Decoders use the known header size to reinterpret the offset into an
+	// absolute offset.
+	relativeOffset := 0
 
+	// The metadata regions and data regions of all sections are encoded
+	// contiguously. To represent this in the SectionInfo headers, we update
+	// them in two passes, once for the data and once for the metadata.
+	sections := make([]*filemd.SectionInfo, len(enc.sections))
+
+	// Determine metadata region location.
+	for i, info := range enc.sections {
+		sections[i] = &filemd.SectionInfo{
+			TypeRef: enc.getTypeRef(info.Type),
+			Layout: &filemd.SectionLayout{
+				Metadata: &filemd.Region{
+					Offset: uint64(relativeOffset),
+					Length: uint64(info.Metadata.Size),
+				},
+			},
+
+			ExtensionData: info.ExtensionData,
+			TenantRef:     enc.getDictionaryKey(info.Tenant),
+		}
+
+		relativeOffset += info.Metadata.Size
+	}
+
+	// Determine data region locations.
+	for i, info := range enc.sections {
+		// sections[i] is initialized in the previous loop, so we can directly
+		// update the layout to include the data region.
+		sections[i].Layout.Data = &filemd.Region{
+			Offset: uint64(relativeOffset),
+			Length: uint64(info.Data.Size),
+		}
+
+		relativeOffset += info.Data.Size
+	}
+
+	md := &filemd.Metadata{
+		Sections:   sections,
 		Dictionary: enc.dictionary,
 		Types:      enc.rawTypes,
 	}
+	return md, nil
 }
 
-func (enc *encoder) Bytes() int {
-	if enc.data == nil {
-		return 0
+// encodeSize reports the final encoded size of the object.
+func (enc *encoder) encodeSize(computedMetadata *filemd.Metadata) int64 {
+	var size int64
+
+	size += int64(len(legacyMagic)) // header
+
+	// body
+	for _, sec := range enc.sections {
+		size += int64(sec.Data.Size)
+		size += int64(sec.Metadata.Size)
 	}
-	return enc.data.Len()
+
+	// metadata
+	size += int64(streamio.UvarintSize(fileFormatVersion))
+	size += int64(protocodec.Size(computedMetadata))
+
+	// tailer
+	size += int64(4) // file metadata size (32 bits)
+	size += int64(len(legacyMagic))
+
+	return size
 }
 
-// Flush flushes any buffered data to the underlying writer. After flushing,
-// enc is reset.
-func (enc *encoder) Flush(w streamio.Writer) (int64, error) {
-	cw := countingWriter{w: w}
+// Bytes returns the total number of bytes appended to the data object.
+func (enc *encoder) Bytes() int { return enc.totalBytes }
 
-	if enc.data == nil {
-		return cw.count, fmt.Errorf("empty Encoder")
-	}
-
-	metadataBuffer := bufpool.GetUnsized()
-	defer bufpool.PutUnsized(metadataBuffer)
-
-	// The file metadata should start with the version.
-	if err := streamio.WriteUvarint(metadataBuffer, fileFormatVersion); err != nil {
-		return cw.count, err
-	} else if err := protocodec.Encode(metadataBuffer, enc.Metadata()); err != nil {
-		return cw.count, err
+// Flush converts all accumulated data into a [snapshot], allowing for streaming
+// encoded bytes. [snapshot.Close] should be called when the snapshot is no
+// longer needed to release sections.
+//
+// Callers must manually call [encoder.Reset] after calling Flush to prepare for
+// the next encoding session. This is done to allow callers to ensure that the
+// returned snapshot is complete before the encoder is reset.
+func (enc *encoder) Flush() (*snapshot, error) {
+	if len(enc.sections) == 0 {
+		return nil, fmt.Errorf("empty Encoder")
 	}
 
 	// The overall structure is:
 	//
 	// header:
 	//  [magic]
+	//  [file metadata + version size (32 bits)]
+	//  [file metadata version]
+	//  [file metadata]
 	// body:
-	//  [data]
-	//  [metadata]
+	//  [metadata regions]
+	//  [data regions]
 	// tailer:
-	//  [file metadata size (32 bits)]
 	//  [magic]
-	//
-	// The file metadata size *must not* be varint since we need the last 8 bytes
-	// of the file to consistently retrieve the tailer.
 
-	if _, err := cw.Write(magic); err != nil {
-		return cw.count, fmt.Errorf("writing magic header: %w", err)
-	} else if _, err := cw.Write(enc.data.Bytes()); err != nil {
-		return cw.count, fmt.Errorf("writing data: %w", err)
-	} else if _, err := cw.Write(metadataBuffer.Bytes()); err != nil {
-		return cw.count, fmt.Errorf("writing metadata: %w", err)
-	} else if err := binary.Write(&cw, binary.LittleEndian, uint32(metadataBuffer.Len())); err != nil {
-		return cw.count, fmt.Errorf("writing metadata size: %w", err)
-	} else if _, err := cw.Write(magic); err != nil {
-		return cw.count, fmt.Errorf("writing magic tailer: %w", err)
+	var headerBuffer bytes.Buffer
+
+	metadata, err := enc.Metadata()
+	if err != nil {
+		return nil, fmt.Errorf("building metadata: %w", err)
+	} else if _, err := headerBuffer.Write(magic); err != nil {
+		return nil, fmt.Errorf("writing magic header: %w", err)
 	}
 
-	enc.Reset()
-	return cw.count, nil
+	metadataSize := streamio.UvarintSize(fileFormatVersion) + protocodec.Size(metadata)
+
+	if err := binary.Write(&headerBuffer, binary.LittleEndian, uint32(metadataSize)); err != nil {
+		return nil, fmt.Errorf("writing metadata size: %w", err)
+	} else if err := streamio.WriteUvarint(&headerBuffer, fileFormatVersion); err != nil {
+		return nil, err
+	} else if err := protocodec.Encode(&headerBuffer, metadata); err != nil {
+		return nil, err
+	}
+
+	// Convert our sections into regions for the snapshot to use. The order of
+	// regions *must* match the order of offset+length written in
+	// [encoder.Metadata]: all the metadata regions, followed by all the data
+	// regions.
+	//
+	// We encode metadata regions first to allow a single prefetch of the start
+	// of the file to also prefetch metadata regions.
+	regions := make([]sectionRegion, 0, len(enc.sections)*2)
+	for _, sec := range enc.sections {
+		regions = append(regions, sec.Metadata)
+	}
+	for _, sec := range enc.sections {
+		regions = append(regions, sec.Data)
+	}
+
+	snapshot, err := newSnapshot(
+		enc.store,
+		headerBuffer.Bytes(), // header
+		regions,
+		magic, // tailer
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating snapshot: %w", err)
+	}
+	return snapshot, nil
 }
 
 // Reset resets the Encoder to a fresh state.
 func (enc *encoder) Reset() {
-	enc.startOffset = len(magic)
+	enc.totalBytes = 0
 
 	enc.sections = nil
 
 	enc.typesReady = false
 	enc.dictionary = nil
+	enc.dictionaryLookup = nil
 	enc.rawTypes = nil
 	enc.typeRefLookup = nil
-
-	bufpool.PutUnsized(enc.data)
-	enc.data = nil
 }
 
 type countingWriter struct {

@@ -22,7 +22,7 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / Compressed Sparse Fiber (CSF) sparse tensor index.
+/// Compressed Sparse Fiber (CSF) sparse tensor index.
 type SparseTensorIndexCSF struct {
 	_tab flatbuffers.Table
 }
@@ -34,6 +34,21 @@ func GetRootAsSparseTensorIndexCSF(buf []byte, offset flatbuffers.UOffsetT) *Spa
 	return x
 }
 
+func FinishSparseTensorIndexCSFBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsSparseTensorIndexCSF(buf []byte, offset flatbuffers.UOffsetT) *SparseTensorIndexCSF {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &SparseTensorIndexCSF{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedSparseTensorIndexCSFBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
+}
+
 func (rcv *SparseTensorIndexCSF) Init(buf []byte, i flatbuffers.UOffsetT) {
 	rcv._tab.Bytes = buf
 	rcv._tab.Pos = i
@@ -43,37 +58,37 @@ func (rcv *SparseTensorIndexCSF) Table() flatbuffers.Table {
 	return rcv._tab
 }
 
-// / CSF is a generalization of compressed sparse row (CSR) index.
-// / See [smith2017knl](http://shaden.io/pub-files/smith2017knl.pdf)
-// /
-// / CSF index recursively compresses each dimension of a tensor into a set
-// / of prefix trees. Each path from a root to leaf forms one tensor
-// / non-zero index. CSF is implemented with two arrays of buffers and one
-// / arrays of integers.
-// /
-// / For example, let X be a 2x3x4x5 tensor and let it have the following
-// / 8 non-zero values:
-// / ```text
-// /   X[0, 0, 0, 1] := 1
-// /   X[0, 0, 0, 2] := 2
-// /   X[0, 1, 0, 0] := 3
-// /   X[0, 1, 0, 2] := 4
-// /   X[0, 1, 1, 0] := 5
-// /   X[1, 1, 1, 0] := 6
-// /   X[1, 1, 1, 1] := 7
-// /   X[1, 1, 1, 2] := 8
-// / ```
-// / As a prefix tree this would be represented as:
-// / ```text
-// /         0          1
-// /        / \         |
-// /       0   1        1
-// /      /   / \       |
-// /     0   0   1      1
-// /    /|  /|   |    /| |
-// /   1 2 0 2   0   0 1 2
-// / ```
-// / The type of values in indptrBuffers
+/// CSF is a generalization of compressed sparse row (CSR) index.
+/// See [smith2017knl](http://shaden.io/pub-files/smith2017knl.pdf)
+///
+/// CSF index recursively compresses each dimension of a tensor into a set
+/// of prefix trees. Each path from a root to leaf forms one tensor
+/// non-zero index. CSF is implemented with two arrays of buffers and one
+/// arrays of integers.
+///
+/// For example, let X be a 2x3x4x5 tensor and let it have the following
+/// 8 non-zero values:
+/// ```text
+///   X[0, 0, 0, 1] := 1
+///   X[0, 0, 0, 2] := 2
+///   X[0, 1, 0, 0] := 3
+///   X[0, 1, 0, 2] := 4
+///   X[0, 1, 1, 0] := 5
+///   X[1, 1, 1, 0] := 6
+///   X[1, 1, 1, 1] := 7
+///   X[1, 1, 1, 2] := 8
+/// ```
+/// As a prefix tree this would be represented as:
+/// ```text
+///         0          1
+///        / \         |
+///       0   1        1
+///      /   / \       |
+///     0   0   1      1
+///    /|  /|   |    /| |
+///   1 2 0 2   0   0 1 2
+/// ```
+/// The type of values in indptrBuffers
 func (rcv *SparseTensorIndexCSF) IndptrType(obj *Int) *Int {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
 	if o != 0 {
@@ -87,51 +102,51 @@ func (rcv *SparseTensorIndexCSF) IndptrType(obj *Int) *Int {
 	return nil
 }
 
-// / CSF is a generalization of compressed sparse row (CSR) index.
-// / See [smith2017knl](http://shaden.io/pub-files/smith2017knl.pdf)
-// /
-// / CSF index recursively compresses each dimension of a tensor into a set
-// / of prefix trees. Each path from a root to leaf forms one tensor
-// / non-zero index. CSF is implemented with two arrays of buffers and one
-// / arrays of integers.
-// /
-// / For example, let X be a 2x3x4x5 tensor and let it have the following
-// / 8 non-zero values:
-// / ```text
-// /   X[0, 0, 0, 1] := 1
-// /   X[0, 0, 0, 2] := 2
-// /   X[0, 1, 0, 0] := 3
-// /   X[0, 1, 0, 2] := 4
-// /   X[0, 1, 1, 0] := 5
-// /   X[1, 1, 1, 0] := 6
-// /   X[1, 1, 1, 1] := 7
-// /   X[1, 1, 1, 2] := 8
-// / ```
-// / As a prefix tree this would be represented as:
-// / ```text
-// /         0          1
-// /        / \         |
-// /       0   1        1
-// /      /   / \       |
-// /     0   0   1      1
-// /    /|  /|   |    /| |
-// /   1 2 0 2   0   0 1 2
-// / ```
-// / The type of values in indptrBuffers
-// / indptrBuffers stores the sparsity structure.
-// / Each two consecutive dimensions in a tensor correspond to a buffer in
-// / indptrBuffers. A pair of consecutive values at `indptrBuffers[dim][i]`
-// / and `indptrBuffers[dim][i + 1]` signify a range of nodes in
-// / `indicesBuffers[dim + 1]` who are children of `indicesBuffers[dim][i]` node.
-// /
-// / For example, the indptrBuffers for the above X is:
-// / ```text
-// /   indptrBuffer(X) = [
-// /                       [0, 2, 3],
-// /                       [0, 1, 3, 4],
-// /                       [0, 2, 4, 5, 8]
-// /                     ].
-// / ```
+/// CSF is a generalization of compressed sparse row (CSR) index.
+/// See [smith2017knl](http://shaden.io/pub-files/smith2017knl.pdf)
+///
+/// CSF index recursively compresses each dimension of a tensor into a set
+/// of prefix trees. Each path from a root to leaf forms one tensor
+/// non-zero index. CSF is implemented with two arrays of buffers and one
+/// arrays of integers.
+///
+/// For example, let X be a 2x3x4x5 tensor and let it have the following
+/// 8 non-zero values:
+/// ```text
+///   X[0, 0, 0, 1] := 1
+///   X[0, 0, 0, 2] := 2
+///   X[0, 1, 0, 0] := 3
+///   X[0, 1, 0, 2] := 4
+///   X[0, 1, 1, 0] := 5
+///   X[1, 1, 1, 0] := 6
+///   X[1, 1, 1, 1] := 7
+///   X[1, 1, 1, 2] := 8
+/// ```
+/// As a prefix tree this would be represented as:
+/// ```text
+///         0          1
+///        / \         |
+///       0   1        1
+///      /   / \       |
+///     0   0   1      1
+///    /|  /|   |    /| |
+///   1 2 0 2   0   0 1 2
+/// ```
+/// The type of values in indptrBuffers
+/// indptrBuffers stores the sparsity structure.
+/// Each two consecutive dimensions in a tensor correspond to a buffer in
+/// indptrBuffers. A pair of consecutive values at `indptrBuffers[dim][i]`
+/// and `indptrBuffers[dim][i + 1]` signify a range of nodes in
+/// `indicesBuffers[dim + 1]` who are children of `indicesBuffers[dim][i]` node.
+///
+/// For example, the indptrBuffers for the above X is:
+/// ```text
+///   indptrBuffer(X) = [
+///                       [0, 2, 3],
+///                       [0, 1, 3, 4],
+///                       [0, 2, 4, 5, 8]
+///                     ].
+/// ```
 func (rcv *SparseTensorIndexCSF) IndptrBuffers(obj *Buffer, j int) bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
@@ -151,21 +166,21 @@ func (rcv *SparseTensorIndexCSF) IndptrBuffersLength() int {
 	return 0
 }
 
-// / indptrBuffers stores the sparsity structure.
-// / Each two consecutive dimensions in a tensor correspond to a buffer in
-// / indptrBuffers. A pair of consecutive values at `indptrBuffers[dim][i]`
-// / and `indptrBuffers[dim][i + 1]` signify a range of nodes in
-// / `indicesBuffers[dim + 1]` who are children of `indicesBuffers[dim][i]` node.
-// /
-// / For example, the indptrBuffers for the above X is:
-// / ```text
-// /   indptrBuffer(X) = [
-// /                       [0, 2, 3],
-// /                       [0, 1, 3, 4],
-// /                       [0, 2, 4, 5, 8]
-// /                     ].
-// / ```
-// / The type of values in indicesBuffers
+/// indptrBuffers stores the sparsity structure.
+/// Each two consecutive dimensions in a tensor correspond to a buffer in
+/// indptrBuffers. A pair of consecutive values at `indptrBuffers[dim][i]`
+/// and `indptrBuffers[dim][i + 1]` signify a range of nodes in
+/// `indicesBuffers[dim + 1]` who are children of `indicesBuffers[dim][i]` node.
+///
+/// For example, the indptrBuffers for the above X is:
+/// ```text
+///   indptrBuffer(X) = [
+///                       [0, 2, 3],
+///                       [0, 1, 3, 4],
+///                       [0, 2, 4, 5, 8]
+///                     ].
+/// ```
+/// The type of values in indicesBuffers
 func (rcv *SparseTensorIndexCSF) IndicesType(obj *Int) *Int {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
 	if o != 0 {
@@ -179,18 +194,18 @@ func (rcv *SparseTensorIndexCSF) IndicesType(obj *Int) *Int {
 	return nil
 }
 
-// / The type of values in indicesBuffers
-// / indicesBuffers stores values of nodes.
-// / Each tensor dimension corresponds to a buffer in indicesBuffers.
-// / For example, the indicesBuffers for the above X is:
-// / ```text
-// /   indicesBuffer(X) = [
-// /                        [0, 1],
-// /                        [0, 1, 1],
-// /                        [0, 0, 1, 1],
-// /                        [1, 2, 0, 2, 0, 0, 1, 2]
-// /                      ].
-// / ```
+/// The type of values in indicesBuffers
+/// indicesBuffers stores values of nodes.
+/// Each tensor dimension corresponds to a buffer in indicesBuffers.
+/// For example, the indicesBuffers for the above X is:
+/// ```text
+///   indicesBuffer(X) = [
+///                        [0, 1],
+///                        [0, 1, 1],
+///                        [0, 0, 1, 1],
+///                        [1, 2, 0, 2, 0, 0, 1, 2]
+///                      ].
+/// ```
 func (rcv *SparseTensorIndexCSF) IndicesBuffers(obj *Buffer, j int) bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(10))
 	if o != 0 {
@@ -210,23 +225,23 @@ func (rcv *SparseTensorIndexCSF) IndicesBuffersLength() int {
 	return 0
 }
 
-// / indicesBuffers stores values of nodes.
-// / Each tensor dimension corresponds to a buffer in indicesBuffers.
-// / For example, the indicesBuffers for the above X is:
-// / ```text
-// /   indicesBuffer(X) = [
-// /                        [0, 1],
-// /                        [0, 1, 1],
-// /                        [0, 0, 1, 1],
-// /                        [1, 2, 0, 2, 0, 0, 1, 2]
-// /                      ].
-// / ```
-// / axisOrder stores the sequence in which dimensions were traversed to
-// / produce the prefix tree.
-// / For example, the axisOrder for the above X is:
-// / ```text
-// /   axisOrder(X) = [0, 1, 2, 3].
-// / ```
+/// indicesBuffers stores values of nodes.
+/// Each tensor dimension corresponds to a buffer in indicesBuffers.
+/// For example, the indicesBuffers for the above X is:
+/// ```text
+///   indicesBuffer(X) = [
+///                        [0, 1],
+///                        [0, 1, 1],
+///                        [0, 0, 1, 1],
+///                        [1, 2, 0, 2, 0, 0, 1, 2]
+///                      ].
+/// ```
+/// axisOrder stores the sequence in which dimensions were traversed to
+/// produce the prefix tree.
+/// For example, the axisOrder for the above X is:
+/// ```text
+///   axisOrder(X) = [0, 1, 2, 3].
+/// ```
 func (rcv *SparseTensorIndexCSF) AxisOrder(j int) int32 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(12))
 	if o != 0 {
@@ -244,12 +259,12 @@ func (rcv *SparseTensorIndexCSF) AxisOrderLength() int {
 	return 0
 }
 
-// / axisOrder stores the sequence in which dimensions were traversed to
-// / produce the prefix tree.
-// / For example, the axisOrder for the above X is:
-// / ```text
-// /   axisOrder(X) = [0, 1, 2, 3].
-// / ```
+/// axisOrder stores the sequence in which dimensions were traversed to
+/// produce the prefix tree.
+/// For example, the axisOrder for the above X is:
+/// ```text
+///   axisOrder(X) = [0, 1, 2, 3].
+/// ```
 func (rcv *SparseTensorIndexCSF) MutateAxisOrder(j int, n int32) bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(12))
 	if o != 0 {

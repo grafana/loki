@@ -18,6 +18,13 @@ import (
 	"github.com/shirou/gopsutil/v4/internal/common"
 )
 
+// WillBeDeletedOptOutMemAvailableCalc is a context key to opt out of calculating Mem.Used.
+// This is not documented, and will be removed in Mar. 2026. This constant will be removed
+// in the future, but it is currently public. The reason is that making it public allows
+// developers to notice its removal when their build fails.
+// See https://github.com/shirou/gopsutil/issues/1873
+const WillBeDeletedOptOutMemAvailableCalc = "optOutMemAvailableCalc"
+
 func VirtualMemory() (*VirtualMemoryStat, error) {
 	return VirtualMemoryWithContext(context.Background())
 }
@@ -32,7 +39,10 @@ func VirtualMemoryWithContext(ctx context.Context) (*VirtualMemoryStat, error) {
 
 func fillFromMeminfoWithContext(ctx context.Context) (*VirtualMemoryStat, *ExVirtualMemory, error) {
 	filename := common.HostProcWithContext(ctx, "meminfo")
-	lines, _ := common.ReadLines(filename)
+	lines, err := common.ReadLines(filename)
+	if err != nil {
+		return nil, nil, fmt.Errorf("couldn't read %s: %w", filename, err)
+	}
 
 	// flag if MemAvailable is in /proc/meminfo (kernel 3.14+)
 	memavail := false
@@ -128,6 +138,12 @@ func fillFromMeminfoWithContext(ctx context.Context) (*VirtualMemoryStat, *ExVir
 				return ret, retEx, err
 			}
 			retEx.Unevictable = t * 1024
+		case "Percpu":
+			t, err := strconv.ParseUint(value, 10, 64)
+			if err != nil {
+				return ret, retEx, err
+			}
+			retEx.Percpu = t * 1024
 		case "Writeback":
 			t, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
@@ -171,6 +187,12 @@ func fillFromMeminfoWithContext(ctx context.Context) (*VirtualMemoryStat, *ExVir
 				return ret, retEx, err
 			}
 			ret.Sunreclaim = t * 1024
+		case "KernelStack":
+			t, err := strconv.ParseUint(value, 10, 64)
+			if err != nil {
+				return ret, retEx, err
+			}
+			retEx.KernelStack = t * 1024
 		case "PageTables":
 			t, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
@@ -303,8 +325,17 @@ func fillFromMeminfoWithContext(ctx context.Context) (*VirtualMemoryStat, *ExVir
 			ret.Available = ret.Cached + ret.Free
 		}
 	}
+	// Opt-Out of calculating Mem.Used if the context has the context key set to true.
+	// This is used for backward compatibility with applications that expect the old calculation method.
+	// However, we plan to standardize on using MemAvailable in the future.
+	// Therefore, please avoid using this opt-out unless it is absolutely necessary.
+	// see https://github.com/shirou/gopsutil/issues/1873
+	if val, ok := ctx.Value(WillBeDeletedOptOutMemAvailableCalc).(bool); ok && val {
+		ret.Used = ret.Total - ret.Free - ret.Buffers - ret.Cached
+	} else {
+		ret.Used = ret.Total - ret.Available
+	}
 
-	ret.Used = ret.Total - ret.Free - ret.Buffers - ret.Cached
 	ret.UsedPercent = float64(ret.Used) / float64(ret.Total) * 100.0
 
 	return ret, retEx, nil
@@ -332,7 +363,10 @@ func SwapMemoryWithContext(ctx context.Context) (*SwapMemoryStat, error) {
 		ret.UsedPercent = 0
 	}
 	filename := common.HostProcWithContext(ctx, "vmstat")
-	lines, _ := common.ReadLines(filename)
+	lines, err := common.ReadLines(filename)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't read %s: %w", filename, err)
+	}
 	for _, l := range lines {
 		fields := strings.Fields(l)
 		if len(fields) < 2 {

@@ -24,18 +24,17 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"sync"
 
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/auth/credentials"
 	"cloud.google.com/go/auth/internal"
 	"cloud.google.com/go/auth/internal/transport"
+	"cloud.google.com/go/auth/internal/transport/headers"
 	"github.com/googleapis/gax-go/v2/internallog"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	grpccreds "google.golang.org/grpc/credentials"
 	grpcinsecure "google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/stats"
 )
 
 const (
@@ -52,27 +51,6 @@ var (
 	// Set at init time by dial_socketopt.go. If nil, socketopt is not supported.
 	timeoutDialerOption grpc.DialOption
 )
-
-// otelStatsHandler is a singleton otelgrpc.clientHandler to be used across
-// all dial connections to avoid the memory leak documented in
-// https://github.com/open-telemetry/opentelemetry-go-contrib/issues/4226
-//
-// TODO: When this module depends on a version of otelgrpc containing the fix,
-// replace this singleton with inline usage for simplicity.
-// The fix should be in https://github.com/open-telemetry/opentelemetry-go/pull/5797.
-var (
-	initOtelStatsHandlerOnce sync.Once
-	otelStatsHandler         stats.Handler
-)
-
-// otelGRPCStatsHandler returns singleton otelStatsHandler for reuse across all
-// dial connections.
-func otelGRPCStatsHandler() stats.Handler {
-	initOtelStatsHandlerOnce.Do(func() {
-		otelStatsHandler = otelgrpc.NewClientHandler()
-	})
-	return otelStatsHandler
-}
 
 // ClientCertProvider is a function that returns a TLS client certificate to be
 // used when opening TLS connections. It follows the same semantics as
@@ -222,6 +200,15 @@ type InternalOptions struct {
 	// SkipValidation bypasses validation on Options. It should only be used
 	// internally for clients that needs more control over their transport.
 	SkipValidation bool
+	// TelemetryAttributes specifies a map of telemetry attributes to be added
+	// to all OpenTelemetry signals, such as tracing and metrics, for purposes
+	// including representing the static identity of the client (e.g., service
+	// name, version). These attributes are expected to be consistent across all
+	// signals to enable cross-signal correlation.
+	//
+	// It should only be used internally by generated clients. Callers should not
+	// modify the map after it is passed in.
+	TelemetryAttributes map[string]string
 }
 
 // Dial returns a GRPCClientConnPool that can be used to communicate with a
@@ -428,21 +415,11 @@ func (c *grpcCredentialsProvider) GetRequestMetadata(ctx context.Context, uri ..
 		}
 	}
 	metadata := make(map[string]string, len(c.metadata)+1)
-	setAuthMetadata(token, metadata)
+	headers.SetAuthMetadata(token, metadata)
 	for k, v := range c.metadata {
 		metadata[k] = v
 	}
 	return metadata, nil
-}
-
-// setAuthMetadata uses the provided token to set the Authorization metadata.
-// If the token.Type is empty, the type is assumed to be Bearer.
-func setAuthMetadata(token *auth.Token, m map[string]string) {
-	typ := token.Type
-	if typ == "" {
-		typ = internal.TokenTypeBearer
-	}
-	m["authorization"] = typ + " " + token.Value
 }
 
 func (c *grpcCredentialsProvider) RequireTransportSecurity() bool {
@@ -453,5 +430,5 @@ func addOpenTelemetryStatsHandler(dialOpts []grpc.DialOption, opts *Options) []g
 	if opts.DisableTelemetry {
 		return dialOpts
 	}
-	return append(dialOpts, grpc.WithStatsHandler(otelGRPCStatsHandler()))
+	return append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 }

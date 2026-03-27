@@ -4,9 +4,9 @@
 
 //go:build !linux || mips64le
 
-// go.generate echo package libc > ccgo.go
-//
-//go:generate go fmt -l -s -w ./...
+///go.generate echo package libc > ccgo.go
+///go:generate go fmt -l -s -w ./...
+
 package libc // import "modernc.org/libc"
 
 //TODO use O_RDONLY etc. from fcntl header
@@ -525,6 +525,14 @@ func X__builtin_popcount(t *TLS, x uint32) int32 {
 
 // int __builtin_popcountl (unsigned long x)
 func X__builtin_popcountl(t *TLS, x ulong) int32 {
+	if __ccgo_strace {
+		trc("t=%v x=%v, (%v:)", t, x, origin(2))
+	}
+	return int32(mbits.OnesCount64(uint64(x)))
+}
+
+// int __builtin_popcountll (unsigned long long)
+func X__builtin_popcountll(t *TLS, x uint64) int32 {
 	if __ccgo_strace {
 		trc("t=%v x=%v, (%v:)", t, x, origin(2))
 	}
@@ -1524,22 +1532,6 @@ func Xstrcmp(t *TLS, s1, s2 uintptr) int32 {
 			return int32(ch1) - int32(ch2)
 		}
 	}
-}
-
-// size_t strlen(const char *s)
-func Xstrlen(t *TLS, s uintptr) (r types.Size_t) {
-	if __ccgo_strace {
-		trc("t=%v s=%v, (%v:)", t, s, origin(2))
-		defer func() { trc("-> %v", r) }()
-	}
-	if s == 0 {
-		return 0
-	}
-
-	for ; *(*int8)(unsafe.Pointer(s)) != 0; s++ {
-		r++
-	}
-	return r
 }
 
 // char *strcat(char *dest, const char *src)

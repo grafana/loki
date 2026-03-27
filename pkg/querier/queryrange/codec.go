@@ -342,6 +342,11 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
+
+		req.CachingOptions = queryrangebase.CachingOptions{
+			Disabled: disableCacheReq,
+		}
+
 		return req, nil
 	case InstantQueryOp:
 		req, err := parseInstantQuery(r)
@@ -717,8 +722,16 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 	}
 
 	// Add limits
-	if limits := querylimits.ExtractQueryLimitsContext(ctx); limits != nil {
+	if limits := querylimits.ExtractQueryLimitsFromContext(ctx); limits != nil {
 		err := querylimits.InjectQueryLimitsHeader(&header, limits)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Add limits context
+	if limitsCtx := querylimits.ExtractQueryLimitsContextFromContext(ctx); limitsCtx != nil {
+		err := querylimits.InjectQueryLimitsContextHeader(&header, limitsCtx)
 		if err != nil {
 			return nil, err
 		}
@@ -1644,11 +1657,7 @@ func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, dire
 	for key := range groups {
 		keys = append(keys, key)
 	}
-	if direction == logproto.BACKWARD {
-		sort.Sort(sort.Reverse(sort.StringSlice(keys)))
-	} else {
-		sort.Strings(keys)
-	}
+	sort.Strings(keys)
 
 	// escape hatch, can just return all the streams
 	if total <= int(limit) {
@@ -1847,7 +1856,7 @@ func (p paramsRangeWrapper) QueryString() string {
 }
 
 func (p paramsRangeWrapper) GetExpression() syntax.Expr {
-	return p.LokiRequest.Plan.AST
+	return p.Plan.AST
 }
 
 func (p paramsRangeWrapper) Start() time.Time {
@@ -1875,7 +1884,7 @@ func (p paramsRangeWrapper) Shards() []string {
 }
 
 func (p paramsRangeWrapper) CachingOptions() resultscache.CachingOptions {
-	return resultscache.CachingOptions{}
+	return p.LokiRequest.CachingOptions
 }
 
 type paramsInstantWrapper struct {
@@ -1887,15 +1896,15 @@ func (p paramsInstantWrapper) QueryString() string {
 }
 
 func (p paramsInstantWrapper) GetExpression() syntax.Expr {
-	return p.LokiInstantRequest.Plan.AST
+	return p.Plan.AST
 }
 
 func (p paramsInstantWrapper) Start() time.Time {
-	return p.LokiInstantRequest.GetTimeTs()
+	return p.GetTimeTs()
 }
 
 func (p paramsInstantWrapper) End() time.Time {
-	return p.LokiInstantRequest.GetTimeTs()
+	return p.GetTimeTs()
 }
 
 func (p paramsInstantWrapper) Step() time.Duration {
@@ -1927,11 +1936,11 @@ func (p paramsSeriesWrapper) GetExpression() syntax.Expr {
 }
 
 func (p paramsSeriesWrapper) Start() time.Time {
-	return p.LokiSeriesRequest.GetStartTs()
+	return p.GetStartTs()
 }
 
 func (p paramsSeriesWrapper) End() time.Time {
-	return p.LokiSeriesRequest.GetEndTs()
+	return p.GetEndTs()
 }
 
 func (p paramsSeriesWrapper) Step() time.Duration {
@@ -1967,11 +1976,11 @@ func (p paramsLabelWrapper) GetExpression() syntax.Expr {
 }
 
 func (p paramsLabelWrapper) Start() time.Time {
-	return p.LabelRequest.GetStartTs()
+	return p.GetStartTs()
 }
 
 func (p paramsLabelWrapper) End() time.Time {
-	return p.LabelRequest.GetEndTs()
+	return p.GetEndTs()
 }
 
 func (p paramsLabelWrapper) Step() time.Duration {
@@ -2071,7 +2080,7 @@ func (p paramsDetectedFieldsWrapper) Direction() logproto.Direction {
 	return logproto.BACKWARD
 }
 
-func (p paramsDetectedFieldsWrapper) Limit() uint32 { return p.DetectedFieldsRequest.LineLimit }
+func (p paramsDetectedFieldsWrapper) Limit() uint32 { return p.LineLimit }
 
 func (p paramsDetectedFieldsWrapper) Shards() []string {
 	return make([]string, 0)

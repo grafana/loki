@@ -50,3 +50,25 @@ An example of a query that will _not_ work:
 ```
 {app="foo"} | __tenant_id__="1" | logfmt
 ```
+
+## Restrictions
+
+Tenant IDs must not be longer than 150 bytes and can only include the following characters:
+
+- Alphanumeric characters
+  - `0-9`
+  - `a-z`
+  - `A-Z`
+- Special characters
+  - Exclamation point (`!`)
+  - Hyphen (`-`)
+  - Underscore (`_`)
+  - Single period (`.`)
+  - Asterisk (`*`)
+  - Single quote (`'`)
+  - Open parenthesis (`(`)
+  - Close parenthesis (`)`)
+
+{{< admonition type="note" >}}
+For security reasons, `.` and `..` aren't valid tenant IDs.
+{{< /admonition >}}

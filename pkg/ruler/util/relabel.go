@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive
 
 // copy and modification of github.com/prometheus/prometheus/model/relabel/relabel.go
 // reason: the custom types in github.com/prometheus/prometheus/model/relabel/relabel.go are difficult to unmarshal

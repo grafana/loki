@@ -83,7 +83,7 @@ func (csb *columnStatsBuilder) buildRangeStats(pages []*MemPage, dst *datasetmd.
 	var minValue, maxValue Value
 
 	for i, page := range pages {
-		if page.Info.Stats == nil {
+		if page.Desc.Stats == nil {
 			// This should never hit; if cb.opts.StoreRangeStats is true, then
 			// page.Info.Stats will be populated.
 			panic("ColumnStatsBuilder.buildStats: page missing stats")
@@ -91,16 +91,16 @@ func (csb *columnStatsBuilder) buildRangeStats(pages []*MemPage, dst *datasetmd.
 
 		var pageMin, pageMax Value
 
-		if err := pageMin.UnmarshalBinary(page.Info.Stats.MinValue); err != nil {
+		if err := pageMin.UnmarshalBinary(page.Desc.Stats.MinValue); err != nil {
 			panic(fmt.Sprintf("ColumnStatsBuilder.buildStats: failed to unmarshal min value: %s", err))
-		} else if err := pageMax.UnmarshalBinary(page.Info.Stats.MaxValue); err != nil {
+		} else if err := pageMax.UnmarshalBinary(page.Desc.Stats.MaxValue); err != nil {
 			panic(fmt.Sprintf("ColumnStatsBuilder.buildStats: failed to unmarshal max value: %s", err))
 		}
 
-		if i == 0 || CompareValues(pageMin, minValue) < 0 {
+		if i == 0 || CompareValues(&pageMin, &minValue) < 0 {
 			minValue = pageMin
 		}
-		if i == 0 || CompareValues(pageMax, maxValue) > 0 {
+		if i == 0 || CompareValues(&pageMax, &maxValue) > 0 {
 			maxValue = pageMax
 		}
 	}

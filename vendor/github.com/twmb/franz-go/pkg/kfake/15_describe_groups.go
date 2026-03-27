@@ -4,7 +4,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
-func init() { regKey(15, 0, 5) }
+func init() { regKey(15, 0, 6) }
 
 func (c *Cluster) handleDescribeGroups(creq *clientReq) (kmsg.Response, error) {
 	req := creq.kreq.(*kmsg.DescribeGroupsRequest)

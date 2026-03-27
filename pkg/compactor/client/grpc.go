@@ -3,6 +3,8 @@ package client
 import (
 	"context"
 	"flag"
+	"strings"
+	"time"
 
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
@@ -10,11 +12,11 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/common/model"
 	"google.golang.org/grpc"
 
 	compactor_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 )
 
 type GRPCConfig struct {
@@ -48,8 +50,36 @@ func NewGRPCClient(addr string, cfg GRPCConfig, r prometheus.Registerer) (Compac
 		}, []string{"operation", "status_code"}),
 	}
 
-	unaryInterceptors, streamInterceptors := grpcclient.Instrument(client.grpcClientRequestDuration)
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(
+		[]grpc.UnaryClientInterceptor{
+			func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+				// JobQueue has no auth methods so do not try to set the auth header
+				if !strings.HasPrefix(method, "/grpc.JobQueue/") {
+					var err error
+					ctx, err = user.InjectIntoGRPCRequest(ctx)
+					if err != nil {
+						return err
+					}
+				}
+				return invoker(ctx, method, req, reply, cc, opts...)
+			},
+			middleware.UnaryClientInstrumentInterceptor(client.grpcClientRequestDuration),
+		}, []grpc.StreamClientInterceptor{
+			func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+				// JobQueue has no auth methods so do not try to set the auth header
+				if !strings.HasPrefix(method, "/grpc.JobQueue/") {
+					var err error
+					ctx, err = user.InjectIntoGRPCRequest(ctx)
+					if err != nil {
+						return nil, err
+					}
+				}
+				return streamer(ctx, desc, cc, method, opts...)
+			},
+			middleware.StreamClientInstrumentInterceptor(client.grpcClientRequestDuration),
+		},
+		middleware.NoOpInvalidClusterValidationReporter,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -69,22 +99,32 @@ func (s *compactorGRPCClient) Stop() {
 	s.conn.Close()
 }
 
-func (s *compactorGRPCClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error) {
+func (s *compactorGRPCClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *deletion.TimeRange) ([]deletionproto.DeleteRequest, error) {
 	ctx = user.InjectOrgID(ctx, userID)
-	grpcResp, err := s.grpcClient.GetDeleteRequests(ctx, &compactor_grpc.GetDeleteRequestsRequest{ForQuerytimeFiltering: true})
+
+	req := &compactor_grpc.GetDeleteRequestsRequest{
+		ForQuerytimeFiltering: forQuerytimeFiltering,
+	}
+
+	if timeRange != nil {
+		req.StartTime = time.UnixMilli(int64(timeRange.Start))
+		req.EndTime = time.UnixMilli(int64(timeRange.End))
+	}
+
+	grpcResp, err := s.grpcClient.GetDeleteRequests(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	deleteRequests := make([]deletion.DeleteRequest, len(grpcResp.DeleteRequests))
+	deleteRequests := make([]deletionproto.DeleteRequest, len(grpcResp.DeleteRequests))
 	for i, dr := range grpcResp.DeleteRequests {
-		deleteRequests[i] = deletion.DeleteRequest{
+		deleteRequests[i] = deletionproto.DeleteRequest{
 			RequestID: dr.RequestID,
-			StartTime: model.Time(dr.StartTime),
-			EndTime:   model.Time(dr.EndTime),
+			StartTime: dr.StartTime,
+			EndTime:   dr.EndTime,
 			Query:     dr.Query,
-			Status:    deletion.DeleteRequestStatus(dr.Status),
-			CreatedAt: model.Time(dr.CreatedAt),
+			Status:    dr.Status,
+			CreatedAt: dr.CreatedAt,
 		}
 	}
 

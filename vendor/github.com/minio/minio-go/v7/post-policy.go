@@ -417,7 +417,7 @@ func (p PostPolicy) String() string {
 
 // marshalJSON - Provides Marshaled JSON in bytes.
 func (p PostPolicy) marshalJSON() []byte {
-	expirationStr := `"expiration":"` + p.expiration.Format(expirationDateFormat) + `"`
+	expirationStr := `"expiration":"` + p.expiration.UTC().Format(expirationDateFormat) + `"`
 	var conditionsStr string
 	conditions := []string{}
 	for _, po := range p.conditions {

@@ -6,6 +6,7 @@
 package libc // import "modernc.org/libc"
 
 import (
+	"math"
 	"sync/atomic"
 	"unsafe"
 
@@ -40,14 +41,65 @@ func GoString(s uintptr) string {
 		return ""
 	}
 
-	p := s
-	for *(*byte)(unsafe.Pointer(p)) != 0 {
-		p++
+	if n := strlen(s); n != 0 {
+		return string(unsafe.Slice((*byte)(unsafe.Pointer(s)), n))
 	}
-	return string(unsafe.Slice((*byte)(unsafe.Pointer(s)), p-s))
+
+	return ""
 }
 
 // GoBytes returns a byte slice from a C char* having length len bytes.
 func GoBytes(s uintptr, len int) []byte {
 	return unsafe.Slice((*byte)(unsafe.Pointer(s)), len)
+}
+
+func X__isfinitef(tls *TLS, f float32) int32 {
+	d := float64(f)
+	if !math.IsInf(d, 0) && !math.IsNaN(d) {
+		return 1
+	}
+
+	return 0
+}
+
+func X__isfinite(tls *TLS, d float64) int32 {
+	if !math.IsInf(d, 0) && !math.IsNaN(d) {
+		return 1
+	}
+
+	return 0
+}
+
+func X__isfinitel(tls *TLS, d float64) int32 {
+	if !math.IsInf(d, 0) && !math.IsNaN(d) {
+		return 1
+	}
+
+	return 0
+}
+
+func strlen(s uintptr) (r Tsize_t) {
+	if s == 0 {
+		return 0
+	}
+
+	for ; *(*int8)(unsafe.Pointer(s)) != 0; s++ {
+		r++
+	}
+
+	return r
+}
+
+// size_t strlen(const char *s)
+func Xstrlen(t *TLS, s uintptr) (r Tsize_t) {
+	if __ccgo_strace {
+		trc("t=%v s=%v, (%v:)", t, s, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return strlen(s)
+
+}
+
+func _strlen(t *TLS, s uintptr) (r Tsize_t) {
+	return strlen(s)
 }

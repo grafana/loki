@@ -2,7 +2,7 @@
 
 
 ## Usage
-1) Setup Tanka see the [Tanka Installation Docs](../../../../docs/sources/installation/tanka.md).
+1) Setup Tanka see the [Tanka Installation Docs](../../../../docs/sources/setup/install/tanka.md).
 2) Next, you'll need to install Jsonnet library for SSD.
 ```bash
 jb install github.com/grafana/loki/production/ksonnet/loki-simple-scalable@main

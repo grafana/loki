@@ -259,7 +259,7 @@ func (s *cachingIndexClient) doQueries(ctx context.Context, queries []Query, cal
 }
 
 func yoloString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated
+	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 // Iterator implements chunk.ReadBatch.

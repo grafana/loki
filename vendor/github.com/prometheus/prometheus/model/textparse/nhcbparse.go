@@ -1,4 +1,4 @@
-// Copyright 2024 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -18,7 +18,6 @@ import (
 	"io"
 	"math"
 	"strconv"
-	"strings"
 
 	"github.com/prometheus/common/model"
 
@@ -34,6 +33,7 @@ const (
 	stateStart collectionState = iota
 	stateCollecting
 	stateEmitting
+	stateInhibiting // Inhibiting NHCB, because there was an exponential histogram with the same labels.
 )
 
 // The NHCBParser wraps a Parser and converts classic histograms to native
@@ -83,7 +83,7 @@ type NHCBParser struct {
 	fhNHCB           *histogram.FloatHistogram
 	lsetNHCB         labels.Labels
 	exemplars        []exemplar.Exemplar
-	ctNHCB           int64
+	stNHCB           int64
 	metricStringNHCB string
 
 	// Collates values from the classic histogram series to build
@@ -92,14 +92,13 @@ type NHCBParser struct {
 	tempNHCB          convertnhcb.TempHistogram
 	tempExemplars     []exemplar.Exemplar
 	tempExemplarCount int
-	tempCT            int64
+	tempST            int64
 
 	// Remembers the last base histogram metric name (assuming it's
 	// a classic histogram) so we can tell if the next float series
 	// is part of the same classic histogram.
-	lastHistogramName        string
-	lastHistogramLabelsHash  uint64
-	lastHistogramExponential bool
+	lastHistogramName       string
+	lastHistogramLabelsHash uint64
 	// Reused buffer for hashing labels.
 	hBuffer []byte
 }
@@ -160,16 +159,16 @@ func (p *NHCBParser) Exemplar(ex *exemplar.Exemplar) bool {
 	return p.parser.Exemplar(ex)
 }
 
-func (p *NHCBParser) CreatedTimestamp() int64 {
+func (p *NHCBParser) StartTimestamp() int64 {
 	switch p.state {
-	case stateStart:
+	case stateStart, stateInhibiting:
 		if p.entry == EntrySeries || p.entry == EntryHistogram {
-			return p.parser.CreatedTimestamp()
+			return p.parser.StartTimestamp()
 		}
 	case stateCollecting:
-		return p.tempCT
+		return p.tempST
 	case stateEmitting:
-		return p.ctNHCB
+		return p.stNHCB
 	}
 	return 0
 }
@@ -199,21 +198,34 @@ func (p *NHCBParser) Next() (Entry, error) {
 		case EntrySeries:
 			p.bytes, p.ts, p.value = p.parser.Series()
 			p.parser.Labels(&p.lset)
-			// Check the label set to see if we can continue or need to emit the NHCB.
 			var isNHCB bool
-			if p.compareLabels() {
-				// Labels differ. Check if we can emit the NHCB.
-				if p.processNHCB() {
+			switch p.state {
+			case stateCollecting:
+				if p.differentMetric() && p.processNHCB() {
+					// We are collecting classic series, but the next series
+					// has different type or labels. If we can convert what
+					// we have collected so far to NHCB, then we can return it.
 					return EntryHistogram, nil
 				}
 				isNHCB = p.handleClassicHistogramSeries(p.lset)
-			} else {
-				// Labels are the same. Check if after an exponential histogram.
-				if p.lastHistogramExponential {
-					isNHCB = false
-				} else {
+			case stateInhibiting:
+				if p.differentMetric() {
+					// Next has different labels than the previous exponential
+					// histogram so we can start collecting classic histogram
+					// series.
+					p.state = stateStart
 					isNHCB = p.handleClassicHistogramSeries(p.lset)
+				} else {
+					// Next has the same labels as the previous exponential
+					// histogram, so we are still in the inhibiting state and
+					// we should not convert to NHCB.
+					isNHCB = false
 				}
+			case stateStart:
+				isNHCB = p.handleClassicHistogramSeries(p.lset)
+			default:
+				// This should not happen.
+				return EntryInvalid, errors.New("unexpected state in NHCBParser")
 			}
 			if isNHCB && !p.keepClassicHistograms {
 				// Do not return the classic histogram series if it was converted to NHCB and we are not keeping classic histograms.
@@ -221,6 +233,7 @@ func (p *NHCBParser) Next() (Entry, error) {
 			}
 			return p.entry, p.err
 		case EntryHistogram:
+			p.state = stateInhibiting
 			p.bytes, p.ts, p.h, p.fh = p.parser.Histogram()
 			p.parser.Labels(&p.lset)
 			p.storeExponentialLabels()
@@ -235,10 +248,7 @@ func (p *NHCBParser) Next() (Entry, error) {
 }
 
 // Return true if labels have changed and we should emit the NHCB.
-func (p *NHCBParser) compareLabels() bool {
-	if p.state != stateCollecting {
-		return false
-	}
+func (p *NHCBParser) differentMetric() bool {
 	if p.typ != model.MetricTypeHistogram {
 		// Different metric type.
 		return true
@@ -257,13 +267,11 @@ func (p *NHCBParser) compareLabels() bool {
 func (p *NHCBParser) storeClassicLabels(name string) {
 	p.lastHistogramName = name
 	p.lastHistogramLabelsHash, _ = p.lset.HashWithoutLabels(p.hBuffer, labels.BucketLabel)
-	p.lastHistogramExponential = false
 }
 
 func (p *NHCBParser) storeExponentialLabels() {
 	p.lastHistogramName = p.lset.Get(labels.MetricName)
 	p.lastHistogramLabelsHash, _ = p.lset.HashWithoutLabels(p.hBuffer)
-	p.lastHistogramExponential = true
 }
 
 // handleClassicHistogramSeries collates the classic histogram series to be converted to NHCB
@@ -310,7 +318,7 @@ func (p *NHCBParser) handleClassicHistogramSeries(lset labels.Labels) bool {
 func (p *NHCBParser) processClassicHistogramSeries(lset labels.Labels, name string, updateHist func(*convertnhcb.TempHistogram)) {
 	if p.state != stateCollecting {
 		p.storeClassicLabels(name)
-		p.tempCT = p.parser.CreatedTimestamp()
+		p.tempST = p.parser.StartTimestamp()
 		p.state = stateCollecting
 		p.tempLsetNHCB = convertnhcb.GetHistogramMetricBase(lset, name)
 	}
@@ -344,7 +352,7 @@ func (p *NHCBParser) swapExemplars() {
 }
 
 // processNHCB converts the collated classic histogram series to NHCB and caches the info
-// to be returned to callers. Retruns true if the conversion was successful.
+// to be returned to callers. Returns true if the conversion was successful.
 func (p *NHCBParser) processNHCB() bool {
 	if p.state != stateCollecting {
 		return false
@@ -364,17 +372,26 @@ func (p *NHCBParser) processNHCB() bool {
 			p.hNHCB = nil
 			p.fhNHCB = fh
 		}
-		p.metricStringNHCB = p.tempLsetNHCB.Get(labels.MetricName) + strings.ReplaceAll(p.tempLsetNHCB.DropMetricName().String(), ", ", ",")
+
+		lblsWithMetricName := p.tempLsetNHCB.DropReserved(func(n string) bool { return n == labels.MetricName })
+		// Ensure we return `metric` instead of `metric{}` for name only
+		// series, for consistency with wrapped parsers.
+		if lblsWithMetricName.IsEmpty() {
+			p.metricStringNHCB = p.tempLsetNHCB.Get(labels.MetricName)
+		} else {
+			p.metricStringNHCB = p.tempLsetNHCB.Get(labels.MetricName) + lblsWithMetricName.StringNoSpace()
+		}
+
 		p.bytesNHCB = []byte(p.metricStringNHCB)
 		p.lsetNHCB = p.tempLsetNHCB
 		p.swapExemplars()
-		p.ctNHCB = p.tempCT
+		p.stNHCB = p.tempST
 		p.state = stateEmitting
 	} else {
 		p.state = stateStart
 	}
 	p.tempNHCB.Reset()
 	p.tempExemplarCount = 0
-	p.tempCT = 0
+	p.tempST = 0
 	return err == nil
 }

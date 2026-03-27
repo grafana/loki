@@ -44,12 +44,12 @@ func newSampleIterator(samples []logproto.Sample) iter.SampleIterator {
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:     labelFoo.String(),
 			Samples:    samples,
-			StreamHash: labelFoo.Hash(),
+			StreamHash: labels.StableHash(labelFoo),
 		}),
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:     labelBar.String(),
 			Samples:    samples,
-			StreamHash: labelBar.Hash(),
+			StreamHash: labels.StableHash(labelBar),
 		}),
 	})
 }
@@ -564,7 +564,7 @@ func sampleIter(negative bool) iter.PeekingSampleIterator {
 					{Timestamp: 3, Hash: 2, Value: value(2., negative)},
 					{Timestamp: 4, Hash: 3, Value: value(3., negative)},
 				},
-				StreamHash: labelFoo.Hash(),
+				StreamHash: labels.StableHash(labelFoo),
 			}),
 		}),
 	)

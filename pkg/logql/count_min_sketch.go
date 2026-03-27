@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"bytes"
 	"container/heap"
 	"context"
 	"fmt"
@@ -190,7 +191,7 @@ func NewHeapCountMinSketchVector(ts int64, metricsLength, maxLabels int) HeapCou
 
 func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
 	// Needed? slices.SortFunc(metric, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
-	v.buffer = metric.Bytes(v.buffer)
+	v.buffer = stableBytes(v.buffer, metric)
 
 	v.F.Add(v.buffer, value)
 
@@ -211,10 +212,37 @@ func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
 	// The maximum number of labels has been reached, so drop the smallest element.
 	if len(v.Metrics) > v.maxLabels {
 		metric := heap.Pop(v).(labels.Labels)
-		v.buffer = metric.Bytes(v.buffer)
+		v.buffer = stableBytes(v.buffer, metric)
 		id := xxhash.Sum64(v.buffer)
 		delete(v.observed, id)
 	}
+}
+
+// stableBytes returns the stable byte serialization of ls. stableBytes returns
+// consistent results regardless of the internal layout of ls.
+func stableBytes(buf []byte, ls labels.Labels) []byte {
+	// Copied from the slicelabels implementation of [labels.Labels.Bytes].
+	const (
+		labelSep = '\xfe'
+		sep      = '\xff'
+	)
+
+	b := bytes.NewBuffer(buf[:0])
+	b.WriteByte(labelSep)
+
+	var i int
+	ls.Range(func(l labels.Label) {
+		if i > 0 {
+			b.WriteByte(sep)
+		}
+		b.WriteString(l.Name)
+		b.WriteByte(sep)
+		b.WriteString(l.Value)
+
+		i++
+	})
+
+	return b.Bytes()
 }
 
 func (v HeapCountMinSketchVector) Len() int {
@@ -222,10 +250,10 @@ func (v HeapCountMinSketchVector) Len() int {
 }
 
 func (v HeapCountMinSketchVector) Less(i, j int) bool {
-	v.buffer = v.Metrics[i].Bytes(v.buffer)
+	v.buffer = stableBytes(v.buffer, v.Metrics[i])
 	left := v.F.Count(v.buffer)
 
-	v.buffer = v.Metrics[j].Bytes(v.buffer)
+	v.buffer = stableBytes(v.buffer, v.Metrics[j])
 	right := v.F.Count(v.buffer)
 	return left < right
 }
@@ -341,7 +369,7 @@ func (e *CountMinSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 
 	for i, labels := range e.vec.Metrics {
 
-		e.buffer = labels.Bytes(e.buffer)
+		e.buffer = stableBytes(e.buffer, labels)
 		f := e.vec.F.Count(e.buffer)
 
 		vec[i] = promql.Sample{

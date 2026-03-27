@@ -1,4 +1,4 @@
-package types
+package types //nolint:revive
 
 import (
 	"fmt"
@@ -20,6 +20,17 @@ const (
 	ColumnTypeGenerated // ColumnTypeGenerated represents a column that is generated from an expression or computation.
 )
 
+// Column type precedence for ambiguous column resolution (highest to lowest):
+// Generated > Parsed > Metadata > Label > Builtin
+const (
+	PrecedenceGenerated = iota // 0 - highest precedence
+
+	PrecedenceParsed   // 1
+	PrecedenceMetadata // 2
+	PrecedenceLabel    // 3
+	PrecedenceBuiltin  // 4 - lowest precedence
+)
+
 // Names of the builtin columns.
 const (
 	ColumnNameBuiltinTimestamp = "timestamp"
@@ -28,6 +39,19 @@ const (
 
 	MetadataKeyColumnType     = "column_type"
 	MetadataKeyColumnDataType = "column_datatype"
+)
+
+// Names of error columns
+const (
+	ColumnNameError        = "__error__"
+	ColumnNameErrorDetails = "__error_details__"
+)
+
+// Error types.
+const (
+	LogfmtParserErrorType     = "LogfmtParserErr"
+	JSONParserErrorType       = "JSONParserErr"
+	SampleExtractionErrorType = "SampleExtractionErr"
 )
 
 var ctNames = [7]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous", "generated"}
@@ -54,6 +78,22 @@ func ColumnTypeFromString(ct string) ColumnType {
 		return ColumnTypeGenerated
 	default:
 		panic(fmt.Sprintf("invalid column type: %s", ct))
+	}
+}
+
+// ColumnTypePrecedence returns the precedence of the given [ColumnType].
+func ColumnTypePrecedence(ct ColumnType) int {
+	switch ct {
+	case ColumnTypeGenerated:
+		return PrecedenceGenerated
+	case ColumnTypeParsed:
+		return PrecedenceParsed
+	case ColumnTypeMetadata:
+		return PrecedenceMetadata
+	case ColumnTypeLabel:
+		return PrecedenceLabel
+	default:
+		return PrecedenceBuiltin // Default to lowest precedence
 	}
 }
 

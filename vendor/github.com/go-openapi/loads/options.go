@@ -1,7 +1,13 @@
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
+
 package loads
 
+import "github.com/go-openapi/swag/loading"
+
 type options struct {
-	loader *loader
+	loader         *loader
+	loadingOptions []loading.Option
 }
 
 func defaultOptions() *options {
@@ -16,7 +22,10 @@ func loaderFromOptions(options []LoaderOption) *loader {
 		apply(opts)
 	}
 
-	return opts.loader
+	l := opts.loader.clone()
+	l.loadingOptions = opts.loadingOptions
+
+	return l
 }
 
 // LoaderOption allows to fine-tune the spec loader behavior
@@ -57,5 +66,12 @@ func WithDocLoaderMatches(l ...DocLoaderWithMatch) LoaderOption {
 			prev = prev.WithNext(&loader{DocLoaderWithMatch: ldr})
 		}
 		opt.loader = final
+	}
+}
+
+// WithLoadingOptions adds some [loading.Option] to be added when calling a registered loader.
+func WithLoadingOptions(loadingOptions ...loading.Option) LoaderOption {
+	return func(opt *options) {
+		opt.loadingOptions = loadingOptions
 	}
 }

@@ -1,4 +1,30 @@
-# Changelog
+# Changes
+
+## [2.18.0](https://github.com/googleapis/google-cloud-go/releases/tag/v2.18.0) (2026-03-09)
+
+### Features
+
+* add callctx telemetry helpers (#472) ([fa319ff](https://github.com/googleapis/google-cloud-go/commit/fa319ffc309366ab21e41f5d7480f450eedd2be9))
+* move gax-go to use 1.25 as the lower bound of support (#469) ([01594ca](https://github.com/googleapis/google-cloud-go/commit/01594ca54717eebe7229a5168ef41be61191a720))
+
+## [2.17.0](https://github.com/googleapis/google-cloud-go/releases/tag/v2.17.0) (2026-02-03)
+
+### Features
+
+* update Invoke to add retry count to context (#462) ([ea7096d](https://github.com/googleapis/google-cloud-go/commit/ea7096d50d665064dbfeffd7d93fa13d810ad4e4))
+
+## [2.16.0](https://github.com/googleapis/google-cloud-go/releases/tag/v2.16.0) (2025-12-17)
+
+### Features
+
+* add IsFeatureEnabled (#454) ([2700b8a](https://github.com/googleapis/google-cloud-go/commit/2700b8ab3062c6c6c5a26d0fc6ba1fc064a8fc04))
+
+## [2.15.0](https://github.com/googleapis/gax-go/compare/v2.14.2...v2.15.0) (2025-07-09)
+
+
+### Features
+
+* **apierror:** improve gRPC status code mapping for HTTP errors ([#431](https://github.com/googleapis/gax-go/issues/431)) ([c207f2a](https://github.com/googleapis/gax-go/commit/c207f2a19ab91d3baee458b57d4aa992519025c7))
 
 ## [2.14.2](https://github.com/googleapis/gax-go/compare/v2.14.1...v2.14.2) (2025-05-12)
 

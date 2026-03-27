@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -259,7 +260,7 @@ func (s resultsCache) isAtModifierCachable(r Request, maxCacheTime int64) bool {
 	if !strings.Contains(query, "@") {
 		return true
 	}
-	expr, err := parser.ParseExpr(query)
+	expr, err := parser.NewParser(parser.Options{}).ParseExpr(query)
 	if err != nil {
 		// We are being pessimistic in such cases.
 		level.Warn(s.logger).Log("msg", "failed to parse query, considering @ modifier as not cachable", "query", query, "err", err)
@@ -267,7 +268,7 @@ func (s resultsCache) isAtModifierCachable(r Request, maxCacheTime int64) bool {
 	}
 
 	// This resolves the start() and end() used with the @ modifier.
-	expr, err = promql.PreprocessExpr(expr, r.GetStart(), r.GetEnd())
+	expr, err = promql.PreprocessExpr(expr, r.GetStart(), r.GetEnd(), time.Duration(r.GetStep()))
 	if err != nil {
 		level.Warn(s.logger).Log("msg", "failed to preprocess query, considering @ modifier as not cachable", "query", query, "err", err)
 		return false

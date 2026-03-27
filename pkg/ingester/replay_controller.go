@@ -1,11 +1,12 @@
 package ingester
 
 import (
-	"sync"
+	"fmt"
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
 	"go.uber.org/atomic"
+	"golang.org/x/sync/singleflight"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -46,12 +47,13 @@ type replayController struct {
 	// > 64-bit alignment of 64-bit words accessed atomically. The first word in a
 	// > variable or in an allocated struct, array, or slice can be relied upon to
 	// > be 64-bit aligned.
-	currentBytes atomic.Int64
-	cfg          WALConfig
-	metrics      *ingesterMetrics
-	cond         *sync.Cond
-	isFlushing   atomic.Bool
-	flusher      Flusher
+	currentBytes    atomic.Int64
+	totalSubtracted atomic.Int64 // monotonically increasing; used to detect flush no-progress without being affected by concurrent Add calls
+	cfg             WALConfig
+	metrics         *ingesterMetrics
+
+	flusher Flusher
+	flushSF singleflight.Group
 }
 
 // flusher is expected to reduce pressure via calling Sub
@@ -59,7 +61,6 @@ func newReplayController(metrics *ingesterMetrics, cfg WALConfig, flusher Flushe
 	return &replayController{
 		cfg:     cfg,
 		metrics: metrics,
-		cond:    sync.NewCond(&sync.Mutex{}),
 		flusher: flusher,
 	}
 }
@@ -70,8 +71,8 @@ func (c *replayController) Add(x int64) {
 }
 
 func (c *replayController) Sub(x int64) {
+	c.totalSubtracted.Add(x)
 	c.metrics.setRecoveryBytesInUse(c.currentBytes.Sub(x))
-
 }
 
 func (c *replayController) Cur() int {
@@ -79,51 +80,52 @@ func (c *replayController) Cur() int {
 }
 
 func (c *replayController) Flush() {
-	if c.isFlushing.CompareAndSwap(false, true) {
-		c.metrics.recoveryIsFlushing.Set(1)
-		prior := c.currentBytes.Load()
-		level.Debug(util_log.Logger).Log(
-			"msg", "replay flusher pre-flush",
-			"bytes", humanize.Bytes(uint64(prior)),
-		)
+	// Use singleflight to ensure only one flush happens at a time
+	_, _, _ = c.flushSF.Do("flush", func() (interface{}, error) {
+		c.flush()
+		return nil, nil
+	})
+}
 
-		c.flusher.Flush()
+func (c *replayController) flush() {
+	c.metrics.recoveryIsFlushing.Set(1)
+	prior := c.currentBytes.Load()
+	level.Debug(util_log.Logger).Log(
+		"msg", "replay flusher pre-flush",
+		"bytes", humanize.Bytes(uint64(prior)),
+	)
 
-		after := c.currentBytes.Load()
-		level.Debug(util_log.Logger).Log(
-			"msg", "replay flusher post-flush",
-			"bytes", humanize.Bytes(uint64(after)),
-		)
+	c.flusher.Flush()
 
-		c.isFlushing.Store(false)
-		c.metrics.recoveryIsFlushing.Set(0)
+	after := c.currentBytes.Load()
+	level.Debug(util_log.Logger).Log(
+		"msg", "replay flusher post-flush",
+		"bytes", humanize.Bytes(uint64(after)),
+	)
 
-		// Broadcast after lock is acquired to prevent race conditions with cpu scheduling
-		// where the flush code could finish before the goroutine which initiated it gets to call
-		// c.cond.Wait()
-		c.cond.L.Lock()
-		c.cond.Broadcast()
-		c.cond.L.Unlock()
-	}
+	c.metrics.recoveryIsFlushing.Set(0)
 }
 
 // WithBackPressure is expected to call replayController.Add in the passed function to increase the managed byte count.
 // It will call the function as long as there is expected room before the memory cap and will then flush data intermittently
 // when needed.
 func (c *replayController) WithBackPressure(fn func() error) error {
-	// Account for backpressure and wait until there's enough memory to continue replaying the WAL
-	c.cond.L.Lock()
-
-	// use 90% as a threshold since we'll be adding to it.
-	for c.Cur() > int(c.cfg.ReplayMemoryCeiling)*9/10 {
-		// too much backpressure, flush
-		go c.Flush()
-		c.cond.Wait()
+	ceiling := int(c.cfg.ReplayMemoryCeiling) * 9 / 10
+	if ceiling <= 0 {
+		return fn()
 	}
-
-	// Don't hold the lock while executing the provided function.
-	// This ensures we can run functions concurrently.
-	c.cond.L.Unlock()
+	// use 90% as a threshold since we'll be adding to it.
+	for c.Cur() > ceiling {
+		subtractedBefore := c.totalSubtracted.Load()
+		// too much backpressure, flush
+		c.Flush()
+		if c.totalSubtracted.Load() == subtractedBefore {
+			return fmt.Errorf("WAL replay flush made no progress: %s in use, ceiling %s; cannot recover",
+				humanize.Bytes(uint64(c.currentBytes.Load())),
+				humanize.Bytes(uint64(ceiling)),
+			)
+		}
+	}
 
 	return fn()
 }

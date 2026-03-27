@@ -53,7 +53,7 @@ local validationJob = _validationJob(false);
     validationJob
     + job.withSteps(
       [
-        step.new('golangci-lint', 'golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5')
+        step.new('golangci-lint', 'golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.with({
           version: '${{ inputs.golang_ci_lint_version }}',

@@ -91,7 +91,7 @@ Regex log stream newlines:
 A log pipeline can be appended to a log stream selector to further process and filter log streams. It is composed of a set of expressions. Each expression is executed in left to right sequence for each log line. If an expression filters out a log line, the pipeline will stop processing the current log line and start processing the next log line.
 
 Some expressions can mutate the log content and respective labels,
-which will be then be available for further filtering and processing in subsequent expressions.
+which will then be available for further filtering and processing in subsequent expressions.
 An example that mutates is the expression
 
 ```
@@ -559,7 +559,7 @@ those labels:
 
 #### unpack
 
-The `unpack` parser parses a JSON log line, unpacking all embedded labels from Promtail's [`pack` stage](../../send-data/promtail/stages/pack/).
+The `unpack` parser parses a JSON log line, unpacking all embedded labels from the [`stage.pack` block](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagepack).
 **A special property `_entry` will also be used to replace the original log line**.
 
 For example, using `| unpack` with the log line:

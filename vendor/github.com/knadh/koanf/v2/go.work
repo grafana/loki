@@ -1,4 +1,6 @@
-go 1.18
+go 1.24.4
+
+toolchain go1.24.5
 
 use (
 	.
@@ -7,13 +9,17 @@ use (
 	./parsers/dotenv
 	./parsers/hcl
 	./parsers/hjson
+	./parsers/huml
 	./parsers/json
 	./parsers/kdl
 	./parsers/nestedtext
 	./parsers/toml
 	./parsers/yaml
 	./providers/appconfig
+	./providers/azkeyvault
 	./providers/basicflag
+	./providers/cliflagv2
+	./providers/cliflagv3
 	./providers/confmap
 	./providers/consul
 	./providers/env

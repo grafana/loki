@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
 var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
@@ -131,18 +132,19 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 	}
 	displaced := hb.rt.Add(e)
 	if displaced[0] != nil {
+		symbols, err := hb.symbolizer.Add(structuredMetadata)
+		if err != nil {
+			return false, err
+		}
+
 		// While we support multiple entries at the same timestamp, we _do_ de-duplicate
 		// entries at the same time with the same content, iterate through any existing
 		// entries and ignore the line if we already have an entry with the same content
 		for _, et := range displaced[0].(*nsEntries).entries {
-			if et.line == line {
+			if et.line == line && et.structuredMetadataSymbols.Equal(symbols) {
 				e.entries = displaced[0].(*nsEntries).entries
 				return true, nil
 			}
-		}
-		symbols, err := hb.symbolizer.Add(structuredMetadata)
-		if err != nil {
-			return false, err
 		}
 
 		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, symbols})
@@ -262,15 +264,18 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 	// cutting of blocks.
 	streams := map[string]*logproto.Stream{}
 	baseHash := pipeline.BaseLabels().Hash()
-	structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
-	labelsBuilder := log.NewBufferedLabelsBuilder(structuredMetadata)
+	labelsBuilder := labelpool.Get()
+
 	_ = hb.forEntries(
 		ctx,
 		direction,
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			structuredMetadata, err := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			if err != nil {
+				return fmt.Errorf("symbolizer lookup: %w", err)
+			}
 			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, structuredMetadata)
 			if !matches {
 				return nil
@@ -309,7 +314,7 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 	}
 
 	return iter.EntryIteratorWithClose(iter.NewStreamsIterator(streamsResult, direction), func() error {
-		structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
+		labelpool.Put(labelsBuilder)
 		return nil
 	})
 }
@@ -322,15 +327,18 @@ func (hb *unorderedHeadBlock) SampleIterator(
 ) iter.SampleIterator {
 	series := map[string]*logproto.Series{}
 	setQueryReferencedStructuredMetadata := false
-	structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
-	labelsBuilder := log.NewBufferedLabelsBuilder(structuredMetadata)
+	labelsBuilder := labelpool.Get()
+
 	_ = hb.forEntries(
 		ctx,
 		logproto.FORWARD,
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			structuredMetadata, err := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			if err != nil {
+				return fmt.Errorf("symbolizer lookup: %w", err)
+			}
 
 			for _, extractor := range extractor {
 				samples, ok := extractor.ProcessString(ts, line, structuredMetadata)
@@ -387,7 +395,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}
-		structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
+		labelpool.Put(labelsBuilder)
 		return nil
 	})
 }
@@ -478,7 +486,11 @@ func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt, symbolizer *symboliz
 		0,
 		math.MaxInt64,
 		func(_ *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			_, err := out.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, nil))
+			lbls, err := hb.symbolizer.Lookup(structuredMetadataSymbols, nil)
+			if err != nil {
+				return fmt.Errorf("symbolizer lookup: %w", err)
+			}
+			_, err = out.Append(ts, line, lbls)
 			return err
 		},
 	)
@@ -618,7 +630,11 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 				}
 			}
 		}
-		if _, err := hb.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, nil)); err != nil {
+		lbls, err := hb.symbolizer.Lookup(structuredMetadataSymbols, nil)
+		if err != nil {
+			return fmt.Errorf("symbolizer lookup: %w", err)
+		}
+		if _, err := hb.Append(ts, line, lbls); err != nil {
 			return err
 		}
 	}

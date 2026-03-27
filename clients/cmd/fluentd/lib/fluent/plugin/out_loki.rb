@@ -20,6 +20,8 @@ require 'fluent/plugin/output'
 require 'net/http'
 require 'yajl'
 require 'time'
+require 'zlib'
+require 'stringio'
 
 module Fluent
   module Plugin
@@ -63,6 +65,9 @@ module Fluent
 
       desc 'Custom HTTP headers'
       config_param :custom_headers, :hash, default: {}
+
+      desc 'Compress HTTP request payload'
+      config_param :compress, :enum, list: %i[gzip], default: nil
 
       desc 'Loki tenant id'
       config_param :tenant, :string, default: nil
@@ -241,7 +246,15 @@ module Fluent
         req.add_field('Content-Type', 'application/json')
         req.add_field('Authorization', "Bearer #{@auth_token_bearer}") unless @auth_token_bearer.nil?
         req.add_field('X-Scope-OrgID', tenant) if tenant
-        req.body = Yajl.dump(body)
+        payload = Yajl.dump(body)
+        if @compress == :gzip
+          req.add_field('Content-Encoding', 'gzip')
+          compressed = StringIO.new
+          Zlib::GzipWriter.wrap(compressed) { |gz| gz.write(payload) }
+          req.body = compressed.string
+        else
+          req.body = payload
+        end
         req.basic_auth(@username, @password) if @username
 
         opts = http_request_opts(@uri)

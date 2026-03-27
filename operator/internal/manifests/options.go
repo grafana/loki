@@ -41,6 +41,8 @@ type Options struct {
 	Tenants Tenants
 
 	TLSProfile TLSProfileSpec
+
+	NetworkPolicyObjStorePorts []int32
 }
 
 // GatewayTimeoutConfig contains the http server configuration options for all Loki components.
@@ -174,10 +176,7 @@ func NewTimeoutConfig(s *lokiv1.LimitsSpec) (TimeoutConfig, error) {
 }
 
 func calculateHTTPTimeouts(queryTimeout time.Duration) TimeoutConfig {
-	idleTimeout := lokiDefaultHTTPIdleTimeout
-	if queryTimeout < idleTimeout {
-		idleTimeout = queryTimeout
-	}
+	idleTimeout := min(queryTimeout, lokiDefaultHTTPIdleTimeout)
 
 	readTimeout := queryTimeout / 10
 	writeTimeout := queryTimeout + lokiQueryWriteDuration

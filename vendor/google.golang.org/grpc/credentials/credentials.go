@@ -44,8 +44,7 @@ type PerRPCCredentials interface {
 	// A54). uri is the URI of the entry point for the request.  When supported
 	// by the underlying implementation, ctx can be used for timeout and
 	// cancellation. Additionally, RequestInfo data will be available via ctx
-	// to this call.  TODO(zhaoq): Define the set of the qualified keys instead
-	// of leaving it as an arbitrary string.
+	// to this call.
 	GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error)
 	// RequireTransportSecurity indicates whether the credentials requires
 	// transport security.
@@ -96,10 +95,11 @@ func (c CommonAuthInfo) GetCommonAuthInfo() CommonAuthInfo {
 	return c
 }
 
-// ProtocolInfo provides information regarding the gRPC wire protocol version,
-// security protocol, security protocol version in use, server name, etc.
+// ProtocolInfo provides static information regarding transport credentials.
 type ProtocolInfo struct {
 	// ProtocolVersion is the gRPC wire protocol version.
+	//
+	// Deprecated: this is unused by gRPC.
 	ProtocolVersion string
 	// SecurityProtocol is the security protocol in use.
 	SecurityProtocol string
@@ -109,7 +109,16 @@ type ProtocolInfo struct {
 	//
 	// Deprecated: please use Peer.AuthInfo.
 	SecurityVersion string
-	// ServerName is the user-configured server name.
+	// ServerName is the user-configured server name.  If set, this overrides
+	// the default :authority header used for all RPCs on the channel using the
+	// containing credentials, unless grpc.WithAuthority is set on the channel,
+	// in which case that setting will take precedence.
+	//
+	// This must be a valid `:authority` header according to
+	// [RFC3986](https://datatracker.ietf.org/doc/html/rfc3986#section-3.2).
+	//
+	// Deprecated: Users should use grpc.WithAuthority to override the authority
+	// on a channel instead of configuring the credentials.
 	ServerName string
 }
 
@@ -173,12 +182,17 @@ type TransportCredentials interface {
 	// Clone makes a copy of this TransportCredentials.
 	Clone() TransportCredentials
 	// OverrideServerName specifies the value used for the following:
+	//
 	// - verifying the hostname on the returned certificates
 	// - as SNI in the client's handshake to support virtual hosting
 	// - as the value for `:authority` header at stream creation time
 	//
-	// Deprecated: use grpc.WithAuthority instead. Will be supported
-	// throughout 1.x.
+	// The provided string should be a valid `:authority` header according to
+	// [RFC3986](https://datatracker.ietf.org/doc/html/rfc3986#section-3.2).
+	//
+	// Deprecated: this method is unused by gRPC.  Users should use
+	// grpc.WithAuthority to override the authority on a channel instead of
+	// configuring the credentials.
 	OverrideServerName(string) error
 }
 

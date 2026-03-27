@@ -52,7 +52,7 @@ func appendSanitized(to, key []byte) []byte {
 	// range over rune
 
 	for _, r := range string(key) {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_' || (r >= '0' && r <= '9')) {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && r != '_' && (r < '0' || r > '9') {
 			to = append(to, '_')
 			continue
 		}

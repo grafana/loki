@@ -364,8 +364,8 @@ func (bb *Client) GetAccountInfo(ctx context.Context, o *blob.GetAccountInfoOpti
 
 // SetHTTPHeaders changes a blob's HTTP headers.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/set-blob-properties.
-func (bb *Client) SetHTTPHeaders(ctx context.Context, HTTPHeaders blob.HTTPHeaders, o *blob.SetHTTPHeadersOptions) (blob.SetHTTPHeadersResponse, error) {
-	return bb.BlobClient().SetHTTPHeaders(ctx, HTTPHeaders, o)
+func (bb *Client) SetHTTPHeaders(ctx context.Context, httpHeaders blob.HTTPHeaders, o *blob.SetHTTPHeadersOptions) (blob.SetHTTPHeadersResponse, error) {
+	return bb.BlobClient().SetHTTPHeaders(ctx, httpHeaders, o)
 }
 
 // SetMetadata changes a blob's metadata.

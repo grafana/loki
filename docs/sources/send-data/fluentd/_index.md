@@ -257,6 +257,21 @@ A flag to disable server certificate verification. By default the `insecure_tls`
 </match>
 ```
 
+### compress
+
+Enable compression for the HTTP request body. Supported values: `gzip`. Not compressed by default.
+
+```conf
+<match **>
+  @type loki
+
+  url "https://loki"
+  compress gzip
+
+  ...
+</match>
+```
+
 ### Output format
 
 Loki is intended to index and group log streams using only a small set of labels. It is not intended for full-text indexing. When sending logs to Loki the majority of log message will be sent as a single log "line".

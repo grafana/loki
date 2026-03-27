@@ -45,10 +45,10 @@ func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]str
 		c := chunk.NewChunk(
 			userID,
 			model.Fingerprint(1),
-			labels.Labels{
-				{Name: model.MetricNameLabel, Value: "foo"},
-				{Name: "bar", Value: "baz"},
-			},
+			labels.New(
+				labels.Label{Name: model.MetricNameLabel, Value: "foo"},
+				labels.Label{Name: "bar", Value: "baz"},
+			),
 			chunkenc.NewFacade(cs, 0, 0),
 			ts,
 			ts.Add(chunkLen),

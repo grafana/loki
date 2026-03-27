@@ -13,7 +13,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
-
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
@@ -231,7 +230,7 @@ func convertExponentialBuckets(bucketSpans []*dto.BucketSpan, deltas []int64) me
 			// Increase the count index by the Offset to insert Offset zeroes
 			countIndex += bs.GetOffset()
 		}
-		for j := uint32(0); j < bs.GetLength(); j++ {
+		for range bs.GetLength() {
 			// Convert deltas to the cumulative number of observations
 			count += deltas[deltaIndex]
 			deltaIndex++
@@ -367,11 +366,12 @@ func convertExemplar(exemplar *dto.Exemplar) metricdata.Exemplar[float64] {
 	var traceID, spanID []byte
 	// find the trace ID and span ID in attributes, if it exists
 	for _, label := range exemplar.GetLabel() {
-		if label.GetName() == traceIDLabel {
+		switch label.GetName() {
+		case traceIDLabel:
 			traceID = []byte(label.GetValue())
-		} else if label.GetName() == spanIDLabel {
+		case spanIDLabel:
 			spanID = []byte(label.GetValue())
-		} else {
+		default:
 			attrs = append(attrs, attribute.String(label.GetName(), label.GetValue()))
 		}
 	}

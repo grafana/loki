@@ -18,7 +18,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/log"
 )
 
-const envVarSendCertChain = "AZURE_CLIENT_SEND_CERTIFICATE_CHAIN"
+const (
+	credNameEnvironment = "EnvironmentCredential"
+	envVarSendCertChain = "AZURE_CLIENT_SEND_CERTIFICATE_CHAIN"
+)
 
 // EnvironmentCredentialOptions contains optional parameters for EnvironmentCredential
 type EnvironmentCredentialOptions struct {
@@ -59,19 +62,6 @@ type EnvironmentCredentialOptions struct {
 //
 // Note that this credential uses [ParseCertificates] to load the certificate and key from the file. If this
 // function isn't able to parse your certificate, use [ClientCertificateCredential] instead.
-//
-// # Deprecated: User with username and password
-//
-// User password authentication is deprecated because it can't support multifactor authentication. See
-// [Entra ID documentation] for migration guidance.
-//
-// AZURE_TENANT_ID: (optional) tenant to authenticate in. Defaults to "organizations".
-//
-// AZURE_CLIENT_ID: client ID of the application the user will authenticate to
-//
-// AZURE_USERNAME: a username (usually an email address)
-//
-// AZURE_PASSWORD: the user's password
 //
 // # Configuration for multitenant applications
 //

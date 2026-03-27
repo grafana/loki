@@ -10,7 +10,7 @@ import (
 )
 
 // colorToHexString returns a hex string representation of a color.
-func colorToHexString(c color.Color) string {
+func colorToHexString(c color.Color) string { //nolint:unused
 	if c == nil {
 		return ""
 	}
@@ -28,7 +28,7 @@ func colorToHexString(c color.Color) string {
 // rgbToHex converts red, green, and blue values to a hexadecimal value.
 //
 //	hex := rgbToHex(0, 0, 255) // 0x0000FF
-func rgbToHex(r, g, b uint32) uint32 {
+func rgbToHex(r, g, b uint32) uint32 { //nolint:unused
 	return r<<16 + g<<8 + b
 }
 
@@ -89,18 +89,4 @@ func XParseColor(s string) color.Color {
 		return color.RGBA{uint8(shift(r)), uint8(shift(g)), uint8(shift(b)), uint8(shift(a))} //nolint:gosec
 	}
 	return nil
-}
-
-type ordered interface {
-	~int | ~int8 | ~int16 | ~int32 | ~int64 |
-		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr |
-		~float32 | ~float64 |
-		~string
-}
-
-func max[T ordered](a, b T) T { //nolint:predeclared
-	if a > b {
-		return a
-	}
-	return b
 }

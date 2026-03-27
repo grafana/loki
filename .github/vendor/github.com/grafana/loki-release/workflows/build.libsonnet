@@ -315,8 +315,8 @@ local runner = import 'runner.libsonnet',
       pr_created: '${{ steps.version.outputs.pr_created }}',
     }),
 
-  dist: function(buildImage, skipArm=true, useGCR=false, makeTargets=['dist', 'packages'])
-    job.new()
+  dist: function(buildImage, skipArm=true, useGCR=false, makeTargets=['dist', 'packages'], runsOn='ubuntu-latest')
+    job.new(runsOn)
     + job.withPermissions({
       'id-token': 'write',
     })

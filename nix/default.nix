@@ -32,7 +32,8 @@ let
 
   loki-helm-test = pkgs.callPackage ../production/helm/loki/src/helm-test {
     inherit pkgs;
-    inherit (pkgs) lib buildGoModule dockerTools;
+    inherit (pkgs) lib dockerTools;
+    buildGoModule = pkgs.buildGo125Module;
     rev = gitRevision;
   };
 in
@@ -49,6 +50,10 @@ in
 
     subPackages = [ "cmd/logcli" ];
 
+     tags = [
+        "slicelabels"
+     ];
+
     meta = with lib; {
       description = "LogCLI is a command line tool for interacting with Loki.";
       mainProgram = "logcli";
@@ -61,31 +66,14 @@ in
 
     subPackages = [ "cmd/loki-canary" ];
 
+     tags = [
+        "slicelabels"
+     ];
+
     meta = with lib; {
       description = "Loki Canary is a canary for the Loki project.";
       mainProgram = "loki-canary";
       license = with licenses; [ agpl3Only ];
-    } // meta;
-  });
-
-  promtail = loki.overrideAttrs (oldAttrs: {
-    pname = "promtail";
-
-    buildInputs = with pkgs; lib.optionals stdenv.hostPlatform.isLinux [ systemd.dev ];
-
-    tags = [ "promtail_journal_enabled" ];
-
-    subPackages = [ "clients/cmd/promtail" ];
-
-    preFixup = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-      wrapProgram $out/bin/promtail \
-        --prefix LD_LIBRARY_PATH : "${lib.getLib pkgs.systemd}/lib"
-    '';
-
-    meta = with lib; {
-      description = "Client for sending logs to Loki";
-      mainProgram = "promtail";
-      license = with licenses; [ asl20 ];
     } // meta;
   });
 }
