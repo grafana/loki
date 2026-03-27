@@ -284,8 +284,8 @@ func (e *recordEncoder) Size() uint64 { return e.size }
 //
 // Wire format:
 //
-//	[8 bytes: record count (big-endian uint64)]
-//	[1 byte:  compression codec (0=none, 1=snappy)]
+//	[8 bytes: record (aka frames) count (big-endian uint64)]
+//	[1 byte: compression codec (0=none, 1=snappy)]
 //	for each record:
 //	  [8 bytes: compressed frame length (big-endian uint64)]
 //	  [N bytes: compressed Arrow IPC stream]
