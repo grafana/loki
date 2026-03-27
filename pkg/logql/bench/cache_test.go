@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
@@ -96,12 +97,14 @@ func TestEngineCachingCorrectness(t *testing.T) {
 	counting := &countingExecutor{inner: (*engine.Engine)(store.engine.(*engineAdapter))}
 
 	cfg := engine.Config{
-		ResultsCache: resultscache.Config{
-			CacheConfig: cache.Config{
-				EmbeddedCache: cache.EmbeddedCacheConfig{
-					Enabled:      true,
-					MaxSizeItems: 10_000,
-					TTL:          time.Hour,
+		ResultsCache: queryrangebase.ResultsCacheConfig{
+			Config: resultscache.Config{
+				CacheConfig: cache.Config{
+					EmbeddedCache: cache.EmbeddedCacheConfig{
+						Enabled:      true,
+						MaxSizeItems: 10_000,
+						TTL:          time.Hour,
+					},
 				},
 			},
 		},

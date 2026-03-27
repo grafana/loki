@@ -85,9 +85,6 @@ type Config struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
-
-	// TaskCaches is an optional registry of backing caches for task results.
-	TaskCaches executor.TaskCacheRegistry
 }
 
 // readyRequest is a message sent from a thread to notify the worker that it's
@@ -115,7 +112,6 @@ type Worker struct {
 	config     Config
 	logger     log.Logger
 	numThreads int
-	taskCaches executor.TaskCacheRegistry
 
 	initOnce sync.Once
 	svc      services.Service
@@ -164,7 +160,6 @@ func New(config Config) (*Worker, error) {
 		logger:      config.Logger,
 		wireMetrics: wire.NewMetrics(),
 		numThreads:  numThreads,
-		taskCaches:  config.TaskCaches,
 
 		dialer:   config.Dialer,
 		listener: config.Listener,
@@ -205,7 +200,6 @@ func (w *Worker) run(ctx context.Context) error {
 			Bucket:         w.config.Bucket,
 			Metastore:      w.config.Metastore,
 			StreamFilterer: w.config.StreamFilterer,
-			TaskCaches:     w.taskCaches,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,

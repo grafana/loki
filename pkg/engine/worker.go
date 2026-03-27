@@ -2,7 +2,6 @@ package engine
 
 import (
 	"flag"
-	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -75,7 +74,7 @@ type Worker struct {
 
 // NewWorker creates a new Worker instance. Use [Worker.Service] to manage the
 // lifecycle of the Worker.
-func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) {
+func NewWorker(params WorkerParams) (*Worker, error) {
 	if params.Config.SchedulerLookupAddress != "" && params.Config.SchedulerLookupInterval == 0 {
 		return nil, errors.New("scheduler lookup interval must be non-zero when a scheduler lookup address is provided")
 	}
@@ -124,11 +123,6 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		return nil, errors.New("either an advertise address or a local scheduler listener must be provided")
 	}
 
-	taskCaches, err := executor.NewTaskCacheRegistry(params.Executor.TasksResultCache.Config, reg, params.Logger)
-	if err != nil {
-		return nil, fmt.Errorf("creating task results cache: %w", err)
-	}
-
 	inner, err := worker.New(worker.Config{
 		Logger:    params.Logger,
 		Bucket:    params.Bucket,
@@ -148,7 +142,6 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		Endpoint: params.Endpoint,
 
 		StreamFilterer: params.StreamFilterer,
-		TaskCaches:     taskCaches,
 	})
 	if err != nil {
 		return nil, err

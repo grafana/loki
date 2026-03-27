@@ -80,7 +80,6 @@ type thread struct {
 	Metastore      metastore.Metastore
 	Logger         log.Logger
 	StreamFilterer executor.RequestStreamFilterer
-	TaskCaches     executor.TaskCacheRegistry
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -163,7 +162,6 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		Bucket:         bucket.NewXCapBucket(t.Bucket),
 		Metastore:      t.Metastore,
 		StreamFilterer: t.StreamFilterer,
-		TaskCaches:     t.TaskCaches,
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]

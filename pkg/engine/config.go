@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -45,7 +45,6 @@ type Config struct {
 	// When enabled, the tenant's MaxQuerySeries limit is applied; otherwise, no limit is enforced.
 	EnforceQuerySeriesLimit bool `yaml:"enforce_max_query_series_limit" category:"experimental"`
 
-	ResultsCache resultscache.Config `yaml:"results_cache" category:"experimental"`
 	// DualResolveMaxConcurrency controls the maximum number of concurrent
 	// asynchronous index-gateway dual-resolve comparisons. 0 disables dual-resolve.
 	DualResolveMaxConcurrency int `yaml:"dual_resolve_max_concurrency" category:"experimental"`
@@ -65,7 +64,8 @@ type Config struct {
 
 	// TSDBSplitConcurrency controls the maximum number of concurrent sub-range
 	// requests when TSDBSplitInterval is enabled.
-	TSDBSplitConcurrency int `yaml:"tsdb_split_concurrency" category:"experimental"`
+	TSDBSplitConcurrency int                               `yaml:"tsdb_split_concurrency" category:"experimental"`
+	ResultsCache         queryrangebase.ResultsCacheConfig `yaml:"results_cache" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {

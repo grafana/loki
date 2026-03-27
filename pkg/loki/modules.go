@@ -1559,7 +1559,7 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "query-engine-worker")
 
-	workerParams := engine_v2.WorkerParams{
+	worker, err := engine_v2.NewWorker(engine_v2.WorkerParams{
 		Logger: logger,
 		Bucket: store,
 
@@ -1574,9 +1574,7 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		Metastore: metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics),
 
 		StreamFilterer: t.Cfg.QueryEngine.Executor.StreamFilterer,
-	}
-
-	worker, err := engine_v2.NewWorker(workerParams, prometheus.DefaultRegisterer)
+	})
 	if err != nil {
 		return nil, err
 	}
