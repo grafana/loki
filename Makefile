@@ -346,7 +346,7 @@ endif
 lint: ## run linters
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(SUDO) docker pull $(BUILD_IMAGE)
-	$(SUDO) $(run_in_container) $@
+	$(SUDO) $(run_in_container)
 else
 	go version
 	golangci-lint version
