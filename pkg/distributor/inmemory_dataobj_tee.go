@@ -15,29 +15,27 @@ import (
 )
 
 const (
-	inmemoryTeeDefaultTopic           = "loki"
+	inmemoryTeeDefaultTopic            = "loki"
 	inmemoryTeeDefaultMaxBufferedBytes = 100 << 20 // 100 MB
-	inmemoryTeeDefaultPushTimeout      = 5 * time.Second
 )
 
 // InMemoryDataObjTee implements the [Tee] interface and sends encoded log
 // records to an in-process channel instead of to Kafka. It is used in
 // single-binary mode with ingest_mode=inmemory.
 type InMemoryDataObjTee struct {
-	records         chan *kgo.Record
-	topic           string
+	records          chan *kgo.Record
+	topic            string
 	maxBufferedBytes int
-	pushTimeout     time.Duration
-	logger          log.Logger
+	pushTimeout      time.Duration
+	logger           log.Logger
 
-	// Metrics.
 	streams        prometheus.Counter
 	streamFailures *prometheus.CounterVec
 }
 
 // NewInMemoryDataObjTee returns a new InMemoryDataObjTee that sends encoded
 // records to the given channel. reg and logger may be nil.
-func NewInMemoryDataObjTee(records chan *kgo.Record, reg prometheus.Registerer, logger log.Logger) *InMemoryDataObjTee {
+func NewInMemoryDataObjTee(records chan *kgo.Record, reg prometheus.Registerer, logger log.Logger, pushTimeout time.Duration) *InMemoryDataObjTee {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -45,7 +43,7 @@ func NewInMemoryDataObjTee(records chan *kgo.Record, reg prometheus.Registerer, 
 		records:          records,
 		topic:            inmemoryTeeDefaultTopic,
 		maxBufferedBytes: inmemoryTeeDefaultMaxBufferedBytes,
-		pushTimeout:      inmemoryTeeDefaultPushTimeout,
+		pushTimeout:      pushTimeout,
 		logger:           logger,
 		streams: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_inmemory_dataobj_tee_streams_total",

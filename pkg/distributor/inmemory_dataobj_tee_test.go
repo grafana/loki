@@ -16,7 +16,7 @@ import (
 
 func newTestInMemoryTee(cap int) (*InMemoryDataObjTee, chan *kgo.Record) {
 	ch := make(chan *kgo.Record, cap)
-	tee := NewInMemoryDataObjTee(ch, prometheus.NewRegistry(), nil)
+	tee := NewInMemoryDataObjTee(ch, prometheus.NewRegistry(), nil, 5*time.Second)
 	return tee, ch
 }
 
@@ -76,8 +76,7 @@ func TestInMemoryDataObjTee_Duplicate_ChannelFull_Timeout(t *testing.T) {
 	// Channel capacity 0 forces immediate block.
 	reg := prometheus.NewRegistry()
 	ch := make(chan *kgo.Record, 0)
-	tee := NewInMemoryDataObjTee(ch, reg, nil)
-	tee.pushTimeout = 50 * time.Millisecond // short timeout for test
+	tee := NewInMemoryDataObjTee(ch, reg, nil, 50*time.Millisecond) // short timeout for test
 
 	ctx := context.Background()
 	tenant := "test-tenant"
@@ -118,8 +117,7 @@ func TestInMemoryDataObjTee_Reason_Label(t *testing.T) {
 	t.Run("channel_full", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		ch := make(chan *kgo.Record, 0)
-		tee := NewInMemoryDataObjTee(ch, reg, nil)
-		tee.pushTimeout = 10 * time.Millisecond
+		tee := NewInMemoryDataObjTee(ch, reg, nil, 10*time.Millisecond)
 
 		ctx := context.Background()
 		now := time.Now()
@@ -144,8 +142,7 @@ func TestInMemoryDataObjTee_Reason_Label(t *testing.T) {
 	t.Run("timeout", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		ch := make(chan *kgo.Record, 0)
-		tee := NewInMemoryDataObjTee(ch, reg, nil)
-		tee.pushTimeout = 30 * time.Second // long enough for ctx cancel to win
+		tee := NewInMemoryDataObjTee(ch, reg, nil, 30*time.Second) // long enough for ctx cancel to win
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // cancel immediately

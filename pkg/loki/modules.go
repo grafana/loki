@@ -365,7 +365,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	if t.Cfg.DataObj.Enabled && t.Cfg.DataObj.Consumer.IngestMode == consumer.IngestModeInMemory {
 		reg := prometheus.DefaultRegisterer
 		logger := log.With(util_log.Logger, "component", "inmemory-dataobj-tee")
-		inmemTee := distributor.NewInMemoryDataObjTee(t.dataObjInMemoryRecordsChan, reg, logger)
+		inmemTee := distributor.NewInMemoryDataObjTee(t.dataObjInMemoryRecordsChan, reg, logger, t.Cfg.Distributor.InMemoryPushTimeout)
 		t.Tee = distributor.WrapTee(t.Tee, inmemTee)
 	}
 
