@@ -995,7 +995,9 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 			extractor,
 			cacheGenNumLoader,
 			func(_ context.Context, r base.Request) bool {
-				return !r.GetCachingOptions().Disabled
+				cache := !r.GetCachingOptions().Disabled
+				level.Debug(log).Log("msg", "should cache request", "query", r.GetQuery(), "start", r.GetStart(), "end", r.GetEnd(), "cache", cache)
+				return cache
 			},
 			func(ctx context.Context, tenantIDs []string, r base.Request) int {
 				return MinWeightedParallelism(

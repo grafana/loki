@@ -111,6 +111,7 @@ func (s ResultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	if s.shouldCacheReq != nil && !s.shouldCacheReq(ctx, r) {
+		level.Debug(s.logger).Log("msg", "request not cached", "query", r.GetQuery(), "start", r.GetStart(), "end", r.GetEnd())
 		return s.next.Do(ctx, r)
 	}
 
@@ -205,7 +206,6 @@ func (s ResultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		return nil, nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	reqResps, err = DoRequests(ctx, s.next, requests, s.parallelismForReq(ctx, tenantIDs, r))
-
 	if err != nil {
 		return nil, nil, err
 	}

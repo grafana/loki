@@ -22,10 +22,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
-var (
-	// Value that cacheControlHeader has if the response indicates that the results should not be cached.
-	noStoreValue = "no-store"
-)
+// Value that cacheControlHeader has if the response indicates that the results should not be cached.
+var noStoreValue = "no-store"
 
 const (
 	reasonMissing  = "missing"
@@ -156,7 +154,9 @@ func NewResultsCacheMiddleware(
 		}
 
 		shouldCacheResWrapper := func(ctx context.Context, req resultscache.Request, res resultscache.Response, maxCacheTime int64) bool {
-			return out.shouldCacheResponse(ctx, req.(Request), res.(Response), maxCacheTime)
+			cache := out.shouldCacheResponse(ctx, req.(Request), res.(Response), maxCacheTime)
+			level.Debug(logger).Log("msg", "should cache response", "query", req.GetQuery(), "start", req.GetStart(), "end", req.GetEnd(), "cache", cache)
+			return cache
 		}
 
 		parallelismForReqWrapper := func(ctx context.Context, tenantIDs []string, req resultscache.Request) int {
