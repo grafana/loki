@@ -29,6 +29,8 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/twmb/franz-go/pkg/kgo"
+
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
@@ -454,6 +456,9 @@ type Loki struct {
 	dataObjConsumerPartitionRing        *ring.PartitionInstanceRing
 	DataObjConsumerPartitionRingWatcher *ring.PartitionRingWatcher
 	dataObjIndexBuilder                 *dataobjindex.Builder
+	// dataObjInMemoryRecordsChan is non-nil when DataObj.Consumer.IngestMode == IngestModeInMemory.
+	// It is set by initDataObjConsumer and consumed by initDistributor.
+	dataObjInMemoryRecordsChan chan *kgo.Record
 	scratchStore                        scratch.Store
 	queryEngineV2                       *engine.Engine
 	queryEngineV2Scheduler              *engine.Scheduler
@@ -743,6 +748,13 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 			}
 		}
 
+		if t.dataObjConsumer != nil {
+			if err := t.dataObjConsumer.CheckReady(r.Context()); err != nil {
+				http.Error(w, fmt.Sprintf("DataObj Consumer not ready: %s", err), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
 		http.Error(w, "ready", http.StatusOK)
 	}
 }
@@ -868,6 +880,15 @@ func (t *Loki) setupModuleManager() error {
 
 	if t.Cfg.IngestLimits.Enabled {
 		deps[All] = append(deps[All], IngestLimits, IngestLimitsFrontend)
+	}
+
+	if t.Cfg.DataObj.Enabled {
+		deps[All] = append(deps[All], DataObjConsumer, DataObjIndexBuilder)
+		if t.Cfg.DataObj.Consumer.IngestMode == consumer.IngestModeInMemory {
+			// DataObjConsumer must be initialized before Distributor so that
+			// dataObjInMemoryRecordsChan is set when initDistributor runs.
+			deps[Distributor] = append(deps[Distributor], DataObjConsumer)
+		}
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {

@@ -213,6 +213,13 @@ func (p *processor) idleFlush(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// Flush triggers an immediate flush of the current builder if it has data.
+// It is a no-op if the builder is empty (idleFlush checks needsIdleFlush).
+func (p *processor) Flush(ctx context.Context) error {
+	_, err := p.idleFlush(ctx)
+	return err
+}
+
 // needsIdleFlush returns true if the partition has exceeded the idle timeout
 // and the builder has some data buffered.
 func (p *processor) needsIdleFlush() bool {

@@ -49,6 +49,112 @@ type Service struct {
 	watcher                     *services.FailureWatcher
 	logger                      log.Logger
 	reg                         prometheus.Registerer
+
+	// recordsChan is set only in inmemory mode. Callers send *kgo.Record values
+	// here instead of through Kafka.
+	recordsChan chan *kgo.Record
+}
+
+// noopCommitter is a committer that does nothing. Used in inmemory mode where
+// there is no Kafka offset to commit.
+type noopCommitter struct{}
+
+func (noopCommitter) Commit(_ context.Context, _ int32, _ int64) error { return nil }
+
+// noopMetastoreEventEmitter is a metastoreEventEmitter that discards events.
+// Used in inmemory mode where there is no Kafka metastore topic.
+type noopMetastoreEventEmitter struct{}
+
+func (noopMetastoreEventEmitter) Emit(_ context.Context, _ string, _ time.Time) error { return nil }
+
+// RecordsChannel returns the in-process channel that callers use to submit
+// records in inmemory mode. It is nil in Kafka mode.
+func (s *Service) RecordsChannel() chan *kgo.Record {
+	return s.recordsChan
+}
+
+// CheckReady returns nil if the service is running and ready to handle
+// requests. Used by the readiness handler in loki.go to gate /ready.
+func (s *Service) CheckReady(_ context.Context) error {
+	if s.State() != services.Running {
+		return fmt.Errorf("dataobj consumer is not running (state: %s)", s.State())
+	}
+	return nil
+}
+
+// NewInMemory creates a consumer Service that receives records via an in-process
+// buffered channel instead of from Kafka. cfg.IngestMode must be IngestModeInMemory.
+func NewInMemory(cfg Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger) (*Service, error) {
+	if cfg.IngestMode != IngestModeInMemory {
+		return nil, fmt.Errorf("NewInMemory requires IngestMode=%q, got %q", IngestModeInMemory, cfg.IngestMode)
+	}
+	logger = log.With(logger, "component", "dataobj-consumer-inmemory")
+
+	const partitionID = int32(0)
+	recordsChan := make(chan *kgo.Record, 10000)
+
+	s := &Service{
+		cfg:         cfg,
+		logger:      logger,
+		reg:         reg,
+		partition:   partitionID,
+		recordsChan: recordsChan,
+	}
+
+	uploader := dataobj_uploader.New(cfg.UploaderConfig, bucket, logger)
+	if err := uploader.RegisterMetrics(reg); err != nil {
+		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
+	}
+	builderFactory := logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore)
+	sorter := logsobj.NewSorter(builderFactory, reg)
+	s.flusher = newFlusher(sorter, uploader, logger, reg)
+
+	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
+		"partition": strconv.Itoa(int(partitionID)),
+	}, reg)
+	builder, err := builderFactory.NewBuilder(wrapped)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
+	}
+
+	flushCommitter := newFlushCommitter(
+		s.flusher,
+		noopMetastoreEventEmitter{},
+		noopCommitter{},
+		partitionID,
+		logger,
+		wrapped,
+	)
+	s.processor = newProcessor(
+		builder,
+		recordsChan,
+		flushCommitter,
+		cfg.IdleFlushTimeout,
+		cfg.MaxBuilderAge,
+		logger,
+		wrapped,
+	)
+
+	s.Service = services.NewBasicService(s.inMemoryStarting, s.running, s.inMemoryStopping)
+	return s, nil
+}
+
+func (s *Service) inMemoryStarting(ctx context.Context) error {
+	level.Info(s.logger).Log("msg", "starting inmemory dataobj consumer")
+	if err := services.StartAndAwaitRunning(ctx, s.processor); err != nil {
+		return fmt.Errorf("failed to start partition processor: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) inMemoryStopping(failureCase error) error {
+	level.Info(s.logger).Log("msg", "stopping inmemory dataobj consumer")
+	ctx := context.TODO()
+	if err := services.StopAndAwaitTerminated(ctx, s.processor); err != nil {
+		level.Warn(s.logger).Log("msg", "failed to stop partition processor", "err", err)
+	}
+	level.Info(s.logger).Log("msg", "stopped inmemory dataobj consumer")
+	return failureCase
 }
 
 func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, _ string, _ ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) (*Service, error) {
