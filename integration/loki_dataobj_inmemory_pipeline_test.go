@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
+	"os"
 	"testing"
 	"time"
 
@@ -45,14 +45,36 @@ func TestInmemoryPipeline(t *testing.T) {
 		"-dataobj-consumer.section-stripe-merge-limit=2",
 		"-dataobj-consumer.sha-prefix-size=2",
 		"-dataobj-consumer.idle-flush-timeout=100ms",
+		// In inmemory mode the distributor writes only to the dataobj channel,
+		// not to ingesters or Kafka.
+		"-distributor.ingester-writes-enabled=false",
+		"-pattern-ingester.enabled=false",
+		// Use the v2 query engine to read from dataobjects.
+		"-query-engine.enable=true",
+		"-query-engine.storage-lag=0",
 	)
-	tAll.WithExtraConfig(fmt.Sprintf("common:\n  scratch_path: %s/scratch\n", tAll.ClusterSharedPath()))
+	scratchPath := tAll.ClusterSharedPath() + "/scratch"
+	require.NoError(t, os.MkdirAll(scratchPath, 0o755))
+	tAll.WithExtraConfig(fmt.Sprintf(`
+common:
+  scratch_path: %s
+  ring:
+    kvstore:
+      store: inmemory
+ingest_limits:
+  enabled: false
+`, scratchPath))
 
 	require.NoError(t, clu.Run())
 
 	tenantID := randStringRunes()
 	cli := client.New(tenantID, "", tAll.HTTPURL())
-	cli.Now = time.Now()
+	// Set cli.Now to 30 seconds in the past so that query.end = cli.Now+1s is
+	// always before v2End = now-StorageLag = now. This ensures the v2 engine
+	// (not the v1 fallback) handles the sub-window containing the data on the
+	// very first query iteration, avoiding a race where the result cache
+	// stores a stale empty result returned by the v1 engine.
+	cli.Now = time.Now().Add(-30 * time.Second)
 
 	// TEST-02: /ready returns 200 when dataobj consumer is Running
 	t.Run("readiness-probe", func(t *testing.T) {
@@ -68,7 +90,7 @@ func TestInmemoryPipeline(t *testing.T) {
 	// DATA-01 / TEST-01: full push -> flush -> query round-trip with actual data in results
 	t.Run("round-trip", func(t *testing.T) {
 		require.NoError(t, cli.PushLogLine("pipeline-line-1", cli.Now, nil, map[string]string{"job": "pipeline-test"}))
-		require.NoError(t, cli.PushLogLine("pipeline-line-2", cli.Now.Add(time.Second), nil, map[string]string{"job": "pipeline-test"}))
+		require.NoError(t, cli.PushLogLine("pipeline-line-2", cli.Now.Add(-time.Second), nil, map[string]string{"job": "pipeline-test"}))
 
 		flushResp, err := http.Post(tAll.HTTPURL()+"/dataobj-consumer/flush", "", nil) //nolint:noctx
 		require.NoError(t, err)
@@ -120,41 +142,9 @@ func TestInmemoryPipeline(t *testing.T) {
 		assert.Contains(t, lines, "idle-flush-line")
 	})
 
-	// OBS-02: verify that a push failure due to channel saturation returns an error to the caller (not a silent drop).
-	// The channel capacity is 10,000 (hardcoded in NewInMemory). Deterministically saturating it from an integration test is impractical.
-	// The unit test TestInMemoryDataObjTee_Duplicate_ChannelFull_Timeout in pkg/distributor/ covers this at the unit level.
-	// This integration subtest verifies the error PATH: we confirm that the HTTP push endpoint returns a proper error (non-2xx) when the tee returns an error, rather than silently dropping data.
-	t.Run("channel-full-returns-error", func(t *testing.T) {
-		tenantBP := randStringRunes()
-
-		const burst = 500
-		var (
-			wg       sync.WaitGroup
-			mu       sync.Mutex
-			errCount int
-		)
-
-		wg.Add(burst)
-		for i := 0; i < burst; i++ {
-			go func(i int) {
-				defer wg.Done()
-				cliBP := client.New(tenantBP, "", tAll.HTTPURL())
-				cliBP.Now = time.Now()
-				err := cliBP.PushLogLine(fmt.Sprintf("bp-line-%d", i), cliBP.Now, nil, map[string]string{"job": "bp-test"})
-				if err != nil {
-					mu.Lock()
-					errCount++
-					mu.Unlock()
-				}
-			}(i)
-		}
-		wg.Wait()
-
-		if errCount > 0 {
-			t.Logf("channel saturation triggered: %d/%d pushes returned errors (non-2xx, not silently dropped)", errCount, burst)
-			assert.Greater(t, errCount, 0, "expected at least one push error under load")
-		} else {
-			t.Log("all pushes succeeded; channel did not saturate under this load")
-		}
-	})
+	// TEST-03 / OBS-02: backpressure error propagation is covered by
+	// TestInMemoryDataObjTee_Reason_Label/channel_full in pkg/distributor/inmemory_dataobj_tee_test.go.
+	// Integration-level testing is not feasible: the in-process consumer drains the channel in ~10µs,
+	// faster than any push timeout short enough to be reliable across machines. The unit test uses an
+	// unbuffered channel with no consumer, which guarantees the timer fires deterministically.
 }
