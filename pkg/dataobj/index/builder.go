@@ -30,8 +30,9 @@ var ErrPartitionRevoked = errors.New("partition revoked")
 type triggerType string
 
 const (
-	triggerTypeAppend  triggerType = "append"
-	triggerTypeMaxIdle triggerType = "max-idle"
+	triggerTypeAppend    triggerType = "append"
+	triggerTypeMaxIdle   triggerType = "max-idle"
+	triggerTypeStaleData triggerType = "stale-data"
 )
 
 func (tt triggerType) String() string {
@@ -40,6 +41,8 @@ func (tt triggerType) String() string {
 		return "append"
 	case triggerTypeMaxIdle:
 		return "max-idle"
+	case triggerTypeStaleData:
+		return "stale-data"
 	default:
 		return "unknown"
 	}
@@ -320,30 +323,7 @@ func (p *Builder) processRecord(ctx context.Context, record *kgo.Record) {
 	if len(eventsToIndex) == 0 {
 		return
 	}
-
-	defer p.cleanupPartition(record.Partition)
-
-	// Submit to indexer service and wait for completion
-	records, err := p.indexer.submitBuild(calculationCtx, eventsToIndex, record.Partition, triggerTypeAppend)
-	if err != nil {
-		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
-			level.Debug(p.logger).Log("msg", "partition revoked, aborting index build", "partition", record.Partition)
-			return
-		}
-		level.Error(p.logger).Log("msg", "failed to build index", "err", err, "partition", record.Partition)
-		return
-	}
-
-	// Commit the records
-	if err := p.commitRecords(calculationCtx, records); err != nil {
-		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
-			level.Debug(p.logger).Log("msg", "partition revoked, aborting index commit", "partition", record.Partition)
-			return
-		}
-		level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "partition", record.Partition)
-		return
-	}
-	p.markEventsCompleted(record.Partition, len(records))
+	p.buildAndCommitIndex(calculationCtx, eventsToIndex, record.Partition, triggerTypeAppend)
 }
 
 // Appends a record and returns a slice of buffered events to index. The slice will be empty if no indexing is required.
@@ -392,23 +372,48 @@ func (p *Builder) markEventsCompleted(partition int32, eventsProcessed int) {
 
 func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {
 	p.partitionsMutex.Lock()
-	partitionsToFlush := make([]int32, 0)
-
+	idlePartitionsToFlush := make([]int32, 0)
+	partitionsWithStaleDataToFlush := make([]int32, 0)
 	for partition, state := range p.partitionStates {
-		if !state.isProcessing &&
-			time.Since(state.lastActivity) >= p.cfg.MaxIdleTime {
-			partitionsToFlush = append(partitionsToFlush, partition)
+		if state.isProcessing {
+			continue
+		}
+		if time.Since(state.lastActivity) >= p.cfg.MaxIdleTime {
+			level.Info(p.logger).Log(
+				"msg", "will flush idle partition",
+				"partition", partition,
+				"idle_duration", time.Since(state.lastActivity),
+				"idle_threshold", p.cfg.MaxIdleTime)
+			idlePartitionsToFlush = append(idlePartitionsToFlush, partition)
+			continue
+		}
+		earliestWriteTime, err := time.Parse(time.RFC3339, state.events[0].event.WriteTime)
+		if err != nil {
+			level.Warn(p.logger).Log("msg", "failed to parse write time", "err", err)
+			continue
+		}
+		if time.Since(earliestWriteTime) >= p.cfg.MaxAge {
+			level.Info(p.logger).Log(
+				"msg", "will flush stale data",
+				"partition", partition,
+				"data_age", time.Since(earliestWriteTime),
+				"stale_data_threshold", p.cfg.MaxAge)
+			partitionsWithStaleDataToFlush = append(partitionsWithStaleDataToFlush, partition)
+			continue
 		}
 	}
 	p.partitionsMutex.Unlock()
 
-	for _, partition := range partitionsToFlush {
-		p.flushPartition(ctx, partition)
+	for _, partition := range idlePartitionsToFlush {
+		p.flushPartition(ctx, partition, triggerTypeMaxIdle)
+	}
+	for _, partition := range partitionsWithStaleDataToFlush {
+		p.flushPartition(ctx, partition, triggerTypeStaleData)
 	}
 }
 
-func (p *Builder) flushPartition(ctx context.Context, partition int32) {
-	calculationCtx, eventsToFlush := p.bufferAndTryProcess(ctx, partition, nil, triggerTypeMaxIdle)
+func (p *Builder) flushPartition(ctx context.Context, partition int32, triggerType triggerType) {
+	calculationCtx, eventsToFlush := p.bufferAndTryProcess(ctx, partition, nil, triggerType)
 	if len(eventsToFlush) == 0 {
 		return
 	}
@@ -416,36 +421,39 @@ func (p *Builder) flushPartition(ctx context.Context, partition int32) {
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
-		defer p.cleanupPartition(partition)
+		level.Info(p.logger).Log("msg", "flushing partition",
+			"partition", partition, "events", len(eventsToFlush), "trigger", triggerType)
 
-		level.Info(p.logger).Log("msg", "flushing stale partition",
-			"partition", partition, "events", len(eventsToFlush))
-
-		// Submit to indexer service and wait for completion
-		records, err := p.indexer.submitBuild(calculationCtx, eventsToFlush, partition, triggerTypeMaxIdle)
-		if err != nil {
-			if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
-				level.Debug(p.logger).Log("msg", "partition revoked during flush", "partition", partition)
-				return
-			}
-			level.Error(p.logger).Log("msg", "failed to flush partition", "partition", partition, "err", err)
-			return
-		}
-
-		// Commit the records
-		if err := p.commitRecords(calculationCtx, records); err != nil {
-			if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
-				level.Debug(p.logger).Log("msg", "partition revoked during flush commit", "partition", partition)
-				return
-			}
-			level.Error(p.logger).Log("msg", "failed to commit flush records", "partition", partition, "err", err)
-		}
-
+		p.buildAndCommitIndex(calculationCtx, eventsToFlush, partition, triggerType)
 		// Reset metrics for stale partition so we don't leave it high indefinitely if the partition stays inactive
 		p.metrics.setProcessingDelay(partition, time.Now())
-
-		p.markEventsCompleted(partition, len(records))
 	}()
+}
+
+func (p *Builder) buildAndCommitIndex(ctx context.Context, events []bufferedEvent, partition int32, triggerType triggerType) {
+	defer p.cleanupPartition(partition)
+
+	// Submit to indexer service and wait for completion
+	records, err := p.indexer.submitBuild(ctx, events, partition, triggerType)
+	if err != nil {
+		if errors.Is(context.Cause(ctx), ErrPartitionRevoked) {
+			level.Debug(p.logger).Log("msg", "partition revoked, aborting index build", "partition", partition, "trigger", triggerType)
+			return
+		}
+		level.Error(p.logger).Log("msg", "failed to build index", "partition", partition, "err", err, "trigger", triggerType)
+		return
+	}
+
+	// Commit the records
+	if err := p.commitRecords(ctx, records); err != nil {
+		if errors.Is(context.Cause(ctx), ErrPartitionRevoked) {
+			level.Debug(p.logger).Log("msg", "partition revoked, aborting index commit", "partition", partition, "trigger", triggerType)
+			return
+		}
+		level.Error(p.logger).Log("msg", "failed to commit records", "partition", partition, "err", err, "trigger", triggerType)
+	}
+
+	p.markEventsCompleted(partition, len(records))
 }
 
 // bufferAndTryProcess is the unified method that handles both buffering and processing decisions
@@ -462,7 +470,7 @@ func (p *Builder) bufferAndTryProcess(ctx context.Context, partition int32, newE
 	if newEvent != nil {
 		state.events = append(state.events, *newEvent)
 		state.lastActivity = time.Now()
-		level.Debug(p.logger).Log("msg", "buffered new event for partition", "count", len(state.events), "partition", partition)
+		level.Debug(p.logger).Log("msg", "buffered new event for partition", "count", len(state.events), "partition", partition, "trigger", trigger)
 	}
 
 	// Check if we can start processing
@@ -471,17 +479,7 @@ func (p *Builder) bufferAndTryProcess(ctx context.Context, partition int32, newE
 	}
 
 	// Check trigger-specific requirements
-	switch trigger {
-	case triggerTypeAppend:
-		if len(state.events) < p.cfg.EventsPerIndex {
-			return nil, nil
-		}
-	case triggerTypeMaxIdle:
-		if time.Since(state.lastActivity) < p.cfg.MaxIdleTime {
-			return nil, nil
-		}
-	default:
-		level.Error(p.logger).Log("msg", "unknown trigger type")
+	if trigger == triggerTypeAppend && len(state.events) < p.cfg.EventsPerIndex {
 		return nil, nil
 	}
 
