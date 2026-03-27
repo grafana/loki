@@ -92,6 +92,15 @@ var (
 	StatDeletePredicates = NewStatisticInt64("delete.request.predicates", AggregationTypeFirst)
 )
 
+// Task cache statistics.
+var (
+	TaskCacheHits    = NewStatisticInt64("task.cache.hits", AggregationTypeSum)
+	TaskCacheMisses  = NewStatisticInt64("task.cache.misses", AggregationTypeSum)
+	TaskCacheBatches = NewStatisticInt64("task.cache.batches", AggregationTypeSum)
+	TaskCacheRows    = NewStatisticInt64("task.cache.rows", AggregationTypeSum)
+	TaskCacheBytes   = NewStatisticInt64("task.cache.bytes", AggregationTypeSum)
+)
+
 // Task statistics.
 var (
 	TaskRecvDuration            = NewStatisticFloat64("task.recv.duration", AggregationTypeSum)

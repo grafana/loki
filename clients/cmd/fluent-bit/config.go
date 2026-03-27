@@ -13,12 +13,12 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/clients/pkg/logentry/logql"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 
 	lokiflag "github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
-var defaultClientCfg = client.Config{}
+var defaultClientCfg = util.Config{}
 
 func init() {
 	// Init everything with default values.
@@ -42,7 +42,7 @@ const (
 )
 
 type config struct {
-	clientConfig         client.Config
+	clientConfig         util.Config
 	bufferConfig         bufferConfig
 	logLevel             log.Level
 	autoKubernetesLabels bool

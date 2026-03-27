@@ -76,28 +76,4 @@ in
       license = with licenses; [ agpl3Only ];
     } // meta;
   });
-
-  promtail = loki.overrideAttrs (oldAttrs: {
-    pname = "promtail";
-
-    buildInputs = with pkgs; lib.optionals stdenv.hostPlatform.isLinux [ systemd.dev ];
-
-    tags = [
-        "promtail_journal_enabled"
-        "slicelabels"
-    ];
-
-    subPackages = [ "clients/cmd/promtail" ];
-
-    preFixup = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-      wrapProgram $out/bin/promtail \
-        --prefix LD_LIBRARY_PATH : "${lib.getLib pkgs.systemd}/lib"
-    '';
-
-    meta = with lib; {
-      description = "Client for sending logs to Loki";
-      mainProgram = "promtail";
-      license = with licenses; [ asl20 ];
-    } // meta;
-  });
 }
