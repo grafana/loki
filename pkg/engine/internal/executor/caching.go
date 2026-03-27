@@ -88,6 +88,7 @@ func (p *cachingPipeline) Open(ctx context.Context) error {
 			p.hit = true
 			region.Record(xcap.TaskCacheHits.Observe(1))
 			region.Record(xcap.TaskCacheBytes.Observe(int64(len(buffs[0]))))
+			level.Debug(p.logger).Log("msg", "task cache hit", "key", p.key, "records", p.decoder.Len())
 			return nil
 		}
 
@@ -95,11 +96,12 @@ func (p *cachingPipeline) Open(ctx context.Context) error {
 		level.Error(p.logger).Log("msg", "cache decode failed, falling back to inner pipeline", "err", decErr)
 	}
 	if err != nil {
-		level.Error(p.logger).Log("msg", "cache fetch failed, falling back to inner pipeline", "err", err)
+		level.Error(p.logger).Log("msg", "task cache fetch failed, falling back to inner pipeline", "err", err)
 	}
 
 	region.Record(xcap.TaskCacheMisses.Observe(1))
 	p.encoder = newRecordEncoder(p.compression)
+	level.Debug(p.logger).Log("msg", "cache miss", "key", p.key)
 	return p.inner.Open(ctx)
 }
 
