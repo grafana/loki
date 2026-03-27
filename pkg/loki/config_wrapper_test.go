@@ -2566,3 +2566,34 @@ func TestBucketNamedStores_applyDefaults(t *testing.T) {
 		assert.Equal(t, expected, (swift.Config)(nsCfg.Swift["store-5"]))
 	})
 }
+
+func TestDataObjInMemoryConfig(t *testing.T) {
+	// Validate that the loki-dataobj-inmemory-config.yaml loads without error
+	// and sets the expected fields.
+	yamlContent := `
+auth_enabled: false
+dataobj:
+  enabled: true
+  consumer:
+    ingest_mode: inmemory
+distributor:
+  kafka_writes_enabled: false
+  ingester_writes_enabled: false
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+`
+	config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, "inmemory", string(config.DataObj.Consumer.IngestMode))
+	assert.True(t, config.DataObj.Enabled)
+	assert.False(t, config.Distributor.KafkaEnabled)
+	assert.False(t, config.Distributor.IngesterEnabled)
+}
