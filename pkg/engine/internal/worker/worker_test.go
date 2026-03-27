@@ -240,7 +240,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		go func() { _ = schedulerPeer.Serve(ctx) }()
 
 		// Say hello to the scheduler on behalf of worker 2
-		err = schedulerPeer.SendMessage(ctx, wire.WorkerHelloMessage{
+		err = schedulerPeer.Message(ctx, wire.WorkerHelloMessage{
 			Threads: 1,
 		})
 		require.NoError(t, err)
@@ -248,14 +248,14 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		synctest.Wait()
 
 		// Send the data message
-		err = workerPeer.SendMessage(ctx, wire.StreamDataMessage{
+		err = workerPeer.Message(ctx, wire.StreamDataMessage{
 			StreamID: inputStream.ULID,
 			Data:     record,
 		})
 		require.NoError(t, err)
 
 		// Close the stream to signal EOF by sending a StreamStatusMessage
-		err = schedulerPeer.SendMessage(ctx, wire.StreamStatusMessage{
+		err = schedulerPeer.Message(ctx, wire.StreamStatusMessage{
 			StreamID: inputStream.ULID,
 			State:    workflow.StreamStateClosed,
 		})

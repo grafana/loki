@@ -48,7 +48,7 @@ func (sink *streamSink) Bind(ctx context.Context, destination net.Addr) error {
 		bound = true
 
 		// Best-effort inform the scheduler that we're ready to send data.
-		_ = sink.Scheduler.SendMessageAsync(ctx, wire.StreamStatusMessage{
+		_ = sink.Scheduler.Notify(ctx, wire.StreamStatusMessage{
 			StreamID: sink.Stream.ULID,
 			State:    workflow.StreamStateOpen,
 		})
@@ -82,7 +82,7 @@ func (sink *streamSink) lazyInit() {
 // connection is lost.
 //
 // Send can be aborted by cancelling the provided context.
-func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) error {
+func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) (messageResponse, error) {
 	sink.lazyInit()
 
 	bo := backoff.New(ctx, backoff.Config{
@@ -94,27 +94,27 @@ func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) error {
 		// We only want to retry on errors about the connection closing; errors
 		// where the peer rejected our payload should be considered
 		// nonretryable.
-		err := sink.send(ctx, rec)
+		resp, err := sink.send(ctx, rec)
 		if err == nil {
-			break
+			return resp, nil
 		}
 
 		if !sink.isRetryable(err) {
 			level.Error(sink.Logger).Log("msg", "failed to send data to peer. Encountered non-retryable error", "err", err)
-			return err
+			return nil, err
 		}
 
 		level.Warn(sink.Logger).Log("msg", "failed to send data to peer", "err", err)
 		bo.Wait()
 	}
 
-	return bo.Err()
+	return nil, bo.Err()
 }
 
-func (sink *streamSink) send(ctx context.Context, rec arrow.RecordBatch) error {
+func (sink *streamSink) send(ctx context.Context, rec arrow.RecordBatch) (*wire.Acknowledgement, error) {
 	peer, err := sink.getPeer(ctx)
 	if err != nil {
-		return fmt.Errorf("connecting to peer: %w", err)
+		return nil, fmt.Errorf("connecting to peer: %w", err)
 	}
 
 	// TODO(rfratto): We should send a Blocked status update to the scheduler if
@@ -122,15 +122,14 @@ func (sink *streamSink) send(ctx context.Context, rec arrow.RecordBatch) error {
 	//
 	// We need to find a way to efficiently do that here that doesn't cancel the
 	// send.
-	err = peer.SendMessage(ctx, wire.StreamDataMessage{
+	resp, err := peer.Dispatch(ctx, wire.StreamDataMessage{
 		StreamID: sink.Stream.ULID,
 		Data:     rec,
 	})
 	if err != nil {
-		return fmt.Errorf("sending data to peer: %w", err)
+		return nil, fmt.Errorf("sending data to peer: %w", err)
 	}
-
-	return nil
+	return resp, nil
 }
 
 func (sink *streamSink) getPeer(ctx context.Context) (*wire.Peer, error) {
@@ -196,7 +195,7 @@ func (sink *streamSink) Close(ctx context.Context) error {
 		sink.cancel()
 
 		// Best-effort inform the scheduler that we're done sending data.
-		err = sink.Scheduler.SendMessageAsync(ctx, wire.StreamStatusMessage{
+		err = sink.Scheduler.Notify(ctx, wire.StreamStatusMessage{
 			StreamID: sink.Stream.ULID,
 			State:    workflow.StreamStateClosed,
 		})

@@ -110,6 +110,7 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 
 			select {
 			case req.result <- nil:
+				p.sentRequests.Delete(frame.ID)
 			default:
 				level.Warn(p.Logger).Log("msg", "ignoring duplicate acknowledgement")
 			}
@@ -125,6 +126,7 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 
 			select {
 			case req.result <- frame.Error:
+				p.sentRequests.Delete(frame.ID)
 			default:
 				level.Warn(p.Logger).Log("msg", "ignoring duplicate acknowledgement")
 			}
@@ -225,13 +227,38 @@ type request struct {
 	result chan error
 }
 
-// SendMessage sends a message to the remote peer. SendMessage blocks until the
-// provided context is canceled or the remote peer positively or negatively
-// acknowledges the message.
+// A Acknowledgement is the eventual response (positive or negative
+// acknowledgement) to a [Peer.Dispatch].
+type Acknowledgement struct {
+	connClosed chan struct{}
+	result     chan error
+}
+
+// Wait blocks until ctx is canceled or the message is acknowledged or
+// negatively acknowledged.
 //
-// [Peer.Serve] must be running when SendMessage is called, otherwise it blocks
+// Wait must only be called once per MessageResponse.
+//
+// It returns the result of the message, otherwise an error if the connection is
+// closed or ctx is canceled.
+func (r *Acknowledgement) Wait(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-r.connClosed:
+		return ErrConnClosed
+	case err := <-r.result:
+		return err
+	}
+}
+
+// Dispatch a message to the remote peer, returning an acknowledgement handle.
+// Dispatch blocks until the message has been sent over the connection. The
+// returned Acknowledgement can be used to wait for the response.
+//
+// [Peer.Serve] must be running when Dispatch is called, otherwise it blocks
 // until the context is canceled.
-func (p *Peer) SendMessage(ctx context.Context, message Message) error {
+func (p *Peer) Dispatch(ctx context.Context, message Message) (*Acknowledgement, error) {
 	p.lazyInit()
 
 	reqID := p.requestID.Inc()
@@ -239,34 +266,47 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 		result: make(chan error, 1),
 	}
 	p.sentRequests.Store(reqID, req)
-	defer p.sentRequests.Delete(reqID)
 
-	timer := p.Metrics.newMessageRTTTimer()
-	defer timer.ObserveDuration()
 	p.Metrics.incMessageSent()
 
 	if err := p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message}); err != nil {
-		return err
+		select {
+		case req.result <- err:
+		default:
+		}
+		p.sentRequests.Delete(reqID)
+		return nil, err
 	}
 
-	select {
-	case <-ctx.Done():
-		// TODO(rfratto): queue a DiscardFrame
-		return ctx.Err()
-	case <-p.done:
-		return ErrConnClosed
-	case err := <-req.result:
-		return err
-	}
+	return &Acknowledgement{connClosed: p.done, result: req.result}, nil
 }
 
-// SendMessageAsync sends a message to the remote peer asynchronously.
-// SendMessageAsync blocks until the message has been sent over the connection
-// but does not wait for an acknowledgement or response.
+// Message the remote peer, blocking until the provided context is canceled or
+// the remote peer acknowledges the message.
 //
-// [Peer.Serve] must be running before SendMessageAsync is called, otherwise it
+// [Peer.Serve] must be running when Message is called, otherwise it blocks
+// until the context is canceled.
+//
+// Message is a convenience wrapper around [Peer.Dispatch] that waits for the
+// acknowledgement before returning.
+func (p *Peer) Message(ctx context.Context, message Message) error {
+	timer := p.Metrics.newMessageRTTTimer()
+	defer timer.ObserveDuration()
+
+	resp, err := p.Dispatch(ctx, message)
+	if err != nil {
+		return err
+	}
+	return resp.Wait(ctx)
+}
+
+// Notify the remote peer with a message, blocking until the message has been
+// sent over the connection. Notify does not wait for an acknowledgement to the
+// message.
+//
+// [Peer.Serve] must be running before Notify is called, otherwise it
 // blocks until the context is canceled.
-func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
+func (p *Peer) Notify(ctx context.Context, message Message) error {
 	p.lazyInit()
 
 	reqID := p.requestID.Inc()

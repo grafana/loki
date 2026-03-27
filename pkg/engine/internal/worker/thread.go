@@ -28,9 +28,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// RecordSink sends record batches to a destination. Used by drainPipeline so callers can inject mocks in tests.
+// messageResponse is the interface implemented by [wire.Acknowledgement] used
+// for mocking in tests.
+type messageResponse interface {
+	Wait(ctx context.Context) error
+}
+
+// recordSink sends record batches to a destination. Used by drainPipeline so callers can inject mocks in tests.
 type recordSink interface {
-	Send(ctx context.Context, rec arrow.RecordBatch) error
+	Send(ctx context.Context, rec arrow.RecordBatch) (messageResponse, error)
 }
 
 // sinksForJob returns the job's sinks as a slice for use with drainPipeline.
@@ -237,7 +243,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	if ok {
 		notifier.SubscribeToTimeRangeChanges(func(ts time.Time, lessThan bool) {
 			// Send a Running task status update with the current time range
-			err := job.Scheduler.SendMessage(ctx, wire.TaskStatusMessage{
+			err := job.Scheduler.Message(ctx, wire.TaskStatusMessage{
 				ID: job.Task.ULID,
 				Status: workflow.TaskStatus{
 					State: workflow.TaskStateRunning,
@@ -253,7 +259,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		})
 	}
 
-	err = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
+	err = job.Scheduler.Notify(ctx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
 		Status: workflow.TaskStatus{State: workflow.TaskStateRunning},
 	})
@@ -267,7 +273,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	_, err = t.drainPipeline(ctx, pipeline, sinksForJob(job), logger)
 	if err != nil {
 		level.Warn(logger).Log("msg", "task failed", "err", err)
-		_ = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
+		_ = job.Scheduler.Notify(ctx, wire.TaskStatusMessage{
 			ID: job.Task.ULID,
 			Status: workflow.TaskStatus{
 				State: workflow.TaskStateFailed,
@@ -309,7 +315,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	// Wait for the scheduler to confirm the task has completed before
 	// requesting a new one. This allows the scheduler to update its bookkeeping
 	// for how many threads have capacity for requesting tasks.
-	err = job.Scheduler.SendMessage(ctx, wire.TaskStatusMessage{
+	err = job.Scheduler.Message(ctx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
 		Status: workflow.TaskStatus{State: workflow.TaskStateCompleted, Capture: capture},
 	})
@@ -324,6 +330,20 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 	if err := pipeline.Open(ctx); err != nil {
 		return 0, err
 	}
+
+	// We accumulate the list of pending responses so we can wait for them all
+	// at once. Waiting for ACKs one at a time would increase our drain time,
+	// since ACKs are only sent after the sent message enters the receiving
+	// pipeline for processing.
+	var pendingResponses []messageResponse
+	defer func() {
+		// Wait for all pending responses to complete.
+		for _, resp := range pendingResponses {
+			if err := resp.Wait(ctx); err != nil {
+				level.Warn(logger).Log("msg", "failed to send result", "err", err)
+			}
+		}
+	}()
 
 	var totalRows int
 
@@ -349,8 +369,10 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			// best-effort processing our task. It's possible that one of
 			// the receiving sinks got canceled, and other sinks may still
 			// need data.
-			if err := sink.Send(ctx, rec); err != nil {
+			if resp, err := sink.Send(ctx, rec); err != nil {
 				level.Warn(logger).Log("msg", "failed to send result", "err", err)
+			} else if resp != nil {
+				pendingResponses = append(pendingResponses, resp)
 			}
 		}
 		region.Record(xcap.TaskRecordsSent.Observe(1))

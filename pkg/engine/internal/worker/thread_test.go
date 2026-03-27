@@ -30,7 +30,7 @@ type mockRecordSink struct {
 	RecordedFieldNames [][]string
 }
 
-func (m *mockRecordSink) Send(_ context.Context, rec arrow.RecordBatch) error {
+func (m *mockRecordSink) Send(_ context.Context, rec arrow.RecordBatch) (messageResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.SendCount++
@@ -43,8 +43,13 @@ func (m *mockRecordSink) Send(_ context.Context, rec arrow.RecordBatch) error {
 		}
 		m.RecordedFieldNames = append(m.RecordedFieldNames, names)
 	}
-	return nil
+
+	return mockMessageResponse{}, nil
 }
+
+type mockMessageResponse struct{}
+
+func (mockMessageResponse) Wait(_ context.Context) error { return nil }
 
 // recordInput pairs a schema with rows to build one record for pipeline tests.
 type recordInput struct {
