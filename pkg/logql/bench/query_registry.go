@@ -204,12 +204,12 @@ func (r *QueryRegistry) loadFile(filePath string, suite Suite, fileName string) 
 		q.Source = fmt.Sprintf("%s/%s:%d", suite, fileName, lineNum)
 
 		// Default directions to "both" for log queries
-		if q.Directions == "" && q.Kind == "log" {
+		if q.Directions == "" && q.Kind == kindLog {
 			q.Directions = DirectionBoth
 		}
 
-		if q.Kind == "" || (q.Kind != "metric" && q.Kind != "log") {
-			q.Kind = "log"
+		if q.Kind == "" || (q.Kind != kindMetric && q.Kind != kindLog) {
+			q.Kind = kindLog
 		}
 
 		// Validate time range
@@ -325,7 +325,7 @@ func (r *QueryRegistry) ExpandQuery(def QueryDefinition, resolver VariableResolv
 	// Create test cases based on query kind and directions
 	var cases []TestCase
 
-	if def.Kind == "metric" {
+	if def.Kind == kindMetric {
 		// Metric queries only run in forward direction
 		tc := TestCase{
 			Query:     resolvedQuery,
