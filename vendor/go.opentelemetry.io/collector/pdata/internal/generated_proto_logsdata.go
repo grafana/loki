@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -30,7 +31,7 @@ var (
 )
 
 func NewLogsData() *LogsData {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &LogsData{}
 	}
 	return protoPoolLogsData.Get().(*LogsData)
@@ -41,7 +42,7 @@ func DeleteLogsData(orig *LogsData, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}

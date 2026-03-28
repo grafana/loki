@@ -25,8 +25,7 @@ When using Loki in multi-tenant mode, Loki requires the HTTP header
 of populating this value should be handled by the authenticating reverse proxy.
 For more information, read the [multi-tenancy](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/) documentation.{{< /admonition >}}
 
-For information on authenticating Promtail, see the documentation for [how to
-configure Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/).
+For information on configuring authentication for your log shipping agent, see the [Grafana Alloy documentation](https://grafana.com/docs/alloy/latest/).
 
 ## Enable basic authentication for Loki using nginx
 

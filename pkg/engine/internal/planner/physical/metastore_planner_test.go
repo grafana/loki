@@ -38,15 +38,19 @@ func TestMetastorePlanner_Plan_UsesMergeRootAndPointersTargets(t *testing.T) {
 	start := time.Unix(10, 0)
 	end := start.Add(time.Hour)
 
-	p := NewMetastorePlanner(ms)
+	p := NewMetastorePlanner(ms, 100)
 	plan, err := p.Plan(context.Background(), nil, nil, start, end)
 	require.NoError(t, err)
 
 	root, err := plan.Root()
 	require.NoError(t, err)
-	require.IsType(t, &Merge{}, root)
+	require.IsType(t, &Batching{}, root)
 
-	children := plan.Children(root)
+	batchChildren := plan.Children(root)
+	require.Len(t, batchChildren, 1)
+	require.IsType(t, &Merge{}, batchChildren[0])
+
+	children := plan.Children(batchChildren[0])
 	require.Len(t, children, 1)
 	require.IsType(t, &Parallelize{}, children[0])
 

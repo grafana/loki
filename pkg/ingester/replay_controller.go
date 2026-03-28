@@ -1,6 +1,8 @@
 package ingester
 
 import (
+	"fmt"
+
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
 	"go.uber.org/atomic"
@@ -45,9 +47,10 @@ type replayController struct {
 	// > 64-bit alignment of 64-bit words accessed atomically. The first word in a
 	// > variable or in an allocated struct, array, or slice can be relied upon to
 	// > be 64-bit aligned.
-	currentBytes atomic.Int64
-	cfg          WALConfig
-	metrics      *ingesterMetrics
+	currentBytes    atomic.Int64
+	totalSubtracted atomic.Int64 // monotonically increasing; used to detect flush no-progress without being affected by concurrent Add calls
+	cfg             WALConfig
+	metrics         *ingesterMetrics
 
 	flusher Flusher
 	flushSF singleflight.Group
@@ -68,8 +71,8 @@ func (c *replayController) Add(x int64) {
 }
 
 func (c *replayController) Sub(x int64) {
+	c.totalSubtracted.Add(x)
 	c.metrics.setRecoveryBytesInUse(c.currentBytes.Sub(x))
-
 }
 
 func (c *replayController) Cur() int {
@@ -107,10 +110,21 @@ func (c *replayController) flush() {
 // It will call the function as long as there is expected room before the memory cap and will then flush data intermittently
 // when needed.
 func (c *replayController) WithBackPressure(fn func() error) error {
+	ceiling := int(c.cfg.ReplayMemoryCeiling) * 9 / 10
+	if ceiling <= 0 {
+		return fn()
+	}
 	// use 90% as a threshold since we'll be adding to it.
-	for c.Cur() > int(c.cfg.ReplayMemoryCeiling)*9/10 {
+	for c.Cur() > ceiling {
+		subtractedBefore := c.totalSubtracted.Load()
 		// too much backpressure, flush
 		c.Flush()
+		if c.totalSubtracted.Load() == subtractedBefore {
+			return fmt.Errorf("WAL replay flush made no progress: %s in use, ceiling %s; cannot recover",
+				humanize.Bytes(uint64(c.currentBytes.Load())),
+				humanize.Bytes(uint64(ceiling)),
+			)
+		}
 	}
 
 	return fn()

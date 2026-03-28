@@ -107,7 +107,7 @@ func (b *rateBatcher) running(ctx context.Context) error {
 
 // Add adds streams to the pending batch and returns the last known rates for them.
 // This is a non-blocking operation. Streams with unknown rates will have rate=0.
-func (b *rateBatcher) Add(tenant string, streams []SegmentedStream) map[uint64]uint64 {
+func (b *rateBatcher) Add(tenant string, streams []segmentedStream) map[uint64]uint64 {
 	if len(streams) == 0 {
 		return nil
 	}

@@ -36,6 +36,7 @@ type config struct {
 	Propagators        propagation.TextMapPropagator
 	TracerProvider     trace.TracerProvider
 	MeterProvider      metric.MeterProvider
+	SpanKind           trace.SpanKind
 	SpanStartOptions   []trace.SpanStartOption
 	SpanAttributes     []attribute.KeyValue
 	MetricAttributes   []attribute.KeyValue
@@ -178,6 +179,18 @@ func WithMessageEvents(events ...Event) Option {
 func WithSpanOptions(opts ...trace.SpanStartOption) Option {
 	return optionFunc(func(c *config) {
 		c.SpanStartOptions = append(c.SpanStartOptions, opts...)
+	})
+}
+
+// WithSpanKind returns an Option to set the span kind for spans created by
+// the handler.
+//
+// By default, [NewServerHandler] creates spans with
+// [trace.SpanKindServer] and [NewClientHandler] creates spans with
+// [trace.SpanKindClient].
+func WithSpanKind(sk trace.SpanKind) Option {
+	return optionFunc(func(c *config) {
+		c.SpanKind = sk
 	})
 }
 

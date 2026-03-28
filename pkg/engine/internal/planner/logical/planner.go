@@ -530,6 +530,16 @@ func convertMatcherType(t labels.MatchType) types.BinaryOp {
 }
 
 func convertLineFilterExpr(expr *syntax.LineFilterExpr) Value {
+	current := convertLineFilter(expr.LineFilter)
+
+	if expr.Or != nil {
+		current = &BinOp{
+			Left:  current,
+			Right: convertLineFilterExpr(expr.Or),
+			Op:    types.BinaryOpOr,
+		}
+	}
+
 	if expr.Left != nil {
 		op := types.BinaryOpAnd
 		if expr.IsOrChild {
@@ -537,11 +547,12 @@ func convertLineFilterExpr(expr *syntax.LineFilterExpr) Value {
 		}
 		return &BinOp{
 			Left:  convertLineFilterExpr(expr.Left),
-			Right: convertLineFilter(expr.LineFilter),
+			Right: current,
 			Op:    op,
 		}
 	}
-	return convertLineFilter(expr.LineFilter)
+
+	return current
 }
 
 func convertLineFilter(filter syntax.LineFilter) Value {

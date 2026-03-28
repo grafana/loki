@@ -52,8 +52,6 @@ Commonly used sections:
 - [API documentation](https://grafana.com/docs/loki/latest/api/) for getting logs into Loki.
 - [Labels](https://grafana.com/docs/loki/latest/getting-started/labels/)
 - [Operations](https://grafana.com/docs/loki/latest/operations/)
-- [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/) is an agent which tails log files and pushes them to Loki.
-- [Pipelines](https://grafana.com/docs/loki/latest/clients/promtail/pipelines/) details the log processing pipeline.
 - [Docker Driver Client](https://grafana.com/docs/loki/latest/clients/docker-driver/) is a Docker plugin to send logs directly to Loki from Docker containers.
 - [LogCLI](https://grafana.com/docs/loki/latest/query/logcli/) provides a command-line interface for querying logs.
 - [Loki Canary](https://grafana.com/docs/loki/latest/operations/loki-canary/) monitors your Loki installation for missing logs.
@@ -130,37 +128,6 @@ $ make loki
 
 # Run executable
 ./loki -config.file=./cmd/loki/loki-local-multi-tenant-config.yaml -runtime-config.file=./cmd/loki/loki-overrides.yaml
-```
-
-To build Promtail on non-Linux platforms, use the following command:
-
-```bash
-$ go build ./clients/cmd/promtail
-```
-
-On Linux, Promtail requires the systemd headers to be installed if
-Journal support is enabled.
-To enable Journal support the go build tag flag `promtail_journal_enabled` should be passed
-
-With Journal support on Ubuntu, run with the following commands:
-
-```bash
-$ sudo apt install -y libsystemd-dev
-$ go build --tags=promtail_journal_enabled ./clients/cmd/promtail
-```
-
-With Journal support on CentOS, run with the following commands:
-
-```bash
-$ sudo yum install -y systemd-devel
-$ go build --tags=promtail_journal_enabled ./clients/cmd/promtail
-```
-
-Otherwise, to build Promtail without Journal support, run `go build`
-with CGO disabled:
-
-```bash
-$ CGO_ENABLED=0 go build ./clients/cmd/promtail
 ```
 
 ## Adopters

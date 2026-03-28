@@ -34,7 +34,7 @@ func (m *mockEngine) Execute(ctx context.Context, params logql.Params) (logqlmod
 	return logqlmodel.Result{}, nil
 }
 
-func newTestHandler(cfg Config, exec queryExecutor, limits querier_limits.Limits) queryrangebase.Handler {
+func newTestHandler(cfg Config, exec QueryExecutor, limits querier_limits.Limits) queryrangebase.Handler {
 	return &queryHandler{
 		cfg:    cfg,
 		exec:   exec,
@@ -48,6 +48,12 @@ type mockLimits struct {
 	RetentionLimits
 }
 
+func (m *mockLimits) MaxCacheFreshness(_ context.Context, _ string) time.Duration { return 0 }
+func (m *mockLimits) MaxQueryParallelism(_ context.Context, _ string) int         { return 1 }
+func (m *mockLimits) EngineResultsCacheTimeBucketInterval(_ string) time.Duration {
+	return 24 * time.Hour
+}
+
 func TestHandler(t *testing.T) {
 	cfg := Config{
 		Executor: ExecutorConfig{
@@ -59,7 +65,8 @@ func TestHandler(t *testing.T) {
 	eng := &mockEngine{}
 	limits := &mockLimits{}
 
-	handler := executorHandler(cfg, logger, eng, limits)
+	handler, err := executorHandler(cfg, logger, eng, limits, nil)
+	require.NoError(t, err)
 	require.NotNil(t, handler)
 }
 
@@ -924,7 +931,7 @@ func TestExecutorHandler_AlignQueriesWithStep(t *testing.T) {
 	expectedAlignedStart := time.UnixMilli(alignedStartMs)
 	expectedAlignedEnd := time.UnixMilli(alignedEndMs)
 
-	makeHandler := func(cfg Config, eng queryExecutor, limits querier_limits.Limits) queryrangebase.Handler {
+	makeHandler := func(cfg Config, eng QueryExecutor, limits querier_limits.Limits) queryrangebase.Handler {
 		var h queryrangebase.Handler = &queryHandler{
 			cfg:    cfg,
 			exec:   eng,

@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -28,7 +29,7 @@ var (
 )
 
 func NewExportTraceServiceResponse() *ExportTraceServiceResponse {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ExportTraceServiceResponse{}
 	}
 	return protoPoolExportTraceServiceResponse.Get().(*ExportTraceServiceResponse)
@@ -39,7 +40,7 @@ func DeleteExportTraceServiceResponse(orig *ExportTraceServiceResponse, nullable
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}

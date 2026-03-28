@@ -188,6 +188,8 @@ func (w *Writer) Close() error {
 //
 // w.Close must be called before Reset or pending data may be dropped.
 func (w *Writer) Reset(writer io.Writer) {
+	lz4block.Put(w.data)
+	w.data = nil
 	w.frame.Reset(w.num)
 	w.state.reset()
 	w.src = writer
@@ -225,11 +227,13 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 			return
 		}
 		n += int64(rn)
-		err = w.write(data[:rn], true)
-		if err != nil {
-			return
+		if rn > 0 {
+			err = w.write(data[:rn], true)
+			if err != nil {
+				return
+			}
+			w.handler(rn)
 		}
-		w.handler(rn)
 		if !done && !w.isNotConcurrent() {
 			// The buffer will be returned automatically by go routines (safe=true)
 			// so get a new one fo the next round.

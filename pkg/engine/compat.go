@@ -115,7 +115,12 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 		case ident.ColumnType() == types.ColumnTypeLabel:
 			labelCol := col.(*array.String)
 			forEachNotNullRowColValue(numRows, labelCol, func(rowIdx int) {
-				b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, labelCol.Value(rowIdx))
+				val := labelCol.Value(rowIdx)
+				if val == "" {
+					// We also drop empty labels from stream labels to match classic Loki engine behavior.
+					return
+				}
+				b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, val)
 			})
 
 		// One of the metadata columns

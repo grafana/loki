@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -76,7 +77,7 @@ var (
 )
 
 func NewNumberDataPoint() *NumberDataPoint {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &NumberDataPoint{}
 	}
 	return protoPoolNumberDataPoint.Get().(*NumberDataPoint)
@@ -87,7 +88,7 @@ func DeleteNumberDataPoint(orig *NumberDataPoint, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -97,12 +98,12 @@ func DeleteNumberDataPoint(orig *NumberDataPoint, nullable bool) {
 
 	switch ov := orig.Value.(type) {
 	case *NumberDataPoint_AsDouble:
-		if UseProtoPooling.IsEnabled() {
+		if metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov.AsDouble = float64(0)
 			ProtoPoolNumberDataPoint_AsDouble.Put(ov)
 		}
 	case *NumberDataPoint_AsInt:
-		if UseProtoPooling.IsEnabled() {
+		if metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov.AsInt = int64(0)
 			ProtoPoolNumberDataPoint_AsInt.Put(ov)
 		}
@@ -137,7 +138,7 @@ func CopyNumberDataPoint(dest, src *NumberDataPoint) *NumberDataPoint {
 	switch t := src.Value.(type) {
 	case *NumberDataPoint_AsDouble:
 		var ov *NumberDataPoint_AsDouble
-		if !UseProtoPooling.IsEnabled() {
+		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov = &NumberDataPoint_AsDouble{}
 		} else {
 			ov = ProtoPoolNumberDataPoint_AsDouble.Get().(*NumberDataPoint_AsDouble)
@@ -147,7 +148,7 @@ func CopyNumberDataPoint(dest, src *NumberDataPoint) *NumberDataPoint {
 
 	case *NumberDataPoint_AsInt:
 		var ov *NumberDataPoint_AsInt
-		if !UseProtoPooling.IsEnabled() {
+		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov = &NumberDataPoint_AsInt{}
 		} else {
 			ov = ProtoPoolNumberDataPoint_AsInt.Get().(*NumberDataPoint_AsInt)
@@ -281,7 +282,7 @@ func (orig *NumberDataPoint) UnmarshalJSON(iter *json.Iterator) {
 		case "asDouble", "as_double":
 			{
 				var ov *NumberDataPoint_AsDouble
-				if !UseProtoPooling.IsEnabled() {
+				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 					ov = &NumberDataPoint_AsDouble{}
 				} else {
 					ov = ProtoPoolNumberDataPoint_AsDouble.Get().(*NumberDataPoint_AsDouble)
@@ -292,7 +293,7 @@ func (orig *NumberDataPoint) UnmarshalJSON(iter *json.Iterator) {
 		case "asInt", "as_int":
 			{
 				var ov *NumberDataPoint_AsInt
-				if !UseProtoPooling.IsEnabled() {
+				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 					ov = &NumberDataPoint_AsInt{}
 				} else {
 					ov = ProtoPoolNumberDataPoint_AsInt.Get().(*NumberDataPoint_AsInt)
@@ -467,7 +468,7 @@ func (orig *NumberDataPoint) UnmarshalProto(buf []byte) error {
 				return err
 			}
 			var ov *NumberDataPoint_AsDouble
-			if !UseProtoPooling.IsEnabled() {
+			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 				ov = &NumberDataPoint_AsDouble{}
 			} else {
 				ov = ProtoPoolNumberDataPoint_AsDouble.Get().(*NumberDataPoint_AsDouble)
@@ -485,7 +486,7 @@ func (orig *NumberDataPoint) UnmarshalProto(buf []byte) error {
 				return err
 			}
 			var ov *NumberDataPoint_AsInt
-			if !UseProtoPooling.IsEnabled() {
+			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 				ov = &NumberDataPoint_AsInt{}
 			} else {
 				ov = ProtoPoolNumberDataPoint_AsInt.Get().(*NumberDataPoint_AsInt)

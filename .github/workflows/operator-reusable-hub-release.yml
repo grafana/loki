@@ -9,11 +9,6 @@ on:
       repo:
         type: string
         required: true
-    secrets:
-      APP_ID:
-        required: true
-      APP_PRIVATE_KEY:
-        required: true
 
 jobs:
   create-operator-pull-request:

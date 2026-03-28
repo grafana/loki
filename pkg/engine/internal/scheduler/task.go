@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"slices"
@@ -30,7 +31,8 @@ type task struct {
 	status workflow.TaskStatus
 
 	// wfRegion is the region associated with the parent workflow of this task.
-	wfRegion *xcap.Region
+	wfRegion        *xcap.Region
+	runtimeTraceCtx context.Context
 }
 
 var validTaskTransitions = map[workflow.TaskState][]workflow.TaskState{
