@@ -27,8 +27,6 @@ jobs:
             path: ./cmd/logcli
           - name: querytee
             path: ./cmd/querytee
-          - name: promtail
-            path: ./clients/cmd/promtail
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

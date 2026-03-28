@@ -1,0 +1,18 @@
+---
+overrides:
+  test-a:
+    ingestion_rate_mb: 2
+    ingestion_burst_size_mb: 5
+    max_global_streams_per_user: 1
+    max_chunks_per_query: 1000000
+    blocked_queries:
+    - pattern: ""
+      hash: 12345
+      types: metric,limited
+    - pattern: .*prod.*
+      regex: true
+    - pattern: ""
+      types: metric
+    - pattern: sum(rate({env="prod"}[1m]))
+    - pattern: '{kubernetes_namespace_name="my-app"}'
+    - pattern: ""

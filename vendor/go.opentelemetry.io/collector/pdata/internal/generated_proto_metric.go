@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -125,7 +126,7 @@ var (
 )
 
 func NewMetric() *Metric {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &Metric{}
 	}
 	return protoPoolMetric.Get().(*Metric)
@@ -136,7 +137,7 @@ func DeleteMetric(orig *Metric, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -191,7 +192,7 @@ func CopyMetric(dest, src *Metric) *Metric {
 	switch t := src.Data.(type) {
 	case *Metric_Gauge:
 		var ov *Metric_Gauge
-		if !UseProtoPooling.IsEnabled() {
+		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov = &Metric_Gauge{}
 		} else {
 			ov = ProtoPoolMetric_Gauge.Get().(*Metric_Gauge)
@@ -202,7 +203,7 @@ func CopyMetric(dest, src *Metric) *Metric {
 
 	case *Metric_Sum:
 		var ov *Metric_Sum
-		if !UseProtoPooling.IsEnabled() {
+		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov = &Metric_Sum{}
 		} else {
 			ov = ProtoPoolMetric_Sum.Get().(*Metric_Sum)
@@ -213,7 +214,7 @@ func CopyMetric(dest, src *Metric) *Metric {
 
 	case *Metric_Histogram:
 		var ov *Metric_Histogram
-		if !UseProtoPooling.IsEnabled() {
+		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov = &Metric_Histogram{}
 		} else {
 			ov = ProtoPoolMetric_Histogram.Get().(*Metric_Histogram)
@@ -224,7 +225,7 @@ func CopyMetric(dest, src *Metric) *Metric {
 
 	case *Metric_ExponentialHistogram:
 		var ov *Metric_ExponentialHistogram
-		if !UseProtoPooling.IsEnabled() {
+		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov = &Metric_ExponentialHistogram{}
 		} else {
 			ov = ProtoPoolMetric_ExponentialHistogram.Get().(*Metric_ExponentialHistogram)
@@ -235,7 +236,7 @@ func CopyMetric(dest, src *Metric) *Metric {
 
 	case *Metric_Summary:
 		var ov *Metric_Summary
-		if !UseProtoPooling.IsEnabled() {
+		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov = &Metric_Summary{}
 		} else {
 			ov = ProtoPoolMetric_Summary.Get().(*Metric_Summary)
@@ -373,7 +374,7 @@ func (orig *Metric) UnmarshalJSON(iter *json.Iterator) {
 		case "gauge":
 			{
 				var ov *Metric_Gauge
-				if !UseProtoPooling.IsEnabled() {
+				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 					ov = &Metric_Gauge{}
 				} else {
 					ov = ProtoPoolMetric_Gauge.Get().(*Metric_Gauge)
@@ -385,7 +386,7 @@ func (orig *Metric) UnmarshalJSON(iter *json.Iterator) {
 		case "sum":
 			{
 				var ov *Metric_Sum
-				if !UseProtoPooling.IsEnabled() {
+				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 					ov = &Metric_Sum{}
 				} else {
 					ov = ProtoPoolMetric_Sum.Get().(*Metric_Sum)
@@ -397,7 +398,7 @@ func (orig *Metric) UnmarshalJSON(iter *json.Iterator) {
 		case "histogram":
 			{
 				var ov *Metric_Histogram
-				if !UseProtoPooling.IsEnabled() {
+				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 					ov = &Metric_Histogram{}
 				} else {
 					ov = ProtoPoolMetric_Histogram.Get().(*Metric_Histogram)
@@ -409,7 +410,7 @@ func (orig *Metric) UnmarshalJSON(iter *json.Iterator) {
 		case "exponentialHistogram", "exponential_histogram":
 			{
 				var ov *Metric_ExponentialHistogram
-				if !UseProtoPooling.IsEnabled() {
+				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 					ov = &Metric_ExponentialHistogram{}
 				} else {
 					ov = ProtoPoolMetric_ExponentialHistogram.Get().(*Metric_ExponentialHistogram)
@@ -421,7 +422,7 @@ func (orig *Metric) UnmarshalJSON(iter *json.Iterator) {
 		case "summary":
 			{
 				var ov *Metric_Summary
-				if !UseProtoPooling.IsEnabled() {
+				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 					ov = &Metric_Summary{}
 				} else {
 					ov = ProtoPoolMetric_Summary.Get().(*Metric_Summary)
@@ -641,7 +642,7 @@ func (orig *Metric) UnmarshalProto(buf []byte) error {
 			}
 			startPos := pos - length
 			var ov *Metric_Gauge
-			if !UseProtoPooling.IsEnabled() {
+			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 				ov = &Metric_Gauge{}
 			} else {
 				ov = ProtoPoolMetric_Gauge.Get().(*Metric_Gauge)
@@ -664,7 +665,7 @@ func (orig *Metric) UnmarshalProto(buf []byte) error {
 			}
 			startPos := pos - length
 			var ov *Metric_Sum
-			if !UseProtoPooling.IsEnabled() {
+			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 				ov = &Metric_Sum{}
 			} else {
 				ov = ProtoPoolMetric_Sum.Get().(*Metric_Sum)
@@ -687,7 +688,7 @@ func (orig *Metric) UnmarshalProto(buf []byte) error {
 			}
 			startPos := pos - length
 			var ov *Metric_Histogram
-			if !UseProtoPooling.IsEnabled() {
+			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 				ov = &Metric_Histogram{}
 			} else {
 				ov = ProtoPoolMetric_Histogram.Get().(*Metric_Histogram)
@@ -710,7 +711,7 @@ func (orig *Metric) UnmarshalProto(buf []byte) error {
 			}
 			startPos := pos - length
 			var ov *Metric_ExponentialHistogram
-			if !UseProtoPooling.IsEnabled() {
+			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 				ov = &Metric_ExponentialHistogram{}
 			} else {
 				ov = ProtoPoolMetric_ExponentialHistogram.Get().(*Metric_ExponentialHistogram)
@@ -733,7 +734,7 @@ func (orig *Metric) UnmarshalProto(buf []byte) error {
 			}
 			startPos := pos - length
 			var ov *Metric_Summary
-			if !UseProtoPooling.IsEnabled() {
+			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 				ov = &Metric_Summary{}
 			} else {
 				ov = ProtoPoolMetric_Summary.Get().(*Metric_Summary)
