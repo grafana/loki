@@ -19,8 +19,12 @@ func IsMember(alloc *memory.Allocator, datum columnar.Datum, values *columnar.Se
 	switch datum.Kind() {
 	case columnar.KindUTF8:
 		return isMemberUTF8(alloc, datum, values, selection)
+	case columnar.KindInt32:
+		return isMemberNumber[int32](alloc, datum, values, selection)
 	case columnar.KindInt64:
 		return isMemberNumber[int64](alloc, datum, values, selection)
+	case columnar.KindUint32:
+		return isMemberNumber[uint32](alloc, datum, values, selection)
 	case columnar.KindUint64:
 		return isMemberNumber[uint64](alloc, datum, values, selection)
 	default:

@@ -22,6 +22,24 @@ EQ  bool:[true false null]  bool:null   -> bool:[null null null]
 # Bool (array, array) tests
 EQ  bool:[true false true false null null null]  bool:[true true false false true false null]  -> bool:[true false false true null null null]
 
+# Int32 (scalar, scalar) tests
+EQ  int32:5     int32:5     -> bool:true
+EQ  int32:5     int32:10    -> bool:false
+EQ  int32:5     int32:null  -> bool:null
+EQ  int32:null  int32:10    -> bool:null
+EQ  int32:null  int32:null  -> bool:null
+
+# Int32 (scalar, array) tests
+EQ  int32:5     int32:[5 10 null]  -> bool:[true false null]
+EQ  int32:null  int32:[5 10 null]  -> bool:[null null null]
+
+# Int32 (array, scalar) tests
+EQ  int32:[5 10 null]  int32:10    -> bool:[false true null]
+EQ  int32:[5 10 null]  int32:null  -> bool:[null null null]
+
+# Int32 (array, array) tests
+EQ  int32:[1 2 3 4 null null null]  int32:[1 3 3 5 1 2 null]  -> bool:[true false true false null null null]
+
 # Int64 (scalar, scalar) tests
 EQ  int64:5     int64:5     -> bool:true
 EQ  int64:5     int64:10    -> bool:false
@@ -39,6 +57,24 @@ EQ  int64:[5 10 null]  int64:null  -> bool:[null null null]
 
 # Int64 (array, array) tests
 EQ  int64:[1 2 3 4 null null null]  int64:[1 3 3 5 1 2 null]  -> bool:[true false true false null null null]
+
+# Uint32 (scalar, scalar) tests
+EQ  uint32:5     uint32:5     -> bool:true
+EQ  uint32:5     uint32:10    -> bool:false
+EQ  uint32:5     uint32:null  -> bool:null
+EQ  uint32:null  uint32:10    -> bool:null
+EQ  uint32:null  uint32:null  -> bool:null
+
+# Uint32 (scalar, array) tests
+EQ  uint32:5     uint32:[5 10 null]  -> bool:[true false null]
+EQ  uint32:null  uint32:[5 10 null]  -> bool:[null null null]
+
+# Uint32 (array, scalar) tests
+EQ  uint32:[5 10 null]  uint32:10    -> bool:[false true null]
+EQ  uint32:[5 10 null]  uint32:null  -> bool:[null null null]
+
+# Uint32 (array, array) tests
+EQ  uint32:[1 2 3 4 null null null]  uint32:[1 3 3 5 1 2 null]  -> bool:[true false true false null null null]
 
 # Uint64 (scalar, scalar) tests
 EQ  uint64:5     uint64:5     -> bool:true
@@ -100,6 +136,24 @@ NEQ  bool:[true false null]  bool:null   -> bool:[null null null]
 # Bool (array, array) tests
 NEQ  bool:[true false true false null null null]  bool:[true true false false true false null]  -> bool:[false true true false null null null]
 
+# Int32 (scalar, scalar) tests
+NEQ  int32:5     int32:5     -> bool:false
+NEQ  int32:5     int32:10    -> bool:true
+NEQ  int32:5     int32:null  -> bool:null
+NEQ  int32:null  int32:10    -> bool:null
+NEQ  int32:null  int32:null  -> bool:null
+
+# Int32 (scalar, array) tests
+NEQ  int32:5     int32:[5 10 null]  -> bool:[false true null]
+NEQ  int32:null  int32:[5 10 null]  -> bool:[null null null]
+
+# Int32 (array, scalar) tests
+NEQ  int32:[5 10 null]  int32:10    -> bool:[true false null]
+NEQ  int32:[5 10 null]  int32:null  -> bool:[null null null]
+
+# Int32 (array, array) tests
+NEQ  int32:[1 2 3 4 null null null]  int32:[1 3 3 5 1 2 null]  -> bool:[false true false true null null null]
+
 # Int64 (scalar, scalar) tests
 NEQ  int64:5     int64:5     -> bool:false
 NEQ  int64:5     int64:10    -> bool:true
@@ -117,6 +171,24 @@ NEQ  int64:[5 10 null]  int64:null  -> bool:[null null null]
 
 # Int64 (array, array) tests
 NEQ  int64:[1 2 3 4 null null null]  int64:[1 3 3 5 1 2 null]  -> bool:[false true false true null null null]
+
+# Uint32 (scalar, scalar) tests
+NEQ  uint32:5     uint32:5     -> bool:false
+NEQ  uint32:5     uint32:10    -> bool:true
+NEQ  uint32:5     uint32:null  -> bool:null
+NEQ  uint32:null  uint32:10    -> bool:null
+NEQ  uint32:null  uint32:null  -> bool:null
+
+# Uint32 (scalar, array) tests
+NEQ  uint32:5     uint32:[5 10 null]  -> bool:[false true null]
+NEQ  uint32:null  uint32:[5 10 null]  -> bool:[null null null]
+
+# Uint32 (array, scalar) tests
+NEQ  uint32:[5 10 null]  uint32:10    -> bool:[true false null]
+NEQ  uint32:[5 10 null]  uint32:null  -> bool:[null null null]
+
+# Uint32 (array, array) tests
+NEQ  uint32:[1 2 3 4 null null null]  uint32:[1 3 3 5 1 2 null]  -> bool:[false true false true null null null]
 
 # Uint64 (scalar, scalar) tests
 NEQ  uint64:5     uint64:5     -> bool:false
@@ -158,6 +230,24 @@ NEQ  utf8:["a" "b" "c" "d" null null null]  utf8:["a" "x" "c" "y" "foo" "bar" nu
 # LT (compute.LessThan)
 #
 
+# Int32 (scalar, scalar) tests
+LT  int32:5     int32:10    -> bool:true
+LT  int32:10    int32:5     -> bool:false
+LT  int32:5     int32:5     -> bool:false
+LT  int32:5     int32:null  -> bool:null
+LT  int32:null  int32:10    -> bool:null
+
+# Int32 (scalar, array) tests
+LT  int32:5     int32:[3 5 10 null]  -> bool:[false false true null]
+LT  int32:null  int32:[5 10 null]    -> bool:[null null null]
+
+# Int32 (array, scalar) tests
+LT  int32:[3 5 10 null]  int32:5     -> bool:[true false false null]
+LT  int32:[5 10 null]    int32:null  -> bool:[null null null]
+
+# Int32 (array, array) tests
+LT  int32:[1 5 10 10 null null null]  int32:[5 5 5 15 1 2 null]  -> bool:[true false false true null null null]
+
 # Int64 (scalar, scalar) tests
 LT  int64:5     int64:10    -> bool:true
 LT  int64:10    int64:5     -> bool:false
@@ -175,6 +265,24 @@ LT  int64:[5 10 null]    int64:null  -> bool:[null null null]
 
 # Int64 (array, array) tests
 LT  int64:[1 5 10 10 null null null]  int64:[5 5 5 15 1 2 null]  -> bool:[true false false true null null null]
+
+# Uint32 (scalar, scalar) tests
+LT  uint32:5     uint32:10    -> bool:true
+LT  uint32:10    uint32:5     -> bool:false
+LT  uint32:5     uint32:5     -> bool:false
+LT  uint32:5     uint32:null  -> bool:null
+LT  uint32:null  uint32:10    -> bool:null
+
+# Uint32 (scalar, array) tests
+LT  uint32:5     uint32:[3 5 10 null]  -> bool:[false false true null]
+LT  uint32:null  uint32:[5 10 null]    -> bool:[null null null]
+
+# Uint32 (array, scalar) tests
+LT  uint32:[3 5 10 null]  uint32:5     -> bool:[true false false null]
+LT  uint32:[5 10 null]    uint32:null  -> bool:[null null null]
+
+# Uint32 (array, array) tests
+LT  uint32:[1 5 10 10 null null null]  uint32:[5 5 5 15 1 2 null]  -> bool:[true false false true null null null]
 
 # Uint64 (scalar, scalar) tests
 LT  uint64:5     uint64:10    -> bool:true
@@ -216,6 +324,24 @@ LT  utf8:["a" "b" "c" "z" null null null]  utf8:["b" "b" "a" "z" "foo" "bar" nul
 # LTE (compute.LessOrEqual)
 #
 
+# Int32 (scalar, scalar) tests
+LTE  int32:5     int32:10    -> bool:true
+LTE  int32:10    int32:5     -> bool:false
+LTE  int32:5     int32:5     -> bool:true
+LTE  int32:5     int32:null  -> bool:null
+LTE  int32:null  int32:10    -> bool:null
+
+# Int32 (scalar, array) tests
+LTE  int32:5     int32:[3 5 10 null]  -> bool:[false true true null]
+LTE  int32:null  int32:[5 10 null]    -> bool:[null null null]
+
+# Int32 (array, scalar) tests
+LTE  int32:[3 5 10 null]  int32:5     -> bool:[true true false null]
+LTE  int32:[5 10 null]    int32:null  -> bool:[null null null]
+
+# Int32 (array, array) tests
+LTE  int32:[1 5 10 10 null null null]  int32:[5 5 5 15 1 2 null]  -> bool:[true true false true null null null]
+
 # Int64 (scalar, scalar) tests
 LTE  int64:5     int64:10    -> bool:true
 LTE  int64:10    int64:5     -> bool:false
@@ -233,6 +359,24 @@ LTE  int64:[5 10 null]    int64:null  -> bool:[null null null]
 
 # Int64 (array, array) tests
 LTE  int64:[1 5 10 10 null null null]  int64:[5 5 5 15 1 2 null]  -> bool:[true true false true null null null]
+
+# Uint32 (scalar, scalar) tests
+LTE  uint32:5     uint32:10    -> bool:true
+LTE  uint32:10    uint32:5     -> bool:false
+LTE  uint32:5     uint32:5     -> bool:true
+LTE  uint32:5     uint32:null  -> bool:null
+LTE  uint32:null  uint32:10    -> bool:null
+
+# Uint32 (scalar, array) tests
+LTE  uint32:5     uint32:[3 5 10 null]  -> bool:[false true true null]
+LTE  uint32:null  uint32:[5 10 null]    -> bool:[null null null]
+
+# Uint32 (array, scalar) tests
+LTE  uint32:[3 5 10 null]  uint32:5     -> bool:[true true false null]
+LTE  uint32:[5 10 null]    uint32:null  -> bool:[null null null]
+
+# Uint32 (array, array) tests
+LTE  uint32:[1 5 10 10 null null null]  uint32:[5 5 5 15 1 2 null]  -> bool:[true true false true null null null]
 
 # Uint64 (scalar, scalar) tests
 LTE  uint64:5     uint64:10    -> bool:true
@@ -274,6 +418,24 @@ LTE  utf8:["a" "b" "c" "z" null null null]  utf8:["b" "b" "a" "z" "foo" "bar" nu
 # GT (compute.GreaterThan)
 #
 
+# Int32 (scalar, scalar) tests
+GT  int32:10    int32:5     -> bool:true
+GT  int32:5     int32:10    -> bool:false
+GT  int32:5     int32:5     -> bool:false
+GT  int32:5     int32:null  -> bool:null
+GT  int32:null  int32:10    -> bool:null
+
+# Int32 (scalar, array) tests
+GT  int32:5     int32:[3 5 10 null]  -> bool:[true false false null]
+GT  int32:null  int32:[5 10 null]    -> bool:[null null null]
+
+# Int32 (array, scalar) tests
+GT  int32:[3 5 10 null]  int32:5     -> bool:[false false true null]
+GT  int32:[5 10 null]    int32:null  -> bool:[null null null]
+
+# Int32 (array, array) tests
+GT  int32:[5 5 10 10 null null null]  int32:[1 5 5 15 1 2 null]  -> bool:[true false true false null null null]
+
 # Int64 (scalar, scalar) tests
 GT  int64:10    int64:5     -> bool:true
 GT  int64:5     int64:10    -> bool:false
@@ -291,6 +453,24 @@ GT  int64:[5 10 null]    int64:null  -> bool:[null null null]
 
 # Int64 (array, array) tests
 GT  int64:[5 5 10 10 null null null]  int64:[1 5 5 15 1 2 null]  -> bool:[true false true false null null null]
+
+# Uint32 (scalar, scalar) tests
+GT  uint32:10    uint32:5     -> bool:true
+GT  uint32:5     uint32:10    -> bool:false
+GT  uint32:5     uint32:5     -> bool:false
+GT  uint32:5     uint32:null  -> bool:null
+GT  uint32:null  uint32:10    -> bool:null
+
+# Uint32 (scalar, array) tests
+GT  uint32:5     uint32:[3 5 10 null]  -> bool:[true false false null]
+GT  uint32:null  uint32:[5 10 null]    -> bool:[null null null]
+
+# Uint32 (array, scalar) tests
+GT  uint32:[3 5 10 null]  uint32:5     -> bool:[false false true null]
+GT  uint32:[5 10 null]    uint32:null  -> bool:[null null null]
+
+# Uint32 (array, array) tests
+GT  uint32:[5 5 10 10 null null null]  uint32:[1 5 5 15 1 2 null]  -> bool:[true false true false null null null]
 
 # Uint64 (scalar, scalar) tests
 GT  uint64:10    uint64:5     -> bool:true
@@ -332,6 +512,24 @@ GT  utf8:["b" "b" "c" "z" null null null]  utf8:["a" "b" "z" "z" "foo" "bar" nul
 # GTE (compute.GreaterOrEqual)
 #
 
+# Int32 (scalar, scalar) tests
+GTE  int32:10    int32:5     -> bool:true
+GTE  int32:5     int32:10    -> bool:false
+GTE  int32:5     int32:5     -> bool:true
+GTE  int32:5     int32:null  -> bool:null
+GTE  int32:null  int32:10    -> bool:null
+
+# Int32 (scalar, array) tests
+GTE  int32:5     int32:[3 5 10 null]  -> bool:[true true false null]
+GTE  int32:null  int32:[5 10 null]    -> bool:[null null null]
+
+# Int32 (array, scalar) tests
+GTE  int32:[3 5 10 null]  int32:5     -> bool:[false true true null]
+GTE  int32:[5 10 null]    int32:null  -> bool:[null null null]
+
+# Int32 (array, array) tests
+GTE  int32:[5 5 10 10 null null null]  int32:[1 5 5 15 1 2 null]  -> bool:[true true true false null null null]
+
 # Int64 (scalar, scalar) tests
 GTE  int64:10    int64:5     -> bool:true
 GTE  int64:5     int64:10    -> bool:false
@@ -349,6 +547,24 @@ GTE  int64:[5 10 null]    int64:null  -> bool:[null null null]
 
 # Int64 (array, array) tests
 GTE  int64:[5 5 10 10 null null null]  int64:[1 5 5 15 1 2 null]  -> bool:[true true true false null null null]
+
+# Uint32 (scalar, scalar) tests
+GTE  uint32:10    uint32:5     -> bool:true
+GTE  uint32:5     uint32:10    -> bool:false
+GTE  uint32:5     uint32:5     -> bool:true
+GTE  uint32:5     uint32:null  -> bool:null
+GTE  uint32:null  uint32:10    -> bool:null
+
+# Uint32 (scalar, array) tests
+GTE  uint32:5     uint32:[3 5 10 null]  -> bool:[true true false null]
+GTE  uint32:null  uint32:[5 10 null]    -> bool:[null null null]
+
+# Uint32 (array, scalar) tests
+GTE  uint32:[3 5 10 null]  uint32:5     -> bool:[false true true null]
+GTE  uint32:[5 10 null]    uint32:null  -> bool:[null null null]
+
+# Uint32 (array, array) tests
+GTE  uint32:[5 5 10 10 null null null]  uint32:[1 5 5 15 1 2 null]  -> bool:[true true true false null null null]
 
 # Uint64 (scalar, scalar) tests
 GTE  uint64:10    uint64:5     -> bool:true
@@ -395,29 +611,42 @@ EQ  bool:[true false true false]    bool:[true true true true]      select:[true
 EQ  bool:[true false true]          bool:[true true false]          select:[false false false]      -> bool:[null null null]       # No selection
 EQ  bool:[true false true]          bool:[true false false]         select:[false true false]       -> bool:[null true null]       # Single selection
 EQ  bool:[true false]               bool:[true true]                select:[true true]              -> bool:[true false]           # Full selection
+EQ  int32:[10 20 30 40]              int32:[10 21 30 41]              select:[true false true false]  -> bool:[true null true null]
+EQ  int32:[1 2]                      int32:[1 3]                      select:[false false]            -> bool:[null null]
 EQ  int64:[10 20 30 40]             int64:[10 21 30 41]             select:[true false true false]  -> bool:[true null true null]
 EQ  int64:[1 2]                     int64:[1 3]                     select:[false false]            -> bool:[null null]
+EQ  uint32:[10 20 30 40]            uint32:[10 21 30 41]            select:[true false true false]  -> bool:[true null true null]
 EQ  uint64:[10 20 30 40]            uint64:[10 21 30 41]            select:[true false true false]  -> bool:[true null true null]
 EQ  utf8:["foo" "bar" "baz" "qux"]  utf8:["foo" "BAR" "baz" "QUX"]  select:[true false true false]  -> bool:[true null true null]
 EQ  utf8:["a" "b" "c"]              utf8:["a" "x" "c"]              select:[false false false]      -> bool:[null null null]
 EQ  null:[null null null]           null:[null null null]           select:[true false true]        -> bool:[null null null]
 
 # (Scalar, Array)
+EQ  int32:10     int32:[10 20 10 30]         select:[true false true false]  -> bool:[true null true null]
 EQ  int64:10     int64:[10 20 10 30]         select:[true false true false]  -> bool:[true null true null]
 EQ  utf8:"test"  utf8:["test" "foo" "test"]  select:[false false false]      -> bool:[null null null]
 
 # (Array, Scalar)
+EQ  int32:[5 10 5 15]  int32:5  select:[true false true false]  -> bool:[true null true null]
 EQ  int64:[5 10 5 15]  int64:5  select:[true false true false]  -> bool:[true null true null]
 
 # Other operators
+NEQ  int32:[10 20 30]        int32:[10 21 30]          select:[true false true]        -> bool:[false null false]
 NEQ  int64:[10 20 30]        int64:[10 21 30]          select:[true false true]        -> bool:[false null false]
 NEQ  bool:[true false true]  bool:[false false false]  select:[false true false]       -> bool:[null false null]
+LT   int32:[5 10 15 20]      int32:[10 10 10 10]       select:[true false true false]  -> bool:[true null false null]
 LT   int64:[5 10 15 20]      int64:[10 10 10 10]       select:[true false true false]  -> bool:[true null false null]
+LT   uint32:[15 25]          uint32:[20 20]            select:[false false]            -> bool:[null null]
 LT   uint64:[15 25]          uint64:[20 20]            select:[false false]            -> bool:[null null]
 LT   utf8:["a" "b" "c" "d"]  utf8:["b" "b" "b" "b"]    select:[true false true false]  -> bool:[true null false null]
+LTE  int32:[10 20 10]        int32:[10 15 10]          select:[true false true]        -> bool:[true null true]
 LTE  int64:[10 20 10]        int64:[10 15 10]          select:[true false true]        -> bool:[true null true]
+LTE  uint32:[10 20]          uint32:[10 30]            select:[true true]              -> bool:[true true]
 LTE  uint64:[10 20]          uint64:[10 30]            select:[true true]              -> bool:[true true]
+GT   int32:[15 5 20]         int32:[10 10 10]          select:[true false true]        -> bool:[true null true]
 GT   int64:[15 5 20]         int64:[10 10 10]          select:[true false true]        -> bool:[true null true]
 GT   utf8:["x" "y" "z"]      utf8:["y" "y" "y"]        select:[false true false]       -> bool:[null false null]
+GTE  int32:[10 5 10]         int32:[10 10 5]           select:[true false true]        -> bool:[true null true]
 GTE  int64:[10 5 10]         int64:[10 10 5]           select:[true false true]        -> bool:[true null true]
+GTE  uint32:[10 5]           uint32:[5 5]              select:[false false]            -> bool:[null null]
 GTE  uint64:[10 5]           uint64:[5 5]              select:[false false]            -> bool:[null null]
