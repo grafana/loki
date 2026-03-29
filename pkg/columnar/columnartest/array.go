@@ -29,8 +29,12 @@ func Array(t testing.TB, kind columnar.Kind, alloc *memory.Allocator, values ...
 		return arrayNull(t, alloc, values...)
 	case columnar.KindBool:
 		return arrayBool(t, alloc, values...)
+	case columnar.KindInt32:
+		return arrayNumber[int32](t, alloc, values...)
 	case columnar.KindInt64:
 		return arrayNumber[int64](t, alloc, values...)
+	case columnar.KindUint32:
+		return arrayNumber[uint32](t, alloc, values...)
 	case columnar.KindUint64:
 		return arrayNumber[uint64](t, alloc, values...)
 	case columnar.KindUTF8:

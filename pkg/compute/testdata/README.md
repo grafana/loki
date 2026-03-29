@@ -15,7 +15,7 @@ Datum        := TypedValue
 Selection    := "select" ":" "[" Scalar* "]" 
 TypedValue   := Type ":" Value
 
-Type         := "bool" | "int64" | "uint64" | "utf8" | "null"
+Type         := "bool" | "int32" | "int64" | "uint32" | "uint64" | "utf8" | "null"
 
 Value        := Scalar | Array
 Scalar       := <literal> | "null"
@@ -30,7 +30,9 @@ ignored.
 ### Data types
 
 - **bool**: Boolean values (`true`, `false`, `null`)
+- **int32**: Signed 32-bit integers (e.g., `-42`, `123`)
 - **int64**: Signed 64-bit integers (e.g., `-42`, `123`)
+- **uint32**: Unsigned 32-bit integers (e.g., `0`, `456`)
 - **uint64**: Unsigned 64-bit integers (e.g., `0`, `456`)
 - **utf8**: UTF-8 strings, must be quoted (e.g., `"hello"`, `"test string"`). Escape sequences are supported.
 - **null**: Explicit null type for null-only values
