@@ -154,9 +154,14 @@ func (r *walRegistry) Appender(ctx context.Context) storage.Appender {
 	// we should reconfigure the storage whenever this appender is requested, but since
 	// this can request an appender very often, we hide this behind a gate
 	now := time.Now()
-	if r.lastUpdateTime.Before(now.Add(-r.config.RemoteWrite.ConfigRefreshPeriod)) {
+	r.overridesMu.Lock()
+	shouldUpdate := r.lastUpdateTime.Before(now.Add(-r.config.RemoteWrite.ConfigRefreshPeriod))
+	if shouldUpdate {
 		r.lastUpdateTime = now
+	}
+	r.overridesMu.Unlock()
 
+	if shouldUpdate {
 		level.Debug(r.logger).Log("user", tenant, "msg", "refreshing remote-write configuration")
 		r.configureTenantStorage(tenant)
 	}
