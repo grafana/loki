@@ -29,6 +29,17 @@ type Bitmap struct {
 	off  int     // Offset into the first word.
 }
 
+// BitmapFrom returns a read-only Bitmap backed by the given data slice.
+func BitmapFrom(data []uint8, bitmapLen, off int) Bitmap {
+	return Bitmap{
+		alloc: nil,
+
+		data: data[:len(data):len(data)],
+		len:  bitmapLen,
+		off:  off,
+	}
+}
+
 // NewBitmap creates a Bitmap managed by the provided allocator. The returned
 // Bitmap will have an initial length of zero and a capacity of at least n
 // (which may be 0).
@@ -244,7 +255,7 @@ func (bmap *Bitmap) Slice(i, j int) *Bitmap {
 
 	var (
 		startWord = (bmap.off + i) / 8
-		endWord   = ((bmap.off + j) / 8) + 1
+		endWord   = ((bmap.off + j) + 7) / 8
 
 		off    = (bmap.off + i) % 8
 		newLen = j - i

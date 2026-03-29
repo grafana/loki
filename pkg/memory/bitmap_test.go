@@ -290,6 +290,28 @@ func TestBitmap_Slice(t *testing.T) {
 		require.False(t, slice2.Get(15-totalOff))
 	})
 
+	t.Run("ByteAligned", func(t *testing.T) {
+		// Regression test: Slice where the end is exactly byte-aligned should
+		// not panic. The old formula (off+j)/8+1 would overshoot by 1 byte
+		// when (off+j) is a multiple of 8, causing an out-of-bounds slice.
+		var bmap memory.Bitmap
+		n := 65536 // exactly 8192 bytes
+		bmap.AppendCount(true, n)
+
+		require.NotPanics(t, func() {
+			slice := bmap.Slice(0, n)
+			require.Equal(t, n, slice.Len())
+		})
+
+		// Also test a smaller byte-aligned boundary with an offset.
+		bmap2 := memory.Bitmap{}
+		bmap2.AppendCount(false, 24) // 3 bytes
+		require.NotPanics(t, func() {
+			slice := bmap2.Slice(0, 16) // end at byte 2, exactly aligned
+			require.Equal(t, 16, slice.Len())
+		})
+	})
+
 	t.Run("Clone", func(t *testing.T) {
 		var bmap memory.Bitmap
 		bmap.AppendValues(false, false, false, true, true, false, true, true, false, false, true, true, false, false, false, false)
