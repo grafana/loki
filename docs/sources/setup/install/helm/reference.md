@@ -8345,6 +8345,7 @@ false
     "annotations": {},
     "enabled": false,
     "interval": "15s",
+    "jobRelabelings": null,
     "labels": {},
     "metricRelabelings": [],
     "metricsInstance": {
@@ -8772,6 +8773,7 @@ The same namespace as the loki chart is installed in.
   "annotations": {},
   "enabled": false,
   "interval": "15s",
+  "jobRelabelings": null,
   "labels": {},
   "metricRelabelings": [],
   "metricsInstance": {
@@ -8813,6 +8815,15 @@ false
 			<td>ServiceMonitor scrape interval Default is 15s because included recording rules use a 1m rate, and scrape interval needs to be at least 1/4 rate interval.</td>
 			<td><pre lang="json">
 "15s"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.serviceMonitor.jobRelabelings</td>
+			<td>string</td>
+			<td>Custom relabeling rules for the job label applied to ServiceMonitor endpoints. By default, the chart prepends the namespace to the job label (e.g. namespace/component). This can cause issues with OpenTelemetry Collector which applies its own namespace prefix, resulting in doubled namespace (e.g. namespace/namespace/component). Set to [] to disable job relabeling entirely. Set to a custom list to override the default relabeling rules. Note: some GitOps tools or values-merging pipelines may collapse [] to null. If using deep merge from multiple values files, verify [] is preserved.</td>
+			<td><pre lang="">
+Prepends namespace to job label
 </pre>
 </td>
 		</tr>
