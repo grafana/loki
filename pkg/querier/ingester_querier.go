@@ -45,12 +45,11 @@ type responseFromIngesters struct {
 
 // IngesterQuerier helps with querying the ingesters.
 type IngesterQuerier struct {
-	querierConfig          Config
-	ring                   ring.ReadRing
-	partitionRing          *ring.PartitionInstanceRing
-	getShardCountForTenant func(string) int
-	pool                   *ring_client.Pool
-	logger                 log.Logger
+	querierConfig Config
+	ring          ring.ReadRing
+	partitionRing *ring.PartitionInstanceRing
+	pool          *ring_client.Pool
+	logger        log.Logger
 }
 
 func NewIngesterQuerier(querierConfig Config, clientCfg client.Config, ring ring.ReadRing, partitionRing *ring.PartitionInstanceRing, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
