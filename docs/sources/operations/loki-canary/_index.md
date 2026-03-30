@@ -395,8 +395,6 @@ This section describes how to set up Loki Canary for Loki's [monolithic mode](ht
 
 Create a systemd service file that writes Loki Canary's standard output to the file `/var/log/loki-canary.log`.
 
-`-labelname` and `-labelvalue` flags specify a label pair used to identify Loki Canary's logs. `-streamname` and `-streamvalue` flags specify an additional label pair and must be provided. The same values can be provided to both label pairs if no additional label exists. Labels can be added when Alloy scrapes the logs.
-
 ```ini
 [Unit]
 Description=Loki Canary
@@ -413,6 +411,8 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 ```
+
+`-labelname` and `-labelvalue` flags specify a label pair used to identify Loki Canary's logs. `-streamname` and `-streamvalue` flags specify an additional label pair and must be provided. The same values can be provided to both label pairs if no additional label exists. Labels can be added when Alloy scrapes the logs.
 
 ### Scrape logs
 
@@ -438,7 +438,7 @@ loki.write "local" {
 
 Scrape Loki Canary's metrics with Alloy or Prometheus.
 
-#### Alloy
+#### Scrape metrics with Alloy
 
 ```alloy
 prometheus.scrape "loki" {
@@ -453,7 +453,7 @@ prometheus.remote_write "default" {
 }
 ```
 
-#### Prometheus
+#### Scrape metrics with Prometheus
 
 ```yaml
 scrape_configs:
