@@ -432,8 +432,6 @@ func (p *Builder) flushPartition(ctx context.Context, partition int32, triggerTy
 			"partition", partition, "events", len(eventsToFlush), "trigger", triggerType)
 
 		p.buildAndCommitIndex(calculationCtx, eventsToFlush, partition, triggerType)
-		// Reset metrics for stale partition so we don't leave it high indefinitely if the partition stays inactive
-		p.metrics.setProcessingDelay(partition, time.Now())
 	}()
 }
 
@@ -461,6 +459,10 @@ func (p *Builder) buildAndCommitIndex(ctx context.Context, events []bufferedEven
 		return
 	}
 
+	if triggerType == triggerTypeMaxIdle {
+		// Reset metrics for stale partition so we don't leave it high indefinitely if the partition stays inactive
+		p.metrics.setProcessingDelay(partition, time.Now())
+	}
 	p.markEventsCompleted(partition, len(records))
 }
 
