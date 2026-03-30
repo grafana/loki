@@ -11,11 +11,11 @@ keywords:
 
 # Install the simple scalable Helm chart
 
-{{< admonition type="note" >}}
-Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released.
-{{< /admonition >}}
-
 This Helm Chart deploys Grafana Loki in [simple scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) within a Kubernetes cluster.
+
+{{< admonition type="note" >}}
+As of March 16, 2026, the Loki Helm Chart is being maintained by Grafana Champions andthe Grafana Community in the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts). Please open issues and pull requests for the chart against the Grafana-commmunity repo. Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released.
+{{< /admonition >}}
 
 This chart configures Loki to run `read`, `write`, and `backend` targets in a [scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable). Loki’s simple scalable deployment mode separates execution paths into read, write, and backend targets.
 
