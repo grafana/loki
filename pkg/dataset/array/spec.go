@@ -23,6 +23,13 @@ type (
 		// data types.
 		Validity Spec
 	}
+
+	// SpecPlain encodes fixed-width values without any compression.
+	SpecPlain struct {
+		// Spec for how to encode validity data. Must only be set for nullable
+		// data types.
+		Validity Spec
+	}
 )
 
 // Kind returns [EncodingKindBool].
@@ -30,8 +37,14 @@ func (spec *SpecBool) Kind() EncodingKind {
 	return EncodingKindBool
 }
 
+// Kind returns [EncodingKindPlain].
+func (spec *SpecPlain) Kind() EncodingKind {
+	return EncodingKindPlain
+}
+
 //
 // Sealed marker implementations.
 //
 
-func (spec *SpecBool) isSpec() {}
+func (spec *SpecBool) isSpec()  {}
+func (spec *SpecPlain) isSpec() {}
