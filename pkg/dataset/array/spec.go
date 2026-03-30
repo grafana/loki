@@ -87,6 +87,14 @@ type (
 		// Spec for how to encode the zigzag-encoded unsigned data.
 		Data Spec
 	}
+
+	// SpecDelta encodes integer values by storing differences between
+	// consecutive values. The delta data is then encoded according to the
+	// Data spec. Nullability is passed through to the Data child.
+	SpecDelta struct {
+		// Spec for how to encode the delta-encoded data.
+		Data Spec
+	}
 )
 
 // Kind returns [EncodingKindBool].
@@ -119,6 +127,11 @@ func (spec *SpecZigZag) Kind() EncodingKind {
 	return EncodingKindZigZag
 }
 
+// Kind returns [EncodingKindDelta].
+func (spec *SpecDelta) Kind() EncodingKind {
+	return EncodingKindDelta
+}
+
 //
 // Sealed marker implementations.
 //
@@ -129,3 +142,4 @@ func (spec *SpecBinary) isSpec()    {}
 func (spec *SpecBitpacked) isSpec() {}
 func (spec *SpecZstd) isSpec()      {}
 func (spec *SpecZigZag) isSpec()    {}
+func (spec *SpecDelta) isSpec()     {}

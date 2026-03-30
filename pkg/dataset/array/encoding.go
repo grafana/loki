@@ -66,6 +66,13 @@ type (
 	// The single child Array holds the zigzag-encoded unsigned data.
 	// Nullability is handled by the child encoding.
 	EncodingZigZag struct{}
+
+	// EncodingDelta stores differences between consecutive integer values.
+	// This encoding stores no data of its own; all data lives in child Arrays.
+	//
+	// The single child Array holds the delta-encoded data.
+	// Nullability is handled by the child encoding.
+	EncodingDelta struct{}
 )
 
 // Kind returns [EncodingKindBool].
@@ -98,6 +105,11 @@ func (enc *EncodingZigZag) Kind() EncodingKind {
 	return EncodingKindZigZag
 }
 
+// Kind returns [EncodingKindDelta].
+func (enc *EncodingDelta) Kind() EncodingKind {
+	return EncodingKindDelta
+}
+
 //
 // Sealed marker implementations.
 //
@@ -108,3 +120,4 @@ func (enc *EncodingBinary) isEncoding()    {}
 func (enc *EncodingBitpacked) isEncoding() {}
 func (enc *EncodingZstd) isEncoding()      {}
 func (enc *EncodingZigZag) isEncoding()    {}
+func (enc *EncodingDelta) isEncoding()     {}
