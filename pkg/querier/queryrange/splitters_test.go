@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
 
 func Test_PreservesCachingOptions(t *testing.T) {
