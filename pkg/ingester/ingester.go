@@ -425,8 +425,8 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	var ownedStreamsStrategy ownershipStrategy
 	var streamRateLimiter RateLimiterStrategy
 	if i.cfg.KafkaIngestion.Enabled {
-		streamCountLimiter = newPartitionRingLimiterStrategy(partitionRingWatcher, limits.IngestionPartitionsTenantShardSize)
-		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, limits.IngestionPartitionsTenantShardSize, util_log.Logger)
+		streamCountLimiter = newPartitionRingLimiterStrategy(partitionRingWatcher)
+		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, util_log.Logger)
 		streamRateLimiter = &NoLimitsStrategy{} // Kafka ingestion does not have per-stream rate limits, because we control the consumption speed.
 	} else {
 		streamCountLimiter = newIngesterRingLimiterStrategy(i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)

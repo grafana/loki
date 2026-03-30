@@ -382,11 +382,7 @@ func TestConvertGlobalToLocalLimit_PartitionRing(t *testing.T) {
 				ring: newMockPartitionRingWithPartitions(tc.activePartitions, tc.inactivePartitions),
 			}
 
-			getPartitionsForUser := func(_ string) int {
-				return tc.shardsPerUser
-			}
-
-			strategy := newPartitionRingLimiterStrategy(ringReader, getPartitionsForUser)
+			strategy := newPartitionRingLimiterStrategy(ringReader)
 
 			localLimit := strategy.convertGlobalToLocalLimit(tc.globalLimit, "test")
 			if localLimit != tc.expectedLocalLimit {

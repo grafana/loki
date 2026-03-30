@@ -858,12 +858,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if d.cfg.KafkaEnabled {
-		subring, err := d.partitionRing.PartitionRing().ShuffleShard(tenantID, d.validator.IngestionPartitionsTenantShardSize(tenantID))
-		if err != nil {
-			return nil, err
-		}
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
-		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, subring)
+		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, d.partitionRing.PartitionRing())
 	}
 
 	if d.cfg.IngesterEnabled {

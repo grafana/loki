@@ -45,7 +45,5 @@ type Limits interface {
 	EnforcedLabels(userID string) []string
 	PolicyEnforcedLabels(userID string, policy string) []string
 
-	IngestionPartitionsTenantShardSize(userID string) int
-
 	SimulatedPushLatency(userID string) time.Duration
 }

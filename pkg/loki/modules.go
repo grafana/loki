@@ -1132,7 +1132,7 @@ func (t *Loki) setupAsyncStore() error {
 func (t *Loki) initIngesterQuerier() (_ services.Service, err error) {
 	logger := log.With(util_log.Logger, "component", "ingester-querier")
 
-	t.ingesterQuerier, err = querier.NewIngesterQuerier(t.Cfg.Querier, t.Cfg.IngesterClient, t.ring, t.partitionRing, t.Overrides.IngestionPartitionsTenantShardSize, t.Cfg.MetricsNamespace, logger)
+	t.ingesterQuerier, err = querier.NewIngesterQuerier(t.Cfg.Querier, t.Cfg.IngesterClient, t.ring, t.partitionRing, t.Cfg.MetricsNamespace, logger)
 	if err != nil {
 		return nil, err
 	}

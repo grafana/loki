@@ -209,7 +209,7 @@ func Test_ownedStreamsPartitionStrategy_checkRingForChanges(t *testing.T) {
 	ringReader := &mockPartitionRingReader{
 		ring: newMockPartitionRingWithActivePartitions(1),
 	}
-	service := newOwnedStreamsPartitionStrategy(1, ringReader, func(string) int { return 1 }, log.NewNopLogger())
+	service := newOwnedStreamsPartitionStrategy(1, ringReader, log.NewNopLogger())
 
 	ringChanged, err := service.checkRingForChanges()
 	require.NoError(t, err)
@@ -232,12 +232,12 @@ func Test_ownedStreamsPartitionStrategy_isOwnedStream(t *testing.T) {
 	}
 	stream := &stream{tenant: "test1", labelsString: "mock=1"} // has a hashkey mapping to partition 1
 
-	service1 := newOwnedStreamsPartitionStrategy(1, ringReader, func(string) int { return 1 }, log.NewNopLogger())
+	service1 := newOwnedStreamsPartitionStrategy(1, ringReader, log.NewNopLogger())
 	owned, err := service1.isOwnedStream(stream)
 	require.NoError(t, err)
 	require.True(t, owned)
 
-	service2 := newOwnedStreamsPartitionStrategy(2, ringReader, func(string) int { return 1 }, log.NewNopLogger())
+	service2 := newOwnedStreamsPartitionStrategy(2, ringReader, log.NewNopLogger())
 	owned, err = service2.isOwnedStream(stream)
 	require.NoError(t, err)
 	require.False(t, owned)

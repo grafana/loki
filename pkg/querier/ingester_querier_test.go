@@ -245,7 +245,6 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 		method string
 		testFn func(*IngesterQuerier) error
 		retVal interface{}
-		shards int
 	}{
 		"label": {
 			method: "Label",
@@ -291,17 +290,6 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 			},
 			retVal: newQuerySampleClientMock(),
 		},
-		"select_logs_shuffle_sharded": {
-			method: "Query",
-			testFn: func(ingesterQuerier *IngesterQuerier) error {
-				_, err := ingesterQuerier.SelectLogs(ctx, logql.SelectLogParams{
-					QueryRequest: new(logproto.QueryRequest),
-				})
-				return err
-			},
-			retVal: newQueryClientMock(),
-			shards: 2, // Must be less than number of partitions
-		},
 	}
 
 	for testName, testData := range tests {
@@ -329,7 +317,7 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 			ingestersPerPartition := len(ingesters) / partitions
 			assert.Greaterf(t, ingestersPerPartition, 1, "must have more than one ingester per partition")
 
-			ingesterQuerier, err := newTestPartitionIngesterQuerier(newIngesterClientMockFactory(ingesterClient), instanceRing, newPartitionInstanceRingMock(instanceRing, ingesters, partitions, ingestersPerPartition), testData.shards)
+			ingesterQuerier, err := newTestPartitionIngesterQuerier(newIngesterClientMockFactory(ingesterClient), instanceRing, newPartitionInstanceRingMock(instanceRing, ingesters, partitions, ingestersPerPartition))
 			require.NoError(t, err)
 
 			ingesterQuerier.querierConfig.QueryPartitionIngesters = true
@@ -337,12 +325,8 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 			err = testData.testFn(ingesterQuerier)
 			require.NoError(t, err)
 
-			if testData.shards == 0 {
-				testData.shards = partitions
-			}
-			expectedCalls := min(testData.shards, partitions)
+			expectedCalls := partitions
 			// Wait for responses: We expect one request per queried partition because we have request minimization enabled & ingesters are in multiple zones.
-			// If shuffle sharding is enabled, we expect one query per shard as we write to a subset of partitions.
 			require.Eventually(t, func() bool { return cnt.Load() >= int32(expectedCalls) }, time.Millisecond*100, time.Millisecond*1, "expected all ingesters to respond")
 			ingesterClient.AssertNumberOfCalls(t, testData.method, expectedCalls)
 		})
@@ -368,7 +352,6 @@ func TestIngesterQuerier_QueriesSameIngestersWithPartitionContext(t *testing.T) 
 		method string
 		testFn func(context.Context, *IngesterQuerier) error
 		retVal interface{}
-		shards int
 	}{
 		"select_logs": {
 			method: "Query",
@@ -389,17 +372,6 @@ func TestIngesterQuerier_QueriesSameIngestersWithPartitionContext(t *testing.T) 
 				return err
 			},
 			retVal: newQuerySampleClientMock(),
-		},
-		"select_logs_shuffle_sharded": {
-			method: "Query",
-			testFn: func(ctx context.Context, ingesterQuerier *IngesterQuerier) error {
-				_, err := ingesterQuerier.SelectLogs(ctx, logql.SelectLogParams{
-					QueryRequest: new(logproto.QueryRequest),
-				})
-				return err
-			},
-			retVal: newQueryClientMock(),
-			shards: 2, // Must be less than number of partitions
 		},
 	}
 
@@ -434,7 +406,7 @@ func TestIngesterQuerier_QueriesSameIngestersWithPartitionContext(t *testing.T) 
 				requestedClients: make(map[string]int),
 			}
 
-			ingesterQuerier, err := newTestPartitionIngesterQuerier(mockClientFactory.newIngesterClientMockFactory(ingesterClient), instanceRing, newPartitionInstanceRingMock(instanceRing, ingesters, partitions, ingestersPerPartition), testData.shards)
+			ingesterQuerier, err := newTestPartitionIngesterQuerier(mockClientFactory.newIngesterClientMockFactory(ingesterClient), instanceRing, newPartitionInstanceRingMock(instanceRing, ingesters, partitions, ingestersPerPartition))
 			require.NoError(t, err)
 
 			ingesterQuerier.querierConfig.QueryPartitionIngesters = true
@@ -442,19 +414,13 @@ func TestIngesterQuerier_QueriesSameIngestersWithPartitionContext(t *testing.T) 
 			err = testData.testFn(ctx, ingesterQuerier)
 			require.NoError(t, err)
 
-			if testData.shards == 0 {
-				testData.shards = partitions
-			}
-			expectedCalls := min(testData.shards, partitions)
-			expectedIngesterCalls := expectedCalls
-			// Wait for responses: We expect one request per queried partition because we have request minimization enabled & ingesters are in multiple zones.
-			// If shuffle sharding is enabled, we expect one query per shard as we write to a subset of partitions.
+			expectedCalls := partitions
 			require.Eventually(t, func() bool { return cnt.Load() >= int32(expectedCalls) }, time.Millisecond*100, time.Millisecond*1, "expected ingesters to respond")
 			ingesterClient.AssertNumberOfCalls(t, testData.method, expectedCalls)
 
 			partitionCtx := ExtractPartitionContext(ctx)
-			require.Equal(t, expectedIngesterCalls, len(partitionCtx.ingestersUsed))
-			require.Equal(t, expectedIngesterCalls, len(mockClientFactory.requestedClients))
+			require.Equal(t, expectedCalls, len(partitionCtx.ingestersUsed))
+			require.Equal(t, expectedCalls, len(mockClientFactory.requestedClients))
 
 			for _, ingester := range partitionCtx.ingestersUsed {
 				count, ok := mockClientFactory.requestedClients[ingester.addr]
@@ -470,7 +436,7 @@ func TestIngesterQuerier_QueriesSameIngestersWithPartitionContext(t *testing.T) 
 			ingesterClient.AssertNumberOfCalls(t, "GetChunkIDs", expectedCalls)
 
 			// Finally, confirm we called the same ingesters again and didn't ask for any new clients
-			require.Equal(t, expectedIngesterCalls, len(mockClientFactory.requestedClients))
+			require.Equal(t, expectedCalls, len(mockClientFactory.requestedClients))
 			for _, ingester := range partitionCtx.ingestersUsed {
 				count, ok := mockClientFactory.requestedClients[ingester.addr]
 				require.True(t, ok)
@@ -660,20 +626,18 @@ func newTestIngesterQuerier(readRingMock *readRingMock, ingesterClient *querierC
 		mockIngesterClientConfig(),
 		readRingMock,
 		nil,
-		func(string) int { return 0 },
 		newIngesterClientMockFactory(ingesterClient),
 		constants.Loki,
 		log.NewNopLogger(),
 	)
 }
 
-func newTestPartitionIngesterQuerier(clientFactory client.PoolFactory, instanceRing *readRingMock, partitionRing *ring.PartitionInstanceRing, tenantShards int) (*IngesterQuerier, error) {
+func newTestPartitionIngesterQuerier(clientFactory client.PoolFactory, instanceRing *readRingMock, partitionRing *ring.PartitionInstanceRing) (*IngesterQuerier, error) {
 	return newIngesterQuerier(
 		mockQuerierConfig(),
 		mockIngesterClientConfig(),
 		instanceRing,
 		partitionRing,
-		func(string) int { return tenantShards },
 		clientFactory,
 		constants.Loki,
 		log.NewNopLogger(),

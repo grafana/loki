@@ -268,8 +268,6 @@ type Limits struct {
 	// PolicyOverrideLimits contains per-policy overrides for stream count limits.
 	PolicyOverrideLimits map[string]PolicyOverridableLimits `yaml:"policy_override_limits" json:"policy_override_limits" doc:"hidden"`
 
-	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
-
 	ShardAggregations []string `yaml:"shard_aggregations,omitempty" json:"shard_aggregations,omitempty" doc:"description=List of LogQL vector and range aggregations that should be sharded."`
 
 	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"description=Default list of JSON fields to tokenize for pattern detection. It is recommend to append to or delete from the defaults rather than replacing them."`
@@ -498,8 +496,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.BlockIngestionStatusCode, "limits.block-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom status code (260) is returned to the client along with an error message.")
 	f.Var((*dskit_flagext.StringSlice)(&l.EnforcedLabels), "validation.enforced-labels", "List of labels that must be present in the stream. If any of the labels are missing, the stream will be discarded. This flag configures it globally for all tenants. Experimental.")
 	l.PolicyEnforcedLabels = make(map[string][]string)
-
-	f.IntVar(&l.IngestionPartitionsTenantShardSize, "limits.ingestion-partition-tenant-shard-size", 0, "The number of partitions a tenant's data should be sharded to when using kafka ingestion. Tenants are sharded across partitions using shuffle-sharding. 0 disables shuffle sharding and tenant is sharded across all partitions.")
 
 	_ = l.PatternIngesterTokenizableJSONFieldsDefault.Set("log,message,msg,msg_,_msg,content")
 	f.Var(&l.PatternIngesterTokenizableJSONFieldsDefault, "limits.pattern-ingester-tokenizable-json-fields", "List of JSON fields that should be tokenized in the pattern ingester.")
@@ -985,10 +981,6 @@ func (o *Overrides) RulerTenantShardSize(userID string) int {
 // RulerEnableWALReplay returns whether WAL replay is enabled for a given user.
 func (o *Overrides) RulerEnableWALReplay(userID string) bool {
 	return o.getOverridesForUser(userID).RulerEnableWALReplay
-}
-
-func (o *Overrides) IngestionPartitionsTenantShardSize(userID string) int {
-	return o.getOverridesForUser(userID).IngestionPartitionsTenantShardSize
 }
 
 // RulerMaxRulesPerRuleGroup returns the maximum number of rules per rule group for a given user.

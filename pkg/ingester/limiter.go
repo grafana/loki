@@ -35,7 +35,6 @@ type Limits interface {
 	PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool)
 	PerStreamRateLimit(userID string) validation.RateLimit
 	ShardStreams(userID string) shardstreams.Config
-	IngestionPartitionsTenantShardSize(userID string) int
 
 	retention.Limits
 }
@@ -175,31 +174,24 @@ func (l *ingesterRingLimiterStrategy) calculateLimitForMultipleZones(globalLimit
 }
 
 type partitionRingLimiterStrategy struct {
-	ring                  ring.PartitionRingReader
-	getPartitionShardSize func(user string) int
+	ring ring.PartitionRingReader
 }
 
-func newPartitionRingLimiterStrategy(ring ring.PartitionRingReader, getPartitionShardSize func(user string) int) *partitionRingLimiterStrategy {
+func newPartitionRingLimiterStrategy(ring ring.PartitionRingReader) *partitionRingLimiterStrategy {
 	return &partitionRingLimiterStrategy{
-		ring:                  ring,
-		getPartitionShardSize: getPartitionShardSize,
+		ring: ring,
 	}
 }
 
-func (l *partitionRingLimiterStrategy) convertGlobalToLocalLimit(globalLimit int, tenantID string) int {
+func (l *partitionRingLimiterStrategy) convertGlobalToLocalLimit(globalLimit int, _ string) int {
 	if globalLimit == 0 {
 		return 0
 	}
-
-	userShardSize := l.getPartitionShardSize(tenantID)
-
-	// ShuffleShardSize correctly handles cases when user has no shard config or more shards than number of active partitions in the ring.
-	activePartitionsForUser := l.ring.PartitionRing().ShuffleShardSize(userShardSize)
-
-	if activePartitionsForUser == 0 {
+	activePartitionCount := l.ring.PartitionRing().ActivePartitionsCount()
+	if activePartitionCount == 0 {
 		return 0
 	}
-	return int(float64(globalLimit) / float64(activePartitionsForUser))
+	return int(float64(globalLimit) / float64(activePartitionCount))
 }
 
 type supplier[T any] func() T

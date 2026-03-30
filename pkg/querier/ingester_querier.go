@@ -6,13 +6,10 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/user"
-
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/gogo/status"
@@ -55,24 +52,23 @@ type IngesterQuerier struct {
 	logger                 log.Logger
 }
 
-func NewIngesterQuerier(querierConfig Config, clientCfg client.Config, ring ring.ReadRing, partitionRing *ring.PartitionInstanceRing, getShardCountForTenant func(string) int, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
+func NewIngesterQuerier(querierConfig Config, clientCfg client.Config, ring ring.ReadRing, partitionRing *ring.PartitionInstanceRing, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
 	factory := func(addr string) (ring_client.PoolClient, error) {
 		return client.New(clientCfg, addr)
 	}
 
-	return newIngesterQuerier(querierConfig, clientCfg, ring, partitionRing, getShardCountForTenant, ring_client.PoolAddrFunc(factory), metricsNamespace, logger)
+	return newIngesterQuerier(querierConfig, clientCfg, ring, partitionRing, ring_client.PoolAddrFunc(factory), metricsNamespace, logger)
 }
 
 // newIngesterQuerier creates a new IngesterQuerier and allows to pass a custom ingester client factory
 // used for testing purposes
-func newIngesterQuerier(querierConfig Config, clientCfg client.Config, ring ring.ReadRing, partitionRing *ring.PartitionInstanceRing, getShardCountForTenant func(string) int, clientFactory ring_client.PoolFactory, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
+func newIngesterQuerier(querierConfig Config, clientCfg client.Config, ring ring.ReadRing, partitionRing *ring.PartitionInstanceRing, clientFactory ring_client.PoolFactory, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
 	iq := IngesterQuerier{
-		querierConfig:          querierConfig,
-		ring:                   ring,
-		partitionRing:          partitionRing,
-		getShardCountForTenant: getShardCountForTenant, // limits?
-		pool:                   clientpool.NewPool("ingester", clientCfg.PoolConfig, ring, clientFactory, util_log.Logger, metricsNamespace),
-		logger:                 logger,
+		querierConfig: querierConfig,
+		ring:          ring,
+		partitionRing: partitionRing,
+		pool:          clientpool.NewPool("ingester", clientCfg.PoolConfig, ring, clientFactory, util_log.Logger, metricsNamespace),
+		logger:        logger,
 	}
 
 	err := services.StartAndAwaitRunning(context.Background(), iq.pool)
@@ -168,16 +164,7 @@ func ExtractPartitionContext(ctx context.Context) *PartitionContext {
 func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
 	if q.querierConfig.QueryPartitionIngesters {
 		ExtractPartitionContext(ctx).SetIsPartitioned(true)
-		tenantID, err := user.ExtractOrgID(ctx)
-		if err != nil {
-			return nil, err
-		}
-		tenantShards := q.getShardCountForTenant(tenantID)
-		subring, err := q.partitionRing.ShuffleShardWithLookback(tenantID, tenantShards, q.querierConfig.QueryIngestersWithin, time.Now())
-		if err != nil {
-			return nil, err
-		}
-		replicationSets, err := subring.GetReplicationSetsForOperation(ring.Read)
+		replicationSets, err := q.partitionRing.GetReplicationSetsForOperation(ring.Read)
 		if err != nil {
 			return nil, err
 		}
