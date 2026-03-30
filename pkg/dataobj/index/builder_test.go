@@ -134,6 +134,8 @@ func TestIndexBuilder_PartialCompletion(t *testing.T) {
 				BufferSize:              1024 * 1024,
 			},
 			EventsPerIndex: 2, // Build from 2 objects when only 1 will fit
+			MaxAge:         time.Hour,
+			MaxIdleTime:    30 * time.Minute,
 		},
 		metastore.Config{},
 		kafka.Config{},
@@ -186,6 +188,8 @@ func TestIndexBuilder(t *testing.T) {
 		Config{
 			BuilderBaseConfig: testBuilderConfig,
 			EventsPerIndex:    3,
+			MaxAge:            time.Hour,
+			MaxIdleTime:       30 * time.Minute,
 		},
 		metastore.Config{},
 		kafka.Config{},
@@ -250,6 +254,7 @@ func TestIndexBuilder_stalePartition(t *testing.T) {
 			EventsPerIndex:    16,
 			FlushInterval:     time.Millisecond, // Flush stale partitions very often
 			MaxIdleTime:       0,                // Consider all partitions stale
+			MaxAge:            time.Hour,
 		},
 		metastore.Config{},
 		kafka.Config{},
@@ -319,6 +324,7 @@ func TestIndexBuilder_staleData(t *testing.T) {
 			EventsPerIndex:    16,
 			FlushInterval:     time.Millisecond, // Flush stale data very often
 			MaxAge:            0,                // Consider all data stale
+			MaxIdleTime:       time.Hour,
 		},
 		metastore.Config{},
 		kafka.Config{},
