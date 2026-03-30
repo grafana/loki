@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
@@ -41,6 +42,7 @@ import (
 	indexStats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/v3/pkg/util/marshal/legacy"
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
@@ -345,6 +347,9 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 
 		req.CachingOptions = queryrangebase.CachingOptions{
 			Disabled: disableCacheReq,
+		}
+		if strings.Contains(req.Query, "benclive") {
+			level.Debug(util_log.Logger).Log("msg", "parsed query range request", "query", req.Query, "cacheHeaderIsNoCache", disableCacheReq, "caching disabled", req.CachingOptions.Disabled)
 		}
 
 		return req, nil
