@@ -192,7 +192,7 @@ func TestCatalog_TimeRangeValidate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := newTimeRange(tt.start, tt.end)
+			_, err := NewTimeRange(tt.start, tt.end)
 			if tt.expectErr {
 				require.Error(t, err)
 			} else {
@@ -249,9 +249,9 @@ func TestCatalog_TimeRangeOverlaps(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			firstRange, err := newTimeRange(tt.firstStart, tt.firstEnd)
+			firstRange, err := NewTimeRange(tt.firstStart, tt.firstEnd)
 			require.NoError(t, err)
-			secondRange, err := newTimeRange(tt.secondStart, tt.secondEnd)
+			secondRange, err := NewTimeRange(tt.secondStart, tt.secondEnd)
 			require.NoError(t, err)
 			got1 := firstRange.Overlaps(secondRange)
 			got2 := secondRange.Overlaps(firstRange)
@@ -282,9 +282,9 @@ func TestCatalog_FilterDescriptorsForShard(t *testing.T) {
 		sectionDescriptors := []*metastore.DataobjSectionDescriptor{&desc1, &desc2, &desc3}
 		res, err := filterForShard(shard, sectionDescriptors)
 		require.NoError(t, err)
-		tr1, err := newTimeRange(start1, end1)
+		tr1, err := NewTimeRange(start1, end1)
 		require.NoError(t, err)
-		tr3, err := newTimeRange(start3, end3)
+		tr3, err := NewTimeRange(start3, end3)
 		require.NoError(t, err)
 		expected := []DataObjSections{
 			{Location: "foo", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: tr1},
@@ -292,5 +292,125 @@ func TestCatalog_FilterDescriptorsForShard(t *testing.T) {
 		}
 		require.ElementsMatch(t, res, expected)
 	})
+}
 
+func TestTSDBCatalog_ResolveDataObjSections(t *testing.T) {
+	now := time.Now()
+	start := now.Add(-10 * time.Minute)
+	end := now
+
+	tr, err := NewTimeRange(start, end)
+	require.NoError(t, err)
+
+	resolver := func(matchers []*labels.Matcher, s, e time.Time) ([]DataObjSections, error) {
+		require.Len(t, matchers, 1)
+		require.Equal(t, "app", matchers[0].Name)
+		require.Equal(t, "gateway", matchers[0].Value)
+		return []DataObjSections{
+			{
+				Location:  "obj-001",
+				Streams:   []int64{2, 5},
+				Sections:  []int{0},
+				TimeRange: tr,
+			},
+			{
+				Location:  "obj-002",
+				Streams:   []int64{7},
+				Sections:  []int{1},
+				TimeRange: tr,
+			},
+		}, nil
+	}
+
+	catalog := NewTSDBCatalog(resolver)
+
+	selector := &BinaryExpr{
+		Left:  newColumnExpr("app", types.ColumnTypeLabel),
+		Right: NewLiteral("gateway"),
+		Op:    types.BinaryOpEq,
+	}
+
+	sections, err := catalog.ResolveDataObjSections(selector, nil, ShardInfo{Shard: 0, Of: 1}, start, end)
+	require.NoError(t, err)
+	require.Len(t, sections, 2)
+
+	require.Equal(t, DataObjLocation("obj-001"), sections[0].Location)
+	require.Equal(t, []int64{2, 5}, sections[0].Streams)
+	require.Equal(t, []int{0}, sections[0].Sections)
+
+	require.Equal(t, DataObjLocation("obj-002"), sections[1].Location)
+	require.Equal(t, []int64{7}, sections[1].Streams)
+	require.Equal(t, []int{1}, sections[1].Sections)
+}
+
+func TestTSDBCatalog_ShardFiltering(t *testing.T) {
+	now := time.Now()
+	tr, err := NewTimeRange(now.Add(-time.Hour), now)
+	require.NoError(t, err)
+
+	resolver := func(_ []*labels.Matcher, _, _ time.Time) ([]DataObjSections, error) {
+		return []DataObjSections{
+			{Location: "a", Sections: []int{0}, TimeRange: tr, Streams: []int64{1}},
+			{Location: "b", Sections: []int{1}, TimeRange: tr, Streams: []int64{2}},
+			{Location: "c", Sections: []int{2}, TimeRange: tr, Streams: []int64{3}},
+			{Location: "d", Sections: []int{3}, TimeRange: tr, Streams: []int64{4}},
+		}, nil
+	}
+
+	catalog := NewTSDBCatalog(resolver)
+	selector := &BinaryExpr{
+		Left:  newColumnExpr("app", types.ColumnTypeLabel),
+		Right: NewLiteral("x"),
+		Op:    types.BinaryOpEq,
+	}
+
+	t.Run("shard 0 of 2", func(t *testing.T) {
+		sections, err := catalog.ResolveDataObjSections(selector, nil, ShardInfo{Shard: 0, Of: 2}, now.Add(-time.Hour), now)
+		require.NoError(t, err)
+		require.Len(t, sections, 2)
+		require.Equal(t, DataObjLocation("a"), sections[0].Location)
+		require.Equal(t, DataObjLocation("c"), sections[1].Location)
+	})
+
+	t.Run("shard 1 of 2", func(t *testing.T) {
+		sections, err := catalog.ResolveDataObjSections(selector, nil, ShardInfo{Shard: 1, Of: 2}, now.Add(-time.Hour), now)
+		require.NoError(t, err)
+		require.Len(t, sections, 2)
+		require.Equal(t, DataObjLocation("b"), sections[0].Location)
+		require.Equal(t, DataObjLocation("d"), sections[1].Location)
+	})
+
+	t.Run("no sharding", func(t *testing.T) {
+		sections, err := catalog.ResolveDataObjSections(selector, nil, ShardInfo{Shard: 0, Of: 1}, now.Add(-time.Hour), now)
+		require.NoError(t, err)
+		require.Len(t, sections, 4)
+	})
+}
+
+func TestTSDBCatalog_PredicatesInStreamsIsNil(t *testing.T) {
+	resolver := func(_ []*labels.Matcher, _, _ time.Time) ([]DataObjSections, error) {
+		return []DataObjSections{
+			{
+				Location: "obj",
+				Sections: []int{0},
+				Streams:  []int64{1},
+				TimeRange: TimeRange{
+					Start: time.Now().Add(-time.Hour),
+					End:   time.Now(),
+				},
+			},
+		}, nil
+	}
+
+	catalog := NewTSDBCatalog(resolver)
+	selector := &BinaryExpr{
+		Left:  newColumnExpr("app", types.ColumnTypeLabel),
+		Right: NewLiteral("x"),
+		Op:    types.BinaryOpEq,
+	}
+
+	sections, err := catalog.ResolveDataObjSections(selector, nil, ShardInfo{Shard: 0, Of: 1}, time.Now().Add(-time.Hour), time.Now())
+	require.NoError(t, err)
+	require.Len(t, sections, 1)
+	require.Nil(t, sections[0].PredicatesInStreams)
 }
