@@ -300,7 +300,7 @@ func TestIndexBuilder_stalePartition(t *testing.T) {
 	require.Equal(t, 0, len(p.partitionStates[0].events)) // Events should be gone now they've been processed
 }
 
-func TestIndexBuilder_staleData(t *testing.T) { // TODO
+func TestIndexBuilder_staleData(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

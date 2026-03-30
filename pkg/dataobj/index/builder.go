@@ -375,9 +375,12 @@ func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {
 	idlePartitionsToFlush := make([]int32, 0)
 	partitionsWithStaleDataToFlush := make([]int32, 0)
 	for partition, state := range p.partitionStates {
+		// Don't flush anything that's currently processing
 		if state.isProcessing {
 			continue
 		}
+
+		// Flush idle partitions (haven't received new events for MaxIdleTime)
 		if time.Since(state.lastActivity) >= p.cfg.MaxIdleTime {
 			level.Info(p.logger).Log(
 				"msg", "will flush idle partition",
@@ -387,19 +390,23 @@ func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {
 			idlePartitionsToFlush = append(idlePartitionsToFlush, partition)
 			continue
 		}
-		earliestWriteTime, err := time.Parse(time.RFC3339, state.events[0].event.WriteTime)
-		if err != nil {
-			level.Warn(p.logger).Log("msg", "failed to parse write time", "err", err)
-			continue
-		}
-		if time.Since(earliestWriteTime) >= p.cfg.MaxAge {
-			level.Info(p.logger).Log(
-				"msg", "will flush stale data",
-				"partition", partition,
-				"data_age", time.Since(earliestWriteTime),
-				"stale_data_threshold", p.cfg.MaxAge)
-			partitionsWithStaleDataToFlush = append(partitionsWithStaleDataToFlush, partition)
-			continue
+
+		// Flush partitions with stale data (events older than MaxAge)
+		if len(state.events) > 0 {
+			earliestWriteTime, err := time.Parse(time.RFC3339, state.events[0].event.WriteTime)
+			if err != nil {
+				level.Warn(p.logger).Log("msg", "failed to parse write time", "err", err)
+			} else {
+				if time.Since(earliestWriteTime) >= p.cfg.MaxAge {
+					level.Info(p.logger).Log(
+						"msg", "will flush stale data",
+						"partition", partition,
+						"data_age", time.Since(earliestWriteTime),
+						"stale_data_threshold", p.cfg.MaxAge)
+					partitionsWithStaleDataToFlush = append(partitionsWithStaleDataToFlush, partition)
+					continue
+				}
+			}
 		}
 	}
 	p.partitionsMutex.Unlock()
