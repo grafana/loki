@@ -349,7 +349,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Disabled: disableCacheReq,
 		}
 		if strings.Contains(req.Query, "benclive") {
-			level.Debug(util_log.Logger).Log("msg", "parsed query range request", "query", req.Query, "cacheHeaderIsNoCache", disableCacheReq, "caching disabled", req.CachingOptions.Disabled)
+			level.Debug(util_log.Logger).Log("msg", "parsed query range request (HTTP)", "query", req.Query, "cacheHeaderIsNoCache", disableCacheReq, "caching disabled", req.CachingOptions.Disabled, "raw Cache-Control header", r.Header.Get(cacheControlHeader))
 		}
 
 		return req, nil
@@ -542,6 +542,9 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		req, err := parseRangeQuery(httpReq)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+		}
+		if strings.Contains(req.Query, "benclive") {
+			level.Debug(util_log.Logger).Log("msg", "parsed query range request (HTTP gRPC)", "query", req.Query, "cacheHeaderIsNoCache", req.CachingOptions.Disabled, "raw Cache-Control header", httpReq.Header.Get(cacheControlHeader))
 		}
 
 		return req, ctx, nil
