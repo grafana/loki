@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/pb33f/libopenapi/orderedmap"
@@ -29,11 +30,31 @@ func BuildModel(node *yaml.Node, model interface{}) error {
 	if reflect.ValueOf(model).Type().Kind() != reflect.Pointer {
 		return fmt.Errorf("cannot build model on non-pointer: %v", reflect.ValueOf(model).Type().Kind())
 	}
+
+	// Build a map of lowercase YAML key -> index for O(1) lookup per field.
+	// Preserves first-write-wins semantics matching FindKeyNodeTop behavior
+	// (direct keys before merge-expanded keys).
+	content := node.Content
+	keyMap := make(map[string]int, len(content)/2)
+	for j := 0; j < len(content)-1; j += 2 {
+		k := strings.ToLower(utils.NodeAlias(content[j]).Value)
+		if _, exists := keyMap[k]; !exists {
+			keyMap[k] = j
+		}
+	}
+
 	v := reflect.ValueOf(model).Elem()
 	num := v.NumField()
 	for i := 0; i < num; i++ {
 
-		fName := v.Type().Field(i).Name
+		structField := v.Type().Field(i)
+		fName := structField.Name
+
+		// Skip unexported fields and embedded structs — they are not YAML-mappable
+		// and can cause reflect.Kind mismatches (e.g., interface fields).
+		if !structField.IsExported() || structField.Anonymous {
+			continue
+		}
 
 		if fName == "Extensions" {
 			continue // internal construct
@@ -43,11 +64,12 @@ func BuildModel(node *yaml.Node, model interface{}) error {
 			continue // internal construct
 		}
 
-		kn, vn := utils.FindKeyNodeTop(fName, node.Content)
-		if vn == nil {
-			// no point in going on.
+		idx, ok := keyMap[strings.ToLower(fName)]
+		if !ok {
 			continue
 		}
+		kn := utils.NodeAlias(content[idx])
+		vn := utils.NodeAlias(content[idx+1])
 
 		field := v.FieldByName(fName)
 		kind := field.Kind()
@@ -107,7 +129,7 @@ func SetField(field *reflect.Value, valueNode *yaml.Node, keyNode *yaml.Node) {
 						continue
 					}
 					items.Set(currentLabel, NodeReference[string]{
-						Value:     fmt.Sprintf("%v", sliceItem.Value),
+						Value:     sliceItem.Value,
 						ValueNode: sliceItem,
 						KeyNode:   valueNode,
 					})
@@ -143,7 +165,7 @@ func SetField(field *reflect.Value, valueNode *yaml.Node, keyNode *yaml.Node) {
 
 		if field.CanSet() {
 			nr := NodeReference[string]{
-				Value:     fmt.Sprintf("%v", valueNode.Value),
+				Value:     valueNode.Value,
 				ValueNode: valueNode,
 				KeyNode:   keyNode,
 			}
@@ -154,7 +176,7 @@ func SetField(field *reflect.Value, valueNode *yaml.Node, keyNode *yaml.Node) {
 
 		if field.CanSet() {
 			nr := ValueReference[string]{
-				Value:     fmt.Sprintf("%v", valueNode.Value),
+				Value:     valueNode.Value,
 				ValueNode: valueNode,
 			}
 			field.Set(reflect.ValueOf(nr))

@@ -442,6 +442,123 @@ func (index *SpecIndex) GetCache() *sync.Map {
 	return index.cache
 }
 
+// Release nils every field on SpecIndex that can pin YAML node trees, Reference
+// maps, or large caches in memory. Call this once all consumers of the index are
+// finished so the GC can reclaim the underlying data even if an interface value
+// or escaped closure still holds a pointer to the SpecIndex struct itself.
+func (index *SpecIndex) Release() {
+	if index == nil {
+		return
+	}
+
+	// yaml.Node tree
+	index.root = nil
+	index.pathsNode = nil
+	index.tagsNode = nil
+	index.parametersNode = nil
+	index.schemasNode = nil
+	index.securitySchemesNode = nil
+	index.requestBodiesNode = nil
+	index.responsesNode = nil
+	index.headersNode = nil
+	index.examplesNode = nil
+	index.linksNode = nil
+	index.callbacksNode = nil
+	index.pathItemsNode = nil
+	index.rootServersNode = nil
+	index.rootSecurityNode = nil
+
+	// reference maps (all hold *Reference with *yaml.Node pointers)
+	index.allRefs = nil
+	index.rawSequencedRefs = nil
+	index.linesWithRefs = nil
+	index.allMappedRefs = nil
+	index.allMappedRefsSequenced = nil
+	index.refsByLine = nil
+	index.pathRefs = nil
+	index.paramOpRefs = nil
+	index.paramCompRefs = nil
+	index.paramAllRefs = nil
+	index.paramInlineDuplicateNames = nil
+	index.globalTagRefs = nil
+	index.securitySchemeRefs = nil
+	index.requestBodiesRefs = nil
+	index.responsesRefs = nil
+	index.headersRefs = nil
+	index.examplesRefs = nil
+	index.securityRequirementRefs = nil
+	index.callbacksRefs = nil
+	index.linksRefs = nil
+	index.operationTagsRefs = nil
+	index.operationDescriptionRefs = nil
+	index.operationSummaryRefs = nil
+	index.callbackRefs = nil
+	index.serversRefs = nil
+	index.opServersRefs = nil
+	index.polymorphicRefs = nil
+	index.polymorphicAllOfRefs = nil
+	index.polymorphicOneOfRefs = nil
+	index.polymorphicAnyOfRefs = nil
+	index.externalDocumentsRef = nil
+	index.rootSecurity = nil
+	index.refsWithSiblings = nil
+
+	// schema / component collections
+	index.allRefSchemaDefinitions = nil
+	index.allInlineSchemaDefinitions = nil
+	index.allInlineSchemaObjectDefinitions = nil
+	index.allComponentSchemaDefinitions = nil
+	index.allSecuritySchemes = nil
+	index.allComponentSchemas = nil
+	index.allParameters = nil
+	index.allRequestBodies = nil
+	index.allResponses = nil
+	index.allHeaders = nil
+	index.allExamples = nil
+	index.allLinks = nil
+	index.allCallbacks = nil
+	index.allComponentPathItems = nil
+	index.allExternalDocuments = nil
+	index.externalSpecIndex = nil
+
+	// line/col -> *yaml.Node map
+	index.nodeMap = nil
+	index.allDescriptions = nil
+	index.allSummaries = nil
+	index.allEnums = nil
+	index.allObjectsWithProperties = nil
+	index.circularReferences = nil
+	index.polyCircularReferences = nil
+	index.arrayCircularReferences = nil
+	index.tagCircularReferences = nil
+	index.refErrors = nil
+	index.operationParamErrors = nil
+	index.cache = nil
+	index.highModelCache = nil
+	index.schemaIdRegistry = nil
+	index.pendingResolve = nil
+	index.uri = nil
+	index.logger = nil
+
+	// Break circular SpecIndex <-> Resolver reference.
+	if index.resolver != nil {
+		index.resolver.Release()
+		index.resolver = nil
+	}
+
+	// Rolodex holds rootNode and child indexes.
+	if index.rolodex != nil {
+		index.rolodex.Release()
+		index.rolodex = nil
+	}
+
+	// Config holds SpecInfo which holds RootNode.
+	if index.config != nil {
+		index.config.SpecInfo.Release()
+		index.config = nil
+	}
+}
+
 // SetAbsolutePath sets the absolute path to the spec file for the index. Will be absolute, either as a http link or a file.
 func (index *SpecIndex) SetAbsolutePath(absolutePath string) {
 	index.specAbsolutePath = absolutePath

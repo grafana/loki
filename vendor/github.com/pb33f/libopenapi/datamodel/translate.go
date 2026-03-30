@@ -24,17 +24,18 @@ type continueError struct {
 
 var Continue = &continueError{error: errors.New("Continue")}
 
-type jobStatus[OUT any] struct {
-	done   chan struct{}
+type indexedResult[OUT any] struct {
+	idx    int
 	cont   bool
-	result OUT
+	output OUT
+	err    error
 }
 
-type pipelineJobStatus[IN any, OUT any] struct {
-	done   chan struct{}
+type pipelineResult[OUT any] struct {
+	seq    int
 	cont   bool
-	input  IN
-	result OUT
+	output OUT
+	err    error
 }
 
 // TranslateSliceParallel iterates a slice in parallel and calls translate()
@@ -49,78 +50,93 @@ func TranslateSliceParallel[IN any, OUT any](in []IN, translate TranslateSliceFu
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	concurrency := runtime.NumCPU()
-	jobChan := make(chan *jobStatus[OUT], concurrency)
-	var reterr error
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	wg.Add(1) // input goroutine.
 
-	// Fan out translate jobs.
+	workers := runtime.NumCPU()
+	jobChan := make(chan int, workers)
+	// Buffered to len(in) so workers never block on send.
+	doneChan := make(chan indexedResult[OUT], len(in))
+
+	// Bounded worker pool.
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case idx, ok := <-jobChan:
+					if !ok {
+						return
+					}
+					out, err := translate(idx, in[idx])
+					r := indexedResult[OUT]{idx: idx, output: out}
+					if err == Continue {
+						r.cont = true
+					} else if err != nil {
+						r.err = err
+					}
+					doneChan <- r
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	// Enqueue work, then close doneChan after all workers finish.
 	go func() {
 		defer func() {
 			close(jobChan)
-			wg.Done()
+			wg.Wait()
+			close(doneChan)
 		}()
-		for idx, valueIn := range in {
-			j := &jobStatus[OUT]{
-				done: make(chan struct{}),
-			}
+		for i := range in {
 			select {
-			case jobChan <- j:
+			case jobChan <- i:
 			case <-ctx.Done():
 				return
 			}
-
-			wg.Add(1)
-			go func(idx int, valueIn IN) {
-				valueOut, err := translate(idx, valueIn)
-				if err == Continue {
-					j.cont = true
-				} else if err != nil {
-					mu.Lock()
-					if reterr == nil {
-						reterr = err
-					}
-					mu.Unlock()
-					cancel()
-					wg.Done()
-					return
-				}
-				j.result = valueOut
-				close(j.done)
-				wg.Done()
-			}(idx, valueIn)
 		}
 	}()
 
-	// Iterate jobChan as jobs complete.
-JOBLOOP:
-	for j := range jobChan {
-		select {
-		case <-j.done:
-			if j.cont || result == nil {
+	// Deliver results in stable order using a pending map.
+	pending := make(map[int]indexedResult[OUT])
+	nextIdx := 0
+	for r := range doneChan {
+		pending[r.idx] = r
+		// Flush contiguous completed results starting from nextIdx.
+		for {
+			p, ok := pending[nextIdx]
+			if !ok {
 				break
 			}
-			err := result(j.result)
-			if err != nil {
+			delete(pending, nextIdx)
+			nextIdx++
+			// Check errors first, even when result callback is nil.
+			if p.err != nil {
 				cancel()
-				wg.Wait()
+				for range doneChan {
+				}
+				if p.err == io.EOF {
+					return nil
+				}
+				return p.err
+			}
+			if p.cont || result == nil {
+				continue
+			}
+			if err := result(p.output); err != nil {
+				cancel()
+				for range doneChan {
+				}
 				if err == io.EOF {
 					return nil
 				}
 				return err
 			}
-		case <-ctx.Done():
-			break JOBLOOP
 		}
 	}
-
-	wg.Wait()
-	if reterr == io.EOF {
-		return nil
-	}
-	return reterr
+	return nil
 }
 
 // TranslateMapParallel iterates a `*orderedmap.Map` in parallel and calls translate()
@@ -133,77 +149,101 @@ func TranslateMapParallel[K comparable, V any, RV any](m *orderedmap.Map[K, V], 
 		return nil
 	}
 
+	// Snapshot pairs for indexed access.
+	pairs := make([]orderedmap.Pair[K, V], 0, m.Len())
+	for pair := orderedmap.First(m); pair != nil; pair = pair.Next() {
+		pairs = append(pairs, pair)
+	}
+	if len(pairs) == 0 {
+		return nil
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	concurrency := runtime.NumCPU()
-	c := orderedmap.Iterate(ctx, m)
-	jobChan := make(chan *jobStatus[RV], concurrency)
-	var reterr error
-	var wg sync.WaitGroup
-	var mu sync.Mutex
 
-	// Fan out translate jobs.
-	wg.Add(1)
+	workers := runtime.NumCPU()
+	jobChan := make(chan int, workers)
+	doneChan := make(chan indexedResult[RV], len(pairs))
+
+	// Bounded worker pool.
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case idx, ok := <-jobChan:
+					if !ok {
+						return
+					}
+					out, err := translate(pairs[idx])
+					r := indexedResult[RV]{idx: idx, output: out}
+					if err != nil {
+						r.err = err
+					}
+					doneChan <- r
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	// Enqueue work, then close doneChan after all workers finish.
 	go func() {
 		defer func() {
 			close(jobChan)
-			wg.Done()
+			wg.Wait()
+			close(doneChan)
 		}()
-		for pair := range c {
-			j := &jobStatus[RV]{
-				done: make(chan struct{}),
-			}
+		for i := range pairs {
 			select {
-			case jobChan <- j:
+			case jobChan <- i:
 			case <-ctx.Done():
 				return
 			}
-
-			wg.Add(1)
-			go func(pair orderedmap.Pair[K, V]) {
-				value, err := translate(pair)
-				if err != nil {
-					mu.Lock()
-					defer func() {
-						mu.Unlock()
-						wg.Done()
-						cancel()
-					}()
-					if reterr == nil {
-						reterr = err
-					}
-					return
-				}
-				j.result = value
-				close(j.done)
-				wg.Done()
-			}(pair)
 		}
 	}()
 
-	// Iterate jobChan as jobs complete.
-	defer wg.Wait()
-JOBLOOP:
-	for j := range jobChan {
-		select {
-		case <-j.done:
-			err := result(j.result)
-			if err != nil {
+	// Deliver results in stable order.
+	pending := make(map[int]indexedResult[RV])
+	nextIdx := 0
+	for r := range doneChan {
+		pending[r.idx] = r
+		for {
+			p, ok := pending[nextIdx]
+			if !ok {
+				break
+			}
+			delete(pending, nextIdx)
+			nextIdx++
+			if p.err != nil {
 				cancel()
+				for range doneChan {
+				}
+				if p.err == io.EOF {
+					return nil
+				}
+				return p.err
+			}
+			if err := result(p.output); err != nil {
+				cancel()
+				for range doneChan {
+				}
 				if err == io.EOF {
 					return nil
 				}
 				return err
 			}
-		case <-ctx.Done():
-			break JOBLOOP
 		}
 	}
+	return nil
+}
 
-	if reterr == io.EOF {
-		return nil
-	}
-	return reterr
+type pipelineWork[IN any] struct {
+	seq   int
+	input IN
 }
 
 // TranslatePipeline processes input sequentially through predicate(), sends to
@@ -215,13 +255,12 @@ func TranslatePipeline[IN any, OUT any](in <-chan IN, out chan<- OUT, translate 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	concurrency := runtime.NumCPU()
-	workChan := make(chan *pipelineJobStatus[IN, OUT])
-	resultChan := make(chan *pipelineJobStatus[IN, OUT])
+	workChan := make(chan pipelineWork[IN], concurrency*2)
+	resultChan := make(chan pipelineResult[OUT], concurrency*2)
 	var reterr error
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	defer wg.Wait()
-	wg.Add(1) // input goroutine.
 
 	// Launch worker pool.
 	for i := 0; i < concurrency; i++ {
@@ -230,27 +269,34 @@ func TranslatePipeline[IN any, OUT any](in <-chan IN, out chan<- OUT, translate 
 			defer wg.Done()
 			for {
 				select {
-				case j, ok := <-workChan:
+				case w, ok := <-workChan:
 					if !ok {
 						return
 					}
-					result, err := translate(j.input)
+					result, err := translate(w.input)
+					r := pipelineResult[OUT]{seq: w.seq, output: result}
 					if err == Continue {
-						j.cont = true
-						close(j.done)
-						continue
-					}
-					if err != nil {
+						r.cont = true
+					} else if err != nil {
 						mu.Lock()
-						defer mu.Unlock()
 						if reterr == nil {
 							reterr = err
 						}
+						mu.Unlock()
 						cancel()
+						// Send the error result so the collector can detect it
+						r.err = err
+						select {
+						case resultChan <- r:
+						default:
+						}
 						return
 					}
-					j.result = result
-					close(j.done)
+					select {
+					case resultChan <- r:
+					case <-ctx.Done():
+						return
+					}
 				case <-ctx.Done():
 					return
 				}
@@ -258,30 +304,23 @@ func TranslatePipeline[IN any, OUT any](in <-chan IN, out chan<- OUT, translate 
 		}()
 	}
 
-	// Iterate input, send to workers.
+	// Iterate input, assign sequence numbers, send to workers.
+	wg.Add(1)
 	go func() {
 		defer func() {
 			close(workChan)
-			close(resultChan)
 			wg.Done()
 		}()
+		seq := 0
 		for {
 			select {
 			case value, ok := <-in:
 				if !ok {
 					return
 				}
-				j := &pipelineJobStatus[IN, OUT]{
-					done:  make(chan struct{}),
-					input: value,
-				}
 				select {
-				case workChan <- j:
-				case <-ctx.Done():
-					return
-				}
-				select {
-				case resultChan <- j:
+				case workChan <- pipelineWork[IN]{seq: seq, input: value}:
+					seq++
 				case <-ctx.Done():
 					return
 				}
@@ -291,19 +330,38 @@ func TranslatePipeline[IN any, OUT any](in <-chan IN, out chan<- OUT, translate 
 		}
 	}()
 
+	// Close resultChan after all workers and the enqueue goroutine finish.
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
 	// Collect results in stable order, send to output channel.
 	defer close(out)
-	for j := range resultChan {
-		select {
-		case <-j.done:
-			if j.cont {
-				continue
-			}
-			out <- j.result
-		case <-ctx.Done():
+	pending := make(map[int]pipelineResult[OUT])
+	nextSeq := 0
+	for r := range resultChan {
+		if r.err != nil {
+			// Error already stored in reterr by the worker
 			return reterr
 		}
+		pending[r.seq] = r
+		for {
+			p, ok := pending[nextSeq]
+			if !ok {
+				break
+			}
+			delete(pending, nextSeq)
+			nextSeq++
+			if p.cont {
+				continue
+			}
+			select {
+			case out <- p.output:
+			case <-ctx.Done():
+				return reterr
+			}
+		}
 	}
-
 	return reterr
 }

@@ -514,7 +514,7 @@ func structTake(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult)
 	defer values.Release()
 
 	// select from children without bounds checking
-	out.Children = make([]exec.ArraySpan, values.NumField())
+	out.ResizeChildren(values.NumField())
 	eg, cctx := errgroup.WithContext(ctx.Ctx)
 	eg.SetLimit(GetExecCtx(ctx.Ctx).NumParallel)
 

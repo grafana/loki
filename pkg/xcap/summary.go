@@ -398,8 +398,13 @@ func summarizeObservations(capture *Capture) *observations {
 				// task send/recv durations and task/drain stats
 				TaskRecvDuration.Key(), TaskSendDuration.Key(),
 				TaskRecordsSent.Key(), TaskRowsSent.Key(),
-				TaskDrainRecordsReceived.Key(), TaskDrainBatchesProduced.Key(),
+				TaskDrainRecordsReceived.Key(),
+				TaskBatchingRecordsReceived.Key(), TaskBatchingRowsReceived.Key(),
+				TaskBatchingBatchesProduced.Key(), TaskBatchingRowsWritten.Key(),
 				TaskExternalSourcesCount.Key(), TaskExternalSinksCount.Key(),
+				// task cache stats
+				TaskCacheHits.Key(), TaskCacheMisses.Key(),
+				TaskCacheBatches.Key(), TaskCacheRows.Key(), TaskCacheBytes.Key(),
 			).
 			prefix("metastore_").
 			normalizeKeys(),
@@ -434,8 +439,13 @@ func summarizeObservations(capture *Capture) *observations {
 			filter(
 				TaskRecvDuration.Key(), TaskSendDuration.Key(),
 				TaskRecordsSent.Key(), TaskRowsSent.Key(),
-				TaskDrainRecordsReceived.Key(), TaskDrainBatchesProduced.Key(),
+				TaskDrainRecordsReceived.Key(),
+				TaskBatchingRecordsReceived.Key(), TaskBatchingRowsReceived.Key(),
+				TaskBatchingBatchesProduced.Key(), TaskBatchingRowsWritten.Key(),
 				TaskExternalSourcesCount.Key(), TaskExternalSinksCount.Key(),
+				// task cache stats
+				TaskCacheHits.Key(), TaskCacheMisses.Key(),
+				TaskCacheBatches.Key(), TaskCacheRows.Key(), TaskCacheBytes.Key(),
 			).
 			normalizeKeys(),
 	)

@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -13,34 +14,93 @@ import (
 
 // planner is responsible for constructing the Task graph held by a [Workflow].
 type planner struct {
-	tenantID string
-	graph    dag.Graph[*Task]
-	physical *physical.Plan
+	tenantID  string
+	batchSize int // batch size to wrap each task fragment with; 0 means no wrapping
+	graph     dag.Graph[*Task]
+	physical  *physical.Plan
 
 	streamWriters map[*Stream]*Task // Lookup of stream to which task writes to it
+}
+
+// cacheParams bundles cache-related configuration for workflow planning.
+type cacheParams struct {
+	enabled      bool
+	maxSizeBytes uint64
 }
 
 // planWorkflow partitions a physical plan into a graph of tasks.
 //
 // planWorkflow returns an error if the provided physical plan does not
 // have exactly one root node, or if the physical plan cannot be partitioned.
-func planWorkflow(tenantID string, plan *physical.Plan) (dag.Graph[*Task], error) {
+func planWorkflow(tenantID string, plan *physical.Plan, cache cacheParams) (dag.Graph[*Task], error) {
 	root, err := plan.Root()
 	if err != nil {
 		return dag.Graph[*Task]{}, err
 	}
 
-	planner := &planner{
-		tenantID: tenantID,
-		physical: plan,
+	var batchSize int
+	if b, ok := root.(*physical.Batching); ok {
+		batchSize = int(b.BatchSize)
+		// The Batching node is consumed here to extract the batch size. Advance
+		// root to its child so the Batching wrapper itself is never turned into a
+		// standalone task fragment.
+		//
+		// The planner.Process will add the batch node on top of task in the workflow.
+		if children := plan.Children(b); len(children) == 1 {
+			root = children[0]
+		}
+	}
 
+	planner := &planner{
+		tenantID:      tenantID,
+		batchSize:     batchSize,
+		physical:      plan,
 		streamWriters: make(map[*Stream]*Task),
 	}
 	if err := planner.Process(root); err != nil {
 		return dag.Graph[*Task]{}, err
 	}
 
+	if cache.enabled {
+		if err := injectTaskCaching(tenantID, planner.graph, cache.maxSizeBytes); err != nil {
+			return dag.Graph[*Task]{}, err
+		}
+	}
+
 	return planner.graph, nil
+}
+
+// injectTaskCaching wraps each cacheable task fragment with a Cache node.
+// A fragment is cacheable when TaskCacheKey returns a non-empty string
+// (requires at least one DataObjScan or PointersScan and no non-cacheable nodes).
+func injectTaskCaching(tenantID string, graph dag.Graph[*Task], maxSizeBytes uint64) error {
+	for _, root := range graph.Roots() {
+		if err := graph.Walk(root, func(task *Task) error {
+			oldRoot, err := task.Fragment.Root()
+			if err != nil {
+				return err
+			}
+			newRoot, wrapped, err := physical.WrapWithCacheIfSupported(context.Background(), tenantID, task.Fragment, maxSizeBytes)
+			if err != nil {
+				return err
+			}
+			if !wrapped {
+				// The task is not cacheable, so it stays as it is.
+				return nil
+			}
+
+			// Migrate Sinks from the old root to the new Cache root so the
+			// workflow executor and Sprint printer find streams at the right node.
+			if streams, ok := task.Sinks[oldRoot]; ok {
+				task.Sinks[newRoot] = streams
+				delete(task.Sinks, oldRoot)
+			}
+			return nil
+		}, dag.PreOrderWalk); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Process builds a set of tasks from a root physical plan node. Built tasks are
@@ -167,6 +227,16 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 	if !planTimeRange.IsZero() {
 		timeRange = planTimeRange
 	}
+
+	// If batching is enabled, wrap every task fragment with a Batching node so all task outputs are batched.
+	// Batching is enabled when the root of the original plan is a Batching node.
+	if p.batchSize > 0 {
+		var err error
+		if fragment, err = physical.WrapWithBatching(fragment, p.batchSize); err != nil {
+			return nil, fmt.Errorf("wrapping task fragment with batching: %w", err)
+		}
+	}
+
 	task := &Task{
 		ULID:         ulid.Make(),
 		TenantID:     p.tenantID,

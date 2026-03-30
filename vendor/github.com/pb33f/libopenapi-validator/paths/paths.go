@@ -26,15 +26,37 @@ import (
 // The third return value will be the path that was found in the document, as it pertains to the contract, so all path
 // parameters will not have been replaced with their values from the request - allowing model lookups.
 //
+// This function first tries a fast O(k) radix tree lookup (where k is path depth). If the radix tree
+// doesn't find a match, it falls back to regex-based matching which handles complex path patterns
+// like matrix-style ({;param}), label-style ({.param}), and OData-style (entities('{Entity}')).
+//
 // Path matching follows the OpenAPI specification: literal (concrete) paths take precedence over
 // parameterized paths, regardless of definition order in the specification.
-func FindPath(request *http.Request, document *v3.Document, regexCache config.RegexCache) (*v3.PathItem, []*errors.ValidationError, string) {
-	basePaths := getBasePaths(document)
+func FindPath(request *http.Request, document *v3.Document, options *config.ValidationOptions) (*v3.PathItem, []*errors.ValidationError, string) {
 	stripped := StripRequestPath(request, document)
+
+	// Fast path: try radix tree first (O(k) where k = path depth)
+	// If no path lookup is provided, we will fall back to regex-based matching.
+	if options != nil && options.PathTree != nil {
+		if pathItem, matchedPath, found := options.PathTree.Lookup(stripped); found {
+			if pathHasMethod(pathItem, request.Method) {
+				return pathItem, nil, matchedPath
+			}
+			return pathItem, missingOperationError(request, matchedPath), matchedPath
+		}
+	}
+
+	// Slow path: fall back to regex matching for complex paths (matrix, label, OData, etc.)
+	basePaths := getBasePaths(document)
 
 	reqPathSegments := strings.Split(stripped, "/")
 	if reqPathSegments[0] == "" {
 		reqPathSegments = reqPathSegments[1:]
+	}
+
+	var regexCache config.RegexCache
+	if options != nil {
+		regexCache = options.RegexCache
 	}
 
 	candidates := make([]pathCandidate, 0, document.Paths.PathItems.Len())
@@ -92,18 +114,7 @@ func FindPath(request *http.Request, document *v3.Document, regexCache config.Re
 	}
 
 	// path matches exist but none have the required method
-	validationErrors := []*errors.ValidationError{{
-		ValidationType:    helpers.PathValidation,
-		ValidationSubType: helpers.ValidationMissingOperation,
-		Message:           fmt.Sprintf("%s Path '%s' not found", request.Method, request.URL.Path),
-		Reason: fmt.Sprintf("The %s method for that path does not exist in the specification",
-			request.Method),
-		SpecLine: -1,
-		SpecCol:  -1,
-		HowToFix: errors.HowToFixPath,
-	}}
-	errors.PopulateValidationErrors(validationErrors, request, bestOverall.path)
-	return bestOverall.pathItem, validationErrors, bestOverall.path
+	return bestOverall.pathItem, missingOperationError(request, bestOverall.path), bestOverall.path
 }
 
 // normalizePathForMatching removes the fragment from a path template unless
@@ -219,4 +230,20 @@ func comparePaths(mapped, requested, basePaths []string, regexCache config.Regex
 	l := filepath.Join(imploded...)
 	r := filepath.Join(requested...)
 	return checkPathAgainstBase(l, r, basePaths)
+}
+
+// missingOperationError returns a validation error for when a path was found but the HTTP method doesn't exist.
+func missingOperationError(request *http.Request, matchedPath string) []*errors.ValidationError {
+	validationErrors := []*errors.ValidationError{{
+		ValidationType:    helpers.PathValidation,
+		ValidationSubType: helpers.ValidationMissingOperation,
+		Message:           fmt.Sprintf("%s Path '%s' not found", request.Method, request.URL.Path),
+		Reason: fmt.Sprintf("The %s method for that path does not exist in the specification",
+			request.Method),
+		SpecLine: -1,
+		SpecCol:  -1,
+		HowToFix: errors.HowToFixPath,
+	}}
+	errors.PopulateValidationErrors(validationErrors, request, matchedPath)
+	return validationErrors
 }

@@ -69,7 +69,7 @@ func applyAction(root *yaml.Node, action *highoverlay.Action, parentIdx parentIn
 		return warnings, nil
 	}
 
-	path, err := jsonpath.NewPath(action.Target, config.WithPropertyNameExtension())
+	path, err := jsonpath.NewPath(action.Target, config.WithPropertyNameExtension(), config.WithLazyContextTracking())
 	if err != nil {
 		return nil, ErrInvalidJSONPath
 	}
@@ -124,7 +124,7 @@ func applyAction(root *yaml.Node, action *highoverlay.Action, parentIdx parentIn
 func applyCopyAction(root *yaml.Node, targetNodes []*yaml.Node, copyPath string) ([]*Warning, error) {
 	var warnings []*Warning
 
-	path, err := jsonpath.NewPath(copyPath, config.WithPropertyNameExtension())
+	path, err := jsonpath.NewPath(copyPath, config.WithPropertyNameExtension(), config.WithLazyContextTracking())
 	if err != nil {
 		return nil, ErrInvalidJSONPath
 	}

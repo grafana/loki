@@ -113,19 +113,26 @@ func (p *ProxyEndpoint) serveWrites(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine if we should sample this query
-	shouldSample := false
+	var correlationID string
 	if p.goldfishManager != nil {
-		shouldSample = p.goldfishManager.ShouldSample(tenantID)
+		sampled, cid := p.goldfishManager.ShouldSample(tenantID)
+		correlationID = cid
 		level.Debug(p.logger).Log(
 			"msg", "goldfish sampling decision",
 			"tenant", tenantID,
-			"sampled", shouldSample,
+			"sampled", sampled,
 			"path", r.URL.Path)
+	}
+
+	// Set the goldfish correlation ID header early (before backends respond),
+	// so the client receives it regardless of backend success/failure.
+	if correlationID != "" {
+		w.Header().Set(goldfish.GoldfishCorrelationIDHeader, correlationID)
 	}
 
 	// Send the same request to all backends.
 	resCh := make(chan *BackendResponse, len(p.backends))
-	go p.executeBackendRequests(r, resCh, shouldSample)
+	go p.executeBackendRequests(r, resCh, correlationID)
 
 	// Wait for the first response that's feasible to be sent back to the client.
 	downstreamRes := p.waitBackendResponseForDownstream(resCh)
@@ -140,6 +147,11 @@ func (p *ProxyEndpoint) serveWrites(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Re-assert the goldfish header in case a backend sent a same-name header that overwrote ours.
+		if correlationID != "" {
+			w.Header().Set(goldfish.GoldfishCorrelationIDHeader, correlationID)
+		}
+
 		w.WriteHeader(downstreamRes.status)
 		if _, err := w.Write(downstreamRes.body); err != nil {
 			level.Warn(p.logger).Log("msg", "Unable to write response", "err", err)
@@ -149,7 +161,7 @@ func (p *ProxyEndpoint) serveWrites(w http.ResponseWriter, r *http.Request) {
 	p.metrics.responsesTotal.WithLabelValues(downstreamRes.backend.name, downstreamRes.backend.Alias(), r.Method, p.routeName, detectIssuer(r)).Inc()
 }
 
-func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *BackendResponse, goldfishSample bool) {
+func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *BackendResponse, correlationID string) {
 	var (
 		wg                  = sync.WaitGroup{}
 		err                 error
@@ -268,7 +280,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 	}
 
 	// Process with Goldfish if enabled and sampled
-	if goldfishSample && p.goldfishManager != nil && len(responses) >= 2 {
+	if correlationID != "" && p.goldfishManager != nil && len(responses) >= 2 {
 		// Use preferred backend as Cell A, first non-preferred as Cell B
 		var cellAResp, cellBResp *BackendResponse
 
@@ -297,7 +309,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 				"cellA_status", cellAResp.status,
 				"cellB_backend", cellBResp.backend.name,
 				"cellB_status", cellBResp.status)
-			go p.processWithGoldfish(r, cellAResp, cellBResp)
+			go p.processWithGoldfish(r, cellAResp, cellBResp, correlationID)
 		} else {
 			level.Warn(p.logger).Log("msg", "Unable to process query with Goldfish: missing backend responses")
 		}
@@ -401,7 +413,7 @@ func detectIssuer(r *http.Request) string {
 }
 
 // processWithGoldfish sends the query and responses to Goldfish for comparison
-func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBResp *BackendResponse) {
+func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBResp *BackendResponse, correlationID string) {
 	cellAGoldfishResp := &goldfish.BackendResponse{
 		BackendName: cellAResp.backend.name,
 		Status:      cellAResp.status,
@@ -420,5 +432,5 @@ func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBRes
 		SpanID:      cellBResp.spanID,
 	}
 
-	p.goldfishManager.SendToGoldfish(r, cellAGoldfishResp, cellBGoldfishResp)
+	p.goldfishManager.SendToGoldfish(r, cellAGoldfishResp, cellBGoldfishResp, correlationID)
 }

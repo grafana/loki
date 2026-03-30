@@ -9,7 +9,6 @@ import (
 	"hash/maphash"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel"
 	"github.com/pb33f/libopenapi/datamodel/low"
@@ -71,39 +70,57 @@ func (p *PathItem) Hash() uint64 {
 			h.WriteByte(low.HASH_PIPE)
 		}
 		if !p.Get.IsEmpty() {
-			h.WriteString(fmt.Sprintf("%s-%s", GetLabel, low.GenerateHashString(p.Get.Value)))
+			h.WriteString(GetLabel)
+			h.WriteByte('-')
+			h.WriteString(low.GenerateHashString(p.Get.Value))
 			h.WriteByte(low.HASH_PIPE)
 		}
 		if !p.Put.IsEmpty() {
-			h.WriteString(fmt.Sprintf("%s-%s", PutLabel, low.GenerateHashString(p.Put.Value)))
+			h.WriteString(PutLabel)
+			h.WriteByte('-')
+			h.WriteString(low.GenerateHashString(p.Put.Value))
 			h.WriteByte(low.HASH_PIPE)
 		}
 		if !p.Post.IsEmpty() {
-			h.WriteString(fmt.Sprintf("%s-%s", PostLabel, low.GenerateHashString(p.Post.Value)))
+			h.WriteString(PostLabel)
+			h.WriteByte('-')
+			h.WriteString(low.GenerateHashString(p.Post.Value))
 			h.WriteByte(low.HASH_PIPE)
 		}
 		if !p.Delete.IsEmpty() {
-			h.WriteString(fmt.Sprintf("%s-%s", DeleteLabel, low.GenerateHashString(p.Delete.Value)))
+			h.WriteString(DeleteLabel)
+			h.WriteByte('-')
+			h.WriteString(low.GenerateHashString(p.Delete.Value))
 			h.WriteByte(low.HASH_PIPE)
 		}
 		if !p.Options.IsEmpty() {
-			h.WriteString(fmt.Sprintf("%s-%s", OptionsLabel, low.GenerateHashString(p.Options.Value)))
+			h.WriteString(OptionsLabel)
+			h.WriteByte('-')
+			h.WriteString(low.GenerateHashString(p.Options.Value))
 			h.WriteByte(low.HASH_PIPE)
 		}
 		if !p.Head.IsEmpty() {
-			h.WriteString(fmt.Sprintf("%s-%s", HeadLabel, low.GenerateHashString(p.Head.Value)))
+			h.WriteString(HeadLabel)
+			h.WriteByte('-')
+			h.WriteString(low.GenerateHashString(p.Head.Value))
 			h.WriteByte(low.HASH_PIPE)
 		}
 		if !p.Patch.IsEmpty() {
-			h.WriteString(fmt.Sprintf("%s-%s", PatchLabel, low.GenerateHashString(p.Patch.Value)))
+			h.WriteString(PatchLabel)
+			h.WriteByte('-')
+			h.WriteString(low.GenerateHashString(p.Patch.Value))
 			h.WriteByte(low.HASH_PIPE)
 		}
 		if !p.Trace.IsEmpty() {
-			h.WriteString(fmt.Sprintf("%s-%s", TraceLabel, low.GenerateHashString(p.Trace.Value)))
+			h.WriteString(TraceLabel)
+			h.WriteByte('-')
+			h.WriteString(low.GenerateHashString(p.Trace.Value))
 			h.WriteByte(low.HASH_PIPE)
 		}
 		if !p.Query.IsEmpty() {
-			h.WriteString(fmt.Sprintf("%s-%s", QueryLabel, low.GenerateHashString(p.Query.Value)))
+			h.WriteString(QueryLabel)
+			h.WriteByte('-')
+			h.WriteString(low.GenerateHashString(p.Query.Value))
 			h.WriteByte(low.HASH_PIPE)
 		}
 
@@ -111,7 +128,7 @@ func (p *PathItem) Hash() uint64 {
 		if p.AdditionalOperations.Value != nil && p.AdditionalOperations.Value.Len() > 0 {
 			keys := make([]string, 0, p.AdditionalOperations.Value.Len())
 			for k, v := range p.AdditionalOperations.Value.FromOldest() {
-				keys = append(keys, fmt.Sprintf("%s-%s", k.Value, low.GenerateHashString(v.Value)))
+				keys = append(keys, k.Value+"-"+low.GenerateHashString(v.Value))
 			}
 			sort.Strings(keys)
 			for _, key := range keys {
@@ -194,8 +211,6 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 	skip := false
 	var currentNode *yaml.Node
 
-	var wg sync.WaitGroup
-	var errors []error
 	var ops []low.NodeReference[*Operation]
 	var additionalOps *orderedmap.Map[low.KeyReference[string], low.NodeReference[*Operation]]
 
@@ -238,7 +253,7 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 	}
 	prevExt := false
 	for i, pathNode := range root.Content {
-		if strings.HasPrefix(strings.ToLower(pathNode.Value), "x-") {
+		if len(pathNode.Value) >= 2 && (pathNode.Value[0] == 'x' || pathNode.Value[0] == 'X') && pathNode.Value[1] == '-' {
 			skip = true
 			prevExt = true
 			continue
@@ -246,7 +261,7 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 		// https://github.com/pb33f/libopenapi/issues/388
 		// in the case where a user has an extension with the value 'parameters', make sure we handle
 		// it correctly, by not skipping.
-		if strings.HasPrefix(strings.ToLower(pathNode.Value), "parameters") {
+		if strings.EqualFold(pathNode.Value, "parameters") {
 			if !prevExt { // this
 				skip = true
 				continue
@@ -290,8 +305,9 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 			return err
 		}
 		var op Operation
-		wg.Add(1)
-		low.BuildModelAsync(pathNode, &op, &wg, &errors)
+		if err := low.BuildModel(pathNode, &op); err != nil {
+			return err
+		}
 
 		opRef := low.NodeReference[*Operation]{
 			Value:     &op,
@@ -345,8 +361,9 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 						return err
 					}
 					var addOp Operation
-					wg.Add(1)
-					low.BuildModelAsync(opValueNode, &addOp, &wg, &errors)
+					if err := low.BuildModel(opValueNode, &addOp); err != nil {
+						return err
+					}
 
 					addOpRef := low.NodeReference[*Operation]{
 						Value:     &addOp,

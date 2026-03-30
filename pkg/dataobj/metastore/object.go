@@ -84,16 +84,15 @@ func NewSectionDescriptor(pointer pointers.SectionPointer, ambiguousLabelNames [
 			ObjectPath: pointer.Path,
 			SectionIdx: pointer.Section,
 		},
-		StreamIDs: []int64{pointer.StreamIDRef},
-		RowCount:  int(pointer.LineCount),
-		Size:      pointer.UncompressedSize,
-		Start:     pointer.StartTs,
-		End:       pointer.EndTs,
+		StreamIDs:                   []int64{pointer.StreamIDRef},
+		RowCount:                    int(pointer.LineCount),
+		Size:                        pointer.UncompressedSize,
+		Start:                       pointer.StartTs,
+		End:                         pointer.EndTs,
+		AmbiguousPredicatesByStream: make(map[int64][]string),
 	}
 	if len(ambiguousLabelNames) > 0 {
-		obj.AmbiguousPredicatesByStream = map[int64][]string{
-			pointer.StreamIDRef: ambiguousLabelNames,
-		}
+		obj.AmbiguousPredicatesByStream[pointer.StreamIDRef] = ambiguousLabelNames
 	}
 	return obj
 }
@@ -681,6 +680,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		req.SectionsRequest.End,
 		req.SectionsRequest.Matchers,
 		req.SectionsRequest.Predicates,
+		req.BatchSize,
 	)
 
 	return IndexSectionsReaderResponse{Reader: reader}, nil

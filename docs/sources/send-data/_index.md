@@ -18,12 +18,8 @@ While all clients can be used simultaneously to cover multiple use cases, which 
 
 The following clients are developed and supported (for those customers who have purchased a support contract) by Grafana Labs for sending logs to Loki:
 
-- [Grafana Alloy](https://grafana.com/docs/alloy/latest/) - Grafana Alloy is a vendor-neutral distribution of the OpenTelemetry (OTel) Collector. Alloy offers native pipelines for OTel, Prometheus, Pyroscope, Loki, and many other metrics, logs, traces, and profile tools. In addition, you can use Alloy pipelines to do different tasks, such as configure alert rules in Loki and Mimir. Alloy is fully compatible with the OTel Collector, Prometheus Agent, and Promtail. You can use Alloy as an alternative to either of these solutions or combine it into a hybrid system of multiple collectors and agents. You can deploy Alloy anywhere within your IT infrastructure and pair it with your Grafana LGTM stack, a telemetry backend from Grafana Cloud, or any other compatible backend from any other vendor.
+- [Grafana Alloy](https://grafana.com/docs/alloy/latest/) - Grafana Alloy is a vendor-neutral distribution of the OpenTelemetry (OTel) Collector. Alloy offers native pipelines for OTel, Prometheus, Pyroscope, Loki, and many other metrics, logs, traces, and profile tools. In addition, you can use Alloy pipelines to do different tasks, such as configure alert rules in Loki and Mimir. Alloy is fully compatible with the OTel Collector and Prometheus Agent. You can use Alloy as an alternative to either of these solutions or combine it into a hybrid system of multiple collectors and agents. You can deploy Alloy anywhere within your IT infrastructure and pair it with your Grafana LGTM stack, a telemetry backend from Grafana Cloud, or any other compatible backend from any other vendor.
 - [xk6-loki extension](https://github.com/grafana/xk6-loki) - The k6-loki extension lets you perform [load testing on Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/k6/).
-- [Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/) (DEPRECATED) - Promtail can be configured to automatically scrape logs from Kubernetes pods running on the same node that Promtail runs on. 
-{{< admonition type="caution" >}}
-Promtail is deprecated. If you are currently using Promtail, you should plan your [migration to Alloy](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-alloy/). All future feature development will occur in Grafana Alloy.
-{{< /admonition >}}
 
 
 ## OpenTelemetry Collector
@@ -47,7 +43,6 @@ be used as it automatically adds labels appropriate to the running container.
 and you already have configured `Parser` and `Filter` plugins.
 - [Fluentd](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentd/) - The Fluentd plugin is ideal when you already have Fluentd deployed
 and you already have configured `Parser` and `Filter` plugins. Fluentd also works well for extracting metrics from logs when using itsPrometheus plugin.
-- [Lambda Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/lambda-promtail/) - This is a workflow combining the Promtail push-api [scrape config](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#loki_push_api) and the lambda-promtail AWS Lambda function which pipes logs from Cloudwatch to Loki. This is a good choice if you're looking to try out Loki in a low-footprint way or if you wish to monitor AWS lambda logs in Loki
 - [Logstash](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/logstash/) - If you are already using logstash and/or beats, this will be the easiest way to start.
 By adding our output plugin you can quickly try Loki without doing big configuration changes.
 

@@ -18,7 +18,7 @@ import (
 )
 
 func (v *paramValidator) ValidateSecurity(request *http.Request) (bool, []*errors.ValidationError) {
-	pathItem, errs, foundPath := paths.FindPath(request, v.document, v.options.RegexCache)
+	pathItem, errs, foundPath := paths.FindPath(request, v.document, v.options)
 	if len(errs) > 0 {
 		return false, errs
 	}
@@ -124,24 +124,37 @@ func (v *paramValidator) validateHTTPSecurityScheme(
 	request *http.Request,
 	pathValue string,
 ) (bool, []*errors.ValidationError) {
-	switch strings.ToLower(secScheme.Scheme) {
-	case "basic", "bearer", "digest":
-		if request.Header.Get("Authorization") == "" {
-			validationErrors := []*errors.ValidationError{
-				{
-					Message:           fmt.Sprintf("Authorization header for '%s' scheme", secScheme.Scheme),
-					Reason:            "Authorization header was not found",
-					ValidationType:    helpers.SecurityValidation,
-					ValidationSubType: secScheme.Scheme,
-					SpecLine:          sec.GoLow().Requirements.ValueNode.Line,
-					SpecCol:           sec.GoLow().Requirements.ValueNode.Column,
-					HowToFix:          "Add an 'Authorization' header to this request",
-				},
-			}
-			errors.PopulateValidationErrors(validationErrors, request, pathValue)
-			return false, validationErrors
+	authorizationHeader := request.Header.Get("Authorization")
+	if authorizationHeader == "" {
+		validationErrors := []*errors.ValidationError{
+			{
+				Message:           fmt.Sprintf("Authorization header for '%s' scheme", secScheme.Scheme),
+				Reason:            "Authorization header was not found",
+				ValidationType:    helpers.SecurityValidation,
+				ValidationSubType: secScheme.Scheme,
+				SpecLine:          sec.GoLow().Requirements.ValueNode.Line,
+				SpecCol:           sec.GoLow().Requirements.ValueNode.Column,
+				HowToFix:          "Add an 'Authorization' header to this request",
+			},
 		}
-		return true, nil
+		errors.PopulateValidationErrors(validationErrors, request, pathValue)
+		return false, validationErrors
+	}
+	if len(authorizationHeader) < len(secScheme.Scheme) || !strings.EqualFold(authorizationHeader[:len(secScheme.Scheme)], secScheme.Scheme) {
+		validationErrors := []*errors.ValidationError{
+			{
+				Message:           fmt.Sprintf("Authorization header scheme '%s' mismatch", secScheme.Scheme),
+				Reason:            "Authorization header had incorrect scheme",
+				ValidationType:    helpers.SecurityValidation,
+				ValidationSubType: secScheme.Scheme,
+				SpecLine:          sec.GoLow().Requirements.ValueNode.Line,
+				SpecCol:           sec.GoLow().Requirements.ValueNode.Column,
+				HowToFix: fmt.Sprintf("Use the scheme '%s' in the Authorization header "+
+					"for this request", secScheme.Scheme),
+			},
+		}
+		errors.PopulateValidationErrors(validationErrors, request, pathValue)
+		return false, validationErrors
 	}
 	return true, nil
 }

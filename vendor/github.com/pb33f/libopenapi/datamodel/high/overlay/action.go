@@ -64,19 +64,19 @@ func (a *Action) Render() ([]byte, error) {
 func (a *Action) MarshalYAML() (any, error) {
 	m := orderedmap.New[string, any]()
 	if a.Target != "" {
-		m.Set("target", a.Target)
+		m.Set(low.TargetLabel, a.Target)
 	}
 	if a.Description != "" {
-		m.Set("description", a.Description)
+		m.Set(low.DescriptionLabel, a.Description)
 	}
 	if a.Copy != "" {
-		m.Set("copy", a.Copy)
+		m.Set(low.CopyLabel, a.Copy)
 	}
 	if a.Update != nil {
-		m.Set("update", a.Update)
+		m.Set(low.UpdateLabel, a.Update)
 	}
 	if a.Remove {
-		m.Set("remove", a.Remove)
+		m.Set(low.RemoveLabel, a.Remove)
 	}
 	for pair := a.Extensions.First(); pair != nil; pair = pair.Next() {
 		m.Set(pair.Key(), pair.Value())

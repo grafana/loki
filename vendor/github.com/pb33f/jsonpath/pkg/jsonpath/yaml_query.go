@@ -58,11 +58,35 @@ func (q jsonPathAST) Query(current *yaml.Node, root *yaml.Node) []*yaml.Node {
 		root = root.Content[0]
 	}
 
-	ctx := NewFilterContext(root)
+	var ctx FilterContext
+	if q.lazyContextTracking {
+		ctx = newFilterContextLazy(root)
+	} else {
+		ctx = NewFilterContext(root)
+	}
 
 	// Only enable parent tracking if the query uses ^ or @parent
 	if q.hasParentReferences() {
 		ctx.EnableParentTracking()
+	}
+	usage := q.contextVarUsage()
+	if usage.parent {
+		ctx.EnableParentTracking()
+	}
+	if q.lazyContextTracking {
+		if usage.property || usage.parentProperty || q.hasPropertyNameReferences() {
+			enablePropertyTracking(ctx)
+		}
+		if usage.path || usage.parentProperty {
+			enablePathTracking(ctx)
+		}
+		if usage.index {
+			enableIndexTracking(ctx)
+		}
+	} else {
+		enablePropertyTracking(ctx)
+		enablePathTracking(ctx)
+		enableIndexTracking(ctx)
 	}
 
 	result := make([]*yaml.Node, 0)
@@ -202,6 +226,24 @@ func parentTrackingEnabled(idx index) bool {
 	return false
 }
 
+func enablePropertyTracking(ctx FilterContext) {
+	if enabler, ok := ctx.(interface{ EnablePropertyTracking() }); ok {
+		enabler.EnablePropertyTracking()
+	}
+}
+
+func enablePathTracking(ctx FilterContext) {
+	if enabler, ok := ctx.(interface{ EnablePathTracking() }); ok {
+		enabler.EnablePathTracking()
+	}
+}
+
+func enableIndexTracking(ctx FilterContext) {
+	if enabler, ok := ctx.(interface{ EnableIndexTracking() }); ok {
+		enabler.EnableIndexTracking()
+	}
+}
+
 func (s segment) Query(idx index, value *yaml.Node, root *yaml.Node) []*yaml.Node {
     switch s.kind {
     case segmentKindChild:
@@ -209,10 +251,9 @@ func (s segment) Query(idx index, value *yaml.Node, root *yaml.Node) []*yaml.Nod
     case segmentKindDescendant:
         // run the inner segment against this node
         var result = []*yaml.Node{}
-        children := descend(value, root)
-        for _, child := range children {
+        descendApply(value, func(child *yaml.Node) {
             result = append(result, s.descendant.Query(idx, child, root)...)
-        }
+        })
         // make children unique by pointer value
         result = unique(result)
         return result

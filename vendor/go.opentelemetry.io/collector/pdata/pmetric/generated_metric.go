@@ -8,6 +8,7 @@ package pmetric
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -122,7 +123,7 @@ func (ms Metric) Gauge() Gauge {
 func (ms Metric) SetEmptyGauge() Gauge {
 	ms.state.AssertMutable()
 	var ov *internal.Metric_Gauge
-	if !internal.UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		ov = &internal.Metric_Gauge{}
 	} else {
 		ov = internal.ProtoPoolMetric_Gauge.Get().(*internal.Metric_Gauge)
@@ -151,7 +152,7 @@ func (ms Metric) Sum() Sum {
 func (ms Metric) SetEmptySum() Sum {
 	ms.state.AssertMutable()
 	var ov *internal.Metric_Sum
-	if !internal.UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		ov = &internal.Metric_Sum{}
 	} else {
 		ov = internal.ProtoPoolMetric_Sum.Get().(*internal.Metric_Sum)
@@ -180,7 +181,7 @@ func (ms Metric) Histogram() Histogram {
 func (ms Metric) SetEmptyHistogram() Histogram {
 	ms.state.AssertMutable()
 	var ov *internal.Metric_Histogram
-	if !internal.UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		ov = &internal.Metric_Histogram{}
 	} else {
 		ov = internal.ProtoPoolMetric_Histogram.Get().(*internal.Metric_Histogram)
@@ -209,7 +210,7 @@ func (ms Metric) ExponentialHistogram() ExponentialHistogram {
 func (ms Metric) SetEmptyExponentialHistogram() ExponentialHistogram {
 	ms.state.AssertMutable()
 	var ov *internal.Metric_ExponentialHistogram
-	if !internal.UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		ov = &internal.Metric_ExponentialHistogram{}
 	} else {
 		ov = internal.ProtoPoolMetric_ExponentialHistogram.Get().(*internal.Metric_ExponentialHistogram)
@@ -238,7 +239,7 @@ func (ms Metric) Summary() Summary {
 func (ms Metric) SetEmptySummary() Summary {
 	ms.state.AssertMutable()
 	var ov *internal.Metric_Summary
-	if !internal.UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		ov = &internal.Metric_Summary{}
 	} else {
 		ov = internal.ProtoPoolMetric_Summary.Get().(*internal.Metric_Summary)

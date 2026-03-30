@@ -301,9 +301,9 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 		var cellAResultURI, cellBResultURI sql.NullString
 		var cellAResultCompression, cellBResultCompression sql.NullString
 		var cellAResultSize, cellBResultSize sql.NullInt64
+		var mismatchCause sql.NullString
 
 		err := rows.Scan(
-
 			&q.CorrelationID, &q.TenantID, &q.User, &q.Issuer, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
 			&q.CellAStats.ExecTimeMs, &q.CellBStats.ExecTimeMs, &q.CellAStats.QueueTimeMs, &q.CellBStats.QueueTimeMs,
 			&q.CellAStats.BytesProcessed, &q.CellBStats.BytesProcessed, &q.CellAStats.LinesProcessed, &q.CellBStats.LinesProcessed,
@@ -318,7 +318,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			&cellASpanID, &cellBSpanID,
 			&q.CellAUsedNewEngine, &q.CellBUsedNewEngine,
 			&q.SampledAt, &createdAt,
-			&q.ComparisonStatus, &q.MatchWithinTolerance, &q.MismatchCause,
+			&q.ComparisonStatus, &q.MatchWithinTolerance, &mismatchCause,
 		)
 		if err != nil {
 			return nil, err
@@ -348,6 +348,9 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 		}
 		if cellBResultCompression.Valid {
 			q.CellBResultCompression = cellBResultCompression.String
+		}
+		if mismatchCause.Valid {
+			q.MismatchCause = mismatchCause.String
 		}
 
 		// Convert step duration from milliseconds to Duration
@@ -405,6 +408,7 @@ func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationI
 	var cellAResultURI, cellBResultURI sql.NullString
 	var cellAResultCompression, cellBResultCompression sql.NullString
 	var cellAResultSize, cellBResultSize sql.NullInt64
+	var mismatchCause sql.NullString
 
 	err := s.db.QueryRowContext(ctx, query, correlationID).Scan(
 		&q.CorrelationID, &q.TenantID, &q.User, &q.Issuer, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
@@ -420,7 +424,7 @@ func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationI
 		&q.CellATraceID, &q.CellBTraceID,
 		&cellASpanID, &cellBSpanID,
 		&q.CellAUsedNewEngine, &q.CellBUsedNewEngine,
-		&q.SampledAt, &createdAt, &q.ComparisonStatus, &q.MatchWithinTolerance, &q.MismatchCause,
+		&q.SampledAt, &createdAt, &q.ComparisonStatus, &q.MatchWithinTolerance, &mismatchCause,
 	)
 
 	if err != nil {
@@ -454,6 +458,9 @@ func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationI
 	}
 	if cellBResultCompression.Valid {
 		q.CellBResultCompression = cellBResultCompression.String
+	}
+	if mismatchCause.Valid {
+		q.MismatchCause = mismatchCause.String
 	}
 
 	// Convert step duration from milliseconds to Duration
