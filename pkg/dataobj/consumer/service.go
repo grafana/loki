@@ -199,7 +199,7 @@ func NewInMemory(cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scra
 	}
 
 	// indexobj.Builder config: use the same base config as the log builder.
-	indexBuilder, err := indexobj.NewBuilder(cfg.BuilderConfig.BuilderBaseConfig, scratchStore)
+	indexBuilder, err := indexobj.NewBuilder(cfg.BuilderBaseConfig, scratchStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index builder: %w", err)
 	}

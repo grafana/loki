@@ -1499,6 +1499,20 @@ dataobj:
     # CLI flag: -dataobj-consumer.max-builder-age
     [max_builder_age: <duration> | default = 1h]
 
+    # How records are ingested: "kafka" reads from a Kafka topic; "inmemory"
+    # uses an in-process channel (experimental, single-node, no durability
+    # guarantees, each replica holds independent data).
+    # CLI flag: -dataobj-consumer.ingest-mode
+    [ingest_mode: <string> | default = "kafka"]
+
+    # Buffered channel for in-process records (inmemory mode only). Each record
+    # is ~100B-10KB depending on log line size. Default 10,000 is safe for most
+    # experimental workloads. Monitor
+    # loki_distributor_inmemory_dataobj_tee_stream_failures_total{reason="channel_full"}
+    # to alert on backpressure.
+    # CLI flag: -dataobj-consumer.channel-size
+    [channel_size: <int> | default = 10000]
+
     # The name of the Kafka topic.
     # CLI flag: -dataobj-consumer.topic
     [topic: <string> | default = ""]
@@ -3383,6 +3397,11 @@ dataobj_tee:
   # to 0 to disable batching.
   # CLI flag: -distributor.dataobj-tee.rate-batch-window
   [rate_batch_window: <duration> | default = 0s]
+
+# Timeout for sending a record to the in-memory dataobj channel before returning
+# backpressure to the caller. Default 5s matches the previous hardcoded value.
+# CLI flag: -distributor.inmemory-dataobj-push-timeout
+[inmemory_dataobj_push_timeout: <duration> | default = 5s]
 ```
 
 ### etcd
