@@ -78,6 +78,15 @@ type (
 		// data types.
 		Validity Spec
 	}
+
+	// SpecZigZag encodes signed integer values by mapping them to unsigned
+	// integers using zigzag encoding. The unsigned data is then encoded
+	// according to the Data spec. Nullability is passed through to the
+	// Data child.
+	SpecZigZag struct {
+		// Spec for how to encode the zigzag-encoded unsigned data.
+		Data Spec
+	}
 )
 
 // Kind returns [EncodingKindBool].
@@ -105,6 +114,11 @@ func (spec *SpecZstd) Kind() EncodingKind {
 	return EncodingKindZstd
 }
 
+// Kind returns [EncodingKindZigZag].
+func (spec *SpecZigZag) Kind() EncodingKind {
+	return EncodingKindZigZag
+}
+
 //
 // Sealed marker implementations.
 //
@@ -114,3 +128,4 @@ func (spec *SpecPlain) isSpec()     {}
 func (spec *SpecBinary) isSpec()    {}
 func (spec *SpecBitpacked) isSpec() {}
 func (spec *SpecZstd) isSpec()      {}
+func (spec *SpecZigZag) isSpec()    {}
