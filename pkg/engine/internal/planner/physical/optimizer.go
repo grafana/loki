@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
@@ -157,6 +158,106 @@ func (r *limitPushdown) applyToTargets(node Node, limit uint32) bool {
 		}
 	}
 	return changed
+}
+
+var _ rule = (*clampPredicates)(nil)
+
+// clampPredicates is a rule that applies the time predicates from scan nodes.
+// For example, if a scan node has a BinaryExpr predicate of timestamp <= 2026-03-30 14:20:00
+// and the max time range ends at 2026-03-30 14:15:00,
+// we adjust the predicate to timestamp < 2026-03-30 14:15:00.
+type clampPredicates struct {
+	plan *Plan
+}
+
+// apply implements rule.
+func (r *clampPredicates) apply(root Node) bool {
+	// collect scan nodes.
+	nodes := findMatchingNodes(r.plan, root, func(node Node) bool {
+		switch node.Type() {
+		case NodeTypeDataObjScan:
+			return true
+		case NodeTypePointersScan:
+			return true
+		}
+		return false
+	})
+	changed := false
+	for _, n := range nodes {
+		switch n := n.(type) {
+		case *DataObjScan:
+			predicates := make([]Expression, len(n.Predicates))
+			for i, p := range n.Predicates {
+				clamped := false
+				predicates[i], clamped = clampExpression(p, n.MaxTimeRange)
+				if clamped {
+					changed = true
+				}
+			}
+			n.Predicates = predicates
+		case *PointersScan:
+			predicates := make([]Expression, len(n.Predicates))
+			for i, p := range n.Predicates {
+				clamped := false
+				predicates[i], clamped = clampExpression(p, n.MaxTimeRange())
+				if clamped {
+					changed = true
+				}
+			}
+			n.Predicates = predicates
+		}
+	}
+	return changed
+}
+
+// Only modifies BinaryExpressions that take the form ">= timestamp" or "<= timestamp".
+// Returns true if the expression has been modified or false if it has not.
+func clampExpression(e Expression, tr TimeRange) (Expression, bool) {
+	switch e := e.(type) {
+	case *BinaryExpr:
+		if tr.IsZero() {
+			return e, false
+		}
+		col, ok := e.Left.(*ColumnExpr)
+		if !ok || col.Ref.Column != types.ColumnNameBuiltinTimestamp || col.Ref.Type != types.ColumnTypeBuiltin {
+			return e, false
+		}
+		lit, ok := e.Right.(*LiteralExpr)
+		if !ok || lit.ValueType() != types.Loki.Timestamp {
+			return e, false
+		}
+		ts, ok := lit.Value().(types.Timestamp)
+		if !ok {
+			return e, false
+		}
+		t2 := time.Unix(0, int64(ts))
+		orig := ts
+		switch e.Op {
+		case types.BinaryOpGte, types.BinaryOpGt:
+			if t2.Before(tr.Start) {
+				ts = types.Timestamp(tr.Start.UnixNano())
+			}
+		case types.BinaryOpLte, types.BinaryOpLt:
+			// We treat the end time as exclusive, so when clamping "time < max" we switch to "time <= max".
+			// Start time is inclusive so we don't need to do the same thing there.
+			if t2.After(tr.End) {
+				ts = types.Timestamp(tr.End.UnixNano())
+				e.Op = types.BinaryOpLte
+			}
+		}
+		if ts == orig {
+			return e, false
+		}
+		return &BinaryExpr{
+			Left:  e.Left,
+			Right: NewLiteral(ts),
+			Op:    e.Op,
+		}, true
+
+	default:
+		return e, false
+	}
+
 }
 
 var _ rule = (*groupByPushdown)(nil)
@@ -699,26 +800,34 @@ func canShardAggregation(vec *VectorAggregation, rng *RangeAggregation) bool {
 	return false
 }
 
-// optimization represents a single optimization pass and can hold multiple rules.
-type optimization struct {
+func WorkflowOptimizations(plan *Plan) []*Optimization {
+	return []*Optimization{
+		newOptimization("ClampPredicates", plan).withRules(
+			&clampPredicates{plan: plan}),
+	}
+
+}
+
+// Optimization represents a single Optimization pass and can hold multiple rules.
+type Optimization struct {
 	plan  *Plan
 	name  string
 	rules []rule
 }
 
-func newOptimization(name string, plan *Plan) *optimization {
-	return &optimization{
+func newOptimization(name string, plan *Plan) *Optimization {
+	return &Optimization{
 		name: name,
 		plan: plan,
 	}
 }
 
-func (o *optimization) withRules(rules ...rule) *optimization {
+func (o *Optimization) withRules(rules ...rule) *Optimization {
 	o.rules = append(o.rules, rules...)
 	return o
 }
 
-func (o *optimization) optimize(node Node) {
+func (o *Optimization) optimize(node Node) {
 	iterations, maxIterations := 0, 10
 
 	for iterations < maxIterations {
@@ -731,7 +840,7 @@ func (o *optimization) optimize(node Node) {
 	}
 }
 
-func (o *optimization) applyRules(node Node) bool {
+func (o *Optimization) applyRules(node Node) bool {
 	anyChanged := false
 
 	for _, rule := range o.rules {
@@ -743,17 +852,17 @@ func (o *optimization) applyRules(node Node) bool {
 	return anyChanged
 }
 
-// The optimizer can optimize physical plans using the provided optimization passes.
-type optimizer struct {
+// The Optimizer can optimize physical plans using the provided optimization passes.
+type Optimizer struct {
 	plan          *Plan
-	optimisations []*optimization
+	optimisations []*Optimization
 }
 
-func newOptimizer(plan *Plan, passes []*optimization) *optimizer {
-	return &optimizer{plan: plan, optimisations: passes}
+func NewOptimizer(plan *Plan, passes []*Optimization) *Optimizer {
+	return &Optimizer{plan: plan, optimisations: passes}
 }
 
-func (o *optimizer) optimize(node Node) {
+func (o *Optimizer) Optimize(node Node) {
 	for _, optimisation := range o.optimisations {
 		optimisation.optimize(node)
 	}

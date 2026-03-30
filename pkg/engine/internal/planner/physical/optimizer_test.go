@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
@@ -107,14 +109,14 @@ func dummyPlan() *Plan {
 
 func TestPredicatePushdown(t *testing.T) {
 	plan := dummyPlan()
-	optimizations := []*optimization{
+	optimizations := []*Optimization{
 		newOptimization("predicate pushdown", plan).withRules(
 			&predicatePushdown{plan},
 		),
 	}
 
-	o := newOptimizer(plan, optimizations)
-	o.optimize(plan.Roots()[0])
+	o := NewOptimizer(plan, optimizations)
+	o.Optimize(plan.Roots()[0])
 	actual := PrintAsTree(plan)
 
 	optimized := &Plan{}
@@ -170,13 +172,13 @@ func TestLimitPushdown(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("limit pushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -233,17 +235,83 @@ func TestLimitPushdown(t *testing.T) {
 		orig := PrintAsTree(plan)
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("limit pushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		actual := PrintAsTree(plan)
 		require.Equal(t, orig, actual)
 	})
+}
+
+func TestClampExpression(t *testing.T) {
+	col := newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
+	early := types.Timestamp(time.Date(2026, 3, 11, 12, 41, 44, 719000000, time.UTC).UnixNano())
+	late := types.Timestamp(time.Date(2026, 3, 18, 9, 41, 44, 976217699, time.UTC).UnixNano())
+	tests := []struct {
+		desc    string
+		e       Expression
+		tr      TimeRange
+		clamped bool
+		want    string
+	}{
+		{
+			desc: "GTE before range clamps to start",
+			e:    &BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte},
+			tr: TimeRange{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
+			},
+			clamped: true,
+			want:    fmt.Sprintf("GTE(%s, %s)", col, util.FormatTimeRFC3339Nano(time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC))),
+		},
+		{
+			desc: "LT after range clamps to end",
+			e:    &BinaryExpr{Left: col, Right: NewLiteral(late), Op: types.BinaryOpLt},
+			tr: TimeRange{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
+			},
+			clamped: true,
+			want:    fmt.Sprintf("LTE(%s, %s)", col, util.FormatTimeRFC3339Nano(time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC))),
+		},
+		{
+			desc:    "zero TimeRange leaves expression unchanged",
+			e:       &BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte},
+			tr:      TimeRange{},
+			clamped: false,
+			want:    (&BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte}).String(),
+		},
+		{
+			desc: "non-timestamp binary expr unchange",
+			e: &BinaryExpr{
+				Left:  newColumnExpr("level", types.ColumnTypeLabel),
+				Right: NewLiteral("info"),
+				Op:    types.BinaryOpEq,
+			},
+			tr: TimeRange{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
+			},
+			clamped: false,
+			want: (&BinaryExpr{
+				Left:  newColumnExpr("level", types.ColumnTypeLabel),
+				Right: NewLiteral("info"),
+				Op:    types.BinaryOpEq,
+			}).String(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got, clamped := clampExpression(tt.e, tt.tr)
+			require.Equal(t, tt.clamped, clamped)
+			require.Equal(t, tt.want, got.String())
+		})
+	}
 }
 
 func TestGroupByPushdown(t *testing.T) {
@@ -280,13 +348,13 @@ func TestGroupByPushdown(t *testing.T) {
 		}
 
 		// apply optimisation
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("groupBy pushdown", plan).withRules(
 				&groupByPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -348,13 +416,13 @@ func TestGroupByPushdown(t *testing.T) {
 		orig := PrintAsTree(plan)
 
 		// apply optimisation
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("projection pushdown", plan).withRules(
 				&groupByPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		actual := PrintAsTree(plan)
 		require.Equal(t, orig, actual)
@@ -388,13 +456,13 @@ func TestProjectionPushdown(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("projection pushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -457,13 +525,13 @@ func TestProjectionPushdown(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("projection pushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -528,13 +596,13 @@ func TestProjectionPushdown(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("projection pushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -876,14 +944,14 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 
 func TestRemoveNoopFilter(t *testing.T) {
 	plan := dummyPlan()
-	optimizations := []*optimization{
+	optimizations := []*Optimization{
 		newOptimization("noop filter", plan).withRules(
 			&removeNoopFilter{plan},
 		),
 	}
 
-	o := newOptimizer(plan, optimizations)
-	o.optimize(plan.Roots()[0])
+	o := NewOptimizer(plan, optimizations)
+	o.Optimize(plan.Roots()[0])
 	actual := PrintAsTree(plan)
 
 	optimized := &Plan{}
@@ -982,11 +1050,11 @@ func Test_parallelPushdown(t *testing.T) {
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
 		}
 
-		opt := newOptimizer(&plan, []*optimization{
+		opt := NewOptimizer(&plan, []*Optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
 		root, _ := plan.graph.Root()
-		opt.optimize(root)
+		opt.Optimize(root)
 
 		var expectedPlan Plan
 		{
@@ -1019,7 +1087,7 @@ func Test_parallelPushdown(t *testing.T) {
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
 		}
 
-		opt := newOptimizer(&plan, []*optimization{
+		opt := NewOptimizer(&plan, []*Optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
 		root, _ := plan.graph.Root()
@@ -1035,7 +1103,7 @@ func Test_parallelPushdown(t *testing.T) {
 		//         TopK # Shard from second iteration
 		//           TopK # Shard from third iteration
 		//             DataObjScan
-		opt.optimize(root)
+		opt.Optimize(root)
 
 		var expectedPlan Plan
 		{
@@ -1070,11 +1138,11 @@ func Test_parallelPushdown(t *testing.T) {
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
 		}
 
-		opt := newOptimizer(&plan, []*optimization{
+		opt := NewOptimizer(&plan, []*Optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
 		root, _ := plan.graph.Root()
-		opt.optimize(root)
+		opt.Optimize(root)
 
 		var expectedPlan Plan
 		{
