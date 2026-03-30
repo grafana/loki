@@ -254,10 +254,14 @@ func (g *Graph[NodeType]) Clone() *Graph[NodeType] {
 	for node, children := range g.children {
 		newChildren[node] = slices.Clone(children)
 	}
+	newParents := make(map[NodeType][]NodeType, len(g.parents))
+	for node, parents := range g.parents {
+		newParents[node] = slices.Clone(parents)
+	}
 
 	return &Graph[NodeType]{
 		nodes:    maps.Clone(g.nodes),
-		parents:  maps.Clone(g.parents),
+		parents:  newParents,
 		children: newChildren,
 	}
 }
