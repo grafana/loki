@@ -9,14 +9,16 @@ type EncodingKind int
 const (
 	EncodingKindInvalid EncodingKind = iota // EncodingKindInvalid is an invalid encoding.
 
-	EncodingKindBool  // EncodingKindBool is a bit-packed encoding for boolean types.
-	EncodingKindPlain // EncodingKindPlain is plain encoding for fixed-width types (int32, etc).
+	EncodingKindBool   // EncodingKindBool is a bit-packed encoding for boolean types.
+	EncodingKindPlain  // EncodingKindPlain is plain encoding for fixed-width types (int32, etc).
+	EncodingKindBinary // EncodingKindBinary encodes variable-length binary data (like UTF8).
 )
 
 var kindNames = [...]string{
 	EncodingKindInvalid: "invalid",
 	EncodingKindBool:    "bool",
 	EncodingKindPlain:   "plain",
+	EncodingKindBinary:  "binary",
 }
 
 // String returns the string representation of k.
