@@ -3,9 +3,11 @@ package engine
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -16,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
@@ -113,6 +116,9 @@ func NewInstantMetricCacheMiddleware(
 
 // shouldCacheRequest returns true when caching is not disabled for the request.
 func shouldCacheRequest(_ context.Context, r queryrangebase.Request) bool {
+	if strings.Contains(r.GetQuery(), "benclive") {
+		level.Debug(util_log.Logger).Log("msg", "should cache request", "query", r.GetQuery(), "caching disabled", r.GetCachingOptions().Disabled)
+	}
 	return !r.GetCachingOptions().Disabled
 }
 

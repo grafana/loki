@@ -666,6 +666,9 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 			limits,
 			c,
 			func(_ context.Context, r base.Request) bool {
+				if strings.Contains(r.GetQuery(), "benclive") {
+					level.Debug(log).Log("msg", "should cache request (log-filter-tripperware)", "query", r.GetQuery(), "caching disabled", r.GetCachingOptions().Disabled)
+				}
 				return !r.GetCachingOptions().Disabled
 			},
 			NewDefaultLogCacheKeyGenerator(limits, cfg.Transformer),
@@ -846,6 +849,9 @@ func NewSeriesTripperware(
 			c,
 			cacheGenNumLoader,
 			func(_ context.Context, r base.Request) bool {
+				if strings.Contains(r.GetQuery(), "benclive") {
+					level.Debug(log).Log("msg", "should cache request (series-tripperware)", "query", r.GetQuery(), "caching disabled", r.GetCachingOptions().Disabled)
+				}
 				return !r.GetCachingOptions().Disabled
 			},
 			func(ctx context.Context, tenantIDs []string, r base.Request) int {
@@ -996,7 +1002,9 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 			cacheGenNumLoader,
 			func(_ context.Context, r base.Request) bool {
 				cache := !r.GetCachingOptions().Disabled
-				level.Debug(log).Log("msg", "should cache request", "query", r.GetQuery(), "start", r.GetStart(), "end", r.GetEnd(), "cache", cache)
+				if strings.Contains(r.GetQuery(), "benclive") {
+					level.Debug(log).Log("msg", "should cache request (metric-tripperware)", "query", r.GetQuery(), "caching disabled", r.GetCachingOptions().Disabled)
+				}
 				return cache
 			},
 			func(ctx context.Context, tenantIDs []string, r base.Request) int {
