@@ -2,11 +2,6 @@
 
 package integration
 
-// DATA-02: Partial-batch timeout behavior is documented but not tested.
-// The existing code comment in pkg/distributor/inmemory_dataobj_tee.go duplicate()
-// acknowledges that partial-batch duplicates are "acceptable in inmemory mode,
-// no durability guarantees." Per user decision, this is deferred to v2.
-
 import (
 	"context"
 	"fmt"
@@ -23,8 +18,6 @@ import (
 	"github.com/grafana/loki/v3/integration/cluster"
 )
 
-// TestInmemoryPipeline verifies the end-to-end in-memory dataobj pipeline correctness.
-// All subtests share a single cluster to avoid redundant startup overhead.
 func TestInmemoryPipeline(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
@@ -69,14 +62,8 @@ ingest_limits:
 
 	tenantID := randStringRunes()
 	cli := client.New(tenantID, "", tAll.HTTPURL())
-	// Set cli.Now to 30 seconds in the past so that query.end = cli.Now+1s is
-	// always before v2End = now-StorageLag = now. This ensures the v2 engine
-	// (not the v1 fallback) handles the sub-window containing the data on the
-	// very first query iteration, avoiding a race where the result cache
-	// stores a stale empty result returned by the v1 engine.
 	cli.Now = time.Now().Add(-30 * time.Second)
 
-	// TEST-02: /ready returns 200 when dataobj consumer is Running
 	t.Run("readiness-probe", func(t *testing.T) {
 		resp, err := http.Get(tAll.HTTPURL() + "/ready") //nolint:noctx
 		require.NoError(t, err)
@@ -87,7 +74,6 @@ ingest_limits:
 		require.Contains(t, string(body), "ready")
 	})
 
-	// DATA-01 / TEST-01: full push -> flush -> query round-trip with actual data in results
 	t.Run("round-trip", func(t *testing.T) {
 		require.NoError(t, cli.PushLogLine("pipeline-line-1", cli.Now, nil, map[string]string{"job": "pipeline-test"}))
 		require.NoError(t, cli.PushLogLine("pipeline-line-2", cli.Now.Add(-time.Second), nil, map[string]string{"job": "pipeline-test"}))
@@ -115,7 +101,6 @@ ingest_limits:
 		assert.ElementsMatch(t, []string{"pipeline-line-1", "pipeline-line-2"}, lines)
 	})
 
-	// DATA-03: idle flush timeout triggers actual flush to object storage without using flush API
 	t.Run("idle-flush-timeout", func(t *testing.T) {
 		tenantIdle := randStringRunes()
 		cliIdle := client.New(tenantIdle, "", tAll.HTTPURL())
@@ -141,10 +126,4 @@ ingest_limits:
 
 		assert.Contains(t, lines, "idle-flush-line")
 	})
-
-	// TEST-03 / OBS-02: backpressure error propagation is covered by
-	// TestInMemoryDataObjTee_Reason_Label/channel_full in pkg/distributor/inmemory_dataobj_tee_test.go.
-	// Integration-level testing is not feasible: the in-process consumer drains the channel in ~10µs,
-	// faster than any push timeout short enough to be reliable across machines. The unit test uses an
-	// unbuffered channel with no consumer, which guarantees the timer fires deterministically.
 }
