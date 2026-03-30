@@ -458,6 +458,7 @@ func (p *Builder) buildAndCommitIndex(ctx context.Context, events []bufferedEven
 			return
 		}
 		level.Error(p.logger).Log("msg", "failed to commit records", "partition", partition, "err", err, "trigger", triggerType)
+		return
 	}
 
 	p.markEventsCompleted(partition, len(records))
