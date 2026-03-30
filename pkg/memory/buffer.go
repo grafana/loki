@@ -88,6 +88,16 @@ func (buf *Buffer[T]) AppendCount(value T, n int) {
 	}
 }
 
+// Next adds space for n elements to buf and returns the slice for those
+// elements. The buf will be grown if its capacity is not sufficient.
+func (buf *Buffer[T]) Next(n int) []T {
+	buf.Grow(n)
+
+	from := len(buf.data)
+	buf.data = buf.data[:from+n]
+	return buf.data[from : from+n : from+n]
+}
+
 // Set sets the value at index i to value. Set panics if i is out of bounds.
 func (buf *Buffer[T]) Set(i int, value T) { buf.data[i] = value }
 
