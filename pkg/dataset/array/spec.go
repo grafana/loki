@@ -65,6 +65,19 @@ type (
 		// data types.
 		Validity Spec
 	}
+
+	// SpecZstd encodes variable-length data with zstd compression on the
+	// data buffer. Structure mirrors [SpecBinary].
+	SpecZstd struct {
+		// Spec for how to encode offset information, where the half-open range
+		// (offsets[i], offsets[i+1]] specifies where the offsets where element
+		// i.
+		Offsets Spec
+
+		// Spec for how to encode validity data. Must only be set for nullable
+		// data types.
+		Validity Spec
+	}
 )
 
 // Kind returns [EncodingKindBool].
@@ -87,6 +100,11 @@ func (spec *SpecBitpacked) Kind() EncodingKind {
 	return EncodingKindBitpacked
 }
 
+// Kind returns [EncodingKindZstd].
+func (spec *SpecZstd) Kind() EncodingKind {
+	return EncodingKindZstd
+}
+
 //
 // Sealed marker implementations.
 //
@@ -95,3 +113,4 @@ func (spec *SpecBool) isSpec()      {}
 func (spec *SpecPlain) isSpec()     {}
 func (spec *SpecBinary) isSpec()    {}
 func (spec *SpecBitpacked) isSpec() {}
+func (spec *SpecZstd) isSpec()      {}
