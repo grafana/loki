@@ -270,12 +270,12 @@ version: 1
 
 ## Deploying the Helm chart
 
-Before we can deploy the Loki Helm chart, we need to add the Grafana chart repository to Helm. This repository contains the Loki Helm chart.
+Before we can deploy the Loki Helm chart, we need to add the Grafana Community chart repository to Helm. This repository contains the Loki Helm chart.
 
-1. Add the Grafana chart repository to Helm:
+1. Add the Grafana Community chart repository to Helm:
 
     ```bash
-    helm repo add grafana https://grafana.github.io/helm-charts
+    helm repo add grafana-community https://grafana-community.github.io/helm-charts
     ```
 2. Update the chart repository:
 
@@ -469,6 +469,10 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
   - The `serviceAccount` section is used to define the IAM role for the Loki service account.
   - This is where the IAM role created earlier is linked.
 
+- **Zone-Aware Replication:**
+  - The Helm chart enables zone-aware ingester replication by default, which creates three ingester StatefulSets (zone-a, zone-b, zone-c) for faster rollouts.
+  - In this guide, zone-aware replication is explicitly disabled (`ingester.zoneAwareReplication.enabled: false`) for simplicity. For production deployments, consider enabling it to improve rollout resilience.
+
 - **Gateway:**
   - Defines how the Loki gateway will be exposed.
   - We are using a `LoadBalancer` service type in this configuration.
@@ -481,7 +485,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
 1. Deploy using the newly created `values.yaml` file:
 
     ```bash
-    helm install --values values.yaml loki grafana/loki -n loki --create-namespace
+    helm install --values values.yaml loki grafana-community/loki -n loki --create-namespace
     ```
     **It is important to create a namespace called `loki` as our trust policy is set to allow the IAM role to be used by the `loki` service account in the `loki` namespace. This is configurable but make sure to update your service account.**
 

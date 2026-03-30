@@ -16,13 +16,21 @@ The default Helm chart deploys the following components:
 - **Compactor component** (1 replica): Compacts and processes stored data.
 - **Distributor component** (3 replicas, maxUnavailable: 2): Distributes incoming requests. Up to 2 replicas can be unavailable during updates.
 - **IndexGateway component** (2 replicas, maxUnavailable: 1): Handles indexing. Up to 1 replica can be unavailable during updates.
-- **Ingester component** (3 replicas): Handles ingestion of data.
+- **Ingester component** (3 replicas per zone): Handles ingestion of data. By default, zone-aware replication is enabled, creating three StatefulSets (zone-a, zone-b, zone-c) with one replica each.
 - **Querier component** (3 replicas, maxUnavailable: 2): Processes queries. Up to 2 replicas can be unavailable during updates.
 - **QueryFrontend component** (2 replicas, maxUnavailable: 1): Manages frontend queries. Up to 1 replica can be unavailable during updates.
 - **QueryScheduler component** (2 replicas): Schedules queries.
+- **Gateway** (1 NGINX replica): Exposes the Loki API and proxies requests to the correct Loki components.
+- **Loki Canary** (1 DaemonSet): Verifies the Loki deployment is in a healthy state.
+- **Chunks cache** (1 replica): Caches chunks data using memcached.
+- **Results cache** (1 replica): Caches query results using memcached.
 
 {{< admonition type="note" >}}
-We do not recommend running in Microservice mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
+Zone-aware replication is enabled by default for ingesters. This creates three ingester StatefulSets (one per zone) and requires the `rollout-operator` subchart. To disable zone-aware replication (for example, in development), set `ingester.zoneAwareReplication.enabled: false` in your `values.yaml`.
+{{< /admonition >}}
+
+{{< admonition type="note" >}}
+We do not recommend running in microservices mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
 {{< /admonition >}}
 
 
@@ -34,10 +42,10 @@ We do not recommend running in Microservice mode with `filesystem` storage. For 
 
 ## Deploying the Helm chart for development and testing
 
-1. Add [Grafana's chart repository](https://github.com/grafana/helm-charts) to Helm:
+1. Add the [Grafana Community chart repository](https://github.com/grafana-community/helm-charts) to Helm:
 
    ```bash
-   helm repo add grafana https://grafana.github.io/helm-charts
+   helm repo add grafana-community https://grafana-community.github.io/helm-charts
    ```
 
 1. Update the chart repository:
@@ -125,11 +133,11 @@ We do not recommend running in Microservice mode with `filesystem` storage. For 
 1. Install or upgrade the Loki deployment.
      - To install:
         ```bash
-       helm install --values values.yaml loki grafana/loki
+       helm install --values values.yaml loki grafana-community/loki
        ```
     - To upgrade:
        ```bash
-       helm upgrade --values values.yaml loki grafana/loki
+       helm upgrade --values values.yaml loki grafana-community/loki
        ```
        
 
