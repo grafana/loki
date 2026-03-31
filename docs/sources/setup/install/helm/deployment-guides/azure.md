@@ -305,8 +305,6 @@ serviceAccount:
   name: loki
   annotations:
     "azure.workload.identity/client-id": "<APP-ID>" # The app ID of the Azure AD app
-  labels:
-    "azure.workload.identity/use": "true"
 
 deploymentMode: Distributed
 
