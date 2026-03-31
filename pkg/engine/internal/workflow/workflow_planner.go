@@ -24,8 +24,9 @@ type planner struct {
 
 // cacheParams bundles cache-related configuration for workflow planning.
 type cacheParams struct {
-	enabled      bool
-	maxSizeBytes uint64
+	enabled                 bool
+	taskCacheMaxSizeBytes   uint64
+	dataObjScanMaxSizeBytes uint64
 }
 
 // planWorkflow partitions a physical plan into a graph of tasks.
@@ -62,12 +63,29 @@ func planWorkflow(tenantID string, plan *physical.Plan, cache cacheParams) (dag.
 	}
 
 	if cache.enabled {
-		if err := injectTaskCaching(tenantID, planner.graph, cache.maxSizeBytes); err != nil {
-			return dag.Graph[*Task]{}, err
+		if err := injectTaskCaching(tenantID, planner.graph, cache.taskCacheMaxSizeBytes); err != nil {
+			return dag.Graph[*Task]{}, fmt.Errorf("injecting task caching: %w", err)
+		}
+		if err := injectDataObjScanCaching(tenantID, planner.graph, cache.dataObjScanMaxSizeBytes); err != nil {
+			return dag.Graph[*Task]{}, fmt.Errorf("injecting DataObjScan caching: %w", err)
 		}
 	}
 
 	return planner.graph, nil
+}
+
+// injectDataObjScanCaching wraps each DataObjScan node in every task fragment
+// with a Cache node (using TaskCacheDataObjScanResult), placing the cache directly
+// above the scan regardless of what operators sit on top.
+func injectDataObjScanCaching(tenantID string, graph dag.Graph[*Task], maxSizeBytes uint64) error {
+	for _, root := range graph.Roots() {
+		if err := graph.Walk(root, func(task *Task) error {
+			return physical.WrapDataObjScansWithCache(context.Background(), tenantID, task.Fragment, maxSizeBytes)
+		}, dag.PreOrderWalk); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // injectTaskCaching wraps each cacheable task fragment with a Cache node.

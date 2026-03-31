@@ -1270,6 +1270,8 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 		return resp.GetStats().WithHeaders(headers), nil
 	case *logproto.ShardsRequest:
 		return resp.GetShardsResponse().WithHeaders(headers), nil
+	case *DetectedLabelsRequest:
+		return resp.GetDetectedLabels().WithHeaders(headers), nil
 	default:
 		switch concrete := resp.Response.(type) {
 		case *QueryResponse_Prom:

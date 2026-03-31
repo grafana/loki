@@ -154,19 +154,12 @@ func toTreeNode(n Node) *tree.Node {
 		}
 	case *Cache:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("max_cacheable_size", false, formatMaxCacheableSize(node.MaxSizeBytes)),
+			tree.NewProperty("max_cacheable_size", false, humanize.IBytes(node.MaxSizeBytes)),
 			tree.NewProperty("hashed_key", false, cache.HashKey(node.Key)),
 			tree.NewProperty("key", false, node.Key),
 		}
 	}
 	return treeNode
-}
-
-func formatMaxCacheableSize(maxSizeBytes uint64) string {
-	if maxSizeBytes == 0 {
-		return "unlimited"
-	}
-	return humanize.IBytes(maxSizeBytes)
 }
 
 func toAnySlice[T any](s []T) []any {

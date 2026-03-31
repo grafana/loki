@@ -13,10 +13,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var testFields = []arrow.Field{
 	{Name: "val", Type: types.Arrow.String},
+}
+
+var testCacheStats = CacheStats{
+	Hits:    xcap.TaskCacheHits,
+	Misses:  xcap.TaskCacheMisses,
+	Batches: xcap.TaskCacheBatches,
+	Rows:    xcap.TaskCacheRows,
+	Bytes:   xcap.TaskCacheBytes,
 }
 
 func TestCachingPipeline(t *testing.T) {
@@ -31,7 +40,7 @@ func TestCachingPipeline(t *testing.T) {
 	arrowStore := &arrowCacheAdapter{cache: c, maxSizeBytes: ^uint64(0)}
 
 	// First pass: cache miss — inner pipeline is read and results are stored.
-	miss := newCachingPipeline(arrowStore, NewBufferedPipeline(rec1, rec2), "test-key", log.NewNopLogger())
+	miss := newCachingPipeline(arrowStore, NewBufferedPipeline(rec1, rec2), "test-key", log.NewNopLogger(), testCacheStats)
 	require.NoError(t, miss.Open(ctx))
 	require.False(t, miss.(*cachingPipeline).hit, "expected cache miss")
 
@@ -51,7 +60,7 @@ func TestCachingPipeline(t *testing.T) {
 	require.Contains(t, c.data, cache.HashKey("test-key"), "cache should contain the key")
 
 	// Second pass: cache hit — inner pipeline must never be opened.
-	hit := newCachingPipeline(arrowStore, &failPipeline{}, "test-key", log.NewNopLogger())
+	hit := newCachingPipeline(arrowStore, &failPipeline{}, "test-key", log.NewNopLogger(), testCacheStats)
 	require.NoError(t, hit.Open(ctx))
 	require.True(t, hit.(*cachingPipeline).hit, "expected cache hit")
 
@@ -252,7 +261,7 @@ func TestCachingPipelinePassthrough(t *testing.T) {
 			mc := newMockCache()
 			arrowStore := &arrowCacheAdapter{cache: mc, logger: log.NewNopLogger()}
 
-			p := newCachingPipeline(arrowStore, NewBufferedPipeline(tc.records...), tc.cacheKey, log.NewNopLogger())
+			p := newCachingPipeline(arrowStore, NewBufferedPipeline(tc.records...), tc.cacheKey, log.NewNopLogger(), testCacheStats)
 			require.NoError(t, p.Open(ctx))
 
 			var batches []arrow.RecordBatch

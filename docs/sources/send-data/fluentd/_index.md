@@ -225,7 +225,13 @@ The tenant field also supports placeholders, allowing it to dynamically change b
 
 ### Client certificate verification
 
-If a reverse proxy with client certificate verification is configured in front of Loki, specify a pair of client certificate and private key with `cert` and `key`. `ca_cert` can also be specified if the server uses custom certificate authority.
+If a reverse proxy with client certificate verification (mTLS) is configured in front of Loki, set `cert` and `key` to the client certificate and private key file paths. Set `ca_cert` when the server presents a certificate signed by a custom certificate authority that you need to trust for TLS verification.
+
+The `cert` file is PEM-encoded by default. It may contain **multiple** PEM blocks in one file: the **first** block is the client (leaf) certificate; any **additional** blocks are intermediate certificates to send with the leaf when the runtime supports it.
+
+{{< admonition type="note" >}}
+Sending the intermediate chain requires **Ruby 3.0 or later** (the Ruby standard library passes the chain through `Net::HTTP`). On **Ruby 2.7**, only the leaf certificate from `cert` is presented. If the file contains multiple PEM blocks on Ruby 2.7, the plugin logs a **warning**, because mTLS can fail when the server requires the full chain. Use Ruby 3.0+ to send the chain, or supply a single PEM block that is sufficient for your server.
+{{< /admonition >}}
 
 ```conf
 <match **>
