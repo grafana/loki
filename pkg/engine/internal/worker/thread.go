@@ -325,25 +325,48 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		return 0, err
 	}
 
-	var totalRows int
+	var (
+		totalRows        int
+		totalReadTime    time.Duration
+		totalComputeTime time.Duration
+		totalWriteTime   time.Duration
+	)
 
 	for {
+		// -- Read phase: pull the next record batch from the pipeline.
+		readStart := time.Now()
 		rec, err := pipeline.Read(ctx)
+		readDuration := time.Since(readStart)
+
 		if err != nil && errors.Is(err, executor.EOF) {
 			break
 		} else if err != nil {
 			return totalRows, err
 		}
 
+		totalReadTime += readDuration
+		t.Metrics.passReadSeconds.Observe(readDuration.Seconds())
+
 		region.Record(xcap.TaskDrainRecordsReceived.Observe(1))
 		totalRows += int(rec.NumRows())
 
+		// -- Compute phase: any processing between read and write.
+		computeStart := time.Now()
+
 		// Don't bother writing empty records to our peers.
 		if rec.NumRows() == 0 {
+			computeDuration := time.Since(computeStart)
+			totalComputeTime += computeDuration
+			t.Metrics.passComputeSeconds.Observe(computeDuration.Seconds())
 			continue
 		}
 
-		startSend := time.Now()
+		computeDuration := time.Since(computeStart)
+		totalComputeTime += computeDuration
+		t.Metrics.passComputeSeconds.Observe(computeDuration.Seconds())
+
+		// -- Write phase: send the record batch to all sinks.
+		writeStart := time.Now()
 		for _, sink := range sinks {
 			// If a sink doesn't accept the result, we'll continue
 			// best-effort processing our task. It's possible that one of
@@ -353,10 +376,19 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 				level.Warn(logger).Log("msg", "failed to send result", "err", err)
 			}
 		}
+		writeDuration := time.Since(writeStart)
+		totalWriteTime += writeDuration
+		t.Metrics.passWriteSeconds.Observe(writeDuration.Seconds())
+
 		region.Record(xcap.TaskRecordsSent.Observe(1))
 		region.Record(xcap.TaskRowsSent.Observe(rec.NumRows()))
-		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
+		region.Record(xcap.TaskSendDuration.Observe(writeDuration.Seconds()))
 	}
+
+	// Record per-task aggregate phase timings.
+	t.Metrics.taskReadSeconds.Observe(totalReadTime.Seconds())
+	t.Metrics.taskComputeSeconds.Observe(totalComputeTime.Seconds())
+	t.Metrics.taskWriteSeconds.Observe(totalWriteTime.Seconds())
 
 	return totalRows, nil
 }
