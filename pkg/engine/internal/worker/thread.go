@@ -55,9 +55,7 @@ const (
 	threadStateBusy
 )
 
-var (
-	tracer = otel.Tracer("pkg/engine/internal/worker")
-)
+var tracer = otel.Tracer("pkg/engine/internal/worker")
 
 func (s threadState) String() string {
 	switch s {

@@ -578,7 +578,7 @@ func TestCompactor_Compact(t *testing.T) {
 						defer initializedIndexSetsMtx.Unlock()
 						initializedIndexSets[userID] = idxSet
 						return idxSet, nil
-					}, periodConfig, false)
+					}, periodConfig, nil)
 
 					require.NoError(t, tCompactor.CompactTable())
 
@@ -975,7 +975,7 @@ func setupCompactedIndex(t *testing.T) *testContext {
 
 		builder.FinalizeChunks()
 
-		return newCompactedIndex(context.Background(), tableName.Prefix, buildUserID(0), t.TempDir(), periodConfig, builder)
+		return newCompactedIndex(context.Background(), tableName.Prefix, buildUserID(0), t.TempDir(), periodConfig, builder, nil)
 	}
 
 	expectedChunkEntries := map[string][]retention.Chunk{
@@ -1045,7 +1045,7 @@ func TestSetupBuilder_ManyFiles(t *testing.T) {
 	// This should complete without errors even with many files
 	// because files are closed immediately after processing
 	ctx := context.Background()
-	builder, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{}, nil, false)
+	builder, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{}, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, builder)
 
