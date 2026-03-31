@@ -14,6 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## Unreleased
 
 - [FEATURE] Update README chart migration notice from future tense to past tense
+- [ENHANCEMENT] Add support for configuring the ui target in query frontend
 
 ## 6.55.0
 
@@ -21,7 +22,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.54.0
 
-**NOTE:** Effective [March 16, 2026](https://github.com/grafana/loki/issues/20705), the Grafana Loki Helm chart will be forked to the new repository [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts). 
+**NOTE:** Effective [March 16, 2026](https://github.com/grafana/loki/issues/20705), the Grafana Loki Helm chart will be forked to the new repository [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts).
 
 - [FEATURE] Add common labels to all resources [#20269](https://github.com/grafana/loki/pull/20269)
 - [FEATURE] Memcached: allow to override CPU in the auto-computed resource mode  [#20767](https://github.com/grafana/loki/pull/20767)
@@ -39,7 +40,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.52.0
 
-- [BREAKING] DEPRECATION NOTICE - The simple scalable mode (SSD) is deprecated and will be removed in a future version of the Loki Helm charts.  
+- [BREAKING] DEPRECATION NOTICE - The simple scalable mode (SSD) is deprecated and will be removed in a future version of the Loki Helm charts.
 - [BUGFIX] Updated Loki and GEL versions in values.yaml file. [#20548](https://github.com/grafana/loki/pull/20548).
 
 ## 6.51.0
@@ -55,12 +56,12 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `startupProbe` to ingester [#20076](https://github.com/grafana/loki/pull/20076)
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to loki-canary [#20079](https://github.com/grafana/loki/pull/20079)
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to pattern-ingester [#20080](https://github.com/grafana/loki/pull/20080)
-- [ENHANCEMENT] Add configurable `startupProbe` to querier [#20081](https://github.com/grafana/loki/pull/20081) 
-- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to query-frontend [#20082](https://github.com/grafana/loki/pull/20082) 
-- [ENHANCEMENT] Add configurable `startupProbe` to query-scheduler [#20083](https://github.com/grafana/loki/pull/20083) 
+- [ENHANCEMENT] Add configurable `startupProbe` to querier [#20081](https://github.com/grafana/loki/pull/20081)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to query-frontend [#20082](https://github.com/grafana/loki/pull/20082)
+- [ENHANCEMENT] Add configurable `startupProbe` to query-scheduler [#20083](https://github.com/grafana/loki/pull/20083)
 - [ENHANCEMENT] Add configurable `startupProbe` to table-manager [#20084](https://github.com/grafana/loki/pull/20084)
-- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to ruler [#20085](https://github.com/grafana/loki/pull/20085) 
-- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the write pods [#20087](https://github.com/grafana/loki/pull/20087) 
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to ruler [#20085](https://github.com/grafana/loki/pull/20085)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the write pods [#20087](https://github.com/grafana/loki/pull/20087)
 - [BUGFIX] Fix rendering of `dnsConfig` for `backend`, `read`, `write`, `single-binary` and `table-manager`. [#20013](https://github.com/grafana/loki/pull/20013)
 - [BUGFIX] Respect global registry in sidecar image [#19347](https://github.com/grafana/loki/pull/19347).
 - [BUGFIX] Fix typos in comments in Values for health probes [#20078](https://github.com/grafana/loki/pull/20078)

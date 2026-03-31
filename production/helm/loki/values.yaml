@@ -2542,6 +2542,9 @@ queryFrontend:
     enabled: true
   # -- trafficDistribution for query-frontend service
   trafficDistribution: ""
+  # -- Enable UI Target for query-frontend
+  ui:
+    enabled: false
 # -- Configuration for the query-scheduler
 queryScheduler:
   # -- Number of replicas for the query-scheduler.

@@ -76,7 +76,7 @@ spec:
           {{- end }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target=query-frontend
+            - -target={{ include "loki.queryFrontendTarget" . }}
             {{- with (concat .Values.global.extraArgs .Values.queryFrontend.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

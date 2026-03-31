@@ -30,3 +30,10 @@ query-frontend priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+query-frontend target
+*/}}
+{{- define "loki.queryFrontendTarget" -}}
+query-frontend{{- if and .Values.loki.ui.enabled  .Values.queryFrontend.ui.enabled -}},ui{{- end -}}
+{{- end -}}
