@@ -106,6 +106,9 @@ func evalCaseFunction(t *testing.T, alloc *memory.Allocator, tc computetest.Case
 		}
 
 		return compute.RegexpMatch(alloc, tc.Arguments[0], re, tc.Selection)
+	case "FILTER":
+		require.Len(t, tc.Arguments, 1, "FILTER function requires one argument")
+		return compute.Filter(alloc, tc.Arguments[0], tc.Selection)
 	case "ISMEMBER":
 		require.Len(t, tc.Arguments, 2, "ISMEMBER function requires two arguments")
 		// Second argument should be an array that we convert to a Set

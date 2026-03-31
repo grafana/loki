@@ -15,7 +15,7 @@ import (
 // Special cases:
 //
 //   - The negation of null is null.
-func Not(alloc *memory.Allocator, input columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+func Not(alloc *memory.Allocator, input columnar.Datum, _ memory.Bitmap) (columnar.Datum, error) {
 	if got, want := input.Kind(), columnar.KindBool; got != want {
 		return nil, fmt.Errorf("invalid input kind %s, expected %s", got, want)
 	}
@@ -83,7 +83,7 @@ func Or(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bi
 	return dispatchLogical(alloc, logicalOrKernel, left, right, selection)
 }
 
-func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right columnar.Datum, _ memory.Bitmap) (columnar.Datum, error) {
 	if got, want := left.Kind(), columnar.KindBool; got != want {
 		return nil, fmt.Errorf("invalid input kind %s, expected %s", got, want)
 	} else if left.Kind() != right.Kind() {

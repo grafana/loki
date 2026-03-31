@@ -7,7 +7,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-func dispatchNumericEquality[T columnar.Numeric](alloc *memory.Allocator, kernel numericEqualityKernel[T], left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+func dispatchNumericEquality[T columnar.Numeric](alloc *memory.Allocator, kernel numericEqualityKernel[T], left, right columnar.Datum, _ memory.Bitmap) (columnar.Datum, error) {
 	_, leftScalar := left.(columnar.Scalar)
 	_, rightScalar := right.(columnar.Scalar)
 

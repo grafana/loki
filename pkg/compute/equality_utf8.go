@@ -7,7 +7,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-func dispatchUTF8Equality(alloc *memory.Allocator, kernel utf8EqualityKernel, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+func dispatchUTF8Equality(alloc *memory.Allocator, kernel utf8EqualityKernel, left, right columnar.Datum, _ memory.Bitmap) (columnar.Datum, error) {
 	_, leftScalar := left.(columnar.Scalar)
 	_, rightScalar := right.(columnar.Scalar)
 
