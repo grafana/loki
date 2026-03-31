@@ -46,7 +46,6 @@ var (
 	errS3EndpointPathNotAllowed    = errors.New("endpoint for S3 must not include a path")
 	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 must include correct region")
 	errS3ForcePathStyleInvalid     = errors.New(`forcepathstyle must be "true" or "false"`)
-	errS3EndpointAWSScheme         = errors.New("endpoint for s3 should not contain scheme")
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
@@ -259,11 +258,7 @@ func extractAzureConfigSecret(s *corev1.Secret, credentialMode lokiv1.Credential
 	}
 
 	if endpointSuffix == "" {
-		es, ok := azureEnvironmentEndpointSuffix[env]
-		if !ok {
-			return nil, fmt.Errorf("%w: %s", errAzureInvalidEnvironment, env)
-		}
-		endpointSuffix = es
+		endpointSuffix = azureEnvironmentEndpointSuffix[env]
 	}
 
 	if !endpointSuffixExists(azureEnvironmentEndpointSuffix, endpointSuffix) {
@@ -667,7 +662,7 @@ func extractAlibabaCloudConfigSecret(s *corev1.Secret) (*storage.AlibabaCloudSto
 func extractHost(endpoint []byte) (string, error) {
 	parsedURL, err := url.Parse(string(endpoint))
 	if err != nil {
-		return "", fmt.Errorf("%w:%s", errS3EndpointAWSScheme, storage.KeyAWSEndpoint)
+		return "", fmt.Errorf("%w:%s", errS3EndpointUnparseable, storage.KeyAWSEndpoint)
 	}
 
 	return parsedURL.Host, nil

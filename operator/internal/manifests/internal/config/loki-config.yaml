@@ -625,4 +625,3 @@ tracing:
   enabled: false
 analytics:
   reporting_enabled: {{ .EnableRemoteReporting }}
-  
