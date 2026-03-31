@@ -36,7 +36,7 @@ var (
 	errSecretUnknownCredentialMode = errors.New("unknown credential mode")
 
 	errAzureManagedIdentityNoOverride = errors.New("when in managed mode, storage secret can not contain credentials")
-	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
+	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzurePublicCloud, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
 	errAzureInvalidAccountKey         = errors.New("azure account key is not valid base64")
 	errAzureInvalidEndpointSuffix     = errors.New("azure endpoint suffix invalid")
 

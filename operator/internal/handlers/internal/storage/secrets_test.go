@@ -128,7 +128,7 @@ func TestAzureExtract(t *testing.T) {
 					"environment": []byte("invalid-environment"),
 				},
 			},
-			wantError: "azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment): invalid-environment",
+			wantError: "azure environment invalid (valid values: AzureGlobal, AzurePublicCloud, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment): invalid-environment",
 		},
 		{
 			name: "missing account_name",
@@ -760,6 +760,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 				Region:         "",
 				Buckets:        "this,that",
 				ForcePathStyle: true, // defaults to path style for non-AWS endpoints
+				Insecure:       true,
 			},
 		},
 		{

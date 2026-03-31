@@ -8,7 +8,7 @@ chunk_store_config:
       max_size_mb: 500
 common:
   storage:
-   object_store:
+    object_store:
       s3:
         endpoint: http://test.default.svc.cluster.local.:9000
         bucket_name: loki
