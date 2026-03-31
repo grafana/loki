@@ -217,6 +217,7 @@ server:
   http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
+  use_thanos_objstore: true
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache

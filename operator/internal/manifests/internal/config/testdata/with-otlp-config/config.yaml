@@ -240,6 +240,7 @@ server:
   http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
+  use_thanos_objstore: true
   tsdb_shipper:
     active_index_directory: /tmp/loki/tsdb-index
     cache_location: /tmp/loki/tsdb-cache
