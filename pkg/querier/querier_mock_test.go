@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
@@ -537,6 +538,10 @@ func (r *readRingMock) GetSubringForOperationStates(_ ring.Operation) ring.ReadR
 	return r
 }
 
+func (r *readRingMock) Zones() []string {
+	return []string{"zone1"}
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
@@ -921,7 +926,7 @@ type mockDeleteGettter struct {
 	results []deletionproto.DeleteRequest
 }
 
-func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletionproto.DeleteRequest, error) {
+func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string, _ bool, _ *deletion.TimeRange) ([]deletionproto.DeleteRequest, error) {
 	d.user = userID
 	return d.results, nil
 }

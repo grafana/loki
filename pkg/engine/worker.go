@@ -2,11 +2,13 @@ package engine
 
 import (
 	"flag"
+	"fmt"
 	"net"
 	"net/http"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
@@ -14,6 +16,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
 )
@@ -54,6 +57,10 @@ type WorkerParams struct {
 	// Absolute path of the endpoint where the frame handler is registered.
 	// Used for connecting to scheduler and other workers.
 	Endpoint string
+
+	// StreamFilterer is an optional filterer that can filter streams based on their labels.
+	// When set, streams are filtered before scanning.
+	StreamFilterer executor.RequestStreamFilterer
 }
 
 // Worker requests tasks from a [Scheduler] and executes them. Task results are
@@ -68,9 +75,14 @@ type Worker struct {
 
 // NewWorker creates a new Worker instance. Use [Worker.Service] to manage the
 // lifecycle of the Worker.
-func NewWorker(params WorkerParams) (*Worker, error) {
+func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) {
 	if params.Config.SchedulerLookupAddress != "" && params.Config.SchedulerLookupInterval == 0 {
 		return nil, errors.New("scheduler lookup interval must be non-zero when a scheduler lookup address is provided")
+	}
+
+	if params.Config.SchedulerLookupInterval < time.Second {
+		level.Warn(params.Logger).Log("msg", "scheduler lookup interval is configured to be less than 1 second, overriding to 1 second")
+		params.Config.SchedulerLookupInterval = time.Second
 	}
 
 	if params.Endpoint == "" {
@@ -92,7 +104,6 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		remoteListener := wire.NewHTTP2Listener(
 			params.AdvertiseAddr,
 			wire.WithHTTP2ListenerLogger(params.Logger),
-			wire.WithHTTP2ListenerMaxPendingConns(10),
 		)
 		listener, handler = remoteListener, remoteListener
 		dialer = wire.NewHTTP2Dialer(params.Endpoint)
@@ -113,6 +124,11 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		return nil, errors.New("either an advertise address or a local scheduler listener must be provided")
 	}
 
+	taskCaches, err := executor.NewTaskCacheRegistry(params.Executor.TasksResultCache.Config, reg, params.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("creating task results cache: %w", err)
+	}
+
 	inner, err := worker.New(worker.Config{
 		Logger:    params.Logger,
 		Bucket:    params.Bucket,
@@ -125,10 +141,14 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
 		SchedulerLookupInterval: params.Config.SchedulerLookupInterval,
 
-		BatchSize:  int64(params.Executor.BatchSize),
-		NumThreads: params.Config.WorkerThreads,
+		BatchSize:     int64(params.Executor.BatchSize),
+		PrefetchBytes: int64(params.Executor.PrefetchBytes),
+		NumThreads:    params.Config.WorkerThreads,
 
 		Endpoint: params.Endpoint,
+
+		StreamFilterer: params.StreamFilterer,
+		TaskCaches:     taskCaches,
 	})
 	if err != nil {
 		return nil, err

@@ -65,6 +65,10 @@ type workerConn struct {
 
 	// tasks hold the collection of tasks currently assigned to the worker.
 	tasks map[*task]struct{}
+
+	// done is closed when the worker connection is closed. It is used to signal
+	// worker goroutines to exit.
+	done chan struct{}
 }
 
 // Type returns the type of the worker connection.

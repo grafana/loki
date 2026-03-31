@@ -1,15 +1,56 @@
 // Package xcap provides a utility to capture statistical information about the
 // lifetime of a query.
 //
-// Basic usage:
+// xcap can be used in two ways, both starting with a [Capture]:
 //
-//	ctx, capture := xcap.NewCapture(context.Background(), nil)
+// # Standalone: regions and log summaries
+//
+// Use [StartRegion] when you only need observation aggregation and
+// structured log output, without creating OTel spans.
+//
+//	// Create a capture to collect observations.
+//	ctx, capture := xcap.NewCapture(ctx, nil)
 //	defer capture.End()
 //
-//	ctx, region := xcap.StartRegion(ctx, "work")
+//	// Create a named region to scope observations.
+//	ctx, region := xcap.StartRegion(ctx, "DataObjScan")
 //	defer region.End()
 //
-//	region.Record(bytesRead.Observe(1024))
+//	// Record observations — multiple calls aggregate by statistic.
+//	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
+//	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
+//	// pages.scanned is now 2 (sum aggregation)
+//
+//	// After the capture ends, summarise all observations as log values.
+//	logValues := xcap.SummaryLogValues(capture)
+//	level.Info(logger).Log(logValues...)
+//
+// # With OTel tracing: spans, observations and log summaries
+//
+// Use [StartSpan] when you want observations flushed as OTel span
+// attributes in addition to the log summary. [StartSpan] takes a
+// standard [trace.Tracer] and returns a [Span] whose End method writes
+// the aggregated observations as span attributes before ending the
+// span. The observations are also registered with the [Capture] for
+// log summaries.
+//
+//	// Create a capture to collect observations.
+//	ctx, capture := xcap.NewCapture(ctx, nil)
+//	defer capture.End()
+//
+//	// Start a span — this also creates a linked region.
+//	ctx, span := xcap.StartSpan(ctx, otel.Tracer("engine"), "DataObjScan",
+//	    trace.WithAttributes(attribute.Int("num_targets", 5)),
+//	)
+//	defer span.End()
+//
+//	// Deep in the call stack, retrieve the region from context.
+//	region := xcap.RegionFromContext(ctx)
+//	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
+//	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
+//	// When span.End() is called:
+//	//   1. pages.scanned=2 is set as a span attribute.
+//	//   2. The observation is also available via SummaryLogValues(capture).
 package xcap
 
 import (
@@ -82,101 +123,45 @@ func (c *Capture) Regions() []*Region {
 	return c.regions
 }
 
-// GetAllStatistics returns statistics used across all regions
+// LinkParent assigns the provided region as the parent
+// to all root regions of the capture.
+func (c *Capture) LinkParent(parent *Region) {
+	c.mu.RLock()
+	regions := make([]*Region, len(c.regions))
+	copy(regions, c.regions)
+	c.mu.RUnlock()
+
+	for _, region := range regions {
+		region.mu.Lock()
+		if region.parentID.IsZero() {
+			region.parentID = parent.id
+		}
+		region.mu.Unlock()
+	}
+}
+
+// getAllStatistics returns statistics used across all regions
 // in this capture.
-func (c *Capture) getAllStatistics() []Statistic {
+func (c *Capture) getAllStatistics() map[StatisticKey]Statistic {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	statistics := make(map[StatisticKey]Statistic)
+	stats := make(map[StatisticKey]Statistic)
 	for _, region := range c.regions {
 		region.mu.RLock()
 		for key, obs := range region.observations {
-			// Statistics with the same definition will have the same key.
-			if _, exists := statistics[key]; !exists {
-				statistics[key] = obs.Statistic
+			if _, exists := stats[key]; !exists {
+				stats[key] = obs.Statistic
 			}
 		}
 		region.mu.RUnlock()
 	}
-
-	result := make([]Statistic, 0, len(statistics))
-	for _, stat := range statistics {
-		result = append(result, stat)
-	}
-
-	return result
-}
-
-// LinkRegions links root regions based on the provided link attribute and resolveParent function.
-//   - It extracts the value of the linkByAttribute (must be a string attribute)
-//   - Calls resolveParent() with that value to determine the parent's attribute value
-//   - It finds the region with the matching attribute value and sets it as the parent
-//   - It accepts an optional defaultRootRegion to attach orphaned regions to it.
-//
-// Use a linkByAttribute that is unique for each region.
-func (c *Capture) LinkRegions(
-	linkByAttribute string,
-	resolveParent func(string) (string, bool),
-	defaultRootRegion *Region,
-) {
-	if linkByAttribute == "" {
-		return
-	}
-
-	getAttributeValue := func(r *Region) (string, bool) {
-		if attr := r.getAttribute(linkByAttribute); attr.Valid() && attr.Value.Type() == attribute.STRING {
-			return attr.Value.AsString(), true
-		}
-
-		return "", false
-	}
-
-	attrToRegion := make(map[string]*Region, len(c.regions))
-	for _, r := range c.regions {
-		// regions without the link attribute are not added to the map.
-		if val, ok := getAttributeValue(r); ok {
-			attrToRegion[val] = r
-		}
-	}
-
-	for _, r := range c.regions {
-		if !r.parentID.IsZero() {
-			// region already has a parent. No linking required.
-			continue
-		}
-
-		attrVal, ok := getAttributeValue(r)
-		if !ok {
-			continue
-		}
-
-		// iterate over the parents to find the first that has a linked region (or falling back to default root)
-		for {
-			parentAttrVal, ok := resolveParent(attrVal)
-			if !ok {
-				if defaultRootRegion != nil {
-					r.parentID = defaultRootRegion.id
-				}
-				break
-			}
-
-			parentRegion, ok := attrToRegion[parentAttrVal]
-			if !ok {
-				// it might be that the parent does not have a region
-				// let's skip it and attach to the parent of the parent
-				attrVal = parentAttrVal
-				continue
-			}
-
-			r.parentID = parentRegion.id
-			break
-		}
-	}
+	return stats
 }
 
 // MarshalBinary implements encoding.BinaryMarshaler for Capture.
-// It serializes the Capture to its protobuf representation and returns the binary data.
+// It serializes the Capture to its protobuf representation and returns
+// the binary data.
 func (c *Capture) MarshalBinary() ([]byte, error) {
 	if c == nil {
 		return nil, nil

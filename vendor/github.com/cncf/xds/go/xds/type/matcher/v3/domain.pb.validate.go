@@ -105,7 +105,7 @@ type ServerNameMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ServerNameMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -247,7 +247,7 @@ type ServerNameMatcher_DomainMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ServerNameMatcher_DomainMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

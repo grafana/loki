@@ -55,6 +55,7 @@ import (
 // will define its own client in case of specific extension.
 type Client interface {
 	SendRequest(*BceRequest, *BceResponse) error
+	SendRequestV2(*BceRequest, *BceResponse) error
 	SendRequestFromBytes(*BceRequest, *BceResponse, []byte) error
 	GetBceClientConfig() *BceClientConfiguration
 }
@@ -186,6 +187,86 @@ func (c *BceClient) SendRequest(req *BceRequest, resp *BceResponse) error {
 				ioutil.ReadAll(teeReader)
 				req.Request.SetBody(ioutil.NopCloser(&retryBuf))
 			}
+			continue
+		}
+		return nil
+	}
+}
+
+func (c *BceClient) SendRequestV2(req *BceRequest, resp *BceResponse) error {
+	// Return client error if it is not nil
+	if req.ClientError() != nil {
+		return req.ClientError()
+	}
+
+	// Build the http request and prepare to send
+	c.buildHttpRequest(req)
+	log.Infof("send http request v2: %v", req)
+
+	// Send request with the given retry policy
+	retries := 0
+	var body *TeeReadNopCloser
+	if req.Body() != nil {
+		body, _ = req.Body().(*TeeReadNopCloser)
+	}
+	if body != nil {
+		body.Mark()
+	}
+	for {
+		httpResp, err := http.Execute(&req.Request)
+		if err != nil {
+			if c.Config.Retry.ShouldRetry(err, retries) {
+				delay_in_mills := c.Config.Retry.GetDelayBeforeNextRetryInMillis(err, retries)
+				time.Sleep(delay_in_mills)
+			} else {
+				return &BceClientError{
+					fmt.Sprintf("execute http request failed! Retried %d times, error: %v", retries, err)}
+			}
+			if req.Body() != nil {
+				if body == nil { // body is not TeeReadNopCloser, do not retry
+					return err
+				}
+				if err1 := body.Reset(); err1 != nil {
+					return err
+				}
+			}
+			retries++
+			log.Warnf("send request failed: %v, retry for %d time(s)", err, retries)
+			continue
+		}
+		resp.SetHttpResponse(httpResp)
+		resp.ParseResponse()
+
+		log.Infof("receive http response: status: %s, debugId: %s, requestId: %s, elapsed: %v",
+			resp.StatusText(), resp.DebugId(), resp.RequestId(), resp.ElapsedTime())
+
+		// not print this warn log with upload/download rate limit
+		if resp.ElapsedTime().Milliseconds() > DEFAULT_WARN_LOG_TIMEOUT_IN_MILLS &&
+			(c.Config.UploadRatelimit == nil && c.Config.DownloadRatelimit == nil) {
+			log.Warnf("request time more than 5 second, debugId: %s, requestId: %s, elapsed: %v",
+				resp.DebugId(), resp.RequestId(), resp.ElapsedTime())
+		}
+		for k, v := range resp.Headers() {
+			log.Debugf("%s=%s", k, v)
+		}
+		if resp.IsFail() {
+			err := resp.ServiceError()
+			if c.Config.Retry.ShouldRetry(err, retries) {
+				delay_in_mills := c.Config.Retry.GetDelayBeforeNextRetryInMillis(err, retries)
+				time.Sleep(delay_in_mills)
+			} else {
+				return err
+			}
+			if req.Body() != nil {
+				if body == nil { // body is not TeeReadNopCloser, do not retry
+					return err
+				}
+				if err1 := body.Reset(); err1 != nil {
+					return err
+				}
+			}
+			retries++
+			log.Warnf("send request failed, retry for %d time(s)", retries)
 			continue
 		}
 		return nil

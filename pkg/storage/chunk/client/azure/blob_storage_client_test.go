@@ -246,7 +246,7 @@ func Test_EndpointSuffixWithContainer(t *testing.T) {
 func Test_ConnectionStringWithContainer(t *testing.T) {
 	c, err := NewBlobStorage(&BlobStorageConfig{
 		ContainerName:    "foo",
-		ConnectionString: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=shorter=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;",
+		ConnectionString: flagext.SecretWithValue("DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=shorter=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"),
 	}, metrics, hedging.Config{})
 	require.NoError(t, err)
 	expect, _ := url.Parse("http://127.0.0.1:10000/devstoreaccount1/foo")
@@ -287,7 +287,7 @@ func Test_EndpointSuffixWithBlob(t *testing.T) {
 func Test_ConnectionStringWithBlob(t *testing.T) {
 	c, err := NewBlobStorage(&BlobStorageConfig{
 		ContainerName:    "foo",
-		ConnectionString: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=shorter=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;",
+		ConnectionString: flagext.SecretWithValue("DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=shorter=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"),
 	}, metrics, hedging.Config{})
 	require.NoError(t, err)
 	expect, _ := url.Parse("http://127.0.0.1:10000/devstoreaccount1/foo/blob")

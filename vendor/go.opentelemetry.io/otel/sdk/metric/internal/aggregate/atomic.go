@@ -51,6 +51,97 @@ func (n *atomicCounter[N]) add(value N) {
 	}
 }
 
+// reset resets the internal state, and is not safe to call concurrently.
+func (n *atomicCounter[N]) reset() {
+	n.nFloatBits.Store(0)
+	n.nInt.Store(0)
+}
+
+// atomicN is a generic atomic number value.
+type atomicN[N int64 | float64] struct {
+	val atomic.Uint64
+}
+
+func (a *atomicN[N]) Load() (value N) {
+	v := a.val.Load()
+	switch any(value).(type) {
+	case int64:
+		value = N(v)
+	case float64:
+		value = N(math.Float64frombits(v))
+	default:
+		panic("unsupported type")
+	}
+	return value
+}
+
+func (a *atomicN[N]) Store(v N) {
+	var val uint64
+	switch any(v).(type) {
+	case int64:
+		val = uint64(v)
+	case float64:
+		val = math.Float64bits(float64(v))
+	default:
+		panic("unsupported type")
+	}
+	a.val.Store(val)
+}
+
+func (a *atomicN[N]) CompareAndSwap(oldN, newN N) bool {
+	var o, n uint64
+	switch any(oldN).(type) {
+	case int64:
+		o, n = uint64(oldN), uint64(newN)
+	case float64:
+		o, n = math.Float64bits(float64(oldN)), math.Float64bits(float64(newN))
+	default:
+		panic("unsupported type")
+	}
+	return a.val.CompareAndSwap(o, n)
+}
+
+type atomicMinMax[N int64 | float64] struct {
+	minimum, maximum atomicN[N]
+	set              atomic.Bool
+	mu               sync.Mutex
+}
+
+// init returns true if the value was used to initialize min and max.
+func (s *atomicMinMax[N]) init(val N) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.set.Load() {
+		defer s.set.Store(true)
+		s.minimum.Store(val)
+		s.maximum.Store(val)
+		return true
+	}
+	return false
+}
+
+func (s *atomicMinMax[N]) Update(val N) {
+	if !s.set.Load() && s.init(val) {
+		return
+	}
+
+	old := s.minimum.Load()
+	for val < old {
+		if s.minimum.CompareAndSwap(old, val) {
+			return
+		}
+		old = s.minimum.Load()
+	}
+
+	old = s.maximum.Load()
+	for old < val {
+		if s.maximum.CompareAndSwap(old, val) {
+			return
+		}
+		old = s.maximum.Load()
+	}
+}
+
 // hotColdWaitGroup is a synchronization primitive which enables lockless
 // writes for concurrent writers and enables a reader to acquire exclusive
 // access to a snapshot of state including only completed operations.

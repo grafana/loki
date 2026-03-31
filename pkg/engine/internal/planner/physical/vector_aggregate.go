@@ -16,6 +16,9 @@ type VectorAggregation struct {
 
 	// Operation defines the type of aggregation operation to perform (e.g., sum, min, max)
 	Operation types.VectorAggregationType
+
+	// MaxQuerySeries is the maximum number of unique series allowed (0 means no limit)
+	MaxQuerySeries int
 }
 
 // ID implements the [Node] interface.
@@ -31,7 +34,8 @@ func (v *VectorAggregation) Clone() Node {
 			Columns: cloneExpressions(v.Grouping.Columns),
 			Without: v.Grouping.Without,
 		},
-		Operation: v.Operation,
+		Operation:      v.Operation,
+		MaxQuerySeries: v.MaxQuerySeries,
 	}
 }
 

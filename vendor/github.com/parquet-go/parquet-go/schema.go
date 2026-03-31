@@ -95,31 +95,44 @@ func (v *onceValue[T]) load(f func() *T) *T {
 //
 // The following options are also supported in the "parquet" struct tag:
 //
-//	optional  | make the parquet column optional
-//	snappy    | sets the parquet column compression codec to snappy
-//	gzip      | sets the parquet column compression codec to gzip
-//	brotli    | sets the parquet column compression codec to brotli
-//	lz4       | sets the parquet column compression codec to lz4
-//	zstd      | sets the parquet column compression codec to zstd
-//	plain     | enables the plain encoding (no-op default)
-//	dict      | enables dictionary encoding on the parquet column
-//	delta     | enables delta encoding on the parquet column
-//	list      | for slice types, use the parquet LIST logical type
-//	enum      | for string types, use the parquet ENUM logical type
-//	bytes     | for string types, use no parquet logical type
-//	string    | for []byte types, use the parquet STRING logical type
-//	uuid      | for string and [16]byte types, use the parquet UUID logical type
-//	decimal   | for int32, int64 and [n]byte types, use the parquet DECIMAL logical type
-//	date      | for int32 types use the DATE logical type
-//	time      | for int32 and int64 types use the TIME logical type
-//	timestamp | for int64 types use the TIMESTAMP logical type with, by default, millisecond precision
-//	split     | for float32/float64, use the BYTE_STREAM_SPLIT encoding
-//	id(n)     | where n is int denoting a column field id. Example id(2) for a column with field id of 2
+//	optional     | make the parquet column optional (any type)
+//	snappy       | sets the parquet column compression codec to snappy (any type)
+//	gzip         | sets the parquet column compression codec to gzip (any type)
+//	brotli       | sets the parquet column compression codec to brotli (any type)
+//	lz4          | sets the parquet column compression codec to lz4 (any type)
+//	zstd         | sets the parquet column compression codec to zstd (any type)
+//	uncompressed | explicitly sets no compression (any type)
+//	plain        | enables the plain encoding (no-op default, any type)
+//	dict         | enables dictionary encoding on the parquet column (any leaf type)
+//	delta        | enables delta encoding: DeltaBinaryPacked for int32, int64, int, uint, uint32, uint64, time.Time; DeltaByteArray for string, []byte, [N]byte
+//	list         | for slice types, use the parquet LIST logical type
+//	enum         | for string types, use the parquet ENUM logical type
+//	bytes        | for string types, use no parquet logical type
+//	string       | for []byte types, use the parquet STRING logical type
+//	json         | for string, []byte, and map types, use the parquet JSON logical type
+//	uuid         | for string and [16]byte types, use the parquet UUID logical type
+//	decimal      | for int32, int64, []byte, and [N]byte types, use the parquet DECIMAL logical type
+//	date         | for int32, time.Time, and *time.Time types, use the DATE logical type
+//	time         | for int32, int64, time.Duration, and *time.Duration types, use the TIME logical type
+//	timestamp    | for int64, time.Time, and *time.Time types, use the TIMESTAMP logical type (default millisecond precision)
+//	split        | for float32 and float64 types, use the BYTE_STREAM_SPLIT encoding
+//	geometry     | for []byte types, use the GEOMETRY logical type; use geometry(crs) to set the CRS
+//	geography    | for []byte types, use the GEOGRAPHY logical type; use geography(crs:algorithm) to set the CRS and edge algorithm
+//	int(n)       | for integer types, use the parquet INT logical type with the given bit width (8, 16, 32, or 64)
+//	uint(n)      | for integer types, use the parquet UINT logical type with the given bit width (8, 16, 32, or 64)
+//	id(n)        | where n is int denoting a column field id. Example id(2) for a column with field id of 2
+//
+// When "optional" is used on a bare slice (without the "list" tag), it applies to the
+// repeated elements, not the slice itself. When combined with the "list" tag, "optional"
+// applies to the list as a whole; use the parquet-element tag to make list elements
+// optional (e.g. parquet-element:",optional").
 //
 // # The date logical type is an int32 value of the number of days since the unix epoch
 //
-// The timestamp precision can be changed by defining which precision to use as an argument.
-// Supported precisions are: nanosecond, millisecond and microsecond. Example:
+// The time and timestamp precision can be changed by defining which precision to use
+// as an argument. Supported precisions are: nanosecond, millisecond and microsecond.
+// Note that for the time tag, int32 only supports millisecond precision, while int64
+// supports microsecond and nanosecond precision. Example:
 //
 //	type Message struct {
 //	  TimestampMicros int64 `parquet:"timestamp_micros,timestamp(microsecond)"
@@ -999,7 +1012,8 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 
 			case "delta":
 				switch t.Kind() {
-				case reflect.Int, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint32, reflect.Uint64:
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+					reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 					setEncoding(&DeltaBinaryPacked)
 				case reflect.String:
 					setEncoding(&DeltaByteArray)
@@ -1152,6 +1166,21 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 							throwInvalidTag(t, name, option+args)
 						}
 						setNode(TimeAdjusted(timeUnit, adjusted))
+					case reflect.Ptr:
+						// Support *time.Duration with time tag
+						if t.Elem() == reflect.TypeFor[time.Duration]() {
+							timeUnit, adjusted, err := parseTimestampArgs(args)
+							if err != nil {
+								throwInvalidTag(t, name, option+args)
+							}
+							if args == "()" {
+								timeUnit = Nanosecond
+								adjusted = true
+							}
+							setNode(Optional(TimeAdjusted(timeUnit, adjusted)))
+						} else {
+							throwInvalidTag(t, name, option)
+						}
 					default:
 						throwInvalidTag(t, name, option)
 					}
@@ -1188,6 +1217,48 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 					default:
 						throwInvalidTag(t, name, option)
 					}
+				}
+
+			case "int":
+				bitWidth, err := parseIntBitWidthArgs(args)
+				if err != nil {
+					throwInvalidTag(t, name, option+args)
+				}
+				kind := t.Kind()
+				if kind == reflect.Ptr {
+					kind = t.Elem().Kind()
+				}
+				switch kind {
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+					reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+					if t.Kind() == reflect.Ptr {
+						setNode(Optional(Int(bitWidth)))
+					} else {
+						setNode(Int(bitWidth))
+					}
+				default:
+					throwInvalidTag(t, name, option)
+				}
+
+			case "uint":
+				bitWidth, err := parseIntBitWidthArgs(args)
+				if err != nil {
+					throwInvalidTag(t, name, option+args)
+				}
+				kind := t.Kind()
+				if kind == reflect.Ptr {
+					kind = t.Elem().Kind()
+				}
+				switch kind {
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+					reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+					if t.Kind() == reflect.Ptr {
+						setNode(Optional(Uint(bitWidth)))
+					} else {
+						setNode(Uint(bitWidth))
+					}
+				default:
+					throwInvalidTag(t, name, option)
 				}
 
 			case "id":

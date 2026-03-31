@@ -66,7 +66,7 @@ func newConfig(opts ...Option) *config {
 
 	c.Meter = c.MeterProvider.Meter(
 		ScopeName,
-		metric.WithInstrumentationVersion(Version()),
+		metric.WithInstrumentationVersion(Version),
 	)
 
 	return c
@@ -90,18 +90,6 @@ func WithMeterProvider(provider metric.MeterProvider) Option {
 			cfg.MeterProvider = provider
 		}
 	})
-}
-
-// WithPublicEndpoint configures the Handler to link the span with an incoming
-// span context. If this option is not provided, then the association is a child
-// association instead of a link.
-//
-// Deprecated: Use [WithPublicEndpointFn] instead.
-// To migrate, replace WithPublicEndpoint() with:
-//
-//	WithPublicEndpointFn(func(*http.Request) bool { return true })
-func WithPublicEndpoint() Option {
-	return WithPublicEndpointFn(func(*http.Request) bool { return true })
 }
 
 // WithPublicEndpointFn runs with every request, and allows conditionally
@@ -206,6 +194,9 @@ func WithServerName(server string) Option {
 
 // WithMetricAttributesFn returns an Option to set a function that maps an HTTP request to a slice of attribute.KeyValue.
 // These attributes will be included in metrics for every request.
+//
+// Deprecated: WithMetricAttributesFn is deprecated and will be removed in a
+// future release. Use [Labeler] instead.
 func WithMetricAttributesFn(metricAttributesFn func(r *http.Request) []attribute.KeyValue) Option {
 	return optionFunc(func(c *config) {
 		c.MetricAttributesFn = metricAttributesFn

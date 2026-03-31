@@ -90,6 +90,16 @@ func TestRowReaderTimeRange(t *testing.T) {
 	}
 }
 
+func TestRowReader_ReadBeforeOpen(t *testing.T) {
+	sec := buildPointersDecoder(t, 0, 2)
+	r := pointers.NewRowReader(sec)
+
+	buf := make([]pointers.SectionPointer, 1)
+	n, err := r.Read(context.Background(), buf)
+	require.Zero(t, n)
+	require.ErrorContains(t, err, "row reader not opened")
+}
+
 func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
 func buildPointersDecoder(t *testing.T, pageSize, pageRows int) *pointers.Section {
@@ -122,6 +132,9 @@ func readAllPointers(ctx context.Context, r *pointers.RowReader) ([]pointers.Sec
 		res []pointers.SectionPointer
 		buf = make([]pointers.SectionPointer, 128)
 	)
+	if err := r.Open(ctx); err != nil {
+		return nil, err
+	}
 
 	for {
 		n, err := r.Read(ctx, buf)

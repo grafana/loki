@@ -1,4 +1,4 @@
-// Package worker provides a mechanism to to connect to the [scheduler] for
+// Package worker provides a mechanism to connect to the [scheduler] for
 // executing tasks.
 package worker
 
@@ -24,14 +24,19 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 // Config holds configuration options for [Worker].
 type Config struct {
 	// Logger for optional log messages.
 	Logger log.Logger
+
+	// Metrics for the worker's wire connections.
+	WireMetrics *wire.Metrics
 
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
@@ -59,8 +64,12 @@ type Config struct {
 	SchedulerLookupInterval time.Duration
 
 	// BatchSize specifies the maximum number of rows to retrieve in a single
-	// read call of a task pipeline.
+	// read call of a task pipeline, or to send in a single message to a peer (sink).
 	BatchSize int64
+
+	// PrefetchBytes controls the number of bytes prefetched when opening a
+	// data object in scan tasks.
+	PrefetchBytes int64
 
 	// NumThreads is the number of worker threads to spawn. The number of
 	// threads corresponds to the number of tasks that can be executed
@@ -72,6 +81,13 @@ type Config struct {
 	// Absolute path of the endpoint where the frame handler is registered.
 	// Used for connecting to scheduler and other workers.
 	Endpoint string
+
+	// StreamFilterer is an optional filterer that can filter streams based on their labels.
+	// When set, streams are filtered before scanning.
+	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
+
+	// TaskCaches is an optional registry of backing caches for task results.
+	TaskCaches executor.TaskCacheRegistry
 }
 
 // readyRequest is a message sent from a thread to notify the worker that it's
@@ -99,6 +115,7 @@ type Worker struct {
 	config     Config
 	logger     log.Logger
 	numThreads int
+	taskCaches executor.TaskCacheRegistry
 
 	initOnce sync.Once
 	svc      services.Service
@@ -111,8 +128,9 @@ type Worker struct {
 	sinks        map[ulid.ULID]*streamSink
 	jobs         map[ulid.ULID]*threadJob
 
-	metrics   *metrics
-	collector *collector
+	wireMetrics *wire.Metrics
+	metrics     *metrics
+	collector   *collector
 
 	// jobManager used to manage task assignments.
 	jobManager *jobManager
@@ -142,9 +160,11 @@ func New(config Config) (*Worker, error) {
 	}
 
 	return &Worker{
-		config:     config,
-		logger:     config.Logger,
-		numThreads: numThreads,
+		config:      config,
+		logger:      config.Logger,
+		wireMetrics: wire.NewMetrics(),
+		numThreads:  numThreads,
+		taskCaches:  config.TaskCaches,
 
 		dialer:   config.Dialer,
 		listener: config.Listener,
@@ -179,10 +199,13 @@ func (w *Worker) run(ctx context.Context) error {
 	var threads []*thread
 	for i := range w.numThreads {
 		t := &thread{
-			BatchSize: w.config.BatchSize,
-			Logger:    log.With(w.logger, "thread", i),
-			Bucket:    w.config.Bucket,
-			Metastore: w.config.Metastore,
+			BatchSize:      w.config.BatchSize,
+			PrefetchBytes:  w.config.PrefetchBytes,
+			Logger:         log.With(w.logger, "thread", i),
+			Bucket:         w.config.Bucket,
+			Metastore:      w.config.Metastore,
+			StreamFilterer: w.config.StreamFilterer,
+			TaskCaches:     w.taskCaches,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,
@@ -273,8 +296,9 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 	level.Info(logger).Log("msg", "handling connection")
 
 	peer := &wire.Peer{
-		Logger: logger,
-		Conn:   conn,
+		Logger:  logger,
+		Metrics: w.wireMetrics,
+		Conn:    conn,
 
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
@@ -340,11 +364,9 @@ func (w *Worker) dial(ctx context.Context, addr net.Addr) (wire.Conn, error) {
 func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, conn wire.Conn) error {
 	level.Info(logger).Log("msg", "connected to scheduler")
 
-	var (
-		// waitReady is used to signal that the scheduler should be told when
-		// there's a ready thread.
-		waitReady = make(chan struct{}, 1)
-	)
+	// waitReady is used to signal that the scheduler should be told when
+	// there's a ready thread.
+	waitReady := make(chan struct{}, 1)
 
 	handleWorkerSubscribe := func() error {
 		select {
@@ -372,8 +394,9 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 	}
 
 	peer := &wire.Peer{
-		Logger: logger,
-		Conn:   conn,
+		Logger:  logger,
+		Metrics: w.wireMetrics,
+		Conn:    conn,
 
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
@@ -503,10 +526,11 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 	for _, taskSinks := range msg.Task.Sinks {
 		for _, taskSink := range taskSinks {
 			sink := &streamSink{
-				Logger:    log.With(logger, "stream", taskSink.ULID),
-				Scheduler: scheduler,
-				Stream:    taskSink,
-				Dialer:    w.dial,
+				Logger:      log.With(logger, "stream", taskSink.ULID),
+				WireMetrics: w.wireMetrics,
+				Scheduler:   scheduler,
+				Stream:      taskSink,
+				Dialer:      w.dial,
 			}
 
 			if _, exist := w.sinks[taskSink.ULID]; exist {
@@ -521,6 +545,11 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 	// Extract tracing context and bind it to the job's context.
 	var tc propagation.TraceContext
 	ctx = tc.Extract(ctx, propagation.HeaderCarrier(msg.Metadata))
+
+	// Inject all headers from task metadata into context.
+	// This restores headers that were stored by PropagateAllHeadersMiddleware
+	// and copied to task metadata by the scheduler.
+	ctx = httpreq.InjectAllHeaders(ctx, msg.Metadata)
 
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -614,6 +643,7 @@ func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
 
 	errs = append(errs, reg.Register(w.collector))
 	errs = append(errs, w.metrics.Register(reg))
+	errs = append(errs, w.wireMetrics.Register(reg))
 
 	return errors.Join(errs...)
 }
@@ -622,4 +652,5 @@ func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
 func (w *Worker) UnregisterMetrics(reg prometheus.Registerer) {
 	reg.Unregister(w.collector)
 	w.metrics.Unregister(reg)
+	w.wireMetrics.Unregister(reg)
 }

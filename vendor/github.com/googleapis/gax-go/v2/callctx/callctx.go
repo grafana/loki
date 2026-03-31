@@ -98,3 +98,30 @@ func cloneHeaders(h map[string][]string) map[string][]string {
 	}
 	return c
 }
+
+// telemetryKey is a private type used to store/retrieve telemetry context values.
+type telemetryKey string
+
+// WithTelemetryContext injects telemetry attribute values (like resource name
+// or client version) into the context. In accordance with standard Go context
+// guidelines, this should only be used for data that transits processes and APIs,
+// and not for passing optional parameters to functions. keyvals should have a
+// corresponding value for every key provided. If there is an odd number of keyvals
+// this method will panic.
+func WithTelemetryContext(ctx context.Context, keyvals ...string) context.Context {
+	if len(keyvals)%2 != 0 {
+		panic(fmt.Sprintf("callctx: an even number of key value pairs must be provided, got %d", len(keyvals)))
+	}
+
+	for i := 0; i < len(keyvals); i = i + 2 {
+		ctx = context.WithValue(ctx, telemetryKey(keyvals[i]), keyvals[i+1])
+	}
+	return ctx
+}
+
+// TelemetryFromContext extracts a telemetry attribute value from the context.
+// The returned bool indicates a successful typecast of the value to a string.
+func TelemetryFromContext(ctx context.Context, key string) (string, bool) {
+	val, ok := ctx.Value(telemetryKey(key)).(string)
+	return val, ok
+}

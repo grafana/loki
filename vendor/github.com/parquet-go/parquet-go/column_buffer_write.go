@@ -54,17 +54,17 @@ func writeRowsFuncOf(t reflect.Type, schema *Schema, path columnPath, tagReplace
 	}
 
 	switch t.Kind() {
+	case reflect.Int, reflect.Uint,
+		reflect.Int32, reflect.Uint32,
+		reflect.Int64, reflect.Uint64:
+		return writeRowsFuncOfInt(t, schema, path)
 	case reflect.Bool,
-		reflect.Int,
-		reflect.Uint,
-		reflect.Int32,
-		reflect.Uint32,
-		reflect.Int64,
-		reflect.Uint64,
 		reflect.Float32,
 		reflect.Float64,
 		reflect.String:
 		return writeRowsFuncOfRequired(t, schema, path)
+	case reflect.Int8, reflect.Int16, reflect.Uint8, reflect.Uint16:
+		return writeRowsFuncOfSmallInt(t, schema, path)
 	case reflect.Slice:
 		if t.Elem().Kind() == reflect.Uint8 {
 			return writeRowsFuncOfRequired(t, schema, path)
@@ -93,6 +93,152 @@ func writeRowsFuncOfRequired(t reflect.Type, schema *Schema, path columnPath) wr
 	if columnIndex < 0 {
 		panic("parquet: column not found: " + path.String())
 	}
+	return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
+		columns[columnIndex].writeValues(levels, rows)
+	}
+}
+
+func writeRowsFuncOfSmallInt(t reflect.Type, schema *Schema, path columnPath) writeRowsFunc {
+	column := schema.lazyLoadState().mapping.lookup(path)
+	columnIndex := column.columnIndex
+	if columnIndex < 0 {
+		panic("parquet: column not found: " + path.String())
+	}
+
+	kind := t.Kind()
+	return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
+		n := rows.Len()
+		if n == 0 {
+			columns[columnIndex].writeValues(levels, rows)
+			return
+		}
+
+		buf := smallIntBufPool.Get(
+			func() *smallIntBuf { return new(smallIntBuf) },
+			func(b *smallIntBuf) { b.values = b.values[:0] },
+		)
+		buf.values = slices.Grow(buf.values, n)[:n]
+		defer smallIntBufPool.Put(buf)
+
+		switch kind {
+		case reflect.Int8:
+			a := rows.Int8Array()
+			for i := range n {
+				buf.values[i] = int32(a.Index(i))
+			}
+		case reflect.Int16:
+			a := rows.Int16Array()
+			for i := range n {
+				buf.values[i] = int32(a.Index(i))
+			}
+		case reflect.Uint8:
+			a := rows.Uint8Array()
+			for i := range n {
+				buf.values[i] = int32(a.Index(i))
+			}
+		case reflect.Uint16:
+			a := rows.Uint16Array()
+			for i := range n {
+				buf.values[i] = int32(a.Index(i))
+			}
+		}
+
+		widenedArray := sparse.MakeInt32Array(buf.values).UnsafeArray()
+		columns[columnIndex].writeValues(levels, widenedArray)
+	}
+}
+
+type smallIntBuf struct{ values []int32 }
+
+var smallIntBufPool memory.Pool[smallIntBuf]
+
+type wideIntBuf struct{ values []int64 }
+
+var wideIntBufPool memory.Pool[wideIntBuf]
+
+func writeRowsFuncOfInt(t reflect.Type, schema *Schema, path columnPath) writeRowsFunc {
+	column := schema.lazyLoadState().mapping.lookup(path)
+	columnIndex := column.columnIndex
+	if columnIndex < 0 {
+		panic("parquet: column not found: " + path.String())
+	}
+
+	goSize := t.Size()
+	colKind := column.node.Type().Kind()
+
+	// When the Go type size doesn't match the column's physical type size,
+	// we need to convert values element-by-element. This happens when tags
+	// like int(32) or uint(32) override the default column bit width.
+	// For example: uint64 with int(32) tag, or int with int(32) on 64-bit.
+	if goSize > 4 && colKind == Int32 {
+		// 8-byte Go type → 4-byte column: narrow
+		signed := t.Kind() == reflect.Int || t.Kind() == reflect.Int64
+		return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
+			n := rows.Len()
+			if n == 0 {
+				columns[columnIndex].writeValues(levels, rows)
+				return
+			}
+
+			buf := smallIntBufPool.Get(
+				func() *smallIntBuf { return new(smallIntBuf) },
+				func(b *smallIntBuf) { b.values = b.values[:0] },
+			)
+			buf.values = slices.Grow(buf.values, n)[:n]
+			defer smallIntBufPool.Put(buf)
+
+			if signed {
+				a := rows.Int64Array()
+				for i := range n {
+					buf.values[i] = int32(a.Index(i))
+				}
+			} else {
+				a := rows.Uint64Array()
+				for i := range n {
+					buf.values[i] = int32(uint32(a.Index(i)))
+				}
+			}
+
+			narrowedArray := sparse.MakeInt32Array(buf.values).UnsafeArray()
+			columns[columnIndex].writeValues(levels, narrowedArray)
+		}
+	}
+
+	if goSize <= 4 && colKind == Int64 {
+		// 4-byte Go type → 8-byte column: widen
+		signed := t.Kind() == reflect.Int || t.Kind() == reflect.Int32
+		return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
+			n := rows.Len()
+			if n == 0 {
+				columns[columnIndex].writeValues(levels, rows)
+				return
+			}
+
+			buf := wideIntBufPool.Get(
+				func() *wideIntBuf { return new(wideIntBuf) },
+				func(b *wideIntBuf) { b.values = b.values[:0] },
+			)
+			buf.values = slices.Grow(buf.values, n)[:n]
+			defer wideIntBufPool.Put(buf)
+
+			if signed {
+				a := rows.Int32Array()
+				for i := range n {
+					buf.values[i] = int64(a.Index(i))
+				}
+			} else {
+				a := rows.Uint32Array()
+				for i := range n {
+					buf.values[i] = int64(a.Index(i))
+				}
+			}
+
+			widenedArray := sparse.MakeInt64Array(buf.values).UnsafeArray()
+			columns[columnIndex].writeValues(levels, widenedArray)
+		}
+	}
+
+	// Default: Go type size matches column physical type size.
 	return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
 		columns[columnIndex].writeValues(levels, rows)
 	}
@@ -143,6 +289,12 @@ func writeRowsFuncOfOptional(t reflect.Type, schema *Schema, path columnPath, wr
 				}
 			}
 		}
+		// []byte: fall through to nullIndex (nil = null, non-nil = value)
+	case reflect.Pointer, reflect.Map:
+		// Fall through to nullIndex (nil = null, non-nil = value)
+	default:
+		// Value types (bool, int, float, string, struct, etc.) are never null
+		return writeOptional
 	}
 
 	nullIndex := nullIndexFuncOf(t)
@@ -307,7 +459,25 @@ func writeRowsFuncOfPointer(t reflect.Type, schema *Schema, path columnPath, tag
 func writeRowsFuncOfSlice(t reflect.Type, schema *Schema, path columnPath, tagReplacements []StructTagOption) writeRowsFunc {
 	elemType := t.Elem()
 	elemSize := uintptr(elemType.Size())
+
+	// If the current node is a LIST, we need to drill down to the element
+	// to find the schema node for the slice elements.
+	if node := findByPath(schema, path); node != nil && isList(node) {
+		path = path.append("list", "element")
+	}
+
 	writeRows := writeRowsFuncOf(elemType, schema, path, tagReplacements)
+
+	// Check if the element schema node is optional.
+	// This handles the case of `parquet-element:",optional"` tag where
+	// the list elements themselves are optional (non-pointer basic types).
+	// For pointer types (like []*string), the pointer handling already
+	// takes care of optionality via writeRowsFuncOfPointer.
+	if elemType.Kind() != reflect.Ptr {
+		if node := findByPath(schema, path); node != nil && node.Optional() {
+			writeRows = writeRowsFuncOfOptional(elemType, schema, path, writeRows)
+		}
+	}
 
 	return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
 		type sliceHeader struct {
@@ -383,11 +553,6 @@ func writeRowsFuncOfStruct(t reflect.Type, schema *Schema, path columnPath, tagR
 			case f.Type == reflect.TypeFor[json.RawMessage]():
 				// json.RawMessage handles its own definition levels through
 				// writeRowsFuncOfJSONRawMessage -> writeValueFuncOf -> writeValueFuncOfOptional
-			case f.Type == reflect.TypeFor[time.Time]():
-				// time.Time is a struct but has IsZero() method,
-				// so it needs special handling.
-				// Don't use writeRowsFuncOfOptional which relies
-				// on bitmap batching.
 			default:
 				writeRows = writeRowsFuncOfOptional(f.Type, schema, columnPath, writeRows)
 			}
@@ -638,14 +803,18 @@ func writeRowsFuncOfMap(t reflect.Type, schema *Schema, path columnPath, tagRepl
 }
 
 func writeRowsFuncOfJSON(t reflect.Type, schema *Schema, path columnPath) writeRowsFunc {
-	// If this is a string or a byte array write directly.
-	switch t.Kind() {
-	case reflect.String:
-		return writeRowsFuncOfRequired(t, schema, path)
-	case reflect.Slice:
-		if t.Elem().Kind() == reflect.Uint8 {
-			return writeRowsFuncOfRequired(t, schema, path)
+	// If this is a string or a byte array, write directly.
+	if t.Kind() == reflect.String || (t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8) {
+		column, _ := schema.Lookup(path...)
+		isOptional := column.Node.Optional()
+
+		// This fast-path avoids the optional checks, so check here and wrap the writer
+		// if required.
+		writer := writeRowsFuncOfRequired(t, schema, path)
+		if isOptional {
+			writer = writeRowsFuncOfOptional(t, schema, path, writer)
 		}
+		return writer
 	}
 
 	columnIndex := findColumnIndex(schema, schema, path)
@@ -695,42 +864,15 @@ func writeRowsFuncOfTime(_ reflect.Type, schema *Schema, path columnPath, tagRep
 		unit = lt.Timestamp.Unit
 	}
 
-	// Check if the column is optional
-	isOptional := col.Node.Optional()
-
 	return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
 		if rows.Len() == 0 {
 			writeRows(columns, levels, rows)
 			return
 		}
 
-		// If we're optional and the current definition level is already > 0,
-		// then we're in a pointer/nested context where writeRowsFuncOfPointer
-		// already handles optionality.
-		//
-		// Don't double-handle it here. For simple optional fields,
-		// definitionLevel starts at 0.
-		alreadyHandled := isOptional && levels.definitionLevel > 0
-
 		times := rows.TimeArray()
 		for i := range times.Len() {
 			t := times.Index(i)
-
-			// For optional fields, check if the value is zero
-			// (unless already handled by pointer wrapper).
-			elemLevels := levels
-			if isOptional && !alreadyHandled && t.IsZero() {
-				// Write as NULL (don't increment definition level).
-				empty := sparse.Array{}
-				writeRows(columns, elemLevels, empty)
-				continue
-			}
-
-			// For optional non-zero values, increment definition level
-			// (unless already handled).
-			if isOptional && !alreadyHandled {
-				elemLevels.definitionLevel++
-			}
 
 			var val int64
 			switch {
@@ -743,7 +885,7 @@ func writeRowsFuncOfTime(_ reflect.Type, schema *Schema, path columnPath, tagRep
 			}
 
 			a := makeArray(reflectValueData(reflect.ValueOf(val)), 1, elemSize)
-			writeRows(columns, elemLevels, a)
+			writeRows(columns, levels, a)
 		}
 	}
 }

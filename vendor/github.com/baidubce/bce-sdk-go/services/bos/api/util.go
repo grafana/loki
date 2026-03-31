@@ -88,8 +88,9 @@ const (
 	EVENT_FROM_REPLICATION = "Replication"
 	EVENT_FROM_BATCH       = "Batch"
 
-	// BOS Client error message format
-	BOS_CRC32C_CHECK_ERROR_MSG = "End-to-end check of crc32c failed, client-crc32c:%s, server-crc32c:%s"
+	API_VERSION_V1 = "v1"
+	API_VERSION_V2 = "v2"
+	HTTPTimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
 )
 
 var DEFAULT_CNAME_LIKE_LIST = []string{
@@ -353,7 +354,19 @@ func SendRequest(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosCon
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
 	req.SetContext(ctx.Ctx)
-	if err = cli.SendRequest(&req.BceRequest, &resp.BceResponse); err != nil {
+	var body *bce.TeeReadNopCloser
+	if req.Body() != nil {
+		body, _ = req.Body().(*bce.TeeReadNopCloser)
+	}
+	if body != nil {
+		body.Mark()
+	}
+	if ctx.ApiVersion == API_VERSION_V2 {
+		err = cli.SendRequestV2(&req.BceRequest, &resp.BceResponse)
+	} else {
+		err = cli.SendRequest(&req.BceRequest, &resp.BceResponse)
+	}
+	if err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
 				serviceErr.StatusCode == net_http.StatusBadGateway ||
@@ -365,11 +378,32 @@ func SendRequest(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosCon
 		if _, isClientErr := err.(*bce.BceClientError); isClientErr {
 			need_retry = true
 		}
-		// retry backup endpoint
+		// retry with backup endpoint
 		if need_retry && cli.GetBceClientConfig().BackupEndpoint != "" {
+			if req.Body() != nil {
+				if body == nil { // body is not TeeReadNopCloser, do not retry
+					return err
+				}
+				if err1 := body.Reset(); err1 != nil {
+					return err
+				}
+			}
 			setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().BackupEndpoint)
-			if err = cli.SendRequest(&req.BceRequest, &resp.BceResponse); err != nil {
+			if ctx.ApiVersion == API_VERSION_V2 {
+				err = cli.SendRequestV2(&req.BceRequest, &resp.BceResponse)
+			} else {
+				req.Request.SetBody(body) // reset body, bcecause body has been change in SendRequest
+				err = cli.SendRequest(&req.BceRequest, &resp.BceResponse)
+			}
+			if err != nil {
 				return err
+			}
+		}
+	}
+	if err == nil {
+		for _, handler := range resp.Handler {
+			if hErr := handler(resp); hErr != nil {
+				return hErr
 			}
 		}
 	}
@@ -382,6 +416,7 @@ func SendRequestFromBytes(cli bce.Client, req *BosRequest, resp *BosResponse, ct
 		need_retry bool
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
+	req.SetContext(ctx.Ctx)
 	if err = cli.SendRequestFromBytes(&req.BceRequest, &resp.BceResponse, content); err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
@@ -548,4 +583,36 @@ func joinUserIds(ids []string) string {
 		ids[i] = "id=\"" + ids[i] + "\""
 	}
 	return strings.Join(ids, ",")
+}
+
+func getObjectMetaOptions(result *ObjectMeta) []GetOption {
+	return []GetOption{
+		getHeader(http.ETAG, &result.ETag),
+		getHeader(http.CACHE_CONTROL, &result.CacheControl),
+		getHeader(http.CONTENT_DISPOSITION, &result.ContentDisposition),
+		getHeader(http.CONTENT_LENGTH, &result.ContentLength),
+		getHeader(http.CONTENT_RANGE, &result.ContentRange),
+		getHeader(http.CONTENT_TYPE, &result.ContentType),
+		getHeader(http.CONTENT_MD5, &result.ContentMD5),
+		getHeader(http.EXPIRES, &result.Expires),
+		getHeader(http.LAST_MODIFIED, &result.LastModified),
+		getHeader(http.CONTENT_LANGUAGE, &result.ContentLanguage),
+		getHeader(http.CONTENT_ENCODING, &result.ContentEncoding),
+		getHeader(http.BCE_CONTENT_SHA256, &result.ContentSha256),
+		getHeader(http.BCE_CONTENT_CRC32, &result.ContentCrc32),
+		getHeader(http.BCE_STORAGE_CLASS, &result.StorageClass),
+		getHeader(http.BCE_VERSION_ID, &result.VersionId),
+		getHeader(http.BCE_OBJECT_TYPE, &result.ObjectType),
+		getHeader(http.BCE_NEXT_APPEND_OFFSET, &result.NextAppendOffset),
+		getHeader(http.BCE_CONTENT_CRC32C, &result.ContentCrc32c),
+		getHeader(http.BCE_EXPIRATION_DATE, &result.ExpirationDate),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION, &result.Encryption.ServerSideEncryption),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION_KEY, &result.Encryption.SSECKey),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5, &result.Encryption.SSECKeyMD5),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION_KEY_ID, &result.Encryption.SSEKmsKeyId),
+		getHeader(http.BCE_OBJECT_RETENTION_DATE, &result.RetentionDate),
+		getHeader(http.BCE_TAGGING_COUNT, &result.objectTagCount),
+		getHeader(http.BCE_CONTENT_CRC64ECMA, &result.ContentCrc64ECMA),
+		getHeader(http.BCE_USER_METADATA_PREFIX, &result.UserMeta),
+	}
 }

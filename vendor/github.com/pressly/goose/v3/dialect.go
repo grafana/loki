@@ -18,6 +18,7 @@ const (
 	DialectPostgres   Dialect = database.DialectPostgres
 	DialectRedshift   Dialect = database.DialectRedshift
 	DialectSQLite3    Dialect = database.DialectSQLite3
+	DialectSpanner    Dialect = database.DialectSpanner
 	DialectStarrocks  Dialect = database.DialectStarrocks
 	DialectTiDB       Dialect = database.DialectTiDB
 	DialectTurso      Dialect = database.DialectTurso
@@ -46,6 +47,8 @@ func SetDialect(s string) error {
 		d = DialectMySQL
 	case "sqlite3", "sqlite":
 		d = DialectSQLite3
+	case "spanner":
+		d = DialectSpanner
 	case "mssql", "azuresql", "sqlserver":
 		d = DialectMSSQL
 	case "redshift":

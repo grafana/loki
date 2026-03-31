@@ -1,3 +1,22 @@
+# v1.9.12 (2026-03-13)
+
+* **Bug Fix**: Replace usages of the old ioutil/ package throughout the SDK.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.9.11 (2026-03-03)
+
+* **Bug Fix**: Modernize non codegen files with go fix
+* **Dependency Update**: Bump minimum Go version to 1.24
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.9.10 (2026-02-26)
+
+* **Bug Fix**: Allow sending unkown checksum values if the value is precalculated on the input request
+
+# v1.9.9 (2026-02-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.9.8 (2026-01-09)
 
 * **Dependency Update**: Updated to the latest SDK module versions

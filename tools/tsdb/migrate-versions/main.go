@@ -185,7 +185,7 @@ func migrateTable(tableName string, indexStorageClient shipperstorage.Client) er
 
 		decompress := shipperstorage.IsCompressedFile(indexFiles[0].Name)
 		if decompress {
-			dst = strings.Trim(dst, gzipExtension)
+			dst = strings.TrimSuffix(dst, gzipExtension)
 		}
 		if err := shipperstorage.DownloadFileFromStorage(
 			dst,

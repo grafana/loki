@@ -37,6 +37,8 @@ func newStreamPipe() *streamPipe {
 	}
 }
 
+func (pipe *streamPipe) Open(_ context.Context) error { return nil }
+
 // Read returns the next record of the stream data. Blocks until results are
 // available or until the provided ctx is canceled.
 func (pipe *streamPipe) Read(ctx context.Context) (arrow.RecordBatch, error) {

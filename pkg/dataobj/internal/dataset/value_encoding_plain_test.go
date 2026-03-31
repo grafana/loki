@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -41,7 +42,7 @@ func Test_plainBytesEncoder(t *testing.T) {
 
 		// Handle potential value before checking errors.
 		if v != nil {
-			strArr := v.(stringArray)
+			strArr := v.(*columnar.UTF8)
 			for i := range strArr.Len() {
 				out = append(out, string(strArr.Get(i)))
 			}
@@ -51,37 +52,6 @@ func Test_plainBytesEncoder(t *testing.T) {
 			break
 		} else if err != nil {
 			t.Fatal(err)
-		}
-	}
-
-	require.Equal(t, testStrings, out)
-}
-
-func Test_plainBytesDecoder_adapter(t *testing.T) {
-	var buf bytes.Buffer
-
-	enc := newPlainBytesEncoder(&buf)
-	for _, v := range testStrings {
-		require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
-	}
-
-	dec := valueDecoderAdapter{
-		Alloc: new(memory.Allocator),
-		Inner: newPlainBytesDecoder(buf.Bytes()),
-	}
-
-	var out []string
-	decBuf := make([]Value, batchSize)
-	for {
-		n, err := dec.Decode(decBuf[:batchSize])
-		if n == 0 && errors.Is(err, io.EOF) {
-			break
-		} else if err != nil && !errors.Is(err, io.EOF) {
-			t.Fatal(err)
-		}
-
-		for _, v := range decBuf[:n] {
-			out = append(out, string(v.Binary()))
 		}
 	}
 
@@ -184,10 +154,9 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 				dec.Reset(buf.Bytes())
 
 				for {
-					n, err := dec.Decode(&alloc, totalCount)
-					if n != nil {
-						sa := n.(stringArray)
-						totalRows += sa.Len()
+					arr, err := dec.Decode(&alloc, totalCount)
+					if arr != nil {
+						totalRows += arr.Len()
 					}
 					if err != nil && errors.Is(err, io.EOF) {
 						break

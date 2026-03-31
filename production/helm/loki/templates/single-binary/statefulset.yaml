@@ -185,6 +185,10 @@ spec:
             - name: SKIP_TLS_VERIFY
               value: "{{ .Values.sidecar.skipTlsVerify }}"
             {{- end }}
+            {{- if .Values.sidecar.disableX509StrictVerification }}
+            - name: DISABLE_X509_STRICT_VERIFICATION
+              value: "{{ .Values.sidecar.disableX509StrictVerification }}"
+            {{- end }}
             {{- if .Values.sidecar.rules.script }}
             - name: SCRIPT
               value: "{{ .Values.sidecar.rules.script }}"
@@ -222,6 +226,8 @@ spec:
           {{- toYaml .Values.sidecar.securityContext | nindent 12 }}
           {{- end }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
             - name: sc-rules-volume
               mountPath: {{ .Values.sidecar.rules.folder | quote }}
         {{- end}}

@@ -4,14 +4,10 @@
 package prometheus // import "go.opentelemetry.io/otel/exporters/prometheus"
 
 import (
-	"sync"
-
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/otlptranslator"
 
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/internal/global"
 	"go.opentelemetry.io/otel/sdk/metric"
 )
 
@@ -28,12 +24,6 @@ type config struct {
 	resourceAttributesFilter attribute.Filter
 }
 
-var logTemporaryDefault = sync.OnceFunc(func() {
-	global.Warn(
-		"The default Prometheus naming translation strategy is planned to be changed from otlptranslator.NoUTF8EscapingWithSuffixes to otlptranslator.UnderscoreEscapingWithSuffixes in a future release. Add prometheus.WithTranslationStrategy(otlptranslator.NoUTF8EscapingWithSuffixes) to preserve the existing behavior, or prometheus.WithTranslationStrategy(otlptranslator.UnderscoreEscapingWithSuffixes) to opt into the future default behavior.",
-	)
-})
-
 // newConfig creates a validated config configured with options.
 func newConfig(opts ...Option) config {
 	cfg := config{}
@@ -42,27 +32,15 @@ func newConfig(opts ...Option) config {
 	}
 
 	if cfg.translationStrategy == "" {
-		// If no translation strategy was specified, deduce one based on the global
-		// NameValidationScheme. NOTE: this logic will change in the future, always
-		// defaulting to UnderscoreEscapingWithSuffixes
-
-		//nolint:staticcheck // NameValidationScheme is deprecated but we still need it for now.
-		if model.NameValidationScheme == model.UTF8Validation {
-			logTemporaryDefault()
-			cfg.translationStrategy = otlptranslator.NoUTF8EscapingWithSuffixes
-		} else {
-			cfg.translationStrategy = otlptranslator.UnderscoreEscapingWithSuffixes
-		}
-	} else {
+		cfg.translationStrategy = otlptranslator.UnderscoreEscapingWithSuffixes
+	} else if !cfg.translationStrategy.ShouldAddSuffixes() {
 		// Note, if the translation strategy implies that suffixes should be added,
 		// the user can still use WithoutUnits and WithoutCounterSuffixes to
 		// explicitly disable specific suffixes. We do not override their preference
 		// in this case. However if the chosen strategy disables suffixes, we should
 		// forcibly disable all of them.
-		if !cfg.translationStrategy.ShouldAddSuffixes() {
-			cfg.withoutCounterSuffixes = true
-			cfg.withoutUnits = true
-		}
+		cfg.withoutCounterSuffixes = true
+		cfg.withoutUnits = true
 	}
 
 	if cfg.registerer == nil {

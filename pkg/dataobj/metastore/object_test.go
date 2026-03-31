@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -548,8 +549,6 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 
 	mstore := newTestObjectMetastore(bucket)
 
-	streamLabels := []string{"app", "env"}
-
 	tests := []struct {
 		name                 string
 		matchers             []*labels.Matcher
@@ -559,73 +558,30 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 		wantLabelsByStreamID map[int64][]string // Expected stream ID -> labels mapping
 	}{
 		{
-			name: "exact match on app=foo returns sections with correct labels per stream",
+			name: "no predicates doesn't return any labels",
 			matchers: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-			},
-			predicates: nil,
-			start:      now.Add(-4 * time.Hour),
-			end:        now.Add(time.Hour),
-			wantCount:  2,
-			wantLabelsByStreamID: map[int64][]string{
-				1: streamLabels,
-				3: streamLabels,
-			},
-		},
-		{
-			name: "exact match on env=dev returns sections with correct labels per stream",
-			matchers: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
-			},
-			predicates: nil,
-			start:      now.Add(-4 * time.Hour),
-			end:        now.Add(time.Hour),
-			wantCount:  2,
-			wantLabelsByStreamID: map[int64][]string{
-				2: streamLabels,
-				3: streamLabels,
-			},
-		},
-		{
-			name: "combined matchers return only matching section with correct stream labels",
-			matchers: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-			},
-			predicates: nil,
-			start:      now.Add(-4 * time.Hour),
-			end:        now.Add(time.Hour),
-			wantCount:  1,
-			wantLabelsByStreamID: map[int64][]string{
-				1: streamLabels,
-			},
-		},
-		{
-			name: "regex matcher returns multiple matching sections with correct labels per stream",
-			matchers: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchRegexp, "app", "foo|bar"),
-			},
-			predicates: nil,
-			start:      now.Add(-4 * time.Hour),
-			end:        now.Add(time.Hour),
-			wantCount:  3,
-			wantLabelsByStreamID: map[int64][]string{
-				1: streamLabels,
-				2: streamLabels,
-				3: streamLabels,
-			},
-		},
-		{
-			name: "non-matching combined matchers return no sections",
-			matchers: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
-				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
 			},
 			predicates:           nil,
 			start:                now.Add(-4 * time.Hour),
 			end:                  now.Add(time.Hour),
-			wantCount:            0,
+			wantCount:            2,
 			wantLabelsByStreamID: nil,
+		},
+		{
+			name: "ambiguous predicates returns predicate label names for the stream",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
+			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+			},
+			start:     now.Add(-4 * time.Hour),
+			end:       now.Add(time.Hour),
+			wantCount: 1,
+			wantLabelsByStreamID: map[int64][]string{
+				2: {"env"},
+			},
 		},
 	}
 
@@ -639,7 +595,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 				// Collect all stream ID -> labels mappings across all sections
 				gotLabelsByStreamID := make(map[int64][]string)
 				for _, section := range sectionsResp.Sections {
-					for streamID, lbls := range section.LabelsByStreamID {
+					for streamID, lbls := range section.AmbiguousPredicatesByStream {
 						gotLabelsByStreamID[streamID] = lbls
 					}
 				}
@@ -764,6 +720,7 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 			})
 			require.NoError(t, err)
 			t.Cleanup(resp.Reader.Close)
+			require.NoError(t, resp.Reader.Open(ctx))
 
 			// Read all records from the reader
 			var totalRows int64
@@ -782,6 +739,37 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDataobjSectionDescriptorMerge_NilMapPanic is a regression test for
+// https://github.com/grafana/loki/pull/21268
+func TestDataobjSectionDescriptorMerge_NilMapPanic(t *testing.T) {
+	ptr1 := pointers.SectionPointer{
+		Path:        "test-path",
+		Section:     0,
+		StreamIDRef: 1,
+		StartTs:     now.Add(-2 * time.Hour),
+		EndTs:       now.Add(-1 * time.Hour),
+		LineCount:   10,
+	}
+	ptr2 := pointers.SectionPointer{
+		Path:        "test-path",
+		Section:     0,
+		StreamIDRef: 2,
+		StartTs:     now.Add(-3 * time.Hour),
+		EndTs:       now,
+		LineCount:   5,
+	}
+
+	// Create descriptor with no ambiguous labels.
+	desc := NewSectionDescriptor(ptr1, nil)
+
+	// Before the fix this panicked with "assignment to entry in nil map".
+	require.NotPanics(t, func() {
+		desc.Merge(ptr2, []string{"env"})
+	})
+
+	require.Equal(t, []string{"env"}, desc.AmbiguousPredicatesByStream[ptr2.StreamIDRef])
 }
 
 func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, time.Time, time.Time, Metastore)) {

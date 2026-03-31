@@ -38,6 +38,21 @@ var (
 	fatal      = []byte("fatal")
 
 	errKeyFound = errors.New("key found")
+
+	levelPatterns = []struct {
+		word  string
+		level string
+	}{
+		{"trace", constants.LogLevelTrace},
+		{"debug", constants.LogLevelDebug},
+		{"fatal", constants.LogLevelFatal},
+		{"critical", constants.LogLevelCritical},
+		{"error", constants.LogLevelError},
+		{"err", constants.LogLevelError},
+		{"warning", constants.LogLevelWarn},
+		{"warn", constants.LogLevelWarn},
+		{"info", constants.LogLevelInfo},
+	}
 )
 
 func allowedLabelsForLevel(allowedFields []string) []string {
@@ -330,31 +345,59 @@ func isJSON(line string) bool {
 	return firstNonSpaceChar == '{' && lastNonSpaceChar == '}'
 }
 
+// isLeftWordBoundary checks the character to the left of a potential keyword match.
+// Colons are intentionally excluded: they indicate a key:value compound (e.g. misc:error)
+// where the keyword is not a standalone log level.
+// Operates on bytes since log lines are expected to be ASCII.
+func isLeftWordBoundary(s string, pos int) bool {
+	if pos < 0 || pos >= len(s) {
+		return true
+	}
+	c := s[pos]
+	return c == ' ' || c == '\t' || c == '\n' || c == '[' || c == '(' || c == '{' || c == '"' || c == '='
+}
+
+// isRightWordBoundary checks the character to the right of a potential keyword match.
+// Colons are allowed here to support "level:" prefix patterns (e.g. "debug: message").
+// Equals and quotes are allowed to support key=value and key="value" patterns.
+// Operates on bytes since log lines are expected to be ASCII.
+func isRightWordBoundary(s string, pos int) bool {
+	if pos < 0 || pos >= len(s) {
+		return true
+	}
+	c := s[pos]
+	return c == ' ' || c == '\t' || c == '\n' || c == '[' || c == ']' || c == '(' || c == ')' || c == '{' || c == '}' || c == ':' || c == ',' || c == '!' || c == '"' || c == '='
+}
+
+func indexOfBoundedLevel(log, level string) int {
+	offset := 0
+	for {
+		pos := strings.Index(log[offset:], level)
+		if pos == -1 {
+			return -1
+		}
+		abs := offset + pos
+		if isLeftWordBoundary(log, abs-1) && isRightWordBoundary(log, abs+len(level)) {
+			return abs
+		}
+		offset = abs + 1
+	}
+}
+
 func detectLevelFromLogLine(log string) string {
-	if strings.Contains(log, "info:") || strings.Contains(log, "INFO:") ||
-		strings.Contains(log, "[info]") || strings.Contains(log, "[INFO]") ||
-		strings.Contains(log, "info") || strings.Contains(log, "INFO") {
-		return constants.LogLevelInfo
+	lowerLog := strings.ToLower(log)
+	idx, bestGuess := len(lowerLog), constants.LogLevelUnknown
+
+	for _, p := range levelPatterns {
+		pos := indexOfBoundedLevel(lowerLog, p.word)
+		if pos == -1 || pos >= idx {
+			continue
+		}
+		idx = pos
+		bestGuess = p.level
+		if idx == 0 {
+			break
+		}
 	}
-	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
-		strings.Contains(log, "[err]") || strings.Contains(log, "[ERR]") ||
-		strings.Contains(log, "[error]") || strings.Contains(log, "[ERROR]") {
-		return constants.LogLevelError
-	}
-	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
-		strings.Contains(log, "[warn]") || strings.Contains(log, "[WARN]") ||
-		strings.Contains(log, "[warning]") || strings.Contains(log, "[WARNING]") ||
-		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
-		return constants.LogLevelWarn
-	}
-	if strings.Contains(log, "critical:") || strings.Contains(log, "CRITICAL:") ||
-		strings.Contains(log, "[critical]") || strings.Contains(log, "[CRITICAL]") {
-		return constants.LogLevelCritical
-	}
-	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") ||
-		strings.Contains(log, "[debug]") || strings.Contains(log, "[DEBUG]") ||
-		strings.Contains(log, "debug") || strings.Contains(log, "DEBUG") {
-		return constants.LogLevelDebug
-	}
-	return constants.LogLevelUnknown
+	return bestGuess
 }

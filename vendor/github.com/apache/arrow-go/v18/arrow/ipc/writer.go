@@ -366,6 +366,7 @@ func (w *recordEncoder) shouldCompress(uncompressed, compressed int) bool {
 func (w *recordEncoder) reset() {
 	w.start = 0
 	w.fields = make([]fieldMetadata, 0)
+	w.variadicCounts = nil
 }
 
 func (w *recordEncoder) getCompressor(id int) compressor {
@@ -1034,11 +1035,16 @@ func (w *recordEncoder) Encode(p *Payload, rec arrow.RecordBatch) error {
 	if err := w.encode(p, rec); err != nil {
 		return err
 	}
-	return w.encodeMetadata(p, rec.NumRows())
+
+	var customMeta arrow.Metadata
+	if rm, ok := rec.(arrow.RecordBatchWithMetadata); ok {
+		customMeta = rm.Metadata()
+	}
+	return w.encodeMetadata(p, rec.NumRows(), customMeta)
 }
 
-func (w *recordEncoder) encodeMetadata(p *Payload, nrows int64) error {
-	p.meta = writeRecordMessage(w.mem, nrows, p.size, w.fields, w.meta, w.codec, w.variadicCounts)
+func (w *recordEncoder) encodeMetadata(p *Payload, nrows int64, customMetadata arrow.Metadata) error {
+	p.meta = writeRecordMessage(w.mem, nrows, p.size, w.fields, w.meta, w.codec, w.variadicCounts, customMetadata)
 	return nil
 }
 

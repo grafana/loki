@@ -39,7 +39,7 @@ func Example() {
 	// tenant-a task is selected, it will prioritize tenant-a/user-b over
 	// tenant-a/user-a.
 	for {
-		_, scope := q.Pop()
+		_, scope, _ := q.Pop()
 		if scope == nil {
 			break
 		}
@@ -106,7 +106,7 @@ func TestQueue_UnregisterScope(t *testing.T) {
 		require.NoError(t, q.Push(scopeB, "world"))
 
 		for {
-			_, s := q.Pop()
+			_, s, _ := q.Pop()
 			if s == nil {
 				break
 			}
@@ -121,7 +121,7 @@ func TestQueue_UnregisterScope(t *testing.T) {
 		// Push a new value to scope B.
 		require.NoError(t, q.Push(scopeB, "!"))
 
-		actualValue, actualScope := q.Pop()
+		actualValue, actualScope, _ := q.Pop()
 		assert.Equal(t, "!", actualValue)
 		assert.Equal(t, scopeB, actualScope)
 	})
@@ -199,7 +199,7 @@ func TestQueue_Pop(t *testing.T) {
 	t.Run("returns nil for empty queue", func(t *testing.T) {
 		var q fair.Queue[string]
 
-		_, s := q.Pop()
+		_, s, _ := q.Pop()
 		require.Nil(t, s)
 	})
 
@@ -224,14 +224,14 @@ func TestQueue_Pop(t *testing.T) {
 		}
 
 		for _, expect := range elements {
-			actualValue, actualPath := q.Pop()
+			actualValue, actualPath, _ := q.Pop()
 
 			require.Equal(t, expect.value, actualValue)
 			require.Equal(t, expect.scope, actualPath)
 		}
 
 		// One more pop and the queue should be empty.
-		_, s := q.Pop()
+		_, s, _ := q.Pop()
 		require.Nil(t, s)
 	})
 }
@@ -260,7 +260,7 @@ func TestQueue_Adjust(t *testing.T) {
 		// Positive cost gives a key a lower priority.
 		require.NoError(t, q.AdjustScope(fair.Scope{"tenant-a", "key-a"}, 1))
 
-		v, s := q.Pop()
+		v, s, _ := q.Pop()
 		require.Equal(t, "Paul", v)
 		require.Equal(t, fair.Scope{"tenant-a", "key-b"}, s)
 	})
@@ -276,10 +276,70 @@ func TestQueue_Adjust(t *testing.T) {
 		// Negative cost gives a key a higher priority.
 		require.NoError(t, q.AdjustScope(fair.Scope{"tenant-a", "key-b"}, -1))
 
-		v, s := q.Pop()
+		v, s, _ := q.Pop()
 		require.Equal(t, "Paul", v)
 		require.Equal(t, fair.Scope{"tenant-a", "key-b"}, s)
 	})
+}
+
+func TestQueue_Requeue(t *testing.T) {
+	t.Run("cannot requeue to unregistered scope", func(t *testing.T) {
+		var q fair.Queue[string]
+		require.ErrorIs(t, q.Requeue(fair.Scope{"tenant-a"}, "hello", fair.Position{}), fair.ErrNotFound)
+	})
+
+	t.Run("requeue restores original position", func(t *testing.T) {
+		var q fair.Queue[string]
+		require.NoError(t, q.RegisterScope(fair.Scope{"tenant-a"}))
+
+		require.NoError(t, q.Push(fair.Scope{"tenant-a"}, "first"))
+		require.NoError(t, q.Push(fair.Scope{"tenant-a"}, "second"))
+		require.NoError(t, q.Push(fair.Scope{"tenant-a"}, "third"))
+
+		// Pop "first" and requeue it.
+		v, scope, pos := q.Pop()
+		require.Equal(t, "first", v)
+		require.NoError(t, q.Requeue(scope, v, pos))
+
+		// "first" should come back at its original position (before "second" and "third").
+		var actual []string
+		for {
+			v, s, _ := q.Pop()
+			if s == nil {
+				break
+			}
+			actual = append(actual, v)
+		}
+		require.Equal(t, []string{"first", "second", "third"}, actual)
+	})
+
+	t.Run("requeue after pop preserves priority across scopes", func(t *testing.T) {
+		var q fair.Queue[string]
+
+		scopeA := fair.Scope{"tenant-a", "queue-a"}
+		scopeB := fair.Scope{"tenant-a", "queue-b"}
+
+		require.NoError(t, q.RegisterScope(scopeA))
+		require.NoError(t, q.RegisterScope(scopeB))
+
+		require.NoError(t, q.Push(scopeA, "a1"))
+		require.NoError(t, q.Push(scopeA, "a2"))
+		require.NoError(t, q.Push(scopeB, "b1"))
+
+		// Pop a1, adjust scope, then requeue it and undo adjustment.
+		v, scope, pos := q.Pop()
+		require.Equal(t, "a1", v)
+		require.NoError(t, q.AdjustScope(scope, 1))
+
+		// Undo the scope adjustment and requeue (simulating failed assignment).
+		require.NoError(t, q.Requeue(scopeA, "a1", pos))
+		require.NoError(t, q.AdjustScope(scope, -1))
+
+		// a1 should come out first again since it was requeued at original position.
+		v, _, _ = q.Pop()
+		require.Equal(t, "a1", v)
+	})
+
 }
 
 func TestQueue_Len(t *testing.T) {
@@ -302,7 +362,7 @@ func TestQueue_Len(t *testing.T) {
 	t.Run("unchanged by empty pop", func(t *testing.T) {
 		var q fair.Queue[string]
 
-		_, scope := q.Pop()
+		_, scope, _ := q.Pop()
 		require.Nil(t, scope, "pop was not empty")
 		require.Equal(t, 0, q.Len())
 	})
@@ -364,7 +424,7 @@ func TestQueue_EdgeCases(t *testing.T) {
 
 		var actual []string
 		for {
-			v, s := q.Pop()
+			v, s, _ := q.Pop()
 			if s == nil {
 				break
 			}
@@ -407,7 +467,7 @@ func TestQueue_EdgeCases(t *testing.T) {
 
 		var actual []string
 		for {
-			v, s := q.Pop()
+			v, s, _ := q.Pop()
 			if s == nil {
 				break
 			}

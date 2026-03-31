@@ -877,7 +877,7 @@ func TestPlanner_MetadataColumnResolution(t *testing.T) {
 					StreamIDs:  []int64{1, 2},
 					Start:      timeStart,
 					End:        timeEnd,
-					LabelsByStreamID: map[int64][]string{
+					AmbiguousPredicatesByStream: map[int64][]string{
 						1: {"app", "foo"},
 						2: {"app", "bar"},
 					},

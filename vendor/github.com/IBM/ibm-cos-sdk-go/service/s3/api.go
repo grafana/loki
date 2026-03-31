@@ -21325,7 +21325,11 @@ type PutObjectRetentionInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
-	// Ignored by COS.
+	// Indicates whether S3 Object Lock should bypass Governance-mode restrictions
+	// to process this operation. To use this header, you must have the s3:BypassGovernanceRetention
+	// permission.
+	//
+	// This functionality is not supported for directory buckets.
 	BypassGovernanceRetention *bool `location:"header" locationName:"x-amz-bypass-governance-retention" type:"boolean"`
 
 	// Ignored by COS.

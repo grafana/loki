@@ -6,7 +6,7 @@ import (
 	"unsafe"
 )
 
-// Predicate is an expression used to filter rows in a [Reader].
+// Predicate is an expression used to filter rows in a [RowReader].
 type Predicate interface{ isPredicate() }
 
 // Suppported predicates..

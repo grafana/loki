@@ -228,6 +228,9 @@ func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObje
 		}
 		tenantID := section.Tenant
 		indexPointersReader.Reset(sec)
+		if err := indexPointersReader.Open(ctx); err != nil {
+			return errors.Wrap(err, "opening index pointers reader")
+		}
 		for n, err := indexPointersReader.Read(ctx, pbuf); n > 0; n, err = indexPointersReader.Read(ctx, pbuf) {
 			if err != nil && err != io.EOF {
 				return errors.Wrap(err, "reading index pointers")

@@ -43,7 +43,6 @@ var (
 	defaultIdleConnTimeout       = 90 * time.Second
 	defaultHTTPClientTimeout     = 1200 * time.Second
 	NilHTTPClient                = fmt.Errorf("custom HTTP Client is nil")
-	UnknownHTTPTransport         = fmt.Errorf("invalid customized HTTP Client: RoundTripper is not http.Transport")
 )
 
 // The httpClient is the global variable to send the request and get response
@@ -320,10 +319,8 @@ func InitWithSpecifiedClient(customHTTPClient *http.Client) error {
 	}
 	if customTransport, ok := customHTTPClient.Transport.(*http.Transport); ok {
 		transport = customTransport
-		return nil
 	}
-	log.Warnf("unknown transport type")
-	return UnknownHTTPTransport
+	return nil
 }
 
 func InitExclusiveHTTPClient(config *ClientConfig) *http.Client {

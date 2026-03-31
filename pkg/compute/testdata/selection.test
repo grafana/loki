@@ -1,0 +1,21 @@
+#
+# Selection behavior tests - demonstrating how selection vectors mask results
+#
+
+# Selection masking - alternating pattern [true, false, true, false]
+NOT     bool:[true false true false]                               select:[true false true false] -> bool:[false null false null]
+EQ      uint64:[1 2 3 4]             uint64:[1 0 3 0]              select:[true false true false] -> bool:[true null true null]
+AND     bool:[true true false false] bool:[true false true false]  select:[true false true false] -> bool:[true null false null]
+SUBSTRI utf8:["a" "b" "A" "c"]       utf8:"a"                      select:[true false true false] -> bool:[true null true null]
+
+# Single element with selection
+NOT  bool:[true]               select:[true]   -> bool:[false]
+EQ   uint64:[42]  uint64:[42]  select:[true]   -> bool:[true]
+EQ   uint64:[42]  uint64:[42]  select:[false]  -> bool:[null]
+
+# All false selection - no rows selected
+NOT      bool:[true false true false]                                 select:[false false false false] -> bool:[null null null null]
+EQ       uint64:[1 2 3 4]               uint64:[1 0 3 0]              select:[false false false false] -> bool:[null null null null]
+AND      bool:[true true false false]   bool:[true false true false]  select:[false false false false] -> bool:[null null null null]
+OR       bool:[true true false false]   bool:[true false true false]  select:[false false false false] -> bool:[null null null null]
+SUBSTRI  utf8:["a" "b" "A" "c"]         utf8:"a"                      select:[false false false false] -> bool:[null null null null]

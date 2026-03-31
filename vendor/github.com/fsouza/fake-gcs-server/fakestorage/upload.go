@@ -23,12 +23,16 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/fsouza/fake-gcs-server/internal/backend"
 	"github.com/fsouza/fake-gcs-server/internal/checksum"
+	"github.com/fsouza/fake-gcs-server/internal/urlhelper"
 	"github.com/gorilla/mux"
 )
 
 const (
-	contentTypeHeader  = "Content-Type"
-	cacheControlHeader = "Cache-Control"
+	contentTypeHeader        = "Content-Type"
+	contentEncodingHeader    = "Content-Encoding"
+	cacheControlHeader       = "Cache-Control"
+	contentDispositionHeader = "Content-Disposition"
+	contentLanguageHeader    = "Content-Language"
 )
 
 const (
@@ -54,12 +58,23 @@ type multipartMetadata struct {
 	ContentType        string            `json:"contentType"`
 	ContentEncoding    string            `json:"contentEncoding"`
 	ContentDisposition string            `json:"contentDisposition"`
-	ContentLanguage    string            `json:"ContentLanguage"`
+	ContentLanguage    string            `json:"contentLanguage"`
 	CacheControl       string            `json:"cacheControl"`
 	CustomTime         time.Time         `json:"customTime,omitempty"`
 	Name               string            `json:"name"`
 	StorageClass       string            `json:"storageClass"`
 	Metadata           map[string]string `json:"metadata"`
+	Retention          *jsonRetention    `json:"retention,omitempty"`
+}
+
+func convertJsonRetentionToStorage(jr *jsonRetention) *storage.ObjectRetention {
+	if jr == nil {
+		return nil
+	}
+	return &storage.ObjectRetention{
+		Mode:        jr.Mode,
+		RetainUntil: jr.RetainUntil,
+	}
 }
 
 type contentRange struct {
@@ -68,6 +83,20 @@ type contentRange struct {
 	Start      int  // Start of the range, -1 if unknown
 	End        int  // End of the range, -1 if unknown
 	Total      int  // Total bytes expected, -1 if unknown
+}
+
+// resumableUploadBody is the JSON body for body-based resumable uploads (e.g. gcloud CLI).
+type resumableUploadBody struct {
+	Bucket             string            `json:"bucket"`
+	Name               string            `json:"name"`
+	ContentType        string            `json:"contentType"`
+	CacheControl       string            `json:"cacheControl"`
+	ContentEncoding    string            `json:"contentEncoding"`
+	ContentDisposition string            `json:"contentDisposition"`
+	ContentLanguage    string            `json:"contentLanguage"`
+	CustomTime         string            `json:"customTime"` // RFC3339
+	Metadata           map[string]string `json:"metadata"`
+	PredefinedACL      string            `json:"predefinedAcl"`
 }
 
 type generationCondition struct {
@@ -86,6 +115,22 @@ func (c generationCondition) ConditionsMet(activeGeneration int64) bool {
 }
 
 func (s *Server) insertObject(r *http.Request) jsonResponse {
+	// Only parse JSON body for resumable uploads with JSON content type
+	if r.Method == http.MethodPost &&
+		strings.Contains(r.Header.Get("Content-Type"), "application/json") &&
+		r.URL.Query().Get("uploadType") == uploadTypeResumable {
+
+		parsedBody, err := parseJSONBody(r)
+		if err != nil {
+			return jsonResponse{status: http.StatusBadRequest, errorMessage: err.Error()}
+		}
+
+		// Check if this is a body-based resumable upload (has bucket in JSON)
+		if parsedBody != nil && parsedBody.Bucket != "" {
+			return s.handleBodyBasedResumableUpload(r, parsedBody)
+		}
+	}
+
 	bucketName := unescapeMuxVars(mux.Vars(r))["bucketName"]
 
 	if _, err := s.backend.GetBucket(bucketName); err != nil {
@@ -117,6 +162,122 @@ func (s *Server) insertObject(r *http.Request) jsonResponse {
 	}
 }
 
+func (s *Server) handleBodyBasedResumableUpload(r *http.Request, body *resumableUploadBody) jsonResponse {
+	// Extract bucket name from JSON or URL
+	bucketName := body.Bucket
+	if bucketName == "" {
+		bucketName = unescapeMuxVars(mux.Vars(r))["bucketName"]
+	}
+	if bucketName == "" {
+		return jsonResponse{
+			status:       http.StatusBadRequest,
+			errorMessage: "bucket name is required",
+		}
+	}
+
+	// Check if the bucket exists
+	if _, err := s.backend.GetBucket(bucketName); err != nil {
+		return jsonResponse{status: http.StatusNotFound}
+	}
+
+	// Parse customTime if present
+	var customTime time.Time
+	if body.CustomTime != "" {
+		if parsedTime, err := time.Parse(time.RFC3339, body.CustomTime); err == nil {
+			customTime = parsedTime
+		}
+	}
+
+	// Get predefined ACL from query parameters or JSON
+	predefinedACL := r.URL.Query().Get("predefinedAcl")
+	if predefinedACL == "" {
+		predefinedACL = body.PredefinedACL
+	}
+
+	// Create an object with the metadata
+	obj := Object{
+		ObjectAttrs: ObjectAttrs{
+			BucketName:         bucketName,
+			Name:               body.Name,
+			ContentType:        body.ContentType,
+			CacheControl:       body.CacheControl,
+			ContentEncoding:    body.ContentEncoding,
+			ContentDisposition: body.ContentDisposition,
+			ContentLanguage:    body.ContentLanguage,
+			CustomTime:         customTime,
+			ACL:                getObjectACL(predefinedACL),
+			Metadata:           body.Metadata,
+		},
+	}
+
+	// Generate upload ID and store the object for later resumable upload chunks
+	uploadID, err := generateUploadID()
+	if err != nil {
+		return jsonResponse{errorMessage: err.Error()}
+	}
+	s.uploads.Store(uploadID, obj)
+
+	// Create response headers
+	header := make(http.Header)
+	baseURL := urlhelper.GetBaseURL(r)
+	if baseURL == "" {
+		baseURL = s.URL()
+	}
+	location := fmt.Sprintf(
+		"%s/upload/storage/v1/b/%s/o?uploadType=resumable&name=%s&upload_id=%s",
+		baseURL,
+		bucketName,
+		url.PathEscape(body.Name),
+		uploadID,
+	)
+	header.Set("Location", location)
+
+	// Set gcloud CLI specific headers
+	if r.Header.Get("X-Goog-Upload-Command") == "start" {
+		header.Set("X-Goog-Upload-URL", location)
+		header.Set("X-Goog-Upload-Status", "active")
+	}
+
+	return jsonResponse{
+		data:   newObjectResponse(obj.ObjectAttrs, s.externalURL),
+		header: header,
+	}
+}
+
+func parseJSONBody(r *http.Request) (*resumableUploadBody, error) {
+	if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		return nil, nil
+	}
+	if r.Body == nil {
+		return nil, nil
+	}
+
+	// Read the entire body
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read request body: %w", err)
+	}
+
+	// Always close the original body and create a new one for downstream processing
+	r.Body.Close()
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	// Return nil for empty body without error
+	if len(bodyBytes) == 0 {
+		return nil, nil
+	}
+
+	// Parse JSON into typed struct
+	var body resumableUploadBody
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		// For invalid JSON, we return nil without error to allow other upload types
+		// to be processed. This maintains backward compatibility.
+		return nil, nil
+	}
+
+	return &body, nil
+}
+
 func (s *Server) insertFormObject(r *http.Request) xmlResponse {
 	bucketName := unescapeMuxVars(mux.Vars(r))["bucketName"]
 
@@ -143,6 +304,18 @@ func (s *Server) insertFormObject(r *http.Request) xmlResponse {
 	var contentType string
 	if contentTypes, ok := r.MultipartForm.Value["Content-Type"]; ok {
 		contentType = contentTypes[0]
+	}
+	var cacheControl string
+	if cacheControls, ok := r.MultipartForm.Value["Cache-Control"]; ok {
+		cacheControl = cacheControls[0]
+	}
+	var contentDisposition string
+	if contentDispositions, ok := r.MultipartForm.Value["Content-Disposition"]; ok {
+		contentDisposition = contentDispositions[0]
+	}
+	var contentLanguage string
+	if contentLanguages, ok := r.MultipartForm.Value["Content-Language"]; ok {
+		contentLanguage = contentLanguages[0]
 	}
 	successActionStatus := http.StatusNoContent
 	if successActionStatuses, ok := r.MultipartForm.Value["success_action_status"]; ok {
@@ -177,12 +350,15 @@ func (s *Server) insertFormObject(r *http.Request) xmlResponse {
 	}
 	obj := StreamingObject{
 		ObjectAttrs: ObjectAttrs{
-			BucketName:      bucketName,
-			Name:            name,
-			ContentType:     contentType,
-			ContentEncoding: contentEncoding,
-			ACL:             getObjectACL(predefinedACL),
-			Metadata:        metaData,
+			BucketName:         bucketName,
+			Name:               name,
+			ContentType:        contentType,
+			ContentEncoding:    contentEncoding,
+			CacheControl:       cacheControl,
+			ContentDisposition: contentDisposition,
+			ContentLanguage:    contentLanguage,
+			ACL:                getObjectACL(predefinedACL),
+			Metadata:           metaData,
 		},
 		Content: infile,
 	}
@@ -193,7 +369,7 @@ func (s *Server) insertFormObject(r *http.Request) xmlResponse {
 	defer obj.Close()
 
 	if successActionStatus == 201 {
-		objectURI := fmt.Sprintf("%s/%s%s", s.URL(), bucketName, name)
+		objectURI := fmt.Sprintf("%s/%s%s", urlhelper.GetBaseURL(r), bucketName, name)
 		xmlBody := createXmlResponseBody(bucketName, obj.Etag, strings.TrimPrefix(name, "/"), objectURI)
 		return xmlResponse{status: successActionStatus, data: xmlBody}
 	}
@@ -240,15 +416,27 @@ func (s *Server) simpleUpload(bucketName string, r *http.Request) jsonResponse {
 			errorMessage: "name is required for simple uploads",
 		}
 	}
+
+	metaData := make(map[string]string)
+	for key := range r.Header {
+		lowerKey := strings.ToLower(key)
+		if metaDataKey := strings.TrimPrefix(lowerKey, "x-goog-meta-"); metaDataKey != lowerKey {
+			metaData[metaDataKey] = r.Header.Get(key)
+		}
+	}
+
 	obj := StreamingObject{
 		ObjectAttrs: ObjectAttrs{
-			BucketName:      bucketName,
-			Name:            name,
-			ContentType:     r.Header.Get(contentTypeHeader),
-			CacheControl:    r.Header.Get(cacheControlHeader),
-			ContentEncoding: contentEncoding,
-			CustomTime:      convertTimeWithoutError(customTime),
-			ACL:             getObjectACL(predefinedACL),
+			BucketName:         bucketName,
+			Name:               name,
+			ContentType:        r.Header.Get(contentTypeHeader),
+			CacheControl:       r.Header.Get(cacheControlHeader),
+			ContentEncoding:    contentEncoding,
+			ContentDisposition: r.Header.Get(contentDispositionHeader),
+			ContentLanguage:    r.Header.Get(contentLanguageHeader),
+			CustomTime:         convertTimeWithoutError(customTime),
+			ACL:                getObjectACL(predefinedACL),
+			Metadata:           metaData,
 		},
 		Content: notImplementedSeeker{r.Body},
 	}
@@ -257,7 +445,7 @@ func (s *Server) simpleUpload(bucketName string, r *http.Request) jsonResponse {
 		return errToJsonResponse(err)
 	}
 	obj.Close()
-	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, s.externalURL)}
+	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, urlhelper.GetBaseURL(r))}
 }
 
 type notImplementedSeeker struct {
@@ -277,7 +465,7 @@ func (s *Server) signedUpload(bucketName string, r *http.Request) jsonResponse {
 
 	// Load data from HTTP Headers
 	if contentEncoding == "" {
-		contentEncoding = r.Header.Get("Content-Encoding")
+		contentEncoding = r.Header.Get(contentEncodingHeader)
 	}
 
 	metaData := make(map[string]string)
@@ -290,13 +478,16 @@ func (s *Server) signedUpload(bucketName string, r *http.Request) jsonResponse {
 
 	obj := StreamingObject{
 		ObjectAttrs: ObjectAttrs{
-			BucketName:      bucketName,
-			Name:            name,
-			ContentType:     r.Header.Get(contentTypeHeader),
-			ContentEncoding: contentEncoding,
-			CustomTime:      convertTimeWithoutError(customTime),
-			ACL:             getObjectACL(predefinedACL),
-			Metadata:        metaData,
+			BucketName:         bucketName,
+			Name:               name,
+			ContentType:        r.Header.Get(contentTypeHeader),
+			ContentEncoding:    contentEncoding,
+			CacheControl:       r.Header.Get(cacheControlHeader),
+			ContentDisposition: r.Header.Get(contentDispositionHeader),
+			ContentLanguage:    r.Header.Get(contentLanguageHeader),
+			CustomTime:         convertTimeWithoutError(customTime),
+			ACL:                getObjectACL(predefinedACL),
+			Metadata:           metaData,
 		},
 		Content: notImplementedSeeker{r.Body},
 	}
@@ -305,7 +496,7 @@ func (s *Server) signedUpload(bucketName string, r *http.Request) jsonResponse {
 		return errToJsonResponse(err)
 	}
 	obj.Close()
-	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, s.externalURL)}
+	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, urlhelper.GetBaseURL(r))}
 }
 
 func getObjectACL(predefinedACL string) []storage.ACLRule {
@@ -364,8 +555,12 @@ func (s *Server) multipartUpload(bucketName string, r *http.Request) jsonRespons
 
 	objName := r.URL.Query().Get("name")
 	predefinedACL := r.URL.Query().Get("predefinedAcl")
+	contentEncoding := r.URL.Query().Get("contentEncoding")
 	if objName == "" {
 		objName = metadata.Name
+	}
+	if contentEncoding == "" {
+		contentEncoding = metadata.ContentEncoding
 	}
 
 	conditions, err := s.wrapUploadPreconditions(r, bucketName, objName)
@@ -383,12 +578,13 @@ func (s *Server) multipartUpload(bucketName string, r *http.Request) jsonRespons
 			StorageClass:       metadata.StorageClass,
 			ContentType:        contentType,
 			CacheControl:       metadata.CacheControl,
-			ContentEncoding:    metadata.ContentEncoding,
+			ContentEncoding:    contentEncoding,
 			ContentDisposition: metadata.ContentDisposition,
 			ContentLanguage:    metadata.ContentLanguage,
 			CustomTime:         metadata.CustomTime,
 			ACL:                getObjectACL(predefinedACL),
 			Metadata:           metadata.Metadata,
+			Retention:          convertJsonRetentionToStorage(metadata.Retention),
 		},
 		Content: notImplementedSeeker{io.NopCloser(io.MultiReader(partReaders...))},
 	}
@@ -398,7 +594,7 @@ func (s *Server) multipartUpload(bucketName string, r *http.Request) jsonRespons
 		return errToJsonResponse(err)
 	}
 	defer obj.Close()
-	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, s.externalURL)}
+	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, urlhelper.GetBaseURL(r))}
 }
 
 func parseContentTypeParams(requestContentType string) (map[string]string, error) {
@@ -417,7 +613,9 @@ func (s *Server) resumableUpload(bucketName string, r *http.Request) jsonRespons
 	if r.Body != http.NoBody {
 		var err error
 		metadata, err = loadMetadata(r.Body)
-		if err != nil {
+		// io.EOF means empty body (e.g. already consumed by parseJSONBody in insertObject).
+		// Use the zero-valued metadata; object name comes from query param "name".
+		if err != nil && err != io.EOF {
 			return jsonResponse{errorMessage: err.Error()}
 		}
 	}
@@ -430,14 +628,17 @@ func (s *Server) resumableUpload(bucketName string, r *http.Request) jsonRespons
 	}
 	obj := Object{
 		ObjectAttrs: ObjectAttrs{
-			BucketName:      bucketName,
-			Name:            objName,
-			ContentType:     metadata.ContentType,
-			CacheControl:    metadata.CacheControl,
-			ContentEncoding: contentEncoding,
-			CustomTime:      metadata.CustomTime,
-			ACL:             getObjectACL(predefinedACL),
-			Metadata:        metadata.Metadata,
+			BucketName:         bucketName,
+			Name:               objName,
+			ContentType:        metadata.ContentType,
+			CacheControl:       metadata.CacheControl,
+			ContentEncoding:    contentEncoding,
+			ContentDisposition: metadata.ContentDisposition,
+			ContentLanguage:    metadata.ContentLanguage,
+			CustomTime:         metadata.CustomTime,
+			ACL:                getObjectACL(predefinedACL),
+			Metadata:           metadata.Metadata,
+			Retention:          convertJsonRetentionToStorage(metadata.Retention),
 		},
 	}
 	uploadID, err := generateUploadID()
@@ -448,7 +649,7 @@ func (s *Server) resumableUpload(bucketName string, r *http.Request) jsonRespons
 	header := make(http.Header)
 	location := fmt.Sprintf(
 		"%s/upload/storage/v1/b/%s/o?uploadType=resumable&name=%s&upload_id=%s",
-		s.URL(),
+		urlhelper.GetBaseURL(r),
 		bucketName,
 		url.PathEscape(objName),
 		uploadID,
@@ -459,7 +660,7 @@ func (s *Server) resumableUpload(bucketName string, r *http.Request) jsonRespons
 		header.Set("X-Goog-Upload-Status", "active")
 	}
 	return jsonResponse{
-		data:   newObjectResponse(obj.ObjectAttrs, s.externalURL),
+		data:   newObjectResponse(obj.ObjectAttrs, urlhelper.GetBaseURL(r)),
 		header: header,
 	}
 }
@@ -521,7 +722,7 @@ func (s *Server) uploadFileContent(r *http.Request) jsonResponse {
 	contentTypeHeader := r.Header.Get(contentTypeHeader)
 	if contentTypeHeader != "" {
 		obj.ContentType = contentTypeHeader
-	} else {
+	} else if obj.ContentType == "" {
 		obj.ContentType = "application/octet-stream"
 	}
 	responseHeader := make(http.Header)
@@ -566,7 +767,7 @@ func (s *Server) uploadFileContent(r *http.Request) jsonResponse {
 	}
 	return jsonResponse{
 		status: status,
-		data:   newObjectResponse(obj.ObjectAttrs, s.externalURL),
+		data:   newObjectResponse(obj.ObjectAttrs, urlhelper.GetBaseURL(r)),
 		header: responseHeader,
 	}
 }

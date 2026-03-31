@@ -45,7 +45,7 @@ var (
 			// changes also on status changes. We want to omit reconciliation
 			// for status updates for now.
 			return (e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()) ||
-				cmp.Diff(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations()) != ""
+				!cmp.Equal(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations())
 		},
 		CreateFunc:  func(e event.CreateEvent) bool { return true },
 		DeleteFunc:  func(e event.DeleteEvent) bool { return false },
@@ -130,6 +130,7 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:groups=config.openshift.io,resources=dnses;apiservers;proxies;clusterversions,verbs=get;list;watch
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups=cloudcredential.openshift.io,resources=credentialsrequests,verbs=get;list;watch;create;update;delete
+// +kubebuilder:rbac:groups=discovery.k8s.io,resources=endpointslices,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -274,10 +275,10 @@ func statusDifferent(e event.UpdateEvent) bool {
 	switch old := e.ObjectOld.(type) {
 	case *appsv1.Deployment:
 		newObject := e.ObjectNew.(*appsv1.Deployment)
-		return cmp.Diff(old.Status, newObject.Status) != ""
+		return !cmp.Equal(old.Status, newObject.Status)
 	case *appsv1.StatefulSet:
 		newObject := e.ObjectNew.(*appsv1.StatefulSet)
-		return cmp.Diff(old.Status, newObject.Status) != ""
+		return !cmp.Equal(old.Status, newObject.Status)
 	default:
 		return false
 	}

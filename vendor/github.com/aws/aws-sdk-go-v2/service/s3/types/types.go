@@ -3304,6 +3304,31 @@ type Object struct {
 	noSmithyDocumentSerde
 }
 
+//	The updated server-side encryption type for this object. The
+//
+// UpdateObjectEncryption operation supports the SSE-S3 and SSE-KMS encryption
+// types.
+//
+// Valid Values: SSES3 | SSEKMS
+//
+// The following types satisfy this interface:
+//
+//	ObjectEncryptionMemberSSEKMS
+type ObjectEncryption interface {
+	isObjectEncryption()
+}
+
+//	Specifies to update the object encryption type to server-side encryption with
+//
+// Key Management Service (KMS) keys (SSE-KMS).
+type ObjectEncryptionMemberSSEKMS struct {
+	Value SSEKMSEncryption
+
+	noSmithyDocumentSerde
+}
+
+func (*ObjectEncryptionMemberSSEKMS) isObjectEncryption() {}
+
 // Object Identifier is unique value to identify objects.
 type ObjectIdentifier struct {
 
@@ -4677,6 +4702,39 @@ type SseKmsEncryptedObjects struct {
 	noSmithyDocumentSerde
 }
 
+//	If SSEKMS is specified for ObjectEncryption , this data type specifies the
+//
+// Amazon Web Services KMS key Amazon Resource Name (ARN) to use and whether to use
+// an S3 Bucket Key for server-side encryption using Key Management Service (KMS)
+// keys (SSE-KMS).
+type SSEKMSEncryption struct {
+
+	//  Specifies the Amazon Web Services KMS key Amazon Resource Name (ARN) to use
+	// for the updated server-side encryption type. Required if ObjectEncryption
+	// specifies SSEKMS .
+	//
+	// You must specify the full Amazon Web Services KMS key ARN. The KMS key ID and
+	// KMS key alias aren't supported.
+	//
+	// Pattern: ( arn:aws[-a-z0-9]*:kms:[-a-z0-9]*:[0-9]{12}:key/.+ )
+	//
+	// This member is required.
+	KMSKeyArn *string
+
+	//  Specifies whether Amazon S3 should use an S3 Bucket Key for object encryption
+	// with server-side encryption using Key Management Service (KMS) keys (SSE-KMS).
+	// If this value isn't specified, it defaults to false . Setting this value to true
+	// causes Amazon S3 to use an S3 Bucket Key for object encryption with SSE-KMS. For
+	// more information, see [Using Amazon S3 Bucket Keys]in the Amazon S3 User Guide.
+	//
+	// Valid Values: true | false
+	//
+	// [Using Amazon S3 Bucket Keys]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucket-key.html
+	BucketKeyEnabled *bool
+
+	noSmithyDocumentSerde
+}
+
 // Specifies the use of SSE-S3 to encrypt delivered inventory reports.
 type SSES3 struct {
 	noSmithyDocumentSerde
@@ -4928,4 +4986,5 @@ type UnknownUnionMember struct {
 
 func (*UnknownUnionMember) isAnalyticsFilter()                {}
 func (*UnknownUnionMember) isMetricsFilter()                  {}
+func (*UnknownUnionMember) isObjectEncryption()               {}
 func (*UnknownUnionMember) isSelectObjectContentEventStream() {}

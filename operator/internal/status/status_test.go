@@ -19,6 +19,9 @@ import (
 func TestRefreshSuccess(t *testing.T) {
 	now := time.Now()
 	stack := &lokiv1.LokiStack{
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXMedium,
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-stack",
 			Namespace: "some-ns",
@@ -105,6 +108,7 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 			Namespace: "test-ns",
 		},
 		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXMedium,
 			Replication: &lokiv1.ReplicationSpec{
 				Zones: []lokiv1.ZoneSpec{
 					{

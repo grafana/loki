@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"go.opentelemetry.io/collector/confmap"
+	"go.opentelemetry.io/collector/confmap/internal"
 )
 
 // As interface types are only used for static typing, a common idiom to find the reflection Type
@@ -193,4 +194,14 @@ func stringifyMapKey(val reflect.Value) string {
 			return fmt.Sprintf("%v", val.Interface())
 		}
 	}
+}
+
+// WithForceUnmarshaler sets an option to run a top-level Unmarshal method,
+// even if the Conf being unmarshaled is already a parameter from an Unmarshal method.
+// To avoid infinite recursion, this should only be used when unmarshaling into
+// a different type from the current Unmarshaler.
+// For instance, this should be used in wrapper types such as configoptional.Optional
+// to ensure the inner type's Unmarshal method is called.
+func WithForceUnmarshaler() confmap.UnmarshalOption {
+	return internal.WithForceUnmarshaler()
 }

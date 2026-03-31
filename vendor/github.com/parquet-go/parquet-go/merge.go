@@ -81,23 +81,43 @@ func MergeRowGroups(rowGroups []RowGroup, options ...RowGroupOption) (RowGroup, 
 	}
 
 	mergedCompare := compareRowsFuncOf(schema, mergedSortingColumns)
+	dropDuplicatedRows := config.Sorting.DropDuplicatedRows
+
 	// Optimization: detect non-overlapping row groups and create segments
 	rowGroupSegments := make([]RowGroup, 0)
 	for segment := range overlappingRowGroups(mergedRowGroups, schema, mergedSortingColumns, mergedCompare) {
 		if len(segment) == 1 {
 			rowGroupSegments = append(rowGroupSegments, segment[0])
 		} else {
-			merged := &mergedRowGroup{compare: mergedCompare}
+			merged := &mergedRowGroup{
+				compare:            mergedCompare,
+				dropDuplicatedRows: dropDuplicatedRows,
+			}
 			merged.init(schema, mergedSortingColumns, segment)
 			rowGroupSegments = append(rowGroupSegments, merged)
 		}
 	}
 
 	if len(rowGroupSegments) == 1 {
-		return rowGroupSegments[0], nil
+		rg := rowGroupSegments[0]
+		if dropDuplicatedRows {
+			if _, isMerged := rg.(*mergedRowGroup); !isMerged {
+				return &dedupRowGroup{
+					RowGroup: rg,
+					compare:  mergedCompare,
+				}, nil
+			}
+		}
+		return rg, nil
 	}
 
-	return newMultiRowGroup(schema, mergedSortingColumns, rowGroupSegments), nil
+	m := newMultiRowGroup(schema, mergedSortingColumns, rowGroupSegments)
+	return &sortedSegmentRowGroup{
+		multiRowGroup:      *m,
+		segments:           rowGroupSegments,
+		compare:            mergedCompare,
+		dropDuplicatedRows: dropDuplicatedRows,
+	}, nil
 }
 
 // overlappingRowGroups analyzes row groups to find non-overlapping segments
@@ -146,10 +166,10 @@ func overlappingRowGroups(rowGroups []RowGroup, schema *Schema, sorting []Sortin
 		currentMax := rowGroupRanges[0].maxRow
 
 		for _, rr := range rowGroupRanges[1:] {
-			if cmp := compare(rr.minRow, currentMax); cmp <= 0 {
+			if compare(rr.minRow, currentMax) <= 0 {
 				// Overlapping - add to current segment and extend max if necessary
 				currentSegment = append(currentSegment, rr.rowGroup)
-				if cmp > 0 {
+				if compare(rr.maxRow, currentMax) > 0 {
 					currentMax = rr.maxRow
 				}
 			} else {
@@ -254,7 +274,8 @@ func compareValues(a, b Value, columnType Type, descending bool) int {
 
 type mergedRowGroup struct {
 	multiRowGroup
-	compare func(Row, Row) int
+	compare            func(Row, Row) int
+	dropDuplicatedRows bool
 }
 
 func (m *mergedRowGroup) Rows() Rows {
@@ -264,11 +285,130 @@ func (m *mergedRowGroup) Rows() Rows {
 	for i := range rows {
 		rows[i] = m.rowGroups[i].Rows()
 	}
+	var merge RowReader = mergeRowReaders(rows, m.compare)
+	if m.dropDuplicatedRows {
+		merge = DedupeRowReader(merge, m.compare)
+	}
 	return &mergedRowGroupRows{
-		merge:  mergeRowReaders(rows, m.compare),
+		merge:  merge,
 		rows:   rows,
 		schema: m.schema,
 	}
+}
+
+// sortedSegmentRowGroup wraps a multiRowGroup but overrides Rows() to
+// concatenate from each segment's Rows() reader in sequence. This preserves
+// the heap merge ordering within mergedRowGroup segments, which would be
+// bypassed if multiRowGroup.Rows() read column pages directly.
+type sortedSegmentRowGroup struct {
+	multiRowGroup
+	segments           []RowGroup
+	compare            func(Row, Row) int
+	dropDuplicatedRows bool
+}
+
+func (s *sortedSegmentRowGroup) Rows() Rows {
+	readers := make([]Rows, len(s.segments))
+	for i, seg := range s.segments {
+		readers[i] = seg.Rows()
+	}
+	var reader RowReader = &concatenatingRows{
+		readers: readers,
+		schema:  s.schema,
+	}
+	if s.dropDuplicatedRows {
+		reader = DedupeRowReader(reader, s.compare)
+	}
+	return &concatenatingRowsWrapper{
+		reader:  reader,
+		readers: readers,
+		schema:  s.schema,
+	}
+}
+
+// dedupRowGroup wraps a single RowGroup and applies deduplication to its Rows().
+type dedupRowGroup struct {
+	RowGroup
+	compare func(Row, Row) int
+}
+
+func (d *dedupRowGroup) Rows() Rows {
+	rows := d.RowGroup.Rows()
+	reader := DedupeRowReader(rows, d.compare)
+	return &concatenatingRowsWrapper{
+		reader:  reader,
+		readers: []Rows{rows},
+		schema:  d.RowGroup.Schema(),
+	}
+}
+
+// concatenatingRows reads from a sequence of Rows readers, advancing to the
+// next reader when the current one returns io.EOF.
+type concatenatingRows struct {
+	readers []Rows
+	index   int
+	schema  *Schema
+}
+
+func (c *concatenatingRows) ReadRows(rows []Row) (int, error) {
+	for c.index < len(c.readers) {
+		n, err := c.readers[c.index].ReadRows(rows)
+		if err == io.EOF {
+			c.index++
+			if n > 0 {
+				return n, nil
+			}
+			continue
+		}
+		return n, err
+	}
+	return 0, io.EOF
+}
+
+// concatenatingRowsWrapper implements the Rows interface by wrapping a
+// RowReader (which may include dedup) and managing the underlying Rows
+// readers for Close and SeekToRow.
+type concatenatingRowsWrapper struct {
+	reader   RowReader
+	readers  []Rows
+	schema   *Schema
+	rowIndex int64
+}
+
+func (c *concatenatingRowsWrapper) ReadRows(rows []Row) (int, error) {
+	n, err := c.reader.ReadRows(rows)
+	c.rowIndex += int64(n)
+	return n, err
+}
+
+func (c *concatenatingRowsWrapper) Close() (lastErr error) {
+	for _, r := range c.readers {
+		if err := r.Close(); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+func (c *concatenatingRowsWrapper) SeekToRow(rowIndex int64) error {
+	if rowIndex < c.rowIndex {
+		return fmt.Errorf("SeekToRow: concatenating row reader cannot seek backward from row %d to %d", c.rowIndex, rowIndex)
+	}
+	// Forward seek by reading and discarding rows
+	discard := make([]Row, 64)
+	for c.rowIndex < rowIndex {
+		n := min(int(rowIndex-c.rowIndex), len(discard))
+		n, err := c.reader.ReadRows(discard[:n])
+		c.rowIndex += int64(n)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *concatenatingRowsWrapper) Schema() *Schema {
+	return c.schema
 }
 
 type mergedRowGroupRows struct {
@@ -698,7 +838,7 @@ func mergeTwoNodes(a, b Node) Node {
 		if !isPlainEncoding(encoding2) {
 			encoding = encoding2
 		}
-		if encoding != nil {
+		if encoding != nil && canEncode(encoding, merged.Type().Kind()) {
 			merged = Encoded(merged, encoding)
 		}
 	} else {

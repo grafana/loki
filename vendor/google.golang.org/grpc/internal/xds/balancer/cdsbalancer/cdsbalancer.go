@@ -106,11 +106,12 @@ func (bb) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Bal
 		xdsHIPtr:          &xdsHIPtr,
 		watchers:          make(map[string]*watcherState),
 	}
+	b.logger = prefixLogger(b)
 	b.ccw = &ccWrapper{
 		ClientConn: cc,
 		xdsHIPtr:   b.xdsHIPtr,
+		logger:     b.logger,
 	}
-	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
 
 	var creds credentials.TransportCredentials
@@ -136,7 +137,8 @@ func (bb) Name() string {
 // for the cdsBalancer.
 type lbConfig struct {
 	serviceconfig.LoadBalancingConfig
-	ClusterName string `json:"Cluster"`
+	ClusterName string `json:"cluster"`
+	IsDynamic   bool   `json:"isDynamic"`
 }
 
 // ParseConfig parses the JSON load balancer config provided into an
@@ -680,6 +682,7 @@ type ccWrapper struct {
 	balancer.ClientConn
 
 	xdsHIPtr *unsafe.Pointer
+	logger   *grpclog.PrefixLogger
 }
 
 // NewSubConn intercepts NewSubConn() calls from the child policy and adds an
@@ -696,12 +699,8 @@ func (ccw *ccWrapper) NewSubConn(addrs []resolver.Address, opts balancer.NewSubC
 	return ccw.ClientConn.NewSubConn(newAddrs, opts)
 }
 
-func (ccw *ccWrapper) UpdateAddresses(sc balancer.SubConn, addrs []resolver.Address) {
-	newAddrs := make([]resolver.Address, len(addrs))
-	for i, addr := range addrs {
-		newAddrs[i] = xdsinternal.SetHandshakeInfo(addr, ccw.xdsHIPtr)
-	}
-	ccw.ClientConn.UpdateAddresses(sc, newAddrs)
+func (ccw *ccWrapper) UpdateAddresses(sc balancer.SubConn, _ []resolver.Address) {
+	ccw.logger.Errorf("UpdateAddresses(%v) called unexpectedly", sc)
 }
 
 // systemRootCertsProvider implements a certprovider.Provider that returns the

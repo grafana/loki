@@ -25,6 +25,18 @@ import (
 // There are two types of buckets: general purpose buckets and directory buckets.
 // For more information about these bucket types, see [Creating, configuring, and working with Amazon S3 buckets]in the Amazon S3 User Guide.
 //
+// General purpose buckets exist in a global namespace, which means that each
+// bucket name must be unique across all Amazon Web Services accounts in all the
+// Amazon Web Services Regions within a partition. A partition is a grouping of
+// Regions. Amazon Web Services currently has four partitions: aws (Standard
+// Regions), aws-cn (China Regions), aws-us-gov (Amazon Web Services GovCloud
+// (US)), and aws-eusc (European Sovereign Cloud). When you create a general
+// purpose bucket, you can choose to create a bucket in the shared global namespace
+// or you can choose to create a bucket in your account regional namespace. Your
+// account regional namespace is a subdivision of the global namespace that only
+// your account can create buckets in. For more information on account regional
+// namespaces, see [Namespaces for general purpose buckets].
+//
 //   - General purpose buckets - If you send your CreateBucket request to the
 //     s3.amazonaws.com global endpoint, the request goes to the us-east-1 Region. So
 //     the signature calculations in Signature Version 4 must use us-east-1 as the
@@ -120,6 +132,7 @@ import (
 // [Creating, configuring, and working with Amazon S3 buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/creating-buckets-s3.html
 // [Concepts for directory buckets in Local Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html
 // [PutObject]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html
+// [Namespaces for general purpose buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/gpbucketnamespaces.html
 // [DeleteBucket]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html
 // [CreateBucket]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_control_CreateBucket.html
 // [Virtual hosting of buckets]: https://docs.aws.amazon.com/AmazonS3/latest/dev/VirtualHosting.html
@@ -172,6 +185,27 @@ type CreateBucketInput struct {
 	//
 	// This functionality is not supported for directory buckets.
 	ACL types.BucketCannedACL
+
+	// Specifies the namespace where you want to create your general purpose bucket.
+	// When you create a general purpose bucket, you can choose to create a bucket in
+	// the shared global namespace or you can choose to create a bucket in your account
+	// regional namespace. Your account regional namespace is a subdivision of the
+	// global namespace that only your account can create buckets in. For more
+	// information on bucket namespaces, see [Namespaces for general purpose buckets].
+	//
+	// General purpose buckets in your account regional namespace must follow a
+	// specific naming convention. These buckets consist of a bucket name prefix that
+	// you create, and a suffix that contains your 12-digit Amazon Web Services Account
+	// ID, the Amazon Web Services Region code, and ends with -an . Bucket names must
+	// follow the format bucket-name-prefix-accountId-region-an (for example,
+	// amzn-s3-demo-bucket-111122223333-us-west-2-an ). For information about bucket
+	// naming restrictions, see [Account regional namespace naming rules]in the Amazon S3 User Guide.
+	//
+	// This functionality is not supported for directory buckets.
+	//
+	// [Account regional namespace naming rules]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html#account-regional-naming-rules
+	// [Namespaces for general purpose buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/gpbucketnamespaces.html
+	BucketNamespace types.BucketNamespace
 
 	// The configuration information for the bucket.
 	CreateBucketConfiguration *types.CreateBucketConfiguration

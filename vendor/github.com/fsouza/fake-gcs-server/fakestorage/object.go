@@ -22,6 +22,7 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/fsouza/fake-gcs-server/internal/backend"
 	"github.com/fsouza/fake-gcs-server/internal/notification"
+	"github.com/fsouza/fake-gcs-server/internal/urlhelper"
 	"github.com/gorilla/mux"
 )
 
@@ -51,6 +52,7 @@ type ObjectAttrs struct {
 	CustomTime time.Time
 	Generation int64
 	Metadata   map[string]string
+	Retention  *storage.ObjectRetention
 }
 
 func (o *ObjectAttrs) id() string {
@@ -66,6 +68,7 @@ type jsonObject struct {
 	ContentEncoding    string            `json:"contentEncoding"`
 	ContentDisposition string            `json:"contentDisposition"`
 	ContentLanguage    string            `json:"contentLanguage"`
+	CacheControl       string            `json:"cacheControl"`
 	Crc32c             string            `json:"crc32c,omitempty"`
 	Md5Hash            string            `json:"md5Hash,omitempty"`
 	Etag               string            `json:"etag,omitempty"`
@@ -76,6 +79,12 @@ type jsonObject struct {
 	CustomTime         time.Time         `json:"customTime,omitempty"`
 	Generation         int64             `json:"generation,omitempty,string"`
 	Metadata           map[string]string `json:"metadata,omitempty"`
+	Retention          *jsonRetention    `json:"retention,omitempty"`
+}
+
+type jsonRetention struct {
+	Mode        string    `json:"mode,omitempty"`
+	RetainUntil time.Time `json:"retainUntilTime,omitempty"`
 }
 
 // MarshalJSON for ObjectAttrs to use ACLRule instead of storage.ACLRule
@@ -88,6 +97,7 @@ func (o ObjectAttrs) MarshalJSON() ([]byte, error) {
 		ContentEncoding:    o.ContentEncoding,
 		ContentDisposition: o.ContentDisposition,
 		ContentLanguage:    o.ContentLanguage,
+		CacheControl:       o.CacheControl,
 		Size:               o.Size,
 		Crc32c:             o.Crc32c,
 		Md5Hash:            o.Md5Hash,
@@ -102,6 +112,12 @@ func (o ObjectAttrs) MarshalJSON() ([]byte, error) {
 	temp.ACL = make([]aclRule, len(o.ACL))
 	for i, ACL := range o.ACL {
 		temp.ACL[i] = aclRule(ACL)
+	}
+	if o.Retention != nil {
+		temp.Retention = &jsonRetention{
+			Mode:        o.Retention.Mode,
+			RetainUntil: o.Retention.RetainUntil,
+		}
 	}
 	return json.Marshal(temp)
 }
@@ -119,6 +135,7 @@ func (o *ObjectAttrs) UnmarshalJSON(data []byte) error {
 	o.ContentEncoding = temp.ContentEncoding
 	o.ContentDisposition = temp.ContentDisposition
 	o.ContentLanguage = temp.ContentLanguage
+	o.CacheControl = temp.CacheControl
 	o.Size = temp.Size
 	o.Crc32c = temp.Crc32c
 	o.Md5Hash = temp.Md5Hash
@@ -132,6 +149,12 @@ func (o *ObjectAttrs) UnmarshalJSON(data []byte) error {
 	o.ACL = make([]storage.ACLRule, len(temp.ACL))
 	for i, ACL := range temp.ACL {
 		o.ACL[i] = storage.ACLRule(ACL)
+	}
+	if temp.Retention != nil {
+		o.Retention = &storage.ObjectRetention{
+			Mode:        temp.Retention.Mode,
+			RetainUntil: temp.Retention.RetainUntil,
+		}
 	}
 
 	return nil
@@ -324,6 +347,13 @@ type ListOptions struct {
 	EndOffset                string
 	IncludeTrailingDelimiter bool
 	MaxResults               int
+	PageToken                string
+}
+
+type ListResponse struct {
+	Objects       []ObjectAttrs
+	Prefixes      []string
+	NextPageToken string
 }
 
 // ListObjects returns a sorted list of objects that match the given criteria,
@@ -338,10 +368,16 @@ func (s *Server) ListObjects(bucketName, prefix, delimiter string, versions bool
 	})
 }
 
+// Deprecated: use ListObjectsWithOptionsPaginated.
 func (s *Server) ListObjectsWithOptions(bucketName string, options ListOptions) ([]ObjectAttrs, []string, error) {
+	response, err := s.ListObjectsWithOptionsPaginated(bucketName, options)
+	return response.Objects, response.Prefixes, err
+}
+
+func (s *Server) ListObjectsWithOptionsPaginated(bucketName string, options ListOptions) (ListResponse, error) {
 	backendObjects, err := s.backend.ListObjects(bucketName, options.Prefix, options.Versions)
 	if err != nil {
-		return nil, nil, err
+		return ListResponse{}, err
 	}
 	objects := fromBackendObjectsAttrs(backendObjects)
 	slices.SortFunc(objects, func(left, right ObjectAttrs) int {
@@ -349,6 +385,13 @@ func (s *Server) ListObjectsWithOptions(bucketName string, options ListOptions) 
 	})
 	var respObjects []ObjectAttrs
 	prefixes := make(map[string]bool)
+
+	startOffset := options.StartOffset
+	if options.PageToken != "" {
+		// pageToken supersedes startOffset if provided
+		startOffset = options.PageToken
+	}
+
 	for _, obj := range objects {
 		if !strings.HasPrefix(obj.Name, options.Prefix) {
 			continue
@@ -357,14 +400,14 @@ func (s *Server) ListObjectsWithOptions(bucketName string, options ListOptions) 
 		delimPos := strings.Index(objName, options.Delimiter)
 		if options.Delimiter != "" && delimPos > -1 {
 			prefix := obj.Name[:len(options.Prefix)+delimPos+1]
-			if isInOffset(prefix, options.StartOffset, options.EndOffset) {
+			if isInOffset(prefix, startOffset, options.EndOffset) {
 				prefixes[prefix] = true
 			}
 			if options.IncludeTrailingDelimiter && obj.Name == prefix {
 				respObjects = append(respObjects, obj)
 			}
 		} else {
-			if isInOffset(obj.Name, options.StartOffset, options.EndOffset) {
+			if isInOffset(obj.Name, startOffset, options.EndOffset) {
 				respObjects = append(respObjects, obj)
 			}
 		}
@@ -374,10 +417,12 @@ func (s *Server) ListObjectsWithOptions(bucketName string, options ListOptions) 
 		respPrefixes = append(respPrefixes, p)
 	}
 	sort.Strings(respPrefixes)
+	nextPageToken := ""
 	if options.MaxResults != 0 && len(respObjects) > options.MaxResults {
+		nextPageToken = respObjects[options.MaxResults].Name
 		respObjects = respObjects[:options.MaxResults]
 	}
-	return respObjects, respPrefixes, nil
+	return ListResponse{respObjects, respPrefixes, nextPageToken}, nil
 }
 
 func isInOffset(name, startOffset, endOffset string) bool {
@@ -402,23 +447,33 @@ func getCurrentIfZero(date time.Time) time.Time {
 func toBackendObjects(objects []StreamingObject) []backend.StreamingObject {
 	backendObjects := make([]backend.StreamingObject, 0, len(objects))
 	for _, o := range objects {
+		retentionMode := ""
+		retentionRetainUntil := ""
+		if o.Retention != nil {
+			retentionMode = o.Retention.Mode
+			if !o.Retention.RetainUntil.IsZero() {
+				retentionRetainUntil = o.Retention.RetainUntil.Format(timestampFormat)
+			}
+		}
 		backendObjects = append(backendObjects, backend.StreamingObject{
 			ObjectAttrs: backend.ObjectAttrs{
-				BucketName:         o.BucketName,
-				Name:               o.Name,
-				StorageClass:       o.StorageClass,
-				ContentType:        o.ContentType,
-				ContentEncoding:    o.ContentEncoding,
-				ContentDisposition: o.ContentDisposition,
-				ContentLanguage:    o.ContentLanguage,
-				CacheControl:       o.CacheControl,
-				ACL:                o.ACL,
-				Created:            getCurrentIfZero(o.Created).Format(timestampFormat),
-				Deleted:            o.Deleted.Format(timestampFormat),
-				Updated:            getCurrentIfZero(o.Updated).Format(timestampFormat),
-				CustomTime:         o.CustomTime.Format(timestampFormat),
-				Generation:         o.Generation,
-				Metadata:           o.Metadata,
+				BucketName:           o.BucketName,
+				Name:                 o.Name,
+				StorageClass:         o.StorageClass,
+				ContentType:          o.ContentType,
+				ContentEncoding:      o.ContentEncoding,
+				ContentDisposition:   o.ContentDisposition,
+				ContentLanguage:      o.ContentLanguage,
+				CacheControl:         o.CacheControl,
+				ACL:                  o.ACL,
+				Created:              getCurrentIfZero(o.Created).Format(timestampFormat),
+				Deleted:              o.Deleted.Format(timestampFormat),
+				Updated:              getCurrentIfZero(o.Updated).Format(timestampFormat),
+				CustomTime:           o.CustomTime.Format(timestampFormat),
+				Generation:           o.Generation,
+				Metadata:             o.Metadata,
+				RetentionMode:        retentionMode,
+				RetentionRetainUntil: retentionRetainUntil,
 			},
 			Content: o.Content,
 		})
@@ -430,26 +485,37 @@ func bufferedObjectsToBackendObjects(objects []Object) []backend.StreamingObject
 	backendObjects := make([]backend.StreamingObject, 0, len(objects))
 	for _, bufferedObject := range objects {
 		o := bufferedObject.StreamingObject()
+		retentionMode := ""
+		retentionRetainUntil := ""
+		if o.Retention != nil {
+			retentionMode = o.Retention.Mode
+			if !o.Retention.RetainUntil.IsZero() {
+				retentionRetainUntil = o.Retention.RetainUntil.Format(timestampFormat)
+			}
+		}
 		backendObjects = append(backendObjects, backend.StreamingObject{
 			ObjectAttrs: backend.ObjectAttrs{
-				BucketName:         o.BucketName,
-				Name:               o.Name,
-				StorageClass:       o.StorageClass,
-				ContentType:        o.ContentType,
-				ContentEncoding:    o.ContentEncoding,
-				ContentDisposition: o.ContentDisposition,
-				ContentLanguage:    o.ContentLanguage,
-				ACL:                o.ACL,
-				Created:            getCurrentIfZero(o.Created).Format(timestampFormat),
-				Deleted:            o.Deleted.Format(timestampFormat),
-				Updated:            getCurrentIfZero(o.Updated).Format(timestampFormat),
-				CustomTime:         o.CustomTime.Format(timestampFormat),
-				Generation:         o.Generation,
-				Metadata:           o.Metadata,
-				Crc32c:             o.Crc32c,
-				Md5Hash:            o.Md5Hash,
-				Size:               o.Size,
-				Etag:               o.Etag,
+				BucketName:           o.BucketName,
+				Name:                 o.Name,
+				StorageClass:         o.StorageClass,
+				ContentType:          o.ContentType,
+				ContentEncoding:      o.ContentEncoding,
+				ContentDisposition:   o.ContentDisposition,
+				ContentLanguage:      o.ContentLanguage,
+				CacheControl:         o.CacheControl,
+				ACL:                  o.ACL,
+				Created:              getCurrentIfZero(o.Created).Format(timestampFormat),
+				Deleted:              o.Deleted.Format(timestampFormat),
+				Updated:              getCurrentIfZero(o.Updated).Format(timestampFormat),
+				CustomTime:           o.CustomTime.Format(timestampFormat),
+				Generation:           o.Generation,
+				Metadata:             o.Metadata,
+				Crc32c:               o.Crc32c,
+				Md5Hash:              o.Md5Hash,
+				Size:                 o.Size,
+				Etag:                 o.Etag,
+				RetentionMode:        retentionMode,
+				RetentionRetainUntil: retentionRetainUntil,
 			},
 			Content: o.Content,
 		})
@@ -460,6 +526,13 @@ func bufferedObjectsToBackendObjects(objects []Object) []backend.StreamingObject
 func fromBackendObjects(objects []backend.StreamingObject) []StreamingObject {
 	backendObjects := make([]StreamingObject, 0, len(objects))
 	for _, o := range objects {
+		var retention *storage.ObjectRetention
+		if o.RetentionMode != "" || o.RetentionRetainUntil != "" {
+			retention = &storage.ObjectRetention{
+				Mode:        o.RetentionMode,
+				RetainUntil: convertTimeWithoutError(o.RetentionRetainUntil),
+			}
+		}
 		backendObjects = append(backendObjects, StreamingObject{
 			ObjectAttrs: ObjectAttrs{
 				BucketName:         o.BucketName,
@@ -481,6 +554,7 @@ func fromBackendObjects(objects []backend.StreamingObject) []StreamingObject {
 				CustomTime:         convertTimeWithoutError(o.CustomTime),
 				Generation:         o.Generation,
 				Metadata:           o.Metadata,
+				Retention:          retention,
 			},
 			Content: o.Content,
 		})
@@ -491,6 +565,13 @@ func fromBackendObjects(objects []backend.StreamingObject) []StreamingObject {
 func fromBackendObjectsAttrs(objectAttrs []backend.ObjectAttrs) []ObjectAttrs {
 	oattrs := make([]ObjectAttrs, 0, len(objectAttrs))
 	for _, o := range objectAttrs {
+		var retention *storage.ObjectRetention
+		if o.RetentionMode != "" || o.RetentionRetainUntil != "" {
+			retention = &storage.ObjectRetention{
+				Mode:        o.RetentionMode,
+				RetainUntil: convertTimeWithoutError(o.RetentionRetainUntil),
+			}
+		}
 		oattrs = append(oattrs, ObjectAttrs{
 			BucketName:         o.BucketName,
 			Name:               o.Name,
@@ -511,6 +592,7 @@ func fromBackendObjectsAttrs(objectAttrs []backend.ObjectAttrs) []ObjectAttrs {
 			CustomTime:         convertTimeWithoutError(o.CustomTime),
 			Generation:         o.Generation,
 			Metadata:           o.Metadata,
+			Retention:          retention,
 		})
 	}
 	return oattrs
@@ -585,19 +667,20 @@ func (s *Server) listObjects(r *http.Request) jsonResponse {
 			return jsonResponse{status: http.StatusBadRequest}
 		}
 	}
-	objs, prefixes, err := s.ListObjectsWithOptions(bucketName, ListOptions{
+	response, err := s.ListObjectsWithOptionsPaginated(bucketName, ListOptions{
 		Prefix:                   r.URL.Query().Get("prefix"),
 		Delimiter:                r.URL.Query().Get("delimiter"),
 		Versions:                 r.URL.Query().Get("versions") == "true",
 		StartOffset:              r.URL.Query().Get("startOffset"),
 		EndOffset:                r.URL.Query().Get("endOffset"),
 		IncludeTrailingDelimiter: r.URL.Query().Get("includeTrailingDelimiter") == "true",
+		PageToken:                r.URL.Query().Get("pageToken"),
 		MaxResults:               maxResults,
 	})
 	if err != nil {
 		return jsonResponse{status: http.StatusNotFound}
 	}
-	return jsonResponse{data: newListObjectsResponse(objs, prefixes, s.externalURL)}
+	return jsonResponse{data: newListObjectsResponse(response, urlhelper.GetBaseURL(r))}
 }
 
 func (s *Server) xmlListObjects(r *http.Request) xmlResponse {
@@ -609,7 +692,7 @@ func (s *Server) xmlListObjects(r *http.Request) xmlResponse {
 		Versions:  r.URL.Query().Get("versions") == "true",
 	}
 
-	objs, prefixes, err := s.ListObjectsWithOptions(bucketName, opts)
+	response, err := s.ListObjectsWithOptionsPaginated(bucketName, opts)
 	if err != nil {
 		return xmlResponse{
 			status:       http.StatusInternalServerError,
@@ -621,16 +704,16 @@ func (s *Server) xmlListObjects(r *http.Request) xmlResponse {
 		Name:      bucketName,
 		Delimiter: opts.Delimiter,
 		Prefix:    opts.Prefix,
-		KeyCount:  len(objs),
+		KeyCount:  len(response.Objects),
 	}
 
 	if opts.Delimiter != "" {
-		for _, prefix := range prefixes {
+		for _, prefix := range response.Prefixes {
 			result.CommonPrefixes = append(result.CommonPrefixes, CommonPrefix{Prefix: prefix})
 		}
 	}
 
-	for _, obj := range objs {
+	for _, obj := range response.Objects {
 		result.Contents = append(result.Contents, Contents{
 			Key:          obj.Name,
 			Generation:   obj.Generation,
@@ -868,8 +951,14 @@ func (s *Server) rewriteObject(r *http.Request) jsonResponse {
 	if metadata.ContentLanguage == "" {
 		metadata.ContentLanguage = obj.ContentLanguage
 	}
+	if metadata.CacheControl == "" {
+		metadata.CacheControl = obj.CacheControl
+	}
 
 	dstBucket := vars["destinationBucket"]
+	if _, err := s.backend.GetBucket(dstBucket); err != nil {
+		return jsonResponse{status: http.StatusNotFound}
+	}
 	newObject := StreamingObject{
 		ObjectAttrs: ObjectAttrs{
 			BucketName:         dstBucket,
@@ -879,6 +968,7 @@ func (s *Server) rewriteObject(r *http.Request) jsonResponse {
 			ContentEncoding:    metadata.ContentEncoding,
 			ContentDisposition: metadata.ContentDisposition,
 			ContentLanguage:    metadata.ContentLanguage,
+			CacheControl:       metadata.CacheControl,
 			Metadata:           metadata.Metadata,
 		},
 		Content: obj.Content,
@@ -891,9 +981,9 @@ func (s *Server) rewriteObject(r *http.Request) jsonResponse {
 	defer created.Close()
 
 	if vars["copyType"] == "copyTo" {
-		return jsonResponse{data: newObjectResponse(created.ObjectAttrs, s.externalURL)}
+		return jsonResponse{data: newObjectResponse(created.ObjectAttrs, urlhelper.GetBaseURL(r))}
 	}
-	return jsonResponse{data: newObjectRewriteResponse(created.ObjectAttrs, s.externalURL)}
+	return jsonResponse{data: newObjectRewriteResponse(created.ObjectAttrs, urlhelper.GetBaseURL(r))}
 }
 
 func (s *Server) downloadObject(w http.ResponseWriter, r *http.Request) {
@@ -993,13 +1083,13 @@ func (s *Server) downloadObject(w http.ResponseWriter, r *http.Request) {
 		}
 		// If content was transcoded, the underlying encoding was removed so we shouldn't report it.
 		if obj.ContentEncoding != "" && !transcoded {
-			w.Header().Set("Content-Encoding", obj.ContentEncoding)
+			w.Header().Set(contentEncodingHeader, obj.ContentEncoding)
 		}
 		if obj.ContentDisposition != "" {
-			w.Header().Set("Content-Disposition", obj.ContentDisposition)
+			w.Header().Set(contentDispositionHeader, obj.ContentDisposition)
 		}
 		if obj.ContentLanguage != "" {
-			w.Header().Set("Content-Language", obj.ContentLanguage)
+			w.Header().Set(contentLanguageHeader, obj.ContentLanguage)
 		}
 		// X-Goog-Stored-Content-Encoding must be set to the original encoding,
 		// defaulting to "identity" if no encoding was set.
@@ -1112,6 +1202,37 @@ func parseRange(rangeHeaderValue string, contentLength int64) (start int64, end 
 	return start, end, nil
 }
 
+// maybeUpdateRetention validates and updates retention attributes if allowed.
+// Returns an error response if the retention is locked and cannot be modified.
+func (s *Server) maybeUpdateRetention(bucketName, objectName string, newRetention *jsonRetention, attrsToUpdate *backend.ObjectAttrs) *jsonResponse {
+	if newRetention == nil {
+		return nil
+	}
+
+	// Get the current object to check its retention state
+	currentObj, err := s.backend.GetObject(bucketName, objectName)
+	if err != nil {
+		// Object doesn't exist or error accessing it, skip retention validation
+		return nil
+	}
+	defer currentObj.Close()
+
+	// If object has locked retention, prevent any changes
+	if currentObj.RetentionMode == "Locked" {
+		return &jsonResponse{
+			status:       http.StatusBadRequest,
+			errorMessage: "Object has a locked retention policy and cannot be modified",
+		}
+	}
+
+	// For unlocked retention, allow changes
+	attrsToUpdate.RetentionMode = newRetention.Mode
+	if !newRetention.RetainUntil.IsZero() {
+		attrsToUpdate.RetentionRetainUntil = newRetention.RetainUntil.Format(timestampFormat)
+	}
+	return nil
+}
+
 func (s *Server) patchObject(r *http.Request) jsonResponse {
 	vars := unescapeMuxVars(mux.Vars(r))
 	bucketName := vars["bucketName"]
@@ -1127,9 +1248,11 @@ func (s *Server) patchObject(r *http.Request) jsonResponse {
 		ContentEncoding    string
 		ContentDisposition string
 		ContentLanguage    string
+		CacheControl       string
 		Metadata           map[string]string `json:"metadata"`
 		CustomTime         string
 		Acl                []acls
+		Retention          *jsonRetention `json:"retention"`
 	}
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
@@ -1141,10 +1264,16 @@ func (s *Server) patchObject(r *http.Request) jsonResponse {
 
 	var attrsToUpdate backend.ObjectAttrs
 
+	// Check if we need to validate and update retention
+	if errResp := s.maybeUpdateRetention(bucketName, objectName, payload.Retention, &attrsToUpdate); errResp != nil {
+		return *errResp
+	}
+
 	attrsToUpdate.ContentType = payload.ContentType
 	attrsToUpdate.ContentEncoding = payload.ContentEncoding
 	attrsToUpdate.ContentDisposition = payload.ContentDisposition
 	attrsToUpdate.ContentLanguage = payload.ContentLanguage
+	attrsToUpdate.CacheControl = payload.CacheControl
 	attrsToUpdate.Metadata = payload.Metadata
 	attrsToUpdate.CustomTime = payload.CustomTime
 
@@ -1170,6 +1299,10 @@ func (s *Server) patchObject(r *http.Request) jsonResponse {
 }
 
 func (s *Server) updateObject(r *http.Request) jsonResponse {
+	if r.Method == http.MethodPost && r.Header.Get("X-HTTP-Method-Override") == "PATCH" {
+		return s.patchObject(r)
+	}
+
 	vars := unescapeMuxVars(mux.Vars(r))
 	bucketName := vars["bucketName"]
 	objectName := vars["objectName"]
@@ -1184,8 +1317,10 @@ func (s *Server) updateObject(r *http.Request) jsonResponse {
 		ContentType        string            `json:"contentType"`
 		ContentDisposition string            `json:"contentDisposition"`
 		ContentLanguage    string            `json:"contentLanguage"`
+		CacheControl       string            `json:"cacheControl"`
 		CustomTime         string
 		Acl                []acls
+		Retention          *jsonRetention `json:"retention"`
 	}
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
@@ -1197,11 +1332,17 @@ func (s *Server) updateObject(r *http.Request) jsonResponse {
 
 	var attrsToUpdate backend.ObjectAttrs
 
+	// Check if we need to validate and update retention
+	if errResp := s.maybeUpdateRetention(bucketName, objectName, payload.Retention, &attrsToUpdate); errResp != nil {
+		return *errResp
+	}
+
 	attrsToUpdate.Metadata = payload.Metadata
 	attrsToUpdate.CustomTime = payload.CustomTime
 	attrsToUpdate.ContentType = payload.ContentType
 	attrsToUpdate.ContentDisposition = payload.ContentDisposition
 	attrsToUpdate.ContentLanguage = payload.ContentLanguage
+	attrsToUpdate.CacheControl = payload.CacheControl
 	if len(payload.Acl) > 0 {
 		attrsToUpdate.ACL = []storage.ACLRule{}
 		for _, aclData := range payload.Acl {
@@ -1234,8 +1375,10 @@ func (s *Server) composeObject(r *http.Request) jsonResponse {
 		Destination struct {
 			Bucket             string
 			ContentType        string
+			ContentEncoding    string
 			ContentDisposition string
 			ContentLanguage    string
+			CacheControl       string
 			Metadata           map[string]string
 		}
 	}
@@ -1262,7 +1405,7 @@ func (s *Server) composeObject(r *http.Request) jsonResponse {
 		sourceNames = append(sourceNames, n.Name)
 	}
 
-	backendObj, err := s.backend.ComposeObject(bucketName, sourceNames, destinationObject, composeRequest.Destination.Metadata, composeRequest.Destination.ContentType, composeRequest.Destination.ContentDisposition, composeRequest.Destination.ContentLanguage)
+	backendObj, err := s.backend.ComposeObject(bucketName, sourceNames, destinationObject, composeRequest.Destination.Metadata, composeRequest.Destination.ContentType, composeRequest.Destination.ContentEncoding, composeRequest.Destination.ContentDisposition, composeRequest.Destination.ContentLanguage, composeRequest.Destination.CacheControl)
 	if err != nil {
 		return jsonResponse{
 			status:       http.StatusInternalServerError,
@@ -1275,5 +1418,5 @@ func (s *Server) composeObject(r *http.Request) jsonResponse {
 
 	s.eventManager.Trigger(&backendObj, notification.EventFinalize, nil)
 
-	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, s.externalURL)}
+	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, urlhelper.GetBaseURL(r))}
 }

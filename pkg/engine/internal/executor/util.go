@@ -10,6 +10,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 )
 
+var (
+	separator = []byte{0}
+)
+
 // columnForIdent returns the column ([arrow.Array]) and its column index in the schema of the given input batch ([arrow.RecordBatch]).
 // It returns an optional error in case the column with the fully qualified name of the identifier could not be found,
 // or there are where multiple columns with the same name in the schema.
@@ -30,60 +34,85 @@ func columnForFQN(fqn string, batch arrow.RecordBatch) (arrow.Array, int, error)
 	return batch.Column(indices[0]), indices[0], nil
 }
 
-// labelsCache returns labels and label values for a given row in range and vector aggregators, but cache them in order
+// labelValuesCache returns label values for a given row in range and vector aggregators, but cache them in order
 // to reduce object allocations for repeated label sets. It first scans the row for non-empty labels and computes xxhash.
-// In case of a cache miss it scans the row again and allocates arrays for label names and label values.
-type labelsCache struct {
+// In case of a cache miss it scans the row again and allocates arrays for label values.
+type labelValuesCache struct {
 	digest *xxhash.Digest
-	cache  map[uint64]struct {
-		labels      []arrow.Field
-		labelValues []string
-	}
+	cache  map[uint64][]string
 }
 
-func newLabelsCache() *labelsCache {
-	return &labelsCache{
+func newLabelValuesCache() *labelValuesCache {
+	return &labelValuesCache{
 		digest: xxhash.New(),
-		cache: make(map[uint64]struct {
-			labels      []arrow.Field
-			labelValues []string
-		}),
+		cache:  make(map[uint64][]string),
 	}
 }
 
-func (c *labelsCache) getLabels(arrays []*array.String, fields []arrow.Field, row int) ([]arrow.Field, []string) {
+func (c *labelValuesCache) getLabelValues(arrays []*array.String, row int) []string {
 	c.digest.Reset()
-
-	for i, arr := range arrays {
+	for _, arr := range arrays {
 		val := arr.Value(row)
 		if val != "" {
-			_, _ = c.digest.Write([]byte{0})
-			_, _ = c.digest.WriteString(fields[i].Name)
-			_, _ = c.digest.Write([]byte("="))
+			_, _ = c.digest.Write(separator)
 			_, _ = c.digest.WriteString(val)
-
 		}
 	}
 	key := c.digest.Sum64()
 
-	l, ok := c.cache[key]
+	labelValues, ok := c.cache[key]
 	if !ok {
-		l = struct {
-			labels      []arrow.Field
-			labelValues []string
-		}{
-			labels:      make([]arrow.Field, 0),
-			labelValues: make([]string, 0),
+		labelValues = make([]string, 0, len(arrays))
+
+		for _, arr := range arrays {
+			val := arr.Value(row)
+			if val != "" {
+				labelValues = append(labelValues, val)
+			}
 		}
+		c.cache[key] = labelValues
+	}
+
+	return labelValues
+}
+
+// fieldsCache returns labels for a given row in range and vector aggregators, but cache them in order
+// to reduce object allocations for repeated label sets. It first scans the row for non-empty labels and computes xxhash.
+// In case of a cache miss it scans the row again and allocates arrays for label names.
+type fieldsCache struct {
+	digest *xxhash.Digest
+	cache  map[uint64][]arrow.Field
+}
+
+func newFieldsCache() *fieldsCache {
+	return &fieldsCache{
+		digest: xxhash.New(),
+		cache:  make(map[uint64][]arrow.Field),
+	}
+}
+
+func (c *fieldsCache) getFields(arrays []*array.String, fields []arrow.Field, row int) []arrow.Field {
+	c.digest.Reset()
+	for i, arr := range arrays {
+		val := arr.Value(row)
+		if val != "" {
+			_, _ = c.digest.Write(separator)
+			_, _ = c.digest.WriteString(fields[i].Name)
+		}
+	}
+	key := c.digest.Sum64()
+
+	labels, ok := c.cache[key]
+	if !ok {
+		labels = make([]arrow.Field, 0, len(arrays))
 		for i, arr := range arrays {
 			val := arr.Value(row)
 			if val != "" {
-				l.labelValues = append(l.labelValues, val)
-				l.labels = append(l.labels, fields[i])
+				labels = append(labels, fields[i])
 			}
 		}
-		c.cache[key] = l
+		c.cache[key] = labels
 	}
 
-	return l.labels, l.labelValues
+	return labels
 }

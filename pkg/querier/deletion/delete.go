@@ -6,12 +6,13 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type DeleteGetter interface {
-	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletionproto.DeleteRequest, error)
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *deletion.TimeRange) ([]deletionproto.DeleteRequest, error)
 }
 
 // DeletesForUserQuery returns the deletes for a user (taken from request context) within a given time range.
@@ -21,7 +22,7 @@ func DeletesForUserQuery(ctx context.Context, startT, endT time.Time, g DeleteGe
 		return nil, err
 	}
 
-	d, err := g.GetAllDeleteRequestsForUser(ctx, userID)
+	d, err := g.GetAllDeleteRequestsForUser(ctx, userID, true, nil)
 	if err != nil {
 		return nil, err
 	}

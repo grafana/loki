@@ -26,6 +26,8 @@ type StatusPageData struct {
 	Memberlist                *memberlist.Memberlist
 	SortedMembers             []*memberlist.Node
 	Store                     map[string]ValueDesc
+	StoreSizes                map[string]int
+	TotalStoreSize            int
 	MessageHistoryBufferBytes int
 	SentMessages              []Message
 	ReceivedMessages          []Message
@@ -101,11 +103,16 @@ func (h HTTPStatusHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	sent, received := kv.getSentAndReceivedMessages()
 
+	store := kv.storeCopy()
+	storeSizes, totalStoreSize := computeStoreSizes(kv, store)
+
 	v := StatusPageData{
 		Now:                       time.Now(),
 		Memberlist:                kv.memberlist,
 		SortedMembers:             members,
-		Store:                     kv.storeCopy(),
+		Store:                     store,
+		StoreSizes:                storeSizes,
+		TotalStoreSize:            totalStoreSize,
 		MessageHistoryBufferBytes: kv.cfg.MessageHistoryBufferBytes,
 		SentMessages:              sent,
 		ReceivedMessages:          received,
@@ -126,6 +133,27 @@ func (h HTTPStatusHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if err := h.tpl.Execute(w, v); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func computeStoreSizes(kv *KV, store map[string]ValueDesc) (sizes map[string]int, total int) {
+	sizes = make(map[string]int, len(store))
+	for key, val := range store {
+		if val.value == nil {
+			continue
+		}
+		c := kv.GetCodec(val.CodecID)
+		if c == nil {
+			continue
+		}
+		encoded, err := c.Encode(val.value)
+		if err != nil {
+			continue
+		}
+		size := len(encoded)
+		sizes[key] = size
+		total += size
+	}
+	return
 }
 
 func getFormat(req *http.Request) string {

@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	log "github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	logql "github.com/grafana/loki/v3/pkg/logql/syntax"
 
@@ -120,7 +120,7 @@ func (r RuleNamespace) AggregateBy(label string, applyTo func(group rwrulefmt.Ru
 			}
 
 			log.WithFields(log.Fields{"rule": getRuleName(rule)}).Debugf("evaluating...")
-			exp, err := parser.ParseExpr(rule.Expr)
+			exp, err := parser.NewParser(parser.Options{}).ParseExpr(rule.Expr)
 			if err != nil {
 				return count, mod, err
 			}
@@ -246,7 +246,7 @@ func ValidateRuleGroup(g rwrulefmt.RuleGroup) []error {
 			Alert:  yaml.Node{Value: r.Alert},
 			Expr:   yaml.Node{Value: r.Expr},
 		}
-		for _, err := range r.Validate(ruleNode, model.UTF8Validation) {
+		for _, err := range r.Validate(ruleNode, model.UTF8Validation, parser.NewParser(parser.Options{})) {
 			var ruleName string
 			if r.Alert != "" {
 				ruleName = r.Alert
