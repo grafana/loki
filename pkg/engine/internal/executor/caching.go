@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
@@ -40,11 +41,13 @@ func newCachingPipeline(store ArrowCache, inner Pipeline, key string, logger log
 	if store == nil {
 		return inner
 	}
+
+	hashedKey := cache.HashKey(key)
 	return &cachingPipeline{
 		inner:  inner,
 		store:  store,
-		key:    cache.HashKey(key),
-		logger: logger,
+		key:    hashedKey,
+		logger: log.With(logger, "pipeline", "caching", "cache", store.Name(), "key", hashedKey),
 		stats:  stats,
 	}
 }
@@ -123,7 +126,7 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 			region.Record(p.stats.Batches.Observe(0))
 			region.Record(p.stats.Bytes.Observe(0))
 			region.Record(p.stats.Rows.Observe(0))
-			level.Error(p.logger).Log("msg", "caching pass-though, won't cache result")
+			level.Debug(p.logger).Log("msg", "caching pass-though, won't cache result")
 			return nil, err
 		}
 
@@ -141,6 +144,7 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 			rows += r.NumRows()
 		}
 		region.Record(p.stats.Rows.Observe(rows))
+		level.Debug(p.logger).Log("msg", "caching result", "size", humanize.Bytes(uint64(bufSize)), "rows", rows, "batches", len(p.cached))
 		return nil, err
 	}
 
@@ -156,8 +160,11 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 		return rec, nil // don't buffer; skip store.Set on EOF path
 	}
 
-	// Store response for caching once Read completes (EOF from the inner pipeline)
-	p.cached = append(p.cached, rec)
+	// Only cache non-empty records
+	if rec.NumRows() > 0 {
+		p.cached = append(p.cached, rec)
+	}
+
 	return rec, nil
 }
 
@@ -173,6 +180,7 @@ func (p *cachingPipeline) Close() {
 type arrowCacheAdapter struct {
 	logger         log.Logger
 	cache          cache.Cache
+	name           string
 	snappyCompress bool
 
 	// maxSizeBytes is the maximum size of the cache entry.
@@ -251,6 +259,10 @@ func (s *arrowCacheAdapter) MaxSizeBytes() uint64 {
 	return s.maxSizeBytes
 }
 
+func (s *arrowCacheAdapter) Name() string {
+	return s.name
+}
+
 // encodeRecords serializes a slice of Arrow record batches into a single byte
 // buffer using the following framed format:
 //
@@ -321,6 +333,7 @@ type ArrowCache interface {
 	// A value of 0 means only empty responses are cached.
 	// Useful for callers to short-circuit caching when the response is known to exceed the max cache size.
 	MaxSizeBytes() uint64
+	Name() string
 }
 
 // TaskCacheRegistry maps TaskCacheType identifiers to backing cache stores and their stats.
@@ -336,9 +349,9 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 		return TaskCacheRegistry{}, nil
 	}
 
-	newCache := func(suffix string) (*arrowCacheAdapter, error) {
+	newCache := func(name string) (*arrowCacheAdapter, error) {
 		cfgCopy := cfg.CacheConfig
-		cfgCopy.Prefix += suffix
+		cfgCopy.Prefix += name + "."
 		c, err := cache.New(cfgCopy, reg, logger, stats.TaskResultCache, constants.Loki)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create cache: %w", err)
@@ -349,24 +362,25 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 		// This is so we can support configuring the maximum size of the cache entry.
 		return &arrowCacheAdapter{
 			cache:          c,
+			name:           name,
 			snappyCompress: strings.EqualFold(cfg.Compression, "snappy"),
 			logger:         logger,
 		}, nil
 	}
 
-	logscan, err := newCache("logscan.")
+	logscan, err := newCache("logscan")
 	if err != nil {
 		return TaskCacheRegistry{}, fmt.Errorf("creating logscan task cache: %w", err)
 	}
-	metastore, err := newCache("metastore.")
+	metastore, err := newCache("metastore")
 	if err != nil {
 		return TaskCacheRegistry{}, fmt.Errorf("creating metastore task cache: %w", err)
 	}
-	logscanRangeAggr, err := newCache("logscan-rangeaggr.")
+	logscanRangeAggr, err := newCache("logscan-rangeaggr")
 	if err != nil {
 		return TaskCacheRegistry{}, fmt.Errorf("creating logscan-rangeaggr task cache: %w", err)
 	}
-	dataObjScanResult, err := newCache("dataobjscan-result.")
+	dataObjScanResult, err := newCache("dataobjscan-result")
 	if err != nil {
 		return TaskCacheRegistry{}, fmt.Errorf("creating dataobjscan-result task cache: %w", err)
 	}
