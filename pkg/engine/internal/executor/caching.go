@@ -112,21 +112,35 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	// Cache miss; read from the inner pipeline
 	rec, err := p.inner.Read(ctx)
 	if err != nil {
-		if errors.Is(err, EOF) && !p.passthrough {
-			bufSize, setErr := p.store.Set(ctx, p.key, p.cached)
-			if setErr != nil {
-				level.Error(p.logger).Log("msg", "failed to store results in cache", "err", setErr)
-			} else {
-				region := xcap.RegionFromContext(ctx)
-				region.Record(p.stats.Batches.Observe(int64(len(p.cached))))
-				region.Record(p.stats.Bytes.Observe(int64(bufSize)))
-				var rows int64
-				for _, r := range p.cached {
-					rows += r.NumRows()
-				}
-				region.Record(p.stats.Rows.Observe(rows))
-			}
+		// Any non-EOF error, return it to the caller right away
+		if !errors.Is(err, EOF) {
+			return nil, err
 		}
+
+		region := xcap.RegionFromContext(ctx)
+		// Caching disabled, we just set the stats and move on
+		if p.passthrough {
+			region.Record(p.stats.Batches.Observe(0))
+			region.Record(p.stats.Bytes.Observe(0))
+			region.Record(p.stats.Rows.Observe(0))
+			level.Error(p.logger).Log("msg", "caching pass-though, won't cache result")
+			return nil, err
+		}
+
+		bufSize, setErr := p.store.Set(ctx, p.key, p.cached)
+		if setErr != nil {
+			level.Error(p.logger).Log("msg", "failed to store results in cache", "err", setErr)
+			// We return the EOF err so we don't fail the task just because of caching
+			return nil, err
+		}
+
+		region.Record(p.stats.Batches.Observe(int64(len(p.cached))))
+		region.Record(p.stats.Bytes.Observe(int64(bufSize)))
+		var rows int64
+		for _, r := range p.cached {
+			rows += r.NumRows()
+		}
+		region.Record(p.stats.Rows.Observe(rows))
 		return nil, err
 	}
 
