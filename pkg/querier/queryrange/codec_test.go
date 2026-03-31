@@ -2618,6 +2618,50 @@ func (b *buffer) Bytes() []byte {
 	return b.buff
 }
 
+// Test_codec_DetectedLabelsResponseProtobufRoundTrip is a regression test for
+// https://github.com/grafana/loki/issues/14605. It ensures that a
+// DetectedLabelsResponse survives a protobuf encode→decode round-trip without
+// data loss. Prior to the fix, decodeResponseProtobuf had no case for
+// *DetectedLabelsRequest and fell through to the default branch, which did not
+// handle QueryResponse_DetectedLabels and returned an internal-server-error.
+func Test_codec_DetectedLabelsResponseProtobufRoundTrip(t *testing.T) {
+	ctx := context.Background()
+
+	want := &DetectedLabelsResponse{
+		Response: &logproto.DetectedLabelsResponse{
+			DetectedLabels: []*logproto.DetectedLabel{
+				{Label: "foo", Cardinality: 42},
+				{Label: "bar", Cardinality: 7},
+			},
+		},
+	}
+
+	// Encode using the protobuf path (Accept: application/vnd.google.protobuf).
+	u := &url.URL{Path: "/loki/api/v1/detected_labels"}
+	encReq := &http.Request{
+		Method:     "GET",
+		RequestURI: u.String(),
+		URL:        u,
+		Header:     http.Header{"Accept": []string{ProtobufType}},
+	}
+	httpResp, err := DefaultCodec.EncodeResponse(ctx, encReq, want)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, httpResp.StatusCode)
+
+	// Decode should recognise *DetectedLabelsRequest and extract the nested
+	// DetectedLabelsResponse from the QueryResponse wrapper.
+	decReq := &DetectedLabelsRequest{
+		path: "/loki/api/v1/detected_labels",
+	}
+	got, err := DefaultCodec.DecodeResponse(ctx, httpResp, decReq)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	gotDetected, ok := got.(*DetectedLabelsResponse)
+	require.True(t, ok, "expected *DetectedLabelsResponse, got %T", got)
+	require.Equal(t, want.Response, gotDetected.Response)
+}
+
 func Benchmark_CodecDecodeLogs(b *testing.B) {
 	ctx := context.Background()
 	u := &url.URL{Path: "/loki/api/v1/query_range"}

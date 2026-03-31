@@ -23,6 +23,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
+// CacheStats bundles the xcap statistics recorded by a [cachingPipeline].
+// Using a struct lets different cache types record to separate stat variables.
+type CacheStats struct {
+	Hits    *xcap.StatisticInt64
+	Misses  *xcap.StatisticInt64
+	Batches *xcap.StatisticInt64
+	Rows    *xcap.StatisticInt64
+	Bytes   *xcap.StatisticInt64
+}
+
 // newCachingPipeline wraps inner in a cachingPipeline backed by cache.
 // If cache is nil, inner is returned unchanged (no caching).
 func newCachingPipeline(
@@ -32,23 +42,27 @@ func newCachingPipeline(
 	maxSizeBytes uint64,
 	compression string,
 	logger log.Logger,
+	stats CacheStats,
+	cacheName string,
 ) Pipeline {
 	if c == nil {
 		return inner
 	}
 
+	hashedKey := cache.HashKey(key)
 	return &cachingPipeline{
 		inner:        inner,
 		cache:        c,
-		key:          cache.HashKey(key),
-		logger:       logger,
+		key:          hashedKey,
+		logger:       log.With(logger, "pipeline", "caching", "cache", cacheName, "key", hashedKey),
 		maxSizeBytes: maxSizeBytes,
 		compression:  compression,
+		stats:        stats,
 	}
 }
 
 // cachingPipeline wraps a Pipeline and transparently stores and retrieves Arrow
-// record batch results via a raw cache.Cache.
+// record batch results via a cache.Cache.
 //
 // On a cache hit: Open decodes the cached payload into a recordDecoder; Read
 // iterates records through it without touching the inner pipeline.
@@ -61,6 +75,7 @@ type cachingPipeline struct {
 	logger       log.Logger
 	maxSizeBytes uint64
 	compression  string
+	stats        CacheStats
 
 	hit bool
 
@@ -86,8 +101,8 @@ func (p *cachingPipeline) Open(ctx context.Context) error {
 		if decErr == nil {
 			p.decoder = dec
 			p.hit = true
-			region.Record(xcap.TaskCacheHits.Observe(1))
-			region.Record(xcap.TaskCacheBytes.Observe(int64(len(buffs[0]))))
+			region.Record(p.stats.Hits.Observe(1))
+			region.Record(p.stats.Bytes.Observe(int64(len(buffs[0]))))
 			level.Debug(p.logger).Log("msg", "task cache hit", "key", p.key, "records", p.decoder.Len())
 			return nil
 		}
@@ -99,7 +114,7 @@ func (p *cachingPipeline) Open(ctx context.Context) error {
 		level.Error(p.logger).Log("msg", "task cache fetch failed, falling back to inner pipeline", "err", err)
 	}
 
-	region.Record(xcap.TaskCacheMisses.Observe(1))
+	region.Record(p.stats.Misses.Observe(1))
 	p.encoder = newRecordEncoder(p.compression)
 	level.Debug(p.logger).Log("msg", "cache miss", "key", p.key)
 	return p.inner.Open(ctx)
@@ -142,9 +157,9 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 		}
 
 		region := xcap.RegionFromContext(ctx)
-		region.Record(xcap.TaskCacheBatches.Observe(p.cachedRecords))
-		region.Record(xcap.TaskCacheRows.Observe(p.cachedRows))
-		region.Record(xcap.TaskCacheBytes.Observe(int64(len(payload))))
+		region.Record(p.stats.Batches.Observe(p.cachedRecords))
+		region.Record(p.stats.Rows.Observe(p.cachedRows))
+		region.Record(p.stats.Bytes.Observe(int64(len(payload))))
 		return nil, err
 	}
 
@@ -192,20 +207,23 @@ func (p *cachingPipeline) Close() {
 	}
 }
 
-// TaskCacheRegistry maps TaskCacheName identifiers to backing cache stores.
-type TaskCacheRegistry map[physical.TaskCacheName]cache.Cache
+// TaskCacheRegistry maps TaskCacheType identifiers to backing cache stores and their stats.
+type TaskCacheRegistry struct {
+	caches map[physical.TaskCacheName]cache.Cache
+	stats  map[physical.TaskCacheName]CacheStats
+}
 
 // NewTaskCacheRegistry builds a registry with one independent cache per task type,
 // all backed by the same resultscache.Config. Returns a zero-value (no-op) registry
 // when caching is not configured.
 func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, logger log.Logger) (TaskCacheRegistry, error) {
 	if !cache.IsCacheConfigured(cfg.CacheConfig) {
-		return nil, nil
+		return TaskCacheRegistry{}, nil
 	}
 
-	newCache := func(suffix string) (cache.Cache, error) {
+	newCache := func(name string) (cache.Cache, error) {
 		cfgCopy := cfg.CacheConfig
-		cfgCopy.Prefix += suffix
+		cfgCopy.Prefix += name + "."
 		c, err := cache.New(cfgCopy, reg, logger, stats.TaskResultCache, constants.Loki)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create cache: %w", err)
@@ -213,32 +231,60 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 		return c, nil
 	}
 
-	logscan, err := newCache("logscan.")
+	logscan, err := newCache("logscan")
 	if err != nil {
-		return nil, fmt.Errorf("creating logscan task cache: %w", err)
+		return TaskCacheRegistry{}, fmt.Errorf("creating logscan task cache: %w", err)
 	}
-	metastore, err := newCache("metastore.")
+	metastore, err := newCache("metastore")
 	if err != nil {
-		return nil, fmt.Errorf("creating metastore task cache: %w", err)
+		return TaskCacheRegistry{}, fmt.Errorf("creating metastore task cache: %w", err)
 	}
-	logscanRangeAggr, err := newCache("logscan-rangeaggr.")
+	logscanRangeAggr, err := newCache("logscan-rangeaggr")
 	if err != nil {
-		return nil, fmt.Errorf("creating logscan-rangeaggr task cache: %w", err)
+		return TaskCacheRegistry{}, fmt.Errorf("creating logscan-rangeaggr task cache: %w", err)
+	}
+	dataObjScanResult, err := newCache("dataobjscan-result")
+	if err != nil {
+		return TaskCacheRegistry{}, fmt.Errorf("creating dataobjscan-result task cache: %w", err)
+	}
+
+	taskCacheStats := CacheStats{
+		Hits:    xcap.TaskCacheHits,
+		Misses:  xcap.TaskCacheMisses,
+		Batches: xcap.TaskCacheBatches,
+		Rows:    xcap.TaskCacheRows,
+		Bytes:   xcap.TaskCacheBytes,
+	}
+	dataObjScanCacheStats := CacheStats{
+		Hits:    xcap.DataObjScanCacheHits,
+		Misses:  xcap.DataObjScanCacheMisses,
+		Batches: xcap.DataObjScanCacheBatches,
+		Rows:    xcap.DataObjScanCacheRows,
+		Bytes:   xcap.DataObjScanCacheBytes,
 	}
 
 	return TaskCacheRegistry{
-		physical.TaskCacheLogsScan:          logscan,
-		physical.TaskCacheLogsScanRangeAggr: logscanRangeAggr,
-		physical.TaskCacheMetastore:         metastore,
+		caches: map[physical.TaskCacheName]cache.Cache{
+			physical.TaskCacheLogsScan:          logscan,
+			physical.TaskCacheLogsScanRangeAggr: logscanRangeAggr,
+			physical.TaskCacheMetastore:         metastore,
+			physical.TaskCacheDataObjScanResult: dataObjScanResult,
+		},
+		stats: map[physical.TaskCacheName]CacheStats{
+			physical.TaskCacheLogsScan:          taskCacheStats,
+			physical.TaskCacheLogsScanRangeAggr: taskCacheStats,
+			physical.TaskCacheMetastore:         taskCacheStats,
+			physical.TaskCacheDataObjScanResult: dataObjScanCacheStats,
+		},
 	}, nil
 }
 
 // GetForType returns the raw cache backend for the given cache type.
-func (r TaskCacheRegistry) GetForType(cacheType physical.TaskCacheName) (cache.Cache, error) {
-	if c, ok := r[cacheType]; ok {
-		return c, nil
+func (r TaskCacheRegistry) GetForType(cacheType physical.TaskCacheName) (cache.Cache, CacheStats, error) {
+	if c, ok := r.caches[cacheType]; ok {
+		return c, r.stats[cacheType], nil
 	}
-	return nil, fmt.Errorf("no cache registered for type %q", cacheType)
+	return nil, CacheStats{}, fmt.Errorf("no cache registered for type %q", cacheType)
 }
 
 // Compression codec identifiers stored in the per-record wire format.
@@ -266,6 +312,11 @@ func newRecordEncoder(compression string) *recordEncoder {
 
 // Append serializes rec, optionally compresses it, and stores the resulting frame.
 func (e *recordEncoder) Append(rec arrow.RecordBatch) error {
+	// Skip empty batches
+	if rec.NumRows() == 0 {
+		return nil
+	}
+
 	data, err := arrowcodec.DefaultArrowCodec.SerializeArrowRecord(rec)
 	if err != nil {
 		return fmt.Errorf("serializing record: %w", err)

@@ -17,10 +17,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var testFields = []arrow.Field{
 	{Name: "val", Type: types.Arrow.String},
+}
+
+var testCacheStats = CacheStats{
+	Hits:    xcap.TaskCacheHits,
+	Misses:  xcap.TaskCacheMisses,
+	Batches: xcap.TaskCacheBatches,
+	Rows:    xcap.TaskCacheRows,
+	Bytes:   xcap.TaskCacheBytes,
 }
 
 func TestCachingPipeline(t *testing.T) {
@@ -33,7 +42,7 @@ func TestCachingPipeline(t *testing.T) {
 	require.NoError(t, err)
 
 	// First pass: cache miss — inner pipeline is read and results are stored.
-	miss := newCachingPipeline(c, NewBufferedPipeline(rec1, rec2), "test-key", ^uint64(0), "", log.NewNopLogger())
+	miss := newCachingPipeline(c, NewBufferedPipeline(rec1, rec2), "test-key", ^uint64(0), "", log.NewNopLogger(), testCacheStats, "mock")
 	require.NoError(t, miss.Open(ctx))
 	require.False(t, miss.(*cachingPipeline).hit, "expected cache miss")
 
@@ -53,7 +62,7 @@ func TestCachingPipeline(t *testing.T) {
 	require.Contains(t, c.data, cache.HashKey("test-key"), "cache should contain the key")
 
 	// Second pass: cache hit — inner pipeline must never be opened.
-	hit := newCachingPipeline(c, &failPipeline{}, "test-key", ^uint64(0), "", log.NewNopLogger())
+	hit := newCachingPipeline(c, &failPipeline{}, "test-key", ^uint64(0), "", log.NewNopLogger(), testCacheStats, "mock")
 	require.NoError(t, hit.Open(ctx))
 	require.True(t, hit.(*cachingPipeline).hit, "expected cache hit")
 
@@ -215,7 +224,7 @@ func TestCachingPipelineCaching(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mc := newMockCache()
 
-			p := newCachingPipeline(mc, NewBufferedPipeline(tc.records...), "key", tc.maxSizeBytes, tc.compression, log.NewNopLogger())
+			p := newCachingPipeline(mc, NewBufferedPipeline(tc.records...), "key", tc.maxSizeBytes, tc.compression, log.NewNopLogger(), testCacheStats, "mock")
 			require.NoError(t, p.Open(ctx))
 			batches := drainPipeline(t, p)
 			p.Close()
@@ -224,7 +233,7 @@ func TestCachingPipelineCaching(t *testing.T) {
 			require.Equal(t, tc.wantCacheSetCalls, mc.setCalls)
 
 			if tc.wantRoundTrip {
-				hit := newCachingPipeline(mc, &failPipeline{}, "key", tc.maxSizeBytes, tc.compression, log.NewNopLogger())
+				hit := newCachingPipeline(mc, &failPipeline{}, "key", tc.maxSizeBytes, tc.compression, log.NewNopLogger(), testCacheStats, "mock")
 				require.NoError(t, hit.Open(ctx))
 				require.True(t, hit.(*cachingPipeline).hit)
 				cached := drainPipeline(t, hit)
