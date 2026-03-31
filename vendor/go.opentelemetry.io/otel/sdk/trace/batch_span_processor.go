@@ -123,10 +123,12 @@ func NewBatchSpanProcessor(exporter SpanExporter, options ...BatchSpanProcessorO
 		otel.Handle(err)
 	}
 
-	bsp.stopWait.Go(func() {
+	bsp.stopWait.Add(1)
+	go func() {
+		defer bsp.stopWait.Done()
 		bsp.processQueue()
 		bsp.drainQueue()
-	})
+	}()
 
 	return bsp
 }

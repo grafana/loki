@@ -184,26 +184,30 @@ func (h *middleware) serveHTTP(w http.ResponseWriter, r *http.Request, next http
 	statusCode := rww.StatusCode()
 	bytesWritten := rww.BytesWritten()
 	span.SetStatus(h.semconv.Status(statusCode))
-	bytesRead := bw.BytesRead()
 	span.SetAttributes(h.semconv.ResponseTraceAttrs(semconv.ResponseTelemetry{
 		StatusCode: statusCode,
-		ReadBytes:  bytesRead,
+		ReadBytes:  bw.BytesRead(),
 		ReadError:  bw.Error(),
 		WriteBytes: bytesWritten,
 		WriteError: rww.Error(),
 	})...)
 
+	// Use floating point division here for higher precision (instead of Millisecond method).
+	elapsedTime := float64(time.Since(requestStartTime)) / float64(time.Millisecond)
+
+	metricAttributes := semconv.MetricAttributes{
+		Req:                  r,
+		StatusCode:           statusCode,
+		AdditionalAttributes: append(labeler.Get(), h.metricAttributesFromRequest(r)...),
+	}
+
 	h.semconv.RecordMetrics(ctx, semconv.ServerMetricData{
-		ServerName:   h.server,
-		ResponseSize: bytesWritten,
-		MetricAttributes: semconv.MetricAttributes{
-			Req:                  r,
-			StatusCode:           statusCode,
-			AdditionalAttributes: append(labeler.Get(), h.metricAttributesFromRequest(r)...),
-		},
+		ServerName:       h.server,
+		ResponseSize:     bytesWritten,
+		MetricAttributes: metricAttributes,
 		MetricData: semconv.MetricData{
-			RequestSize:     bytesRead,
-			RequestDuration: time.Since(requestStartTime),
+			RequestSize: bw.BytesRead(),
+			ElapsedTime: elapsedTime,
 		},
 	})
 }

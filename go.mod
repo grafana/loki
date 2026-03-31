@@ -159,7 +159,7 @@ require (
 	github.com/twmb/franz-go/plugin/kotel v1.6.0
 	github.com/twmb/franz-go/plugin/kprom v1.2.1
 	go.opentelemetry.io/collector/pdata v1.53.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.67.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.65.0
 	go.opentelemetry.io/otel/sdk v1.42.0
 	go.yaml.in/yaml/v3 v3.0.4
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
@@ -485,7 +485,7 @@ require (
 	go.mongodb.org/mongo-driver v1.17.9 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.65.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.67.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.65.0
 	go.opentelemetry.io/otel v1.42.0
 	go.opentelemetry.io/otel/metric v1.42.0 // indirect
 	go.opentelemetry.io/otel/trace v1.42.0
@@ -530,3 +530,16 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.3.0
 
 replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250728171719-b5d3b766d1b0
+
+// Pin OpenTelemetry core to v1.41.x so grafana/dskit tracing.NewResource (semconv v1.39.0) matches
+// resource.Default() from the SDK. v1.42+ uses semconv v1.40.0 and triggers schema merge errors.
+// Transitive deps (e.g. cloud.google.com/go/bigtable) may request v1.42; these replaces keep a single line.
+replace go.opentelemetry.io/otel => go.opentelemetry.io/otel v1.41.0
+
+replace go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.41.0
+
+replace go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v1.41.0
+
+replace go.opentelemetry.io/otel/metric => go.opentelemetry.io/otel/metric v1.41.0
+
+replace go.opentelemetry.io/otel/sdk/metric => go.opentelemetry.io/otel/sdk/metric v1.41.0
