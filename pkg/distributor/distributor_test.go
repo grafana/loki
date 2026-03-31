@@ -640,7 +640,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
 		}
-		distributors, _ := prepare(t, 1, 1, limits, nil)
+		distributors, _ := prepare(t, 1, 0, limits, nil)
 		for _, d := range distributors {
 			d.cfg.KafkaEnabled = true
 			d.cfg.IngesterEnabled = false
@@ -741,8 +741,8 @@ func TestDistributorPushToKafka(t *testing.T) {
 				require.Greater(t, kafkaWriter.pushes, uint64(0))
 				partitionCounts := map[int32]uint32{}
 				for _, record := range kafkaWriter.records {
-					partitionId := record.Partition
-					partitionCounts[partitionId]++
+					partitionID := record.Partition
+					partitionCounts[partitionID]++
 				}
 				require.Equal(t, test.expectedPartitionsShardedTo, len(partitionCounts))
 			})
@@ -1944,10 +1944,11 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 
 	partitions := map[int32]ring.PartitionDesc{}
 	owners := map[string]ring.OwnerDesc{}
-	for i := 0; i < numIngesters; i++ {
+	numPartitions := max(1, numIngesters)
+	for i := 0; i < numPartitions; i++ {
 		partitions[int32(i)] = ring.PartitionDesc{
 			Id:             int32(i),
-			Tokens:         []uint32{uint32((math.MaxUint32 / numIngesters) * int(i))},
+			Tokens:         []uint32{uint32((math.MaxUint32 / numPartitions) * i)},
 			State:          ring.PartitionActive,
 			StateTimestamp: time.Now().Unix(),
 		}
