@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package memberlist;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+// PropagationDelayTrackerDesc stores beacons for tracking gossip propagation delay
+// across the cluster. Beacons are cluster-wide (not per-node) and are keyed
+// by a random beacon ID.
+message PropagationDelayTrackerDesc {
+    // Map of beacon_id -> beacon.
+    map<uint64, BeaconDesc> beacons = 1 [(gogoproto.nullable) = false];
+}
+
+// Beacon represents a single propagation beacon published to the cluster.
+message BeaconDesc {
+    // Name of the node that published this beacon.
+    string published_by = 3;
+    // Wall-clock timestamp when this beacon was published (milliseconds since epoch).
+    int64 published_at = 1;
+    // Deletion timestamp (milliseconds since epoch). 0 = active, non-zero = beacon deleted at that time (tombstone).
+    int64 deleted_at = 2;
+}

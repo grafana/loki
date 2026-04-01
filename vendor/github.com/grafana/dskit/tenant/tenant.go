@@ -14,13 +14,9 @@ import (
 const (
 	// MaxTenantIDLength is the max length of single tenant ID in bytes
 	MaxTenantIDLength = 150
+	MaxMetadataLength = 64
 
 	tenantIDsSeparator = '|'
-
-	// subtenantIDSeparator separates the tenant ID from the subtenant ID.
-	// The format is "tenantID:subtenantID" (e.g., "123456:k6").
-	// The colon is not a valid character in tenant IDs, making it safe to use as a separator.
-	subtenantIDSeparator = ':'
 )
 
 var (
@@ -98,12 +94,6 @@ func ValidTenantID(s string) error {
 	return nil
 }
 
-// ValidSubtenantID returns an error if the subtenant ID is invalid, nil otherwise.
-// Subtenant IDs follow the same rules as tenant IDs.
-func ValidSubtenantID(s string) error {
-	return ValidTenantID(s)
-}
-
 // JoinTenantIDs returns all tenant IDs concatenated with the separator character `|`
 func JoinTenantIDs(tenantIDs []string) string {
 	return strings.Join(tenantIDs, string(tenantIDsSeparator))
@@ -134,19 +124,20 @@ func TenantIDsFromOrgID(orgID string) ([]string, error) {
 	return TenantIDs(user.InjectOrgID(context.TODO(), orgID))
 }
 
-func trimSubtenantID(orgID string) string {
-	idx := strings.IndexByte(orgID, subtenantIDSeparator)
+// TrimMetadata removes metadata from a orgID without validating the input.
+func TrimMetadata(orgID string) string {
+	idx := strings.IndexByte(orgID, metadataSeparator)
 	if idx == -1 {
 		return orgID
 	}
 	return orgID[:idx]
 }
 
-// splitTenantAndSubtenant splits an orgID into tenant ID and subtenant ID.
-// If the orgID contains no subtenant separator, the subtenant will be empty.
-// The format is "tenantID:subtenantID" (e.g., "123456:k6").
-func splitTenantAndSubtenant(orgID string) (tenantID, subtenantID string) {
-	idx := strings.IndexByte(orgID, subtenantIDSeparator)
+// splitTenantAndMetadata splits an orgID into tenant ID and metadata.
+// If the orgID contains no metadata separator, the metadata string will be empty.
+// The format is "tenantID:key=value" (e.g., "123456:product=k6").
+func splitTenantAndMetadata(orgID string) (tenantID, metadata string) {
+	idx := strings.IndexByte(orgID, metadataSeparator)
 	if idx == -1 {
 		return orgID, ""
 	}
