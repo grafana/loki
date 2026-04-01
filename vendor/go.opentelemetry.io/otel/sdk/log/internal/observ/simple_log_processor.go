@@ -14,8 +14,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/sdk"
 	"go.opentelemetry.io/otel/sdk/log/internal/x"
-	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
-	"go.opentelemetry.io/otel/semconv/v1.37.0/otelconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/semconv/v1.40.0/otelconv"
 )
 
 const (
@@ -104,7 +104,9 @@ func NewSLP(id int64) (*SLP, error) {
 // LogProcessed records that a log has been processed by the SimpleLogProcessor.
 // If err is non-nil, it records the processing error as an attribute.
 func (slp *SLP) LogProcessed(ctx context.Context, err error) {
-	slp.processed.Add(ctx, 1, slp.addOption(err)...)
+	if slp.processed.Enabled(ctx) {
+		slp.processed.Add(ctx, 1, slp.addOption(err)...)
+	}
 }
 
 func (slp *SLP) addOption(err error) []metric.AddOption {
