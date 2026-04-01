@@ -235,7 +235,7 @@ func TestIndexBuilder(t *testing.T) {
 	require.Equal(t, 30, len(indexes))
 }
 
-func TestIndexBuilder_stalePartition(t *testing.T) {
+func TestIndexBuilder_idlePartition(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -252,8 +252,8 @@ func TestIndexBuilder_stalePartition(t *testing.T) {
 		Config{
 			BuilderBaseConfig: testBuilderConfig,
 			EventsPerIndex:    16,
-			FlushInterval:     time.Millisecond, // Flush stale partitions very often
-			MaxIdleTime:       0,                // Consider all partitions stale
+			FlushInterval:     time.Millisecond, // Flush idle partitions very often
+			MaxIdleTime:       0,                // Consider all partitions idle
 			MaxAge:            time.Hour,
 		},
 		metastore.Config{},
@@ -293,7 +293,7 @@ func TestIndexBuilder_stalePartition(t *testing.T) {
 		})
 	}
 
-	// Wait for stale partition to be flushed
+	// Wait for idle partition to be flushed
 	for i := 0; i < 100; i++ {
 		if len(readAllSectionPointers(t, bucket)) == 30 && len(p.partitionStates[0].events) == 0 {
 			break
@@ -305,7 +305,7 @@ func TestIndexBuilder_stalePartition(t *testing.T) {
 	require.Equal(t, 0, len(p.partitionStates[0].events)) // Events should be gone now they've been processed
 }
 
-func TestIndexBuilder_staleData(t *testing.T) {
+func TestIndexBuilder_oldEvents(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -322,8 +322,8 @@ func TestIndexBuilder_staleData(t *testing.T) {
 		Config{
 			BuilderBaseConfig: testBuilderConfig,
 			EventsPerIndex:    16,
-			FlushInterval:     time.Millisecond, // Flush stale data very often
-			MaxAge:            0,                // Consider all data stale
+			FlushInterval:     time.Millisecond, // Flush very often
+			MaxAge:            0,                // Consider all events old
 			MaxIdleTime:       time.Hour,
 		},
 		metastore.Config{},
@@ -363,7 +363,7 @@ func TestIndexBuilder_staleData(t *testing.T) {
 		})
 	}
 
-	// Wait for stale data to be flushed
+	// Wait for data to be flushed
 	for i := 0; i < 100; i++ {
 		if len(readAllSectionPointers(t, bucket)) == 30 && len(p.partitionStates[0].events) == 0 {
 			break

@@ -30,9 +30,9 @@ var ErrPartitionRevoked = errors.New("partition revoked")
 type triggerType string
 
 const (
-	triggerTypeAppend    triggerType = "append"
-	triggerTypeMaxIdle   triggerType = "max-idle"
-	triggerTypeStaleData triggerType = "stale-data"
+	triggerTypeAppend  triggerType = "append"
+	triggerTypeMaxIdle triggerType = "max-idle"
+	triggerTypeMaxAge  triggerType = "max-age"
 )
 
 func (tt triggerType) String() string {
@@ -41,8 +41,8 @@ func (tt triggerType) String() string {
 		return "append"
 	case triggerTypeMaxIdle:
 		return "max-idle"
-	case triggerTypeStaleData:
-		return "stale-data"
+	case triggerTypeMaxAge:
+		return "max-age"
 	default:
 		return "unknown"
 	}
@@ -257,7 +257,7 @@ func (p *Builder) starting(ctx context.Context) error {
 			for {
 				select {
 				case <-p.flushTicker.C:
-					p.checkAndFlushStalePartitions(ctx)
+					p.checkAndFlushPartitions(ctx)
 				case <-ctx.Done():
 					return
 				}
@@ -370,17 +370,20 @@ func (p *Builder) markEventsCompleted(partition int32, eventsProcessed int) {
 	state.events = state.events[eventsProcessed:]
 }
 
-func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {
+// Check for partitions that either haven't received new events for MaxIdleTime
+// or have buffered events older than MaxAge.
+// Flush those partitions.
+func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
 	p.partitionsMutex.Lock()
 	idlePartitionsToFlush := make([]int32, 0)
-	partitionsWithStaleDataToFlush := make([]int32, 0)
+	maxAgePartitionsToFlush := make([]int32, 0)
 	for partition, state := range p.partitionStates {
 		// Don't flush anything that's currently processing
 		if state.isProcessing {
 			continue
 		}
 
-		// Flush idle partitions (haven't received new events for MaxIdleTime)
+		// Flush partitions which haven't received new events for MaxIdleTime
 		if time.Since(state.lastActivity) >= p.cfg.MaxIdleTime {
 			level.Info(p.logger).Log(
 				"msg", "will flush idle partition",
@@ -391,7 +394,7 @@ func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {
 			continue
 		}
 
-		// Flush partitions with stale data (events older than MaxAge)
+		// Flush partitions with events older than MaxAge
 		if len(state.events) > 0 {
 			earliestWriteTime, err := time.Parse(time.RFC3339, state.events[0].event.WriteTime)
 			if err != nil {
@@ -399,11 +402,11 @@ func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {
 			} else {
 				if time.Since(earliestWriteTime) >= p.cfg.MaxAge {
 					level.Info(p.logger).Log(
-						"msg", "will flush stale data",
+						"msg", "will flush old events",
 						"partition", partition,
-						"data_age", time.Since(earliestWriteTime),
-						"stale_data_threshold", p.cfg.MaxAge)
-					partitionsWithStaleDataToFlush = append(partitionsWithStaleDataToFlush, partition)
+						"event_age", time.Since(earliestWriteTime),
+						"max_age_threshold", p.cfg.MaxAge)
+					maxAgePartitionsToFlush = append(maxAgePartitionsToFlush, partition)
 					continue
 				}
 			}
@@ -414,8 +417,8 @@ func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {
 	for _, partition := range idlePartitionsToFlush {
 		p.flushPartition(ctx, partition, triggerTypeMaxIdle)
 	}
-	for _, partition := range partitionsWithStaleDataToFlush {
-		p.flushPartition(ctx, partition, triggerTypeStaleData)
+	for _, partition := range maxAgePartitionsToFlush {
+		p.flushPartition(ctx, partition, triggerTypeMaxAge)
 	}
 }
 
@@ -460,7 +463,7 @@ func (p *Builder) buildAndCommitIndex(ctx context.Context, events []bufferedEven
 	}
 
 	if triggerType == triggerTypeMaxIdle {
-		// Reset metrics for stale partition so we don't leave it high indefinitely if the partition stays inactive
+		// Reset metrics for idle partition so we don't leave it high indefinitely if the partition stays inactive
 		p.metrics.setProcessingDelay(partition, time.Now())
 	}
 	p.markEventsCompleted(partition, len(records))

@@ -1540,18 +1540,17 @@ dataobj:
     # CLI flag: -dataobj-index-builder.events-per-index
     [events_per_index: <int> | default = 32]
 
-    # Experimental: How often to check for idle partitions and stale events to
+    # Experimental: How often to check for idle partitions and old events to
     # flush
     # CLI flag: -dataobj-index-builder.flush-interval
     [flush_interval: <duration> | default = 1m]
 
-    # Experimental: Maximum time to wait between events before a partition is
-    # considered idle and flushed
+    # Experimental: Maximum time between events before a partition is considered
+    # idle and flushed
     # CLI flag: -dataobj-index-builder.max-idle-time
     [max_idle_time: <duration> | default = 30m]
 
-    # Experimental: Maximum age of a buffered event before it will be considered
-    # stale and flushed
+    # Experimental: Maximum age of a buffered event before it will be flushed
     # CLI flag: -dataobj-index-builder.max-age
     [max_age: <duration> | default = 1h]
 
