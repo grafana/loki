@@ -51,13 +51,6 @@ var (
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
 	errGCPInvalidCredentialsFile    = errors.New("gcp credentials file contains invalid fields")
 
-	azureValidEnvironments = map[string]bool{
-		"AzureGlobal":       true,
-		"AzurePublicCloud":  true,
-		"AzureChinaCloud":   true,
-		"AzureGermanCloud":  true,
-		"AzureUSGovernment": true,
-	}
 	azureEnvironmentEndpointSuffix = map[string]string{
 		"AzureGlobal":       "blob.core.windows.net",
 		"AzurePublicCloud":  "blob.core.windows.net",
@@ -253,12 +246,13 @@ func extractAzureConfigSecret(s *corev1.Secret, credentialMode lokiv1.Credential
 		return nil, fmt.Errorf("%w: either %s or %s should be set", errSecretMissingField, storage.KeyAzureEnvironmentName, storage.KeyAzureStorageEndpointSuffix)
 	}
 
-	if env != "" && !azureValidEnvironments[env] {
+	envEndpointSuffix, ok := azureEnvironmentEndpointSuffix[env]
+	if env != "" && !ok {
 		return nil, fmt.Errorf("%w: %s", errAzureInvalidEnvironment, env)
 	}
 
 	if endpointSuffix == "" {
-		endpointSuffix = azureEnvironmentEndpointSuffix[env]
+		endpointSuffix = envEndpointSuffix
 	}
 
 	if !endpointSuffixExists(azureEnvironmentEndpointSuffix, endpointSuffix) {
@@ -421,7 +415,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 
 	var (
 		// Fields related with static authentication
-		endpoint = s.Data[storage.KeyAWSEndpoint]
+		endpoint = string(s.Data[storage.KeyAWSEndpoint])
 		id       = s.Data[storage.KeyAWSAccessKeyID]
 		secret   = s.Data[storage.KeyAWSAccessKeySecret]
 		// Fields related with STS authentication
@@ -433,7 +427,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 
 	// Determine if we should use path style URLs for S3
 	// default to false for non-AWS endpoints
-	forcePathStyle := !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
+	forcePathStyle := !strings.HasSuffix(endpoint, awsEndpointSuffix)
 	// Check if the user has specified forcepathstyle
 	if configForcePathStyle, ok := s.Data[storage.KeyAWSForcePathStyle]; ok {
 		strForcePathStyle := string(configForcePathStyle)
@@ -473,16 +467,16 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 
 		return cfg, nil
 	case lokiv1.CredentialModeStatic:
-		if err := validateS3Endpoint(string(endpoint), string(region)); err != nil {
+		if err := validateS3Endpoint(endpoint, string(region)); err != nil {
 			return nil, err
 		}
-		host, err := extractHost(endpoint)
+		parsedURL, err := url.Parse(endpoint)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w:%s", errS3EndpointUnparseable, storage.KeyAWSEndpoint)
 		}
 
-		cfg.Endpoint = host
-		cfg.Insecure = strings.HasPrefix(string(endpoint), "http://")
+		cfg.Endpoint = parsedURL.Host
+		cfg.Insecure = strings.HasPrefix(endpoint, "http://")
 
 		if len(id) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSAccessKeyID)
@@ -657,15 +651,6 @@ func extractAlibabaCloudConfigSecret(s *corev1.Secret) (*storage.AlibabaCloudSto
 		Endpoint: string(endpoint),
 		Bucket:   string(bucket),
 	}, nil
-}
-
-func extractHost(endpoint []byte) (string, error) {
-	parsedURL, err := url.Parse(string(endpoint))
-	if err != nil {
-		return "", fmt.Errorf("%w:%s", errS3EndpointUnparseable, storage.KeyAWSEndpoint)
-	}
-
-	return parsedURL.Host, nil
 }
 
 func endpointSuffixExists(m map[string]string, value string) bool {
