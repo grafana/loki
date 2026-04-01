@@ -21,6 +21,10 @@ const (
 	TaskCacheMetastore TaskCacheName = "metastore"
 	// TaskCacheLogsScanRangeAggr selects the logscan-rangeaggr cache (DataObjScan + RangeAggregation, i.e. metric queries).
 	TaskCacheLogsScanRangeAggr TaskCacheName = "logscan-rangeaggr"
+	// TaskCacheDataObjScanResult selects the dataobjscan-result cache (raw output of a DataObjScan, independent of upstream operators).
+	TaskCacheDataObjScanResult TaskCacheName = "dataobjscan-result"
+
+	cacheSeparator = " |>>| "
 )
 
 // Cache is a plan node that wraps the root of a cacheable task fragment.
@@ -63,6 +67,59 @@ func WrapWithCacheIfSupported(ctx context.Context, tenantID string, plan *Plan, 
 		return nil, false, err
 	}
 	return node, true, nil
+}
+
+// WrapDataObjScansWithCache finds every [DataObjScan] in plan and inserts a [Cache]
+// node (using [TaskCacheDataObjScanResult]) directly above it. The cache key covers
+// only the scan node itself, prefixed with tenantID, so the cached result can be
+// shared across tasks that scan the same section but apply different operators on top.
+//
+// PointersScan nodes are intentionally not wrapped.
+func WrapDataObjScansWithCache(ctx context.Context, tenantID string, plan *Plan, maxSizeBytes uint64) error {
+	// Snapshot nodes before mutating the graph.
+	var scans []*DataObjScan
+	for n := range plan.graph.Nodes() {
+		if s, ok := n.(*DataObjScan); ok {
+			scans = append(scans, s)
+		}
+	}
+
+	if len(scans) == 0 {
+		return nil
+	}
+	if len(scans) > 1 {
+		return fmt.Errorf("expected at most one DataObjScan per task fragment, got %d", len(scans))
+	}
+
+	scan := scans[0]
+	key := tenantID + cacheSeparator + scan.CacheKey(ctx)
+	cacheNode := &Cache{
+		NodeID:       ulid.Make(),
+		Key:          key,
+		CacheName:    TaskCacheDataObjScanResult,
+		MaxSizeBytes: maxSizeBytes,
+	}
+
+	parents := plan.graph.Parents(scan)
+	if len(parents) > 1 {
+		// In practice each DataObjScan has exactly one parent in a task fragment, so we should not get here.
+		return fmt.Errorf("expected DataObjScan to have at most one parent, got %d", len(parents))
+	}
+
+	if len(parents) == 0 {
+		// DataObjScan is the root; add Cache as new root above it.
+		// In practice, DataObjScans have other parents (Compat, Batching, TopK, RangeAggregation...), but just in case.
+		plan.graph.Add(cacheNode)
+		if err := plan.graph.AddEdge(dag.Edge[Node]{Parent: cacheNode, Child: scan}); err != nil {
+			return err
+		}
+	} else {
+		// This is the expected code path:
+		// Inject Cache between the DataObjScan and its parent.
+		plan.graph.Inject(parents[0], cacheNode)
+	}
+
+	return nil
 }
 
 // TaskCacheKey computes a cache key for the entire plan by DFS-walking all nodes
@@ -122,8 +179,7 @@ func TaskCacheKey(ctx context.Context, tenantID string, plan *Plan) (string, Tas
 		return "", ""
 	}
 
-	const separator = " |>>| "
-	return tenantID + separator + strings.Join(parts, separator), cacheType
+	return tenantID + cacheSeparator + strings.Join(parts, cacheSeparator), cacheType
 }
 
 // CacheKey returns a fixed token. The Key field is not part of the cache key

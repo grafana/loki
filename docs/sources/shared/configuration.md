@@ -358,8 +358,13 @@ query_engine:
 
     # Experimental: Maximum size for a task result to be cacheable. 0 means only
     # empty responses are cached.
-    # CLI flag: -query-engine.tasks-result-cache.max-cacheable-size
-    [max_cacheable_size: <int> | default = 0B]
+    # CLI flag: -query-engine.tasks-result-cache.task-result-max-cacheable-size
+    [task_result_max_cacheable_size: <int> | default = 0B]
+
+    # Experimental: Maximum size for a DataObjScan result to be cacheable. 0
+    # means only empty responses are cached.
+    # CLI flag: -query-engine.tasks-result-cache.dataobjscan-result-max-cacheable-size
+    [dataobjscan_result_max_cacheable_size: <int> | default = 0B]
 
   # Experimental: Number of worker threads to spawn. Each worker thread runs one
   # task at a time. 0 means to use GOMAXPROCS value.

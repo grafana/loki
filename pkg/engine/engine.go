@@ -97,15 +97,18 @@ func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 
 // TaskCacheConfig extends resultscache.Config with additional task-cache-specific settings.
 type TaskCacheConfig struct {
-	resultscache.Config `yaml:",inline"`
-	MaxCacheableSize    flagext.Bytes `yaml:"max_cacheable_size" category:"experimental"`
+	resultscache.Config               `yaml:",inline"`
+	TaskResultMaxCacheableSize        flagext.Bytes `yaml:"task_result_max_cacheable_size" category:"experimental"`
+	DataObjScanResultMaxCacheableSize flagext.Bytes `yaml:"dataobjscan_result_max_cacheable_size" category:"experimental"`
 }
 
 // RegisterFlagsWithPrefix registers flags for TaskCacheConfig with the given prefix.
 func (cfg *TaskCacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Config.RegisterFlagsWithPrefix(f, prefix)
-	f.Var(&cfg.MaxCacheableSize, prefix+"max-cacheable-size",
+	f.Var(&cfg.TaskResultMaxCacheableSize, prefix+"task-result-max-cacheable-size",
 		"Experimental: Maximum size for a task result to be cacheable. 0 means only empty responses are cached.")
+	f.Var(&cfg.DataObjScanResultMaxCacheableSize, prefix+"dataobjscan-result-max-cacheable-size",
+		"Experimental: Maximum size for a DataObjScan result to be cacheable. 0 means only empty responses are cached.")
 }
 
 // Params holds parameters for constructing a new [Engine].
@@ -211,7 +214,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 			attribute.Stringer("step", params.Step()),
 			attribute.Stringer("length", params.End().Sub(params.Start())),
 			attribute.StringSlice("shards", params.Shards()),
-			attribute.Bool("cache_disabled", cacheEnabled),
+			attribute.Bool("cache_enabled", cacheEnabled),
 		),
 	)
 	defer span.End()
@@ -382,11 +385,11 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 }
 
 // buildPhysicalPlan builds a physical plan from the given logical plan.
-func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger log.Logger, params logql.Params, logicalPlan *logical.Plan, cacheEnabled bool) (*physical.Plan, time.Duration, error) {
+func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger log.Logger, params logql.Params, logicalPlan *logical.Plan, taskCacheEnabled bool) (*physical.Plan, time.Duration, error) {
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID, cacheEnabled))
+	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID, taskCacheEnabled))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -495,8 +498,9 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 		MaxRunningScanTasks:  maxRunningScanTasks,
 		MaxRunningOtherTasks: 0,
 
-		CacheEnabled:     cacheEnabled,
-		MaxCacheableSize: uint64(e.cfg.Executor.TasksResultCache.MaxCacheableSize),
+		CacheEnabled:            cacheEnabled,
+		MaxTaskCacheSize:        uint64(e.cfg.Executor.TasksResultCache.TaskResultMaxCacheableSize),
+		MaxDataObjScanCacheSize: uint64(e.cfg.Executor.TasksResultCache.DataObjScanResultMaxCacheableSize),
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),

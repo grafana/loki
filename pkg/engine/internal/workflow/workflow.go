@@ -59,15 +59,17 @@ type Options struct {
 	// verbose and should only be enabled for debugging purposes.
 	DebugStreams bool
 
-	// CacheEnabled controls whether task fragments are wrapped with a Cache
-	// node during workflow planning. When true, cacheable task fragments get a
-	// Cache node as their root, allowing the executor to serve results from a
-	// cache store.
+	// CacheEnabled controls whether task fragments and DataObjScan nodes are
+	// wrapped with a Cache node during workflow planning.
 	CacheEnabled bool
 
-	// MaxCacheableSize is the maximum size in bytes of a task result that can be
+	// MaxTaskCacheSize is the maximum size in bytes of a task result that can be
 	// stored in the cache. 0 means only empty responses are cached.
-	MaxCacheableSize uint64
+	MaxTaskCacheSize uint64
+
+	// MaxDataObjScanCacheSize is the maximum encoded size in bytes of a DataObjScan
+	// result that may be stored. 0 means only empty scan responses are cached.
+	MaxDataObjScanCacheSize uint64
 }
 
 var _ fmt.Stringer = (*Workflow)(nil)
@@ -109,8 +111,9 @@ type Workflow struct {
 // The provided Runner will be used for Workflow execution.
 func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
 	graph, err := planWorkflow(opts.Tenant, plan, cacheParams{
-		enabled:      opts.CacheEnabled,
-		maxSizeBytes: opts.MaxCacheableSize,
+		enabled:                 opts.CacheEnabled,
+		taskCacheMaxSizeBytes:   opts.MaxTaskCacheSize,
+		dataObjScanMaxSizeBytes: opts.MaxDataObjScanCacheSize,
 	})
 	if err != nil {
 		return nil, err
