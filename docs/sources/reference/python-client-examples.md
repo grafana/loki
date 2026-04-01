@@ -304,7 +304,7 @@ def query_with_retry(
     raise Exception(f"Query failed after {max_retries} retries")
 ```
 
-## Common gotchas
+## Common problems
 
 - **Timestamps are in nanoseconds.** Loki expects Unix timestamps in nanoseconds, not seconds or milliseconds. Multiply `time.time()` by `1e9` and convert to a string.
 - **At least one label matcher is required.** You cannot query without a stream selector. `{job="myapp"}` works; an empty selector does not.
