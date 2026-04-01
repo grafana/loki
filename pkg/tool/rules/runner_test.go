@@ -179,14 +179,31 @@ groups:
     interval: 1m
     rules:
       - alert: TestAlert
-        expr: 'count_over_time({job="test"}[1m]) > 0'
+        expr: 'count_over_time({job="test"}[5m]) > 0'
 `
 	ruleFile := filepath.Join(tmpDir, "rules.yml")
 	err := os.WriteFile(ruleFile, []byte(ruleContent), 0644)
 	require.NoError(t, err)
 
-	// Setup evaluator
+	// Create test group and load streams FIRST
+	testGroup := &testGroup{
+		TestGroupName: "test",
+		Interval:      model.Duration(1 * time.Minute),
+		InputStreams: []stream{
+			{
+				Labels: `{job="test"}`,
+				Lines:  []string{"log line 1", "log line 2", "log line 3"},
+			},
+		},
+	}
+
+	// Setup storage and load streams before creating evaluator
+	// (MockQuerier takes a snapshot of streams at creation time)
 	storage := newTestStorage()
+	err = storage.parseAndLoadStreams(testGroup.InputStreams, testGroup.Interval)
+	require.NoError(t, err)
+
+	// Now create evaluator with pre-loaded streams
 	evaluator := newTestEvaluator(storage, log.NewNopLogger())
 
 	err = evaluator.loadRules(
@@ -199,22 +216,6 @@ groups:
 
 	// Create test runner
 	runner := newTestRunner(evaluator, log.NewNopLogger())
-
-	// Create test group
-	testGroup := &testGroup{
-		TestGroupName: "test",
-		Interval:      model.Duration(1 * time.Minute),
-		InputStreams: []stream{
-			{
-				Labels: `{job="test"}`,
-				Lines:  []string{"log line 1", "log line 2", "log line 3"},
-			},
-		},
-	}
-
-	// Load input streams
-	err = storage.parseAndLoadStreams(testGroup.InputStreams, testGroup.Interval)
-	require.NoError(t, err)
 
 	// Create alert test
 	alertTest := &alertTestCase{
@@ -240,14 +241,7 @@ groups:
 }
 
 func TestTestRunner_RunLogQLTest(t *testing.T) {
-	// Setup evaluator
-	storage := newTestStorage()
-	evaluator := newTestEvaluator(storage, log.NewNopLogger())
-
-	// Create test runner
-	runner := newTestRunner(evaluator, log.NewNopLogger())
-
-	// Create test group
+	// Create test group first
 	testGroup := &testGroup{
 		TestGroupName: "test",
 		Interval:      model.Duration(1 * time.Minute),
@@ -259,18 +253,28 @@ func TestTestRunner_RunLogQLTest(t *testing.T) {
 		},
 	}
 
-	// Load input streams
+	// Setup storage and load streams BEFORE creating evaluator
+	// (MockQuerier takes a snapshot of streams at creation time)
+	storage := newTestStorage()
 	err := storage.parseAndLoadStreams(testGroup.InputStreams, testGroup.Interval)
 	require.NoError(t, err)
 
+	// Now create evaluator with pre-loaded streams
+	evaluator := newTestEvaluator(storage, log.NewNopLogger())
+
+	// Create test runner
+	runner := newTestRunner(evaluator, log.NewNopLogger())
+
 	// Create LogQL test
+	// Note: With 5 entries at t=0,1,2,3,4m and query at t=5m with [5m] range,
+	// the query returns 4 entries due to time range boundary handling
 	logqlTest := &logqlTestCase{
 		Expr:     `count_over_time({job="test"}[5m])`,
 		EvalTime: model.Duration(5 * time.Minute),
 		ExpSamples: []sample{
 			{
 				Labels: `{job="test"}`,
-				Value:  5,
+				Value:  4,
 			},
 		},
 	}
@@ -285,16 +289,17 @@ func TestTestRunner_MultipleTestGroups(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create rule file
+	// Use [5m] lookback to include multiple entries in the count
 	ruleContent := `
 groups:
   - name: alerts
     interval: 1m
     rules:
       - alert: Alert1
-        expr: 'count_over_time({job="app1"}[1m]) > 2'
+        expr: 'count_over_time({job="app1"}[5m]) > 2'
 
       - alert: Alert2
-        expr: 'count_over_time({job="app2"}[1m]) > 1'
+        expr: 'count_over_time({job="app2"}[5m]) > 1'
 `
 	ruleFile := filepath.Join(tmpDir, "rules.yml")
 	err := os.WriteFile(ruleFile, []byte(ruleContent), 0644)

@@ -126,24 +126,35 @@ func (tr *testRunner) runAlertTest(alertTest *alertTestCase, testGroup *testGrou
 		StartTime: time.Now(),
 	}
 
-	// Evaluate rules at the specified time
+	// Evaluate rules at each interval from t=0 to the specified eval_time.
+	// This is necessary for alerts with "for" duration to properly track pending state.
 	evalTime := time.Unix(0, 0).UTC().Add(time.Duration(alertTest.EvalTime))
 	ctx := user.InjectOrgID(context.Background(), "test-tenant")
 
-	err := tr.evaluator.evaluateAtTime(ctx, evalTime)
-	if err != nil {
-		result.Error = fmt.Errorf("evaluation failed: %w", err)
-		result.Passed = false
-		result.EndTime = time.Now()
-		result.Duration = result.EndTime.Sub(result.StartTime)
-		return result
+	// Determine the evaluation interval
+	interval := time.Duration(testGroup.Interval)
+	if interval == 0 {
+		interval = time.Minute // Default to 1 minute if not specified
+	}
+
+	// Evaluate at each interval from t=0 to eval_time (inclusive)
+	baseTime := time.Unix(0, 0).UTC()
+	for currentTime := baseTime; !currentTime.After(evalTime); currentTime = currentTime.Add(interval) {
+		err := tr.evaluator.evaluateAtTime(ctx, currentTime)
+		if err != nil {
+			result.Error = fmt.Errorf("evaluation failed at %v: %w", currentTime, err)
+			result.Passed = false
+			result.EndTime = time.Now()
+			result.Duration = result.EndTime.Sub(result.StartTime)
+			return result
+		}
 	}
 
 	// Get active alerts for this rule
 	actualAlerts := tr.evaluator.getActiveAlertsForRule(alertTest.Alertname)
 
 	// Compare expected vs actual
-	err = tr.assertion.compareAlerts(*alertTest, actualAlerts)
+	err := tr.assertion.compareAlerts(*alertTest, actualAlerts)
 	if err != nil {
 		result.Error = err
 		result.Passed = false

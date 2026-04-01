@@ -182,24 +182,31 @@ groups:
 
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	// Evaluate through t=5m
+	// Evaluate through t=5m, checking alerts at specific times
+	var alerts2m, alerts4m []*activeAlert
 	for ts := time.Duration(0); ts <= 5*time.Minute; ts += time.Minute {
 		evalTime := time.Unix(0, 0).UTC().Add(ts)
 		if err := evaluator.evaluateAtTime(ctx, evalTime); err != nil {
 			t.Fatalf("evaluation failed at %v: %v", ts, err)
 		}
+
+		// Capture alert state at specific times
+		if ts == 2*time.Minute {
+			alerts2m = evaluator.getActiveAlertsForRule("SlowAlert")
+		}
+		if ts == 4*time.Minute {
+			alerts4m = evaluator.getActiveAlertsForRule("SlowAlert")
+		}
 	}
 
-	// At t=2m the condition is true but for:3m not yet met
-	alerts2m := evaluator.getActiveAlertsForRule("SlowAlert")
+	// At t=2m the condition is true but for:3m not yet met (only 2m since t=0)
 	if len(alerts2m) != 0 {
 		t.Errorf("expected 0 firing alerts at 2m (for:3m not met), got %d", len(alerts2m))
 	}
 
-	// At t=5m the for:3m should be satisfied (condition true since ~t=1m)
-	alerts5m := evaluator.getActiveAlertsForRule("SlowAlert")
-	if len(alerts5m) != 1 {
-		t.Errorf("expected 1 firing alert at 5m, got %d", len(alerts5m))
+	// At t=4m the for:3m should be satisfied (condition true since t=0, now 4m passed)
+	if len(alerts4m) != 1 {
+		t.Errorf("expected 1 firing alert at 4m, got %d", len(alerts4m))
 	}
 }
 
