@@ -217,52 +217,51 @@ func (te *testEvaluator) evaluateAlertRule(ctx context.Context, rule *evaluableR
 	// Handle different result types
 	switch v := result.Data.(type) {
 	case promql.Vector:
+		// Each sample in the result vector triggers an alert - the expression
+		// itself handles filtering (e.g., "> 10" only returns matching samples)
 		for _, sample := range v {
-			// Check if alert should fire (value > 0 for most alert conditions)
-			if sample.F > 0 || sample.H != nil {
-				// Create template expander for labels and annotations
-				expand := te.createTemplateExpander(ctx, sample.Metric, group, rule.Alert, evalTime, sample)
+			// Create template expander for labels and annotations
+			expand := te.createTemplateExpander(ctx, sample.Metric, group, rule.Alert, evalTime, sample)
 
-				// Expand templates in rule labels
-				expandedLabels := expandLabels(rule.Labels, expand)
+			// Expand templates in rule labels
+			expandedLabels := expandLabels(rule.Labels, expand)
 
-				// Expand templates in annotations
-				expandedAnnotations := expandLabels(rule.Annotations, expand)
+			// Expand templates in annotations
+			expandedAnnotations := expandLabels(rule.Annotations, expand)
 
-				alert := &activeAlert{
-					Labels:      appendLabels(sample.Metric, expandedLabels, group.ExternalLabels),
-					Annotations: expandedAnnotations,
-					ActiveAt:    evalTime,
-					Value:       sample.F,
-				}
+			alert := &activeAlert{
+				Labels:      appendLabels(sample.Metric, expandedLabels, group.ExternalLabels),
+				Annotations: expandedAnnotations,
+				ActiveAt:    evalTime,
+				Value:       sample.F,
+			}
 
-				// Check if this alert was already active
-				existing := te.findActiveAlert(rule.activeAlerts, alert.Labels)
-				if existing != nil {
-					// Alert was already active, preserve ActiveAt
-					alert.ActiveAt = existing.ActiveAt
-					alert.FiredAt = existing.FiredAt
+			// Check if this alert was already active
+			existing := te.findActiveAlert(rule.activeAlerts, alert.Labels)
+			if existing != nil {
+				// Alert was already active, preserve ActiveAt
+				alert.ActiveAt = existing.ActiveAt
+				alert.FiredAt = existing.FiredAt
 
-					// Check if alert should transition to firing
-					if alert.FiredAt.IsZero() && time.Duration(rule.For) > 0 {
-						if evalTime.Sub(alert.ActiveAt) >= time.Duration(rule.For) {
-							alert.FiredAt = evalTime
-						}
-					}
-				} else {
-					// New alert, fire immediately if no "for" duration
-					if rule.For == 0 {
+				// Check if alert should transition to firing
+				if alert.FiredAt.IsZero() && time.Duration(rule.For) > 0 {
+					if evalTime.Sub(alert.ActiveAt) >= time.Duration(rule.For) {
 						alert.FiredAt = evalTime
 					}
 				}
-
-				newAlerts = append(newAlerts, alert)
+			} else {
+				// New alert, fire immediately if no "for" duration
+				if rule.For == 0 {
+					alert.FiredAt = evalTime
+				}
 			}
+
+			newAlerts = append(newAlerts, alert)
 		}
 
 	case promql.Scalar:
-		// Scalar result - single alert if value > 0
-		if v.V > 0 {
+		// Scalar result - alert fires for any non-zero value (positive or negative)
+		if v.V != 0 {
 			// Create template expander for labels and annotations
 			sample := promql.Sample{T: v.T, F: v.V, Metric: labels.EmptyLabels()}
 			expand := te.createTemplateExpander(ctx, labels.EmptyLabels(), group, rule.Alert, evalTime, sample)
