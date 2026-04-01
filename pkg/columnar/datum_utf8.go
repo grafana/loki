@@ -57,9 +57,6 @@ func NewUTF8(data []byte, offsets []int32, validity memory.Bitmap) *UTF8 {
 
 //go:noinline
 func (arr *UTF8) init() {
-	// Moving initialization of additional fields to a non-inlined init method
-	// improved the performance of the plain bytes decoder in dataset by 10%.
-
 	numElements := max(0, len(arr.offsets)-1)
 	if arr.validity.Len() > 0 && arr.validity.Len() != numElements {
 		panic("length mismatch with validity")

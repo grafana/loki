@@ -43,6 +43,8 @@ func Filter(alloc *memory.Allocator, input columnar.Datum, mask memory.Bitmap) (
 		return filterUTF8(alloc, src, mask), nil
 	case *columnar.Null:
 		return filterNull(alloc, mask), nil
+	case *columnar.Struct:
+		return filterStruct(alloc, src, mask)
 	default:
 		return nil, fmt.Errorf("Filter: unsupported array type %T", input)
 	}
@@ -91,6 +93,24 @@ func filterUTF8(alloc *memory.Allocator, src *columnar.UTF8, mask memory.Bitmap)
 		}
 	}
 	return builder.Build()
+}
+
+func filterStruct(alloc *memory.Allocator, src *columnar.Struct, mask memory.Bitmap) (*columnar.Struct, error) {
+	fields := make([]columnar.Array, src.NumFields())
+	for i := range fields {
+		filtered, err := Filter(alloc, src.Field(i), mask)
+		if err != nil {
+			return nil, fmt.Errorf("filtering struct field %d: %w", i, err)
+		}
+		fields[i] = filtered.(columnar.Array)
+	}
+
+	var validity memory.Bitmap
+	if srcValidity := src.Validity(); srcValidity.Len() > 0 {
+		vArr := filterBool(alloc, columnar.NewBool(srcValidity, memory.Bitmap{}), mask)
+		validity = vArr.Values()
+	}
+	return columnar.NewStruct(src.Schema(), fields, mask.SetCount(), validity), nil
 }
 
 func filterNull(alloc *memory.Allocator, mask memory.Bitmap) *columnar.Null {

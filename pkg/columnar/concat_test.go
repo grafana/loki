@@ -144,6 +144,66 @@ func TestConcat_UTF8_Slices(t *testing.T) {
 	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
 }
 
+func TestConcat_Struct(t *testing.T) {
+	var alloc memory.Allocator
+
+	schema := columnar.NewSchema([]columnar.Column{{Name: "x"}, {Name: "y"}})
+
+	s1 := columnar.NewStruct(schema, []columnar.Array{
+		columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
+		columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "b"),
+	}, 2, memory.Bitmap{})
+
+	s2 := columnar.NewStruct(schema, []columnar.Array{
+		columnartest.Array(t, columnar.KindInt64, &alloc, int64(3)),
+		columnartest.Array(t, columnar.KindUTF8, &alloc, "c"),
+	}, 1, memory.Bitmap{})
+
+	result, err := columnar.Concat(&alloc, []columnar.Array{s1, s2})
+	require.NoError(t, err)
+
+	rs := result.(*columnar.Struct)
+	require.Equal(t, 3, rs.Len())
+	require.Equal(t, 2, rs.NumFields())
+
+	columnartest.RequireArraysEqual(t,
+		columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
+		rs.Field(0), memory.Bitmap{},
+	)
+	columnartest.RequireArraysEqual(t,
+		columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "b", "c"),
+		rs.Field(1), memory.Bitmap{},
+	)
+}
+
+func TestConcat_Struct_WithValidity(t *testing.T) {
+	var alloc memory.Allocator
+
+	schema := columnar.NewSchema([]columnar.Column{{Name: "x"}})
+
+	v1 := memory.NewBitmap(&alloc, 2)
+	v1.AppendValues(true, false)
+	v2 := memory.NewBitmap(&alloc, 1)
+	v2.AppendValues(true)
+
+	s1 := columnar.NewStruct(schema, []columnar.Array{
+		columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(0)),
+	}, 2, v1)
+	s2 := columnar.NewStruct(schema, []columnar.Array{
+		columnartest.Array(t, columnar.KindInt64, &alloc, int64(3)),
+	}, 1, v2)
+
+	result, err := columnar.Concat(&alloc, []columnar.Array{s1, s2})
+	require.NoError(t, err)
+
+	rs := result.(*columnar.Struct)
+	require.Equal(t, 3, rs.Len())
+	require.Equal(t, 1, rs.Nulls())
+	require.False(t, rs.IsNull(0))
+	require.True(t, rs.IsNull(1))
+	require.False(t, rs.IsNull(2))
+}
+
 func BenchmarkConcat(b *testing.B) {
 	b.Run("kind=Null", func(b *testing.B) {
 		var alloc memory.Allocator

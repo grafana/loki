@@ -33,6 +33,8 @@ func Equals(alloc *memory.Allocator, left, right columnar.Datum, selection memor
 		return dispatchNumericEquality(alloc, uint64EqualKernel, left, right, selection)
 	case columnar.KindUTF8:
 		return dispatchUTF8Equality(alloc, utf8EqualKernel, left, right, selection)
+	case columnar.KindStruct:
+		return structEquals(alloc, left.(*columnar.Struct), right.(*columnar.Struct), selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not comparable", left.Kind())
 	}
@@ -64,6 +66,8 @@ func NotEquals(alloc *memory.Allocator, left, right columnar.Datum, selection me
 		return dispatchNumericEquality(alloc, uint64NotEqualKernel, left, right, selection)
 	case columnar.KindUTF8:
 		return dispatchUTF8Equality(alloc, utf8NotEqualKernel, left, right, selection)
+	case columnar.KindStruct:
+		return structNotEquals(alloc, left.(*columnar.Struct), right.(*columnar.Struct), selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not comparable", left.Kind())
 	}

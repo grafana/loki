@@ -70,6 +70,25 @@ func RequireArraysEqual(t testing.TB, expect, actual columnar.Array, mask memory
 		requireArraysEqual(t, expect.(*columnar.Number[uint64]), actual.(*columnar.Number[uint64]), mask)
 	case columnar.KindUTF8:
 		requireArraysEqual(t, expect.(*columnar.UTF8), actual.(*columnar.UTF8), mask)
+	case columnar.KindStruct:
+		requireStructArraysEqual(t, expect.(*columnar.Struct), actual.(*columnar.Struct), mask)
+	}
+}
+
+func requireStructArraysEqual(t testing.TB, expect, actual *columnar.Struct, mask memory.Bitmap) {
+	t.Helper()
+
+	require.Equal(t, expect.NumFields(), actual.NumFields(), "field count mismatch")
+
+	for i := range expect.NumFields() {
+		RequireArraysEqual(t, expect.Field(i), actual.Field(i), mask)
+	}
+
+	for i := range expect.Len() {
+		if mask.Len() > 0 && !mask.Get(i) {
+			continue
+		}
+		require.Equal(t, expect.IsNull(i), actual.IsNull(i), "struct null mismatch at index %d", i)
 	}
 }
 

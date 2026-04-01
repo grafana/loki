@@ -21,6 +21,15 @@ type Datum interface {
 
 // An Array is a sequence of elements of the same data type.
 type Array interface {
+	// NOTE TO MAINTAINERS:
+	//
+	// It's recommended to allow New* methods be inlineable. Initialization
+	// logic can be placed in an init method tagged with //go:noinline. See
+	// [NewUTF8] for an example.
+	//
+	// When arrays are constructed on the hot path, we've seen this pattern
+	// improve performance by 10%.
+
 	Datum
 	isArray() // Type marker method.
 
