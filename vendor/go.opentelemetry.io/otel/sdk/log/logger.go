@@ -5,16 +5,24 @@ package log // import "go.opentelemetry.io/otel/sdk/log"
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/embedded"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
 var now = time.Now
+
+const (
+	exceptionTypeKey       = string(semconv.ExceptionTypeKey)
+	exceptionMessageKey    = string(semconv.ExceptionMessageKey)
+	exceptionStacktraceKey = string(semconv.ExceptionStacktraceKey)
+)
 
 // Compile-time check logger implements log.Logger.
 var _ log.Logger = (*logger)(nil)
@@ -108,10 +116,70 @@ func (l *logger) newRecord(ctx context.Context, r log.Record) Record {
 		newRecord.observedTimestamp = now()
 	}
 
+	hasExceptionAttr := false
 	r.WalkAttributes(func(kv log.KeyValue) bool {
+		switch kv.Key {
+		case exceptionTypeKey, exceptionMessageKey, exceptionStacktraceKey:
+			hasExceptionAttr = true
+		}
 		newRecord.AddAttributes(kv)
 		return true
 	})
 
+	if err := r.Err(); err != nil && !hasExceptionAttr {
+		addExceptionAttrs(&newRecord, err)
+	}
+
 	return newRecord
+}
+
+func addExceptionAttrs(r *Record, err error) {
+	var attrs [2]log.KeyValue
+	n := 0
+	if msg := err.Error(); msg != "" {
+		if r.attributeCountLimit > 0 && r.attributeCountLimit-r.AttributesLen() < n+1 {
+			goto flush
+		}
+		attrs[n] = log.String(exceptionMessageKey, msg)
+		n++
+	}
+	if errType := errorType(err); errType != "" {
+		if r.attributeCountLimit > 0 && r.attributeCountLimit-r.AttributesLen() < n+1 {
+			goto flush
+		}
+		attrs[n] = log.String(exceptionTypeKey, errType)
+		n++
+	}
+
+flush:
+	if n > 0 {
+		r.addAttrs(attrs[:n])
+	}
+}
+
+func errorType(err error) string {
+	if et, ok := err.(interface{ ErrorType() string }); ok {
+		if s := et.ErrorType(); s != "" {
+			return s
+		}
+	}
+
+	t := reflect.TypeOf(err)
+	if t == nil {
+		return ""
+	}
+
+	pkg, name := t.PkgPath(), t.Name()
+	if pkg != "" && name != "" {
+		return pkg + "." + name
+	}
+
+	// The type has no package path or name (predeclared, not-defined,
+	// or alias for a not-defined type).
+	//
+	// The type has no package path or name (predeclared, not-defined,
+	// or alias for a not-defined type).
+	//
+	// This is not guaranteed to be unique, but is a best effort.
+	return t.String()
 }

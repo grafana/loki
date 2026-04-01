@@ -711,6 +711,80 @@ func TestVectorResultBuilder(t *testing.T) {
 		require.Equal(t, expected, vector)
 	})
 
+	t.Run("empty parsed label values are preserved in vector results", func(t *testing.T) {
+		colTs := semconv.ColumnIdentTimestamp
+		colVal := semconv.ColumnIdentValue
+		colEnv := semconv.NewIdentifier("env", types.ColumnTypeParsed, types.Loki.String)
+		colScheme := semconv.NewIdentifier("http_url_scheme", types.ColumnTypeParsed, types.Loki.String)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colTs, false),
+				semconv.FieldFromIdent(colVal, false),
+				semconv.FieldFromIdent(colEnv, true),
+				semconv.FieldFromIdent(colScheme, true),
+			},
+			nil,
+		)
+		ts := time.Unix(0, 1620000000000000000).UTC()
+		rows := arrowtest.Rows{
+			// Non-empty parsed label value — no change in behaviour.
+			{colTs.FQN(): ts, colVal.FQN(): float64(1), colEnv.FQN(): "prod", colScheme.FQN(): "https"},
+			// Empty parsed label value (e.g. `| json` parsed http_url_scheme as "").
+			// Must appear in the result with value "" rather than being absent.
+			{colTs.FQN(): ts, colVal.FQN(): float64(2), colEnv.FQN(): "dev", colScheme.FQN(): ""},
+			// Absent parsed label (NULL — aggregator called AppendNull for this series).
+			// Must NOT appear in the result at all.
+			{colTs.FQN(): ts, colVal.FQN(): float64(3), colEnv.FQN(): "staging", colScheme.FQN(): nil},
+		}
+
+		record := rows.Record(memory.DefaultAllocator, schema)
+
+		pipeline := executor.NewBufferedPipeline(record)
+		defer pipeline.Close()
+
+		builder := newVectorResultBuilder()
+		err := collectResult(context.Background(), pipeline, builder)
+
+		require.NoError(t, err)
+		require.Equal(t, 3, builder.Len())
+
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
+		vector := result.Data.(promql.Vector)
+
+		samples := make(map[string]*promql.Sample, len(vector))
+		for i := range vector {
+			env := vector[i].Metric.Get("env")
+			samples[env] = &vector[i]
+		}
+
+		// prod: non-empty value, must be present as-is.
+		require.NotNil(t, samples["prod"], "expected a sample with env=prod")
+		require.Equal(t, "https", samples["prod"].Metric.Get("http_url_scheme"))
+
+		// dev: empty string value, must be present in the label set.
+		require.NotNil(t, samples["dev"], "expected a sample with env=dev")
+		devHasScheme := false
+		samples["dev"].Metric.Range(func(l labels.Label) {
+			if l.Name == "http_url_scheme" {
+				devHasScheme = true
+				require.Equal(t, "", l.Value)
+			}
+		})
+		require.True(t, devHasScheme, "dev: http_url_scheme with empty value must be present in the label set")
+
+		// staging: absent label (NULL), must not appear at all.
+		require.NotNil(t, samples["staging"], "expected a sample with env=staging")
+		stagingHasScheme := false
+		samples["staging"].Metric.Range(func(l labels.Label) {
+			if l.Name == "http_url_scheme" {
+				stagingHasScheme = true
+			}
+		})
+		require.False(t, stagingHasScheme, "staging: absent label (NULL) must not appear in the label set")
+	})
+
 	// TODO:(ashwanth) also enforce grouping labels are all present?
 	t.Run("rows without timestamp or value are ignored", func(t *testing.T) {
 		colTs := semconv.ColumnIdentTimestamp

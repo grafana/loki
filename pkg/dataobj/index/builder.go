@@ -440,6 +440,11 @@ func (p *Builder) flushPartition(ctx context.Context, partition int32) {
 			}
 			level.Error(p.logger).Log("msg", "failed to commit flush records", "partition", partition, "err", err)
 		}
+
+		// Reset metrics for stale partition so we don't leave it high indefinitely if the partition stays inactive
+		p.metrics.setProcessingDelay(partition, time.Now())
+
+		p.markEventsCompleted(partition, len(records))
 	}()
 }
 
