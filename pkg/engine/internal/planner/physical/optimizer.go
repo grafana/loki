@@ -186,63 +186,79 @@ func (r *clampPredicates) apply(root Node) bool {
 	for _, n := range nodes {
 		switch n := n.(type) {
 		case *DataObjScan:
-			predicates := make([]Expression, len(n.Predicates))
-			for i, p := range n.Predicates {
-				clamped := false
-				predicates[i], clamped = clampExpression(p, n.MaxTimeRange)
-				if clamped {
-					changed = true
-				}
-			}
-			n.Predicates = predicates
+			n.Predicates, changed = r.clamp(n.Predicates, n.MaxTimeRange)
 		case *PointersScan:
-			predicates := make([]Expression, len(n.Predicates))
-			for i, p := range n.Predicates {
-				clamped := false
-				predicates[i], clamped = clampExpression(p, n.MaxTimeRange())
-				if clamped {
-					changed = true
-				}
-			}
-			n.Predicates = predicates
+			n.Predicates, changed = r.clamp(n.Predicates, n.MaxTimeRange())
 		}
 	}
 	return changed
 }
 
-// Only modifies BinaryExpressions that take the form ">= timestamp" or "<= timestamp".
+func (r *clampPredicates) clamp(predicates []Expression, timeRange TimeRange) ([]Expression, bool) {
+	newPredicates := make([]Expression, len(predicates))
+
+	var changed bool
+	for i, p := range predicates {
+		var clamped bool
+		newPredicates[i], clamped = clampExpression(p, timeRange)
+		if clamped {
+			changed = true
+		}
+	}
+	return newPredicates, changed
+}
+
+// Returns true and the timestamp for BinaryExpressions that take the form ">= timestamp", "<= timestamp", "> timestamp", or "< timestamp".
+// Otherwise returns false and a default timestamp of 0.
+func validateAsClampable(e *BinaryExpr) (types.Timestamp, bool) {
+	col, ok := e.Left.(*ColumnExpr)
+	if !ok || col.Ref.Column != types.ColumnNameBuiltinTimestamp || col.Ref.Type != types.ColumnTypeBuiltin {
+		// Expression is not checking the timestamp column
+		return types.Timestamp(0), false
+	}
+
+	lit, ok := e.Right.(*LiteralExpr)
+	if !ok || lit.ValueType() != types.Loki.Timestamp {
+		// Expression does not use a timestamp
+		return types.Timestamp(0), false
+	}
+
+	ts, ok := lit.Value().(types.Timestamp)
+	if !ok {
+		// Failure to cast timestamp literal value
+		return types.Timestamp(0), false
+	}
+	return ts, true
+}
+
+// Only modifies BinaryExpressions that take the form ">= timestamp", "<= timestamp", "> timestamp", or "< timestamp".
 // Returns true if the expression has been modified or false if it has not.
 func clampExpression(e Expression, tr TimeRange) (Expression, bool) {
 	switch e := e.(type) {
 	case *BinaryExpr:
-		if tr.IsZero() {
-			return e, false
-		}
-		col, ok := e.Left.(*ColumnExpr)
-		if !ok || col.Ref.Column != types.ColumnNameBuiltinTimestamp || col.Ref.Type != types.ColumnTypeBuiltin {
-			return e, false
-		}
-		lit, ok := e.Right.(*LiteralExpr)
-		if !ok || lit.ValueType() != types.Loki.Timestamp {
-			return e, false
-		}
-		ts, ok := lit.Value().(types.Timestamp)
+		ts, ok := validateAsClampable(e)
 		if !ok {
 			return e, false
 		}
+		if tr.IsZero() {
+			return e, false
+		}
+
 		t2 := time.Unix(0, int64(ts))
 		orig := ts
+		newOp := e.Op
 		switch e.Op {
 		case types.BinaryOpGte, types.BinaryOpGt:
+			// When clamping "time > max" we switch to "time >= max" because ">" should be exclusive.
 			if t2.Before(tr.Start) {
 				ts = types.Timestamp(tr.Start.UnixNano())
+				newOp = types.BinaryOpGte
 			}
 		case types.BinaryOpLte, types.BinaryOpLt:
-			// We treat the end time as exclusive, so when clamping "time < max" we switch to "time <= max".
-			// Start time is inclusive so we don't need to do the same thing there.
+			// When clamping "time < max" we switch to "time <= max" because "<" should be exclusive.
 			if t2.After(tr.End) {
 				ts = types.Timestamp(tr.End.UnixNano())
-				e.Op = types.BinaryOpLte
+				newOp = types.BinaryOpLte
 			}
 		}
 		if ts == orig {
@@ -251,7 +267,7 @@ func clampExpression(e Expression, tr TimeRange) (Expression, bool) {
 		return &BinaryExpr{
 			Left:  e.Left,
 			Right: NewLiteral(ts),
-			Op:    e.Op,
+			Op:    newOp,
 		}, true
 
 	default:

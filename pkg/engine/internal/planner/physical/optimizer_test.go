@@ -270,7 +270,27 @@ func TestClampExpression(t *testing.T) {
 			want:    fmt.Sprintf("GTE(%s, %s)", col, util.FormatTimeRFC3339Nano(time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC))),
 		},
 		{
+			desc: "GT before range clamps to start",
+			e:    &BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte},
+			tr: TimeRange{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
+			},
+			clamped: true,
+			want:    fmt.Sprintf("GTE(%s, %s)", col, util.FormatTimeRFC3339Nano(time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC))),
+		},
+		{
 			desc: "LT after range clamps to end",
+			e:    &BinaryExpr{Left: col, Right: NewLiteral(late), Op: types.BinaryOpLt},
+			tr: TimeRange{
+				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
+			},
+			clamped: true,
+			want:    fmt.Sprintf("LTE(%s, %s)", col, util.FormatTimeRFC3339Nano(time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC))),
+		},
+		{
+			desc: "LTE after range clamps to end",
 			e:    &BinaryExpr{Left: col, Right: NewLiteral(late), Op: types.BinaryOpLt},
 			tr: TimeRange{
 				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
