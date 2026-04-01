@@ -168,16 +168,16 @@ func buildTableFromSorted(buf *tableBuffer, pageSize, pageRowCount int, compress
 }
 
 // equalRecordsMerge checks record equality for deduplication during merge.
+// Fast path: StreamID and Timestamp comparison short-circuits for 99%+ of rows.
 func equalRecordsMerge(a, b Record) bool {
-	if a.StreamID != b.StreamID {
+	// These two comparisons will short-circuit for the vast majority of rows,
+	// avoiding the expensive metadata and line comparisons.
+	if a.StreamID != b.StreamID || a.Timestamp != b.Timestamp {
 		return false
 	}
-	if a.Timestamp != b.Timestamp {
+	if !bytes.Equal(a.Line, b.Line) {
 		return false
 	}
-	if !labels.Equal(a.Metadata, b.Metadata) {
-		return false
-	}
-	return bytes.Equal(a.Line, b.Line)
+	return labels.Equal(a.Metadata, b.Metadata)
 }
 
