@@ -32,7 +32,7 @@ func TestPlanWorkflow_MetastorePlan_UsesMergeRootAndPointersPartitions(t *testin
 	plan, err := p.Plan(context.Background(), nil, nil, start, end)
 	require.NoError(t, err)
 
-	graph, err := planWorkflow("tenant", plan, cacheParams{enabled: true, maxSizeBytes: 1 * 1024 * 1024})
+	graph, err := planWorkflow("tenant", plan, cacheParams{enabled: true, taskCacheMaxSizeBytes: 1 * 1024 * 1024})
 	require.NoError(t, err)
 
 	rootTask, err := graph.Root()

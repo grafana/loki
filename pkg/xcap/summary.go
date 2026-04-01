@@ -446,6 +446,9 @@ func summarizeObservations(capture *Capture) *observations {
 				// task cache stats
 				TaskCacheHits.Key(), TaskCacheMisses.Key(),
 				TaskCacheBatches.Key(), TaskCacheRows.Key(), TaskCacheBytes.Key(),
+				// dataobjscan cache stats
+				DataObjScanCacheHits.Key(), DataObjScanCacheMisses.Key(),
+				DataObjScanCacheBatches.Key(), DataObjScanCacheRows.Key(), DataObjScanCacheBytes.Key(),
 			).
 			normalizeKeys(),
 	)
