@@ -279,7 +279,8 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 	// re-hashing labels on every entry.
 	cachedStream := sb.GetOrAddStream(ls)
 
-	for _, entry := range stream.Entries {
+	targetSectionSize := int(b.cfg.TargetSectionSize)
+	for i, entry := range stream.Entries {
 		sz := int64(len(entry.Line))
 		for _, md := range entry.StructuredMetadata {
 			sz += int64(len(md.Value))
@@ -294,13 +295,11 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 			Line:      unsafe.Slice(unsafe.StringData(entry.Line), len(entry.Line)),
 		})
 
-		// If our logs section has gotten big enough, we want to flush it to the
-		// encoder and start a new section.
-		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
+		// Check section size every 1024 entries to reduce overhead.
+		if i&1023 == 0 && lb.UncompressedSize() > targetSectionSize {
 			if err := b.builder.Append(lb); err != nil {
 				return err
 			}
-			// We need to set the tenant again after flushing because the builder is reset.
 			lb.SetTenant(tenant)
 		}
 	}
