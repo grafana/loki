@@ -179,6 +179,7 @@ func (p *Peer) notifyError(frame Frame, err error) {
 		if !found {
 			return
 		}
+		defer p.sentRequests.Delete(frame.ID)
 		req := val.(*request)
 
 		select {
