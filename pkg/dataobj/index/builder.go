@@ -375,8 +375,7 @@ func (p *Builder) markEventsCompleted(partition int32, eventsProcessed int) {
 // Flush those partitions.
 func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
 	p.partitionsMutex.Lock()
-	idlePartitionsToFlush := make([]int32, 0)
-	maxAgePartitionsToFlush := make([]int32, 0)
+	partitionsToFlush := make(map[int32]triggerType)
 	for partition, state := range p.partitionStates {
 		// Don't flush anything that's currently processing
 		if state.isProcessing {
@@ -390,7 +389,7 @@ func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
 				"partition", partition,
 				"idle_duration", time.Since(state.lastActivity),
 				"idle_threshold", p.cfg.MaxIdleTime)
-			idlePartitionsToFlush = append(idlePartitionsToFlush, partition)
+			partitionsToFlush[partition] = triggerTypeMaxIdle
 			continue
 		}
 
@@ -406,7 +405,7 @@ func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
 						"partition", partition,
 						"event_age", time.Since(earliestWriteTime),
 						"max_age_threshold", p.cfg.MaxAge)
-					maxAgePartitionsToFlush = append(maxAgePartitionsToFlush, partition)
+					partitionsToFlush[partition] = triggerTypeMaxAge
 					continue
 				}
 			}
@@ -414,11 +413,8 @@ func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
 	}
 	p.partitionsMutex.Unlock()
 
-	for _, partition := range idlePartitionsToFlush {
-		p.flushPartition(ctx, partition, triggerTypeMaxIdle)
-	}
-	for _, partition := range maxAgePartitionsToFlush {
-		p.flushPartition(ctx, partition, triggerTypeMaxAge)
+	for partition, triggerType := range partitionsToFlush {
+		p.flushPartition(ctx, partition, triggerType)
 	}
 }
 
