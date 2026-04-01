@@ -69,13 +69,16 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 			return nil, err
 		}
 
-		r := dataset.NewRowReader(dataset.ReaderOptions{
+		r := dataset.NewRowReader(dataset.RowReaderOptions{
 			Dataset: t,
 			Columns: dsetColumns,
 
 			// The table is in memory, so don't prefetch.
 			Prefetch: false,
 		})
+		if err := r.Open(context.Background()); err != nil {
+			return nil, fmt.Errorf("opening dataset row reader: %w", err)
+		}
 
 		tableSequences = append(tableSequences, &tableSequence{
 			columns:         dsetColumns,

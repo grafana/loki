@@ -154,6 +154,21 @@ func TestReader(t *testing.T) {
 	}
 }
 
+func TestReader_ReadBeforeOpen(t *testing.T) {
+	sec := buildSection(t, []pointers.SectionPointer{
+		{Path: "path1", Section: 1, PointerKind: pointers.PointerKindStreamIndex, StreamID: 10, StreamIDRef: 100, StartTs: unixTime(10), EndTs: unixTime(20), LineCount: 5, UncompressedSize: 1024},
+	})
+
+	r := pointers.NewReader(pointers.ReaderOptions{
+		Columns:   sec.Columns(),
+		Allocator: memory.DefaultAllocator,
+	})
+
+	rec, err := r.Read(context.Background(), 128)
+	require.Nil(t, rec)
+	require.ErrorContains(t, err, "reader not opened")
+}
+
 // TestReaderWithEqualPredicate tests reading with an EqualPredicate.
 func TestReaderWithEqualPredicate(t *testing.T) {
 	sec := buildSection(t, []pointers.SectionPointer{
@@ -708,6 +723,9 @@ func buildSection(t *testing.T, ptrData []pointers.SectionPointer) *pointers.Sec
 
 func readTable(ctx context.Context, r *pointers.Reader) (arrow.Table, error) {
 	var recs []arrow.RecordBatch
+	if err := r.Open(ctx); err != nil {
+		return nil, err
+	}
 
 	for {
 		rec, err := r.Read(ctx, 128)

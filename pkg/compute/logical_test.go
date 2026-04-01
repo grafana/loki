@@ -12,11 +12,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-func TestNot(t *testing.T) {
+func TestNot_Errors(t *testing.T) {
 	t.Run("invalid scalar kind", func(t *testing.T) {
 		var alloc memory.Allocator
 
-		res, err := compute.Not(&alloc, new(columnar.NullScalar))
+		res, err := compute.Not(&alloc, new(columnar.NullScalar), memory.Bitmap{})
 		require.Error(t, err, "invalid function call should result in an error")
 		require.Nil(t, res, "invalid function call should not result in a datum")
 	})
@@ -24,290 +24,64 @@ func TestNot(t *testing.T) {
 	t.Run("invalid array kind", func(t *testing.T) {
 		var alloc memory.Allocator
 
-		res, err := compute.Not(&alloc, new(columnar.UTF8))
+		res, err := compute.Not(&alloc, new(columnar.UTF8), memory.Bitmap{})
 		require.Error(t, err, "invalid function call should result in an error")
 		require.Nil(t, res, "invalid function call should not result in a datum")
 	})
-
-	t.Run("scalar", func(t *testing.T) {
-		tt := []struct {
-			name   string
-			input  *columnar.BoolScalar
-			expect *columnar.BoolScalar
-		}{
-			{
-				name:   "true",
-				input:  &columnar.BoolScalar{Value: true},
-				expect: &columnar.BoolScalar{Value: false},
-			},
-			{
-				name:   "false",
-				input:  &columnar.BoolScalar{Value: false},
-				expect: &columnar.BoolScalar{Value: true},
-			},
-			{
-				name:   "null",
-				input:  &columnar.BoolScalar{Null: true},
-				expect: &columnar.BoolScalar{Null: true},
-			},
-		}
-
-		for _, tc := range tt {
-			t.Run(tc.name, func(t *testing.T) {
-				var alloc memory.Allocator
-
-				actual, err := compute.Not(&alloc, tc.input)
-				require.NoError(t, err)
-				columnartest.RequireDatumsEqual(t, tc.expect, actual)
-			})
-		}
-	})
-
-	t.Run("array", func(t *testing.T) {
-		var alloc memory.Allocator
-
-		var (
-			input  = columnartest.Array(t, columnar.KindBool, &alloc, true, nil, false)
-			expect = columnartest.Array(t, columnar.KindBool, &alloc, false, nil, true)
-		)
-
-		actual, err := compute.Not(&alloc, input)
-		require.NoError(t, err)
-		columnartest.RequireDatumsEqual(t, expect, actual)
-	})
-
-	t.Run("fully valid array", func(t *testing.T) {
-		var alloc memory.Allocator
-
-		var (
-			input  = columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false)
-			expect = columnartest.Array(t, columnar.KindBool, &alloc, false, true, false, true)
-		)
-
-		actual, err := compute.Not(&alloc, input)
-		require.NoError(t, err)
-		columnartest.RequireDatumsEqual(t, expect, actual)
-	})
 }
 
-func TestAnd(t *testing.T) {
+func TestAnd_Errors(t *testing.T) {
 	var alloc memory.Allocator
 
 	tt := []struct {
 		name        string
 		left, right columnar.Datum
 		expect      columnar.Datum
-		expectError bool
 	}{
 		{
-			name:        "fails on non-boolean types",
-			left:        columnartest.Scalar(t, columnar.KindInt64, 0),
-			right:       columnartest.Scalar(t, columnar.KindInt64, 0),
-			expectError: true,
+			name:  "fails on non-boolean types",
+			left:  columnartest.Scalar(t, columnar.KindInt64, 0),
+			right: columnartest.Scalar(t, columnar.KindInt64, 0),
 		},
 		{
-			name:        "fails on mismatch length arrays",
-			left:        columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false),
-			right:       columnartest.Array(t, columnar.KindBool, &alloc, true, false),
-			expectError: true,
-		},
-
-		// (scalar, scalar) tests
-		{
-			name:   "valid-scalar AND null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Scalar(t, columnar.KindBool, false),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "valid-scalar AND null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Scalar(t, columnar.KindBool, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "null-scalar AND valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, false),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "null-scalar AND null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// (scalar, array) tests
-		{
-			name:   "true-scalar AND array",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-		},
-		{
-			name:   "false-scalar AND array",
-			left:   columnartest.Scalar(t, columnar.KindBool, false),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, false, false, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, false, nil),
-		},
-		{
-			name:   "null-scalar AND array",
-			left:   columnartest.Scalar(t, columnar.KindBool, nil),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// (array, scalar) tests
-		{
-			name:   "array AND true-scalar",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, true),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-		},
-		{
-			name:   "array AND false-scalar",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, false, false, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, false),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, false, nil),
-		},
-		{
-			name:   "array AND null-scalar",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// (array, array) tests
-		{
-			name:   "array AND array",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false, nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, false, true, true, false, true, false, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, false, true, false, nil, nil, nil),
+			name:  "fails on mismatch length arrays",
+			left:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false),
+			right: columnartest.Array(t, columnar.KindBool, &alloc, true, false),
 		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.And(&alloc, tc.left, tc.right)
-			if tc.expectError {
-				require.Error(t, err, "invalid function call should result in an error")
-				return
-			}
-
-			require.NoError(t, err, "valid function call should not result in an error")
-			columnartest.RequireDatumsEqual(t, tc.expect, actual)
+			_, err := compute.And(&alloc, tc.left, tc.right, memory.Bitmap{})
+			require.Error(t, err, "invalid function call should result in an error")
 		})
 	}
 }
 
-func TestOr(t *testing.T) {
+func TestOr_Errors(t *testing.T) {
 	var alloc memory.Allocator
 
 	tt := []struct {
 		name        string
 		left, right columnar.Datum
 		expect      columnar.Datum
-		expectError bool
 	}{
 		{
-			name:        "fails on non-boolean types",
-			left:        columnartest.Scalar(t, columnar.KindInt64, 0),
-			right:       columnartest.Scalar(t, columnar.KindInt64, 0),
-			expectError: true,
+			name:  "fails on non-boolean types",
+			left:  columnartest.Scalar(t, columnar.KindInt64, 0),
+			right: columnartest.Scalar(t, columnar.KindInt64, 0),
 		},
 		{
-			name:        "fails on mismatch length arrays",
-			left:        columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false),
-			right:       columnartest.Array(t, columnar.KindBool, &alloc, true, false),
-			expectError: true,
-		},
-
-		// (scalar, scalar) tests
-		{
-			name:   "valid-scalar OR null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Scalar(t, columnar.KindBool, false),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "valid-scalar OR null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Scalar(t, columnar.KindBool, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "null-scalar OR valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, false),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "null-scalar OR null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// (scalar, array) tests
-		{
-			name:   "true-scalar OR array",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, nil),
-		},
-		{
-			name:   "false-scalar OR array",
-			left:   columnartest.Scalar(t, columnar.KindBool, false),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-		},
-		{
-			name:   "null-scalar OR array",
-			left:   columnartest.Scalar(t, columnar.KindBool, nil),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// (array, scalar) tests
-		{
-			name:   "array OR true-scalar",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, true),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, nil),
-		},
-		{
-			name:   "array OR false-scalar",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, false, false, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, false),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, false, nil),
-		},
-		{
-			name:   "array OR null-scalar",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// (array, array) tests
-		{
-			name:   "array OR array",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false, nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, false, true, true, false, true, false, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, true, false, nil, nil, nil),
+			name:  "fails on mismatch length arrays",
+			left:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false),
+			right: columnartest.Array(t, columnar.KindBool, &alloc, true, false),
 		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.Or(&alloc, tc.left, tc.right)
-			if tc.expectError {
-				require.Error(t, err, "invalid function call should result in an error")
-				return
-			}
-
-			require.NoError(t, err, "valid function call should not result in an error")
-			columnartest.RequireDatumsEqual(t, tc.expect, actual)
+			_, err := compute.Or(&alloc, tc.left, tc.right, memory.Bitmap{})
+			require.Error(t, err, "invalid function call should result in an error")
 		})
 	}
 }
@@ -330,15 +104,14 @@ func BenchmarkNot_Array(b *testing.B) {
 
 	input := builder.Build()
 
-	tempAlloc := memory.NewAllocator(&alloc)
+	benchAlloc := memory.NewAllocator(&alloc)
 	for b.Loop() {
-		tempAlloc.Reclaim()
+		benchAlloc.Reclaim()
 
-		_, _ = compute.Not(tempAlloc, input)
+		_, _ = compute.Not(benchAlloc, input, memory.Bitmap{})
 	}
 
-	b.SetBytes(int64(input.Size()))
-	b.ReportMetric(float64(input.Len()*b.N)/b.Elapsed().Seconds(), "values/s")
+	reportArrayBenchMetrics(b, input)
 }
 
 func BenchmarkAnd_Array(b *testing.B) {
@@ -367,16 +140,14 @@ func BenchmarkAnd_Array(b *testing.B) {
 		right = rightBuilder.Build()
 	)
 
-	tempAlloc := memory.NewAllocator(&alloc)
+	benchAlloc := memory.NewAllocator(&alloc)
 	for b.Loop() {
-		tempAlloc.Reclaim()
+		benchAlloc.Reclaim()
 
-		_, _ = compute.And(tempAlloc, left, right)
+		_, _ = compute.And(benchAlloc, left, right, memory.Bitmap{})
 	}
 
-	totalValues := left.Len() + right.Len()
-	b.SetBytes(int64(left.Size() + right.Size()))
-	b.ReportMetric(float64(totalValues*b.N)/b.Elapsed().Seconds(), "values/s")
+	reportArrayBenchMetrics(b, left, right)
 }
 
 func BenchmarkOr_Array(b *testing.B) {
@@ -405,14 +176,12 @@ func BenchmarkOr_Array(b *testing.B) {
 		right = rightBuilder.Build()
 	)
 
-	tempAlloc := memory.NewAllocator(&alloc)
+	benchAlloc := memory.NewAllocator(&alloc)
 	for b.Loop() {
-		tempAlloc.Reclaim()
+		benchAlloc.Reclaim()
 
-		_, _ = compute.Or(tempAlloc, left, right)
+		_, _ = compute.Or(benchAlloc, left, right, memory.Bitmap{})
 	}
 
-	totalValues := left.Len() + right.Len()
-	b.SetBytes(int64(left.Size() + right.Size()))
-	b.ReportMetric(float64(totalValues*b.N)/b.Elapsed().Seconds(), "values/s")
+	reportArrayBenchMetrics(b, left, right)
 }

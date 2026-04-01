@@ -27,6 +27,10 @@ var logAttrDropped = sync.OnceFunc(func() {
 	global.Warn("limit reached: dropping log Record attributes")
 })
 
+var logKeyValuePairDropped = sync.OnceFunc(func() {
+	global.Warn("key duplication: dropping key-value pair")
+})
+
 // uniquePool is a pool of unique attributes used for attributes de-duplication.
 var uniquePool = sync.Pool{
 	New: func() any { return new([]log.KeyValue) },
@@ -132,13 +136,10 @@ type Record struct {
 }
 
 func (r *Record) addDropped(n int) {
-	logAttrDropped()
 	r.dropped += n
-}
-
-func (r *Record) setDropped(n int) {
-	logAttrDropped()
-	r.dropped = n
+	if n > 0 {
+		logAttrDropped()
+	}
 }
 
 // EventName returns the event name.
@@ -233,7 +234,9 @@ func (r *Record) AddAttributes(attrs ...log.KeyValue) {
 		var drop int
 		if !r.allowDupKeys {
 			attrs, drop = dedup(attrs)
-			r.setDropped(drop)
+			if drop > 0 {
+				logKeyValuePairDropped()
+			}
 		}
 
 		attrs, drop := head(attrs, r.attributeCountLimit)
@@ -266,6 +269,7 @@ func (r *Record) AddAttributes(attrs ...log.KeyValue) {
 			idx, found := uIndex[a.Key]
 			if found {
 				dropped++
+				logKeyValuePairDropped()
 				(*unique)[idx] = a
 				continue
 			}
@@ -274,6 +278,7 @@ func (r *Record) AddAttributes(attrs ...log.KeyValue) {
 			if found {
 				// New attrs overwrite any existing with the same key.
 				dropped++
+				logKeyValuePairDropped()
 				if idx < 0 {
 					r.front[-(idx + 1)] = a
 				} else {
@@ -289,7 +294,6 @@ func (r *Record) AddAttributes(attrs ...log.KeyValue) {
 		if dropped > 0 {
 			attrs = make([]log.KeyValue, len(*unique))
 			copy(attrs, *unique)
-			r.addDropped(dropped)
 		}
 	}
 
@@ -349,10 +353,12 @@ func (r *Record) addAttrs(attrs []log.KeyValue) {
 // SetAttributes sets (and overrides) attributes to the log record.
 func (r *Record) SetAttributes(attrs ...log.KeyValue) {
 	var drop int
-	r.setDropped(0)
+	r.dropped = 0
 	if !r.allowDupKeys {
 		attrs, drop = dedup(attrs)
-		r.setDropped(drop)
+		if drop > 0 {
+			logKeyValuePairDropped()
+		}
 	}
 
 	attrs, drop = head(attrs, r.attributeCountLimit)
@@ -489,15 +495,7 @@ func (r *Record) applyValueLimitsAndDedup(val log.Value) log.Value {
 		sl := val.AsSlice()
 
 		// First check if any limits need to be applied.
-		needsChange := false
-		for _, v := range sl {
-			if r.needsValueLimitsOrDedup(v) {
-				needsChange = true
-				break
-			}
-		}
-
-		if needsChange {
+		if slices.ContainsFunc(sl, r.needsValueLimitsOrDedup) {
 			// Create a new slice to avoid modifying the original.
 			newSl := make([]log.Value, len(sl))
 			for i, item := range sl {
@@ -515,7 +513,9 @@ func (r *Record) applyValueLimitsAndDedup(val log.Value) log.Value {
 			// Deduplicate then truncate.
 			// Do not do at the same time to avoid wasted truncation operations.
 			newKvs, dropped = dedup(kvs)
-			r.addDropped(dropped)
+			if dropped > 0 {
+				logKeyValuePairDropped()
+			}
 		} else {
 			newKvs = kvs
 		}
@@ -556,10 +556,8 @@ func (r *Record) needsValueLimitsOrDedup(val log.Value) bool {
 	case log.KindString:
 		return r.attributeValueLengthLimit >= 0 && len(val.AsString()) > r.attributeValueLengthLimit
 	case log.KindSlice:
-		for _, v := range val.AsSlice() {
-			if r.needsValueLimitsOrDedup(v) {
-				return true
-			}
+		if slices.ContainsFunc(val.AsSlice(), r.needsValueLimitsOrDedup) {
+			return true
 		}
 	case log.KindMap:
 		kvs := val.AsMap()
@@ -595,15 +593,7 @@ func (r *Record) dedupeBodyCollections(val log.Value) log.Value {
 		sl := val.AsSlice()
 
 		// Check if any nested values need deduplication.
-		needsChange := false
-		for _, item := range sl {
-			if r.needsBodyDedup(item) {
-				needsChange = true
-				break
-			}
-		}
-
-		if needsChange {
+		if slices.ContainsFunc(sl, r.needsBodyDedup) {
 			// Create a new slice to avoid modifying the original.
 			newSl := make([]log.Value, len(sl))
 			for i, item := range sl {
@@ -646,10 +636,8 @@ func (r *Record) dedupeBodyCollections(val log.Value) log.Value {
 func (r *Record) needsBodyDedup(val log.Value) bool {
 	switch val.Kind() {
 	case log.KindSlice:
-		for _, item := range val.AsSlice() {
-			if r.needsBodyDedup(item) {
-				return true
-			}
+		if slices.ContainsFunc(val.AsSlice(), r.needsBodyDedup) {
+			return true
 		}
 	case log.KindMap:
 		kvs := val.AsMap()

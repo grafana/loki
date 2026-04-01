@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -30,7 +31,7 @@ var (
 )
 
 func NewProfilesRequest() *ProfilesRequest {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ProfilesRequest{}
 	}
 	return protoPoolProfilesRequest.Get().(*ProfilesRequest)
@@ -41,7 +42,7 @@ func DeleteProfilesRequest(orig *ProfilesRequest, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}

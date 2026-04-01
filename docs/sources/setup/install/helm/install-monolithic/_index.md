@@ -12,6 +12,10 @@ weight: 100
 
 This Helm Chart installation deploys Grafana Loki in [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) within a Kubernetes cluster.
 
+{{< admonition type="note" >}}
+As of March 16, 2026, the Loki Helm Chart is being maintained by Grafana Champions andthe Grafana Community in the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts). Please open issues and pull requests for the chart against the Grafana-commmunity repo.
+{{< /admonition >}}
+
 ## Prerequisites
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
@@ -31,7 +35,8 @@ Deploying the Helm chart with a single replica deploys the following components:
 - Loki (1 replica)
 - Loki Canary (1 DaemonSet)
 - Loki Gateway (1 NGINX replica)
-- Loki Chunk and Result Cache (1 StatefulSet)
+- Chunks cache (1 StatefulSet)
+- Results cache (1 StatefulSet)
 - Minio (optional, if `minio.enabled=true`)
 
 Create the configuration file `values.yaml`:
@@ -91,7 +96,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0
@@ -105,7 +112,8 @@ Deploying the Helm chart with multiple replicas deploys the following components
 - Loki (3 replicas)
 - Loki Canary (1 DaemonSet)
 - Loki Gateway (1 NGINX replica)
-- Loki Chunk and Result Cache (1 StatefulSet)
+- Chunks cache (1 StatefulSet)
+- Results cache (1 StatefulSet)
 - Minio (optional, if `minio.enabled=true`)
 
 Create the configuration file `values.yaml`:
@@ -165,7 +173,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0
@@ -174,10 +184,10 @@ In this configuration, we need to make sure to update the `commonConfig.replicat
 
 ## Deploying the Helm chart for development and testing
 
-1. Add [Grafana's chart repository](https://github.com/grafana/helm-charts) to Helm:
+1. Add the [Grafana Community chart repository](https://github.com/grafana-community/helm-charts) to Helm:
 
    ```bash
-   helm repo add grafana https://grafana.github.io/helm-charts
+   helm repo add grafana-community https://grafana-community.github.io/helm-charts
    ```
 
 1. Update the chart repository:
@@ -189,16 +199,16 @@ In this configuration, we need to make sure to update the `commonConfig.replicat
 1. Deploy Loki using the configuration file `values.yaml`:
 
    ```bash
-    helm install loki grafana/loki -f values.yaml
+    helm install loki grafana-community/loki -f values.yaml
     ```
 1. Install or upgrade the Loki deployment.
      - To install:
         ```bash
-       helm install --values values.yaml loki grafana/loki
+       helm install --values values.yaml loki grafana-community/loki
        ```
     - To upgrade:
        ```bash
-       helm upgrade --values values.yaml loki grafana/loki
+       helm upgrade --values values.yaml loki grafana-community/loki
        ```
        
 1. Verify that Loki is running:
@@ -303,7 +313,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0
@@ -387,7 +399,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0

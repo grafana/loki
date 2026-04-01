@@ -7,11 +7,16 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
+
+func init() {
+	assertions.Enabled = true
+}
 
 func TestNewProjectPipeline(t *testing.T) {
 	fields := []arrow.Field{
@@ -38,7 +43,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, e, nil)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, e)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -76,7 +81,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, e, nil)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, e)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -120,7 +125,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, e, nil)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, e)
 		require.NoError(t, err)
 
 		// Create expected output also split across multiple records
@@ -225,7 +230,7 @@ Dave,40
 					All:         true,
 					Drop:        true,
 				}
-				pipeline, err := NewProjectPipeline(input, proj, newExpressionEvaluator(), nil)
+				pipeline, err := NewProjectPipeline(input, proj, newExpressionEvaluator())
 				require.NoError(t, err)
 
 				ctx := t.Context()
@@ -521,8 +526,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 					Expand:      true,
 					All:         true,
 				},
-				e,
-				nil)
+				e)
 			require.NoError(t, err)
 			defer pipeline.Close()
 
@@ -585,7 +589,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, newExpressionEvaluator(), nil)
+		pipeline, err := NewProjectPipeline(input1, projection, newExpressionEvaluator())
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -655,7 +659,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, newExpressionEvaluator(), nil)
+		pipeline, err := NewProjectPipeline(input1, projection, newExpressionEvaluator())
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -725,7 +729,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, newExpressionEvaluator(), nil)
+		pipeline, err := NewProjectPipeline(input1, projection, newExpressionEvaluator())
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -826,7 +830,7 @@ func TestNewProjectPipeline_DuplicateColumnPanic(t *testing.T) {
 			Expand:      true,
 		}
 
-		pipeline, err := NewProjectPipeline(input, proj, evaluator, nil)
+		pipeline, err := NewProjectPipeline(input, proj, evaluator)
 		require.NoError(t, err)
 
 		ctx := t.Context()
@@ -924,7 +928,7 @@ func TestNewProjectPipeline_DuplicateColumnPanic(t *testing.T) {
 			Expand:      true,
 		}
 
-		pipeline, err := NewProjectPipeline(input, proj, evaluator, nil)
+		pipeline, err := NewProjectPipeline(input, proj, evaluator)
 		require.NoError(t, err)
 
 		ctx := t.Context()

@@ -73,18 +73,11 @@ func (w *SortingWriter[T]) Close() error {
 	if err := w.Flush(); err != nil {
 		return err
 	}
-	return w.output.Close()
-}
 
-func (w *SortingWriter[T]) Flush() error {
 	defer w.resetSortingBuffer()
 
-	if err := w.sortAndWriteBufferedRows(); err != nil {
-		return err
-	}
-
 	if w.numRows == 0 {
-		return nil
+		return w.output.Close()
 	}
 
 	if err := w.writer.Close(); err != nil {
@@ -129,7 +122,18 @@ func (w *SortingWriter[T]) Flush() error {
 		return err
 	}
 
-	return w.output.Flush()
+	if err := w.output.Flush(); err != nil {
+		return err
+	}
+
+	return w.output.Close()
+}
+
+// Flush sorts any buffered rows and writes them to temporary storage.
+// This can be called multiple times to manage memory usage.
+// The actual merge and write to output happens on Close.
+func (w *SortingWriter[T]) Flush() error {
+	return w.sortAndWriteBufferedRows()
 }
 
 func (w *SortingWriter[T]) Reset(output io.Writer) {

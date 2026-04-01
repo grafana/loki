@@ -30,6 +30,11 @@ type nodeSource struct {
 
 var _ executor.Pipeline = (*nodeSource)(nil)
 
+func (src *nodeSource) Open(_ context.Context) error {
+	src.lazyInit()
+	return nil
+}
+
 // Read returns the next record of the node data. Blocks until results are
 // available or until the provided ctx is canceled.
 func (src *nodeSource) Read(ctx context.Context) (arrow.RecordBatch, error) {

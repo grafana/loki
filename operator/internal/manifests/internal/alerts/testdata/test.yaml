@@ -66,7 +66,7 @@ tests:
       - series: 'loki_discarded_samples_total{namespace="my-ns", tenant="application", reason="line_too_long"}'
         values: '0x5 0+120x25 3000'
 
-      - series: 'lokistack_status_condition{stack_name="mystack", stack_namespace="my-ns", reason="ReadyComponents", status="false"}'
+      - series: 'lokistack_status_condition{stack_name="mystack", stack_namespace="my-ns", condition="Ready", status="false"}'
         values: '1+0x25'
 
       - series: 'loki_ingester_chunks_flush_failures_total{namespace="my-ns", pod="ingester-0"}'

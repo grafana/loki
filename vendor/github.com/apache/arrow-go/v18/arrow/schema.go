@@ -169,26 +169,38 @@ func NewSchema(fields []Field, metadata *Metadata) *Schema {
 }
 
 func NewSchemaWithEndian(fields []Field, metadata *Metadata, e endian.Endianness) *Schema {
+	var mdClone *Metadata
+	if metadata != nil {
+		md := metadata.clone()
+		mdClone = &md
+	}
+
+	fClone := make([]Field, len(fields))
+	copy(fClone, fields)
+
+	return newSchema(fClone, mdClone, e)
+}
+
+func newSchema(fields []Field, metadata *Metadata, e endian.Endianness) *Schema {
 	sc := &Schema{
-		fields:     make([]Field, 0, len(fields)),
+		fields:     fields,
 		index:      make(map[string][]int, len(fields)),
 		endianness: e,
 	}
 	if metadata != nil {
-		sc.meta = metadata.clone()
+		sc.meta = *metadata
 	}
 	for i, field := range fields {
 		if field.Type == nil {
 			panic("arrow: field with nil DataType")
 		}
-		sc.fields = append(sc.fields, field)
 		sc.index[field.Name] = append(sc.index[field.Name], i)
 	}
 	return sc
 }
 
 func (sc *Schema) WithEndianness(e endian.Endianness) *Schema {
-	return NewSchemaWithEndian(sc.fields, &sc.meta, e)
+	return newSchema(sc.fields, &sc.meta, e)
 }
 
 func (sc *Schema) Endianness() endian.Endianness { return sc.endianness }
@@ -207,11 +219,17 @@ func (sc *Schema) FieldsByName(n string) ([]Field, bool) {
 	if !ok {
 		return nil, ok
 	}
-	fields := make([]Field, 0, len(indices))
-	for _, v := range indices {
-		fields = append(fields, sc.fields[v])
+	if len(indices) == 1 {
+		return sc.fields[indices[0] : indices[0]+1], ok
+	} else if len(indices) > 1 {
+		fields := make([]Field, 0, len(indices))
+		for _, v := range indices {
+			fields = append(fields, sc.fields[v])
+		}
+		return fields, ok
 	}
-	return fields, ok
+
+	return nil, false
 }
 
 // FieldIndices returns the indices of the named field or nil.
@@ -250,11 +268,17 @@ func (s *Schema) AddField(i int, field Field) (*Schema, error) {
 		return nil, fmt.Errorf("arrow: invalid field index %d", i)
 	}
 
-	fields := make([]Field, len(s.fields)+1)
-	copy(fields[:i], s.fields[:i])
-	fields[i] = field
-	copy(fields[i+1:], s.fields[i:])
-	return NewSchema(fields, &s.meta), nil
+	var fields []Field
+	if i == len(s.fields) {
+		fields = append(s.fields, field)
+	} else {
+		fields = make([]Field, len(s.fields)+1)
+		copy(fields[:i], s.fields[:i])
+		fields[i] = field
+		copy(fields[i+1:], s.fields[i:])
+	}
+
+	return newSchema(fields, &s.meta, s.endianness), nil
 }
 
 func (s *Schema) String() string {

@@ -1,4 +1,4 @@
-// Copyright 2013 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -39,13 +39,34 @@ import (
 	"github.com/prometheus/prometheus/util/pool"
 )
 
-// NewManager is the Manager constructor.
-func NewManager(o *Options, logger *slog.Logger, newScrapeFailureLogger func(string) (*logging.JSONFileLogger, error), app storage.Appendable, registerer prometheus.Registerer) (*Manager, error) {
+// NewManager is the Manager constructor using storage.Appendable or storage.AppendableV2.
+//
+// If unsure which one to use/implement, implement AppendableV2 as it significantly simplifies implementation and allows more
+// (passing ST, always-on metadata, exemplars per sample).
+//
+// NewManager returns error if both appendable and appendableV2 are specified.
+//
+// Switch to AppendableV2 is in progress (https://github.com/prometheus/prometheus/issues/17632).
+// storage.Appendable will be removed soon (ETA: Q2 2026).
+func NewManager(
+	o *Options,
+	logger *slog.Logger,
+	newScrapeFailureLogger func(string) (*logging.JSONFileLogger, error),
+	appendable storage.Appendable,
+	appendableV2 storage.AppendableV2,
+	registerer prometheus.Registerer,
+) (*Manager, error) {
 	if o == nil {
 		o = &Options{}
 	}
 	if logger == nil {
 		logger = promslog.NewNopLogger()
+	}
+	if appendable != nil && appendableV2 != nil {
+		return nil, errors.New("scrape.NewManager: appendable and appendableV2 cannot be provided at the same time")
+	}
+	if appendable == nil && appendableV2 == nil {
+		return nil, errors.New("scrape.NewManager: provide either appendable or appendableV2")
 	}
 
 	sm, err := newScrapeMetrics(registerer)
@@ -54,7 +75,8 @@ func NewManager(o *Options, logger *slog.Logger, newScrapeFailureLogger func(str
 	}
 
 	m := &Manager{
-		append:                 app,
+		appendable:             appendable,
+		appendableV2:           appendableV2,
 		opts:                   o,
 		logger:                 logger,
 		newScrapeFailureLogger: newScrapeFailureLogger,
@@ -70,7 +92,8 @@ func NewManager(o *Options, logger *slog.Logger, newScrapeFailureLogger func(str
 
 	// Register scrape features.
 	if r := o.FeatureRegistry; r != nil {
-		r.Set(features.Scrape, "extra_scrape_metrics", o.ExtraMetrics)
+		// "Extra scrape metrics" is always enabled because it moved from feature flag to config file.
+		r.Enable(features.Scrape, "extra_scrape_metrics")
 		r.Set(features.Scrape, "start_timestamp_zero_ingestion", o.EnableStartTimestampZeroIngestion)
 		r.Set(features.Scrape, "type_and_unit_labels", o.EnableTypeAndUnitLabels)
 	}
@@ -80,22 +103,39 @@ func NewManager(o *Options, logger *slog.Logger, newScrapeFailureLogger func(str
 
 // Options are the configuration parameters to the scrape manager.
 type Options struct {
-	ExtraMetrics bool
 	// Option used by downstream scraper users like OpenTelemetry Collector
 	// to help lookup metric metadata. Should be false for Prometheus.
 	PassMetadataInContext bool
 	// Option to enable appending of scraped Metadata to the TSDB/other appenders. Individual appenders
 	// can decide what to do with metadata, but for practical purposes this flag exists so that metadata
 	// can be written to the WAL and thus read for remote write.
-	// TODO: implement some form of metadata storage
 	AppendMetadata bool
 	// Option to increase the interval used by scrape manager to throttle target groups updates.
 	DiscoveryReloadInterval model.Duration
+
 	// Option to enable the ingestion of the created timestamp as a synthetic zero sample.
 	// See: https://github.com/prometheus/proposals/blob/main/proposals/2023-06-13_created-timestamp.md
+	//
+	// NOTE: This option has no effect for AppenderV2 and will be removed with the AppenderV1
+	// removal.
 	EnableStartTimestampZeroIngestion bool
 
-	// EnableTypeAndUnitLabels
+	// ParseST controls if ST should be parsed and appended from the scrape formats.
+	// This should be by default true, but it's opt-in for OpenMetrics (OM) 1.0 reasons and might be moved
+	// to OM  1.0 only flow.
+	//
+	// Specifically for OpenMetrics 1.0 flow, it can have some additional effects that might not be desired for non-ST users:
+	//
+	// * OpenMetrics 1.0 <metric>_created series will be parsed as ST instead of normal sample. Could be breaking
+	// if downstream user depends on _created metric. TODO(bwplotka): Add "preserveOMLines" hidden option?
+	// * Add relatively small (but still) overhead.
+	// * Can yield wrong ST values in rare edge cases (unknown metadata and metric name collisions).
+	//
+	// This only applies to AppenderV2 flow (Prometheus default).
+	// TODO: Move this option to OM1 parser and use only on OM1 flow.
+	ParseST bool
+
+	// EnableTypeAndUnitLabels represents type-and-unit-labels feature flag.
 	EnableTypeAndUnitLabels bool
 
 	// Optional HTTP client options to use when scraping.
@@ -104,16 +144,42 @@ type Options struct {
 	// FeatureRegistry is the registry for tracking enabled/disabled features.
 	FeatureRegistry features.Collector
 
+	// ScrapeOnShutdown enables a final scrape before the manager closes. This is useful
+	// for Prometheus in agent mode or OTel's prometheusreceiver when used in serverless
+	// job scenarios, allowing an extra scrape for the short-living edge cases.
+	//
+	// NOTE: This final scrape ignores the configured scrape interval.
+	ScrapeOnShutdown bool
+
+	// InitialScrapeOffset applies an additional baseline delay before we begin
+	// scraping targets. By default, Prometheus calculates a specific offset for
+	// each target to spread the scraping load evenly across the server. Configuring
+	// this option adds a fixed duration to that target-specific offset. This allows
+	// tuning the initial startup delay without overriding the underlying target
+	// jitter, preserving proper load balancing across the scraper pools.
+	//
+	// Setting this offset (e.g., to 10s) is particularly useful in Prometheus
+	// agent mode and OTel's prometheusreceiver when used in serverless job
+	// scenarios. It helps avoid readiness races where targets might not be fully
+	// initialized immediately upon startup. It also prevents capturing
+	// intermediate state (such as applications crashing shortly after booting),
+	// and ensures backend rate limits don't drop valuable shutdown scrapes
+	// because of an early startup scrape.
+	InitialScrapeOffset time.Duration
+
 	// private option for testability.
-	skipOffsetting bool
+	skipJitterOffsetting bool
 }
 
 // Manager maintains a set of scrape pools and manages start/stop cycles
 // when receiving new target groups from the discovery manager.
 type Manager struct {
-	opts      *Options
-	logger    *slog.Logger
-	append    storage.Appendable
+	opts   *Options
+	logger *slog.Logger
+
+	appendable   storage.Appendable
+	appendableV2 storage.AppendableV2
+
 	graceShut chan struct{}
 
 	offsetSeed             uint64     // Global offsetSeed seed is used to spread scrape workload across HA setup.
@@ -194,7 +260,7 @@ func (m *Manager) reload() {
 				continue
 			}
 			m.metrics.targetScrapePools.Inc()
-			sp, err := newScrapePool(scrapeConfig, m.append, m.offsetSeed, m.logger.With("scrape_pool", setName), m.buffers, m.opts, m.metrics)
+			sp, err := newScrapePool(scrapeConfig, m.appendable, m.appendableV2, m.offsetSeed, m.logger.With("scrape_pool", setName), m.buffers, m.opts, m.metrics)
 			if err != nil {
 				m.metrics.targetScrapePoolsFailed.Inc()
 				m.logger.Error("error creating new scrape pool", "err", err, "scrape_pool", setName)
@@ -291,8 +357,16 @@ func (m *Manager) ApplyConfig(cfg *config.Config) error {
 
 	m.scrapeFailureLoggers = scrapeFailureLoggers
 
-	if err := m.setOffsetSeed(cfg.GlobalConfig.ExternalLabels); err != nil {
-		return err
+	// Skip offset seed calculation during tests.
+	// setOffsetSeed relies on osutil.GetFQDN(), which triggers a DNS lookup using
+	// a global singleflight goroutine. This cross-boundary communication breaks
+	// synctest's isolation bubble and causes a fatal panic.
+	if m.opts.skipJitterOffsetting {
+		m.offsetSeed = 0
+	} else {
+		if err := m.setOffsetSeed(cfg.GlobalConfig.ExternalLabels); err != nil {
+			return err
+		}
 	}
 
 	// Cleanup and reload pool if the configuration has changed.

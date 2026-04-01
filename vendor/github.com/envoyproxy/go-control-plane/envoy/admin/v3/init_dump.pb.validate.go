@@ -106,7 +106,7 @@ type UnreadyTargetsDumpsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m UnreadyTargetsDumpsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -213,7 +213,7 @@ type UnreadyTargetsDumps_UnreadyTargetsDumpMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m UnreadyTargetsDumps_UnreadyTargetsDumpMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

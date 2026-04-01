@@ -92,12 +92,16 @@ func iterSection(ctx context.Context, section *Section, cfg iterConfig) result.S
 			return err
 		}
 
-		r := dataset.NewRowReader(dataset.ReaderOptions{
+		r := dataset.NewRowReader(dataset.RowReaderOptions{
 			Dataset:  dset,
 			Columns:  columns,
 			Prefetch: true,
 		})
 		defer r.Close()
+
+		if err := r.Open(ctx); err != nil {
+			return err
+		}
 
 		var rows [1024]dataset.Row
 		labelBuilder := labels.NewScratchBuilder(8)

@@ -1519,7 +1519,7 @@ func (it *bufferedVariantsIterator) Next(index int) bool {
 
 // getVariantIndex determines the variant index for a given sample based on the "__variant__" label
 func (it *bufferedVariantsIterator) getVariantIndex(lbls string) int {
-	metric, err := parser.ParseMetric(lbls)
+	metric, err := parser.NewParser(parser.Options{}).ParseMetric(lbls)
 	if err != nil {
 		it.err = err
 		return -1

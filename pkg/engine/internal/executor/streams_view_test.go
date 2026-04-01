@@ -25,6 +25,7 @@ func Test_streamsView(t *testing.T) {
 		view := newStreamsView(sec, &streamsViewOptions{
 			BatchSize: 1,
 		})
+		require.NoError(t, view.Open(t.Context()))
 
 		var actual []labels.Labels
 
@@ -42,6 +43,7 @@ func Test_streamsView(t *testing.T) {
 			StreamIDs: []int64{2},
 			BatchSize: 1,
 		})
+		require.NoError(t, view.Open(t.Context()))
 
 		var actual []labels.Labels
 
@@ -60,6 +62,7 @@ func Test_streamsView(t *testing.T) {
 			StreamIDs: []int64{2, 3},
 			BatchSize: 1,
 		})
+		require.NoError(t, view.Open(t.Context()))
 
 		var actual []labels.Labels
 
@@ -85,6 +88,7 @@ func Test_streamsView(t *testing.T) {
 			LabelColumns: []*streams.Column{sec.Columns()[regionColumnIndex]},
 			BatchSize:    1,
 		})
+		require.NoError(t, view.Open(t.Context()))
 
 		expect := []labels.Labels{
 			labels.FromStrings("region", "us-west"),
@@ -118,6 +122,7 @@ func Test_streamsView(t *testing.T) {
 			},
 			BatchSize: 1,
 		})
+		require.NoError(t, view.Open(t.Context()))
 
 		expect := []labels.Labels{
 			labels.FromStrings("app", "loki", "env", "prod"),
@@ -134,6 +139,40 @@ func Test_streamsView(t *testing.T) {
 		}
 
 		require.Equal(t, expect, actual, "expected all streams to be returned with the proper labels")
+	})
+
+	t.Run("labels with empty values are dropped", func(t *testing.T) {
+		emptyStreams := []labels.Labels{
+			labels.FromStrings("app", "loki", "env", "prod", "region", "us-west"),
+			labels.FromStrings("app", "loki", "env", ""),
+			labels.FromStrings("app", "", "env", "prod"),
+		}
+
+		emptySec := buildStreamsSection(t, emptyStreams)
+
+		view := newStreamsView(emptySec, &streamsViewOptions{
+			BatchSize: 1,
+		})
+		require.NoError(t, view.Open(t.Context()))
+
+		lbs1, err := view.Labels(t.Context(), 1)
+		require.NoError(t, err)
+		require.Equal(t, labels.FromStrings("app", "loki", "env", "prod", "region", "us-west"), labels.New(lbs1...))
+
+		lbs2, err := view.Labels(t.Context(), 2)
+		require.NoError(t, err)
+		require.Equal(t, labels.FromStrings("app", "loki"), labels.New(lbs2...), "empty env value should be dropped")
+
+		lbs3, err := view.Labels(t.Context(), 3)
+		require.NoError(t, err)
+		require.Equal(t, labels.FromStrings("env", "prod"), labels.New(lbs3...), "empty app value should be dropped")
+	})
+
+	t.Run("labels before open returns error", func(t *testing.T) {
+		view := newStreamsView(sec, &streamsViewOptions{BatchSize: 1})
+		lbs, err := view.Labels(t.Context(), 1)
+		require.ErrorIs(t, err, errStreamsViewNotOpen)
+		require.Nil(t, lbs)
 	})
 }
 

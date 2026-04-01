@@ -13,22 +13,22 @@ import (
 // Special cases:
 //
 //   - If a null is found on either side, the result is null.
-func Equals(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
+func Equals(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	if left.Kind() != right.Kind() {
-		return nil, fmt.Errorf("both inputs must be %s, got %s and %s", columnar.KindBool, left.Kind(), right.Kind())
+		return nil, fmt.Errorf("both inputs must be the same kind, got %s and %s", left.Kind(), right.Kind())
 	}
 
 	switch left.Kind() {
 	case columnar.KindNull:
-		return dispatchNullEquality(alloc, left, right)
+		return dispatchNullEquality(alloc, left, right, selection)
 	case columnar.KindBool:
-		return dispatchBoolEquality(alloc, boolEqualKernel, left, right)
+		return dispatchBoolEquality(alloc, boolEqualKernel, left, right, selection)
 	case columnar.KindInt64:
-		return dispatchNumericEquality(alloc, int64EqualKernel, left, right)
+		return dispatchNumericEquality(alloc, int64EqualKernel, left, right, selection)
 	case columnar.KindUint64:
-		return dispatchNumericEquality(alloc, uint64EqualKernel, left, right)
+		return dispatchNumericEquality(alloc, uint64EqualKernel, left, right, selection)
 	case columnar.KindUTF8:
-		return dispatchUTF8Equality(alloc, utf8EqualKernel, left, right)
+		return dispatchUTF8Equality(alloc, utf8EqualKernel, left, right, selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not comparable", left.Kind())
 	}
@@ -40,22 +40,22 @@ func Equals(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum
 // Special cases:
 //
 //   - If a null is found on either side, the result is null.
-func NotEquals(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
+func NotEquals(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	if left.Kind() != right.Kind() {
 		return nil, fmt.Errorf("both inputs must be the same kind, got %s and %s", left.Kind(), right.Kind())
 	}
 
 	switch left.Kind() {
 	case columnar.KindNull:
-		return dispatchNullEquality(alloc, left, right)
+		return dispatchNullEquality(alloc, left, right, selection)
 	case columnar.KindBool:
-		return dispatchBoolEquality(alloc, boolNotEqualKernel, left, right)
+		return dispatchBoolEquality(alloc, boolNotEqualKernel, left, right, selection)
 	case columnar.KindInt64:
-		return dispatchNumericEquality(alloc, int64NotEqualKernel, left, right)
+		return dispatchNumericEquality(alloc, int64NotEqualKernel, left, right, selection)
 	case columnar.KindUint64:
-		return dispatchNumericEquality(alloc, uint64NotEqualKernel, left, right)
+		return dispatchNumericEquality(alloc, uint64NotEqualKernel, left, right, selection)
 	case columnar.KindUTF8:
-		return dispatchUTF8Equality(alloc, utf8NotEqualKernel, left, right)
+		return dispatchUTF8Equality(alloc, utf8NotEqualKernel, left, right, selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not comparable", left.Kind())
 	}
@@ -67,20 +67,20 @@ func NotEquals(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Da
 // Special cases:
 //
 //   - If a null is found on either side, the result is null.
-func LessThan(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
+func LessThan(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	if left.Kind() != right.Kind() {
 		return nil, fmt.Errorf("both inputs must be the same kind, got %s and %s", left.Kind(), right.Kind())
 	}
 
 	switch left.Kind() {
 	case columnar.KindNull:
-		return dispatchNullEquality(alloc, left, right)
+		return dispatchNullEquality(alloc, left, right, selection)
 	case columnar.KindInt64:
-		return dispatchNumericEquality(alloc, int64LTKernel, left, right)
+		return dispatchNumericEquality(alloc, int64LTKernel, left, right, selection)
 	case columnar.KindUint64:
-		return dispatchNumericEquality(alloc, uint64LTKernel, left, right)
+		return dispatchNumericEquality(alloc, uint64LTKernel, left, right, selection)
 	case columnar.KindUTF8:
-		return dispatchUTF8Equality(alloc, utf8LTKernel, left, right)
+		return dispatchUTF8Equality(alloc, utf8LTKernel, left, right, selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not ordered", left.Kind())
 	}
@@ -92,20 +92,20 @@ func LessThan(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Dat
 // Special cases:
 //
 //   - If a null is found on either side, the result is null.
-func LessOrEqual(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
+func LessOrEqual(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	if left.Kind() != right.Kind() {
 		return nil, fmt.Errorf("both inputs must be the same kind, got %s and %s", left.Kind(), right.Kind())
 	}
 
 	switch left.Kind() {
 	case columnar.KindNull:
-		return dispatchNullEquality(alloc, left, right)
+		return dispatchNullEquality(alloc, left, right, selection)
 	case columnar.KindInt64:
-		return dispatchNumericEquality(alloc, int64LTEKernel, left, right)
+		return dispatchNumericEquality(alloc, int64LTEKernel, left, right, selection)
 	case columnar.KindUint64:
-		return dispatchNumericEquality(alloc, uint64LTEKernel, left, right)
+		return dispatchNumericEquality(alloc, uint64LTEKernel, left, right, selection)
 	case columnar.KindUTF8:
-		return dispatchUTF8Equality(alloc, utf8LTEKernel, left, right)
+		return dispatchUTF8Equality(alloc, utf8LTEKernel, left, right, selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not ordered", left.Kind())
 	}
@@ -117,20 +117,20 @@ func LessOrEqual(alloc *memory.Allocator, left, right columnar.Datum) (columnar.
 // Special cases:
 //
 //   - If a null is found on either side, the result is null.
-func GreaterThan(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
+func GreaterThan(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	if left.Kind() != right.Kind() {
 		return nil, fmt.Errorf("both inputs must be the same kind, got %s and %s", left.Kind(), right.Kind())
 	}
 
 	switch left.Kind() {
 	case columnar.KindNull:
-		return dispatchNullEquality(alloc, left, right)
+		return dispatchNullEquality(alloc, left, right, selection)
 	case columnar.KindInt64:
-		return dispatchNumericEquality(alloc, int64GTKernel, left, right)
+		return dispatchNumericEquality(alloc, int64GTKernel, left, right, selection)
 	case columnar.KindUint64:
-		return dispatchNumericEquality(alloc, uint64GTKernel, left, right)
+		return dispatchNumericEquality(alloc, uint64GTKernel, left, right, selection)
 	case columnar.KindUTF8:
-		return dispatchUTF8Equality(alloc, utf8GTKernel, left, right)
+		return dispatchUTF8Equality(alloc, utf8GTKernel, left, right, selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not ordered", left.Kind())
 	}
@@ -142,20 +142,20 @@ func GreaterThan(alloc *memory.Allocator, left, right columnar.Datum) (columnar.
 // Special cases:
 //
 //   - If a null is found on either side, the result is null.
-func GreaterOrEqual(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
+func GreaterOrEqual(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	if left.Kind() != right.Kind() {
 		return nil, fmt.Errorf("both inputs must be the same kind, got %s and %s", left.Kind(), right.Kind())
 	}
 
 	switch left.Kind() {
 	case columnar.KindNull:
-		return dispatchNullEquality(alloc, left, right)
+		return dispatchNullEquality(alloc, left, right, selection)
 	case columnar.KindInt64:
-		return dispatchNumericEquality(alloc, int64GTEKernel, left, right)
+		return dispatchNumericEquality(alloc, int64GTEKernel, left, right, selection)
 	case columnar.KindUint64:
-		return dispatchNumericEquality(alloc, uint64GTEKernel, left, right)
+		return dispatchNumericEquality(alloc, uint64GTEKernel, left, right, selection)
 	case columnar.KindUTF8:
-		return dispatchUTF8Equality(alloc, utf8GTEKernel, left, right)
+		return dispatchUTF8Equality(alloc, utf8GTEKernel, left, right, selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not ordered", left.Kind())
 	}

@@ -74,12 +74,13 @@ func (b Builder[N]) filter(f fltrMeasure[N]) Measure[N] {
 
 // LastValue returns a last-value aggregate function input and output.
 func (b Builder[N]) LastValue() (Measure[N], ComputeAggregation) {
-	lv := newLastValue[N](b.AggregationLimit, b.resFunc())
 	switch b.Temporality {
 	case metricdata.DeltaTemporality:
-		return b.filter(lv.measure), lv.delta
+		lv := newDeltaLastValue[N](b.AggregationLimit, b.resFunc())
+		return b.filter(lv.measure), lv.collect
 	default:
-		return b.filter(lv.measure), lv.cumulative
+		lv := newCumulativeLastValue[N](b.AggregationLimit, b.resFunc())
+		return b.filter(lv.measure), lv.collect
 	}
 }
 
@@ -126,12 +127,13 @@ func (b Builder[N]) ExplicitBucketHistogram(
 	boundaries []float64,
 	noMinMax, noSum bool,
 ) (Measure[N], ComputeAggregation) {
-	h := newHistogram[N](boundaries, noMinMax, noSum, b.AggregationLimit, b.resFunc())
 	switch b.Temporality {
 	case metricdata.DeltaTemporality:
-		return b.filter(h.measure), h.delta
+		h := newDeltaHistogram[N](boundaries, noMinMax, noSum, b.AggregationLimit, b.resFunc())
+		return b.filter(h.measure), h.collect
 	default:
-		return b.filter(h.measure), h.cumulative
+		h := newCumulativeHistogram[N](boundaries, noMinMax, noSum, b.AggregationLimit, b.resFunc())
+		return b.filter(h.measure), h.collect
 	}
 }
 

@@ -959,8 +959,7 @@ func (e *ThrottlingException) ErrorFault() smithy.ErrorFault { return smithy.Fau
 //
 //   - There is a user error, such as an invalid data format.
 //
-// If using Java, DynamoDB lists the cancellation reasons on the
-// CancellationReasons property. This property is not set for other languages.
+// DynamoDB lists the cancellation reasons on the CancellationReasons property.
 // Transaction cancellation reasons are ordered in the order of requested items, if
 // an item has no error it will have None code and Null message.
 //

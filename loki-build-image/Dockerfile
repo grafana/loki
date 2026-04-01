@@ -4,7 +4,7 @@
 # tag of the Docker image in `../.drone/drone.jsonnet` and run `make drone`.
 # See ../docs/sources/community/maintaining/release-loki-build-image.md for instructions
 # on how to publish a new build image.
-ARG GO_VERSION=1.25.7
+ARG GO_VERSION=1.26.0
 ARG GOLANG_BASE_IMAGE=golang:${GO_VERSION}-trixie
 
 # Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
@@ -29,7 +29,7 @@ RUN apk add --no-cache curl && \
 FROM alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659 AS golangci
 RUN apk add --no-cache curl && \
     cd / && \
-    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v2.4.0
+    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v2.10.1
 
 FROM alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659 AS buf
 ARG TARGETOS
@@ -76,8 +76,6 @@ RUN GO111MODULE=on go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@
 RUN GO111MODULE=on go install github.com/monitoring-mixins/mixtool/cmd/mixtool@16dc166166d91e93475b86b9355a4faed2400c18
 RUN GO111MODULE=on go install github.com/google/go-jsonnet/cmd/jsonnet@v0.20.0
 
-FROM aquasec/trivy AS trivy
-
 FROM ${GOLANG_BASE_IMAGE}
 RUN apt-get update && \
     apt-get install -qy \
@@ -114,7 +112,6 @@ COPY --from=gotestsum /go/bin/gotestsum /usr/bin/gotestsum
 COPY --from=jsonnet /go/bin/jb /usr/bin/jb
 COPY --from=jsonnet /go/bin/mixtool /usr/bin/mixtool
 COPY --from=jsonnet /go/bin/jsonnet /usr/bin/jsonnet
-COPY --from=trivy /usr/local/bin/trivy /usr/bin/trivy
 
 # Install some necessary dependencies.
 # Forcing GO111MODULE=on is required to specify dependencies at specific versions using the go mod notation.

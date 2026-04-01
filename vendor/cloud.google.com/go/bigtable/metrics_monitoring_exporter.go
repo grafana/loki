@@ -249,11 +249,15 @@ func (me *monitoringExporter) recordToTimeSeriesPb(m otelmetricdata.Metrics) ([]
 			tss = append(tss, ts)
 		}
 	case otelmetricdata.Sum[int64]:
+		kind := googlemetricpb.MetricDescriptor_CUMULATIVE
+		if !a.IsMonotonic {
+			kind = googlemetricpb.MetricDescriptor_GAUGE
+		}
 		for _, point := range a.DataPoints {
 			metric, mr := me.recordToMetricAndMonitoredResourcePbs(m, point.Attributes)
 			var ts *monitoringpb.TimeSeries
 			var err error
-			ts, err = sumToTimeSeries[int64](point, m, mr)
+			ts, err = sumToTimeSeries[int64](point, m, mr, kind)
 			if err != nil {
 				errs = append(errs, err)
 				continue
@@ -267,8 +271,8 @@ func (me *monitoringExporter) recordToTimeSeriesPb(m otelmetricdata.Metrics) ([]
 	return tss, errors.Join(errs...)
 }
 
-func sumToTimeSeries[N int64 | float64](point otelmetricdata.DataPoint[N], metrics otelmetricdata.Metrics, mr *monitoredrespb.MonitoredResource) (*monitoringpb.TimeSeries, error) {
-	interval, err := toNonemptyTimeIntervalpb(point.StartTime, point.Time)
+func sumToTimeSeries[N int64 | float64](point otelmetricdata.DataPoint[N], metrics otelmetricdata.Metrics, mr *monitoredrespb.MonitoredResource, kind googlemetricpb.MetricDescriptor_MetricKind) (*monitoringpb.TimeSeries, error) {
+	interval, err := toTimeIntervalPb(point.StartTime, point.Time, kind)
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +280,7 @@ func sumToTimeSeries[N int64 | float64](point otelmetricdata.DataPoint[N], metri
 	return &monitoringpb.TimeSeries{
 		Resource:   mr,
 		Unit:       string(metrics.Unit),
-		MetricKind: googlemetricpb.MetricDescriptor_CUMULATIVE,
+		MetricKind: kind,
 		ValueType:  valueType,
 		Points: []*monitoringpb.Point{{
 			Interval: interval,
@@ -286,7 +290,7 @@ func sumToTimeSeries[N int64 | float64](point otelmetricdata.DataPoint[N], metri
 }
 
 func histogramToTimeSeries[N int64 | float64](point otelmetricdata.HistogramDataPoint[N], metrics otelmetricdata.Metrics, mr *monitoredrespb.MonitoredResource) (*monitoringpb.TimeSeries, error) {
-	interval, err := toNonemptyTimeIntervalpb(point.StartTime, point.Time)
+	interval, err := toTimeIntervalPb(point.StartTime, point.Time, googlemetricpb.MetricDescriptor_CUMULATIVE)
 	if err != nil {
 		return nil, err
 	}
@@ -307,13 +311,20 @@ func histogramToTimeSeries[N int64 | float64](point otelmetricdata.HistogramData
 	}, nil
 }
 
-func toNonemptyTimeIntervalpb(start, end time.Time) (*monitoringpb.TimeInterval, error) {
-	// The end time of a new interval must be at least a millisecond after the end time of the
-	// previous interval, for all non-gauge types.
-	// https://cloud.google.com/monitoring/api/ref_v3/rpc/google.monitoring.v3#timeinterval
-	if end.Sub(start).Milliseconds() <= 1 {
-		end = start.Add(time.Millisecond)
+func toTimeIntervalPb(start, end time.Time, kind googlemetricpb.MetricDescriptor_MetricKind) (*monitoringpb.TimeInterval, error) {
+	if kind == googlemetricpb.MetricDescriptor_GAUGE {
+		// Same as https://github.com/googleapis/java-bigtable/pull/2719
+		start = end
+	} else { // CUMULATIVE or other types
+		// The end time of a new interval must be at least a millisecond after the end time of the
+		// previous interval for CUMULATIVE types.
+		// https://cloud.google.com/monitoring/api/ref_v3/rpc/google.monitoring.v3#timeinterval
+
+		if end.Sub(start) < time.Millisecond {
+			end = start.Add(time.Millisecond)
+		}
 	}
+
 	startpb := timestamppb.New(start)
 	endpb := timestamppb.New(end)
 	err := errors.Join(

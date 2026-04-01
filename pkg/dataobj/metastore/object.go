@@ -25,6 +25,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
@@ -45,6 +46,8 @@ const (
 	// TocPrefix is the prefix under which ToC files are stored in the object storage.
 	TocPrefix = "tocs/"
 )
+
+var tracer = otel.Tracer("pkg/dataobj/metastore")
 
 // ObjectMetastore is a metastore that stores data objects in object storage.
 type ObjectMetastore struct {
@@ -81,16 +84,15 @@ func NewSectionDescriptor(pointer pointers.SectionPointer, ambiguousLabelNames [
 			ObjectPath: pointer.Path,
 			SectionIdx: pointer.Section,
 		},
-		StreamIDs: []int64{pointer.StreamIDRef},
-		RowCount:  int(pointer.LineCount),
-		Size:      pointer.UncompressedSize,
-		Start:     pointer.StartTs,
-		End:       pointer.EndTs,
+		StreamIDs:                   []int64{pointer.StreamIDRef},
+		RowCount:                    int(pointer.LineCount),
+		Size:                        pointer.UncompressedSize,
+		Start:                       pointer.StartTs,
+		End:                         pointer.EndTs,
+		AmbiguousPredicatesByStream: make(map[int64][]string),
 	}
 	if len(ambiguousLabelNames) > 0 {
-		obj.AmbiguousPredicatesByStream = map[int64][]string{
-			pointer.StreamIDRef: ambiguousLabelNames,
-		}
+		obj.AmbiguousPredicatesByStream[pointer.StreamIDRef] = ambiguousLabelNames
 	}
 	return obj
 }
@@ -144,6 +146,10 @@ func iterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenan
 }
 
 func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metrics *ObjectMetastoreMetrics) *ObjectMetastore {
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+
 	if cfg.IndexStoragePrefix != "" {
 		b = objstore.NewPrefixedBucket(b, cfg.IndexStoragePrefix)
 	}
@@ -356,7 +362,7 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 
 	for _, path := range paths {
 		g.Go(func() error {
-			object, err := dataobj.FromBucket(ctx, m.bucket, path)
+			object, err := dataobj.FromBucket(ctx, m.bucket, path, 0)
 			if err != nil {
 				return fmt.Errorf("getting object from bucket: %w", err)
 			}
@@ -475,6 +481,11 @@ func forEachStreamWithColumns(ctx context.Context, object *dataobj.Object, match
 			Allocator:  memory.DefaultAllocator,
 		}
 		reader.Reset(readerOpts)
+
+		if err := reader.Open(ctx); err != nil {
+			return fmt.Errorf("opening streams reader: %w", err)
+		}
+
 		requestedColumnValues := make(map[string]string, len(requestedColumns))
 		for {
 			rec, err := reader.Read(ctx, 8192)
@@ -528,6 +539,10 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate stream
 				return err
 			}
 		}
+		if err := reader.Open(ctx); err != nil {
+			return fmt.Errorf("opening streams row reader: %w", err)
+		}
+
 		for {
 			num, err := reader.Read(ctx, buf)
 			if err != nil && !errors.Is(err, io.EOF) {
@@ -562,8 +577,8 @@ func dedupeAndSort(objects [][]string) []string {
 }
 
 func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (SectionsResponse, error) {
-	ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
-	defer region.End()
+	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.Sections")
+	defer span.End()
 
 	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
 
@@ -596,7 +611,6 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 			readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
 				IndexPath:       indexPath,
 				SectionsRequest: req,
-				Region:          region,
 			})
 			if err != nil {
 				return fmt.Errorf("get index sections reader: %w", err)
@@ -631,7 +645,6 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(sections)))
 	m.metrics.resolvedSectionsRatio.Observe(ratio)
-	region.Record(xcap.StatMetastoreSectionsResolved.Observe(int64(len(sections))))
 	duration := sectionsTimer.ObserveDuration()
 
 	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
@@ -655,26 +668,27 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("at least one selector is required")
 	}
 
-	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath)
+	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath, req.PrefetchBytes)
 	if err != nil {
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
 
 	reader := newIndexSectionsReader(
+		m.logger,
 		idxObj,
 		req.SectionsRequest.Start,
 		req.SectionsRequest.End,
 		req.SectionsRequest.Matchers,
 		req.SectionsRequest.Predicates,
-		req.Region,
+		req.BatchSize,
 	)
 
 	return IndexSectionsReaderResponse{Reader: reader}, nil
 }
 
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error) {
-	ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.GetIndexes")
-	defer region.End()
+	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.GetIndexes")
+	defer span.End()
 
 	resp := GetIndexesResponse{}
 
@@ -705,13 +719,18 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 	resp.IndexesPaths = indexPaths
 
 	m.metrics.indexObjectsTotal.Observe(float64(len(indexPaths)))
-	region.Record(xcap.StatMetastoreIndexObjects.Observe(int64(len(indexPaths))))
+	span.Record(xcap.StatMetastoreIndexObjects.Observe(int64(len(indexPaths))))
 
 	return resp, nil
 }
 
 func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectionsRequest) (CollectSectionsResponse, error) {
 	objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
+
+	if err := req.Reader.Open(ctx); err != nil {
+		return CollectSectionsResponse{}, fmt.Errorf("opening reader: %w", err)
+	}
+
 	for {
 		rec, err := req.Reader.Read(ctx)
 		if err != nil && !errors.Is(err, io.EOF) {

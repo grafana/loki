@@ -1623,10 +1623,7 @@ func (c *Client) BasicGetObjectToFile(bucket, object, filePath string) error {
 
 // GetObjectToFileWithContext - support to cancel request by context.Context
 func (c *Client) GetObjectToFileWithContext(ctx context.Context, bucket, object, filePath string) error {
-	bosContext := &api.BosContext{
-		PathStyleEnable: c.BosContext.PathStyleEnable,
-		Ctx:             ctx,
-	}
+	bosContext := c.NewBosContext(ctx)
 	res, err := api.GetObject(c, bucket, object, bosContext, nil)
 	if err != nil {
 		return err
@@ -1689,16 +1686,14 @@ func (c *Client) GetObjectMetaWithContext(ctx context.Context, bucket, object st
 //   - error: any error if it occurs
 func (c *Client) SelectObject(bucket, object string, args *api.SelectObjectArgs,
 	options ...api.Option) (*api.SelectObjectResult, error) {
-	return api.SelectObject(c, bucket, object, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.SelectObject(c, bucket, object, args, bosContext, options...)
 }
 
 // SelectObjectWithContext - support to cancel request by context.Context
 func (c *Client) SelectObjectWithContext(ctx context.Context, bucket, object string,
 	args *api.SelectObjectArgs, options ...api.Option) (*api.SelectObjectResult, error) {
-	bosContext := &api.BosContext{
-		PathStyleEnable: c.BosContext.PathStyleEnable,
-		Ctx:             ctx,
-	}
+	bosContext := c.NewBosContext(ctx)
 	return api.SelectObject(c, bucket, object, args, bosContext)
 }
 
@@ -1715,16 +1710,14 @@ func (c *Client) SelectObjectWithContext(ctx context.Context, bucket, object str
 //   - error: any error if it occurs
 func (c *Client) FetchObject(bucket, object, source string, args *api.FetchObjectArgs,
 	options ...api.Option) (*api.FetchObjectResult, error) {
-	return api.FetchObject(c, bucket, object, source, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.FetchObject(c, bucket, object, source, args, bosContext, options...)
 }
 
 // FetchObjectWithContext - support to cancel request by context.Context
 func (c *Client) FetchObjectWithContext(ctx context.Context, bucket, object, source string,
 	args *api.FetchObjectArgs, options ...api.Option) (*api.FetchObjectResult, error) {
-	bosContext := &api.BosContext{
-		PathStyleEnable: c.BosContext.PathStyleEnable,
-		Ctx:             ctx,
-	}
+	bosContext := c.NewBosContext(ctx)
 	return api.FetchObject(c, bucket, object, source, args, bosContext)
 }
 
@@ -1739,7 +1732,8 @@ func (c *Client) FetchObjectWithContext(ctx context.Context, bucket, object, sou
 //   - *api.FetchObjectResult: result struct with Code, Message, RequestId and JobId fields
 //   - error: any error if it occurs
 func (c *Client) BasicFetchObject(bucket, object, source string, options ...api.Option) (*api.FetchObjectResult, error) {
-	return api.FetchObject(c, bucket, object, source, nil, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.FetchObject(c, bucket, object, source, nil, bosContext, options...)
 }
 
 // SimpleFetchObject - fetch object with simple arguments interface
@@ -1756,8 +1750,9 @@ func (c *Client) BasicFetchObject(bucket, object, source string, options ...api.
 //   - error: any error if it occurs
 func (c *Client) SimpleFetchObject(bucket, object, source, mode,
 	storageClass string, options ...api.Option) (*api.FetchObjectResult, error) {
+	bosContext := c.NewBosContext(context.Background())
 	args := &api.FetchObjectArgs{FetchMode: mode, StorageClass: storageClass, FetchCallBackAddress: ""}
-	return api.FetchObject(c, bucket, object, source, args, c.BosContext, options...)
+	return api.FetchObject(c, bucket, object, source, args, bosContext, options...)
 }
 
 // AppendObject - append the given content to a new or existed object which is appendable
@@ -1786,10 +1781,7 @@ func (c *Client) AppendObjectWithContext(ctx context.Context, bucket, object str
 	if args != nil && args.ContentCrc32cFlag {
 		content.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
-	bosContext := &api.BosContext{
-		PathStyleEnable: c.BosContext.PathStyleEnable,
-		Ctx:             ctx,
-	}
+	bosContext := c.NewBosContext(ctx)
 	return api.AppendObject(c, bucket, object, content, args, bosContext)
 }
 
@@ -1806,7 +1798,8 @@ func (c *Client) AppendObjectWithContext(ctx context.Context, bucket, object str
 //   - error: any error if it occurs
 func (c *Client) SimpleAppendObject(bucket, object string, content *bce.Body,
 	offset int64, options ...api.Option) (*api.AppendObjectResult, error) {
-	return api.AppendObject(c, bucket, object, content, &api.AppendObjectArgs{Offset: offset}, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.AppendObject(c, bucket, object, content, &api.AppendObjectArgs{Offset: offset}, bosContext, options...)
 }
 
 // SimpleAppendObjectFromString - the simple interface of appending an object from a string
@@ -1826,7 +1819,8 @@ func (c *Client) SimpleAppendObjectFromString(bucket, object, content string,
 	if err != nil {
 		return nil, err
 	}
-	return api.AppendObject(c, bucket, object, body, &api.AppendObjectArgs{Offset: offset}, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.AppendObject(c, bucket, object, body, &api.AppendObjectArgs{Offset: offset}, bosContext, options...)
 }
 
 // SimpleAppendObjectFromFile - the simple interface of appending an object from a file
@@ -1846,7 +1840,8 @@ func (c *Client) SimpleAppendObjectFromFile(bucket, object, filePath string,
 	if err != nil {
 		return nil, err
 	}
-	return api.AppendObject(c, bucket, object, body, &api.AppendObjectArgs{Offset: offset}, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.AppendObject(c, bucket, object, body, &api.AppendObjectArgs{Offset: offset}, bosContext, options...)
 }
 
 // DeleteObject - delete the given object
@@ -1858,11 +1853,13 @@ func (c *Client) SimpleAppendObjectFromFile(bucket, object, filePath string,
 // RETURNS:
 //   - error: any error if it occurs
 func (c *Client) DeleteObject(bucket, object string, options ...api.Option) error {
-	return api.DeleteObject(c, bucket, object, "", c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteObject(c, bucket, object, "", bosContext, options...)
 }
 
 func (c *Client) DeleteObjectVersion(bucket, object, versionId string, options ...api.Option) error {
-	return api.DeleteObject(c, bucket, object, versionId, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteObject(c, bucket, object, versionId, bosContext, options...)
 }
 
 // DeleteMultipleObjects - delete a list of objects
@@ -1876,7 +1873,8 @@ func (c *Client) DeleteObjectVersion(bucket, object, versionId string, options .
 //   - error: any error if it occurs
 func (c *Client) DeleteMultipleObjects(bucket string, objectListStream *bce.Body,
 	options ...api.Option) (*api.DeleteMultipleObjectsResult, error) {
-	return api.DeleteMultipleObjects(c, bucket, objectListStream, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteMultipleObjects(c, bucket, objectListStream, bosContext, options...)
 }
 
 // DeleteMultipleObjectsFromString - delete a list of objects with json format string
@@ -1894,7 +1892,8 @@ func (c *Client) DeleteMultipleObjectsFromString(bucket, objectListString string
 	if err != nil {
 		return nil, err
 	}
-	return api.DeleteMultipleObjects(c, bucket, body, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteMultipleObjects(c, bucket, body, bosContext, options...)
 }
 
 // DeleteMultipleObjectsFromStruct - delete a list of objects with object list struct
@@ -1916,7 +1915,8 @@ func (c *Client) DeleteMultipleObjectsFromStruct(bucket string, objectListStruct
 	if err != nil {
 		return nil, err
 	}
-	return api.DeleteMultipleObjects(c, bucket, body, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteMultipleObjects(c, bucket, body, bosContext, options...)
 }
 
 // DeleteMultipleObjectsFromKeyList - delete a list of objects with given key string array
@@ -1947,7 +1947,8 @@ func (c *Client) DeleteMultipleObjectsFromKeyList(bucket string, keyList []strin
 	if err != nil {
 		return nil, err
 	}
-	return api.DeleteMultipleObjects(c, bucket, body, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteMultipleObjects(c, bucket, body, bosContext, options...)
 }
 
 // InitiateMultipartUpload - initiate a multipart upload to get a upload ID
@@ -1964,7 +1965,8 @@ func (c *Client) DeleteMultipleObjectsFromKeyList(bucket string, keyList []strin
 //   - error: nil if ok otherwise the specific error
 func (c *Client) InitiateMultipartUpload(bucket, object, contentType string, args *api.InitiateMultipartUploadArgs,
 	options ...api.Option) (*api.InitiateMultipartUploadResult, error) {
-	return api.InitiateMultipartUpload(c, bucket, object, contentType, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.InitiateMultipartUpload(c, bucket, object, contentType, args, bosContext, options...)
 }
 
 // BasicInitiateMultipartUpload - basic interface to initiate a multipart upload
@@ -1978,7 +1980,8 @@ func (c *Client) InitiateMultipartUpload(bucket, object, contentType string, arg
 //   - error: nil if ok otherwise the specific error
 func (c *Client) BasicInitiateMultipartUpload(bucket, object string,
 	options ...api.Option) (*api.InitiateMultipartUploadResult, error) {
-	return api.InitiateMultipartUpload(c, bucket, object, "", nil, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.InitiateMultipartUpload(c, bucket, object, "", nil, bosContext, options...)
 }
 
 // UploadPart - upload the single part in the multipart upload process
@@ -2125,17 +2128,15 @@ func (c *Client) UploadPartFromBytesWithContext(ctx context.Context, bucket, obj
 func (c *Client) UploadPartCopy(bucket, object, srcBucket, srcObject, uploadId string, partNumber int,
 	args *api.UploadPartCopyArgs, options ...api.Option) (*api.CopyObjectResult, error) {
 	source := fmt.Sprintf("/%s/%s", srcBucket, srcObject)
-	return api.UploadPartCopy(c, bucket, object, source, uploadId, partNumber, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.UploadPartCopy(c, bucket, object, source, uploadId, partNumber, args, bosContext, options...)
 }
 
 // UploadPartCopyWithContext - support to cancel request by context.Context
 func (c *Client) UploadPartCopyWithContext(ctx context.Context, bucket, object, srcBucket, srcObject, uploadId string,
 	partNumber int, args *api.UploadPartCopyArgs, options ...api.Option) (*api.CopyObjectResult, error) {
 	source := fmt.Sprintf("/%s/%s", srcBucket, srcObject)
-	bosContext := &api.BosContext{
-		PathStyleEnable: c.BosContext.PathStyleEnable,
-		Ctx:             ctx,
-	}
+	bosContext := c.NewBosContext(ctx)
 	return api.UploadPartCopy(c, bucket, object, source, uploadId, partNumber, args, bosContext)
 }
 
@@ -2155,7 +2156,8 @@ func (c *Client) UploadPartCopyWithContext(ctx context.Context, bucket, object, 
 func (c *Client) BasicUploadPartCopy(bucket, object, srcBucket, srcObject, uploadId string,
 	partNumber int, options ...api.Option) (*api.CopyObjectResult, error) {
 	source := fmt.Sprintf("/%s/%s", srcBucket, srcObject)
-	return api.UploadPartCopy(c, bucket, object, source, uploadId, partNumber, nil, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.UploadPartCopy(c, bucket, object, source, uploadId, partNumber, nil, bosContext, options...)
 }
 
 // CompleteMultipartUpload - finish a multipart upload operation with parts stream
@@ -2172,7 +2174,8 @@ func (c *Client) BasicUploadPartCopy(bucket, object, srcBucket, srcObject, uploa
 //   - error: nil if ok otherwise the specific error
 func (c *Client) CompleteMultipartUpload(bucket, object, uploadId string, body *bce.Body, args *api.CompleteMultipartUploadArgs,
 	options ...api.Option) (*api.CompleteMultipartUploadResult, error) {
-	return api.CompleteMultipartUpload(c, bucket, object, uploadId, body, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.CompleteMultipartUpload(c, bucket, object, uploadId, body, args, bosContext, options...)
 }
 
 // CompleteMultipartUploadFromStruct - finish a multipart upload operation with parts struct
@@ -2196,7 +2199,8 @@ func (c *Client) CompleteMultipartUploadFromStruct(bucket, object, uploadId stri
 	if err != nil {
 		return nil, err
 	}
-	return api.CompleteMultipartUpload(c, bucket, object, uploadId, body, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.CompleteMultipartUpload(c, bucket, object, uploadId, body, args, bosContext, options...)
 }
 
 // AbortMultipartUpload - abort a multipart upload operation
@@ -2209,7 +2213,8 @@ func (c *Client) CompleteMultipartUploadFromStruct(bucket, object, uploadId stri
 // RETURNS:
 //   - error: nil if ok otherwise the specific error
 func (c *Client) AbortMultipartUpload(bucket, object, uploadId string, options ...api.Option) error {
-	return api.AbortMultipartUpload(c, bucket, object, uploadId, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.AbortMultipartUpload(c, bucket, object, uploadId, bosContext, options...)
 }
 
 // ListParts - list the successfully uploaded parts info by upload id
@@ -2225,16 +2230,14 @@ func (c *Client) AbortMultipartUpload(bucket, object, uploadId string, options .
 //   - error: nil if ok otherwise the specific error
 func (c *Client) ListParts(bucket, object, uploadId string, args *api.ListPartsArgs,
 	options ...api.Option) (*api.ListPartsResult, error) {
-	return api.ListParts(c, bucket, object, uploadId, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.ListParts(c, bucket, object, uploadId, args, bosContext, options...)
 }
 
 // ListPartsWithContext - support to cancel request by context.Context
 func (c *Client) ListPartsWithContext(ctx context.Context, bucket, object, uploadId string,
 	args *api.ListPartsArgs, options ...api.Option) (*api.ListPartsResult, error) {
-	bosContext := &api.BosContext{
-		PathStyleEnable: c.BosContext.PathStyleEnable,
-		Ctx:             ctx,
-	}
+	bosContext := c.NewBosContext(ctx)
 	return api.ListParts(c, bucket, object, uploadId, args, bosContext)
 }
 
@@ -2249,7 +2252,8 @@ func (c *Client) ListPartsWithContext(ctx context.Context, bucket, object, uploa
 //   - *ListPartsResult: the uploaded parts info result
 //   - error: nil if ok otherwise the specific error
 func (c *Client) BasicListParts(bucket, object, uploadId string, options ...api.Option) (*api.ListPartsResult, error) {
-	return api.ListParts(c, bucket, object, uploadId, nil, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.ListParts(c, bucket, object, uploadId, nil, bosContext, options...)
 }
 
 // ListMultipartUploads - list the unfinished uploaded parts of the given bucket
@@ -2263,16 +2267,14 @@ func (c *Client) BasicListParts(bucket, object, uploadId string, options ...api.
 //   - error: nil if ok otherwise the specific error
 func (c *Client) ListMultipartUploads(bucket string, args *api.ListMultipartUploadsArgs,
 	options ...api.Option) (*api.ListMultipartUploadsResult, error) {
-	return api.ListMultipartUploads(c, bucket, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.ListMultipartUploads(c, bucket, args, bosContext, options...)
 }
 
 // ListMultipartUploadsWithContext - support to cancel request by context.Context
 func (c *Client) ListMultipartUploadsWithContext(ctx context.Context, bucket string, args *api.ListMultipartUploadsArgs,
 	options ...api.Option) (*api.ListMultipartUploadsResult, error) {
-	bosContext := &api.BosContext{
-		PathStyleEnable: c.BosContext.PathStyleEnable,
-		Ctx:             ctx,
-	}
+	bosContext := c.NewBosContext(ctx)
 	return api.ListMultipartUploads(c, bucket, args, bosContext)
 }
 
@@ -2286,7 +2288,8 @@ func (c *Client) ListMultipartUploadsWithContext(ctx context.Context, bucket str
 //   - error: nil if ok otherwise the specific error
 func (c *Client) BasicListMultipartUploads(bucket string, options ...api.Option) (
 	*api.ListMultipartUploadsResult, error) {
-	return api.ListMultipartUploads(c, bucket, nil, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.ListMultipartUploads(c, bucket, nil, bosContext, options...)
 }
 
 // UploadSuperFile - parallel upload the super file by using the multipart upload interface
@@ -2539,7 +2542,8 @@ func (c *Client) BasicGeneratePresignedUrl(bucket, object string, expireInSecond
 // RETURNS:
 //   - error: nil if success otherwise the specific error
 func (c *Client) PutObjectAcl(bucket, object string, aclBody *bce.Body, options ...api.Option) error {
-	return api.PutObjectAcl(c, bucket, object, "", nil, nil, aclBody, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutObjectAcl(c, bucket, object, "", nil, nil, aclBody, bosContext, options...)
 }
 
 // PutObjectAclFromCanned - set the canned acl of the given object
@@ -2552,7 +2556,8 @@ func (c *Client) PutObjectAcl(bucket, object string, aclBody *bce.Body, options 
 // RETURNS:
 //   - error: nil if success otherwise the specific error
 func (c *Client) PutObjectAclFromCanned(bucket, object, cannedAcl string, options ...api.Option) error {
-	return api.PutObjectAcl(c, bucket, object, cannedAcl, nil, nil, nil, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutObjectAcl(c, bucket, object, cannedAcl, nil, nil, nil, bosContext, options...)
 }
 
 // PutObjectAclGrantRead - set the canned grant read acl of the given object
@@ -2565,7 +2570,8 @@ func (c *Client) PutObjectAclFromCanned(bucket, object, cannedAcl string, option
 // RETURNS:
 //   - error: nil if success otherwise the specific error
 func (c *Client) PutObjectAclGrantRead(bucket, object string, ids ...string) error {
-	return api.PutObjectAcl(c, bucket, object, "", ids, nil, nil, c.BosContext)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutObjectAcl(c, bucket, object, "", ids, nil, nil, bosContext)
 }
 
 // PutObjectAclGrantFullControl - set the canned grant full-control acl of the given object
@@ -2578,7 +2584,8 @@ func (c *Client) PutObjectAclGrantRead(bucket, object string, ids ...string) err
 // RETURNS:
 //   - error: nil if success otherwise the specific error
 func (c *Client) PutObjectAclGrantFullControl(bucket, object string, ids ...string) error {
-	return api.PutObjectAcl(c, bucket, object, "", nil, ids, nil, c.BosContext)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutObjectAcl(c, bucket, object, "", nil, ids, nil, bosContext)
 }
 
 // PutObjectAclFromFile - set the acl of the given object with acl json file name
@@ -2595,7 +2602,8 @@ func (c *Client) PutObjectAclFromFile(bucket, object, aclFile string, options ..
 	if err != nil {
 		return err
 	}
-	return api.PutObjectAcl(c, bucket, object, "", nil, nil, body, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutObjectAcl(c, bucket, object, "", nil, nil, body, bosContext, options...)
 }
 
 // PutObjectAclFromString - set the acl of the given object with acl json string
@@ -2612,7 +2620,8 @@ func (c *Client) PutObjectAclFromString(bucket, object, aclString string, option
 	if err != nil {
 		return err
 	}
-	return api.PutObjectAcl(c, bucket, object, "", nil, nil, body, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutObjectAcl(c, bucket, object, "", nil, nil, body, bosContext, options...)
 }
 
 // PutObjectAclFromStruct - set the acl of the given object with acl data structure
@@ -2632,7 +2641,8 @@ func (c *Client) PutObjectAclFromStruct(bucket, object string, aclObj *api.PutOb
 	if err != nil {
 		return err
 	}
-	return api.PutObjectAcl(c, bucket, object, "", nil, nil, body, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutObjectAcl(c, bucket, object, "", nil, nil, body, bosContext, options...)
 }
 
 // GetObjectAcl - get the acl of the given object
@@ -2645,7 +2655,8 @@ func (c *Client) PutObjectAclFromStruct(bucket, object string, aclObj *api.PutOb
 //   - *api.GetObjectAclResult: the result of the object acl
 //   - error: nil if success otherwise the specific error
 func (c *Client) GetObjectAcl(bucket, object string, options ...api.Option) (*api.GetObjectAclResult, error) {
-	return api.GetObjectAcl(c, bucket, object, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetObjectAcl(c, bucket, object, bosContext, options...)
 }
 
 // DeleteObjectAcl - delete the acl of the given object
@@ -2657,7 +2668,8 @@ func (c *Client) GetObjectAcl(bucket, object string, options ...api.Option) (*ap
 // RETURNS:
 //   - error: nil if success otherwise the specific error
 func (c *Client) DeleteObjectAcl(bucket, object string, options ...api.Option) error {
-	return api.DeleteObjectAcl(c, bucket, object, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteObjectAcl(c, bucket, object, bosContext, options...)
 }
 
 // RestoreObject - restore the archive object
@@ -2684,7 +2696,8 @@ func (c *Client) RestoreObject(bucket string, object string, restoreDays int,
 		RestoreTier: restoreTier,
 		RestoreDays: restoreDays,
 	}
-	return api.RestoreObject(c, bucket, object, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.RestoreObject(c, bucket, object, args, bosContext, options...)
 }
 
 // PutBucketTrash - put the bucket trash
@@ -2696,7 +2709,8 @@ func (c *Client) RestoreObject(bucket string, object string, restoreDays int,
 // RETURNS:
 //   - error: nil if success otherwise the specific error
 func (c *Client) PutBucketTrash(bucket string, trashReq api.PutBucketTrashReq, options ...api.Option) error {
-	return api.PutBucketTrash(c, bucket, trashReq, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutBucketTrash(c, bucket, trashReq, bosContext, options...)
 }
 
 // GetBucketTrash - get the bucket trash
@@ -2708,7 +2722,8 @@ func (c *Client) PutBucketTrash(bucket string, trashReq api.PutBucketTrashReq, o
 //   - *api.GetBucketTrashResult,: the result of the bucket trash
 //   - error: nil if success otherwise the specific error
 func (c *Client) GetBucketTrash(bucket string, options ...api.Option) (*api.GetBucketTrashResult, error) {
-	return api.GetBucketTrash(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetBucketTrash(c, bucket, bosContext, options...)
 }
 
 // DeleteBucketTrash - delete the trash of the given bucket
@@ -2719,7 +2734,8 @@ func (c *Client) GetBucketTrash(bucket string, options ...api.Option) (*api.GetB
 // RETURNS:
 //   - error: nil if success otherwise the specific error
 func (c *Client) DeleteBucketTrash(bucket string, options ...api.Option) error {
-	return api.DeleteBucketTrash(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteBucketTrash(c, bucket, bosContext, options...)
 }
 
 // PutBucketNotification - put the bucket notification
@@ -2732,7 +2748,8 @@ func (c *Client) DeleteBucketTrash(bucket string, options ...api.Option) error {
 //   - error: nil if success otherwise the specific error
 func (c *Client) PutBucketNotification(bucket string, putBucketNotificationReq api.PutBucketNotificationReq,
 	options ...api.Option) error {
-	return api.PutBucketNotification(c, bucket, putBucketNotificationReq, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutBucketNotification(c, bucket, putBucketNotificationReq, bosContext, options...)
 }
 
 // GetBucketNotification - get the bucket notification
@@ -2744,7 +2761,8 @@ func (c *Client) PutBucketNotification(bucket string, putBucketNotificationReq a
 //   - *api.PutBucketNotificationReq,: the result of the bucket notification
 //   - error: nil if success otherwise the specific error
 func (c *Client) GetBucketNotification(bucket string, options ...api.Option) (*api.PutBucketNotificationReq, error) {
-	return api.GetBucketNotification(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetBucketNotification(c, bucket, bosContext, options...)
 }
 
 // DeleteBucketNotification - delete the notification of the given bucket
@@ -2755,7 +2773,8 @@ func (c *Client) GetBucketNotification(bucket string, options ...api.Option) (*a
 // RETURNS:
 //   - error: nil if success otherwise the specific error
 func (c *Client) DeleteBucketNotification(bucket string, options ...api.Option) error {
-	return api.DeleteBucketNotification(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteBucketNotification(c, bucket, bosContext, options...)
 }
 
 // ParallelUpload - auto multipart upload object
@@ -2771,8 +2790,8 @@ func (c *Client) DeleteBucketNotification(bucket string, options ...api.Option) 
 //   - *api.CompleteMultipartUploadResult: multipart upload result
 //   - error: nil if success otherwise the specific error
 func (c *Client) ParallelUpload(bucket string, object string, filename string, contentType string, args *api.InitiateMultipartUploadArgs) (*api.CompleteMultipartUploadResult, error) {
-
-	initiateMultipartUploadResult, err := api.InitiateMultipartUpload(c, bucket, object, contentType, args, c.BosContext)
+	bosContext := c.NewBosContext(context.Background())
+	initiateMultipartUploadResult, err := api.InitiateMultipartUpload(c, bucket, object, contentType, args, bosContext)
 	if err != nil {
 		return nil, err
 	}
@@ -2979,7 +2998,8 @@ func (c *Client) ParallelCopy(srcBucketName string, srcObjectName string,
 			initArgs.GrantFullControl = args.GrantFullControl
 		}
 	}
-	initiateMultipartUploadResult, err := api.InitiateMultipartUpload(c, destBucketName, destObjectName, objectMeta.ContentType, &initArgs, c.BosContext)
+	bosContext := c.NewBosContext(context.Background())
+	initiateMultipartUploadResult, err := api.InitiateMultipartUpload(c, destBucketName, destObjectName, objectMeta.ContentType, &initArgs, bosContext)
 
 	if err != nil {
 		return nil, err
@@ -3116,7 +3136,8 @@ func (c *Client) singlePartCopy(source string, bucket string, object string, upl
 		<-parallelChan
 	}()
 
-	copyObjectResult, err := api.UploadPartCopy(c, bucket, object, source, uploadId, partNumber, args, c.BosContext)
+	bosContext := c.NewBosContext(context.Background())
+	copyObjectResult, err := api.UploadPartCopy(c, bucket, object, source, uploadId, partNumber, args, bosContext)
 	if err != nil {
 		errChan <- err
 		log.Error("upload part fail,err:%v", err)
@@ -3138,7 +3159,8 @@ func (c *Client) singlePartCopy(source string, bucket string, object string, upl
 //   - error: the put error if any occurs
 func (c *Client) PutSymlink(bucket string, object string, symlinkKey string,
 	symlinkArgs *api.PutSymlinkArgs, options ...api.Option) error {
-	return api.PutObjectSymlink(c, bucket, object, symlinkKey, symlinkArgs, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutObjectSymlink(c, bucket, object, symlinkKey, symlinkArgs, bosContext, options...)
 }
 
 // PutSymlink - create symlink for exist target object
@@ -3151,126 +3173,156 @@ func (c *Client) PutSymlink(bucket string, object string, symlinkKey string,
 //   - string: the target of the symlink
 //   - error: the put error if any occurs
 func (c *Client) GetSymlink(bucket string, object string, options ...api.Option) (string, error) {
-	return api.GetObjectSymlink(c, bucket, object, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetObjectSymlink(c, bucket, object, bosContext, options...)
 }
 
 func (c *Client) PutBucketMirror(bucket string, putBucketMirrorArgs *api.PutBucketMirrorArgs,
 	options ...api.Option) error {
-	return api.PutBucketMirror(c, bucket, putBucketMirrorArgs, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutBucketMirror(c, bucket, putBucketMirrorArgs, bosContext, options...)
 }
 
 func (c *Client) GetBucketMirror(bucket string, options ...api.Option) (*api.PutBucketMirrorArgs, error) {
-	return api.GetBucketMirror(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetBucketMirror(c, bucket, bosContext, options...)
 }
 
 func (c *Client) DeleteBucketMirror(bucket string, options ...api.Option) error {
-	return api.DeleteBucketMirror(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteBucketMirror(c, bucket, bosContext, options...)
 }
 
 func (c *Client) PutBucketTag(bucket string, putBucketTagArgs *api.PutBucketTagArgs, options ...api.Option) error {
-	return api.PutBucketTag(c, bucket, putBucketTagArgs, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutBucketTag(c, bucket, putBucketTagArgs, bosContext, options...)
 }
 
 func (c *Client) GetBucketTag(bucket string, options ...api.Option) (*api.GetBucketTagResult, error) {
-	return api.GetBucketTag(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetBucketTag(c, bucket, bosContext, options...)
 }
 
 func (c *Client) DeleteBucketTag(bucket string, options ...api.Option) error {
-	return api.DeleteBucketTag(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteBucketTag(c, bucket, bosContext, options...)
 }
 
 func (c *Client) PutObjectTag(bucket string, object string, putObjectTagArgs *api.PutObjectTagArgs,
 	options ...api.Option) error {
-	return api.PutObjectTag(c, bucket, object, putObjectTagArgs, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutObjectTag(c, bucket, object, putObjectTagArgs, bosContext, options...)
 }
 
 func (c *Client) GetObjectTag(bucket string, object string, options ...api.Option) (map[string]interface{}, error) {
-	return api.GetObjectTag(c, bucket, object, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetObjectTag(c, bucket, object, bosContext, options...)
 }
 
 func (c *Client) DeleteObjectTag(bucket string, object string, options ...api.Option) error {
-	return api.DeleteObjectTag(c, bucket, object, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteObjectTag(c, bucket, object, bosContext, options...)
 }
 
 func (c *Client) BosShareLinkGet(bucket, prefix, shareCode string, duration int,
 	options ...api.Option) (string, error) {
-	return api.GetBosShareLink(c, bucket, prefix, shareCode, duration, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetBosShareLink(c, bucket, prefix, shareCode, duration, bosContext, options...)
 }
 
 func (c *Client) PutBucketVersioning(bucket string, putBucketVersioningArgs *api.BucketVersioningArgs,
 	options ...api.Option) error {
-	return api.PutBucketVersioning(c, bucket, putBucketVersioningArgs, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutBucketVersioning(c, bucket, putBucketVersioningArgs, bosContext, options...)
 }
 
 func (c *Client) GetBucketVersioning(bucket string, options ...api.Option) (*api.BucketVersioningArgs, error) {
-	return api.GetBucketVersioning(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetBucketVersioning(c, bucket, bosContext, options...)
 }
 
 func (c *Client) PutBucketInventory(bucket string, args *api.PutBucketInventoryArgs, options ...api.Option) error {
-	return api.PutBucketInventory(c, bucket, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutBucketInventory(c, bucket, args, bosContext, options...)
 }
 
 func (c *Client) GetBucketInventory(bucket, id string, options ...api.Option) (*api.PutBucketInventoryArgs, error) {
-	return api.GetBucketInventory(c, bucket, id, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetBucketInventory(c, bucket, id, bosContext, options...)
 }
 
 func (c *Client) ListBucketInventory(bucket string, options ...api.Option) (*api.ListBucketInventoryResult, error) {
-	return api.ListBucketInventory(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.ListBucketInventory(c, bucket, bosContext, options...)
 }
 
 func (c *Client) DeleteBucketInventory(bucket, id string, options ...api.Option) error {
-	return api.DeleteBucketInventory(c, bucket, id, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteBucketInventory(c, bucket, id, bosContext, options...)
 }
 
 func (c *Client) PutBucketQuota(bucket string, args *api.BucketQuotaArgs, options ...api.Option) error {
-	return api.PutBucketQuota(c, bucket, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutBucketQuota(c, bucket, args, bosContext, options...)
 }
 
 func (c *Client) GetBucketQuota(bucket string, options ...api.Option) (*api.BucketQuotaArgs, error) {
-	return api.GetBucketQuota(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetBucketQuota(c, bucket, bosContext, options...)
 }
 
 func (c *Client) DeleteBucketQuota(bucket string, options ...api.Option) error {
-	return api.DeleteBucketQuota(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteBucketQuota(c, bucket, bosContext, options...)
 }
 
 func (c *Client) PutBucketRequestPayment(bucket string, args *api.RequestPaymentArgs, options ...api.Option) error {
-	return api.PutBucketRequestPayment(c, bucket, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutBucketRequestPayment(c, bucket, args, bosContext, options...)
 }
 
 func (c *Client) GetBucketRequestPayment(bucket string, options ...api.Option) (*api.RequestPaymentArgs, error) {
-	return api.GetBucketRequestPayment(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetBucketRequestPayment(c, bucket, bosContext, options...)
 }
 
 func (c *Client) InitBucketObjectLock(bucket string, args *api.InitBucketObjectLockArgs, options ...api.Option) error {
-	return api.InitBucketObjectLock(c, bucket, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.InitBucketObjectLock(c, bucket, args, bosContext, options...)
 }
 
 func (c *Client) GetBucketObjectLock(bucket string, options ...api.Option) (*api.BucketObjectLockResult, error) {
-	return api.GetBucketObjectLock(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetBucketObjectLock(c, bucket, bosContext, options...)
 }
 
 func (c *Client) DeleteBucketObjectLock(bucket string, options ...api.Option) error {
-	return api.DeleteBucketObjectLock(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteBucketObjectLock(c, bucket, bosContext, options...)
 }
 
 func (c *Client) CompleteBucketObjectLock(bucket string, options ...api.Option) error {
-	return api.CompleteBucketObjectLock(c, bucket, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.CompleteBucketObjectLock(c, bucket, bosContext, options...)
 }
 
 func (c *Client) ExtendBucketObjectLock(bucket string, args *api.ExtendBucketObjectLockArgs,
 	options ...api.Option) error {
-	return api.ExtendBucketObjectLock(c, bucket, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.ExtendBucketObjectLock(c, bucket, args, bosContext, options...)
 }
 
 func (c *Client) PutUserQuota(args *api.UserQuotaArgs, options ...api.Option) error {
-	return api.PutUserQuota(c, args, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.PutUserQuota(c, args, bosContext, options...)
 }
 
 func (c *Client) GetUserQuota(options ...api.Option) (*api.UserQuotaArgs, error) {
-	return api.GetUserQuota(c, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.GetUserQuota(c, bosContext, options...)
 }
 
 func (c *Client) DeleteUserQuota(options ...api.Option) error {
-	return api.DeleteUserQuota(c, c.BosContext, options...)
+	bosContext := c.NewBosContext(context.Background())
+	return api.DeleteUserQuota(c, bosContext, options...)
 }

@@ -370,7 +370,7 @@ func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, 
 		transportOptions = append(transportOptions, option.WithoutAuthentication())
 	}
 	if serviceAccount.String() != "" {
-		transportOptions = append(transportOptions, option.WithCredentialsJSON([]byte(serviceAccount.String())))
+		transportOptions = append(transportOptions, option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccount.String())))
 	}
 	return google_http.NewTransport(ctx, customTransport, transportOptions...)
 }

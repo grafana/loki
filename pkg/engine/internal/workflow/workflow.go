@@ -5,6 +5,8 @@ package workflow
 import (
 	"context"
 	"fmt"
+	gotrace "runtime/trace"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,6 +16,8 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -22,10 +26,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-var shortCircuitsTotal = promauto.NewCounter(prometheus.CounterOpts{
-	Name: "loki_engine_v2_task_short_circuits_total",
-	Help: "Total number of tasks preemptively canceled by short circuiting.",
-})
+var (
+	tracer = otel.Tracer("pkg/engine/internal/workflow")
+
+	shortCircuitsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "loki_engine_v2_task_short_circuits_total",
+		Help: "Total number of tasks preemptively canceled by short circuiting.",
+	})
+)
 
 // Options configures a [Workflow].
 type Options struct {
@@ -50,6 +58,22 @@ type Options struct {
 	// DebugStreams toggles debug messages for data streams. This is very
 	// verbose and should only be enabled for debugging purposes.
 	DebugStreams bool
+
+	// CacheEnabled controls whether task fragments and DataObjScan nodes are
+	// wrapped with a Cache node during workflow planning.
+	CacheEnabled bool
+
+	// MaxTaskCacheSize is the maximum size in bytes of a task result that can be
+	// stored in the cache. 0 means only empty responses are cached.
+	MaxTaskCacheSize uint64
+
+	// MaxDataObjScanCacheSize is the maximum encoded size in bytes of a DataObjScan
+	// result that may be stored. 0 means only empty scan responses are cached.
+	MaxDataObjScanCacheSize uint64
+
+	// CacheCompression is the compression codec to use when encoding cache entries
+	// (e.g. "snappy"). An empty string means no compression.
+	CacheCompression string
 }
 
 var _ fmt.Stringer = (*Workflow)(nil)
@@ -68,9 +92,12 @@ type Workflow struct {
 	statsMut sync.Mutex
 	stats    stats.Result
 
-	captureMut   sync.Mutex
+	captureMut sync.Mutex
+	// used to merge and link task regions
 	capture      *xcap.Capture
 	parentRegion *xcap.Region
+
+	span trace.Span
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -87,7 +114,12 @@ type Workflow struct {
 //
 // The provided Runner will be used for Workflow execution.
 func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
-	graph, err := planWorkflow(opts.Tenant, plan)
+	graph, err := planWorkflow(opts.Tenant, plan, cacheParams{
+		enabled:                 opts.CacheEnabled,
+		taskCacheMaxSizeBytes:   opts.MaxTaskCacheSize,
+		dataObjScanMaxSizeBytes: opts.MaxDataObjScanCacheSize,
+		compression:             opts.CacheCompression,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -161,11 +193,18 @@ func (wf *Workflow) String() string {
 	return Sprint(wf)
 }
 
+// Opts returns options of the workflow (mostly for testing purposes).
+func (wf *Workflow) Opts() Options { return wf.opts }
+
 // Len returns the total number of tasks in the workflow.
 func (wf *Workflow) Len() int { return len(wf.manifest.Tasks) }
 
 // Close releases resources associated with the workflow.
 func (wf *Workflow) Close() {
+	if wf.span != nil {
+		wf.span.End()
+	}
+
 	if err := wf.runner.UnregisterManifest(context.Background(), wf.manifest); err != nil {
 		level.Warn(wf.logger).Log("msg", "failed to unregister workflow manifest", "err", err)
 	}
@@ -180,6 +219,9 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 	wf.capture = xcap.CaptureFromContext(ctx)
 	wf.parentRegion = xcap.RegionFromContext(ctx)
 
+	// wf.Run tracks the lifetime of the workflow execution.
+	ctx, wf.span = xcap.StartSpan(ctx, tracer, "wf.Run")
+
 	wrapped := &wrappedPipeline{
 		inner: wf.resultsPipeline,
 		onClose: func() {
@@ -191,11 +233,14 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 	}
 
 	// Start dispatching in background goroutine
+	gotrace.Log(ctx, "dispatch_tasks", "starting dispatch of "+strconv.Itoa(len(wf.manifest.Tasks))+" tasks")
 	go func() {
 		err := wf.dispatchTasks(ctx, wf.manifest.Tasks)
 		if err != nil {
 			wf.resultsPipeline.SetError(err)
 			wrapped.Close()
+		} else {
+			gotrace.Log(ctx, "dispatch_tasks", "all tasks dispatched")
 		}
 	}()
 
@@ -212,10 +257,16 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 		int64(wf.opts.MaxRunningOtherTasks),
 	)
 
-	// Start runner region once per workflow for capturing runner-level observations.
-	// Not calling defer region.End() here, as we want to allow observations to be recorded
-	// until the workflow is Closed.
-	ctx, region := xcap.StartRegion(ctx, "wf.runner")
+	// this span captures the time spent waiting for all tasks to be admitted
+	// but not the time spent to assign them all to workers.
+	//
+	// context is not updated here to avoid making this a parent of
+	// task spans since admission span ends once all tasks are admitted,
+	// but tasks can still be running after it ends.
+	_, span := tracer.Start(ctx, "wf.taskAdmission")
+	defer span.End()
+
+	region := xcap.RegionFromContext(ctx)
 	region.Record(xcap.StatTaskCount.Observe(int64(len(tasks))))
 
 	groups := wf.admissionControl.groupByType(tasks)
@@ -444,7 +495,6 @@ func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
 	}
 
 	if wf.parentRegion != nil {
-		// Assign wf.parentRegion as the parent to all root regions of the task's capture.
 		capture.LinkParent(wf.parentRegion)
 	}
 
@@ -466,6 +516,10 @@ type wrappedPipeline struct {
 
 	inner   executor.Pipeline
 	onClose func()
+}
+
+func (p *wrappedPipeline) Open(ctx context.Context) error {
+	return p.inner.Open(ctx)
 }
 
 func (p *wrappedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {

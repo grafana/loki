@@ -79,6 +79,9 @@ func forEachIndexPointer(
 				indexpointers.WhereTimeRangeOverlapsWith(colMinTimestamp, colMaxTimestamp, sStart, sEnd),
 			},
 		})
+		if err := reader.Open(ctx); err != nil {
+			return fmt.Errorf("opening index pointers reader: %w", err)
+		}
 
 		for {
 			rec, readErr := reader.Read(ctx, batchSize)

@@ -17,7 +17,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
@@ -89,8 +88,6 @@ func (h *Head) appenderV2() *headAppenderV2 {
 		headAppenderBase: headAppenderBase{
 			head:                  h,
 			minValidTime:          minValidTime,
-			mint:                  math.MaxInt64,
-			maxt:                  math.MinInt64,
 			headMaxt:              h.MaxTime(),
 			oooTimeWindow:         h.opts.OutOfOrderTimeWindow.Load(),
 			seriesRefs:            h.getRefSeriesBuffer(),
@@ -98,6 +95,8 @@ func (h *Head) appenderV2() *headAppenderV2 {
 			typesInBatch:          h.getTypeMap(),
 			appendID:              appendID,
 			cleanupAppendIDsBelow: cleanupAppendIDsBelow,
+			storeST:               h.opts.EnableSTStorage.Load(),
+			useXOR2:               h.opts.EnableXOR2Encoding.Load(),
 		},
 	}
 }
@@ -143,7 +142,6 @@ func (a *headAppenderV2) Append(ref storage.SeriesRef, ls labels.Labels, st, t i
 		}
 	}
 
-	// TODO(bwplotka): Handle ST natively (as per PROM-60).
 	if a.head.opts.EnableSTAsZeroSample && st != 0 {
 		a.bestEffortAppendSTZeroSample(s, ls, st, t, h, fh)
 	}
@@ -180,7 +178,7 @@ func (a *headAppenderV2) Append(ref storage.SeriesRef, ls labels.Labels, st, t i
 			// we do not need to check for the difference between "unknown
 			// series" and "known series with stNone".
 		}
-		appErr = a.appendFloat(s, t, v, opts.RejectOutOfOrder)
+		appErr = a.appendFloat(s, st, t, v, opts.RejectOutOfOrder)
 	}
 	// Handle append error, if any.
 	if appErr != nil {
@@ -193,13 +191,6 @@ func (a *headAppenderV2) Append(ref storage.SeriesRef, ls labels.Labels, st, t i
 		return 0, appErr
 	}
 
-	if t < a.mint {
-		a.mint = t
-	}
-	if t > a.maxt {
-		a.maxt = t
-	}
-
 	if isStale {
 		// For stale values we never attempt to process metadata/exemplars, claim the success.
 		return storage.SeriesRef(s.ref), nil
@@ -210,9 +201,6 @@ func (a *headAppenderV2) Append(ref storage.SeriesRef, ls labels.Labels, st, t i
 		// Currently only exemplars can return partial errors.
 		partialErr = a.appendExemplars(s, opts.Exemplars)
 	}
-
-	// TODO(bwplotka): Move/reuse metadata tests from scrape, once scrape adopts AppenderV2.
-	// Currently tsdb package does not test metadata.
 	if a.head.opts.EnableMetadataWALRecords && !opts.Metadata.IsEmpty() {
 		s.Lock()
 		metaChanged := s.meta == nil || !s.meta.Equals(opts.Metadata)
@@ -231,7 +219,7 @@ func (a *headAppenderV2) Append(ref storage.SeriesRef, ls labels.Labels, st, t i
 	return storage.SeriesRef(s.ref), partialErr
 }
 
-func (a *headAppenderV2) appendFloat(s *memSeries, t int64, v float64, fastRejectOOO bool) error {
+func (a *headAppenderV2) appendFloat(s *memSeries, st, t int64, v float64, fastRejectOOO bool) error {
 	s.Lock()
 	// TODO(codesome): If we definitely know at this point that the sample is ooo, then optimise
 	// to skip that sample from the WAL and write only in the WBL.
@@ -252,7 +240,7 @@ func (a *headAppenderV2) appendFloat(s *memSeries, t int64, v float64, fastRejec
 	}
 
 	b := a.getCurrentBatch(stFloat, s.ref)
-	b.floats = append(b.floats, record.RefSample{Ref: s.ref, T: t, V: v})
+	b.floats = append(b.floats, record.RefSample{Ref: s.ref, ST: st, T: t, V: v})
 	b.floatSeries = append(b.floatSeries, s)
 	return nil
 }
@@ -323,6 +311,7 @@ func (a *headAppenderV2) appendExemplars(s *memSeries, exemplar []exemplar.Exemp
 		if err := a.head.exemplars.ValidateExemplar(s.labels(), e); err != nil {
 			if !errors.Is(err, storage.ErrDuplicateExemplar) && !errors.Is(err, storage.ErrExemplarsDisabled) {
 				// Except duplicates, return partial errors.
+				// TODO(bwplotka): Add exemplar info into error.
 				errs = append(errs, err)
 				continue
 			}
@@ -378,7 +367,7 @@ func (a *headAppenderV2) bestEffortAppendSTZeroSample(s *memSeries, ls labels.La
 		}
 		err = a.appendHistogram(s, st, zeroHistogram, true)
 	default:
-		err = a.appendFloat(s, st, 0, true)
+		err = a.appendFloat(s, 0, st, 0, true)
 	}
 
 	if err != nil {
@@ -388,10 +377,6 @@ func (a *headAppenderV2) bestEffortAppendSTZeroSample(s *memSeries, ls labels.La
 		}
 		a.head.logger.Debug("Error when appending ST", "series", s.lset.String(), "st", st, "t", t, "err", err)
 		return
-	}
-
-	if st > a.maxt {
-		a.maxt = st
 	}
 }
 

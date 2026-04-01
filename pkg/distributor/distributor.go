@@ -308,7 +308,7 @@ func New(
 		)
 
 		if cfg.DataObjTeeConfig.Enabled {
-			resolver := NewSegmentationPartitionResolver(
+			resolver := newSegmentationPartitionResolver(
 				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
 				dataObjConsumerPartitionRing,
 				registerer,
@@ -327,6 +327,10 @@ func New(
 				return nil, fmt.Errorf("failed to create data object tee: %w", err)
 			}
 			tee = WrapTee(tee, dataObjTee)
+
+			if rateBatcher := dataObjTee.RateBatcher(); rateBatcher != nil {
+				servs = append(servs, rateBatcher)
+			}
 		}
 	}
 
@@ -854,9 +858,16 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if d.cfg.KafkaEnabled {
-		subring, err := d.partitionRing.PartitionRing().ShuffleShard(tenantID, d.validator.IngestionPartitionsTenantShardSize(tenantID))
-		if err != nil {
-			return nil, err
+		shardSize := d.validator.IngestionPartitionsTenantShardSize(tenantID)
+		var subring *ring.PartitionRing
+		if shardSize == 0 {
+			// Optimization - don't need to create shuffle shards in this case
+			subring = d.partitionRing.PartitionRing()
+		} else {
+			subring, err = d.partitionRing.PartitionRing().ShuffleShard(tenantID, shardSize)
+			if err != nil {
+				return nil, err
+			}
 		}
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
 		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, subring)

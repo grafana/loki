@@ -1,4 +1,4 @@
-// Copyright 2023 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -406,7 +406,7 @@ func (tokenProvider *tokenProvider) getAccessToken(ctx context.Context) (string,
 
 // valid checks if the token in the token provider is valid and not expired.
 func (tokenProvider *tokenProvider) valid() bool {
-	if len(tokenProvider.token) == 0 {
+	if tokenProvider.token == "" {
 		return false
 	}
 	if tokenProvider.refreshTime.After(time.Now().UTC()) {
@@ -421,7 +421,7 @@ func (tokenProvider *tokenProvider) getToken(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if len(accessToken.Token) == 0 {
+	if accessToken.Token == "" {
 		return errors.New("access token is empty")
 	}
 

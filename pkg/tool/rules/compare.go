@@ -8,7 +8,7 @@ import (
 
 	"github.com/mitchellh/colorstring"
 	"github.com/prometheus/prometheus/model/rulefmt"
-	yaml "gopkg.in/yaml.v3"
+	yaml "go.yaml.in/yaml/v3"
 
 	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
 )

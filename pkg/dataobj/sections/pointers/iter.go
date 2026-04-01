@@ -51,12 +51,16 @@ func IterSection(ctx context.Context, section *Section) result.Seq[SectionPointe
 			return err
 		}
 
-		r := dataset.NewRowReader(dataset.ReaderOptions{
+		r := dataset.NewRowReader(dataset.RowReaderOptions{
 			Dataset:  dset,
 			Columns:  columns,
 			Prefetch: true,
 		})
 		defer r.Close()
+
+		if err := r.Open(ctx); err != nil {
+			return err
+		}
 
 		sym := symbolizer.New(128, 1024)
 

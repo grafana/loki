@@ -688,7 +688,7 @@ type VirtualHostMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m VirtualHostMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -822,7 +822,7 @@ type FilterActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m FilterActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -955,7 +955,7 @@ type RouteListMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteListMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1658,7 +1658,7 @@ type RouteMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1907,7 +1907,7 @@ type WeightedClusterMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m WeightedClusterMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2051,7 +2051,7 @@ type ClusterSpecifierPluginMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ClusterSpecifierPluginMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2257,6 +2257,40 @@ func (m *RouteMatch) validate(all bool) error {
 			if err := v.Validate(); err != nil {
 				return RouteMatchValidationError{
 					field:  fmt.Sprintf("QueryParameters[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	for idx, item := range m.GetCookies() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, RouteMatchValidationError{
+						field:  fmt.Sprintf("Cookies[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, RouteMatchValidationError{
+						field:  fmt.Sprintf("Cookies[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RouteMatchValidationError{
+					field:  fmt.Sprintf("Cookies[%v]", idx),
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -2607,7 +2641,7 @@ type RouteMatchMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteMatchMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2912,7 +2946,7 @@ type CorsPolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m CorsPolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3106,6 +3140,8 @@ func (m *RouteAction) validate(all bool) error {
 			}
 		}
 	}
+
+	// no validation rules for PathRewrite
 
 	// no validation rules for AppendXForwardedHost
 
@@ -3964,6 +4000,18 @@ func (m *RouteAction) validate(all bool) error {
 			}
 		}
 
+	case *RouteAction_HostRewrite:
+		if v == nil {
+			err := RouteActionValidationError{
+				field:  "HostRewriteSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		// no validation rules for HostRewrite
 	default:
 		_ = v // ensures v is used
 	}
@@ -3981,7 +4029,7 @@ type RouteActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4402,7 +4450,7 @@ type RetryPolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RetryPolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4547,7 +4595,7 @@ type HedgePolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HedgePolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4793,7 +4841,7 @@ type RedirectActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RedirectActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4925,6 +4973,35 @@ func (m *DirectResponseAction) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetBodyFormat()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, DirectResponseActionValidationError{
+					field:  "BodyFormat",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, DirectResponseActionValidationError{
+					field:  "BodyFormat",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetBodyFormat()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return DirectResponseActionValidationError{
+				field:  "BodyFormat",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return DirectResponseActionMultiError(errors)
 	}
@@ -4939,7 +5016,7 @@ type DirectResponseActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m DirectResponseActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -5041,7 +5118,7 @@ type NonForwardingActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m NonForwardingActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -5182,7 +5259,7 @@ type DecoratorMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m DecoratorMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -5388,6 +5465,10 @@ func (m *Tracing) validate(all bool) error {
 
 	}
 
+	// no validation rules for Operation
+
+	// no validation rules for UpstreamOperation
+
 	if len(errors) > 0 {
 		return TracingMultiError(errors)
 	}
@@ -5401,7 +5482,7 @@ type TracingMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m TracingMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -5546,7 +5627,7 @@ type VirtualClusterMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m VirtualClusterMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -5767,7 +5848,7 @@ type RateLimitMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimitMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -6114,7 +6195,7 @@ type HeaderMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HeaderMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -6307,7 +6388,7 @@ type QueryParameterMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m QueryParameterMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -6372,6 +6453,170 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = QueryParameterMatcherValidationError{}
+
+// Validate checks the field values on CookieMatcher with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *CookieMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on CookieMatcher with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in CookieMatcherMultiError, or
+// nil if none found.
+func (m *CookieMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *CookieMatcher) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if utf8.RuneCountInString(m.GetName()) < 1 {
+		err := CookieMatcherValidationError{
+			field:  "Name",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if len(m.GetName()) > 1024 {
+		err := CookieMatcherValidationError{
+			field:  "Name",
+			reason: "value length must be at most 1024 bytes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if m.GetStringMatch() == nil {
+		err := CookieMatcherValidationError{
+			field:  "StringMatch",
+			reason: "value is required",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if all {
+		switch v := interface{}(m.GetStringMatch()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, CookieMatcherValidationError{
+					field:  "StringMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, CookieMatcherValidationError{
+					field:  "StringMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetStringMatch()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return CookieMatcherValidationError{
+				field:  "StringMatch",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	// no validation rules for InvertMatch
+
+	if len(errors) > 0 {
+		return CookieMatcherMultiError(errors)
+	}
+
+	return nil
+}
+
+// CookieMatcherMultiError is an error wrapping multiple validation errors
+// returned by CookieMatcher.ValidateAll() if the designated constraints
+// aren't met.
+type CookieMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m CookieMatcherMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m CookieMatcherMultiError) AllErrors() []error { return m }
+
+// CookieMatcherValidationError is the validation error returned by
+// CookieMatcher.Validate if the designated constraints aren't met.
+type CookieMatcherValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e CookieMatcherValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e CookieMatcherValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e CookieMatcherValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e CookieMatcherValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e CookieMatcherValidationError) ErrorName() string { return "CookieMatcherValidationError" }
+
+// Error satisfies the builtin error interface
+func (e CookieMatcherValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sCookieMatcher.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = CookieMatcherValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = CookieMatcherValidationError{}
 
 // Validate checks the field values on InternalRedirectPolicy with the rules
 // defined in the proto definition for this message. If any rules are
@@ -6516,7 +6761,7 @@ type InternalRedirectPolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m InternalRedirectPolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -6652,7 +6897,7 @@ type FilterConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m FilterConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -7019,7 +7264,7 @@ type WeightedCluster_ClusterWeightMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m WeightedCluster_ClusterWeightMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -7132,7 +7377,7 @@ type RouteMatch_GrpcRouteMatchOptionsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteMatch_GrpcRouteMatchOptionsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -7295,7 +7540,7 @@ type RouteMatch_TlsContextMatchOptionsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteMatch_TlsContextMatchOptionsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -7398,7 +7643,7 @@ type RouteMatch_ConnectMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteMatch_ConnectMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -7629,7 +7874,7 @@ type RouteAction_RequestMirrorPolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_RequestMirrorPolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -7964,7 +8209,7 @@ type RouteAction_HashPolicyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -8146,7 +8391,7 @@ type RouteAction_UpgradeConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_UpgradeConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -8337,7 +8582,7 @@ type RouteAction_MaxStreamDurationMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_MaxStreamDurationMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -8491,7 +8736,7 @@ type RouteAction_HashPolicy_HeaderMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicy_HeaderMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -8654,7 +8899,7 @@ type RouteAction_HashPolicy_CookieAttributeMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicy_CookieAttributeMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -8837,7 +9082,7 @@ type RouteAction_HashPolicy_CookieMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicy_CookieMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -8945,7 +9190,7 @@ type RouteAction_HashPolicy_ConnectionPropertiesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicy_ConnectionPropertiesMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -9061,7 +9306,7 @@ type RouteAction_HashPolicy_QueryParameterMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicy_QueryParameterMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -9177,7 +9422,7 @@ type RouteAction_HashPolicy_FilterStateMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_HashPolicy_FilterStateMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -9314,7 +9559,7 @@ type RouteAction_UpgradeConfig_ConnectConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RouteAction_UpgradeConfig_ConnectConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -9474,7 +9719,7 @@ type RetryPolicy_RetryPriorityMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RetryPolicy_RetryPriorityMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -9633,7 +9878,7 @@ type RetryPolicy_RetryHostPredicateMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RetryPolicy_RetryHostPredicateMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -9807,7 +10052,7 @@ type RetryPolicy_RetryBackOffMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RetryPolicy_RetryBackOffMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -9942,7 +10187,7 @@ type RetryPolicy_ResetHeaderMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RetryPolicy_ResetHeaderMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -10123,7 +10368,7 @@ type RetryPolicy_RateLimitedRetryBackOffMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RetryPolicy_RateLimitedRetryBackOffMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -10746,7 +10991,7 @@ type RateLimit_ActionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_ActionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -10904,7 +11149,7 @@ type RateLimit_OverrideMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_OverrideMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11047,7 +11292,7 @@ type RateLimit_HitsAddendMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_HitsAddendMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11149,7 +11394,7 @@ type RateLimit_Action_SourceClusterMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_SourceClusterMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11254,7 +11499,7 @@ type RateLimit_Action_DestinationClusterMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_DestinationClusterMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11392,7 +11637,7 @@ type RateLimit_Action_RequestHeadersMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_RequestHeadersMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11523,7 +11768,7 @@ type RateLimit_Action_QueryParametersMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_QueryParametersMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11626,7 +11871,7 @@ type RateLimit_Action_RemoteAddressMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_RemoteAddressMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11761,7 +12006,7 @@ type RateLimit_Action_MaskedRemoteAddressMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_MaskedRemoteAddressMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11861,6 +12106,8 @@ func (m *RateLimit_Action_GenericKey) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
+	// no validation rules for DefaultValue
+
 	// no validation rules for DescriptorKey
 
 	if len(errors) > 0 {
@@ -11877,7 +12124,7 @@ type RateLimit_Action_GenericKeyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_GenericKeyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -11967,8 +12214,6 @@ func (m *RateLimit_Action_HeaderValueMatch) validate(all bool) error {
 
 	var errors []error
 
-	// no validation rules for DescriptorKey
-
 	if utf8.RuneCountInString(m.GetDescriptorValue()) < 1 {
 		err := RateLimit_Action_HeaderValueMatchValidationError{
 			field:  "DescriptorValue",
@@ -11979,6 +12224,10 @@ func (m *RateLimit_Action_HeaderValueMatch) validate(all bool) error {
 		}
 		errors = append(errors, err)
 	}
+
+	// no validation rules for DefaultValue
+
+	// no validation rules for DescriptorKey
 
 	if all {
 		switch v := interface{}(m.GetExpectMatch()).(type) {
@@ -12069,7 +12318,7 @@ type RateLimit_Action_HeaderValueMatchMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_HeaderValueMatchMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -12227,7 +12476,7 @@ type RateLimit_Action_DynamicMetaDataMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_DynamicMetaDataMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -12396,7 +12645,7 @@ type RateLimit_Action_MetaDataMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_MetaDataMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -12486,8 +12735,6 @@ func (m *RateLimit_Action_QueryParameterValueMatch) validate(all bool) error {
 
 	var errors []error
 
-	// no validation rules for DescriptorKey
-
 	if utf8.RuneCountInString(m.GetDescriptorValue()) < 1 {
 		err := RateLimit_Action_QueryParameterValueMatchValidationError{
 			field:  "DescriptorValue",
@@ -12498,6 +12745,10 @@ func (m *RateLimit_Action_QueryParameterValueMatch) validate(all bool) error {
 		}
 		errors = append(errors, err)
 	}
+
+	// no validation rules for DefaultValue
+
+	// no validation rules for DescriptorKey
 
 	if all {
 		switch v := interface{}(m.GetExpectMatch()).(type) {
@@ -12588,7 +12839,7 @@ type RateLimit_Action_QueryParameterValueMatchMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Action_QueryParameterValueMatchMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -12733,7 +12984,7 @@ type RateLimit_Override_DynamicMetadataMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RateLimit_Override_DynamicMetadataMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

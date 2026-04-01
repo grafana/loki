@@ -48,6 +48,14 @@ type RecordBatch interface {
 	NewSlice(i, j int64) RecordBatch
 }
 
+// RecordBatchWithMetadata is an optional interface for RecordBatch
+// implementations that support custom metadata. This metadata is
+// stored at the Message level in Arrow IPC format.
+type RecordBatchWithMetadata interface {
+	RecordBatch
+	Metadata() Metadata
+}
+
 // Record as a term typically refers to a single row, but this type represents a batch of rows, known in Arrow parlance
 // as a RecordBatch. This alias is provided for backwards compatibility.
 //

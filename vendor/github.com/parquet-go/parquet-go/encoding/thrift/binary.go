@@ -18,6 +18,10 @@ type BinaryProtocol struct {
 	NonStrict bool
 }
 
+func (p *BinaryProtocol) NewReaderFromBytes(b []byte) Reader {
+	return &binaryBytesReader{p: p, data: b}
+}
+
 func (p *BinaryProtocol) NewReader(r io.Reader) Reader {
 	return &binaryReader{p: p, r: r}
 }
@@ -34,6 +38,7 @@ type binaryReader struct {
 	p *BinaryProtocol
 	r io.Reader
 	b [8]byte
+	n int
 }
 
 func (r *binaryReader) Protocol() Protocol {
@@ -46,7 +51,8 @@ func (r *binaryReader) Reader() io.Reader {
 
 func (r *binaryReader) ReadBool() (bool, error) {
 	v, err := r.ReadByte()
-	return v != 0, err
+	// Thrift protocol treats both 0 and 2 as false.
+	return v != 0 && v != 2, err
 }
 
 func (r *binaryReader) ReadInt8() (int8, error) {
@@ -93,6 +99,9 @@ func (r *binaryReader) ReadBytes() ([]byte, error) {
 	}
 	b := make([]byte, n)
 	_, err = io.ReadFull(r.r, b)
+	if err == nil {
+		r.n += n
+	}
 	return b, err
 }
 
@@ -128,6 +137,7 @@ func (r *binaryReader) ReadMessage() (Message, error) {
 		if err != nil {
 			return m, dontExpectEOF(err)
 		}
+		r.n += n
 		m.Name = unsafecast.String(s)
 
 		t, err := r.ReadInt8()
@@ -194,27 +204,40 @@ func (r *binaryReader) ReadMap() (Map, error) {
 }
 
 func (r *binaryReader) ReadByte() (byte, error) {
+	var b byte
+	var err error
 	switch x := r.r.(type) {
 	case *bytes.Buffer:
-		return x.ReadByte()
+		b, err = x.ReadByte()
 	case *bytes.Reader:
-		return x.ReadByte()
+		b, err = x.ReadByte()
 	case *bufio.Reader:
-		return x.ReadByte()
+		b, err = x.ReadByte()
 	case io.ByteReader:
-		return x.ReadByte()
+		b, err = x.ReadByte()
 	default:
-		b, err := r.read(1)
+		buf, err := r.read(1)
 		if err != nil {
 			return 0, err
 		}
-		return b[0], nil
+		return buf[0], nil
 	}
+	if err == nil {
+		r.n++
+	}
+	return b, err
 }
 
 func (r *binaryReader) read(n int) ([]byte, error) {
 	_, err := io.ReadFull(r.r, r.b[:n])
+	if err == nil {
+		r.n += n
+	}
 	return r.b[:n], err
+}
+
+func (r *binaryReader) BytesRead() int {
+	return r.n
 }
 
 type binaryWriter struct {
@@ -366,4 +389,201 @@ func (w *binaryWriter) writeByte(b byte) error {
 		w.b[0] = b
 		return w.write(w.b[:1])
 	}
+}
+
+// binaryBytesReader is a zero-allocation reader that reads directly from a byte slice.
+// Strings and byte slices returned by this reader point into the original buffer,
+// so the buffer must outlive any usage of the decoded values.
+type binaryBytesReader struct {
+	p      *BinaryProtocol
+	data   []byte
+	offset int
+}
+
+func (r *binaryBytesReader) Protocol() Protocol {
+	return r.p
+}
+
+func (r *binaryBytesReader) Reader() io.Reader {
+	return bytes.NewReader(r.data[r.offset:])
+}
+
+func (r *binaryBytesReader) ReadBool() (bool, error) {
+	b, err := r.ReadByte()
+	// Thrift protocol treats both 0 and 2 as false.
+	return b != 0 && b != 2, err
+}
+
+func (r *binaryBytesReader) ReadInt8() (int8, error) {
+	b, err := r.ReadByte()
+	return int8(b), err
+}
+
+func (r *binaryBytesReader) ReadInt16() (int16, error) {
+	if r.offset+2 > len(r.data) {
+		return 0, io.ErrUnexpectedEOF
+	}
+	v := int16(binary.BigEndian.Uint16(r.data[r.offset:]))
+	r.offset += 2
+	return v, nil
+}
+
+func (r *binaryBytesReader) ReadInt32() (int32, error) {
+	if r.offset+4 > len(r.data) {
+		return 0, io.ErrUnexpectedEOF
+	}
+	v := int32(binary.BigEndian.Uint32(r.data[r.offset:]))
+	r.offset += 4
+	return v, nil
+}
+
+func (r *binaryBytesReader) ReadInt64() (int64, error) {
+	if r.offset+8 > len(r.data) {
+		return 0, io.ErrUnexpectedEOF
+	}
+	v := int64(binary.BigEndian.Uint64(r.data[r.offset:]))
+	r.offset += 8
+	return v, nil
+}
+
+func (r *binaryBytesReader) ReadFloat64() (float64, error) {
+	if r.offset+8 > len(r.data) {
+		return 0, io.ErrUnexpectedEOF
+	}
+	v := math.Float64frombits(binary.BigEndian.Uint64(r.data[r.offset:]))
+	r.offset += 8
+	return v, nil
+}
+
+func (r *binaryBytesReader) ReadBytes() ([]byte, error) {
+	n, err := r.ReadLength()
+	if err != nil {
+		return nil, err
+	}
+	if r.offset+n > len(r.data) {
+		return nil, io.ErrUnexpectedEOF
+	}
+	b := r.data[r.offset : r.offset+n]
+	r.offset += n
+	return b, nil
+}
+
+func (r *binaryBytesReader) ReadString() (string, error) {
+	n, err := r.ReadLength()
+	if err != nil {
+		return "", err
+	}
+	if r.offset+n > len(r.data) {
+		return "", io.ErrUnexpectedEOF
+	}
+	s := unsafecast.String(r.data[r.offset : r.offset+n])
+	r.offset += n
+	return s, nil
+}
+
+func (r *binaryBytesReader) ReadLength() (int, error) {
+	if r.offset+4 > len(r.data) {
+		return 0, io.ErrUnexpectedEOF
+	}
+	n := binary.BigEndian.Uint32(r.data[r.offset:])
+	r.offset += 4
+	if n > math.MaxInt32 {
+		return 0, fmt.Errorf("length out of range: %d", n)
+	}
+	return int(n), nil
+}
+
+func (r *binaryBytesReader) ReadMessage() (Message, error) {
+	m := Message{}
+
+	if r.offset+4 > len(r.data) {
+		return m, io.ErrUnexpectedEOF
+	}
+	b := r.data[r.offset : r.offset+4]
+	r.offset += 4
+
+	if (b[0] >> 7) == 0 { // non-strict
+		n := int(binary.BigEndian.Uint32(b))
+		if r.offset+n > len(r.data) {
+			return m, io.ErrUnexpectedEOF
+		}
+		m.Name = unsafecast.String(r.data[r.offset : r.offset+n])
+		r.offset += n
+
+		t, err := r.ReadInt8()
+		if err != nil {
+			return m, dontExpectEOF(err)
+		}
+
+		m.Type = MessageType(t & 0x7)
+	} else {
+		m.Type = MessageType(b[3] & 0x7)
+
+		var err error
+		if m.Name, err = r.ReadString(); err != nil {
+			return m, dontExpectEOF(err)
+		}
+	}
+
+	var err error
+	m.SeqID, err = r.ReadInt32()
+	return m, err
+}
+
+func (r *binaryBytesReader) ReadField() (Field, error) {
+	t, err := r.ReadInt8()
+	if err != nil {
+		return Field{}, err
+	}
+	i, err := r.ReadInt16()
+	if err != nil {
+		return Field{}, err
+	}
+	return Field{ID: i, Type: Type(t)}, nil
+}
+
+func (r *binaryBytesReader) ReadList() (List, error) {
+	t, err := r.ReadInt8()
+	if err != nil {
+		return List{}, err
+	}
+	n, err := r.ReadInt32()
+	if err != nil {
+		return List{}, dontExpectEOF(err)
+	}
+	return List{Size: n, Type: Type(t)}, nil
+}
+
+func (r *binaryBytesReader) ReadSet() (Set, error) {
+	l, err := r.ReadList()
+	return Set(l), err
+}
+
+func (r *binaryBytesReader) ReadMap() (Map, error) {
+	k, err := r.ReadByte()
+	if err != nil {
+		return Map{}, err
+	}
+	v, err := r.ReadByte()
+	if err != nil {
+		return Map{}, dontExpectEOF(err)
+	}
+	n, err := r.ReadInt32()
+	if err != nil {
+		return Map{}, dontExpectEOF(err)
+	}
+	return Map{Size: n, Key: Type(k), Value: Type(v)}, nil
+}
+
+func (r *binaryBytesReader) ReadByte() (byte, error) {
+	if r.offset >= len(r.data) {
+		return 0, io.EOF
+	}
+	b := r.data[r.offset]
+	r.offset++
+	return b, nil
+}
+
+func (r *binaryBytesReader) BytesRead() int {
+	return r.offset
 }

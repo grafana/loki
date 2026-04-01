@@ -49,12 +49,19 @@ func (boolEqualKernelImpl) DoAA(out *memory.Bitmap, left, right memory.Bitmap) {
 
 	out.Resize(left.Len())
 
+	var (
+		leftBytes, leftOffset   = left.Bytes()
+		rightBytes, rightOffset = right.Bytes()
+		outBytes, outOffset     = out.Bytes()
+	)
+
 	bitutil.BitmapXnor(
-		left.Bytes(),
-		right.Bytes(),
-		0 /* left offset */, 0, /* right offset */
-		out.Bytes(),
-		0,                 /* out offset */
+		leftBytes,
+		rightBytes,
+		int64(leftOffset),
+		int64(rightOffset),
+		outBytes,
+		int64(outOffset),
 		int64(left.Len()), /* num values */
 	)
 }
@@ -90,12 +97,19 @@ func (boolNotEqualKernelImpl) DoAA(out *memory.Bitmap, left, right memory.Bitmap
 
 	out.Resize(left.Len())
 
+	var (
+		leftBytes, leftOffset   = left.Bytes()
+		rightBytes, rightOffset = right.Bytes()
+		outBytes, outOffset     = out.Bytes()
+	)
+
 	bitutil.BitmapXor(
-		left.Bytes(),
-		right.Bytes(),
-		0 /* left offset */, 0, /* right offset */
-		out.Bytes(),
-		0,                 /* out offset */
+		leftBytes,
+		rightBytes,
+		int64(leftOffset),
+		int64(rightOffset),
+		outBytes,
+		int64(outOffset),
 		int64(left.Len()), /* num values */
 	)
 }

@@ -138,6 +138,9 @@ helm.sh/chart: {{ include "loki.chart" . }}
 {{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
 app.kubernetes.io/version: {{ include "loki.validLabelValue" (.Values.loki.image.tag | default .Chart.AppVersion) | quote }}
 {{- end }}
+{{- if .Values.commonLabels }}
+{{ .Values.commonLabels | toYaml }}
+{{- end }}
 {{- end }}
 
 {{/*
@@ -175,7 +178,8 @@ It also respects `.digest` as well as `.sha` (deprecated).
 {{- $ref := ternary (printf ":%s" (.service.tag | default .defaultVersion | toString)) ($digest) (empty $digest) -}}
 
 {{- $prefix := "" -}}
-{{- if and $registry (not (contains "." $repository)) -}}
+{{- $firstSegment := (split "/" $repository)._0 -}}
+{{- if and $registry (not (contains "." $firstSegment)) -}}
 {{- $prefix = printf "%s/" $registry -}}
 {{- end -}}
 

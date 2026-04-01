@@ -22,9 +22,14 @@ func ToRecordBatch(src *columnar.RecordBatch, schema *arrow.Schema) (arrow.Recor
 
 		srcCol := src.Column(colIdx)
 
+		// Clone the source validity bitmap. We use Clone rather than copying
+		// Bytes directly so that Clone can normalize offsets.
 		srcValidity := src.Column(colIdx).Validity()
-		dstValidity := make([]byte, len(srcValidity.Bytes()))
-		copy(dstValidity, srcValidity.Bytes())
+		clonedValidity := srcValidity.Clone(nil)
+		dstValidity, dstOffset := clonedValidity.Bytes()
+		if dstOffset != 0 {
+			panic("cloned bitmap should be aligned")
+		}
 
 		switch field.Type.ID() {
 		case arrow.INT64:

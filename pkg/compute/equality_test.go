@@ -12,1637 +12,195 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-func TestEquals(t *testing.T) {
+func TestEquals_Errors(t *testing.T) {
 	var alloc memory.Allocator
 
 	tt := []struct {
 		name        string
 		left, right columnar.Datum
 		expect      columnar.Datum
-		expectError bool
 	}{
 		{
-			name:        "fails on mismatched types",
-			left:        columnartest.Scalar(t, columnar.KindInt64, int64(0)),
-			right:       columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
-			expectError: true,
+			name:  "fails on mismatched types",
+			left:  columnartest.Scalar(t, columnar.KindInt64, int64(0)),
+			right: columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
 		},
 		{
-			name:        "fails on mismatch length arrays",
-			left:        columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false),
-			right:       columnartest.Array(t, columnar.KindBool, &alloc, true, false),
-			expectError: true,
-		},
-
-		// Bool (scalar, scalar) tests
-		{
-			name:   "type=bool/true-scalar == false-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Scalar(t, columnar.KindBool, false),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=bool/true-scalar == true-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Scalar(t, columnar.KindBool, true),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=bool/valid-scalar == null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Scalar(t, columnar.KindBool, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=bool/null-scalar == valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, false),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=bool/null-scalar == null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Bool (scalar, array) tests
-		{
-			name:   "type=bool/true-scalar == array",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-		},
-		{
-			name:   "type=bool/false-scalar == array",
-			left:   columnartest.Scalar(t, columnar.KindBool, false),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-		},
-		{
-			name:   "type=bool/null-scalar == array",
-			left:   columnartest.Scalar(t, columnar.KindBool, nil),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Bool (array, scalar) tests
-		{
-			name:   "type=bool/array == true-scalar",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, true),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-		},
-		{
-			name:   "type=bool/array == false-scalar",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, false),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-		},
-		{
-			name:   "type=bool/array == null-scalar",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Bool (array, array) tests
-		{
-			name:   "type=bool/array == array",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false, nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, false, true, false, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, true, nil, nil, nil),
-		},
-
-		// Int64 (scalar, scalar) tests
-		{
-			name:   "type=int64/equal-scalar == equal-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=int64/scalar == different-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=int64/valid-scalar == null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=int64/null-scalar == valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=int64/null-scalar == null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Int64 (scalar, array) tests
-		{
-			name:   "type=int64/valid-scalar == array",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-		},
-		{
-			name:   "type=int64/null-scalar == array",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Int64 (array, scalar) tests
-		{
-			name:   "type=int64/array == valid-scalar",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-		},
-		{
-			name:   "type=int64/array == null-scalar",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Int64 (array, array) tests
-		{
-			name:   "type=int64/array == array",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3), int64(4), nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(3), int64(3), int64(5), int64(1), int64(2), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false, nil, nil, nil),
-		},
-
-		// Uint64 (scalar, scalar) tests
-		{
-			name:   "type=uint64/equal-scalar == equal-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=uint64/scalar == different-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=uint64/valid-scalar == null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar == valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar == null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Uint64 (scalar, array) tests
-		{
-			name:   "type=uint64/valid-scalar == array",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar == array",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Uint64 (array, scalar) tests
-		{
-			name:   "type=uint64/array == valid-scalar",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-		},
-		{
-			name:   "type=uint64/array == null-scalar",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Uint64 (array, array) tests
-		{
-			name:   "type=uint64/array == array",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(1), uint64(2), uint64(3), uint64(4), nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(1), uint64(3), uint64(3), uint64(5), uint64(1), uint64(2), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false, nil, nil, nil),
-		},
-
-		// UTF8 (scalar, scalar) tests
-		{
-			name:   "type=utf8/equal-scalar == equal-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "hello"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "hello"),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=utf8/scalar == different-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "hello"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "world"),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=utf8/valid-scalar == null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "hello"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar == valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "world"),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar == null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// UTF8 (scalar, array) tests
-		{
-			name:   "type=utf8/valid-scalar == array",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "foo"),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar == array",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// UTF8 (array, scalar) tests
-		{
-			name:   "type=utf8/array == valid-scalar",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "bar"),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-		},
-		{
-			name:   "type=utf8/array == null-scalar",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// UTF8 (array, array) tests
-		{
-			name:   "type=utf8/array == array",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "b", "c", "d", nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "x", "c", "y", "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false, nil, nil, nil),
+			name:  "fails on mismatch length arrays",
+			left:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false),
+			right: columnartest.Array(t, columnar.KindBool, &alloc, true, false),
 		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.Equals(&alloc, tc.left, tc.right)
-			if tc.expectError {
-				require.Error(t, err, "invalid function call should result in an error")
-				return
-			}
-
-			require.NoError(t, err, "valid function call should not result in an error")
-			columnartest.RequireDatumsEqual(t, tc.expect, actual)
+			_, err := compute.Equals(&alloc, tc.left, tc.right, memory.Bitmap{})
+			require.Error(t, err, "invalid function call should result in an error")
 		})
 	}
 }
 
-func TestNotEquals(t *testing.T) {
+func TestNotEquals_Errors(t *testing.T) {
 	var alloc memory.Allocator
 
 	tt := []struct {
 		name        string
 		left, right columnar.Datum
 		expect      columnar.Datum
-		expectError bool
 	}{
 		{
-			name:        "fails on mismatched types",
-			left:        columnartest.Scalar(t, columnar.KindInt64, int64(0)),
-			right:       columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
-			expectError: true,
+			name:  "fails on mismatched types",
+			left:  columnartest.Scalar(t, columnar.KindInt64, int64(0)),
+			right: columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
 		},
 		{
-			name:        "fails on mismatch length arrays",
-			left:        columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false),
-			right:       columnartest.Array(t, columnar.KindBool, &alloc, true, false),
-			expectError: true,
-		},
-
-		// Bool (scalar, scalar) tests
-		{
-			name:   "type=bool/true-scalar != false-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Scalar(t, columnar.KindBool, false),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=bool/true-scalar != true-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Scalar(t, columnar.KindBool, true),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=bool/valid-scalar != null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Scalar(t, columnar.KindBool, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=bool/null-scalar != valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, false),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=bool/null-scalar != null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindBool, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Bool (scalar, array) tests
-		{
-			name:   "type=bool/true-scalar != array",
-			left:   columnartest.Scalar(t, columnar.KindBool, true),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-		},
-		{
-			name:   "type=bool/false-scalar != array",
-			left:   columnartest.Scalar(t, columnar.KindBool, false),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-		},
-		{
-			name:   "type=bool/null-scalar != array",
-			left:   columnartest.Scalar(t, columnar.KindBool, nil),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Bool (array, scalar) tests
-		{
-			name:   "type=bool/array != true-scalar",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, true),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-		},
-		{
-			name:   "type=bool/array != false-scalar",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, false),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-		},
-		{
-			name:   "type=bool/array != null-scalar",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-			right:  columnartest.Scalar(t, columnar.KindBool, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Bool (array, array) tests
-		{
-			name:   "type=bool/array != array",
-			left:   columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false, nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, false, true, false, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, true, false, nil, nil, nil),
-		},
-
-		// Int64 (scalar, scalar) tests
-		{
-			name:   "type=int64/equal-scalar != equal-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=int64/scalar != different-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=int64/valid-scalar != null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=int64/null-scalar != valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=int64/null-scalar != null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Int64 (scalar, array) tests
-		{
-			name:   "type=int64/valid-scalar != array",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-		},
-		{
-			name:   "type=int64/null-scalar != array",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Int64 (array, scalar) tests
-		{
-			name:   "type=int64/array != valid-scalar",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-		},
-		{
-			name:   "type=int64/array != null-scalar",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Int64 (array, array) tests
-		{
-			name:   "type=int64/array != array",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3), int64(4), nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(3), int64(3), int64(5), int64(1), int64(2), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, false, true, nil, nil, nil),
-		},
-
-		// Uint64 (scalar, scalar) tests
-		{
-			name:   "type=uint64/equal-scalar != equal-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=uint64/scalar != different-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=uint64/valid-scalar != null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar != valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar != null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Uint64 (scalar, array) tests
-		{
-			name:   "type=uint64/valid-scalar != array",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar != array",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Uint64 (array, scalar) tests
-		{
-			name:   "type=uint64/array != valid-scalar",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-		},
-		{
-			name:   "type=uint64/array != null-scalar",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Uint64 (array, array) tests
-		{
-			name:   "type=uint64/array != array",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(1), uint64(2), uint64(3), uint64(4), nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(1), uint64(3), uint64(3), uint64(5), uint64(1), uint64(2), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, false, true, nil, nil, nil),
-		},
-
-		// UTF8 (scalar, scalar) tests
-		{
-			name:   "type=utf8/equal-scalar != equal-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "hello"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "hello"),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=utf8/scalar != different-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "hello"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "world"),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=utf8/valid-scalar != null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "hello"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar != valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "world"),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar != null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// UTF8 (scalar, array) tests
-		{
-			name:   "type=utf8/valid-scalar != array",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "foo"),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar != array",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// UTF8 (array, scalar) tests
-		{
-			name:   "type=utf8/array != valid-scalar",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "bar"),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil),
-		},
-		{
-			name:   "type=utf8/array != null-scalar",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// UTF8 (array, array) tests
-		{
-			name:   "type=utf8/array != array",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "b", "c", "d", nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "x", "c", "y", "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, false, true, nil, nil, nil),
+			name:  "fails on mismatch length arrays",
+			left:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false),
+			right: columnartest.Array(t, columnar.KindBool, &alloc, true, false),
 		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.NotEquals(&alloc, tc.left, tc.right)
-			if tc.expectError {
-				require.Error(t, err, "invalid function call should result in an error")
-				return
-			}
-
-			require.NoError(t, err, "valid function call should not result in an error")
-			columnartest.RequireDatumsEqual(t, tc.expect, actual)
+			_, err := compute.NotEquals(&alloc, tc.left, tc.right, memory.Bitmap{})
+			require.Error(t, err, "invalid function call should result in an error")
 		})
 	}
 }
 
-func TestLessThan(t *testing.T) {
+func TestLessThan_Errors(t *testing.T) {
 	var alloc memory.Allocator
 
 	tt := []struct {
 		name        string
 		left, right columnar.Datum
 		expect      columnar.Datum
-		expectError bool
 	}{
 		{
-			name:        "fails on mismatched types",
-			left:        columnartest.Scalar(t, columnar.KindInt64, int64(0)),
-			right:       columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
-			expectError: true,
+			name:  "fails on mismatched types",
+			left:  columnartest.Scalar(t, columnar.KindInt64, int64(0)),
+			right: columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
 		},
 		{
-			name:        "fails on mismatch length arrays",
-			left:        columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
-			right:       columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
-			expectError: true,
+			name:  "fails on mismatch length arrays",
+			left:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
+			right: columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
 		},
 		{
-			name:        "fails on bool type",
-			left:        columnartest.Scalar(t, columnar.KindBool, true),
-			right:       columnartest.Scalar(t, columnar.KindBool, false),
-			expectError: true,
-		},
-
-		// Int64 (scalar, scalar) tests
-		{
-			name:   "type=int64/5 < 10",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=int64/10 < 5",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=int64/5 < 5",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=int64/valid-scalar < null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=int64/null-scalar < valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Int64 (scalar, array) tests
-		{
-			name:   "type=int64/valid-scalar < array",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(3), int64(5), int64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, false, true, nil),
-		},
-		{
-			name:   "type=int64/null-scalar < array",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Int64 (array, scalar) tests
-		{
-			name:   "type=int64/array < valid-scalar",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(3), int64(5), int64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, nil),
-		},
-		{
-			name:   "type=int64/array < null-scalar",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Int64 (array, array) tests
-		{
-			name:   "type=int64/array < array",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(5), int64(10), int64(10), nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(5), int64(5), int64(15), int64(1), int64(2), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, true, nil, nil, nil),
-		},
-
-		// Uint64 (scalar, scalar) tests
-		{
-			name:   "type=uint64/5 < 10",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=uint64/10 < 5",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=uint64/5 < 5",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=uint64/valid-scalar < null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar < valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Uint64 (scalar, array) tests
-		{
-			name:   "type=uint64/valid-scalar < array",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(3), uint64(5), uint64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, false, true, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar < array",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Uint64 (array, scalar) tests
-		{
-			name:   "type=uint64/array < valid-scalar",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(3), uint64(5), uint64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, nil),
-		},
-		{
-			name:   "type=uint64/array < null-scalar",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Uint64 (array, array) tests
-		{
-			name:   "type=uint64/array < array",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(1), uint64(5), uint64(10), uint64(10), nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(5), uint64(5), uint64(15), uint64(1), uint64(2), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, true, nil, nil, nil),
-		},
-
-		// UTF8 (scalar, scalar) tests
-		{
-			name:   "type=utf8/a < b",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "b"),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=utf8/b < a",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "b"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=utf8/a < a",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=utf8/valid-scalar < null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "hello"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar < valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "world"),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// UTF8 (scalar, array) tests
-		{
-			name:   "type=utf8/valid-scalar < array",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "foo"),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "bar", "foo", "zoo", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, false, true, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar < array",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// UTF8 (array, scalar) tests
-		{
-			name:   "type=utf8/array < valid-scalar",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "apple", "banana", "cherry", nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "banana"),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, nil),
-		},
-		{
-			name:   "type=utf8/array < null-scalar",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// UTF8 (array, array) tests
-		{
-			name:   "type=utf8/array < array",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "b", "c", "z", nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "b", "b", "a", "z", "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, false, nil, nil, nil),
+			name:  "fails on bool type",
+			left:  columnartest.Scalar(t, columnar.KindBool, true),
+			right: columnartest.Scalar(t, columnar.KindBool, false),
 		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.LessThan(&alloc, tc.left, tc.right)
-			if tc.expectError {
-				require.Error(t, err, "invalid function call should result in an error")
-				return
-			}
-
-			require.NoError(t, err, "valid function call should not result in an error")
-			columnartest.RequireDatumsEqual(t, tc.expect, actual)
+			_, err := compute.LessThan(&alloc, tc.left, tc.right, memory.Bitmap{})
+			require.Error(t, err, "invalid function call should result in an error")
 		})
 	}
 }
 
-func TestLessOrEqual(t *testing.T) {
+func TestLessOrEqual_Errors(t *testing.T) {
 	var alloc memory.Allocator
 
 	tt := []struct {
 		name        string
 		left, right columnar.Datum
 		expect      columnar.Datum
-		expectError bool
 	}{
 		{
-			name:        "fails on mismatched types",
-			left:        columnartest.Scalar(t, columnar.KindInt64, int64(0)),
-			right:       columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
-			expectError: true,
+			name:  "fails on mismatched types",
+			left:  columnartest.Scalar(t, columnar.KindInt64, int64(0)),
+			right: columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
 		},
 		{
-			name:        "fails on mismatch length arrays",
-			left:        columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
-			right:       columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
-			expectError: true,
+			name:  "fails on mismatch length arrays",
+			left:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
+			right: columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
 		},
 		{
-			name:        "fails on bool type",
-			left:        columnartest.Scalar(t, columnar.KindBool, true),
-			right:       columnartest.Scalar(t, columnar.KindBool, false),
-			expectError: true,
-		},
-
-		// Int64 (scalar, scalar) tests
-		{
-			name:   "type=int64/5 <= 10",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=int64/10 <= 5",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=int64/5 <= 5",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=int64/valid-scalar <= null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=int64/null-scalar <= valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Int64 (scalar, array) tests
-		{
-			name:   "type=int64/valid-scalar <= array",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(3), int64(5), int64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, true, nil),
-		},
-		{
-			name:   "type=int64/null-scalar <= array",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Int64 (array, scalar) tests
-		{
-			name:   "type=int64/array <= valid-scalar",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(3), int64(5), int64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, nil),
-		},
-		{
-			name:   "type=int64/array <= null-scalar",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Int64 (array, array) tests
-		{
-			name:   "type=int64/array <= array",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(5), int64(10), int64(10), nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(5), int64(5), int64(15), int64(1), int64(2), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, true, nil, nil, nil),
-		},
-
-		// Uint64 (scalar, scalar) tests
-		{
-			name:   "type=uint64/5 <= 10",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=uint64/10 <= 5",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=uint64/5 <= 5",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=uint64/valid-scalar <= null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar <= valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Uint64 (scalar, array) tests
-		{
-			name:   "type=uint64/valid-scalar <= array",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(3), uint64(5), uint64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, true, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar <= array",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Uint64 (array, scalar) tests
-		{
-			name:   "type=uint64/array <= valid-scalar",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(3), uint64(5), uint64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, nil),
-		},
-		{
-			name:   "type=uint64/array <= null-scalar",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Uint64 (array, array) tests
-		{
-			name:   "type=uint64/array <= array",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(1), uint64(5), uint64(10), uint64(10), nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(5), uint64(5), uint64(15), uint64(1), uint64(2), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, true, nil, nil, nil),
-		},
-
-		// UTF8 (scalar, scalar) tests
-		{
-			name:   "type=utf8/a <= b",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "b"),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=utf8/b <= a",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "b"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=utf8/a <= a",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=utf8/valid-scalar <= null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "hello"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar <= valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "world"),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// UTF8 (scalar, array) tests
-		{
-			name:   "type=utf8/valid-scalar <= array",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "foo"),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "bar", "foo", "zoo", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, true, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar <= array",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// UTF8 (array, scalar) tests
-		{
-			name:   "type=utf8/array <= valid-scalar",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "apple", "banana", "cherry", nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "banana"),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, nil),
-		},
-		{
-			name:   "type=utf8/array <= null-scalar",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// UTF8 (array, array) tests
-		{
-			name:   "type=utf8/array <= array",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "b", "c", "z", nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "b", "b", "a", "z", "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, true, nil, nil, nil),
+			name:  "fails on bool type",
+			left:  columnartest.Scalar(t, columnar.KindBool, true),
+			right: columnartest.Scalar(t, columnar.KindBool, false),
 		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.LessOrEqual(&alloc, tc.left, tc.right)
-			if tc.expectError {
-				require.Error(t, err, "invalid function call should result in an error")
-				return
-			}
-
-			require.NoError(t, err, "valid function call should not result in an error")
-			columnartest.RequireDatumsEqual(t, tc.expect, actual)
+			_, err := compute.LessOrEqual(&alloc, tc.left, tc.right, memory.Bitmap{})
+			require.Error(t, err, "invalid function call should result in an error")
 		})
 	}
 }
 
-func TestGreaterThan(t *testing.T) {
+func TestGreaterThan_Errors(t *testing.T) {
 	var alloc memory.Allocator
 
 	tt := []struct {
 		name        string
 		left, right columnar.Datum
 		expect      columnar.Datum
-		expectError bool
 	}{
 		{
-			name:        "fails on mismatched types",
-			left:        columnartest.Scalar(t, columnar.KindInt64, int64(0)),
-			right:       columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
-			expectError: true,
+			name:  "fails on mismatched types",
+			left:  columnartest.Scalar(t, columnar.KindInt64, int64(0)),
+			right: columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
 		},
 		{
-			name:        "fails on mismatch length arrays",
-			left:        columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
-			right:       columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
-			expectError: true,
+			name:  "fails on mismatch length arrays",
+			left:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
+			right: columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
 		},
 		{
-			name:        "fails on bool type",
-			left:        columnartest.Scalar(t, columnar.KindBool, true),
-			right:       columnartest.Scalar(t, columnar.KindBool, false),
-			expectError: true,
-		},
-
-		// Int64 (scalar, scalar) tests
-		{
-			name:   "type=int64/10 > 5",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=int64/5 > 10",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=int64/5 > 5",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=int64/valid-scalar > null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=int64/null-scalar > valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Int64 (scalar, array) tests
-		{
-			name:   "type=int64/valid-scalar > array",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(3), int64(5), int64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, nil),
-		},
-		{
-			name:   "type=int64/null-scalar > array",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Int64 (array, scalar) tests
-		{
-			name:   "type=int64/array > valid-scalar",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(3), int64(5), int64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, false, true, nil),
-		},
-		{
-			name:   "type=int64/array > null-scalar",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Int64 (array, array) tests
-		{
-			name:   "type=int64/array > array",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(5), int64(10), int64(10), nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(5), int64(5), int64(15), int64(1), int64(2), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false, nil, nil, nil),
-		},
-
-		// Uint64 (scalar, scalar) tests
-		{
-			name:   "type=uint64/10 > 5",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=uint64/5 > 10",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=uint64/5 > 5",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=uint64/valid-scalar > null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar > valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Uint64 (scalar, array) tests
-		{
-			name:   "type=uint64/valid-scalar > array",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(3), uint64(5), uint64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar > array",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Uint64 (array, scalar) tests
-		{
-			name:   "type=uint64/array > valid-scalar",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(3), uint64(5), uint64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, false, true, nil),
-		},
-		{
-			name:   "type=uint64/array > null-scalar",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Uint64 (array, array) tests
-		{
-			name:   "type=uint64/array > array",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(5), uint64(10), uint64(10), nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(1), uint64(5), uint64(5), uint64(15), uint64(1), uint64(2), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false, nil, nil, nil),
-		},
-
-		// UTF8 (scalar, scalar) tests
-		{
-			name:   "type=utf8/b > a",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "b"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=utf8/a > b",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "b"),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=utf8/a > a",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=utf8/valid-scalar > null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "hello"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar > valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "world"),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// UTF8 (scalar, array) tests
-		{
-			name:   "type=utf8/valid-scalar > array",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "foo"),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "bar", "foo", "zoo", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar > array",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// UTF8 (array, scalar) tests
-		{
-			name:   "type=utf8/array > valid-scalar",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "apple", "banana", "cherry", nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "banana"),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, false, true, nil),
-		},
-		{
-			name:   "type=utf8/array > null-scalar",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// UTF8 (array, array) tests
-		{
-			name:   "type=utf8/array > array",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "b", "b", "c", "z", nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "b", "z", "z", "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, false, nil, nil, nil),
+			name:  "fails on bool type",
+			left:  columnartest.Scalar(t, columnar.KindBool, true),
+			right: columnartest.Scalar(t, columnar.KindBool, false),
 		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.GreaterThan(&alloc, tc.left, tc.right)
-			if tc.expectError {
-				require.Error(t, err, "invalid function call should result in an error")
-				return
-			}
-
-			require.NoError(t, err, "valid function call should not result in an error")
-			columnartest.RequireDatumsEqual(t, tc.expect, actual)
+			_, err := compute.GreaterThan(&alloc, tc.left, tc.right, memory.Bitmap{})
+			require.Error(t, err, "invalid function call should result in an error")
 		})
 	}
 }
 
-func TestGreaterOrEqual(t *testing.T) {
+func TestGreaterOrEqual_Errors(t *testing.T) {
 	var alloc memory.Allocator
 
 	tt := []struct {
 		name        string
 		left, right columnar.Datum
 		expect      columnar.Datum
-		expectError bool
 	}{
 		{
-			name:        "fails on mismatched types",
-			left:        columnartest.Scalar(t, columnar.KindInt64, int64(0)),
-			right:       columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
-			expectError: true,
+			name:  "fails on mismatched types",
+			left:  columnartest.Scalar(t, columnar.KindInt64, int64(0)),
+			right: columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
 		},
 		{
-			name:        "fails on mismatch length arrays",
-			left:        columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
-			right:       columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
-			expectError: true,
+			name:  "fails on mismatch length arrays",
+			left:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
+			right: columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
 		},
 		{
-			name:        "fails on bool type",
-			left:        columnartest.Scalar(t, columnar.KindBool, true),
-			right:       columnartest.Scalar(t, columnar.KindBool, false),
-			expectError: true,
-		},
-
-		// Int64 (scalar, scalar) tests
-		{
-			name:   "type=int64/10 >= 5",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=int64/5 >= 10",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=int64/5 >= 5",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=int64/valid-scalar >= null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=int64/null-scalar >= valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Int64 (scalar, array) tests
-		{
-			name:   "type=int64/valid-scalar >= array",
-			left:   columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(3), int64(5), int64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, nil),
-		},
-		{
-			name:   "type=int64/null-scalar >= array",
-			left:   columnartest.Scalar(t, columnar.KindInt64, nil),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Int64 (array, scalar) tests
-		{
-			name:   "type=int64/array >= valid-scalar",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(3), int64(5), int64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, int64(5)),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, true, nil),
-		},
-		{
-			name:   "type=int64/array >= null-scalar",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindInt64, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Int64 (array, array) tests
-		{
-			name:   "type=int64/array >= array",
-			left:   columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(5), int64(10), int64(10), nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(5), int64(5), int64(15), int64(1), int64(2), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, true, false, nil, nil, nil),
-		},
-
-		// Uint64 (scalar, scalar) tests
-		{
-			name:   "type=uint64/10 >= 5",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=uint64/5 >= 10",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=uint64/5 >= 5",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=uint64/valid-scalar >= null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar >= valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(10)),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// Uint64 (scalar, array) tests
-		{
-			name:   "type=uint64/valid-scalar >= array",
-			left:   columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(3), uint64(5), uint64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, nil),
-		},
-		{
-			name:   "type=uint64/null-scalar >= array",
-			left:   columnartest.Scalar(t, columnar.KindUint64, nil),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Uint64 (array, scalar) tests
-		{
-			name:   "type=uint64/array >= valid-scalar",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(3), uint64(5), uint64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, uint64(5)),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, true, nil),
-		},
-		{
-			name:   "type=uint64/array >= null-scalar",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(10), nil),
-			right:  columnartest.Scalar(t, columnar.KindUint64, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// Uint64 (array, array) tests
-		{
-			name:   "type=uint64/array >= array",
-			left:   columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(5), uint64(10), uint64(10), nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindUint64, &alloc, uint64(1), uint64(5), uint64(5), uint64(15), uint64(1), uint64(2), nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, true, false, nil, nil, nil),
-		},
-
-		// UTF8 (scalar, scalar) tests
-		{
-			name:   "type=utf8/b >= a",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "b"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=utf8/a >= b",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "b"),
-			expect: columnartest.Scalar(t, columnar.KindBool, false),
-		},
-		{
-			name:   "type=utf8/a >= a",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "a"),
-			expect: columnartest.Scalar(t, columnar.KindBool, true),
-		},
-		{
-			name:   "type=utf8/valid-scalar >= null-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "hello"),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar >= valid-scalar",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "world"),
-			expect: columnartest.Scalar(t, columnar.KindBool, nil),
-		},
-
-		// UTF8 (scalar, array) tests
-		{
-			name:   "type=utf8/valid-scalar >= array",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, "foo"),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "bar", "foo", "zoo", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, nil),
-		},
-		{
-			name:   "type=utf8/null-scalar >= array",
-			left:   columnartest.Scalar(t, columnar.KindUTF8, nil),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// UTF8 (array, scalar) tests
-		{
-			name:   "type=utf8/array >= valid-scalar",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "apple", "banana", "cherry", nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, "banana"),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, false, true, true, nil),
-		},
-		{
-			name:   "type=utf8/array >= null-scalar",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", nil),
-			right:  columnartest.Scalar(t, columnar.KindUTF8, nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
-		},
-
-		// UTF8 (array, array) tests
-		{
-			name:   "type=utf8/array >= array",
-			left:   columnartest.Array(t, columnar.KindUTF8, &alloc, "b", "b", "c", "z", nil, nil, nil),
-			right:  columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "b", "z", "z", "foo", "bar", nil),
-			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, true, nil, nil, nil),
+			name:  "fails on bool type",
+			left:  columnartest.Scalar(t, columnar.KindBool, true),
+			right: columnartest.Scalar(t, columnar.KindBool, false),
 		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.GreaterOrEqual(&alloc, tc.left, tc.right)
-			if tc.expectError {
-				require.Error(t, err, "invalid function call should result in an error")
-				return
-			}
-
-			require.NoError(t, err, "valid function call should not result in an error")
-			columnartest.RequireDatumsEqual(t, tc.expect, actual)
+			_, err := compute.GreaterOrEqual(&alloc, tc.left, tc.right, memory.Bitmap{})
+			require.Error(t, err, "invalid function call should result in an error")
 		})
 	}
 }
 
-type equalityFunction func(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error)
+type equalityFunction func(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error)
 
 func BenchmarkEqualityFunctions(b *testing.B) {
 	var alloc memory.Allocator
@@ -1790,7 +348,7 @@ func BenchmarkEqualityFunctions(b *testing.B) {
 			for b.Loop() {
 				tempAlloc.Reclaim()
 
-				_, _ = s.fn(tempAlloc, s.left, s.right)
+				_, _ = s.fn(tempAlloc, s.left, s.right, memory.Bitmap{})
 			}
 
 			totalValues := s.left.Len() + s.right.Len()

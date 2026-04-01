@@ -306,6 +306,13 @@ func NewBodyFromSizedReader(r io.Reader, size int64) (*Body, error) {
 	return body, nil
 }
 
+func NewBodyFromReader(r io.Reader, size int64) (*Body, error) {
+	return &Body{
+		stream: ioutil.NopCloser(r),
+		size:   size,
+	}, nil
+}
+
 func NewBodyFromSizedReaderV2(r io.Reader, size int64, calcMd5 bool) (*Body, error) {
 	var buffer bytes.Buffer
 	var rlen int64
@@ -342,6 +349,13 @@ func NewBodyFromSizedReaderV2(r io.Reader, size int64, calcMd5 bool) (*Body, err
 		contentMD5: contentMD5,
 	}
 	return body, nil
+}
+
+func NewBodyFromReaderV2(r io.Reader, size int64) (*Body, error) {
+	return &Body{
+		stream: NewTeeReadNopCloser(r),
+		size:   size,
+	}, nil
 }
 
 // BceRequest defines the request structure for accessing BCE services

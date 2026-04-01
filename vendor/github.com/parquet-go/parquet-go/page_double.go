@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"io"
+	"math"
 
 	"github.com/parquet-go/bitpack/unsafecast"
 	"github.com/parquet-go/parquet-go/encoding"
@@ -50,11 +51,39 @@ func (page *doublePage) max() float64 { return maxFloat64(page.values.Slice()) }
 
 func (page *doublePage) bounds() (min, max float64) { return boundsFloat64(page.values.Slice()) }
 
+// Bounds returns the min and max values in the page. NaN values are excluded
+// from the result when non-NaN values exist so that query engines can rely on
+// min/max for predicate pushdown and row-group/page skipping. This matches the
+// behavior of Apache parquet-mr (PARQUET-1246), Apache Arrow, and the Apache
+// Iceberg spec (which states lower/upper bounds apply to non-null, non-NaN
+// values only). If all values are NaN, the bounds are reported as NaN so that
+// readers know the page had data.
 func (page *doublePage) Bounds() (min, max Value, ok bool) {
 	if ok = page.values.Len() > 0; ok {
-		minFloat, maxFloat := page.bounds()
-		min = page.makeValue(minFloat)
-		max = page.makeValue(maxFloat)
+		data := page.values.Slice()
+		i := 0
+		for i < len(data) && math.IsNaN(data[i]) {
+			i++
+		}
+		if i >= len(data) {
+			min = page.makeValue(data[0])
+			max = page.makeValue(data[0])
+			return min, max, ok
+		}
+		lo, hi := data[i], data[i]
+		for _, v := range data[i+1:] {
+			if math.IsNaN(v) {
+				continue
+			}
+			if v < lo {
+				lo = v
+			}
+			if v > hi {
+				hi = v
+			}
+		}
+		min = page.makeValue(lo)
+		max = page.makeValue(hi)
 	}
 	return min, max, ok
 }

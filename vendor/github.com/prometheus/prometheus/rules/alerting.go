@@ -1,4 +1,4 @@
-// Copyright 2013 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -521,6 +521,14 @@ func (r *AlertingRule) Eval(ctx context.Context, queryOffset time.Duration, ts t
 		if a.State == StatePending && ts.Sub(a.ActiveAt) >= r.holdDuration {
 			a.State = StateFiring
 			a.FiredAt = ts
+		}
+
+		// If the alert is firing and the active time is less than the new hold duration, set the state to pending.
+		if a.State == StateFiring && ts.Sub(a.ActiveAt) < r.holdDuration {
+			a.State = StatePending
+			a.FiredAt = time.Time{}
+			a.LastSentAt = time.Time{}
+			a.KeepFiringSince = time.Time{}
 		}
 
 		if r.restored.Load() {

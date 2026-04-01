@@ -25,11 +25,11 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
-	"github.com/grafana/loki/v3/pkg/querytee/comparator"
-	querytee_goldfish "github.com/grafana/loki/v3/pkg/querytee/goldfish"
-
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
+	querytee_goldfish "github.com/grafana/loki/v3/pkg/querytee/goldfish"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // createTestEndpoint creates a ProxyEndpoint with properly initialized handler pipeline
@@ -225,7 +225,7 @@ func Test_ProxyEndpoint_QueryRequests(t *testing.T) {
 	require.NoError(t, err)
 	backends := []*ProxyBackend{
 		proxyBackend1,
-		proxyBackend2.WithFilter(regexp.MustCompile("/loki/api/v1/query_range")),
+		proxyBackend2.WithFilter(regexp.MustCompile(regexp.QuoteMeta(constants.PathLokiQueryRange))),
 	}
 	endpoint := createTestEndpoint(t, backends, "test", nil, false)
 
@@ -238,7 +238,7 @@ func Test_ProxyEndpoint_QueryRequests(t *testing.T) {
 		{
 			name: "GET-request",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("GET", "http://test/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)
+				r, err := http.NewRequest("GET", "http://test"+constants.PathLokiQueryRange+"?query={job=\"test\"}&start=1&end=2", nil)
 				r.Header["test-X"] = []string{"test-X-value"}
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
@@ -255,7 +255,7 @@ func Test_ProxyEndpoint_QueryRequests(t *testing.T) {
 		{
 			name: "GET-filter-accept-encoding",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("GET", "http://test/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)
+				r, err := http.NewRequest("GET", "http://test"+constants.PathLokiQueryRange+"?query={job=\"test\"}&start=1&end=2", nil)
 				r.Header.Set("Accept-Encoding", "gzip")
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
@@ -272,7 +272,7 @@ func Test_ProxyEndpoint_QueryRequests(t *testing.T) {
 		{
 			name: "GET-filtered",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("GET", "http://test/loki/api/v1/query?query={job=\"test\"}", nil)
+				r, err := http.NewRequest("GET", "http://test"+constants.PathLokiQuery+"?query={job=\"test\"}", nil)
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
 				return r
@@ -348,7 +348,7 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 	require.NoError(t, err)
 	backends := []*ProxyBackend{
 		proxyBackend1,
-		proxyBackend2.WithFilter(regexp.MustCompile("/loki/api/v1/push")),
+		proxyBackend2.WithFilter(regexp.MustCompile(regexp.QuoteMeta(constants.PathLokiPush))),
 	}
 	// endpoint := createTestEndpoint(backends, "test", nil, false)
 	metrics := NewProxyMetrics(nil)
@@ -364,7 +364,7 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 		{
 			name: "POST-request",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("POST", "http://test/loki/api/v1/push", strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+				r, err := http.NewRequest("POST", "http://test"+constants.PathLokiPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
 				r.Header.Set("test-X", "test-X-value")
 				r.Header["Content-Type"] = []string{"application/json"}
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
@@ -382,7 +382,7 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 		{
 			name: "POST-filter-accept-encoding",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("POST", "http://test/loki/api/v1/push", strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+				r, err := http.NewRequest("POST", "http://test"+constants.PathLokiPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
 				r.Header["Content-Type"] = []string{"application/json"}
 				r.Header.Set("Accept-Encoding", "gzip")
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
@@ -400,7 +400,7 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 		{
 			name: "POST-filtered",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("POST", "http://test/loki/api/prom/push", strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+				r, err := http.NewRequest("POST", "http://test"+constants.PathPromPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
 				r.Header["Content-Type"] = []string{"application/json"}
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
@@ -492,7 +492,7 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 		{
 			name: "missing-metrics-series",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("GET", "http://test/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)
+				r, err := http.NewRequest("GET", "http://test"+constants.PathLokiQueryRange+"?query={job=\"test\"}&start=1&end=2", nil)
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
 				return r
@@ -679,7 +679,7 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 	endpoint := createTestEndpointWithGoldfish(t, backends, "test", goldfishManager)
 
 	// Create request that triggers goldfish sampling
-	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000", nil)
+	req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000", nil)
 	req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 	// Add trace context to the request (this would normally be done by tracing middleware)
@@ -832,7 +832,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// Query from threshold+1h to threshold+2h (all recent)
 		start := threshold.Add(time.Hour)
 		end := threshold.Add(2 * time.Hour)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
+		req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
@@ -850,7 +850,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// Query from threshold-2h to threshold-1h (all old)
 		start := threshold.Add(-2 * time.Hour)
 		end := threshold.Add(-time.Hour)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
+		req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
@@ -871,7 +871,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// Query from threshold-1h to threshold+1h (spans threshold)
 		start := threshold.Add(-time.Hour)
 		end := threshold.Add(time.Hour)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
+		req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
@@ -947,7 +947,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		start := threshold.Add(-time.Hour)
 		end := threshold.Add(time.Hour)
 		metricQuery := url.QueryEscape(`sum by (job) (count_over_time({foo="bar"}[5m]))`)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query="+metricQuery+"&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
+		req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query="+metricQuery+"&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
@@ -1053,7 +1053,7 @@ func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
 	backends := []*ProxyBackend{backend1}
 
 	recorder := httptest.NewRecorder()
-	fakeReq := httptest.NewRequestWithContext(context.Background(), "GET", "/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)
+	fakeReq := httptest.NewRequestWithContext(context.Background(), "GET", constants.PathLokiQueryRange+"?query={job=\"test\"}&start=1&end=2", nil)
 	fakeReq.Header.Set("X-Scope-OrgID", "test-tenant")
 
 	endpoint := createTestEndpoint(t, backends, "test", nil, false)
@@ -1065,4 +1065,116 @@ func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
 
 func formatTime(t time.Time) string {
 	return strconv.FormatInt(t.UnixNano(), 10)
+}
+
+// Test_ProxyEndpoint_WritePath_GoldfishCorrelationIDHeader tests that the goldfish correlation ID
+// header is set (or absent) in responses for write requests depending on the sampling decision.
+func Test_ProxyEndpoint_WritePath_GoldfishCorrelationIDHeader(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	backend1 := httptest.NewServer(handler)
+	defer backend1.Close()
+	backendURL1, err := url.Parse(backend1.URL)
+	require.NoError(t, err)
+
+	proxyBackend1, err := NewProxyBackend("backend-1", backendURL1, time.Second, true)
+	require.NoError(t, err)
+	backends := []*ProxyBackend{proxyBackend1}
+
+	tests := []struct {
+		name           string
+		shouldSample   bool
+		correlationID  string
+		expectHeader   bool
+		expectedHeader string
+	}{
+		{
+			name:           "sampled write sets goldfish header",
+			shouldSample:   true,
+			correlationID:  "test-uuid-sampled",
+			expectHeader:   true,
+			expectedHeader: "test-uuid-sampled",
+		},
+		{
+			name:          "non-sampled write omits goldfish header",
+			shouldSample:  false,
+			correlationID: "",
+			expectHeader:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			goldfishManager := &mockGoldfishManager{
+				shouldSampleResult:  tc.shouldSample,
+				correlationIDResult: tc.correlationID,
+			}
+
+			metrics := NewProxyMetrics(nil)
+			logger := log.NewNopLogger()
+			endpoint := NewProxyEndpoint(backends, "test", metrics, logger, nil, false)
+			endpoint.WithGoldfish(goldfishManager)
+
+			req, err := http.NewRequest("POST", "http://test"+constants.PathLokiPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Scope-OrgID", "test-tenant")
+
+			w := httptest.NewRecorder()
+			endpoint.ServeHTTP(w, req)
+
+			if tc.expectHeader {
+				require.Equal(t, tc.expectedHeader, w.Header().Get(querytee_goldfish.GoldfishCorrelationIDHeader),
+					"expected goldfish header to be set")
+			} else {
+				require.Empty(t, w.Header().Get(querytee_goldfish.GoldfishCorrelationIDHeader),
+					"expected goldfish header to be absent")
+			}
+		})
+	}
+}
+
+// Test_ProxyEndpoint_WritePath_GoldfishHeaderOnErrorResponse tests that the goldfish correlation ID
+// header survives error responses on the writes path. When a sampled request results in a backend
+// error, the client should still receive the header so it can correlate the request.
+func Test_ProxyEndpoint_WritePath_GoldfishHeaderOnErrorResponse(t *testing.T) {
+	// Backend returns 500 to simulate an error
+	errorHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("internal server error"))
+	})
+	errorBackend := httptest.NewServer(errorHandler)
+	defer errorBackend.Close()
+	errorBackendURL, err := url.Parse(errorBackend.URL)
+	require.NoError(t, err)
+
+	proxyBackend, err := NewProxyBackend("backend-1", errorBackendURL, time.Second, true)
+	require.NoError(t, err)
+	backends := []*ProxyBackend{proxyBackend}
+
+	goldfishManager := &mockGoldfishManager{
+		shouldSampleResult:  true,
+		correlationIDResult: "error-test-uuid",
+	}
+
+	metrics := NewProxyMetrics(nil)
+	logger := log.NewNopLogger()
+	endpoint := NewProxyEndpoint(backends, "test", metrics, logger, nil, false)
+	endpoint.WithGoldfish(goldfishManager)
+
+	req, err := http.NewRequest("POST", "http://test"+constants.PathLokiPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Scope-OrgID", "test-tenant")
+
+	w := httptest.NewRecorder()
+	endpoint.ServeHTTP(w, req)
+
+	// The response should be a 500 error
+	require.Equal(t, http.StatusInternalServerError, w.Code, "backend error should be propagated")
+
+	// The goldfish header should still be present despite the error
+	require.Equal(t, "error-test-uuid", w.Header().Get(querytee_goldfish.GoldfishCorrelationIDHeader),
+		"goldfish header must survive error responses so clients can correlate sampled requests")
 }

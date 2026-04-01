@@ -1,11 +1,58 @@
 # Changes
 
 
+## [1.61.3](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.61.3) (2026-03-13)
+
+### Documentation
+
+* Fix godoc formatting (#14169) ([428b228](https://github.com/googleapis/google-cloud-go/commit/428b228814dc78b1b92c83868e1a58bb32ea71f0))
+
+## [1.61.2](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.61.2) (2026-03-12)
+
+### Bug Fixes
+
+* fix dependency version for auth library (#14156) ([cb354ba](https://github.com/googleapis/google-cloud-go/commit/cb354ba5691eade26d14ace3c04d79f3363c0526))
+
+## [1.61.1](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.61.1) (2026-03-11)
+
+## [1.61.0](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.61.0) (2026-03-10)
+
+### Features
+
+* add a DeleteFolderRecursive API definition ([6f31019](https://github.com/googleapis/google-cloud-go/commit/6f310199e136b133bb4fadaa353e264e809db6d7))
+* add bucket encryption enforcement configuration (#13874) ([245c8d7](https://github.com/googleapis/google-cloud-go/commit/245c8d7638756f3ec7c55b32b8a0f924814e8547))
+* add multistream options to MRD (#13758) ([4557675](https://github.com/googleapis/google-cloud-go/commit/4557675e058e042c614a46b55c1b2346d378204b))
+* add multistream support to MRD (#13792) ([ffa7268](https://github.com/googleapis/google-cloud-go/commit/ffa7268c6195f11f404b0c976b3c7c836df26294))
+
+### Bug Fixes
+
+* Fix TM download dir corner case (#14142) ([87cdcc9](https://github.com/googleapis/google-cloud-go/commit/87cdcc9f756881f90337d222fe3707234d1a2c71))
+* Omit auto checksum in final request when MD5 is given (#14024) ([d404777](https://github.com/googleapis/google-cloud-go/commit/d40477749f0d54c88dd92fd992c9401732ef8d50))
+* optimize gRPC writer with zero-copy and lazy allocation (#13481) ([df64147](https://github.com/googleapis/google-cloud-go/commit/df64147605e961803c7ea839bc080ffd1b814ac9))
+
+## [1.60.0](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.60.0) (2026-02-10)
+
+### Features
+
+* Add a new field `ComposeObjectRequest.delete_source_objects` field ([611f239](https://github.com/googleapis/google-cloud-go/commit/611f239219225fb03f6475c7238f497a349961e2))
+* Add support for max-retry-duration for all api other than resumable-upload (#13749) ([31c352b](https://github.com/googleapis/google-cloud-go/commit/31c352bd672637813ec251c2f48ad1c38ea13922))
+* Perform checksum for single shot and single chunk uploads (#13733) ([892c5d3](https://github.com/googleapis/google-cloud-go/commit/892c5d32bd14dfbd3a1a7d3fa5894331f41392a1))
+* Support checksum validation in resumable json uploads (#13573) ([337ca07](https://github.com/googleapis/google-cloud-go/commit/337ca078a09d687aa758ed3982f2047bee3da57a))
+
+### Bug Fixes
+
+* Change TestValidateChecksumFromServer error message (#13810) ([0741414](https://github.com/googleapis/google-cloud-go/commit/07414143ceba31ac97f8e2d083fcc95b11a2579e))
+* Fix panic error in transfermanager downloads (#13815) ([4272271](https://github.com/googleapis/google-cloud-go/commit/427227197f79dfee7edf7bf5d66e33276e9eee52))
+
+### Documentation
+
+* Update documentation for `BidiReadObject`, `ReadObjectRequest`, and `ObjectContexts` ([611f239](https://github.com/googleapis/google-cloud-go/commit/611f239219225fb03f6475c7238f497a349961e2))
+
 ## [1.59.2](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.59.2) (2026-01-28)
 
 ### Bug Fixes
 
-* deadlock in event loop while coordinating channels (#13652) ([ff6c8e7](https://github.com/googleapis/google-cloud-go/commit/ff6c8e780b2207b154808ba22e3124b68d6b4f7d))
+* Deadlock in event loop while coordinating channels (#13652) ([ff6c8e7](https://github.com/googleapis/google-cloud-go/commit/ff6c8e780b2207b154808ba22e3124b68d6b4f7d))
 
 ## [1.59.1](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.59.1) (2026-01-14)
 

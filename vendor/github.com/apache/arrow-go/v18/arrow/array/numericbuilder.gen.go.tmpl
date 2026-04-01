@@ -17,6 +17,9 @@
 package array
 
 import (
+	"reflect"
+	"strconv"
+
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
@@ -378,9 +381,59 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 {{if or (eq .Name "Float32") (eq .Name "Float64") -}}
 		f, err := strconv.ParseFloat(v, {{.Size}}*8)
 {{else if eq (printf "%.1s" .Name) "U" -}}
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v, 10, {{.Size}}*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value: v,
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^{{.name}}(0)) {
+				return &json.UnmarshalTypeError{
+					Value: v,
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 {{else -}}
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v, 10, {{.Size}}*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value: v,
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			{{if eq .Size "8" -}}
+			if fval != float64(int64(fval)) || fval < -9223372036854775808.0 || fval >= 9223372036854775808.0 {
+			{{else -}}
+			minVal := float64(int64(-1) << ({{.Size}}*8-1))
+			maxVal := float64(int64(1) << ({{.Size}}*8-1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+			{{end -}}
+				return &json.UnmarshalTypeError{
+					Value: v,
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 {{end -}}
 		if err != nil {
 			return &json.UnmarshalTypeError{
@@ -396,9 +449,59 @@ func (b *{{.Name}}Builder) UnmarshalOne(dec *json.Decoder) error {
 {{if or (eq .Name "Float32") (eq .Name "Float64") -}}
 		f, err := strconv.ParseFloat(v.String(), {{.Size}}*8)
 {{else if eq (printf "%.1s" .Name) "U" -}}
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v.String(), 10, {{.Size}}*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value: v.String(),
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^{{.name}}(0)) {
+				return &json.UnmarshalTypeError{
+					Value: v.String(),
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 {{else -}}
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v.String(), 10, {{.Size}}*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value: v.String(),
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			{{if eq .Size "8" -}}
+			if fval != float64(int64(fval)) || fval < -9223372036854775808.0 || fval >= 9223372036854775808.0 {
+			{{else -}}
+			minVal := float64(int64(-1) << ({{.Size}}*8-1))
+			maxVal := float64(int64(1) << ({{.Size}}*8-1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+			{{end -}}
+				return &json.UnmarshalTypeError{
+					Value: v.String(),
+					Type: reflect.TypeOf({{.name}}(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 {{end -}}
 		if err != nil {
 			return &json.UnmarshalTypeError{

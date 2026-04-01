@@ -48,15 +48,15 @@ func (n *node[T]) Peek() (*node[T], Scope) {
 }
 
 // Pop removes the next selected child from the heap. Panics if n is not a scope node.
-func (n *node[T]) Pop() (*node[T], Scope) {
+func (n *node[T]) Pop() (*node[T], Scope, Position) {
 	pq := n.pqueue()
 	if len(pq.children) == 0 {
-		return nil, nil
+		return nil, nil, Position{}
 	}
 
 	child := pq.children[0].node
 	_ = heap.Remove(pq, 0)
-	return child, pq.scope
+	return child, pq.scope, Position{rank: child.rank, id: child.id}
 }
 
 // Scope returns the scope for this node. Panics if n is not a scope node.
@@ -198,6 +198,25 @@ func (n *node[T]) RegisterScope(scope Scope) (*node[T], error) {
 		Index: -1, // Start as inactive
 	}
 	return newNode, nil
+}
+
+// CreateValueAt pushes a value node to n with the specified rank and id.
+// This is used by [Queue.Requeue] to restore a value at its original position.
+//
+// Panics if n is not a scope node.
+func (n *node[T]) CreateValueAt(v T, rank int64, id int64) *node[T] {
+	newNode := &node[T]{
+		parent: n,
+		queue:  n.queue,
+
+		rank: rank,
+		id:   id,
+
+		value: v,
+	}
+
+	heap.Push(n.pqueue(), newNode)
+	return newNode
 }
 
 // CreateValue pushes a value node to n. If v already exists in n, a duplicate

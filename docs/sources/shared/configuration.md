@@ -312,6 +312,11 @@ query_engine:
   # CLI flag: -query-engine.batch-size
   [batch_size: <int> | default = 100]
 
+  # Experimental: Number of bytes to prefetch when opening a data object for
+  # decoding metadata and overlapping section reads. Clamps to at least 16KiB.
+  # CLI flag: -query-engine.prefetch-bytes
+  [prefetch_bytes: <int> | default = 16KiB]
+
   # Experimental: The number of inputs that are prefetched simultaneously by any
   # Merge node. A value of 0 means that only the currently processed input is
   # prefetched, 1 means that only the next input is prefetched, and so on. A
@@ -338,6 +343,28 @@ query_engine:
     # Experimental: minimum size of a byte range
     # CLI flag: -query-engine.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
+
+  tasks_result_cache:
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is:
+    # query-engine.tasks-result-cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -query-engine.tasks-result-cache.compression
+    [compression: <string> | default = ""]
+
+    # Experimental: Maximum size for a task result to be cacheable. 0 means only
+    # empty responses are cached.
+    # CLI flag: -query-engine.tasks-result-cache.task-result-max-cacheable-size
+    [task_result_max_cacheable_size: <int> | default = 0B]
+
+    # Experimental: Maximum size for a DataObjScan result to be cacheable. 0
+    # means only empty responses are cached.
+    # CLI flag: -query-engine.tasks-result-cache.dataobjscan-result-max-cacheable-size
+    [dataobjscan_result_max_cacheable_size: <int> | default = 0B]
 
   # Experimental: Number of worker threads to spawn. Each worker thread runs one
   # task at a time. 0 means to use GOMAXPROCS value.
@@ -388,10 +415,26 @@ query_engine:
   # CLI flag: -query-engine.enforce-retention-period
   [enforce_retention_period: <boolean> | default = false]
 
+  # Mutate incoming queries to align their start and end with their step.
+  # CLI flag: -query-engine.align-queries-with-step
+  [align_queries_with_step: <boolean> | default = false]
+
   # Experimental: When enabled, the tenant's MaxQuerySeries limit is applied.
   # Otherwise, no limit is enforced.
   # CLI flag: -query-engine.enforce-max-query-series-limit
   [enforce_max_query_series_limit: <boolean> | default = false]
+
+  results_cache:
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is:
+    # query-engine.results-cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -query-engine.results-cache.compression
+    [compression: <string> | default = ""]
 
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
@@ -1202,6 +1245,10 @@ kafka_config:
   # CLI flag: -kafka.enable-kafka-histograms
   [enable_kafka_histograms: <boolean> | default = false]
 
+  # Enable tracing.
+  # CLI flag: -kafka.tracing-enabled
+  [tracing_enabled: <boolean> | default = false]
+
 dataobj:
   consumer:
     builderconfig:
@@ -1865,9 +1912,25 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.num-partitions
   [num_partitions: <int> | default = 64]
 
-  # The TTL for the assigned partitions cache. 0 disables the cache.
+  # Enable the assigned partitions cache.
+  # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-enabled
+  [assigned_partitions_cache_enabled: <boolean> | default = true]
+
+  # The TTL for the assigned partitions cache.
   # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-ttl
   [assigned_partitions_cache_ttl: <duration> | default = 1m]
+
+  # [Experimental]: Enable the accepted streams cache.
+  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-enabled
+  [accepted_streams_cache_enabled: <boolean> | default = false]
+
+  # The TTL for the accepted streams cache.
+  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-ttl
+  [accepted_streams_cache_ttl: <duration> | default = 1m]
+
+  # The jitter to add to the accepted streams cache.
+  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-ttl-jitter
+  [accepted_streams_cache_ttl_jitter: <duration> | default = 15s]
 
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
@@ -2362,6 +2425,8 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `frontend.label-results-cache`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
+- `query-engine.results-cache`
+- `query-engine.tasks-result-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
 - `store.index-cache-read`
@@ -3318,6 +3383,11 @@ dataobj_tee:
   # Enables optional debug metrics.
   # CLI flag: -distributor.dataobj-tee.debug-metrics-enabled
   [debug_metrics_enabled: <boolean> | default = false]
+
+  # Duration to accumulate rate updates before sending to limits frontend. Set
+  # to 0 to disable batching.
+  # CLI flag: -distributor.dataobj-tee.rate-batch-window
+  [rate_batch_window: <duration> | default = 0s]
 ```
 
 ### etcd
@@ -4069,6 +4139,12 @@ wal:
 # CLI flag: -ingester.owned-streams-check-interval
 [owned_streams_check_interval: <duration> | default = 30s]
 
+# When enabled, the ingester skips stream count limit checks, delegating them
+# entirely to the ingest-limits service (Thor). Requires ingest-limits service
+# to be enabled.
+# CLI flag: -ingester.delegate-stream-limits-enabled
+[delegate_stream_limits_enabled: <boolean> | default = false]
+
 kafka_ingestion:
   # Whether the kafka ingester is enabled.
   # CLI flag: -ingester.kafka-ingestion-enabled
@@ -4492,6 +4568,11 @@ discover_generic_fields:
 # is enabled.
 # CLI flag: -querier.split-instant-metric-queries-by-interval
 [split_instant_metric_queries_by_interval: <duration> | default = 1h]
+
+# Time bucket interval used for cache key generation in the Thor (V2) query
+# engine. Queries starting within the same bucket share the same cache key.
+# CLI flag: -querier.engine-results-cache-time-bucket-interval
+[engine_results_cache_time_bucket_interval: <duration> | default = 1d]
 
 # Interval to use for time-based splitting when a request is within the
 # `query_ingesters_within` window; defaults to `split-queries-by-interval` by
@@ -5027,10 +5108,11 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.cluster-label-verification-disabled
 [cluster_label_verification_disabled: <boolean> | default = false]
 
-# Other cluster members to join. Can be specified multiple times. It can be an
-# IP, hostname or an entry specified in the DNS Service Discovery format.
+# Other cluster members to join. Can be specified multiple times or as a
+# comma-separated list. It can be an IP, hostname or an entry specified in the
+# DNS Service Discovery format.
 # CLI flag: -memberlist.join
-[join_members: <list of strings> | default = []]
+[join_members: <list of strings>]
 
 # Min backoff duration to join other cluster members.
 # CLI flag: -memberlist.min-join-backoff
@@ -5050,6 +5132,12 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.abort-if-fast-join-fails
 [abort_if_cluster_fast_join_fails: <boolean> | default = false]
 
+# Minimum number of seed nodes that must be successfully joined during fast-join
+# for it to succeed. Only applies when -memberlist.abort-if-fast-join-fails is
+# enabled.
+# CLI flag: -memberlist.abort-if-fast-join-fails-min-nodes
+[abort_if_cluster_fast_join_fails_min_nodes: <int> | default = 1]
+
 # Abort if this node fails to join memberlist cluster at startup. When enabled,
 # it's not guaranteed that other services are started only after the cluster
 # state has been successfully updated; use 'abort-if-fast-join-fails' instead.
@@ -5064,6 +5152,13 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # is not needed.
 # CLI flag: -memberlist.rejoin-interval
 [rejoin_interval: <duration> | default = 0s]
+
+# Seed nodes to use for periodic rejoin. Takes precedence over -memberlist.join
+# for rejoining. If not specified, -memberlist.join is used. Can be specified
+# multiple times or as a comma-separated list. Supports IP, hostname, or DNS
+# Service Discovery format.
+# CLI flag: -memberlist.rejoin-seed-nodes
+[rejoin_seed_nodes: <list of strings>]
 
 # How long to keep LEFT ingesters in the ring.
 # CLI flag: -memberlist.left-ingesters-timeout
@@ -5140,6 +5235,24 @@ zone_aware_routing:
   # Role of this node in the cluster. Valid values: member, bridge.
   # CLI flag: -memberlist.zone-aware-routing.role
   [role: <string> | default = "member"]
+
+propagation_delay_tracker:
+  # Enable the propagation delay tracker to measure gossip propagation delay.
+  # CLI flag: -memberlist.propagation-delay-tracker.enabled
+  [enabled: <boolean> | default = false]
+
+  # How often to publish beacons for propagation tracking.
+  # CLI flag: -memberlist.propagation-delay-tracker.beacon-interval
+  [beacon_interval: <duration> | default = 1m]
+
+  # How long a beacon lives before being garbage collected.
+  # CLI flag: -memberlist.propagation-delay-tracker.beacon-lifetime
+  [beacon_lifetime: <duration> | default = 10m]
+
+  # Log warning when beacon propagation delay exceeds this threshold. 0 disables
+  # logging.
+  # CLI flag: -memberlist.propagation-delay-tracker.log-beacons-latency-longer-than
+  [log_beacons_latency_longer_than: <duration> | default = 0s]
 ```
 
 ### named_stores_config
@@ -6305,6 +6418,16 @@ grpc_tls_config:
 # CLI flag: -server.grpc.recv-buffer-pools-enabled
 [grpc_server_recv_buffer_pools_enabled: <boolean> | default = false]
 
+# Size of the read buffer for each gRPC connection (bytes). A smaller buffer may
+# reduce memory usage but may lead to more system calls.
+# CLI flag: -server.grpc.read-buffer-size-bytes
+[grpc_server_read_buffer_size: <int> | default = 32768]
+
+# Size of the write buffer for each gRPC connection (bytes). A smaller buffer
+# may reduce memory usage but may lead to more system calls.
+# CLI flag: -server.grpc.write-buffer-size-bytes
+[grpc_server_write_buffer_size: <int> | default = 32768]
+
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
 [log_format: <string> | default = "logfmt"]
@@ -6406,6 +6529,12 @@ cluster_validation:
     # validation check.
     # CLI flag: -server.cluster-validation.http.excluded-user-agents
     [excluded_user_agents: <string> | default = ""]
+
+# Creates new traces for each call rather than continuing the existing trace. A
+# span link is used to allow navigation to the parent trace. Only works when
+# using Open-Telemetry tracing.
+# CLI flag: -server.create-new-traces
+[create_new_traces: <boolean> | default = false]
 ```
 
 ### storage_config
@@ -7820,6 +7949,8 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`
+- `query-engine.results-cache.memcached`
+- `query-engine.tasks-result-cache.memcached`
 - `query-scheduler.grpc-client-config`
 - `query-scheduler.ring.etcd`
 - `reporting.tls-config`
@@ -7986,12 +8117,18 @@ and be accepted with
 ```yaml
 time_of_most_recent_line - (max_chunk_age/2)
 ```
+This means the allowed out-of-order window is half of the configured max_chunk_age.
 
 Log entries with timestamps that are after this earliest time are accepted.
 Log entries further back in time return an out-of-order error.
 
 For example, if `max_chunk_age` is 2 hours
 and the stream `{foo="bar"}` has one entry at `8:00`,
+the earliest accepted timestamp will be calculated as: 8:00 - (2h / 2) = `7:00`.
+
 Loki will accept data for that stream as far back in time as `7:00`.
+
 If another log line is written at `10:00`,
+the earliest accepted timestamp becomes: 10:00 - (2h / 2) = `9:00`.
+
 Loki will accept data for that stream as far back in time as `9:00`.

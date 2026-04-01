@@ -34,8 +34,8 @@ const (
 // They are sometimes referred to as grantees.
 //
 // It could be in the form of:
-// "user-<userId>", "user-<email>", "group-<groupId>", "group-<email>",
-// "domain-<domain>" and "project-team-<projectId>".
+// "user-{userId}", "user-{email}", "group-{groupId}", "group-{email}",
+// "domain-{domain}" and "project-team-{projectId}".
 //
 // Or one of the predefined constants: AllUsers, AllAuthenticatedUsers.
 type ACLEntity string

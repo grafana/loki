@@ -11,6 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -72,16 +73,14 @@ type rangeAggregationPipeline struct {
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
 	evaluator           *expressionEvaluator         // used to evaluate column expressions
 	opts                rangeAggregationOptions
-	region              *xcap.Region
 	identCache          *semconv.IdentifierCache
 }
 
-func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
 		opts:       opts,
-		region:     region,
 		identCache: semconv.NewIdentifierCache(),
 	}
 	r.init()
@@ -114,6 +113,11 @@ func (r *rangeAggregationPipeline) init() {
 	r.aggregator.SetMaxSeries(r.opts.maxQuerySeries)
 }
 
+// Open opens all input pipelines.
+func (r *rangeAggregationPipeline) Open(ctx context.Context) error {
+	return openInputsConcurrently(ctx, r.inputs)
+}
+
 // Read reads the next value into its state.
 // It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
 // The implementation must retain the returned error in its state and return it with subsequent Value() calls.
@@ -122,7 +126,12 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch,
 		return nil, EOF
 	}
 
-	return r.read(ctx)
+	rec, err := r.read(ctx)
+
+	assertions.CheckColumnDuplicates(rec)
+	assertions.CheckLabelValuesDuplicates(rec)
+
+	return rec, err
 }
 
 // TODOs:
@@ -168,12 +177,13 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				return nil, err
 			}
 
+			inputsExhausted = false
 			if record.NumRows() == 0 {
 				// Nothing to process
 				continue
 			}
 
-			inputsExhausted = false
+			assertions.CheckLabelValuesDuplicates(record)
 
 			// extract all the columns that are used for grouping
 			var arrays []*array.String
@@ -261,6 +271,11 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 			}
 
 			for row := range int(record.NumRows()) {
+				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
+				if len(windows) == 0 {
+					continue // out of range, skip this row
+				}
+
 				var value float64
 				if r.opts.operation != types.RangeAggregationTypeCount {
 					if valArr.IsNull(row) {
@@ -268,11 +283,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 					}
 
 					value = valArr.Value(row)
-				}
-
-				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
-				if len(windows) == 0 {
-					continue // out of range, skip this row
 				}
 
 				labelValues := labelValuesCache.getLabelValues(arrays, row)
@@ -289,30 +299,23 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 
 	r.inputsExhausted = true
 
-	if r.region != nil {
+	rec, err := r.aggregator.BuildRecord()
+
+	if region := xcap.RegionFromContext(ctx); region != nil {
 		computeTime := time.Since(startedAt) - inputReadTime
-		r.region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
+		region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
 	}
 
-	return r.aggregator.BuildRecord()
+	return rec, err
 }
 
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
 func (r *rangeAggregationPipeline) Close() {
 	r.aggregator.Reset()
-
-	if r.region != nil {
-		r.region.End()
-	}
 	for _, input := range r.inputs {
 		input.Close()
 	}
-}
-
-// Region implements RegionProvider.
-func (r *rangeAggregationPipeline) Region() *xcap.Region {
-	return r.region
 }
 
 func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {

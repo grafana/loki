@@ -56,6 +56,8 @@ var ourTransport = &http.Transport{
 	ExpectContinueTimeout: 1 * time.Second,
 }
 
+var errInsecureEndpointWithTLS = errors.New("insecure HTTP endpoint cannot use TLS client configuration")
+
 type client struct {
 	name        string
 	cfg         otlpconfig.SignalConfig
@@ -110,6 +112,10 @@ func NewClient(opts ...Option) otlptrace.Client {
 
 // Start does nothing in a HTTP client.
 func (c *client) Start(ctx context.Context) error {
+	if c.cfg.Insecure && c.cfg.TLSCfg != nil {
+		return errInsecureEndpointWithTLS
+	}
+
 	// Initialize the instrumentation if not already done.
 	//
 	// Initialize here instead of NewClient to allow any errors to be passed
@@ -174,6 +180,7 @@ func (d *client) UploadTraces(ctx context.Context, protoSpans []*tracepb.Resourc
 		}
 
 		request.reset(ctx)
+		// nolint:gosec // URL is constructed from validated OTLP endpoint configuration
 		resp, err := d.client.Do(request.Request)
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) && urlErr.Temporary() {
@@ -270,6 +277,7 @@ func (d *client) newRequest(body []byte) (request, error) {
 	case NoCompression:
 		r.ContentLength = int64(len(body))
 		req.bodyReader = bodyReader(body)
+		req.GetBody = bodyReaderErr(body)
 	case GzipCompression:
 		// Ensure the content length is not used.
 		r.ContentLength = -1
@@ -290,6 +298,7 @@ func (d *client) newRequest(body []byte) (request, error) {
 		}
 
 		req.bodyReader = bodyReader(b.Bytes())
+		req.GetBody = bodyReaderErr(b.Bytes())
 	}
 
 	return req, nil
@@ -312,6 +321,13 @@ func (d *client) MarshalLog() any {
 func bodyReader(buf []byte) func() io.ReadCloser {
 	return func() io.ReadCloser {
 		return io.NopCloser(bytes.NewReader(buf))
+	}
+}
+
+// bodyReaderErr returns a closure returning a new reader for buf.
+func bodyReaderErr(buf []byte) func() (io.ReadCloser, error) {
+	return func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(buf)), nil
 	}
 }
 

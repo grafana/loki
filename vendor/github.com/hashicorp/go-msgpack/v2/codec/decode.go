@@ -1683,7 +1683,7 @@ func (d *Decoder) kSlice(f *codecFnInfo, rv reflect.Value) {
 					rv9, rvcap2, rvChanged, rvErrmsg2 =
 						expandSliceRV(rv, ti.rt, rvCanset, rtelem0Size, 1, rvlen, rvcap)
 					if rvErrmsg2 != "" {
-						d.errorf(rvErrmsg2)
+						d.errorf("%s", rvErrmsg2)
 					}
 					rvlen++
 					if rvChanged {
@@ -2816,7 +2816,7 @@ func (d *Decoder) structFieldNotFound(index int, rvkencname string) {
 			d.errorf("no matching struct field found when decoding stream array at index %v", index)
 			return
 		} else if rvkencname != "" {
-			d.errorf("no matching struct field found when decoding stream map with key " + rvkencname)
+			d.errorf("no matching struct field found when decoding stream map with key %s", rvkencname)
 			return
 		}
 	}
