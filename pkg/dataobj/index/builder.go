@@ -410,6 +410,19 @@ func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
 				}
 			}
 		}
+
+		// If we don't choose to flush a partition, set processing delay based on the
+		// earliest event time in the buffer (or current time if there are no events).
+		// This is to avoid leaving partitions with no recent activity with high processing delay metrics.
+		recordTime := time.Now()
+		if len(state.events) > 0 {
+			if t, err := time.Parse(time.RFC3339, state.events[0].event.WriteTime); err == nil {
+				recordTime = t
+			} else {
+				level.Warn(p.logger).Log("msg", "failed to parse write time for processing delay metric", "err", err)
+			}
+		}
+		p.metrics.setProcessingDelay(partition, recordTime)
 	}
 	p.partitionsMutex.Unlock()
 
@@ -458,10 +471,6 @@ func (p *Builder) buildAndCommitIndex(ctx context.Context, events []bufferedEven
 		return
 	}
 
-	if triggerType == triggerTypeMaxIdle {
-		// Reset metrics for idle partition so we don't leave it high indefinitely if the partition stays inactive
-		p.metrics.setProcessingDelay(partition, time.Now())
-	}
 	p.markEventsCompleted(partition, len(records))
 }
 
