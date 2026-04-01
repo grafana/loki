@@ -82,7 +82,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 
 		tableSequences = append(tableSequences, &tableSequence{
 			columns:         dsetColumns,
-			DatasetSequence: NewDatasetSequence(r, 128),
+			DatasetSequence: NewDatasetSequence(r, 4096),
 		})
 	}
 
