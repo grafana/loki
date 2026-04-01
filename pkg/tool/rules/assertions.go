@@ -414,11 +414,13 @@ func ParseLogQLExpr(expr string) (syntax.Expr, error) {
 
 // IsLogQuery determines if a LogQL expression returns log streams (vs metrics).
 func IsLogQuery(expr syntax.Expr) bool {
+	// Check SampleExpr first: LiteralExpr and VectorExpr implement both
+	// interfaces but should be treated as sample expressions (metric results)
 	switch expr.(type) {
-	case syntax.LogSelectorExpr:
-		return true
 	case syntax.SampleExpr:
 		return false
+	case syntax.LogSelectorExpr:
+		return true
 	default:
 		return false
 	}
