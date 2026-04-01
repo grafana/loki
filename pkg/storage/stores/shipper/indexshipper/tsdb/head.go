@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
@@ -108,7 +109,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Namespace: "loki_tsdb_shipper",
 			Name:      "request_duration_seconds",
 			Help:      "Time (in seconds) spent serving requests when using tsdb shipper",
-			Buckets:   prometheus.DefBuckets,
+			Buckets:   instrument.DefBuckets,
 		}, []string{"operation", "status_code"}),
 	}
 }
