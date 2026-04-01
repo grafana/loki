@@ -109,6 +109,13 @@ func buildPlanForLogQuery(
 			case syntax.OpParserTypeRegexp:
 				hasRegexParser = true
 				return true
+			case syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
+				// keeping these as a distinct cases so we remember to implement them later
+				err = errUnimplemented
+				return false
+			default:
+				err = errUnimplemented
+				return false
 			}
 		case *syntax.LabelFilterExpr:
 			// Collect following filters only before we met any parse stage.
@@ -143,6 +150,7 @@ func buildPlanForLogQuery(
 				err = unimplementedFeature("drop with named matchers")
 				return false // do not traverse children
 			}
+			dropCols := make([]Value, 0, len(e.Names()))
 			for _, name := range e.Names() {
 				value := NewColumnRef(name, types.ColumnTypeAmbiguous)
 				dropCols = append(dropCols, value)
