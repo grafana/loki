@@ -861,7 +861,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		shardSize := d.validator.IngestionPartitionsTenantShardSize(tenantID)
 		var subring *ring.PartitionRing
 		if shardSize == 0 {
-			// Optimisation - don't need to create shuffle shards in this case
+			// Optimization - don't need to create shuffle shards in this case
 			subring = d.partitionRing.PartitionRing()
 		} else {
 			subring, err = d.partitionRing.PartitionRing().ShuffleShard(tenantID, shardSize)
