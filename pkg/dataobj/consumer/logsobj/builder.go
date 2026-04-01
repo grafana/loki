@@ -179,6 +179,11 @@ type Builder struct {
 	labelCache     *lru.Cache[string, labels.Labels]
 	scratchBuilder labels.ScratchBuilder // reused for convertMetadata
 
+	// Cache last metadata conversion to reuse Labels when consecutive entries
+	// have identical structured metadata (common in log streams).
+	lastMD       push.LabelsAdapter
+	lastMDLabels labels.Labels
+
 	currentSizeEstimate int
 
 	builder *dataobj.Builder // Inner builder for accumulating sections.
@@ -364,13 +369,32 @@ func (b *Builder) convertMetadata(md push.LabelsAdapter) labels.Labels {
 		return labels.EmptyLabels()
 	}
 
+	// Fast path: reuse the last Labels if the metadata matches exactly.
+	if len(md) == len(b.lastMD) {
+		match := true
+		for i := range md {
+			if md[i].Name != b.lastMD[i].Name || md[i].Value != b.lastMD[i].Value {
+				match = false
+				break
+			}
+		}
+		if match {
+			return b.lastMDLabels
+		}
+	}
+
 	b.scratchBuilder.Reset()
 	for _, label := range md {
 		b.scratchBuilder.Add(label.Name, label.Value)
 	}
 
 	b.scratchBuilder.Sort()
-	return b.scratchBuilder.Labels()
+	result := b.scratchBuilder.Labels()
+
+	// Cache for next call.
+	b.lastMD = md
+	b.lastMDLabels = result
+	return result
 }
 
 func (b *Builder) estimatedSize() int {
