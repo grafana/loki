@@ -187,14 +187,14 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 
 	// Assert DESC timestamp ordering across sections of a tenant
 	for _, tenant := range []string{"tenant-a", "tenant-b", "tenant-c"} {
-		prevTs := time.Unix(0, math.MaxInt64)
+		prevTs := int64(math.MaxInt64)
 		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
 			return logs.CheckSection(s) && s.Tenant == tenant
 		}) {
 			for res := range iterLogsSection(t, sec) {
 				val, _ := res.Value()
-				require.LessOrEqual(t, val.Timestamp, prevTs)
-				prevTs = val.Timestamp
+				require.LessOrEqual(t, val.TimestampNano, prevTs)
+				prevTs = val.TimestampNano
 			}
 		}
 	}

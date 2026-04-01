@@ -52,14 +52,14 @@ func buildSection(t *testing.T) *Section {
 		SortOrder:        SortStreamASC,
 	})
 	logsBuilder.Append(Record{
-		StreamID:  1,
-		Timestamp: time.Now(),
-		Line:      []byte("test"),
+		StreamID:      1,
+		TimestampNano: time.Now().UnixNano(),
+		Line:          []byte("test"),
 	})
 	logsBuilder.Append(Record{
-		StreamID:  2,
-		Timestamp: time.Now(),
-		Line:      []byte("test2"),
+		StreamID:      2,
+		TimestampNano: time.Now().UnixNano(),
+		Line:          []byte("test2"),
 	})
 
 	b := dataobj.NewBuilder(nil)

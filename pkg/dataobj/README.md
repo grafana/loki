@@ -438,10 +438,10 @@ func main() {
 
     // Append log records
     logsBuilder.Append(logs.Record{
-        StreamID:  12345,
-        Timestamp: time.Now(),
-        Metadata:  labels.Labels{{Name: "level", Value: "error"}},
-        Line:      []byte("error occurred"),
+        StreamID:      12345,
+        TimestampNano: time.Now().UnixNano(),
+        Metadata:      labels.Labels{{Name: "level", Value: "error"}},
+        Line:          []byte("error occurred"),
     })
 
     // Create data object

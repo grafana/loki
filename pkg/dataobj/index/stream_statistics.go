@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -16,7 +17,7 @@ func (c *streamStatisticsCalculation) Prepare(_ context.Context, _ *dataobj.Sect
 
 func (c *streamStatisticsCalculation) ProcessBatch(_ context.Context, context *logsCalculationContext, batch []logs.Record) error {
 	for _, log := range batch {
-		err := context.builder.ObserveLogLine(context.tenantID, context.objectPath, context.sectionIdx, log.StreamID, context.streamIDLookup[log.StreamID], log.Timestamp, int64(len(log.Line)))
+		err := context.builder.ObserveLogLine(context.tenantID, context.objectPath, context.sectionIdx, log.StreamID, context.streamIDLookup[log.StreamID], time.Unix(0, log.TimestampNano), int64(len(log.Line)))
 		if err != nil {
 			return fmt.Errorf("failed to observe log line: %w", err)
 		}

@@ -6,7 +6,6 @@ import (
 	"io"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -55,19 +54,19 @@ func Test_mergeTables(t *testing.T) {
 		tableC []Record
 	}{
 		tableA: []Record{
-			{StreamID: 3, Timestamp: time.Unix(3, 0), Line: []byte("hello")},
-			{StreamID: 2, Timestamp: time.Unix(2, 0), Line: []byte("how")},
-			{StreamID: 1, Timestamp: time.Unix(1, 0), Line: []byte("you")},
+			{StreamID: 3, TimestampNano: 3e9, Line: []byte("hello")},
+			{StreamID: 2, TimestampNano: 2e9, Line: []byte("how")},
+			{StreamID: 1, TimestampNano: 1e9, Line: []byte("you")},
 		},
 		tableB: []Record{
-			{StreamID: 3, Timestamp: time.Unix(3, 0), Line: []byte("hello")}, // Duplicate in tableA
-			{StreamID: 1, Timestamp: time.Unix(2, 0), Line: []byte("world")},
-			{StreamID: 3, Timestamp: time.Unix(1, 0), Line: []byte("goodbye")},
+			{StreamID: 3, TimestampNano: 3e9, Line: []byte("hello")}, // Duplicate in tableA
+			{StreamID: 1, TimestampNano: 2e9, Line: []byte("world")},
+			{StreamID: 3, TimestampNano: 1e9, Line: []byte("goodbye")},
 		},
 		tableC: []Record{
-			{StreamID: 3, Timestamp: time.Unix(2, 0), Line: []byte("are")},
-			{StreamID: 3, Timestamp: time.Unix(2, 0), Line: []byte("are")}, // Duplicate within tableC
-			{StreamID: 2, Timestamp: time.Unix(1, 0), Line: []byte("doing?")},
+			{StreamID: 3, TimestampNano: 2e9, Line: []byte("are")},
+			{StreamID: 3, TimestampNano: 2e9, Line: []byte("are")}, // Duplicate within tableC
+			{StreamID: 2, TimestampNano: 1e9, Line: []byte("doing?")},
 		},
 	}
 
@@ -141,10 +140,10 @@ func Test_mergeTables(t *testing.T) {
 
 func Test_table_backfillMetadata(t *testing.T) {
 	records := []Record{
-		{StreamID: 1, Timestamp: time.Unix(1, 0), Line: []byte("msg1"), Metadata: labels.FromStrings("env", "prod", "service", "api")},
-		{StreamID: 2, Timestamp: time.Unix(2, 0), Line: []byte("msg2"), Metadata: labels.FromStrings("env", "prod", "service", "api", "version", "v1")},
-		{StreamID: 3, Timestamp: time.Unix(3, 0), Line: []byte("msg3"), Metadata: labels.FromStrings("env", "prod")}, // Missing service and version
-		{StreamID: 4, Timestamp: time.Unix(4, 0), Line: []byte("msg4"), Metadata: labels.FromStrings("env", "dev")},  // Missing service and version
+		{StreamID: 1, TimestampNano: 1e9, Line: []byte("msg1"), Metadata: labels.FromStrings("env", "prod", "service", "api")},
+		{StreamID: 2, TimestampNano: 2e9, Line: []byte("msg2"), Metadata: labels.FromStrings("env", "prod", "service", "api", "version", "v1")},
+		{StreamID: 3, TimestampNano: 3e9, Line: []byte("msg3"), Metadata: labels.FromStrings("env", "prod")}, // Missing service and version
+		{StreamID: 4, TimestampNano: 4e9, Line: []byte("msg4"), Metadata: labels.FromStrings("env", "dev")},  // Missing service and version
 	}
 	table := buildTable(&tableBuffer{}, pageSize, pageRows, nil, records, SortTimestampDESC)
 

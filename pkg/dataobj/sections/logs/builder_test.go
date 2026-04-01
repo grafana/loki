@@ -6,7 +6,6 @@ import (
 	"io"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -20,19 +19,19 @@ func Test(t *testing.T) {
 	records := []logs.Record{
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(10, 0),
+			TimestampNano: 10e9,
 			Metadata:  labels.New(labels.Label{Name: "cluster", Value: "test"}, labels.Label{Name: "app", Value: "foo"}),
 			Line:      []byte("foo bar"),
 		},
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(10, 0),
+			TimestampNano: 10e9,
 			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0),
+			TimestampNano: 100e9,
 			Metadata:  labels.New(labels.Label{Name: "cluster", Value: "test"}, labels.Label{Name: "app", Value: "bar"}),
 			Line:      []byte("goodbye world"),
 		},
@@ -59,19 +58,19 @@ func Test(t *testing.T) {
 	expect := []logs.Record{
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(10, 0),
+			TimestampNano: 10e9,
 			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0),
+			TimestampNano: 100e9,
 			Metadata:  labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "cluster", Value: "test"}),
 			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(10, 0),
+			TimestampNano: 10e9,
 			Metadata:  labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "cluster", Value: "test"}),
 			Line:      []byte("foo bar"),
 		},
@@ -153,7 +152,7 @@ func getRecords() []logs.Record {
 	for i := range 100 {
 		megaRecord := logs.Record{
 			StreamID:  2,
-			Timestamp: time.Unix(10, 0),
+			TimestampNano: 10e9,
 			Line:      []byte("foo bar"),
 		}
 		lbb := labels.NewScratchBuilder(100)

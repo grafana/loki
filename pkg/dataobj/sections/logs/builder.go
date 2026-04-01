@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,11 +19,14 @@ import (
 )
 
 // A Record is an individual log record within the logs section.
+// TimestampNano stores the timestamp as nanoseconds since Unix epoch (int64)
+// instead of time.Time to reduce struct size by 16 bytes and eliminate a
+// GC-traced pointer per record.
 type Record struct {
-	StreamID  int64
-	Timestamp time.Time
-	Metadata  labels.Labels
-	Line      []byte
+	StreamID      int64
+	TimestampNano int64
+	Metadata      labels.Labels
+	Line          []byte
 }
 
 type AppendStrategy int

@@ -40,7 +40,7 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 		// to keep the code readable we ignore the error values.
 
 		_ = streamIDBuilder.Append(row, dataset.Int64Value(record.StreamID))
-		_ = timestampBuilder.Append(row, dataset.Int64Value(record.Timestamp.UnixNano()))
+		_ = timestampBuilder.Append(row, dataset.Int64Value(record.TimestampNano))
 		_ = messageBuilder.Append(row, dataset.BinaryValue(record.Line))
 
 		record.Metadata.Range(func(md labels.Label) {
@@ -72,13 +72,13 @@ func sortRecords(records []Record, sortOrder SortOrder) {
 			if res := cmp.Compare(a.StreamID, b.StreamID); res != 0 {
 				return res
 			}
-			// Timestamp DESC: compare b before a, using UnixNano for speed.
-			return cmp.Compare(b.Timestamp.UnixNano(), a.Timestamp.UnixNano())
+			// Timestamp DESC: compare b before a.
+			return cmp.Compare(b.TimestampNano, a.TimestampNano)
 		})
 	case SortTimestampDESC:
 		slices.SortFunc(records, func(a, b Record) int {
-			// Timestamp DESC: compare b before a, using UnixNano for speed.
-			if res := cmp.Compare(b.Timestamp.UnixNano(), a.Timestamp.UnixNano()); res != 0 {
+			// Timestamp DESC: compare b before a.
+			if res := cmp.Compare(b.TimestampNano, a.TimestampNano); res != 0 {
 				return res
 			}
 			return cmp.Compare(a.StreamID, b.StreamID)
@@ -92,7 +92,7 @@ func equalRecords(a, b Record) bool {
 	if a.StreamID != b.StreamID {
 		return false
 	}
-	if a.Timestamp != b.Timestamp {
+	if a.TimestampNano != b.TimestampNano {
 		return false
 	}
 	if !labels.Equal(a.Metadata, b.Metadata) {

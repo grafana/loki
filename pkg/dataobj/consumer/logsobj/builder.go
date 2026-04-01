@@ -297,10 +297,10 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 		// inside recordSize (we already computed sz above).
 		recordSz := 1 + 8 + int(sz) // streamID varint + timestamp + line + metadata values
 		lb.AppendWithSize(logs.Record{
-			StreamID:  cachedStream.ID,
-			Timestamp: entry.Timestamp,
-			Metadata:  b.convertMetadata(entry.StructuredMetadata),
-			Line:      unsafe.Slice(unsafe.StringData(entry.Line), len(entry.Line)),
+			StreamID:      cachedStream.ID,
+			TimestampNano: entry.Timestamp.UnixNano(),
+			Metadata:      b.convertMetadata(entry.StructuredMetadata),
+			Line:          unsafe.Slice(unsafe.StringData(entry.Line), len(entry.Line)),
 		}, recordSz)
 
 		// Check section size every 1024 entries to reduce overhead.

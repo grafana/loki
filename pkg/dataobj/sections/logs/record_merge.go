@@ -65,13 +65,12 @@ func mergeRecordBatches(buf *tableBuffer, pageSize, pageRowCount int, compressio
 			if a.StreamID != b.StreamID {
 				return a.StreamID < b.StreamID
 			}
-			return b.Timestamp.UnixNano() < a.Timestamp.UnixNano()
+			return b.TimestampNano < a.TimestampNano
 		}
 	case SortTimestampDESC:
 		lessFunc = func(a, b Record) bool {
-			aNano, bNano := a.Timestamp.UnixNano(), b.Timestamp.UnixNano()
-			if aNano != bNano {
-				return bNano < aNano
+			if a.TimestampNano != b.TimestampNano {
+				return b.TimestampNano < a.TimestampNano
 			}
 			return a.StreamID < b.StreamID
 		}
@@ -104,7 +103,7 @@ func mergeRecordBatches(buf *tableBuffer, pageSize, pageRowCount int, compressio
 		prev = record
 
 		_ = streamIDBuilder.Append(row, dataset.Int64Value(record.StreamID))
-		_ = timestampBuilder.Append(row, dataset.Int64Value(record.Timestamp.UnixNano()))
+		_ = timestampBuilder.Append(row, dataset.Int64Value(record.TimestampNano))
 		_ = messageBuilder.Append(row, dataset.BinaryValue(record.Line))
 
 		record.Metadata.Range(func(md labels.Label) {
@@ -146,7 +145,7 @@ func buildTableFromSorted(buf *tableBuffer, pageSize, pageRowCount int, compress
 		prev = record
 
 		_ = streamIDBuilder.Append(row, dataset.Int64Value(record.StreamID))
-		_ = timestampBuilder.Append(row, dataset.Int64Value(record.Timestamp.UnixNano()))
+		_ = timestampBuilder.Append(row, dataset.Int64Value(record.TimestampNano))
 		_ = messageBuilder.Append(row, dataset.BinaryValue(record.Line))
 
 		record.Metadata.Range(func(md labels.Label) {
@@ -172,7 +171,7 @@ func buildTableFromSorted(buf *tableBuffer, pageSize, pageRowCount int, compress
 func equalRecordsMerge(a, b Record) bool {
 	// These two comparisons will short-circuit for the vast majority of rows,
 	// avoiding the expensive metadata and line comparisons.
-	if a.StreamID != b.StreamID || a.Timestamp != b.Timestamp {
+	if a.StreamID != b.StreamID || a.TimestampNano != b.TimestampNano {
 		return false
 	}
 	if !bytes.Equal(a.Line, b.Line) {
