@@ -376,7 +376,10 @@ func sortExpectedAlerts(alerts []alert) []alert {
 	sorted := make([]alert, len(alerts))
 	copy(sorted, alerts)
 	sort.Slice(sorted, func(i, j int) bool {
-		return compareAlertMaps(sorted[i].ExpLabels, sorted[j].ExpLabels)
+		// Use labels.Compare for consistent ordering with sortActiveAlerts
+		lblsI := convertMapToLabels(sorted[i].ExpLabels)
+		lblsJ := convertMapToLabels(sorted[j].ExpLabels)
+		return labels.Compare(lblsI, lblsJ) < 0
 	})
 	return sorted
 }
