@@ -119,6 +119,12 @@ type Builder struct {
 	stripesUncompressedSize int // Estimated byte size of all elements in stripes (uncompressed).
 	stripesCompressedSize   int // Estimated byte size of all elements in stripes (compressed).
 
+	// sortedBatches holds sorted record slices for the direct-merge path.
+	// Instead of encoding records into intermediate stripes (encode→decode→merge),
+	// sorted batches are k-way merged directly into the final table.
+	sortedBatches     [][]Record
+	sortedBatchesSize int // uncompressed byte size of all sorted batches
+
 	sectionBuffer tableBuffer
 }
 
@@ -195,6 +201,18 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 		panic("must not call flushRecords multiple times for a single section when using AppendOrdered strategy")
 	}
 
+	// For AppendUnordered, sort the records and keep them as a sorted batch
+	// for direct k-way merge later. This avoids the encode→decode cycle of
+	// intermediate stripes entirely.
+	if b.opts.AppendStrategy == AppendUnordered {
+		sortRecords(b.records, b.opts.SortOrder)
+		b.sortedBatches = append(b.sortedBatches, b.records)
+		b.sortedBatchesSize += b.recordsSize
+		b.records = nil // allocate fresh on next Append
+		b.recordsSize = 0
+		return
+	}
+
 	compressionOpts := zstdCompressionOpts(encLevel)
 
 	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
@@ -207,6 +225,17 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 }
 
 func (b *Builder) flushSection() *table {
+	// Direct merge path: merge sorted record batches without encoding intermediate stripes.
+	if len(b.sortedBatches) > 0 {
+		compressionOpts := zstdCompressionOpts(zstd.SpeedFastest)
+		section := mergeRecordBatches(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.sortedBatches, b.opts.SortOrder)
+		b.sortedBatches = b.sortedBatches[:0]
+		b.sortedBatchesSize = 0
+		return section
+	}
+
+	// Legacy path: merge encoded stripes (used by AppendOrdered or when
+	// sortedBatches is empty).
 	if len(b.stripes) == 0 {
 		return nil
 	}
@@ -246,6 +275,7 @@ func (b *Builder) UncompressedSize() int {
 
 	size += b.recordsSize
 	size += b.stripesUncompressedSize
+	size += b.sortedBatchesSize
 
 	return size
 }
@@ -256,6 +286,7 @@ func (b *Builder) EstimatedSize() int {
 
 	size += b.recordsSize
 	size += b.stripesCompressedSize
+	size += b.sortedBatchesSize // uncompressed is the best estimate for unserialized records
 
 	return size
 }
@@ -398,6 +429,9 @@ func (b *Builder) Reset() {
 	b.stripeBuffer.Reset()
 	b.stripesCompressedSize = 0
 	b.stripesUncompressedSize = 0
+
+	b.sortedBatches = b.sortedBatches[:0]
+	b.sortedBatchesSize = 0
 
 	b.sectionBuffer.Reset()
 }
