@@ -89,15 +89,32 @@ func (ta *testAssertion) compareLogQLSamples(testCase logqlTestCase, result *log
 func (ta *testAssertion) compareVector(testCase logqlTestCase, vector promql.Vector) error {
 	expected := testCase.ExpSamples
 
-	// Sort for consistent comparison
+	// Sort actual vector by labels
 	sortedVector := make(promql.Vector, len(vector))
 	copy(sortedVector, vector)
 	sort.Slice(sortedVector, func(i, j int) bool {
 		return labels.Compare(sortedVector[i].Metric, sortedVector[j].Metric) < 0
 	})
 
+	// Parse and sort expected samples by labels for consistent comparison
+	type parsedSample struct {
+		original sample
+		labels   labels.Labels
+	}
+	parsedExpected := make([]parsedSample, 0, len(expected))
+	for _, exp := range expected {
+		expLabels, err := parseStreamLabels(exp.Labels)
+		if err != nil {
+			return fmt.Errorf("failed to parse expected labels %q: %w", exp.Labels, err)
+		}
+		parsedExpected = append(parsedExpected, parsedSample{original: exp, labels: expLabels})
+	}
+	sort.Slice(parsedExpected, func(i, j int) bool {
+		return labels.Compare(parsedExpected[i].labels, parsedExpected[j].labels) < 0
+	})
+
 	// Check counts
-	if len(expected) != len(sortedVector) {
+	if len(parsedExpected) != len(sortedVector) {
 		return fmt.Errorf("\n  expr: %s, time: %s,%s",
 			testCase.Expr,
 			testCase.EvalTime,
@@ -105,17 +122,11 @@ func (ta *testAssertion) compareVector(testCase logqlTestCase, vector promql.Vec
 	}
 
 	// Compare each sample
-	for i, exp := range expected {
+	for i, exp := range parsedExpected {
 		actual := sortedVector[i]
 
-		// Parse expected labels
-		expLabels, err := parseStreamLabels(exp.Labels)
-		if err != nil {
-			return fmt.Errorf("failed to parse expected labels: %w", err)
-		}
-
 		// Compare labels
-		if !labels.Equal(expLabels, actual.Metric) {
+		if !labels.Equal(exp.labels, actual.Metric) {
 			return fmt.Errorf("\n  expr: %s, time: %s,%s",
 				testCase.Expr,
 				testCase.EvalTime,
@@ -123,7 +134,7 @@ func (ta *testAssertion) compareVector(testCase logqlTestCase, vector promql.Vec
 		}
 
 		// Compare value
-		if err := ta.compareFloat(exp.Value, actual.F); err != nil {
+		if err := ta.compareFloat(exp.original.Value, actual.F); err != nil {
 			return fmt.Errorf("\n  expr: %s, time: %s,%s",
 				testCase.Expr,
 				testCase.EvalTime,
@@ -181,47 +192,62 @@ func (ta *testAssertion) compareLogQLLogs(testCase logqlTestCase, result *logqlm
 		}
 	}
 
-	// Sort for consistent comparison
+	// Sort actual logs for consistent comparison
 	sortLogLines(actualLogs)
 
+	// Parse and sort expected logs by labels and timestamp
+	type parsedExpLog struct {
+		original logLine
+		labels   labels.Labels
+	}
+	parsedExpected := make([]parsedExpLog, 0, len(testCase.ExpLogs))
+	for _, exp := range testCase.ExpLogs {
+		expLabels, err := parseStreamLabels(exp.Labels)
+		if err != nil {
+			return fmt.Errorf("failed to parse expected labels %q: %w", exp.Labels, err)
+		}
+		parsedExpected = append(parsedExpected, parsedExpLog{original: exp, labels: expLabels})
+	}
+	sort.Slice(parsedExpected, func(i, j int) bool {
+		cmp := labels.Compare(parsedExpected[i].labels, parsedExpected[j].labels)
+		if cmp != 0 {
+			return cmp < 0
+		}
+		return parsedExpected[i].original.Timestamp < parsedExpected[j].original.Timestamp
+	})
+
 	// Check counts
-	if len(testCase.ExpLogs) != len(actualLogs) {
+	if len(parsedExpected) != len(actualLogs) {
 		return fmt.Errorf("log count mismatch:\n  expected: %d logs\n  got: %d logs",
-			len(testCase.ExpLogs),
+			len(parsedExpected),
 			len(actualLogs))
 	}
 
 	// Compare each log line
-	for i, exp := range testCase.ExpLogs {
+	for i, exp := range parsedExpected {
 		actual := actualLogs[i]
 
-		// Parse expected labels
-		expLabels, err := parseStreamLabels(exp.Labels)
-		if err != nil {
-			return fmt.Errorf("failed to parse expected labels: %w", err)
-		}
-
 		// Compare labels
-		if !labels.Equal(expLabels, actual.Labels) {
+		if !labels.Equal(exp.labels, actual.Labels) {
 			return fmt.Errorf("log %d label mismatch:\n  expected: %s\n  got: %s",
 				i,
-				expLabels.String(),
+				exp.labels.String(),
 				actual.Labels.String())
 		}
 
 		// Compare line content
-		if exp.Line != actual.Line {
+		if exp.original.Line != actual.Line {
 			return fmt.Errorf("log %d content mismatch:\n  expected: %q\n  got: %q",
 				i,
-				exp.Line,
+				exp.original.Line,
 				actual.Line)
 		}
 
 		// Compare timestamp if specified
-		if exp.Timestamp != 0 && exp.Timestamp != actual.Timestamp {
+		if exp.original.Timestamp != 0 && exp.original.Timestamp != actual.Timestamp {
 			return fmt.Errorf("log %d timestamp mismatch:\n  expected: %d\n  got: %d",
 				i,
-				exp.Timestamp,
+				exp.original.Timestamp,
 				actual.Timestamp)
 		}
 	}
