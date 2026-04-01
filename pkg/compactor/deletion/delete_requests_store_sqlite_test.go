@@ -47,11 +47,11 @@ func TestDeleteRequestsStoreSQLite(t *testing.T) {
 	compareRequests(t, append(tc.user1Requests, tc.user2Requests...), deleteRequests)
 
 	// get user specific requests and see if they have expected values
-	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -94,11 +94,11 @@ func TestDeleteRequestsStoreSQLite(t *testing.T) {
 	}
 
 	// see if requests in the store have right values
-	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -106,11 +106,11 @@ func TestDeleteRequestsStoreSQLite(t *testing.T) {
 	tc.store.(*deleteRequestsStoreSQLite).indexUpdatePropagationMaxDelay = 0 // set the index propagation max delay to 0
 	time.Sleep(time.Microsecond)                                             // sleep for a microsecond to avoid flaky tests
 
-	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, true)
+	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, true, nil)
 	require.NoError(t, err)
 	compareRequests(t, user1UnprocessedRequests, user1Requests)
 
-	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, true)
+	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, true, nil)
 	require.NoError(t, err)
 	compareRequests(t, user2UnprocessedRequests, user2Requests)
 
@@ -152,6 +152,84 @@ func TestDeleteRequestsStoreSQLite(t *testing.T) {
 	deleteGenNumber2, err := tc.store.GetCacheGenerationNumber(context.Background(), user2)
 	require.NoError(t, err)
 	require.NotEqual(t, updateGenNumber2, deleteGenNumber2)
+}
+
+func TestDeleteRequestsStoreSQLite_TimeRangeFiltering(t *testing.T) {
+	tc := setupStoreType(t, DeleteRequestsStoreDBTypeSQLite)
+	defer tc.store.Stop()
+
+	// add requests for user1 to the store
+	for i := 0; i < len(tc.user1Requests); i++ {
+		resp, err := tc.store.AddDeleteRequest(
+			context.Background(),
+			tc.user1Requests[i].UserID,
+			tc.user1Requests[i].Query,
+			tc.user1Requests[i].StartTime,
+			tc.user1Requests[i].EndTime,
+			0,
+		)
+		require.NoError(t, err)
+		tc.user1Requests[i].RequestID = resp
+	}
+
+	// mark some requests as processed to test query time filtering
+	// Get all shards first, then mark the ones we want as processed
+	allShards, err := tc.store.GetUnprocessedShards(context.Background())
+	require.NoError(t, err)
+
+	// Mark shards for odd-indexed requests (indices 1, 3, 5, etc.) as processed
+	processedRequestIDs := make(map[string]bool)
+	for i := 0; i < len(tc.user1Requests); i++ {
+		if i%2 != 0 {
+			processedRequestIDs[tc.user1Requests[i].RequestID] = true
+		}
+	}
+
+	for _, shard := range allShards {
+		if shard.UserID == user1 && processedRequestIDs[shard.RequestID] {
+			require.NoError(t, tc.store.MarkShardAsProcessed(context.Background(), shard))
+		}
+	}
+
+	// Test time range filtering: query range should pick fully overlapping reqs, 1 left overlap, 1 right overlap
+	// Query range: -3.25h to -0.5h
+	// Should match:
+	//   - Request at -3h (index 2): left overlap
+	//   - Request at -2h (index 1): fully overlapping
+	//   - Request at -1h (index 0): right overlap
+	timeRange := &TimeRange{
+		Start: now.Add(-3*time.Hour - 15*time.Minute),
+		End:   now.Add(-30 * time.Minute),
+	}
+
+	requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, timeRange)
+	require.NoError(t, err)
+
+	require.Len(t, requests, 3)
+	requestIDs := make(map[string]bool)
+	for _, req := range requests {
+		requestIDs[req.RequestID] = true
+	}
+	require.True(t, requestIDs[tc.user1Requests[2].RequestID]) // -3h request
+	require.True(t, requestIDs[tc.user1Requests[1].RequestID]) // -2h request
+	require.True(t, requestIDs[tc.user1Requests[0].RequestID]) // -1h request
+
+	// Test time range filtering with forQuerytimeFiltering=true
+	// Set index propagation delay to 0 for testing
+	tc.store.(*deleteRequestsStoreSQLite).indexUpdatePropagationMaxDelay = 0
+	time.Sleep(time.Microsecond)
+
+	requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, true, timeRange)
+	require.NoError(t, err)
+
+	// Should only get unprocessed requests (user1Requests[1] at -2h was marked as processed earlier)
+	require.Len(t, requests, 2)
+	requestIDs = make(map[string]bool)
+	for _, req := range requests {
+		requestIDs[req.RequestID] = true
+	}
+	require.True(t, requestIDs[tc.user1Requests[2].RequestID]) // -3h request (unprocessed)
+	require.True(t, requestIDs[tc.user1Requests[0].RequestID]) // -1h request (unprocessed)
 }
 
 func TestBatchCreateGetSQLite(t *testing.T) {

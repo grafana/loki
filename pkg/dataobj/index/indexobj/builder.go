@@ -48,6 +48,9 @@ type Builder struct {
 	pointers      map[string]*pointers.Builder      // The key is the TenantID.
 	indexPointers map[string]*indexpointers.Builder // The key is the TenantID.
 
+	// Optimization to avoid recalculating the size by asking all tenants for their estimated size.
+	unflushedSizeEstimate int
+
 	state builderState
 }
 
@@ -99,6 +102,20 @@ func (b *Builder) IsFull() bool {
 	return b.builderFull
 }
 
+func (b *Builder) getIndexPointerBuilderForTenant(tenantID string) *indexpointers.Builder {
+	tenantIndexPointers, ok := b.indexPointers[tenantID]
+	if ok {
+		return tenantIndexPointers
+	}
+
+	tenantIndexPointers = indexpointers.NewBuilder(b.metrics.indexPointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+	tenantIndexPointers.SetTenant(tenantID)
+
+	b.indexPointers[tenantID] = tenantIndexPointers
+
+	return tenantIndexPointers
+}
+
 func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.Time, endTs time.Time) error {
 	b.metrics.appendsTotal.Inc()
 	newEntrySize := len(path) + 1 + 1 // path, startTs, endTs
@@ -110,16 +127,15 @@ func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	tenantIndexPointers, ok := b.indexPointers[tenantID]
-	if !ok {
-		tenantIndexPointers = indexpointers.NewBuilder(b.metrics.indexPointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
-		tenantIndexPointers.SetTenant(tenantID)
-		b.indexPointers[tenantID] = tenantIndexPointers
-	}
+	tenantIndexPointers := b.getIndexPointerBuilderForTenant(tenantID)
+	preAppendSizeEstimate := tenantIndexPointers.EstimatedSize()
 
 	tenantIndexPointers.Append(path, startTs, endTs)
 
-	if tenantIndexPointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
+	postAppendSizeEstimate := tenantIndexPointers.EstimatedSize()
+	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
+
+	if postAppendSizeEstimate > int(b.cfg.TargetSectionSize) {
 		if err := b.builder.Append(tenantIndexPointers); err != nil {
 			return err
 		}
@@ -129,6 +145,20 @@ func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.
 	b.state = builderStateDirty
 
 	return nil
+}
+
+func (b *Builder) getStreamsBuilderForTenant(tenantID string) *streams.Builder {
+	tenantStreams, ok := b.streams[tenantID]
+	if ok {
+		return tenantStreams
+	}
+
+	tenantStreams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+	tenantStreams.SetTenant(tenantID)
+
+	b.streams[tenantID] = tenantStreams
+
+	return tenantStreams
 }
 
 // AppendStream appends a stream to the object's stream section, returning the stream ID within this object.
@@ -144,16 +174,16 @@ func (b *Builder) AppendStream(tenantID string, stream streams.Stream) (int64, e
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	tenantStreams, ok := b.streams[tenantID]
-	if !ok {
-		tenantStreams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
-		tenantStreams.SetTenant(tenantID)
-		b.streams[tenantID] = tenantStreams
-	}
+	tenantStreams := b.getStreamsBuilderForTenant(tenantID)
+	preAppendSizeEstimate := tenantStreams.EstimatedSize()
+
 	// Record the stream in the stream section.
 	// Once to capture the min timestamp and uncompressed size, again to record the max timestamp.
 	streamID := tenantStreams.Record(stream.Labels, stream.MinTimestamp, stream.UncompressedSize)
 	_ = tenantStreams.Record(stream.Labels, stream.MaxTimestamp, 0)
+
+	postAppendSizeEstimate := tenantStreams.EstimatedSize()
+	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
 
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
@@ -176,6 +206,20 @@ func labelsEstimate(ls labels.Labels) int {
 	// Keys are stored as columns directly, while values get compressed. We'll
 	// underestimate a 2x compression ratio.
 	return keysSize + valuesSize/2
+}
+
+func (b *Builder) getPointersBuilderForTenant(tenantID string) *pointers.Builder {
+	tenantPointers, ok := b.pointers[tenantID]
+	if ok {
+		return tenantPointers
+	}
+
+	tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+	tenantPointers.SetTenant(tenantID)
+
+	b.pointers[tenantID] = tenantPointers
+
+	return tenantPointers
 }
 
 // Append buffers a stream to be written to a data object. Append returns an
@@ -201,13 +245,13 @@ func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, st
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	tenantPointers, ok := b.pointers[tenantID]
-	if !ok {
-		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
-		tenantPointers.SetTenant(tenantID)
-		b.pointers[tenantID] = tenantPointers
-	}
+	tenantPointers := b.getPointersBuilderForTenant(tenantID)
+	preAppendSizeEstimate := tenantPointers.EstimatedSize()
+
 	tenantPointers.ObserveStream(path, section, streamIDInObject, streamIDInIndex, ts, uncompressedSize)
+
+	postAppendSizeEstimate := tenantPointers.EstimatedSize()
+	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
 
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
@@ -237,17 +281,17 @@ func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64,
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	tenantPointers, ok := b.pointers[tenantID]
-	if !ok {
-		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
-		tenantPointers.SetTenant(tenantID)
-		b.pointers[tenantID] = tenantPointers
-	}
+	tenantPointers := b.getPointersBuilderForTenant(tenantID)
+	preAppendSizeEstimate := tenantPointers.EstimatedSize()
+
 	tenantPointers.RecordColumnIndex(path, section, columnName, columnIndex, valuesBloom)
+
+	postAppendSizeEstimate := tenantPointers.EstimatedSize()
+	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
 
 	// If our logs section has gotten big enough, we want to flush it to the
 	// encoder and start a new section.
-	if tenantPointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
+	if postAppendSizeEstimate > int(b.cfg.TargetSectionSize) {
 		if err := b.builder.Append(tenantPointers); err != nil {
 			return err
 		}
@@ -260,15 +304,7 @@ func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64,
 
 func (b *Builder) estimatedSize() int {
 	var size int
-	for _, tenantStreams := range b.streams {
-		size += tenantStreams.EstimatedSize()
-	}
-	for _, tenantPointers := range b.pointers {
-		size += tenantPointers.EstimatedSize()
-	}
-	for _, tenantIndexPointers := range b.indexPointers {
-		size += tenantIndexPointers.EstimatedSize()
-	}
+	size += b.unflushedSizeEstimate
 	size += b.builder.Bytes()
 	b.metrics.sizeEstimate.Set(float64(size))
 	return size
@@ -382,6 +418,7 @@ func (b *Builder) Reset() {
 
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
+	b.unflushedSizeEstimate = 0
 	b.builderFull = false
 	b.state = builderStateEmpty
 }

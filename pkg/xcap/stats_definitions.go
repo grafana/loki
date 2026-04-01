@@ -5,6 +5,7 @@ var (
 	StatPipelineRowsOut      = NewStatisticInt64("rows.out", AggregationTypeSum)
 	StatPipelineReadCalls    = NewStatisticInt64("read.calls", AggregationTypeSum)
 	StatPipelineReadDuration = NewStatisticFloat64("read.duration", AggregationTypeSum)
+	StatPipelineExecDuration = NewStatisticFloat64("exec.duration", AggregationTypeSum)
 )
 
 // ColumnCompat statistics.
@@ -64,6 +65,62 @@ var (
 
 // Metastore statistics.
 var (
-	StatMetastoreIndexObjects     = NewStatisticInt64("metastore.index.objects", AggregationTypeSum)
-	StatMetastoreResolvedSections = NewStatisticInt64("metastore.resolved.sections", AggregationTypeSum)
+	StatMetastoreIndexObjects            = NewStatisticInt64("metastore.index.objects", AggregationTypeSum)
+	StatMetastoreSectionsResolved        = NewStatisticInt64("metastore.sections.resolved", AggregationTypeSum)
+	StatMetastoreStreamsRead             = NewStatisticInt64("metastore.sections.streams.read", AggregationTypeSum)
+	StatMetastoreStreamsReadTime         = NewStatisticFloat64("metastore.sections.streams.read.duration", AggregationTypeSum)
+	StatMetastoreSectionPointersRead     = NewStatisticInt64("metastore.sections.pointers.read", AggregationTypeSum)
+	StatMetastoreSectionPointersReadTime = NewStatisticFloat64("metastore.sections.pointers.read.duration", AggregationTypeSum)
+)
+
+// Task scheduling statistics.
+var (
+	StatTaskCount = NewStatisticInt64("task.count", AggregationTypeFirst)
+
+	// Task queue duration (queued to assignment) in seconds.
+	StatTaskMaxQueueDuration = NewStatisticFloat64("task.max.queue.duration", AggregationTypeMax)
+
+	// Time from workflow start until last task assignment in seconds.
+	StatTaskAssignmentTailDuration = NewStatisticFloat64("task.assignment.tail.duration", AggregationTypeMax)
+
+	// Time spent waiting for task admission (before being queued) in seconds.
+	StatTaskAdmissionWaitDuration = NewStatisticFloat64("task.admission.wait.duration", AggregationTypeSum)
+)
+
+var (
+	// Track number of predicates applied to enforce delete request filtering.
+	StatDeletePredicates = NewStatisticInt64("delete.request.predicates", AggregationTypeFirst)
+)
+
+// Task cache statistics.
+var (
+	TaskCacheHits    = NewStatisticInt64("task.cache.hits", AggregationTypeSum)
+	TaskCacheMisses  = NewStatisticInt64("task.cache.misses", AggregationTypeSum)
+	TaskCacheBatches = NewStatisticInt64("task.cache.batches", AggregationTypeSum)
+	TaskCacheRows    = NewStatisticInt64("task.cache.rows", AggregationTypeSum)
+	TaskCacheBytes   = NewStatisticInt64("task.cache.bytes", AggregationTypeSum)
+)
+
+// DataObjScan cache statistics.
+var (
+	DataObjScanCacheHits    = NewStatisticInt64("dataobjscan.cache.hits", AggregationTypeSum)
+	DataObjScanCacheMisses  = NewStatisticInt64("dataobjscan.cache.misses", AggregationTypeSum)
+	DataObjScanCacheBatches = NewStatisticInt64("dataobjscan.cache.batches", AggregationTypeSum)
+	DataObjScanCacheRows    = NewStatisticInt64("dataobjscan.cache.rows", AggregationTypeSum)
+	DataObjScanCacheBytes   = NewStatisticInt64("dataobjscan.cache.bytes", AggregationTypeSum)
+)
+
+// Task statistics.
+var (
+	TaskRecvDuration            = NewStatisticFloat64("task.recv.duration", AggregationTypeSum)
+	TaskSendDuration            = NewStatisticFloat64("task.send.duration", AggregationTypeSum)
+	TaskRecordsSent             = NewStatisticInt64("task.records.sent", AggregationTypeSum)
+	TaskRowsSent                = NewStatisticInt64("task.rows.sent", AggregationTypeSum)
+	TaskDrainRecordsReceived    = NewStatisticInt64("task.drain.records.received", AggregationTypeSum)
+	TaskBatchingRecordsReceived = NewStatisticInt64("task.batching.records.received", AggregationTypeSum)
+	TaskBatchingRowsReceived    = NewStatisticInt64("task.batching.rows.received", AggregationTypeSum)
+	TaskBatchingBatchesProduced = NewStatisticInt64("task.batching.batches.produced", AggregationTypeSum)
+	TaskBatchingRowsWritten     = NewStatisticInt64("task.batching.rows.written", AggregationTypeSum)
+	TaskExternalSourcesCount    = NewStatisticInt64("task.external.sources.count", AggregationTypeFirst)
+	TaskExternalSinksCount      = NewStatisticInt64("task.external.sinks.count", AggregationTypeFirst)
 )

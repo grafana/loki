@@ -30,6 +30,7 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 
 		var headers []string
 		var parsedColumns []arrow.Array
+
 		switch op {
 		case types.VariadicOpParseLogfmt:
 			sourceCol, requestedKeys, strict, keepEmpty, err = extractParseFnParameters(args)
@@ -274,8 +275,8 @@ func parseLines(input arrow.RecordBatch, sourceCol *array.String, columnBuilders
 
 				// Backfill NULLs for previous rows
 				for j := 0; j < i; j++ {
-					errorBuilder.AppendNull()
-					errorDetailsBuilder.AppendNull()
+					errorBuilder.Append("")
+					errorDetailsBuilder.Append("")
 				}
 			}
 			// Append error values
@@ -286,8 +287,8 @@ func parseLines(input arrow.RecordBatch, sourceCol *array.String, columnBuilders
 			// Only add NULLs for columns that already exist
 		} else if hasErrorColumns {
 			// No error on this row, but we have error columns
-			errorBuilder.AppendNull()
-			errorDetailsBuilder.AppendNull()
+			errorBuilder.Append("")
+			errorDetailsBuilder.Append("")
 		}
 
 		// Track which keys we've seen this row
@@ -298,22 +299,20 @@ func parseLines(input arrow.RecordBatch, sourceCol *array.String, columnBuilders
 			seenKeys[semconv.ColumnIdentErrorDetails.ShortName()] = struct{}{}
 		}
 
-		// Add values for parsed keys (only if no error)
-		if err == nil {
-			for key, value := range parsed {
-				seenKeys[key] = struct{}{}
-				builder, exists := columnBuilders[key]
-				if !exists {
-					// New column discovered - create and backfill
-					builder = array.NewStringBuilder(memory.DefaultAllocator)
-					columnBuilders[key] = builder
-					columnOrder = append(columnOrder, key)
+		// Add values for parsed keys
+		for key, value := range parsed {
+			seenKeys[key] = struct{}{}
+			builder, exists := columnBuilders[key]
+			if !exists {
+				// New column discovered - create and backfill
+				builder = array.NewStringBuilder(memory.DefaultAllocator)
+				columnBuilders[key] = builder
+				columnOrder = append(columnOrder, key)
 
-					// Backfill NULLs for previous rows
-					builder.AppendNulls(i)
-				}
-				builder.Append(value)
+				// Backfill NULLs for previous rows
+				builder.AppendNulls(i)
 			}
+			builder.Append(value)
 		}
 		// For error cases, don't mark the failed keys as seen - let them get NULLs below
 

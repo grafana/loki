@@ -10,10 +10,15 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
+
+func init() {
+	assertions.Enabled = true
+}
 
 func TestVectorAggregationPipeline(t *testing.T) {
 	// input schema with timestamp, value and group by columns
@@ -67,22 +72,29 @@ func TestVectorAggregationPipeline(t *testing.T) {
 	input2 := NewBufferedPipeline(input2Record)
 
 	// Create group by expressions
-	groupBy := []physical.ColumnExpression{
-		&physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "env",
-				Type:   types.ColumnTypeAmbiguous,
+	grouping := physical.Grouping{
+		Columns: []physical.ColumnExpression{
+			&physical.ColumnExpr{
+				Ref: types.ColumnRef{
+					Column: "env",
+					Type:   types.ColumnTypeAmbiguous,
+				},
+			},
+			&physical.ColumnExpr{
+				Ref: types.ColumnRef{
+					Column: "service",
+					Type:   types.ColumnTypeAmbiguous,
+				},
 			},
 		},
-		&physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "service",
-				Type:   types.ColumnTypeAmbiguous,
-			},
-		},
+		Without: false,
 	}
 
-	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, newExpressionEvaluator(), types.VectorAggregationTypeSum, nil)
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, newExpressionEvaluator(), vectorAggregationOptions{
+		grouping:       grouping,
+		operation:      types.VectorAggregationTypeSum,
+		maxQuerySeries: 0, // no limit for test
+	})
 	require.NoError(t, err)
 	defer pipeline.Close()
 

@@ -6,9 +6,13 @@ package stdouttrace // import "go.opentelemetry.io/otel/exporters/stdout/stdoutt
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace/internal/counter"
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace/internal/observ"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
@@ -26,10 +30,14 @@ func New(options ...Option) (*Exporter, error) {
 		enc.SetIndent("", "\t")
 	}
 
-	return &Exporter{
+	exporter := &Exporter{
 		encoder:    enc,
 		timestamps: cfg.Timestamps,
-	}, nil
+	}
+
+	var err error
+	exporter.inst, err = observ.NewInstrumentation(counter.NextExporterID())
+	return exporter, err
 }
 
 // Exporter is an implementation of trace.SpanSyncer that writes spans to stdout.
@@ -40,10 +48,18 @@ type Exporter struct {
 
 	stoppedMu sync.RWMutex
 	stopped   bool
+
+	inst *observ.Instrumentation
 }
 
 // ExportSpans writes spans in json format to stdout.
-func (e *Exporter) ExportSpans(ctx context.Context, spans []trace.ReadOnlySpan) error {
+func (e *Exporter) ExportSpans(ctx context.Context, spans []trace.ReadOnlySpan) (err error) {
+	var success int64
+	if e.inst != nil {
+		op := e.inst.ExportSpans(ctx, len(spans))
+		defer func() { op.End(success, err) }()
+	}
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -75,15 +91,17 @@ func (e *Exporter) ExportSpans(ctx context.Context, spans []trace.ReadOnlySpan) 
 		}
 
 		// Encode span stubs, one by one
-		if err := e.encoder.Encode(stub); err != nil {
-			return err
+		if e := e.encoder.Encode(stub); e != nil {
+			err = errors.Join(err, fmt.Errorf("failed to encode span %d: %w", i, e))
+			continue
 		}
+		success++
 	}
-	return nil
+	return err
 }
 
 // Shutdown is called to stop the exporter, it performs no action.
-func (e *Exporter) Shutdown(ctx context.Context) error {
+func (e *Exporter) Shutdown(context.Context) error {
 	e.stoppedMu.Lock()
 	e.stopped = true
 	e.stoppedMu.Unlock()
@@ -92,7 +110,7 @@ func (e *Exporter) Shutdown(ctx context.Context) error {
 }
 
 // MarshalLog is the marshaling function used by the logging system to represent this Exporter.
-func (e *Exporter) MarshalLog() interface{} {
+func (e *Exporter) MarshalLog() any {
 	return struct {
 		Type           string
 		WithTimestamps bool

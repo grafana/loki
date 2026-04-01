@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -30,7 +31,7 @@ var (
 )
 
 func NewExponentialHistogram() *ExponentialHistogram {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ExponentialHistogram{}
 	}
 	return protoPoolExponentialHistogram.Get().(*ExponentialHistogram)
@@ -41,11 +42,10 @@ func DeleteExponentialHistogram(orig *ExponentialHistogram, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.DataPoints {
 		DeleteExponentialHistogramDataPoint(orig.DataPoints[i], true)
 	}
@@ -175,7 +175,7 @@ func (orig *ExponentialHistogram) SizeProto() int {
 		l = orig.DataPoints[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.AggregationTemporality != 0 {
+	if orig.AggregationTemporality != AggregationTemporality(0) {
 		n += 1 + proto.Sov(uint64(orig.AggregationTemporality))
 	}
 	return n
@@ -192,7 +192,7 @@ func (orig *ExponentialHistogram) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0xa
 	}
-	if orig.AggregationTemporality != 0 {
+	if orig.AggregationTemporality != AggregationTemporality(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.AggregationTemporality))
 		pos--
 		buf[pos] = 0x10
@@ -240,7 +240,6 @@ func (orig *ExponentialHistogram) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.AggregationTemporality = AggregationTemporality(num)
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)

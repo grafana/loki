@@ -64,6 +64,19 @@ func TestReader(t *testing.T) {
 	require.Equal(t, expect, actual)
 }
 
+func TestReader_ReadBeforeOpen(t *testing.T) {
+	sec := buildStreamsSection(t, 1, 0)
+
+	r := streams.NewReader(streams.ReaderOptions{
+		Columns:   sec.Columns(),
+		Allocator: memory.DefaultAllocator,
+	})
+
+	rec, err := r.Read(context.Background(), 128)
+	require.Nil(t, rec)
+	require.ErrorContains(t, err, "reader not opened")
+}
+
 func TestReader_Predicate(t *testing.T) {
 	expect := arrowtest.Rows{
 		{
@@ -186,6 +199,9 @@ func TestReader_ColumnSubset(t *testing.T) {
 
 func readTable(ctx context.Context, r *streams.Reader) (arrow.Table, error) {
 	var recs []arrow.RecordBatch
+	if err := r.Open(ctx); err != nil {
+		return nil, err
+	}
 
 	for {
 		rec, err := r.Read(ctx, 128)

@@ -70,6 +70,11 @@ const (
 	BinaryOpNotMatchRe      // Regular expression non-matching operation (!~). Used for regex match filter and label matcher.
 	BinaryOpMatchPattern    // Pattern matching operation (|>). Used for pattern match filter.
 	BinaryOpNotMatchPattern // Pattern non-matching operation (!>). Use for pattern match filter.
+
+	BinaryOpEqCaseInsensitive             // Case-insensitive equality comparison.
+	BinaryOpNotEqCaseInsensitive          // Case-insensitive inequality comparison.
+	BinaryOpMatchSubstrCaseInsensitive    // Case-insensitive substring matching operation.
+	BinaryOpNotMatchSubstrCaseInsensitive // Case-insensitive substring non-matching operation.
 )
 
 // String returns a human-readable representation of the binary operation kind.
@@ -117,6 +122,14 @@ func (t BinaryOp) String() string {
 		return "MATCH_PAT"
 	case BinaryOpNotMatchPattern:
 		return "NOT_MATCH_PAT" // convenience for NOT(MATCH_PAT(...))
+	case BinaryOpEqCaseInsensitive:
+		return "EQ_CASE_INSENSITIVE"
+	case BinaryOpNotEqCaseInsensitive:
+		return "NOT_EQ_CASE_INSENSITIVE" // convenience for NOT(EQ_CASE_INSENSITIVE(...))
+	case BinaryOpMatchSubstrCaseInsensitive:
+		return "MATCH_STR_CASE_INSENSITIVE"
+	case BinaryOpNotMatchSubstrCaseInsensitive:
+		return "NOT_MATCH_STR_CASE_INSENSITIVE" // convenience for NOT(MATCH_STR_CASE_INSENSITIVE(...))
 	default:
 		panic(fmt.Sprintf("unknown binary operator %d", t))
 	}
@@ -132,6 +145,7 @@ const (
 
 	VariadicOpParseLogfmt   // Parse logfmt line to set of columns operation (logfmt).
 	VariadicOpParseJSON     // Parse JSON line to set of columns operation (json).
+	VariadicOpParseRegexp   // Parse line with regex capture groups operation (regexp).
 	VariadicOpParseLinefmt  // Parse linefmt line
 	VariadicOpParseLabelfmt // Parse labelfmt line to set of labels operation (labelfmt).
 )
@@ -143,6 +157,8 @@ func (t VariadicOp) String() string {
 		return "PARSE_LOGFMT"
 	case VariadicOpParseJSON:
 		return "PARSE_JSON"
+	case VariadicOpParseRegexp:
+		return "PARSE_REGEXP"
 	case VariadicOpParseLinefmt:
 		return "PARSE_LINEFMT"
 	case VariadicOpParseLabelfmt:

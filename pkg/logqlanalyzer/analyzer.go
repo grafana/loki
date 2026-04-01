@@ -28,7 +28,7 @@ func (a logQLAnalyzer) analyze(query string, logs []string) (*Result, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "can not create pipeline")
 	}
-	streamLabels, err := parser.ParseMetric(streamSelector)
+	streamLabels, err := parser.NewParser(parser.Options{}).ParseMetric(streamSelector)
 	if err != nil {
 		return nil, errors.Wrap(err, "can not parse labels from stream selector")
 	}

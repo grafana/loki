@@ -13,6 +13,9 @@ import (
 	"github.com/redis/go-redis/v9/internal/pool"
 )
 
+// PoolNameMain is the name used for the main connection pool in metrics.
+const PoolNameMain = "main"
+
 // handoffWorkerManager manages background workers and queue for connection handoffs
 type handoffWorkerManager struct {
 	// Event-driven handoff support
@@ -434,6 +437,11 @@ func (hwm *handoffWorkerManager) performHandoffInternal(
 		deadline := time.Now().Add(hwm.config.PostHandoffRelaxedDuration)
 		conn.SetRelaxedTimeoutWithDeadline(relaxedTimeout, relaxedTimeout, deadline)
 
+		// Record relaxed timeout metric (post-handoff)
+		if relaxedTimeoutCallback := pool.GetMetricConnectionRelaxedTimeoutCallback(); relaxedTimeoutCallback != nil {
+			relaxedTimeoutCallback(ctx, 1, conn, PoolNameMain, "HANDOFF")
+		}
+
 		if internal.LogLevel.InfoOrAbove() {
 			internal.Logger.Printf(context.Background(), logs.ApplyingRelaxedTimeoutDueToPostHandoff(connID, relaxedTimeout, deadline.Format("15:04:05.000")))
 		}
@@ -462,6 +470,11 @@ func (hwm *handoffWorkerManager) performHandoffInternal(
 	internal.Logger.Printf(ctx, logs.HandoffSucceeded(connID, newEndpoint))
 
 	// successfully completed the handoff, no retry needed and no error
+	// Notify metrics: connection handoff succeeded
+	if handoffCallback := pool.GetMetricConnectionHandoffCallback(); handoffCallback != nil {
+		handoffCallback(ctx, conn, PoolNameMain)
+	}
+
 	return false, nil
 }
 
@@ -501,9 +514,9 @@ func (hwm *handoffWorkerManager) closeConnFromRequest(ctx context.Context, reque
 			internal.Logger.Printf(ctx, logs.RemovingConnectionFromPool(conn.GetID(), err))
 		}
 	} else {
-		err := conn.Close() // Close the connection if no pool provided
-		if err != nil {
-			internal.Logger.Printf(ctx, "redis: failed to close connection: %v", err)
+		errClose := conn.Close() // Close the connection if no pool provided
+		if errClose != nil {
+			internal.Logger.Printf(ctx, "redis: failed to close connection: %v", errClose)
 		}
 		if internal.LogLevel.WarnOrAbove() {
 			internal.Logger.Printf(ctx, logs.NoPoolProvidedCannotRemove(conn.GetID(), err))

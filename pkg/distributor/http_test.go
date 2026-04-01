@@ -176,6 +176,7 @@ func (p *fakeParser) parseRequest(
 	_ push.Limits,
 	_ *runtime.TenantConfigs,
 	_ int,
+	_ int64,
 	_ push.UsageTracker,
 	_ push.StreamResolver,
 	_ log.Logger,

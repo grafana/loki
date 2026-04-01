@@ -364,7 +364,7 @@ func rwString(dst jsWriter, src *Reader) (n int, err error) {
 		if err != nil {
 			return
 		}
-		read = int(uint8(p[1]))
+		read = int(p[1])
 	case mstr16:
 		p, err = src.R.Next(3)
 		if err != nil {

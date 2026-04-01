@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -29,7 +30,7 @@ var (
 )
 
 func NewStack() *Stack {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &Stack{}
 	}
 	return protoPoolStack.Get().(*Stack)
@@ -40,7 +41,7 @@ func DeleteStack(orig *Stack, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -134,6 +135,7 @@ func (orig *Stack) MarshalJSON(dest *json.Stream) {
 		}
 		dest.WriteArrayEnd()
 	}
+
 	dest.WriteObjectEnd()
 }
 
@@ -156,6 +158,7 @@ func (orig *Stack) SizeProto() int {
 	var n int
 	var l int
 	_ = l
+
 	if len(orig.LocationIndices) > 0 {
 		l = 0
 		for _, e := range orig.LocationIndices {

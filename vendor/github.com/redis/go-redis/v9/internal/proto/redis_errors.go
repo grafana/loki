@@ -212,6 +212,25 @@ func NewOOMError(msg string) *OOMError {
 	return &OOMError{msg: msg}
 }
 
+// NoReplicasError is returned when not enough replicas acknowledge a write.
+// This error occurs when using WAIT/WAITAOF commands or CLUSTER SETSLOT with
+// synchronous replication, and the required number of replicas cannot confirm
+// the write within the timeout period.
+type NoReplicasError struct {
+	msg string
+}
+
+func (e *NoReplicasError) Error() string {
+	return e.msg
+}
+
+func (e *NoReplicasError) RedisError() {}
+
+// NewNoReplicasError creates a new NoReplicasError with the given message.
+func NewNoReplicasError(msg string) *NoReplicasError {
+	return &NoReplicasError{msg: msg}
+}
+
 // parseTypedRedisError parses a Redis error message and returns a typed error if applicable.
 // This function maintains backward compatibility by keeping the same error messages.
 func parseTypedRedisError(msg string) error {
@@ -235,6 +254,8 @@ func parseTypedRedisError(msg string) error {
 		return NewTryAgainError(msg)
 	case strings.HasPrefix(msg, "MASTERDOWN "):
 		return NewMasterDownError(msg)
+	case strings.HasPrefix(msg, "NOREPLICAS "):
+		return NewNoReplicasError(msg)
 	case msg == "ERR max number of clients reached":
 		return NewMaxClientsError(msg)
 	case strings.HasPrefix(msg, "NOAUTH "), strings.HasPrefix(msg, "WRONGPASS "), strings.Contains(msg, "unauthenticated"):
@@ -485,4 +506,22 @@ func IsOOMError(err error) bool {
 	}
 	// Fallback to string checking for backward compatibility
 	return strings.HasPrefix(err.Error(), "OOM ")
+}
+
+// IsNoReplicasError checks if an error is a NoReplicasError, even if wrapped.
+func IsNoReplicasError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var noReplicasErr *NoReplicasError
+	if errors.As(err, &noReplicasErr) {
+		return true
+	}
+	// Check if wrapped error is a RedisError with NOREPLICAS prefix
+	var redisErr RedisError
+	if errors.As(err, &redisErr) && strings.HasPrefix(redisErr.Error(), "NOREPLICAS ") {
+		return true
+	}
+	// Fallback to string checking for backward compatibility
+	return strings.HasPrefix(err.Error(), "NOREPLICAS ")
 }

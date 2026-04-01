@@ -13,17 +13,6 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// End of support notice: Beginning November 21, 2025, Amazon S3 will stop
-// returning DisplayName . Update your applications to use canonical IDs (unique
-// identifier for Amazon Web Services accounts), Amazon Web Services account ID (12
-// digit identifier) or IAM ARNs (full resource naming) as a direct replacement of
-// DisplayName .
-//
-// This change affects the following Amazon Web Services Regions: US East (N.
-// Virginia) Region, US West (N. California) Region, US West (Oregon) Region, Asia
-// Pacific (Singapore) Region, Asia Pacific (Sydney) Region, Asia Pacific (Tokyo)
-// Region, Europe (Ireland) Region, and South America (São Paulo) Region.
-//
 // Returns some or all (up to 1,000) of the objects in a bucket with each request.
 // You can use the request parameters as selection criteria to return a subset of
 // the objects in a bucket. A 200 OK response can contain valid or invalid XML.

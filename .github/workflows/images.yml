@@ -1,18 +1,18 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
     "with":
-      "build_image": "grafana/loki-build-image:0.34.8"
-      "golang_ci_lint_version": "v2.5.0"
-      "release_lib_ref": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
+      "build_image": "grafana/loki-build-image:0.35.0"
+      "golang_ci_lint_version": "v2.10.1"
+      "release_lib_ref": "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
       "skip_validation": false
       "use_github_app_token": true
   "loki-canary-boringcrypto-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.25.4"
+      "GO_VERSION": "1.26.0"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
+      "RELEASE_LIB_REF": "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -134,9 +134,9 @@
   "loki-canary-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.25.4"
+      "GO_VERSION": "1.26.0"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
+      "RELEASE_LIB_REF": "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -258,9 +258,9 @@
   "loki-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.25.4"
+      "GO_VERSION": "1.26.0"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
+      "RELEASE_LIB_REF": "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -379,12 +379,12 @@
           ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
           ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM}
         docker buildx imagetools inspect $IMAGE
-  "promtail-image":
+  "querytee-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.25.4"
+      "GO_VERSION": "1.26.0"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
+      "RELEASE_LIB_REF": "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -426,8 +426,8 @@
       "run": |
         version=$(./tools/image-tag)
         echo "image_version=$version" >> $GITHUB_OUTPUT
-        echo "image_name=${{ env.IMAGE_PREFIX }}/promtail" >> $GITHUB_OUTPUT
-        echo "image_full_name=${{ env.IMAGE_PREFIX }}/promtail:$version" >> $GITHUB_OUTPUT
+        echo "image_name=${{ env.IMAGE_PREFIX }}/loki-query-tee" >> $GITHUB_OUTPUT
+        echo "image_full_name=${{ env.IMAGE_PREFIX }}/loki-query-tee:$version" >> $GITHUB_OUTPUT
       "working-directory": "release"
     - "id": "platform"
       "name": "Parse image platform"
@@ -445,7 +445,7 @@
           IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
           GO_VERSION=${{ env.GO_VERSION }}
         "context": "release"
-        "file": "release/clients/cmd/promtail/Dockerfile"
+        "file": "release/cmd/querytee/Dockerfile"
         "outputs": "push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true"
         "platforms": "${{ matrix.arch }}"
         "provenance": true
@@ -471,16 +471,16 @@
         - "arch": "linux/arm"
           "runs_on":
           - "github-hosted-ubuntu-arm64-small"
-  "promtail-manifest":
+  "querytee-manifest":
     "env":
       "BUILD_TIMEOUT": 60
-      "IMAGE_DIGEST_AMD64": "${{ needs.promtail-image.outputs.image_digest_linux_amd64 }}"
-      "IMAGE_DIGEST_ARM": "${{ needs.promtail-image.outputs.image_digest_linux_arm }}"
-      "IMAGE_DIGEST_ARM64": "${{ needs.promtail-image.outputs.image_digest_linux_arm64 }}"
-      "OUTPUTS_IMAGE_NAME": "${{ needs.promtail-image.outputs.image_name }}"
-      "OUTPUTS_IMAGE_TAG": "${{ needs.promtail-image.outputs.image_tag }}"
+      "IMAGE_DIGEST_AMD64": "${{ needs.querytee-image.outputs.image_digest_linux_amd64 }}"
+      "IMAGE_DIGEST_ARM": "${{ needs.querytee-image.outputs.image_digest_linux_arm }}"
+      "IMAGE_DIGEST_ARM64": "${{ needs.querytee-image.outputs.image_digest_linux_arm64 }}"
+      "OUTPUTS_IMAGE_NAME": "${{ needs.querytee-image.outputs.image_name }}"
+      "OUTPUTS_IMAGE_TAG": "${{ needs.querytee-image.outputs.image_tag }}"
     "needs":
-    - "promtail-image"
+    - "querytee-image"
     "permissions":
       "contents": "read"
       "id-token": "write"

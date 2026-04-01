@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -30,7 +31,7 @@ var (
 )
 
 func NewSum() *Sum {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &Sum{}
 	}
 	return protoPoolSum.Get().(*Sum)
@@ -41,11 +42,10 @@ func DeleteSum(orig *Sum, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.DataPoints {
 		DeleteNumberDataPoint(orig.DataPoints[i], true)
 	}
@@ -72,7 +72,6 @@ func CopySum(dest, src *Sum) *Sum {
 	dest.DataPoints = CopyNumberDataPointPtrSlice(dest.DataPoints, src.DataPoints)
 
 	dest.AggregationTemporality = src.AggregationTemporality
-
 	dest.IsMonotonic = src.IsMonotonic
 
 	return dest
@@ -183,10 +182,10 @@ func (orig *Sum) SizeProto() int {
 		l = orig.DataPoints[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.AggregationTemporality != 0 {
+	if orig.AggregationTemporality != AggregationTemporality(0) {
 		n += 1 + proto.Sov(uint64(orig.AggregationTemporality))
 	}
-	if orig.IsMonotonic {
+	if orig.IsMonotonic != false {
 		n += 2
 	}
 	return n
@@ -203,12 +202,12 @@ func (orig *Sum) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0xa
 	}
-	if orig.AggregationTemporality != 0 {
+	if orig.AggregationTemporality != AggregationTemporality(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.AggregationTemporality))
 		pos--
 		buf[pos] = 0x10
 	}
-	if orig.IsMonotonic {
+	if orig.IsMonotonic != false {
 		pos--
 		if orig.IsMonotonic {
 			buf[pos] = 1
@@ -261,7 +260,6 @@ func (orig *Sum) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.AggregationTemporality = AggregationTemporality(num)
 
 		case 3:
@@ -273,7 +271,6 @@ func (orig *Sum) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.IsMonotonic = num != 0
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)

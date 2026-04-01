@@ -12,13 +12,13 @@ import (
 type RangeAggregation struct {
 	NodeID ulid.ULID
 
-	PartitionBy []ColumnExpression // Columns to partition the data by.
-
-	Operation types.RangeAggregationType
-	Start     time.Time
-	End       time.Time
-	Step      time.Duration // optional for instant queries
-	Range     time.Duration
+	Grouping       Grouping
+	Operation      types.RangeAggregationType
+	Start          time.Time
+	End            time.Time
+	Step           time.Duration // optional for instant queries
+	Range          time.Duration
+	MaxQuerySeries int // maximum number of unique series allowed (0 means no limit)
 }
 
 // ID returns the ULID that uniquely identifies the node in the plan.
@@ -29,13 +29,16 @@ func (r *RangeAggregation) Clone() Node {
 	return &RangeAggregation{
 		NodeID: ulid.Make(),
 
-		PartitionBy: cloneExpressions(r.PartitionBy),
-
-		Operation: r.Operation,
-		Start:     r.Start,
-		End:       r.End,
-		Step:      r.Step,
-		Range:     r.Range,
+		Grouping: Grouping{
+			Columns: cloneExpressions(r.Grouping.Columns),
+			Without: r.Grouping.Without,
+		},
+		Operation:      r.Operation,
+		Start:          r.Start,
+		End:            r.End,
+		Step:           r.Step,
+		Range:          r.Range,
+		MaxQuerySeries: r.MaxQuerySeries,
 	}
 }
 

@@ -532,7 +532,7 @@ func newBufPool() bufPool {
 func (p bufPool) get() []byte  { return (*p.p.Get().(*[]byte))[:0] }
 func (p bufPool) put(b []byte) { p.p.Put(&b) }
 
-// loadConection returns the broker's connection, creating it if necessary
+// loadConnection returns the broker's connection, creating it if necessary
 // and returning an error of if that fails.
 func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerCxn, error) {
 	var (
@@ -541,6 +541,7 @@ func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerC
 		isFetchCxn   bool
 		reqKey       = req.Key()
 		_, isTimeout = req.(kmsg.TimeoutRequest)
+		reuse        = true
 	)
 	switch {
 	case reqKey == 0:
@@ -555,7 +556,15 @@ func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerC
 		pcxn = &b.cxnSlow
 	}
 
-	if *pcxn != nil && !(*pcxn).dead.Load() {
+	// Do not reuse a connection that has been idle for longer than idle timeout.
+	// Kill it instead.
+	if *pcxn != nil && !(*pcxn).dead.Load() && (*pcxn).isIdleTimeout(b.cl.cfg.connIdleTimeout) {
+		// die() in a goroutine to avoid blocking
+		go (*pcxn).die()
+		reuse = false
+	}
+
+	if reuse && *pcxn != nil && !(*pcxn).dead.Load() {
 		return *pcxn, nil
 	}
 
@@ -673,14 +682,7 @@ func (b *broker) reapConnections(idleTimeout time.Duration) (total int) {
 		//
 		// - produce can write but never read
 		// - fetch can hang for a while reading (infrequent writes)
-
-		lastWrite := time.Unix(0, cxn.lastWrite.Load())
-		lastRead := time.Unix(0, cxn.lastRead.Load())
-
-		writeIdle := time.Since(lastWrite) > idleTimeout && !cxn.writing.Load()
-		readIdle := time.Since(lastRead) > idleTimeout && !cxn.reading.Load()
-
-		if writeIdle && readIdle {
+		if cxn.isIdleTimeout(idleTimeout) {
 			cxn.die()
 			total++
 		}
@@ -881,7 +883,14 @@ func (cxn *brokerCxn) sasl() error {
 	req := kmsg.NewPtrSASLHandshakeRequest()
 
 start:
-	if mechanism.Name() != "GSSAPI" && v.maxVersion(req.Key()) >= 0 {
+	// KIP-152 establishes the modern SASL flow: ApiVersions, then
+	// SaslHandshake, then SaslAuthenticate for all mechanisms. The
+	// legacy raw GSSAPI flow (where GSSAPI clients could skip the
+	// handshake) only worked when GSSAPI bytes were the *first* packet
+	// on the connection. Since we send ApiVersions first, we must send
+	// SaslHandshake for all mechanisms including GSSAPI. KIP-896 removed
+	// support for the legacy raw GSSAPI protocol entirely in Kafka 4.0.
+	if v.maxVersion(req.Key()) >= 0 {
 		req.Mechanism = mechanism.Name()
 		req.Version = v.maxVersion(req.Key())
 		cxn.cl.cfg.logger.Log(LogLevelDebug, "issuing SASLHandshakeRequest", "broker", logID(cxn.b.meta.NodeID))
@@ -977,32 +986,31 @@ func (cxn *brokerCxn) doSasl(authenticate bool) error {
 			// request; see usage below for why.
 			prereq = time.Now()
 			corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr := cxn.writeRequest(nil, time.Now(), req)
-
-			// As mentioned above, we could have one final write
-			// without reading a response back (kerberos). If this
-			// is the case, we need to e2e.
-			if writeErr != nil || done {
+			if writeErr != nil {
 				cxn.hookWriteE2E(req.Key(), bytesWritten, writeWait, timeToWrite, writeErr)
-				if writeErr != nil {
-					return writeErr
-				}
+				return writeErr
 			}
-			if !done {
-				rawResp, err := cxn.readResponse(nil, req.Key(), req.GetVersion(), corrID, req.IsFlexible(), rt, bytesWritten, writeWait, timeToWrite, readEnqueue)
-				if err != nil {
-					return err
-				}
-				resp := req.ResponseKind().(*kmsg.SASLAuthenticateResponse)
-				if err = resp.ReadFrom(rawResp); err != nil {
-					return err
-				}
 
-				if err := errCodeMessage(resp.ErrorCode, resp.ErrorMessage); err != nil {
-					return err
-				}
-				challenge = resp.SASLAuthBytes
-				lifetimeMillis = resp.SessionLifetimeMillis
+			// Unlike the raw SASL path, SaslAuthenticate always has
+			// a response for every request. Per KIP-152, "server
+			// always sends a response to each SASL_AUTHENTICATE
+			// request". We must read this response even when the
+			// SASL session is complete to avoid leaving data in the
+			// connection buffer.
+			rawResp, err := cxn.readResponse(nil, req.Key(), req.GetVersion(), corrID, req.IsFlexible(), rt, bytesWritten, writeWait, timeToWrite, readEnqueue)
+			if err != nil {
+				return err
 			}
+			resp := req.ResponseKind().(*kmsg.SASLAuthenticateResponse)
+			if err = resp.ReadFrom(rawResp); err != nil {
+				return err
+			}
+
+			if err := errCodeMessage(resp.ErrorCode, resp.ErrorMessage); err != nil {
+				return err
+			}
+			challenge = resp.SASLAuthBytes
+			lifetimeMillis = resp.SessionLifetimeMillis
 		}
 
 		clientWrite = nil
@@ -1556,6 +1564,8 @@ func (cxn *brokerCxn) handleResp(pr promisedResp) {
 					err = &ErrFirstReadEOF{kind: firstReadSASL, err: err}
 				}
 			}
+		} else {
+			cxn.b.cl.cfg.logger.Log(LogLevelDebug, "read from broker canceled, closing connection and killing any other in-flight requests on this connection", "req", kmsg.Key(pr.resp.Key()).Name(), "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "err", err)
 		}
 		pr.promise(nil, err)
 		cxn.die()
@@ -1598,4 +1608,13 @@ func (cxn *brokerCxn) handleResp(pr promisedResp) {
 	}
 
 	pr.promise(pr.resp, readErr)
+}
+
+func (cxn *brokerCxn) isIdleTimeout(idleTimeout time.Duration) bool {
+	lastWrite := time.Unix(0, cxn.lastWrite.Load())
+	lastRead := time.Unix(0, cxn.lastRead.Load())
+
+	writeIdle := time.Since(lastWrite) > idleTimeout && !cxn.writing.Load()
+	readIdle := time.Since(lastRead) > idleTimeout && !cxn.reading.Load()
+	return writeIdle && readIdle
 }

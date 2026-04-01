@@ -16,14 +16,15 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
-	"go.opentelemetry.io/otel"
 	collogpb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	logpb "go.opentelemetry.io/proto/otlp/logs/v1"
+	"google.golang.org/protobuf/proto"
 
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp/internal"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp/internal/observ"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp/internal/retry"
 )
 
@@ -42,8 +43,22 @@ func newNoopClient() *client {
 	return &client{}
 }
 
+var exporterN atomic.Int64
+
+var errInsecureEndpointWithTLS = errors.New("insecure HTTP endpoint cannot use TLS client configuration")
+
+// nextExporterID returns the next unique ID for an exporter.
+func nextExporterID() int64 {
+	const inc = 1
+	return exporterN.Add(inc) - inc
+}
+
 // newHTTPClient creates a new HTTP log client.
 func newHTTPClient(cfg config) (*client, error) {
+	if cfg.insecure.Value && cfg.tlsCfg.Value != nil {
+		return nil, errInsecureEndpointWithTLS
+	}
+
 	hc := cfg.httpClient
 	if hc == nil {
 		hc = &http.Client{
@@ -94,7 +109,11 @@ func newHTTPClient(cfg config) (*client, error) {
 		requestFunc: cfg.retryCfg.Value.RequestFunc(evaluate),
 		client:      hc,
 	}
-	return &client{uploadLogs: c.uploadLogs}, nil
+
+	id := nextExporterID()
+	c.inst, err = observ.NewInstrumentation(id, cfg.endpoint.Value)
+
+	return &client{uploadLogs: c.uploadLogs}, err
 }
 
 type httpClient struct {
@@ -103,6 +122,8 @@ type httpClient struct {
 	compression Compression
 	requestFunc retry.RequestFunc
 	client      *http.Client
+
+	inst *observ.Instrumentation
 }
 
 // Keep it in sync with golang's DefaultTransport from net/http! We
@@ -122,7 +143,7 @@ var ourTransport = &http.Transport{
 	ExpectContinueTimeout: 1 * time.Second,
 }
 
-func (c *httpClient) uploadLogs(ctx context.Context, data []*logpb.ResourceLogs) error {
+func (c *httpClient) uploadLogs(ctx context.Context, data []*logpb.ResourceLogs) (uploadErr error) {
 	// The Exporter synchronizes access to client methods. This is not called
 	// after the Exporter is shutdown. Only thing to do here is send data.
 
@@ -136,7 +157,13 @@ func (c *httpClient) uploadLogs(ctx context.Context, data []*logpb.ResourceLogs)
 		return err
 	}
 
-	return c.requestFunc(ctx, func(iCtx context.Context) error {
+	var statusCode int
+	if c.inst != nil {
+		op := c.inst.ExportLogs(ctx, int64(len(data)))
+		defer func() { op.End(uploadErr, statusCode) }()
+	}
+
+	return errors.Join(uploadErr, c.requestFunc(ctx, func(iCtx context.Context) error {
 		select {
 		case <-iCtx.Done():
 			return iCtx.Err()
@@ -144,6 +171,7 @@ func (c *httpClient) uploadLogs(ctx context.Context, data []*logpb.ResourceLogs)
 		}
 
 		request.reset(iCtx)
+		// nolint:gosec // URL is constructed from validated OTLP endpoint configuration
 		resp, err := c.client.Do(request.Request)
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) && urlErr.Temporary() {
@@ -155,11 +183,12 @@ func (c *httpClient) uploadLogs(ctx context.Context, data []*logpb.ResourceLogs)
 		if resp != nil && resp.Body != nil {
 			defer func() {
 				if err := resp.Body.Close(); err != nil {
-					otel.Handle(err)
+					uploadErr = errors.Join(uploadErr, err)
 				}
 			}()
 		}
 
+		statusCode = resp.StatusCode
 		if sc := resp.StatusCode; sc >= 200 && sc <= 299 {
 			// Success, do not retry.
 
@@ -182,8 +211,8 @@ func (c *httpClient) uploadLogs(ctx context.Context, data []*logpb.ResourceLogs)
 					msg := respProto.PartialSuccess.GetErrorMessage()
 					n := respProto.PartialSuccess.GetRejectedLogRecords()
 					if n != 0 || msg != "" {
-						err := fmt.Errorf("OTLP partial success: %s (%d log records rejected)", msg, n)
-						otel.Handle(err)
+						err := internal.LogPartialSuccessError(n, msg)
+						uploadErr = errors.Join(uploadErr, err)
 					}
 				}
 			}
@@ -200,7 +229,7 @@ func (c *httpClient) uploadLogs(ctx context.Context, data []*logpb.ResourceLogs)
 			return err
 		}
 		respStr := strings.TrimSpace(respData.String())
-		if len(respStr) == 0 {
+		if respStr == "" {
 			respStr = "(empty)"
 		}
 		bodyErr := fmt.Errorf("body: %s", respStr)
@@ -216,11 +245,11 @@ func (c *httpClient) uploadLogs(ctx context.Context, data []*logpb.ResourceLogs)
 			// Non-retryable failure.
 			return fmt.Errorf("failed to send logs to %s: %s (%w)", request.URL, resp.Status, bodyErr)
 		}
-	})
+	}))
 }
 
 var gzPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		w := gzip.NewWriter(io.Discard)
 		return w
 	},
@@ -232,7 +261,7 @@ func (c *httpClient) newRequest(ctx context.Context, body []byte) (request, erro
 
 	switch c.compression {
 	case NoCompression:
-		r.ContentLength = (int64)(len(body))
+		r.ContentLength = int64(len(body))
 		req.bodyReader = bodyReader(body)
 	case GzipCompression:
 		// Ensure the content length is not used.
@@ -313,7 +342,7 @@ func (e retryableError) Unwrap() error {
 	return e.err
 }
 
-func (e retryableError) As(target interface{}) bool {
+func (e retryableError) As(target any) bool {
 	if e.err == nil {
 		return false
 	}

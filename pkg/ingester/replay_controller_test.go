@@ -78,6 +78,105 @@ func TestReplayController(t *testing.T) {
 	require.Equal(t, expected, ops)
 }
 
+// Test that WithBackPressure skips backpressure entirely when ReplayMemoryCeiling is zero.
+func TestReplayControllerZeroCeiling(t *testing.T) {
+	var flushed bool
+	flusher := newDumbFlusher(func() {
+		flushed = true
+	})
+	rc := newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 0}, flusher)
+
+	// Add a large amount of data — with a zero ceiling this should not trigger flushing.
+	rc.Add(1 << 30) // 1GB
+
+	err := rc.WithBackPressure(func() error {
+		rc.Add(1 << 30)
+		return nil
+	})
+
+	require.NoError(t, err)
+	require.False(t, flushed, "flusher should not be called when ReplayMemoryCeiling is zero")
+}
+
+// Test that WithBackPressure returns an error when a flush makes no progress reducing memory.
+func TestReplayControllerNoProgressFlush(t *testing.T) {
+	flusher := newDumbFlusher(nil) // no-op: never calls rc.Sub, so bytes never decrease
+	rc := newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 100}, flusher)
+
+	// Exceed 90% threshold (ceiling = 90).
+	rc.Add(95)
+
+	err := rc.WithBackPressure(func() error {
+		return nil
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "WAL replay flush made no progress")
+}
+
+// Test that WithBackPressure returns an error when flush makes partial progress but then stalls,
+// i.e. subsequent flushes no longer reduce memory below the ceiling.
+func TestReplayControllerPartialProgressFlush(t *testing.T) {
+	var rc *replayController
+	flushCount := 0
+	flusher := newDumbFlusher(func() {
+		flushCount++
+		if flushCount == 1 {
+			// First flush makes partial progress: drops from 200 to 95, still above 90% ceiling.
+			rc.Sub(105)
+		}
+		// Subsequent flushes are no-ops: bytes stay at 95, no further progress.
+	})
+	rc = newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 100}, flusher)
+
+	rc.Add(200) // well above the 90-byte ceiling
+
+	err := rc.WithBackPressure(func() error {
+		return nil
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "WAL replay flush made no progress")
+	require.Equal(t, 2, flushCount, "should have flushed twice: once with progress, once stalled")
+}
+
+// Test that WithBackPressure does not spuriously error when concurrent workers refill currentBytes
+// during a flush. The flush made real progress (Sub was called), so no error should be returned
+// even though currentBytes ends up higher than the pre-flush snapshot due to concurrent Add calls.
+//
+// Sequence:
+//  1. bytes=95 > ceiling=90, enter loop; old code snapshots before=95
+//  2. Flush runs: Sub(80) → bytes=15; concurrent goroutine adds 85 → bytes=100
+//  3. Old check: currentBytes(100) >= before(95) → spurious error
+//  4. New check: totalSubtracted increased → no error, loop continues and drains on next flush
+func TestReplayControllerNoSpuriousErrorOnConcurrentAdd(t *testing.T) {
+	var rc *replayController
+	var once sync.Once
+	flushed := make(chan struct{})
+	flusher := newDumbFlusher(func() {
+		rc.Sub(80)                         // genuine progress each flush
+		once.Do(func() { close(flushed) }) // signal the concurrent goroutine only on first flush
+	})
+	rc = newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 100}, flusher)
+	rc.Add(95) // above 90% ceiling
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Simulate a concurrent worker adding bytes while the first flush is running,
+		// pushing currentBytes back above the pre-flush snapshot (100 > before=95).
+		// The loop will flush again and drain normally; no error should be returned.
+		<-flushed
+		rc.Add(85) // 15 + 85 = 100, above the original before=95
+	}()
+
+	err := rc.WithBackPressure(func() error { return nil })
+	wg.Wait()
+
+	require.NoError(t, err, "concurrent Add during flush should not cause a spurious no-progress error")
+}
+
 // Test to ensure only one flush happens at a time when multiple goroutines call WithBackPressure
 func TestReplayControllerConcurrentFlushes(t *testing.T) {
 	t.Run("multiple goroutines wait for single flush", func(t *testing.T) {

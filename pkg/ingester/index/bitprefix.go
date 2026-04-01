@@ -54,7 +54,7 @@ func (ii *BitPrefixInvertedIndex) getShards(shard *logql.Shard) ([]*indexShard, 
 	}
 
 	// When comparing a higher shard factor to a lower inverted index shard factor
-	// we must filter resulting fingerprints as the the lower shard factor in the
+	// we must filter resulting fingerprints as the lower shard factor in the
 	// inverted index is a superset of the requested factor.
 	//
 	// For instance, the 3_of_4 shard factor maps to the bit prefix 0b11.

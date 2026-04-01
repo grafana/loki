@@ -1,14 +1,14 @@
 package dataset
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 type pageReader struct {
@@ -24,14 +24,8 @@ type pageReader struct {
 	presenceDec *bitmapDecoder
 	valuesDec   valueDecoder
 
-	presenceBuf []Value
-	valuesBuf   []Value
-
 	pageRow int64
 	nextRow int64
-
-	presenceReader *bufio.Reader
-	valuesReader   *bufio.Reader
 }
 
 // newPageReader returns a new pageReader that reads from the provided page.
@@ -43,10 +37,12 @@ func newPageReader(p Page, physicalType datasetmd.PhysicalType, compression data
 	return &pr
 }
 
-// Read reads up to the next len(v) values from the page into v. It returns the
-// number of values read and any error encountered. At the end of the page,
-// Read returns 0, io.EOF.
-func (pr *pageReader) Read(ctx context.Context, v []Value) (n int, err error) {
+// Read returns an array of up to the next count values from the page.
+// At the end of the page, Read returns nil, io.EOF.
+//
+// If there was an error reading the page, Read returns the error with
+// no array.
+func (pr *pageReader) Read(ctx context.Context, alloc *memory.Allocator, count int) (columnar.Array, error) {
 	// We need to initialize our readers before we can read from the page.
 	//
 	// If we've seeked backwards and our page row is now ahead of the row we want
@@ -55,119 +51,87 @@ func (pr *pageReader) Read(ctx context.Context, v []Value) (n int, err error) {
 	if !pr.ready || pr.pageRow > pr.nextRow {
 		err := pr.init(ctx)
 		if err != nil {
-			return n, err
+			return nil, err
 		}
 	}
 
-	// "Skip" rows until we reach the starting row we want to read. We do this by
-	// reading garbage values into v.
-	for pr.pageRow < pr.nextRow {
-		maxCount := min(len(v), int(pr.nextRow-pr.pageRow))
-		_, err := pr.read(v[:maxCount])
-		if err != nil {
-			return n, err
-		}
+	// "Skip" rows until we reach the starting row we want to read.
+	if err := pr.skipUnwantedRows(alloc); err != nil {
+		return nil, err
 	}
 
-	n, err = pr.read(v)
-	pr.nextRow += int64(n)
-	return n, err
+	// Do the real read now.
+	arr, err := pr.readColumnar(alloc, count, false)
+	if arr != nil {
+		pr.nextRow += int64(arr.Len())
+	}
+	return arr, err
 }
 
-// read reads up to the next len(v) values from the page into v, without
-// considering the current row offset.
-//
-// read advances pr.pageRow but not pr.nextRow.
-func (pr *pageReader) read(v []Value) (n int, err error) {
-	pr.presenceBuf = slicegrow.GrowToCap(pr.presenceBuf, len(v))
-	pr.presenceBuf = pr.presenceBuf[:len(v)]
+func (pr *pageReader) skipUnwantedRows(alloc *memory.Allocator) error {
+	if pr.pageRow >= pr.nextRow {
+		// Nothing to skip.
+		return nil
+	}
 
-	// We want to allow decoders to reuse memory of [Value]s in v while allowing
-	// the caller to retain ownership over that memory; to do this safely, we
-	// copy memory from v into pr.valuesBuf for our decoders to use.
-	//
-	// If we didn't do this, then memory backing [Value]s are owned by both
-	// pageReader and the caller, which can lead to memory reuse bugs.
-	pr.valuesBuf = reuseValuesBuffer(pr.valuesBuf, v)
+	// Since we don't need the values to live beyond this read call, we can
+	// create a short-lived allocator. This will also allow the "real" read to
+	// reuse any memory that was created during this step.
+	tempAlloc := memory.NewAllocator(alloc)
+	defer tempAlloc.Free()
 
-	// First read presence values for the next len(v) rows.
-	count, err := pr.presenceDec.Decode(pr.presenceBuf)
+	readCount := int(pr.nextRow - pr.pageRow)
+	_, err := pr.readColumnar(alloc, readCount, true)
+	return err
+}
+
+// readColumnar implements the actual Read operation for count rows. If skip is
+// true, no array values are returned, permitting for skipping expensive work.
+func (pr *pageReader) readColumnar(alloc *memory.Allocator, count int, skip bool) (columnar.Array, error) {
+	// First read presence values for the next count rows.
+	bm := memory.NewBitmap(alloc, count)
+	err := pr.presenceDec.DecodeTo(&bm, count)
+
+	gotCount := bm.Len()
 	if err != nil && !errors.Is(err, io.EOF) {
-		return n, err
-	} else if count == 0 && errors.Is(err, io.EOF) {
+		return nil, err
+	} else if gotCount == 0 && errors.Is(err, io.EOF) {
 		// If we've hit EOF, we can immediately close the inner reader to release
 		// any resources back, rather than waiting for the next call to
 		// [pageReader.init] to do it.
 		_ = pr.Close()
 
-		return n, io.EOF
-	} else if count == 0 {
-		return 0, nil
+		return nil, io.EOF
+	} else if gotCount == 0 {
+		return nil, nil
 	}
 
-	// The number of values in pr.presenceBuf[:count] which are set to 1
-	// determines how many values we need to read from the inner page.
-	var presentCount int
-	for _, p := range pr.presenceBuf[:count] {
-		if p.Type() != datasetmd.PHYSICAL_TYPE_UINT64 {
-			return n, fmt.Errorf("unexpected presence type: %s", p.Type())
-		}
-		if p.Uint64() == 1 {
-			presentCount++
-		}
-	}
+	// The number of bits set to 1 in presenceBuf determines how many values we
+	// need to read from the inner page.
+	presentCount := bm.SetCount()
 
-	// Now fill up to prescentCount values of concrete values.
-	var valuesCount int
+	var values columnar.Array
+
+	// Now fill up to presentCount values of concrete values.
 	if presentCount > 0 {
-		valuesCount, err = pr.valuesDec.Decode(pr.valuesBuf[:presentCount])
-		if err != nil {
-			return n, err
-		} else if valuesCount != presentCount {
-			return n, fmt.Errorf("unexpected number of values: %d, expected: %d", valuesCount, presentCount)
+		// TODO(rfratto): Add a "skip" mode to decoders to allow them to bypass
+		// building an array if it's not going to be used.
+		values, err = pr.valuesDec.Decode(alloc, presentCount)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return nil, err
+		} else if values == nil {
+			return nil, fmt.Errorf("unexpected nil values")
+		} else if values.Len() != presentCount {
+			return nil, fmt.Errorf("unexpected number of values: %d, expected: %d", values.Len(), presentCount)
 		}
 	}
 
-	// Finally, copy over count values into v, setting NULL where appropriate and
-	// copying from pr.valuesBuf where appropriate.
-	var valuesIndex int
-	for i, p := range pr.presenceBuf[:count] {
-		// Type checking on presence values was already done above; we can call
-		// [Value.Uint64] here safely.
-		switch p.Uint64() {
-		case 1:
-			if valuesIndex >= valuesCount {
-				return n, fmt.Errorf("unexpected end of values")
-			}
-			v[i] = pr.valuesBuf[valuesIndex]
-			valuesIndex++
-		default:
-			v[i] = Value{}
-		}
+	pr.pageRow += int64(gotCount)
+
+	if skip {
+		return nil, nil
 	}
-
-	n += count
-	pr.pageRow += int64(count)
-	return n, nil
-}
-
-// reuseValuesBuffer prepares dst for reading up to len(src) values. Non-NULL
-// values are appended to dst, with the remainder of the slice set to NULL.
-//
-// The resulting slice is len(src).
-func reuseValuesBuffer(dst []Value, src []Value) []Value {
-	dst = slicegrow.GrowToCap(dst, len(src))
-	dst = dst[:0]
-
-	// We must maintain ordering against the caller slice here.
-	// Otherwise we can move pointers around which can get reused within a read call.
-	dst = append(dst, src...)
-
-	filledLength := len(dst)
-
-	dst = dst[:len(src)]
-	clear(dst[filledLength:])
-	return dst
+	return materializeSparseArray(alloc, pr.lastPhysicalType, bm, values)
 }
 
 func (pr *pageReader) init(ctx context.Context) error {
@@ -188,34 +152,152 @@ func (pr *pageReader) init(ctx context.Context) error {
 		Data: data,
 	}
 
-	presenceReader, valuesReader, err := memPage.reader(pr.compression)
+	openedPage, pageCloser, err := memPage.open(pr.compression)
 	if err != nil {
 		return fmt.Errorf("opening page for reading: %w", err)
 	}
 
-	pr.presenceReader = pr.getPresenceReader()
-	pr.presenceReader.Reset(presenceReader)
 	pr.presenceDec = pr.getPresenceDecoder()
-	pr.presenceDec.Reset(pr.presenceReader)
+	pr.presenceDec.Reset(openedPage.PresenceData)
 
-	pr.valuesReader = pr.getValuesReader()
-	pr.valuesReader.Reset(valuesReader)
 	if pr.valuesDec == nil || pr.lastPhysicalType != pr.physicalType || pr.lastEncoding != memPage.Desc.Encoding {
 		var ok bool
-		pr.valuesDec, ok = newValueDecoder(pr.physicalType, memPage.Desc.Encoding, pr.valuesReader)
+		pr.valuesDec, ok = newValueDecoder(pr.physicalType, memPage.Desc.Encoding, openedPage.ValueData)
 		if !ok {
 			return fmt.Errorf("unsupported value encoding %s/%s", pr.physicalType, memPage.Desc.Encoding)
 		}
 	} else {
-		pr.valuesDec.Reset(pr.valuesReader)
+		pr.valuesDec.Reset(openedPage.ValueData)
 	}
 
 	pr.ready = true
-	pr.closer = valuesReader
+	pr.closer = pageCloser
 	pr.lastPhysicalType = pr.physicalType
 	pr.lastEncoding = memPage.Desc.Encoding
 	pr.pageRow = 0
 	return nil
+}
+
+// materializeSparseArray materializes a dense array into a sparse [Value] slice
+// based on a presence bitmap. If denseValues is nil, a [columnar.Null] is
+// returned with the length of validity.
+//
+// If denseValues is non-nil, denseValues.Len() must be equal to
+// validity.ClearCount().
+//
+// # Safety
+//
+// Memory from validity and denseValues may be moved to the returned array.
+// These values must have been allocated with alloc to prevent use-after-free.
+func materializeSparseArray(alloc *memory.Allocator, typ datasetmd.PhysicalType, validity memory.Bitmap, denseValues columnar.Array) (columnar.Array, error) {
+	if denseValues != nil && validity.SetCount() != denseValues.Len() {
+		panic(fmt.Sprintf("invariant broken: validity set count (%d) is not array length (%d)", validity.SetCount(), denseValues.Len()))
+	}
+
+	switch arr := denseValues.(type) {
+	case *columnar.UTF8:
+		return materializeSparseUTF8(alloc, validity, arr)
+	case *columnar.Number[int64]:
+		return materializeSparseNumber[int64](alloc, validity, arr)
+	case *columnar.Number[uint64]:
+		return materializeSparseNumber[uint64](alloc, validity, arr)
+	case nil:
+		return materializeNulls(alloc, typ, validity)
+	default:
+		panic(fmt.Sprintf("found unexpected type %T", arr))
+	}
+}
+
+func materializeSparseUTF8(alloc *memory.Allocator, validity memory.Bitmap, denseValues *columnar.UTF8) (columnar.Array, error) {
+	// The data buffer can remain the same, but we need to make a new offsets
+	// buffer to account for all the nulls.
+	offsetsBuf := memory.NewBuffer[int32](alloc, validity.Len()+1)
+	offsetsBuf.Resize(validity.Len() + 1)
+	offsets := offsetsBuf.Data()
+
+	// Since we're moving the data directly from the dense values array, our
+	// offsets need to start whenever the source offsets starts. Based on our
+	// decoders, this will always be 0, but we keep this logic here to be
+	// defensive.
+	srcOffsets := denseValues.Offsets()
+	offsets[0] = srcOffsets[0]
+
+	var (
+		denseIndex = 0
+		lastOffset = offsets[0]
+	)
+
+	for i := range validity.Len() {
+		if !validity.Get(i) {
+			offsets[i+1] = lastOffset
+			continue
+		}
+
+		// Find the end offset to push from the src.
+		srcEnd := srcOffsets[denseIndex+1]
+		denseIndex++
+
+		offsets[i+1] = srcEnd
+		lastOffset = srcEnd
+	}
+
+	return columnar.NewUTF8(denseValues.Data(), offsets, validity), nil
+}
+
+func materializeSparseNumber[T columnar.Numeric](alloc *memory.Allocator, validity memory.Bitmap, denseValues *columnar.Number[T]) (columnar.Array, error) {
+	valuesBuf := memory.NewBuffer[T](alloc, validity.Len())
+	valuesBuf.Resize(validity.Len())
+	values := valuesBuf.Data()
+
+	srcValues := denseValues.Values()
+
+	var srcIndex int
+	for i := range validity.Len() {
+		if !validity.Get(i) {
+			continue
+		}
+		values[i] = srcValues[srcIndex]
+		srcIndex++
+	}
+	return columnar.NewNumber[T](values, validity), nil
+}
+
+func materializeNulls(alloc *memory.Allocator, typ datasetmd.PhysicalType, validity memory.Bitmap) (columnar.Array, error) {
+	if validity.SetCount() > 0 {
+		panic(fmt.Sprintf("unexpected non-null values: %d", validity.SetCount()))
+	}
+
+	// NOTE(rfratto): we need to return an array of the expected type here,
+	// since other operations will require all arrays to be of the same type.
+	//
+	// TODO(rfratto): Should we update functions like [columnar.Concat] to
+	// accept some of the arrays being Null? Would that slow things down too
+	// much?
+	switch typ {
+	case datasetmd.PHYSICAL_TYPE_INT64:
+		valuesBuffer := memory.NewBuffer[int64](alloc, validity.Len())
+		valuesBuffer.Resize(validity.Len())
+		valuesBuffer.Clear()
+
+		return columnar.NewNumber[int64](valuesBuffer.Data(), validity), nil
+
+	case datasetmd.PHYSICAL_TYPE_UINT64:
+		valuesBuffer := memory.NewBuffer[uint64](alloc, validity.Len())
+		valuesBuffer.Resize(validity.Len())
+		valuesBuffer.Clear()
+
+		return columnar.NewNumber[uint64](valuesBuffer.Data(), validity), nil
+
+	case datasetmd.PHYSICAL_TYPE_BINARY:
+		offsetsBuffer := memory.NewBuffer[int32](alloc, validity.Len()+1)
+		offsetsBuffer.Resize(validity.Len() + 1)
+		offsetsBuffer.Clear()
+
+		return columnar.NewUTF8(nil, offsetsBuffer.Data(), validity), nil
+
+	default:
+		return columnar.NewNull(validity), nil
+	}
 }
 
 // Seek sets the row offset for the next Read call, interpreted according to
@@ -296,21 +378,7 @@ func (pr *pageReader) Close() error {
 		pr.closer = nil
 		return err
 	}
-
-	// After closing the reader, we reset the valuesReader to make sure it isn't
-	// holding onto the reference to pr.closer.
-	if pr.valuesReader != nil {
-		pr.valuesReader.Reset(nil)
-	}
-
 	return nil
-}
-
-func (pr *pageReader) getPresenceReader() *bufio.Reader {
-	if pr.presenceReader == nil {
-		return bufio.NewReader(nil)
-	}
-	return pr.presenceReader
 }
 
 func (pr *pageReader) getPresenceDecoder() *bitmapDecoder {
@@ -318,11 +386,4 @@ func (pr *pageReader) getPresenceDecoder() *bitmapDecoder {
 		return newBitmapDecoder(nil)
 	}
 	return pr.presenceDec
-}
-
-func (pr *pageReader) getValuesReader() *bufio.Reader {
-	if pr.valuesReader == nil {
-		return bufio.NewReader(nil)
-	}
-	return pr.valuesReader
 }

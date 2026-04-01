@@ -18,12 +18,12 @@ type noopSpanExporter struct{}
 var _ trace.SpanExporter = noopSpanExporter{}
 
 // ExportSpans is part of trace.SpanExporter interface.
-func (e noopSpanExporter) ExportSpans(ctx context.Context, spans []trace.ReadOnlySpan) error {
+func (noopSpanExporter) ExportSpans(context.Context, []trace.ReadOnlySpan) error {
 	return nil
 }
 
 // Shutdown is part of trace.SpanExporter interface.
-func (e noopSpanExporter) Shutdown(ctx context.Context) error {
+func (noopSpanExporter) Shutdown(context.Context) error {
 	return nil
 }
 
@@ -51,7 +51,7 @@ func IsNoneMetricReader(e metric.Reader) bool {
 
 type noopMetricProducer struct{}
 
-func (e noopMetricProducer) Produce(ctx context.Context) ([]metricdata.ScopeMetrics, error) {
+func (noopMetricProducer) Produce(context.Context) ([]metricdata.ScopeMetrics, error) {
 	return nil, nil
 }
 
@@ -65,17 +65,17 @@ type noopLogExporter struct{}
 var _ log.Exporter = noopLogExporter{}
 
 // ExportSpans is part of log.Exporter interface.
-func (e noopLogExporter) Export(ctx context.Context, records []log.Record) error {
+func (noopLogExporter) Export(context.Context, []log.Record) error {
 	return nil
 }
 
 // Shutdown is part of log.Exporter interface.
-func (e noopLogExporter) Shutdown(ctx context.Context) error {
+func (noopLogExporter) Shutdown(context.Context) error {
 	return nil
 }
 
 // ForceFlush is part of log.Exporter interface.
-func (e noopLogExporter) ForceFlush(ctx context.Context) error {
+func (noopLogExporter) ForceFlush(context.Context) error {
 	return nil
 }
 

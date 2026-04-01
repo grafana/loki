@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -274,9 +274,9 @@ func (*PromParser) Exemplar(*exemplar.Exemplar) bool {
 	return false
 }
 
-// CreatedTimestamp returns 0 as it's not implemented yet.
+// StartTimestamp returns 0 as it's not implemented yet.
 // TODO(bwplotka): https://github.com/prometheus/prometheus/issues/12980
-func (*PromParser) CreatedTimestamp() int64 {
+func (*PromParser) StartTimestamp() int64 {
 	return 0
 }
 
@@ -408,11 +408,13 @@ func (p *PromParser) parseLVals() error {
 	for {
 		curTStart := p.l.start
 		curTI := p.l.i
+		var isQString bool
 		switch t {
 		case tBraceClose:
 			return nil
 		case tLName:
 		case tQString:
+			isQString = true
 		default:
 			return p.parseError("expected label name", t)
 		}
@@ -420,7 +422,7 @@ func (p *PromParser) parseLVals() error {
 		t = p.nextToken()
 		// A quoted string followed by a comma or brace is a metric name. Set the
 		// offsets and continue processing.
-		if t == tComma || t == tBraceClose {
+		if isQString && (t == tComma || t == tBraceClose) {
 			if p.offsets[0] != -1 || p.offsets[1] != -1 {
 				return fmt.Errorf("metric name already set while parsing: %q", p.l.b[p.start:p.l.i])
 			}

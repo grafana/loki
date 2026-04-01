@@ -21,9 +21,6 @@ import (
 // (ABAC) is not enabled for the bucket. When you [enable ABAC for a general purpose bucket], you can no longer use this
 // operation for that bucket and must use the [TagResource]or [UntagResource] operations instead.
 //
-// if ABAC is not enabled for the bucket. When you [enable ABAC for a general purpose bucket], you can no longer use this
-// operation for that bucket and must use [TagResource]instead.
-//
 // Use tags to organize your Amazon Web Services bill to reflect your own cost
 // structure. To do this, sign up to get your Amazon Web Services account bill with
 // tag key values included. Then, to see the cost of combined resources, organize

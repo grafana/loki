@@ -14,12 +14,10 @@ import (
 )
 
 // Returns the attribute-based access control (ABAC) property of the general
-// purpose bucket. If the bucket ABAC is enabled, you can use tags for bucket
-// access control. For more information, see [Enabling ABAC in general purpose buckets]. Whether ABAC is enabled or
-// disabled, you can use tags for cost tracking. For more information, see [Using tags with S3 general purpose buckets].
+// purpose bucket. If ABAC is enabled on your bucket, you can use tags on the
+// bucket for access control. For more information, see [Enabling ABAC in general purpose buckets].
 //
 // [Enabling ABAC in general purpose buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/buckets-tagging-enable-abac.html
-// [Using tags with S3 general purpose buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/buckets-tagging.html
 func (c *Client) GetBucketAbac(ctx context.Context, params *GetBucketAbacInput, optFns ...func(*Options)) (*GetBucketAbacOutput, error) {
 	if params == nil {
 		params = &GetBucketAbacInput{}

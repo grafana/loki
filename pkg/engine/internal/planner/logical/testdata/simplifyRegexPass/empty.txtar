@@ -1,0 +1,10 @@
+Empty regexes should be dropped.
+
+-- column --
+utf8.builtin.message
+
+-- regex --
+
+
+-- expect --
+RETURN builtin.message

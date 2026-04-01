@@ -14,6 +14,7 @@ var (
 		AGGREGATE_RANGE_OP_MAX:     types.RangeAggregationTypeMax,
 		AGGREGATE_RANGE_OP_MIN:     types.RangeAggregationTypeMin,
 		AGGREGATE_RANGE_OP_BYTES:   types.RangeAggregationTypeBytes,
+		AGGREGATE_RANGE_OP_AVG:     types.RangeAggregationTypeAvg,
 	}
 
 	nativeVectorAggregationLookup = map[AggregateVectorOp]types.VectorAggregationType{

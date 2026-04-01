@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package grpc;
 
+import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
 import "pkg/compactor/deletion/deletionproto/types.proto";
 
 service Compactor {
@@ -11,6 +13,16 @@ service Compactor {
 
 message GetDeleteRequestsRequest {
   bool forQuerytimeFiltering = 1;
+  // Time range for overlap filtering. If present, only returns delete requests
+  // that overlap with the given time range.
+  google.protobuf.Timestamp start_time = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true
+  ];
+  google.protobuf.Timestamp end_time = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true
+  ];
 }
 
 message GetDeleteRequestsResponse {

@@ -184,7 +184,7 @@ func unregisteredError(unregistered []string) error {
 	}
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("error: detected %d unregistered Go %s:\n", len(unregistered), f))
+	fmt.Fprintf(&b, "error: detected %d unregistered Go %s:\n", len(unregistered), f)
 	for _, name := range unregistered {
 		b.WriteString("\t" + name + "\n")
 	}

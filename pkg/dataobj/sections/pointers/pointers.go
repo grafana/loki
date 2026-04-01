@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/apache/arrow-go/v18/arrow"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
@@ -175,4 +177,33 @@ func (ct ColumnType) String() string {
 		return fmt.Sprintf("ColumnType(%d)", ct)
 	}
 	return text
+}
+
+func ColumnTypeFromField(field arrow.Field) ColumnType {
+	switch field.Name {
+	case "path.path.utf8":
+		return ColumnTypePath
+	case "section.int64":
+		return ColumnTypeSection
+	case "stream_id.int64":
+		return ColumnTypeStreamID
+	case "stream_id_ref.int64":
+		return ColumnTypeStreamIDRef
+	case "min_timestamp.timestamp":
+		return ColumnTypeMinTimestamp
+	case "max_timestamp.timestamp":
+		return ColumnTypeMaxTimestamp
+	case "row_count.int64":
+		return ColumnTypeRowCount
+	case "uncompressed_size.int64":
+		return ColumnTypeUncompressedSize
+	case "column_name.column_name.utf8":
+		return ColumnTypeColumnName
+	case "column_index.int64":
+		return ColumnTypeColumnIndex
+	case "values_bloom_filter.int64":
+		return ColumnTypeValuesBloomFilter
+	default:
+		return ColumnTypeInvalid
+	}
 }

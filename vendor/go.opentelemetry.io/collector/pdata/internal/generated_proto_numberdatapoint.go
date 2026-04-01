@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -47,11 +48,11 @@ func (m *NumberDataPoint) GetAsInt() int64 {
 
 // NumberDataPoint is a single data point in a timeseries that describes the time-varying value of a number metric.
 type NumberDataPoint struct {
+	Value             any
 	Attributes        []KeyValue
+	Exemplars         []Exemplar
 	StartTimeUnixNano uint64
 	TimeUnixNano      uint64
-	Value             any
-	Exemplars         []Exemplar
 	Flags             uint32
 }
 
@@ -76,7 +77,7 @@ var (
 )
 
 func NewNumberDataPoint() *NumberDataPoint {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &NumberDataPoint{}
 	}
 	return protoPoolNumberDataPoint.Get().(*NumberDataPoint)
@@ -87,26 +88,25 @@ func DeleteNumberDataPoint(orig *NumberDataPoint, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.Attributes {
 		DeleteKeyValue(&orig.Attributes[i], false)
 	}
+
 	switch ov := orig.Value.(type) {
 	case *NumberDataPoint_AsDouble:
-		if UseProtoPooling.IsEnabled() {
+		if metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov.AsDouble = float64(0)
 			ProtoPoolNumberDataPoint_AsDouble.Put(ov)
 		}
 	case *NumberDataPoint_AsInt:
-		if UseProtoPooling.IsEnabled() {
+		if metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov.AsInt = int64(0)
 			ProtoPoolNumberDataPoint_AsInt.Put(ov)
 		}
-
 	}
 	for i := range orig.Exemplars {
 		DeleteExemplar(&orig.Exemplars[i], false)
@@ -134,28 +134,28 @@ func CopyNumberDataPoint(dest, src *NumberDataPoint) *NumberDataPoint {
 	dest.Attributes = CopyKeyValueSlice(dest.Attributes, src.Attributes)
 
 	dest.StartTimeUnixNano = src.StartTimeUnixNano
-
 	dest.TimeUnixNano = src.TimeUnixNano
-
 	switch t := src.Value.(type) {
 	case *NumberDataPoint_AsDouble:
 		var ov *NumberDataPoint_AsDouble
-		if !UseProtoPooling.IsEnabled() {
+		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov = &NumberDataPoint_AsDouble{}
 		} else {
 			ov = ProtoPoolNumberDataPoint_AsDouble.Get().(*NumberDataPoint_AsDouble)
 		}
 		ov.AsDouble = t.AsDouble
 		dest.Value = ov
+
 	case *NumberDataPoint_AsInt:
 		var ov *NumberDataPoint_AsInt
-		if !UseProtoPooling.IsEnabled() {
+		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov = &NumberDataPoint_AsInt{}
 		} else {
 			ov = ProtoPoolNumberDataPoint_AsInt.Get().(*NumberDataPoint_AsInt)
 		}
 		ov.AsInt = t.AsInt
 		dest.Value = ov
+
 	default:
 		dest.Value = nil
 	}
@@ -282,7 +282,7 @@ func (orig *NumberDataPoint) UnmarshalJSON(iter *json.Iterator) {
 		case "asDouble", "as_double":
 			{
 				var ov *NumberDataPoint_AsDouble
-				if !UseProtoPooling.IsEnabled() {
+				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 					ov = &NumberDataPoint_AsDouble{}
 				} else {
 					ov = ProtoPoolNumberDataPoint_AsDouble.Get().(*NumberDataPoint_AsDouble)
@@ -290,11 +290,10 @@ func (orig *NumberDataPoint) UnmarshalJSON(iter *json.Iterator) {
 				ov.AsDouble = iter.ReadFloat64()
 				orig.Value = ov
 			}
-
 		case "asInt", "as_int":
 			{
 				var ov *NumberDataPoint_AsInt
-				if !UseProtoPooling.IsEnabled() {
+				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 					ov = &NumberDataPoint_AsInt{}
 				} else {
 					ov = ProtoPoolNumberDataPoint_AsInt.Get().(*NumberDataPoint_AsInt)
@@ -325,10 +324,10 @@ func (orig *NumberDataPoint) SizeProto() int {
 		l = orig.Attributes[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.StartTimeUnixNano != 0 {
+	if orig.StartTimeUnixNano != uint64(0) {
 		n += 9
 	}
-	if orig.TimeUnixNano != 0 {
+	if orig.TimeUnixNano != uint64(0) {
 		n += 9
 	}
 	switch orig := orig.Value.(type) {
@@ -336,15 +335,17 @@ func (orig *NumberDataPoint) SizeProto() int {
 		_ = orig
 		break
 	case *NumberDataPoint_AsDouble:
+
 		n += 9
 	case *NumberDataPoint_AsInt:
+
 		n += 9
 	}
 	for i := range orig.Exemplars {
 		l = orig.Exemplars[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.Flags != 0 {
+	if orig.Flags != uint32(0) {
 		n += 1 + proto.Sov(uint64(orig.Flags))
 	}
 	return n
@@ -361,13 +362,13 @@ func (orig *NumberDataPoint) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x3a
 	}
-	if orig.StartTimeUnixNano != 0 {
+	if orig.StartTimeUnixNano != uint64(0) {
 		pos -= 8
 		binary.LittleEndian.PutUint64(buf[pos:], uint64(orig.StartTimeUnixNano))
 		pos--
 		buf[pos] = 0x11
 	}
-	if orig.TimeUnixNano != 0 {
+	if orig.TimeUnixNano != uint64(0) {
 		pos -= 8
 		binary.LittleEndian.PutUint64(buf[pos:], uint64(orig.TimeUnixNano))
 		pos--
@@ -394,7 +395,7 @@ func (orig *NumberDataPoint) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x2a
 	}
-	if orig.Flags != 0 {
+	if orig.Flags != uint32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.Flags))
 		pos--
 		buf[pos] = 0x40
@@ -467,7 +468,7 @@ func (orig *NumberDataPoint) UnmarshalProto(buf []byte) error {
 				return err
 			}
 			var ov *NumberDataPoint_AsDouble
-			if !UseProtoPooling.IsEnabled() {
+			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 				ov = &NumberDataPoint_AsDouble{}
 			} else {
 				ov = ProtoPoolNumberDataPoint_AsDouble.Get().(*NumberDataPoint_AsDouble)
@@ -485,7 +486,7 @@ func (orig *NumberDataPoint) UnmarshalProto(buf []byte) error {
 				return err
 			}
 			var ov *NumberDataPoint_AsInt
-			if !UseProtoPooling.IsEnabled() {
+			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 				ov = &NumberDataPoint_AsInt{}
 			} else {
 				ov = ProtoPoolNumberDataPoint_AsInt.Get().(*NumberDataPoint_AsInt)
@@ -518,7 +519,6 @@ func (orig *NumberDataPoint) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.Flags = uint32(num)
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)

@@ -24,6 +24,10 @@ Reference can be found here: https://github.com/OAI/OpenAPI-Specification/blob/m
 
 [Documentation](https://pkg.go.dev/github.com/go-openapi/validate)
 
+## Licensing
+
+This library ships under the [SPDX-License-Identifier: Apache-2.0](./LICENSE).
+
 ## FAQ
 
 * Does this library support OpenAPI 3?

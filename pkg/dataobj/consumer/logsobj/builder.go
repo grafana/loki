@@ -271,6 +271,7 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 	b.initBuilder(tenant)
 	sb, lb := b.streams[tenant], b.logs[tenant]
 
+	b.metrics.appends.Inc()
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
@@ -431,16 +432,25 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	return obj, closer, err
 }
 
-// CopyAndSort takes an existing [dataobj.Object] and rewrites the logs sections so the logs are sorted object-wide.
-// The order of the sections is deterministic. For each tenant, first come the streams sections in the order of the old object
-// and second come the new, rewritten logs sections. Tenants are sorted in natural order.
-func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	dur := prometheus.NewTimer(b.metrics.sortDurationSeconds)
-	defer dur.ObserveDuration()
+// CopyAndSort takes an existing [dataobj.Object] and rewrites the logs sections
+// so the logs are sorted object-wide. The order of the sections is deterministic.
+// For each tenant, first come the streams sections in the order of the old object
+// and second come the new, rewritten logs sections. Tenants are sorted in natural
+// order.
+func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
+	// Must reset builder when done.
+	defer b.Reset()
 
-	defer b.Reset() // always reset builder when done
+	// You will see a number of occurrences where we check if the context has
+	// been canceled. The reason is that this method is CPU intensive, and we
+	// want to allow the caller to cancel it rather than wait for it to complete
+	// and discard the result.
+	select {
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	default:
+	}
 
-	ctx := context.Background()
 	sort := parseSortOrder(b.cfg.DataobjSortOrder)
 
 	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
@@ -458,6 +468,12 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 	natsort.Sort(tenants)
 
 	for _, tenant := range tenants {
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		default:
+		}
+
 		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return streams.CheckSection(s) && s.Tenant == tenant }) {
 			sb.Reset()
 			sb.SetTenant(sec.Tenant)
@@ -500,11 +516,18 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 		}
 
 		for rec := range iter {
+			// Based on profiles, almost all CPU time is spent in this loop, which makes
+			// it a perfect place to check if the context has been canceled.
+			select {
+			case <-ctx.Done():
+				return nil, nil, ctx.Err()
+			default:
+			}
+
 			val, err := rec.Value()
 			if err != nil {
 				return nil, nil, err
 			}
-
 			lb.Append(val)
 
 			// If our logs section has gotten big enough, we want to flush it to the encoder and start a new section.
@@ -521,6 +544,12 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 		if err := b.builder.Append(lb); err != nil {
 			return nil, nil, err
 		}
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	default:
 	}
 
 	return b.builder.Flush()

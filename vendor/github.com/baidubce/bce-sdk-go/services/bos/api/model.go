@@ -167,9 +167,16 @@ type LifecycleConditionTimeType struct {
 	DateGreaterThan string `json:"dateGreaterThan"`
 }
 
+type LifecycleObjectSizeType struct {
+	MinSize int64 `json:"minSize,omitempty"`
+	MaxSize int64 `json:"maxSize,omitempty"`
+}
+
 // LifecycleConditionType defines the structure of condition
 type LifecycleConditionType struct {
-	Time LifecycleConditionTimeType `json:"time"`
+	Time       LifecycleConditionTimeType `json:"time,omitempty"`
+	ObjectSize LifecycleObjectSizeType    `json:"objectSize,omitempty"`
+	Tag        map[string]string          `json:"tag,omitempty"`
 }
 
 // LifecycleActionType defines the structure of lifecycle action
@@ -178,13 +185,20 @@ type LifecycleActionType struct {
 	StorageClass string `json:"storageClass,omitempty"`
 }
 
+type lifecycleNotRule struct {
+	Resource string            `json:"resource,omitempty"`
+	Tag      map[string]string `json:"tag,omitempty"`
+}
+
 // LifecycleRuleType defines the structure of a single lifecycle rule
 type LifecycleRuleType struct {
-	Id        string                 `json:"id"`
-	Status    string                 `json:"status"`
-	Resource  []string               `json:"resource"`
-	Condition LifecycleConditionType `json:"condition"`
-	Action    LifecycleActionType    `json:"action"`
+	Id                        string                 `json:"id"`
+	Status                    string                 `json:"status"`
+	Resource                  []string               `json:"resource"`
+	Condition                 LifecycleConditionType `json:"condition"`
+	Action                    LifecycleActionType    `json:"action"`
+	ExpiredObjectDeleteMarker string                 `json:"ExpiredObjectDeleteMarker,omitempty"`
+	Not                       lifecycleNotRule       `json:"not,omitempty"`
 }
 
 // GetBucketLifecycleResult defines the lifecycle argument structure for putting
@@ -311,6 +325,8 @@ type PutObjectArgs struct {
 	ForbidOverwrite    bool
 	Encryption         SSEHeaders
 	ContentCrc64ECMA   string
+	IfMatch            string
+	IfNoneMatch        string
 	// please set other header/params of http request By Option
 	// alternative Options please refer to service/bos/api/option.go
 }
@@ -427,13 +443,22 @@ type ObjectMeta struct {
 	RetentionDate      string
 	objectTagCount     int64
 	ContentCrc64ECMA   string
+	ContentLanguage    string
+}
+
+type GetObjectArgs struct {
+	Params            map[string]string // responseXXX query/ bce header
+	Ranges            []int64
+	IfMatch           string
+	IfNoneMatch       string
+	IfModifiedSince   string // example: Fri, 25 Dec 2025 17:11:53 GMT
+	IfUnModifiedSince string // example: Fri, 25 Dec 2025 17:11:53 GMT
 }
 
 // GetObjectResult defines the result data of the get object api.
 type GetObjectResult struct {
 	ObjectMeta
-	ContentLanguage string
-	Body            io.ReadCloser
+	Body io.ReadCloser
 }
 
 // GetObjectMetaResult defines the result data of the get object meta api.
@@ -581,6 +606,8 @@ type InitiateMultipartUploadArgs struct {
 	GrantFullControl   []string
 	ObjectExpires      int
 	ContentEncoding    string
+	IfMatch            string
+	IfNoneMatch        string
 }
 
 // InitiateMultipartUploadResult defines the result structure to initiate a multipart upload.
@@ -619,6 +646,7 @@ type PutSymlinkArgs struct {
 	StorageClass    string
 	UserMeta        map[string]string
 	SymlinkBucket   string
+	ContentType     string
 }
 
 // UploadInfoType defines an uploaded part info structure.
@@ -637,6 +665,8 @@ type CompleteMultipartUploadArgs struct {
 	ContentCrc32cFlag bool              `json:"-"`
 	ObjectExpires     int               `json:"-"`
 	ContentCrc64ECMA  string            `json:"-"`
+	IfMatch           string            `json:"-"`
+	IfNoneMatch       string            `json:"-"`
 }
 
 // CompleteMultipartUploadResult defines the result structure of CompleteMultipartUpload.
@@ -807,6 +837,17 @@ type BucketTag struct {
 type BosContext struct {
 	PathStyleEnable bool
 	Ctx             context.Context // for each request
+	ApiVersion      string          // "v1", "v2"
+	EnableCalcMd5   bool
+}
+
+func newDefaultBosContext() *BosContext {
+	return &BosContext{
+		PathStyleEnable: false,
+		Ctx:             context.Background(),
+		ApiVersion:      API_VERSION_V1,
+		EnableCalcMd5:   true,
+	}
 }
 
 type PutObjectTagArgs struct {

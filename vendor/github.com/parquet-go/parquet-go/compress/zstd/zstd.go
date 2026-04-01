@@ -2,10 +2,9 @@
 package zstd
 
 import (
-	"sync"
-
 	"github.com/klauspost/compress/zstd"
 	"github.com/parquet-go/parquet-go/format"
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 type Level = zstd.EncoderLevel
@@ -42,8 +41,8 @@ type Codec struct {
 	// If Concurrency is 0, it will use DefaultConcurrency.
 	Concurrency uint
 
-	encoders sync.Pool // *zstd.Encoder
-	decoders sync.Pool // *zstd.Decoder
+	encoders memory.Pool[zstd.Encoder]
+	decoders memory.Pool[zstd.Decoder]
 }
 
 func (c *Codec) String() string {
@@ -55,34 +54,38 @@ func (c *Codec) CompressionCodec() format.CompressionCodec {
 }
 
 func (c *Codec) Encode(dst, src []byte) ([]byte, error) {
-	e, _ := c.encoders.Get().(*zstd.Encoder)
-	if e == nil {
-		var err error
-		e, err = zstd.NewWriter(nil,
-			zstd.WithEncoderConcurrency(c.concurrency()),
-			zstd.WithEncoderLevel(c.level()),
-			zstd.WithZeroFrames(true),
-			zstd.WithEncoderCRC(false),
-		)
-		if err != nil {
-			return dst[:0], err
-		}
-	}
+	e := c.encoders.Get(
+		func() *zstd.Encoder {
+			e, err := zstd.NewWriter(nil,
+				zstd.WithEncoderConcurrency(c.concurrency()),
+				zstd.WithEncoderLevel(c.level()),
+				zstd.WithZeroFrames(true),
+				zstd.WithEncoderCRC(false),
+			)
+			if err != nil {
+				panic(err)
+			}
+			return e
+		},
+		func(e *zstd.Encoder) {},
+	)
 	defer c.encoders.Put(e)
 	return e.EncodeAll(src, dst[:0]), nil
 }
 
 func (c *Codec) Decode(dst, src []byte) ([]byte, error) {
-	d, _ := c.decoders.Get().(*zstd.Decoder)
-	if d == nil {
-		var err error
-		d, err = zstd.NewReader(nil,
-			zstd.WithDecoderConcurrency(c.concurrency()),
-		)
-		if err != nil {
-			return dst[:0], err
-		}
-	}
+	d := c.decoders.Get(
+		func() *zstd.Decoder {
+			d, err := zstd.NewReader(nil,
+				zstd.WithDecoderConcurrency(c.concurrency()),
+			)
+			if err != nil {
+				panic(err)
+			}
+			return d
+		},
+		func(d *zstd.Decoder) {},
+	)
 	defer c.decoders.Put(d)
 	return d.DecodeAll(src, dst[:0])
 }

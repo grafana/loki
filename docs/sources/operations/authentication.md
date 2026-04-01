@@ -8,7 +8,7 @@ weight:
 
 Grafana Loki does not come with any included authentication layer. You must run an authenticating reverse proxy in front of your services.
 
-The simple scalable and microservices [deployment modes](https://grafana.com/docs/loki/latest<LOKI_VERSION>/get-started/deployment-modes/) require a reverse proxy to be deployed in front of Loki, to direct client API requests to the various components.
+The simple scalable and microservices [deployment modes](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/) require a reverse proxy to be deployed in front of Loki, to direct client API requests to the various components.
 
 By default the Loki Helm chart includes a default reverse proxy configuration, using an nginx container to handle routing traffic and authorization.
 
@@ -25,8 +25,7 @@ When using Loki in multi-tenant mode, Loki requires the HTTP header
 of populating this value should be handled by the authenticating reverse proxy.
 For more information, read the [multi-tenancy](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/) documentation.{{< /admonition >}}
 
-For information on authenticating Promtail, see the documentation for [how to
-configure Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/).
+For information on configuring authentication for your log shipping agent, see the [Grafana Alloy documentation](https://grafana.com/docs/alloy/latest/).
 
 ## Enable basic authentication for Loki using nginx
 

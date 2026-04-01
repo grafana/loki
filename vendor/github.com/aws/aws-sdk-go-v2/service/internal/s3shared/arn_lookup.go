@@ -16,7 +16,7 @@ import (
 type ARNLookup struct {
 
 	// GetARNValue takes in a input interface and returns a ptr to string and a bool
-	GetARNValue func(interface{}) (*string, bool)
+	GetARNValue func(any) (*string, bool)
 }
 
 // ID for the middleware

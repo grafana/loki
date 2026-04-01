@@ -130,7 +130,9 @@ type Record struct {
 	ProducerID int64
 
 	// LeaderEpoch is the leader epoch of the broker at the time this
-	// record was written, or -1 if on message sets.
+	// record was written, or -1 if on message sets. When producing,
+	// this is always set to -1 (producers do not use this field and the
+	// broker does not reply with the epoch).
 	//
 	// For committing records, it is not recommended to modify the
 	// LeaderEpoch. Clients use the LeaderEpoch for data loss detection.

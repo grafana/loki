@@ -33,7 +33,7 @@ func (a AutoShim) ParseUint32(s string) (uint32, error) {
 // ParseUint64 converts a string to a uint64.
 func (a AutoShim) ParseUint64(s string) (uint64, error) {
 	v, err := strconv.ParseUint(s, 10, 64)
-	return uint64(v), err
+	return v, err
 }
 
 // ParseInt converts a string to an int.
@@ -63,7 +63,7 @@ func (a AutoShim) ParseInt32(s string) (int32, error) {
 // ParseInt64 converts a string to an int64.
 func (a AutoShim) ParseInt64(s string) (int64, error) {
 	v, err := strconv.ParseInt(s, 10, 64)
-	return int64(v), err
+	return v, err
 }
 
 // ParseBool converts a string to a bool.

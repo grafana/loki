@@ -16,6 +16,7 @@ linters:
     - govet
     - ineffassign
     - misspell
+    - modernize
     - perfsprint
     - revive
     - staticcheck
@@ -111,6 +112,9 @@ linters:
       locale: US
       ignore-rules:
         - cancelled
+    modernize:
+      disable:
+        - omitzero
     perfsprint:
       int-conversion: true
       err-error: true
@@ -190,6 +194,7 @@ linters:
           arguments:
             - ["ID"] # AllowList
             - ["Otel", "Aws", "Gcp"] # DenyList
+            - - skip-package-name-collision-with-go-std: true
         - name: waitgroup-by-value
     testifylint:
       enable-all: true
@@ -197,6 +202,9 @@ linters:
         - float-compare
         - go-require
         - require-error
+    usetesting:
+      context-background: true
+      context-todo: true
   exclusions:
     generated: lax
     presets:

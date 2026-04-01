@@ -78,6 +78,26 @@ func TestRowReader_AddLabelFilter(t *testing.T) {
 	require.Equal(t, expect, actual)
 }
 
+func TestRowReader_ReadBeforeOpen(t *testing.T) {
+	sec := buildStreamsSection(t, 1, 0)
+	r := streams.NewRowReader(sec)
+
+	buf := make([]streams.Stream, 1)
+	n, err := r.Read(context.Background(), buf)
+	require.Zero(t, n)
+	require.ErrorContains(t, err, "row reader not opened")
+}
+
+func TestRowReader_OpenNilSection(t *testing.T) {
+	r := streams.NewRowReader(nil)
+	require.NoError(t, r.Open(context.Background()))
+
+	buf := make([]streams.Stream, 1)
+	n, err := r.Read(context.Background(), buf)
+	require.Zero(t, n)
+	require.ErrorIs(t, err, io.EOF)
+}
+
 func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
 func buildStreamsSection(t *testing.T, pageSize, pageRows int) *streams.Section {
@@ -105,6 +125,9 @@ func readAllStreams(ctx context.Context, r *streams.RowReader) ([]streams.Stream
 		res []streams.Stream
 		buf = make([]streams.Stream, 128)
 	)
+	if err := r.Open(ctx); err != nil {
+		return nil, err
+	}
 
 	for {
 		n, err := r.Read(ctx, buf)

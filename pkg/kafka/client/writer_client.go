@@ -207,10 +207,12 @@ func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger l
 		opts = append(opts, kgo.AllowAutoTopicCreation())
 	}
 
-	tracer := kotel.NewTracer(
-		kotel.TracerPropagator(propagation.NewCompositeTextMapPropagator(onlySampledTraces{propagation.TraceContext{}})),
-	)
-	opts = append(opts, kgo.WithHooks(kotel.NewKotel(kotel.WithTracer(tracer)).Hooks()...))
+	if cfg.TracingEnabled {
+		tracer := kotel.NewTracer(
+			kotel.TracerPropagator(propagation.NewCompositeTextMapPropagator(onlySampledTraces{propagation.TraceContext{}})),
+		)
+		opts = append(opts, kgo.WithHooks(kotel.NewKotel(kotel.WithTracer(tracer)).Hooks()...))
+	}
 
 	if metrics != nil {
 		opts = append(opts, kgo.WithHooks(metrics))

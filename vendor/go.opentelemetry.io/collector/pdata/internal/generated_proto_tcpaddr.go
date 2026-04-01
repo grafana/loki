@@ -11,13 +11,14 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 type TCPAddr struct {
+	Zone string
 	IP   []byte
 	Port int64
-	Zone string
 }
 
 var (
@@ -29,7 +30,7 @@ var (
 )
 
 func NewTCPAddr() *TCPAddr {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &TCPAddr{}
 	}
 	return protoPoolTCPAddr.Get().(*TCPAddr)
@@ -40,7 +41,7 @@ func DeleteTCPAddr(orig *TCPAddr, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -65,9 +66,7 @@ func CopyTCPAddr(dest, src *TCPAddr) *TCPAddr {
 		dest = NewTCPAddr()
 	}
 	dest.IP = src.IP
-
 	dest.Port = src.Port
-
 	dest.Zone = src.Zone
 
 	return dest
@@ -164,13 +163,15 @@ func (orig *TCPAddr) SizeProto() int {
 	var n int
 	var l int
 	_ = l
+
 	l = len(orig.IP)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.Port != 0 {
+	if orig.Port != int64(0) {
 		n += 1 + proto.Sov(uint64(orig.Port))
 	}
+
 	l = len(orig.Zone)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
@@ -190,7 +191,7 @@ func (orig *TCPAddr) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0xa
 	}
-	if orig.Port != 0 {
+	if orig.Port != int64(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.Port))
 		pos--
 		buf[pos] = 0x10
@@ -245,7 +246,6 @@ func (orig *TCPAddr) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.Port = int64(num)
 
 		case 3:

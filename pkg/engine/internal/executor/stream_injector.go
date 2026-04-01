@@ -61,19 +61,18 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.RecordBatch) (arr
 	)
 
 	getColumn := func(name string) *labelColumn {
-		ident := semconv.NewIdentifier(name, types.ColumnTypeLabel, types.Loki.String)
-
-		if col, ok := labelLookup[ident.FQN()]; ok {
+		if col, ok := labelLookup[name]; ok {
 			return col
 		}
 
+		ident := semconv.NewIdentifier(name, types.ColumnTypeLabel, types.Loki.String)
 		col := &labelColumn{
 			Field:   semconv.FieldFromIdent(ident, true), // labels are nullable
 			Builder: array.NewStringBuilder(memory.DefaultAllocator),
 		}
 
 		labels = append(labels, col)
-		labelLookup[ident.FQN()] = col
+		labelLookup[name] = col
 		return col
 	}
 
@@ -83,12 +82,12 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.RecordBatch) (arr
 		// TODO(rfratto): this flips the processing of stream IDs into row-based
 		// processing. It may be more efficient to vectorize this by building each
 		// label column all at once.
-		it, err := si.view.Labels(ctx, findID)
+		lbs, err := si.view.Labels(ctx, findID)
 		if err != nil {
 			return nil, err
 		}
 
-		for label := range it {
+		for _, label := range lbs {
 			col := getColumn(label.Name)
 
 			// Backfill any missing NULLs in the column if needed.

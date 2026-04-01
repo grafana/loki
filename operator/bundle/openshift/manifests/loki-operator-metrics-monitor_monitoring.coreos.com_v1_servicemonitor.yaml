@@ -20,7 +20,7 @@ spec:
     path: /metrics
     scheme: https
     scrapeTimeout: 10s
-    targetPort: 8443
+    targetPort: metrics
     tlsConfig:
       ca:
         secret:

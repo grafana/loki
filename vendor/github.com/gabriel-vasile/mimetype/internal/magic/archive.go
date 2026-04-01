@@ -106,10 +106,10 @@ func CRX(raw []byte, limit uint32) bool {
 	if len(raw) < minHeaderLen || !bytes.HasPrefix(raw, []byte("Cr24")) {
 		return false
 	}
-	pubkeyLen := binary.LittleEndian.Uint32(raw[8:12])
-	sigLen := binary.LittleEndian.Uint32(raw[12:16])
+	pubkeyLen := int64(binary.LittleEndian.Uint32(raw[8:12]))
+	sigLen := int64(binary.LittleEndian.Uint32(raw[12:16]))
 	zipOffset := minHeaderLen + pubkeyLen + sigLen
-	if uint32(len(raw)) < zipOffset {
+	if zipOffset < 0 || int64(len(raw)) < zipOffset {
 		return false
 	}
 	return Zip(raw[zipOffset:], limit)
@@ -208,4 +208,14 @@ func tarChksum(b []byte) (unsigned, signed int64) {
 		signed += int64(int8(c))
 	}
 	return unsigned, signed
+}
+
+// Zlib matches zlib compressed files.
+func Zlib(raw []byte, _ uint32) bool {
+	// https://www.ietf.org/rfc/rfc6713.txt
+	// This check has one fault: ASCII code can satisfy it; for ex: []byte("x ")
+	zlib := len(raw) > 1 &&
+		raw[0] == 'x' && binary.BigEndian.Uint16(raw)%31 == 0
+	// Check that the file is not a regular text to avoid false positives.
+	return zlib && !Text(raw, 0)
 }

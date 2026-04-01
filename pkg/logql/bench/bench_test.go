@@ -18,10 +18,10 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
+	"golang.org/x/sync/errgroup"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine"
@@ -31,9 +31,9 @@ import (
 )
 
 var (
-	slowTests     = flag.Bool("slow-tests", false, "run slow tests")
-	rangeType     = flag.String("range-type", DefaultTestCaseGeneratorConfig.RangeType, "range type to use for test cases")
-	rangeInterval = flag.Duration("range-interval", DefaultTestCaseGeneratorConfig.RangeInterval, "interval to use for range aggregations")
+	slowTests      = flag.Bool("slow-tests", false, "run slow tests")
+	rangeType      = flag.String("range-type", "range", "query range type: instant or range (only affects metric queries)")
+	includeSkipped = flag.Bool("include-skipped", false, "include skipped queries in test execution")
 )
 
 const testTenant = "test-tenant"
@@ -46,6 +46,65 @@ const (
 var allStores = []string{StoreDataObjV2Engine, StoreChunk}
 
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
+
+func init() {
+	engine.EnableParanoidMode()
+}
+
+// loadTestCases loads test cases from the query registry
+func loadTestCases(tb testing.TB, config *GeneratorConfig) []TestCase {
+	tb.Helper()
+
+	// Load from query registry
+	queriesDir := "./queries"
+	registry := NewQueryRegistry(queriesDir)
+
+	// Load all suites - filtering will be done via -run flag
+	suites := []Suite{SuiteFast, SuiteRegression, SuiteExhaustive}
+
+	if err := registry.Load(suites...); err != nil {
+		tb.Fatalf("failed to load query registry: %v", err)
+	}
+
+	queryDefs := registry.GetQueries(*includeSkipped, suites...)
+
+	metadata, err := LoadMetadata(DefaultDataDir)
+	if err != nil {
+		tb.Fatalf("failed to load dataset metadata: %v", err)
+	}
+	resolver := NewMetadataVariableResolver(metadata, config.Seed)
+
+	isInstant := *rangeType == "instant"
+
+	var cases []TestCase
+	for _, def := range queryDefs {
+		expanded, err := registry.ExpandQuery(def, resolver, isInstant)
+		if err != nil {
+			tb.Fatalf("failed to expand query %q: %v", def.Description, err)
+		}
+		cases = append(cases, expanded...)
+	}
+
+	// Filter and adjust test cases based on range type
+	if *rangeType == "instant" {
+		// For instant queries, filter to only metric queries and adjust parameters
+		filtered := cases[:0]
+		for _, tc := range cases {
+			if tc.Kind() == "metric" {
+				// Adjust for instant query: query at end time with no step
+				tc.Start = tc.End
+				tc.Step = 0
+				filtered = append(filtered, tc)
+			}
+		}
+		cases = filtered
+		tb.Logf("Loaded %d test cases from registry (range-type=%s, metric-only)", len(cases), *rangeType)
+	} else {
+		tb.Logf("Loaded %d test cases from registry (range-type=%s)", len(cases), *rangeType)
+	}
+
+	return cases
+}
 
 // setupBenchmarkWithStore sets up the benchmark environment with the specified store type
 // and returns the necessary components
@@ -66,10 +125,14 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 
 		return store.engine
 	case StoreChunk:
-		store, err := NewChunkStore(DefaultDataDir, testTenant)
+		reg := prometheus.NewRegistry()
+		store, err := NewChunkStoreWithRegisterer(DefaultDataDir, testTenant, reg)
 		if err != nil {
 			tb.Fatal(err)
 		}
+		tb.Cleanup(func() {
+			_ = store.Close()
+		})
 		querier, err = store.Querier()
 		if err != nil {
 			tb.Fatal(err)
@@ -106,11 +169,7 @@ func TestStorageEquality(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		cases := NewTestCaseGenerator(
-			TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
-			config,
-		).Generate()
-
+		cases := loadTestCases(t, config)
 		return &store{
 			Name:   name,
 			Cases:  cases,
@@ -142,7 +201,7 @@ func TestStorageEquality(t *testing.T) {
 				continue
 			}
 
-			t.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", baseCase.Name(), baseCase.Kind(), store.Name), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s/kind=%s/store=%s", baseCase.Source, baseCase.Kind(), store.Name), func(t *testing.T) {
 				ctx := user.InjectOrgID(t.Context(), testTenant)
 
 				labels := pprof.Labels("query", baseCase.Name(), "kind", baseCase.Kind(), "store", store.Name)
@@ -169,18 +228,41 @@ func TestStorageEquality(t *testing.T) {
 
 					// Find matching test case in other stores and then compare results.
 					idx := slices.IndexFunc(store.Cases, func(tc TestCase) bool {
-						return tc == baseCase
+						return tc.Equal(baseCase)
 					})
 					if idx == -1 {
 						t.Logf("Store %s missing test case %s", store.Name, baseCase.Name())
 						return
 					}
 
-					actual, err := store.Engine.Query(params).Exec(ctx)
-					if err != nil && errors.Is(err, engine.ErrNotSupported) {
-						t.Skipf("Store %s does not support features used in test case %s", store.Name, baseCase.Name())
+					var (
+						actual, expected logqlmodel.Result
+					)
+
+					g, ctx := errgroup.WithContext(ctx)
+
+					g.Go(func() error {
+						result, err := store.Engine.Query(params).Exec(ctx)
+						actual = result
+						return err
+					})
+
+					g.Go(func() error {
+						result, err := baseStore.Engine.Query(params).Exec(ctx)
+						expected = result
+						return err
+					})
+
+					err = g.Wait()
+
+					if err != nil {
+						if errors.Is(err, engine.ErrNotSupported) {
+							t.Skipf("Store %s does not support features used in test case %s", store.Name, baseCase.Name())
+						}
+
+						t.Fatal(err)
 					}
-					require.NoError(t, err)
+
 					t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
 						store.Name,
 						actual.Statistics.Summary.TotalLinesProcessed,
@@ -193,8 +275,6 @@ func TestStorageEquality(t *testing.T) {
 					dataobjStats, _ := json.Marshal(&actual.Statistics.Querier.Store.Dataobj)
 					t.Log("Dataobj stats:", string(dataobjStats))
 
-					expected, err := baseStore.Engine.Query(params).Exec(ctx)
-					require.NoError(t, err)
 					t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
 						baseStore.Name,
 						expected.Statistics.Summary.TotalLinesProcessed,
@@ -203,6 +283,15 @@ func TestStorageEquality(t *testing.T) {
 						uint64(expected.Statistics.Summary.ExecTime),
 						humanize.Bytes(uint64(expected.Statistics.Summary.BytesProcessedPerSecond)),
 					)
+
+					// Verify that the query returned non-empty results to catch query templating issues
+					if !slices.Contains(baseCase.Tags, "empty-result") {
+						assertResultNotEmpty(t, expected.Data, "base store query returned empty results - possible query templating issue")
+						assertResultNotEmpty(t, actual.Data, "store query returned empty results - possible query templating issue")
+					} else {
+						assertResultEmpty(t, expected.Data, "base store query returned non-empty results but expected empty")
+						assertResultEmpty(t, actual.Data, "store query returned non-empty results but expected empty")
+					}
 
 					// Use tolerance-based comparison for floating point precision issues
 					assertDataEqualWithTolerance(t, expected.Data, actual.Data, 1e-5)
@@ -237,11 +326,8 @@ func TestLogQLQueries(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
-	// Generate test cases
-	cases := NewTestCaseGenerator(
-		TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
-		config,
-	).Generate()
+	// Load test cases from registry
+	cases := loadTestCases(t, config)
 
 	// Log all unique queries
 	uniqueQueries := make(map[string]struct{})
@@ -255,7 +341,7 @@ func TestLogQLQueries(t *testing.T) {
 	// }
 
 	for _, c := range cases {
-		t.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), store), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s/kind=%s/store=%s", c.Source, c.Kind(), store), func(t *testing.T) {
 			// Uncomment this to run only log queries
 			// if c.Kind() != "log" {
 			// 	continue
@@ -317,14 +403,11 @@ func BenchmarkLogQL(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		// Generate test cases using the loaded config
-		cases := NewTestCaseGenerator(
-			TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
-			config,
-		).Generate()
+		// Load test cases
+		cases := loadTestCases(b, config)
 
 		for _, c := range cases {
-			b.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), storeType), func(b *testing.B) {
+			b.Run(fmt.Sprintf("%s/kind=%s/store=%s", c.Source, c.Kind(), storeType), func(b *testing.B) {
 				ctx := user.InjectOrgID(b.Context(), testTenant)
 
 				labels := pprof.Labels("query", c.Name(), "kind", c.Kind(), "store", storeType)
@@ -365,10 +448,33 @@ func BenchmarkLogQL(b *testing.B) {
 }
 
 func TestPrintBenchmarkQueries(t *testing.T) {
-	cases := NewTestCaseGenerator(
-		TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
-		&defaultGeneratorConfig,
-	).Generate()
+	// Generate small in-memory dataset for variable resolution (no file I/O needed)
+	metadata := GenerateInMemoryMetadata(&defaultGeneratorConfig)
+
+	// Load from query registry
+	queriesDir := "./queries"
+	registry := NewQueryRegistry(queriesDir)
+
+	// Load all suites
+	suites := []Suite{SuiteFast, SuiteRegression, SuiteExhaustive}
+
+	if err := registry.Load(suites...); err != nil {
+		t.Fatalf("failed to load query registry: %v", err)
+	}
+
+	queryDefs := registry.GetQueries(false, suites...)
+	resolver := NewMetadataVariableResolver(metadata, defaultGeneratorConfig.Seed)
+
+	var cases []TestCase
+	for _, def := range queryDefs {
+		expanded, err := registry.ExpandQuery(def, resolver, false)
+		if err != nil {
+			t.Fatalf("failed to expand query %q: %v", def.Description, err)
+		}
+		cases = append(cases, expanded...)
+	}
+
+	t.Logf("Loaded %d test cases from registry (range-type=%s)", len(cases), *rangeType)
 
 	t.Log("Benchmark Queries:")
 	t.Log("================")
@@ -409,77 +515,4 @@ func TestStoresGenerateData(t *testing.T) {
 	builder := NewBuilder(dir, DefaultOpt(), chunkStore, dataObjStore)
 	err = builder.Generate(context.Background(), 1024)
 	require.NoError(t, err)
-}
-
-// assertDataEqualWithTolerance compares two parser.Value instances with floating point tolerance
-func assertDataEqualWithTolerance(t *testing.T, expected, actual parser.Value, tolerance float64) {
-	switch expectedType := expected.(type) {
-	case promql.Vector:
-		actualVector, ok := actual.(promql.Vector)
-		require.True(t, ok, "expected Vector but got %T", actual)
-		assertVectorEqualWithTolerance(t, expectedType, actualVector, tolerance)
-	case promql.Matrix:
-		actualMatrix, ok := actual.(promql.Matrix)
-		require.True(t, ok, "expected Matrix but got %T", actual)
-		assertMatrixEqualWithTolerance(t, expectedType, actualMatrix, tolerance)
-	case promql.Scalar:
-		actualScalar, ok := actual.(promql.Scalar)
-		require.True(t, ok, "expected Scalar but got %T", actual)
-		assertScalarEqualWithTolerance(t, expectedType, actualScalar, tolerance)
-	default:
-		assert.Equal(t, expected, actual)
-	}
-}
-
-// assertVectorEqualWithTolerance compares two Vector instances with floating point tolerance
-func assertVectorEqualWithTolerance(t *testing.T, expected, actual promql.Vector, tolerance float64) {
-	require.Len(t, actual, len(expected))
-
-	for i := range expected {
-		e := expected[i]
-		a := actual[i]
-		require.Equal(t, e.Metric, a.Metric, "metric labels differ at index %d", i)
-		require.Equal(t, e.T, a.T, "timestamp differs at index %d", i)
-
-		if tolerance > 0 {
-			require.InDelta(t, e.F, a.F, tolerance, "float value differs at index %d", i)
-		} else {
-			require.Equal(t, e.F, a.F, "float value differs at index %d", i)
-		}
-	}
-}
-
-// assertMatrixEqualWithTolerance compares two Matrix instances with floating point tolerance
-func assertMatrixEqualWithTolerance(t *testing.T, expected, actual promql.Matrix, tolerance float64) {
-	require.Len(t, actual, len(expected))
-
-	for i := range expected {
-		e := expected[i]
-		a := actual[i]
-		require.Equal(t, e.Metric, a.Metric, "metric labels differ at series %d", i)
-		require.Len(t, a.Floats, len(e.Floats), "float points count differs at series %d", i)
-
-		for j := range e.Floats {
-			ePoint := e.Floats[j]
-			aPoint := a.Floats[j]
-			require.Equal(t, ePoint.T, aPoint.T, "timestamp differs at series %d, point %d", i, j)
-
-			if tolerance > 0 {
-				require.InDelta(t, ePoint.F, aPoint.F, tolerance, "float value differs at series %d, point %d", i, j)
-			} else {
-				require.Equal(t, ePoint.F, aPoint.F, "float value differs at series %d, point %d", i, j)
-			}
-		}
-	}
-}
-
-// assertScalarEqualWithTolerance compares two Scalar instances with floating point tolerance
-func assertScalarEqualWithTolerance(t *testing.T, expected, actual promql.Scalar, tolerance float64) {
-	require.Equal(t, expected.T, actual.T, "scalar timestamp differs")
-
-	if tolerance > 0 {
-		require.InDelta(t, expected.V, actual.V, tolerance, "scalar value differs")
-	} else {
-		require.Equal(t, expected.V, actual.V, "scalar value differs")
-	}
 }

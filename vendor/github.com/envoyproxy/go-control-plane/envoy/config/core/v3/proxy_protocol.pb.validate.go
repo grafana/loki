@@ -90,7 +90,7 @@ type ProxyProtocolPassThroughTLVsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ProxyProtocolPassThroughTLVsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -190,15 +190,35 @@ func (m *TlvEntry) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
-	if len(m.GetValue()) < 1 {
-		err := TlvEntryValidationError{
-			field:  "Value",
-			reason: "value length must be at least 1 bytes",
+	// no validation rules for Value
+
+	if all {
+		switch v := interface{}(m.GetFormatString()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, TlvEntryValidationError{
+					field:  "FormatString",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, TlvEntryValidationError{
+					field:  "FormatString",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
 		}
-		if !all {
-			return err
+	} else if v, ok := interface{}(m.GetFormatString()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return TlvEntryValidationError{
+				field:  "FormatString",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
 		}
-		errors = append(errors, err)
 	}
 
 	if len(errors) > 0 {
@@ -214,7 +234,7 @@ type TlvEntryMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m TlvEntryMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -379,7 +399,7 @@ type ProxyProtocolConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ProxyProtocolConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -515,7 +535,7 @@ type PerHostConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m PerHostConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

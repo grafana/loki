@@ -13,6 +13,7 @@ import (
 	"github.com/redis/go-redis/v9/internal"
 	"github.com/redis/go-redis/v9/internal/auth/streaming"
 	"github.com/redis/go-redis/v9/internal/hscan"
+	"github.com/redis/go-redis/v9/internal/otel"
 	"github.com/redis/go-redis/v9/internal/pool"
 	"github.com/redis/go-redis/v9/internal/proto"
 	"github.com/redis/go-redis/v9/maintnotifications"
@@ -27,7 +28,11 @@ const Nil = proto.Nil
 
 // SetLogger set custom log
 // Use with VoidLogger to disable logging.
+// If logger is nil, the call is ignored and the existing logger is kept.
 func SetLogger(logger internal.Logging) {
+	if logger == nil {
+		return
+	}
 	internal.Logger = logger
 }
 
@@ -238,6 +243,7 @@ func (c *baseClient) clone() *baseClient {
 	clone := &baseClient{
 		opt:                         c.opt,
 		connPool:                    c.connPool,
+		pubSubPool:                  c.pubSubPool,
 		onClose:                     c.onClose,
 		pushProcessor:               c.pushProcessor,
 		maintNotificationsManager:   maintNotificationsManager,
@@ -296,6 +302,13 @@ func (c *baseClient) _getConn(ctx context.Context) (*pool.Conn, error) {
 			return nil, err
 		}
 		return nil, err
+	}
+
+	if dialStartNs := cn.GetDialStartNs(); dialStartNs > 0 {
+		if cb := pool.GetMetricConnectionCreateTimeCallback(); cb != nil {
+			duration := time.Duration(time.Now().UnixNano() - dialStartNs)
+			cb(ctx, duration, cn)
+		}
 	}
 
 	// initConn will transition to IDLE state, so we need to acquire it
@@ -537,7 +550,10 @@ func (c *baseClient) initConn(ctx context.Context, cn *pool.Conn) error {
 	c.optLock.RLock()
 	maintNotifEnabled := c.opt.MaintNotificationsConfig != nil && c.opt.MaintNotificationsConfig.Mode != maintnotifications.ModeDisabled
 	protocol := c.opt.Protocol
-	endpointType := c.opt.MaintNotificationsConfig.EndpointType
+	var endpointType maintnotifications.EndpointType
+	if maintNotifEnabled {
+		endpointType = c.opt.MaintNotificationsConfig.EndpointType
+	}
 	c.optLock.RUnlock()
 	var maintNotifHandshakeErr error
 	if maintNotifEnabled && protocol == 3 {
@@ -559,6 +575,12 @@ func (c *baseClient) initConn(ctx context.Context, cn *pool.Conn) error {
 				// enabled mode, fail the connection
 				c.optLock.Unlock()
 				cn.GetStateMachine().Transition(pool.StateClosed)
+
+				// Record handshake failure metric
+				if errorCallback := pool.GetMetricErrorCallback(); errorCallback != nil {
+					errorCallback(ctx, "HANDSHAKE_FAILED", cn, "HANDSHAKE_FAILED", true, 0)
+				}
+
 				return fmt.Errorf("failed to enable maintnotifications: %w", maintNotifHandshakeErr)
 			default: // will handle auto and any other
 				// Disabling logging here as it's too noisy.
@@ -662,18 +684,117 @@ func (c *baseClient) dial(ctx context.Context, network, addr string) (net.Conn, 
 }
 
 func (c *baseClient) process(ctx context.Context, cmd Cmder) error {
+	// Start measuring total operation duration (includes all retries)
+	// Only call time.Now() if operation duration callback is set to avoid overhead
+	var operationStart time.Time
+	opDurationCallback := otel.GetOperationDurationCallback()
+	if opDurationCallback != nil {
+		operationStart = time.Now()
+	}
+	var lastConn *pool.Conn
+
 	var lastErr error
+	totalAttempts := 0
 	for attempt := 0; attempt <= c.opt.MaxRetries; attempt++ {
+		totalAttempts++
 		attempt := attempt
 
-		retry, err := c._process(ctx, cmd, attempt)
+		retry, cn, err := c._process(ctx, cmd, attempt)
+		if cn != nil {
+			lastConn = cn
+		}
 		if err == nil || !retry {
+			// Record total operation duration
+			if opDurationCallback != nil {
+				operationDuration := time.Since(operationStart)
+				opDurationCallback(ctx, operationDuration, cmd, totalAttempts, err, lastConn, c.opt.DB)
+			}
+
+			if err != nil {
+				if errorCallback := pool.GetMetricErrorCallback(); errorCallback != nil {
+					errorType, statusCode, isInternal := classifyCommandError(err)
+					errorCallback(ctx, errorType, lastConn, statusCode, isInternal, totalAttempts-1)
+				}
+			}
 			return err
 		}
 
 		lastErr = err
 	}
+
+	// Record failed operation after all retries
+	if opDurationCallback != nil {
+		operationDuration := time.Since(operationStart)
+		opDurationCallback(ctx, operationDuration, cmd, totalAttempts, lastErr, lastConn, c.opt.DB)
+	}
+
+	// Record error metric for exhausted retries
+	if errorCallback := pool.GetMetricErrorCallback(); errorCallback != nil {
+		errorType, statusCode, isInternal := classifyCommandError(lastErr)
+		errorCallback(ctx, errorType, lastConn, statusCode, isInternal, totalAttempts-1)
+	}
+
 	return lastErr
+}
+
+// classifyCommandError classifies an error for metrics reporting.
+// Returns: errorType, statusCode, isInternal
+// - errorType: A string describing the error type (e.g., "TIMEOUT", "NETWORK", "ERR")
+// - statusCode: The Redis error prefix or error category
+// - isInternal: true for network/timeout errors, false for Redis server errors
+func classifyCommandError(err error) (errorType, statusCode string, isInternal bool) {
+	if err == nil {
+		return "", "", false
+	}
+
+	errStr := err.Error()
+
+	// Check for timeout errors
+	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		return "TIMEOUT", "TIMEOUT", true
+	}
+
+	// Check for network errors
+	if _, ok := err.(net.Error); ok {
+		return "NETWORK", "NETWORK", true
+	}
+
+	// Check for context errors
+	if errors.Is(err, context.Canceled) {
+		return "CONTEXT_CANCELED", "CONTEXT_CANCELED", true
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "CONTEXT_TIMEOUT", "CONTEXT_TIMEOUT", true
+	}
+
+	// Check for Redis errors
+	// Examples: "ERR ...", "WRONGTYPE ...", "CLUSTERDOWN ..."
+	if len(errStr) > 0 {
+		// Find the first space to extract the prefix
+		spaceIdx := 0
+		for i, c := range errStr {
+			if c == ' ' {
+				spaceIdx = i
+				break
+			}
+		}
+		if spaceIdx == 0 {
+			spaceIdx = len(errStr)
+		}
+		prefix := errStr[:spaceIdx]
+		isUppercase := true
+		for _, c := range prefix {
+			if c < 'A' || c > 'Z' {
+				isUppercase = false
+				break
+			}
+		}
+		if isUppercase && len(prefix) > 0 {
+			return prefix, prefix, false
+		}
+	}
+
+	return "UNKNOWN", "UNKNOWN", true
 }
 
 func (c *baseClient) assertUnstableCommand(cmd Cmder) (bool, error) {
@@ -689,15 +810,17 @@ func (c *baseClient) assertUnstableCommand(cmd Cmder) (bool, error) {
 	}
 }
 
-func (c *baseClient) _process(ctx context.Context, cmd Cmder, attempt int) (bool, error) {
+func (c *baseClient) _process(ctx context.Context, cmd Cmder, attempt int) (bool, *pool.Conn, error) {
 	if attempt > 0 {
 		if err := internal.Sleep(ctx, c.retryBackoff(attempt)); err != nil {
-			return false, err
+			return false, nil, err
 		}
 	}
 
+	var usedConn *pool.Conn
 	retryTimeout := uint32(0)
 	if err := c.withConn(ctx, func(ctx context.Context, cn *pool.Conn) error {
+		usedConn = cn
 		// Process any pending push notifications before executing the command
 		if err := c.processPushNotifications(ctx, cn); err != nil {
 			internal.Logger.Printf(ctx, "push: error processing pending notifications before command: %v", err)
@@ -738,10 +861,10 @@ func (c *baseClient) _process(ctx context.Context, cmd Cmder, attempt int) (bool
 		return nil
 	}); err != nil {
 		retry := shouldRetry(err, atomic.LoadUint32(&retryTimeout) == 1)
-		return retry, err
+		return retry, usedConn, err
 	}
 
-	return false, nil
+	return false, usedConn, nil
 }
 
 func (c *baseClient) retryBackoff(attempt int) time.Duration {
@@ -830,6 +953,10 @@ func (c *baseClient) Close() error {
 			firstErr = err
 		}
 	}
+
+	// Unregister pools from OTel before closing them
+	otel.UnregisterPools(c.connPool, c.pubSubPool)
+
 	if c.connPool != nil {
 		if err := c.connPool.Close(); err != nil && firstErr == nil {
 			firstErr = err
@@ -848,14 +975,14 @@ func (c *baseClient) getAddr() string {
 }
 
 func (c *baseClient) processPipeline(ctx context.Context, cmds []Cmder) error {
-	if err := c.generalProcessPipeline(ctx, cmds, c.pipelineProcessCmds); err != nil {
+	if err := c.generalProcessPipeline(ctx, cmds, c.pipelineProcessCmds, "PIPELINE"); err != nil {
 		return err
 	}
 	return cmdsFirstErr(cmds)
 }
 
 func (c *baseClient) processTxPipeline(ctx context.Context, cmds []Cmder) error {
-	if err := c.generalProcessPipeline(ctx, cmds, c.txPipelineProcessCmds); err != nil {
+	if err := c.generalProcessPipeline(ctx, cmds, c.txPipelineProcessCmds, "MULTI"); err != nil {
 		return err
 	}
 	return cmdsFirstErr(cmds)
@@ -864,13 +991,27 @@ func (c *baseClient) processTxPipeline(ctx context.Context, cmds []Cmder) error 
 type pipelineProcessor func(context.Context, *pool.Conn, []Cmder) (bool, error)
 
 func (c *baseClient) generalProcessPipeline(
-	ctx context.Context, cmds []Cmder, p pipelineProcessor,
+	ctx context.Context, cmds []Cmder, p pipelineProcessor, operationName string,
 ) error {
+	// Only call time.Now() if pipeline operation duration callback is set to avoid overhead
+	var operationStart time.Time
+	pipelineOpDurationCallback := otel.GetPipelineOperationDurationCallback()
+	if pipelineOpDurationCallback != nil {
+		operationStart = time.Now()
+	}
+	var lastConn *pool.Conn
+	totalAttempts := 0
+
 	var lastErr error
 	for attempt := 0; attempt <= c.opt.MaxRetries; attempt++ {
+		totalAttempts++
 		if attempt > 0 {
 			if err := internal.Sleep(ctx, c.retryBackoff(attempt)); err != nil {
 				setCmdsErr(cmds, err)
+				if pipelineOpDurationCallback != nil {
+					operationDuration := time.Since(operationStart)
+					pipelineOpDurationCallback(ctx, operationDuration, operationName, len(cmds), totalAttempts, err, lastConn, c.opt.DB)
+				}
 				return err
 			}
 		}
@@ -878,6 +1019,7 @@ func (c *baseClient) generalProcessPipeline(
 		// Enable retries by default to retry dial errors returned by withConn.
 		canRetry := true
 		lastErr = c.withConn(ctx, func(ctx context.Context, cn *pool.Conn) error {
+			lastConn = cn
 			// Process any pending push notifications before executing the pipeline
 			if err := c.processPushNotifications(ctx, cn); err != nil {
 				internal.Logger.Printf(ctx, "push: error processing pending notifications before processing pipeline: %v", err)
@@ -891,9 +1033,31 @@ func (c *baseClient) generalProcessPipeline(
 			if !isRedisError(lastErr) {
 				setCmdsErr(cmds, lastErr)
 			}
+			if pipelineOpDurationCallback != nil {
+				operationDuration := time.Since(operationStart)
+				pipelineOpDurationCallback(ctx, operationDuration, operationName, len(cmds), totalAttempts, lastErr, lastConn, c.opt.DB)
+			}
+
+			if lastErr != nil {
+				if errorCallback := pool.GetMetricErrorCallback(); errorCallback != nil {
+					errorType, statusCode, isInternal := classifyCommandError(lastErr)
+					errorCallback(ctx, errorType, lastConn, statusCode, isInternal, totalAttempts-1)
+				}
+			}
 			return lastErr
 		}
 	}
+
+	if pipelineOpDurationCallback != nil {
+		operationDuration := time.Since(operationStart)
+		pipelineOpDurationCallback(ctx, operationDuration, operationName, len(cmds), totalAttempts, lastErr, lastConn, c.opt.DB)
+	}
+
+	if errorCallback := pool.GetMetricErrorCallback(); errorCallback != nil {
+		errorType, statusCode, isInternal := classifyCommandError(lastErr)
+		errorCallback(ctx, errorType, lastConn, statusCode, isInternal, totalAttempts-1)
+	}
+
 	return lastErr
 }
 
@@ -1055,13 +1219,18 @@ func NewClient(opt *Options) *Client {
 	// set opt push processor for child clients
 	c.opt.PushNotificationProcessor = c.pushProcessor
 
+	// Generate unique pool names for metrics
+	uniqueID := generateUniqueID()
+	mainPoolName := opt.Addr + "_" + uniqueID
+	pubsubPoolName := opt.Addr + "_" + uniqueID + "_pubsub"
+
 	// Create connection pools
 	var err error
-	c.connPool, err = newConnPool(opt, c.dialHook)
+	c.connPool, err = newConnPool(opt, c.dialHook, mainPoolName)
 	if err != nil {
 		panic(fmt.Errorf("redis: failed to create connection pool: %w", err))
 	}
-	c.pubSubPool, err = newPubSubPool(opt, c.dialHook)
+	c.pubSubPool, err = newPubSubPool(opt, c.dialHook, pubsubPoolName)
 	if err != nil {
 		panic(fmt.Errorf("redis: failed to create pubsub pool: %w", err))
 	}
@@ -1091,6 +1260,10 @@ func NewClient(opt *Options) *Client {
 			}
 		}
 	}
+
+	// Register pools with OTel recorder if it supports pool registration
+	// This allows async gauge metrics to pull stats from pools periodically
+	otel.RegisterPools(c.connPool, c.pubSubPool, opt.Addr)
 
 	return &c
 }
@@ -1125,6 +1298,16 @@ func (c *Client) Process(ctx context.Context, cmd Cmder) error {
 // Options returns read-only Options that were used to create the client.
 func (c *Client) Options() *Options {
 	return c.opt
+}
+
+// NodeAddress returns the address of the Redis node as reported by the server.
+// For cluster clients, this is the endpoint from CLUSTER SLOTS before any transformation
+// (e.g., loopback replacement). For standalone clients, this defaults to Addr.
+//
+// This is useful for matching the source field in maintenance notifications
+// (e.g. SMIGRATED).
+func (c *Client) NodeAddress() string {
+	return c.opt.NodeAddress
 }
 
 // GetMaintNotificationsManager returns the maintnotifications manager instance for monitoring and control.

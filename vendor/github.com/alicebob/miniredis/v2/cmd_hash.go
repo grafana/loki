@@ -3,9 +3,11 @@
 package miniredis
 
 import (
+	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alicebob/miniredis/v2/server"
 )
@@ -13,34 +15,27 @@ import (
 // commandsHash handles all hash value operations.
 func commandsHash(m *Miniredis) {
 	m.srv.Register("HDEL", m.cmdHdel)
-	m.srv.Register("HEXISTS", m.cmdHexists)
-	m.srv.Register("HGET", m.cmdHget)
-	m.srv.Register("HGETALL", m.cmdHgetall)
+	m.srv.Register("HEXISTS", m.cmdHexists, server.ReadOnlyOption())
+	m.srv.Register("HGET", m.cmdHget, server.ReadOnlyOption())
+	m.srv.Register("HGETALL", m.cmdHgetall, server.ReadOnlyOption())
 	m.srv.Register("HINCRBY", m.cmdHincrby)
 	m.srv.Register("HINCRBYFLOAT", m.cmdHincrbyfloat)
-	m.srv.Register("HKEYS", m.cmdHkeys)
-	m.srv.Register("HLEN", m.cmdHlen)
-	m.srv.Register("HMGET", m.cmdHmget)
+	m.srv.Register("HKEYS", m.cmdHkeys, server.ReadOnlyOption())
+	m.srv.Register("HLEN", m.cmdHlen, server.ReadOnlyOption())
+	m.srv.Register("HMGET", m.cmdHmget, server.ReadOnlyOption())
 	m.srv.Register("HMSET", m.cmdHmset)
 	m.srv.Register("HSET", m.cmdHset)
 	m.srv.Register("HSETNX", m.cmdHsetnx)
-	m.srv.Register("HSTRLEN", m.cmdHstrlen)
-	m.srv.Register("HVALS", m.cmdHvals)
-	m.srv.Register("HSCAN", m.cmdHscan)
-	m.srv.Register("HRANDFIELD", m.cmdHrandfield)
+	m.srv.Register("HSTRLEN", m.cmdHstrlen, server.ReadOnlyOption())
+	m.srv.Register("HVALS", m.cmdHvals, server.ReadOnlyOption())
+	m.srv.Register("HSCAN", m.cmdHscan, server.ReadOnlyOption())
+	m.srv.Register("HRANDFIELD", m.cmdHrandfield, server.ReadOnlyOption())
+	m.srv.Register("HEXPIRE", m.cmdHexpire)
 }
 
 // HSET
 func (m *Miniredis) cmdHset(c *server.Peer, cmd string, args []string) {
-	if len(args) < 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(3)) {
 		return
 	}
 
@@ -66,15 +61,7 @@ func (m *Miniredis) cmdHset(c *server.Peer, cmd string, args []string) {
 
 // HSETNX
 func (m *Miniredis) cmdHsetnx(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -113,15 +100,7 @@ func (m *Miniredis) cmdHsetnx(c *server.Peer, cmd string, args []string) {
 
 // HMSET
 func (m *Miniredis) cmdHmset(c *server.Peer, cmd string, args []string) {
-	if len(args) < 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(3)) {
 		return
 	}
 
@@ -151,15 +130,7 @@ func (m *Miniredis) cmdHmset(c *server.Peer, cmd string, args []string) {
 
 // HGET
 func (m *Miniredis) cmdHget(c *server.Peer, cmd string, args []string) {
-	if len(args) != 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(2)) {
 		return
 	}
 
@@ -188,15 +159,7 @@ func (m *Miniredis) cmdHget(c *server.Peer, cmd string, args []string) {
 
 // HDEL
 func (m *Miniredis) cmdHdel(c *server.Peer, cmd string, args []string) {
-	if len(args) < 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 		return
 	}
 
@@ -242,15 +205,7 @@ func (m *Miniredis) cmdHdel(c *server.Peer, cmd string, args []string) {
 
 // HEXISTS
 func (m *Miniredis) cmdHexists(c *server.Peer, cmd string, args []string) {
-	if len(args) != 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(2)) {
 		return
 	}
 
@@ -285,15 +240,7 @@ func (m *Miniredis) cmdHexists(c *server.Peer, cmd string, args []string) {
 
 // HGETALL
 func (m *Miniredis) cmdHgetall(c *server.Peer, cmd string, args []string) {
-	if len(args) != 1 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(1)) {
 		return
 	}
 
@@ -322,15 +269,7 @@ func (m *Miniredis) cmdHgetall(c *server.Peer, cmd string, args []string) {
 
 // HKEYS
 func (m *Miniredis) cmdHkeys(c *server.Peer, cmd string, args []string) {
-	if len(args) != 1 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(1)) {
 		return
 	}
 
@@ -358,15 +297,7 @@ func (m *Miniredis) cmdHkeys(c *server.Peer, cmd string, args []string) {
 
 // HSTRLEN
 func (m *Miniredis) cmdHstrlen(c *server.Peer, cmd string, args []string) {
-	if len(args) != 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(2)) {
 		return
 	}
 
@@ -392,15 +323,7 @@ func (m *Miniredis) cmdHstrlen(c *server.Peer, cmd string, args []string) {
 
 // HVALS
 func (m *Miniredis) cmdHvals(c *server.Peer, cmd string, args []string) {
-	if len(args) != 1 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(1)) {
 		return
 	}
 
@@ -429,15 +352,7 @@ func (m *Miniredis) cmdHvals(c *server.Peer, cmd string, args []string) {
 
 // HLEN
 func (m *Miniredis) cmdHlen(c *server.Peer, cmd string, args []string) {
-	if len(args) != 1 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(1)) {
 		return
 	}
 
@@ -462,15 +377,7 @@ func (m *Miniredis) cmdHlen(c *server.Peer, cmd string, args []string) {
 
 // HMGET
 func (m *Miniredis) cmdHmget(c *server.Peer, cmd string, args []string) {
-	if len(args) < 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 		return
 	}
 
@@ -503,15 +410,7 @@ func (m *Miniredis) cmdHmget(c *server.Peer, cmd string, args []string) {
 
 // HINCRBY
 func (m *Miniredis) cmdHincrby(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -546,15 +445,7 @@ func (m *Miniredis) cmdHincrby(c *server.Peer, cmd string, args []string) {
 
 // HINCRBYFLOAT
 func (m *Miniredis) cmdHincrbyfloat(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -593,15 +484,7 @@ func (m *Miniredis) cmdHincrbyfloat(c *server.Peer, cmd string, args []string) {
 
 // HSCAN
 func (m *Miniredis) cmdHscan(c *server.Peer, cmd string, args []string) {
-	if len(args) < 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 		return
 	}
 
@@ -685,15 +568,7 @@ func (m *Miniredis) cmdHscan(c *server.Peer, cmd string, args []string) {
 
 // HRANDFIELD
 func (m *Miniredis) cmdHrandfield(c *server.Peer, cmd string, args []string) {
-	if len(args) > 3 || len(args) < 1 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, between(1, 3)) {
 		return
 	}
 
@@ -767,6 +642,151 @@ func (m *Miniredis) cmdHrandfield(c *server.Peer, cmd string, args []string) {
 			peer.WriteBulk(m)
 		}
 	})
+}
+
+// HEXPIRE
+func (m *Miniredis) cmdHexpire(c *server.Peer, cmd string, args []string) {
+	if !m.isValidCMD(c, cmd, args, atLeast(5)) {
+		return
+	}
+
+	opts, err := parseHExpireArgs(args)
+	if err != "" {
+		setDirty(c)
+		c.WriteError(err)
+		return
+	}
+
+	withTx(m, c, func(peer *server.Peer, ctx *connCtx) {
+		db := m.db(ctx.selectedDB)
+
+		if _, ok := db.keys[opts.key]; !ok {
+			c.WriteLen(len(opts.fields))
+			for range opts.fields {
+				c.WriteInt(-2)
+			}
+			return
+		}
+
+		if db.t(opts.key) != keyTypeHash {
+			c.WriteError(msgWrongType)
+			return
+		}
+
+		fieldTTLs := db.hashTTLs[opts.key]
+		if fieldTTLs == nil {
+			fieldTTLs = map[string]time.Duration{}
+			db.hashTTLs[opts.key] = fieldTTLs
+		}
+
+		c.WriteLen(len(opts.fields))
+		for _, field := range opts.fields {
+			if _, ok := db.hashKeys[opts.key][field]; !ok {
+				c.WriteInt(-2)
+				continue
+			}
+
+			currentTtl, ok := fieldTTLs[field]
+			newTTL := time.Duration(opts.ttl) * time.Second
+
+			// NX -- For each specified field,
+			// set expiration only when the field has no expiration.
+			if opts.nx && ok {
+				c.WriteInt(0)
+				continue
+			}
+
+			// XX -- For each specified field,
+			// set expiration only when the field has an existing expiration.
+			if opts.xx && !ok {
+				c.WriteInt(0)
+				continue
+			}
+
+			// GT -- For each specified field,
+			// set expiration only when the new expiration is greater than current one.
+			if opts.gt && (!ok || newTTL <= currentTtl) {
+				c.WriteInt(0)
+				continue
+			}
+
+			// LT -- For each specified field,
+			// set expiration only when the new expiration is less than current one.
+			if opts.lt && ok && newTTL >= currentTtl {
+				c.WriteInt(0)
+				continue
+			}
+
+			fieldTTLs[field] = newTTL
+			c.WriteInt(1)
+		}
+	})
+}
+
+type hexpireOpts struct {
+	key    string
+	ttl    int
+	nx     bool
+	xx     bool
+	gt     bool
+	lt     bool
+	fields []string
+}
+
+func parseHExpireArgs(args []string) (hexpireOpts, string) {
+	var opts hexpireOpts
+	opts.key = args[0]
+
+	if err := optIntSimple(args[1], &opts.ttl); err != nil {
+		return hexpireOpts{}, err.Error()
+	}
+
+	args = args[2:]
+
+	for len(args) > 0 {
+		switch strings.ToLower(args[0]) {
+		case "nx":
+			opts.nx = true
+			args = args[1:]
+		case "xx":
+			opts.xx = true
+			args = args[1:]
+		case "gt":
+			opts.gt = true
+			args = args[1:]
+		case "lt":
+			opts.lt = true
+			args = args[1:]
+		case "fields":
+			var numFields int
+			if err := optIntSimple(args[1], &numFields); err != nil {
+				return hexpireOpts{}, msgNumFieldsInvalid
+			}
+			if numFields <= 0 {
+				return hexpireOpts{}, msgNumFieldsInvalid
+			}
+
+			// FIELDS numFields field1 field2 ...
+			if len(args) < 2+numFields {
+				return hexpireOpts{}, msgNumFieldsParameter
+			}
+
+			opts.fields = append([]string{}, args[2:2+numFields]...)
+			args = args[2+numFields:]
+		default:
+			return hexpireOpts{}, fmt.Sprintf(msgMandatoryArgument, "FIELDS")
+		}
+	}
+
+	if opts.gt && opts.lt {
+		return hexpireOpts{}, msgGTandLT
+	}
+
+	if opts.nx && (opts.xx || opts.gt || opts.lt) {
+		return hexpireOpts{}, msgNXandXXGTLT
+	}
+
+	return opts, ""
 }
 
 func abs(n int) int {

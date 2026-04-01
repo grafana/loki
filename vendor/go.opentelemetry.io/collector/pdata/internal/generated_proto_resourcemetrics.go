@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -31,7 +32,7 @@ var (
 )
 
 func NewResourceMetrics() *ResourceMetrics {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ResourceMetrics{}
 	}
 	return protoPoolResourceMetrics.Get().(*ResourceMetrics)
@@ -42,19 +43,18 @@ func DeleteResourceMetrics(orig *ResourceMetrics, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
-
 	DeleteResource(&orig.Resource, false)
 	for i := range orig.ScopeMetrics {
 		DeleteScopeMetrics(orig.ScopeMetrics[i], true)
 	}
+
 	for i := range orig.DeprecatedScopeMetrics {
 		DeleteScopeMetrics(orig.DeprecatedScopeMetrics[i], true)
 	}
-
 	orig.Reset()
 	if nullable {
 		protoPoolResourceMetrics.Put(orig)
@@ -79,7 +79,6 @@ func CopyResourceMetrics(dest, src *ResourceMetrics) *ResourceMetrics {
 	dest.ScopeMetrics = CopyScopeMetricsPtrSlice(dest.ScopeMetrics, src.ScopeMetrics)
 
 	dest.SchemaUrl = src.SchemaUrl
-
 	dest.DeprecatedScopeMetrics = CopyScopeMetricsPtrSlice(dest.DeprecatedScopeMetrics, src.DeprecatedScopeMetrics)
 
 	return dest
@@ -206,6 +205,7 @@ func (orig *ResourceMetrics) SizeProto() int {
 		l = orig.ScopeMetrics[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	l = len(orig.SchemaUrl)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l

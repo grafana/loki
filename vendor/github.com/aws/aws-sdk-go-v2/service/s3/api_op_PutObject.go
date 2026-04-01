@@ -124,6 +124,19 @@ import (
 // HTTP Host header syntax  Directory buckets - The HTTP Host header syntax is
 // Bucket-name.s3express-zone-id.region-code.amazonaws.com .
 //
+// Errors
+//
+//   - You might receive an InvalidRequest error for several reasons. Depending on
+//     the reason for the error, you might receive one of the following messages:
+//
+//   - Cannot specify both a write offset value and user-defined object metadata
+//     for existing objects.
+//
+//   - Checksum Type mismatch occurred, expected checksum Type: sha1, actual
+//     checksum Type: crc32c.
+//
+//   - Request body cannot be empty when 'write offset' is specified.
+//
 // For more information about related Amazon S3 APIs, see the following:
 //
 // [CopyObject]
@@ -479,9 +492,8 @@ type PutObjectInput struct {
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. If either the
 	// source or destination S3 bucket has Requester Pays enabled, the requester will
-	// pay for corresponding charges to copy the object. For information about
-	// downloading objects from Requester Pays buckets, see [Downloading Objects in Requester Pays Buckets]in the Amazon S3 User
-	// Guide.
+	// pay for the corresponding charges. For information about downloading objects
+	// from Requester Pays buckets, see [Downloading Objects in Requester Pays Buckets]in the Amazon S3 User Guide.
 	//
 	// This functionality is not supported for directory buckets.
 	//

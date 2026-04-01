@@ -6,7 +6,7 @@ import (
 	"github.com/oklog/ulid/v2"
 )
 
-// DataObjLocation is a string that uniquely indentifies a data object location in
+// DataObjLocation is a string that uniquely identifies a data object location in
 // object storage.
 type DataObjLocation string
 

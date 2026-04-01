@@ -248,9 +248,12 @@ func TestLimitPushdown(t *testing.T) {
 
 func TestGroupByPushdown(t *testing.T) {
 	t.Run("pushdown to RangeAggregation", func(t *testing.T) {
-		groupBy := []ColumnExpression{
-			&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
-			&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+		grouping := Grouping{
+			Columns: []ColumnExpression{
+				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+				&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+			},
+			Without: false,
 		}
 
 		// generate plan for sum by(service, instance) (count_over_time{...}[])
@@ -269,7 +272,7 @@ func TestGroupByPushdown(t *testing.T) {
 			})
 			vectorAgg := plan.graph.Add(&VectorAggregation{
 				Operation: types.VectorAggregationTypeSum,
-				GroupBy:   groupBy,
+				Grouping:  grouping,
 			})
 
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
@@ -295,12 +298,12 @@ func TestGroupByPushdown(t *testing.T) {
 				Predicates: []Expression{},
 			})
 			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
-				Operation:   types.RangeAggregationTypeCount,
-				PartitionBy: groupBy,
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
 			})
 			vectorAgg := expectedPlan.graph.Add(&VectorAggregation{
 				Operation: types.VectorAggregationTypeSum,
-				GroupBy:   groupBy,
+				Grouping:  grouping,
 			})
 
 			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
@@ -313,8 +316,11 @@ func TestGroupByPushdown(t *testing.T) {
 	})
 
 	t.Run("MAX->SUM is not allowed", func(t *testing.T) {
-		groupBy := []ColumnExpression{
-			&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+		grouping := Grouping{
+			Columns: []ColumnExpression{
+				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+			},
+			Without: false,
 		}
 
 		// generate plan for max by(service) (sum_over_time{...}[])
@@ -332,7 +338,7 @@ func TestGroupByPushdown(t *testing.T) {
 			})
 			vectorAgg := plan.graph.Add(&VectorAggregation{
 				Operation: types.VectorAggregationTypeMax,
-				GroupBy:   groupBy,
+				Grouping:  grouping,
 			})
 
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
@@ -357,9 +363,12 @@ func TestGroupByPushdown(t *testing.T) {
 
 func TestProjectionPushdown(t *testing.T) {
 	t.Run("range aggreagation groupBy -> scanset", func(t *testing.T) {
-		partitionBy := []ColumnExpression{
-			&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
-			&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+		grouping := Grouping{
+			Columns: []ColumnExpression{
+				&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+			},
+			Without: false,
 		}
 
 		plan := &Plan{}
@@ -371,8 +380,8 @@ func TestProjectionPushdown(t *testing.T) {
 				},
 			})
 			rangeAgg := plan.graph.Add(&RangeAggregation{
-				Operation:   types.RangeAggregationTypeCount,
-				PartitionBy: partitionBy,
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
 			})
 
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
@@ -389,7 +398,7 @@ func TestProjectionPushdown(t *testing.T) {
 
 		expectedPlan := &Plan{}
 		{
-			projected := append(partitionBy, &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}})
+			projected := append(grouping.Columns, &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}})
 			scanset := expectedPlan.graph.Add(&ScanSet{
 				Targets: []*ScanTarget{
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
@@ -399,8 +408,8 @@ func TestProjectionPushdown(t *testing.T) {
 			})
 
 			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
-				Operation:   types.RangeAggregationTypeCount,
-				PartitionBy: partitionBy,
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
 			})
 
 			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
@@ -653,22 +662,12 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 					Op:    types.BinaryOpEq,
 				}
 				builder = builder.Select(ambiguousFilter)
-				builder = builder.RangeAggregation(
-					nil,
-					types.RangeAggregationTypeCount,
-					time.Unix(0, 0),
-					time.Unix(3600, 0),
-					5*time.Minute,
-					5*time.Minute,
-				)
 
 				return builder.Value()
 			},
-			expectedParseKeysRequested:     []string{"level"},
-			expectedDataObjScanProjections: []string{"app", "level", "message", "timestamp"},
 		},
 		{
-			name: "RangeAggregation with PartitionBy on ambiguous columns",
+			name: "RangeAggregation with GroupBy on ambiguous columns",
 			buildLogical: func() logical.Value {
 				// count_over_time({app="test"} | logfmt [5m]) by (duration, service)
 				builder := logical.NewBuilder(&logical.MakeTable{
@@ -682,11 +681,14 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 
 				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
 
-				// Range aggregation with PartitionBy
+				// Range aggregation with GroupBy
 				builder = builder.RangeAggregation(
-					[]logical.ColumnRef{
-						{Ref: types.ColumnRef{Column: "duration", Type: types.ColumnTypeAmbiguous}},
-						{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}}, // Label should be skipped
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "duration", Type: types.ColumnTypeAmbiguous}},
+							{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}}, // Label should be skipped
+						},
+						Without: false,
 					},
 					types.RangeAggregationTypeCount,
 					time.Unix(0, 0),
@@ -697,7 +699,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 
 				return builder.Value()
 			},
-			expectedParseKeysRequested:     []string{"duration"}, // Only ambiguous column from PartitionBy
+			expectedParseKeysRequested:     []string{"duration"}, // Only ambiguous column from GroupBy
 			expectedDataObjScanProjections: []string{"duration", "message", "service", "timestamp"},
 		},
 		{
@@ -727,7 +729,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 
 				// Range aggregation
 				builder = builder.RangeAggregation(
-					[]logical.ColumnRef{}, // no partition by
+					logical.NoGrouping,
 					types.RangeAggregationTypeCount,
 					time.Unix(0, 0),
 					time.Unix(3600, 0),
@@ -737,9 +739,12 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 
 				// Vector aggregation with groupby on ambiguous columns
 				builder = builder.VectorAggregation(
-					[]logical.ColumnRef{
-						{Ref: types.ColumnRef{Column: "status", Type: types.ColumnTypeAmbiguous}},
-						{Ref: types.ColumnRef{Column: "code", Type: types.ColumnTypeAmbiguous}},
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "status", Type: types.ColumnTypeAmbiguous}},
+							{Ref: types.ColumnRef{Column: "code", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
 					},
 					types.VectorAggregationTypeSum,
 				)
@@ -1048,5 +1053,125 @@ func Test_parallelPushdown(t *testing.T) {
 
 		expected := PrintAsTree(&expectedPlan)
 		require.Equal(t, expected, PrintAsTree(&plan))
+	})
+
+	t.Run("Shifts RangeAggregation with valid VectorAggregation parent", func(t *testing.T) {
+		// Input plan: VectorAgg -> RangeAgg -> Parallelize -> Scan
+		// Expected output: VectorAgg -> Parallelize -> RangeAgg -> Scan
+		var plan Plan
+		{
+			vecAgg := plan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			rangeAgg := plan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeSum})
+			parallelize := plan.graph.Add(&Parallelize{})
+			scan := plan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: rangeAgg}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+		}
+
+		opt := newOptimizer(&plan, []*optimization{
+			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
+		})
+		root, _ := plan.graph.Root()
+		opt.optimize(root)
+
+		var expectedPlan Plan
+		{
+			vecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeSum})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: rangeAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan}))
+		}
+
+		expected := PrintAsTree(&expectedPlan)
+		require.Equal(t, expected, PrintAsTree(&plan))
+	})
+}
+
+// Test_canShardAggregation tests the canShardAggregation function directly
+// to verify which vector/range aggregation combinations are safe to parallelize.
+func Test_canShardAggregation(t *testing.T) {
+	t.Run("operation combinations", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			vecOp    types.VectorAggregationType
+			rangeOp  types.RangeAggregationType
+			expected bool
+		}{
+			// Valid distributive combinations
+			{"sum over sum", types.VectorAggregationTypeSum, types.RangeAggregationTypeSum, true},
+			{"sum over count", types.VectorAggregationTypeSum, types.RangeAggregationTypeCount, true},
+			{"max over max", types.VectorAggregationTypeMax, types.RangeAggregationTypeMax, true},
+			{"min over min", types.VectorAggregationTypeMin, types.RangeAggregationTypeMin, true},
+
+			// Invalid combinations - operation mismatch
+			{"sum over max", types.VectorAggregationTypeSum, types.RangeAggregationTypeMax, false},
+			{"sum over min", types.VectorAggregationTypeSum, types.RangeAggregationTypeMin, false},
+			{"max over sum", types.VectorAggregationTypeMax, types.RangeAggregationTypeSum, false},
+			{"max over min", types.VectorAggregationTypeMax, types.RangeAggregationTypeMin, false},
+			{"min over sum", types.VectorAggregationTypeMin, types.RangeAggregationTypeSum, false},
+			{"min over max", types.VectorAggregationTypeMin, types.RangeAggregationTypeMax, false},
+
+			// Non-distributive vector aggregations
+			{"avg over sum", types.VectorAggregationTypeAvg, types.RangeAggregationTypeSum, false},
+			{"avg over count", types.VectorAggregationTypeAvg, types.RangeAggregationTypeCount, false},
+			{"count over count", types.VectorAggregationTypeCount, types.RangeAggregationTypeCount, false},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				vec := &VectorAggregation{Operation: tc.vecOp}
+				rng := &RangeAggregation{Operation: tc.rangeOp}
+				require.Equal(t, tc.expected, canShardAggregation(vec, rng))
+			})
+		}
+	})
+
+	t.Run("grouping compatibility", func(t *testing.T) {
+		t.Run("rejects without grouping", func(t *testing.T) {
+			vec := &VectorAggregation{
+				Operation: types.VectorAggregationTypeSum,
+				Grouping:  Grouping{Without: true},
+			}
+			rng := &RangeAggregation{Operation: types.RangeAggregationTypeSum}
+			require.False(t, canShardAggregation(vec, rng))
+		})
+
+		t.Run("rejects mismatched grouping columns", func(t *testing.T) {
+			vec := &VectorAggregation{
+				Operation: types.VectorAggregationTypeSum,
+				Grouping: Grouping{
+					Columns: []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: "foo"}}},
+				},
+			}
+			rng := &RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Grouping: Grouping{
+					Columns: []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: "bar"}}},
+				},
+			}
+			require.False(t, canShardAggregation(vec, rng))
+		})
+
+		t.Run("accepts matching grouping columns", func(t *testing.T) {
+			vec := &VectorAggregation{
+				Operation: types.VectorAggregationTypeSum,
+				Grouping: Grouping{
+					Columns: []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: "foo"}}},
+				},
+			}
+			rng := &RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Grouping: Grouping{
+					Columns: []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: "foo"}}},
+				},
+			}
+			require.True(t, canShardAggregation(vec, rng))
+		})
 	})
 }
