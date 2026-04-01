@@ -103,8 +103,18 @@ func (te *testEvaluator) loadRules(ruleFiles []string, evalInterval model.Durati
 		return fmt.Errorf("failed to parse rule files: %w", err)
 	}
 
+	// Sort namespace names for deterministic iteration order.
+	// Go map iteration is non-deterministic, which would cause flaky tests
+	// when group_eval_order is not specified.
+	nsNames := make([]string, 0, len(namespaces))
+	for nsName := range namespaces {
+		nsNames = append(nsNames, nsName)
+	}
+	sort.Strings(nsNames)
+
 	// Convert to evaluable rule groups
-	for nsName, ns := range namespaces {
+	for _, nsName := range nsNames {
+		ns := namespaces[nsName]
 		for _, group := range ns.Groups {
 			rg := &ruleGroup{
 				Name:           group.Name,
@@ -135,8 +145,6 @@ func (te *testEvaluator) loadRules(ruleFiles []string, evalInterval model.Durati
 
 			te.ruleGroups = append(te.ruleGroups, rg)
 		}
-
-		_ = nsName // namespace is stored in the group for reference
 	}
 
 	return nil
