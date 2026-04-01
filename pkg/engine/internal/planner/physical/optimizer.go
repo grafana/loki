@@ -165,7 +165,7 @@ var _ rule = (*clampPredicates)(nil)
 // clampPredicates is a rule that clamps the time predicates to the time range of the scan nodes.
 // For example, if a scan node has a BinaryExpr predicate of timestamp <= 2026-03-30 14:20:00
 // and the max time range ends at 2026-03-30 14:15:00,
-// we adjust the predicate to timestamp < 2026-03-30 14:15:00.
+// we adjust the predicate to timestamp <= 2026-03-30 14:15:00.
 type clampPredicates struct {
 	plan *Plan
 }
