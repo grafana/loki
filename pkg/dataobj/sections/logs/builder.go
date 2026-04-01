@@ -160,11 +160,17 @@ func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // Append adds a new entry to b.
 func (b *Builder) Append(entry Record) {
+	b.AppendWithSize(entry, recordSize(entry))
+}
+
+// AppendWithSize adds a new entry with a precomputed size, avoiding redundant
+// metadata iteration for size calculation.
+func (b *Builder) AppendWithSize(entry Record, size int) {
 	if b.records == nil && b.lastBatchLen > 0 {
 		b.records = make([]Record, 0, b.lastBatchLen)
 	}
 	b.records = append(b.records, entry)
-	b.recordsSize += recordSize(entry)
+	b.recordsSize += size
 
 	// Shortcut for when logs are appending in strict sort order.
 	// We skip building temporarily compressed stripes in favour of a speed
