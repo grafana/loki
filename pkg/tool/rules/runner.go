@@ -77,9 +77,32 @@ func (tr *testRunner) runTestGroup(testGroup *testGroup, ruleGroups []*ruleGroup
 	// Create new evaluator with the loaded data
 	evaluator := newTestEvaluator(storage, tr.logger)
 
-	// Copy rule groups to the new evaluator
+	// Deep copy rule groups to isolate alert state between test groups
 	evaluator.ruleGroups = make([]*ruleGroup, len(ruleGroups))
-	copy(evaluator.ruleGroups, ruleGroups)
+	for i, rg := range ruleGroups {
+		// Copy the ruleGroup struct
+		rgCopy := &ruleGroup{
+			Name:           rg.Name,
+			Interval:       rg.Interval,
+			ExternalLabels: rg.ExternalLabels,
+			ExternalURL:    rg.ExternalURL,
+			Rules:          make([]evaluableRule, len(rg.Rules)),
+		}
+		// Copy each rule with fresh alert state
+		for j, rule := range rg.Rules {
+			rgCopy.Rules[j] = evaluableRule{
+				Record:       rule.Record,
+				Alert:        rule.Alert,
+				Expr:         rule.Expr,
+				Labels:       rule.Labels,
+				Annotations:  rule.Annotations,
+				For:          rule.For,
+				activeAlerts: []*activeAlert{}, // Fresh state
+				lastEvalTime: time.Time{},      // Reset eval time
+			}
+		}
+		evaluator.ruleGroups[i] = rgCopy
+	}
 
 	// Sort if needed
 	if len(groupOrderMap) > 0 {
