@@ -26,6 +26,7 @@ type Record struct {
 	severity          Severity
 	severityText      string
 	body              Value
+	err               error
 
 	// The fields below are for optimizing the implementation of Attributes and
 	// AddAttributes. This design is borrowed from the slog Record type:
@@ -108,6 +109,16 @@ func (r *Record) Body() Value {
 // SetBody sets the body of the log record.
 func (r *Record) SetBody(v Value) {
 	r.body = v
+}
+
+// Err returns the associated error if one has been set.
+func (r *Record) Err() error {
+	return r.err
+}
+
+// SetErr sets the associated error. Passing nil clears the error.
+func (r *Record) SetErr(err error) {
+	r.err = err
 }
 
 // WalkAttributes walks all attributes the log record holds by calling f for
