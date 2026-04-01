@@ -23,7 +23,7 @@ func TestConcat_Null(t *testing.T) {
 	expect := columnartest.Array(t, columnar.KindNull, &alloc, make([]any, 10+5+32)...)
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
-	columnartest.RequireArraysEqual(t, expect, actual)
+	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
 }
 
 func TestConcat_Bool(t *testing.T) {
@@ -38,7 +38,7 @@ func TestConcat_Bool(t *testing.T) {
 	expect := columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, true, false, nil)
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
-	columnartest.RequireArraysEqual(t, expect, actual)
+	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
 }
 
 func TestConcat_Int32(t *testing.T) {
@@ -53,7 +53,7 @@ func TestConcat_Int32(t *testing.T) {
 	expect := columnartest.Array(t, columnar.KindInt32, &alloc, 1, 2, 3, 4, 5, nil)
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
-	columnartest.RequireArraysEqual(t, expect, actual)
+	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
 }
 
 func TestConcat_Int64(t *testing.T) {
@@ -68,7 +68,7 @@ func TestConcat_Int64(t *testing.T) {
 	expect := columnartest.Array(t, columnar.KindInt64, &alloc, 1, 2, 3, 4, 5, nil)
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
-	columnartest.RequireArraysEqual(t, expect, actual)
+	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
 }
 
 func TestConcat_Uint32(t *testing.T) {
@@ -83,7 +83,7 @@ func TestConcat_Uint32(t *testing.T) {
 	expect := columnartest.Array(t, columnar.KindUint32, &alloc, 1, 2, 3, 4, 5, nil)
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
-	columnartest.RequireArraysEqual(t, expect, actual)
+	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
 }
 
 func TestConcat_Uint64(t *testing.T) {
@@ -98,7 +98,7 @@ func TestConcat_Uint64(t *testing.T) {
 	expect := columnartest.Array(t, columnar.KindUint64, &alloc, 1, 2, 3, 4, 5, nil)
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
-	columnartest.RequireArraysEqual(t, expect, actual)
+	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
 }
 
 func TestConcat_UTF8(t *testing.T) {
@@ -117,7 +117,7 @@ func TestConcat_UTF8(t *testing.T) {
 
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
-	columnartest.RequireArraysEqual(t, expect, actual)
+	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
 }
 
 func TestConcat_UTF8_Slices(t *testing.T) {
@@ -141,7 +141,7 @@ func TestConcat_UTF8_Slices(t *testing.T) {
 
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
-	columnartest.RequireArraysEqual(t, expect, actual)
+	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
 }
 
 func BenchmarkConcat(b *testing.B) {

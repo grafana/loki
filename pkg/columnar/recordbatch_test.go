@@ -31,6 +31,6 @@ func TestRecordBatch_Slice(t *testing.T) {
 		expectAges  = columnartest.Array(t, columnar.KindUint64, &alloc, 25, 43)
 	)
 
-	columnartest.RequireArraysEqual(t, expectNames, slice.Column(0))
-	columnartest.RequireArraysEqual(t, expectAges, slice.Column(1))
+	columnartest.RequireArraysEqual(t, expectNames, slice.Column(0), memory.Bitmap{})
+	columnartest.RequireArraysEqual(t, expectAges, slice.Column(1), memory.Bitmap{})
 }

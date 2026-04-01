@@ -8,9 +8,8 @@ import (
 )
 
 // IsMember checks if each item in datum is a member of the values set.
-// The selection parameter controls which rows are evaluated:
-//   - If selection.Len(), all rows are evaluated
-//   - Otherwise, only rows where selection bit is true are evaluated, non-selected rows result in null
+// The selection parameter defines which rows are evaluated. Unselected rows
+// have undefined values in the output.
 func IsMember(alloc *memory.Allocator, datum columnar.Datum, values *columnar.Set, selection memory.Bitmap) (columnar.Datum, error) {
 	if values.Kind() != datum.Kind() {
 		return nil, fmt.Errorf("values set and datum must be the same kind, got %s and %s", values.Kind(), datum.Kind())
@@ -46,7 +45,11 @@ func isMemberUTF8(alloc *memory.Allocator, datum columnar.Datum, values *columna
 }
 
 func isMemberUTF8A(alloc *memory.Allocator, haystack *columnar.UTF8, set *columnar.Set, selection memory.Bitmap) (columnar.Datum, error) {
-	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	// Merge selection with validity to determine which valid rows are selected.
+	//
+	// This makes the iterTrue loop below faster as we don't have to keep poking
+	// at bitmaps for each row to check.
+	rowMask, err := computeValidityAA(alloc, haystack.Validity(), selection)
 	if err != nil {
 		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
@@ -54,11 +57,18 @@ func isMemberUTF8A(alloc *memory.Allocator, haystack *columnar.UTF8, set *column
 	values := memory.NewBitmap(alloc, haystack.Len())
 	values.Resize(haystack.Len())
 
-	for i := range iterTrue(validity, haystack.Len()) {
+	for i := range iterTrue(rowMask, haystack.Len()) {
 		found := set.Has(string(haystack.Get(i)))
 		values.Set(i, found)
 	}
 
+	var validity memory.Bitmap
+	if haystack.Nulls() > 0 {
+		// Output validity is always based purely on input validity, not
+		// selection.
+		validity = memory.NewBitmap(alloc, haystack.Len())
+		validity.AppendBitmap(haystack.Validity())
+	}
 	return columnar.NewBool(values, validity), nil
 }
 
@@ -85,7 +95,11 @@ func isMemberNumber[T columnar.Numeric](alloc *memory.Allocator, datum columnar.
 }
 
 func isMemberNumberA[T columnar.Numeric](alloc *memory.Allocator, haystack *columnar.Number[T], set *columnar.Set, selection memory.Bitmap) (columnar.Datum, error) {
-	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	// Merge selection with validity to determine which valid rows are selected.
+	//
+	// This makes the iterTrue loop below faster as we don't have to keep poking
+	// at bitmaps for each row to check.
+	rowMask, err := computeValidityAA(alloc, haystack.Validity(), selection)
 	if err != nil {
 		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
@@ -93,11 +107,18 @@ func isMemberNumberA[T columnar.Numeric](alloc *memory.Allocator, haystack *colu
 	values := memory.NewBitmap(alloc, haystack.Len())
 	values.Resize(haystack.Len())
 
-	for i := range iterTrue(validity, haystack.Len()) {
+	for i := range iterTrue(rowMask, haystack.Len()) {
 		found := set.Has(haystack.Get(i))
 		values.Set(i, found)
 	}
 
+	var validity memory.Bitmap
+	if haystack.Nulls() > 0 {
+		// Output validity is always based purely on input validity, not
+		// selection.
+		validity = memory.NewBitmap(alloc, haystack.Len())
+		validity.AppendBitmap(haystack.Validity())
+	}
 	return columnar.NewBool(values, validity), nil
 }
 

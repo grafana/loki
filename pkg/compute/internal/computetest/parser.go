@@ -8,7 +8,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-const nullLit = "null"
+const (
+	nullLit      = "null"
+	undefinedLit = "_"
+)
 
 type parser struct {
 	alloc   *memory.Allocator
@@ -26,6 +29,16 @@ func (p *parser) Parse() ([]Case, error) { return p.parseCases() }
 // next advances to the next token.
 func (p *parser) next() {
 	p.pos, p.tok, p.lit = p.scanner.Scan()
+}
+
+// isUndefined checks whether the current token is [undefinedLit], representing an
+// undefined slot. If so it advances past the token and returns true.
+func (p *parser) isUndefined() bool {
+	if p.tok == tokenIdent && p.lit == undefinedLit {
+		p.next()
+		return true
+	}
+	return false
 }
 
 // expect consumes the next token and returns an error if it doesn't match expected.
@@ -149,6 +162,10 @@ func (p *parser) parseNullArray() (columnar.Datum, error) {
 	builder := columnar.NewNullBuilder(p.alloc)
 
 	for p.tok != tokenRBrack && p.tok != tokenEOF {
+		if p.isUndefined() {
+			builder.AppendNull()
+			continue
+		}
 		_, err := p.parseNullScalar()
 		if err != nil {
 			return nil, err
@@ -163,6 +180,9 @@ func (p *parser) parseNullArray() (columnar.Datum, error) {
 }
 
 func (p *parser) parseNullScalar() (columnar.Datum, error) {
+	if p.isUndefined() {
+		return &columnar.NullScalar{}, nil
+	}
 	if p.tok != tokenIdent || p.lit != nullLit {
 		return nil, fmt.Errorf("line %d:%d: expected 'null', got %s", p.pos.Line, p.pos.Col, p.lit)
 	}
@@ -178,8 +198,11 @@ func (p *parser) parseBoolDatum() (columnar.Datum, error) {
 	return p.parseBoolScalar()
 }
 
-// parseBoolScalar := "true" | "false" | "null"
+// parseBoolScalar := "true" | "false" | "null" | [undefinedLit]
 func (p *parser) parseBoolScalar() (columnar.Datum, error) {
+	if p.isUndefined() {
+		return &columnar.BoolScalar{}, nil
+	}
 	if p.tok != tokenIdent {
 		return nil, fmt.Errorf("line %d:%d: expected bool value, got %s", p.pos.Line, p.pos.Col, p.tok)
 	}
@@ -209,6 +232,11 @@ func (p *parser) parseBoolArray() (*columnar.Bool, error) {
 	builder := columnar.NewBoolBuilder(p.alloc)
 
 	for p.tok != tokenRBrack && p.tok != tokenEOF {
+		if p.isUndefined() {
+			builder.AppendValue(false)
+			continue
+		}
+
 		scalar, err := p.parseBoolScalar()
 		if err != nil {
 			return nil, err
@@ -236,8 +264,11 @@ func (p *parser) parseInt32Datum() (columnar.Datum, error) {
 	return p.parseInt32Scalar()
 }
 
-// parseInt32Scalar := <number> | "null"
+// parseInt32Scalar := <number> | "null" | [undefinedLit]
 func (p *parser) parseInt32Scalar() (columnar.Datum, error) {
+	if p.isUndefined() {
+		return &columnar.NumberScalar[int32]{}, nil
+	}
 	if p.tok == tokenIdent && p.lit == nullLit {
 		p.next()
 		return &columnar.NumberScalar[int32]{Null: true}, nil
@@ -274,6 +305,11 @@ func (p *parser) parseInt32Array() (columnar.Datum, error) {
 	builder := columnar.NewNumberBuilder[int32](p.alloc)
 
 	for p.tok != tokenRBrack && p.tok != tokenEOF {
+		if p.isUndefined() {
+			builder.AppendValue(0)
+			continue
+		}
+
 		scalar, err := p.parseInt32Scalar()
 		if err != nil {
 			return nil, err
@@ -302,8 +338,11 @@ func (p *parser) parseInt64Datum() (columnar.Datum, error) {
 	return p.parseInt64Scalar()
 }
 
-// parseInt64Scalar := <number> | "null"
+// parseInt64Scalar := <number> | "null" | [undefinedLit]
 func (p *parser) parseInt64Scalar() (columnar.Datum, error) {
+	if p.isUndefined() {
+		return &columnar.NumberScalar[int64]{}, nil
+	}
 	if p.tok == tokenIdent && p.lit == nullLit {
 		p.next()
 		return &columnar.NumberScalar[int64]{Null: true}, nil
@@ -340,6 +379,11 @@ func (p *parser) parseInt64Array() (columnar.Datum, error) {
 	builder := columnar.NewNumberBuilder[int64](p.alloc)
 
 	for p.tok != tokenRBrack && p.tok != tokenEOF {
+		if p.isUndefined() {
+			builder.AppendValue(0)
+			continue
+		}
+
 		scalar, err := p.parseInt64Scalar()
 		if err != nil {
 			return nil, err
@@ -368,8 +412,11 @@ func (p *parser) parseUint32Datum() (columnar.Datum, error) {
 	return p.parseUint32Scalar()
 }
 
-// parseUint32Scalar := <number> | "null"
+// parseUint32Scalar := <number> | "null" | [undefinedLit]
 func (p *parser) parseUint32Scalar() (columnar.Datum, error) {
+	if p.isUndefined() {
+		return &columnar.NumberScalar[uint32]{}, nil
+	}
 	if p.tok == tokenIdent && p.lit == nullLit {
 		p.next()
 		return &columnar.NumberScalar[uint32]{Null: true}, nil
@@ -397,6 +444,11 @@ func (p *parser) parseUint32Array() (columnar.Datum, error) {
 	builder := columnar.NewNumberBuilder[uint32](p.alloc)
 
 	for p.tok != tokenRBrack && p.tok != tokenEOF {
+		if p.isUndefined() {
+			builder.AppendValue(0)
+			continue
+		}
+
 		scalar, err := p.parseUint32Scalar()
 		if err != nil {
 			return nil, err
@@ -424,8 +476,11 @@ func (p *parser) parseUint64Datum() (columnar.Datum, error) {
 	return p.parseUint64Scalar()
 }
 
-// parseUint64Scalar := <number> | "null"
+// parseUint64Scalar := <number> | "null" | [undefinedLit]
 func (p *parser) parseUint64Scalar() (columnar.Datum, error) {
+	if p.isUndefined() {
+		return &columnar.NumberScalar[uint64]{}, nil
+	}
 	if p.tok == tokenIdent && p.lit == nullLit {
 		p.next()
 		return &columnar.NumberScalar[uint64]{Null: true}, nil
@@ -453,6 +508,11 @@ func (p *parser) parseUint64Array() (columnar.Datum, error) {
 	builder := columnar.NewNumberBuilder[uint64](p.alloc)
 
 	for p.tok != tokenRBrack && p.tok != tokenEOF {
+		if p.isUndefined() {
+			builder.AppendValue(0)
+			continue
+		}
+
 		scalar, err := p.parseUint64Scalar()
 		if err != nil {
 			return nil, err
@@ -480,8 +540,11 @@ func (p *parser) parseUTF8Datum() (columnar.Datum, error) {
 	return p.parseUTF8Scalar()
 }
 
-// parseUTF8Scalar := <string> | "null"
+// parseUTF8Scalar := <string> | "null" | [undefinedLit]
 func (p *parser) parseUTF8Scalar() (columnar.Datum, error) {
+	if p.isUndefined() {
+		return &columnar.UTF8Scalar{}, nil
+	}
 	if p.tok == tokenIdent && p.lit == nullLit {
 		p.next()
 		return &columnar.UTF8Scalar{Null: true}, nil
@@ -505,6 +568,11 @@ func (p *parser) parseUTF8Array() (columnar.Datum, error) {
 	builder := columnar.NewUTF8Builder(p.alloc)
 
 	for p.tok != tokenRBrack && p.tok != tokenEOF {
+		if p.isUndefined() {
+			builder.AppendValue(nil)
+			continue
+		}
+
 		scalar, err := p.parseUTF8Scalar()
 		if err != nil {
 			return nil, err

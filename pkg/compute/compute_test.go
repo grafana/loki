@@ -41,7 +41,13 @@ func TestCompute(t *testing.T) {
 				result, err := evalCaseFunction(t, &alloc, tc)
 				require.NoError(t, err)
 
-				columnartest.RequireDatumsEqual(t, tc.Expect, result)
+				mask := tc.Selection
+				if tc.Function == "FILTER" {
+					// Filter materializes the mask, so we don't want to pass
+					// the mask back down to RequireDatumsEqual.
+					mask = memory.Bitmap{}
+				}
+				columnartest.RequireDatumsEqual(t, tc.Expect, result, mask)
 			})
 		}
 

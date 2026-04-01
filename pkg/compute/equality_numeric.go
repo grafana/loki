@@ -15,17 +15,11 @@ func dispatchNumericEquality[T columnar.Numeric](alloc *memory.Allocator, kernel
 	case leftScalar && rightScalar:
 		return numericEqualitySS(kernel, left.(*columnar.NumberScalar[T]), right.(*columnar.NumberScalar[T])), nil
 	case leftScalar && !rightScalar:
-		out := numericEqualitySA(alloc, kernel, left.(*columnar.NumberScalar[T]), right.(*columnar.Number[T]))
-		return applySelectionToBoolArray(alloc, out, selection)
+		return numericEqualitySA(alloc, kernel, left.(*columnar.NumberScalar[T]), right.(*columnar.Number[T])), nil
 	case !leftScalar && rightScalar:
-		out := numericEqualityAS(alloc, kernel, left.(*columnar.Number[T]), right.(*columnar.NumberScalar[T]))
-		return applySelectionToBoolArray(alloc, out, selection)
+		return numericEqualityAS(alloc, kernel, left.(*columnar.Number[T]), right.(*columnar.NumberScalar[T])), nil
 	case !leftScalar && !rightScalar:
-		out, err := numericEqualityAA(alloc, kernel, left.(*columnar.Number[T]), right.(*columnar.Number[T]))
-		if err != nil {
-			return nil, err
-		}
-		return applySelectionToBoolArray(alloc, out, selection)
+		return numericEqualityAA(alloc, kernel, left.(*columnar.Number[T]), right.(*columnar.Number[T]))
 	}
 
 	panic("unreachable")
