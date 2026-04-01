@@ -205,11 +205,9 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 		panic("must not call flushRecords multiple times for a single section when using AppendOrdered strategy")
 	}
 
-	// For AppendUnordered, sort the records and keep them as a sorted batch
-	// for direct k-way merge later. This avoids the encode→decode cycle of
-	// intermediate stripes entirely.
+	// For AppendUnordered, keep the unsorted batch. Sorting is deferred
+	// to flushSection where all batches are sorted in parallel.
 	if b.opts.AppendStrategy == AppendUnordered {
-		sortRecords(b.records, b.opts.SortOrder)
 		b.lastBatchLen = len(b.records)
 		b.sortedBatches = append(b.sortedBatches, b.records)
 		b.sortedBatchesSize += b.recordsSize
@@ -230,8 +228,19 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 }
 
 func (b *Builder) flushSection() *table {
-	// Direct merge path: merge sorted record batches without encoding intermediate stripes.
+	// Direct merge path: sort batches in parallel, then merge.
 	if len(b.sortedBatches) > 0 {
+		// Sort all batches in parallel.
+		var wg sync.WaitGroup
+		for i := range b.sortedBatches {
+			wg.Add(1)
+			go func(batch []Record) {
+				sortRecords(batch, b.opts.SortOrder)
+				wg.Done()
+			}(b.sortedBatches[i])
+		}
+		wg.Wait()
+
 		compressionOpts := zstdCompressionOpts(zstd.SpeedFastest)
 		section := mergeRecordBatches(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.sortedBatches, b.opts.SortOrder)
 		b.sortedBatches = b.sortedBatches[:0]
