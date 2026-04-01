@@ -6,12 +6,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"unsafe"
+
 	"github.com/facette/natsort"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
-	"io"
 
 	"github.com/grafana/loki/pkg/push"
 
@@ -289,7 +291,7 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 			StreamID:  cachedStream.ID,
 			Timestamp: entry.Timestamp,
 			Metadata:  b.convertMetadata(entry.StructuredMetadata),
-			Line:      []byte(entry.Line),
+			Line:      unsafe.Slice(unsafe.StringData(entry.Line), len(entry.Line)),
 		})
 
 		// If our logs section has gotten big enough, we want to flush it to the
