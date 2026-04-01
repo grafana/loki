@@ -31,9 +31,7 @@ var (
 	}
 )
 
-func buildJSONColumns(input *array.String, requestedKeys []string) ([]string, []arrow.Array) {
-	parser := newJSONParser()
-
+func buildJSONColumns(input arrow.RecordBatch, sourceCol *array.String, requestedKeys []string) ([]string, []arrow.Array) {
 	// Build requestedKeyLookup once instead of for every line
 	var requestedKeyLookup map[string]struct{}
 	if len(requestedKeys) > 0 {
@@ -43,18 +41,18 @@ func buildJSONColumns(input *array.String, requestedKeys []string) ([]string, []
 		}
 	}
 
-	parseFunc := func(line string) (map[string]string, error) {
-		return parser.process(unsafeBytes(line), requestedKeyLookup)
+	parseFunc := func(_ arrow.RecordBatch, line string) (map[string]string, error) {
+		return parseJSONLine(line, requestedKeyLookup)
 	}
-	return buildColumns(input, requestedKeys, parseFunc, types.JSONParserErrorType)
+	return buildColumns(input, sourceCol, requestedKeys, parseFunc, types.JSONParserErrorType)
 }
 
 // parseJSONLine parses a single JSON line and extracts key-value pairs
 // implements ParseFunc
-func parseJSONLine(line string, requestedKeys []string) (map[string]string, error) {
+func parseJSONLine(line string, requestedKeyLookup map[string]struct{}) (map[string]string, error) {
 	// Use the refactored JSONParser for nested object handling and number conversion
 	parser := newJSONParser()
-	return parser.process(unsafeBytes(line), requestedKeys)
+	return parser.process(unsafeBytes(line), requestedKeyLookup)
 }
 
 type jsonParser struct {

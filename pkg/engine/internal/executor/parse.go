@@ -44,6 +44,12 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 				panic(err)
 			}
 			headers, parsedColumns = buildJSONColumns(input, sourceCol, requestedKeys)
+		case types.VariadicOpParseRegexp:
+			sourceCol, pattern, err := extractRegexpParseFnParameters(args)
+			if err != nil {
+				panic(err)
+			}
+			headers, parsedColumns = buildRegexpColumns(input, sourceCol, pattern)
 		case types.VariadicOpParseLinefmt:
 			sourceCol, _, lineFmtTemplate, err = extractLineFmtParameters(args)
 			if err != nil {
@@ -162,6 +168,55 @@ func extractLabelFmtParameters(args []arrow.Array) (*array.String, []string, []l
 
 	return sourceCol, nil, labelFmts, nil
 
+}
+
+func extractRegexpParseFnParameters(args []arrow.Array) (*array.String, string, error) {
+	// Valid signature: parseRegexp(sourceColVec, pattern)
+	if len(args) != 2 {
+		return nil, "", fmt.Errorf("regexp parse function expected 2 arguments, got %d", len(args))
+	}
+
+	sourceColArr := args[0]
+	patternArr := args[1]
+
+	if sourceColArr == nil {
+		return nil, "", fmt.Errorf("regexp parse function arguments did not include a source ColumnVector")
+	}
+
+	sourceCol, ok := sourceColArr.(*array.String)
+	if !ok {
+		return nil, "", fmt.Errorf("regexp parse can only operate on string column types, got %T", sourceColArr)
+	}
+
+	// Extract pattern (scalar string)
+	var pattern string
+	if patternArr != nil && patternArr.Len() > 0 {
+		strArr, ok := patternArr.(*array.String)
+		if !ok {
+			return nil, "", fmt.Errorf("pattern must be a string, got %T", patternArr)
+		}
+		pattern = strArr.Value(0)
+	}
+
+	return sourceCol, pattern, nil
+}
+
+func buildErrorColumns(input *array.String, errType, errDetails string) ([]string, []arrow.Array) {
+	errBuilder := array.NewStringBuilder(memory.DefaultAllocator)
+	errDetailsBuilder := array.NewStringBuilder(memory.DefaultAllocator)
+
+	for i := 0; i < input.Len(); i++ {
+		errBuilder.Append(errType)
+		errDetailsBuilder.Append(errDetails)
+	}
+
+	return []string{
+			semconv.ColumnIdentError.ShortName(),
+			semconv.ColumnIdentErrorDetails.ShortName(),
+		}, []arrow.Array{
+			errBuilder.NewArray(),
+			errDetailsBuilder.NewArray(),
+		}
 }
 
 func extractParseFnParameters(args []arrow.Array) (*array.String, []string, bool, bool, error) {
