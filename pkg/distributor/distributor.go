@@ -275,6 +275,8 @@ func New(
 	limitsFrontendClient := newIngestLimitsFrontendRingClient(
 		limitsFrontendRing,
 		limitsFrontendClientPool,
+		limitsFrontendCfg.ShuffleShardEnabled,
+		limitsFrontendCfg.ShuffleShardSize,
 	)
 
 	// Create the configured ingestion rate limit strategy (local or global).
