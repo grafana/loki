@@ -17,8 +17,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric/internal"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric/internal/x"
 	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
-	"go.opentelemetry.io/otel/semconv/v1.39.0/otelconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/semconv/v1.40.0/otelconv"
 )
 
 const (
@@ -138,7 +138,11 @@ func NewInstrumentation(id int64) (*Instrumentation, error) {
 // ExportOp that needs to be ended with End() when the export operation completes.
 func (i *Instrumentation) ExportMetrics(ctx context.Context, count int64) ExportOp {
 	start := time.Now()
-	i.inflight.Add(ctx, count, i.addOpts...)
+
+	// Avoid work when observability is disabled.
+	if i.inflight.Enabled(ctx) {
+		i.inflight.Add(ctx, count, i.addOpts...)
+	}
 	return ExportOp{
 		ctx:     ctx,
 		start:   start,
@@ -160,30 +164,57 @@ type ExportOp struct {
 // The err parameter indicates whether the operation failed. If err is not nil,
 // it is added to metrics as attribute.
 func (e ExportOp) End(err error) {
-	durationSeconds := time.Since(e.start).Seconds()
-	e.inst.inflight.Add(e.ctx, -e.nTraces, e.inst.addOpts...)
+	inflightEnabled := e.inst.inflight.Enabled(e.ctx)
+	exportedEnabled := e.inst.exported.Enabled(e.ctx)
+	durationEnabled := e.inst.duration.Enabled(e.ctx)
+
+	if !inflightEnabled && !exportedEnabled && !durationEnabled {
+		return
+	}
+
+	var durationSeconds float64
+	if durationEnabled {
+		durationSeconds = time.Since(e.start).Seconds()
+	}
+	if inflightEnabled {
+		e.inst.inflight.Add(e.ctx, -e.nTraces, e.inst.addOpts...)
+	}
 	if err == nil { // short circuit in case of success to avoid allocations
-		e.inst.exported.Inst().Add(e.ctx, e.nTraces, e.inst.addOpts...)
-		e.inst.duration.Inst().Record(e.ctx, durationSeconds, e.inst.recordOpts...)
+		if exportedEnabled {
+			e.inst.exported.Inst().Add(e.ctx, e.nTraces, e.inst.addOpts...)
+		}
+		if durationEnabled {
+			e.inst.duration.Inst().Record(e.ctx, durationSeconds, e.inst.recordOpts...)
+		}
+		return
+	}
+
+	if !exportedEnabled && !durationEnabled {
 		return
 	}
 
 	attrs := get[attribute.KeyValue](measureAttrsPool)
-	addOpts := get[metric.AddOption](addOptsPool)
-	recordOpts := get[metric.RecordOption](recordOptsPool)
 	defer func() {
 		put(measureAttrsPool, attrs)
-		put(addOptsPool, addOpts)
-		put(recordOptsPool, recordOpts)
 	}()
 	*attrs = append(*attrs, e.inst.attrs...)
 	*attrs = append(*attrs, semconv.ErrorType(err))
 
 	set := attribute.NewSet(*attrs...)
 	attrOpt := metric.WithAttributeSet(set)
-	*addOpts = append(*addOpts, attrOpt)
-	*recordOpts = append(*recordOpts, attrOpt)
 
-	e.inst.exported.Inst().Add(e.ctx, e.nTraces, *addOpts...)
-	e.inst.duration.Inst().Record(e.ctx, durationSeconds, *recordOpts...)
+	if exportedEnabled {
+		addOpts := get[metric.AddOption](addOptsPool)
+		defer put(addOptsPool, addOpts)
+
+		*addOpts = append(*addOpts, attrOpt)
+		e.inst.exported.Inst().Add(e.ctx, e.nTraces, *addOpts...)
+	}
+	if durationEnabled {
+		recordOpts := get[metric.RecordOption](recordOptsPool)
+		defer put(recordOptsPool, recordOpts)
+
+		*recordOpts = append(*recordOpts, attrOpt)
+		e.inst.duration.Inst().Record(e.ctx, durationSeconds, *recordOpts...)
+	}
 }
