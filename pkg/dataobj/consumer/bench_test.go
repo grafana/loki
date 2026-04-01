@@ -116,7 +116,7 @@ func newBenchBuilder(b *testing.B) *logsobj.Builder {
 		BuilderBaseConfig: logsobj.BuilderBaseConfig{
 			TargetPageSize:          4 * 1024 * 1024,       // 4MB
 			TargetObjectSize:        8 * 1024 * 1024 * 1024, // 8GB - don't trigger flush during bench
-			TargetSectionSize:       128 * 1024 * 1024,      // 128MB
+			TargetSectionSize:       2 * 1024 * 1024 * 1024,  // 2GB - single section for entire dataset
 			BufferSize:              8 * 1024 * 1024,         // 8MB
 			SectionStripeMergeLimit: 16,
 		},
