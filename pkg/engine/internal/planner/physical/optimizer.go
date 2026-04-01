@@ -236,6 +236,7 @@ func clampExpression(e Expression, tr TimeRange) (Expression, bool) {
 		case types.BinaryOpGte, types.BinaryOpGt:
 			if t2.Before(tr.Start) {
 				ts = types.Timestamp(tr.Start.UnixNano())
+				e.Op = types.BinaryOpGte
 			}
 		case types.BinaryOpLte, types.BinaryOpLt:
 			// We treat the end time as exclusive, so when clamping "time < max" we switch to "time <= max".
