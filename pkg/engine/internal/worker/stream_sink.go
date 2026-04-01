@@ -71,12 +71,13 @@ func (sink *streamSink) lazyInit() {
 	})
 }
 
-// Send sends a record to the remote side of the stream.
+// Send dispatches a record batch to the remote side of the stream.
 //
 // Calls to Send block until:
 //
-// - There is a bound address for the destination.
-// - The record has been sent successfully to the destination.
+//   - There is a bound address for the destination.
+//   - The record has been sent successfully to the destination but not yet
+//     acknowledged by the peer.
 //
 // Send will attempt to re-establish connection to the destination if the
 // connection is lost.
@@ -112,16 +113,18 @@ func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) (messag
 }
 
 func (sink *streamSink) send(ctx context.Context, rec arrow.RecordBatch) (*wire.Acknowledgement, error) {
+	// TODO(rfratto): Should we send some kind of Blocked status update to the
+	// scheduler if we're blocked on getPeer for too long? It may help inform
+	// scheduling decisions to immediately schedule an upstream task or bump the
+	// priority of a pending task.
+	//
+	// We would need to find a way to efficiently do that here without canceling
+	// the send.
 	peer, err := sink.getPeer(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to peer: %w", err)
 	}
 
-	// TODO(rfratto): We should send a Blocked status update to the scheduler if
-	// SendMessage doesn't finish quickly enough.
-	//
-	// We need to find a way to efficiently do that here that doesn't cancel the
-	// send.
 	resp, err := peer.Dispatch(ctx, wire.StreamDataMessage{
 		StreamID: sink.Stream.ULID,
 		Data:     rec,

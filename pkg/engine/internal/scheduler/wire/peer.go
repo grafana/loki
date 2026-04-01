@@ -227,7 +227,7 @@ type request struct {
 	result chan error
 }
 
-// A Acknowledgement is the eventual response (positive or negative
+// An Acknowledgement is the eventual response (positive or negative
 // acknowledgement) to a [Peer.Dispatch].
 type Acknowledgement struct {
 	connClosed chan struct{}
@@ -237,17 +237,17 @@ type Acknowledgement struct {
 // Wait blocks until ctx is canceled or the message is acknowledged or
 // negatively acknowledged.
 //
-// Wait must only be called once per MessageResponse.
+// Wait must only be called once per Acknowledgement.
 //
 // It returns the result of the message, otherwise an error if the connection is
 // closed or ctx is canceled.
-func (r *Acknowledgement) Wait(ctx context.Context) error {
+func (ack *Acknowledgement) Wait(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-r.connClosed:
+	case <-ack.connClosed:
 		return ErrConnClosed
-	case err := <-r.result:
+	case err := <-ack.result:
 		return err
 	}
 }
