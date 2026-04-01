@@ -149,6 +149,10 @@ func (tr *testRunner) runAlertTest(alertTest *alertTestCase, testGroup *testGrou
 		StartTime: time.Now(),
 	}
 
+	// Reset alert state before each test case to prevent state leaking between tests.
+	// Each test case should evaluate independently from t=0 with fresh alert state.
+	tr.evaluator.resetAlertState()
+
 	// Evaluate rules at each interval from t=0 to the specified eval_time.
 	// This is necessary for alerts with "for" duration to properly track pending state.
 	evalTime := time.Unix(0, 0).UTC().Add(time.Duration(alertTest.EvalTime))

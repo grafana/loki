@@ -365,6 +365,17 @@ func (te *testEvaluator) getRuleGroups() []*ruleGroup {
 	return te.ruleGroups
 }
 
+// resetAlertState clears all active alerts and evaluation timestamps from rules.
+// This ensures each test case starts with fresh state.
+func (te *testEvaluator) resetAlertState() {
+	for _, group := range te.ruleGroups {
+		for i := range group.Rules {
+			group.Rules[i].activeAlerts = []*activeAlert{}
+			group.Rules[i].lastEvalTime = time.Time{}
+		}
+	}
+}
+
 // Helper functions
 
 // convertMapToLabels converts a string map to labels.Labels.
