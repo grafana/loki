@@ -241,7 +241,8 @@ func (b *Builder) flushSection() *table {
 		}
 		wg.Wait()
 
-		section := mergeRecordBatches(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, nil, b.sortedBatches, b.opts.SortOrder)
+		compressionOpts := zstdCompressionOpts(zstd.SpeedFastest)
+		section := mergeRecordBatches(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.sortedBatches, b.opts.SortOrder)
 		b.sortedBatches = b.sortedBatches[:0]
 		b.sortedBatchesSize = 0
 		return section
