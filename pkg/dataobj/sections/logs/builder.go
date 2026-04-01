@@ -113,6 +113,7 @@ type Builder struct {
 
 	records     []Record // Buffered records to flush to a group.
 	recordsSize int      // Byte size of all buffered records (uncompressed).
+	lastBatchLen int     // Length of last sorted batch, used for pre-allocation hint.
 
 	stripes                 []*table // In-progress section; flushed with [mergeTables] into a single table.
 	stripeBuffer            tableBuffer
@@ -159,6 +160,9 @@ func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // Append adds a new entry to b.
 func (b *Builder) Append(entry Record) {
+	if b.records == nil && b.lastBatchLen > 0 {
+		b.records = make([]Record, 0, b.lastBatchLen)
+	}
 	b.records = append(b.records, entry)
 	b.recordsSize += recordSize(entry)
 
@@ -206,6 +210,7 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 	// intermediate stripes entirely.
 	if b.opts.AppendStrategy == AppendUnordered {
 		sortRecords(b.records, b.opts.SortOrder)
+		b.lastBatchLen = len(b.records)
 		b.sortedBatches = append(b.sortedBatches, b.records)
 		b.sortedBatchesSize += b.recordsSize
 		b.records = nil // allocate fresh on next Append
