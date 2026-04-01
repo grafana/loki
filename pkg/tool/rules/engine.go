@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/template"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -51,12 +54,12 @@ type ruleGroup struct {
 // evaluableRule wraps a rule with evaluation state.
 type evaluableRule struct {
 	// Rule definition
-	Record string // For recording rules
-	Alert  string // For alerting rules
-	Expr   string // LogQL expression
-	Labels labels.Labels
+	Record      string // For recording rules
+	Alert       string // For alerting rules
+	Expr        string // LogQL expression
+	Labels      labels.Labels
 	Annotations labels.Labels
-	For    model.Duration
+	For         model.Duration
 
 	// Evaluation state
 	activeAlerts []*activeAlert
@@ -217,9 +220,18 @@ func (te *testEvaluator) evaluateAlertRule(ctx context.Context, rule *evaluableR
 		for _, sample := range v {
 			// Check if alert should fire (value > 0 for most alert conditions)
 			if sample.F > 0 || sample.H != nil {
+				// Create template expander for labels and annotations
+				expand := te.createTemplateExpander(ctx, sample.Metric, group, rule.Alert, evalTime, sample)
+
+				// Expand templates in rule labels
+				expandedLabels := expandLabels(rule.Labels, expand)
+
+				// Expand templates in annotations
+				expandedAnnotations := expandLabels(rule.Annotations, expand)
+
 				alert := &activeAlert{
-					Labels:      appendLabels(sample.Metric, rule.Labels, group.ExternalLabels),
-					Annotations: rule.Annotations,
+					Labels:      appendLabels(sample.Metric, expandedLabels, group.ExternalLabels),
+					Annotations: expandedAnnotations,
 					ActiveAt:    evalTime,
 					Value:       sample.F,
 				}
@@ -251,9 +263,19 @@ func (te *testEvaluator) evaluateAlertRule(ctx context.Context, rule *evaluableR
 	case promql.Scalar:
 		// Scalar result - single alert if value > 0
 		if v.V > 0 {
+			// Create template expander for labels and annotations
+			sample := promql.Sample{T: v.T, F: v.V, Metric: labels.EmptyLabels()}
+			expand := te.createTemplateExpander(ctx, labels.EmptyLabels(), group, rule.Alert, evalTime, sample)
+
+			// Expand templates in rule labels
+			expandedLabels := expandLabels(rule.Labels, expand)
+
+			// Expand templates in annotations
+			expandedAnnotations := expandLabels(rule.Annotations, expand)
+
 			alert := &activeAlert{
-				Labels:      appendLabels(labels.EmptyLabels(), rule.Labels, group.ExternalLabels),
-				Annotations: rule.Annotations,
+				Labels:      appendLabels(labels.EmptyLabels(), expandedLabels, group.ExternalLabels),
+				Annotations: expandedAnnotations,
 				ActiveAt:    evalTime,
 				FiredAt:     evalTime, // Scalars fire immediately
 				Value:       v.V,
@@ -369,6 +391,54 @@ func appendLabels(base labels.Labels, additional ...labels.Labels) labels.Labels
 		})
 	}
 
+	return builder.Labels()
+}
+
+// createTemplateExpander creates a function that expands Go template strings
+// using the alert's labels and value as context.
+func (te *testEvaluator) createTemplateExpander(ctx context.Context, metric labels.Labels, group *ruleGroup, alertName string, evalTime time.Time, sample promql.Sample) func(string) string {
+	l := metric.Map()
+	externalLabels := group.ExternalLabels.Map()
+
+	tmplData := template.AlertTemplateData(l, externalLabels, group.ExternalURL, sample)
+
+	defs := []string{
+		"{{$labels := .Labels}}",
+		"{{$externalLabels := .ExternalLabels}}",
+		"{{$externalURL := .ExternalURL}}",
+		"{{$value := .Value}}",
+	}
+
+	return func(text string) string {
+		tmpl := template.NewTemplateExpander(
+			ctx,
+			strings.Join(append(defs, text), ""),
+			"__alert_"+alertName,
+			tmplData,
+			model.Time(timestamp.FromTime(evalTime)),
+			nil, // query function not needed for unit tests
+			nil, // external URL
+			nil, // logger
+		)
+		result, err := tmpl.Expand()
+		if err != nil {
+			// Return original text if expansion fails
+			return text
+		}
+		return result
+	}
+}
+
+// expandLabels expands template strings in all label values.
+func expandLabels(lbls labels.Labels, expand func(string) string) labels.Labels {
+	if lbls.Len() == 0 {
+		return lbls
+	}
+
+	builder := labels.NewBuilder(labels.EmptyLabels())
+	lbls.Range(func(lbl labels.Label) {
+		builder.Set(lbl.Name, expand(lbl.Value))
+	})
 	return builder.Labels()
 }
 

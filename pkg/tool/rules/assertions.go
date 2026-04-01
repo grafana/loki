@@ -7,7 +7,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -168,7 +167,7 @@ func (ta *testAssertion) compareLogQLLogs(testCase logqlTestCase, result *logqlm
 	// Flatten streams into individual log lines for comparison
 	var actualLogs []logLineResult
 	for _, stream := range streams {
-		streamLabels, err := parser.ParseMetric(stream.Labels)
+		streamLabels, err := syntax.ParseLabels(stream.Labels)
 		if err != nil {
 			continue
 		}

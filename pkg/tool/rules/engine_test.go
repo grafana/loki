@@ -425,3 +425,151 @@ groups:
 	require.Equal(t, "test_group", group.Name)
 	require.Equal(t, 1, len(group.Rules))
 }
+
+func TestTemplateExpansionInLabelsAndAnnotations(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create an alert rule with Go template variables in labels and annotations
+	ruleContent := `
+groups:
+  - name: template_test
+    interval: 1m
+    rules:
+      - alert: TemplatedAlert
+        expr: 'count_over_time({job="test"}[1m]) > 0'
+        labels:
+          severity: critical
+          job_alert: "{{ $labels.job }}-alert"
+        annotations:
+          summary: "Alert for job {{ $labels.job }}"
+          description: "Job {{ $labels.job }} triggered an alert"
+`
+
+	ruleFile := filepath.Join(tmpDir, "rules.yml")
+	err := os.WriteFile(ruleFile, []byte(ruleContent), 0644)
+	require.NoError(t, err)
+
+	// Set up storage with test data
+	storage := newTestStorage()
+	inputStreams := []stream{
+		{
+			Labels: `{job="test"}`,
+			Lines:  []string{"log line 1", "log line 2", "log line 3", "log line 4", "log line 5"},
+		},
+	}
+	err = storage.parseAndLoadStreams(inputStreams, model.Duration(1*time.Minute))
+	require.NoError(t, err)
+
+	// Create evaluator and load rules
+	evaluator := newTestEvaluator(storage, log.NewNopLogger())
+	err = evaluator.loadRules(
+		[]string{ruleFile},
+		model.Duration(1*time.Minute),
+		labels.EmptyLabels(),
+		"",
+	)
+	require.NoError(t, err)
+
+	// Evaluate at a specific time
+	evalTime := time.Unix(0, 0).UTC().Add(2 * time.Minute)
+	ctx := user.InjectOrgID(context.Background(), "test-tenant")
+
+	err = evaluator.evaluateAtTime(ctx, evalTime)
+	require.NoError(t, err)
+
+	// Check active alerts and verify template expansion
+	alerts := evaluator.getActiveAlertsForRule("TemplatedAlert")
+	require.GreaterOrEqual(t, len(alerts), 1, "Expected at least one alert to fire")
+
+	if len(alerts) > 0 {
+		alert := alerts[0]
+
+		// Verify labels are expanded (not containing template syntax)
+		jobAlert := alert.Labels.Get("job_alert")
+		require.Equal(t, "test-alert", jobAlert, "Template in label should be expanded")
+		require.NotContains(t, jobAlert, "{{", "Label should not contain unexpanded template")
+
+		// Verify annotations are expanded
+		summary := alert.Annotations.Get("summary")
+		require.Equal(t, "Alert for job test", summary, "Template in annotation should be expanded")
+		require.NotContains(t, summary, "{{", "Annotation should not contain unexpanded template")
+
+		description := alert.Annotations.Get("description")
+		require.Equal(t, "Job test triggered an alert", description, "Template in annotation should be expanded")
+		require.NotContains(t, description, "{{", "Annotation should not contain unexpanded template")
+	}
+}
+
+func TestTemplateExpansionWithToUpper(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create an alert rule with toUpper template function
+	ruleContent := `
+groups:
+  - name: template_func_test
+    interval: 1m
+    rules:
+      - alert: UpperCaseAlert
+        expr: 'count_over_time({job="myapp", severity="warning"}[1m]) > 0'
+        labels:
+          upper_job: '{{ $labels.job | toUpper }}'
+          upper_severity: '{{ $labels.severity | toUpper }}'
+        annotations:
+          summary: 'Alert for {{ $labels.job | toUpper }}'
+          description: 'Severity {{ $labels.severity | toUpper }} alert in job {{ $labels.job | toUpper }}'
+`
+
+	ruleFile := filepath.Join(tmpDir, "rules.yml")
+	err := os.WriteFile(ruleFile, []byte(ruleContent), 0644)
+	require.NoError(t, err)
+
+	// Set up storage with test data
+	storage := newTestStorage()
+	inputStreams := []stream{
+		{
+			Labels: `{job="myapp", severity="warning"}`,
+			Lines:  []string{"log line 1", "log line 2", "log line 3"},
+		},
+	}
+	err = storage.parseAndLoadStreams(inputStreams, model.Duration(1*time.Minute))
+	require.NoError(t, err)
+
+	// Create evaluator and load rules
+	evaluator := newTestEvaluator(storage, log.NewNopLogger())
+	err = evaluator.loadRules(
+		[]string{ruleFile},
+		model.Duration(1*time.Minute),
+		labels.EmptyLabels(),
+		"",
+	)
+	require.NoError(t, err)
+
+	// Evaluate at a specific time
+	evalTime := time.Unix(0, 0).UTC().Add(2 * time.Minute)
+	ctx := user.InjectOrgID(context.Background(), "test-tenant")
+
+	err = evaluator.evaluateAtTime(ctx, evalTime)
+	require.NoError(t, err)
+
+	// Check active alerts and verify toUpper template expansion
+	alerts := evaluator.getActiveAlertsForRule("UpperCaseAlert")
+	require.GreaterOrEqual(t, len(alerts), 1, "Expected at least one alert to fire")
+
+	if len(alerts) > 0 {
+		alert := alerts[0]
+
+		// Verify labels are expanded with toUpper
+		upperJob := alert.Labels.Get("upper_job")
+		require.Equal(t, "MYAPP", upperJob, "toUpper should convert job to uppercase")
+
+		upperSeverity := alert.Labels.Get("upper_severity")
+		require.Equal(t, "WARNING", upperSeverity, "toUpper should convert severity to uppercase")
+
+		// Verify annotations are expanded with toUpper
+		summary := alert.Annotations.Get("summary")
+		require.Equal(t, "Alert for MYAPP", summary, "toUpper should convert job in annotation to uppercase")
+
+		description := alert.Annotations.Get("description")
+		require.Equal(t, "Severity WARNING alert in job MYAPP", description, "toUpper should convert values in annotation to uppercase")
+	}
+}
