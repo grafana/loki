@@ -16,16 +16,9 @@ import (
 func TestEvaluate(t *testing.T) {
 	var alloc memory.Allocator
 
-	record := columnar.NewRecordBatch(
-		columnar.NewSchema([]columnar.Column{
-			{Name: "name"},
-			{Name: "age"},
-		}),
-		3, // row count
-		[]columnar.Array{
-			columnartest.Array(t, columnar.KindUTF8, &alloc, "Peter", "Paul", "Mary"),
-			columnartest.Array(t, columnar.KindUint64, &alloc, 30, 25, 43),
-		},
+	record := columnartest.Struct(t, &alloc,
+		columnartest.Field("name", columnar.KindUTF8, "Peter", "Paul", "Mary"),
+		columnartest.Field("age", columnar.KindUint64, 30, 25, 43),
 	)
 
 	// (name != "Paul" AND age > 25)
@@ -45,7 +38,7 @@ func TestEvaluate(t *testing.T) {
 
 	expect := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true)
 
-	result, err := expr.Evaluate(&alloc, e, record)
+	result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
 	require.NoError(t, err)
 	columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
 }
@@ -57,7 +50,7 @@ func TestEvaluate_Constant(t *testing.T) {
 
 	expect := columnartest.Scalar(t, columnar.KindUint64, 42)
 
-	result, err := expr.Evaluate(&alloc, e, nil)
+	result, err := expr.Evaluate(&alloc, e, nil, memory.Bitmap{})
 	require.NoError(t, err)
 	columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
 }
@@ -65,18 +58,10 @@ func TestEvaluate_Constant(t *testing.T) {
 func TestEvaluate_Column(t *testing.T) {
 	var alloc memory.Allocator
 
-	record := columnar.NewRecordBatch(
-		columnar.NewSchema([]columnar.Column{
-			{Name: "name"},
-			{Name: "age"},
-			{Name: "city"},
-		}),
-		3, // row count
-		[]columnar.Array{
-			columnartest.Array(t, columnar.KindUTF8, &alloc, "Alice", "Bob", "Charlie"),
-			columnartest.Array(t, columnar.KindUint64, &alloc, 30, 25, 35),
-			columnartest.Array(t, columnar.KindUTF8, &alloc, "NYC", "LA", "SF"),
-		},
+	record := columnartest.Struct(t, &alloc,
+		columnartest.Field("name", columnar.KindUTF8, "Alice", "Bob", "Charlie"),
+		columnartest.Field("age", columnar.KindUint64, 30, 25, 35),
+		columnartest.Field("city", columnar.KindUTF8, "NYC", "LA", "SF"),
 	)
 
 	t.Run("existing column", func(t *testing.T) {
@@ -84,7 +69,7 @@ func TestEvaluate_Column(t *testing.T) {
 
 		expect := columnartest.Array(t, columnar.KindUint64, &alloc, 30, 25, 35)
 
-		result, err := expr.Evaluate(&alloc, e, record)
+		result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
 		require.NoError(t, err)
 		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
 	})
@@ -94,23 +79,239 @@ func TestEvaluate_Column(t *testing.T) {
 
 		expect := columnartest.Array(t, columnar.KindNull, &alloc, nil, nil, nil)
 
-		result, err := expr.Evaluate(&alloc, e, record)
+		result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
 		require.NoError(t, err)
 		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
+}
+
+func TestEvaluate_Column_Struct(t *testing.T) {
+	var alloc memory.Allocator
+
+	schema := columnar.NewSchema([]columnar.Column{{Name: "x"}, {Name: "y"}})
+	input := columnar.NewStruct(schema, []columnar.Array{
+		columnartest.Array(t, columnar.KindInt64, &alloc, int64(10), int64(20)),
+		columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "b"),
+	}, 2, memory.Bitmap{})
+
+	// Resolve column "x".
+	result, err := expr.Evaluate(&alloc, &expr.Column{Name: "x"}, input, memory.Bitmap{})
+	require.NoError(t, err)
+	columnartest.RequireArraysEqual(t,
+		columnartest.Array(t, columnar.KindInt64, &alloc, int64(10), int64(20)),
+		result.(columnar.Array),
+		memory.Bitmap{},
+	)
+
+	// Unknown column resolves to null.
+	result, err = expr.Evaluate(&alloc, &expr.Column{Name: "missing"}, input, memory.Bitmap{})
+	require.NoError(t, err)
+	require.Equal(t, columnar.KindNull, result.Kind())
+	require.Equal(t, 2, result.(*columnar.Null).Len())
+}
+
+func TestEvaluate_Extract(t *testing.T) {
+	var alloc memory.Allocator
+
+	record := columnartest.Struct(t, &alloc,
+		columnartest.Field("name", columnar.KindUTF8, "Alice", "Bob", "Charlie"),
+		columnartest.Field("age", columnar.KindUint64, 30, 25, 35),
+	)
+
+	t.Run("existing field", func(t *testing.T) {
+		e := &expr.Extract{Name: "age", Value: &expr.Identity{}}
+
+		expect := columnartest.Array(t, columnar.KindUint64, &alloc, 30, 25, 35)
+
+		result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
+
+	t.Run("missing field", func(t *testing.T) {
+		e := &expr.Extract{Name: "missing", Value: &expr.Identity{}}
+
+		expect := columnartest.Array(t, columnar.KindNull, &alloc, nil, nil, nil)
+
+		result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
+
+	t.Run("non-struct value", func(t *testing.T) {
+		e := &expr.Extract{
+			Name:  "x",
+			Value: &expr.Constant{Value: columnartest.Scalar(t, columnar.KindUTF8, "hello")},
+		}
+
+		_, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.Error(t, err)
+	})
+}
+
+func TestEvaluate_Include(t *testing.T) {
+	var alloc memory.Allocator
+
+	record := columnartest.Struct(t, &alloc,
+		columnartest.Field("name", columnar.KindUTF8, "Alice", "Bob", "Charlie"),
+		columnartest.Field("age", columnar.KindUint64, 30, 25, 35),
+		columnartest.Field("city", columnar.KindUTF8, "NYC", "LA", "SF"),
+	)
+
+	t.Run("subset of fields", func(t *testing.T) {
+		e := &expr.Include{Names: []string{"name", "city"}, Value: &expr.Identity{}}
+
+		expect := columnartest.Struct(t, &alloc,
+			columnartest.Field("name", columnar.KindUTF8, "Alice", "Bob", "Charlie"),
+			columnartest.Field("city", columnar.KindUTF8, "NYC", "LA", "SF"),
+		)
+
+		result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
+
+	t.Run("missing names skipped", func(t *testing.T) {
+		e := &expr.Include{Names: []string{"name", "missing"}, Value: &expr.Identity{}}
+
+		expect := columnartest.Struct(t, &alloc,
+			columnartest.Field("name", columnar.KindUTF8, "Alice", "Bob", "Charlie"),
+		)
+
+		result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
+
+	t.Run("non-struct value", func(t *testing.T) {
+		e := &expr.Include{
+			Names: []string{"x"},
+			Value: &expr.Constant{Value: columnartest.Scalar(t, columnar.KindUTF8, "hello")},
+		}
+
+		_, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.Error(t, err)
+	})
+}
+
+func TestEvaluate_Exclude(t *testing.T) {
+	var alloc memory.Allocator
+
+	record := columnartest.Struct(t, &alloc,
+		columnartest.Field("name", columnar.KindUTF8, "Alice", "Bob", "Charlie"),
+		columnartest.Field("age", columnar.KindUint64, 30, 25, 35),
+		columnartest.Field("city", columnar.KindUTF8, "NYC", "LA", "SF"),
+	)
+
+	t.Run("exclude some fields", func(t *testing.T) {
+		e := &expr.Exclude{Names: []string{"age"}, Value: &expr.Identity{}}
+
+		expect := columnartest.Struct(t, &alloc,
+			columnartest.Field("name", columnar.KindUTF8, "Alice", "Bob", "Charlie"),
+			columnartest.Field("city", columnar.KindUTF8, "NYC", "LA", "SF"),
+		)
+
+		result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
+
+	t.Run("exclude non-existing names", func(t *testing.T) {
+		e := &expr.Exclude{Names: []string{"missing"}, Value: &expr.Identity{}}
+
+		expect := columnartest.Struct(t, &alloc,
+			columnartest.Field("name", columnar.KindUTF8, "Alice", "Bob", "Charlie"),
+			columnartest.Field("age", columnar.KindUint64, 30, 25, 35),
+			columnartest.Field("city", columnar.KindUTF8, "NYC", "LA", "SF"),
+		)
+
+		result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
+
+	t.Run("exclude all fields", func(t *testing.T) {
+		e := &expr.Exclude{Names: []string{"name", "age", "city"}, Value: &expr.Identity{}}
+
+		result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.NoError(t, err)
+
+		s := result.(*columnar.Struct)
+		require.Equal(t, 0, s.NumFields())
+		require.Equal(t, 3, s.Len())
+	})
+
+	t.Run("non-struct value", func(t *testing.T) {
+		e := &expr.Exclude{
+			Names: []string{"x"},
+			Value: &expr.Constant{Value: columnartest.Scalar(t, columnar.KindUTF8, "hello")},
+		}
+
+		_, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.Error(t, err)
+	})
+}
+
+func TestEvaluate_MakeStruct(t *testing.T) {
+	var alloc memory.Allocator
+
+	record := columnartest.Struct(t, &alloc,
+		columnartest.Field("name", columnar.KindUTF8, "Alice", "Bob", "Charlie"),
+		columnartest.Field("age", columnar.KindUint64, 30, 25, 35),
+	)
+
+	t.Run("construct from columns", func(t *testing.T) {
+		e := &expr.MakeStruct{
+			Names:  []string{"who", "years"},
+			Values: []expr.Expression{&expr.Column{Name: "name"}, &expr.Column{Name: "age"}},
+		}
+
+		expect := columnartest.Struct(t, &alloc,
+			columnartest.Field("who", columnar.KindUTF8, "Alice", "Bob", "Charlie"),
+			columnartest.Field("years", columnar.KindUint64, 30, 25, 35),
+		)
+
+		result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
+
+	t.Run("mismatched names and values", func(t *testing.T) {
+		e := &expr.MakeStruct{
+			Names:  []string{"a", "b"},
+			Values: []expr.Expression{&expr.Column{Name: "name"}},
+		}
+
+		_, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.Error(t, err)
+	})
+
+	t.Run("duplicate names rejected", func(t *testing.T) {
+		e := &expr.MakeStruct{
+			Names:  []string{"x", "x"},
+			Values: []expr.Expression{&expr.Column{Name: "name"}, &expr.Column{Name: "age"}},
+		}
+
+		_, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.Error(t, err)
+	})
+
+	t.Run("scalar value rejected", func(t *testing.T) {
+		e := &expr.MakeStruct{
+			Names:  []string{"x"},
+			Values: []expr.Expression{&expr.Constant{Value: columnartest.Scalar(t, columnar.KindUTF8, "hello")}},
+		}
+
+		_, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.Error(t, err)
 	})
 }
 
 func TestEvaluate_Unary(t *testing.T) {
 	var alloc memory.Allocator
 
-	record := columnar.NewRecordBatch(
-		columnar.NewSchema([]columnar.Column{
-			{Name: "active"},
-		}),
-		3, // row count
-		[]columnar.Array{
-			columnartest.Array(t, columnar.KindBool, &alloc, true, false, true),
-		},
+	record := columnartest.Struct(t, &alloc,
+		columnartest.Field("active", columnar.KindBool, true, false, true),
 	)
 
 	e := &expr.Unary{
@@ -120,7 +321,7 @@ func TestEvaluate_Unary(t *testing.T) {
 
 	expect := columnartest.Array(t, columnar.KindBool, &alloc, false, true, false)
 
-	result, err := expr.Evaluate(&alloc, e, record)
+	result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
 	require.NoError(t, err)
 	columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
 }
@@ -128,18 +329,10 @@ func TestEvaluate_Unary(t *testing.T) {
 func TestEvaluate_Binary(t *testing.T) {
 	var alloc memory.Allocator
 
-	record := columnar.NewRecordBatch(
-		columnar.NewSchema([]columnar.Column{
-			{Name: "name"},
-			{Name: "age"},
-			{Name: "active"},
-		}),
-		3, // row count
-		[]columnar.Array{
-			columnartest.Array(t, columnar.KindUTF8, &alloc, "Alice", "Bob", "Charlie"),
-			columnartest.Array(t, columnar.KindUint64, &alloc, 30, 25, 35),
-			columnartest.Array(t, columnar.KindBool, &alloc, true, false, true),
-		},
+	record := columnartest.Struct(t, &alloc,
+		columnartest.Field("name", columnar.KindUTF8, "Alice", "Bob", "Charlie"),
+		columnartest.Field("age", columnar.KindUint64, 30, 25, 35),
+		columnartest.Field("active", columnar.KindBool, true, false, true),
 	)
 
 	tests := []struct {
@@ -224,7 +417,7 @@ func TestEvaluate_Binary(t *testing.T) {
 				Right: tt.right,
 			}
 
-			result, err := expr.Evaluate(&alloc, e, record)
+			result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
 			require.NoError(t, err)
 			columnartest.RequireDatumsEqual(t, tt.expect, result, memory.Bitmap{})
 		})
