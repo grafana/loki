@@ -659,6 +659,7 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 				log.SetFlags(plog.DefaultLogRecordFlags.WithIsSampled(true))
 				log.SetTraceID([16]byte{0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78})
 				log.SetSpanID([8]byte{0x12, 0x23, 0xAD, 0x12, 0x23, 0xAD, 0x12, 0x23})
+				log.SetEventName("my.event")
 				log.Attributes().PutStr("foo", "bar")
 
 				return log
@@ -698,6 +699,53 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 					{
 						Name:  "span_id",
 						Value: "1223ad1223ad1223",
+					},
+					{
+						Name:  "event_name",
+						Value: "my.event",
+					},
+				},
+			},
+		},
+		{
+			name: "event_name attribute conflicts with EventName field — OTLP field wins",
+			buildLogRecord: func() plog.LogRecord {
+				log := plog.NewLogRecord()
+				log.Body().SetStr("log body")
+				log.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+				log.SetEventName("otlp.field")
+				log.Attributes().PutStr(OTLPEventName, "attribute.value")
+
+				return log
+			},
+			expectedResp: push.Entry{
+				Timestamp: now,
+				Line:      "log body",
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  "event_name",
+						Value: "otlp.field",
+					},
+				},
+			},
+		},
+		{
+			name: "event_name only",
+			buildLogRecord: func() plog.LogRecord {
+				log := plog.NewLogRecord()
+				log.Body().SetStr("log body")
+				log.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+				log.SetEventName("session.start")
+
+				return log
+			},
+			expectedResp: push.Entry{
+				Timestamp: now,
+				Line:      "log body",
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  "event_name",
+						Value: "session.start",
 					},
 				},
 			},
