@@ -2,6 +2,7 @@ package rules
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -257,7 +258,9 @@ func (ta *testAssertion) compareLogQLLogs(testCase logqlTestCase, result *logqlm
 
 // compareFloat compares two float64 values.
 func (ta *testAssertion) compareFloat(expected, actual float64) error {
-	if expected != actual {
+	// Use Float64bits comparison to handle floating-point precision and NaN correctly.
+	// NaN != NaN is true, but Float64bits(NaN) == Float64bits(NaN) handles this case.
+	if math.Float64bits(expected) != math.Float64bits(actual) {
 		return fmt.Errorf("expected %v, got %v", expected, actual)
 	}
 	return nil
