@@ -23,6 +23,8 @@ type metrics struct {
 	execution        prometheus.Histogram
 
 	dualResolveDropped prometheus.Counter
+
+	tsdbSplitsPerQuery prometheus.Histogram
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -63,6 +65,12 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		dualResolveDropped: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_engine_v2_dual_resolve_dropped_total",
 			Help: "Total number of dual-resolve comparisons dropped due to concurrency limit",
+		}),
+
+		tsdbSplitsPerQuery: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:    "loki_engine_v2_tsdb_splits_per_query",
+			Help:    "Number of sub-range splits per index-gateway section resolution",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 10), // 1, 2, 4, 8, ..., 512
 		}),
 	}
 }
