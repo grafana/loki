@@ -17,7 +17,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
 )
 
@@ -150,22 +149,15 @@ func (te *testEvaluator) loadRules(ruleFiles []string, evalInterval model.Durati
 	return nil
 }
 
-// evaluateAtTime evaluates rules at the specified time, respecting each group's interval.
-// A group is only evaluated if evalTime aligns with its interval (i.e., evalTime is a
-// multiple of group.Interval from the base time t=0).
+// evaluateAtTime evaluates all rules at the specified time.
+// For unit tests, all rule groups are evaluated at every tick regardless of their
+// individual intervals. This matches promtool behavior and ensures deterministic results.
+// The group interval is still used for calculating "for" clause durations.
 func (te *testEvaluator) evaluateAtTime(ctx context.Context, evalTime time.Time) error {
 	te.currentTime = evalTime
 	te.storage.SetCurrentTime(evalTime)
 
-	baseTime := time.Unix(0, 0).UTC()
-	elapsed := evalTime.Sub(baseTime)
-
 	for _, group := range te.ruleGroups {
-		// Skip groups whose interval doesn't align with the current time.
-		// A group with interval=5m should only evaluate at t=0, 5m, 10m, etc.
-		if group.Interval > 0 && elapsed%group.Interval != 0 {
-			continue
-		}
 		if err := te.evaluateGroup(ctx, group, evalTime); err != nil {
 			return fmt.Errorf("failed to evaluate group %s: %w", group.Name, err)
 		}
@@ -189,23 +181,17 @@ func (te *testEvaluator) evaluateGroup(ctx context.Context, group *ruleGroup, ev
 func (te *testEvaluator) evaluateRule(ctx context.Context, rule *evaluableRule, group *ruleGroup, evalTime time.Time) error {
 	rule.lastEvalTime = evalTime
 
-	// Parse the LogQL expression
-	expr, err := syntax.ParseExpr(rule.Expr)
-	if err != nil {
-		return fmt.Errorf("failed to parse expression: %w", err)
-	}
-
 	// For alerting rules, evaluate and track alert state
 	if rule.Alert != "" {
-		return te.evaluateAlertRule(ctx, rule, group, expr, evalTime)
+		return te.evaluateAlertRule(ctx, rule, group, evalTime)
 	}
 
 	// For recording rules, just evaluate the expression
-	return te.evaluateRecordingRule(ctx, rule, expr, evalTime)
+	return te.evaluateRecordingRule(ctx, rule, evalTime)
 }
 
 // evaluateAlertRule evaluates an alerting rule and updates alert state.
-func (te *testEvaluator) evaluateAlertRule(ctx context.Context, rule *evaluableRule, group *ruleGroup, expr syntax.Expr, evalTime time.Time) error {
+func (te *testEvaluator) evaluateAlertRule(ctx context.Context, rule *evaluableRule, group *ruleGroup, evalTime time.Time) error {
 	// Create query parameters
 	params, err := logql.NewLiteralParams(
 		rule.Expr,
@@ -248,7 +234,9 @@ func (te *testEvaluator) evaluateAlertRule(ctx context.Context, rule *evaluableR
 			expandedAnnotations := expandLabels(rule.Annotations, expand)
 
 			alert := &activeAlert{
-				Labels:      appendLabels(sample.Metric, expandedLabels, group.ExternalLabels),
+				// External labels have lowest priority (only fill gaps),
+				// then query result labels, then rule-defined labels (highest)
+				Labels:      appendLabels(group.ExternalLabels, sample.Metric, expandedLabels),
 				Annotations: expandedAnnotations,
 				ActiveAt:    evalTime,
 				Value:       sample.F,
@@ -291,7 +279,8 @@ func (te *testEvaluator) evaluateAlertRule(ctx context.Context, rule *evaluableR
 			expandedAnnotations := expandLabels(rule.Annotations, expand)
 
 			alert := &activeAlert{
-				Labels:      appendLabels(labels.EmptyLabels(), expandedLabels, group.ExternalLabels),
+				// External labels have lowest priority, then rule-defined labels
+				Labels:      appendLabels(group.ExternalLabels, expandedLabels),
 				Annotations: expandedAnnotations,
 				ActiveAt:    evalTime,
 				FiredAt:     evalTime, // Scalars fire immediately
@@ -312,7 +301,7 @@ func (te *testEvaluator) evaluateAlertRule(ctx context.Context, rule *evaluableR
 }
 
 // evaluateRecordingRule evaluates a recording rule.
-func (te *testEvaluator) evaluateRecordingRule(ctx context.Context, rule *evaluableRule, expr syntax.Expr, evalTime time.Time) error {
+func (te *testEvaluator) evaluateRecordingRule(ctx context.Context, rule *evaluableRule, evalTime time.Time) error {
 	// Create query parameters
 	params, err := logql.NewLiteralParams(
 		rule.Expr,
