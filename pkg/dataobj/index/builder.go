@@ -384,11 +384,6 @@ func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
 
 		// Flush partitions which haven't received new events for MaxIdleTime
 		if time.Since(state.lastActivity) >= p.cfg.MaxIdleTime {
-			level.Info(p.logger).Log(
-				"msg", "will flush idle partition",
-				"partition", partition,
-				"idle_duration", time.Since(state.lastActivity),
-				"idle_threshold", p.cfg.MaxIdleTime)
 			partitionsToFlush[partition] = triggerTypeMaxIdle
 			continue
 		}
@@ -400,11 +395,6 @@ func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
 				level.Warn(p.logger).Log("msg", "failed to parse write time", "err", err)
 			} else {
 				if time.Since(earliestWriteTime) >= p.cfg.MaxAge {
-					level.Info(p.logger).Log(
-						"msg", "will flush old events",
-						"partition", partition,
-						"event_age", time.Since(earliestWriteTime),
-						"max_age_threshold", p.cfg.MaxAge)
 					partitionsToFlush[partition] = triggerTypeMaxAge
 					continue
 				}
