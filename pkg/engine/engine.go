@@ -729,8 +729,8 @@ func (e *Engine) tsdbSectionsResolver(ctx context.Context, tenantID string) phys
 // tsdbFetchSections performs a single GetDataobjSections RPC for the given range.
 func (e *Engine) tsdbFetchSections(ctx context.Context, matchers string, start, end time.Time) ([]physical.DataObjSections, error) {
 	resp, err := e.indexGateway.GetDataobjSections(ctx, &logproto.GetDataobjSectionsRequest{
-		From:     model.TimeFromUnix(start.Unix()),
-		Through:  model.TimeFromUnix(end.Unix()),
+		From:     model.TimeFromUnixNano(start.UnixNano()),
+		Through:  model.TimeFromUnixNano(end.UnixNano()),
 		Matchers: matchers,
 	})
 	if err != nil {
