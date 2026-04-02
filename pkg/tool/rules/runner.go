@@ -228,8 +228,24 @@ func (tr *testRunner) runLogQLTest(logqlTest *logqlTestCase, testGroup *testGrou
 	// Compare results based on query type
 	isLogQuery := IsLogQuery(expr)
 	if isLogQuery {
+		// Warn if user specified exp_samples for a log query
+		if len(logqlTest.ExpSamples) > 0 && len(logqlTest.ExpLogs) == 0 {
+			result.Error = fmt.Errorf("query %q is a log query but only exp_samples was specified; use exp_logs instead", logqlTest.Expr)
+			result.Passed = false
+			result.EndTime = time.Now()
+			result.Duration = result.EndTime.Sub(result.StartTime)
+			return result
+		}
 		err = tr.assertion.compareLogQLLogs(*logqlTest, queryResult)
 	} else {
+		// Warn if user specified exp_logs for a metric query
+		if len(logqlTest.ExpLogs) > 0 && len(logqlTest.ExpSamples) == 0 {
+			result.Error = fmt.Errorf("query %q is a metric query but only exp_logs was specified; use exp_samples instead", logqlTest.Expr)
+			result.Passed = false
+			result.EndTime = time.Now()
+			result.Duration = result.EndTime.Sub(result.StartTime)
+			return result
+		}
 		err = tr.assertion.compareLogQLSamples(*logqlTest, queryResult)
 	}
 

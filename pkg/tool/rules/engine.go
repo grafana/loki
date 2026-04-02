@@ -343,21 +343,21 @@ func (te *testEvaluator) findActiveAlert(alerts []*activeAlert, lbls labels.Labe
 
 // getActiveAlertsForRule returns all currently firing alerts for a rule.
 func (te *testEvaluator) getActiveAlertsForRule(ruleName string) []*activeAlert {
+	// Collect firing alerts from all rules with matching name across all groups.
+	// Multiple groups can define alerts with the same name.
+	var firing []*activeAlert
 	for _, group := range te.ruleGroups {
 		for _, rule := range group.Rules {
 			if rule.Alert == ruleName {
-				// Return only firing alerts (not pending)
-				firing := make([]*activeAlert, 0)
 				for _, alert := range rule.activeAlerts {
 					if !alert.FiredAt.IsZero() {
 						firing = append(firing, alert)
 					}
 				}
-				return firing
 			}
 		}
 	}
-	return nil
+	return firing
 }
 
 // getRuleName returns the name of a rule (alert or record name).
