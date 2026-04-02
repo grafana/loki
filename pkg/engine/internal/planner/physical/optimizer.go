@@ -184,13 +184,20 @@ func (r *clampPredicates) apply(root Node) bool {
 	})
 	changed := false
 	var maxTimeRange TimeRange
+	var nodeChanged bool
 	for _, n := range nodes {
 		switch n := n.(type) {
 		case *DataObjScan:
-			n.Predicates, changed = r.clamp(n.Predicates, n.MaxTimeRange)
+			n.Predicates, nodeChanged = r.clamp(n.Predicates, n.MaxTimeRange)
+			if nodeChanged {
+				changed = true
+			}
 			maxTimeRange = n.MaxTimeRange
 		case *PointersScan:
-			n.Predicates, changed = r.clamp(n.Predicates, n.MaxTimeRange())
+			n.Predicates, nodeChanged = r.clamp(n.Predicates, n.MaxTimeRange())
+			if nodeChanged {
+				changed = true
+			}
 			maxTimeRange = n.MaxTimeRange()
 		}
 	}
