@@ -46,7 +46,7 @@ For more information:
 - [Google Cloud Storage (GCS)](https://cloud.google.com/storage/)
 - [Microsoft Azure Blob Storage](https://azure.microsoft.com/en-us/products/storage/blobs)
 - [IBM Cloud Object Storage (COS)](https://www.ibm.com/cloud/object-storage)
-- [Baidu Object Storage (BOS)](https://cloud.baidu.com/product/bos.html)
+- [Baidu Object Storage](https://intl.cloud.baidu.com/product/bos.html)
 - [Alibaba Object Storage Service (OSS)](https://www.alibabacloud.com/product/object-storage-service)
 
 ### ⚠️ Supported chunks stores, not typically recommended for production use
