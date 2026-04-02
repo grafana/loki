@@ -389,6 +389,7 @@ func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
 		}
 
 		// Flush partitions with events older than MaxAge
+		recordTime := time.Now()
 		if len(state.events) > 0 {
 			earliestWriteTime, err := time.Parse(time.RFC3339, state.events[0].event.WriteTime)
 			if err != nil {
@@ -398,20 +399,13 @@ func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
 					partitionsToFlush[partition] = triggerTypeMaxAge
 					continue
 				}
+				recordTime = earliestWriteTime
 			}
 		}
 
 		// If we don't choose to flush a partition, set processing delay based on the
 		// earliest event time in the buffer (or current time if there are no events).
 		// This is to avoid leaving partitions with no recent activity with high processing delay metrics.
-		recordTime := time.Now()
-		if len(state.events) > 0 {
-			if t, err := time.Parse(time.RFC3339, state.events[0].event.WriteTime); err == nil {
-				recordTime = t
-			} else {
-				level.Warn(p.logger).Log("msg", "failed to parse write time for processing delay metric", "err", err)
-			}
-		}
 		p.metrics.setProcessingDelay(partition, recordTime)
 	}
 	p.partitionsMutex.Unlock()
