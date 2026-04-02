@@ -450,6 +450,13 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.RecordBatch, i int
 	var sample promql.Sample
 	builder.Reset(labels.EmptyLabels())
 
+	// emptyParsedKeys collects label names whose value is the empty string (not NULL).
+	// Pipeline stages such as `| json` can produce parsed labels with empty values, and
+	// these must appear in the result to match classic Loki engine behaviour.
+	// The Prometheus labels.Builder treats Set(name, "") as a deletion, so we handle
+	// these labels separately using labels.NewScratchBuilder at the end.
+	var emptyParsedKeys []string
+
 	// TODO: we add a lot of overhead by reading row by row. Switch to vectorized conversion.
 	for colIdx := range int(rec.NumCols()) {
 		col := rec.Column(colIdx)
@@ -487,13 +494,45 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.RecordBatch, i int
 
 		// allow any string columns
 		if ident.DataType() == types.Loki.String {
-			val := col.(*array.String).Value(i)
-			if val != "" {
-				builder.Set(shortName, val)
+			// The aggregator schema contains every label seen across all series. For a
+			// series that doesn't have a particular label, BuildRecord calls AppendNull,
+			// so IsNull(i)==true here means this label is simply absent for this series.
+			// Skip it rather than treating the empty string returned by Value(i) as a
+			// genuine empty label value.
+			if col.IsNull(i) {
+				continue
 			}
+			val := col.(*array.String).Value(i)
+			if val == "" {
+				// Stream labels and structured metadata should ideally never carry empty values:
+				// Loki removes them at ingestion time. Parsed labels (and ambiguous columns that
+				// originate from parsed labels) can legitimately be empty; we track them
+				// to add them back below after the Prometheus builder has finished.
+				if ident.ColumnType() != types.ColumnTypeLabel &&
+					ident.ColumnType() != types.ColumnTypeMetadata {
+					emptyParsedKeys = append(emptyParsedKeys, shortName)
+				}
+				continue
+			}
+			builder.Set(shortName, val)
 		}
 	}
 
-	sample.Metric = builder.Labels()
+	if len(emptyParsedKeys) > 0 {
+		// labels.Builder silently drops empty-valued labels, so we build the final
+		// label set manually when there are empty parsed labels.
+		lbs := builder.Labels()
+		scratch := labels.NewScratchBuilder(lbs.Len() + len(emptyParsedKeys))
+		lbs.Range(func(l labels.Label) {
+			scratch.Add(l.Name, l.Value)
+		})
+		for _, key := range emptyParsedKeys {
+			scratch.Add(key, "")
+		}
+		scratch.Sort()
+		sample.Metric = scratch.Labels()
+	} else {
+		sample.Metric = builder.Labels()
+	}
 	return sample, true
 }

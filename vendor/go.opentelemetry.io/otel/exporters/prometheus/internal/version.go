@@ -6,4 +6,4 @@ package internal // import "go.opentelemetry.io/otel/exporters/prometheus/intern
 
 // Version is the current release version of the OpenTelemetry prometheus
 // exporter in use.
-const Version = "0.61.0"
+const Version = "0.64.0"
