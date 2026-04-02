@@ -28,6 +28,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -255,7 +256,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             map[string]int{"": len("fizzbuss")},
 			expectedLines:             map[string]int{"": 1},
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2", job="stuff", service_name="stuff"}`: float64(len("fizzbuss"))},
-			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2", "job", "stuff", LabelServiceName, "stuff")},
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2", "job", "stuff", constants.ServiceLabelName, "stuff")},
 		},
 		{
 			path:                      `/loki/api/v1/push`,
@@ -266,7 +267,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2", service_name="unknown_service"}`: float64(len("fizzbuss"))},
-			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2", LabelServiceName, ServiceUnknown)},
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2", constants.ServiceLabelName, ServiceUnknown)},
 		},
 		{
 			path:                      `/loki/api/v1/push`,
@@ -529,7 +530,7 @@ func Test_ServiceDetection(t *testing.T) {
 		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, ParseLokiRequest, tracker, streamResolver, "", "loki")
 
 		require.NoError(t, err)
-		require.Equal(t, labels.FromStrings("foo", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
+		require.Equal(t, labels.FromStrings("foo", "bar", constants.ServiceLabelName, "bar").String(), data.Streams[0].Labels)
 	})
 
 	t.Run("detects service from OTLP push requests using default indexing", func(t *testing.T) {
@@ -540,7 +541,7 @@ func Test_ServiceDetection(t *testing.T) {
 		streamResolver := newMockStreamResolver("fake", limits)
 		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, ParseOTLPRequest, tracker, streamResolver, "", "loki")
 		require.NoError(t, err)
-		require.Equal(t, labels.FromStrings("k8s_job_name", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
+		require.Equal(t, labels.FromStrings("k8s_job_name", "bar", constants.ServiceLabelName, "bar").String(), data.Streams[0].Labels)
 	})
 
 	t.Run("detects service from OTLP push requests using custom indexing", func(t *testing.T) {
@@ -555,7 +556,7 @@ func Test_ServiceDetection(t *testing.T) {
 		streamResolver := newMockStreamResolver("fake", limits)
 		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, ParseOTLPRequest, tracker, streamResolver, "", "loki")
 		require.NoError(t, err)
-		require.Equal(t, labels.FromStrings("special", "sauce", LabelServiceName, "sauce").String(), data.Streams[0].Labels)
+		require.Equal(t, labels.FromStrings("special", "sauce", constants.ServiceLabelName, "sauce").String(), data.Streams[0].Labels)
 	})
 
 	t.Run("only detects custom service label from indexed labels", func(t *testing.T) {
@@ -570,7 +571,7 @@ func Test_ServiceDetection(t *testing.T) {
 		streamResolver := newMockStreamResolver("fake", limits)
 		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, ParseOTLPRequest, tracker, streamResolver, "", "loki")
 		require.NoError(t, err)
-		require.Equal(t, labels.FromStrings(LabelServiceName, ServiceUnknown).String(), data.Streams[0].Labels)
+		require.Equal(t, labels.FromStrings(constants.ServiceLabelName, ServiceUnknown).String(), data.Streams[0].Labels)
 	})
 }
 

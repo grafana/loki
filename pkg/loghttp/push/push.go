@@ -76,9 +76,8 @@ var (
 )
 
 const (
-	applicationJSON  = "application/json"
-	LabelServiceName = "service_name"
-	ServiceUnknown   = "unknown_service"
+	applicationJSON = "application/json"
+	ServiceUnknown  = "unknown_service"
 
 	// maxStreamLabelsSize is the maximum allowed size of a single stream's labels string.
 	// Prometheus' label parser panics when encoding labels that exceed 16MB (2^24 bytes).
@@ -440,7 +439,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		}
 
 		serviceName := ServiceUnknown
-		if !lbs.Has(LabelServiceName) && len(discoverServiceName) > 0 && !isInternalStream {
+		if !lbs.Has(constants.ServiceLabelName) && len(discoverServiceName) > 0 && !isInternalStream {
 			for _, labelName := range discoverServiceName {
 				if labelVal := lbs.Get(labelName); labelVal != "" {
 					serviceName = labelVal
@@ -449,7 +448,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			}
 
 			lb := labels.NewBuilder(lbs)
-			lbs = lb.Set(LabelServiceName, serviceName).Labels()
+			lbs = lb.Set(constants.ServiceLabelName, serviceName).Labels()
 		}
 
 		// Update labels. They were sanitized and potentially with the added service_name label.

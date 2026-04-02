@@ -199,7 +199,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					if !hasServiceName && shouldDiscoverServiceName {
 						for _, labelName := range discoverServiceName {
 							if lbl.Name == labelName {
-								streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(lbl.Value)
+								streamLabels[model.LabelName(constants.ServiceLabelName)] = model.LabelValue(lbl.Value)
 								hasServiceName = true
 								break
 							}
@@ -217,7 +217,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		}
 
 		if !hasServiceName && shouldDiscoverServiceName {
-			streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(ServiceUnknown)
+			streamLabels[model.LabelName(constants.ServiceLabelName)] = model.LabelValue(ServiceUnknown)
 		}
 
 		// this must be pushed to the end after log lines are also evaluated
@@ -234,7 +234,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			level.Debug(logger).Log(
 				"msg", "OTLP push request stream before service name discovery",
 				"stream", sb.String(),
-				"service_name", streamLabels[model.LabelName(LabelServiceName)],
+				constants.ServiceLabelName, streamLabels[model.LabelName(constants.ServiceLabelName)],
 			)
 		}
 

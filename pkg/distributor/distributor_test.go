@@ -1383,7 +1383,7 @@ func TestParseStreamLabels(t *testing.T) {
 			},
 			expectedLabels: labels.FromStrings(
 				"foo", "bar",
-				loghttp_push.LabelServiceName, loghttp_push.ServiceUnknown,
+				constants.ServiceLabelName, loghttp_push.ServiceUnknown,
 			),
 		},
 	} {

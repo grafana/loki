@@ -356,7 +356,7 @@ func (i *instance) writeAggregatedMetrics(
 	level string,
 	totalBytes, totalCount uint64,
 ) {
-	service := streamLbls.Get(push.LabelServiceName)
+	service := streamLbls.Get(constants.ServiceLabelName)
 	if service == "" {
 		service = push.ServiceUnknown
 	}
