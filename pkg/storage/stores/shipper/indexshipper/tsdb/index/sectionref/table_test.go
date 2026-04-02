@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -89,14 +90,44 @@ func TestSectionRefTableDecodeThenAddUsesLazyMaps(t *testing.T) {
 
 func TestMmapSectionRefTableFromBytes(t *testing.T) {
 	tbl := NewSectionRefTable(nil)
-	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 1, SeriesID: 4})
-	tbl.Add(SectionRef{Path: "s3://bucket/b", SectionID: 2, SeriesID: 5})
-	tbl.Add(SectionRef{Path: "s3://bucket/a", SectionID: 3, SeriesID: 6})
+	tbl.Add(SectionRef{Path: "objects/ab/obj001", SectionID: 0, SeriesID: 1})
+	tbl.Add(SectionRef{Path: "objects/ab/obj001", SectionID: 1, SeriesID: 2})
+	tbl.Add(SectionRef{Path: "objects/cd/obj002", SectionID: 0, SeriesID: 5})
+	tbl.Add(SectionRef{Path: "objects/ab/obj001", SectionID: 0, SeriesID: 1}) // dedupe
 
 	data, err := tbl.Encode()
 	require.NoError(t, err)
 
 	mmapTbl, err := NewMmapSectionRefTableFromBytes(data)
+	require.NoError(t, err)
+	defer mmapTbl.Close()
+
+	require.Equal(t, tbl.Len(), mmapTbl.Len())
+
+	for i := 0; i < tbl.Len(); i++ {
+		want, ok := tbl.Lookup(uint32(i))
+		require.True(t, ok)
+		got, ok := mmapTbl.Lookup(uint32(i))
+		require.True(t, ok)
+		require.Equal(t, want, got, "mismatch at index %d", i)
+	}
+
+	_, ok := mmapTbl.Lookup(uint32(tbl.Len()))
+	require.False(t, ok, "out-of-bounds lookup should return false")
+}
+
+func TestMmapSectionRefTableOpenFile(t *testing.T) {
+	tbl := NewSectionRefTable(nil)
+	tbl.Add(SectionRef{Path: "s3://bucket/obj1", SectionID: 10, SeriesID: 100})
+	tbl.Add(SectionRef{Path: "s3://bucket/obj2", SectionID: 20, SeriesID: 200})
+
+	data, err := tbl.Encode()
+	require.NoError(t, err)
+
+	path := filepath.Join(t.TempDir(), "test.sections")
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	mmapTbl, err := OpenMmap(path)
 	require.NoError(t, err)
 	defer mmapTbl.Close()
 
@@ -108,35 +139,6 @@ func TestMmapSectionRefTableFromBytes(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, want, got)
 	}
-
-	_, ok := mmapTbl.Lookup(uint32(tbl.Len()))
-	require.False(t, ok)
-}
-
-func TestMmapSectionRefTableOpenFile(t *testing.T) {
-	tbl := NewSectionRefTable(nil)
-	tbl.Add(SectionRef{Path: "s3://bucket/obj1", SectionID: 10, SeriesID: 100})
-	tbl.Add(SectionRef{Path: "s3://bucket/obj2", SectionID: 20, SeriesID: 200})
-
-	data, err := tbl.Encode()
-	require.NoError(t, err)
-
-	path := t.TempDir() + "/test.sections"
-	require.NoError(t, os.WriteFile(path, data, 0o644))
-
-	mmapTbl, err := OpenMmap(path)
-	require.NoError(t, err)
-
-	require.Equal(t, tbl.Len(), mmapTbl.Len())
-	for i := 0; i < tbl.Len(); i++ {
-		want, ok := tbl.Lookup(uint32(i))
-		require.True(t, ok)
-		got, ok := mmapTbl.Lookup(uint32(i))
-		require.True(t, ok)
-		require.Equal(t, want, got)
-	}
-
-	require.NoError(t, mmapTbl.Close())
 }
 
 func TestMmapSectionRefTableEmptyTable(t *testing.T) {
@@ -151,6 +153,48 @@ func TestMmapSectionRefTableEmptyTable(t *testing.T) {
 	require.Equal(t, 0, mmapTbl.Len())
 	_, ok := mmapTbl.Lookup(0)
 	require.False(t, ok)
+}
+
+func BenchmarkLookupDecode(b *testing.B) {
+	tbl := buildBenchTable(b)
+	data, err := tbl.Encode()
+	require.NoError(b, err)
+
+	decoded, err := Decode(data)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		decoded.Lookup(uint32(i % decoded.Len()))
+	}
+}
+
+func BenchmarkLookupMmap(b *testing.B) {
+	tbl := buildBenchTable(b)
+	data, err := tbl.Encode()
+	require.NoError(b, err)
+
+	mmaped, err := NewMmapSectionRefTableFromBytes(data)
+	require.NoError(b, err)
+	defer mmaped.Close()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		mmaped.Lookup(uint32(i % mmaped.Len()))
+	}
+}
+
+func buildBenchTable(tb testing.TB) *SectionRefTable {
+	tb.Helper()
+	tbl := NewSectionRefTable(nil)
+	for i := 0; i < 10000; i++ {
+		tbl.Add(SectionRef{
+			Path:      "objects/ab/obj001",
+			SectionID: i % 50,
+			SeriesID:  i,
+		})
+	}
+	return tbl
 }
 
 func BenchmarkSectionRefTableAddRepeatedPaths(b *testing.B) {
