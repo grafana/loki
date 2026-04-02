@@ -148,7 +148,7 @@ See the [IBM Cloud Object Storage section](https://grafana.com/docs/loki/<LOKI_V
 +--------------------+----------------------------+
 | block 1 (n bytes)  | checksum (uint32, 4 bytes) |
 +--------------------+----------------------------+
-| block 1 (n bytes)  | checksum (uint32, 4 bytes) |
+| block 2 (n bytes)  | checksum (uint32, 4 bytes) |
 +--------------------+----------------------------+
 | ...                                             |
 +--------------------+----------------------------+
