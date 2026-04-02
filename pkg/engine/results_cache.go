@@ -229,7 +229,8 @@ func (h *cacheHandler) Do(ctx context.Context, req queryrangebase.Request) (quer
 	// response reflects both the execution metrics from xcap and the cache metrics from
 	// CollectStats.
 	//
-	// TODO(salvacorts): Once we remove the old engine, we can instrument the results cache impl with xcap.
+	// TODO(salvacorts): Once we remove the old engine, we can instrument the results cache impl with xcap
+	//                   and stop relying on stats.Context
 	switch r := resp.(type) {
 	case *queryrange.LokiResponse:
 		r.Statistics.Caches.Merge(statsCtx.Caches())
