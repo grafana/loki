@@ -6,11 +6,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
@@ -35,137 +33,171 @@ type CacheStats struct {
 	Bytes   *xcap.StatisticInt64
 }
 
-// newCachingPipeline wraps inner in a [cachingPipeline] backed by store.
-// If store is nil, inner is returned unchanged (no caching).
-func newCachingPipeline(store ArrowCache, inner Pipeline, key string, logger log.Logger, stats CacheStats) Pipeline {
-	if store == nil {
+// newCachingPipeline wraps inner in a cachingPipeline backed by cache.
+// If cache is nil, inner is returned unchanged (no caching).
+func newCachingPipeline(
+	c cache.Cache,
+	inner Pipeline,
+	key string,
+	maxSizeBytes uint64,
+	compression string,
+	logger log.Logger,
+	stats CacheStats,
+	cacheName string,
+) Pipeline {
+	if c == nil {
 		return inner
 	}
 
 	hashedKey := cache.HashKey(key)
 	return &cachingPipeline{
-		inner:  inner,
-		store:  store,
-		key:    hashedKey,
-		logger: log.With(logger, "pipeline", "caching", "cache", store.Name(), "key", hashedKey),
-		stats:  stats,
+		inner:        inner,
+		cache:        c,
+		key:          hashedKey,
+		logger:       log.With(logger, "pipeline", "caching", "cache", cacheName, "key", hashedKey),
+		maxSizeBytes: maxSizeBytes,
+		compression:  compression,
+		stats:        stats,
 	}
 }
 
-// cachingPipeline wraps a [Pipeline] and transparently stores and retrieves
-// [arrow.RecordBatch] results from an [arrowCacheAdapter].
+// cachingPipeline wraps a Pipeline and transparently stores and retrieves Arrow
+// record batch results via a cache.Cache.
 //
-// On a cache hit: Open reads from the store; Read serves stored records without calling Read on the inner pipeline.
-// On a cache miss: Read streams through the inner pipeline and the store is populated on EOF.
+// On a cache hit: Open decodes the cached payload into a recordDecoder; Read
+// iterates records through it without touching the inner pipeline.
+// On a cache miss: Read add records through a recordEncoder; on EOF the
+// encoded payload is committed to the cache.
 type cachingPipeline struct {
-	inner       Pipeline
-	store       ArrowCache
-	key         string
-	logger      log.Logger
-	stats       CacheStats
-	cached      []arrow.RecordBatch // records served from cache (hit path) or collected to put them on the cache (miss path)
-	pos         int                 // current position in cached slice (hit path)
-	hit         bool                // true when Open found a cache hit
-	passthrough bool                // true once we know we won't cache (store.MaxSizeBytes()==0 + non-empty)
+	inner        Pipeline
+	cache        cache.Cache
+	key          string
+	logger       log.Logger
+	maxSizeBytes uint64
+	compression  string
+	stats        CacheStats
+
+	hit bool
+
+	// For hit path
+	decoder *recordDecoder // non-nil on hit path
+
+	// For miss path
+	passthrough bool // true once we know we won't cache (size overflow)
+	encoder     *recordEncoder
+
+	// Accumulated across whichever path is active
+	cachedRows    int64
+	cachedRecords int64
 }
 
 // Open implements Pipeline.
 func (p *cachingPipeline) Open(ctx context.Context) error {
 	region := xcap.RegionFromContext(ctx)
 
-	records, bufSize, hit, err := p.store.Get(ctx, p.key)
-	if err == nil && hit {
-		p.cached = records
-		p.hit = true
-		region.Record(p.stats.Hits.Observe(1))
-		region.Record(p.stats.Batches.Observe(int64(len(records))))
-		region.Record(p.stats.Bytes.Observe(int64(bufSize)))
-		var rows int64
-		for _, rec := range records {
-			rows += rec.NumRows()
+	found, buffs, missing, err := p.cache.Fetch(ctx, []string{p.key})
+	if err == nil && len(missing) == 0 && len(found) > 0 {
+		dec, decErr := newRecordDecoder(buffs[0])
+		if decErr == nil {
+			p.decoder = dec
+			p.hit = true
+			region.Record(p.stats.Hits.Observe(1))
+			region.Record(p.stats.Bytes.Observe(int64(len(buffs[0]))))
+			level.Debug(p.logger).Log("msg", "task cache hit", "key", p.key, "records", p.decoder.Len())
+			return nil
 		}
-		region.Record(p.stats.Rows.Observe(rows))
-		return nil
-	}
 
-	// On error, log it and fall through to the inner pipeline
+		// Corrupted or old-format entry — fall back to inner pipeline.
+		level.Error(p.logger).Log("msg", "cache decode failed, falling back to inner pipeline", "err", decErr)
+	}
 	if err != nil {
-		level.Error(p.logger).Log("msg", "cache fetch failed, falling back to inner pipeline", "err", err)
+		level.Error(p.logger).Log("msg", "task cache fetch failed, falling back to inner pipeline", "err", err)
 	}
 
 	region.Record(p.stats.Misses.Observe(1))
-	// Cache miss; open the inner pipeline for reads
+	p.encoder = newRecordEncoder(p.compression)
+	level.Debug(p.logger).Log("msg", "cache miss", "key", p.key)
 	return p.inner.Open(ctx)
 }
 
 // Read implements Pipeline.
 func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if p.hit {
-		// We already returned all cached records
-		if p.pos >= len(p.cached) {
-			return nil, EOF
+		rec, err := p.decoder.Next()
+		if rec != nil {
+			p.cachedRows += rec.NumRows()
+			p.cachedRecords++
 		}
 
-		// Return the cached record and move to the next one
-		rec := p.cached[p.pos]
-		p.pos++
-		return rec, nil
+		if errors.Is(err, EOF) {
+			region := xcap.RegionFromContext(ctx)
+			region.Record(xcap.TaskCacheBatches.Observe(p.cachedRecords))
+			region.Record(xcap.TaskCacheRows.Observe(p.cachedRows))
+		}
+
+		return rec, err
 	}
 
-	// Cache miss; read from the inner pipeline
 	rec, err := p.inner.Read(ctx)
 	if err != nil {
-		// Any non-EOF error, return it to the caller right away
-		if !errors.Is(err, EOF) {
+		// Won't cache or non-EOF error
+		if !errors.Is(err, EOF) || p.passthrough {
+			return nil, err
+		}
+
+		payload, commitErr := p.encoder.Commit()
+		if commitErr != nil {
+			level.Error(p.logger).Log("msg", "failed to encode records for cache", "err", commitErr)
+			return nil, err
+		}
+
+		if storeErr := p.cache.Store(ctx, []string{p.key}, [][]byte{payload}); storeErr != nil {
+			level.Error(p.logger).Log("msg", "failed to store results in cache", "err", storeErr)
 			return nil, err
 		}
 
 		region := xcap.RegionFromContext(ctx)
-		// Caching disabled, we just set the stats and move on
-		if p.passthrough {
-			region.Record(p.stats.Batches.Observe(0))
-			region.Record(p.stats.Bytes.Observe(0))
-			region.Record(p.stats.Rows.Observe(0))
-			level.Debug(p.logger).Log("msg", "caching pass-though, won't cache result")
-			return nil, err
-		}
-
-		bufSize, setErr := p.store.Set(ctx, p.key, p.cached)
-		if setErr != nil {
-			level.Error(p.logger).Log("msg", "failed to store results in cache", "err", setErr)
-			// We return the EOF err so we don't fail the task just because of caching
-			return nil, err
-		}
-
-		region.Record(p.stats.Batches.Observe(int64(len(p.cached))))
-		region.Record(p.stats.Bytes.Observe(int64(bufSize)))
-		var rows int64
-		for _, r := range p.cached {
-			rows += r.NumRows()
-		}
-		region.Record(p.stats.Rows.Observe(rows))
-		level.Debug(p.logger).Log("msg", "caching result", "size", humanize.Bytes(uint64(bufSize)), "rows", rows, "batches", len(p.cached))
+		region.Record(p.stats.Batches.Observe(p.cachedRecords))
+		region.Record(p.stats.Rows.Observe(p.cachedRows))
+		region.Record(p.stats.Bytes.Observe(int64(len(payload))))
 		return nil, err
 	}
 
-	// short-circuit: maxSizeBytes==0 means only cache empty responses.
-	// Once we see a non-nil batch the response is non-empty; stop buffering
-	// and pass subsequent reads straight through.
-	if !p.passthrough && p.store.MaxSizeBytes() == 0 && rec.NumRows() > 0 {
-		p.passthrough = true
-		p.cached = nil // release any accumulated memory
-	}
-
+	// When passthrough is enabled, we won't cache this response
 	if p.passthrough {
-		return rec, nil // don't buffer; skip store.Set on EOF path
+		return rec, nil
 	}
 
-	// Only cache non-empty records
-	if rec.NumRows() > 0 {
-		p.cached = append(p.cached, rec)
+	// maxSizeBytes==0 means only cache empty responses; bail on the first record with rows.
+	if p.maxSizeBytes == 0 && rec.NumRows() > 0 {
+		p.disableCache()
+		return rec, nil
+	}
+
+	if appendErr := p.encoder.Append(rec); appendErr != nil {
+		level.Error(p.logger).Log("msg", "failed to encode record for cache, skipping cache", "err", appendErr)
+		p.disableCache()
+		return rec, nil
+	}
+
+	p.cachedRows += rec.NumRows()
+	p.cachedRecords++
+
+	// Adding this last record made us go over the max cacheable size, so disable caching for this task result
+	if p.encoder.Size() > p.maxSizeBytes {
+		level.Debug(p.logger).Log("msg", "cache entry too large, skipping cache", "size", p.encoder.Size(), "max_size", p.maxSizeBytes)
+		p.disableCache()
 	}
 
 	return rec, nil
+}
+
+// disableCache switches the pipeline to passthrough mode, discarding any
+// accumulated encoder state and resetting cached stats counters.
+func (p *cachingPipeline) disableCache() {
+	p.encoder.Reset()
+	p.cachedRows, p.cachedRecords = 0, 0
+	p.passthrough = true
 }
 
 // Close implements Pipeline.
@@ -175,197 +207,28 @@ func (p *cachingPipeline) Close() {
 	}
 }
 
-// arrowCacheAdapter adapts a [cache.Cache] (byte-oriented) to Arrow record
-// batch reads/writes using Arrow IPC stream encoding.
-type arrowCacheAdapter struct {
-	logger         log.Logger
-	cache          cache.Cache
-	name           string
-	snappyCompress bool
-
-	// maxSizeBytes is the maximum size of the cache entry.
-	// A value of 0 means only empty responses are cached.
-	maxSizeBytes uint64
-}
-
-// Get fetches cached records for key. Returns the decoded records, the raw
-// buffer size in bytes, whether a cache entry was found, and any error.
-func (s *arrowCacheAdapter) Get(ctx context.Context, key string) ([]arrow.RecordBatch, int, bool, error) {
-	found, buffs, missing, err := s.cache.Fetch(ctx, []string{key})
-	if err != nil {
-		return nil, 0, false, err
-	}
-	if len(missing) > 0 || len(found) == 0 {
-		return nil, 0, false, nil
-	}
-	if len(buffs[0]) == 0 {
-		return nil, 0, true, nil // cached empty result
-	}
-
-	payload := buffs[0]
-	if s.snappyCompress {
-		var decErr error
-		payload, decErr = snappy.Decode(nil, buffs[0])
-		if decErr != nil {
-			return nil, 0, false, fmt.Errorf("snappy-decode cache entry: %w", decErr)
-		}
-	}
-
-	records, err := s.decodeRecords(payload)
-	if err != nil {
-		return nil, 0, false, fmt.Errorf("decoding cached records: %w", err)
-	}
-	return records, len(buffs[0]), true, nil
-}
-
-// Set encodes and stores records under key. Returns the encoded buffer size in
-// bytes and any error.
-func (s *arrowCacheAdapter) Set(ctx context.Context, key string, records []arrow.RecordBatch) (int, error) {
-	if len(records) == 0 {
-		return 0, s.cache.Store(ctx, []string{key}, [][]byte{{}})
-	}
-
-	// maxSizeBytes == 0 means only empty responses may be cached.
-	if s.maxSizeBytes == 0 {
-		if s.logger != nil {
-			level.Debug(s.logger).Log("msg", "non-empty result won't be cached (max_cacheable_size=0)", "key", key)
-		}
-		return 0, nil
-	}
-
-	buf, err := s.encodeRecords(records)
-	if err != nil {
-		return 0, fmt.Errorf("encoding records for cache: %w", err)
-	}
-
-	if s.snappyCompress {
-		buf = snappy.Encode(nil, buf)
-	}
-
-	if s.maxSizeBytes > 0 && uint64(len(buf)) > s.maxSizeBytes {
-		level.Debug(s.logger).Log("msg", "cache entry too large. won't cache", "key", key, "size", len(buf), "max_size", s.maxSizeBytes)
-		return 0, nil
-	}
-
-	if err := s.cache.Store(ctx, []string{key}, [][]byte{buf}); err != nil {
-		return 0, err
-	}
-
-	return len(buf), nil
-}
-
-// MaxSizeBytes implements ArrowCache.
-func (s *arrowCacheAdapter) MaxSizeBytes() uint64 {
-	return s.maxSizeBytes
-}
-
-func (s *arrowCacheAdapter) Name() string {
-	return s.name
-}
-
-// encodeRecords serializes a slice of Arrow record batches into a single byte
-// buffer using the following framed format:
-//
-//	[8 bytes: record count (big-endian uint64)]
-//	for each record:
-//	  [8 bytes: record length (big-endian uint64)]
-//	  [N bytes: Arrow IPC stream encoding of the record]
-func (s *arrowCacheAdapter) encodeRecords(records []arrow.RecordBatch) ([]byte, error) {
-	var buf bytes.Buffer
-	var hdr [8]byte
-
-	binary.BigEndian.PutUint64(hdr[:], uint64(len(records)))
-	buf.Write(hdr[:])
-
-	for i, rec := range records {
-		data, err := arrowcodec.DefaultArrowCodec.SerializeArrowRecord(rec)
-		if err != nil {
-			return nil, fmt.Errorf("encoding record %d: %w", i, err)
-		}
-		binary.BigEndian.PutUint64(hdr[:], uint64(len(data)))
-		buf.Write(hdr[:])
-		buf.Write(data)
-	}
-	return buf.Bytes(), nil
-}
-
-// decodeRecords is the inverse of encodeRecords; see encodeRecords for the
-// wire format.
-func (s *arrowCacheAdapter) decodeRecords(data []byte) ([]arrow.RecordBatch, error) {
-	if len(data) < 8 {
-		return nil, fmt.Errorf("cache buffer too short")
-	}
-	r := bytes.NewReader(data)
-	var hdr [8]byte
-
-	if _, err := io.ReadFull(r, hdr[:]); err != nil {
-		return nil, err
-	}
-	n := int(binary.BigEndian.Uint64(hdr[:]))
-
-	records := make([]arrow.RecordBatch, n)
-	for i := range records {
-		if _, err := io.ReadFull(r, hdr[:]); err != nil {
-			return nil, fmt.Errorf("reading length of record %d: %w", i, err)
-		}
-		sz := int(binary.BigEndian.Uint64(hdr[:]))
-		buf := make([]byte, sz)
-		if _, err := io.ReadFull(r, buf); err != nil {
-			return nil, fmt.Errorf("reading record %d: %w", i, err)
-		}
-		rec, err := arrowcodec.DefaultArrowCodec.DeserializeArrowRecord(buf)
-		if err != nil {
-			return nil, fmt.Errorf("decoding record %d: %w", i, err)
-		}
-		records[i] = rec
-	}
-	return records, nil
-}
-
-type ArrowCache interface {
-	// Get returns the cached records for key, if any.
-	// It also returns the cached buffer size in bytes, and a boolean indicating whether a cache entry was found.
-	Get(ctx context.Context, key string) ([]arrow.RecordBatch, int, bool, error)
-	// Set stores records under key.
-	// It returns the encoded buffer size in bytes.
-	Set(ctx context.Context, key string, records []arrow.RecordBatch) (int, error)
-	// MaxSizeBytes returns the maximum encoded size of a cache entry.
-	// A value of 0 means only empty responses are cached.
-	// Useful for callers to short-circuit caching when the response is known to exceed the max cache size.
-	MaxSizeBytes() uint64
-	Name() string
-}
-
 // TaskCacheRegistry maps TaskCacheType identifiers to backing cache stores and their stats.
 type TaskCacheRegistry struct {
-	adapters map[physical.TaskCacheName]*arrowCacheAdapter
-	stats    map[physical.TaskCacheName]CacheStats
+	caches map[physical.TaskCacheName]cache.Cache
+	stats  map[physical.TaskCacheName]CacheStats
 }
 
-// NewTaskCacheRegistry builds a registry that creates one independent cache per
-// task type, using type-specific prefixes derived from cfg.CacheConfig.Prefix.
+// NewTaskCacheRegistry builds a registry with one independent cache per task type,
+// all backed by the same resultscache.Config. Returns a zero-value (no-op) registry
+// when caching is not configured.
 func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, logger log.Logger) (TaskCacheRegistry, error) {
 	if !cache.IsCacheConfigured(cfg.CacheConfig) {
 		return TaskCacheRegistry{}, nil
 	}
 
-	newCache := func(name string) (*arrowCacheAdapter, error) {
+	newCache := func(name string) (cache.Cache, error) {
 		cfgCopy := cfg.CacheConfig
 		cfgCopy.Prefix += name + "."
 		c, err := cache.New(cfgCopy, reg, logger, stats.TaskResultCache, constants.Loki)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create cache: %w", err)
 		}
-
-		// We don't wrap the cache with cache.NewSnappy, but defer the snappy encoding to arrowCacheAdapter,
-		// So we can keep track of the size of the entry we put in the cache.
-		// This is so we can support configuring the maximum size of the cache entry.
-		return &arrowCacheAdapter{
-			cache:          c,
-			name:           name,
-			snappyCompress: strings.EqualFold(cfg.Compression, "snappy"),
-			logger:         logger,
-		}, nil
+		return c, nil
 	}
 
 	logscan, err := newCache("logscan")
@@ -401,7 +264,7 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 	}
 
 	return TaskCacheRegistry{
-		adapters: map[physical.TaskCacheName]*arrowCacheAdapter{
+		caches: map[physical.TaskCacheName]cache.Cache{
 			physical.TaskCacheLogsScan:          logscan,
 			physical.TaskCacheLogsScanRangeAggr: logscanRangeAggr,
 			physical.TaskCacheMetastore:         metastore,
@@ -416,10 +279,158 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 	}, nil
 }
 
-func (r TaskCacheRegistry) GetForTypeWithMaxSize(cacheType physical.TaskCacheName, maxSizeBytes uint64) (ArrowCache, CacheStats, error) {
-	if a, ok := r.adapters[cacheType]; ok {
-		a.maxSizeBytes = maxSizeBytes
-		return a, r.stats[cacheType], nil
+// GetForType returns the raw cache backend for the given cache type.
+func (r TaskCacheRegistry) GetForType(cacheType physical.TaskCacheName) (cache.Cache, CacheStats, error) {
+	if c, ok := r.caches[cacheType]; ok {
+		return c, r.stats[cacheType], nil
 	}
 	return nil, CacheStats{}, fmt.Errorf("no cache registered for type %q", cacheType)
+}
+
+// Compression codec identifiers stored in the per-record wire format.
+const (
+	compressionNone   byte = 0
+	compressionSnappy byte = 1
+)
+
+// recordEncoder accumulates Arrow record batches and encodes them incrementally.
+// Each record is compressed independently, allowing callers to check Size() after
+// every Append and short-circuit before the full payload is committed.
+type recordEncoder struct {
+	comp   byte
+	frames [][]byte // per-record compressed IPC bytes
+	size   uint64   // sum of len(frame) across all frames
+}
+
+func newRecordEncoder(compression string) *recordEncoder {
+	comp := compressionNone
+	if strings.EqualFold(compression, "snappy") {
+		comp = compressionSnappy
+	}
+	return &recordEncoder{comp: comp}
+}
+
+// Append serializes rec, optionally compresses it, and stores the resulting frame.
+func (e *recordEncoder) Append(rec arrow.RecordBatch) error {
+	// Skip empty batches
+	if rec.NumRows() == 0 {
+		return nil
+	}
+
+	data, err := arrowcodec.DefaultArrowCodec.SerializeArrowRecord(rec)
+	if err != nil {
+		return fmt.Errorf("serializing record: %w", err)
+	}
+	if e.comp == compressionSnappy {
+		data = snappy.Encode(nil, data)
+	}
+	e.frames = append(e.frames, data)
+	e.size += uint64(len(data))
+	return nil
+}
+
+// Size returns the total byte size of all encoded frames accumulated so far.
+// This does not include the fixed-size buffer header.
+func (e *recordEncoder) Size() uint64 { return e.size }
+
+// Commit serializes all accumulated frames into a single framed buffer.
+//
+// Wire format:
+//
+//	[8 bytes: record (aka frames) count (big-endian uint64)]
+//	[1 byte: compression codec (0=none, 1=snappy)]
+//	for each record:
+//	  [8 bytes: compressed frame length (big-endian uint64)]
+//	  [N bytes: compressed Arrow IPC stream]
+func (e *recordEncoder) Commit() ([]byte, error) {
+	var buf bytes.Buffer
+	var hdr [8]byte
+
+	binary.BigEndian.PutUint64(hdr[:], uint64(len(e.frames)))
+	buf.Write(hdr[:])
+	buf.WriteByte(e.comp)
+
+	for _, frame := range e.frames {
+		binary.BigEndian.PutUint64(hdr[:], uint64(len(frame)))
+		buf.Write(hdr[:])
+		buf.Write(frame)
+	}
+	return buf.Bytes(), nil
+}
+
+// Reset discards all accumulated frames and resets counters, freeing their memory.
+func (e *recordEncoder) Reset() {
+	e.frames = nil
+	e.size = 0
+}
+
+// recordDecoder iterates over a framed buffer produced by [recordEncoder.Commit].
+type recordDecoder struct {
+	data []byte
+	pos  int
+	n    int  // total record count from header
+	comp byte // compression codec from header
+	read int  // records consumed so far
+}
+
+// newRecordDecoder parses the buffer header and returns a ready decoder.
+// A zero-length buffer represents an empty cached result (n=0).
+func newRecordDecoder(data []byte) (*recordDecoder, error) {
+	if len(data) == 0 {
+		return &recordDecoder{}, nil
+	}
+	if len(data) < 9 {
+		return nil, fmt.Errorf("cache buffer too short (%d bytes)", len(data))
+	}
+	n := int(binary.BigEndian.Uint64(data[:8]))
+	comp := data[8]
+	return &recordDecoder{data: data, pos: 9, n: n, comp: comp}, nil
+}
+
+// Len returns the total number of records declared in the buffer header.
+func (d *recordDecoder) Len() int { return d.n }
+
+// Next returns the next Arrow record batch from the buffer.
+// Returns (nil, [EOF]) when all records have been consumed.
+func (d *recordDecoder) Next() (arrow.RecordBatch, error) {
+	if d.read >= d.n {
+		return nil, EOF
+	}
+	if d.pos >= len(d.data) {
+		return nil, fmt.Errorf("unexpected end of cache buffer at record %d", d.read)
+	}
+
+	if d.pos+8 > len(d.data) {
+		return nil, fmt.Errorf("truncated length header for record %d", d.read)
+	}
+	recordSize := int(binary.BigEndian.Uint64(d.data[d.pos : d.pos+8]))
+	d.pos += 8
+
+	if d.pos+recordSize > len(d.data) {
+		return nil, fmt.Errorf("truncated data for record %d (want %d bytes, have %d)", d.read, recordSize, len(d.data)-d.pos)
+	}
+	frame := d.data[d.pos : d.pos+recordSize]
+	d.pos += recordSize
+	d.read++
+
+	var ipcBytes []byte
+	switch d.comp {
+	case compressionNone:
+		ipcBytes = frame
+	case compressionSnappy:
+		var err error
+		ipcBytes, err = snappy.Decode(nil, frame)
+		if err != nil {
+			return nil, fmt.Errorf("snappy-decode record %d: %w", d.read-1, err)
+		}
+	default:
+		return nil, fmt.Errorf("unknown compression codec %d for record %d", d.comp, d.read-1)
+	}
+
+	rec, err := arrowcodec.DefaultArrowCodec.DeserializeArrowRecord(ipcBytes)
+	if err != nil {
+		return nil, fmt.Errorf("deserializing record %d: %w", d.read-1, err)
+	}
+
+	return rec, nil
 }

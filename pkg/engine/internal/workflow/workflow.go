@@ -70,6 +70,10 @@ type Options struct {
 	// MaxDataObjScanCacheSize is the maximum encoded size in bytes of a DataObjScan
 	// result that may be stored. 0 means only empty scan responses are cached.
 	MaxDataObjScanCacheSize uint64
+
+	// CacheCompression is the compression codec to use when encoding cache entries
+	// (e.g. "snappy"). An empty string means no compression.
+	CacheCompression string
 }
 
 var _ fmt.Stringer = (*Workflow)(nil)
@@ -114,6 +118,7 @@ func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*
 		enabled:                 opts.CacheEnabled,
 		taskCacheMaxSizeBytes:   opts.MaxTaskCacheSize,
 		dataObjScanMaxSizeBytes: opts.MaxDataObjScanCacheSize,
+		compression:             opts.CacheCompression,
 	})
 	if err != nil {
 		return nil, err

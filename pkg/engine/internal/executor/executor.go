@@ -496,12 +496,12 @@ func (c *Context) executeCache(ctx context.Context, node *physical.Cache, inputs
 		return errorPipeline(ctx, fmt.Errorf("cache expects exactly one input, got %d", len(inputs)))
 	}
 
-	cache, cacheStats, err := c.taskCaches.GetForTypeWithMaxSize(node.CacheName, node.MaxSizeBytes)
+	cache, cacheStats, err := c.taskCaches.GetForType(node.CacheName)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "cache lookup failed when executing the cache pipeline, skipping cache", "err", err)
 	}
 
-	return newCachingPipeline(cache, inputs[0], node.Key, c.logger, cacheStats)
+	return newCachingPipeline(cache, inputs[0], node.Key, node.MaxSizeBytes, node.Compression, c.logger, cacheStats, node.CacheName)
 }
 
 func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {

@@ -27,6 +27,7 @@ type cacheParams struct {
 	enabled                 bool
 	taskCacheMaxSizeBytes   uint64
 	dataObjScanMaxSizeBytes uint64
+	compression             string
 }
 
 // planWorkflow partitions a physical plan into a graph of tasks.
@@ -63,10 +64,10 @@ func planWorkflow(tenantID string, plan *physical.Plan, cache cacheParams) (dag.
 	}
 
 	if cache.enabled {
-		if err := injectTaskCaching(tenantID, planner.graph, cache.taskCacheMaxSizeBytes); err != nil {
+		if err := injectTaskCaching(tenantID, planner.graph, cache.taskCacheMaxSizeBytes, cache.compression); err != nil {
 			return dag.Graph[*Task]{}, fmt.Errorf("injecting task caching: %w", err)
 		}
-		if err := injectDataObjScanCaching(tenantID, planner.graph, cache.dataObjScanMaxSizeBytes); err != nil {
+		if err := injectDataObjScanCaching(tenantID, planner.graph, cache.dataObjScanMaxSizeBytes, cache.compression); err != nil {
 			return dag.Graph[*Task]{}, fmt.Errorf("injecting DataObjScan caching: %w", err)
 		}
 	}
@@ -77,10 +78,10 @@ func planWorkflow(tenantID string, plan *physical.Plan, cache cacheParams) (dag.
 // injectDataObjScanCaching wraps each DataObjScan node in every task fragment
 // with a Cache node (using TaskCacheDataObjScanResult), placing the cache directly
 // above the scan regardless of what operators sit on top.
-func injectDataObjScanCaching(tenantID string, graph dag.Graph[*Task], maxSizeBytes uint64) error {
+func injectDataObjScanCaching(tenantID string, graph dag.Graph[*Task], maxSizeBytes uint64, compression string) error {
 	for _, root := range graph.Roots() {
 		if err := graph.Walk(root, func(task *Task) error {
-			return physical.WrapDataObjScansWithCache(context.Background(), tenantID, task.Fragment, maxSizeBytes)
+			return physical.WrapDataObjScansWithCache(context.Background(), tenantID, task.Fragment, maxSizeBytes, compression)
 		}, dag.PreOrderWalk); err != nil {
 			return err
 		}
@@ -91,14 +92,14 @@ func injectDataObjScanCaching(tenantID string, graph dag.Graph[*Task], maxSizeBy
 // injectTaskCaching wraps each cacheable task fragment with a Cache node.
 // A fragment is cacheable when TaskCacheKey returns a non-empty string
 // (requires at least one DataObjScan or PointersScan and no non-cacheable nodes).
-func injectTaskCaching(tenantID string, graph dag.Graph[*Task], maxSizeBytes uint64) error {
+func injectTaskCaching(tenantID string, graph dag.Graph[*Task], maxSizeBytes uint64, compression string) error {
 	for _, root := range graph.Roots() {
 		if err := graph.Walk(root, func(task *Task) error {
 			oldRoot, err := task.Fragment.Root()
 			if err != nil {
 				return err
 			}
-			newRoot, wrapped, err := physical.WrapWithCacheIfSupported(context.Background(), tenantID, task.Fragment, maxSizeBytes)
+			newRoot, wrapped, err := physical.WrapWithCacheIfSupported(context.Background(), tenantID, task.Fragment, maxSizeBytes, compression)
 			if err != nil {
 				return err
 			}
