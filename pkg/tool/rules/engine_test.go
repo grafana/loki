@@ -416,7 +416,7 @@ groups:
 	err := os.WriteFile(ruleFile, []byte(ruleContent), 0644)
 	require.NoError(t, err)
 
-	groups, err := LoadRuleFiles([]string{ruleFile})
+	groups, err := loadRuleFiles([]string{ruleFile})
 	require.NoError(t, err)
 	require.Equal(t, 1, len(groups))
 

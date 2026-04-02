@@ -150,12 +150,22 @@ func (te *testEvaluator) loadRules(ruleFiles []string, evalInterval model.Durati
 	return nil
 }
 
-// evaluateAtTime evaluates all rules at the specified time.
+// evaluateAtTime evaluates rules at the specified time, respecting each group's interval.
+// A group is only evaluated if evalTime aligns with its interval (i.e., evalTime is a
+// multiple of group.Interval from the base time t=0).
 func (te *testEvaluator) evaluateAtTime(ctx context.Context, evalTime time.Time) error {
 	te.currentTime = evalTime
 	te.storage.SetCurrentTime(evalTime)
 
+	baseTime := time.Unix(0, 0).UTC()
+	elapsed := evalTime.Sub(baseTime)
+
 	for _, group := range te.ruleGroups {
+		// Skip groups whose interval doesn't align with the current time.
+		// A group with interval=5m should only evaluate at t=0, 5m, 10m, etc.
+		if group.Interval > 0 && elapsed%group.Interval != 0 {
+			continue
+		}
 		if err := te.evaluateGroup(ctx, group, evalTime); err != nil {
 			return fmt.Errorf("failed to evaluate group %s: %w", group.Name, err)
 		}
@@ -484,8 +494,8 @@ func (te *testEvaluator) sortRuleGroups(groupOrderMap map[string]int) {
 	})
 }
 
-// LoadRuleFiles loads rule files from the given list of rule group definitions.
-func LoadRuleFiles(ruleFiles []string) (map[string]*rwrulefmt.RuleGroup, error) {
+// loadRuleFiles loads rule files from the given list of rule group definitions.
+func loadRuleFiles(ruleFiles []string) (map[string]*rwrulefmt.RuleGroup, error) {
 	namespaces, err := ParseFiles(ruleFiles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse rule files: %w", err)

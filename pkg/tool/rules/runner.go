@@ -299,12 +299,6 @@ type testCaseResult struct {
 
 // executeLogQLQuery is a helper that executes a LogQL query and returns the result.
 func (te *testEvaluator) executeLogQLQuery(ctx context.Context, expr string, evalTime time.Time) (*logqlmodel.Result, error) {
-	// Parse expression
-	parsedExpr, err := syntax.ParseExpr(expr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse expression: %w", err)
-	}
-
 	// Create query parameters - use evalTime for both start and end (instant query)
 	params, err := logql.NewLiteralParams(
 		expr,
@@ -327,8 +321,6 @@ func (te *testEvaluator) executeLogQLQuery(ctx context.Context, expr string, eva
 	if err != nil {
 		return nil, fmt.Errorf("query execution failed: %w", err)
 	}
-
-	_ = parsedExpr // parsed expr used for type checking elsewhere
 
 	return &result, nil
 }

@@ -403,11 +403,6 @@ func sortLogLines(logs []logLineResult) {
 	})
 }
 
-// ParseLogQLExpr parses a LogQL expression and returns its type.
-func ParseLogQLExpr(expr string) (syntax.Expr, error) {
-	return syntax.ParseExpr(expr)
-}
-
 // IsLogQuery determines if a LogQL expression returns log streams (vs metrics).
 func IsLogQuery(expr syntax.Expr) bool {
 	// Check SampleExpr first: LiteralExpr and VectorExpr implement both
