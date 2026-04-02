@@ -313,7 +313,7 @@ func TestClampExpression(t *testing.T) {
 		},
 		{
 			desc: "GT before range clamps to start",
-			e:    &BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGte},
+			e:    &BinaryExpr{Left: col, Right: NewLiteral(early), Op: types.BinaryOpGt},
 			tr: TimeRange{
 				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
 				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
@@ -333,7 +333,7 @@ func TestClampExpression(t *testing.T) {
 		},
 		{
 			desc: "LTE after range clamps to end",
-			e:    &BinaryExpr{Left: col, Right: NewLiteral(late), Op: types.BinaryOpLt},
+			e:    &BinaryExpr{Left: col, Right: NewLiteral(late), Op: types.BinaryOpLte},
 			tr: TimeRange{
 				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
 				End:   time.Date(2026, 3, 14, 16, 48, 0, 0, time.UTC),
