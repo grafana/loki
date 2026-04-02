@@ -110,7 +110,7 @@ func executorHandler(
 		if err != nil {
 			return nil, fmt.Errorf("creating engine instant-metric results cache: %w", err)
 		}
-		logCache, err := newCache("log.", stats.EngineLogResultCache)
+		logCache, err := newCache("log.", stats.LogResultCache)
 		if err != nil {
 			return nil, fmt.Errorf("creating engine log results cache: %w", err)
 		}
