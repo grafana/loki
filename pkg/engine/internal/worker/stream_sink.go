@@ -54,6 +54,7 @@ func (sink *streamSink) Bind(ctx context.Context, destination net.Addr) error {
 		})
 
 		sink.destination = destination
+		// go sink.getPeer(sink.ctx) // Pre-connect to the destination to save a round-trip on first Send.
 		close(sink.bound) // Wake up any Send goroutines
 	})
 
@@ -147,13 +148,16 @@ func (sink *streamSink) getPeer(ctx context.Context) (*wire.Peer, error) {
 	defer sink.destConnMut.Unlock()
 
 	if sink.destConn != nil {
+		fmt.Println("Reusing conn")
 		return sink.destConn, nil
 	}
 
+	start := time.Now()
 	conn, err := sink.Dialer(ctx, sink.destination)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println("Dialed new conn to", sink.destination, "in", time.Since(start), "from", conn.LocalAddr())
 
 	peer := &wire.Peer{
 		Logger:  sink.Logger,

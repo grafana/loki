@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -84,6 +85,7 @@ type table struct {
 	name               string
 	workingDirectory   string
 	uploadConcurrency  int
+	maxSourceFiles     int
 	indexStorageClient storage.Client
 	indexCompactor     IndexCompactor
 	tableMarker        retention.TableMarker
@@ -102,7 +104,7 @@ type table struct {
 func newTable(ctx context.Context, workingDirectory string, indexStorageClient storage.Client,
 	indexCompactor IndexCompactor, periodConfig config.PeriodConfig,
 	tableMarker retention.TableMarker, expirationChecker tableExpirationChecker,
-	uploadConcurrency int,
+	uploadConcurrency, maxSourceFiles int,
 ) (*table, error) {
 	err := chunk_util.EnsureDirectory(workingDirectory)
 	if err != nil {
@@ -122,6 +124,7 @@ func newTable(ctx context.Context, workingDirectory string, indexStorageClient s
 		baseUserIndexSet:   storage.NewIndexSet(indexStorageClient, true),
 		baseCommonIndexSet: storage.NewIndexSet(indexStorageClient, false),
 		uploadConcurrency:  uploadConcurrency,
+		maxSourceFiles:     maxSourceFiles,
 	}
 	table.logger = log.With(util_log.Logger, "table-name", table.name)
 
@@ -135,16 +138,11 @@ func (t *table) compact() error {
 		return err
 	}
 
-	if len(indexFiles) == 0 && len(usersWithPerUserIndex) == 0 {
-		level.Info(t.logger).Log("msg", "no common index files and user index found")
-		return nil
-	}
-
 	t.usersWithPerUserIndex = usersWithPerUserIndex
 
 	level.Info(t.logger).Log("msg", "listed files", "count", len(indexFiles))
 
-	t.indexSets[""], err = newCommonIndexSet(t.ctx, t.name, t.baseCommonIndexSet, t.workingDirectory, t.logger)
+	t.indexSets[""], err = newCommonIndexSet(t.ctx, t.name, t.baseCommonIndexSet, t.workingDirectory, t.maxSourceFiles, t.logger)
 	if err != nil {
 		return err
 	}
@@ -154,7 +152,7 @@ func (t *table) compact() error {
 
 	for _, userID := range t.usersWithPerUserIndex {
 		var err error
-		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
+		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.maxSourceFiles, t.logger)
 		if err != nil {
 			return err
 		}
@@ -167,7 +165,7 @@ func (t *table) compact() error {
 		indexSetsMtx.Lock()
 		defer indexSetsMtx.Unlock()
 
-		indexSet, err := newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
+		indexSet, err := newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.maxSourceFiles, t.logger)
 		if err != nil {
 			return nil, err
 		}
@@ -252,6 +250,13 @@ func (t *table) openCompactedIndexForUpdates(idxSet *indexSet) error {
 	downloadedAt, err := idxSet.GetSourceFile(sourceFiles[0])
 	if err != nil {
 		return err
+	}
+
+	if strings.HasSuffix(sourceFiles[0].Name, ".tsdb.gz") {
+		sectionsObject := strings.TrimSuffix(sourceFiles[0].Name, ".tsdb.gz") + ".sections.gz"
+		if _, err := idxSet.GetSourceFile(storage.IndexFile{Name: sectionsObject}); err != nil {
+			level.Debug(idxSet.logger).Log("msg", "sections sidecar not downloaded while opening compacted index", "file", sectionsObject, "err", err)
+		}
 	}
 
 	compactedIndexFile, err := t.indexCompactor.OpenCompactedIndexFile(t.ctx, downloadedAt, t.name, idxSet.userID, filepath.Join(t.workingDirectory, idxSet.userID), t.periodConfig, idxSet.logger)

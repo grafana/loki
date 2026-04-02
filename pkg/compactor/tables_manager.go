@@ -211,7 +211,7 @@ func (c *tablesManager) initTable(ctx context.Context, tableName string) (*table
 	}
 
 	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), sc.indexStorageClient, indexCompactor,
-		schemaCfg, sc.tableMarker, c.expirationChecker, c.cfg.UploadParallelism)
+		schemaCfg, sc.tableMarker, c.expirationChecker, c.cfg.UploadParallelism, c.cfg.MaxSourceFilesPerCompaction)
 	if err != nil {
 		return nil, err
 	}
@@ -262,6 +262,10 @@ func (c *tablesManager) runCompaction(ctx context.Context, applyRetention bool) 
 	tables, err := c.listTableNames(ctx)
 	if err != nil {
 		return err
+	}
+
+	if len(tables) == 0 {
+		level.Info(util_log.Logger).Log("msg", "no tables to compact")
 	}
 
 	compactTablesChan := make(chan string)

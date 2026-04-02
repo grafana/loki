@@ -59,6 +59,7 @@ func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobj
 }
 
 func (s *dataobjScan) Open(ctx context.Context) error {
+	time.Sleep(50 * time.Millisecond)
 	return s.init(ctx)
 }
 

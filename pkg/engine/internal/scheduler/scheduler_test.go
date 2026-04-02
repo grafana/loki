@@ -1,7 +1,9 @@
-package scheduler
+package scheduler_test
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"os"
 	"sync"
 	"testing"
@@ -9,15 +11,246 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"go.uber.org/atomic"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
+	"github.com/grafana/loki/pkg/push"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
+
+func BenchmarkScheduler_TaskDistribution(b *testing.B) {
+	// sched := newTestScheduler(b)
+
+	bkt := getPopulatedBucket(b)
+	sched, schedulerAddress := startRemoteScheduler(b, log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)), 10900)
+	for i := 0; i < 1; i++ {
+		startRemoteWorker(b, log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)), bkt, 10901+i, 128, schedulerAddress)
+	}
+
+	ctx, capture := xcap.NewCapture(context.Background(), nil)
+	defer capture.End()
+
+	count := 100
+	for b.Loop() {
+		records := int64(0)
+		wf := buildFakeWorkflow(b, sched.Runner(), count)
+		pipe, err := wf.Run(ctx)
+		require.NoError(b, err)
+
+		pipe.Open(ctx)
+		for {
+			rec, err := pipe.Read(ctx)
+			if err != nil {
+				break
+			}
+			if rec != nil {
+				records += rec.NumRows()
+			}
+			rec.Release()
+		}
+		pipe.Close()
+		fmt.Println("records", records)
+	}
+}
+
+func getPopulatedBucket(b *testing.B) objstore.Bucket {
+	bkt := objstore.NewInMemBucket()
+	reader1 := buildDataobj(b)
+	require.NoError(b, bkt.Upload(b.Context(), "obj1", reader1))
+	reader2 := buildDataobj(b)
+	require.NoError(b, bkt.Upload(b.Context(), "obj2", reader2))
+	reader3 := buildDataobj(b)
+	require.NoError(b, bkt.Upload(b.Context(), "obj3", reader3))
+	require.NoError(b, reader1.Close())
+	require.NoError(b, reader2.Close())
+	require.NoError(b, reader3.Close())
+	return bkt
+}
+
+func buildDataobj(t testing.TB) io.ReadCloser {
+	lb, err := logsobj.NewBuilder(logsobj.BuilderConfig{
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:          2 * 1024 * 1024,
+			TargetObjectSize:        4 * 1024 * 1024,
+			TargetSectionSize:       2 * 1024 * 1024,
+			SectionStripeMergeLimit: 2,
+			BufferSize:              256,
+		},
+	}, nil)
+	require.NoError(t, err)
+	for i := range 100 {
+		require.NoError(t, lb.Append("test", push.Stream{
+			Labels:  `{app="test"}`,
+			Entries: []push.Entry{{Timestamp: time.Unix(10, 0), Line: fmt.Sprintf("test %d", i)}},
+		}))
+	}
+
+	obj, _, err := lb.Flush()
+	require.NoError(t, err)
+	reader, err := obj.Reader(t.Context())
+	require.NoError(t, err)
+	return reader
+}
+
+func buildFakeWorkflow(t testing.TB, runner workflow.Runner, count int) *workflow.Workflow {
+	t.Helper()
+
+	objs := []string{"obj1", "obj2", "obj3"}
+	if count <= 0 {
+		count = 1
+	}
+
+	now := time.Now()
+	expectedPlan := &physical.Plan{}
+
+	// Build a globally-aggregating node over a parallelized branch so workflow
+	// planning can split one task per ScanSet target.
+	globalTopK := expectedPlan.Graph().Add(&physical.TopK{
+		SortBy:    &physical.ColumnExpr{Ref: semconv.ColumnIdentTimestamp.ColumnRef()},
+		Ascending: false,
+		K:         100,
+	})
+	parallelize := expectedPlan.Graph().Add(&physical.Parallelize{})
+	localTopK := expectedPlan.Graph().Add(&physical.TopK{
+		SortBy:    &physical.ColumnExpr{Ref: semconv.ColumnIdentTimestamp.ColumnRef()},
+		Ascending: false,
+		K:         100,
+	})
+
+	targets := make([]*physical.ScanTarget, 0, count)
+	for i := range count {
+		targets = append(targets, &physical.ScanTarget{
+			Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+				Location: physical.DataObjLocation(objs[i%len(objs)]), Section: 0, StreamIDs: []int64{1}, MaxTimeRange: physical.TimeRange{Start: now, End: now.Add(time.Second * 10)},
+			},
+		})
+	}
+	scanSet := expectedPlan.Graph().Add(&physical.ScanSet{Targets: targets})
+	_ = expectedPlan.Graph().AddEdge(dag.Edge[physical.Node]{Parent: globalTopK, Child: parallelize})
+	_ = expectedPlan.Graph().AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: localTopK})
+	_ = expectedPlan.Graph().AddEdge(dag.Edge[physical.Node]{Parent: localTopK, Child: scanSet})
+
+	wf, err := workflow.New(workflow.Options{
+		Tenant:               "test",
+		Actor:                []string{"test"},
+		MaxRunningScanTasks:  0, // unlimited
+		MaxRunningOtherTasks: 0, // unlimited
+	}, log.NewNopLogger(), runner, expectedPlan)
+	require.NoError(t, err)
+
+	return wf
+}
+
+func startRemoteScheduler(b *testing.B, logger log.Logger, port int) (*engine.Scheduler, string) {
+	schedSrv, schedSvc, err := newServerService("scheduler", port, logger, prometheus.NewRegistry())
+	if err != nil {
+		return nil, ""
+	} else if err := services.StartAndAwaitRunning(context.Background(), schedSvc); err != nil {
+		return nil, ""
+	}
+	sched, err := engine.NewScheduler(engine.SchedulerParams{
+		Logger:        log.With(logger, "component", "scheduler"),
+		AdvertiseAddr: schedSrv.HTTPListenAddr(),
+	})
+	if err != nil {
+		return nil, ""
+	} else if err := services.StartAndAwaitRunning(context.Background(), sched.Service()); err != nil {
+		return nil, ""
+	}
+	sched.RegisterSchedulerServer(schedSrv.HTTP)
+
+	return sched, schedSrv.HTTPListenAddr().String()
+}
+
+func startRemoteWorker(b *testing.B, logger log.Logger, bucket objstore.Bucket, port int, threads int, schedulerAddress string) *engine.Worker {
+	workerSrv, workerSvc, err := newServerService("worker", port, logger, prometheus.NewRegistry())
+	if err != nil {
+		return nil
+	} else if err := services.StartAndAwaitRunning(context.Background(), workerSvc); err != nil {
+		return nil
+	}
+
+	worker, err := engine.NewWorker(engine.WorkerParams{
+		Logger:         logger,
+		AdvertiseAddr:  workerSrv.HTTPListenAddr(),
+		Bucket:         bucket,
+		LocalScheduler: nil,
+		Config: engine.WorkerConfig{
+			SchedulerLookupAddress:  schedulerAddress,
+			SchedulerLookupInterval: time.Minute,
+			WorkerThreads:           threads,
+		},
+		Executor: engine.ExecutorConfig{
+			BatchSize: 8192,
+		},
+	})
+	if err != nil {
+		return nil
+	} else if err := services.StartAndAwaitRunning(context.Background(), worker.Service()); err != nil {
+		return nil
+	}
+	worker.RegisterWorkerServer(workerSrv.HTTP)
+
+	return worker
+}
+
+func newServerService(name string, httpPort int, logger log.Logger, registerer prometheus.Registerer) (*server.Server, services.Service, error) {
+	logger = log.With(logger, "component", "server", "server", name)
+	serv, err := server.New(server.Config{
+		Log:               logger,
+		Registerer:        registerer,
+		HTTPListenNetwork: "tcp",
+		HTTPListenAddress: "localhost",
+		HTTPListenPort:    httpPort,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	done := make(chan error, 1)
+	svc := services.NewBasicService(
+		nil,
+		func(ctx context.Context) error {
+			level.Info(logger).Log("msg", "server starting up")
+			go func() {
+				defer close(done)
+				done <- serv.Run()
+			}()
+			select {
+			case <-ctx.Done():
+				return nil
+			case err := <-done:
+				return err
+			}
+		},
+		func(err error) error {
+			level.Info(logger).Log("msg", "server shutting down", "err", err)
+			serv.Shutdown()
+			<-done
+			return nil
+		},
+	)
+
+	// Enable HTTP/2
+	serv.HTTPServer.Handler = h2c.NewHandler(serv.HTTPServer.Handler, &http2.Server{})
+
+	return serv, svc, nil
+}
 
 func TestScheduler_RegisterManifest(t *testing.T) {
 	t.Run("Succeeds with new streams", func(t *testing.T) {
@@ -1375,10 +1608,10 @@ func TestScheduler_worker(t *testing.T) {
 	})
 }
 
-func newTestScheduler(t *testing.T) *Scheduler {
+func newTestScheduler(t testing.TB) *scheduler.Scheduler {
 	t.Helper()
 
-	sched, err := New(Config{
+	sched, err := scheduler.New(scheduler.Config{
 		Logger:   log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)),
 		Listener: &wire.Local{Address: wire.LocalScheduler},
 	})
