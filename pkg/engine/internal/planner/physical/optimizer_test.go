@@ -248,6 +248,48 @@ func TestLimitPushdown(t *testing.T) {
 	})
 }
 
+func TestClampPredicates(t *testing.T) {
+	t.Run("DataObjScan limit applies to parent Filter node", func(t *testing.T) {
+		start := time.Date(2026, 3, 11, 12, 41, 44, 0, time.UTC)
+		end := time.Date(2026, 3, 11, 12, 41, 46, 0, time.UTC)
+		tr := TimeRange{Start: start, End: end}
+		filterTime := time.Date(2026, 3, 11, 12, 41, 42, 0, time.UTC).UnixNano()
+		plan := &Plan{}
+		{
+			dataObjScan := plan.graph.Add(&DataObjScan{MaxTimeRange: tr})
+			filter := plan.graph.Add(&Filter{Predicates: []Expression{&BinaryExpr{Op: types.BinaryOpGt,
+				Left:  newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+				Right: NewLiteral(types.Timestamp(filterTime))}}})
+
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: dataObjScan})
+		}
+
+		// apply optimisations
+		optimizations := []*Optimization{
+			newOptimization("clamp predicates", plan).withRules(
+				&clampPredicates{plan: plan},
+			),
+		}
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
+
+		expectedPlan := &Plan{}
+		{
+			dataObjScan := expectedPlan.graph.Add(&DataObjScan{MaxTimeRange: tr})
+			filter := expectedPlan.graph.Add(&Filter{Predicates: []Expression{&BinaryExpr{Op: types.BinaryOpGte,
+				Left:  newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+				Right: NewLiteral(types.Timestamp(start.UnixNano()))}}})
+
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: dataObjScan})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+
+}
+
 func TestClampExpression(t *testing.T) {
 	col := newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
 	early := types.Timestamp(time.Date(2026, 3, 11, 12, 41, 44, 719000000, time.UTC).UnixNano())

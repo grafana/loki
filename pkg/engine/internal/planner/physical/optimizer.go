@@ -183,12 +183,41 @@ func (r *clampPredicates) apply(root Node) bool {
 		return false
 	})
 	changed := false
+	var maxTimeRange TimeRange
 	for _, n := range nodes {
 		switch n := n.(type) {
 		case *DataObjScan:
 			n.Predicates, changed = r.clamp(n.Predicates, n.MaxTimeRange)
+			maxTimeRange = n.MaxTimeRange
 		case *PointersScan:
 			n.Predicates, changed = r.clamp(n.Predicates, n.MaxTimeRange())
+			maxTimeRange = n.MaxTimeRange()
+		}
+	}
+	if len(nodes) > 1 {
+		//can't optimize across other nodes
+		//if there are multiple scan nodes with their own time ranges
+		return changed
+	}
+	for _, n := range nodes {
+		if r.applyToTargets(n, maxTimeRange) {
+			changed = true
+		}
+	}
+	return changed
+}
+
+func (r *clampPredicates) applyToTargets(node Node, maxTimeRange TimeRange) bool {
+	var changed bool
+	switch node := node.(type) {
+	case *Filter:
+		node.Predicates, changed = r.clamp(node.Predicates, maxTimeRange)
+	}
+
+	// Continue to parents
+	for _, parent := range r.plan.Parent(node) {
+		if r.applyToTargets(parent, maxTimeRange) {
+			changed = true
 		}
 	}
 	return changed
@@ -208,8 +237,8 @@ func (r *clampPredicates) clamp(predicates []Expression, timeRange TimeRange) ([
 	return newPredicates, changed
 }
 
-// Returns true and the timestamp for BinaryExpressions that take the form ">= timestamp", "<= timestamp", "> timestamp", or "< timestamp".
-// Otherwise returns false and a default timestamp of 0.
+// Returns the timestamp and true for BinaryExpressions that take the form ">= timestamp", "<= timestamp", "> timestamp", or "< timestamp".
+// Otherwise returns a default timestamp of 0 and false.
 func validateAsClampable(e *BinaryExpr) (types.Timestamp, bool) {
 	col, ok := e.Left.(*ColumnExpr)
 	if !ok || col.Ref.Column != types.ColumnNameBuiltinTimestamp || col.Ref.Type != types.ColumnTypeBuiltin {
