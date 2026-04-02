@@ -11,15 +11,15 @@ import (
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 )
 
-const entrySize = 12 // pathID(4) + sectionID(4) + seriesID(4)
-
 var (
 	ErrSectionRefPathTooLong     = fmt.Errorf("section reference path exceeds %d bytes", math.MaxUint16)
 	ErrSectionRefSectionOutRange = fmt.Errorf("section reference section ID out of uint32 range")
 )
 
+const entrySize = 12 // 3 x uint32
+
 // SectionRefLookup is a read-only interface for looking up section references
-// by index. Both SectionRefTable and MmapSectionRefTable implement it.
+// by index. Both SectionRefTable (heap) and MmapSectionRefTable (mmap) satisfy it.
 type SectionRefLookup interface {
 	Lookup(idx uint32) (SectionRef, bool)
 	Len() int
@@ -31,7 +31,7 @@ var (
 	_ SectionRefLookup = (*MmapSectionRefTable)(nil)
 )
 
-// SectionRef identifies a singleseries ID from a section location in object storage.
+// SectionRef identifies a single series ID from a section location in object storage.
 type SectionRef struct {
 	Path      string
 	SectionID int

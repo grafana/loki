@@ -41,6 +41,7 @@ import (
 	series_index "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/deletion"
 )
@@ -104,6 +105,8 @@ type LokiStore struct {
 	congestionControllerFactory func(cfg congestion.Config, logger log.Logger, metrics *congestion.Metrics) congestion.Controller
 
 	metricsNamespace string
+
+	dataobjResolver tsdb_index.DataobjResolver
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -287,6 +290,10 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger)
 		if err != nil {
 			return nil, nil, nil, err
+		}
+
+		if resolver, ok := indexReaderWriter.(tsdb_index.DataobjResolver); ok {
+			s.dataobjResolver = resolver
 		}
 
 		indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
@@ -589,6 +596,10 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 
 func (s *LokiStore) GetSchemaConfigs() []config.PeriodConfig {
 	return s.schemaCfg.Configs
+}
+
+func (s *LokiStore) DataobjResolver() tsdb_index.DataobjResolver {
+	return s.dataobjResolver
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {

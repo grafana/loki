@@ -192,7 +192,7 @@ func TestCatalog_TimeRangeValidate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := newTimeRange(tt.start, tt.end)
+			_, err := NewTimeRange(tt.start, tt.end)
 			if tt.expectErr {
 				require.Error(t, err)
 			} else {
@@ -249,9 +249,9 @@ func TestCatalog_TimeRangeOverlaps(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			firstRange, err := newTimeRange(tt.firstStart, tt.firstEnd)
+			firstRange, err := NewTimeRange(tt.firstStart, tt.firstEnd)
 			require.NoError(t, err)
-			secondRange, err := newTimeRange(tt.secondStart, tt.secondEnd)
+			secondRange, err := NewTimeRange(tt.secondStart, tt.secondEnd)
 			require.NoError(t, err)
 			got1 := firstRange.Overlaps(secondRange)
 			got2 := secondRange.Overlaps(firstRange)
@@ -282,9 +282,9 @@ func TestCatalog_FilterDescriptorsForShard(t *testing.T) {
 		sectionDescriptors := []*metastore.DataobjSectionDescriptor{&desc1, &desc2, &desc3}
 		res, err := filterForShard(shard, sectionDescriptors)
 		require.NoError(t, err)
-		tr1, err := newTimeRange(start1, end1)
+		tr1, err := NewTimeRange(start1, end1)
 		require.NoError(t, err)
-		tr3, err := newTimeRange(start3, end3)
+		tr3, err := NewTimeRange(start3, end3)
 		require.NoError(t, err)
 		expected := []DataObjSections{
 			{Location: "foo", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: tr1},
@@ -292,5 +292,4 @@ func TestCatalog_FilterDescriptorsForShard(t *testing.T) {
 		}
 		require.ElementsMatch(t, res, expected)
 	})
-
 }

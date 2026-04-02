@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
 	"github.com/prometheus/common/model"
@@ -94,4 +95,13 @@ func (m *MultiTenantIndex) Volume(ctx context.Context, userID string, from, thro
 
 func (m *MultiTenantIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
 	return m.idx.ForSeries(ctx, userID, fpFilter, from, through, fn, withTenantLabelMatcher(userID, matchers)...)
+}
+
+func (m *MultiTenantIndex) GetDataobjSections(ctx context.Context, userID string, from, through model.Time,
+	fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]index.DataobjSectionRef, error) {
+	resolver, ok := m.idx.(index.DataobjResolver)
+	if !ok {
+		return nil, fmt.Errorf("underlying index does not support dataobj resolution: %T", m.idx)
+	}
+	return resolver.GetDataobjSections(ctx, userID, from, through, fpFilter, withTenantLabelMatcher(userID, matchers)...)
 }

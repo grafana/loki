@@ -242,7 +242,7 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 			},
 		},
 	}}
-	gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, nil, indexClients, nil)
+	gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, nil, indexClients, nil, nil)
 	require.NoError(t, err)
 
 	expectedQueries = append(expectedQueries,
@@ -267,7 +267,7 @@ func TestVolume(t *testing.T) {
 		{Name: "bar", Volume: 38},
 	}}, nil)
 
-	gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, indexQuerier, nil, nil)
+	gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, indexQuerier, nil, nil, nil)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
@@ -277,6 +277,77 @@ func TestVolume(t *testing.T) {
 	require.Equal(t, &logproto.VolumeResponse{Volumes: []logproto.Volume{
 		{Name: "bar", Volume: 38},
 	}}, vol)
+}
+
+func TestGetDataobjSections(t *testing.T) {
+	t.Run("returns error when resolver is nil", func(t *testing.T) {
+		gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, nil, nil, nil, nil)
+		require.NoError(t, err)
+
+		ctx := user.InjectOrgID(context.Background(), "test")
+		_, err = gateway.GetDataobjSections(ctx, &logproto.GetDataobjSectionsRequest{
+			From:     model.TimeFromUnix(0),
+			Through:  model.TimeFromUnix(100),
+			Matchers: `{app="foo"}`,
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "dataobj resolver is not configured")
+	})
+
+	t.Run("resolves sections via resolver", func(t *testing.T) {
+		resolver := &mockDataobjResolver{
+			sections: []tsdb_index.DataobjSectionRef{
+				{
+					Path:      "obj-001",
+					SectionID: 0,
+					MinTime:   10,
+					MaxTime:   100,
+					KB:        42,
+					Entries:   1000,
+					StreamIDs: []int64{2, 5},
+				},
+				{
+					Path:      "obj-002",
+					SectionID: 1,
+					MinTime:   20,
+					MaxTime:   200,
+					KB:        84,
+					Entries:   2000,
+					StreamIDs: []int64{7},
+				},
+			},
+		}
+
+		gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, nil, nil, nil, resolver)
+		require.NoError(t, err)
+
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := gateway.GetDataobjSections(ctx, &logproto.GetDataobjSectionsRequest{
+			From:     model.TimeFromUnix(0),
+			Through:  model.TimeFromUnix(300),
+			Matchers: `{app="foo"}`,
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Sections, 2)
+
+		require.Equal(t, "obj-001", resp.Sections[0].Path)
+		require.Equal(t, int32(0), resp.Sections[0].SectionId)
+		require.Equal(t, uint32(42), resp.Sections[0].Kb)
+		require.Equal(t, uint32(1000), resp.Sections[0].Entries)
+		require.Equal(t, []int64{2, 5}, resp.Sections[0].StreamIds)
+
+		require.Equal(t, "obj-002", resp.Sections[1].Path)
+		require.Equal(t, int32(1), resp.Sections[1].SectionId)
+		require.Equal(t, []int64{7}, resp.Sections[1].StreamIds)
+	})
+}
+
+type mockDataobjResolver struct {
+	sections []tsdb_index.DataobjSectionRef
+}
+
+func (m *mockDataobjResolver) GetDataobjSections(_ context.Context, _ string, _, _ model.Time, _ tsdb_index.FingerprintFilter, _ ...*labels.Matcher) ([]tsdb_index.DataobjSectionRef, error) {
+	return m.sections, nil
 }
 
 type indexQuerierMock struct {

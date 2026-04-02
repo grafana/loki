@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	gzipExtension  = ".gz"
-	maxSyncRetries = 1
+	gzipExtension    = ".gz"
+	sectionsExtension = ".sections"
+	maxSyncRetries   = 1
 )
 
 var errIndexListCacheTooStale = fmt.Errorf("index list cache too stale")
@@ -123,6 +124,10 @@ func (t *indexSet) Init(forQuerying bool, logger log.Logger) (err error) {
 	// open all the locally present files first to avoid downloading them again during sync operation below.
 	for _, entry := range dirEntries {
 		if entry.IsDir() {
+			continue
+		}
+
+		if strings.HasSuffix(entry.Name(), sectionsExtension) {
 			continue
 		}
 
@@ -344,6 +349,10 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 	}
 
 	for _, fileName := range downloadedFiles {
+		if strings.HasSuffix(fileName, sectionsExtension) {
+			continue
+		}
+
 		filePath := filepath.Join(t.cacheLocation, fileName)
 		idx, err := t.openIndexFileFunc(filePath)
 		if err != nil {
