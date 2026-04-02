@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -291,5 +292,55 @@ func TestCatalog_FilterDescriptorsForShard(t *testing.T) {
 			{Location: "baz", Streams: []int64{1, 5}, Sections: []int{3}, TimeRange: tr3},
 		}
 		require.ElementsMatch(t, res, expected)
+	})
+}
+
+func TestTSDBCatalog_ResolveDataObjSections(t *testing.T) {
+	now := time.Now()
+	start := now.Add(-time.Hour)
+	end := now
+
+	makeSelector := func() Expression {
+		return &BinaryExpr{
+			Op:    types.BinaryOpEq,
+			Left:  newColumnExpr("app", types.ColumnTypeLabel),
+			Right: NewLiteral("test"),
+		}
+	}
+
+	t.Run("resolves sections from TSDB resolver", func(t *testing.T) {
+		expected := []DataObjSections{
+			{
+				Location:  "obj1",
+				Streams:   []int64{10, 20},
+				Sections:  []int{0},
+				TimeRange: TimeRange{Start: start, End: end},
+			},
+		}
+
+		resolver := func(matchers []*labels.Matcher, s, e time.Time) ([]DataObjSections, error) {
+			require.Len(t, matchers, 1)
+			require.Equal(t, "app", matchers[0].Name)
+			require.Equal(t, "test", matchers[0].Value)
+			require.Equal(t, start, s)
+			require.Equal(t, end, e)
+			return expected, nil
+		}
+
+		catalog := NewTSDBCatalog(resolver)
+		result, err := catalog.ResolveDataObjSections(makeSelector(), nil, noShard, start, end)
+		require.NoError(t, err)
+		require.Equal(t, expected, result)
+	})
+
+	t.Run("returns error from resolver", func(t *testing.T) {
+		resolverErr := fmt.Errorf("test resolver error")
+		resolver := func(_ []*labels.Matcher, _, _ time.Time) ([]DataObjSections, error) {
+			return nil, resolverErr
+		}
+
+		catalog := NewTSDBCatalog(resolver)
+		_, err := catalog.ResolveDataObjSections(makeSelector(), nil, noShard, start, end)
+		require.ErrorIs(t, err, resolverErr)
 	})
 }
