@@ -65,13 +65,33 @@ type BloomQuerier interface {
 	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, series map[uint64]labels.Labels, chunks []*logproto.ChunkRef, plan plan.QueryPlan) ([]*logproto.ChunkRef, bool, error)
 }
 
+// DataobjResolver resolves label matchers to dataobj section references from
+// TSDB indices. It mirrors tsdb.DataobjResolver but is defined locally to avoid
+// a direct dependency on the tsdb package.
+type DataobjResolver interface {
+	GetDataobjSections(ctx context.Context, userID string, from, through model.Time,
+		fpFilter tsdb_index.FingerprintFilter, matchers ...*labels.Matcher) ([]DataobjSectionRef, error)
+}
+
+// DataobjSectionRef is a resolved reference to a section within a data object.
+type DataobjSectionRef struct {
+	Path      string
+	SectionID int
+	MinTime   model.Time
+	MaxTime   model.Time
+	KB        uint32
+	Entries   uint32
+	StreamIDs []int64
+}
+
 type Gateway struct {
 	services.Service
 
-	indexQuerier IndexQuerier
-	indexClients []IndexClientWithRange
-	bloomQuerier BloomQuerier
-	metrics      *Metrics
+	indexQuerier    IndexQuerier
+	indexClients    []IndexClientWithRange
+	bloomQuerier    BloomQuerier
+	dataobjResolver DataobjResolver
+	metrics         *Metrics
 
 	cfg    Config
 	limits Limits
@@ -82,15 +102,16 @@ type Gateway struct {
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
+func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier, dataobjResolver DataobjResolver) (*Gateway, error) {
 	g := &Gateway{
-		indexQuerier: indexQuerier,
-		bloomQuerier: bloomQuerier,
-		cfg:          cfg,
-		limits:       limits,
-		log:          log,
-		indexClients: indexClients,
-		metrics:      NewMetrics(r),
+		indexQuerier:    indexQuerier,
+		bloomQuerier:    bloomQuerier,
+		dataobjResolver: dataobjResolver,
+		cfg:             cfg,
+		limits:          limits,
+		log:             log,
+		indexClients:    indexClients,
+		metrics:         NewMetrics(r),
 	}
 
 	// query newer periods first
@@ -699,6 +720,51 @@ func (r refWithSizingInfo) Cmp(chk tsdb_index.ChunkMeta) iter.Ord {
 	}
 
 	return iter.Eq
+}
+
+func (g *Gateway) GetDataobjSections(ctx context.Context, req *logproto.GetDataobjSectionsRequest) (*logproto.GetDataobjSectionsResponse, error) {
+	ctx, sp := tracer.Start(ctx, "indexgateway.GetDataobjSections")
+	defer sp.End()
+
+	if g.dataobjResolver == nil {
+		return nil, fmt.Errorf("dataobj resolver is not configured")
+	}
+
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
+	if err != nil {
+		return nil, err
+	}
+
+	sections, err := g.dataobjResolver.GetDataobjSections(ctx, instanceID, req.From, req.Through, nil, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &logproto.GetDataobjSectionsResponse{
+		Sections: make([]logproto.DataobjSectionRef, 0, len(sections)),
+	}
+	for _, s := range sections {
+		result.Sections = append(result.Sections, logproto.DataobjSectionRef{
+			Path:      s.Path,
+			SectionId: int32(s.SectionID),
+			MinTime:   s.MinTime,
+			MaxTime:   s.MaxTime,
+			Kb:        s.KB,
+			Entries:   s.Entries,
+			StreamIds: s.StreamIDs,
+		})
+	}
+
+	sp.AddEvent("resolved dataobj sections", trace.WithAttributes(
+		attribute.Int("sections", len(result.Sections)),
+	))
+
+	return result, nil
 }
 
 type failingIndexClient struct{}
