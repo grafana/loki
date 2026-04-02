@@ -403,13 +403,6 @@ func sortLogLines(logs []logLineResult) {
 	})
 }
 
-func compareAlertMaps(a, b map[string]string) bool {
-	// Compare lexicographically by converting to strings
-	aStr := fmt.Sprintf("%v", a)
-	bStr := fmt.Sprintf("%v", b)
-	return aStr < bStr
-}
-
 // ParseLogQLExpr parses a LogQL expression and returns its type.
 func ParseLogQLExpr(expr string) (syntax.Expr, error) {
 	return syntax.ParseExpr(expr)
