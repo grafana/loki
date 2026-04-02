@@ -1438,10 +1438,8 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		Scheduler: t.queryEngineV2Scheduler,
 		Limits:    t.Overrides,
 
-		Metastore: ms,
-	}
-	if gwClient != nil {
-		params.IndexGateway = gwClient
+		Metastore:    ms,
+		IndexGateway: gwClient,
 	}
 
 	if t.Cfg.QueryEngine.EnableDeleteReqFiltering {

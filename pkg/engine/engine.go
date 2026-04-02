@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"net/http"
 	gotrace "runtime/trace"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alecthomas/units"
@@ -17,20 +19,21 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -39,6 +42,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	lokiutil "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -153,6 +157,9 @@ func (p *Params) validate() error {
 	if p.Config.Executor.BatchSize <= 0 {
 		return fmt.Errorf("invalid batch size for query engine. must be greater than 0, got %d", p.Config.Executor.BatchSize)
 	}
+	if p.Config.UseIndexGatewayPlanning && p.IndexGateway == nil {
+		return errors.New("index gateway client is required when use-index-gateway-planning is enabled")
+	}
 	return nil
 }
 
@@ -168,6 +175,8 @@ type Engine struct {
 
 	metastore    metastore.Metastore
 	indexGateway IndexGatewayClient
+
+	dualResolveSem chan struct{}
 }
 
 // New creates a new Engine.
@@ -187,6 +196,10 @@ func New(params Params) (*Engine, error) {
 
 		metastore:    params.Metastore,
 		indexGateway: params.IndexGateway,
+	}
+
+	if maxConc := params.Config.DualResolveMaxConcurrency; maxConc > 0 && e.indexGateway != nil {
+		e.dualResolveSem = make(chan struct{}, maxConc)
 	}
 
 	return e, nil
@@ -404,18 +417,14 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
 	var catalog physical.Catalog
-	if e.indexGateway != nil {
+	if e.cfg.UseIndexGatewayPlanning && e.indexGateway != nil && e.cfg.TSDBCoversQuery(params.Start()) {
 		catalog = physical.NewTSDBCatalog(e.tsdbSectionsResolver(ctx, tenantID))
 	} else {
 		catalog = physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID, cacheEnabled))
 	}
 
-	// TODO(rfratto): It feels strange that we need to past the start/end time
-	// to the physical planner. Isn't it already represented by the logical
-	// plan?
 	plannerCtx := physical.NewContext(params.Start(), params.End())
 
-	// Get the tenant's MaxQuerySeries limit and pass it to the planner context if enforcement is enabled
 	if e.cfg.EnforceQuerySeriesLimit {
 		plannerCtx = plannerCtx.WithMaxQuerySeries(e.limits.MaxQuerySeries(ctx, tenantID))
 	}
@@ -443,6 +452,8 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	}
 
 	duration := timer.ObserveDuration()
+	msSections := extractScanSections(physicalPlan)
+
 	level.Info(logger).Log(
 		"msg", "finished physical planning",
 		"plan", physical.PrintAsTree(physicalPlan),
@@ -450,7 +461,210 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	)
 
 	span.AddEvent("finished physical planning", trace.WithAttributes(attribute.Stringer("duration", duration)))
+
+	e.maybeDualResolve(logger, tenantID, params, logicalPlan, plannerCtx, msSections, duration)
+
 	return physicalPlan, duration, nil
+}
+
+// maybeDualResolve kicks off an async index-gateway comparison if dual-resolve
+// is enabled and there is capacity available. It never blocks the caller.
+func (e *Engine) maybeDualResolve(
+	logger log.Logger,
+	tenantID string,
+	params logql.Params,
+	logicalPlan *logical.Plan,
+	plannerCtx *physical.Context,
+	msSections []resolvedSection,
+	msDuration time.Duration,
+) {
+	if e.dualResolveSem == nil {
+		return
+	}
+	if !e.cfg.TSDBCoversQuery(params.Start()) {
+		return
+	}
+
+	select {
+	case e.dualResolveSem <- struct{}{}:
+		go func() {
+			defer func() { <-e.dualResolveSem }()
+			defer func() {
+				if r := recover(); r != nil {
+					level.Error(logger).Log("msg", "panic in dual-resolve goroutine", "panic", fmt.Sprintf("%v", r))
+				}
+			}()
+
+			resolveCtx, cancel := context.WithTimeout(user.InjectOrgID(context.Background(), tenantID), 2*time.Minute)
+			defer cancel()
+
+			start := time.Now()
+			catalog := physical.NewTSDBCatalog(e.tsdbSectionsResolver(resolveCtx, tenantID))
+			p := physical.NewPlanner(plannerCtx, catalog)
+			igwPlan, igwErr := p.Build(logicalPlan)
+			igwDuration := time.Since(start)
+
+			var cmp comparisonResult
+			if igwErr == nil {
+				igwSections := extractScanSections(igwPlan)
+				cmp = compareSections(msSections, igwSections)
+			} else {
+				cmp.MsCount = len(msSections)
+			}
+
+			level.Info(logger).Log(
+				"msg", "dual-resolve comparison",
+				"query", params.QueryString(),
+				"query_length", params.End().Sub(params.Start()),
+				"metastore_sections", cmp.MsCount,
+				"metastore_duration", msDuration,
+				"index_gateway_sections", cmp.IgwCount,
+				"index_gateway_duration", igwDuration,
+				"index_gateway_error", fmt.Sprintf("%v", igwErr),
+				"igw_superset_of_ms", cmp.IgwSupersetOfMs,
+				"missing_from_igw", len(cmp.MissingFromIgw),
+				"stream_id_mismatches", len(cmp.StreamMismatches),
+				"time_mismatches", len(cmp.TimeMismatches),
+			)
+
+			if len(cmp.MissingFromIgw) > 0 {
+				limit := min(len(cmp.MissingFromIgw), 5)
+				level.Warn(logger).Log(
+					"msg", "dual-resolve: sections missing from index-gateway",
+					"query", params.QueryString(),
+					"count", len(cmp.MissingFromIgw),
+					"first_few", fmt.Sprintf("%v", cmp.MissingFromIgw[:limit]),
+				)
+			}
+			if len(cmp.StreamMismatches) > 0 {
+				limit := min(len(cmp.StreamMismatches), 5)
+				level.Warn(logger).Log(
+					"msg", "dual-resolve: stream ID mismatches",
+					"query", params.QueryString(),
+					"count", len(cmp.StreamMismatches),
+					"first_few", fmt.Sprintf("%v", cmp.StreamMismatches[:limit]),
+				)
+			}
+			if len(cmp.TimeMismatches) > 0 {
+				limit := min(len(cmp.TimeMismatches), 5)
+				level.Warn(logger).Log(
+					"msg", "dual-resolve: time range mismatches",
+					"query", params.QueryString(),
+					"count", len(cmp.TimeMismatches),
+					"first_few", fmt.Sprintf("%v", cmp.TimeMismatches[:limit]),
+				)
+			}
+		}()
+	default:
+		e.metrics.dualResolveDropped.Inc()
+	}
+}
+
+type sectionKey struct {
+	Location string
+	Section  int
+}
+
+func (k sectionKey) String() string {
+	return fmt.Sprintf("%s/%d", k.Location, k.Section)
+}
+
+type resolvedSection struct {
+	Key       sectionKey
+	StreamIDs []int64
+	TimeRange physical.TimeRange
+}
+
+// extractScanSections walks a physical plan and returns details of every
+// DataObject scan target, including location, section index, and stream IDs.
+func extractScanSections(plan *physical.Plan) []resolvedSection {
+	var sections []resolvedSection
+	for _, root := range plan.Roots() {
+		_ = plan.DFSWalk(root, func(n physical.Node) error {
+			if ss, ok := n.(*physical.ScanSet); ok {
+				for _, t := range ss.Targets {
+					if t.Type == physical.ScanTypeDataObject && t.DataObject != nil {
+						sections = append(sections, resolvedSection{
+							Key: sectionKey{
+								Location: string(t.DataObject.Location),
+								Section:  t.DataObject.Section,
+							},
+							StreamIDs: t.DataObject.StreamIDs,
+							TimeRange: t.DataObject.MaxTimeRange,
+						})
+					}
+				}
+			}
+			return nil
+		}, dag.PreOrderWalk)
+	}
+	return sections
+}
+
+// countScanTargets counts the number of ScanTypeDataObject targets in a plan.
+func countScanTargets(plan *physical.Plan) int {
+	return len(extractScanSections(plan))
+}
+
+// comparisonResult holds the outcome of comparing metastore and IGW sections.
+type comparisonResult struct {
+	MsCount          int
+	IgwCount         int
+	IgwSupersetOfMs  bool
+	MissingFromIgw   []sectionKey
+	StreamMismatches []sectionKey
+	TimeMismatches   []sectionKey
+}
+
+// compareSections checks whether the index-gateway resolved sections are a
+// superset of the metastore sections, and whether stream IDs and time ranges
+// match for sections present in both.
+func compareSections(msSections, igwSections []resolvedSection) comparisonResult {
+	type igwEntry struct {
+		StreamIDs []int64
+		TimeRange physical.TimeRange
+	}
+
+	igwMap := make(map[sectionKey]igwEntry, len(igwSections))
+	for _, s := range igwSections {
+		ids := make([]int64, len(s.StreamIDs))
+		copy(ids, s.StreamIDs)
+		slices.Sort(ids)
+		igwMap[s.Key] = igwEntry{StreamIDs: ids, TimeRange: s.TimeRange}
+	}
+
+	var (
+		missingFromIgw   []sectionKey
+		streamMismatches []sectionKey
+		timeMismatches   []sectionKey
+	)
+
+	for _, ms := range msSections {
+		entry, found := igwMap[ms.Key]
+		if !found {
+			missingFromIgw = append(missingFromIgw, ms.Key)
+			continue
+		}
+		msIDs := make([]int64, len(ms.StreamIDs))
+		copy(msIDs, ms.StreamIDs)
+		slices.Sort(msIDs)
+		if !slices.Equal(msIDs, entry.StreamIDs) {
+			streamMismatches = append(streamMismatches, ms.Key)
+		}
+		if !ms.TimeRange.Start.Truncate(time.Millisecond).Equal(entry.TimeRange.Start.Truncate(time.Millisecond)) ||
+			!ms.TimeRange.End.Truncate(time.Millisecond).Equal(entry.TimeRange.End.Truncate(time.Millisecond)) {
+			timeMismatches = append(timeMismatches, ms.Key)
+		}
+	}
+
+	return comparisonResult{
+		MsCount:          len(msSections),
+		IgwCount:         len(igwSections),
+		IgwSupersetOfMs:  len(missingFromIgw) == 0,
+		MissingFromIgw:   missingFromIgw,
+		StreamMismatches: streamMismatches,
+		TimeMismatches:   timeMismatches,
+	}
 }
 
 func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string, cacheEnabled bool) physical.MetastoreSectionsResolver {
@@ -499,37 +713,127 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string,
 	}
 }
 
-func (e *Engine) tsdbSectionsResolver(ctx context.Context, _ string) physical.TSDBSectionsResolver {
-	return func(matchers []*labels.Matcher, start, end time.Time) ([]physical.DataObjSections, error) {
-		ctx, span := tracer.Start(ctx, "engine.tsdbResolver")
-		defer span.End()
-
-		resp, err := e.indexGateway.GetDataobjSections(ctx, &logproto.GetDataobjSectionsRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Matchers: syntax.MatchersString(matchers),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("tsdb resolve sections: %w", err)
+// tsdbSectionsResolver returns a resolver function that queries the index
+// gateway for data object sections matching the given matchers/time range.
+// When TSDBSplitInterval is configured, the time range is split into smaller
+// sub-ranges that are queried concurrently and the results merged.
+func (e *Engine) tsdbSectionsResolver(ctx context.Context, tenantID string) physical.TSDBSectionsResolver {
+	return func(matchers string, start, end time.Time) ([]physical.DataObjSections, error) {
+		if interval := e.cfg.TSDBSplitInterval; interval > 0 {
+			return e.tsdbSplitResolve(ctx, matchers, start, end, interval)
 		}
-
-		sections := make([]physical.DataObjSections, 0, len(resp.Sections))
-		for _, s := range resp.Sections {
-			tr, err := physical.NewTimeRange(s.MinTime.Time(), s.MaxTime.Time())
-			if err != nil {
-				return nil, err
-			}
-			sections = append(sections, physical.DataObjSections{
-				Location:  physical.DataObjLocation(s.Path),
-				Streams:   s.StreamIds,
-				Sections:  []int{int(s.SectionId)},
-				TimeRange: tr,
-			})
-		}
-
-		span.SetAttributes(attribute.Int("num_sections", len(sections)))
-		return sections, nil
+		return e.tsdbFetchSections(ctx, matchers, start, end)
 	}
+}
+
+// tsdbFetchSections performs a single GetDataobjSections RPC for the given range.
+func (e *Engine) tsdbFetchSections(ctx context.Context, matchers string, start, end time.Time) ([]physical.DataObjSections, error) {
+	resp, err := e.indexGateway.GetDataobjSections(ctx, &logproto.GetDataobjSectionsRequest{
+		From:     model.TimeFromUnixNano(start.UnixNano()),
+		Through:  model.TimeFromUnixNano(end.UnixNano()),
+		Matchers: matchers,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("index gateway GetDataobjSections: %w", err)
+	}
+
+	result := make([]physical.DataObjSections, 0, len(resp.Sections))
+	for _, s := range resp.Sections {
+		tr, err := physical.NewTimeRange(s.MinTime.Time(), s.MaxTime.Time())
+		if err != nil {
+			return nil, fmt.Errorf("invalid time range in section ref: %w", err)
+		}
+		result = append(result, physical.DataObjSections{
+			Location:  physical.DataObjLocation(s.Path),
+			Streams:   s.StreamIds,
+			Sections:  []int{int(s.SectionId)},
+			TimeRange: tr,
+		})
+	}
+	return result, nil
+}
+
+// tsdbSplitResolve splits [start, end] into sub-ranges of the given interval,
+// fetches each sub-range concurrently, and deduplicates the combined results.
+func (e *Engine) tsdbSplitResolve(ctx context.Context, matchers string, start, end time.Time, interval time.Duration) ([]physical.DataObjSections, error) {
+	var mu sync.Mutex
+	var batches [][]physical.DataObjSections
+
+	g, gCtx := errgroup.WithContext(ctx)
+	if conc := e.cfg.TSDBSplitConcurrency; conc > 0 {
+		g.SetLimit(conc)
+	}
+
+	lokiutil.ForInterval(interval, start, end, false, func(splitStart, splitEnd time.Time) {
+		g.Go(func() error {
+			sections, err := e.tsdbFetchSections(gCtx, matchers, splitStart, splitEnd)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			batches = append(batches, sections)
+			mu.Unlock()
+			return nil
+		})
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return mergeDataObjSections(batches), nil
+}
+
+// mergeDataObjSections deduplicates sections across multiple batches.
+// Sections sharing the same (Location, SectionId) are merged: stream IDs are
+// unioned and the time range is widened to cover both entries.
+func mergeDataObjSections(batches [][]physical.DataObjSections) []physical.DataObjSections {
+	type mergeKey struct {
+		location physical.DataObjLocation
+		section  int
+	}
+
+	seen := make(map[mergeKey]int) // key -> index in result
+	var result []physical.DataObjSections
+
+	for _, batch := range batches {
+		for _, ds := range batch {
+			for _, sec := range ds.Sections {
+				key := mergeKey{location: ds.Location, section: sec}
+				if idx, ok := seen[key]; ok {
+					existing := &result[idx]
+					existing.TimeRange = existing.TimeRange.Merge(ds.TimeRange)
+					existing.Streams = unionSortedInt64(existing.Streams, ds.Streams)
+				} else {
+					seen[key] = len(result)
+					result = append(result, physical.DataObjSections{
+						Location:  ds.Location,
+						Streams:   ds.Streams,
+						Sections:  []int{sec},
+						TimeRange: ds.TimeRange,
+					})
+				}
+			}
+		}
+	}
+	return result
+}
+
+// unionSortedInt64 returns the sorted union of two int64 slices.
+func unionSortedInt64(a, b []int64) []int64 {
+	set := make(map[int64]struct{}, len(a)+len(b))
+	for _, v := range a {
+		set[v] = struct{}{}
+	}
+	for _, v := range b {
+		set[v] = struct{}{}
+	}
+	out := make([]int64, 0, len(set))
+	for v := range set {
+		out = append(out, v)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // buildWorkflow builds a workflow from the given physical plan.

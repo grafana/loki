@@ -21,6 +21,10 @@ type metrics struct {
 	physicalPlanning prometheus.Histogram
 	workflowPlanning prometheus.Histogram
 	execution        prometheus.Histogram
+
+	dualResolveDropped prometheus.Counter
+
+	tsdbSplitsPerQuery prometheus.Histogram
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -56,6 +60,17 @@ func newMetrics(r prometheus.Registerer) *metrics {
 				prometheus.DefBuckets,                    // 0.005s -> 10s
 				prometheus.LinearBuckets(15, 5.0, 10)..., // 15s -> 60s
 			),
+		}),
+
+		dualResolveDropped: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_engine_v2_dual_resolve_dropped_total",
+			Help: "Total number of dual-resolve comparisons dropped due to concurrency limit",
+		}),
+
+		tsdbSplitsPerQuery: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:    "loki_engine_v2_tsdb_splits_per_query",
+			Help:    "Number of sub-range splits per index-gateway section resolution",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 10), // 1, 2, 4, 8, ..., 512
 		}),
 	}
 }
