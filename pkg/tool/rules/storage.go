@@ -84,10 +84,16 @@ func (ts *testStorage) parseStream(s stream, interval model.Duration) (logproto.
 	entries = make([]logproto.Entry, len(s.Lines))
 	for i, line := range s.Lines {
 		timestamp := baseTime.Add(time.Duration(interval) * time.Duration(i))
+		// Copy structuredMetadata for each entry to prevent shared slice mutation
+		var entryMetadata []push.LabelAdapter
+		if len(structuredMetadata) > 0 {
+			entryMetadata = make([]push.LabelAdapter, len(structuredMetadata))
+			copy(entryMetadata, structuredMetadata)
+		}
 		entries[i] = logproto.Entry{
 			Timestamp:          timestamp,
 			Line:               line,
-			StructuredMetadata: structuredMetadata, // Apply to all lines in stream
+			StructuredMetadata: entryMetadata,
 		}
 	}
 

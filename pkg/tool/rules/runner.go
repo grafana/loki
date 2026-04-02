@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -41,7 +42,7 @@ func (tr *testRunner) runTests(testFile *unitTestFile, ruleGroups []*ruleGroup, 
 
 	// Run each test group
 	for i := range testFile.Tests {
-		groupResult := tr.runTestGroup(&testFile.Tests[i], ruleGroups, groupOrderMap)
+		groupResult := tr.runTestGroup(&testFile.Tests[i], ruleGroups, groupOrderMap, testFile.EvaluationInterval)
 		results.TestGroups = append(results.TestGroups, groupResult)
 
 		// Update overall stats
@@ -57,7 +58,7 @@ func (tr *testRunner) runTests(testFile *unitTestFile, ruleGroups []*ruleGroup, 
 }
 
 // runTestGroup executes a single test group.
-func (tr *testRunner) runTestGroup(testGroup *testGroup, ruleGroups []*ruleGroup, groupOrderMap map[string]int) *testGroupResult {
+func (tr *testRunner) runTestGroup(testGroup *testGroup, ruleGroups []*ruleGroup, groupOrderMap map[string]int, defaultInterval model.Duration) *testGroupResult {
 	result := &testGroupResult{
 		TestGroup:  testGroup,
 		TestCases:  make([]*testCaseResult, 0),
@@ -65,9 +66,15 @@ func (tr *testRunner) runTestGroup(testGroup *testGroup, ruleGroups []*ruleGroup
 		TotalTests: len(testGroup.AlertRuleTests) + len(testGroup.LogQLExprTests),
 	}
 
+	// Use test group's interval, falling back to the file's evaluation_interval
+	interval := testGroup.Interval
+	if interval == 0 {
+		interval = defaultInterval
+	}
+
 	// Create fresh storage and load input streams
 	storage := newTestStorage()
-	err := storage.parseAndLoadStreams(testGroup.InputStreams, testGroup.Interval)
+	err := storage.parseAndLoadStreams(testGroup.InputStreams, interval)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to load input streams: %w", err)
 		result.FailedTests = result.TotalTests
@@ -116,7 +123,7 @@ func (tr *testRunner) runTestGroup(testGroup *testGroup, ruleGroups []*ruleGroup
 
 	// Run alert rule tests
 	for i := range testGroup.AlertRuleTests {
-		testCase := tr.runAlertTest(&testGroup.AlertRuleTests[i], testGroup)
+		testCase := tr.runAlertTest(&testGroup.AlertRuleTests[i], interval)
 		result.TestCases = append(result.TestCases, testCase)
 		if testCase.Passed {
 			result.PassedTests++
@@ -143,7 +150,7 @@ func (tr *testRunner) runTestGroup(testGroup *testGroup, ruleGroups []*ruleGroup
 }
 
 // runAlertTest executes a single alert rule test.
-func (tr *testRunner) runAlertTest(alertTest *alertTestCase, testGroup *testGroup) *testCaseResult {
+func (tr *testRunner) runAlertTest(alertTest *alertTestCase, interval model.Duration) *testCaseResult {
 	result := &testCaseResult{
 		Name:      fmt.Sprintf("alert: %s at %s", alertTest.Alertname, alertTest.EvalTime),
 		StartTime: time.Now(),
@@ -158,15 +165,9 @@ func (tr *testRunner) runAlertTest(alertTest *alertTestCase, testGroup *testGrou
 	evalTime := time.Unix(0, 0).UTC().Add(time.Duration(alertTest.EvalTime))
 	ctx := user.InjectOrgID(context.Background(), "test-tenant")
 
-	// Determine the evaluation interval
-	interval := time.Duration(testGroup.Interval)
-	if interval == 0 {
-		interval = time.Minute // Default to 1 minute if not specified
-	}
-
 	// Evaluate at each interval from t=0 to eval_time (inclusive)
 	baseTime := time.Unix(0, 0).UTC()
-	for currentTime := baseTime; !currentTime.After(evalTime); currentTime = currentTime.Add(interval) {
+	for currentTime := baseTime; !currentTime.After(evalTime); currentTime = currentTime.Add(time.Duration(interval)) {
 		err := tr.evaluator.evaluateAtTime(ctx, currentTime)
 		if err != nil {
 			result.Error = fmt.Errorf("evaluation failed at %v: %w", currentTime, err)

@@ -231,7 +231,7 @@ groups:
 	}
 
 	// Run test
-	result := runner.runAlertTest(alertTest, testGroup)
+	result := runner.runAlertTest(alertTest, testGroup.Interval)
 	if !result.Passed {
 		t.Logf("Test failed with error: %v", result.Error)
 		t.Logf("Result: %+v", result)
