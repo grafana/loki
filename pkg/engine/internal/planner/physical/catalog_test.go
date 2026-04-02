@@ -318,10 +318,8 @@ func TestTSDBCatalog_ResolveDataObjSections(t *testing.T) {
 			},
 		}
 
-		resolver := func(matchers []*labels.Matcher, s, e time.Time) ([]DataObjSections, error) {
-			require.Len(t, matchers, 1)
-			require.Equal(t, "app", matchers[0].Name)
-			require.Equal(t, "test", matchers[0].Value)
+		resolver := func(matchers string, s, e time.Time) ([]DataObjSections, error) {
+			require.Contains(t, matchers, `app="test"`)
 			require.Equal(t, start, s)
 			require.Equal(t, end, e)
 			return expected, nil
@@ -335,7 +333,7 @@ func TestTSDBCatalog_ResolveDataObjSections(t *testing.T) {
 
 	t.Run("returns error from resolver", func(t *testing.T) {
 		resolverErr := fmt.Errorf("test resolver error")
-		resolver := func(_ []*labels.Matcher, _, _ time.Time) ([]DataObjSections, error) {
+		resolver := func(_ string, _, _ time.Time) ([]DataObjSections, error) {
 			return nil, resolverErr
 		}
 

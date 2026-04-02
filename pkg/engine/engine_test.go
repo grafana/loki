@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -575,5 +576,264 @@ func TestTSDBCoversQuery(t *testing.T) {
 	t.Run("query before TSDB start date", func(t *testing.T) {
 		cfg := Config{TSDBStartDate: flagext.Time(tsdbDate)}
 		require.False(t, cfg.TSDBCoversQuery(tsdbDate.Add(-24*time.Hour)))
+	})
+}
+
+func TestMergeDataObjSections(t *testing.T) {
+	now := time.Date(2025, 6, 15, 10, 0, 0, 0, time.UTC)
+
+	t.Run("empty batches", func(t *testing.T) {
+		result := mergeDataObjSections(nil)
+		require.Empty(t, result)
+	})
+
+	t.Run("single batch passthrough", func(t *testing.T) {
+		batch := []physical.DataObjSections{
+			{Location: "obj1", Sections: []int{0}, Streams: []int64{1, 2}, TimeRange: physical.TimeRange{Start: now, End: now.Add(time.Hour)}},
+			{Location: "obj2", Sections: []int{1}, Streams: []int64{3}, TimeRange: physical.TimeRange{Start: now, End: now.Add(time.Hour)}},
+		}
+		result := mergeDataObjSections([][]physical.DataObjSections{batch})
+		require.Len(t, result, 2)
+	})
+
+	t.Run("dedup same section across batches", func(t *testing.T) {
+		batch1 := []physical.DataObjSections{
+			{Location: "obj1", Sections: []int{0}, Streams: []int64{1, 2}, TimeRange: physical.TimeRange{Start: now, End: now.Add(time.Hour)}},
+		}
+		batch2 := []physical.DataObjSections{
+			{Location: "obj1", Sections: []int{0}, Streams: []int64{1, 2}, TimeRange: physical.TimeRange{Start: now, End: now.Add(time.Hour)}},
+		}
+		result := mergeDataObjSections([][]physical.DataObjSections{batch1, batch2})
+		require.Len(t, result, 1)
+		require.Equal(t, physical.DataObjLocation("obj1"), result[0].Location)
+		require.Equal(t, []int{0}, result[0].Sections)
+	})
+
+	t.Run("merges stream IDs as union", func(t *testing.T) {
+		batch1 := []physical.DataObjSections{
+			{Location: "obj1", Sections: []int{0}, Streams: []int64{1, 3}, TimeRange: physical.TimeRange{Start: now, End: now.Add(time.Hour)}},
+		}
+		batch2 := []physical.DataObjSections{
+			{Location: "obj1", Sections: []int{0}, Streams: []int64{2, 3}, TimeRange: physical.TimeRange{Start: now, End: now.Add(time.Hour)}},
+		}
+		result := mergeDataObjSections([][]physical.DataObjSections{batch1, batch2})
+		require.Len(t, result, 1)
+		require.Equal(t, []int64{1, 2, 3}, result[0].Streams)
+	})
+
+	t.Run("widens time range on merge", func(t *testing.T) {
+		batch1 := []physical.DataObjSections{
+			{Location: "obj1", Sections: []int{0}, Streams: []int64{1}, TimeRange: physical.TimeRange{Start: now, End: now.Add(30 * time.Minute)}},
+		}
+		batch2 := []physical.DataObjSections{
+			{Location: "obj1", Sections: []int{0}, Streams: []int64{1}, TimeRange: physical.TimeRange{Start: now.Add(-10 * time.Minute), End: now.Add(time.Hour)}},
+		}
+		result := mergeDataObjSections([][]physical.DataObjSections{batch1, batch2})
+		require.Len(t, result, 1)
+		require.Equal(t, now.Add(-10*time.Minute), result[0].TimeRange.Start)
+		require.Equal(t, now.Add(time.Hour), result[0].TimeRange.End)
+	})
+
+	t.Run("different sections not merged", func(t *testing.T) {
+		batch1 := []physical.DataObjSections{
+			{Location: "obj1", Sections: []int{0}, Streams: []int64{1}, TimeRange: physical.TimeRange{Start: now, End: now.Add(time.Hour)}},
+		}
+		batch2 := []physical.DataObjSections{
+			{Location: "obj1", Sections: []int{1}, Streams: []int64{2}, TimeRange: physical.TimeRange{Start: now, End: now.Add(time.Hour)}},
+		}
+		result := mergeDataObjSections([][]physical.DataObjSections{batch1, batch2})
+		require.Len(t, result, 2)
+	})
+
+	t.Run("different locations not merged", func(t *testing.T) {
+		tr := physical.TimeRange{Start: now, End: now.Add(time.Hour)}
+		batch := []physical.DataObjSections{
+			{Location: "obj1", Sections: []int{0}, Streams: []int64{1}, TimeRange: tr},
+			{Location: "obj2", Sections: []int{0}, Streams: []int64{1}, TimeRange: tr},
+		}
+		result := mergeDataObjSections([][]physical.DataObjSections{batch})
+		require.Len(t, result, 2)
+	})
+}
+
+func TestUnionSortedInt64(t *testing.T) {
+	t.Run("disjoint", func(t *testing.T) {
+		require.Equal(t, []int64{1, 2, 3, 4}, unionSortedInt64([]int64{1, 3}, []int64{2, 4}))
+	})
+
+	t.Run("overlapping", func(t *testing.T) {
+		require.Equal(t, []int64{1, 2, 3}, unionSortedInt64([]int64{1, 2}, []int64{2, 3}))
+	})
+
+	t.Run("empty inputs", func(t *testing.T) {
+		require.Empty(t, unionSortedInt64(nil, nil))
+	})
+
+	t.Run("one empty", func(t *testing.T) {
+		require.Equal(t, []int64{1, 2}, unionSortedInt64([]int64{1, 2}, nil))
+	})
+}
+
+// recordingIndexGatewayClient records every request it receives and returns
+// a response based on a user-supplied function.
+type recordingIndexGatewayClient struct {
+	mu       sync.Mutex
+	requests []*logproto.GetDataobjSectionsRequest
+	respFunc func(*logproto.GetDataobjSectionsRequest) (*logproto.GetDataobjSectionsResponse, error)
+}
+
+func (r *recordingIndexGatewayClient) GetDataobjSections(_ context.Context, in *logproto.GetDataobjSectionsRequest) (*logproto.GetDataobjSectionsResponse, error) {
+	r.mu.Lock()
+	r.requests = append(r.requests, in)
+	r.mu.Unlock()
+	return r.respFunc(in)
+}
+
+func TestTSDBSplitResolve(t *testing.T) {
+	now := time.Date(2025, 6, 15, 10, 0, 0, 0, time.UTC)
+	section := logproto.DataobjSectionRef{
+		Path:      "obj1",
+		SectionId: 0,
+		StreamIds: []int64{1, 2},
+		MinTime:   model.TimeFromUnix(now.Add(-3 * time.Hour).Unix()),
+		MaxTime:   model.TimeFromUnix(now.Unix()),
+	}
+
+	t.Run("splits 3h range into 1h sub-requests", func(t *testing.T) {
+		client := &recordingIndexGatewayClient{
+			respFunc: func(_ *logproto.GetDataobjSectionsRequest) (*logproto.GetDataobjSectionsResponse, error) {
+				return &logproto.GetDataobjSectionsResponse{
+					Sections: []logproto.DataobjSectionRef{section},
+				}, nil
+			},
+		}
+
+		e := &Engine{
+			logger:       log.NewNopLogger(),
+			metrics:      newMetrics(prometheus.NewRegistry()),
+			cfg:          Config{TSDBSplitInterval: time.Hour, TSDBSplitConcurrency: 8},
+			indexGateway: client,
+		}
+
+		start := now.Add(-3 * time.Hour)
+		end := now
+		result, err := e.tsdbSplitResolve(context.Background(), `{app="test"}`, start, end, time.Hour)
+		require.NoError(t, err)
+
+		// Should produce 3 sub-requests
+		client.mu.Lock()
+		require.Equal(t, 3, len(client.requests))
+		client.mu.Unlock()
+
+		// Same section returned by all 3 sub-requests should be deduped to 1
+		require.Len(t, result, 1)
+		require.Equal(t, physical.DataObjLocation("obj1"), result[0].Location)
+	})
+
+	t.Run("no split when range smaller than interval", func(t *testing.T) {
+		client := &recordingIndexGatewayClient{
+			respFunc: func(_ *logproto.GetDataobjSectionsRequest) (*logproto.GetDataobjSectionsResponse, error) {
+				return &logproto.GetDataobjSectionsResponse{
+					Sections: []logproto.DataobjSectionRef{section},
+				}, nil
+			},
+		}
+
+		e := &Engine{
+			logger:       log.NewNopLogger(),
+			metrics:      newMetrics(prometheus.NewRegistry()),
+			cfg:          Config{TSDBSplitInterval: 24 * time.Hour, TSDBSplitConcurrency: 8},
+			indexGateway: client,
+		}
+
+		start := now.Add(-3 * time.Hour)
+		end := now
+		result, err := e.tsdbSplitResolve(context.Background(), `{app="test"}`, start, end, 24*time.Hour)
+		require.NoError(t, err)
+
+		client.mu.Lock()
+		require.Equal(t, 1, len(client.requests))
+		client.mu.Unlock()
+
+		require.Len(t, result, 1)
+	})
+
+	t.Run("propagates errors from sub-requests", func(t *testing.T) {
+		client := &recordingIndexGatewayClient{
+			respFunc: func(_ *logproto.GetDataobjSectionsRequest) (*logproto.GetDataobjSectionsResponse, error) {
+				return nil, fmt.Errorf("rpc failed")
+			},
+		}
+
+		e := &Engine{
+			logger:       log.NewNopLogger(),
+			metrics:      newMetrics(prometheus.NewRegistry()),
+			cfg:          Config{TSDBSplitInterval: time.Hour, TSDBSplitConcurrency: 8},
+			indexGateway: client,
+		}
+
+		start := now.Add(-3 * time.Hour)
+		end := now
+		_, err := e.tsdbSplitResolve(context.Background(), `{app="test"}`, start, end, time.Hour)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "rpc failed")
+	})
+
+	t.Run("resolver uses split when configured", func(t *testing.T) {
+		client := &recordingIndexGatewayClient{
+			respFunc: func(_ *logproto.GetDataobjSectionsRequest) (*logproto.GetDataobjSectionsResponse, error) {
+				return &logproto.GetDataobjSectionsResponse{
+					Sections: []logproto.DataobjSectionRef{section},
+				}, nil
+			},
+		}
+
+		e := &Engine{
+			logger:       log.NewNopLogger(),
+			metrics:      newMetrics(prometheus.NewRegistry()),
+			cfg:          Config{TSDBSplitInterval: time.Hour, TSDBSplitConcurrency: 8},
+			indexGateway: client,
+		}
+
+		resolver := e.tsdbSectionsResolver(context.Background(), "tenant")
+		start := now.Add(-2 * time.Hour)
+		end := now
+		result, err := resolver(`{app="test"}`, start, end)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+
+		// Should have made 2 sub-requests via the split path
+		client.mu.Lock()
+		require.Equal(t, 2, len(client.requests))
+		client.mu.Unlock()
+	})
+
+	t.Run("resolver skips split when not configured", func(t *testing.T) {
+		client := &recordingIndexGatewayClient{
+			respFunc: func(_ *logproto.GetDataobjSectionsRequest) (*logproto.GetDataobjSectionsResponse, error) {
+				return &logproto.GetDataobjSectionsResponse{
+					Sections: []logproto.DataobjSectionRef{section},
+				}, nil
+			},
+		}
+
+		e := &Engine{
+			logger:       log.NewNopLogger(),
+			metrics:      newMetrics(prometheus.NewRegistry()),
+			cfg:          Config{TSDBSplitInterval: 0},
+			indexGateway: client,
+		}
+
+		resolver := e.tsdbSectionsResolver(context.Background(), "tenant")
+		start := now.Add(-3 * time.Hour)
+		end := now
+		result, err := resolver(`{app="test"}`, start, end)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+
+		// Should have made exactly 1 request (no splitting)
+		client.mu.Lock()
+		require.Equal(t, 1, len(client.requests))
+		client.mu.Unlock()
 	})
 }

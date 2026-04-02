@@ -58,6 +58,14 @@ type Config struct {
 	// Queries starting before this date fall back to the metastore and skip
 	// dual-resolve comparison. Format YYYY-MM-DD. Unset means no restriction.
 	TSDBStartDate flagext.Time `yaml:"tsdb_start_date" category:"experimental"`
+
+	// TSDBSplitInterval splits index-gateway section resolution into sub-range
+	// requests of this duration. 0 disables splitting (single request for full range).
+	TSDBSplitInterval time.Duration `yaml:"tsdb_split_interval" category:"experimental"`
+
+	// TSDBSplitConcurrency controls the maximum number of concurrent sub-range
+	// requests when TSDBSplitInterval is enabled.
+	TSDBSplitConcurrency int `yaml:"tsdb_split_concurrency" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -88,6 +96,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.DualResolveMaxConcurrency, prefix+"dual-resolve-max-concurrency", 10, "Experimental: Maximum number of concurrent async index-gateway dual-resolve comparisons. 0 disables dual-resolve.")
 	f.BoolVar(&cfg.UseIndexGatewayPlanning, prefix+"use-index-gateway-planning", false, "Experimental: Use the index-gateway (TSDB) instead of the metastore for physical query planning.")
 	f.Var(&cfg.TSDBStartDate, prefix+"tsdb-start-date", "Experimental: Earliest date for which TSDB index files exist. Format YYYY-MM-DD. Queries before this date fall back to the metastore and skip dual-resolve comparison.")
+	f.DurationVar(&cfg.TSDBSplitInterval, prefix+"tsdb-split-interval", 0, "Experimental: Split index-gateway section resolution into sub-range requests of this duration. 0 disables splitting.")
+	f.IntVar(&cfg.TSDBSplitConcurrency, prefix+"tsdb-split-concurrency", 8, "Experimental: Maximum number of concurrent sub-range requests when tsdb-split-interval is enabled.")
 }
 
 func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {

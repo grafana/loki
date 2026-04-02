@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alecthomas/units"
@@ -21,8 +22,8 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel"
+	"golang.org/x/sync/errgroup"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -36,6 +37,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	lokiutil "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
@@ -711,37 +713,127 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string,
 	}
 }
 
-func (e *Engine) tsdbSectionsResolver(ctx context.Context, _ string) physical.TSDBSectionsResolver {
-	return func(matchers []*labels.Matcher, start, end time.Time) ([]physical.DataObjSections, error) {
-		ctx, span := tracer.Start(ctx, "engine.tsdbResolver")
-		defer span.End()
-
-		resp, err := e.indexGateway.GetDataobjSections(ctx, &logproto.GetDataobjSectionsRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Matchers: syntax.MatchersString(matchers),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("tsdb resolve sections: %w", err)
+// tsdbSectionsResolver returns a resolver function that queries the index
+// gateway for data object sections matching the given matchers/time range.
+// When TSDBSplitInterval is configured, the time range is split into smaller
+// sub-ranges that are queried concurrently and the results merged.
+func (e *Engine) tsdbSectionsResolver(ctx context.Context, tenantID string) physical.TSDBSectionsResolver {
+	return func(matchers string, start, end time.Time) ([]physical.DataObjSections, error) {
+		if interval := e.cfg.TSDBSplitInterval; interval > 0 {
+			return e.tsdbSplitResolve(ctx, matchers, start, end, interval)
 		}
-
-		sections := make([]physical.DataObjSections, 0, len(resp.Sections))
-		for _, s := range resp.Sections {
-			tr, err := physical.NewTimeRange(s.MinTime.Time(), s.MaxTime.Time())
-			if err != nil {
-				return nil, err
-			}
-			sections = append(sections, physical.DataObjSections{
-				Location:  physical.DataObjLocation(s.Path),
-				Streams:   s.StreamIds,
-				Sections:  []int{int(s.SectionId)},
-				TimeRange: tr,
-			})
-		}
-
-		span.SetAttributes(attribute.Int("num_sections", len(sections)))
-		return sections, nil
+		return e.tsdbFetchSections(ctx, matchers, start, end)
 	}
+}
+
+// tsdbFetchSections performs a single GetDataobjSections RPC for the given range.
+func (e *Engine) tsdbFetchSections(ctx context.Context, matchers string, start, end time.Time) ([]physical.DataObjSections, error) {
+	resp, err := e.indexGateway.GetDataobjSections(ctx, &logproto.GetDataobjSectionsRequest{
+		From:     model.TimeFromUnix(start.Unix()),
+		Through:  model.TimeFromUnix(end.Unix()),
+		Matchers: matchers,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("index gateway GetDataobjSections: %w", err)
+	}
+
+	result := make([]physical.DataObjSections, 0, len(resp.Sections))
+	for _, s := range resp.Sections {
+		tr, err := physical.NewTimeRange(s.MinTime.Time(), s.MaxTime.Time())
+		if err != nil {
+			return nil, fmt.Errorf("invalid time range in section ref: %w", err)
+		}
+		result = append(result, physical.DataObjSections{
+			Location:  physical.DataObjLocation(s.Path),
+			Streams:   s.StreamIds,
+			Sections:  []int{int(s.SectionId)},
+			TimeRange: tr,
+		})
+	}
+	return result, nil
+}
+
+// tsdbSplitResolve splits [start, end] into sub-ranges of the given interval,
+// fetches each sub-range concurrently, and deduplicates the combined results.
+func (e *Engine) tsdbSplitResolve(ctx context.Context, matchers string, start, end time.Time, interval time.Duration) ([]physical.DataObjSections, error) {
+	var mu sync.Mutex
+	var batches [][]physical.DataObjSections
+
+	g, gCtx := errgroup.WithContext(ctx)
+	if conc := e.cfg.TSDBSplitConcurrency; conc > 0 {
+		g.SetLimit(conc)
+	}
+
+	lokiutil.ForInterval(interval, start, end, false, func(splitStart, splitEnd time.Time) {
+		g.Go(func() error {
+			sections, err := e.tsdbFetchSections(gCtx, matchers, splitStart, splitEnd)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			batches = append(batches, sections)
+			mu.Unlock()
+			return nil
+		})
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return mergeDataObjSections(batches), nil
+}
+
+// mergeDataObjSections deduplicates sections across multiple batches.
+// Sections sharing the same (Location, SectionId) are merged: stream IDs are
+// unioned and the time range is widened to cover both entries.
+func mergeDataObjSections(batches [][]physical.DataObjSections) []physical.DataObjSections {
+	type mergeKey struct {
+		location physical.DataObjLocation
+		section  int
+	}
+
+	seen := make(map[mergeKey]int) // key -> index in result
+	var result []physical.DataObjSections
+
+	for _, batch := range batches {
+		for _, ds := range batch {
+			for _, sec := range ds.Sections {
+				key := mergeKey{location: ds.Location, section: sec}
+				if idx, ok := seen[key]; ok {
+					existing := &result[idx]
+					existing.TimeRange = existing.TimeRange.Merge(ds.TimeRange)
+					existing.Streams = unionSortedInt64(existing.Streams, ds.Streams)
+				} else {
+					seen[key] = len(result)
+					result = append(result, physical.DataObjSections{
+						Location:  ds.Location,
+						Streams:   ds.Streams,
+						Sections:  []int{sec},
+						TimeRange: ds.TimeRange,
+					})
+				}
+			}
+		}
+	}
+	return result
+}
+
+// unionSortedInt64 returns the sorted union of two int64 slices.
+func unionSortedInt64(a, b []int64) []int64 {
+	set := make(map[int64]struct{}, len(a)+len(b))
+	for _, v := range a {
+		set[v] = struct{}{}
+	}
+	for _, v := range b {
+		set[v] = struct{}{}
+	}
+	out := make([]int64, 0, len(set))
+	for v := range set {
+		out = append(out, v)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // buildWorkflow builds a workflow from the given physical plan.

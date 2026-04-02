@@ -2,6 +2,7 @@ package physical
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -245,34 +246,35 @@ func convertBinaryOp(t types.BinaryOp) (labels.MatchType, error) {
 
 var _ Catalog = (*MetastoreCatalog)(nil)
 
-// TSDBSectionsResolver resolves label matchers into DataObjSections via a TSDB
-// index.
-type TSDBSectionsResolver func(matchers []*labels.Matcher, start, end time.Time) ([]DataObjSections, error)
+// TSDBSectionsResolver resolves data object sections from a TSDB-backed
+// index gateway. The matchers string uses LogQL selector syntax.
+type TSDBSectionsResolver func(matchers string, start, end time.Time) ([]DataObjSections, error)
 
-// TSDBCatalog is a [Catalog] implementation backed by TSDB indices.
+// TSDBCatalog is an implementation of [Catalog] backed by a TSDB index gateway.
 type TSDBCatalog struct {
-	resolver TSDBSectionsResolver
+	sectionsResolver TSDBSectionsResolver
 }
 
 // NewTSDBCatalog creates a new instance of [TSDBCatalog] for query planning.
-func NewTSDBCatalog(resolver TSDBSectionsResolver) *TSDBCatalog {
-	return &TSDBCatalog{resolver: resolver}
+func NewTSDBCatalog(sectionsResolver TSDBSectionsResolver) *TSDBCatalog {
+	return &TSDBCatalog{
+		sectionsResolver: sectionsResolver,
+	}
 }
 
 // ResolveDataObjSections resolves dataobj sections for the provided
 // selector expression and time range.
-func (c *TSDBCatalog) ResolveDataObjSections(selector Expression, _ []Expression, shard ShardInfo, start, end time.Time) ([]DataObjSections, error) {
+func (c *TSDBCatalog) ResolveDataObjSections(selector Expression, _ []Expression, _ ShardInfo, start, end time.Time) ([]DataObjSections, error) {
 	matchers, err := expressionToMatchers(selector, false)
 	if err != nil {
 		return nil, fmt.Errorf("convert selector to matchers: %w", err)
 	}
-
-	sections, err := c.resolver(matchers, start, end)
-	if err != nil {
-		return nil, fmt.Errorf("resolve tsdb sections: %w", err)
+	matcherStrings := make([]string, 0, len(matchers))
+	for _, m := range matchers {
+		matcherStrings = append(matcherStrings, m.String())
 	}
-
-	return sections, nil
+	matcherExpr := "{" + strings.Join(matcherStrings, ",") + "}"
+	return c.sectionsResolver(matcherExpr, start, end)
 }
 
 var _ Catalog = (*TSDBCatalog)(nil)
