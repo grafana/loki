@@ -62,7 +62,7 @@ require (
 	github.com/klauspost/compress v1.18.5
 	github.com/klauspost/pgzip v1.2.6
 	github.com/mattn/go-ieproxy v0.0.12
-	github.com/minio/minio-go/v7 v7.0.99
+	github.com/minio/minio-go/v7 v7.0.100
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/mitchellh/mapstructure v1.5.1-0.20220423185008-bf980b35cac4
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee
