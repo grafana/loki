@@ -24,7 +24,7 @@ func buildLabelfmtColumns(input arrow.RecordBatch, sourceCol *array.String, labe
 
 	} else {
 		parseFunc = func(row arrow.RecordBatch, line string) (map[string]string, error) {
-			return tokenizeLabelfmt(row, line, decoder)
+			return tokenizeLabelfmt(row, line, decoder, labelFmts)
 		}
 	}
 	return buildColumns(input, sourceCol, nil, parseFunc, types.VariadicOpParseLabelfmt, types.LabelfmtParserErrorType)
@@ -32,7 +32,7 @@ func buildLabelfmtColumns(input arrow.RecordBatch, sourceCol *array.String, labe
 
 // tokenizeLabelfmt parses labelfmt input using the standard decoder
 // Returns a map of key-value pairs with first-wins semantics for duplicates
-func tokenizeLabelfmt(input arrow.RecordBatch, line string, decoder *log.LabelsFormatter) (map[string]string, error) {
+func tokenizeLabelfmt(input arrow.RecordBatch, line string, decoder *log.LabelsFormatter, labelFmts []log.LabelFmt) (map[string]string, error) {
 	lbls := buildLabelsFromInput(input)
 	var builder = log.NewBaseLabelsBuilder().ForLabels(lbls, labels.StableHash(lbls))
 	builder.Reset()
