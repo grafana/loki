@@ -233,7 +233,11 @@ func idxOf(set []arrow.Field, entry arrow.Field) int {
 }
 
 func removeIdx(fields []arrow.Field, values []arrow.Array, idx int) ([]arrow.Field, []arrow.Array) {
-	outFields := append(fields[:idx], fields[idx+1:]...)
-	outValues := append(values[:idx], values[idx+1:]...)
+	outFields := make([]arrow.Field, 0, len(fields)-1)
+	outFields = append(outFields, fields[:idx]...)
+	outFields = append(outFields, fields[idx+1:]...)
+	outValues := make([]arrow.Array, 0, len(values)-1)
+	outValues = append(outValues, values[:idx]...)
+	outValues = append(outValues, values[idx+1:]...)
 	return outFields, outValues
 }
