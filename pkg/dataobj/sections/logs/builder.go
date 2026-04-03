@@ -194,6 +194,7 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 
 	buf := &b.stripeBuffer
 	if b.opts.AppendStrategy == AppendOrdered {
+		// If we are in AppendOrdered mode, we skip the stripe part of the algorithm, so we use the section buffer instead.
 		buf = &b.sectionBuffer
 	}
 	stripe := buildTable(buf, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
