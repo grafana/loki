@@ -145,8 +145,8 @@ const (
 	VariadicOpParseLogfmt   // Parse logfmt line to set of columns operation (logfmt).
 	VariadicOpParseJSON     // Parse JSON line to set of columns operation (json).
 	VariadicOpParseRegexp   // Parse line with regex capture groups operation (regexp).
-	VariadicOpParseLinefmt  // Parse linefmt line
 	VariadicOpParseLabelfmt // Parse labelfmt line to set of labels operation (labelfmt).
+	VariadicOpParseLinefmt  // Parse linefmt line
 )
 
 // String returns the string representation of the UnaryOp.
