@@ -7,6 +7,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
@@ -170,12 +171,16 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 				return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrCasted.DataType())
 			}
 			for i := range arrCasted.NumField() {
-				// If a field is included in the newly returned set of values, overwrite it by removing from the list of existing fields
-				if idx := idxOf(outputFields, structSchema.Field(i)); idx >= 0 {
-					outputFields, outputCols = removeIdx(outputFields, outputCols, idx)
+				newField := structSchema.Field(i)
+				if idx := slices.IndexFunc(outputFields, func(f arrow.Field) bool {
+					return f.Name == newField.Name
+				}); idx != -1 {
+					outputCols[idx] = mergeColumns(outputCols[idx], arrCasted.Field(i))
+					outputFields[idx] = newField
+				} else {
+					outputCols = append(outputCols, arrCasted.Field(i))
+					outputFields = append(outputFields, newField)
 				}
-				outputCols = append(outputCols, arrCasted.Field(i))
-				outputFields = append(outputFields, structSchema.Field(i))
 			}
 		case *array.Float64:
 			outputFields = append(outputFields, semconv.FieldFromIdent(semconv.ColumnIdentValue, false))
@@ -188,6 +193,37 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 		outputSchema := arrow.NewSchema(outputFields, &metadata)
 		return array.NewRecordBatch(outputSchema, outputCols, batch.NumRows()), nil
 	}, input), nil
+}
+
+// mergeColumns merges two columns by preferring non-null and non-empty values from the new column (b).
+// If b has a null or empty value at index i, keep the value from a at that index.
+// If b has a non-null and non-empty value at index i, use the value from b (overwriting a).
+func mergeColumns(a, b arrow.Array) arrow.Array {
+	// Only handle string arrays for now (which is what parsers produce)
+	aStr, aOk := a.(*array.String)
+	bStr, bOk := b.(*array.String)
+
+	if !aOk || !bOk {
+		// If not both strings, just return b (overwrite behavior)
+		return b
+	}
+
+	builder := array.NewStringBuilder(memory.DefaultAllocator)
+	builder.Reserve(aStr.Len())
+
+	for i := range aStr.Len() {
+		if bStr.IsNull(i) || bStr.Value(i) == "" {
+			// New value is null or empty, keep old value
+			if aStr.IsNull(i) {
+				builder.AppendNull()
+			} else {
+				builder.Append(aStr.Value(i))
+			}
+		} else {
+			builder.Append(bStr.Value(i))
+		}
+	}
+	return builder.NewStringArray()
 }
 
 func idxOf(set []arrow.Field, entry arrow.Field) int {

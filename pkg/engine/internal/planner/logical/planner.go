@@ -105,9 +105,6 @@ func buildPlanForLogQuery(
 			case syntax.OpParserTypeRegexp:
 				hasRegexParser = true
 				return true
-			default:
-				err = errUnimplemented
-				return false
 			}
 		case *syntax.LabelFilterExpr:
 			// Collect following filters only before we met any parse stage.
