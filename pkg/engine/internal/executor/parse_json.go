@@ -41,17 +41,17 @@ func buildJSONColumns(input arrow.RecordBatch, sourceCol *array.String, requeste
 		}
 	}
 
+	parser := newJSONParser()
 	parseFunc := func(_ arrow.RecordBatch, line string) (map[string]string, error) {
-		return parseJSONLine(line, requestedKeyLookup)
+		return parseJSONLine(parser, line, requestedKeyLookup)
 	}
 	return buildColumns(input, sourceCol, requestedKeys, parseFunc, types.VariadicOpParseJSON, types.JSONParserErrorType)
 }
 
 // parseJSONLine parses a single JSON line and extracts key-value pairs
 // implements ParseFunc
-func parseJSONLine(line string, requestedKeyLookup map[string]struct{}) (map[string]string, error) {
+func parseJSONLine(parser *jsonParser, line string, requestedKeyLookup map[string]struct{}) (map[string]string, error) {
 	// Use the refactored JSONParser for nested object handling and number conversion
-	parser := newJSONParser()
 	return parser.process(unsafeBytes(line), requestedKeyLookup)
 }
 

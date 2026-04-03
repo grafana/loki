@@ -314,7 +314,9 @@ func parseLines(input arrow.RecordBatch, sourceCol *array.String, columnBuilders
 		var err error
 		if parseType == types.VariadicOpParseLabelfmt || parseType == types.VariadicOpParseLinefmt {
 			// pass the corresponding row of input as well
-			parsed, err = parseFunc(input.NewSlice(int64(i), int64(i+1)), line)
+			inputRow := input.NewSlice(int64(i), int64(i+1))
+			defer inputRow.Release()
+			parsed, err = parseFunc(inputRow, line)
 		} else {
 			// don't need the row of input
 			parsed, err = parseFunc(nil, line)
