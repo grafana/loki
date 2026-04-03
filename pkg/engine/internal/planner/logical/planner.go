@@ -105,10 +105,6 @@ func buildPlanForLogQuery(
 			case syntax.OpParserTypeRegexp:
 				hasRegexParser = true
 				return true
-			case syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
-				// keeping these as a distinct cases so we remember to implement them later
-				err = errUnimplemented
-				return false
 			default:
 				err = errUnimplemented
 				return false
@@ -126,27 +122,12 @@ func buildPlanForLogQuery(
 			}
 
 			return true
-		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
-			err = errUnimplemented
-			return false // do not traverse children
 		case *syntax.LineFmtExpr:
 			return true
 		case *syntax.LabelFmtExpr:
 			return true
-		case *syntax.KeepLabelsExpr:
-			err = unimplementedFeature("keep")
-			return false // do not traverse children
-		case *syntax.DropLabelsExpr:
-			if e.HasNamedMatchers() {
-				// Example: `| drop __error__=~"Unknown Error: .*"`
-				err = unimplementedFeature("drop with named matchers")
-				return false // do not traverse children
-			}
-			return true
-		default:
-			err = errUnimplemented
-			return false // do not traverse children
 		}
+		return true
 	})
 	if err != nil {
 		return nil, err
