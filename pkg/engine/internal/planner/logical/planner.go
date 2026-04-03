@@ -142,11 +142,6 @@ func buildPlanForLogQuery(
 				err = unimplementedFeature("drop with named matchers")
 				return false // do not traverse children
 			}
-			dropCols := make([]Value, 0, len(e.Names()))
-			for _, name := range e.Names() {
-				value := NewColumnRef(name, types.ColumnTypeAmbiguous)
-				dropCols = append(dropCols, value)
-			}
 			return true
 		default:
 			err = errUnimplemented
