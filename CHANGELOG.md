@@ -1,7 +1,6 @@
 # Changelog
 
-## [3.6.9](https://github.com/grafana/loki/compare/v3.6.8...v3.6.9) (2026-04-01)
-
+## [3.6.10](https://github.com/grafana/loki/compare/v3.6.8...v3.6.10) (2026-04-02)
 
 ### Bug Fixes
 
