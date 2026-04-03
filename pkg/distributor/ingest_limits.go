@@ -82,7 +82,7 @@ func (c *ingestLimitsFrontendRingClient) withTenantShuffleShard(ctx context.Cont
 	if len(rs.Instances) == 0 {
 		return errors.New("no healthy instances found")
 	}
-	// Randomly shuffle instances to evenly distribute requests amongst the shard.
+	// Randomly shuffle instances to evenly distribute requests amongst the shards.
 	rand.Shuffle(len(rs.Instances), func(i, j int) {
 		rs.Instances[i], rs.Instances[j] = rs.Instances[j], rs.Instances[i]
 	})
