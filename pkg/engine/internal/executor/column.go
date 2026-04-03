@@ -58,7 +58,7 @@ func NewScalar(value types.Literal, rows int) arrow.Array {
 		if !ok {
 			v, ok := value.Any().([]log.LabelFmt)
 			if !ok {
-				panic(fmt.Errorf("unsupported list literal type: %T", v))
+				panic(fmt.Errorf("unsupported list literal type: %T", value.Any()))
 			}
 			valueBuilder := builder.ValueBuilder().(*array.StructBuilder)
 			for range rows {

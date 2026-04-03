@@ -602,10 +602,6 @@ func convertLineFilter(filter syntax.LineFilter) Value {
 	}
 }
 
-func convertLineFormat(value string) Value {
-	return &UnaryOp{Op: types.UnaryOpParseLinefmt, Value: NewLiteral(value)}
-}
-
 func convertBinaryArithmeticOp(op string) types.BinaryOp {
 	switch op {
 	case syntax.OpTypeAdd:
