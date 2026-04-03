@@ -1,8 +1,8 @@
 # cel.dev/expr v0.25.1
 ## explicit; go 1.23.0
 cel.dev/expr
-# charm.land/bubbles/v2 v2.0.0
-## explicit; go 1.24.2
+# charm.land/bubbles/v2 v2.1.0
+## explicit; go 1.25.0
 charm.land/bubbles/v2/cursor
 charm.land/bubbles/v2/help
 charm.land/bubbles/v2/internal/runeutil
@@ -1321,7 +1321,7 @@ github.com/mattn/go-ieproxy
 # github.com/mattn/go-isatty v0.0.20
 ## explicit; go 1.15
 github.com/mattn/go-isatty
-# github.com/mattn/go-runewidth v0.0.20
+# github.com/mattn/go-runewidth v0.0.21
 ## explicit; go 1.20
 github.com/mattn/go-runewidth
 # github.com/mdlayher/socket v0.5.1

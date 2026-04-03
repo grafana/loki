@@ -102,7 +102,7 @@ require (
 )
 
 require (
-	charm.land/bubbles/v2 v2.0.0
+	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.2
 	charm.land/lipgloss/v2 v2.0.2
 	github.com/Azure/go-autorest/autorest v0.11.30
@@ -233,7 +233,7 @@ require (
 	github.com/knadh/koanf/v2 v2.3.2 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
-	github.com/mattn/go-runewidth v0.0.20 // indirect
+	github.com/mattn/go-runewidth v0.0.21 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/mdlayher/vsock v1.2.1 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
