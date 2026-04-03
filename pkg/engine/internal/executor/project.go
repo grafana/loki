@@ -225,22 +225,3 @@ func mergeColumns(a, b arrow.Array) arrow.Array {
 	}
 	return builder.NewStringArray()
 }
-
-func idxOf(set []arrow.Field, entry arrow.Field) int {
-	for i := 0; i < len(set); i++ {
-		if set[i].Name == entry.Name && set[i].Type == entry.Type {
-			return i
-		}
-	}
-	return -1
-}
-
-func removeIdx(fields []arrow.Field, values []arrow.Array, idx int) ([]arrow.Field, []arrow.Array) {
-	outFields := make([]arrow.Field, 0, len(fields)-1)
-	outFields = append(outFields, fields[:idx]...)
-	outFields = append(outFields, fields[idx+1:]...)
-	outValues := make([]arrow.Array, 0, len(values)-1)
-	outValues = append(outValues, values[:idx]...)
-	outValues = append(outValues, values[idx+1:]...)
-	return outFields, outValues
-}
