@@ -86,7 +86,9 @@ func TestTokenizeLabelFmt(t *testing.T) {
 			namespaceArray := namespaceBuilder.NewArray()
 			columns := []arrow.Array{logArray, tsArray, namespaceArray}
 			recordBatch := array.NewRecordBatch(schema, columns, 1)
-			result, err := tokenizeLabelfmt(recordBatch, tt.line, tt.fmts)
+			decoder, err := log.NewLabelsFormatter(tt.fmts)
+			require.NoError(t, err)
+			result, err := tokenizeLabelfmt(recordBatch, tt.line, decoder, tt.fmts)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, result)
 		})
