@@ -75,15 +75,11 @@ func buildPlanForLogQuery(
 
 		// parse statements in LogQL introduce additional ambiguouity, requiring post
 		// parse filters to be tracked separately, and not included in maketable predicates
-		predicates        []Value
-		deletePredicates  []Value
-		hasLogfmtParser   bool
-		hasJSONParser     bool
-		hasRegexParser    bool
-		hasLinefmtParser  bool
-		hasLabelfmtParser bool
-		linefmtTemplate   Value
-		labelfmtTemplates Value
+		predicates       []Value
+		deletePredicates []Value
+		hasLogfmtParser  bool
+		hasJSONParser    bool
+		hasRegexParser   bool
 	)
 
 	// Do the first pass to collect the stream selector, line filters, and predicates. Only predicates listed
@@ -134,12 +130,8 @@ func buildPlanForLogQuery(
 			err = errUnimplemented
 			return false // do not traverse children
 		case *syntax.LineFmtExpr:
-			hasLinefmtParser = true
-			linefmtTemplate = NewLiteral(e.Value)
 			return true
 		case *syntax.LabelFmtExpr:
-			hasLabelfmtParser = true
-			labelfmtTemplates = NewLiteral(e.Formats)
 			return true
 		case *syntax.KeepLabelsExpr:
 			err = unimplementedFeature("keep")
@@ -271,10 +263,10 @@ func buildPlanForLogQuery(
 			err = errUnimplemented
 			return false // do not traverse children
 		case *syntax.LineFmtExpr:
-			builder = builder.Format(types.VariadicOpParseLinefmt, linefmtTemplate)
+			builder = builder.Format(types.VariadicOpParseLinefmt, NewLiteral(e.Value))
 			return true
 		case *syntax.LabelFmtExpr:
-			builder = builder.Format(types.VariadicOpParseLabelfmt, labelfmtTemplates)
+			builder = builder.Format(types.VariadicOpParseLabelfmt, NewLiteral(e.Formats))
 			return false // do not traverse children
 		case *syntax.KeepLabelsExpr:
 			err = unimplementedFeature("keep")
@@ -638,21 +630,6 @@ func convertLineMatchType(op log.LineMatchType) types.BinaryOp {
 	default:
 		panic("invalid match type")
 	}
-}
-
-func getReplacedLabels(labels Value) []Value {
-	var replacedLabels = []Value{}
-	if fmtLabels, ok := labels.(*Literal).inner.(types.LabelFmtListLiteral); ok {
-		for _, label := range fmtLabels {
-			if label.Rename {
-				labelVal := NewColumnRef(label.Value, types.ColumnTypeLabel)
-				replacedLabels = append(replacedLabels, labelVal)
-			}
-		}
-	} else {
-		panic("invalid data type for label_format arguments; expected log.LabelFmt")
-	}
-	return replacedLabels
 }
 
 func timestampColumnRef() *ColumnRef {

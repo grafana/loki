@@ -17,7 +17,6 @@ const (
 	UnaryOpCastFloat    // Cast string to float value operation (unwrap).
 	UnaryOpCastBytes    // Cast string bytes to float value operation (unwrap).
 	UnaryOpCastDuration // Cast string duration to float value operation (unwrap).
-	UnaryOpParseLinefmt // Parse linefmt line
 )
 
 // String returns the string representation of the UnaryOp.
