@@ -192,7 +192,11 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 
 	compressionOpts := zstdCompressionOpts(encLevel)
 
-	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
+	buf := &b.stripeBuffer
+	if b.opts.AppendStrategy == AppendOrdered {
+		buf = &b.sectionBuffer
+	}
+	stripe := buildTable(buf, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
 	b.stripes = append(b.stripes, stripe)
 	b.stripesUncompressedSize += stripe.UncompressedSize()
 	b.stripesCompressedSize += stripe.CompressedSize()
