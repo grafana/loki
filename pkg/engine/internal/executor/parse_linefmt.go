@@ -30,7 +30,7 @@ func buildLinefmtColumns(input arrow.RecordBatch, sourceCol *array.String, lineF
 			return tokenizeLinefmt(row, line, formatter)
 		}
 	}
-	return buildColumns(input, sourceCol, nil, parseFunc, types.LinefmtParserErrorType)
+	return buildColumns(input, sourceCol, nil, parseFunc, types.VariadicOpParseLinefmt, types.LinefmtParserErrorType)
 }
 
 // tokenizeLinefmt parses linefmt input using the standard decoder

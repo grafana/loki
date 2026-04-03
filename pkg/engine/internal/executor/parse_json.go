@@ -44,7 +44,7 @@ func buildJSONColumns(input arrow.RecordBatch, sourceCol *array.String, requeste
 	parseFunc := func(_ arrow.RecordBatch, line string) (map[string]string, error) {
 		return parseJSONLine(line, requestedKeyLookup)
 	}
-	return buildColumns(input, sourceCol, requestedKeys, parseFunc, types.JSONParserErrorType)
+	return buildColumns(input, sourceCol, requestedKeys, parseFunc, types.VariadicOpParseJSON, types.JSONParserErrorType)
 }
 
 // parseJSONLine parses a single JSON line and extracts key-value pairs

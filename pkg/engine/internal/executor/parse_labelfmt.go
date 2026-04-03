@@ -14,23 +14,29 @@ import (
 )
 
 func buildLabelfmtColumns(input arrow.RecordBatch, sourceCol *array.String, labelFmts []log.LabelFmt) ([]string, []arrow.Array) {
-	parseFunc := func(row arrow.RecordBatch, line string) (map[string]string, error) {
-		return tokenizeLabelfmt(row, line, labelFmts)
+	var parseFunc func(arrow.RecordBatch, string) (map[string]string, error)
+	decoder, err := log.NewLabelsFormatter(labelFmts)
+	if err != nil {
+		parseErr := fmt.Errorf("unable to create label formatter with template %v", labelFmts)
+		parseFunc = func(_ arrow.RecordBatch, _ string) (map[string]string, error) {
+			return nil, parseErr
+		}
+
+	} else {
+		parseFunc = func(row arrow.RecordBatch, line string) (map[string]string, error) {
+			return tokenizeLabelfmt(row, line, decoder)
+		}
 	}
-	return buildColumns(input, sourceCol, nil, parseFunc, types.LabelfmtParserErrorType)
+	return buildColumns(input, sourceCol, nil, parseFunc, types.VariadicOpParseLabelfmt, types.LabelfmtParserErrorType)
 }
 
 // tokenizeLabelfmt parses labelfmt input using the standard decoder
 // Returns a map of key-value pairs with first-wins semantics for duplicates
-func tokenizeLabelfmt(input arrow.RecordBatch, line string, labelFmts []log.LabelFmt) (map[string]string, error) {
-	decoder, err := log.NewLabelsFormatter(labelFmts)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create label formatter with formats %v", labelFmts)
-	}
+func tokenizeLabelfmt(input arrow.RecordBatch, line string, decoder *log.LabelsFormatter) (map[string]string, error) {
 	lbls := buildLabelsFromInput(input)
 	var builder = log.NewBaseLabelsBuilder().ForLabels(lbls, labels.StableHash(lbls))
 	builder.Reset()
-	builder.Add(log.StructuredMetadataLabel, buildLabelsFromInput(input))
+	builder.Add(log.StructuredMetadataLabel, lbls)
 
 	var timestampIdx = -1
 	for i := 0; i < len(input.Columns()); i++ {

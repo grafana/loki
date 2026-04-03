@@ -285,9 +285,9 @@ type parseFunc func(recordRow arrow.RecordBatch, line string) (map[string]string
 
 // buildColumns builds Arrow columns from input lines using the provided parser
 // Returns the column headers, the Arrow columns, and any error
-func buildColumns(input arrow.RecordBatch, sourceCol *array.String, _ []string, parseFunc parseFunc, errorType string) ([]string, []arrow.Array) {
+func buildColumns(input arrow.RecordBatch, sourceCol *array.String, _ []string, parseFunc parseFunc, parseType types.VariadicOp, errorType string) ([]string, []arrow.Array) {
 	columnBuilders := make(map[string]*array.StringBuilder)
-	columnOrder := parseLines(input, sourceCol, columnBuilders, parseFunc, errorType)
+	columnOrder := parseLines(input, sourceCol, columnBuilders, parseFunc, parseType, errorType)
 
 	// Build final arrays
 	columns := make([]arrow.Array, 0, len(columnOrder))
@@ -303,15 +303,22 @@ func buildColumns(input arrow.RecordBatch, sourceCol *array.String, _ []string, 
 }
 
 // parseLines discovers columns dynamically as lines are parsed
-func parseLines(input arrow.RecordBatch, sourceCol *array.String, columnBuilders map[string]*array.StringBuilder, parseFunc parseFunc, errorType string) []string {
+func parseLines(input arrow.RecordBatch, sourceCol *array.String, columnBuilders map[string]*array.StringBuilder, parseFunc parseFunc, parseType types.VariadicOp, errorType string) []string {
 	columnOrder := []string{}
 	var errorBuilder, errorDetailsBuilder *array.StringBuilder
 	hasErrorColumns := false
 
 	for i := 0; i < sourceCol.Len(); i++ {
 		line := sourceCol.Value(i)
-		// pass the corresponding row of input as well
-		parsed, err := parseFunc(input.NewSlice(int64(i), int64(i+1)), line)
+		var parsed map[string]string
+		var err error
+		if parseType == types.VariadicOpParseLabelfmt || parseType == types.VariadicOpParseLinefmt {
+			// pass the corresponding row of input as well
+			parsed, err = parseFunc(input.NewSlice(int64(i), int64(i+1)), line)
+		} else {
+			// don't need the row of input
+			parsed, err = parseFunc(nil, line)
+		}
 
 		// Handle error columns
 		if err != nil {
