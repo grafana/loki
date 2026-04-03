@@ -18,21 +18,26 @@ import (
 // parseFunc will be called once for each line, so we need to know which line of `input` corresponds to `line`
 // also, sometimes input is a batch of 0 lines but we have a "line" string anyway?
 func buildLinefmtColumns(input arrow.RecordBatch, sourceCol *array.String, lineFmt string) ([]string, []arrow.Array) {
-	parseFunc := func(row arrow.RecordBatch, line string) (map[string]string, error) {
-		return tokenizeLinefmt(row, line, lineFmt)
+	formatter, err := NewFormatter(lineFmt)
+	var parseFunc func(arrow.RecordBatch, string) (map[string]string, error)
+	if err != nil {
+		parseErr := fmt.Errorf("unable to create line formatter with template %v", lineFmt)
+		parseFunc = func(_ arrow.RecordBatch, _ string) (map[string]string, error) {
+			return nil, parseErr
+		}
+	} else {
+		parseFunc = func(row arrow.RecordBatch, line string) (map[string]string, error) {
+			return tokenizeLinefmt(row, line, formatter)
+		}
 	}
 	return buildColumns(input, sourceCol, nil, parseFunc, types.LabelfmtParserErrorType)
 }
 
 // tokenizeLinefmt parses linefmt input using the standard decoder
 // Returns a map of key-value pairs with first-wins semantics for duplicates
-func tokenizeLinefmt(input arrow.RecordBatch, line string, lineFmt string) (map[string]string, error) {
+func tokenizeLinefmt(input arrow.RecordBatch, line string, formatter *LineFormatter) (map[string]string, error) {
 	result := make(map[string]string)
 
-	formatter, err := NewFormatter(lineFmt)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create line formatter with template %v", lineFmt)
-	}
 	if _, ok := formatter.Process(line, input, result); !ok {
 		return nil, fmt.Errorf("unable to process line %v", line)
 	}
