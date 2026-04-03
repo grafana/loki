@@ -207,16 +207,6 @@ func buildPlanForLogQuery(
 	}
 
 	// Adding this earlier in the pipeline to avoid expensive operations on lines that will be deleted anyway.
-	if hasLinefmtParser {
-		builder = builder.Format(types.VariadicOpParseLinefmt, linefmtTemplate)
-	}
-	if hasLabelfmtParser {
-		builder = builder.Format(types.VariadicOpParseLabelfmt, labelfmtTemplates)
-		replacedLabels := getReplacedLabels(labelfmtTemplates)
-		if len(replacedLabels) > 0 {
-			builder = builder.ProjectDrop(replacedLabels...)
-		}
-	}
 	for _, value := range deletePredicates {
 		builder = builder.Select(value)
 	}
@@ -281,10 +271,10 @@ func buildPlanForLogQuery(
 			err = errUnimplemented
 			return false // do not traverse children
 		case *syntax.LineFmtExpr:
-			err = unimplementedFeature("line_format")
-			return false // do not traverse children
+			builder = builder.Format(types.VariadicOpParseLinefmt, linefmtTemplate)
+			return true
 		case *syntax.LabelFmtExpr:
-			err = unimplementedFeature("label_format")
+			builder = builder.Format(types.VariadicOpParseLabelfmt, labelfmtTemplates)
 			return false // do not traverse children
 		case *syntax.KeepLabelsExpr:
 			err = unimplementedFeature("keep")
