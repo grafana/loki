@@ -137,12 +137,35 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 			defaultCountSupplier := func() int {
 				return testData.streams
 			}
-			streamCountLimiter := newStreamCountLimiter("test", defaultCountSupplier, limiter, ownedStreamSvc)
+			streamCountLimiter := newStreamCountLimiter("test", defaultCountSupplier, limiter, ownedStreamSvc, false)
 			actual := streamCountLimiter.AssertNewStreamAllowed("test", noPolicy)
 
 			assert.Equal(t, testData.expected, actual)
 		})
 	}
+}
+
+func TestStreamCountLimiter_DelegateStreamLimits(t *testing.T) {
+	limits, err := validation.NewOverrides(validation.Limits{
+		MaxLocalStreamsPerUser:  100,
+		MaxGlobalStreamsPerUser: 1000,
+	}, nil)
+	require.NoError(t, err)
+
+	strategy := &fixedStrategy{localLimit: 100}
+	limiter := NewLimiter(limits, NilMetrics, strategy, &TenantBasedStrategy{limits: limits})
+	defaultCountSupplier := func() int {
+		return 200 // well above the limit
+	}
+	ownedStreamSvc := &ownedStreamService{
+		fixedLimit:       atomic.NewInt32(0),
+		ownedStreamCount: atomic.NewInt64(0),
+	}
+
+	scl := newStreamCountLimiter("test", defaultCountSupplier, limiter, ownedStreamSvc, true)
+	err = scl.AssertNewStreamAllowed("test", noPolicy)
+
+	assert.NoError(t, err, "stream count limit should be skipped when delegateStreamLimits is enabled")
 }
 
 func TestLimiter_minNonZero(t *testing.T) {

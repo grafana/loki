@@ -437,7 +437,7 @@ func loadInsecureFromEnvEndpoint(envEndpoint []string) resolver[bool] {
 func convHeaders(s string) (map[string]string, error) {
 	out := make(map[string]string)
 	var err error
-	for _, header := range strings.Split(s, ",") {
+	for header := range strings.SplitSeq(s, ",") {
 		rawKey, rawVal, found := strings.Cut(header, "=")
 		if !found {
 			err = errors.Join(err, fmt.Errorf("invalid header: %s", header))

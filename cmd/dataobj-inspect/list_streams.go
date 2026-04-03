@@ -67,6 +67,9 @@ func (cmd *listStreamsCommand) listStreams(ctx context.Context, dataObj *dataobj
 				exitWithErr(fmt.Errorf("failed to open streams section: %w", err))
 			}
 			r := streams.NewRowReader(streamsSec)
+			if err = r.Open(ctx); err != nil {
+				exitWithErr(fmt.Errorf("failed to open row reader: %w", err))
+			}
 			for {
 				n, err := r.Read(ctx, tmp)
 				if err != nil && !errors.Is(err, io.EOF) {

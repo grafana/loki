@@ -39,6 +39,12 @@ Install `jsonnet-bundler` (`jb`), find instructions for your platform in Tanka's
 
 ## Deploying
 
+{{< docs/shared source="loki" lookup="promtail-deprecation" version="<LOKI_VERSION>" >}}
+
+{{< admonition type="note" >}}
+We recommend deploying [Grafana Alloy](https://grafana.com/docs/alloy/latest/set-up/) as your log shipping agent instead of Promtail.
+{{< /admonition >}}
+
 Download and install the Loki and Promtail module using `jb` (version v0.6.0 or a more recent version):
 
 ```bash

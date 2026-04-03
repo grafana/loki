@@ -20,12 +20,18 @@ import (
 	"io"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	pb "cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/grpc"
 )
+
+// protocolVersion determines what streaming pull protocol to use
+// when talking to pubsub servers. This is a monotonically increasing
+// value that is not exposed to end-users.
+var protocolVersion int64 = 1
 
 // A pullStream supports the methods of a StreamingPullClient, but re-opens
 // the stream on a retryable error.
@@ -35,14 +41,21 @@ type pullStream struct {
 	open   func() (pb.Subscriber_StreamingPullClient, context.CancelFunc, error)
 	close  context.CancelFunc // cancel function to close down the currently open stream
 
+	// protects simultaneous sends on the stream
+	sendMu sync.Mutex
+	spc    *pb.Subscriber_StreamingPullClient
+
+	// protects writing to the permanent error.
 	mu  sync.Mutex
-	spc *pb.Subscriber_StreamingPullClient
 	err error // permanent error
+
+	openCount atomic.Int64
 }
 
 // for testing
 type streamingPullFunc func(context.Context, ...gax.CallOption) (pb.Subscriber_StreamingPullClient, error)
 
+// TODO(465876554): refactor pull stream to take options rather than growing list of arguments.
 func newPullStream(ctx context.Context, streamingPull streamingPullFunc, subName, clientID string, maxOutstandingMessages, maxOutstandingBytes int, maxDurationPerLeaseExtension time.Duration) *pullStream {
 	ctx = withSubscriptionKey(ctx, subName)
 	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(subName))}
@@ -68,6 +81,7 @@ func newPullStream(ctx context.Context, streamingPull streamingPullFunc, subName
 					StreamAckDeadlineSeconds: streamAckDeadline,
 					MaxOutstandingMessages:   int64(maxOutstandingMessages),
 					MaxOutstandingBytes:      int64(maxOutstandingBytes),
+					ProtocolVersion:          protocolVersion,
 				})
 			}
 			if err != nil {
@@ -120,6 +134,7 @@ func (s *pullStream) openWithRetry() (pb.Subscriber_StreamingPullClient, context
 	r := defaultRetryer{}
 	for {
 		recordStat(s.ctx, StreamOpenCount, 1)
+		s.openCount.Add(1)
 		spc, close, err := s.open()
 		bo, shouldRetry := r.Retry(err)
 		if err != nil && shouldRetry {
@@ -174,6 +189,8 @@ func (s *pullStream) call(f func(pb.Subscriber_StreamingPullClient) error, opts 
 }
 
 func (s *pullStream) Send(req *pb.StreamingPullRequest) error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
 	return s.call(func(spc pb.Subscriber_StreamingPullClient) error {
 		recordStat(s.ctx, AckCount, int64(len(req.AckIds)))
 		zeroes := 0
@@ -200,12 +217,20 @@ func (s *pullStream) Recv() (*pb.StreamingPullResponse, error) {
 	return res, err
 }
 
+// CloseSend closes the stream and stores the error as a permanent error.
 func (s *pullStream) CloseSend() error {
-	err := s.call(func(spc pb.Subscriber_StreamingPullClient) error {
-		return spc.CloseSend()
-	})
+	err := s.Close()
 	s.mu.Lock()
 	s.err = io.EOF // should not be retried
 	s.mu.Unlock()
 	return err
+}
+
+// Close closes the stream to be reopened.
+func (s *pullStream) Close() error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	return s.call(func(spc pb.Subscriber_StreamingPullClient) error {
+		return spc.CloseSend()
+	})
 }

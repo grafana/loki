@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	gotrace "runtime/trace"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
@@ -475,6 +477,8 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 			// if the worker disconnected, the loop will exit on worker.done.
 			continue
 		}
+
+		gotrace.Log(assignment.t.runtimeTraceCtx, "task_assigned", assignment.t.inner.ULID.String()+" -> "+worker.RemoteAddr().String())
 
 		s.finalizeAssignment(ctx, assignment.t, worker, assignment.msg.StreamStates)
 
@@ -1029,6 +1033,7 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 
 		// Assign the workflow region to the task for metrics recording.
 		t.wfRegion = wfRegion
+		t.runtimeTraceCtx = ctx
 	}
 
 	// We set markPending *after* enqueueTasks to give tasks an opportunity to

@@ -29,18 +29,18 @@ type builder interface {
 	CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
 }
 
-// A flushManager allows mocking of flushes in tests.
-type flushManager interface {
+// A flushCommitter allows mocking of flushes in tests.
+type flushCommitter interface {
 	Flush(ctx context.Context, builder builder, reason string, offset int64, earliestRecordTime time.Time) error
 }
 
 // A processor receives records and builds data objects from them.
 type processor struct {
 	*services.BasicService
-	builder      builder
-	decoder      *kafka.Decoder
-	records      chan *kgo.Record
-	flushManager flushManager
+	builder        builder
+	decoder        *kafka.Decoder
+	records        chan *kgo.Record
+	flushCommitter flushCommitter
 
 	// lastOffset contains the offset of the last record appended to the data object
 	// builder. It is used to commit the correct offset after a flush.
@@ -80,7 +80,7 @@ type processor struct {
 func newProcessor(
 	builder builder,
 	records chan *kgo.Record,
-	flushManager flushManager,
+	flushCommitter flushCommitter,
 	idleFlushTimeout time.Duration,
 	maxBuilderAge time.Duration,
 	logger log.Logger,
@@ -94,7 +94,7 @@ func newProcessor(
 		builder:          builder,
 		decoder:          decoder,
 		records:          records,
-		flushManager:     flushManager,
+		flushCommitter:   flushCommitter,
 		idleFlushTimeout: idleFlushTimeout,
 		maxBuilderAge:    maxBuilderAge,
 		metrics:          newMetrics(reg),
@@ -235,7 +235,7 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 		p.firstAppend = time.Time{}
 		p.lastAppend = time.Time{}
 	}()
-	return p.flushManager.Flush(ctx, p.builder, reason, p.lastOffset, p.earliestRecordTime)
+	return p.flushCommitter.Flush(ctx, p.builder, reason, p.lastOffset, p.earliestRecordTime)
 }
 
 func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {

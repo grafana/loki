@@ -1,5 +1,13 @@
 # Changes
 
+## [2.5.0](https://github.com/googleapis/google-cloud-go/releases/tag/pubsub%2Fv2.5.0) (2026-03-19)
+
+### Features
+
+* Add BigtableConfig type ([177550d](https://github.com/googleapis/google-cloud-go/commit/177550d454fe98dcd1cd6645bf9b4c51eef7a419))
+* add keep alive support (#13457) ([aeffa93](https://github.com/googleapis/google-cloud-go/commit/aeffa932f86ee8b221bc8f71faef7876791054db))
+* introduce per stream flow control (#13642) ([9bb9541](https://github.com/googleapis/google-cloud-go/commit/9bb9541773cde3a934eb0ab15032d777468cba9c))
+
 ## [2.4.0](https://github.com/googleapis/google-cloud-go/releases/tag/pubsub%2Fv2.4.0) (2026-02-04)
 
 ### Features

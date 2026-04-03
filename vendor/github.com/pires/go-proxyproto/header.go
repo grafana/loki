@@ -12,26 +12,43 @@ import (
 )
 
 var (
-	// Protocol
+	// SIGV1 is the signature for PROXY protocol v1.
 	SIGV1 = []byte{'\x50', '\x52', '\x4F', '\x58', '\x59'}
+	// SIGV2 is the signature for PROXY protocol v2.
 	SIGV2 = []byte{'\x0D', '\x0A', '\x0D', '\x0A', '\x00', '\x0D', '\x0A', '\x51', '\x55', '\x49', '\x54', '\x0A'}
 
-	ErrCantReadVersion1Header               = errors.New("proxyproto: can't read version 1 header")
-	ErrVersion1HeaderTooLong                = errors.New("proxyproto: version 1 header must be 107 bytes or less")
-	ErrLineMustEndWithCrlf                  = errors.New("proxyproto: version 1 header is invalid, must end with \\r\\n")
-	ErrCantReadProtocolVersionAndCommand    = errors.New("proxyproto: can't read proxy protocol version and command")
-	ErrCantReadAddressFamilyAndProtocol     = errors.New("proxyproto: can't read address family or protocol")
-	ErrCantReadLength                       = errors.New("proxyproto: can't read length")
-	ErrCantResolveSourceUnixAddress         = errors.New("proxyproto: can't resolve source Unix address")
-	ErrCantResolveDestinationUnixAddress    = errors.New("proxyproto: can't resolve destination Unix address")
-	ErrNoProxyProtocol                      = errors.New("proxyproto: proxy protocol signature not present")
-	ErrUnknownProxyProtocolVersion          = errors.New("proxyproto: unknown proxy protocol version")
+	// ErrCantReadVersion1Header indicates a v1 header could not be read.
+	ErrCantReadVersion1Header = errors.New("proxyproto: can't read version 1 header")
+	// ErrVersion1HeaderTooLong indicates a v1 header is too long.
+	ErrVersion1HeaderTooLong = errors.New("proxyproto: version 1 header must be 107 bytes or less")
+	// ErrLineMustEndWithCrlf indicates a v1 header is invalid, must end with \r\n.
+	ErrLineMustEndWithCrlf = errors.New("proxyproto: version 1 header is invalid, must end with \\r\\n")
+	// ErrCantReadProtocolVersionAndCommand indicates a protocol version and command could not be read.
+	ErrCantReadProtocolVersionAndCommand = errors.New("proxyproto: can't read proxy protocol version and command")
+	// ErrCantReadAddressFamilyAndProtocol indicates an address family and protocol could not be read.
+	ErrCantReadAddressFamilyAndProtocol = errors.New("proxyproto: can't read address family or protocol")
+	// ErrCantReadLength indicates a length could not be read.
+	ErrCantReadLength = errors.New("proxyproto: can't read length")
+	// ErrCantResolveSourceUnixAddress indicates a source Unix address could not be resolved.
+	ErrCantResolveSourceUnixAddress = errors.New("proxyproto: can't resolve source Unix address")
+	// ErrCantResolveDestinationUnixAddress indicates a destination Unix address could not be resolved.
+	ErrCantResolveDestinationUnixAddress = errors.New("proxyproto: can't resolve destination Unix address")
+	// ErrNoProxyProtocol indicates a proxy protocol signature is not present.
+	ErrNoProxyProtocol = errors.New("proxyproto: proxy protocol signature not present")
+	// ErrUnknownProxyProtocolVersion indicates an unknown proxy protocol version.
+	ErrUnknownProxyProtocolVersion = errors.New("proxyproto: unknown proxy protocol version")
+	// ErrUnsupportedProtocolVersionAndCommand indicates an unsupported protocol version and command.
 	ErrUnsupportedProtocolVersionAndCommand = errors.New("proxyproto: unsupported proxy protocol version and command")
-	ErrUnsupportedAddressFamilyAndProtocol  = errors.New("proxyproto: unsupported address family and protocol")
-	ErrInvalidLength                        = errors.New("proxyproto: invalid length")
-	ErrInvalidAddress                       = errors.New("proxyproto: invalid address")
-	ErrInvalidPortNumber                    = errors.New("proxyproto: invalid port number")
-	ErrSuperfluousProxyHeader               = errors.New("proxyproto: upstream connection sent PROXY header but isn't allowed to send one")
+	// ErrUnsupportedAddressFamilyAndProtocol indicates an unsupported address family and protocol.
+	ErrUnsupportedAddressFamilyAndProtocol = errors.New("proxyproto: unsupported address family and protocol")
+	// ErrInvalidLength indicates an invalid length.
+	ErrInvalidLength = errors.New("proxyproto: invalid length")
+	// ErrInvalidAddress indicates an invalid address.
+	ErrInvalidAddress = errors.New("proxyproto: invalid address")
+	// ErrInvalidPortNumber indicates an invalid port number.
+	ErrInvalidPortNumber = errors.New("proxyproto: invalid port number")
+	// ErrSuperfluousProxyHeader indicates an upstream connection sent a PROXY header but isn't allowed to send one.
+	ErrSuperfluousProxyHeader = errors.New("proxyproto: upstream connection sent PROXY header but isn't allowed to send one")
 )
 
 // Header is the placeholder for proxy protocol header.
@@ -97,6 +114,7 @@ func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
 	return h
 }
 
+// TCPAddrs returns TCP source/destination addresses if the header is stream-based.
 func (header *Header) TCPAddrs() (sourceAddr, destAddr *net.TCPAddr, ok bool) {
 	if !header.TransportProtocol.IsStream() {
 		return nil, nil, false
@@ -106,6 +124,7 @@ func (header *Header) TCPAddrs() (sourceAddr, destAddr *net.TCPAddr, ok bool) {
 	return sourceAddr, destAddr, sourceOK && destOK
 }
 
+// UDPAddrs returns UDP source/destination addresses if the header is datagram-based.
 func (header *Header) UDPAddrs() (sourceAddr, destAddr *net.UDPAddr, ok bool) {
 	if !header.TransportProtocol.IsDatagram() {
 		return nil, nil, false
@@ -115,6 +134,7 @@ func (header *Header) UDPAddrs() (sourceAddr, destAddr *net.UDPAddr, ok bool) {
 	return sourceAddr, destAddr, sourceOK && destOK
 }
 
+// UnixAddrs returns UNIX source/destination addresses if the header is UNIX-based.
 func (header *Header) UnixAddrs() (sourceAddr, destAddr *net.UnixAddr, ok bool) {
 	if !header.TransportProtocol.IsUnix() {
 		return nil, nil, false
@@ -124,24 +144,26 @@ func (header *Header) UnixAddrs() (sourceAddr, destAddr *net.UnixAddr, ok bool) 
 	return sourceAddr, destAddr, sourceOK && destOK
 }
 
+// IPs returns source/destination IPs for TCP/UDP headers.
 func (header *Header) IPs() (sourceIP, destIP net.IP, ok bool) {
 	if sourceAddr, destAddr, ok := header.TCPAddrs(); ok {
 		return sourceAddr.IP, destAddr.IP, true
-	} else if sourceAddr, destAddr, ok := header.UDPAddrs(); ok {
-		return sourceAddr.IP, destAddr.IP, true
-	} else {
-		return nil, nil, false
 	}
+	if sourceAddr, destAddr, ok := header.UDPAddrs(); ok {
+		return sourceAddr.IP, destAddr.IP, true
+	}
+	return nil, nil, false
 }
 
+// Ports returns source/destination ports for TCP/UDP headers.
 func (header *Header) Ports() (sourcePort, destPort int, ok bool) {
 	if sourceAddr, destAddr, ok := header.TCPAddrs(); ok {
 		return sourceAddr.Port, destAddr.Port, true
-	} else if sourceAddr, destAddr, ok := header.UDPAddrs(); ok {
-		return sourceAddr.Port, destAddr.Port, true
-	} else {
-		return 0, 0, false
 	}
+	if sourceAddr, destAddr, ok := header.UDPAddrs(); ok {
+		return sourceAddr.Port, destAddr.Port, true
+	}
+	return 0, 0, false
 }
 
 // EqualTo returns true if headers are equivalent, false otherwise.

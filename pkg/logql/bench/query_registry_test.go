@@ -19,7 +19,7 @@ func TestQueryRegistry_ValidateRequirements(t *testing.T) {
 			yamlContent: `
 queries:
   - description: Valid query
-    query: '{service_name="database"} | json | unwrap rows_affected [5m]'
+    query: '{service_name="database"} | json | unwrap duration [5m]'
     kind: metric
     time_range:
       length: 24h
@@ -27,7 +27,7 @@ queries:
     requires:
       log_format: json
       unwrappable_fields:
-        - rows_affected
+        - duration
 `,
 			expectError: "",
 		},
@@ -95,11 +95,11 @@ queries:
 			expectError: "structured metadata key \"invalid_key\" not in bounded set",
 		},
 		{
-			name: "valid query_type label",
+			name: "valid container label",
 			yamlContent: `
 queries:
-  - description: Valid query_type label
-    query: 'sum by (query_type) (count_over_time({service_name="database"}[5m]))'
+  - description: Valid container label
+    query: 'sum by (container) (count_over_time({service_name="database"}[5m]))'
     kind: metric
     time_range:
       length: 24h
@@ -107,16 +107,16 @@ queries:
     requires:
       log_format: json
       labels:
-        - query_type
+        - container
 `,
 			expectError: "",
 		},
 		{
-			name: "valid status label",
+			name: "valid pod label",
 			yamlContent: `
 queries:
-  - description: Valid status label
-    query: 'sum by (status) (count_over_time({service_name="web-server"}[5m]))'
+  - description: Valid pod label
+    query: 'sum by (pod) (count_over_time({service_name="web-server"}[5m]))'
     kind: metric
     time_range:
       length: 24h
@@ -124,22 +124,22 @@ queries:
     requires:
       log_format: json
       labels:
-        - status
+        - pod
 `,
 			expectError: "",
 		},
 		{
-			name: "valid query keyword",
+			name: "valid level keyword",
 			yamlContent: `
 queries:
-  - description: Valid query keyword
-    query: '{service_name="database"} |= "query"'
+  - description: Valid level keyword
+    query: '{service_name="database"} |= "level"'
     kind: log
     time_range:
       length: 24h
     requires:
       keywords:
-        - query
+        - level
 `,
 			expectError: "",
 		},

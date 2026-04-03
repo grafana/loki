@@ -1,5 +1,11 @@
 # Changes
 
+## [0.18.2](https://github.com/googleapis/google-cloud-go/releases/tag/auth%2Fv0.18.2) (2026-02-13)
+
+### Bug Fixes
+
+* fixes gdch credentials logic (#13741) ([f82cda5](https://github.com/googleapis/google-cloud-go/commit/f82cda58bd9885b7b8a9d8b15126f5a1e0add0dc))
+
 ## [0.18.1](https://github.com/googleapis/google-cloud-go/releases/tag/auth%2Fv0.18.1) (2026-01-21)
 
 ### Bug Fixes

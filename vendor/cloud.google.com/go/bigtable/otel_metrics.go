@@ -224,6 +224,10 @@ func newOtelMetricsContext(ctx context.Context, cfg metricsConfig) (*otelMetrics
 			"grpc.lb.rls.failed_picks",
 			"grpc.xds_client.server_failure",
 			"grpc.xds_client.resource_updates_invalid",
+			"grpc.subchannel.open_connections",
+			"grpc.subchannel.disconnections",
+			"grpc.subchannel.connection_attempts_succeeded",
+			"grpc.subchannel.connection_attempts_failed",
 		),
 		OptionalLabels: []string{"grpc.lb.locality"},
 	}

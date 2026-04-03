@@ -2,8 +2,6 @@
 
 package displaywidth
 
-import "github.com/clipperhouse/stringish"
-
 // property is an enum representing the properties of a character
 type property uint8
 
@@ -19,7 +17,7 @@ const (
 // lookup returns the trie value for the first UTF-8 encoding in s and
 // the width in bytes of this encoding. The size will be 0 if s does not
 // hold enough bytes to complete the encoding. len(s) must be greater than 0.
-func lookup[T stringish.Interface](s T) (v uint8, sz int) {
+func lookup[T ~string | []byte](s T) (v uint8, sz int) {
 	c0 := s[0]
 	switch {
 	case c0 < 0x80: // is ASCII

@@ -269,6 +269,9 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecom
 	}
 
 	userAgent := r.Header.Get("User-Agent")
+	// Sanitize the User-Agent to valid UTF-8 to prevent prometheus from panicking
+	// when it's used as a label value in WithLabelValues.
+	userAgent = strings.ToValidUTF8(userAgent, "")
 	if userAgent != "" {
 		logValues = append(logValues, "userAgent", strings.TrimSpace(userAgent))
 	}

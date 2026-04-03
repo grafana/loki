@@ -6,7 +6,7 @@ queries:
     kind: log
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     tags:
       - drilldown
       - parser
@@ -16,7 +16,7 @@ queries:
     query: ${SELECTOR} | json | logfmt | drop __error__, __error_details__ | level="error"
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     tags:
       - drilldown
       - parser
@@ -25,7 +25,7 @@ queries:
     query: ${SELECTOR} | json | logfmt | drop __error__, __error_details__ | level="error" or level="warn"
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     tags:
       - drilldown
       - parser

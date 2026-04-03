@@ -27,6 +27,18 @@ type symbol struct {
 
 type symbols []symbol
 
+func (s symbols) Equal(other symbols) bool {
+	if len(s) != len(other) {
+		return false
+	}
+	for i := range s {
+		if s[i] != other[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // symbolizer holds a collection of label names and values and assign symbols to them.
 // symbols are actually index numbers assigned based on when the entry is seen for the first time.
 type symbolizer struct {
