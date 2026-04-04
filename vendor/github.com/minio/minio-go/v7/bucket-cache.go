@@ -209,6 +209,11 @@ func (c *Client) getBucketLocationRequest(ctx context.Context, bucketName string
 	}
 
 	req.Header.Set("X-Amz-Content-Sha256", contentSha256)
-	req = signer.SignV4(*req, accessKeyID, secretAccessKey, sessionToken, "us-east-1")
+	if s3utils.IsAmazonOutpostsEndpoint(*c.endpointURL) {
+		region := getDefaultLocation(*c.endpointURL, c.region)
+		req = signer.SignV4Outposts(*req, accessKeyID, secretAccessKey, sessionToken, region)
+	} else {
+		req = signer.SignV4(*req, accessKeyID, secretAccessKey, sessionToken, "us-east-1")
+	}
 	return req, nil
 }

@@ -34,6 +34,7 @@ type Cache struct {
 	Key          string
 	CacheName    TaskCacheName
 	MaxSizeBytes uint64
+	Compression  string
 }
 
 // ID returns the ULID that uniquely identifies the node in the plan.
@@ -44,13 +45,13 @@ func (*Cache) Type() NodeType { return NodeTypeCache }
 
 // Clone returns a deep copy of the node with a new unique ID.
 func (c *Cache) Clone() Node {
-	return &Cache{NodeID: ulid.Make(), Key: c.Key, CacheName: c.CacheName, MaxSizeBytes: c.MaxSizeBytes}
+	return &Cache{NodeID: ulid.Make(), Key: c.Key, CacheName: c.CacheName, MaxSizeBytes: c.MaxSizeBytes, Compression: c.Compression}
 }
 
 // WrapWithCacheIfSupported computes a cache key for plan and, if the plan is
 // cacheable, inserts a [Cache] node as the new root. It modifies plan in-place.
 // Returns the new Cache root node and true on a cache wrap, nil and false otherwise.
-func WrapWithCacheIfSupported(ctx context.Context, tenantID string, plan *Plan, maxSizeBytes uint64) (Node, bool, error) {
+func WrapWithCacheIfSupported(ctx context.Context, tenantID string, plan *Plan, maxSizeBytes uint64, compression string) (Node, bool, error) {
 	key, cacheType := TaskCacheKey(ctx, tenantID, plan)
 	if key == "" {
 		// This plan does not support caching.
@@ -61,7 +62,7 @@ func WrapWithCacheIfSupported(ctx context.Context, tenantID string, plan *Plan, 
 	if err != nil {
 		return nil, false, err
 	}
-	node := &Cache{NodeID: ulid.Make(), Key: key, CacheName: cacheType, MaxSizeBytes: maxSizeBytes}
+	node := &Cache{NodeID: ulid.Make(), Key: key, CacheName: cacheType, MaxSizeBytes: maxSizeBytes, Compression: compression}
 	plan.graph.Add(node)
 	if err := plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: root}); err != nil {
 		return nil, false, err
@@ -75,7 +76,7 @@ func WrapWithCacheIfSupported(ctx context.Context, tenantID string, plan *Plan, 
 // shared across tasks that scan the same section but apply different operators on top.
 //
 // PointersScan nodes are intentionally not wrapped.
-func WrapDataObjScansWithCache(ctx context.Context, tenantID string, plan *Plan, maxSizeBytes uint64) error {
+func WrapDataObjScansWithCache(ctx context.Context, tenantID string, plan *Plan, maxSizeBytes uint64, compression string) error {
 	// Snapshot nodes before mutating the graph.
 	var scans []*DataObjScan
 	for n := range plan.graph.Nodes() {
@@ -98,6 +99,7 @@ func WrapDataObjScansWithCache(ctx context.Context, tenantID string, plan *Plan,
 		Key:          key,
 		CacheName:    TaskCacheDataObjScanResult,
 		MaxSizeBytes: maxSizeBytes,
+		Compression:  compression,
 	}
 
 	parents := plan.graph.Parents(scan)

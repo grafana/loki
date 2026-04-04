@@ -19,20 +19,21 @@ type Processor interface {
 	// Enabled reports whether the Processor will process for the given context
 	// and param.
 	//
-	// The passed param is likely to be partial record information being
-	// provided (e.g. a param with only the Severity set).
-	// If a Processor needs more information than is provided, it
-	// is said to be in an indeterminate state (see below).
+	// The param contains a subset of the information that will be available
+	// in the Record passed to OnEmit, as defined by EnabledParameters.
+	// A field being unset in param does not imply the corresponding field
+	// in the Record passed to OnEmit will be unset. For example, a log bridge
+	// may be unable to populate all fields in EnabledParameters even though
+	// they are present on the final Record.
 	//
 	// The returned value will be true when the Processor will process for the
 	// provided context and param, and will be false if the Processor will not
-	// process. The returned value may be true or false in an indeterminate state.
-	// An implementation should default to returning true for an indeterminate
-	// state, but may return false if valid reasons in particular circumstances
-	// exist (e.g. performance, correctness).
+	// process.
 	//
-	// The param should not be held by the implementation. A copy should be
-	// made if the param needs to be held after the call returns.
+	// Implementations that need additional information beyond what is provided
+	// in param should treat the decision as indeterminate and default to
+	// returning true, unless they have a specific reason to return false
+	// (for example, to meet performance or correctness constraints).
 	//
 	// Processor implementations are expected to re-evaluate the [Record] passed
 	// to OnEmit. It is not expected that the caller to OnEmit will
@@ -50,13 +51,13 @@ type Processor interface {
 	// OnEmit will be called independent of Enabled. Implementations need to
 	// validate the arguments themselves before processing.
 	//
-	// Implementation should not interrupt the record processing
-	// if the context is canceled.
+	// Implementations should not stop processing a Record solely because the
+	// context is canceled.
 	//
-	// All retry logic must be contained in this function. The SDK does not
-	// implement any retry logic. All errors returned by this function are
-	// considered unrecoverable and will be reported to a configured error
-	// Handler.
+	// Any retry or recovery logic needed by the Processor must be handled
+	// inside this function. The SDK does not implement any retry logic.
+	// Errors returned by this function are treated as unrecoverable by the SDK
+	// and will be reported to a configured error Handler.
 	//
 	// The SDK invokes the processors sequentially in the same order as
 	// they were registered using WithProcessor.
@@ -69,12 +70,13 @@ type Processor interface {
 	OnEmit(ctx context.Context, record *Record) error
 
 	// Shutdown is called when the SDK shuts down. Any cleanup or release of
-	// resources held by the exporter should be done in this call.
+	// resources held by the Processor (and any underlying Exporter) should be
+	// done in this call.
 	//
 	// The deadline or cancellation of the passed context must be honored. An
 	// appropriate error should be returned in these situations.
 	//
-	// After Shutdown is called, calls to Export, Shutdown, or ForceFlush
+	// After Shutdown is called, calls to OnEmit, Shutdown, or ForceFlush
 	// should perform no operation and return nil error.
 	Shutdown(ctx context.Context) error
 
