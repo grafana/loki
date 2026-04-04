@@ -985,7 +985,12 @@ func GeneratePresignedUrlInternal(conf *bce.BceClientConfiguration, signer auth.
 	if len(method) == 0 {
 		method = http.GET
 	}
-	if method == http.GET && (object == "" || object == "v1") {
+	objectTrimSlash := strings.Trim(object, "/")
+	if method == http.GET && objectTrimSlash == "" {
+		log.Warnf("objectKey is empty, cannot generate presigned url.")
+		return ""
+	}
+	if !path_style && method == http.GET && objectTrimSlash == "v1" {
 		log.Warnf("objectKey '%s' is invalid, cannot generate presigned url.", object)
 		return ""
 	}
