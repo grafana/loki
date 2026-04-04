@@ -22,11 +22,14 @@ import (
 	"net/netip"
 
 	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func init() {
-	registerMetadataConverter("type.googleapis.com/envoy.config.core.v3.Address", proxyAddressConvertor{})
+	if envconfig.XDSHTTPConnectEnabled {
+		registerMetadataConverter("type.googleapis.com/envoy.config.core.v3.Address", proxyAddressConvertor{})
+	}
 }
 
 var (
@@ -51,6 +54,12 @@ func registerMetadataConverter(protoType string, c metadataConverter) {
 // metadataConverterForType retrieves a converter based on key given.
 func metadataConverterForType(typeURL string) metadataConverter {
 	return metdataRegistry[typeURL]
+}
+
+// unregisterMetadataConverterForTesting removes a converter from the registry.
+// For testing only.
+func unregisterMetadataConverterForTesting(typeURL string) {
+	delete(metdataRegistry, typeURL)
 }
 
 // StructMetadataValue stores the values in a google.protobuf.Struct from
