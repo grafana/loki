@@ -191,6 +191,49 @@ The example configurations defined above will result in the following retention 
 If you are a Grafana Cloud customer, you can use the [config self-serve API](https://grafana.com/docs/grafana-cloud/send-data/logs/config-self-serve/#configure-retention) to configure your tenant retention.
 {{< /admonition >}}
 
+
+## Object store lifecycle policies
+
+When using an object store (S3, GCS, Azure Blob Storage, etc.) with Loki, you may want to configure lifecycle policies on your bucket to automatically delete old objects and reduce storage costs. However, **a blanket "delete all objects older than N days" policy can silently break your Loki cluster** if it targets files that Loki needs to retain indefinitely.
+
+### Files that must not be deleted by lifecycle policies
+
+The following files exist at the root of your bucket and must be **excluded from any delete-by-age lifecycle policy**:
+
+- **`loki_cluster_seed.json`** — This file stores a unique cluster seed UUID used for Loki's anonymous usage statistics reporting. If deleted, Loki will regenerate it on the next restart, breaking usage-stats continuity. More importantly, it lives at the bucket root and is never rotated, so a blanket age-based policy will delete it once it is older than the configured TTL.
+
+### Paths with age-based deletion: what is safe
+
+Loki stores different types of data in distinct path prefixes within your bucket. The following summarizes which paths are safe to target:
+
+| Path prefix | Content | Safe to delete with age policy? |
+|---|---|---|
+|  or  | Chunk objects (log data) | ✅ Yes — these are the primary targets for lifecycle TTL |
+|  | Index files managed by TSDB shipper or BoltDB shipper | ⚠️ Avoid — Loki manages index lifecycle via the Compactor |
+|  | Cluster analytics seed | ❌ No — must be excluded explicitly |
+|  | Ruler rule files | ❌ No — these are configuration, not time-series data |
+|  | Compactor delete-request store | ❌ No — active deletion queue |
+
+### Recommended approach: use Loki Compactor for retention
+
+The safest way to manage log retention is to let the **Compactor handle chunk deletion** via the  configuration (described above) rather than relying on bucket lifecycle policies. The Compactor:
+
+- Understands Loki's index structure and only deletes chunks that are fully de-referenced
+- Honors per-tenant and per-stream retention policies
+- Provides a configurable  to prevent query failures during index propagation
+
+If you do use object store lifecycle policies (for example, as a cost-safety net), scope them narrowly to the chunk path prefix and set the TTL **longer** than your configured  to avoid conflicts.
+
+### Example: S3 lifecycle rule scoped to chunk paths only
+
+
+
+> **Note:** Replace  with your actual tenant ID prefix (or ) if multi-tenancy is enabled. Do **not** use an empty prefix — that would target all objects in the bucket, including .
+
+{{< admonition type=warning >}}
+Setting a lifecycle policy with an empty prefix (targeting the entire bucket) will eventually delete  and any index or ruler files Loki stores at non-chunked paths. Always scope lifecycle rules to the chunk prefix for your tenant(s).
+{{< /admonition >}}
+
 ## Table Manager (deprecated)
 
 Retention through the [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/) is
