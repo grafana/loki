@@ -16,7 +16,6 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
@@ -69,8 +68,6 @@ type Metrics struct {
 	tsdbBuilds            *prometheus.CounterVec
 	tsdbBuildLastSuccess  prometheus.Gauge
 	walCorruptionsRepairs *prometheus.CounterVec
-	// Request duration metrics similar to BoltDB shipper
-	requestDurationSeconds *prometheus.HistogramVec
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
@@ -105,12 +102,6 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name:      "wal_corruptions_repairs_total",
 			Help:      "Total number of WAL corruptions repairs partitioned by status",
 		}, []string{statusLabel}),
-		requestDurationSeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "loki_tsdb_shipper",
-			Name:      "request_duration_seconds",
-			Help:      "Time (in seconds) spent serving requests when using tsdb shipper",
-			Buckets:   instrument.DefBuckets,
-		}, []string{"operation", "status_code"}),
 	}
 }
 

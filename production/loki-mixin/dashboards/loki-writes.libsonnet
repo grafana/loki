@@ -236,16 +236,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('TSDB Index')
                           .addPanel(
                             $.newQueryPanel('QPS') +
-                            $.newQpsPanel('loki_tsdb_shipper_request_duration_seconds_count{%s operation="IndexChunk"}' % dashboards['loki-writes.json'].ingesterSelector)
+                            $.newQpsPanel('loki_index_request_duration_seconds_count{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                           .addPanel(
                             $.newQueryPanel('Latency', 'ms') +
-                            $.latencyPanel('loki_tsdb_shipper_request_duration_seconds', '{%s operation="IndexChunk"}' % dashboards['loki-writes.json'].ingesterSelector)
+                            $.latencyPanel('loki_index_request_duration_seconds', '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                           .addPanel(
                             $.p99LatencyByPod(
-                              'loki_tsdb_shipper_request_duration_seconds',
-                              '{%s operation="IndexChunk"}' % dashboards['loki-writes.json'].ingesterSelector,
+                              'loki_index_request_duration_seconds',
+                              '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector,
                             )
                           )
                         ),
