@@ -230,24 +230,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               '{%s operation="WRITE"}' % dashboards['loki-writes.json'].ingesterSelector,
                             )
                           )
-                        )
-                        .addRowIf(
-                          !$._config.ssd.enabled && $._config.tsdb,
-                          $.row('TSDB Index')
-                          .addPanel(
-                            $.newQueryPanel('QPS') +
-                            $.newQpsPanel('loki_index_request_duration_seconds_count{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
-                          )
-                          .addPanel(
-                            $.newQueryPanel('Latency', 'ms') +
-                            $.latencyPanel('loki_index_request_duration_seconds', '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
-                          )
-                          .addPanel(
-                            $.p99LatencyByPod(
-                              'loki_index_request_duration_seconds',
-                              '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector,
-                            )
-                          )
                         ),
   },
 }
