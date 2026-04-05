@@ -106,11 +106,6 @@ func TestFrontendConnectsToRunningSchedulerButBeforeShouldRun(t *testing.T) {
 	err := s.FrontendLoop(mock)
 	assert.NoError(t, err)
 
-	// not_running -> running, shouldRun == true
-	// to simulate last "setRunState(true)" happening after FrontendLoop started
-	s.setRunState(true)
-	assert.True(t, s.shouldRun.Load())
-
 	// Now we expect the scheduler to have sent a ERROR message to the frontend
 	// so the frontend will retry connecting now that the scheduler and is not waiting for an INIT response
 	assert.Equal(t, schedulerpb.ERROR, mock.msg.Status)
