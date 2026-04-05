@@ -1166,6 +1166,14 @@ It accepts the following query parameters in the URL:
 
 In microservices mode, `/loki/api/v1/tail` is exposed by the querier.
 
+{{< admonition type="warning" >}}
+The tail endpoint is designed for **near real-time human observation** of log streams, not for reliable machine-to-machine log retrieval. It does not guarantee delivery of all log entries:
+
+- **Lookback gap**: The `start` parameter triggers an initial historical query before live tailing begins. If this historical query takes a long time (for example, 30 seconds), log lines produced during that window will be missed before live tailing starts.
+- **No delivery guarantees**: Log entries can be silently dropped under load, as indicated by `dropped_entries` in the response.
+- **Not suitable for large result sets**: Attempting to use the tail endpoint as a high-throughput log export mechanism is unreliable. For reliable log export or machine consumption, use repeated calls to [`GET /loki/api/v1/query_range`](#query-logs-within-a-range-of-time) with pagination instead.
+{{< /admonition >}}
+
 Response format (streamed):
 
 ```json
