@@ -2408,7 +2408,7 @@ golang.org/x/tools/txtar
 ## explicit; go 1.18
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# google.golang.org/api v0.273.0
+# google.golang.org/api v0.274.0
 ## explicit; go 1.25.0
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/googleapi

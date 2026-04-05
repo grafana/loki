@@ -94,7 +94,7 @@ require (
 	golang.org/x/sync v0.20.0
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/time v0.15.0
-	google.golang.org/api v0.273.0
+	google.golang.org/api v0.274.0
 	google.golang.org/grpc v1.79.3
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
