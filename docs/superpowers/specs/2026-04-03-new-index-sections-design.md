@@ -156,22 +156,78 @@ Both packages follow the same patterns as existing section packages (`sections/s
 
 Readers are required even without query path integration -- they are the validation mechanism for integration tests (round-trip verification).
 
-### Dataset API Dependency
+### Dataset API
 
-The new sections depend on the `pkg/dataset/array` package from `rfratto/loki:new-dataset`. This package provides:
+The new sections use the `pkg/dataset/array` package (already available in
+this branch, from Robert's new-dataset work). This package provides:
 
 - `array.Writer` / `array.Reader` -- columnar array encoding/decoding
 - `array.Sink` / `array.Source` -- storage abstraction for buffer data
 - `array.Spec` / `array.Encoding` -- write-time and read-time encoding specs
 - `types.Type` -- logical type system (Int64, UTF8, Bool, etc.)
 
-**Prerequisite:** This branch is built off Robert's branch, so all of these packages and APIs are available.
+The codecs produce buffer data that closely aligns with Arrow's in-memory
+layout (e.g., plain int64 values are stored as contiguous 8-byte values,
+UTF8 strings use separate offsets and data buffers). This alignment is the
+core motivation for using the new API -- reads should require minimal
+transformation from on-disk to in-memory representation.
 
-**Section metadata serialization:** The `Array` descriptor produced by `array.Writer.Flush()` contains an encoding tree, buffer IDs, stats, and children. This metadata must be persisted in the section so readers can reconstruct the `Array` and create `array.Reader` instances. The serialization format (protobuf message schema, field layout) will be co-designed with Robert as part of the dataset package work. If the dataset package does not provide a serialization format, we will define a protobuf schema in `pkg/dataobj/sections/internal/` covering:
+### Section Storage Format (Sub-Spec)
 
-- `Array` tree structure (encoding kind, type, buffer references, stats, children)
-- Buffer ID mapping to section byte offsets
-- Per-column metadata (column name, type, encoding spec)
+The `pkg/dataset/array` package currently has **no serialization format**
+for `Array` metadata. The codecs can encode/decode column data between
+in-memory `columnar.Array` values and raw `BufferData` byte slices, but
+there is no way to persist the `Array` descriptor tree (encoding, type,
+stats, children, buffer byte ranges) to bytes and reconstruct it.
+
+This is a critical gap: without a serialization format, we cannot write
+sections to disk and read them back (round-trip), which blocks all
+testing.
+
+**A separate sub-spec will define the on-disk storage format for sections
+that use the new dataset API.** This sub-spec covers:
+
+1. **Array metadata serialization** -- A protobuf (or FlatBuffer) schema
+   for persisting the `Array` descriptor tree. Each node in the tree
+   contains: encoding kind, encoding-specific metadata, logical type,
+   statistics (row count, null count), buffer references (byte offsets
+   and lengths into the section's data region), and child array nodes.
+   This follows the same pattern as [Vortex's `ArrayNode` FlatBuffer
+   schema](https://github.com/vortex-data/vortex), which uses a
+   recursive node tree with flat buffer descriptors.
+
+2. **Section-level metadata** -- How the per-column `Array` descriptors
+   and column names are organized within the section's metadata region.
+   Must be compatible with the existing dataobj file container (the
+   section gets a metadata region and a data region, with an
+   `ExtensionData` blob at the file level for bootstrapping).
+
+3. **Buffer data layout** -- How the raw encoded buffers from
+   `array.Writer.Flush()` are laid out in the section's data region.
+   The buffers are written as-is (preserving their Arrow-aligned format)
+   and referenced by byte offset + length from the metadata.
+
+4. **Reading path** -- How a reader reconstructs `Array` descriptors
+   from the persisted metadata and creates `array.Source` + `array.Reader`
+   instances, with minimal data transformation (ideally zero-copy or
+   near-zero-copy for the buffer data).
+
+The sub-spec will draw heavily from Vortex's prior art:
+- `vortex-flatbuffers/flatbuffers/vortex-array/array.fbs` -- Array/ArrayNode tree serialization
+- `vortex-flatbuffers/flatbuffers/vortex-file/footer.fbs` -- Segment map (buffer descriptors)
+- `vortex-flatbuffers/flatbuffers/vortex-layout/layout.fbs` -- Layout tree
+
+**Implementation ordering:** The serialization format sub-spec and its
+implementation are saved for last in the implementation plan, as Robert
+may have work in flight for this part of the dataset package. If Robert
+provides a serialization solution, we adopt it. If not, we implement our
+own based on the sub-spec.
+
+**Interim testing:** Until the serialization format is implemented,
+unit tests for the section builders can use in-memory round-trips (the
+`array.Writer` -> `Array` descriptor -> `array.Reader` path works in
+memory via a test `Sink`/`Source`). Integration tests that persist to
+the full dataobj file format will require the serialization format.
 
 ### Integration with Index Builder Pipeline
 
@@ -418,42 +474,106 @@ The run-ID is stored as an Int64 column in the stats section only. It is not inc
 
 ## Testing
 
-### Unit Tests
+### In-Memory Unit Tests (PRs 1-3, no serialization needed)
 
-For each new section package (stats, postings):
+For each new section package (stats, postings), using in-memory
+`Sink`/`Source` for round-trips:
 
-1. **Round-trip test:** Build a section with synthetic data, flush, read back, verify all rows match exactly.
-2. **Sort order test:** Verify rows are returned in the expected sort order.
-3. **Section splitting test:** Configure a small TargetSectionSize, write enough data to trigger multiple sections, verify rows are correctly distributed in sort order across sections.
-4. **Edge cases:** Empty builder (no rows), single-row section, many rows with the same label value, very large values, streams with missing `service_name` label (should produce rows with `service_name=""`).
-5. **Nullable column handling (postings only):** Verify bloom_filter is null for Label postings, label_value is null for Bloom postings. Verify that invalid combinations (kind=Label with bloom set) produce errors.
-6. **Bitmap correctness:** Verify stream ID bitmaps are correctly built -- correct bits set for matching streams, 0-indexed, little-endian byte order.
+1. **In-memory round-trip test:** Build columns with synthetic data via
+   `array.Writer`, flush to in-memory `Sink`, read back via
+   `array.Reader` from in-memory `Source`, verify all rows match.
+2. **Sort order test:** Verify rows are returned in the expected sort
+   order.
+3. **Section splitting test:** Configure a small TargetSectionSize, write
+   enough data to trigger multiple sections, verify rows are correctly
+   distributed in sort order across sections.
+4. **Edge cases:** Empty builder (no rows), single-row section, many rows
+   with the same label value, very large values, streams with missing
+   `service_name` label (should produce rows with `service_name=""`).
+5. **Nullable column handling (postings only):** Verify bloom_filter is
+   null for Label postings, label_value is null for Bloom postings.
+   Verify that invalid combinations (kind=Label with bloom set) produce
+   errors.
+6. **Bitmap correctness:** Verify stream ID bitmaps are correctly built
+   -- correct bits set for matching streams, 0-indexed, LSB numbering.
 
-### Integration Tests
+### On-Disk Integration Tests (PR 5, requires serialization format)
 
-1. **Full pipeline round-trip:** Create a data object with known streams and log records. Run the Calculator with the existing + new calculations. Verify the resulting index object contains:
+These tests require the Section Storage Format (PR 4) to be implemented:
+
+1. **Full pipeline round-trip:** Create a data object with known streams
+   and log records. Run the Calculator with the existing + new
+   calculations. Write the index object to bytes. Read it back. Verify:
    - Existing streams and pointers sections (unchanged behavior).
    - New stats and postings sections with correct data.
 2. **Cross-validation with concrete invariants:**
-   - For each `(object_path, section_index, service_name)` in the stats section, the `row_count` must equal the count of log records in that data object section whose stream has that `service_name` value.
-   - For each `(object_path, section_index, service_name)` in the stats section, the `uncompressed_size` must equal the sum of `len(log.Line)` for those records.
-   - The set of `service_name` values in the stats section must equal the set of `service_name` values across all streams in the corresponding streams section (treating missing labels as `""`).
-   - For each Label posting, the stream IDs in the bitmap must match exactly the stream IDs from the streams section that have the posted label value.
-   - For each Bloom posting, the bloom filter bytes must match the corresponding `ValuesBloomFilter` from the pointers section for the same `(object_path, section_index, column_name)`.
+   - For each `(object_path, section_index, service_name)` in the stats
+     section, the `row_count` must equal the count of log records in
+     that data object section whose stream has that `service_name` value.
+   - For each `(object_path, section_index, service_name)` in the stats
+     section, the `uncompressed_size` must equal the sum of
+     `len(log.Line)` for those records.
+   - The set of `service_name` values in the stats section must equal the
+     set of `service_name` values across all streams in the corresponding
+     streams section (treating missing labels as `""`).
+   - For each Label posting, the stream IDs in the bitmap must match
+     exactly the stream IDs from the streams section that have the posted
+     label value.
+   - For each Bloom posting, the bloom filter bytes must match the
+     corresponding `ValuesBloomFilter` from the pointers section for the
+     same `(object_path, section_index, column_name)`.
+
+## Testing
+
+### Unit Test Phasing
+
+Unit tests for the section builders can use **in-memory round-trips**
+before the on-disk serialization format exists. The `array.Writer` ->
+`Array` descriptor -> `array.Reader` path works via an in-memory
+`Sink`/`Source` (the test infrastructure already in the dataset package).
+This validates the data model, sort ordering, section splitting logic,
+and column correctness without needing on-disk persistence.
+
+### Integration Tests
+
+Integration tests that verify the full pipeline (Calculator -> index
+object -> read back) require the on-disk serialization format. These
+tests are blocked on the Section Storage Format sub-spec implementation.
 
 ## PR Decomposition
 
 This work is expected to span multiple PRs:
 
-0. **PR 0 (prerequisite): Dataset API** -- Robert's `pkg/dataset` package must be merged or vendored. This blocks PRs 1 and 2.
-1. **PR 1: Stats section package** -- `sections/stats/` with builder, reader, row_reader, and unit tests.
-2. **PR 2: Postings section package** -- `sections/postings/` with builder, reader, row_reader, and unit tests.
-3. **PR 3: Pipeline integration** -- New calculation steps, `streamLabels` field on `logsCalculationContext`, `indexobj.Builder` changes (new fields, methods, flush loop, `observeObject` update), integration tests.
+1. **PR 1: Stats section package** -- `sections/stats/` with builder,
+   reader, row_reader, and in-memory unit tests (using test Sink/Source).
+2. **PR 2: Postings section package** -- `sections/postings/` with
+   builder, reader, row_reader, and in-memory unit tests.
+3. **PR 3: Pipeline integration** -- New calculation steps,
+   `streamLabels` field on `logsCalculationContext`, `indexobj.Builder`
+   changes (new fields, methods, flush loop, `observeObject` update).
+   Unit tests for the calculation steps using mocked builders.
+4. **PR 4: Section Storage Format** -- Sub-spec + implementation of the
+   on-disk serialization format for new dataset API sections. Defines
+   the protobuf/FlatBuffer schema for `Array` metadata, implements
+   `Sink`/`Source` backed by the section's data region, and bridges to
+   the existing dataobj file container. Draws from Vortex prior art.
+   **Saved for last** -- Robert may have work in flight for this.
+5. **PR 5: On-disk integration tests** -- End-to-end tests: build data
+   object -> run Calculator -> write index object to bytes -> read back
+   -> verify stats and postings sections. Cross-validation with existing
+   streams/pointers sections.
 
-PRs 1 and 2 can be developed in parallel and could be combined if small enough for a single review. PR 3 depends on both and on PR 0.
+PRs 1 and 2 can be developed in parallel. PR 3 depends on both.
+PR 4 is independent of PRs 1-3 (it's a serialization layer). PR 5
+depends on PRs 3 and 4.
 
 ## Open Questions
 
-- **Sort schema configuration:** Currently hardcoded to `[service_name]`. Future work will make this configurable per tenant. The design supports arbitrary sort schemas via the dynamic label columns and `sort_schema` column.
-- **Feature flag:** Not implemented in this work. Future issue will add a config toggle to enable/disable writing new sections.
-- **Compaction:** The stats section is designed for the compactor but compaction logic is not part of this work.
+- **Sort schema configuration:** Currently hardcoded to `[service_name]`.
+  Future work will make this configurable per tenant. The design supports
+  arbitrary sort schemas via the dynamic label columns and `sort_schema`
+  column.
+- **Feature flag:** Not implemented in this work. Future issue will add a
+  config toggle to enable/disable writing new sections.
+- **Compaction:** The stats section is designed for the compactor but
+  compaction logic is not part of this work.
