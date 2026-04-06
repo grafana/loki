@@ -492,7 +492,7 @@ func warmMediaTypeSchema(mediaType *v3.MediaType, schemaCache cache.SchemaCache,
 		if _, exists := schemaCache.Load(hash); !exists {
 			schema := mediaType.Schema.Schema()
 			if schema != nil {
-				renderCtx := base.NewInlineRenderContext()
+				renderCtx := base.NewInlineRenderContextForValidation()
 				renderedInline, _ := schema.RenderInlineWithContext(renderCtx)
 				referenceSchema := string(renderedInline)
 				renderedJSON, _ := utils.ConvertYAMLtoJSON(renderedInline)
@@ -545,7 +545,7 @@ func warmParameterSchema(param *v3.Parameter, schemaCache cache.SchemaCache, opt
 
 		if schema != nil {
 			if _, exists := schemaCache.Load(hash); !exists {
-				renderCtx := base.NewInlineRenderContext()
+				renderCtx := base.NewInlineRenderContextForValidation()
 				renderedInline, _ := schema.RenderInlineWithContext(renderCtx)
 				referenceSchema := string(renderedInline)
 				renderedJSON, _ := utils.ConvertYAMLtoJSON(renderedInline)

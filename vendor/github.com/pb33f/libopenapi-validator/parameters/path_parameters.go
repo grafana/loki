@@ -267,26 +267,26 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 								var encodedObject interface{}
 
 								if p.IsDefaultPathEncoding() {
-									encodedObject = helpers.ConstructMapFromCSV(decodedParamValue)
+									encodedObject = helpers.ConstructMapFromCSVWithSchema(decodedParamValue, sch)
 								} else {
 									switch p.Style {
 									case helpers.LabelStyle:
 										if !p.IsExploded() {
-											encodedObject = helpers.ConstructMapFromCSV(decodedParamValue[1:])
+											encodedObject = helpers.ConstructMapFromCSVWithSchema(decodedParamValue[1:], sch)
 										} else {
-											encodedObject = helpers.ConstructKVFromLabelEncoding(decodedParamValue)
+											encodedObject = helpers.ConstructKVFromLabelEncodingWithSchema(decodedParamValue, sch)
 										}
 									case helpers.MatrixStyle:
 										if !p.IsExploded() {
 											decodedForMatrix := strings.Replace(decodedParamValue[1:], fmt.Sprintf("%s=", p.Name), "", 1)
-											encodedObject = helpers.ConstructMapFromCSV(decodedForMatrix)
+											encodedObject = helpers.ConstructMapFromCSVWithSchema(decodedForMatrix, sch)
 										} else {
 											decodedForMatrix := strings.Replace(decodedParamValue[1:], fmt.Sprintf("%s=", p.Name), "", 1)
-											encodedObject = helpers.ConstructKVFromMatrixCSV(decodedForMatrix)
+											encodedObject = helpers.ConstructKVFromMatrixCSVWithSchema(decodedForMatrix, sch)
 										}
 									default:
 										if p.IsExploded() {
-											encodedObject = helpers.ConstructKVFromCSV(decodedParamValue)
+											encodedObject = helpers.ConstructKVFromCSVWithSchema(decodedParamValue, sch)
 										}
 									}
 								}

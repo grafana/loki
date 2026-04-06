@@ -4,6 +4,7 @@
 package schema_validation
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,14 +30,22 @@ func normalizeJSON(data any) any {
 // ValidateOpenAPIDocument will validate an OpenAPI document against the OpenAPI 2, 3.0 and 3.1 schemas (depending on version)
 // It will return true if the document is valid, false if it is not and a slice of ValidationError pointers.
 func ValidateOpenAPIDocument(doc libopenapi.Document, opts ...config.Option) (bool, []*liberrors.ValidationError) {
+	return ValidateOpenAPIDocumentWithPrecompiled(doc, nil, opts...)
+}
+
+// ValidateOpenAPIDocumentWithPrecompiled validates an OpenAPI document against the OAS JSON Schema.
+// When compiledSchema is non-nil it is used directly, skipping schema compilation.
+// When SpecJSONBytes is available on the document's SpecInfo, the normalizeJSON round-trip is
+// bypassed in favour of a single jsonschema.UnmarshalJSON call.
+func ValidateOpenAPIDocumentWithPrecompiled(doc libopenapi.Document, compiledSchema *jsonschema.Schema, opts ...config.Option) (bool, []*liberrors.ValidationError) {
 	options := config.NewValidationOptions(opts...)
 
 	info := doc.GetSpecInfo()
 	loadedSchema := info.APISchema
 	var validationErrors []*liberrors.ValidationError
 
-	// Check if SpecJSON is nil before dereferencing
-	if info.SpecJSON == nil {
+	// Check if both JSON representations are nil before proceeding
+	if info.SpecJSON == nil && info.SpecJSONBytes == nil {
 		validationErrors = append(validationErrors, &liberrors.ValidationError{
 			ValidationType:    helpers.Schema,
 			ValidationSubType: "document",
@@ -50,27 +59,44 @@ func ValidateOpenAPIDocument(doc libopenapi.Document, opts ...config.Option) (bo
 		return false, validationErrors
 	}
 
-	decodedDocument := *info.SpecJSON
+	// Use the precompiled schema if provided, otherwise compile it
+	jsch := compiledSchema
+	if jsch == nil {
+		var err error
+		jsch, err = helpers.NewCompiledSchema("schema", []byte(loadedSchema), options)
+		if err != nil {
+			validationErrors = append(validationErrors, &liberrors.ValidationError{
+				ValidationType:    helpers.Schema,
+				ValidationSubType: "compilation",
+				Message:           "OpenAPI document schema compilation failed",
+				Reason:            fmt.Sprintf("The OpenAPI schema failed to compile: %s", err.Error()),
+				SpecLine:          1,
+				SpecCol:           0,
+				HowToFix:          "check the OpenAPI schema for invalid JSON Schema syntax, complex regex patterns, or unsupported schema constructs",
+				Context:           loadedSchema,
+			})
+			return false, validationErrors
+		}
+	}
 
-	// Compile the JSON Schema
-	jsch, err := helpers.NewCompiledSchema("schema", []byte(loadedSchema), options)
-	if err != nil {
-		// schema compilation failed, return validation error instead of panicking
-		validationErrors = append(validationErrors, &liberrors.ValidationError{
-			ValidationType:    helpers.Schema,
-			ValidationSubType: "compilation",
-			Message:           "OpenAPI document schema compilation failed",
-			Reason:            fmt.Sprintf("The OpenAPI schema failed to compile: %s", err.Error()),
-			SpecLine:          1,
-			SpecCol:           0,
-			HowToFix:          "check the OpenAPI schema for invalid JSON Schema syntax, complex regex patterns, or unsupported schema constructs",
-			Context:           loadedSchema,
-		})
-		return false, validationErrors
+	// Build the normalized document value for validation.
+	// Prefer SpecJSONBytes (single unmarshal) over SpecJSON (marshal+unmarshal round-trip).
+	var normalized any
+	if info.SpecJSONBytes != nil && len(*info.SpecJSONBytes) > 0 {
+		var err error
+		normalized, err = jsonschema.UnmarshalJSON(bytes.NewReader(*info.SpecJSONBytes))
+		if err != nil {
+			// Fall back to normalizeJSON if UnmarshalJSON fails
+			if info.SpecJSON != nil {
+				normalized = normalizeJSON(*info.SpecJSON)
+			}
+		}
+	} else if info.SpecJSON != nil {
+		normalized = normalizeJSON(*info.SpecJSON)
 	}
 
 	// Validate the document
-	scErrs := jsch.Validate(normalizeJSON(decodedDocument))
+	scErrs := jsch.Validate(normalized)
 
 	var schemaValidationErrors []*liberrors.SchemaValidationFailure
 

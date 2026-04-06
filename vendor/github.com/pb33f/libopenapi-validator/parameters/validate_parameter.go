@@ -96,7 +96,7 @@ func ValidateParameterSchema(
 	var validationErrors []*errors.ValidationError
 
 	// 1. build a JSON render of the schema.
-	renderCtx := base.NewInlineRenderContext()
+	renderCtx := base.NewInlineRenderContextForValidation()
 	renderedSchema, _ := schema.RenderInlineWithContext(renderCtx)
 	jsonSchema, _ := utils.ConvertYAMLtoJSON(renderedSchema)
 
@@ -238,7 +238,7 @@ func formatJsonSchemaValidationError(schema *base.Schema, scErrs *jsonschema.Val
 			OriginalJsonSchemaError: scErrs,
 		}
 		if schema != nil {
-			renderCtx := base.NewInlineRenderContext()
+			renderCtx := base.NewInlineRenderContextForValidation()
 			rendered, err := schema.RenderInlineWithContext(renderCtx)
 			if err == nil && rendered != nil {
 				renderedBytes, _ := json.Marshal(rendered)

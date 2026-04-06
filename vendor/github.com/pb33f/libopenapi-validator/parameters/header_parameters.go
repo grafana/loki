@@ -126,10 +126,10 @@ func (v *paramValidator) ValidateHeaderParamsWithPathItem(request *http.Request,
 						var encodedObj map[string]interface{}
 						// we have found our header, check the explode type.
 						if p.IsDefaultHeaderEncoding() {
-							encodedObj = helpers.ConstructMapFromCSV(param)
+							encodedObj = helpers.ConstructMapFromCSVWithSchema(param, sch)
 						} else {
 							if p.IsExploded() { // only option is to be exploded for KV extraction.
-								encodedObj = helpers.ConstructKVFromCSV(param)
+								encodedObj = helpers.ConstructKVFromCSVWithSchema(param, sch)
 							}
 						}
 
@@ -231,7 +231,7 @@ func (v *paramValidator) ValidateHeaderParamsWithPathItem(request *http.Request,
 		// Extract security headers applicable to this operation
 		var securityHeaders []string
 		if v.document.Components != nil && v.document.Components.SecuritySchemes != nil {
-			security := helpers.ExtractSecurityForOperation(request, pathItem)
+			security := helpers.EffectiveSecurityForOperation(request, pathItem, v.document.Security)
 			// Convert orderedmap to regular map for the helper
 			schemesMap := make(map[string]*v3.SecurityScheme)
 			for pair := v.document.Components.SecuritySchemes.First(); pair != nil; pair = pair.Next() {

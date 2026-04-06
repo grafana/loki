@@ -1,4 +1,4 @@
-// Copyright 2023-2025 Princess Beef Heavy Industries, LLC / Dave Shanley
+// Copyright 2023-2026 Princess Beef Heavy Industries, LLC / Dave Shanley
 // https://pb33f.io
 
 package responses
@@ -63,13 +63,19 @@ func ValidateResponseHeaders(
 			if _, ok := locatedHeaders[strings.ToLower(name)]; !ok {
 				keywordLocation := helpers.ConstructResponseHeaderJSONPointer(pathTemplate, request.Method, statusCode, name, "required")
 
+				specLine, specCol := 1, 0
+				if low := header.GoLow(); low != nil && low.KeyNode != nil {
+					specLine = low.KeyNode.Line
+					specCol = low.KeyNode.Column
+				}
+
 				validationErrors = append(validationErrors, &errors.ValidationError{
 					ValidationType:    helpers.ResponseBodyValidation,
 					ValidationSubType: helpers.ParameterValidationHeader,
 					Message:           "Missing required header",
 					Reason:            fmt.Sprintf("Required header '%s' was not found in response", name),
-					SpecLine:          header.GoLow().KeyNode.Line,
-					SpecCol:           header.GoLow().KeyNode.Column,
+					SpecLine:          specLine,
+					SpecCol:           specCol,
 					HowToFix:          errors.HowToFixMissingHeader,
 					RequestPath:       request.URL.Path,
 					RequestMethod:     request.Method,

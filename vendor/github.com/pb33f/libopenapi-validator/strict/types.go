@@ -330,7 +330,7 @@ func NewValidator(options *config.ValidationOptions, version float32) *Validator
 		logger:       logger,
 		localCache:   make(map[string]*jsonschema.Schema),
 		patternCache: make(map[string]*regexp.Regexp),
-		renderCtx:    base.NewInlineRenderContext(),
+		renderCtx:    base.NewInlineRenderContextForValidation(),
 		version:      version,
 	}
 

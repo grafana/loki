@@ -1,4 +1,4 @@
-// Copyright 2023 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2023-2026 Princess Beef Heavy Industries, LLC / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package requests
@@ -32,10 +32,11 @@ var instanceLocationRegex = regexp.MustCompile(`^/(\d+)`)
 
 // ValidateRequestSchemaInput contains parameters for request schema validation.
 type ValidateRequestSchemaInput struct {
-	Request *http.Request   // Required: The HTTP request to validate
-	Schema  *base.Schema    // Required: The OpenAPI schema to validate against
-	Version float32         // Required: OpenAPI version (3.0 or 3.1)
-	Options []config.Option // Optional: Functional options (defaults applied if empty/nil)
+	Request      *http.Request   // Required: The HTTP request to validate
+	Schema       *base.Schema    // Required: The OpenAPI schema to validate against
+	Version      float32         // Required: OpenAPI version (3.0 or 3.1)
+	Options      []config.Option // Optional: Functional options (defaults applied if empty/nil)
+	BodyRequired bool            // Optional: Whether the request body is required (default false)
 }
 
 // ValidateRequestSchema will validate a http.Request pointer against a schema.
@@ -78,7 +79,7 @@ func ValidateRequestSchema(input *ValidateRequestSchemaInput) (bool, []*errors.V
 
 	// Cache miss or no cache - render and compile
 	if compiledSchema == nil {
-		renderCtx := base.NewInlineRenderContext()
+		renderCtx := base.NewInlineRenderContextForValidation()
 		var renderErr error
 		renderedSchema, renderErr = input.Schema.RenderInlineWithContext(renderCtx)
 		referenceSchema = string(renderedSchema)
@@ -178,15 +179,25 @@ func ValidateRequestSchema(input *ValidateRequestSchemaInput) (bool, []*errors.V
 
 	// no request body? but we do have a schema?
 	if len(requestBody) == 0 && len(jsonSchema) > 0 {
-
-		line := schema.ParentProxy.GetSchemaKeyNode().Line
-		col := schema.ParentProxy.GetSchemaKeyNode().Line
-		if schema.Type != nil {
-			line = schema.GoLow().Type.KeyNode.Line
-			col = schema.GoLow().Type.KeyNode.Column
+		if !input.BodyRequired {
+			return true, nil
 		}
 
-		// cannot decode the request body, so it's not valid
+		line := 1
+		col := 0
+		if schema.ParentProxy != nil {
+			if keyNode := schema.ParentProxy.GetSchemaKeyNode(); keyNode != nil {
+				line = keyNode.Line
+				col = keyNode.Column
+			}
+		}
+		if schema.Type != nil {
+			if low := schema.GoLow(); low != nil && low.Type.KeyNode != nil {
+				line = low.Type.KeyNode.Line
+				col = low.Type.KeyNode.Column
+			}
+		}
+
 		validationErrors = append(validationErrors, &errors.ValidationError{
 			ValidationType:    helpers.RequestBodyValidation,
 			ValidationSubType: helpers.Schema,
@@ -228,7 +239,10 @@ func ValidateRequestSchema(input *ValidateRequestSchemaInput) (bool, []*errors.V
 			if er.Error != nil {
 
 				// locate the violated property in the schema
-				located := schema_validation.LocateSchemaPropertyNodeByJSONPath(renderedNode.Content[0], er.KeywordLocation)
+				var located *yaml.Node
+				if len(renderedNode.Content) > 0 {
+					located = schema_validation.LocateSchemaPropertyNodeByJSONPath(renderedNode.Content[0], er.KeywordLocation)
+				}
 
 				// extract the element specified by the instance
 				val := instanceLocationRegex.FindStringSubmatch(er.InstanceLocation)
@@ -280,9 +294,9 @@ func ValidateRequestSchema(input *ValidateRequestSchemaInput) (bool, []*errors.V
 
 		line := 1
 		col := 0
-		if schema.GoLow().Type.KeyNode != nil {
-			line = schema.GoLow().Type.KeyNode.Line
-			col = schema.GoLow().Type.KeyNode.Column
+		if low := schema.GoLow(); low != nil && low.Type.KeyNode != nil {
+			line = low.Type.KeyNode.Line
+			col = low.Type.KeyNode.Column
 		}
 
 		// add the error to the list

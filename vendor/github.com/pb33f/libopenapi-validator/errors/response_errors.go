@@ -1,4 +1,4 @@
-// Copyright 2023 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2023-2026 Princess Beef Heavy Industries, LLC / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package errors
@@ -24,24 +24,33 @@ func ResponseContentTypeNotFound(op *v3.Operation,
 	ct := response.Header.Get(helpers.ContentTypeHeader)
 	mediaTypeString, _, _ := helpers.ExtractContentType(ct)
 	var ctypes []string
-	var specLine, specCol int
+	specLine, specCol := 1, 0
 	var contentMap *orderedmap.Map[string, *v3.MediaType]
 
 	// check for a default type (applies to all codes without a match)
 	if !isDefault {
-		for pair := orderedmap.First(op.Responses.Codes.GetOrZero(code).Content); pair != nil; pair = pair.Next() {
-			ctypes = append(ctypes, pair.Key())
+		resp := op.Responses.Codes.GetOrZero(code)
+		if resp != nil {
+			for pair := orderedmap.First(resp.Content); pair != nil; pair = pair.Next() {
+				ctypes = append(ctypes, pair.Key())
+			}
+			contentMap = resp.Content
+			if low := resp.GoLow(); low != nil && low.Content.KeyNode != nil {
+				specLine = low.Content.KeyNode.Line
+				specCol = low.Content.KeyNode.Column
+			}
 		}
-		specLine = op.Responses.Codes.GetOrZero(code).GoLow().Content.KeyNode.Line
-		specCol = op.Responses.Codes.GetOrZero(code).GoLow().Content.KeyNode.Column
-		contentMap = op.Responses.Codes.GetOrZero(code).Content
 	} else {
-		for pair := orderedmap.First(op.Responses.Default.Content); pair != nil; pair = pair.Next() {
-			ctypes = append(ctypes, pair.Key())
+		if op.Responses.Default != nil {
+			for pair := orderedmap.First(op.Responses.Default.Content); pair != nil; pair = pair.Next() {
+				ctypes = append(ctypes, pair.Key())
+			}
+			contentMap = op.Responses.Default.Content
+			if low := op.Responses.Default.GoLow(); low != nil && low.Content.KeyNode != nil {
+				specLine = low.Content.KeyNode.Line
+				specCol = low.Content.KeyNode.Column
+			}
 		}
-		specLine = op.Responses.Default.GoLow().Content.KeyNode.Line
-		specCol = op.Responses.Default.GoLow().Content.KeyNode.Column
-		contentMap = op.Responses.Default.Content
 	}
 	return &ValidationError{
 		ValidationType:    helpers.ResponseBodyValidation,
@@ -59,6 +68,11 @@ func ResponseContentTypeNotFound(op *v3.Operation,
 }
 
 func ResponseCodeNotFound(op *v3.Operation, request *http.Request, code int) *ValidationError {
+	specLine, specCol := 1, 0
+	if low := op.GoLow(); low != nil && low.Responses.KeyNode != nil {
+		specLine = low.Responses.KeyNode.Line
+		specCol = low.Responses.KeyNode.Column
+	}
 	return &ValidationError{
 		ValidationType:    helpers.ResponseBodyValidation,
 		ValidationSubType: helpers.ResponseBodyResponseCode,
@@ -66,8 +80,8 @@ func ResponseCodeNotFound(op *v3.Operation, request *http.Request, code int) *Va
 			request.Method, code),
 		Reason: fmt.Sprintf("The response code '%d' of the %s request submitted has not "+
 			"been defined, it's an unknown type", code, request.Method),
-		SpecLine: op.GoLow().Responses.KeyNode.Line,
-		SpecCol:  op.GoLow().Responses.KeyNode.Column,
+		SpecLine: specLine,
+		SpecCol:  specCol,
 		Context:  op,
 		HowToFix: HowToFixInvalidResponseCode,
 	}

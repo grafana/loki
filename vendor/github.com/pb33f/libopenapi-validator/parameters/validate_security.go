@@ -1,4 +1,4 @@
-// Copyright 2023-2025 Princess Beef Heavy Industries, LLC / Dave Shanley
+// Copyright 2023-2026 Princess Beef Heavy Industries, LLC / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package parameters
@@ -42,10 +42,10 @@ func (v *paramValidator) ValidateSecurityWithPathItem(request *http.Request, pat
 	if !v.options.SecurityValidation {
 		return true, nil
 	}
-	// extract security for the operation
-	security := helpers.ExtractSecurityForOperation(request, pathItem)
+	// extract security for the operation, falling back to document-level global security
+	security := helpers.EffectiveSecurityForOperation(request, pathItem, v.document.Security)
 
-	if security == nil {
+	if len(security) == 0 {
 		return true, nil
 	}
 

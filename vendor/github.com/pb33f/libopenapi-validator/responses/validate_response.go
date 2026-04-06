@@ -1,4 +1,4 @@
-// Copyright 2023 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2023-2026 Princess Beef Heavy Industries, LLC / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package responses
@@ -81,7 +81,7 @@ func ValidateResponseSchema(input *ValidateResponseSchemaInput) (bool, []*errors
 
 	// Cache miss or no cache - render and compile
 	if compiledSchema == nil {
-		renderCtx := base.NewInlineRenderContext()
+		renderCtx := base.NewInlineRenderContextForValidation()
 		var renderErr error
 		renderedSchema, renderErr = input.Schema.RenderInlineWithContext(renderCtx)
 		referenceSchema = string(renderedSchema)
@@ -263,7 +263,10 @@ func ValidateResponseSchema(input *ValidateResponseSchemaInput) (bool, []*errors
 			}
 			if er.Error != nil {
 				// locate the violated property in the schema
-				located := schema_validation.LocateSchemaPropertyNodeByJSONPath(renderedNode.Content[0], er.KeywordLocation)
+				var located *yaml.Node
+				if len(renderedNode.Content) > 0 {
+					located = schema_validation.LocateSchemaPropertyNodeByJSONPath(renderedNode.Content[0], er.KeywordLocation)
+				}
 
 				// extract the element specified by the instance
 				val := instanceLocationRegex.FindStringSubmatch(er.InstanceLocation)
@@ -313,9 +316,9 @@ func ValidateResponseSchema(input *ValidateResponseSchemaInput) (bool, []*errors
 
 		line := 1
 		col := 0
-		if schema.GoLow().Type.KeyNode != nil {
-			line = schema.GoLow().Type.KeyNode.Line
-			col = schema.GoLow().Type.KeyNode.Column
+		if low := schema.GoLow(); low != nil && low.Type.KeyNode != nil {
+			line = low.Type.KeyNode.Line
+			col = low.Type.KeyNode.Column
 		}
 
 		// add the error to the list

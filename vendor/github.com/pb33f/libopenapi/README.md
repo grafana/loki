@@ -22,15 +22,6 @@ Overlays and Arazzo are also fully supported.
 If your company is using `libopenapi`, please considering [supporting this project](https://github.com/sponsors/daveshanley), 
 like our _very kind_ sponsors:
 
-<a href="https://speakeasy.com/editor?utm_source=libopenapi+repo&utm_medium=github+sponsorship">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset=".github/sponsors/speakeasy-github-sponsor-dark.svg">
-  <img alt="speakeasy'" src=".github/sponsors/speakeasy-github-sponsor-light.svg">
-</picture>
-</a>
-
-[Speakeasy](https://speakeasy.com/editor?utm_source=libopenapi+repo&utm_medium=github+sponsorship)
-
 <a href="https://scalar.com">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/sponsors/scalar-dark.png">

@@ -126,10 +126,11 @@ func (v *requestBodyValidator) ValidateRequestBodyWithPathItem(request *http.Req
 	}
 
 	validationSucceeded, validationErrors := ValidateRequestSchema(&ValidateRequestSchemaInput{
-		Request: request,
-		Schema:  schema,
-		Version: helpers.VersionToFloat(v.document.Version),
-		Options: []config.Option{config.WithExistingOpts(v.options)},
+		Request:      request,
+		Schema:       schema,
+		Version:      helpers.VersionToFloat(v.document.Version),
+		Options:      []config.Option{config.WithExistingOpts(v.options)},
+		BodyRequired: required,
 	})
 
 	errors.PopulateValidationErrors(validationErrors, request, pathValue)

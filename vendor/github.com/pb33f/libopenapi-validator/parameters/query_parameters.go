@@ -180,9 +180,9 @@ doneLooking:
 								case helpers.DeepObject:
 									encodedObj = helpers.ConstructParamMapFromDeepObjectEncoding(jk, sch)
 								case helpers.PipeDelimited:
-									encodedObj = helpers.ConstructParamMapFromPipeEncoding(jk)
+									encodedObj = helpers.ConstructParamMapFromPipeEncodingWithSchema(jk, sch)
 								case helpers.SpaceDelimited:
-									encodedObj = helpers.ConstructParamMapFromSpaceEncoding(jk)
+									encodedObj = helpers.ConstructParamMapFromSpaceEncodingWithSchema(jk, sch)
 								default:
 									// form encoding is default.
 									if contentWrapped {
@@ -199,7 +199,7 @@ doneLooking:
 											encodedObj[params[p].Name] = encodedParams
 										}
 									} else {
-										encodedObj = helpers.ConstructParamMapFromFormEncodingArray(jk)
+										encodedObj = helpers.ConstructParamMapFromFormEncodingArrayWithSchema(jk, sch)
 									}
 								}
 
@@ -238,7 +238,7 @@ doneLooking:
 					if len(sch.Type) > 0 && sch.Type[0] == helpers.Object && params[p].IsDefaultFormEncoding() {
 						// if the param is an object, and we're using default encoding, then we need to
 						// validate the schema.
-						decoded := helpers.ConstructParamMapFromQueryParamInput(queryParams)
+						decoded := helpers.ConstructParamMapFromQueryParamInputWithSchema(queryParams, sch)
 						validationErrors = append(validationErrors,
 							ValidateParameterSchema(sch,
 								decoded,

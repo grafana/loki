@@ -404,11 +404,11 @@ func (p *ProtobufParser) StartTimestamp() int64 {
 	var st *types.Timestamp
 	switch p.dec.GetType() {
 	case dto.MetricType_COUNTER:
-		st = p.dec.GetCounter().GetCreatedTimestamp()
+		st = p.dec.GetCounter().GetStartTimestamp()
 	case dto.MetricType_SUMMARY:
-		st = p.dec.GetSummary().GetCreatedTimestamp()
+		st = p.dec.GetSummary().GetStartTimestamp()
 	case dto.MetricType_HISTOGRAM, dto.MetricType_GAUGE_HISTOGRAM:
-		st = p.dec.GetHistogram().GetCreatedTimestamp()
+		st = p.dec.GetHistogram().GetStartTimestamp()
 	default:
 	}
 	if st == nil {
@@ -674,6 +674,10 @@ func (p *ProtobufParser) getMagicLabel() (bool, string, string) {
 	switch p.dec.GetType() {
 	case dto.MetricType_SUMMARY:
 		qq := p.dec.GetSummary().GetQuantile()
+		if p.fieldPos >= len(qq) {
+			p.fieldsDone = true
+			return false, "", ""
+		}
 		q := qq[p.fieldPos]
 		p.fieldsDone = p.fieldPos == len(qq)-1
 		return true, model.QuantileLabel, labels.FormatOpenMetricsFloat(q.GetQuantile())

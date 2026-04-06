@@ -1,4 +1,4 @@
-// Copyright 2023 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2023-2026 Princess Beef Heavy Industries, LLC / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package helpers
@@ -66,6 +66,9 @@ func ExtractParamsForOperation(request *http.Request, item *v3.PathItem) []*v3.P
 }
 
 // ExtractSecurityForOperation will extract the security requirements for the operation based on the request method.
+//
+// Deprecated: use EffectiveSecurityForOperation instead, which also handles
+// document-level global security inheritance per the OpenAPI specification.
 func ExtractSecurityForOperation(request *http.Request, item *v3.PathItem) []*base.SecurityRequirement {
 	var schemes []*base.SecurityRequirement
 	switch request.Method {
@@ -158,6 +161,19 @@ func ExtractSecurityHeaderNames(
 	return headers
 }
 
+// EffectiveSecurityForOperation returns the security requirements that apply to the
+// operation matched by request method. It implements OpenAPI's inheritance rule:
+//   - If the operation defines security (even an empty array), use that.
+//   - Otherwise, fall back to the document-level global security.
+//   - Returns nil only when neither level defines security.
+func EffectiveSecurityForOperation(request *http.Request, item *v3.PathItem, docSecurity []*base.SecurityRequirement) []*base.SecurityRequirement {
+	op := ExtractOperation(request, item)
+	if op != nil && op.Security != nil {
+		return op.Security // operation-level (may be empty [] = "no security")
+	}
+	return docSecurity // nil when no global security either
+}
+
 func cast(v string) any {
 	if v == "true" || v == "false" {
 		b, _ := strconv.ParseBool(v)
@@ -174,18 +190,83 @@ func cast(v string) any {
 	return v
 }
 
+// getPropertySchema looks up a property's schema from an object schema's Properties map.
+// Returns nil if objectSchema is nil, has no Properties, or the property is not found.
+func getPropertySchema(objectSchema *base.Schema, propertyName string) *base.Schema {
+	if objectSchema == nil || objectSchema.Properties == nil {
+		return nil
+	}
+	proxy := objectSchema.Properties.GetOrZero(propertyName)
+	if proxy == nil {
+		return nil
+	}
+	return proxy.Schema()
+}
+
+// castWithSchema casts a string value consulting the schema for the property's declared type.
+// If the schema says the property is a string, the value is returned as-is (no numeric/bool guessing).
+// For other declared types, it falls back to cast() which produces correct results for integer,
+// number, and boolean values. The explicit string check prevents the most common miscast: numeric-
+// looking strings like "10" being converted to int64 when the schema declares type: string.
+func castWithSchema(v string, objectSchema *base.Schema, propertyName string) any {
+	propSchema := getPropertySchema(objectSchema, propertyName)
+	if propSchema != nil {
+		for _, t := range propSchema.Type {
+			if t == String {
+				return v
+			}
+		}
+	}
+	return cast(v)
+}
+
+// constructKVFromDelimited is the shared implementation for constructing key=value maps
+// from delimited strings (comma, period, semicolon). The delimiter determines how to split
+// entries, and each entry is further split on '=' to extract key-value pairs.
+func constructKVFromDelimited(values string, delimiter string, sch *base.Schema) map[string]interface{} {
+	props := make(map[string]interface{})
+	exploded := strings.Split(values, delimiter)
+	for i := range exploded {
+		obK := strings.Split(exploded[i], Equals)
+		if len(obK) == 2 {
+			props[obK[0]] = castWithSchema(obK[1], sch, obK[0])
+		}
+	}
+	return props
+}
+
+// constructParamMapFromDelimitedEncoding is the shared implementation for constructing
+// parameter maps from pipe-delimited or space-delimited query parameter values.
+// Entries alternate between keys and values (key|value|key|value or key value key value).
+func constructParamMapFromDelimitedEncoding(values []*QueryParam, delimiter string, sch *base.Schema) map[string]interface{} {
+	decoded := make(map[string]interface{})
+	for _, v := range values {
+		props := make(map[string]interface{})
+		exploded := strings.Split(v.Values[0], delimiter)
+		for i := range exploded {
+			if i%2 == 0 && i+1 < len(exploded) {
+				props[exploded[i]] = castWithSchema(exploded[i+1], sch, exploded[i])
+			}
+		}
+		decoded[v.Key] = props
+	}
+	return decoded
+}
+
 // ConstructParamMapFromDeepObjectEncoding will construct a map from the query parameters that are encoded as
 // deep objects. It's kind of a crazy way to do things, but hey, each to their own.
 func ConstructParamMapFromDeepObjectEncoding(values []*QueryParam, sch *base.Schema) map[string]interface{} {
-	// deepObject encoding is a technique used to encode objects into query parameters. Kinda nuts.
 	decoded := make(map[string]interface{})
 	for _, v := range values {
-		if decoded[v.Key] == nil {
+		castForProp := func(val string) any {
+			return castWithSchema(val, sch, v.Property)
+		}
 
+		if decoded[v.Key] == nil {
 			props := make(map[string]interface{})
 			rawValues := make([]interface{}, len(v.Values))
 			for i := range v.Values {
-				rawValues[i] = cast(v.Values[i])
+				rawValues[i] = castForProp(v.Values[i])
 			}
 			// check if the schema for the param is an array
 			if sch != nil && slices.Contains(sch.Type, Array) {
@@ -202,15 +283,14 @@ func ConstructParamMapFromDeepObjectEncoding(values []*QueryParam, sch *base.Sch
 			}
 
 			if len(props) == 0 {
-				props[v.Property] = cast(v.Values[0])
+				props[v.Property] = castForProp(v.Values[0])
 			}
 			decoded[v.Key] = props
 		} else {
-
 			added := false
 			rawValues := make([]interface{}, len(v.Values))
 			for i := range v.Values {
-				rawValues[i] = cast(v.Values[i])
+				rawValues[i] = castForProp(v.Values[i])
 			}
 			// check if the schema for the param is an array
 			if sch != nil && slices.Contains(sch.Type, Array) {
@@ -225,138 +305,70 @@ func ConstructParamMapFromDeepObjectEncoding(values []*QueryParam, sch *base.Sch
 				added = true
 			}
 			if !added {
-				decoded[v.Key].(map[string]interface{})[v.Property] = cast(v.Values[0])
+				decoded[v.Key].(map[string]interface{})[v.Property] = castForProp(v.Values[0])
 			}
-
 		}
 	}
 	return decoded
 }
 
 // ConstructParamMapFromQueryParamInput will construct a param map from an existing map of *QueryParam slices.
+//
+// Deprecated: use ConstructParamMapFromQueryParamInputWithSchema instead.
 func ConstructParamMapFromQueryParamInput(values map[string][]*QueryParam) map[string]interface{} {
-	decoded := make(map[string]interface{})
-	for _, q := range values {
-		for _, v := range q {
-			decoded[v.Key] = cast(v.Values[0])
-		}
-	}
-	return decoded
+	return ConstructParamMapFromQueryParamInputWithSchema(values, nil)
 }
 
 // ConstructParamMapFromPipeEncoding will construct a map from the query parameters that are encoded as
-// pipe separated values. Perhaps the most sane way to delimit/encode properties.
+// pipe separated values.
+//
+// Deprecated: use ConstructParamMapFromPipeEncodingWithSchema instead.
 func ConstructParamMapFromPipeEncoding(values []*QueryParam) map[string]interface{} {
-	// Pipes are always a good alternative to commas, personally I think they're better, if I were encoding, I would
-	// use pipes instead of commas, so much can go wrong with a comma, but a pipe? hardly ever.
-	decoded := make(map[string]interface{})
-	for _, v := range values {
-		props := make(map[string]interface{})
-		// explode PSV into array
-		exploded := strings.Split(v.Values[0], Pipe)
-		for i := range exploded {
-			if i%2 == 0 {
-				props[exploded[i]] = cast(exploded[i+1])
-			}
-		}
-		decoded[v.Key] = props
-	}
-	return decoded
+	return ConstructParamMapFromPipeEncodingWithSchema(values, nil)
 }
 
 // ConstructParamMapFromSpaceEncoding will construct a map from the query parameters that are encoded as
-// space delimited values. This is perhaps the worst way to delimit anything other than a paragraph of text.
+// space delimited values.
+//
+// Deprecated: use ConstructParamMapFromSpaceEncodingWithSchema instead.
 func ConstructParamMapFromSpaceEncoding(values []*QueryParam) map[string]interface{} {
-	// Don't use spaces to delimit anything unless you really know what the hell you're doing. Perhaps the
-	// easiest way to blow something up, unless you're tokenizing strings... don't do this.
-	decoded := make(map[string]interface{})
-	for _, v := range values {
-		props := make(map[string]interface{})
-		// explode SSV into array
-		exploded := strings.Split(v.Values[0], Space)
-		for i := range exploded {
-			if i%2 == 0 {
-				props[exploded[i]] = cast(exploded[i+1])
-			}
-		}
-		decoded[v.Key] = props
-	}
-	return decoded
+	return ConstructParamMapFromSpaceEncodingWithSchema(values, nil)
 }
 
 // ConstructMapFromCSV will construct a map from a comma separated value string.
+//
+// Deprecated: use ConstructMapFromCSVWithSchema instead.
 func ConstructMapFromCSV(csv string) map[string]interface{} {
-	decoded := make(map[string]interface{})
-	// explode SSV into array
-	exploded := strings.Split(csv, Comma)
-	for i := range exploded {
-		if i%2 == 0 {
-			if len(exploded) == i+1 {
-				break
-			}
-			decoded[exploded[i]] = cast(exploded[i+1])
-		}
-	}
-	return decoded
+	return ConstructMapFromCSVWithSchema(csv, nil)
 }
 
 // ConstructKVFromCSV will construct a map from a comma separated value string that denotes key value pairs.
+//
+// Deprecated: use ConstructKVFromCSVWithSchema instead.
 func ConstructKVFromCSV(values string) map[string]interface{} {
-	props := make(map[string]interface{})
-	exploded := strings.Split(values, Comma)
-	for i := range exploded {
-		obK := strings.Split(exploded[i], Equals)
-		if len(obK) == 2 {
-			props[obK[0]] = cast(obK[1])
-		}
-	}
-	return props
+	return ConstructKVFromCSVWithSchema(values, nil)
 }
 
-// ConstructKVFromLabelEncoding will construct a map from a comma separated value string that denotes key value pairs.
+// ConstructKVFromLabelEncoding will construct a map from a period separated value string that denotes key value pairs.
+//
+// Deprecated: use ConstructKVFromLabelEncodingWithSchema instead.
 func ConstructKVFromLabelEncoding(values string) map[string]interface{} {
-	props := make(map[string]interface{})
-	exploded := strings.Split(values, Period)
-	for i := range exploded {
-		obK := strings.Split(exploded[i], Equals)
-		if len(obK) == 2 {
-			props[obK[0]] = cast(obK[1])
-		}
-	}
-	return props
+	return ConstructKVFromLabelEncodingWithSchema(values, nil)
 }
 
-// ConstructKVFromMatrixCSV will construct a map from a comma separated value string that denotes key value pairs.
+// ConstructKVFromMatrixCSV will construct a map from a semicolon separated value string that denotes key value pairs.
+//
+// Deprecated: use ConstructKVFromMatrixCSVWithSchema instead.
 func ConstructKVFromMatrixCSV(values string) map[string]interface{} {
-	props := make(map[string]interface{})
-	exploded := strings.Split(values, SemiColon)
-	for i := range exploded {
-		obK := strings.Split(exploded[i], Equals)
-		if len(obK) == 2 {
-			props[obK[0]] = cast(obK[1])
-		}
-	}
-	return props
+	return ConstructKVFromMatrixCSVWithSchema(values, nil)
 }
 
 // ConstructParamMapFromFormEncodingArray will construct a map from the query parameters that are encoded as
 // form encoded values.
+//
+// Deprecated: use ConstructParamMapFromFormEncodingArrayWithSchema instead.
 func ConstructParamMapFromFormEncodingArray(values []*QueryParam) map[string]interface{} {
-	decoded := make(map[string]interface{})
-	for _, v := range values {
-		props := make(map[string]interface{})
-		// explode SSV into array
-		exploded := strings.Split(v.Values[0], Comma)
-		for i := range exploded {
-			if i%2 == 0 {
-				if len(exploded) > i+1 {
-					props[exploded[i]] = cast(exploded[i+1])
-				}
-			}
-		}
-		decoded[v.Key] = props
-	}
-	return decoded
+	return ConstructParamMapFromFormEncodingArrayWithSchema(values, nil)
 }
 
 // DoesFormParamContainDelimiter will determine if a form parameter contains a delimiter.
@@ -390,4 +402,81 @@ func CollapseCSVIntoSpaceDelimitedStyle(key string, values []string) string {
 
 func CollapseCSVIntoPipeDelimitedStyle(key string, values []string) string {
 	return fmt.Sprintf("%s=%s", key, strings.Join(values, Pipe))
+}
+
+// ConstructParamMapFromQueryParamInputWithSchema constructs a param map from an existing map of
+// *QueryParam slices, using the object schema to determine property types before casting.
+func ConstructParamMapFromQueryParamInputWithSchema(values map[string][]*QueryParam, sch *base.Schema) map[string]interface{} {
+	decoded := make(map[string]interface{})
+	for _, q := range values {
+		for _, v := range q {
+			decoded[v.Key] = castWithSchema(v.Values[0], sch, v.Key)
+		}
+	}
+	return decoded
+}
+
+// ConstructParamMapFromPipeEncodingWithSchema constructs a map from pipe-delimited query parameters,
+// using the object schema to determine property types before casting.
+func ConstructParamMapFromPipeEncodingWithSchema(values []*QueryParam, sch *base.Schema) map[string]interface{} {
+	return constructParamMapFromDelimitedEncoding(values, Pipe, sch)
+}
+
+// ConstructParamMapFromSpaceEncodingWithSchema constructs a map from space-delimited query parameters,
+// using the object schema to determine property types before casting.
+func ConstructParamMapFromSpaceEncodingWithSchema(values []*QueryParam, sch *base.Schema) map[string]interface{} {
+	return constructParamMapFromDelimitedEncoding(values, Space, sch)
+}
+
+// ConstructMapFromCSVWithSchema constructs a map from a comma separated value string,
+// using the object schema to determine property types before casting.
+func ConstructMapFromCSVWithSchema(csv string, sch *base.Schema) map[string]interface{} {
+	decoded := make(map[string]interface{})
+	exploded := strings.Split(csv, Comma)
+	for i := range exploded {
+		if i%2 == 0 {
+			if len(exploded) == i+1 {
+				break
+			}
+			decoded[exploded[i]] = castWithSchema(exploded[i+1], sch, exploded[i])
+		}
+	}
+	return decoded
+}
+
+// ConstructKVFromCSVWithSchema constructs a map from a comma-separated key=value string,
+// using the object schema to determine property types before casting.
+func ConstructKVFromCSVWithSchema(values string, sch *base.Schema) map[string]interface{} {
+	return constructKVFromDelimited(values, Comma, sch)
+}
+
+// ConstructKVFromLabelEncodingWithSchema constructs a map from a period-separated key=value string,
+// using the object schema to determine property types before casting.
+func ConstructKVFromLabelEncodingWithSchema(values string, sch *base.Schema) map[string]interface{} {
+	return constructKVFromDelimited(values, Period, sch)
+}
+
+// ConstructKVFromMatrixCSVWithSchema constructs a map from a semicolon-separated key=value string,
+// using the object schema to determine property types before casting.
+func ConstructKVFromMatrixCSVWithSchema(values string, sch *base.Schema) map[string]interface{} {
+	return constructKVFromDelimited(values, SemiColon, sch)
+}
+
+// ConstructParamMapFromFormEncodingArrayWithSchema constructs a map from form-encoded query parameters,
+// using the object schema to determine property types before casting.
+func ConstructParamMapFromFormEncodingArrayWithSchema(values []*QueryParam, sch *base.Schema) map[string]interface{} {
+	decoded := make(map[string]interface{})
+	for _, v := range values {
+		props := make(map[string]interface{})
+		exploded := strings.Split(v.Values[0], Comma)
+		for i := range exploded {
+			if i%2 == 0 {
+				if len(exploded) > i+1 {
+					props[exploded[i]] = castWithSchema(exploded[i+1], sch, exploded[i])
+				}
+			}
+		}
+		decoded[v.Key] = props
+	}
+	return decoded
 }

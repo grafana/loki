@@ -99,61 +99,94 @@ func NewCompiledSchemaWithVersion(name string, jsonSchema []byte, options *confi
 	return jsch, nil
 }
 
-// transformOpenAPI30Schema transforms OpenAPI 3.0 schemas to JSON Schema compatible format
-// This specifically handles the nullable keyword by converting it to proper type arrays
+// transformOpenAPI30Schema transforms OpenAPI 3.0 schemas to JSON Schema 2020-12 compatible format.
+// Handles OAS 3.0-specific keywords:
+//   - nullable: true → type array with "null"
+//   - exclusiveMinimum/exclusiveMaximum: bool → numeric (draft-04 → 2020-12)
 func transformOpenAPI30Schema(jsonSchema []byte) []byte {
 	var schema map[string]interface{}
 	if err := json.Unmarshal(jsonSchema, &schema); err != nil {
-		// If we can't parse it, return as-is
 		return jsonSchema
 	}
 
-	transformed := transformNullableInSchema(schema)
+	transformed := transformOAS30Keywords(schema)
 
 	result, err := json.Marshal(transformed)
 	if err != nil {
-		// If we can't marshal the result, return original
 		return jsonSchema
 	}
 
 	return result
 }
 
-// transformNullableInSchema recursively transforms nullable keywords in a schema object
-func transformNullableInSchema(schema interface{}) interface{} {
+// transformOAS30Keywords recursively transforms OAS 3.0-specific keywords in a schema object
+func transformOAS30Keywords(schema interface{}) interface{} {
 	switch s := schema.(type) {
 	case map[string]interface{}:
 		result := make(map[string]interface{})
 
-		// copy all properties first
+		// copy all properties first, recursing into nested schemas
 		for key, value := range s {
-			result[key] = transformNullableInSchema(value)
+			result[key] = transformOAS30Keywords(value)
 		}
 
-		// check if this schema has nullable keyword
+		// handle nullable keyword
 		if nullable, ok := s["nullable"]; ok {
 			if nullableBool, ok := nullable.(bool); ok {
 				if nullableBool {
-					// Transform the schema to support null values
-					return transformNullableSchema(result)
+					result = transformNullableSchema(result)
 				} else {
-					// nullable: false - just remove the nullable keyword
 					delete(result, "nullable")
 				}
 			}
 		}
+
+		// handle exclusiveMinimum: bool → numeric
+		transformExclusiveBound(result, "exclusiveMinimum", "minimum")
+
+		// handle exclusiveMaximum: bool → numeric
+		transformExclusiveBound(result, "exclusiveMaximum", "maximum")
 
 		return result
 
 	case []interface{}:
 		result := make([]interface{}, len(s))
 		for i, item := range s {
-			result[i] = transformNullableInSchema(item)
+			result[i] = transformOAS30Keywords(item)
 		}
 		return result
 
 	default:
 		return schema
+	}
+}
+
+// transformExclusiveBound converts OAS 3.0 boolean exclusiveMinimum/exclusiveMaximum
+// to JSON Schema 2020-12 numeric form.
+//
+// OAS 3.0 (draft-04): minimum: 10, exclusiveMinimum: true → value must be > 10
+// JSON Schema 2020-12: exclusiveMinimum: 10 → value must be > 10
+func transformExclusiveBound(schema map[string]interface{}, exclusiveKey, boundKey string) {
+	exVal, ok := schema[exclusiveKey]
+	if !ok {
+		return
+	}
+	exBool, isBool := exVal.(bool)
+	if !isBool {
+		return // already numeric (3.1 style), leave as-is
+	}
+	if exBool {
+		// exclusiveMinimum: true + minimum: X → exclusiveMinimum: X (remove minimum)
+		if bound, hasBound := schema[boundKey]; hasBound {
+			schema[exclusiveKey] = bound
+			delete(schema, boundKey)
+		} else {
+			// boolean true without a corresponding bound is invalid, just remove it
+			delete(schema, exclusiveKey)
+		}
+	} else {
+		// exclusiveMinimum: false is a no-op, just remove the keyword
+		delete(schema, exclusiveKey)
 	}
 }
 

@@ -174,7 +174,7 @@ func checkPathAgainstBase(docPath, urlPath string, basePaths []string) bool {
 		return true
 	}
 	for _, basePath := range basePaths {
-		if basePath[len(basePath)-1] == '/' {
+		if len(basePath) > 1 && basePath[len(basePath)-1] == '/' {
 			basePath = basePath[:len(basePath)-1]
 		}
 		merged := fmt.Sprintf("%s%s", basePath, urlPath)

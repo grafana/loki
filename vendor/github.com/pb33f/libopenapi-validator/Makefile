@@ -1,9 +1,9 @@
 all: gofumpt import lint
 
 init:
-	go install mvdan.cc/gofumpt@v0.7.0
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.61.0
-	go install github.com/daixiang0/gci@v0.13.5
+	go install mvdan.cc/gofumpt@latest
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	go install github.com/daixiang0/gci@latest
 
 lint:
 	golangci-lint run ./...

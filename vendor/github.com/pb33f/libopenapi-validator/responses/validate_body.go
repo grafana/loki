@@ -1,4 +1,4 @@
-// Copyright 2023 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2023-2026 Princess Beef Heavy Industries, LLC / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package responses
@@ -60,6 +60,11 @@ func (v *responseBodyValidator) ValidateResponseBodyWithPathItem(request *http.R
 
 	// extract the media type from the content type header.
 	mediaTypeSting, _, _ := helpers.ExtractContentType(contentType)
+
+	// check if operation has responses defined
+	if operation.Responses == nil || operation.Responses.Codes == nil {
+		return true, nil
+	}
 
 	// check if the response code is in the contract
 	foundResponse := operation.Responses.Codes.GetOrZero(codeStr)
