@@ -4,17 +4,26 @@
 
 **Goal:** Add stats and postings sections to index objects, using the new dataset API, to enable sort-schema-based storage locality for index data.
 
-**Architecture:** Two new section packages (`sections/stats/`, `sections/postings/`) use the `pkg/dataset/array` codec for columnar encoding. They integrate into the existing index builder pipeline via new calculation steps and `indexobj.Builder` methods. A `types.Binary` type is added to the dataset package. Section builders have a test-only in-memory API for Tasks 0-3. The `SectionBuilder.Flush(SectionWriter)` implementation is added in the storage format PR.
+**Architecture:** Two new section packages (`sections/stats/`, `sections/postings/`) use the `pkg/dataset/array` codec for columnar encoding. They integrate into the existing index builder pipeline via new calculation steps and `indexobj.Builder` methods. A `types.Binary` type is added to the dataset package. Section builders have a test-only in-memory API. The `SectionBuilder.Flush(SectionWriter)` implementation is added in the storage format PR (future work).
 
 **Tech Stack:** Go, `pkg/dataset/array` (Arrow-aligned columnar codec), `pkg/dataobj` (section framework), protobuf (future serialization)
 
 **Spec:** `docs/superpowers/specs/2026-04-03-new-index-sections-design.md`
 
+**PR Strategy:** Single PR with 6 commits, reviewed one commit at a time:
+
+1. `feat(dataset): add types.Binary logical type`
+2. `feat(stats): add stats section package with builder and reader`
+3. `feat(postings): add postings section package with builder and reader`
+4. `feat(index): add streamLabels to calculation context`
+5. `feat(index): add stats and postings to indexobj.Builder`
+6. `feat(index): implement calculation steps for new sections`
+
 ---
 
 ## Task 0: Add `types.Binary` to the Dataset Package
 
-**PR 0** — ~25 lines. Adds a `Binary` logical type so binary columns (bloom filters, bitmaps) are not misrepresented as UTF8.
+**Commit 1:** `feat(dataset): add types.Binary logical type` — ~25 lines. Adds a `Binary` logical type so binary columns (bloom filters, bitmaps) are not misrepresented as UTF8.
 
 **Files:**
 
@@ -117,7 +126,7 @@ git commit -m "feat(dataset): add types.Binary logical type for opaque binary da
 
 ## Task 1: Stats Section Package
 
-**PR 1** — New `sections/stats/` package with builder, reader, row reader, and in-memory unit tests.
+**Commit 2:** `feat(stats): add stats section package with builder and reader` — Full stats package with builder, reader, row reader, and in-memory unit tests.
 
 **Files:**
 
@@ -216,7 +225,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```
-git commit -m "feat(stats): add section type, builder with sort/split, and in-memory round-trip tests"
+git commit -m "feat(stats): add stats section package with builder and reader"
 ```
 
 ### Sub-task 1c: Stats reader and row reader
@@ -242,23 +251,24 @@ Add tests for:
 - All rows same service_name: sort is stable
 - Large values: long object paths and label values
 
-- [ ] **Step 9: Run all tests**
+- [ ] **Step 9: Run all tests and commit**
 
 Run: `go test ./pkg/dataobj/sections/stats/... -v -count=1`
 
-Expected: PASS
-
-- [ ] **Step 10: Commit**
+Expected: PASS. Then amend the commit from Step 5 to include the reader and tests:
 
 ```
-git commit -m "feat(stats): add reader, row reader, and comprehensive edge case tests"
+git add pkg/dataobj/sections/stats/
+git commit --amend -m "feat(stats): add stats section package with builder and reader"
 ```
+
+This produces **Commit 2**: the full stats package in a single reviewable unit.
 
 ---
 
 ## Task 2: Postings Section Package
 
-**PR 2** — New `sections/postings/` package. Same structure as Task 1 but with nullable columns and bitmap handling. Depends on Task 0 (types.Binary).
+**Commit 3:** `feat(postings): add postings section package with builder and reader` — Same pattern as stats, with nullable columns and bitmap handling via `memory.Bitmap`.
 
 **Files:**
 
@@ -338,23 +348,24 @@ git commit -m "feat(postings): add section type, builder with nullable columns, 
 
 Cover: section splitting, all-bloom postings, all-label postings, mixed, empty builder.
 
-- [ ] **Step 13: Run all tests**
+- [ ] **Step 13: Run all tests and commit**
 
 Run: `go test ./pkg/dataobj/sections/postings/... -v -count=1`
 
-Expected: PASS
-
-- [ ] **Step 14: Commit**
+Expected: PASS. Then amend the commit from Step 9 to include reader and tests:
 
 ```
-git commit -m "feat(postings): add reader, row reader, and comprehensive tests"
+git add pkg/dataobj/sections/postings/
+git commit --amend -m "feat(postings): add postings section package with builder and reader"
 ```
+
+This produces **Commit 3**: the full postings package in a single reviewable unit.
 
 ---
 
 ## Task 3: Pipeline Integration
 
-**PR 3** — Wire new sections into the index builder. Depends on Tasks 0, 1, 2.
+**Commits 4-6** — Wire new sections into the index builder. Three commits covering context plumbing, builder methods, and calculation steps.
 
 **Files:**
 
@@ -554,20 +565,25 @@ git commit -m "feat(index): implement stats, label postings, and bloom posting c
 
 ---
 
-## Dependency Graph
+## Commit Sequence
+
+All 6 commits are submitted as a **single PR**, reviewed one commit at a time:
 
 ```
-Task 0 (types.Binary)
-  |
-  +---> Task 1 (Stats section)
-  |       |
-  +---> Task 2 (Postings section)
-  |       |
-  +-------+---> Task 3 (Pipeline integration)
+Commit 1: feat(dataset): add types.Binary logical type        [Task 0]
+    |
+Commit 2: feat(stats): add stats section package               [Task 1]
+    |
+Commit 3: feat(postings): add postings section package          [Task 2]
+    |
+Commit 4: feat(index): add streamLabels to calculation context  [Task 3a]
+    |
+Commit 5: feat(index): add stats and postings to indexobj.Builder [Task 3b]
+    |
+Commit 6: feat(index): implement calculation steps              [Task 3c-f]
 ```
 
-Tasks 1 and 2 can be developed in parallel after Task 0.
-Task 3 requires Tasks 0, 1, and 2.
+Each commit compiles and passes tests independently. The reviewer reads sequentially: first the dataset type change, then the two section packages (establishing the pattern), then the pipeline integration (three commits building on each other).
 
 > **Note:** On-disk integration tests are blocked on the serialization sub-spec (see Future Work below).
 
