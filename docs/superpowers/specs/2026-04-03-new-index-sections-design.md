@@ -53,7 +53,7 @@ One row per unique (object_path, section_index, label_value) combination within 
 | Column              | Type  | Nullable | Encoding | Description                                                                   |
 | ------------------- | ----- | -------- | -------- | ----------------------------------------------------------------------------- |
 | `object_path`       | UTF8  | No       | Binary   | Path to the logs data object                                                  |
-| `section_index`     | Int64 | No       | Plain    | Section index within the data object                                          |
+| `section_index`     | Int64 | No       | Plain    | Section index within the data object (see note below)                         |
 | `run_id`            | Int64 | No       | Plain    | FNV-64a hash of `object_path`                                                 |
 | `sort_schema`       | UTF8  | No       | Binary   | Comma-delimited sort key column names (e.g., "service_name")                  |
 | `<label_name>`      | UTF8  | No       | Binary   | Dynamic column, one per sort schema key. Label value for this row's sort key. |
@@ -61,6 +61,8 @@ One row per unique (object_path, section_index, label_value) combination within 
 | `max_timestamp`     | Int64 | No       | Plain    | Max timestamp (UnixNano) across records with this key                         |
 | `row_count`         | Int64 | No       | Plain    | Number of log records with this key                                           |
 | `uncompressed_size` | Int64 | No       | Plain    | Total uncompressed bytes (`len(log.Line)`) for records with this key          |
+
+**`section_index` note:** This is the absolute position of the logs section within the data object's section list (filtered to logs sections), matching the loop variable `i` in `calculate.go:108`. It is NOT a per-tenant ordinal.
 
 With the hardcoded sort schema `[service_name]`, there is exactly one dynamic label column: `service_name`. In this initial implementation, the sort schema is the same per tenant and every row has a value for every column, so no nulls are needed. However, the structure must accommodate a future where the sort schema is configurable per tenant -- a tenant with sort schema `[service_name, namespace]` would have two dynamic columns, and the reader must discover them via the `sort_schema` column (see below). If different tenants in the same index object have different sort schemas, their sections will have different column sets, which is acceptable since sections are per-tenant.
 
@@ -163,6 +165,8 @@ don't appear in this logs section will be unset.
   (`builder.go:221: b.lastID.Add(1)`). Bit 0 is therefore always
   unused/zero. The maximum stream ID equals the number of unique
   streams for that tenant in the data object.
+
+**Normalization:** On flush, all bitmaps for postings scoped to the same data object must be padded to the same length: `ceil(maxStreamID+1 / 8)` bytes, where `maxStreamID` is the highest stream ID observed across all records processed from that data object. The `maxStreamID` is available from the `streamLabels` map (its maximum key). Bitmaps that grew to a smaller size during `ProcessBatch` (because they only saw low-numbered stream IDs) are zero-padded to this length on flush. This ensures all bitmaps in the same section are uniformly sized for correct bitwise operations by readers.
 
 For Kind=Label postings, the bitmap indicates which streams in the
 referenced logs section have this specific label value. For Kind=Bloom
@@ -283,20 +287,23 @@ type logsCalculationContext struct {
 }
 ```
 
-**Propagation mechanism:** Following the existing pattern for `streamIDLookup`, a new `streamLabelsByTenant sync.Map` field is added to the `Calculator` struct. During `processStreamsSection` (Phase 1), stream labels are collected into a `map[int64]labels.Labels` alongside the existing `streamIDLookup`, then stored in `streamLabelsByTenant` keyed by tenant ID. In `processLogsSection` (Phase 2), the map is loaded from `streamLabelsByTenant` and passed to `logsCalculationContext` the same way `streamIDLookup` is loaded today. The `processLogsSection` function signature gains an additional `streamLabels map[int64]labels.Labels` parameter.
+**Propagation mechanism:** Following the existing pattern for `streamIDLookupByTenant` (which is a local `sync.Map` variable inside `Calculate()`, not a struct field -- see `calculate.go:81`), a new `streamLabelsByTenant` local `sync.Map` variable is declared inside `Calculate()`. During `processStreamsSection` (Phase 1), stream labels are collected into a `map[int64]labels.Labels` alongside the existing `streamIDLookup`, then stored in `streamLabelsByTenant` keyed by tenant ID. In `processLogsSection` (Phase 2), the map is loaded from `streamLabelsByTenant` and passed to `logsCalculationContext` the same way `streamIDLookup` is loaded today. The `processLogsSection` function signature gains an additional `streamLabels map[int64]labels.Labels` parameter.
 
 ```go
+// Inside Calculate(), alongside the existing streamIDLookupByTenant:
+var streamLabelsByTenant sync.Map
+
 // In processStreamsSection:
 streamLabels := make(map[int64]labels.Labels, len(streams))
 for _, stream := range streams {
     streamLabels[stream.ID] = stream.Labels
 }
-c.streamLabelsByTenant.Store(tenantID, streamLabels)
+streamLabelsByTenant.Store(tenantID, streamLabels)
 ```
 
 **Error handling:** If `context.streamLabels[log.StreamID]` returns no entry (indicating a corrupt or incomplete data object), the calculation should return an error. This is a hard failure -- partial index data from corrupt sources would be worse than no index data.
 
-**Memory lifecycle:** The `streamLabels` maps are cleared when `Calculator.Reset()` is called after flushing the index object, same as the existing `streamIDLookupByTenant` maps.
+**Memory lifecycle:** The `streamLabelsByTenant` map is a local variable inside `Calculate()` and goes out of scope naturally when `Calculate()` returns, matching the existing pattern for `streamIDLookupByTenant`. No explicit cleanup in `Calculator.Reset()` is needed.
 
 #### New Fields on `indexobj.Builder`
 
@@ -310,6 +317,10 @@ type Builder struct {
 
 Builders are lazily created when the first `Append*` call is made for a tenant, following the same pattern as existing builders. They receive `TargetSectionSize` from the shared `BuilderBaseConfig`, the same source used by the existing `pointers.Builder`.
 
+Both `stats.Builder` and `postings.Builder` must implement an `EstimatedSize() int` method. The existing `Append*` methods on `indexobj.Builder` track size deltas via `EstimatedSize()` before and after each append (see `builder.go:131-148`). The new `AppendStat`, `AppendLabelPosting`, and `AppendBloomPosting` methods must follow the same pattern, updating `b.unflushedSizeEstimate` so that `IsFull()` correctly accounts for the new sections' memory.
+
+Both builders must also implement `SetTenant(string)` and `Tenant() string` methods following the existing pattern (`pointers/builder.go:109-113`). These are used by `SectionBuilder.Flush()` to set the tenant on each written section.
+
 #### New Methods on `indexobj.Builder`
 
 All new `Append*` methods follow the existing concurrency contract: they are **not goroutine-safe**. The `Calculator` serializes all builder access under `c.builderMtx` (existing pattern in `calculate.go`).
@@ -317,8 +328,11 @@ All new `Append*` methods follow the existing concurrency contract: they are **n
 ```go
 // AppendStat records a per-sort-key aggregate for a data object section.
 // Called once per unique label value in the sort schema, per section.
+// sortSchema is the comma-delimited sort schema (e.g. "service_name").
+// Currently hardcoded by the caller but passed explicitly so the builder
+// doesn't own the schema decision.
 func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
-    label labels.Label, minTs, maxTs time.Time, rows int, uncompressedSize int64) error
+    sortSchema string, label labels.Label, minTs, maxTs time.Time, rows int, uncompressedSize int64) error
 
 // AppendLabelPosting records a label value posting.
 // Called once per unique (column_name, label_value) per section.
@@ -345,7 +359,7 @@ The `indexobj.Builder.Flush()` writes sections in this order:
 
 Note: The existing `Flush()` iterates Go maps (unordered by tenant within each section type). The new code maintains the section-type ordering (all streams before all pointers before all stats, etc.) but tenant ordering within a type is unspecified, matching existing behavior.
 
-The existing `observeObject()` method (which iterates flushed sections for metrics) will need to be updated to recognize the new section types.
+The existing `observeObject()` method (which iterates flushed sections for metrics) will need to be updated to recognize the new section types. In PRs 1-3 (before the serialization format exists), `observeObject` should silently skip the new section types via its existing default behavior (the switch statement in `builder.go:378-410` has no default case, so unknown types are ignored). In PR 5, add cases for the new section types to emit metrics.
 
 #### New Calculation Steps
 
@@ -487,6 +501,8 @@ bloom filters in the pointers builder). Peak memory remains bounded by the
 Calculator's batch size -- the number of data objects processed before the
 index is flushed.
 
+**`SectionBuilder.Flush` compatibility:** The accumulate-sort-then-split pattern means a single `SectionBuilder.Flush(w SectionWriter)` call may invoke `w.WriteSection()` multiple times (once per split section). The existing `builderSectionWriter` in `dataobj/builder.go` supports this -- each `WriteSection` call appends a new section to the encoder independently. The `dataobj.Builder.Append()` method creates a fresh `builderSectionWriter` per call, and repeated `WriteSection` calls produce multiple sections with the same type and tenant, which is the intended behavior.
+
 1. All `Append*` calls accumulate rows in memory. No flushing occurs during append.
 2. On `Flush()`, all accumulated rows are sorted globally by the section's sort order.
 3. Rows are streamed into sections sequentially. The split metric is the sum of per-row estimated uncompressed sizes. The per-row size is calculated as the sum of all column data sizes for that row:
@@ -542,6 +558,15 @@ The run-ID is stored as an Int64 column in the stats section only. It is not inc
 
 ## Testing
 
+### Unit Test Phasing
+
+Unit tests for the section builders can use **in-memory round-trips**
+before the on-disk serialization format exists. The `array.Writer` ->
+`Array` descriptor -> `array.Reader` path works via an in-memory
+`Sink`/`Source` (the test infrastructure already in the dataset package).
+This validates the data model, sort ordering, section splitting logic,
+and column correctness without needing on-disk persistence.
+
 ### In-Memory Unit Tests (PRs 1-3, no serialization needed)
 
 For each new section package (stats, postings), using in-memory
@@ -591,23 +616,6 @@ These tests require the Section Storage Format (PR 4) to be implemented:
      corresponding `ValuesBloomFilter` from the pointers section for the
      same `(object_path, section_index, column_name)`.
 
-## Testing
-
-### Unit Test Phasing
-
-Unit tests for the section builders can use **in-memory round-trips**
-before the on-disk serialization format exists. The `array.Writer` ->
-`Array` descriptor -> `array.Reader` path works via an in-memory
-`Sink`/`Source` (the test infrastructure already in the dataset package).
-This validates the data model, sort ordering, section splitting logic,
-and column correctness without needing on-disk persistence.
-
-### Integration Tests
-
-Integration tests that verify the full pipeline (Calculator -> index
-object -> read back) require the on-disk serialization format. These
-tests are blocked on the Section Storage Format sub-spec implementation.
-
 ## PR Decomposition
 
 This work is expected to span multiple PRs:
@@ -637,7 +645,7 @@ This work is expected to span multiple PRs:
    -> verify stats and postings sections. Cross-validation with existing
    streams/pointers sections.
 
-PRs 1 and 2 can be developed in parallel. PR 3 depends on both.
+PRs 1 and 2 can be developed in parallel (both depend on PR 0 for `types.Binary`). PR 3 depends on PRs 0, 1, and 2.
 PR 4 is independent of PRs 1-3 (it's a serialization layer). PR 5
 depends on PRs 3 and 4.
 
