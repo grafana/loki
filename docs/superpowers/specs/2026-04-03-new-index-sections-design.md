@@ -122,17 +122,52 @@ Label | obj-a       | 0             | service_name   | frontend    |         | 0
 
 ### Stream ID Bitmap
 
-The `stream_id_bitmap` column stores a raw bit-packed bitmap (binary, not UTF8) where bit N indicates that stream ID N within the indexed data object section is associated with this posting.
+The `stream_id_bitmap` column stores a raw bit-packed bitmap (binary, not
+UTF8) where bit N indicates that stream ID N is associated with this
+posting.
+
+**Stream ID scope:** Stream IDs are scoped to the **data object** (per
+tenant), not to individual logs sections within it. A data object has one
+`streams.Builder` per tenant (see
+`consumer/logsobj/builder.go:183,228,284`), which assigns IDs
+sequentially starting from 1 via an atomic counter. All logs sections
+within the same data object share this ID space -- `logs.Record.StreamID`
+values come from the single streams builder. A given logs section may
+contain records for only a **subset** of the data object's streams.
+
+This means: for a postings row scoped to `(object_path, section_index)`,
+the bitmap represents which of the data object's streams have records in
+that specific logs section AND match the posted label/bloom. The bitmap
+is sized to the max stream ID across the entire data object, not just the
+streams that appear in the referenced logs section. Bits for streams that
+don't appear in this logs section will be unset.
 
 **Encoding details:**
 
-- The bitmap uses **source stream IDs** from the data object (i.e., `log.StreamID` from `logs.Record`), NOT the remapped index stream IDs from `streamIDLookup`. This ensures the bitmap can be used to correlate postings with data in the source data object directly.
-- Stream IDs are **0-indexed** in the bitmap. Bit 0 corresponds to stream ID 0 in the source data object section.
-- Bits are packed using **LSB (least-significant bit) numbering**, the same convention used by [Arrow validity bitmaps](https://arrow.apache.org/docs/format/Columnar.html#validity-bitmaps). Within each byte, we read right-to-left: bit N is set if `bitmap[N/8] & (1 << (N%8)) != 0`.
-- The bitmap is sized to `ceil(maxStreamID+1 / 8)` bytes, where `maxStreamID` is the highest stream ID in the indexed section.
-- Stream IDs within a data object section are dense (contiguous), starting from 1. Bit 0 is therefore always unused/zero. The maximum stream ID per section is bounded by the number of streams in that section.
+- The bitmap uses **source stream IDs** from the data object (i.e.,
+  `log.StreamID` from `logs.Record`), NOT the remapped index stream IDs
+  from `streamIDLookup`. This ensures the bitmap can be used to correlate
+  postings with data in the source data object directly.
+- Stream IDs are **0-indexed** in the bitmap. Bit 0 corresponds to
+  stream ID 0.
+- Bits are packed using **LSB (least-significant bit) numbering**, the
+  same convention used by [Arrow validity
+  bitmaps](https://arrow.apache.org/docs/format/Columnar.html#validity-bitmaps).
+  Within each byte, we read right-to-left: bit N is set if
+  `bitmap[N/8] & (1 << (N%8)) != 0`.
+- The bitmap is sized to `ceil(maxStreamID+1 / 8)` bytes, where
+  `maxStreamID` is the highest stream ID in the data object (determined
+  by the streams section, which is the sole ID authority).
+- Stream IDs are dense (contiguous) integers starting from 1, assigned
+  by `streams.Builder.Record()` via an atomic counter
+  (`builder.go:221: b.lastID.Add(1)`). Bit 0 is therefore always
+  unused/zero. The maximum stream ID equals the number of unique
+  streams for that tenant in the data object.
 
-For Kind=Label postings, the bitmap indicates which streams have this specific label value. For Kind=Bloom postings, the bitmap indicates which streams have the named metadata column at all.
+For Kind=Label postings, the bitmap indicates which streams in the
+referenced logs section have this specific label value. For Kind=Bloom
+postings, the bitmap indicates which streams in the referenced logs
+section have the named metadata column at all.
 
 ## Architecture
 
