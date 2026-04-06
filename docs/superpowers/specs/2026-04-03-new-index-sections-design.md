@@ -444,15 +444,48 @@ The new section builders use the dataset API (`array.Writer`, `Sink`) for encodi
    - Int64 columns: `&array.SpecPlain{}` with `types.Int64{}`
    - UTF8 columns: `&array.SpecBinary{Offsets: &array.SpecPlain{}}` with `types.UTF8{}`
    - Nullable UTF8: same but with `types.UTF8{Nullable: true}`
-   - Binary columns (bloom_filter, stream_id_bitmap): Use `types.UTF8{}` with `&array.SpecBinary{Offsets: &array.SpecPlain{}}`. The dataset API does not currently have a distinct `types.Binary` type, so `UTF8` is used as a stand-in for opaque byte sequences. If a `types.Binary` type is added to the dataset package, these columns should be migrated.
+   - Binary columns (bloom_filter, stream_id_bitmap):
+     `&array.SpecBinary{Offsets: &array.SpecPlain{}}` with
+     `types.Binary{}`. A new `types.Binary` type will be added to the
+     dataset package as part of this work (~25 lines: new `KindBinary`
+     in the Kind enum, new `Binary` struct mirroring `UTF8`, relaxed
+     type checks in `codec_binary.go` to accept both `KindUTF8` and
+     `KindBinary`). The physical encoding is identical to UTF8 (offsets
+     + data buffer); the distinction is purely logical, allowing readers
+     to distinguish UTF-8 strings from opaque byte sequences.
 4. Appends column data to the writers using in-memory `columnar.Array` values.
 5. Flushes writers to an in-memory `Sink`, producing `Array` descriptors and raw buffer data.
 6. Writes the buffer data as section content to the `SectionWriter`.
 7. Stores the `Array` metadata as section metadata (see "Dataset API Dependency" for serialization details).
 
-### Section Splitting
+### Section Splitting & Memory
 
-Both stats and postings builders support size-based splitting. They use an **accumulate-sort-then-split** pattern, which differs from the existing `pointers.Builder`'s incremental-flush pattern. The difference is necessary because global sort order must be maintained across sections, and sorting requires all rows to be accumulated first.
+Both stats and postings builders support size-based splitting. They use an
+**accumulate-sort-then-split** pattern, which differs from the existing
+`pointers.Builder`'s incremental-flush pattern. The difference is necessary
+because global sort order must be maintained across sections, and sorting
+requires all rows to be accumulated first.
+
+**Memory impact:** The accumulate-sort-then-split pattern holds all rows in
+memory until flush. The additional memory relative to the existing pipeline
+is modest:
+
+- Stats rows: ~200B per unique (object_path, section, service_name). With
+  typical workloads (~10 data objects, ~3 sections each, ~10 service
+  names): ~600 rows = ~120KB.
+- Label postings: ~200B + bitmap per (label_name, label_value, object_path,
+  section). Bitmaps are `ceil(maxStreamID/8)` bytes each. With ~1000
+  streams and ~100 unique label values across ~30 sections: ~3000 rows =
+  ~1MB.
+- Bloom postings: the bloom filter bytes are the same data already held by
+  the existing pointers builder (duplicate reference, not new data). The
+  new cost is only the per-posting bitmap.
+
+Total new memory is on the order of a few MB, which is small relative to
+the existing pipeline's memory (downloaded data objects, streams builders,
+bloom filters in the pointers builder). Peak memory remains bounded by the
+Calculator's batch size -- the number of data objects processed before the
+index is flushed.
 
 1. All `Append*` calls accumulate rows in memory. No flushing occurs during append.
 2. On `Flush()`, all accumulated rows are sorted globally by the section's sort order.
@@ -579,10 +612,16 @@ tests are blocked on the Section Storage Format sub-spec implementation.
 
 This work is expected to span multiple PRs:
 
+0. **PR 0: Add `types.Binary` to the dataset package** -- ~25 lines:
+   new `KindBinary` in `types/kind.go`, new `Binary` struct in
+   `types/types.go`, relaxed type checks in `array/codec_binary.go` to
+   accept both `KindUTF8` and `KindBinary`. Unit tests for Binary
+   round-trip via the binary codec.
 1. **PR 1: Stats section package** -- `sections/stats/` with builder,
    reader, row_reader, and in-memory unit tests (using test Sink/Source).
 2. **PR 2: Postings section package** -- `sections/postings/` with
-   builder, reader, row_reader, and in-memory unit tests.
+   builder, reader, row_reader, and in-memory unit tests. Depends on
+   PR 0 for `types.Binary`.
 3. **PR 3: Pipeline integration** -- New calculation steps,
    `streamLabels` field on `logsCalculationContext`, `indexobj.Builder`
    changes (new fields, methods, flush loop, `observeObject` update).
