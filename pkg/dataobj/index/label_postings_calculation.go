@@ -1,0 +1,120 @@
+package index
+
+import (
+	"context"
+	"sort"
+	"time"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/memory"
+)
+
+type labelPostingsCalculation struct {
+	sortSchemaKeys []string // label keys to generate postings for
+	postingsByKey  map[postingKey]*labelPosting
+	maxStreamID    int64
+}
+
+type postingKey struct {
+	columnName string
+	labelValue string
+}
+
+type labelPosting struct {
+	streamIDBitmap   memory.Bitmap
+	minTimestamp     time.Time
+	maxTimestamp     time.Time
+	uncompressedSize int64
+}
+
+func (c *labelPostingsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs.Stats) error {
+	c.postingsByKey = make(map[postingKey]*labelPosting)
+	c.maxStreamID = 0
+	return nil
+}
+
+func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, ctx *logsCalculationContext, batch []logs.Record) error {
+	for _, log := range batch {
+		streamLbls := ctx.streamLabels[log.StreamID]
+
+		if log.StreamID > c.maxStreamID {
+			c.maxStreamID = log.StreamID
+		}
+
+		for _, key := range c.sortSchemaKeys {
+			labelValue := streamLbls.Get(key)
+			pk := postingKey{columnName: key, labelValue: labelValue}
+
+			posting, ok := c.postingsByKey[pk]
+			if !ok {
+				posting = &labelPosting{
+					streamIDBitmap: memory.NewBitmap(nil, 0),
+				}
+				c.postingsByKey[pk] = posting
+			}
+
+			// Grow the bitmap if needed and set the bit for this stream ID.
+			if int(log.StreamID) >= posting.streamIDBitmap.Len() {
+				posting.streamIDBitmap.Resize(int(log.StreamID) + 1)
+			}
+			posting.streamIDBitmap.Set(int(log.StreamID), true)
+
+			if posting.minTimestamp.IsZero() || log.Timestamp.Before(posting.minTimestamp) {
+				posting.minTimestamp = log.Timestamp
+			}
+			if posting.maxTimestamp.IsZero() || log.Timestamp.After(posting.maxTimestamp) {
+				posting.maxTimestamp = log.Timestamp
+			}
+			posting.uncompressedSize += int64(len(log.Line))
+		}
+	}
+	return nil
+}
+
+func (c *labelPostingsCalculation) Flush(_ context.Context, ctx *logsCalculationContext) error {
+	if len(c.postingsByKey) == 0 {
+		return nil
+	}
+
+	// Normalize all bitmaps to the same size.
+	targetSize := int(c.maxStreamID) + 1
+	for _, posting := range c.postingsByKey {
+		if posting.streamIDBitmap.Len() < targetSize {
+			posting.streamIDBitmap.Resize(targetSize)
+		}
+	}
+
+	// Sort postings by [columnName, labelValue] for deterministic output.
+	keys := make([]postingKey, 0, len(c.postingsByKey))
+	for k := range c.postingsByKey {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].columnName != keys[j].columnName {
+			return keys[i].columnName < keys[j].columnName
+		}
+		return keys[i].labelValue < keys[j].labelValue
+	})
+
+	for _, key := range keys {
+		posting := c.postingsByKey[key]
+		bitmapData, _ := posting.streamIDBitmap.Bytes()
+
+		err := ctx.builder.AppendLabelPosting(
+			ctx.tenantID,
+			ctx.objectPath,
+			ctx.sectionIdx,
+			key.columnName,
+			key.labelValue,
+			bitmapData,
+			posting.uncompressedSize,
+			posting.minTimestamp,
+			posting.maxTimestamp,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
