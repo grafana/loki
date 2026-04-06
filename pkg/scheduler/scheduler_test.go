@@ -78,12 +78,12 @@ func TestFrontendConnectsToRunningSchedulerButBeforeShouldRun(t *testing.T) {
 			Name: "cortex_query_scheduler_running",
 			Help: "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
 		}),
-		Service: services.NewBasicService(func(serviceContext context.Context) error {
+		Service: services.NewBasicService(func(_ context.Context) error {
 			return nil
 		}, func(serviceContext context.Context) error {
 			<-serviceContext.Done()
 			return serviceContext.Err()
-		}, func(failureCase error) error {
+		}, func(_ error) error {
 			return nil
 		}),
 	}
