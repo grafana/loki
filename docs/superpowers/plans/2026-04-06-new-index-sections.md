@@ -4,7 +4,7 @@
 
 **Goal:** Add stats and postings sections to index objects, using the new dataset API, to enable sort-schema-based storage locality for index data.
 
-**Architecture:** Two new section packages (`sections/stats/`, `sections/postings/`) use the `pkg/dataset/array` codec for columnar encoding. They integrate into the existing index builder pipeline via new calculation steps and `indexobj.Builder` methods. A `types.Binary` type is added to the dataset package. Section serialization (on-disk format) is deferred to a separate PR.
+**Architecture:** Two new section packages (`sections/stats/`, `sections/postings/`) use the `pkg/dataset/array` codec for columnar encoding. They integrate into the existing index builder pipeline via new calculation steps and `indexobj.Builder` methods. A `types.Binary` type is added to the dataset package. Section builders have a test-only in-memory API for Tasks 0-3. The `SectionBuilder.Flush(SectionWriter)` implementation is added in the storage format PR.
 
 **Tech Stack:** Go, `pkg/dataset/array` (Arrow-aligned columnar codec), `pkg/dataobj` (section framework), protobuf (future serialization)
 
@@ -92,100 +92,13 @@ Apply the same pattern in `newBinaryReader`.
 
 - [ ] **Step 4: Write test for Binary round-trip**
 
-Create `pkg/dataset/array/codec_binary_type_test.go`:
+Create `pkg/dataset/array/codec_binary_type_test.go` with two tests:
 
-```go
-package array_test
+1. **`TestBinaryTypeRoundTrip`** — Non-nullable Binary round-trip: write opaque bytes (including non-UTF-8 sequences like `0xFF, 0xFE, 0x00`), flush via writer, verify `KindBinary` is preserved in the returned array metadata, read back via reader and confirm values match.
 
-import (
-    "context"
-    "io"
-    "testing"
+2. **`TestBinaryNullableRoundTrip`** — Nullable Binary round-trip: write values interspersed with nulls (e.g. valid bytes, null, valid bytes), flush, read back and verify null handling via `IsValid()`.
 
-    "github.com/stretchr/testify/require"
-
-    "github.com/grafana/loki/v3/pkg/columnar"
-    "github.com/grafana/loki/v3/pkg/dataset/array"
-    "github.com/grafana/loki/v3/pkg/dataset/types"
-    "github.com/grafana/loki/v3/pkg/memory"
-)
-
-func TestBinaryTypeRoundTrip(t *testing.T) {
-    alloc := memory.NewAllocator(nil)
-    defer alloc.Free()
-
-    store := &inMemoryStore{}
-
-    spec := &array.SpecBinary{Offsets: &array.SpecPlain{}}
-    writer, err := array.NewWriter(alloc, spec, &types.Binary{})
-    require.NoError(t, err)
-
-    // Write some opaque binary data (not valid UTF-8).
-    data := [][]byte{{0xFF, 0xFE, 0x00}, {0x01, 0x02}}
-    builder := columnar.NewUTF8Builder(alloc)
-    for _, d := range data {
-        builder.AppendBytes(d)
-    }
-    err = writer.Append(builder.Build())
-    require.NoError(t, err)
-
-    arr, err := writer.Flush(context.Background(), store)
-    require.NoError(t, err)
-    require.Equal(t, types.KindBinary, arr.Type.Kind())
-
-    reader, err := array.NewReader(alloc, arr, store)
-    require.NoError(t, err)
-    defer reader.Close()
-
-    result, err := reader.Read(context.Background(), alloc, 10)
-    require.NoError(t, err)
-
-    utf8Arr := result.(*columnar.UTF8)
-    require.Equal(t, 2, utf8Arr.Len())
-    require.Equal(t, data[0], utf8Arr.ValueBytes(0))
-    require.Equal(t, data[1], utf8Arr.ValueBytes(1))
-
-    _, err = reader.Read(context.Background(), alloc, 10)
-    require.ErrorIs(t, err, io.EOF)
-}
-
-func TestBinaryNullableRoundTrip(t *testing.T) {
-    alloc := memory.NewAllocator(nil)
-    defer alloc.Free()
-
-    store := &inMemoryStore{}
-
-    spec := &array.SpecBinary{
-        Offsets:  &array.SpecPlain{},
-        Validity: &array.SpecBool{},
-    }
-    writer, err := array.NewWriter(alloc, spec, &types.Binary{Nullable: true})
-    require.NoError(t, err)
-
-    builder := columnar.NewUTF8Builder(alloc)
-    builder.AppendBytes([]byte{0xDE, 0xAD})
-    builder.AppendNull()
-    builder.AppendBytes([]byte{0xBE, 0xEF})
-    err = writer.Append(builder.Build())
-    require.NoError(t, err)
-
-    arr, err := writer.Flush(context.Background(), store)
-    require.NoError(t, err)
-
-    reader, err := array.NewReader(alloc, arr, store)
-    require.NoError(t, err)
-    defer reader.Close()
-
-    result, err := reader.Read(context.Background(), alloc, 10)
-    require.NoError(t, err)
-
-    utf8Arr := result.(*columnar.UTF8)
-    require.Equal(t, 3, utf8Arr.Len())
-    require.True(t, utf8Arr.IsValid(0))
-    require.False(t, utf8Arr.IsValid(1))
-    require.True(t, utf8Arr.IsValid(2))
-}
-```
+> **Note:** Match the test patterns in `pkg/dataset/array/codec_binary_test.go` for builder/array construction. Use the `inMemoryStore` from `codec_util_test.go`.
 
 - [ ] **Step 5: Run tests**
 
@@ -228,8 +141,8 @@ package stats
 
 import "github.com/grafana/loki/v3/pkg/dataobj"
 
-// SectionType identifies stats sections in a data object.
-var SectionType = dataobj.SectionType{
+// sectionType identifies stats sections in a data object.
+var sectionType = dataobj.SectionType{
     Namespace: "github.com/grafana/loki",
     Kind:      "stats",
     Version:   1,
@@ -237,7 +150,7 @@ var SectionType = dataobj.SectionType{
 
 // CheckSection returns true if the section is a stats section.
 func CheckSection(section *dataobj.Section) bool {
-    return SectionType.Equals(section.Type)
+    return sectionType.Equals(section.Type)
 }
 
 // Stat represents a single row in the stats section.
@@ -246,7 +159,7 @@ type Stat struct {
     SectionIndex     int64
     RunID            int64
     SortSchema       string
-    ServiceName      string // Dynamic label column (hardcoded to service_name for now)
+    ServiceName      string // Label value for the service_name sort key
     MinTimestamp      int64  // UnixNano
     MaxTimestamp      int64  // UnixNano
     RowCount         int64
@@ -254,15 +167,9 @@ type Stat struct {
 }
 ```
 
-- [ ] **Step 2: Commit**
-
-```
-git commit -m "feat(stats): add section type registration and Stat row struct"
-```
-
 ### Sub-task 1b: Stats builder
 
-- [ ] **Step 3: Write failing test for builder round-trip**
+- [ ] **Step 2: Write failing test for builder round-trip**
 
 Create `pkg/dataobj/sections/stats/builder_test.go` with a test that:
 1. Creates a `stats.Builder`
@@ -276,13 +183,7 @@ The test should cover:
 - Empty builder (flush returns zero sections)
 - Missing service_name (empty string)
 
-- [ ] **Step 4: Run test to verify it fails**
-
-Run: `go test ./pkg/dataobj/sections/stats/... -v -run TestBuilder -count=1`
-
-Expected: FAIL — `Builder` type not defined.
-
-- [ ] **Step 5: Implement `builder.go`**
+- [ ] **Step 3: Implement `builder.go`**
 
 Create `pkg/dataobj/sections/stats/builder.go`:
 
@@ -306,44 +207,34 @@ Key patterns:
 - UTF8 columns: `array.NewWriter(alloc, &array.SpecBinary{Offsets: &array.SpecPlain{}}, &types.UTF8{})`
 - Use `inMemoryStore` pattern from `codec_util_test.go` for the Sink
 
-- [ ] **Step 6: Run tests and verify they pass**
+- [ ] **Step 4: Run tests and verify they pass**
 
 Run: `go test ./pkg/dataobj/sections/stats/... -v -count=1`
 
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
 ```
-git commit -m "feat(stats): implement builder with sort, split, and in-memory round-trip"
+git commit -m "feat(stats): add section type, builder with sort/split, and in-memory round-trip tests"
 ```
 
 ### Sub-task 1c: Stats reader and row reader
 
-- [ ] **Step 8: Write failing test for row reader**
+- [ ] **Step 6: Write failing test for row reader**
 
 Add test to `builder_test.go` (or a new `row_reader_test.go`) that:
 1. Builds a stats section via the builder
 2. Creates a `RowReader` from the flushed arrays
 3. Iterates and verifies each `Stat` struct matches expected values
 
-- [ ] **Step 9: Run test to verify it fails**
-
-Expected: FAIL — `RowReader` not defined.
-
-- [ ] **Step 10: Implement `reader.go` and `row_reader.go`**
+- [ ] **Step 7: Implement `reader.go` and `row_reader.go`**
 
 `reader.go` — Provides columnar read access to stats section arrays via `array.Reader`.
 
 `row_reader.go` — Wraps the reader to return typed `Stat` structs. Pattern matches `sections/streams/row_reader.go`.
 
-- [ ] **Step 11: Run tests and verify they pass**
-
-Run: `go test ./pkg/dataobj/sections/stats/... -v -count=1`
-
-Expected: PASS
-
-- [ ] **Step 12: Add edge case and splitting tests**
+- [ ] **Step 8: Add edge case and splitting tests**
 
 Add tests for:
 - Section splitting: set small `targetSectionSize`, verify multiple section outputs
@@ -351,16 +242,16 @@ Add tests for:
 - All rows same service_name: sort is stable
 - Large values: long object paths and label values
 
-- [ ] **Step 13: Run all tests**
+- [ ] **Step 9: Run all tests**
 
 Run: `go test ./pkg/dataobj/sections/stats/... -v -count=1`
 
 Expected: PASS
 
-- [ ] **Step 14: Commit**
+- [ ] **Step 10: Commit**
 
 ```
-git commit -m "feat(stats): add reader, row reader, and comprehensive tests"
+git commit -m "feat(stats): add reader, row reader, and comprehensive edge case tests"
 ```
 
 ---
@@ -375,83 +266,13 @@ git commit -m "feat(stats): add reader, row reader, and comprehensive tests"
 - Create: `pkg/dataobj/sections/postings/builder.go`
 - Create: `pkg/dataobj/sections/postings/reader.go`
 - Create: `pkg/dataobj/sections/postings/row_reader.go`
-- Create: `pkg/dataobj/sections/postings/bitmap.go`
 - Create: `pkg/dataobj/sections/postings/builder_test.go`
-- Create: `pkg/dataobj/sections/postings/bitmap_test.go`
-
-### Sub-task 2a: Bitmap utilities
-
-- [ ] **Step 1: Write failing tests for bitmap helpers**
-
-Create `pkg/dataobj/sections/postings/bitmap_test.go`:
-
-```go
-func TestBitmapSetGet(t *testing.T) {
-    bm := NewBitmap(0)
-    bm.Set(1)
-    bm.Set(5)
-    bm.Set(8)
-    require.True(t, bm.IsSet(1))
-    require.True(t, bm.IsSet(5))
-    require.True(t, bm.IsSet(8))
-    require.False(t, bm.IsSet(0))
-    require.False(t, bm.IsSet(2))
-}
-
-func TestBitmapLSBNumbering(t *testing.T) {
-    bm := NewBitmap(0)
-    bm.Set(0) // bit 0 in byte 0
-    bm.Set(7) // bit 7 in byte 0
-    bytes := bm.Bytes()
-    // LSB numbering: bit 0 = 0x01, bit 7 = 0x80
-    require.Equal(t, byte(0x81), bytes[0])
-}
-
-func TestBitmapPadTo(t *testing.T) {
-    bm := NewBitmap(0)
-    bm.Set(3)
-    bm.PadTo(24) // 3 bytes
-    require.Equal(t, 3, len(bm.Bytes()))
-}
-```
-
-- [ ] **Step 2: Implement `bitmap.go`**
-
-Create `pkg/dataobj/sections/postings/bitmap.go`:
-
-```go
-package postings
-
-// Bitmap is a growable bit-packed bitmap using LSB numbering
-// (Arrow validity bitmap convention).
-type Bitmap struct {
-    data []byte
-}
-
-func NewBitmap(initialBits int) *Bitmap { ... }
-func (b *Bitmap) Set(bit int)           { /* grow + set bit at data[bit/8] |= 1 << (bit % 8) */ }
-func (b *Bitmap) IsSet(bit int) bool    { ... }
-func (b *Bitmap) Bytes() []byte         { return b.data }
-func (b *Bitmap) PadTo(bits int)        { /* grow to ceil(bits/8) bytes, zero-filled */ }
-```
-
-- [ ] **Step 3: Run bitmap tests**
-
-Run: `go test ./pkg/dataobj/sections/postings/... -v -run TestBitmap -count=1`
-
-Expected: PASS
-
-- [ ] **Step 4: Commit**
-
-```
-git commit -m "feat(postings): add LSB bitmap utility with Arrow-compatible encoding"
-```
 
 ### Sub-task 2b: Section type and row struct
 
 - [ ] **Step 5: Create `postings.go`**
 
-Pattern matches `stats.go` but with the `Posting` struct:
+Pattern matches `stats.go` but with the `Posting` struct. Use unexported `sectionType` (lowercase) matching the convention in `streams/streams.go:13-21` and the stats package above:
 
 ```go
 type PostingKind int64
@@ -475,15 +296,11 @@ type Posting struct {
 }
 ```
 
-- [ ] **Step 6: Commit**
-
-```
-git commit -m "feat(postings): add section type registration and Posting row struct"
-```
-
 ### Sub-task 2c: Postings builder
 
-- [ ] **Step 7: Write failing test for builder round-trip**
+> **Bitmap:** Use `memory.Bitmap` from `pkg/memory` for stream ID bitmaps. It provides Arrow-compatible LSB numbering (`Set(i, true)` to set bit i, `Resize(n)` to pad, `Bytes()` to get the raw data). The `Bytes()` method returns `(data []byte, offset int)` — use `data` directly (offset is always 0 for fresh bitmaps).
+
+- [ ] **Step 6: Write failing test for builder round-trip**
 
 Test should cover:
 - Label postings with non-nil label_value, nil bloom_filter
@@ -493,7 +310,7 @@ Test should cover:
 - Bitmap correctness (build bitmap with known stream IDs, verify bytes match LSB encoding)
 - Binary type columns (`bloom_filter`, `stream_id_bitmap` use `types.Binary{}`)
 
-- [ ] **Step 8: Implement `builder.go`**
+- [ ] **Step 7: Implement `builder.go`**
 
 Same accumulate-sort-split pattern as stats builder, but with:
 - Nullable UTF8 column for `label_value`: `types.UTF8{Nullable: true}` with `SpecBinary{Offsets: &SpecPlain{}, Validity: &SpecBool{}}`
@@ -501,33 +318,33 @@ Same accumulate-sort-split pattern as stats builder, but with:
 - Non-nullable Binary column for `stream_id_bitmap`: `types.Binary{}`
 - Bitmap normalization on flush: determine max stream ID across all postings, pad all bitmaps to same length
 
-- [ ] **Step 9: Run tests and iterate**
+- [ ] **Step 8: Run tests and iterate**
 
 Run: `go test ./pkg/dataobj/sections/postings/... -v -count=1`
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 9: Commit**
 
 ```
-git commit -m "feat(postings): implement builder with nullable columns, bitmap normalization, and sort"
+git commit -m "feat(postings): add section type, builder with nullable columns, bitmap normalization, and sort"
 ```
 
 ### Sub-task 2d: Postings reader and row reader
 
-- [ ] **Step 11: Write failing test for row reader**
+- [ ] **Step 10: Write failing test for row reader**
 
-- [ ] **Step 12: Implement `reader.go` and `row_reader.go`**
+- [ ] **Step 11: Implement `reader.go` and `row_reader.go`**
 
-- [ ] **Step 13: Add splitting and edge case tests**
+- [ ] **Step 12: Add splitting and edge case tests**
 
 Cover: section splitting, all-bloom postings, all-label postings, mixed, empty builder.
 
-- [ ] **Step 14: Run all tests**
+- [ ] **Step 13: Run all tests**
 
 Run: `go test ./pkg/dataobj/sections/postings/... -v -count=1`
 
 Expected: PASS
 
-- [ ] **Step 15: Commit**
+- [ ] **Step 14: Commit**
 
 ```
 git commit -m "feat(postings): add reader, row reader, and comprehensive tests"
@@ -580,7 +397,7 @@ for _, stream := range streams {
 streamLabelsByTenant.Store(section.Tenant, streamLabels)
 ```
 
-Note: `processStreamsSection` needs the `streamLabelsByTenant` reference passed in. Update its signature.
+Note: The goroutine lambda at `calculate.go:85-97` already has access to `streamLabelsByTenant` via closure (same pattern as `streamIDLookupByTenant`). Store labels directly from the goroutine, no signature change needed.
 
 - [ ] **Step 4: Thread `streamLabels` into `processLogsSection`**
 
@@ -601,7 +418,7 @@ Run: `go test ./pkg/dataobj/index/... -v -count=1`
 
 Expected: PASS (no behavior change yet)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Commit (context plumbing)**
 
 ```
 git commit -m "feat(index): add streamLabels to calculation context for new section support"
@@ -629,20 +446,11 @@ Each method:
 4. Records `postSize := builder.EstimatedSize()`
 5. Updates `b.unflushedSizeEstimate += postSize - preSize`
 
-- [ ] **Step 9: Update `Flush()` to write new sections**
+- [ ] **Step 9: Update `Flush()` to iterate new builders (no-op until serialization)**
 
-After pointers flush, before indexpointers flush:
+After pointers flush, before indexpointers flush, add the flush loop for the new builders:
 
-```go
-// Flush stats sections
-for _, tenantStats := range b.stats {
-    if err := b.builder.Append(tenantStats); err != nil { ... }
-}
-// Flush postings sections
-for _, tenantPostings := range b.postings {
-    if err := b.builder.Append(tenantPostings); err != nil { ... }
-}
-```
+> **Note:** In the interim (before Task 4 / the serialization PR), the new builders' `Flush` methods are **no-ops** that return 0 bytes written. The builders accumulate data via `Append*` methods, but the data is only read back via the in-memory test API (not via `SectionWriter`). Task 4 will implement the `SectionBuilder.Flush(SectionWriter)` bridge. The flush loop here establishes the integration point — iterate the new builders so the wiring is in place, but the actual section writing is a no-op until serialization lands.
 
 - [ ] **Step 10: Update `Reset()` to clear new maps**
 
@@ -652,7 +460,7 @@ Run: `go test ./pkg/dataobj/index/... -v -count=1`
 
 Expected: PASS
 
-- [ ] **Step 12: Commit**
+- [ ] **Step 12: Commit (builder methods)**
 
 ```
 git commit -m "feat(indexobj): add stats and postings builders with Append methods and flush integration"
@@ -680,12 +488,6 @@ Run: `go test ./pkg/dataobj/index/... -v -run TestStats -count=1`
 
 Expected: PASS
 
-- [ ] **Step 16: Commit**
-
-```
-git commit -m "feat(index): implement statsCalculation step"
-```
-
 ### Sub-task 3d: Label postings calculation step
 
 - [ ] **Step 17: Write failing test for `labelPostingsCalculation`**
@@ -705,12 +507,6 @@ Create `pkg/dataobj/index/label_postings_calculation_test.go`:
 
 Expected: PASS
 
-- [ ] **Step 20: Commit**
-
-```
-git commit -m "feat(index): implement labelPostingsCalculation step"
-```
-
 ### Sub-task 3e: Extend `columnValuesCalculation` with bloom posting support
 
 - [ ] **Step 21: Write failing test for bloom posting extension**
@@ -727,15 +523,9 @@ Run: `go test ./pkg/dataobj/index/... -v -count=1`
 
 Expected: PASS
 
-- [ ] **Step 24: Commit**
-
-```
-git commit -m "feat(index): extend columnValuesCalculation with bloom posting support"
-```
-
 ### Sub-task 3f: Register new calculation steps
 
-- [ ] **Step 25: Add new steps to `getLogsCalculationSteps()`**
+- [ ] **Step 24: Add new steps to `getLogsCalculationSteps()`**
 
 In `calculate.go`, update:
 
@@ -750,82 +540,16 @@ func getLogsCalculationSteps() []logsIndexCalculation {
 }
 ```
 
-- [ ] **Step 26: Run full test suite**
+- [ ] **Step 25: Run full test suite**
 
 Run: `go test ./pkg/dataobj/index/... -v -count=1`
 
 Expected: PASS (all existing + new tests)
 
-- [ ] **Step 27: Commit**
+- [ ] **Step 26: Commit (calculation steps)**
 
 ```
-git commit -m "feat(index): register stats and label postings calculation steps"
-```
-
----
-
-## Task 4: Section Storage Format (Sub-Spec + Implementation)
-
-**PR 4** — Deferred. Define and implement on-disk serialization for new dataset API sections. Draws from Vortex prior art. **Check with Robert first** — he may have work in flight.
-
-**Files:**
-
-- Create: `docs/superpowers/specs/2026-XX-XX-section-storage-format.md` (sub-spec)
-- Create: `pkg/dataobj/sections/internal/datasetenc/` (new package for dataset section encoding)
-- Create: protobuf or FlatBuffer schema for Array metadata
-
-This task is intentionally underspecified in the plan because:
-1. Robert may provide a serialization solution as part of `pkg/dataset`
-2. The sub-spec must be written and reviewed before implementation
-3. The Vortex prior art needs detailed study to determine the right adaptation
-
-**Scope of the sub-spec:**
-- Array metadata protobuf/FlatBuffer schema (recursive ArrayNode tree)
-- Buffer descriptor mapping (byte offsets in section data region)
-- Section metadata layout (how to find column arrays)
-- Integration with existing `SectionWriter`/`SectionReader` interfaces
-- `Sink`/`Source` implementations backed by section data region
-
----
-
-## Task 5: On-Disk Integration Tests
-
-**PR 5** — End-to-end tests through the full pipeline. Depends on Tasks 3 and 4.
-
-**Files:**
-
-- Create: `pkg/dataobj/index/integration_test.go` (or extend existing)
-- Modify: `pkg/dataobj/index/indexobj/builder.go` (add `observeObject` cases for new sections)
-
-- [ ] **Step 1: Write full pipeline round-trip test**
-
-Build a data object with known streams and log records. Run Calculator with all calculation steps. Write index object. Read it back. Verify:
-- Existing streams/pointers sections unchanged
-- New stats sections present with correct data
-- New postings sections present with correct data
-
-- [ ] **Step 2: Write cross-validation test**
-
-Verify invariants from spec:
-- Stats `row_count` equals actual log record counts per service_name
-- Stats `uncompressed_size` equals sum of `len(log.Line)`
-- Label posting bitmaps match streams with matching labels
-- Bloom posting bytes match pointers section bloom filters
-
-- [ ] **Step 3: Add `observeObject` cases for new section types**
-
-Add stats and postings cases to the switch in `builder.go:378-410` for metrics.
-
-- [ ] **Step 4: Run full test suite**
-
-Run: `go test ./pkg/dataobj/... -v -count=1`
-
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```
-git commit -m "test(index): add end-to-end integration tests for stats and postings sections"
+git commit -m "feat(index): implement stats, label postings, and bloom posting calculation steps"
 ```
 
 ---
@@ -840,13 +564,49 @@ Task 0 (types.Binary)
   +---> Task 2 (Postings section)
   |       |
   +-------+---> Task 3 (Pipeline integration)
-                  |
-Task 4 (Storage format) --- deferred, may come from Robert
-                  |
-                  +---> Task 5 (Integration tests)
 ```
 
 Tasks 1 and 2 can be developed in parallel after Task 0.
 Task 3 requires Tasks 0, 1, and 2.
-Task 4 is independent of 1-3 but blocks Task 5.
-Task 5 requires both Task 3 and Task 4.
+
+> **Note:** On-disk integration tests are blocked on the serialization sub-spec (see Future Work below).
+
+---
+
+## Future Work
+
+### Task 4: Section Storage Format (Sub-Spec + Implementation)
+
+**Deferred.** Define and implement on-disk serialization for new dataset API sections. Draws from Vortex prior art. **Check with Robert first** — he may have work in flight.
+
+**Files:**
+
+- Create: `docs/superpowers/specs/2026-XX-XX-section-storage-format.md` (sub-spec)
+- Create: `pkg/dataobj/sections/internal/datasetenc/` (new package for dataset section encoding)
+- Create: protobuf or FlatBuffer schema for Array metadata
+
+This task is intentionally underspecified because:
+1. Robert may provide a serialization solution as part of `pkg/dataset`
+2. The sub-spec must be written and reviewed before implementation
+3. The Vortex prior art needs detailed study to determine the right adaptation
+
+**Scope of the sub-spec:**
+- Array metadata protobuf/FlatBuffer schema (recursive ArrayNode tree)
+- Buffer descriptor mapping (byte offsets in section data region)
+- Section metadata layout (how to find column arrays)
+- Integration with existing `SectionWriter`/`SectionReader` interfaces
+- `Sink`/`Source` implementations backed by section data region
+
+### Task 5: On-Disk Integration Tests
+
+Depends on Tasks 3 and 4. End-to-end tests through the full pipeline.
+
+**Files:**
+
+- Create: `pkg/dataobj/index/integration_test.go` (or extend existing)
+- Modify: `pkg/dataobj/index/indexobj/builder.go` (add `observeObject` cases for new sections)
+
+**Scope:**
+- Full pipeline round-trip: build data object with known streams/logs, run Calculator, write index, read back, verify stats and postings sections
+- Cross-validation: stats `row_count` matches actual counts, bitmaps match label membership, bloom bytes match pointers section
+- Add `observeObject` cases for new section types in `builder.go:378-410`
