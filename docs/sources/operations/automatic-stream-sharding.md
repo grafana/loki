@@ -1,7 +1,7 @@
 ---
 title: Manage large volume log streams with automatic stream sharding
 menuTitle: Automatic stream sharding
-description: Describes how to control issues around the per-stream rate limit using automatic stream sharding.
+description: Describes how to control issues around the per-stream rate limit using automatic stream sharding, including time-based sharding for out-of-order log ingestion.
 weight: 
 ---
 
@@ -65,6 +65,53 @@ are created with the label `__stream_shard__` and logs are divided evenly among 
 Because automatic stream sharding is reactive and relies on successive calls to Ingesters, the view of current rates is
 always somewhat behind. As a result, the actual size of sharded streams will always be higher than the `desired_rate`.
 In practice, this is still sufficient to keep log producers from being rate limited by per-stream rate limits.
+
+## Time-based sharding
+
+Time-based sharding addresses a different problem from rate-based sharding: it allows **out-of-order ingestion of logs with timestamps spread across multiple time windows**.
+
+This is useful when logs are batched before being pushed to Loki — for example, when a mobile application concatenates log files client-side and uploads them later, or when an event-driven pipeline processes objects from object storage that contain logs spanning multiple days. In these cases, a single push request may contain log lines with timestamps hours or days apart, which Loki would normally reject or discard as out-of-order.
+
+### How time-based sharding works
+
+When `time_sharding_enabled` is set to `true`, Loki adds a `__time_shard__` label to each log line. The value of this label is derived from the log line's timestamp divided into buckets of `MaxChunkAge / 2`. This separates logs from different time windows into distinct streams, allowing Loki to accept and store them correctly without treating them as out-of-order within a single stream.
+
+When both `time_sharding_enabled` and `enabled` (rate-based sharding) are set to `true`, time-based sharding is applied first.
+
+### Enabling time-based sharding
+
+1. Edit the [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) section of the Loki configuration file:
+
+   ```yaml
+   limits_config:
+     shard_streams:
+       time_sharding_enabled: true
+   ```
+
+1. Optionally configure `time_sharding_ignore_recent` to prevent recent logs from being time-sharded. Logs with timestamps newer than this threshold are ingested normally without a `__time_shard__` label. The default is `40m`:
+
+   ```yaml
+   limits_config:
+     shard_streams:
+       time_sharding_enabled: true
+       time_sharding_ignore_recent: 40m
+   ```
+
+   {{< admonition type="note" >}}
+   Setting `time_sharding_ignore_recent` to `0` disables the recency exemption — all logs, including recent ones, will be time-sharded.
+   {{< /admonition >}}
+
+1. To enable both time-based and rate-based sharding simultaneously:
+
+   ```yaml
+   limits_config:
+     shard_streams:
+       enabled: true
+       time_sharding_enabled: true
+       time_sharding_ignore_recent: 40m
+   ```
+
+   Time-based sharding is applied before rate-based sharding when both are enabled.
 
 ## Automatic stream sharding metrics
 
