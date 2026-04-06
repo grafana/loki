@@ -38,6 +38,11 @@ type (
 	// UTF8 describes variable-length UTF-8 string values.
 	UTF8 struct{ Nullable bool }
 
+	// Binary describes opaque variable-length binary data. Physically identical
+	// to UTF8 (offsets + data buffer) but logically distinct — no UTF-8
+	// validation is implied.
+	Binary struct{ Nullable bool }
+
 	// Struct describes a composite type with an ordered set of named fields.
 	Struct struct {
 		// Fields is the ordered list of fields in the struct.
@@ -143,6 +148,12 @@ func (t *UTF8) String() string {
 	return "utf8" + nullable(t.Nullable)
 }
 
+// Kind returns [KindBinary].
+func (t *Binary) Kind() Kind { return KindBinary }
+
+// String returns "binary" or "binary?" if nullable.
+func (t *Binary) String() string { return "binary" + nullable(t.Nullable) }
+
 // Kind returns [KindStruct].
 func (t *Struct) Kind() Kind {
 	return KindStruct
@@ -184,5 +195,6 @@ func (t *Int32) isType()  {}
 func (t *Int64) isType()  {}
 func (t *Bool) isType()   {}
 func (t *UTF8) isType()   {}
+func (t *Binary) isType() {}
 func (t *Struct) isType() {}
 func (t *List) isType()   {}

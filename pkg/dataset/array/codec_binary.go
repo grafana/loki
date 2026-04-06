@@ -14,7 +14,7 @@ import (
 
 type binaryWriter struct {
 	alloc *memory.Allocator
-	typ   *types.UTF8
+	typ   types.Type
 
 	offsetWriter Writer
 	validity     Writer
@@ -28,22 +28,32 @@ type binaryWriter struct {
 func newBinaryWriter(alloc *memory.Allocator, spec Spec, typ types.Type) (Writer, error) {
 	if got, want := spec.Kind(), EncodingKindBinary; got != want {
 		return nil, fmt.Errorf("expected spec kind %s, got %s", want, got)
-	} else if got, want := typ.Kind(), types.KindUTF8; got != want {
-		return nil, fmt.Errorf("expected type %s, got %s", want, got)
 	}
 
-	var (
-		binarySpec = spec.(*SpecBinary)
-		utf8Typ    = typ.(*types.UTF8)
-	)
+	switch typ.Kind() {
+	case types.KindUTF8, types.KindBinary:
+		// accepted
+	default:
+		return nil, fmt.Errorf("expected type %s or %s, got %s", types.KindUTF8, types.KindBinary, typ.Kind())
+	}
+
+	var isNullable bool
+	switch t := typ.(type) {
+	case *types.UTF8:
+		isNullable = t.Nullable
+	case *types.Binary:
+		isNullable = t.Nullable
+	}
+
+	binarySpec := spec.(*SpecBinary)
 
 	if binarySpec.Offsets == nil {
 		return nil, errors.New("binary spec requires an offsets spec")
 	}
 
 	hasValidity := binarySpec.Validity != nil
-	if utf8Typ.Nullable != hasValidity {
-		return nil, fmt.Errorf("expected %s to have validity %t, got %t", utf8Typ, utf8Typ.Nullable, hasValidity)
+	if isNullable != hasValidity {
+		return nil, fmt.Errorf("expected %s to have validity %t, got %t", typ, isNullable, hasValidity)
 	}
 
 	offsetWriter, err := NewWriter(alloc, binarySpec.Offsets, &types.Int32{Nullable: false})
@@ -61,7 +71,7 @@ func newBinaryWriter(alloc *memory.Allocator, spec Spec, typ types.Type) (Writer
 
 	return &binaryWriter{
 		alloc: alloc,
-		typ:   utf8Typ,
+		typ:   typ,
 
 		data:         memory.NewBuffer[byte](alloc, 0),
 		offsetWriter: offsetWriter,
@@ -195,18 +205,27 @@ type binaryReader struct {
 func newBinaryReader(alloc *memory.Allocator, arr Array, source Source) (*binaryReader, error) {
 	if got, want := arr.Encoding.Kind(), EncodingKindBinary; got != want {
 		return nil, fmt.Errorf("expected spec kind %s, got %s", want, got)
-	} else if got, want := arr.Type.Kind(), types.KindUTF8; got != want {
-		return nil, fmt.Errorf("expected type %s, got %s", want, got)
 	}
 
-	var (
-		utf8Typ = arr.Type.(*types.UTF8)
-	)
+	switch arr.Type.Kind() {
+	case types.KindUTF8, types.KindBinary:
+		// accepted
+	default:
+		return nil, fmt.Errorf("expected type %s or %s, got %s", types.KindUTF8, types.KindBinary, arr.Type.Kind())
+	}
+
+	var isNullable bool
+	switch t := arr.Type.(type) {
+	case *types.UTF8:
+		isNullable = t.Nullable
+	case *types.Binary:
+		isNullable = t.Nullable
+	}
 
 	switch {
-	case !utf8Typ.Nullable && len(arr.Children) != 1:
+	case !isNullable && len(arr.Children) != 1:
 		return nil, fmt.Errorf("expected 1 child for non-nullable binary array, got %d", len(arr.Children))
-	case utf8Typ.Nullable && len(arr.Children) != 2:
+	case isNullable && len(arr.Children) != 2:
 		return nil, fmt.Errorf("expected 2 children for nullable binary array, got %d", len(arr.Children))
 	}
 
@@ -216,7 +235,7 @@ func newBinaryReader(alloc *memory.Allocator, arr Array, source Source) (*binary
 	}
 
 	var validityReader Reader
-	if utf8Typ.Nullable {
+	if isNullable {
 		validityReader, err = NewReader(alloc, arr.Children[1], source)
 		if err != nil {
 			return nil, fmt.Errorf("creating validity reader: %w", err)

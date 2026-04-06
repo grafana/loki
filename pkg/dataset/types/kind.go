@@ -15,6 +15,7 @@ const (
 	KindUTF8                // KindUTF8 represents a UTF-8 encoded string.
 	KindStruct              // KindStruct represents a composite type with named fields.
 	KindList                // KindList represents a variable-length sequence of a single element type.
+	KindBinary              // KindBinary represents opaque binary data.
 )
 
 var kindNames = [...]string{
@@ -28,6 +29,7 @@ var kindNames = [...]string{
 	KindUTF8:    "utf8",
 	KindStruct:  "struct",
 	KindList:    "list",
+	KindBinary:  "binary",
 }
 
 // String returns the string representation of k.
