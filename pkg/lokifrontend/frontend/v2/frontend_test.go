@@ -32,6 +32,9 @@ import (
 const testFrontendWorkerConcurrency = 5
 
 func setupFrontend(t *testing.T, cfg Config, schedulerReplyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend) (*Frontend, *mockScheduler) {
+	return setupFrontendWithSchedulerWithIsReadyState(t, cfg, true, schedulerReplyFunc)
+}
+func setupFrontendWithSchedulerWithIsReadyState(t *testing.T, cfg Config, isReady bool, schedulerReplyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend) (*Frontend, *mockScheduler) {
 	l, err := net.Listen("tcp", "")
 	require.NoError(t, err)
 
@@ -54,7 +57,7 @@ func setupFrontend(t *testing.T, cfg Config, schedulerReplyFunc func(f *Frontend
 
 	frontendv2pb.RegisterFrontendForQuerierServer(server, f)
 
-	ms := newMockScheduler(t, f, schedulerReplyFunc)
+	ms := newMockScheduler(t, f, isReady, schedulerReplyFunc)
 	schedulerpb.RegisterSchedulerForFrontendServer(server, ms)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), f))
@@ -120,7 +123,40 @@ func TestFrontendBasicWorkflow(t *testing.T) {
 	require.Equal(t, int32(200), resp.Code)
 	require.Equal(t, []byte(body), resp.Body)
 }
+func TestFrontendWorkflowWithMissingInitialInitResponse(t *testing.T) {
 
+	// Simulate scheduler not being ready at the time of frontend connect time
+	// Therefore INIT response is not sent (current behaviour of the real scheduler)
+	// same test as in the TestFrontendBasicWorkflow but with delayed scheduler readiness
+
+	const (
+		body   = "all fine here"
+		userID = "test"
+	)
+
+	cfg := Config{
+		WorkerInitTimeout: 1 * time.Second, // enable worker init timeout for test
+	}
+	flagext.DefaultValues(&cfg)
+	f, mockScheduler := setupFrontendWithSchedulerWithIsReadyState(t, cfg, false, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+		go sendResponseWithDelay(f, 100*time.Millisecond, userID, msg.QueryID, &httpgrpc.HTTPResponse{
+			Code: 200,
+			Body: []byte(body),
+		})
+		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
+	})
+
+	go func() {
+		// Simulate scheduler is now ready to accept requests after some delay
+		time.Sleep(500 * time.Millisecond)
+		mockScheduler.setReady(true)
+	}()
+
+	resp, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
+	require.NoError(t, err)
+	require.Equal(t, int32(200), resp.Code)
+	require.Equal(t, []byte(body), resp.Body)
+}
 func TestFrontendBasicWorkflowProto(t *testing.T) {
 	const (
 		userID = "test"
@@ -426,6 +462,9 @@ type mockScheduler struct {
 	t *testing.T
 	f *Frontend
 
+	isReadyMu sync.RWMutex // not sure if this is needed in tests
+	isReady   bool
+
 	replyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend
 
 	mu           sync.Mutex
@@ -433,8 +472,8 @@ type mockScheduler struct {
 	msgs         []*schedulerpb.FrontendToScheduler
 }
 
-func newMockScheduler(t *testing.T, f *Frontend, replyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend) *mockScheduler {
-	return &mockScheduler{t: t, f: f, frontendAddr: map[string]int{}, replyFunc: replyFunc}
+func newMockScheduler(t *testing.T, f *Frontend, isReady bool, replyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend) *mockScheduler {
+	return &mockScheduler{t: t, f: f, frontendAddr: map[string]int{}, replyFunc: replyFunc, isReady: isReady}
 }
 
 func (m *mockScheduler) checkWithLock(fn func()) {
@@ -442,6 +481,18 @@ func (m *mockScheduler) checkWithLock(fn func()) {
 	defer m.mu.Unlock()
 
 	fn()
+}
+func (m *mockScheduler) setReady(ready bool) {
+	m.isReadyMu.Lock()
+	defer m.isReadyMu.Unlock()
+
+	m.isReady = ready
+}
+func (m *mockScheduler) shouldRun() bool {
+	m.isReadyMu.RLock()
+	defer m.isReadyMu.RUnlock()
+
+	return m.isReady
 }
 
 func (m *mockScheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_FrontendLoopServer) error {
@@ -454,10 +505,14 @@ func (m *mockScheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_F
 	m.frontendAddr[init.FrontendAddress]++
 	m.mu.Unlock()
 
-	// Ack INIT from frontend.
-	if err := frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}); err != nil {
-		return err
+	if m.shouldRun() { // see should run in scheduler (state == runnning and shouldRun == true)
+		// Ack INIT from frontend.
+		if err := frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}); err != nil {
+			return err
+		}
 	}
+	//TODO : the other fix which is in scheduler handles this and sends an error if not ready
+	// should this behavior be added here too?
 
 	for {
 		msg, err := frontend.Recv()
