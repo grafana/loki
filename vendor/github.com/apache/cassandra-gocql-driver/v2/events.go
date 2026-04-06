@@ -104,7 +104,7 @@ func (e *eventDebouncer) debounce(frame frame) {
 		e.events = append(e.events, frame)
 	} else {
 		e.logger.Warning("Event buffer full, dropping event frame.",
-			newLogFieldString("event_name", e.name), newLogFieldStringer("frame", frame))
+			NewLogFieldString("event_name", e.name), NewLogFieldStringer("frame", frame))
 	}
 
 	e.mu.Unlock()
@@ -113,47 +113,22 @@ func (e *eventDebouncer) debounce(frame frame) {
 func (s *Session) handleEvent(framer *framer) {
 	frame, err := framer.parseFrame()
 	if err != nil {
-		s.logger.Error("Unable to parse event frame.", newLogFieldError("err", err))
+		s.logger.Error("Unable to parse event frame.", NewLogFieldError("err", err))
 		return
 	}
 
-	s.logger.Debug("Handling event frame.", newLogFieldStringer("frame", frame))
+	s.logger.Debug("Handling event frame.", NewLogFieldStringer("frame", frame))
 
 	switch f := frame.(type) {
 	case *schemaChangeKeyspace, *schemaChangeFunction,
 		*schemaChangeTable, *schemaChangeAggregate, *schemaChangeType:
-
-		s.schemaEvents.debounce(frame)
+		s.schemaDescriber.debounceRefreshSchemaMetadata()
 	case *topologyChangeEventFrame, *statusChangeEventFrame:
 		s.nodeEvents.debounce(frame)
 	default:
 		s.logger.Error("Invalid event frame.",
-			newLogFieldString("frame_type", fmt.Sprintf("%T", f)), newLogFieldStringer("frame", f))
+			NewLogFieldString("frame_type", fmt.Sprintf("%T", f)), NewLogFieldStringer("frame", f))
 	}
-}
-
-func (s *Session) handleSchemaEvent(frames []frame) {
-	// TODO: debounce events
-	for _, frame := range frames {
-		switch f := frame.(type) {
-		case *schemaChangeKeyspace:
-			s.schemaDescriber.clearSchema(f.keyspace)
-			s.handleKeyspaceChange(f.keyspace, f.change)
-		case *schemaChangeTable:
-			s.schemaDescriber.clearSchema(f.keyspace)
-		case *schemaChangeAggregate:
-			s.schemaDescriber.clearSchema(f.keyspace)
-		case *schemaChangeFunction:
-			s.schemaDescriber.clearSchema(f.keyspace)
-		case *schemaChangeType:
-			s.schemaDescriber.clearSchema(f.keyspace)
-		}
-	}
-}
-
-func (s *Session) handleKeyspaceChange(keyspace, change string) {
-	s.control.awaitSchemaAgreement()
-	s.policy.KeyspaceChanged(KeyspaceUpdateEvent{Keyspace: keyspace, Change: change})
 }
 
 // handleNodeEvent handles inbound status and topology change events.
@@ -181,7 +156,7 @@ func (s *Session) handleNodeEvent(frames []frame) {
 		switch f := frame.(type) {
 		case *topologyChangeEventFrame:
 			s.logger.Info("Received topology change event.",
-				newLogFieldString("frame", strings.Join([]string{f.change, "->", f.host.String(), ":", strconv.Itoa(f.port)}, "")))
+				NewLogFieldString("frame", strings.Join([]string{f.change, "->", f.host.String(), ":", strconv.Itoa(f.port)}, "")))
 			topologyEventReceived = true
 		case *statusChangeEventFrame:
 			event, ok := sEvents[f.host.String()]
@@ -199,16 +174,16 @@ func (s *Session) handleNodeEvent(frames []frame) {
 
 	for _, f := range sEvents {
 		s.logger.Info("Dispatching status change event.",
-			newLogFieldString("frame", strings.Join([]string{f.change, "->", f.host.String(), ":", strconv.Itoa(f.port)}, "")))
+			NewLogFieldString("frame", strings.Join([]string{f.change, "->", f.host.String(), ":", strconv.Itoa(f.port)}, "")))
 
 		// ignore events we received if they were disabled
 		// see https://github.com/apache/cassandra-gocql-driver/issues/1591
 		switch f.change {
-		case "UP":
+		case nodeStateChangeUp:
 			if !s.cfg.Events.DisableNodeStatusEvents {
 				s.handleNodeUp(f.host, f.port)
 			}
-		case "DOWN":
+		case nodeStateChangeDown:
 			if !s.cfg.Events.DisableNodeStatusEvents {
 				s.handleNodeDown(f.host, f.port)
 			}
@@ -218,7 +193,7 @@ func (s *Session) handleNodeEvent(frames []frame) {
 
 func (s *Session) handleNodeUp(eventIp net.IP, eventPort int) {
 	s.logger.Info("Node is UP.",
-		newLogFieldStringer("event_ip", eventIp), newLogFieldInt("event_port", eventPort))
+		NewLogFieldStringer("event_ip", eventIp), NewLogFieldInt("event_port", eventPort))
 
 	host, ok := s.ring.getHostByIP(eventIp.String())
 	if !ok {
@@ -244,18 +219,19 @@ func (s *Session) startPoolFill(host *HostInfo) {
 
 func (s *Session) handleNodeConnected(host *HostInfo) {
 	s.logger.Debug("Pool connected to node.",
-		newLogFieldIp("host_addr", host.ConnectAddress()), newLogFieldInt("port", host.Port()), newLogFieldString("host_id", host.HostID()))
+		NewLogFieldIP("host_addr", host.ConnectAddress()), NewLogFieldInt("port", host.Port()), NewLogFieldString("host_id", host.HostID()))
 
 	host.setState(NodeUp)
 
 	if !s.cfg.filterHost(host) {
 		s.policy.HostUp(host)
+		s.hostListeners.OnHostUp(HostUpEvent{Host: host})
 	}
 }
 
 func (s *Session) handleNodeDown(ip net.IP, port int) {
 	s.logger.Warning("Node is DOWN.",
-		newLogFieldIp("host_addr", ip), newLogFieldInt("port", port))
+		NewLogFieldIP("host_addr", ip), NewLogFieldInt("port", port))
 
 	host, ok := s.ring.getHostByIP(ip.String())
 	if ok {
@@ -267,5 +243,11 @@ func (s *Session) handleNodeDown(ip net.IP, port int) {
 		s.policy.HostDown(host)
 		hostID := host.HostID()
 		s.pool.removeHost(hostID)
+		s.hostListeners.OnHostDown(HostDownEvent{Host: host})
 	}
 }
+
+const (
+	nodeStateChangeUp   = "UP"
+	nodeStateChangeDown = "DOWN"
+)
