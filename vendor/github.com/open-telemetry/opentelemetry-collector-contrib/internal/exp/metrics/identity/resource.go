@@ -4,6 +4,7 @@
 package identity // import "github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/identity"
 
 import (
+	"fmt"
 	"hash"
 	"hash/fnv"
 
@@ -22,6 +23,10 @@ func (r Resource) Hash() hash.Hash64 {
 	sum := fnv.New64a()
 	sum.Write(r.attrs[:])
 	return sum
+}
+
+func (r Resource) String() string {
+	return fmt.Sprintf("resource/%x", r.Hash().Sum64())
 }
 
 func OfResource(r pcommon.Resource) Resource {

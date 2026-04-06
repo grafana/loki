@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
@@ -25,6 +27,11 @@ const (
 	// Ring
 	RingKey  = "ingest-limits"
 	RingName = "ingest-limits"
+
+	// The maximum amount of time to wait to join the consumer group and be
+	// assigned some partitions before giving up and going ready in
+	// [Service.CheckReady].
+	partitionReadinessWaitAssignPeriod = 30 * time.Second
 )
 
 // Service is a service that manages stream metadata limits.
@@ -46,6 +53,11 @@ type Service struct {
 
 	// Metrics.
 	streamEvictionsTotal *prometheus.CounterVec
+
+	// Readiness check, see [Service.CheckReady].
+	partitionReadinessPassed          bool
+	partitionReadinessMtx             sync.Mutex
+	partitionReadinessWaitAssignSince time.Time
 
 	// Used for tests.
 	clock quartz.Clock
@@ -70,7 +82,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create partition manager: %w", err)
 	}
-	s.usage, err = newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, reg)
+	s.usage, err = newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, limits, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create usage store: %w", err)
 	}
@@ -111,6 +123,15 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 		kgo.DisableAutoCommit(),
 		kgo.OnPartitionsAssigned(s.partitionLifecycler.Assign),
 		kgo.OnPartitionsRevoked(s.partitionLifecycler.Revoke),
+		kgo.OnPartitionsLost(s.partitionLifecycler.Lost),
+		// For now these are hardcoded, but we might choose to make them
+		// configurable in the future. We allow up to 10MB to be buffered
+		// per broker, and up to 1.5MB per partition. If an instance consumes
+		// all partitions, then it can buffer 1.5MB * 64 partitions = 96MB.
+		// This allows us to run with less than 512MB of allocated heap using
+		// a GOMEMLIMIT of 512MiB.
+		kgo.FetchMaxBytes(10_000_000),         // 10MB
+		kgo.FetchMaxPartitionBytes(1_500_000), // 1.5MB
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
@@ -137,7 +158,6 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 		reg,
 	)
 	s.limitsChecker = newLimitsChecker(
-		limits,
 		s.usage,
 		s.producer,
 		s.partitionManager,
@@ -160,7 +180,7 @@ func (s *Service) GetAssignedPartitions(
 	return &resp, nil
 }
 
-// ExceedsLimits implements the proto.IngestLimitsServer interface.
+// ExceedsLimits implements the [proto.IngestLimitsServer] interface.
 func (s *Service) ExceedsLimits(
 	ctx context.Context,
 	req *proto.ExceedsLimitsRequest,
@@ -168,14 +188,91 @@ func (s *Service) ExceedsLimits(
 	return s.limitsChecker.ExceedsLimits(ctx, req)
 }
 
+// UpdateRates implements the [proto.IngestLimitsServer] interface.
+func (s *Service) UpdateRates(
+	_ context.Context,
+	req *proto.UpdateRatesRequest,
+) (*proto.UpdateRatesResponse, error) {
+	// We do not replicate data to Kafka here as we really need to figure out
+	// how to reduce the volume during replay (the reason we added
+	// LastProducedAt for streams).
+	updated, err := s.usage.UpdateRates(req.Tenant, req.Streams, s.clock.Now())
+	if err != nil {
+		return nil, err
+	}
+	resp := proto.UpdateRatesResponse{
+		Results: make([]*proto.UpdateRatesResult, len(updated)),
+	}
+	for i, stream := range updated {
+		var totalSize uint64
+		for _, bucket := range stream.rateBuckets {
+			totalSize += bucket.size
+		}
+		// The average rate is calculated over the total number of
+		// populated buckets. This allows us to calculate accurate rates
+		// without empty buckets pulling down the average.
+		averageRate := totalSize / (uint64(s.cfg.BucketSize.Seconds()) * uint64(len(stream.rateBuckets)))
+		resp.Results[i] = &proto.UpdateRatesResult{
+			StreamHash: stream.hash,
+			Rate:       averageRate,
+		}
+	}
+	return &resp, nil
+}
+
 func (s *Service) CheckReady(ctx context.Context) error {
 	if s.State() != services.Running {
 		return fmt.Errorf("service is not running: %v", s.State())
 	}
-	err := s.lifecycler.CheckReady(ctx)
-	if err != nil {
+	if err := s.lifecycler.CheckReady(ctx); err != nil {
 		return fmt.Errorf("lifecycler not ready: %w", err)
 	}
+	s.partitionReadinessMtx.Lock()
+	defer s.partitionReadinessMtx.Unlock()
+	// We are ready when all of our assigned partitions have replayed the
+	// last active window records. This is referred to as partition readiness.
+	// Once we have passed partition readiness we never check it again as
+	// otherwise the service could become unready during a partition rebalance.
+	if !s.partitionReadinessPassed {
+		if s.partitionManager.Count() == 0 {
+			// If partition readiness, once passed, is never checked again,
+			// we can assume that the service has recently started and is
+			// trying to become ready for the first time. If we do not have
+			// any assigned partitions we should wait some time in case we
+			// eventually get assigned some partitions, and if not, we give
+			// up and become ready to guarantee liveness.
+			return s.checkPartitionsAssigned(ctx)
+		}
+		return s.checkPartitionsReady(ctx)
+	}
+	return nil
+}
+
+// checkPartitionsAssigned checks if we either have been assigned some
+// partitions or the wait assign period has elapsed. It must not be called
+// without a lock on partitionReadinessMtx.
+func (s *Service) checkPartitionsAssigned(_ context.Context) error {
+	if s.partitionReadinessWaitAssignSince.IsZero() {
+		s.partitionReadinessWaitAssignSince = s.clock.Now()
+	}
+	if s.clock.Since(s.partitionReadinessWaitAssignSince) < partitionReadinessWaitAssignPeriod {
+		return errors.New("waiting to be assigned some partitions")
+	}
+	level.Warn(s.logger).Log("msg", "no partitions assigned, going ready")
+	s.partitionReadinessPassed = true
+	return nil
+}
+
+// checkPartitionsReady checks if all our assigned partitions are ready.
+// It must not be called without a lock on partitionReadinessMtx.
+func (s *Service) checkPartitionsReady(_ context.Context) error {
+	// If we lose our assigned partitions while replaying them we want to
+	// wait another complete wait assign period.
+	s.partitionReadinessWaitAssignSince = time.Time{}
+	if !s.partitionManager.CheckReady() {
+		return errors.New("partitions are not ready")
+	}
+	s.partitionReadinessPassed = true
 	return nil
 }
 

@@ -67,8 +67,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 ### Generic placeholders
 
 - `<boolean>` : a boolean that can take the values `true` or `false`
-- `<int>` : any integer matching the regular expression `[1-9]+[0-9]*`
-- `<duration>` : a duration matching the regular expression `[0-9]+(ns|us|µs|ms|[smh])`
+- `<int>` : A plain integer (for example, `0`, `1024`, `5000`) or a size in bytes with optional unit suffix (for example, `1024`, `256KB`, `64MB`, `4GB`). Supported units: `B`, `KB`, `MB`, `GB`, `TB`, `PB`, `EB`. 
+- `<duration>` : a duration with required unit suffix. Supported units: `ms`, `s`, `m`, `h`, `d`, `w`, `y `(for example, `30s`, `5m`, `1h`, `1d`, `1w`). Note: `0` is allowed without a unit. Some fields using Go's native duration type may also support `ns` and `us`/`µs` but not `d`, `w`, `y`.
 - `<labelname>` : a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
 - `<labelvalue>` : a string of unicode characters
 - `<filename>` : a valid path relative to current working directory or an absolute path.
@@ -114,44 +114,177 @@ ui:
   # CLI flag: -ui.enabled
   [enabled: <boolean> | default = false]
 
-  # Name to use for this node in the cluster.
-  # CLI flag: -ui.node-name
-  [node_name: <string> | default = "<hostname>"]
-
-  # IP address to advertise in the cluster.
-  # CLI flag: -ui.advertise-addr
-  [advertise_addr: <string> | default = ""]
-
-  # Name of network interface to read address from.
-  # CLI flag: -ui.interface
-  [interface_names: <list of strings> | default = [<private network interfaces>]]
-
-  # How frequently to rejoin the cluster to address split brain issues.
-  # CLI flag: -ui.rejoin-interval
-  [rejoin_interval: <duration> | default = 3m]
-
-  # Number of initial peers to join from the discovered set.
-  # CLI flag: -ui.cluster-max-join-peers
-  [cluster_max_join_peers: <int> | default = 3]
-
-  # Name to prevent nodes without this identifier from joining the cluster.
-  # CLI flag: -ui.cluster-name
-  [cluster_name: <string> | default = ""]
-
-  # Enable using a IPv6 instance address.
-  # CLI flag: -ui.enable-ipv6
-  [enable_ipv6: <boolean> | default = false]
-
   # Enable debug logging for the UI.
   # CLI flag: -ui.debug
   [debug: <boolean> | default = false]
 
-  discovery:
-    # List of peers to join the cluster. Supports multiple values separated by
-    # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
-    # and SRV records).
-    # CLI flag: -ui.discovery.join-peers
-    [join_peers: <list of strings> | default = []]
+  goldfish:
+    # Enable the Goldfish query comparison feature.
+    # CLI flag: -ui.goldfish.enable
+    [enable: <boolean> | default = false]
+
+    storage:
+      # Storage backend type (cloudsql, rds, or empty for no storage)
+      # CLI flag: -ui.goldfish.storage.type
+      [type: <string> | default = ""]
+
+      # CloudSQL host for Goldfish database.
+      # CLI flag: -ui.goldfish.storage.cloudsql.host
+      [cloudsql_host: <string> | default = "127.0.0.1"]
+
+      # CloudSQL port for Goldfish database.
+      # CLI flag: -ui.goldfish.storage.cloudsql.port
+      [cloudsql_port: <int> | default = 3306]
+
+      # CloudSQL database name for Goldfish.
+      # CLI flag: -ui.goldfish.storage.cloudsql.database
+      [cloudsql_database: <string> | default = "goldfish"]
+
+      # CloudSQL username for Goldfish database.
+      # CLI flag: -ui.goldfish.storage.cloudsql.user
+      [cloudsql_user: <string> | default = ""]
+
+      # RDS endpoint (host:port)
+      # CLI flag: -ui.goldfish.storage.rds.endpoint
+      [rds_endpoint: <string> | default = ""]
+
+      # RDS database name
+      # CLI flag: -ui.goldfish.storage.rds.database
+      [rds_database: <string> | default = ""]
+
+      # RDS database user
+      # CLI flag: -ui.goldfish.storage.rds.user
+      [rds_user: <string> | default = ""]
+
+      # Maximum number of database connections for Goldfish.
+      # CLI flag: -ui.goldfish.max-connections
+      [max_connections: <int> | default = 10]
+
+      # Maximum idle time for database connections in seconds.
+      # CLI flag: -ui.goldfish.max-idle-time
+      [max_idle_time_seconds: <int> | default = 300]
+
+    # Base URL of Grafana instance for explore links.
+    # CLI flag: -ui.goldfish.grafana-url
+    [grafana_url: <string> | default = ""]
+
+    # UID of the traces datasource in Grafana.
+    # CLI flag: -ui.goldfish.traces-datasource-uid
+    [traces_datasource_uid: <string> | default = ""]
+
+    # UID of the Loki datasource in Grafana.
+    # CLI flag: -ui.goldfish.logs-datasource-uid
+    [logs_datasource_uid: <string> | default = ""]
+
+    # Namespace for Cell A logs.
+    # CLI flag: -ui.goldfish.cell-a-namespace
+    [cell_a_namespace: <string> | default = ""]
+
+    # Namespace for Cell B logs.
+    # CLI flag: -ui.goldfish.cell-b-namespace
+    [cell_b_namespace: <string> | default = ""]
+
+    # Results storage backend (gcs, s3) for fetching stored query results.
+    # CLI flag: -ui.goldfish.results-backend
+    [results_backend: <string> | default = ""]
+
+    # The thanos_object_store_config block configures the connection to object
+    # storage backend using thanos-io/objstore clients. This will become the
+    # default way of configuring object store clients in future releases.
+    # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
+    # is set to true.
+    # The CLI flags prefix for this block configuration is: ui.goldfish.results
+    [results_bucket: <thanos_object_store_config>]
+
+  ring:
+    kvstore:
+      # Backend storage to use for the ring. Supported values are: consul, etcd,
+      # inmemory, memberlist, multi.
+      # CLI flag: -ui.ring.store
+      [store: <string> | default = "consul"]
+
+      # The prefix for the keys in the store. Should end with a /.
+      # CLI flag: -ui.ring.prefix
+      [prefix: <string> | default = "collectors/"]
+
+      # Configuration for a Consul client. Only applies if the selected kvstore
+      # is consul.
+      # The CLI flags prefix for this block configuration is: ui.ring
+      [consul: <consul>]
+
+      # Configuration for an ETCD v3 client. Only applies if the selected
+      # kvstore is etcd.
+      # The CLI flags prefix for this block configuration is: ui.ring
+      [etcd: <etcd>]
+
+      multi:
+        # Primary backend storage used by multi-client.
+        # CLI flag: -ui.ring.multi.primary
+        [primary: <string> | default = ""]
+
+        # Secondary backend storage used by multi-client.
+        # CLI flag: -ui.ring.multi.secondary
+        [secondary: <string> | default = ""]
+
+        # Mirror writes to the secondary store.
+        # CLI flag: -ui.ring.multi.mirror-enabled
+        [mirror_enabled: <boolean> | default = false]
+
+        # Timeout for storing a value to the secondary store.
+        # CLI flag: -ui.ring.multi.mirror-timeout
+        [mirror_timeout: <duration> | default = 2s]
+
+    # Period at which to heartbeat to the ring.
+    # CLI flag: -ui.ring.heartbeat-period
+    [heartbeat_period: <duration> | default = 15s]
+
+    # The heartbeat timeout after which compactors are considered unhealthy
+    # within the ring. 0 = never (timeout disabled).
+    # CLI flag: -ui.ring.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -ui.ring.tokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
+    # True to enable zone-awareness and replicate blocks across different
+    # availability zones.
+    # CLI flag: -ui.ring.zone-awareness-enabled
+    [zone_awareness_enabled: <boolean> | default = false]
+
+    # Number of tokens to own in the ring.
+    # CLI flag: -ui.ring.num-tokens
+    [num_tokens: <int> | default = 128]
+
+    # Factor for data replication.
+    # CLI flag: -ui.ring.replication-factor
+    [replication_factor: <int> | default = 3]
+
+    # Instance ID to register in the ring.
+    # CLI flag: -ui.ring.instance-id
+    [instance_id: <string> | default = "<hostname>"]
+
+    # Name of network interface to read address from.
+    # CLI flag: -ui.ring.instance-interface-names
+    [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
+    # Port to advertise in the ring (defaults to server.grpc-listen-port).
+    # CLI flag: -ui.ring.instance-port
+    [instance_port: <int> | default = 0]
+
+    # IP address to advertise in the ring.
+    # CLI flag: -ui.ring.instance-addr
+    [instance_addr: <string> | default = ""]
+
+    # The availability zone where this instance is running. Required if
+    # zone-awareness is enabled.
+    # CLI flag: -ui.ring.instance-availability-zone
+    [instance_availability_zone: <string> | default = ""]
+
+    # Enable using a IPv6 instance address.
+    # CLI flag: -ui.ring.instance-enable-ipv6
+    [instance_enable_ipv6: <boolean> | default = false]
 
 # Configures the distributor.
 [distributor: <distributor>]
@@ -159,6 +292,149 @@ ui:
 # Configures the querier. Only appropriate when running all modules or just the
 # querier.
 [querier: <querier>]
+
+query_engine:
+  # Experimental: Enable next generation query engine for supported queries.
+  # CLI flag: -query-engine.enable
+  [enable: <boolean> | default = false]
+
+  # Experimental: Enable distributed query execution.
+  # CLI flag: -query-engine.distributed
+  [distributed: <boolean> | default = false]
+
+  # Experimental: Name of network interface to read an advertise address from
+  # for accepting incoming traffic from query-engine-worker instances when
+  # distributed execution is enabled.
+  # CLI flag: -query-engine.instance-interface-names
+  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # Experimental: Batch size of the next generation query engine.
+  # CLI flag: -query-engine.batch-size
+  [batch_size: <int> | default = 100]
+
+  # Experimental: Number of bytes to prefetch when opening a data object for
+  # decoding metadata and overlapping section reads. Clamps to at least 16KiB.
+  # CLI flag: -query-engine.prefetch-bytes
+  [prefetch_bytes: <int> | default = 16KiB]
+
+  # Experimental: The number of inputs that are prefetched simultaneously by any
+  # Merge node. A value of 0 means that only the currently processed input is
+  # prefetched, 1 means that only the next input is prefetched, and so on. A
+  # negative value means that all inputs are be prefetched in parallel.
+  # CLI flag: -query-engine.merge-prefetch-count
+  [merge_prefetch_count: <int> | default = 0]
+
+  # Configures how to read byte ranges from object storage when using the V2
+  # engine.
+  range_reads:
+    # Experimental: maximum number of parallel reads
+    # CLI flag: -query-engine.range-reads.max-parallelism
+    [max_parallelism: <int> | default = 10]
+
+    # Experimental: maximum distance (in bytes) between ranges that causes them
+    # to be coalesced into a single range
+    # CLI flag: -query-engine.range-reads.coalesce-size
+    [coalesce_size: <int> | default = 1048576]
+
+    # Experimental: maximum size of a byte range
+    # CLI flag: -query-engine.range-reads.max-range-size
+    [max_range_size: <int> | default = 8388608]
+
+    # Experimental: minimum size of a byte range
+    # CLI flag: -query-engine.range-reads.min-range-size
+    [min_range_size: <int> | default = 1048576]
+
+  tasks_result_cache:
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is:
+    # query-engine.tasks-result-cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -query-engine.tasks-result-cache.compression
+    [compression: <string> | default = ""]
+
+    # Experimental: Maximum size for a task result to be cacheable. 0 means only
+    # empty responses are cached.
+    # CLI flag: -query-engine.tasks-result-cache.task-result-max-cacheable-size
+    [task_result_max_cacheable_size: <int> | default = 0B]
+
+    # Experimental: Maximum size for a DataObjScan result to be cacheable. 0
+    # means only empty responses are cached.
+    # CLI flag: -query-engine.tasks-result-cache.dataobjscan-result-max-cacheable-size
+    [dataobjscan_result_max_cacheable_size: <int> | default = 0B]
+
+  # Experimental: Number of worker threads to spawn. Each worker thread runs one
+  # task at a time. 0 means to use GOMAXPROCS value.
+  # CLI flag: -query-engine.worker-threads
+  [worker_threads: <int> | default = 0]
+
+  # Experimental: Address holding DNS SRV records of schedulers to connect to.
+  # CLI flag: -query-engine.scheduler-lookup-address
+  [scheduler_lookup_address: <string> | default = ""]
+
+  # Experimental: Interval at which to lookup new schedulers by DNS SRV records.
+  # CLI flag: -query-engine.scheduler-lookup-interval
+  [scheduler_lookup_interval: <duration> | default = 10s]
+
+  # Amount of time until data objects are available.
+  # CLI flag: -query-engine.storage-lag
+  [storage_lag: <duration> | default = 1h]
+
+  # Initial date when data objects became available. Format YYYY-MM-DD. If not
+  # set, assume data objects are always available no matter how far back.
+  # CLI flag: -query-engine.storage-start-date
+  [storage_start_date: <time> | default = 0]
+
+  # Lifecycle of data objects in days. If set, queries falling outside of the
+  # retention period will not be supported. When both storage-start-date and
+  # storage-retention-days are set, the more restrictive of the two will apply.
+  # CLI flag: -query-engine.storage-retention-days
+  [storage_retention_days: <int> | default = 0]
+
+  # Enable routing of query splits in the query frontend to the next generation
+  # engine when they fall within the configured time range.
+  # CLI flag: -query-engine.enable-engine-router
+  [enable_engine_router: <boolean> | default = false]
+
+  # Downstream address to send query splits to. This is the HTTP handler address
+  # of the query engine scheduler.
+  # CLI flag: -query-engine.downstream-address
+  [downstream_address: <string> | default = ""]
+
+  # When enabled, query results exclude log lines that match overlapping delete
+  # requests (not just pending requests). Disable to return all logs without
+  # considering delete requests.
+  # CLI flag: -query-engine.enable-delete-req-filtering
+  [enable_delete_req_filtering: <boolean> | default = true]
+
+  # Enforce tenant retention limits. Queries falling outside tenant's retention
+  # period are either adjusted or rejected.
+  # CLI flag: -query-engine.enforce-retention-period
+  [enforce_retention_period: <boolean> | default = false]
+
+  # Mutate incoming queries to align their start and end with their step.
+  # CLI flag: -query-engine.align-queries-with-step
+  [align_queries_with_step: <boolean> | default = false]
+
+  # Experimental: When enabled, the tenant's MaxQuerySeries limit is applied.
+  # Otherwise, no limit is enforced.
+  # CLI flag: -query-engine.enforce-max-query-series-limit
+  [enforce_max_query_series_limit: <boolean> | default = false]
+
+  results_cache:
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is:
+    # query-engine.results-cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -query-engine.results-cache.compression
+    [compression: <string> | default = ""]
 
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
@@ -202,106 +478,6 @@ ruler_storage:
 # itself to a key value store.
 [ingester: <ingester>]
 
-block_builder:
-  # How many flushes can happen concurrently
-  # CLI flag: -blockbuilder.concurrent-flushes
-  [concurrent_flushes: <int> | default = 1]
-
-  # How many workers to process writes, defaults to number of available cpus
-  # CLI flag: -blockbuilder.concurrent-writers
-  [concurrent_writers: <int> | default = 1]
-
-  # The targeted _uncompressed_ size in bytes of a chunk block When this
-  # threshold is exceeded the head block will be cut and compressed inside the
-  # chunk.
-  # CLI flag: -blockbuilder.chunks-block-size
-  [chunk_block_size: <int> | default = 256KB]
-
-  # A target _compressed_ size in bytes for chunks. This is a desired size not
-  # an exact size, chunks may be slightly bigger or significantly smaller if
-  # they get flushed for other reasons (e.g. chunk_idle_period). A value of 0
-  # creates chunks with a fixed 10 blocks, a non zero value will create chunks
-  # with a variable number of blocks to meet the target size.
-  # CLI flag: -blockbuilder.chunk-target-size
-  [chunk_target_size: <int> | default = 1536KB]
-
-  # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
-  # lz4-256k, lz4-1M, lz4, flate, zstd)
-  # CLI flag: -blockbuilder.chunk-encoding
-  [chunk_encoding: <string> | default = "snappy"]
-
-  # The maximum duration of a timeseries chunk in memory. If a timeseries runs
-  # for longer than this, the current chunk will be flushed to the store and a
-  # new chunk created.
-  # CLI flag: -blockbuilder.max-chunk-age
-  [max_chunk_age: <duration> | default = 2h]
-
-  backoff_config:
-    # Minimum delay when backing off.
-    # CLI flag: -blockbuilder.backoff..backoff-min-period
-    [min_period: <duration> | default = 100ms]
-
-    # Maximum delay when backing off.
-    # CLI flag: -blockbuilder.backoff..backoff-max-period
-    [max_period: <duration> | default = 10s]
-
-    # Number of times to backoff and retry before failing.
-    # CLI flag: -blockbuilder.backoff..backoff-retries
-    [max_retries: <int> | default = 10]
-
-  # The number of workers to run in parallel to process jobs.
-  # CLI flag: -blockbuilder.worker-parallelism
-  [worker_parallelism: <int> | default = 1]
-
-  # The interval at which to sync job status with the scheduler.
-  # CLI flag: -blockbuilder.sync-interval
-  [sync_interval: <duration> | default = 30s]
-
-  # The interval at which to poll for new jobs.
-  # CLI flag: -blockbuilder.poll-interval
-  [poll_interval: <duration> | default = 30s]
-
-  # Address of the scheduler in the format described here:
-  # https://github.com/grpc/grpc/blob/master/doc/naming.md
-  # CLI flag: -blockbuilder.scheduler-address
-  [scheduler_address: <string> | default = ""]
-
-  # The grpc_client block configures the gRPC client used to communicate between
-  # a client and server component in Loki.
-  # The CLI flags prefix for this block configuration is:
-  # blockbuilder.scheduler-grpc-client.
-  [scheduler_grpc_client_config: <grpc_client>]
-
-block_scheduler:
-  # How often the scheduler should plan jobs.
-  # CLI flag: -block-scheduler.interval
-  [interval: <duration> | default = 15m]
-
-  # Lookback period used by the scheduler to plan jobs when the consumer group
-  # has no commits. 0 consumes from the start of the partition.
-  # CLI flag: -block-scheduler.lookback-period
-  [lookback_period: <duration> | default = 0s]
-
-  # Strategy used by the planner to plan jobs. One of record-count
-  # CLI flag: -block-scheduler.strategy
-  [strategy: <string> | default = "record-count"]
-
-  # Target record count used by the planner to plan jobs. Only used when
-  # strategy is record-count
-  # CLI flag: -block-scheduler.target-record-count
-  [target_record_count: <int> | default = 1000]
-
-  job_queue:
-    # Interval to check for expired job leases
-    # CLI flag: -jobqueue.lease-expiry-check-interval
-    [lease_expiry_check_interval: <duration> | default = 1m]
-
-    # Duration after which a job lease is considered expired if the scheduler
-    # receives no updates from builders about the job. Expired jobs are
-    # re-enqueued
-    # CLI flag: -jobqueue.lease-duration
-    [lease_duration: <duration> | default = 10m]
-
 pattern_ingester:
   # Whether the pattern ingester is enabled.
   # CLI flag: -pattern-ingester.enabled
@@ -340,16 +516,16 @@ pattern_ingester:
           # CLI flag: -pattern-ingester.multi.secondary
           [secondary: <string> | default = ""]
 
-          # Mirror writes to secondary store.
+          # Mirror writes to the secondary store.
           # CLI flag: -pattern-ingester.multi.mirror-enabled
           [mirror_enabled: <boolean> | default = false]
 
-          # Timeout for storing value to secondary store.
+          # Timeout for storing a value to the secondary store.
           # CLI flag: -pattern-ingester.multi.mirror-timeout
           [mirror_timeout: <duration> | default = 2s]
 
       # The heartbeat timeout after which ingesters are skipped for
-      # reads/writes. 0 = never (timeout disabled).
+      # reads/writes.
       # CLI flag: -pattern-ingester.ring.heartbeat-timeout
       [heartbeat_timeout: <duration> | default = 1m]
 
@@ -371,12 +547,11 @@ pattern_ingester:
     # CLI flag: -pattern-ingester.num-tokens
     [num_tokens: <int> | default = 128]
 
-    # Period at which to heartbeat to consul. 0 = disabled.
+    # Period at which to heartbeat to consul.
     # CLI flag: -pattern-ingester.heartbeat-period
     [heartbeat_period: <duration> | default = 5s]
 
-    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-    # disabled.
+    # Heartbeat timeout after which instance is assumed to be unhealthy.
     # CLI flag: -pattern-ingester.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -543,6 +718,24 @@ pattern_ingester:
 
         [client_secret_ref: <string> | default = ""]
 
+        [client_certificate_key_id: <string> | default = ""]
+
+        [client_certificate_key: <string> | default = ""]
+
+        [client_certificate_key_file: <string> | default = ""]
+
+        [client_certificate_key_ref: <string> | default = ""]
+
+        [grant_type: <string> | default = ""]
+
+        [signature_algorithm: <string> | default = ""]
+
+        [iss: <string> | default = ""]
+
+        [audience: <string> | default = ""]
+
+        [claims: <map of string to >]
+
         [scopes: <list of strings>]
 
         [token_url: <string> | default = ""]
@@ -662,10 +855,6 @@ pattern_ingester:
 
   # Configures how detected patterns are pushed back to Loki for persistence.
   pattern_persistence:
-    # Whether pattern persistence is enabled.
-    # CLI flag: -pattern-ingester.pattern-persistence.enabled
-    [enabled: <boolean> | default = false]
-
     # The address of the Loki instance to push patterns to.
     # CLI flag: -pattern-ingester.pattern-persistence.loki-address
     [loki_address: <string> | default = ""]
@@ -710,6 +899,24 @@ pattern_ingester:
         [client_secret_file: <string> | default = ""]
 
         [client_secret_ref: <string> | default = ""]
+
+        [client_certificate_key_id: <string> | default = ""]
+
+        [client_certificate_key: <string> | default = ""]
+
+        [client_certificate_key_file: <string> | default = ""]
+
+        [client_certificate_key_ref: <string> | default = ""]
+
+        [grant_type: <string> | default = ""]
+
+        [signature_algorithm: <string> | default = ""]
+
+        [iss: <string> | default = ""]
+
+        [audience: <string> | default = ""]
+
+        [claims: <map of string to >]
 
         [scopes: <list of strings>]
 
@@ -867,6 +1074,19 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.retain-for
   [retain_for: <duration> | default = 3h]
 
+  # The maximum time span for a single pattern chunk.
+  # CLI flag: -pattern-ingester.max-chunk-age
+  [max_chunk_age: <duration> | default = 1h]
+
+  # The time resolution for pattern samples within chunks.
+  # CLI flag: -pattern-ingester.sample-interval
+  [pattern_sample_interval: <duration> | default = 10s]
+
+  # The threshold for filtering patterns by volume. Only patterns representing
+  # the top X% of log volume will be persisted (0-1).
+  # CLI flag: -pattern-ingester.volume-threshold
+  [volume_threshold: <float> | default = 0.99]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -940,7 +1160,7 @@ kafka_config:
   reader_config:
     # The Kafka backend address.
     # CLI flag: -kafka.reader.address
-    [address: <string> | default = ""]
+    [address: <string> | default = "localhost:9092"]
 
     # The Kafka client ID.
     # CLI flag: -kafka.reader.client-id
@@ -949,7 +1169,7 @@ kafka_config:
   writer_config:
     # The Kafka backend address.
     # CLI flag: -kafka.writer.address
-    [address: <string> | default = ""]
+    [address: <string> | default = "localhost:9092"]
 
     # The Kafka client ID.
     # CLI flag: -kafka.writer.client-id
@@ -1025,29 +1245,248 @@ kafka_config:
   # CLI flag: -kafka.enable-kafka-histograms
   [enable_kafka_histograms: <boolean> | default = false]
 
+  # Enable tracing.
+  # CLI flag: -kafka.tracing-enabled
+  [tracing_enabled: <boolean> | default = false]
+
 dataobj:
   consumer:
     builderconfig:
-      # The size of the target page to use for the data object builder.
+      # The target maximum amount of uncompressed data to hold in data pages
+      # (for columnar sections). Uncompressed size is used for consistent I/O
+      # and planning.
       # CLI flag: -dataobj-consumer.target-page-size
       [target_page_size: <int> | default = 2MiB]
 
-      # The size of the target object to use for the data object builder.
-      # CLI flag: -dataobj-consumer.target-object-size
+      # The maximum row count for pages to use for the data object builder. A
+      # value of 0 means no limit.
+      # CLI flag: -dataobj-consumer.max-page-rows
+      [max_page_rows: <int> | default = 0]
+
+      # The target maximum size of the encoded object and all of its encoded
+      # sections (after compression), to limit memory usage of a builder.
+      # CLI flag: -dataobj-consumer.target-builder-memory-limit
       [target_object_size: <int> | default = 1GiB]
 
-      # Configures a maximum size for sections, for sections that support it.
+      # The target maximum amount of uncompressed data to hold in sections, for
+      # sections that support being limited by size. Uncompressed size is used
+      # for consistent I/O and planning.
       # CLI flag: -dataobj-consumer.target-section-size
       [target_section_size: <int> | default = 128MiB]
 
-      # The size of the buffer to use for sorting logs.
+      # The size of logs to buffer in memory before adding into columnar
+      # builders, used to reduce CPU load of sorting.
       # CLI flag: -dataobj-consumer.buffer-size
       [buffer_size: <int> | default = 16MiB]
 
-      # The maximum number of stripes to merge into a section at once. Must be
-      # greater than 1.
+      # The maximum number of dataobj section stripes to merge into a section at
+      # once. Must be greater than 1.
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
+
+    lifecycler:
+      ring:
+        kvstore:
+          # Backend storage to use for the ring. Supported values are: consul,
+          # etcd, inmemory, memberlist, multi.
+          # CLI flag: -dataobj-consumer.store
+          [store: <string> | default = "consul"]
+
+          # The prefix for the keys in the store. Should end with a /.
+          # CLI flag: -dataobj-consumer.prefix
+          [prefix: <string> | default = "collectors/"]
+
+          # Configuration for a Consul client. Only applies if the selected
+          # kvstore is consul.
+          # The CLI flags prefix for this block configuration is:
+          # dataobj-consumer
+          [consul: <consul>]
+
+          # Configuration for an ETCD v3 client. Only applies if the selected
+          # kvstore is etcd.
+          # The CLI flags prefix for this block configuration is:
+          # dataobj-consumer
+          [etcd: <etcd>]
+
+          multi:
+            # Primary backend storage used by multi-client.
+            # CLI flag: -dataobj-consumer.multi.primary
+            [primary: <string> | default = ""]
+
+            # Secondary backend storage used by multi-client.
+            # CLI flag: -dataobj-consumer.multi.secondary
+            [secondary: <string> | default = ""]
+
+            # Mirror writes to the secondary store.
+            # CLI flag: -dataobj-consumer.multi.mirror-enabled
+            [mirror_enabled: <boolean> | default = false]
+
+            # Timeout for storing a value to the secondary store.
+            # CLI flag: -dataobj-consumer.multi.mirror-timeout
+            [mirror_timeout: <duration> | default = 2s]
+
+        # The heartbeat timeout after which ingesters are skipped for
+        # reads/writes.
+        # CLI flag: -dataobj-consumer.ring.heartbeat-timeout
+        [heartbeat_timeout: <duration> | default = 1m]
+
+        # The number of ingesters to write to and read from.
+        # CLI flag: -dataobj-consumer.distributor.replication-factor
+        [replication_factor: <int> | default = 3]
+
+        # True to enable the zone-awareness and replicate ingested samples
+        # across different availability zones.
+        # CLI flag: -dataobj-consumer.distributor.zone-awareness-enabled
+        [zone_awareness_enabled: <boolean> | default = false]
+
+        # Comma-separated list of zones to exclude from the ring. Instances in
+        # excluded zones will be filtered out from the ring.
+        # CLI flag: -dataobj-consumer.distributor.excluded-zones
+        [excluded_zones: <string> | default = ""]
+
+      # Number of tokens for each ingester.
+      # CLI flag: -dataobj-consumer.num-tokens
+      [num_tokens: <int> | default = 128]
+
+      # Period at which to heartbeat to consul.
+      # CLI flag: -dataobj-consumer.heartbeat-period
+      [heartbeat_period: <duration> | default = 5s]
+
+      # Heartbeat timeout after which instance is assumed to be unhealthy.
+      # CLI flag: -dataobj-consumer.heartbeat-timeout
+      [heartbeat_timeout: <duration> | default = 1m]
+
+      # Observe tokens after generating to resolve collisions. Useful when using
+      # gossiping ring.
+      # CLI flag: -dataobj-consumer.observe-period
+      [observe_period: <duration> | default = 0s]
+
+      # Period to wait for a claim from another member; will join automatically
+      # after this.
+      # CLI flag: -dataobj-consumer.join-after
+      [join_after: <duration> | default = 0s]
+
+      # Minimum duration to wait after the internal readiness checks have passed
+      # but before succeeding the readiness endpoint. This is used to slowdown
+      # deployment controllers (eg. Kubernetes) after an instance is ready and
+      # before they proceed with a rolling update, to give the rest of the
+      # cluster instances enough time to receive ring updates.
+      # CLI flag: -dataobj-consumer.min-ready-duration
+      [min_ready_duration: <duration> | default = 15s]
+
+      # Name of network interface to read address from.
+      # CLI flag: -dataobj-consumer.lifecycler.interface
+      [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+      # Enable IPv6 support. Required to make use of IP addresses from IPv6
+      # interfaces.
+      # CLI flag: -dataobj-consumer.enable-inet6
+      [enable_inet6: <boolean> | default = false]
+
+      # Duration to sleep for before exiting, to ensure metrics are scraped.
+      # CLI flag: -dataobj-consumer.final-sleep
+      [final_sleep: <duration> | default = 0s]
+
+      # File path where tokens are stored. If empty, tokens are not stored at
+      # shutdown and restored at startup.
+      # CLI flag: -dataobj-consumer.tokens-file-path
+      [tokens_file_path: <string> | default = ""]
+
+      # The availability zone where this instance is running.
+      # CLI flag: -dataobj-consumer.availability-zone
+      [availability_zone: <string> | default = ""]
+
+      # Unregister from the ring upon clean shutdown. It can be useful to
+      # disable for rolling restarts with consistent naming in conjunction with
+      # -distributor.extend-writes=false.
+      # CLI flag: -dataobj-consumer.unregister-on-shutdown
+      [unregister_on_shutdown: <boolean> | default = true]
+
+      # When enabled the readiness probe succeeds only after all instances are
+      # ACTIVE and healthy in the ring, otherwise only the instance itself is
+      # checked. This option should be disabled if in your cluster multiple
+      # instances can be rolled out simultaneously, otherwise rolling updates
+      # may be slowed down.
+      # CLI flag: -dataobj-consumer.readiness-check-ring-health
+      [readiness_check_ring_health: <boolean> | default = true]
+
+      # IP address to advertise in the ring.
+      # CLI flag: -dataobj-consumer.lifecycler.addr
+      [address: <string> | default = ""]
+
+      # port to advertise in consul (defaults to server.grpc-listen-port).
+      # CLI flag: -dataobj-consumer.lifecycler.port
+      [port: <int> | default = 0]
+
+      # ID to register in the ring.
+      # CLI flag: -dataobj-consumer.lifecycler.ID
+      [id: <string> | default = "<hostname>"]
+
+    partition_ring:
+      # The key-value store used to share the hash ring across multiple
+      # instances. This option needs be set on ingesters, distributors,
+      # queriers, and rulers when running in microservices mode.
+      kvstore:
+        # Backend storage to use for the ring. Supported values are: consul,
+        # etcd, inmemory, memberlist, multi.
+        # CLI flag: -dataobj-consumer.partition-ring.store
+        [store: <string> | default = "memberlist"]
+
+        # The prefix for the keys in the store. Should end with a /.
+        # CLI flag: -dataobj-consumer.partition-ring.prefix
+        [prefix: <string> | default = "collectors/"]
+
+        # Configuration for a Consul client. Only applies if the selected
+        # kvstore is consul.
+        # The CLI flags prefix for this block configuration is:
+        # dataobj-consumer.partition-ring
+        [consul: <consul>]
+
+        # Configuration for an ETCD v3 client. Only applies if the selected
+        # kvstore is etcd.
+        # The CLI flags prefix for this block configuration is:
+        # dataobj-consumer.partition-ring
+        [etcd: <etcd>]
+
+        multi:
+          # Primary backend storage used by multi-client.
+          # CLI flag: -dataobj-consumer.partition-ring.multi.primary
+          [primary: <string> | default = ""]
+
+          # Secondary backend storage used by multi-client.
+          # CLI flag: -dataobj-consumer.partition-ring.multi.secondary
+          [secondary: <string> | default = ""]
+
+          # Mirror writes to the secondary store.
+          # CLI flag: -dataobj-consumer.partition-ring.multi.mirror-enabled
+          [mirror_enabled: <boolean> | default = false]
+
+          # Timeout for storing a value to the secondary store.
+          # CLI flag: -dataobj-consumer.partition-ring.multi.mirror-timeout
+          [mirror_timeout: <duration> | default = 2s]
+
+      # Minimum number of owners to wait before a PENDING partition gets
+      # switched to ACTIVE.
+      # CLI flag: -dataobj-consumer.partition-ring.min-partition-owners-count
+      [min_partition_owners_count: <int> | default = 1]
+
+      # How long the minimum number of owners are enforced before a PENDING
+      # partition gets switched to ACTIVE.
+      # CLI flag: -dataobj-consumer.partition-ring.min-partition-owners-duration
+      [min_partition_owners_duration: <duration> | default = 10s]
+
+      # How long to wait before an INACTIVE partition is eligible for deletion.
+      # The partition is deleted only if it has been in INACTIVE state for at
+      # least the configured duration and it has no owners registered. A value
+      # of 0 disables partitions deletion.
+      # CLI flag: -dataobj-consumer.partition-ring.delete-inactive-partition-after
+      [delete_inactive_partition_after: <duration> | default = 13h]
+
+      # Experimental: The size of the cache used for shuffle sharding. If zero
+      # or negative, an unbounded cache is used. If positive, an LRU cache with
+      # the specified size is used.
+      # CLI flag: -dataobj-consumer.partition-ring.shuffle-shard-cache-size
+      [shuffle_shard_cache_size: <int> | default = 0]
 
     uploader:
       # The size of the SHA prefix to use for generating object storage keys for
@@ -1056,27 +1495,83 @@ dataobj:
       [shaprefixsize: <int> | default = 2]
 
     # The maximum amount of time to wait in seconds before flushing an object
-    # that is no longer receiving new writes
+    # that is no longer receiving new writes.
     # CLI flag: -dataobj-consumer.idle-flush-timeout
     [idle_flush_timeout: <duration> | default = 1h]
 
-  querier:
-    # Enable the dataobj querier.
-    # CLI flag: -dataobj-querier-enabled
-    [enabled: <boolean> | default = false]
+    # The maximum amount of time to accumulate data in a builder before flushing
+    # it. Defaults to 1 hour.
+    # CLI flag: -dataobj-consumer.max-builder-age
+    [max_builder_age: <duration> | default = 1h]
 
-    # The date of the first day of when the dataobj querier should start
-    # querying from. In YYYY-MM-DD format, for example: 2018-04-15.
-    # CLI flag: -dataobj-querier-from
-    [from: <daytime> | default = 1970-01-01]
+    # The name of the Kafka topic.
+    # CLI flag: -dataobj-consumer.topic
+    [topic: <string> | default = ""]
 
-    # The number of shards to use for the dataobj querier.
-    # CLI flag: -dataobj-querier-shard-factor
-    [shard_factor: <int> | default = 32]
+  index:
+    # The target maximum amount of uncompressed data to hold in data pages (for
+    # columnar sections). Uncompressed size is used for consistent I/O and
+    # planning.
+    # CLI flag: -dataobj-index-builder.target-page-size
+    [target_page_size: <int> | default = 128KiB]
+
+    # The maximum row count for pages to use for the data object builder. A
+    # value of 0 means no limit.
+    # CLI flag: -dataobj-index-builder.max-page-rows
+    [max_page_rows: <int> | default = 0]
+
+    # The target maximum size of the encoded object and all of its encoded
+    # sections (after compression), to limit memory usage of a builder.
+    # CLI flag: -dataobj-index-builder.target-builder-memory-limit
+    [target_object_size: <int> | default = 64MiB]
+
+    # The target maximum amount of uncompressed data to hold in sections, for
+    # sections that support being limited by size. Uncompressed size is used for
+    # consistent I/O and planning.
+    # CLI flag: -dataobj-index-builder.target-section-size
+    [target_section_size: <int> | default = 16MiB]
+
+    # The size of logs to buffer in memory before adding into columnar builders,
+    # used to reduce CPU load of sorting.
+    # CLI flag: -dataobj-index-builder.buffer-size
+    [buffer_size: <int> | default = 2MiB]
+
+    # The maximum number of dataobj section stripes to merge into a section at
+    # once. Must be greater than 1.
+    # CLI flag: -dataobj-index-builder.section-stripe-merge-limit
+    [section_stripe_merge_limit: <int> | default = 2]
+
+    # Experimental: The number of events to batch before building an index
+    # CLI flag: -dataobj-index-builder.events-per-index
+    [events_per_index: <int> | default = 32]
+
+    # Experimental: How often to check for stale partitions to flush
+    # CLI flag: -dataobj-index-builder.flush-interval
+    [flush_interval: <duration> | default = 1m]
+
+    # Experimental: Maximum time to wait before flushing buffered events
+    # CLI flag: -dataobj-index-builder.max-idle-time
+    [max_idle_time: <duration> | default = 30m]
+
+  metastore:
+    # Experimental: A prefix to use for storing indexes in object storage. Used
+    # for testing only.
+    # CLI flag: -dataobj-metastore.index-storage-prefix
+    [index_storage_prefix: <string> | default = "index/v0"]
+
+    # Experimental: The ratio of log partitions to metastore partitions. For
+    # example, a value of 10 means there is 1 metastore partition for every 10
+    # log partitions.
+    # CLI flag: -dataobj-metastore.partition-ratio
+    [partition_ratio: <int> | default = 10]
 
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix
   [storage_bucket_prefix: <string> | default = "dataobj/"]
+
+  # Enable data objects.
+  # CLI flag: -dataobj.enabled
+  [enabled: <boolean> | default = false]
 
 ingest_limits:
   # Enable the ingest limits service.
@@ -1139,16 +1634,16 @@ ingest_limits:
           # CLI flag: -ingest-limits.multi.secondary
           [secondary: <string> | default = ""]
 
-          # Mirror writes to secondary store.
+          # Mirror writes to the secondary store.
           # CLI flag: -ingest-limits.multi.mirror-enabled
           [mirror_enabled: <boolean> | default = false]
 
-          # Timeout for storing value to secondary store.
+          # Timeout for storing a value to the secondary store.
           # CLI flag: -ingest-limits.multi.mirror-timeout
           [mirror_timeout: <duration> | default = 2s]
 
       # The heartbeat timeout after which ingesters are skipped for
-      # reads/writes. 0 = never (timeout disabled).
+      # reads/writes.
       # CLI flag: -ingest-limits.ring.heartbeat-timeout
       [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1170,12 +1665,11 @@ ingest_limits:
     # CLI flag: -ingest-limits.num-tokens
     [num_tokens: <int> | default = 128]
 
-    # Period at which to heartbeat to consul. 0 = disabled.
+    # Period at which to heartbeat to consul.
     # CLI flag: -ingest-limits.heartbeat-period
     [heartbeat_period: <duration> | default = 5s]
 
-    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-    # disabled.
+    # Heartbeat timeout after which instance is assumed to be unhealthy.
     # CLI flag: -ingest-limits.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1309,16 +1803,16 @@ ingest_limits_frontend:
           # CLI flag: -ingest-limits-frontend.multi.secondary
           [secondary: <string> | default = ""]
 
-          # Mirror writes to secondary store.
+          # Mirror writes to the secondary store.
           # CLI flag: -ingest-limits-frontend.multi.mirror-enabled
           [mirror_enabled: <boolean> | default = false]
 
-          # Timeout for storing value to secondary store.
+          # Timeout for storing a value to the secondary store.
           # CLI flag: -ingest-limits-frontend.multi.mirror-timeout
           [mirror_timeout: <duration> | default = 2s]
 
       # The heartbeat timeout after which ingesters are skipped for
-      # reads/writes. 0 = never (timeout disabled).
+      # reads/writes.
       # CLI flag: -ingest-limits-frontend.ring.heartbeat-timeout
       [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1340,12 +1834,11 @@ ingest_limits_frontend:
     # CLI flag: -ingest-limits-frontend.num-tokens
     [num_tokens: <int> | default = 128]
 
-    # Period at which to heartbeat to consul. 0 = disabled.
+    # Period at which to heartbeat to consul.
     # CLI flag: -ingest-limits-frontend.heartbeat-period
     [heartbeat_period: <duration> | default = 5s]
 
-    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-    # disabled.
+    # Heartbeat timeout after which instance is assumed to be unhealthy.
     # CLI flag: -ingest-limits-frontend.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1415,17 +1908,29 @@ ingest_limits_frontend:
     # CLI flag: -ingest-limits-frontend.lifecycler.ID
     [id: <string> | default = "<hostname>"]
 
-  # The period to recheck per tenant ingestion rate limit configuration.
-  # CLI flag: -ingest-limits-frontend.recheck-period
-  [recheck_period: <duration> | default = 10s]
-
   # The number of partitions to use for the ring.
   # CLI flag: -ingest-limits-frontend.num-partitions
   [num_partitions: <int> | default = 64]
 
-  # The TTL for the assigned partitions cache. 0 disables the cache.
+  # Enable the assigned partitions cache.
+  # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-enabled
+  [assigned_partitions_cache_enabled: <boolean> | default = true]
+
+  # The TTL for the assigned partitions cache.
   # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-ttl
   [assigned_partitions_cache_ttl: <duration> | default = 1m]
+
+  # [Experimental]: Enable the accepted streams cache.
+  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-enabled
+  [accepted_streams_cache_enabled: <boolean> | default = false]
+
+  # The TTL for the accepted streams cache.
+  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-ttl
+  [accepted_streams_cache_ttl: <duration> | default = 1m]
+
+  # The jitter to add to the accepted streams cache.
+  # CLI flag: -ingest-limits-frontend.accepted-streams-cache-ttl-jitter
+  [accepted_streams_cache_ttl_jitter: <duration> | default = 15s]
 
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
@@ -1466,6 +1971,12 @@ ingest_limits_frontend_client:
 
 # Configuration for profiling options.
 [profiling: <profiling>]
+
+# List of limit fields to publish from the tenant limits endpoint. If empty, all
+# fields are returned. Use YAML field names (e.g., 'retention_period',
+# 'max_query_series').
+# CLI flag: -limits.tenant-limits-allow-publish
+[tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_entries_limit_per_query max_line_size_truncate max_query_bytes_read max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream volume_enabled volume_max_series]]
 
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
@@ -1681,6 +2192,11 @@ The `azure_storage_config` block configures the connection to Azure object stora
 # container must be created before running cortex.
 # CLI flag: -<prefix>.azure.container-name
 [container_name: <string> | default = "loki"]
+
+# Azure active directory endpoint override. Use when the Azure SDK does not
+# support your environment.
+# CLI flag: -<prefix>.azure.active-directory-endpoint
+[active_directory_endpoint: <string> | default = ""]
 
 # Azure storage endpoint suffix without schema. The storage account name will be
 # prefixed to this value to create the FQDN.
@@ -1909,6 +2425,8 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `frontend.label-results-cache`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
+- `query-engine.results-cache`
+- `query-engine.tasks-result-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
 - `store.index-cache-read`
@@ -2282,15 +2800,15 @@ ring:
       # CLI flag: -common.storage.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -common.storage.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -common.storage.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -common.storage.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -2353,6 +2871,10 @@ ring:
 # the grpc address of the compactor in the form host:port
 # CLI flag: -common.compactor-grpc-address
 [compactor_grpc_address: <string> | default = ""]
+
+# Experimental: path to use for temporary data, where scratch data is supported.
+# CLI flag: -common.scratch-path
+[scratch_path: <string> | default = ""]
 ```
 
 ### compactor
@@ -2484,15 +3006,15 @@ compactor_ring:
       # CLI flag: -compactor.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -compactor.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -compactor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -compactor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -2545,6 +3067,44 @@ compactor_ring:
 # -compactor.tables-to-compact, this is useful when clearing compactor backlogs.
 # CLI flag: -compactor.skip-latest-n-tables
 [skip_latest_n_tables: <int> | default = 0]
+
+# Experimental: Configuration to turn on and run horizontally scalable
+# compactor. Supported modes - [disabled]: Keeps the horizontal scaling mode
+# disabled. Locally runs all the functions of the compactor.[main]: Runs all
+# functions of the compactor. Distributes work to workers where
+# possible.[worker]: Runs the compactor in worker mode, only working on jobs
+# built by the main compactor.
+# CLI flag: -compactor.horizontal-scaling-mode
+[horizontal_scaling_mode: <string> | default = "disabled"]
+
+worker_config:
+  # Number of sub-workers to run for concurrent processing of jobs.
+  # CLI flag: -compactor.worker.num-sub-workers
+  [num_sub_workers: <int> | default = 4]
+
+jobs_config:
+  deletion:
+    # Object storage path prefix for storing deletion manifests.
+    # CLI flag: -compactor.jobs.deletion.deletion-manifest-store-prefix
+    [deletion_manifest_store_prefix: <string> | default = "__deletion_manifest__/"]
+
+    # Maximum number of chunks to process concurrently in each worker.
+    # CLI flag: -compactor.jobs.deletion.chunk-processing-concurrency
+    [chunk_processing_concurrency: <int> | default = 3]
+
+    # Maximum time to wait for a job before considering it failed and retrying.
+    # CLI flag: -compactor.jobs.deletion.timeout
+    [timeout: <duration> | default = 15m]
+
+    # Maximum number of times to retry a failed or timed out job.
+    # CLI flag: -compactor.jobs.deletion.max-retries
+    [max_retries: <int> | default = 3]
+
+# Object storage path prefix for storing deletion markers. The prefix must end
+# with a forward slash(/). Leave empty to continue to store deletion markers on
+# the local disk.
+# CLI flag: -compactor.deletion-marker-object-store-prefix
+[deletion_marker_object_store_prefix: <string> | default = ""]
 ```
 
 ### consul
@@ -2553,6 +3113,8 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 
 - `common.storage.ring`
 - `compactor.ring`
+- `dataobj-consumer`
+- `dataobj-consumer.partition-ring`
 - `distributor.ring`
 - `index-gateway.ring`
 - `ingest-limits`
@@ -2561,6 +3123,7 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
+- `ui.ring`
 
 &nbsp;
 
@@ -2713,15 +3276,15 @@ ring:
       # CLI flag: -distributor.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -distributor.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -distributor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -distributor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
@@ -2741,6 +3304,10 @@ ring:
 # The maximum size of a received message.
 # CLI flag: -distributor.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 104857600]
+
+# The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.
+# CLI flag: -distributor.max-decompressed-size
+[max_decompressed_size: <int> | default = 5242880000]
 
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
@@ -2776,6 +3343,9 @@ otlp_config:
   # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
   [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
 
+# Default policy stream mappings that are merged with per-tenant mappings.
+[default_policy_stream_mappings: <map of string to list of PriorityStreams>]
+
 # Enable writes to Kafka during Push requests.
 # CLI flag: -distributor.kafka-writes-enabled
 [kafka_writes_enabled: <boolean> | default = false]
@@ -2793,31 +3363,31 @@ otlp_config:
 # CLI flag: -distributor.ingest-limits-dry-run-enabled
 [ingest_limits_dry_run_enabled: <boolean> | default = false]
 
-tenant_topic:
-  # Enable the tenant topic tee, which writes logs to Kafka topics based on
-  # tenant IDs instead of using multitenant topics/partitions.
-  # CLI flag: -distributor.tenant-topic-tee.enabled
+dataobj_tee:
+  # Enable data object tee.
+  # CLI flag: -distributor.dataobj-tee.enabled
   [enabled: <boolean> | default = false]
 
-  # Prefix to prepend to tenant IDs to form the final Kafka topic name
-  # CLI flag: -distributor.tenant-topic-tee.topic-prefix
-  [topic_prefix: <string> | default = "loki.tenant"]
+  # Topic for data object tee.
+  # CLI flag: -distributor.dataobj-tee.topic
+  [topic: <string> | default = ""]
 
-  # Maximum number of bytes that can be buffered before producing to Kafka
-  # CLI flag: -distributor.tenant-topic-tee.max-buffered-bytes
-  [max_buffered_bytes: <int> | default = 100MiB]
+  # Maximum number of bytes to buffer.
+  # CLI flag: -distributor.dataobj-tee.max-buffered-bytes
+  [max_buffered_bytes: <int> | default = 104857600]
 
-  # Maximum size of a single Kafka record in bytes
-  # CLI flag: -distributor.tenant-topic-tee.max-record-size-bytes
-  [max_record_size_bytes: <int> | default = 15MiB249KiB]
+  # The per-tenant partition rate (bytes/sec).
+  # CLI flag: -distributor.dataobj-tee.per-partition-rate-bytes
+  [per_partition_rate_bytes: <int> | default = 1048576]
 
-  # Topic strategy to use. Valid values are 'simple' or 'automatic'
-  # CLI flag: -distributor.tenant-topic-tee.strategy
-  [strategy: <string> | default = "simple"]
+  # Enables optional debug metrics.
+  # CLI flag: -distributor.dataobj-tee.debug-metrics-enabled
+  [debug_metrics_enabled: <boolean> | default = false]
 
-  # Target throughput per partition in bytes for the automatic strategy
-  # CLI flag: -distributor.tenant-topic-tee.target-throughput-per-partition
-  [target_throughput_per_partition: <int> | default = 10MiB]
+  # Duration to accumulate rate updates before sending to limits frontend. Set
+  # to 0 to disable batching.
+  # CLI flag: -distributor.dataobj-tee.rate-batch-window
+  [rate_batch_window: <duration> | default = 0s]
 ```
 
 ### etcd
@@ -2826,6 +3396,8 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 
 - `common.storage.ring`
 - `compactor.ring`
+- `dataobj-consumer`
+- `dataobj-consumer.partition-ring`
 - `distributor.ring`
 - `index-gateway.ring`
 - `ingest-limits`
@@ -2834,6 +3406,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
+- `ui.ring`
 
 &nbsp;
 
@@ -2855,7 +3428,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 [tls_enabled: <boolean> | default = false]
 
 # The TLS configuration.
-# The CLI flags prefix for this block configuration is: ruler.ring.etcd
+# The CLI flags prefix for this block configuration is: ui.ring.etcd
 [<tls_config>]
 
 # Etcd username.
@@ -2938,6 +3511,10 @@ The `frontend` block configures the Loki query-frontend.
 # query-frontend.
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
+# Enable using a IPv6 instance address (default false).
+# CLI flag: -frontend.instance-enable-ipv6
+[instance_enable_ipv6: <boolean> | default = false]
 
 # Defines the encoding for requests to and responses from the scheduler and
 # querier. Can be 'json' or 'protobuf' (defaults to 'json').
@@ -3066,7 +3643,6 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
-- `blockbuilder.scheduler-grpc-client.`
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
@@ -3163,7 +3739,7 @@ backoff_config:
 [connect_backoff_max_delay: <duration> | default = 5s]
 
 cluster_validation:
-  # Optionally define the cluster validation label.
+  # Primary cluster validation label.
   # CLI flag: -<prefix>.cluster-validation.label
   [label: <string> | default = ""]
 ```
@@ -3216,15 +3792,15 @@ ring:
       # CLI flag: -index-gateway.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -index-gateway.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -index-gateway.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -index-gateway.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -3311,16 +3887,15 @@ lifecycler:
         # CLI flag: -multi.secondary
         [secondary: <string> | default = ""]
 
-        # Mirror writes to secondary store.
+        # Mirror writes to the secondary store.
         # CLI flag: -multi.mirror-enabled
         [mirror_enabled: <boolean> | default = false]
 
-        # Timeout for storing value to secondary store.
+        # Timeout for storing a value to the secondary store.
         # CLI flag: -multi.mirror-timeout
         [mirror_timeout: <duration> | default = 2s]
 
     # The heartbeat timeout after which ingesters are skipped for reads/writes.
-    # 0 = never (timeout disabled).
     # CLI flag: -ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -3342,12 +3917,11 @@ lifecycler:
   # CLI flag: -ingester.num-tokens
   [num_tokens: <int> | default = 128]
 
-  # Period at which to heartbeat to consul. 0 = disabled.
+  # Period at which to heartbeat to consul.
   # CLI flag: -ingester.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
-  # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-  # disabled.
+  # Heartbeat timeout after which instance is assumed to be unhealthy.
   # CLI flag: -ingester.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -3541,6 +4115,11 @@ wal:
   # CLI flag: -ingester.wal-replay-memory-ceiling
   [replay_memory_ceiling: <int> | default = 4GB]
 
+  # Threshold for disk usage (0.0 to 1.0) at which the WAL will throttle
+  # incoming writes. Set to 0 to disable throttling.
+  # CLI flag: -ingester.wal-disk-full-threshold
+  [disk_full_threshold: <float> | default = 0.9]
+
 # Shard factor used in the ingesters for the in process reverse index. This MUST
 # be evenly divisible by ALL schema shard factors or Loki will not start.
 # CLI flag: -ingester.index-shards
@@ -3559,6 +4138,12 @@ wal:
 # ring to recalculate owned streams.
 # CLI flag: -ingester.owned-streams-check-interval
 [owned_streams_check_interval: <duration> | default = 30s]
+
+# When enabled, the ingester skips stream count limit checks, delegating them
+# entirely to the ingest-limits service (Thor). Requires ingest-limits service
+# to be enabled.
+# CLI flag: -ingester.delegate-stream-limits-enabled
+[delegate_stream_limits_enabled: <boolean> | default = false]
 
 kafka_ingestion:
   # Whether the kafka ingester is enabled.
@@ -3600,11 +4185,11 @@ kafka_ingestion:
         # CLI flag: -ingester.partition-ring.multi.secondary
         [secondary: <string> | default = ""]
 
-        # Mirror writes to secondary store.
+        # Mirror writes to the secondary store.
         # CLI flag: -ingester.partition-ring.multi.mirror-enabled
         [mirror_enabled: <boolean> | default = false]
 
-        # Timeout for storing value to secondary store.
+        # Timeout for storing a value to the secondary store.
         # CLI flag: -ingester.partition-ring.multi.mirror-timeout
         [mirror_timeout: <duration> | default = 2s]
 
@@ -3624,6 +4209,12 @@ kafka_ingestion:
     # 0 disables partitions deletion.
     # CLI flag: -ingester.partition-ring.delete-inactive-partition-after
     [delete_inactive_partition_after: <duration> | default = 13h]
+
+    # Experimental: The size of the cache used for shuffle sharding. If zero or
+    # negative, an unbounded cache is used. If positive, an LRU cache with the
+    # specified size is used.
+    # CLI flag: -ingester.partition-ring.shuffle-shard-cache-size
+    [shuffle_shard_cache_size: <int> | default = 0]
 ```
 
 ### ingester_client
@@ -3715,14 +4306,18 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 
 # Maximum line size on ingestion path. Example: 256kb. Any log line exceeding
 # this limit will be discarded unless `distributor.max-line-size-truncate` is
-# set which in case it is truncated instead of discarding it completely. There
-# is no limit when unset or set to 0.
+# set, in which case it is truncated rather than discarded completely. There is
+# no limit when set to 0.
 # CLI flag: -distributor.max-line-size
 [max_line_size: <int> | default = 256KB]
 
 # Whether to truncate lines that exceed max_line_size.
 # CLI flag: -distributor.max-line-size-truncate
 [max_line_size_truncate: <boolean> | default = false]
+
+# Identifier that is added at the end of a truncated log line.
+# CLI flag: -distributor.max-line-size-truncate-identifier
+[max_line_size_truncate_identifier: <string> | default = ""]
 
 # Alter the log line timestamp during ingestion when the timestamp is the same
 # as the previous entry for the same stream. When enabled, if a log line in a
@@ -3770,7 +4365,7 @@ discover_generic_fields:
 # Field name to use for log levels. If not set, log level would be detected
 # based on pre-defined labels as mentioned above.
 # CLI flag: -validation.log-level-fields
-[log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl severity_text Severity_Text SEVERITY_TEXT]]
+[log_level_fields: <list of strings> | default = [level LEVEL Level log.level severity SEVERITY Severity SeverityText lvl LVL Lvl severity_text Severity_Text SEVERITY_TEXT]]
 
 # Maximum depth to search for log level fields in JSON logs. A value of 0 or
 # less means unlimited depth. Default is 2 which searches the first 2 levels of
@@ -3973,6 +4568,11 @@ discover_generic_fields:
 # is enabled.
 # CLI flag: -querier.split-instant-metric-queries-by-interval
 [split_instant_metric_queries_by_interval: <duration> | default = 1h]
+
+# Time bucket interval used for cache key generation in the Thor (V2) query
+# engine. Queries starting within the same bucket share the same cache key.
+# CLI flag: -querier.engine-results-cache-time-bucket-interval
+[engine_results_cache_time_bucket_interval: <duration> | default = 1d]
 
 # Interval to use for time-based splitting when a request is within the
 # `query_ingesters_within` window; defaults to `split-queries-by-interval` by
@@ -4190,6 +4790,13 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
+# Experimental. Defines a fraction (between 0.0 and 1.0) of the total index
+# gateways available for a each tenant. A value of 0.0 has the same effect as
+# 1.0, meaning all available index gateways. This setting only applies to simple
+# mode.
+# CLI flag: -index-gateway.max-capacity
+[index_gateway_max_capacity: <float> | default = 1]
+
 # Experimental. Whether to use the bloom gateway component in the read path to
 # filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
@@ -4346,13 +4953,41 @@ otlp_config:
 # List of LogQL vector and range aggregations that should be sharded.
 [shard_aggregations: <list of strings>]
 
-# Enable metric and pattern aggregation. When enabled, pushed streams will be
-# sampled for bytes, line count, and patterns. These metrics will be written
-# back into Loki as a special __aggregated_metric__ stream.
+# Default list of JSON fields to tokenize for pattern detection. It is recommend
+# to append to or delete from the defaults rather than replacing them.
+# CLI flag: -limits.pattern-ingester-tokenizable-json-fields
+[pattern_ingester_tokenizable_json_fields_default: <string> | default = "log,message,msg,msg_,_msg,content"]
+
+# List of additional JSON fields to tokenize for pattern detection.
+# CLI flag: -limits.pattern-ingester-tokenizable-json-fields-append
+[pattern_ingester_tokenizable_json_fields_append: <string> | default = ""]
+
+# List of JSON fields to excluded from the defaults to tokenize for pattern
+# detection.
+# CLI flag: -limits.pattern-ingester-tokenizable-json-fields-delete
+[pattern_ingester_tokenizable_json_fields_delete: <string> | default = ""]
+
+# Enable metric aggregation. When enabled, pushed streams will be sampled for
+# bytes and line counts. These metrics will be written back into Loki as a
+# special __aggregated_metric__ stream.
 # CLI flag: -limits.aggregation-enabled
 [metric_aggregation_enabled: <boolean> | default = false]
 
-[pattern_persistence_enabled: <boolean>]
+# Enable persistence of patterns detected at ingest. When enabled, patterns for
+# pushed streams will be written back into Loki as a special __pattern__ stream.
+# CLI flag: -limits.pattern-persistence-enabled
+[pattern_persistence_enabled: <boolean> | default = false]
+
+# The time granularity for persisting patterns. Controls how many data points
+# are written when patterns are flushed. Set to 0 to use the default from the
+# pattern ingester configuration.
+# CLI flag: -limits.pattern-persistence-granularity
+[pattern_persistence_granularity: <duration> | default = 0s]
+
+# Minimum pattern rate (samples per second) required for a pattern to be
+# persisted. Patterns with lower rates will be filtered out during persistence.
+# CLI flag: -limits.pattern-rate-threshold
+[pattern_rate_threshold: <float> | default = 1]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
@@ -4367,6 +5002,21 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
+
+# Experimental: Controls the amount of scan tasks that can be running in
+# parallel in the new query engine. The default of 0 means unlimited parallelism
+# and all tasks will be scheduled at once.
+# CLI flag: -limits.max-scan-task-parallelism
+[max_scan_task_parallelism: <int> | default = 0]
+
+# Experimental: Toggles verbose debug logging of tasks in the new query engine.
+# CLI flag: -limits.debug-engine-tasks
+[debug_engine_tasks: <boolean> | default = false]
+
+# Experimental: Toggles verbose debug logging of data streams in the new query
+# engine.
+# CLI flag: -limits.debug-engine-streams
+[debug_engine_streams: <boolean> | default = false]
 ```
 
 ### local_storage_config
@@ -4458,10 +5108,11 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.cluster-label-verification-disabled
 [cluster_label_verification_disabled: <boolean> | default = false]
 
-# Other cluster members to join. Can be specified multiple times. It can be an
-# IP, hostname or an entry specified in the DNS Service Discovery format.
+# Other cluster members to join. Can be specified multiple times or as a
+# comma-separated list. It can be an IP, hostname or an entry specified in the
+# DNS Service Discovery format.
 # CLI flag: -memberlist.join
-[join_members: <list of strings> | default = []]
+[join_members: <list of strings>]
 
 # Min backoff duration to join other cluster members.
 # CLI flag: -memberlist.min-join-backoff
@@ -4481,6 +5132,12 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.abort-if-fast-join-fails
 [abort_if_cluster_fast_join_fails: <boolean> | default = false]
 
+# Minimum number of seed nodes that must be successfully joined during fast-join
+# for it to succeed. Only applies when -memberlist.abort-if-fast-join-fails is
+# enabled.
+# CLI flag: -memberlist.abort-if-fast-join-fails-min-nodes
+[abort_if_cluster_fast_join_fails_min_nodes: <int> | default = 1]
+
 # Abort if this node fails to join memberlist cluster at startup. When enabled,
 # it's not guaranteed that other services are started only after the cluster
 # state has been successfully updated; use 'abort-if-fast-join-fails' instead.
@@ -4495,6 +5152,13 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # is not needed.
 # CLI flag: -memberlist.rejoin-interval
 [rejoin_interval: <duration> | default = 0s]
+
+# Seed nodes to use for periodic rejoin. Takes precedence over -memberlist.join
+# for rejoining. If not specified, -memberlist.join is used. Can be specified
+# multiple times or as a comma-separated list. Supports IP, hostname, or DNS
+# Service Discovery format.
+# CLI flag: -memberlist.rejoin-seed-nodes
+[rejoin_seed_nodes: <list of strings>]
 
 # How long to keep LEFT ingesters in the ring.
 # CLI flag: -memberlist.left-ingesters-timeout
@@ -4558,6 +5222,37 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # The TLS configuration.
 # The CLI flags prefix for this block configuration is: memberlist
 [<tls_config>]
+
+zone_aware_routing:
+  # Enable zone-aware routing for memberlist gossip.
+  # CLI flag: -memberlist.zone-aware-routing.enabled
+  [enabled: <boolean> | default = false]
+
+  # Availability zone where this node is running.
+  # CLI flag: -memberlist.zone-aware-routing.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
+
+  # Role of this node in the cluster. Valid values: member, bridge.
+  # CLI flag: -memberlist.zone-aware-routing.role
+  [role: <string> | default = "member"]
+
+propagation_delay_tracker:
+  # Enable the propagation delay tracker to measure gossip propagation delay.
+  # CLI flag: -memberlist.propagation-delay-tracker.enabled
+  [enabled: <boolean> | default = false]
+
+  # How often to publish beacons for propagation tracking.
+  # CLI flag: -memberlist.propagation-delay-tracker.beacon-interval
+  [beacon_interval: <duration> | default = 1m]
+
+  # How long a beacon lives before being garbage collected.
+  # CLI flag: -memberlist.propagation-delay-tracker.beacon-lifetime
+  [beacon_lifetime: <duration> | default = 10m]
+
+  # Log warning when beacon propagation delay exceeds this threshold. 0 disables
+  # logging.
+  # CLI flag: -memberlist.propagation-delay-tracker.log-beacons-latency-longer-than
+  [log_beacons_latency_longer_than: <duration> | default = 0s]
 ```
 
 ### named_stores_config
@@ -4744,14 +5439,6 @@ engine:
   # sketch can track.
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
-
-  # Experimental: Enable next generation query engine for supported queries.
-  # CLI flag: -querier.engine.enable-v2-engine
-  [enable_v2_engine: <boolean> | default = false]
-
-  # Experimental: Batch size of the next generation query engine.
-  # CLI flag: -querier.engine.batch-size
-  [batch_size: <int> | default = 100]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -4985,15 +5672,15 @@ scheduler_ring:
       # CLI flag: -query-scheduler.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -query-scheduler.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -query-scheduler.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -query-scheduler.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -5052,7 +5739,7 @@ The `ruler` block configures the Loki ruler.
 [datasource_uid: <string> | default = ""]
 
 # Labels to add to all alerts.
-[external_labels: <list of Labels>]
+external_labels:
 
 # The grpc_client block configures the gRPC client used to communicate between a
 # client and server component in Loki.
@@ -5234,15 +5921,15 @@ ring:
       # CLI flag: -ruler.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -ruler.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -ruler.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Interval between heartbeats sent to the ring. 0 = disabled.
+  # Interval between heartbeats sent to the ring.
   # CLI flag: -ruler.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
@@ -5558,6 +6245,10 @@ Configures the `server` of the launched module(s).
 # CLI flag: -server.grpc-conn-limit
 [grpc_listen_conn_limit: <int> | default = 0]
 
+# If true, the max streams by connection gauge will be collected.
+# CLI flag: -server.grpc-collect-max-streams-by-conn
+[grpc_collect_max_streams_by_conn: <boolean> | default = true]
+
 # Enables PROXY protocol.
 # CLI flag: -server.proxy-protocol-enabled
 [proxy_protocol_enabled: <boolean> | default = false]
@@ -5727,6 +6418,16 @@ grpc_tls_config:
 # CLI flag: -server.grpc.recv-buffer-pools-enabled
 [grpc_server_recv_buffer_pools_enabled: <boolean> | default = false]
 
+# Size of the read buffer for each gRPC connection (bytes). A smaller buffer may
+# reduce memory usage but may lead to more system calls.
+# CLI flag: -server.grpc.read-buffer-size-bytes
+[grpc_server_read_buffer_size: <int> | default = 32768]
+
+# Size of the write buffer for each gRPC connection (bytes). A smaller buffer
+# may reduce memory usage but may lead to more system calls.
+# CLI flag: -server.grpc.write-buffer-size-bytes
+[grpc_server_write_buffer_size: <int> | default = 32768]
+
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
 [log_format: <string> | default = "logfmt"]
@@ -5771,14 +6472,29 @@ grpc_tls_config:
 # CLI flag: -server.log-request-headers-exclude-list
 [log_request_exclude_headers_list: <string> | default = ""]
 
+# Optionally add request headers to tracing spans.
+# CLI flag: -server.trace-request-headers
+[trace_request_headers: <boolean> | default = false]
+
+# Comma separated list of headers to exclude from tracing spans. Only used if
+# server.trace-request-headers is true. The following headers are always
+# excluded: Authorization, Cookie, X-Access-Token, X-Csrf-Token, X-Grafana-Id.
+# CLI flag: -server.trace-request-headers-exclude-list
+[trace_request_exclude_headers_list: <string> | default = ""]
+
 # Base path to serve all API routes from (e.g. /v1/)
 # CLI flag: -server.path-prefix
 [http_path_prefix: <string> | default = ""]
 
 cluster_validation:
-  # Optionally define the cluster validation label.
+  # Primary cluster validation label.
   # CLI flag: -server.cluster-validation.label
   [label: <string> | default = ""]
+
+  # Comma-separated list of additional cluster validation labels that the server
+  # will accept from incoming requests.
+  # CLI flag: -server.cluster-validation.additional-labels
+  [additional_labels: <string> | default = ""]
 
   grpc:
     # When enabled, cluster label validation is executed: configured cluster
@@ -5808,6 +6524,17 @@ cluster_validation:
     # validation check.
     # CLI flag: -server.cluster-validation.http.excluded-paths
     [excluded_paths: <string> | default = ""]
+
+    # Comma-separated list of user agents that are excluded from the cluster
+    # validation check.
+    # CLI flag: -server.cluster-validation.http.excluded-user-agents
+    [excluded_user_agents: <string> | default = ""]
+
+# Creates new traces for each call rather than continuing the existing trace. A
+# span link is used to allow navigation to the parent trace. Only works when
+# using Open-Telemetry tracing.
+# CLI flag: -server.create-new-traces
+[create_new_traces: <boolean> | default = false]
 ```
 
 ### storage_config
@@ -6182,6 +6909,14 @@ boltdb_shipper:
     # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
 
+    # Experimental: Defines buckets for time-based sharding. Time based sharding
+    # only takes affect when index gateways run in simple mode. To enable client
+    # side time-based sharding of queries across index gateway instances set at
+    # least one bucket in the format of a string representation of a
+    # time.Duration, e.g. ['168h', '336h', '504h']
+    # CLI flag: -boltdb.shipper.index-gateway-client.time-based-sharding-buckets
+    [time_based_sharding_buckets: <list of strings> | default = []]
+
   [ingestername: <string> | default = ""]
 
   [mode: <string> | default = ""]
@@ -6236,6 +6971,14 @@ tsdb_shipper:
     # Whether requests sent to the gateway should be logged or not.
     # CLI flag: -tsdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
+
+    # Experimental: Defines buckets for time-based sharding. Time based sharding
+    # only takes affect when index gateways run in simple mode. To enable client
+    # side time-based sharding of queries across index gateway instances set at
+    # least one bucket in the format of a string representation of a
+    # time.Duration, e.g. ['168h', '336h', '504h']
+    # CLI flag: -tsdb.shipper.index-gateway-client.time-based-sharding-buckets
+    [time_based_sharding_buckets: <list of strings> | default = []]
 
   [ingestername: <string> | default = ""]
 
@@ -6744,6 +7487,7 @@ Currently this is opt-in and takes effect only when `-use-thanos-objstore` is se
 - `common.storage.object-store`
 - `object-store`
 - `ruler-storage`
+- `ui.goldfish.results`
 
 &nbsp;
 
@@ -6800,7 +7544,8 @@ s3:
   # The S3 storage class to use, not set by default. Details can be found at
   # https://aws.amazon.com/s3/storage-classes/. Supported values are: STANDARD,
   # REDUCED_REDUNDANCY, GLACIER, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING,
-  # DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR, SNOW, EXPRESS_ONEZONE
+  # DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR, SNOW, EXPRESS_ONEZONE, FSX_OPENZFS,
+  # FSX_ONTAP
   # CLI flag: -<prefix>.s3.storage-class
   [storage_class: <string> | default = ""]
 
@@ -7172,7 +7917,6 @@ bos:
 The TLS configuration. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
-- `blockbuilder.scheduler-grpc-client`
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `bloom.metas-cache.memcached`
@@ -7180,6 +7924,8 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `common.storage.ring.etcd`
 - `compactor.grpc-client`
 - `compactor.ring.etcd`
+- `dataobj-consumer.etcd`
+- `dataobj-consumer.partition-ring.etcd`
 - `distributor.ring.etcd`
 - `etcd`
 - `frontend.grpc-client-config`
@@ -7203,6 +7949,8 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`
+- `query-engine.results-cache.memcached`
+- `query-engine.tasks-result-cache.memcached`
 - `query-scheduler.grpc-client-config`
 - `query-scheduler.ring.etcd`
 - `reporting.tls-config`
@@ -7215,6 +7963,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `store.index-cache-read.memcached`
 - `store.index-cache-write.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
+- `ui.ring.etcd`
 
 &nbsp;
 
@@ -7368,12 +8117,18 @@ and be accepted with
 ```yaml
 time_of_most_recent_line - (max_chunk_age/2)
 ```
+This means the allowed out-of-order window is half of the configured max_chunk_age.
 
 Log entries with timestamps that are after this earliest time are accepted.
 Log entries further back in time return an out-of-order error.
 
 For example, if `max_chunk_age` is 2 hours
 and the stream `{foo="bar"}` has one entry at `8:00`,
+the earliest accepted timestamp will be calculated as: 8:00 - (2h / 2) = `7:00`.
+
 Loki will accept data for that stream as far back in time as `7:00`.
+
 If another log line is written at `10:00`,
+the earliest accepted timestamp becomes: 10:00 - (2h / 2) = `9:00`.
+
 Loki will accept data for that stream as far back in time as `9:00`.

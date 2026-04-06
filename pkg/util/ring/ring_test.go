@@ -147,6 +147,14 @@ func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
 	return len(r.replicationSet.Instances)
 }
 
+func (r *readRingMock) GetSubringForOperationStates(_ ring.Operation) ring.ReadRing {
+	return r
+}
+
+func (r *readRingMock) Zones() []string {
+	return []string{"zone1"}
+}
+
 type readLifecyclerMock struct {
 	mock.Mock
 	addr string

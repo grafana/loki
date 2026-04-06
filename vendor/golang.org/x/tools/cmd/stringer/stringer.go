@@ -70,6 +70,10 @@
 //	PillAspirin // Aspirin
 //
 // to suppress it in the output.
+//
+// The -trimprefix flag specifies a prefix to remove from the constant names
+// when generating the string representations. For instance, -trimprefix=Pill
+// would be an alternative way to ensure that PillAspirin.String() == "Aspirin".
 package main // import "golang.org/x/tools/cmd/stringer"
 
 import (
@@ -209,7 +213,7 @@ func main() {
 			// and the separate package of tests (package foo_test).
 			outputName = filepath.Join(dir, baseName(pkg, foundTypes[0]))
 		}
-		err := os.WriteFile(outputName, src, 0644)
+		err := os.WriteFile(outputName, src, 0o644)
 		if err != nil {
 			log.Fatalf("writing output: %s", err)
 		}
@@ -637,44 +641,19 @@ func (g *Generator) buildOneRun(runs [][]Value, typeName string) {
 	values := runs[0]
 	g.Printf("\n")
 	g.declareIndexAndNameVar(values, typeName)
-	// The generated code is simple enough to write as a Printf format.
-	lessThanZero := ""
-	if values[0].signed {
-		lessThanZero = "i < 0 || "
-	}
-	if values[0].value == 0 { // Signed or unsigned, 0 is still 0.
-		g.Printf(stringOneRun, typeName, usize(len(values)), lessThanZero)
-	} else {
-		g.Printf(stringOneRunWithOffset, typeName, values[0].String(), usize(len(values)), lessThanZero)
-	}
+	g.Printf(stringOneRun, typeName, values[0].String())
 }
 
 // Arguments to format are:
 //
 //	[1]: type name
-//	[2]: size of index element (8 for uint8 etc.)
-//	[3]: less than zero check (for signed types)
+//	[2]: lowest defined value for type, as a string
 const stringOneRun = `func (i %[1]s) String() string {
-	if %[3]si >= %[1]s(len(_%[1]s_index)-1) {
+	idx := int(i) - %[2]s
+	if i < %[2]s || idx >= len(_%[1]s_index)-1 {
 		return "%[1]s(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _%[1]s_name[_%[1]s_index[i]:_%[1]s_index[i+1]]
-}
-`
-
-// Arguments to format are:
-//	[1]: type name
-//	[2]: lowest defined value for type, as a string
-//	[3]: size of index element (8 for uint8 etc.)
-//	[4]: less than zero check (for signed types)
-/*
- */
-const stringOneRunWithOffset = `func (i %[1]s) String() string {
-	i -= %[2]s
-	if %[4]si >= %[1]s(len(_%[1]s_index)-1) {
-		return "%[1]s(" + strconv.FormatInt(int64(i + %[2]s), 10) + ")"
-	}
-	return _%[1]s_name[_%[1]s_index[i] : _%[1]s_index[i+1]]
+	return _%[1]s_name[_%[1]s_index[idx] : _%[1]s_index[idx+1]]
 }
 `
 

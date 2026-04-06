@@ -85,7 +85,7 @@ func NewChunkedSlice(a *arrow.Chunked, i, j int64) *arrow.Chunked {
 
 // simpleTable is a basic, non-lazy in-memory table.
 type simpleTable struct {
-	refCount int64
+	refCount atomic.Int64
 
 	rows int64
 	cols []arrow.Column
@@ -101,11 +101,11 @@ type simpleTable struct {
 // NewTable panics if rows is larger than the height of the columns.
 func NewTable(schema *arrow.Schema, cols []arrow.Column, rows int64) arrow.Table {
 	tbl := simpleTable{
-		refCount: 1,
-		rows:     rows,
-		cols:     cols,
-		schema:   schema,
+		rows:   rows,
+		cols:   cols,
+		schema: schema,
 	}
+	tbl.refCount.Add(1)
 
 	if tbl.rows < 0 {
 		switch len(tbl.cols) {
@@ -150,11 +150,11 @@ func NewTableFromSlice(schema *arrow.Schema, data [][]arrow.Array) arrow.Table {
 	}
 
 	tbl := simpleTable{
-		refCount: 1,
-		schema:   schema,
-		cols:     cols,
-		rows:     int64(cols[0].Len()),
+		schema: schema,
+		cols:   cols,
+		rows:   int64(cols[0].Len()),
 	}
+	tbl.refCount.Add(1)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -175,7 +175,7 @@ func NewTableFromSlice(schema *arrow.Schema, data [][]arrow.Array) arrow.Table {
 // NewTableFromRecords returns a new basic, non-lazy in-memory table.
 //
 // NewTableFromRecords panics if the records and schema are inconsistent.
-func NewTableFromRecords(schema *arrow.Schema, recs []arrow.Record) arrow.Table {
+func NewTableFromRecords(schema *arrow.Schema, recs []arrow.RecordBatch) arrow.Table {
 	arrs := make([]arrow.Array, len(recs))
 	cols := make([]arrow.Column, schema.NumFields())
 
@@ -241,16 +241,16 @@ func (tbl *simpleTable) validate() {
 // Retain increases the reference count by 1.
 // Retain may be called simultaneously from multiple goroutines.
 func (tbl *simpleTable) Retain() {
-	atomic.AddInt64(&tbl.refCount, 1)
+	tbl.refCount.Add(1)
 }
 
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 // Release may be called simultaneously from multiple goroutines.
 func (tbl *simpleTable) Release() {
-	debug.Assert(atomic.LoadInt64(&tbl.refCount) > 0, "too many releases")
+	debug.Assert(tbl.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&tbl.refCount, -1) == 0 {
+	if tbl.refCount.Add(-1) == 0 {
 		for i := range tbl.cols {
 			tbl.cols[i].Release()
 		}
@@ -279,13 +279,13 @@ func (tbl *simpleTable) String() string {
 
 // TableReader is a Record iterator over a (possibly chunked) Table
 type TableReader struct {
-	refCount int64
+	refCount atomic.Int64
 
 	tbl   arrow.Table
-	cur   int64        // current row
-	max   int64        // total number of rows
-	rec   arrow.Record // current Record
-	chksz int64        // chunk size
+	cur   int64             // current row
+	max   int64             // total number of rows
+	rec   arrow.RecordBatch // current RecordBatch
+	chksz int64             // chunk size
 
 	chunks  []*arrow.Chunked
 	slots   []int   // chunk indices
@@ -297,15 +297,15 @@ type TableReader struct {
 func NewTableReader(tbl arrow.Table, chunkSize int64) *TableReader {
 	ncols := tbl.NumCols()
 	tr := &TableReader{
-		refCount: 1,
-		tbl:      tbl,
-		cur:      0,
-		max:      int64(tbl.NumRows()),
-		chksz:    chunkSize,
-		chunks:   make([]*arrow.Chunked, ncols),
-		slots:    make([]int, ncols),
-		offsets:  make([]int64, ncols),
+		tbl:     tbl,
+		cur:     0,
+		max:     int64(tbl.NumRows()),
+		chksz:   chunkSize,
+		chunks:  make([]*arrow.Chunked, ncols),
+		slots:   make([]int, ncols),
+		offsets: make([]int64, ncols),
 	}
+	tr.refCount.Add(1)
 	tr.tbl.Retain()
 
 	if tr.chksz <= 0 {
@@ -320,8 +320,11 @@ func NewTableReader(tbl arrow.Table, chunkSize int64) *TableReader {
 	return tr
 }
 
-func (tr *TableReader) Schema() *arrow.Schema { return tr.tbl.Schema() }
-func (tr *TableReader) Record() arrow.Record  { return tr.rec }
+func (tr *TableReader) Schema() *arrow.Schema          { return tr.tbl.Schema() }
+func (tr *TableReader) RecordBatch() arrow.RecordBatch { return tr.rec }
+
+// Deprecated: Use [RecordBatch] instead.
+func (tr *TableReader) Record() arrow.Record { return tr.RecordBatch() }
 
 func (tr *TableReader) Next() bool {
 	if tr.cur >= tr.max {
@@ -371,7 +374,7 @@ func (tr *TableReader) Next() bool {
 	}
 
 	tr.cur += chunksz
-	tr.rec = NewRecord(tr.tbl.Schema(), batch, chunksz)
+	tr.rec = NewRecordBatch(tr.tbl.Schema(), batch, chunksz)
 
 	for _, arr := range batch {
 		arr.Release()
@@ -383,16 +386,16 @@ func (tr *TableReader) Next() bool {
 // Retain increases the reference count by 1.
 // Retain may be called simultaneously from multiple goroutines.
 func (tr *TableReader) Retain() {
-	atomic.AddInt64(&tr.refCount, 1)
+	tr.refCount.Add(1)
 }
 
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 // Release may be called simultaneously from multiple goroutines.
 func (tr *TableReader) Release() {
-	debug.Assert(atomic.LoadInt64(&tr.refCount) > 0, "too many releases")
+	debug.Assert(tr.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&tr.refCount, -1) == 0 {
+	if tr.refCount.Add(-1) == 0 {
 		tr.tbl.Release()
 		for _, chk := range tr.chunks {
 			chk.Release()

@@ -366,11 +366,11 @@ func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, 
 	}
 	transportOptions := []option.ClientOption{option.WithScopes(scope)}
 	if insecure {
-		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //#nosec G402 -- User has explicitly requested to disable TLS
+		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //#nosec G402 -- User has explicitly requested to disable TLS -- nosemgrep: tls-with-insecure-cipher
 		transportOptions = append(transportOptions, option.WithoutAuthentication())
 	}
 	if serviceAccount.String() != "" {
-		transportOptions = append(transportOptions, option.WithCredentialsJSON([]byte(serviceAccount.String())))
+		transportOptions = append(transportOptions, option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccount.String())))
 	}
 	return google_http.NewTransport(ctx, customTransport, transportOptions...)
 }

@@ -13,7 +13,9 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/internal/global"
+	"go.opentelemetry.io/otel/sdk/metric/internal/observ"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 // Default periodic reader timing.
@@ -24,17 +26,19 @@ const (
 
 // periodicReaderConfig contains configuration options for a PeriodicReader.
 type periodicReaderConfig struct {
-	interval  time.Duration
-	timeout   time.Duration
-	producers []Producer
+	interval                 time.Duration
+	timeout                  time.Duration
+	producers                []Producer
+	cardinalityLimitSelector CardinalityLimitSelector
 }
 
 // newPeriodicReaderConfig returns a periodicReaderConfig configured with
 // options.
 func newPeriodicReaderConfig(options []PeriodicReaderOption) periodicReaderConfig {
 	c := periodicReaderConfig{
-		interval: envDuration(envInterval, defaultInterval),
-		timeout:  envDuration(envTimeout, defaultTimeout),
+		interval:                 envDuration(envInterval, defaultInterval),
+		timeout:                  envDuration(envTimeout, defaultTimeout),
+		cardinalityLimitSelector: defaultCardinalityLimitSelector,
 	}
 	for _, o := range options {
 		c = o.applyPeriodic(c)
@@ -105,16 +109,19 @@ func WithInterval(d time.Duration) PeriodicReaderOption {
 // exporter. That is left to the user to accomplish.
 func NewPeriodicReader(exporter Exporter, options ...PeriodicReaderOption) *PeriodicReader {
 	conf := newPeriodicReaderConfig(options)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel( //nolint:gosec  // cancel called during PeriodicReader shutdown.
+		context.Background(),
+	)
 	r := &PeriodicReader{
-		interval: conf.interval,
-		timeout:  conf.timeout,
-		exporter: exporter,
-		flushCh:  make(chan chan error),
-		cancel:   cancel,
-		done:     make(chan struct{}),
+		interval:                 conf.interval,
+		timeout:                  conf.timeout,
+		exporter:                 exporter,
+		flushCh:                  make(chan chan error),
+		cancel:                   cancel,
+		done:                     make(chan struct{}),
+		cardinalityLimitSelector: conf.cardinalityLimitSelector,
 		rmPool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return &metricdata.ResourceMetrics{}
 			},
 		},
@@ -126,7 +133,24 @@ func NewPeriodicReader(exporter Exporter, options ...PeriodicReaderOption) *Peri
 		r.run(ctx, conf.interval)
 	}()
 
+	var err error
+	r.inst, err = observ.NewInstrumentation(
+		semconv.OTelComponentTypePeriodicMetricReader.Value.AsString(),
+		nextPeriodicReaderID(),
+	)
+	if err != nil {
+		otel.Handle(err)
+	}
+
 	return r
+}
+
+var periodicReaderIDCounter atomic.Int64
+
+// nextPeriodicReaderID returns an identifier for this periodic reader,
+// starting with 0 and incrementing by 1 each time it is called.
+func nextPeriodicReaderID() int64 {
+	return periodicReaderIDCounter.Add(1) - 1
 }
 
 // PeriodicReader is a Reader that continuously collects and exports metric
@@ -148,6 +172,10 @@ type PeriodicReader struct {
 	shutdownOnce sync.Once
 
 	rmPool sync.Pool
+
+	cardinalityLimitSelector CardinalityLimitSelector
+
+	inst *observ.Instrumentation
 }
 
 // Compile time check the periodicReader implements Reader and is comparable.
@@ -193,14 +221,21 @@ func (r *PeriodicReader) temporality(kind InstrumentKind) metricdata.Temporality
 }
 
 // aggregation returns what Aggregation to use for kind.
-func (r *PeriodicReader) aggregation(kind InstrumentKind) Aggregation { // nolint:revive  // import-shadow for method scoped by type.
+func (r *PeriodicReader) aggregation(
+	kind InstrumentKind,
+) Aggregation { // nolint:revive  // import-shadow for method scoped by type.
 	return r.exporter.Aggregation(kind)
+}
+
+// cardinalityLimit returns the cardinality limit for kind.
+func (r *PeriodicReader) cardinalityLimit(kind InstrumentKind) (int, bool) {
+	return r.cardinalityLimitSelector(kind)
 }
 
 // collectAndExport gather all metric data related to the periodicReader r from
 // the SDK and exports it with r's exporter.
 func (r *PeriodicReader) collectAndExport(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, r.timeout, errors.New("reader collect and export timeout"))
 	defer cancel()
 
 	// TODO (#3047): Use a sync.Pool or persistent pointer instead of allocating rm every Collect.
@@ -232,9 +267,16 @@ func (r *PeriodicReader) Collect(ctx context.Context, rm *metricdata.ResourceMet
 }
 
 // collect unwraps p as a produceHolder and returns its produce results.
-func (r *PeriodicReader) collect(ctx context.Context, p interface{}, rm *metricdata.ResourceMetrics) error {
+func (r *PeriodicReader) collect(ctx context.Context, p any, rm *metricdata.ResourceMetrics) error {
+	var err error
+	if r.inst != nil {
+		cp := r.inst.CollectMetrics(ctx)
+		defer func() { cp.End(err) }()
+	}
+
 	if p == nil {
-		return ErrReaderNotRegistered
+		err = ErrReaderNotRegistered
+		return err
 	}
 
 	ph, ok := p.(produceHolder)
@@ -243,11 +285,11 @@ func (r *PeriodicReader) collect(ctx context.Context, p interface{}, rm *metricd
 		// this should never happen. In the unforeseen case that this does
 		// happen, return an error instead of panicking so a users code does
 		// not halt in the processes.
-		err := fmt.Errorf("periodic reader: invalid producer: %T", p)
+		err = fmt.Errorf("periodic reader: invalid producer: %T", p)
 		return err
 	}
 
-	err := ph.produce(ctx, rm)
+	err = ph.produce(ctx, rm)
 	if err != nil {
 		return err
 	}
@@ -276,7 +318,7 @@ func (r *PeriodicReader) ForceFlush(ctx context.Context) error {
 	// Prioritize the ctx timeout if it is set.
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.timeout)
+		ctx, cancel = context.WithTimeoutCause(ctx, r.timeout, errors.New("reader force flush timeout"))
 		defer cancel()
 	}
 
@@ -309,7 +351,7 @@ func (r *PeriodicReader) Shutdown(ctx context.Context) error {
 		// Prioritize the ctx timeout if it is set.
 		if _, ok := ctx.Deadline(); !ok {
 			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, r.timeout)
+			ctx, cancel = context.WithTimeoutCause(ctx, r.timeout, errors.New("reader shutdown timeout"))
 			defer cancel()
 		}
 
@@ -347,7 +389,7 @@ func (r *PeriodicReader) Shutdown(ctx context.Context) error {
 }
 
 // MarshalLog returns logging data about the PeriodicReader.
-func (r *PeriodicReader) MarshalLog() interface{} {
+func (r *PeriodicReader) MarshalLog() any {
 	r.mu.Lock()
 	down := r.isShutdown
 	r.mu.Unlock()

@@ -28,6 +28,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
+	"github.com/prometheus/prometheus/util/compression"
 	"go.uber.org/atomic"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -70,7 +71,7 @@ type Storage struct {
 
 // NewStorage makes a new Storage.
 func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Registerer, path string, enableReplay bool) (*Storage, error) {
-	w, err := wlog.NewSize(util_log.SlogFromGoKit(logger), registerer, SubDirectory(path), wlog.DefaultSegmentSize, wlog.CompressionSnappy)
+	w, err := wlog.NewSize(util_log.SlogFromGoKit(logger), registerer, SubDirectory(path), wlog.DefaultSegmentSize, compression.Snappy)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +267,7 @@ func (w *Storage) loadWAL(r *wlog.Reader) (err error) {
 				// the truncation is performed.
 				if w.series.getByID(s.Ref) == nil {
 					series := &memSeries{ref: s.Ref, lset: s.Labels, lastTs: 0}
-					w.series.set(s.Labels.Hash(), series)
+					w.series.set(labels.StableHash(s.Labels), series)
 
 					w.metrics.NumActiveSeries.Inc()
 					w.metrics.TotalCreatedSeries.Inc()
@@ -327,6 +328,45 @@ func (w *Storage) Appender(_ context.Context) storage.Appender {
 	return w.appenderPool.Get().(storage.Appender)
 }
 
+// AppenderV2 returns a new AppenderV2 against the storage.
+func (w *Storage) AppenderV2(ctx context.Context) storage.AppenderV2 {
+	return &appenderV2Adapter{inner: w.Appender(ctx)}
+}
+
+// appenderV2Adapter wraps a v1 Appender to satisfy the AppenderV2 interface.
+type appenderV2Adapter struct {
+	inner storage.Appender
+}
+
+func (a *appenderV2Adapter) Append(ref storage.SeriesRef, ls labels.Labels, _, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, opts storage.AppendV2Options) (storage.SeriesRef, error) {
+	var sRef storage.SeriesRef
+	var err error
+
+	switch {
+	case fh != nil:
+		sRef, err = a.inner.AppendHistogram(ref, ls, t, nil, fh)
+	case h != nil:
+		sRef, err = a.inner.AppendHistogram(ref, ls, t, h, nil)
+	default:
+		sRef, err = a.inner.Append(ref, ls, t, v)
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	// Forward exemplars to the inner appender per the AppenderV2 contract.
+	var pErr storage.AppendPartialError
+	for _, e := range opts.Exemplars {
+		if _, exemplarErr := a.inner.AppendExemplar(sRef, ls, e); exemplarErr != nil {
+			pErr.ExemplarErrors = append(pErr.ExemplarErrors, exemplarErr)
+		}
+	}
+	return sRef, pErr.ToError()
+}
+
+func (a *appenderV2Adapter) Commit() error   { return a.inner.Commit() }
+func (a *appenderV2Adapter) Rollback() error { return a.inner.Rollback() }
+
 // StartTime always returns 0, nil. It is implemented for compatibility with
 // Prometheus, but is unused in the agent.
 func (*Storage) StartTime() (int64, error) {
@@ -383,7 +423,7 @@ func (w *Storage) Truncate(mint int64) error {
 		w.deletedMtx.Unlock()
 		return ok
 	}
-	if _, err = wlog.Checkpoint(util_log.SlogFromGoKit(w.logger), w.wal, first, last, keep, mint); err != nil {
+	if _, err = wlog.Checkpoint(util_log.SlogFromGoKit(w.logger), w.wal, first, last, keep, mint, false); err != nil {
 		return errors.Wrap(err, "create checkpoint")
 	}
 	if err := w.wal.Truncate(last + 1); err != nil {
@@ -565,7 +605,7 @@ func (a *appender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v flo
 		// Ensure no empty or duplicate labels have gotten through. This mirrors the
 		// equivalent validation code in the TSDB's headAppender.
 		l = l.WithoutEmpty()
-		if len(l) == 0 {
+		if l.IsEmpty() {
 			return 0, errors.Wrap(tsdb.ErrInvalidSample, "empty labelset")
 		}
 
@@ -604,7 +644,7 @@ func (a *appender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v flo
 }
 
 func (a *appender) getOrCreate(l labels.Labels) (series *memSeries, created bool) {
-	hash := l.Hash()
+	hash := labels.StableHash(l)
 
 	series = a.w.series.getByHash(hash, l)
 	if series != nil {
@@ -612,7 +652,7 @@ func (a *appender) getOrCreate(l labels.Labels) (series *memSeries, created bool
 	}
 
 	series = &memSeries{ref: chunks.HeadSeriesRef(a.w.ref.Inc()), lset: l}
-	a.w.series.set(l.Hash(), series)
+	a.w.series.set(labels.StableHash(l), series)
 	return series, true
 }
 
@@ -632,13 +672,18 @@ func (a *appender) AppendExemplar(ref storage.SeriesRef, _ labels.Labels, e exem
 	// Exemplar label length does not include chars involved in text rendering such as quotes
 	// equals sign, or commas. See definition of const ExemplarMaxLabelLength.
 	labelSetLen := 0
-	for _, l := range e.Labels {
+
+	err := e.Labels.Validate(func(l labels.Label) error {
 		labelSetLen += utf8.RuneCountInString(l.Name)
 		labelSetLen += utf8.RuneCountInString(l.Value)
 
 		if labelSetLen > exemplar.ExemplarMaxLabelSetLength {
-			return 0, storage.ErrExemplarLabelLength
+			return storage.ErrExemplarLabelLength
 		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
 	}
 
 	a.exemplars = append(a.exemplars, record.RefExemplar{
@@ -662,6 +707,16 @@ func (a *appender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64
 
 func (a *appender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	// TODO: support histogram created timestamps
+	return 0, nil
+}
+
+func (a *appender) AppendHistogramSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	// TODO: support histogram start timestamps
+	return 0, nil
+}
+
+func (a *appender) AppendSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
+	// TODO: support start timestamps
 	return 0, nil
 }
 

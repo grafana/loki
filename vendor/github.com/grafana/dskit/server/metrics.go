@@ -16,23 +16,26 @@ import (
 )
 
 type Metrics struct {
-	TCPConnections                 *prometheus.GaugeVec
-	TCPConnectionsLimit            *prometheus.GaugeVec
-	GRPCConcurrentStreamsByConnMax *prometheus.GaugeVec
-	GRPCConcurrentStreamsLimit     *prometheus.GaugeVec
-	RequestDuration                *prometheus.HistogramVec
-	PerTenantRequestDuration       *prometheus.HistogramVec
-	PerTenantRequestTotal          *prometheus.CounterVec
-	ReceivedMessageSize            *prometheus.HistogramVec
-	SentMessageSize                *prometheus.HistogramVec
-	InflightRequests               *prometheus.GaugeVec
-	RequestThroughput              *prometheus.HistogramVec
-	InvalidClusterRequests         *prometheus.CounterVec
+	TCPConnections             *prometheus.GaugeVec
+	TCPConnectionsLimit        *prometheus.GaugeVec
+	GRPCConcurrentStreamsLimit *prometheus.GaugeVec
+	RequestDuration            *prometheus.HistogramVec
+	PerTenantRequestDuration   *prometheus.HistogramVec
+	PerTenantRequestTotal      *prometheus.CounterVec
+	ReceivedMessageSize        *prometheus.HistogramVec
+	SentMessageSize            *prometheus.HistogramVec
+	InflightRequests           *prometheus.GaugeVec
+	RequestThroughput          *prometheus.HistogramVec
+	InvalidClusterRequests     *prometheus.CounterVec
 }
 
 func NewServerMetrics(cfg Config) *Metrics {
 	reg := cfg.registererOrDefault()
 	factory := promauto.With(reg)
+	messageSizeNativeHistogramFactor := float64(0)
+	if cfg.MetricsMessageSizeNativeHistograms {
+		messageSizeNativeHistogramFactor = cfg.MetricsNativeHistogramFactor
+	}
 
 	return &Metrics{
 		TCPConnections: factory.NewGaugeVec(prometheus.GaugeOpts{
@@ -45,11 +48,6 @@ func NewServerMetrics(cfg Config) *Metrics {
 			Name:      "tcp_connections_limit",
 			Help:      "The max number of TCP connections that can be accepted (0 means no limit).",
 		}, []string{"protocol"}),
-		GRPCConcurrentStreamsByConnMax: factory.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: cfg.MetricsNamespace,
-			Name:      "grpc_concurrent_streams_by_connection_max",
-			Help:      "The current number of concurrent streams in the connection with the most.",
-		}, []string{}),
 		GRPCConcurrentStreamsLimit: factory.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: cfg.MetricsNamespace,
 			Name:      "grpc_concurrent_streams_limit",
@@ -79,16 +77,22 @@ func NewServerMetrics(cfg Config) *Metrics {
 			Help:      "Total count of requests for a particular tenant.",
 		}, []string{"method", "route", "status_code", "ws", "tenant"}),
 		ReceivedMessageSize: factory.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: cfg.MetricsNamespace,
-			Name:      "request_message_bytes",
-			Help:      "Size (in bytes) of messages received in the request.",
-			Buckets:   middleware.BodySizeBuckets,
+			Namespace:                       cfg.MetricsNamespace,
+			Name:                            "request_message_bytes",
+			Help:                            "Size (in bytes) of messages received in the request.",
+			Buckets:                         middleware.BodySizeBuckets,
+			NativeHistogramBucketFactor:     messageSizeNativeHistogramFactor,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"method", "route"}),
 		SentMessageSize: factory.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: cfg.MetricsNamespace,
-			Name:      "response_message_bytes",
-			Help:      "Size (in bytes) of messages sent in response.",
-			Buckets:   middleware.BodySizeBuckets,
+			Namespace:                       cfg.MetricsNamespace,
+			Name:                            "response_message_bytes",
+			Help:                            "Size (in bytes) of messages sent in response.",
+			Buckets:                         middleware.BodySizeBuckets,
+			NativeHistogramBucketFactor:     messageSizeNativeHistogramFactor,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"method", "route"}),
 		InflightRequests: factory.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: cfg.MetricsNamespace,

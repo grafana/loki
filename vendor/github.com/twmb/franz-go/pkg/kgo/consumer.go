@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -33,9 +34,9 @@ const atCommitted = -999
 // MarshalJSON implements json.Marshaler.
 func (o Offset) MarshalJSON() ([]byte, error) {
 	if o.relative == 0 {
-		return []byte(fmt.Sprintf(`{"At":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.at, o.epoch, o.currentEpoch)), nil
+		return fmt.Appendf(nil, `{"At":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.at, o.epoch, o.currentEpoch), nil
 	}
-	return []byte(fmt.Sprintf(`{"At":%d,"Relative":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.at, o.relative, o.epoch, o.currentEpoch)), nil
+	return fmt.Appendf(nil, `{"At":%d,"Relative":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.at, o.relative, o.epoch, o.currentEpoch), nil
 }
 
 // String returns the offset as a string; the purpose of this is for logs.
@@ -147,9 +148,9 @@ func (o Offset) Relative(n int64) Offset {
 	return o
 }
 
-// WithEpoch copies 'o' and returns an offset with the given epoch.  to use the
-// given epoch. This epoch is used for truncation detection; the default of -1
-// implies no truncation detection.
+// WithEpoch copies 'o' and returns an offset with the given epoch. This epoch
+// is used for truncation detection; the default of -1 implies no truncation
+// detection.
 func (o Offset) WithEpoch(e int32) Offset {
 	o.afterMilli = false
 	if e < 0 {
@@ -178,8 +179,8 @@ func (o Offset) At(at int64) Offset {
 }
 
 type consumer struct {
-	bufferedRecords atomicI64
-	bufferedBytes   atomicI64
+	bufferedRecords atomic.Int64
+	bufferedBytes   atomic.Int64
 
 	cl *Client
 
@@ -238,8 +239,10 @@ func (c *consumer) waitAndAddPoller() {
 	}
 	c.pollWaitMu.Lock()
 	defer c.pollWaitMu.Unlock()
-	for c.pollWaitState>>32 != 0 {
-		c.pollWaitC.Wait()
+	if c.pollWaitState&math.MaxUint32 == 0 {
+		for c.pollWaitState>>32 != 0 {
+			c.pollWaitC.Wait()
+		}
 	}
 	// Rebalance always takes priority, but if there are no active
 	// rebalances, our poll blocks rebalances.
@@ -272,10 +275,17 @@ func (c *consumer) waitAndAddRebalance() {
 	if !c.cl.cfg.blockRebalanceOnPoll {
 		return
 	}
+	var blockedCalled bool
 	c.pollWaitMu.Lock()
 	defer c.pollWaitMu.Unlock()
 	c.pollWaitState += 1 << 32
 	for c.pollWaitState&math.MaxUint32 != 0 {
+		if !blockedCalled {
+			if c.cl.cfg.onBlocked != nil {
+				go c.cl.cfg.onBlocked(c.cl.ctx, c.cl)
+			}
+			blockedCalled = true
+		}
 		c.pollWaitC.Wait()
 	}
 }
@@ -381,7 +391,8 @@ func NewErrFetch(err error) Fetches {
 
 // PollFetches waits for fetches to be available, returning as soon as any
 // broker returns a fetch. If the context is nil, this function will return
-// immediately with any currently buffered records.
+// immediately with any currently buffered records. It is functionally
+// equivalent to calling PollRecords(ctx, 0).
 //
 // If the client is closed, a fake fetch will be injected that has no topic, a
 // partition of 0, and a partition error of ErrClientClosed. If the context is
@@ -401,9 +412,9 @@ func (cl *Client) PollFetches(ctx context.Context) Fetches {
 	return cl.PollRecords(ctx, 0)
 }
 
-// PollRecords waits for records to be available, returning as soon as any
-// broker returns records in a fetch. If the context is nil, this function will
-// return immediately with any currently buffered records.
+// PollRecords waits for fetches to be available, returning as soon as any
+// broker returns a fetch. If the context is nil, this function will return
+// immediately with any currently buffered fetches.
 //
 // If the client is closed, a fake fetch will be injected that has no topic, a
 // partition of -1, and a partition error of ErrClientClosed. If the context is
@@ -431,10 +442,12 @@ func (cl *Client) PollRecords(ctx context.Context, maxPollRecords int) Fetches {
 	c.g.undirtyUncommitted()
 
 	// If the user gave us a canceled context, we bail immediately after
-	// un-dirty-ing marked records.
+	// un-dirty-ing marked records. We still need to add a poller to block
+	// rebalances if configured, since we are returning a fetch.
 	if ctx != nil {
 		select {
 		case <-ctx.Done():
+			c.waitAndAddPoller()
 			return NewErrFetch(ctx.Err())
 		default:
 		}
@@ -540,9 +553,11 @@ func (cl *Client) PollRecords(ctx context.Context, maxPollRecords int) Fetches {
 	select {
 	case <-cl.ctx.Done():
 		exit()
+		c.waitAndAddPoller()
 		return NewErrFetch(ErrClientClosed)
 	case <-ctx.Done():
 		exit()
+		c.waitAndAddPoller()
 		return NewErrFetch(ctx.Err())
 	case <-done:
 	}
@@ -665,7 +680,7 @@ func (cl *Client) ResumeFetchPartitions(topicPartitions map[string][]int32) {
 // If using transactions, it is advised to just use a GroupTransactSession and
 // avoid this function entirely.
 //
-// If using group consuming, It is strongly recommended to use this function
+// If using group consuming, it is strongly recommended to use this function
 // outside of the context of a PollFetches loop and only when you know the
 // group is not revoked (i.e., block any concurrent revoke while issuing this
 // call) and to not use this concurrent with committing. Any other usage is
@@ -690,10 +705,10 @@ func (cl *Client) setOffsets(setOffsets map[string]map[int32]EpochOffset, log bo
 	var tps *topicsPartitions
 	switch {
 	case c.d != nil:
-		assigns = c.d.getSetAssigns(setOffsets)
+		assigns = c.d.applySetOffsets(setOffsets)
 		tps = c.d.tps
 	case c.g != nil:
-		assigns = c.g.getSetAssigns(setOffsets)
+		assigns = c.g.applySetOffsets(setOffsets)
 		tps = c.g.tps
 	}
 	if len(assigns) == 0 {
@@ -719,16 +734,25 @@ func (c *consumer) purgeTopics(topics []string) {
 		purgeAssignments[topic] = nil
 	}
 
-	c.waitAndAddRebalance()
-	defer c.unaddRebalance()
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// The difference for groups is we need to lock the group and there is
 	// a slight type difference in g.using vs d.using.
+	//
+	// assignPartitions removes the topics from 'tps', which removes them
+	// from FUTURE metadata requests meaning they will not be repopulated
+	// in the future. Any loaded tps is fine; metadata updates the topic
+	// pointers underneath -- metadata does not re-store the tps itself
+	// with any new topics that we just purged (except in the case of regex,
+	// which is impossible to permanently purge anyway).
+	//
+	// We are guarded from adding back to 'using' via the consumer mu;
+	// this cannot run concurrent with findNewAssignments. Thus, we first
+	// purge tps, then clear using, and once the lock releases, findNewAssignments
+	// will use the now-purged tps and will not add back to using.
 	if c.g != nil {
-		c.g.mu.Lock()
+		c.g.mu.Lock() // required when updating using
 		defer c.g.mu.Unlock()
 		c.assignPartitions(purgeAssignments, assignPurgeMatching, c.g.tps, fmt.Sprintf("purge of %v requested", topics))
 		for _, topic := range topics {
@@ -742,6 +766,7 @@ func (c *consumer) purgeTopics(topics []string) {
 			delete(c.d.using, topic)
 			delete(c.d.reSeen, topic)
 			delete(c.d.m, topic)
+			delete(c.d.ps, topic)
 		}
 	}
 }
@@ -776,7 +801,7 @@ func (cl *Client) AddConsumeTopics(topics ...string) {
 	cl.triggerUpdateMetadataNow("from AddConsumeTopics")
 }
 
-// GetConsumeTopics retrives a list of current topics being consumed.
+// GetConsumeTopics retrieves a list of current topics being consumed.
 func (cl *Client) GetConsumeTopics() []string {
 	c := &cl.consumer
 	if c.g == nil && c.d == nil {
@@ -1096,6 +1121,18 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 
 	c.cl.cfg.logger.Log(LogLevelDebug, "assign requires loading offsets")
 
+	// We could have a prior handleListOrEpochResults finishing concurrent
+	// with a new assignment. We need to guard below, because list/epoch
+	// results can set offsets for loaded cursors.
+	//
+	// Example: I was just cooperatively assigned p1o10e3, and I issued an
+	// epoch request to validate data loss. I was then assigned p2o4e-1:
+	// there is no epoch to validate, so we immediately begin consuming
+	// at the offset. The epoch request returns and tries also using the
+	// cursor concurrently. We need to guard it.
+	session.listOrEpochMu.Lock()
+	defer session.listOrEpochMu.Unlock()
+
 	topics := tps.load()
 	for topic, partitions := range assignments {
 		topicPartitions := topics.loadTopic(topic) // should be non-nil
@@ -1118,7 +1155,7 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 
 			// First, if the request is exact, get rid of the relative
 			// portion. We are modifying a copy of the offset, i.e. we
-			// are appropriately not modfying 'assignments' itself.
+			// are appropriately not modifying 'assignments' itself.
 			if offset.at >= 0 {
 				offset.at += offset.relative
 				if offset.at < 0 {
@@ -1212,6 +1249,14 @@ func (c *consumer) filterMetadataAllTopics(topics []string) []string {
 					break
 				}
 			}
+			if want {
+				for _, re := range c.cl.cfg.excludeTopics {
+					if re.MatchString(topic) {
+						want = false
+						break
+					}
+				}
+			}
 			if !want {
 				rns.skip(topic)
 			}
@@ -1293,9 +1338,9 @@ func (o offsetLoad) MarshalJSON() ([]byte, error) {
 		return o.Offset.MarshalJSON()
 	}
 	if o.relative == 0 {
-		return []byte(fmt.Sprintf(`{"Replica":%d,"At":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.replica, o.at, o.epoch, o.currentEpoch)), nil
+		return fmt.Appendf(nil, `{"Replica":%d,"At":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.replica, o.at, o.epoch, o.currentEpoch), nil
 	}
-	return []byte(fmt.Sprintf(`{"Replica":%d,"At":%d,"Relative":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.replica, o.at, o.relative, o.epoch, o.currentEpoch)), nil
+	return fmt.Appendf(nil, `{"Replica":%d,"At":%d,"Relative":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.replica, o.at, o.relative, o.epoch, o.currentEpoch), nil
 }
 
 func (o offsetLoadMap) errToLoaded(err error) []loadedOffset {
@@ -1464,7 +1509,7 @@ type consumerSession struct {
 	desireFetchCh       chan chan chan struct{}
 	cancelFetchCh       chan chan chan struct{}
 	allowedFetches      int
-	fetchManagerStarted atomicBool // atomic, once true, we start the fetch manager
+	fetchManagerStarted atomic.Bool // atomic, once true, we start the fetch manager
 
 	// Workers signify the number of fetch and list / epoch goroutines that
 	// are currently running within the context of this consumer session.
@@ -1473,6 +1518,9 @@ type consumerSession struct {
 	workersCond *sync.Cond
 	workers     int
 
+	// listOrEpochMu largely guards the below. It is a sub-mutex of the
+	// consumer mutex to guard one concurrent data access (see below in
+	// assignPartitions).
 	listOrEpochMu           sync.Mutex
 	listOrEpochLoadsWaiting listOrEpochLoads
 	listOrEpochMetaCh       chan struct{} // non-nil if Loads is non-nil, signalled on meta update
@@ -1541,9 +1589,9 @@ func (s *consumerSession) manageFetchConcurrency() {
 			var found bool
 			for i, want := range wantFetch {
 				if want == cancel {
-					_ = append(wantFetch[i:], wantFetch[i+1:]...)
-					wantFetch = wantFetch[:len(wantFetch)-1]
+					wantFetch = slices.Delete(wantFetch, i, i+1)
 					found = true
+					break
 				}
 			}
 			// If we did not find the channel, then we have already
@@ -1717,7 +1765,7 @@ func (c *consumer) startNewSession(tps *topicsPartitions) *consumerSession {
 		sns.source.maybeConsume()
 	})
 
-	// At this point, any source that was not consuming becauase it saw the
+	// At this point, any source that was not consuming because it saw the
 	// session was stopped has been notified to potentially start consuming
 	// again. The session is alive.
 
@@ -1725,7 +1773,7 @@ func (c *consumer) startNewSession(tps *topicsPartitions) *consumerSession {
 }
 
 // This function is responsible for issuing ListOffsets or
-// OffsetForLeaderEpoch. These requests's responses  are only handled within
+// OffsetForLeaderEpoch. These requests's responses are only handled within
 // the context of a consumer session.
 func (s *consumerSession) listOrEpoch(waiting listOrEpochLoads, immediate bool, why string) {
 	defer s.decWorker()
@@ -2285,7 +2333,7 @@ func (*Client) loadEpochsForBrokerLoad(ctx context.Context, broker *broker, load
 			offset := loadPart.at
 			var err error
 			if rPartition.EndOffset < offset {
-				err = &ErrDataLoss{topic, partition, offset, rPartition.EndOffset}
+				err = &ErrDataLoss{topic, partition, offset, loadPart.epoch, rPartition.EndOffset, rPartition.LeaderEpoch}
 				offset = rPartition.EndOffset
 			}
 
@@ -2352,12 +2400,12 @@ func (o offsetLoadMap) buildListReq(isolationLevel int8) (r1, r2 *kmsg.ListOffse
 	if createEnd {
 		r2 = kmsg.NewPtrListOffsetsRequest()
 		*r2 = *r1
-		r2.Topics = append([]kmsg.ListOffsetsRequestTopic(nil), r1.Topics...)
+		r2.Topics = slices.Clone(r1.Topics)
 		for i := range r1.Topics {
 			l := &r2.Topics[i]
 			r := &r1.Topics[i]
 			*l = *r
-			l.Partitions = append([]kmsg.ListOffsetsRequestTopicPartition(nil), r.Partitions...)
+			l.Partitions = slices.Clone(r.Partitions)
 			for i := range l.Partitions {
 				l.Partitions[i].Timestamp = -1
 			}

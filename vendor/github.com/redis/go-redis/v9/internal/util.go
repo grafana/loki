@@ -49,22 +49,7 @@ func isLower(s string) bool {
 }
 
 func ReplaceSpaces(s string) string {
-	// Pre-allocate a builder with the same length as s to minimize allocations.
-	// This is a basic optimization; adjust the initial size based on your use case.
-	var builder strings.Builder
-	builder.Grow(len(s))
-
-	for _, char := range s {
-		if char == ' ' {
-			// Replace space with a hyphen.
-			builder.WriteRune('-')
-		} else {
-			// Copy the character as-is.
-			builder.WriteRune(char)
-		}
-	}
-
-	return builder.String()
+	return strings.ReplaceAll(s, " ", "-")
 }
 
 func GetAddr(addr string) string {

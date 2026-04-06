@@ -1,0 +1,12 @@
+type: confmap
+github_project: open-telemetry/opentelemetry-collector
+
+status:
+  disable_codecov_badge: true
+  codeowners:
+    active:
+      - mx-psi
+      - evan-bradley
+  class: pkg
+  stability:
+    stable: [logs, metrics, traces]

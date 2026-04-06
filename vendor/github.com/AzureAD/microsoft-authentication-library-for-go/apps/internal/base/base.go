@@ -5,16 +5,17 @@ package base
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/cache"
-	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/base/internal/storage"
+	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/errors"
+	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/base/storage"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/accesstokens"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/authority"
@@ -45,16 +46,18 @@ type accountManager interface {
 
 // AcquireTokenSilentParameters contains the parameters to acquire a token silently (from cache).
 type AcquireTokenSilentParameters struct {
-	Scopes            []string
-	Account           shared.Account
-	RequestType       accesstokens.AppType
-	Credential        *accesstokens.Credential
-	IsAppCache        bool
-	TenantID          string
-	UserAssertion     string
-	AuthorizationType authority.AuthorizeType
-	Claims            string
-	AuthnScheme       authority.AuthenticationScheme
+	Scopes              []string
+	Account             shared.Account
+	RequestType         accesstokens.AppType
+	Credential          *accesstokens.Credential
+	IsAppCache          bool
+	TenantID            string
+	UserAssertion       string
+	AuthorizationType   authority.AuthorizeType
+	Claims              string
+	AuthnScheme         authority.AuthenticationScheme
+	ExtraBodyParameters map[string]string
+	CacheKeyComponents  map[string]string
 }
 
 // AcquireTokenAuthCodeParameters contains the parameters required to acquire an access token using the auth code flow.
@@ -94,6 +97,7 @@ type AuthResult struct {
 
 // AuthResultMetadata which contains meta data for the AuthResult
 type AuthResultMetadata struct {
+	RefreshOn   time.Time
 	TokenSource TokenSource
 }
 
@@ -101,9 +105,8 @@ type TokenSource int
 
 // These are all the types of token flows.
 const (
-	SourceUnknown    TokenSource = 0
-	IdentityProvider TokenSource = 1
-	Cache            TokenSource = 2
+	TokenSourceIdentityProvider TokenSource = 0
+	TokenSourceCache            TokenSource = 1
 )
 
 // AuthResultFromStorage creates an AuthResult from a storage token response (which is generated from the cache).
@@ -111,7 +114,6 @@ func AuthResultFromStorage(storageTokenResponse storage.TokenResponse) (AuthResu
 	if err := storageTokenResponse.AccessToken.Validate(); err != nil {
 		return AuthResult{}, fmt.Errorf("problem with access token in StorageTokenResponse: %w", err)
 	}
-
 	account := storageTokenResponse.Account
 	accessToken := storageTokenResponse.AccessToken.Secret
 	grantedScopes := strings.Split(storageTokenResponse.AccessToken.Scopes, scopeSeparator)
@@ -132,7 +134,8 @@ func AuthResultFromStorage(storageTokenResponse storage.TokenResponse) (AuthResu
 		GrantedScopes:  grantedScopes,
 		DeclinedScopes: nil,
 		Metadata: AuthResultMetadata{
-			TokenSource: Cache,
+			TokenSource: TokenSourceCache,
+			RefreshOn:   storageTokenResponse.AccessToken.RefreshOn.T,
 		},
 	}, nil
 }
@@ -146,10 +149,11 @@ func NewAuthResult(tokenResponse accesstokens.TokenResponse, account shared.Acco
 		Account:       account,
 		IDToken:       tokenResponse.IDToken,
 		AccessToken:   tokenResponse.AccessToken,
-		ExpiresOn:     tokenResponse.ExpiresOn.T,
+		ExpiresOn:     tokenResponse.ExpiresOn,
 		GrantedScopes: tokenResponse.GrantedScopes.Slice,
 		Metadata: AuthResultMetadata{
-			TokenSource: IdentityProvider,
+			TokenSource: TokenSourceIdentityProvider,
+			RefreshOn:   tokenResponse.RefreshOn.T,
 		},
 	}, nil
 }
@@ -165,6 +169,8 @@ type Client struct {
 	AuthParams      authority.AuthParams // DO NOT EVER MAKE THIS A POINTER! See "Note" in New().
 	cacheAccessor   cache.ExportReplace
 	cacheAccessorMu *sync.RWMutex
+	canRefresh      map[string]*atomic.Value
+	canRefreshMu    *sync.Mutex
 }
 
 // Option is an optional argument to the New constructor.
@@ -241,6 +247,8 @@ func New(clientID string, authorityURI string, token *oauth.Client, options ...O
 		cacheAccessorMu: &sync.RWMutex{},
 		manager:         storage.New(token),
 		pmanager:        storage.NewPartitionedManager(token),
+		canRefresh:      make(map[string]*atomic.Value),
+		canRefreshMu:    &sync.Mutex{},
 	}
 	for _, o := range options {
 		if err = o(&client); err != nil {
@@ -321,7 +329,12 @@ func (b Client) AcquireTokenSilent(ctx context.Context, silent AcquireTokenSilen
 	if silent.AuthnScheme != nil {
 		authParams.AuthnScheme = silent.AuthnScheme
 	}
-
+	if silent.CacheKeyComponents != nil {
+		authParams.CacheKeyComponents = silent.CacheKeyComponents
+	}
+	if silent.ExtraBodyParameters != nil {
+		authParams.ExtraBodyParameters = silent.ExtraBodyParameters
+	}
 	m := b.pmanager
 	if authParams.AuthorizationType != authority.ATOnBehalfOf {
 		authParams.AuthorizationType = authority.ATRefreshToken
@@ -345,6 +358,39 @@ func (b Client) AcquireTokenSilent(ctx context.Context, silent AcquireTokenSilen
 	if silent.Claims == "" {
 		ar, err = AuthResultFromStorage(storageTokenResponse)
 		if err == nil {
+			if rt := storageTokenResponse.AccessToken.RefreshOn.T; !rt.IsZero() && Now().After(rt) {
+				b.canRefreshMu.Lock()
+				refreshValue, ok := b.canRefresh[tenant]
+				if !ok {
+					refreshValue = &atomic.Value{}
+					refreshValue.Store(false)
+					b.canRefresh[tenant] = refreshValue
+				}
+				b.canRefreshMu.Unlock()
+				if refreshValue.CompareAndSwap(false, true) {
+					defer refreshValue.Store(false)
+					// Added a check to see if the token is still same because there is a chance
+					// that the token is already refreshed by another thread.
+					// If the token is not same, we don't need to refresh it.
+					// Which means it refreshed.
+					if str, err := m.Read(ctx, authParams); err == nil && str.AccessToken.Secret == ar.AccessToken {
+						switch silent.RequestType {
+						case accesstokens.ATConfidential:
+							if tr, er := b.Token.Credential(ctx, authParams, silent.Credential); er == nil {
+								return b.AuthResultFromToken(ctx, authParams, tr)
+							}
+						case accesstokens.ATPublic:
+							token, err := b.Token.Refresh(ctx, silent.RequestType, authParams, silent.Credential, storageTokenResponse.RefreshToken)
+							if err != nil {
+								return ar, err
+							}
+							return b.AuthResultFromToken(ctx, authParams, token)
+						case accesstokens.ATUnknown:
+							return ar, errors.New("silent request type cannot be ATUnknown")
+						}
+					}
+				}
+			}
 			ar.AccessToken, err = authParams.AuthnScheme.FormatAccessToken(ar.AccessToken)
 			return ar, err
 		}
@@ -362,7 +408,7 @@ func (b Client) AcquireTokenSilent(ctx context.Context, silent AcquireTokenSilen
 	if err != nil {
 		return ar, err
 	}
-	return b.AuthResultFromToken(ctx, authParams, token, true)
+	return b.AuthResultFromToken(ctx, authParams, token)
 }
 
 func (b Client) AcquireTokenByAuthCode(ctx context.Context, authCodeParams AcquireTokenAuthCodeParameters) (AuthResult, error) {
@@ -391,7 +437,7 @@ func (b Client) AcquireTokenByAuthCode(ctx context.Context, authCodeParams Acqui
 		return AuthResult{}, err
 	}
 
-	return b.AuthResultFromToken(ctx, authParams, token, true)
+	return b.AuthResultFromToken(ctx, authParams, token)
 }
 
 // AcquireTokenOnBehalfOf acquires a security token for an app using middle tier apps access token.
@@ -418,17 +464,17 @@ func (b Client) AcquireTokenOnBehalfOf(ctx context.Context, onBehalfOfParams Acq
 	authParams.Claims = onBehalfOfParams.Claims
 	authParams.Scopes = onBehalfOfParams.Scopes
 	authParams.UserAssertion = onBehalfOfParams.UserAssertion
+	if authParams.ExtraBodyParameters != nil {
+		authParams.ExtraBodyParameters = silentParameters.ExtraBodyParameters
+	}
 	token, err := b.Token.OnBehalfOf(ctx, authParams, onBehalfOfParams.Credential)
 	if err == nil {
-		ar, err = b.AuthResultFromToken(ctx, authParams, token, true)
+		ar, err = b.AuthResultFromToken(ctx, authParams, token)
 	}
 	return ar, err
 }
 
-func (b Client) AuthResultFromToken(ctx context.Context, authParams authority.AuthParams, token accesstokens.TokenResponse, cacheWrite bool) (AuthResult, error) {
-	if !cacheWrite {
-		return NewAuthResult(token, shared.Account{})
-	}
+func (b Client) AuthResultFromToken(ctx context.Context, authParams authority.AuthParams, token accesstokens.TokenResponse) (AuthResult, error) {
 	var m manager = b.manager
 	if authParams.AuthorizationType == authority.ATOnBehalfOf {
 		m = b.pmanager
@@ -457,6 +503,10 @@ func (b Client) AuthResultFromToken(ctx context.Context, authParams authority.Au
 	ar.AccessToken, err = authParams.AuthnScheme.FormatAccessToken(ar.AccessToken)
 	return ar, err
 }
+
+// This function wraps time.Now() and is used for refreshing the application
+// was created to test the function against refreshin
+var Now = time.Now
 
 func (b Client) AllAccounts(ctx context.Context) ([]shared.Account, error) {
 	if b.cacheAccessor != nil {

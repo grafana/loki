@@ -308,6 +308,10 @@ type Config struct {
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
 	EnableAsyncStore bool          `yaml:"-"`
 	AsyncStoreConfig AsyncStoreCfg `yaml:"-"`
+
+	// ObjectClientDecorator, if set, wraps every ObjectClient after creation.
+	// This is intended for testing (e.g. injecting latency simulation).
+	ObjectClientDecorator func(client.ObjectClient) client.ObjectClient `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -470,7 +474,18 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
+func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, p config.PeriodConfig, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
+	var cc congestion.Controller
+	ccCfg := cfg.CongestionControl
+
+	if ccCfg.Enabled {
+		cc = congestion.NewController(
+			ccCfg,
+			logger,
+			congestion.NewMetrics(fmt.Sprintf("%s-%s", name, p.From.String()), ccCfg),
+		)
+	}
+
 	var storeType = name
 
 	if cfg.UseThanosObjstore {
@@ -653,6 +668,10 @@ func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMet
 	actual, err := internalNewObjectClient(name, cfg, clientMetrics)
 	if err != nil {
 		return nil, err
+	}
+
+	if cfg.ObjectClientDecorator != nil {
+		actual = cfg.ObjectClientDecorator(actual)
 	}
 
 	if cfg.ObjectPrefix == "" {

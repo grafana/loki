@@ -38,14 +38,14 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
-// Reader wraps encoding/csv.Reader and creates array.Records from a schema.
+// Reader wraps encoding/csv.Reader and creates array.RecordBatches from a schema.
 type Reader struct {
 	r      *csv.Reader
 	schema *arrow.Schema
 
-	refs int64
+	refs atomic.Int64
 	bld  *array.RecordBuilder
-	cur  arrow.Record
+	cur  arrow.RecordBatch
 	err  error
 
 	chunk int
@@ -75,10 +75,10 @@ type Reader struct {
 func NewInferringReader(r io.Reader, opts ...Option) *Reader {
 	rr := &Reader{
 		r:                csv.NewReader(r),
-		refs:             1,
 		chunk:            1,
 		stringsCanBeNull: false,
 	}
+	rr.refs.Add(1)
 	rr.r.ReuseRecord = true
 	for _, opt := range opts {
 		opt(rr)
@@ -101,20 +101,19 @@ func NewInferringReader(r io.Reader, opts ...Option) *Reader {
 }
 
 // NewReader returns a reader that reads from the CSV file and creates
-// arrow.Records from the given schema.
+// arrow.RecordBatches from the given schema.
 //
 // NewReader panics if the given schema contains fields that have types that are not
 // primitive types.
 func NewReader(r io.Reader, schema *arrow.Schema, opts ...Option) *Reader {
-	validate(schema)
-
+	validateRead(schema)
 	rr := &Reader{
 		r:                csv.NewReader(r),
 		schema:           schema,
-		refs:             1,
 		chunk:            1,
 		stringsCanBeNull: false,
 	}
+	rr.refs.Add(1)
 	rr.r.ReuseRecord = true
 	for _, opt := range opts {
 		opt(rr)
@@ -223,10 +222,17 @@ func (r *Reader) Err() error { return r.err }
 
 func (r *Reader) Schema() *arrow.Schema { return r.schema }
 
+// RecordBatch returns the current record batch that has been extracted from the
+// underlying CSV file.
+// It is valid until the next call to Next.
+func (r *Reader) RecordBatch() arrow.RecordBatch { return r.cur }
+
 // Record returns the current record that has been extracted from the
 // underlying CSV file.
 // It is valid until the next call to Next.
-func (r *Reader) Record() arrow.Record { return r.cur }
+//
+// Deprecated: Use [RecordBatch] instead.
+func (r *Reader) Record() arrow.Record { return r.RecordBatch() }
 
 // Next returns whether a Record could be extracted from the underlying CSV file.
 //
@@ -276,7 +282,7 @@ func (r *Reader) next1() bool {
 
 	r.validate(recs)
 	r.read(recs)
-	r.cur = r.bld.NewRecord()
+	r.cur = r.bld.NewRecordBatch()
 
 	return true
 }
@@ -288,9 +294,7 @@ func (r *Reader) nextall() bool {
 		r.done = true
 	}()
 
-	var (
-		recs [][]string
-	)
+	var recs [][]string
 
 	recs, r.err = r.r.ReadAll()
 	if r.err != nil {
@@ -301,7 +305,7 @@ func (r *Reader) nextall() bool {
 		r.validate(rec)
 		r.read(rec)
 	}
-	r.cur = r.bld.NewRecord()
+	r.cur = r.bld.NewRecordBatch()
 
 	return true
 }
@@ -334,7 +338,7 @@ func (r *Reader) nextn() bool {
 		r.done = true
 	}
 
-	r.cur = r.bld.NewRecord()
+	r.cur = r.bld.NewRecordBatch()
 	return n > 0
 }
 
@@ -805,7 +809,7 @@ func (r *Reader) parseListLike(field array.ListLikeBuilder, str string) {
 		field.AppendNull()
 		return
 	}
-	if !(strings.HasPrefix(str, "{") && strings.HasSuffix(str, "}")) {
+	if !strings.HasPrefix(str, "{") || !strings.HasSuffix(str, "}") {
 		r.err = errors.New("invalid list format. should start with '{' and end with '}'")
 		return
 	}
@@ -833,7 +837,7 @@ func (r *Reader) parseFixedSizeList(field *array.FixedSizeListBuilder, str strin
 		field.AppendNull()
 		return
 	}
-	if !(strings.HasPrefix(str, "{") && strings.HasSuffix(str, "}")) {
+	if !strings.HasPrefix(str, "{") || !strings.HasSuffix(str, "}") {
 		r.err = errors.New("invalid list format. should start with '{' and end with '}'")
 		return
 	}
@@ -926,16 +930,16 @@ func (r *Reader) parseExtension(field array.Builder, str string) {
 // Retain increases the reference count by 1.
 // Retain may be called simultaneously from multiple goroutines.
 func (r *Reader) Retain() {
-	atomic.AddInt64(&r.refs, 1)
+	r.refs.Add(1)
 }
 
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 // Release may be called simultaneously from multiple goroutines.
 func (r *Reader) Release() {
-	debug.Assert(atomic.LoadInt64(&r.refs) > 0, "too many releases")
+	debug.Assert(r.refs.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&r.refs, -1) == 0 {
+	if r.refs.Add(-1) == 0 {
 		if r.cur != nil {
 			r.cur.Release()
 		}
@@ -1025,6 +1029,4 @@ func tryParse(val string, dt arrow.DataType) error {
 	panic("shouldn't end up here")
 }
 
-var (
-	_ array.RecordReader = (*Reader)(nil)
-)
+var _ array.RecordReader = (*Reader)(nil)

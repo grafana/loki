@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path"
 
+	"dario.cat/mergo"
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
@@ -222,11 +222,13 @@ func tokenAuthCredentials(opts Options) []corev1.EnvVar {
 			return []corev1.EnvVar{
 				envVarFromValue(EnvAWSCredentialsFile, path.Join(tokenAuthConfigDirectory, KeyAWSCredentialsFilename)),
 				envVarFromValue(EnvAWSSdkLoadConfig, "true"),
+				envVarFromValue(EnvAWSRegion, opts.S3.Region),
 			}
 		} else {
 			return []corev1.EnvVar{
 				envVarFromSecret(EnvAWSRoleArn, opts.SecretName, KeyAWSRoleArn),
 				envVarFromValue(EnvAWSWebIdentityTokenFile, ServiceAccountTokenFilePath),
+				envVarFromValue(EnvAWSRegion, opts.S3.Region),
 			}
 		}
 	case lokiv1.ObjectStorageSecretAzure:

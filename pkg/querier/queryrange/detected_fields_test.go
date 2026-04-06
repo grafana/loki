@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	runtime "runtime"
 	"slices"
 	"testing"
 	"time"
@@ -54,13 +55,13 @@ func Test_parseDetectedFields(t *testing.T) {
 		}
 
 		rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler"}`
-		rulerMetric, err := parser.ParseMetric(rulerLbls)
+		rulerMetric, err := parser.NewParser(parser.Options{}).ParseMetric(rulerLbls)
 		require.NoError(t, err)
 
 		rulerStream := push.Stream{
 			Labels:  rulerLbls,
 			Entries: rulerLines,
-			Hash:    rulerMetric.Hash(),
+			Hash:    labels.StableHash(rulerMetric),
 		}
 
 		debugDetectedFieldMetadata := []push.LabelAdapter{
@@ -89,13 +90,13 @@ func Test_parseDetectedFields(t *testing.T) {
 		}
 
 		nginxLbls := `{ cluster="eu-west-1", level="debug", namespace="gateway", pod="nginx-json-oghco", service_name="nginx-json" }`
-		nginxMetric, err := parser.ParseMetric(nginxLbls)
+		nginxMetric, err := parser.NewParser(parser.Options{}).ParseMetric(nginxLbls)
 		require.NoError(t, err)
 
 		nginxStream := push.Stream{
 			Labels:  nginxLbls,
 			Entries: nginxJSONLines,
-			Hash:    nginxMetric.Hash(),
+			Hash:    labels.StableHash(nginxMetric),
 		}
 
 		t.Run("detects logfmt fields", func(t *testing.T) {
@@ -115,6 +116,27 @@ func Test_parseDetectedFields(t *testing.T) {
 
 				require.Len(t, parsers, 0)
 			}
+		})
+
+		t.Run("detects fields with huge limit doesn't explode memory", func(t *testing.T) {
+			runtime.GC()
+			var before runtime.MemStats
+			runtime.ReadMemStats(&before)
+
+			df := parseDetectedFields(1000000, logqlmodel.Streams([]push.Stream{rulerStream}))
+			require.True(t, len(df) > 0)
+
+			runtime.GC()
+			var after runtime.MemStats
+			runtime.ReadMemStats(&after)
+
+			delta := int64(after.TotalAlloc) - int64(before.TotalAlloc)
+			// 10 MB
+			if delta > 10*1024*1024 {
+				t.Fatalf("heap grew too much: %d MB", delta/1024/1024)
+			}
+
+			runtime.KeepAlive(df)
 		})
 
 		t.Run("detects json fields", func(t *testing.T) {
@@ -185,13 +207,13 @@ func Test_parseDetectedFields(t *testing.T) {
 
 		t.Run("correctly applies _extracted for a single stream", func(t *testing.T) {
 			rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house"}`
-			rulerMetric, err := parser.ParseMetric(rulerLbls)
+			rulerMetric, err := parser.NewParser(parser.Options{}).ParseMetric(rulerLbls)
 			require.NoError(t, err)
 
 			rulerStream := push.Stream{
 				Labels:  rulerLbls,
 				Entries: rulerLines,
-				Hash:    rulerMetric.Hash(),
+				Hash:    labels.StableHash(rulerMetric),
 			}
 
 			df := parseDetectedFields(uint32(15), logqlmodel.Streams([]push.Stream{rulerStream}))
@@ -214,23 +236,23 @@ func Test_parseDetectedFields(t *testing.T) {
 
 		t.Run("correctly applies _extracted for multiple streams", func(t *testing.T) {
 			rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house"}`
-			rulerMetric, err := parser.ParseMetric(rulerLbls)
+			rulerMetric, err := parser.NewParser(parser.Options{}).ParseMetric(rulerLbls)
 			require.NoError(t, err)
 
 			rulerStream := push.Stream{
 				Labels:  rulerLbls,
 				Entries: rulerLines,
-				Hash:    rulerMetric.Hash(),
+				Hash:    labels.StableHash(rulerMetric),
 			}
 
 			nginxLbls := `{ cluster="eu-west-1", level="debug", namespace="gateway", pod="nginx-json-oghco", service_name="nginx-json", host="localhost"}`
-			nginxMetric, err := parser.ParseMetric(nginxLbls)
+			nginxMetric, err := parser.NewParser(parser.Options{}).ParseMetric(nginxLbls)
 			require.NoError(t, err)
 
 			nginxStream := push.Stream{
 				Labels:  nginxLbls,
 				Entries: nginxJSONLines,
-				Hash:    nginxMetric.Hash(),
+				Hash:    labels.StableHash(nginxMetric),
 			}
 
 			df := parseDetectedFields(
@@ -322,7 +344,7 @@ func Test_parseDetectedFields(t *testing.T) {
 		)
 
 		rulerStreams := []push.Stream{}
-		streamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(rulerLbls, rulerLbls.Hash())
+		streamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(rulerLbls, labels.StableHash(rulerLbls))
 
 		for _, rulerFields := range [][]push.LabelAdapter{
 			parsedRulerFields(
@@ -435,7 +457,7 @@ func Test_parseDetectedFields(t *testing.T) {
 		)
 
 		nginxStreams := []push.Stream{}
-		nginxStreamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(nginxLbls, nginxLbls.Hash())
+		nginxStreamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(nginxLbls, labels.StableHash(nginxLbls))
 
 		for _, nginxFields := range [][]push.LabelAdapter{
 			parsedNginxFields(
@@ -616,7 +638,7 @@ func Test_parseDetectedFields(t *testing.T) {
 
 		t.Run("correctly applies _extracted for a single stream", func(t *testing.T) {
 			rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house"}`
-			rulerMetric, err := parser.ParseMetric(rulerLbls)
+			rulerMetric, err := parser.NewParser(parser.Options{}).ParseMetric(rulerLbls)
 			require.NoError(t, err)
 
 			rulerStream := push.Stream{
@@ -658,7 +680,7 @@ func Test_parseDetectedFields(t *testing.T) {
 						},
 					},
 				},
-				Hash: rulerMetric.Hash(),
+				Hash: labels.StableHash(rulerMetric),
 			}
 
 			df := parseDetectedFields(uint32(15), logqlmodel.Streams([]push.Stream{rulerStream}))
@@ -681,7 +703,7 @@ func Test_parseDetectedFields(t *testing.T) {
 
 		t.Run("correctly applies _extracted for multiple streams", func(t *testing.T) {
 			rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house"}`
-			rulerMetric, err := parser.ParseMetric(rulerLbls)
+			rulerMetric, err := parser.NewParser(parser.Options{}).ParseMetric(rulerLbls)
 			require.NoError(t, err)
 
 			rulerStream := push.Stream{
@@ -723,11 +745,11 @@ func Test_parseDetectedFields(t *testing.T) {
 						},
 					},
 				},
-				Hash: rulerMetric.Hash(),
+				Hash: labels.StableHash(rulerMetric),
 			}
 
 			nginxLbls := `{ cluster="eu-west-1", level="debug", namespace="gateway", pod="nginx-json-oghco", service_name="nginx-json", host="localhost"}`
-			nginxMetric, err := parser.ParseMetric(nginxLbls)
+			nginxMetric, err := parser.NewParser(parser.Options{}).ParseMetric(nginxLbls)
 			require.NoError(t, err)
 
 			nginxStream := push.Stream{
@@ -777,7 +799,7 @@ func Test_parseDetectedFields(t *testing.T) {
 						},
 					},
 				},
-				Hash: nginxMetric.Hash(),
+				Hash: labels.StableHash(nginxMetric),
 			}
 
 			df := parseDetectedFields(
@@ -822,7 +844,7 @@ func Test_parseDetectedFields(t *testing.T) {
 
 	t.Run("handles level in all the places", func(t *testing.T) {
 		rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house", level="debug"}`
-		rulerMetric, err := parser.ParseMetric(rulerLbls)
+		rulerMetric, err := parser.NewParser(parser.Options{}).ParseMetric(rulerLbls)
 		require.NoError(t, err)
 
 		rulerStream := push.Stream{
@@ -845,7 +867,7 @@ func Test_parseDetectedFields(t *testing.T) {
 					},
 				},
 			},
-			Hash: rulerMetric.Hash(),
+			Hash: labels.StableHash(rulerMetric),
 		}
 
 		df := parseDetectedFields(
@@ -871,7 +893,7 @@ func mockLogfmtStreamWithLabels(_ int, quantity int, lbls string) logproto.Strea
 		streamLabels = labels.EmptyLabels()
 	}
 
-	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, labels.StableHash(streamLabels))
 	logFmtParser := logql_log.NewLogfmtParser(false, false)
 
 	// used for detected fields queries which are always BACKWARD
@@ -928,7 +950,7 @@ func mockLogfmtStreamWithLabelsAndStructuredMetadata(
 		streamLabels = labels.EmptyLabels()
 	}
 
-	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, labels.StableHash(streamLabels))
 	logFmtParser := logql_log.NewLogfmtParser(false, false)
 
 	// used for detected fields queries which are always BACKWARD
@@ -1321,7 +1343,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 
 	t.Run("correctly formats bytes values for detected fields", func(t *testing.T) {
 		lbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler"}`
-		metric, err := parser.ParseMetric(lbls)
+		metric, err := parser.NewParser(parser.Options{}).ParseMetric(lbls)
 		require.NoError(t, err)
 		now := time.Now()
 
@@ -1352,7 +1374,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		stream := push.Stream{
 			Labels:  lbls,
 			Entries: lines,
-			Hash:    metric.Hash(),
+			Hash:    labels.StableHash(metric),
 		}
 
 		handler := NewDetectedFieldsHandler(
@@ -1498,13 +1520,13 @@ func TestNestedJSONFieldDetection(t *testing.T) {
 		}
 
 		nestedJSONLbls := `{cluster="test-cluster", job="json-test"}`
-		nestedJSONMetric, err := parser.ParseMetric(nestedJSONLbls)
+		nestedJSONMetric, err := parser.NewParser(parser.Options{}).ParseMetric(nestedJSONLbls)
 		require.NoError(t, err)
 
 		nestedJSONStream := push.Stream{
 			Labels:  nestedJSONLbls,
 			Entries: nestedJSONLines,
-			Hash:    nestedJSONMetric.Hash(),
+			Hash:    labels.StableHash(nestedJSONMetric),
 		}
 
 		df := parseDetectedFields(uint32(20), logqlmodel.Streams([]push.Stream{nestedJSONStream}))
@@ -1596,13 +1618,13 @@ func TestNestedJSONFieldDetection(t *testing.T) {
 		}
 
 		nestedJSONLbls := `{cluster="test-cluster", job="json-test"}`
-		nestedJSONMetric, err := parser.ParseMetric(nestedJSONLbls)
+		nestedJSONMetric, err := parser.NewParser(parser.Options{}).ParseMetric(nestedJSONLbls)
 		require.NoError(t, err)
 
 		nestedJSONStream := push.Stream{
 			Labels:  nestedJSONLbls,
 			Entries: nestedJSONLines,
-			Hash:    nestedJSONMetric.Hash(),
+			Hash:    labels.StableHash(nestedJSONMetric),
 		}
 
 		df := parseDetectedFields(uint32(20), logqlmodel.Streams([]push.Stream{nestedJSONStream}))

@@ -18,7 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -228,7 +227,7 @@ func (m *TableManager) loop(ctx context.Context) error {
 
 	// Sleep for a bit to spread the sync load across different times if the tablemanagers are all started at once.
 	select {
-	case <-time.After(time.Duration(rand.Int63n(int64(m.cfg.PollInterval)))): //#nosec G404 -- This is also just essentially jitter, no need for CSPRNG.
+	case <-time.After(time.Duration(rand.Int63n(int64(m.cfg.PollInterval)))): //#nosec G404 -- This is also just essentially jitter, no need for CSPRNG. -- nosemgrep: math-random-used
 	case <-ctx.Done():
 		return nil
 	}
@@ -476,24 +475,24 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []confi
 
 func (m *TableManager) createTables(ctx context.Context, descriptions []config.TableDesc) error {
 	numFailures := 0
-	merr := tsdb_errors.NewMulti()
+	var errs []error
 
 	for _, desc := range descriptions {
 		level.Debug(m.logger).Log("msg", "creating table", "table", desc.Name)
 		err := m.client.CreateTable(ctx, desc)
 		if err != nil {
 			numFailures++
-			merr.Add(err)
+			errs = append(errs, err)
 		}
 	}
 
 	m.metrics.createFailures.Set(float64(numFailures))
-	return merr.Err()
+	return errors.Join(errs...)
 }
 
 func (m *TableManager) deleteTables(ctx context.Context, descriptions []config.TableDesc) error {
 	numFailures := 0
-	merr := tsdb_errors.NewMulti()
+	var errs []error
 
 	for _, desc := range descriptions {
 		level.Info(m.logger).Log("msg", "table has exceeded the retention period", "table", desc.Name)
@@ -505,12 +504,12 @@ func (m *TableManager) deleteTables(ctx context.Context, descriptions []config.T
 		err := m.client.DeleteTable(ctx, desc.Name)
 		if err != nil {
 			numFailures++
-			merr.Add(err)
+			errs = append(errs, err)
 		}
 	}
 
 	m.metrics.deleteFailures.Set(float64(numFailures))
-	return merr.Err()
+	return errors.Join(errs...)
 }
 
 func (m *TableManager) updateTables(ctx context.Context, descriptions []config.TableDesc) error {
@@ -555,7 +554,7 @@ func ExpectTables(ctx context.Context, client TableClient, expected []config.Tab
 	}
 
 	if len(expected) != len(tables) {
-		return fmt.Errorf("Unexpected number of tables: %v != %v", expected, tables)
+		return fmt.Errorf("unexpected number of tables: %v != %v", expected, tables)
 	}
 
 	sort.Strings(tables)
@@ -563,7 +562,7 @@ func ExpectTables(ctx context.Context, client TableClient, expected []config.Tab
 
 	for i, expect := range expected {
 		if tables[i] != expect.Name {
-			return fmt.Errorf("Expected '%s', found '%s'", expect.Name, tables[i])
+			return fmt.Errorf("expected '%s', found '%s'", expect.Name, tables[i])
 		}
 
 		desc, _, err := client.DescribeTable(ctx, expect.Name)
@@ -572,7 +571,7 @@ func ExpectTables(ctx context.Context, client TableClient, expected []config.Tab
 		}
 
 		if !desc.Equals(expect) {
-			return fmt.Errorf("Expected '%#v', found '%#v' for table '%s'", expect, desc, desc.Name)
+			return fmt.Errorf("expected '%#v', found '%#v' for table '%s'", expect, desc, desc.Name)
 		}
 	}
 

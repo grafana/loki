@@ -19,6 +19,7 @@ package array
 import (
 	"bytes"
 	"fmt"
+	"iter"
 	"strings"
 	"sync/atomic"
 
@@ -36,27 +37,29 @@ type RecordReader interface {
 	Schema() *arrow.Schema
 
 	Next() bool
-	Record() arrow.Record
+	RecordBatch() arrow.RecordBatch
+	// Deprecated: Use [RecordBatch] instead.
+	Record() arrow.RecordBatch
 	Err() error
 }
 
 // simpleRecords is a simple iterator over a collection of records.
 type simpleRecords struct {
-	refCount int64
+	refCount atomic.Int64
 
 	schema *arrow.Schema
-	recs   []arrow.Record
-	cur    arrow.Record
+	recs   []arrow.RecordBatch
+	cur    arrow.RecordBatch
 }
 
 // NewRecordReader returns a simple iterator over the given slice of records.
-func NewRecordReader(schema *arrow.Schema, recs []arrow.Record) (RecordReader, error) {
+func NewRecordReader(schema *arrow.Schema, recs []arrow.RecordBatch) (RecordReader, error) {
 	rs := &simpleRecords{
-		refCount: 1,
-		schema:   schema,
-		recs:     recs,
-		cur:      nil,
+		schema: schema,
+		recs:   recs,
+		cur:    nil,
 	}
+	rs.refCount.Add(1)
 
 	for _, rec := range rs.recs {
 		rec.Retain()
@@ -75,16 +78,16 @@ func NewRecordReader(schema *arrow.Schema, recs []arrow.Record) (RecordReader, e
 // Retain increases the reference count by 1.
 // Retain may be called simultaneously from multiple goroutines.
 func (rs *simpleRecords) Retain() {
-	atomic.AddInt64(&rs.refCount, 1)
+	rs.refCount.Add(1)
 }
 
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 // Release may be called simultaneously from multiple goroutines.
 func (rs *simpleRecords) Release() {
-	debug.Assert(atomic.LoadInt64(&rs.refCount) > 0, "too many releases")
+	debug.Assert(rs.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&rs.refCount, -1) == 0 {
+	if rs.refCount.Add(-1) == 0 {
 		if rs.cur != nil {
 			rs.cur.Release()
 		}
@@ -95,8 +98,11 @@ func (rs *simpleRecords) Release() {
 	}
 }
 
-func (rs *simpleRecords) Schema() *arrow.Schema { return rs.schema }
-func (rs *simpleRecords) Record() arrow.Record  { return rs.cur }
+func (rs *simpleRecords) Schema() *arrow.Schema          { return rs.schema }
+func (rs *simpleRecords) RecordBatch() arrow.RecordBatch { return rs.cur }
+
+// Deprecated: Use [RecordBatch] instead.
+func (rs *simpleRecords) Record() arrow.RecordBatch { return rs.RecordBatch() }
 func (rs *simpleRecords) Next() bool {
 	if len(rs.recs) == 0 {
 		return false
@@ -112,25 +118,38 @@ func (rs *simpleRecords) Err() error { return nil }
 
 // simpleRecord is a basic, non-lazy in-memory record batch.
 type simpleRecord struct {
-	refCount int64
+	refCount atomic.Int64
 
 	schema *arrow.Schema
+	meta   arrow.Metadata
 
 	rows int64
 	arrs []arrow.Array
 }
 
-// NewRecord returns a basic, non-lazy in-memory record batch.
+// NewRecordBatch returns a basic, non-lazy in-memory record batch.
 //
-// NewRecord panics if the columns and schema are inconsistent.
-// NewRecord panics if rows is larger than the height of the columns.
-func NewRecord(schema *arrow.Schema, cols []arrow.Array, nrows int64) arrow.Record {
+// NewRecordBatch panics if the columns and schema are inconsistent.
+// NewRecordBatch panics if rows is larger than the height of the columns.
+func NewRecordBatch(schema *arrow.Schema, cols []arrow.Array, nrows int64) arrow.RecordBatch {
+	return NewRecordBatchWithMetadata(schema, cols, nrows, arrow.Metadata{})
+}
+
+// NewRecordBatchWithMetadata returns a basic, non-lazy in-memory record batch
+// with custom metadata. The metadata is preserved during IPC serialization
+// at the Message level.
+//
+// NewRecordBatchWithMetadata panics if the columns and schema are inconsistent.
+// NewRecordBatchWithMetadata panics if rows is larger than the height of the columns.
+func NewRecordBatchWithMetadata(schema *arrow.Schema, cols []arrow.Array, nrows int64, meta arrow.Metadata) arrow.RecordBatch {
 	rec := &simpleRecord{
-		refCount: 1,
-		schema:   schema,
-		rows:     nrows,
-		arrs:     make([]arrow.Array, len(cols)),
+		schema: schema,
+		meta:   meta,
+		rows:   nrows,
+		arrs:   make([]arrow.Array, len(cols)),
 	}
+	rec.refCount.Add(1)
+
 	copy(rec.arrs, cols)
 	for _, arr := range rec.arrs {
 		arr.Retain()
@@ -154,7 +173,12 @@ func NewRecord(schema *arrow.Schema, cols []arrow.Array, nrows int64) arrow.Reco
 	return rec
 }
 
-func (rec *simpleRecord) SetColumn(i int, arr arrow.Array) (arrow.Record, error) {
+// Deprecated: Use [NewRecordBatch] instead.
+func NewRecord(schema *arrow.Schema, cols []arrow.Array, nrows int64) arrow.Record {
+	return NewRecordBatch(schema, cols, nrows)
+}
+
+func (rec *simpleRecord) SetColumn(i int, arr arrow.Array) (arrow.RecordBatch, error) {
 	if i < 0 || i >= len(rec.arrs) {
 		return nil, fmt.Errorf("arrow/array: column index out of range [0, %d): got=%d", len(rec.arrs), i)
 	}
@@ -177,7 +201,7 @@ func (rec *simpleRecord) SetColumn(i int, arr arrow.Array) (arrow.Record, error)
 	copy(arrs, rec.arrs)
 	arrs[i] = arr
 
-	return NewRecord(rec.schema, arrs, rec.rows), nil
+	return NewRecordBatchWithMetadata(rec.schema, arrs, rec.rows, rec.meta), nil
 }
 
 func (rec *simpleRecord) validate() error {
@@ -210,16 +234,16 @@ func (rec *simpleRecord) validate() error {
 // Retain increases the reference count by 1.
 // Retain may be called simultaneously from multiple goroutines.
 func (rec *simpleRecord) Retain() {
-	atomic.AddInt64(&rec.refCount, 1)
+	rec.refCount.Add(1)
 }
 
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 // Release may be called simultaneously from multiple goroutines.
 func (rec *simpleRecord) Release() {
-	debug.Assert(atomic.LoadInt64(&rec.refCount) > 0, "too many releases")
+	debug.Assert(rec.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&rec.refCount, -1) == 0 {
+	if rec.refCount.Add(-1) == 0 {
 		for _, arr := range rec.arrs {
 			arr.Release()
 		}
@@ -228,6 +252,7 @@ func (rec *simpleRecord) Release() {
 }
 
 func (rec *simpleRecord) Schema() *arrow.Schema    { return rec.schema }
+func (rec *simpleRecord) Metadata() arrow.Metadata { return rec.meta }
 func (rec *simpleRecord) NumRows() int64           { return rec.rows }
 func (rec *simpleRecord) NumCols() int64           { return int64(len(rec.arrs)) }
 func (rec *simpleRecord) Columns() []arrow.Array   { return rec.arrs }
@@ -240,7 +265,7 @@ func (rec *simpleRecord) ColumnName(i int) string  { return rec.schema.Field(i).
 //
 // NewSlice panics if the slice is outside the valid range of the record array.
 // NewSlice panics if j < i.
-func (rec *simpleRecord) NewSlice(i, j int64) arrow.Record {
+func (rec *simpleRecord) NewSlice(i, j int64) arrow.RecordBatch {
 	arrs := make([]arrow.Array, len(rec.arrs))
 	for ii, arr := range rec.arrs {
 		arrs[ii] = NewSlice(arr, i, j)
@@ -250,7 +275,7 @@ func (rec *simpleRecord) NewSlice(i, j int64) arrow.Record {
 			arr.Release()
 		}
 	}()
-	return NewRecord(rec.schema, arrs, j-i)
+	return NewRecordBatchWithMetadata(rec.schema, arrs, j-i, rec.meta)
 }
 
 func (rec *simpleRecord) String() string {
@@ -273,7 +298,7 @@ func (rec *simpleRecord) MarshalJSON() ([]byte, error) {
 // RecordBuilder eases the process of building a Record, iteratively, from
 // a known Schema.
 type RecordBuilder struct {
-	refCount int64
+	refCount atomic.Int64
 	mem      memory.Allocator
 	schema   *arrow.Schema
 	fields   []Builder
@@ -282,11 +307,11 @@ type RecordBuilder struct {
 // NewRecordBuilder returns a builder, using the provided memory allocator and a schema.
 func NewRecordBuilder(mem memory.Allocator, schema *arrow.Schema) *RecordBuilder {
 	b := &RecordBuilder{
-		refCount: 1,
-		mem:      mem,
-		schema:   schema,
-		fields:   make([]Builder, schema.NumFields()),
+		mem:    mem,
+		schema: schema,
+		fields: make([]Builder, schema.NumFields()),
 	}
+	b.refCount.Add(1)
 
 	for i := 0; i < schema.NumFields(); i++ {
 		b.fields[i] = NewBuilder(b.mem, schema.Field(i).Type)
@@ -298,14 +323,14 @@ func NewRecordBuilder(mem memory.Allocator, schema *arrow.Schema) *RecordBuilder
 // Retain increases the reference count by 1.
 // Retain may be called simultaneously from multiple goroutines.
 func (b *RecordBuilder) Retain() {
-	atomic.AddInt64(&b.refCount, 1)
+	b.refCount.Add(1)
 }
 
 // Release decreases the reference count by 1.
 func (b *RecordBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		for _, f := range b.fields {
 			f.Release()
 		}
@@ -323,13 +348,13 @@ func (b *RecordBuilder) Reserve(size int) {
 	}
 }
 
-// NewRecord creates a new record from the memory buffers and resets the
-// RecordBuilder so it can be used to build a new record.
+// NewRecordBatch creates a new record batch from the memory buffers and resets the
+// RecordBuilder so it can be used to build a new record batch.
 //
-// The returned Record must be Release()'d after use.
+// The returned RecordBatch must be Release()'d after use.
 //
-// NewRecord panics if the fields' builder do not have the same length.
-func (b *RecordBuilder) NewRecord() arrow.Record {
+// NewRecordBatch panics if the fields' builder do not have the same length.
+func (b *RecordBuilder) NewRecordBatch() arrow.RecordBatch {
 	cols := make([]arrow.Array, len(b.fields))
 	rows := int64(0)
 
@@ -351,7 +376,12 @@ func (b *RecordBuilder) NewRecord() arrow.Record {
 		rows = irow
 	}
 
-	return NewRecord(b.schema, cols, rows)
+	return NewRecordBatch(b.schema, cols, rows)
+}
+
+// Deprecated: Use [NewRecordBatch] instead.
+func (b *RecordBuilder) NewRecord() arrow.Record {
+	return b.NewRecordBatch()
 }
 
 // UnmarshalJSON for record builder will read in a single object and add the values
@@ -405,7 +435,88 @@ func (b *RecordBuilder) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type iterReader struct {
+	refCount atomic.Int64
+
+	schema *arrow.Schema
+	cur    arrow.RecordBatch
+
+	next func() (arrow.RecordBatch, error, bool)
+	stop func()
+
+	err error
+}
+
+func (ir *iterReader) Schema() *arrow.Schema { return ir.schema }
+
+func (ir *iterReader) Retain() { ir.refCount.Add(1) }
+func (ir *iterReader) Release() {
+	debug.Assert(ir.refCount.Load() > 0, "too many releases")
+
+	if ir.refCount.Add(-1) == 0 {
+		ir.stop()
+		ir.schema, ir.next = nil, nil
+		if ir.cur != nil {
+			ir.cur.Release()
+		}
+	}
+}
+
+func (ir *iterReader) RecordBatch() arrow.RecordBatch { return ir.cur }
+
+// Deprecated: Use [RecordBatch] instead.
+func (ir *iterReader) Record() arrow.Record { return ir.RecordBatch() }
+func (ir *iterReader) Err() error           { return ir.err }
+
+func (ir *iterReader) Next() bool {
+	if ir.cur != nil {
+		ir.cur.Release()
+	}
+
+	var ok bool
+	ir.cur, ir.err, ok = ir.next()
+	if ir.err != nil {
+		ir.stop()
+		return false
+	}
+
+	return ok
+}
+
+// ReaderFromIter wraps a go iterator for arrow.RecordBatch + error into a RecordReader
+// interface object for ease of use.
+func ReaderFromIter(schema *arrow.Schema, itr iter.Seq2[arrow.RecordBatch, error]) RecordReader {
+	next, stop := iter.Pull2(itr)
+	rdr := &iterReader{
+		schema: schema,
+		next:   next,
+		stop:   stop,
+	}
+	rdr.refCount.Add(1)
+	return rdr
+}
+
+// IterFromReader converts a RecordReader interface into an iterator that
+// you can use range on. The semantics are still important, if a record
+// that is returned is desired to be utilized beyond the scope of an iteration
+// then Retain must be called on it.
+func IterFromReader(rdr RecordReader) iter.Seq2[arrow.RecordBatch, error] {
+	rdr.Retain()
+	return func(yield func(arrow.RecordBatch, error) bool) {
+		defer rdr.Release()
+		for rdr.Next() {
+			if !yield(rdr.RecordBatch(), nil) {
+				return
+			}
+		}
+
+		if rdr.Err() != nil {
+			yield(nil, rdr.Err())
+		}
+	}
+}
+
 var (
-	_ arrow.Record = (*simpleRecord)(nil)
-	_ RecordReader = (*simpleRecords)(nil)
+	_ arrow.RecordBatchWithMetadata = (*simpleRecord)(nil)
+	_ RecordReader                  = (*simpleRecords)(nil)
 )

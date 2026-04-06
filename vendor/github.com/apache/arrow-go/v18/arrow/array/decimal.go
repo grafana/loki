@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"sync/atomic"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
@@ -45,7 +44,7 @@ func newDecimalData[T interface {
 	decimal.Num[T]
 }](data arrow.ArrayData) *baseDecimal[T] {
 	a := &baseDecimal[T]{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -84,8 +83,8 @@ func (a *baseDecimal[T]) setData(data *Data) {
 	vals := data.buffers[1]
 	if vals != nil {
 		a.values = arrow.GetData[T](vals.Bytes())
-		beg := a.array.data.offset
-		end := beg + a.array.data.length
+		beg := a.data.offset
+		end := beg + a.data.length
 		a.values = a.values[beg:end]
 	}
 }
@@ -148,11 +147,13 @@ func NewDecimal256Data(data arrow.ArrayData) *Decimal256 {
 	return newDecimalData[decimal.Decimal256](data)
 }
 
-type Decimal32Builder = baseDecimalBuilder[decimal.Decimal32]
-type Decimal64Builder = baseDecimalBuilder[decimal.Decimal64]
-type Decimal128Builder struct {
-	*baseDecimalBuilder[decimal.Decimal128]
-}
+type (
+	Decimal32Builder  = baseDecimalBuilder[decimal.Decimal32]
+	Decimal64Builder  = baseDecimalBuilder[decimal.Decimal64]
+	Decimal128Builder struct {
+		*baseDecimalBuilder[decimal.Decimal128]
+	}
+)
 
 func (b *Decimal128Builder) NewDecimal128Array() *Decimal128 {
 	return b.NewDecimalArray()
@@ -182,18 +183,20 @@ func newDecimalBuilder[T interface {
 	decimal.DecimalTypes
 	decimal.Num[T]
 }, DT arrow.DecimalType](mem memory.Allocator, dtype DT) *baseDecimalBuilder[T] {
-	return &baseDecimalBuilder[T]{
-		builder: builder{refCount: 1, mem: mem},
+	bdb := &baseDecimalBuilder[T]{
+		builder: builder{mem: mem},
 		dtype:   dtype,
 	}
+	bdb.refCount.Add(1)
+	return bdb
 }
 
 func (b *baseDecimalBuilder[T]) Type() arrow.DataType { return b.dtype }
 
 func (b *baseDecimalBuilder[T]) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -260,7 +263,7 @@ func (b *baseDecimalBuilder[T]) AppendValues(v []T, valid []bool) {
 	if len(v) > 0 {
 		copy(b.rawData[b.length:], v)
 	}
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 func (b *baseDecimalBuilder[T]) init(capacity int) {
@@ -273,7 +276,7 @@ func (b *baseDecimalBuilder[T]) init(capacity int) {
 }
 
 func (b *baseDecimalBuilder[T]) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 func (b *baseDecimalBuilder[T]) Resize(n int) {
@@ -285,7 +288,7 @@ func (b *baseDecimalBuilder[T]) Resize(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(nBuilder, b.init)
+		b.resize(nBuilder, b.init)
 		b.data.Resize(b.traits.BytesRequired(n))
 		b.rawData = arrow.GetData[T](b.data.Bytes())
 	}
@@ -429,4 +432,9 @@ var (
 	_ Builder     = (*Decimal64Builder)(nil)
 	_ Builder     = (*Decimal128Builder)(nil)
 	_ Builder     = (*Decimal256Builder)(nil)
+
+	_ arrow.TypedArray[decimal.Decimal32]  = (*Decimal32)(nil)
+	_ arrow.TypedArray[decimal.Decimal64]  = (*Decimal64)(nil)
+	_ arrow.TypedArray[decimal.Decimal128] = (*Decimal128)(nil)
+	_ arrow.TypedArray[decimal.Decimal256] = (*Decimal256)(nil)
 )

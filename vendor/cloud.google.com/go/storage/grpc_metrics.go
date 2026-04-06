@@ -126,6 +126,7 @@ type metricsConfig struct {
 	project         string
 	interval        time.Duration
 	customExporter  *metric.Exporter
+	meterProvider   *metric.MeterProvider
 	manualReader    *metric.ManualReader // used by tests
 	disableExporter bool                 // used by tests disables exports
 	resourceOpts    []resource.Option    // used by tests
@@ -172,7 +173,10 @@ func newGRPCMetricContext(ctx context.Context, cfg metricsConfig) (*metricsConte
 		meterOpts = append(meterOpts, metric.WithReader(
 			metric.NewPeriodicReader(&exporterLogSuppressor{Exporter: exporter}, metric.WithInterval(interval))))
 	}
-	provider := metric.NewMeterProvider(meterOpts...)
+	provider := cfg.meterProvider
+	if provider == nil {
+		provider = metric.NewMeterProvider(meterOpts...)
+	}
 	mo := opentelemetry.MetricsOptions{
 		MeterProvider: provider,
 		Metrics: stats.NewMetrics(

@@ -106,25 +106,29 @@ func newMetricExporter(o *options) (*metricExporter, error) {
 		return nil, errBlankProjectID
 	}
 
-	clientOpts := append([]option.ClientOption{option.WithGRPCDialOption(grpc.WithUserAgent(userAgent))}, o.monitoringClientOptions...)
-	ctx := o.context
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	client, err := monitoring.NewMetricClient(ctx, clientOpts...)
-	if err != nil {
-		return nil, err
-	}
+	client := o.monitoringClient
+	if client == nil {
+		clientOpts := append([]option.ClientOption{option.WithGRPCDialOption(grpc.WithUserAgent(userAgent))}, o.monitoringClientOptions...)
+		ctx := o.context
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		var err error
+		client, err = monitoring.NewMetricClient(ctx, clientOpts...)
+		if err != nil {
+			return nil, err
+		}
 
-	if o.compression == "gzip" {
-		client.CallOptions.GetMetricDescriptor = append(client.CallOptions.GetMetricDescriptor,
-			gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
-		client.CallOptions.CreateMetricDescriptor = append(client.CallOptions.CreateMetricDescriptor,
-			gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
-		client.CallOptions.CreateTimeSeries = append(client.CallOptions.CreateTimeSeries,
-			gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
-		client.CallOptions.CreateServiceTimeSeries = append(client.CallOptions.CreateServiceTimeSeries,
-			gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
+		if o.compression == "gzip" {
+			client.CallOptions.GetMetricDescriptor = append(client.CallOptions.GetMetricDescriptor,
+				gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
+			client.CallOptions.CreateMetricDescriptor = append(client.CallOptions.CreateMetricDescriptor,
+				gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
+			client.CallOptions.CreateTimeSeries = append(client.CallOptions.CreateTimeSeries,
+				gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
+			client.CallOptions.CreateServiceTimeSeries = append(client.CallOptions.CreateServiceTimeSeries,
+				gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
+		}
 	}
 
 	cache := map[key]*googlemetricpb.MetricDescriptor{}
@@ -591,10 +595,11 @@ func gaugeToTimeSeries[N int64 | float64](point metricdata.DataPoint[N], metrics
 		return nil, err
 	}
 	return &monitoringpb.TimeSeries{
-		Resource:   mr,
-		Unit:       string(metrics.Unit),
-		MetricKind: googlemetricpb.MetricDescriptor_GAUGE,
-		ValueType:  valueType,
+		Resource:    mr,
+		Unit:        metrics.Unit,
+		Description: metrics.Description,
+		MetricKind:  googlemetricpb.MetricDescriptor_GAUGE,
+		ValueType:   valueType,
 		Points: []*monitoringpb.Point{{
 			Interval: &monitoringpb.TimeInterval{
 				EndTime: timestamp,
@@ -611,10 +616,11 @@ func sumToTimeSeries[N int64 | float64](point metricdata.DataPoint[N], metrics m
 	}
 	value, valueType := numberDataPointToValue[N](point)
 	return &monitoringpb.TimeSeries{
-		Resource:   mr,
-		Unit:       string(metrics.Unit),
-		MetricKind: googlemetricpb.MetricDescriptor_CUMULATIVE,
-		ValueType:  valueType,
+		Resource:    mr,
+		Unit:        metrics.Unit,
+		Description: metrics.Description,
+		MetricKind:  googlemetricpb.MetricDescriptor_CUMULATIVE,
+		ValueType:   valueType,
 		Points: []*monitoringpb.Point{{
 			Interval: interval,
 			Value:    value,
@@ -635,10 +641,11 @@ func histogramToTimeSeries[N int64 | float64](point metricdata.HistogramDataPoin
 		setSumOfSquaredDeviation(point, distributionValue)
 	}
 	return &monitoringpb.TimeSeries{
-		Resource:   mr,
-		Unit:       string(metrics.Unit),
-		MetricKind: googlemetricpb.MetricDescriptor_CUMULATIVE,
-		ValueType:  googlemetricpb.MetricDescriptor_DISTRIBUTION,
+		Resource:    mr,
+		Unit:        metrics.Unit,
+		Description: metrics.Description,
+		MetricKind:  googlemetricpb.MetricDescriptor_CUMULATIVE,
+		ValueType:   googlemetricpb.MetricDescriptor_DISTRIBUTION,
 		Points: []*monitoringpb.Point{{
 			Interval: interval,
 			Value: &monitoringpb.TypedValue{
@@ -658,10 +665,11 @@ func expHistogramToTimeSeries[N int64 | float64](point metricdata.ExponentialHis
 	distributionValue := expHistToDistribution(point, projectID)
 	// TODO: Implement "setSumOfSquaredDeviationExpHist" for parameter "enableSOSD" functionality.
 	return &monitoringpb.TimeSeries{
-		Resource:   mr,
-		Unit:       string(metrics.Unit),
-		MetricKind: googlemetricpb.MetricDescriptor_CUMULATIVE,
-		ValueType:  googlemetricpb.MetricDescriptor_DISTRIBUTION,
+		Resource:    mr,
+		Unit:        metrics.Unit,
+		Description: metrics.Description,
+		MetricKind:  googlemetricpb.MetricDescriptor_CUMULATIVE,
+		ValueType:   googlemetricpb.MetricDescriptor_DISTRIBUTION,
 		Points: []*monitoringpb.Point{{
 			Interval: interval,
 			Value: &monitoringpb.TypedValue{

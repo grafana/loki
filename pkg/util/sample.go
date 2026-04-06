@@ -1,11 +1,11 @@
-package util
+package util //nolint:revive
 
 import (
 	"github.com/cespare/xxhash/v2"
 )
 
 func UniqueSampleHash(lblString string, line []byte) uint64 {
-	uniqueID := make([]byte, 0, len(lblString)+len(line))
+	uniqueID := make([]byte, 0, len(lblString)+len(line)+1)
 	uniqueID = append(uniqueID, lblString...)
 	uniqueID = append(uniqueID, ':')
 	uniqueID = append(uniqueID, line...)

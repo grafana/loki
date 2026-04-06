@@ -61,11 +61,40 @@ func (r *responseDeduper) addAll(dr *DriverResponse) {
 }
 
 func (r *responseDeduper) addPackage(p *Package) {
-	if r.seenPackages[p.ID] != nil {
+	if prev := r.seenPackages[p.ID]; prev != nil {
+		// Package already seen in a previous response. Merge the file lists,
+		// removing duplicates. This can happen when the same package appears
+		// in multiple driver responses that are being merged together.
+		prev.GoFiles = appendUniqueStrings(prev.GoFiles, p.GoFiles)
+		prev.CompiledGoFiles = appendUniqueStrings(prev.CompiledGoFiles, p.CompiledGoFiles)
+		prev.OtherFiles = appendUniqueStrings(prev.OtherFiles, p.OtherFiles)
+		prev.IgnoredFiles = appendUniqueStrings(prev.IgnoredFiles, p.IgnoredFiles)
+		prev.EmbedFiles = appendUniqueStrings(prev.EmbedFiles, p.EmbedFiles)
+		prev.EmbedPatterns = appendUniqueStrings(prev.EmbedPatterns, p.EmbedPatterns)
 		return
 	}
 	r.seenPackages[p.ID] = p
 	r.dr.Packages = append(r.dr.Packages, p)
+}
+
+// appendUniqueStrings appends elements from src to dst, skipping duplicates.
+func appendUniqueStrings(dst, src []string) []string {
+	if len(src) == 0 {
+		return dst
+	}
+
+	seen := make(map[string]bool, len(dst))
+	for _, s := range dst {
+		seen[s] = true
+	}
+
+	for _, s := range src {
+		if !seen[s] {
+			dst = append(dst, s)
+		}
+	}
+
+	return dst
 }
 
 func (r *responseDeduper) addRoot(id string) {
@@ -224,13 +253,22 @@ extractQueries:
 	return response.dr, nil
 }
 
+// abs returns an absolute representation of path, based on cfg.Dir.
+func (cfg *Config) abs(path string) (string, error) {
+	if filepath.IsAbs(path) {
+		return path, nil
+	}
+	// In case cfg.Dir is relative, pass it to filepath.Abs.
+	return filepath.Abs(filepath.Join(cfg.Dir, path))
+}
+
 func (state *golistState) runContainsQueries(response *responseDeduper, queries []string) error {
 	for _, query := range queries {
 		// TODO(matloob): Do only one query per directory.
 		fdir := filepath.Dir(query)
 		// Pass absolute path of directory to go list so that it knows to treat it as a directory,
 		// not a package path.
-		pattern, err := filepath.Abs(fdir)
+		pattern, err := state.cfg.abs(fdir)
 		if err != nil {
 			return fmt.Errorf("could not determine absolute path of file= query path %q: %v", query, err)
 		}
@@ -353,12 +391,6 @@ type jsonPackage struct {
 
 	Error      *packagesinternal.PackageError
 	DepsErrors []*packagesinternal.PackageError
-}
-
-type jsonPackageError struct {
-	ImportStack []string
-	Pos         string
-	Err         string
 }
 
 func otherFiles(p *jsonPackage) [][]string {
@@ -703,9 +735,8 @@ func (state *golistState) getGoVersion() (int, error) {
 // getPkgPath finds the package path of a directory if it's relative to a root
 // directory.
 func (state *golistState) getPkgPath(dir string) (string, bool, error) {
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		return "", false, err
+	if !filepath.IsAbs(dir) {
+		panic("non-absolute dir passed to getPkgPath")
 	}
 	roots, err := state.determineRootDirs()
 	if err != nil {
@@ -715,7 +746,7 @@ func (state *golistState) getPkgPath(dir string) (string, bool, error) {
 	for rdir, rpath := range roots {
 		// Make sure that the directory is in the module,
 		// to avoid creating a path relative to another module.
-		if !strings.HasPrefix(absDir, rdir) {
+		if !strings.HasPrefix(dir, rdir) {
 			continue
 		}
 		// TODO(matloob): This doesn't properly handle symlinks.
@@ -830,6 +861,8 @@ func golistargs(cfg *Config, words []string, goVersion int) []string {
 		// go list doesn't let you pass -test and -find together,
 		// probably because you'd just get the TestMain.
 		fmt.Sprintf("-find=%t", !cfg.Tests && cfg.Mode&findFlags == 0 && !usesExportData(cfg)),
+		// VCS information is not needed when not printing Stale or StaleReason fields
+		"-buildvcs=false",
 	}
 
 	// golang/go#60456: with go1.21 and later, go list serves pgo variants, which

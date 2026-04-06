@@ -26,7 +26,7 @@ import (
 )
 
 // RecordEqual reports whether the two provided records are equal.
-func RecordEqual(left, right arrow.Record) bool {
+func RecordEqual(left, right arrow.RecordBatch) bool {
 	switch {
 	case left.NumCols() != right.NumCols():
 		return false
@@ -46,7 +46,7 @@ func RecordEqual(left, right arrow.Record) bool {
 
 // RecordApproxEqual reports whether the two provided records are approximately equal.
 // For non-floating point columns, it is equivalent to RecordEqual.
-func RecordApproxEqual(left, right arrow.Record, opts ...EqualOption) bool {
+func RecordApproxEqual(left, right arrow.RecordBatch, opts ...EqualOption) bool {
 	switch {
 	case left.NumCols() != right.NumCols():
 		return false
@@ -72,7 +72,7 @@ func RecordApproxEqual(left, right arrow.Record, opts ...EqualOption) bool {
 func chunkedBinaryApply(left, right *arrow.Chunked, fn func(left arrow.Array, lbeg, lend int64, right arrow.Array, rbeg, rend int64) bool) {
 	var (
 		pos               int64
-		length            int64 = int64(left.Len())
+		length            = int64(left.Len())
 		leftIdx, rightIdx int
 		leftPos, rightPos int64
 	)
@@ -118,7 +118,7 @@ func ChunkedEqual(left, right *arrow.Chunked) bool {
 		return false
 	}
 
-	var isequal bool = true
+	var isequal = true
 	chunkedBinaryApply(left, right, func(left arrow.Array, lbeg, lend int64, right arrow.Array, rbeg, rend int64) bool {
 		isequal = SliceEqual(left, lbeg, lend, right, rbeg, rend)
 		return isequal
@@ -240,37 +240,37 @@ func Equal(left, right arrow.Array) bool {
 		return arrayEqualStringView(l, r)
 	case *Int8:
 		r := right.(*Int8)
-		return arrayEqualInt8(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Int16:
 		r := right.(*Int16)
-		return arrayEqualInt16(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Int32:
 		r := right.(*Int32)
-		return arrayEqualInt32(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Int64:
 		r := right.(*Int64)
-		return arrayEqualInt64(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Uint8:
 		r := right.(*Uint8)
-		return arrayEqualUint8(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Uint16:
 		r := right.(*Uint16)
-		return arrayEqualUint16(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Uint32:
 		r := right.(*Uint32)
-		return arrayEqualUint32(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Uint64:
 		r := right.(*Uint64)
-		return arrayEqualUint64(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Float16:
 		r := right.(*Float16)
-		return arrayEqualFloat16(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Float32:
 		r := right.(*Float32)
-		return arrayEqualFloat32(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Float64:
 		r := right.(*Float64)
-		return arrayEqualFloat64(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Decimal32:
 		r := right.(*Decimal32)
 		return arrayEqualDecimal(l, r)
@@ -285,16 +285,16 @@ func Equal(left, right arrow.Array) bool {
 		return arrayEqualDecimal(l, r)
 	case *Date32:
 		r := right.(*Date32)
-		return arrayEqualDate32(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Date64:
 		r := right.(*Date64)
-		return arrayEqualDate64(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Time32:
 		r := right.(*Time32)
-		return arrayEqualTime32(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Time64:
 		r := right.(*Time64)
-		return arrayEqualTime64(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Timestamp:
 		r := right.(*Timestamp)
 		return arrayEqualTimestamp(l, r)
@@ -327,7 +327,7 @@ func Equal(left, right arrow.Array) bool {
 		return arrayEqualMonthDayNanoInterval(l, r)
 	case *Duration:
 		r := right.(*Duration)
-		return arrayEqualDuration(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Map:
 		r := right.(*Map)
 		return arrayEqualMap(l, r)
@@ -502,28 +502,28 @@ func arrayApproxEqual(left, right arrow.Array, opt equalOption) bool {
 		return arrayApproxEqualStringView(l, r)
 	case *Int8:
 		r := right.(*Int8)
-		return arrayEqualInt8(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Int16:
 		r := right.(*Int16)
-		return arrayEqualInt16(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Int32:
 		r := right.(*Int32)
-		return arrayEqualInt32(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Int64:
 		r := right.(*Int64)
-		return arrayEqualInt64(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Uint8:
 		r := right.(*Uint8)
-		return arrayEqualUint8(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Uint16:
 		r := right.(*Uint16)
-		return arrayEqualUint16(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Uint32:
 		r := right.(*Uint32)
-		return arrayEqualUint32(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Uint64:
 		r := right.(*Uint64)
-		return arrayEqualUint64(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Float16:
 		r := right.(*Float16)
 		return arrayApproxEqualFloat16(l, r, opt)
@@ -547,16 +547,16 @@ func arrayApproxEqual(left, right arrow.Array, opt equalOption) bool {
 		return arrayEqualDecimal(l, r)
 	case *Date32:
 		r := right.(*Date32)
-		return arrayEqualDate32(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Date64:
 		r := right.(*Date64)
-		return arrayEqualDate64(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Time32:
 		r := right.(*Time32)
-		return arrayEqualTime32(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Time64:
 		r := right.(*Time64)
-		return arrayEqualTime64(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Timestamp:
 		r := right.(*Timestamp)
 		return arrayEqualTimestamp(l, r)
@@ -589,7 +589,7 @@ func arrayApproxEqual(left, right arrow.Array, opt equalOption) bool {
 		return arrayEqualMonthDayNanoInterval(l, r)
 	case *Duration:
 		r := right.(*Duration)
-		return arrayEqualDuration(l, r)
+		return arrayEqualFixedWidth(l, r)
 	case *Map:
 		r := right.(*Map)
 		if opt.unorderedMapKeys {

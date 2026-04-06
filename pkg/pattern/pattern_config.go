@@ -10,7 +10,6 @@ import (
 
 // PersistenceConfig contains the configuration for pushing detected patterns back to Loki
 type PersistenceConfig struct {
-	Enabled          bool                    `yaml:"enabled,omitempty" doc:"description=Whether pattern persistence is enabled."`
 	LokiAddr         string                  `yaml:"loki_address,omitempty" doc:"description=The address of the Loki instance to push patterns to."`
 	WriteTimeout     time.Duration           `yaml:"timeout,omitempty" doc:"description=The timeout for writing patterns to Loki."`
 	PushPeriod       time.Duration           `yaml:"push_period,omitempty" doc:"description=How long to wait between pattern pushes to Loki."`
@@ -27,12 +26,6 @@ func (cfg *PersistenceConfig) RegisterFlags(fs *flag.FlagSet) {
 }
 
 func (cfg *PersistenceConfig) RegisterFlagsWithPrefix(fs *flag.FlagSet, prefix string) {
-	fs.BoolVar(
-		&cfg.Enabled,
-		prefix+"enabled",
-		false,
-		"Enable pushing detected patterns back to Loki for persistence.",
-	)
 	fs.StringVar(
 		&cfg.LokiAddr,
 		prefix+"loki-address",

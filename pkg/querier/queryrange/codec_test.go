@@ -341,6 +341,35 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 				},
 			},
 		},
+		{
+			"query_range",
+			func() (*http.Request, error) {
+				req, err := http.NewRequest(
+					http.MethodGet,
+					fmt.Sprintf(`/query_range?start=%d&end=%d&query={foo="bar"}&step=10&limit=200&direction=FORWARD`, start.UnixNano(), end.UnixNano()),
+					nil,
+				)
+				if err == nil {
+					req.Header.Set(cacheControlHeader, noCacheVal)
+				}
+				return req, err
+			},
+			&LokiRequest{
+				Query:     `{foo="bar"}`,
+				Limit:     200,
+				Step:      10000, // step is expected in ms
+				Direction: logproto.FORWARD,
+				Path:      "/query_range",
+				StartTs:   start,
+				EndTs:     end,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"}`),
+				},
+				CachingOptions: queryrangebase.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -351,6 +380,47 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 			got, err := DefaultCodec.DecodeRequest(ctx, req, nil)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestParamsFromRequest_CachingOptions(t *testing.T) {
+	expr := syntax.MustParseExpr(`{foo="bar"}`)
+
+	tests := []struct {
+		name string
+		req  queryrangebase.Request
+	}{
+		{
+			name: "LokiRequest",
+			req: &LokiRequest{
+				Query:   `{foo="bar"}`,
+				StartTs: start,
+				EndTs:   end,
+				Plan:    &plan.QueryPlan{AST: expr},
+				CachingOptions: queryrangebase.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
+		{
+			name: "LokiInstantRequest",
+			req: &LokiInstantRequest{
+				Query:  `{foo="bar"}`,
+				TimeTs: start,
+				Plan:   &plan.QueryPlan{AST: expr},
+				CachingOptions: queryrangebase.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params, err := ParamsFromRequest(tt.req)
+			require.NoError(t, err)
+			require.True(t, params.CachingOptions().Disabled, "expected CachingOptions.Disabled to be true")
 		})
 	}
 }
@@ -1412,6 +1482,15 @@ func Test_codec_MergeResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
 						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 16), Line: "16"},
+								{Timestamp: time.Unix(0, 15), Line: "15"},
+								{Timestamp: time.Unix(0, 6), Line: "6"},
+								{Timestamp: time.Unix(0, 5), Line: "5"},
+							},
+						},
+						{
 							Labels: `{foo="bar", level="error"}`,
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 10), Line: "10"},
@@ -1419,15 +1498,6 @@ func Test_codec_MergeResponse(t *testing.T) {
 								{Timestamp: time.Unix(0, 9), Line: "9"},
 								{Timestamp: time.Unix(0, 2), Line: "2"},
 								{Timestamp: time.Unix(0, 1), Line: "1"},
-							},
-						},
-						{
-							Labels: `{foo="bar", level="debug"}`,
-							Entries: []logproto.Entry{
-								{Timestamp: time.Unix(0, 16), Line: "16"},
-								{Timestamp: time.Unix(0, 15), Line: "15"},
-								{Timestamp: time.Unix(0, 6), Line: "6"},
-								{Timestamp: time.Unix(0, 5), Line: "5"},
 							},
 						},
 					},
@@ -1500,19 +1570,19 @@ func Test_codec_MergeResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
 						{
-							Labels: `{foo="bar", level="error"}`,
-							Entries: []logproto.Entry{
-								{Timestamp: time.Unix(0, 10), Line: "10"},
-								{Timestamp: time.Unix(0, 9), Line: "9"},
-								{Timestamp: time.Unix(0, 9), Line: "9"},
-							},
-						},
-						{
 							Labels: `{foo="bar", level="debug"}`,
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 16), Line: "16"},
 								{Timestamp: time.Unix(0, 15), Line: "15"},
 								{Timestamp: time.Unix(0, 6), Line: "6"},
+							},
+						},
+						{
+							Labels: `{foo="bar", level="error"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 10), Line: "10"},
+								{Timestamp: time.Unix(0, 9), Line: "9"},
+								{Timestamp: time.Unix(0, 9), Line: "9"},
 							},
 						},
 					},
@@ -1939,12 +2009,14 @@ var (
 					"prePredicateDecompressedRows": 0,
 					"prePredicateDecompressedBytes": 0,
 					"prePredicateDecompressedStructuredMetadataBytes": 0,
+					"totalPageDownloadTime": 0,
 					"totalRowsAvailable": 0
 				},
 				"totalChunksRef": 0,
 				"totalChunksDownloaded": 0,
 				"chunkRefsFetchTime": 0,
 				"queryReferencedStructuredMetadata": false,
+				"queryUsedV2Engine": false,
 				"pipelineWrapperFilteredLines": 2
 			},
 			"totalBatches": 6,
@@ -1953,6 +2025,7 @@ var (
 			"totalReached": 10
 		},
 		"querier": {
+			"querierExecTime": 0,
 			"store" : {
 				"chunk": {
 					"compressedBytes": 11,
@@ -1979,18 +2052,23 @@ var (
 					"prePredicateDecompressedRows": 0,
 					"prePredicateDecompressedBytes": 0,
 					"prePredicateDecompressedStructuredMetadataBytes": 0,
+					"totalPageDownloadTime": 0,
 					"totalRowsAvailable": 0
 				},
 				"totalChunksRef": 17,
 				"totalChunksDownloaded": 18,
 				"chunkRefsFetchTime": 19,
 				"queryReferencedStructuredMetadata": true,
+				"queryUsedV2Engine": false,
 				"pipelineWrapperFilteredLines": 4
 			}
 		},
 		"index": {
+			"bloomFilterTime": 0,
+			"chunkRefsLookupTime": 0,
 			"postFilterChunks": 0,
 			"totalChunks": 0,
+			"totalStreams": 0,
 			"shardsDuration": 0,
 			"usedBloomFilters": false
 		},
@@ -2540,6 +2618,50 @@ func (b *buffer) Bytes() []byte {
 	return b.buff
 }
 
+// Test_codec_DetectedLabelsResponseProtobufRoundTrip is a regression test for
+// https://github.com/grafana/loki/issues/14605. It ensures that a
+// DetectedLabelsResponse survives a protobuf encode→decode round-trip without
+// data loss. Prior to the fix, decodeResponseProtobuf had no case for
+// *DetectedLabelsRequest and fell through to the default branch, which did not
+// handle QueryResponse_DetectedLabels and returned an internal-server-error.
+func Test_codec_DetectedLabelsResponseProtobufRoundTrip(t *testing.T) {
+	ctx := context.Background()
+
+	want := &DetectedLabelsResponse{
+		Response: &logproto.DetectedLabelsResponse{
+			DetectedLabels: []*logproto.DetectedLabel{
+				{Label: "foo", Cardinality: 42},
+				{Label: "bar", Cardinality: 7},
+			},
+		},
+	}
+
+	// Encode using the protobuf path (Accept: application/vnd.google.protobuf).
+	u := &url.URL{Path: "/loki/api/v1/detected_labels"}
+	encReq := &http.Request{
+		Method:     "GET",
+		RequestURI: u.String(),
+		URL:        u,
+		Header:     http.Header{"Accept": []string{ProtobufType}},
+	}
+	httpResp, err := DefaultCodec.EncodeResponse(ctx, encReq, want)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, httpResp.StatusCode)
+
+	// Decode should recognise *DetectedLabelsRequest and extract the nested
+	// DetectedLabelsResponse from the QueryResponse wrapper.
+	decReq := &DetectedLabelsRequest{
+		path: "/loki/api/v1/detected_labels",
+	}
+	got, err := DefaultCodec.DecodeResponse(ctx, httpResp, decReq)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	gotDetected, ok := got.(*DetectedLabelsResponse)
+	require.True(t, ok, "expected *DetectedLabelsResponse, got %T", got)
+	require.Equal(t, want.Response, gotDetected.Response)
+}
+
 func Benchmark_CodecDecodeLogs(b *testing.B) {
 	ctx := context.Background()
 	u := &url.URL{Path: "/loki/api/v1/query_range"}
@@ -2673,7 +2795,7 @@ func Benchmark_CodecDecodeSeries(b *testing.B) {
 }
 
 func Benchmark_MergeResponses(b *testing.B) {
-	var responses []queryrangebase.Response = make([]queryrangebase.Response, 100)
+	responses := make([]queryrangebase.Response, 100)
 	for i := range responses {
 		responses[i] = &LokiSeriesResponse{
 			Status:     "200",

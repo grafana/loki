@@ -34,7 +34,7 @@ type Hook func(*Peer, string, ...string) bool
 // Server is a simple redis server
 type Server struct {
 	l         net.Listener
-	cmds      map[string]Cmd
+	cmds      map[string]*cmdMeta
 	preHook   Hook
 	peers     map[net.Conn]struct{}
 	mu        sync.Mutex
@@ -62,7 +62,7 @@ func NewServerTLS(addr string, cfg *tls.Config) (*Server, error) {
 
 func newServer(l net.Listener) *Server {
 	s := Server{
-		cmds:  map[string]Cmd{},
+		cmds:  map[string]*cmdMeta{},
 		peers: map[net.Conn]struct{}{},
 		l:     l,
 	}
@@ -143,14 +143,23 @@ func (s *Server) Close() {
 
 // Register a command. It can't have been registered before. Safe to call on a
 // running server.
-func (s *Server) Register(cmd string, f Cmd) error {
+func (s *Server) Register(cmd string, f Cmd, options ...CmdOption) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cmd = strings.ToUpper(cmd)
 	if _, ok := s.cmds[cmd]; ok {
 		return fmt.Errorf("command already registered: %s", cmd)
 	}
-	s.cmds[cmd] = f
+
+	meta := &cmdMeta{
+		handler:  f,
+		readOnly: false,
+	}
+	for _, option := range options {
+		option(meta)
+	}
+	s.cmds[cmd] = meta
+
 	return nil
 }
 
@@ -205,7 +214,7 @@ func (s *Server) Dispatch(c *Peer, args []string) {
 	}
 
 	s.mu.Lock()
-	cb, ok := s.cmds[cmdUp]
+	cmdMeta, ok := s.cmds[cmdUp]
 	s.mu.Unlock()
 	if !ok {
 		c.WriteError(errUnknownCommand(cmd, args))
@@ -215,7 +224,11 @@ func (s *Server) Dispatch(c *Peer, args []string) {
 	s.mu.Lock()
 	s.infoCmds++
 	s.mu.Unlock()
-	cb(c, cmdUp, args)
+	cmdMeta.handler(c, cmdUp, args)
+	if c.SwitchResp3 != nil {
+		c.Resp3 = *c.SwitchResp3
+		c.SwitchResp3 = nil
+	}
 }
 
 // TotalCommands is total (known) commands since this the server started
@@ -223,6 +236,26 @@ func (s *Server) TotalCommands() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.infoCmds
+}
+
+// IsRegisteredCommand checks if a command is registered
+func (s *Server) IsRegisteredCommand(cmd string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cmdUp := strings.ToUpper(cmd)
+	_, ok := s.cmds[cmdUp]
+	return ok
+}
+
+// IsReadOnlyCommand checks if a command is marked as read-only
+func (s *Server) IsReadOnlyCommand(cmd string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cmdUp := strings.ToUpper(cmd)
+	if cmdMeta, ok := s.cmds[cmdUp]; ok {
+		return cmdMeta.readOnly
+	}
+	return false
 }
 
 // ClientsLen gives the number of connected clients right now
@@ -245,6 +278,7 @@ type Peer struct {
 	w            *bufio.Writer
 	closed       bool
 	Resp3        bool
+	SwitchResp3  *bool       // we'll switch to this version _after_ the command
 	Ctx          interface{} // anything goes, server won't touch this
 	onDisconnect []func()    // list of callbacks
 	mu           sync.Mutex  // for Block()

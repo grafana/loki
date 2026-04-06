@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -16,16 +16,14 @@ package tsdb
 import (
 	"testing"
 
-	"github.com/prometheus/prometheus/tsdb/tsdbutil"
-
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunks"
+	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 )
 
 const (
@@ -46,14 +44,14 @@ type testValue struct {
 
 type sampleTypeScenario struct {
 	sampleType string
-	appendFunc func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error)
+	appendFunc func(appender storage.LimitedAppenderV1, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error)
 	sampleFunc func(ts, value int64) sample
 }
 
 var sampleTypeScenarios = map[string]sampleTypeScenario{
 	float: {
 		sampleType: sampleMetricTypeFloat,
-		appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
+		appendFunc: func(appender storage.LimitedAppenderV1, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
 			s := sample{t: ts, f: float64(value)}
 			ref, err := appender.Append(0, lbls, ts, s.f)
 			return ref, s, err
@@ -64,7 +62,7 @@ var sampleTypeScenarios = map[string]sampleTypeScenario{
 	},
 	intHistogram: {
 		sampleType: sampleMetricTypeHistogram,
-		appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
+		appendFunc: func(appender storage.LimitedAppenderV1, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
 			s := sample{t: ts, h: tsdbutil.GenerateTestHistogram(value)}
 			ref, err := appender.AppendHistogram(0, lbls, ts, s.h, nil)
 			return ref, s, err
@@ -75,7 +73,7 @@ var sampleTypeScenarios = map[string]sampleTypeScenario{
 	},
 	floatHistogram: {
 		sampleType: sampleMetricTypeHistogram,
-		appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
+		appendFunc: func(appender storage.LimitedAppenderV1, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
 			s := sample{t: ts, fh: tsdbutil.GenerateTestFloatHistogram(value)}
 			ref, err := appender.AppendHistogram(0, lbls, ts, nil, s.fh)
 			return ref, s, err
@@ -86,7 +84,7 @@ var sampleTypeScenarios = map[string]sampleTypeScenario{
 	},
 	customBucketsIntHistogram: {
 		sampleType: sampleMetricTypeHistogram,
-		appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
+		appendFunc: func(appender storage.LimitedAppenderV1, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
 			s := sample{t: ts, h: tsdbutil.GenerateTestCustomBucketsHistogram(value)}
 			ref, err := appender.AppendHistogram(0, lbls, ts, s.h, nil)
 			return ref, s, err
@@ -97,7 +95,7 @@ var sampleTypeScenarios = map[string]sampleTypeScenario{
 	},
 	customBucketsFloatHistogram: {
 		sampleType: sampleMetricTypeHistogram,
-		appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
+		appendFunc: func(appender storage.LimitedAppenderV1, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
 			s := sample{t: ts, fh: tsdbutil.GenerateTestCustomBucketsFloatHistogram(value)}
 			ref, err := appender.AppendHistogram(0, lbls, ts, nil, s.fh)
 			return ref, s, err
@@ -108,7 +106,7 @@ var sampleTypeScenarios = map[string]sampleTypeScenario{
 	},
 	gaugeIntHistogram: {
 		sampleType: sampleMetricTypeHistogram,
-		appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
+		appendFunc: func(appender storage.LimitedAppenderV1, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
 			s := sample{t: ts, h: tsdbutil.GenerateTestGaugeHistogram(value)}
 			ref, err := appender.AppendHistogram(0, lbls, ts, s.h, nil)
 			return ref, s, err
@@ -119,7 +117,7 @@ var sampleTypeScenarios = map[string]sampleTypeScenario{
 	},
 	gaugeFloatHistogram: {
 		sampleType: sampleMetricTypeHistogram,
-		appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
+		appendFunc: func(appender storage.LimitedAppenderV1, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
 			s := sample{t: ts, fh: tsdbutil.GenerateTestGaugeFloatHistogram(value)}
 			ref, err := appender.AppendHistogram(0, lbls, ts, nil, s.fh)
 			return ref, s, err
@@ -176,7 +174,7 @@ func requireEqualSamples(t *testing.T, name string, expected, actual []chunks.Sa
 		}
 	}
 
-	require.Equal(t, len(expected), len(actual), "Length not equal to expected for %s", name)
+	require.Len(t, actual, len(expected), "Length not equal to expected for %s", name)
 	for i, s := range expected {
 		expectedSample := s
 		actualSample := actual[i]

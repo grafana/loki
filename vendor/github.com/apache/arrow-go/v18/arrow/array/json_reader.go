@@ -28,8 +28,10 @@ import (
 	"github.com/apache/arrow-go/v18/internal/json"
 )
 
-type Option func(config)
-type config interface{}
+type (
+	Option func(config)
+	config interface{}
+)
 
 // WithChunk sets the chunk size for reading in json records. The default is to
 // read in one row per record batch as a single object. If chunk size is set to
@@ -72,8 +74,8 @@ type JSONReader struct {
 
 	bldr *RecordBuilder
 
-	refs int64
-	cur  arrow.Record
+	refs atomic.Int64
+	cur  arrow.RecordBatch
 	err  error
 
 	chunk int
@@ -93,9 +95,10 @@ func NewJSONReader(r io.Reader, schema *arrow.Schema, opts ...Option) *JSONReade
 	rr := &JSONReader{
 		r:      json.NewDecoder(r),
 		schema: schema,
-		refs:   1,
 		chunk:  1,
 	}
+	rr.refs.Add(1)
+
 	for _, o := range opts {
 		o(rr)
 	}
@@ -121,18 +124,24 @@ func (r *JSONReader) Err() error { return r.err }
 
 func (r *JSONReader) Schema() *arrow.Schema { return r.schema }
 
+// RecordBatch returns the last read in record batch. The returned record batch is only valid
+// until the next call to Next unless Retain is called on the record batch itself.
+func (r *JSONReader) RecordBatch() arrow.RecordBatch { return r.cur }
+
 // Record returns the last read in record. The returned record is only valid
 // until the next call to Next unless Retain is called on the record itself.
-func (r *JSONReader) Record() arrow.Record { return r.cur }
+//
+// Deprecated: Use [RecordBatch] instead.
+func (r *JSONReader) Record() arrow.Record { return r.RecordBatch() }
 
 func (r *JSONReader) Retain() {
-	atomic.AddInt64(&r.refs, 1)
+	r.refs.Add(1)
 }
 
 func (r *JSONReader) Release() {
-	debug.Assert(atomic.LoadInt64(&r.refs) > 0, "too many releases")
+	debug.Assert(r.refs.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&r.refs, -1) == 0 {
+	if r.refs.Add(-1) == 0 {
 		if r.cur != nil {
 			r.cur.Release()
 			r.bldr.Release()
@@ -141,7 +150,7 @@ func (r *JSONReader) Release() {
 	}
 }
 
-// Next returns true if it read in a record, which will be available via Record
+// Next returns true if it read in a record, which will be available via RecordBatch
 // and false if there is either an error or the end of the reader.
 func (r *JSONReader) Next() bool {
 	if r.cur != nil {
@@ -172,7 +181,7 @@ func (r *JSONReader) nextall() bool {
 	for r.readNext() {
 	}
 
-	r.cur = r.bldr.NewRecord()
+	r.cur = r.bldr.NewRecordBatch()
 	return r.cur.NumRows() > 0
 }
 
@@ -181,12 +190,12 @@ func (r *JSONReader) next1() bool {
 		return false
 	}
 
-	r.cur = r.bldr.NewRecord()
+	r.cur = r.bldr.NewRecordBatch()
 	return true
 }
 
 func (r *JSONReader) nextn() bool {
-	var n = 0
+	n := 0
 
 	for i := 0; i < r.chunk && !r.done; i, n = i+1, n+1 {
 		if !r.readNext() {
@@ -195,11 +204,9 @@ func (r *JSONReader) nextn() bool {
 	}
 
 	if n > 0 {
-		r.cur = r.bldr.NewRecord()
+		r.cur = r.bldr.NewRecordBatch()
 	}
 	return n > 0
 }
 
-var (
-	_ RecordReader = (*JSONReader)(nil)
-)
+var _ RecordReader = (*JSONReader)(nil)

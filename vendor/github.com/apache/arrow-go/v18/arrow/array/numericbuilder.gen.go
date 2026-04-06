@@ -24,7 +24,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -42,7 +41,9 @@ type Int64Builder struct {
 }
 
 func NewInt64Builder(mem memory.Allocator) *Int64Builder {
-	return &Int64Builder{builder: builder{refCount: 1, mem: mem}}
+	b := &Int64Builder{builder: builder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Int64Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Int64 }
@@ -50,9 +51,9 @@ func (b *Int64Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Int64
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Int64Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -217,7 +218,29 @@ func (b *Int64Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v, 10, 8*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(int64(fval)) || fval < -9223372036854775808.0 || fval >= 9223372036854775808.0 {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -229,7 +252,29 @@ func (b *Int64Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(int64(v))
 	case json.Number:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v.String(), 10, 8*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(int64(fval)) || fval < -9223372036854775808.0 || fval >= 9223372036854775808.0 {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -281,7 +326,9 @@ type Uint64Builder struct {
 }
 
 func NewUint64Builder(mem memory.Allocator) *Uint64Builder {
-	return &Uint64Builder{builder: builder{refCount: 1, mem: mem}}
+	b := &Uint64Builder{builder: builder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Uint64Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Uint64 }
@@ -289,9 +336,9 @@ func (b *Uint64Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Uint
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Uint64Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -456,7 +503,29 @@ func (b *Uint64Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v, 10, 8*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint64(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -468,7 +537,29 @@ func (b *Uint64Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(uint64(v))
 	case json.Number:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v.String(), 10, 8*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint64(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint64(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -520,7 +611,9 @@ type Float64Builder struct {
 }
 
 func NewFloat64Builder(mem memory.Allocator) *Float64Builder {
-	return &Float64Builder{builder: builder{refCount: 1, mem: mem}}
+	b := &Float64Builder{builder: builder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Float64Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Float64 }
@@ -528,9 +621,9 @@ func (b *Float64Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Flo
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Float64Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -759,7 +852,9 @@ type Int32Builder struct {
 }
 
 func NewInt32Builder(mem memory.Allocator) *Int32Builder {
-	return &Int32Builder{builder: builder{refCount: 1, mem: mem}}
+	b := &Int32Builder{builder: builder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Int32Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Int32 }
@@ -767,9 +862,9 @@ func (b *Int32Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Int32
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Int32Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -934,7 +1029,31 @@ func (b *Int32Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v, 10, 4*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			minVal := float64(int64(-1) << (4*8 - 1))
+			maxVal := float64(int64(1) << (4*8 - 1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -946,7 +1065,31 @@ func (b *Int32Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(int32(v))
 	case json.Number:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v.String(), 10, 4*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			minVal := float64(int64(-1) << (4*8 - 1))
+			maxVal := float64(int64(1) << (4*8 - 1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -998,7 +1141,9 @@ type Uint32Builder struct {
 }
 
 func NewUint32Builder(mem memory.Allocator) *Uint32Builder {
-	return &Uint32Builder{builder: builder{refCount: 1, mem: mem}}
+	b := &Uint32Builder{builder: builder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Uint32Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Uint32 }
@@ -1006,9 +1151,9 @@ func (b *Uint32Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Uint
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Uint32Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -1173,7 +1318,29 @@ func (b *Uint32Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v, 10, 4*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint32(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -1185,7 +1352,29 @@ func (b *Uint32Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(uint32(v))
 	case json.Number:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v.String(), 10, 4*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint32(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint32(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -1237,7 +1426,9 @@ type Float32Builder struct {
 }
 
 func NewFloat32Builder(mem memory.Allocator) *Float32Builder {
-	return &Float32Builder{builder: builder{refCount: 1, mem: mem}}
+	b := &Float32Builder{builder: builder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Float32Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Float32 }
@@ -1245,9 +1436,9 @@ func (b *Float32Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Flo
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Float32Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -1476,7 +1667,9 @@ type Int16Builder struct {
 }
 
 func NewInt16Builder(mem memory.Allocator) *Int16Builder {
-	return &Int16Builder{builder: builder{refCount: 1, mem: mem}}
+	b := &Int16Builder{builder: builder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Int16Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Int16 }
@@ -1484,9 +1677,9 @@ func (b *Int16Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Int16
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Int16Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -1651,7 +1844,31 @@ func (b *Int16Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v, 10, 2*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			minVal := float64(int64(-1) << (2*8 - 1))
+			maxVal := float64(int64(1) << (2*8 - 1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -1663,7 +1880,31 @@ func (b *Int16Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(int16(v))
 	case json.Number:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v.String(), 10, 2*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			minVal := float64(int64(-1) << (2*8 - 1))
+			maxVal := float64(int64(1) << (2*8 - 1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -1715,7 +1956,9 @@ type Uint16Builder struct {
 }
 
 func NewUint16Builder(mem memory.Allocator) *Uint16Builder {
-	return &Uint16Builder{builder: builder{refCount: 1, mem: mem}}
+	b := &Uint16Builder{builder: builder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Uint16Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Uint16 }
@@ -1723,9 +1966,9 @@ func (b *Uint16Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Uint
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Uint16Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -1890,7 +2133,29 @@ func (b *Uint16Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v, 10, 2*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint16(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -1902,7 +2167,29 @@ func (b *Uint16Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(uint16(v))
 	case json.Number:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v.String(), 10, 2*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint16(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint16(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -1954,7 +2241,9 @@ type Int8Builder struct {
 }
 
 func NewInt8Builder(mem memory.Allocator) *Int8Builder {
-	return &Int8Builder{builder: builder{refCount: 1, mem: mem}}
+	b := &Int8Builder{builder: builder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Int8Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Int8 }
@@ -1962,9 +2251,9 @@ func (b *Int8Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Int8 }
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Int8Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -2129,7 +2418,31 @@ func (b *Int8Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v, 10, 1*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			minVal := float64(int64(-1) << (1*8 - 1))
+			maxVal := float64(int64(1) << (1*8 - 1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(int8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -2141,7 +2454,31 @@ func (b *Int8Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(int8(v))
 	case json.Number:
+		// Try ParseInt first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseInt(v.String(), 10, 1*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			minVal := float64(int64(-1) << (1*8 - 1))
+			maxVal := float64(int64(1) << (1*8 - 1))
+			if fval != float64(int64(fval)) || fval < minVal || fval >= maxVal {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(int8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = int64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -2193,7 +2530,9 @@ type Uint8Builder struct {
 }
 
 func NewUint8Builder(mem memory.Allocator) *Uint8Builder {
-	return &Uint8Builder{builder: builder{refCount: 1, mem: mem}}
+	b := &Uint8Builder{builder: builder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Uint8Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Uint8 }
@@ -2201,9 +2540,9 @@ func (b *Uint8Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Uint8
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Uint8Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -2368,7 +2707,29 @@ func (b *Uint8Builder) UnmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 
 	case string:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v, 10, 1*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v, 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint8(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v,
+					Type:   reflect.TypeOf(uint8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v,
@@ -2380,7 +2741,29 @@ func (b *Uint8Builder) UnmarshalOne(dec *json.Decoder) error {
 	case float64:
 		b.Append(uint8(v))
 	case json.Number:
+		// Try ParseUint first for direct integer strings, fall back to ParseFloat for exponential notation
 		f, err := strconv.ParseUint(v.String(), 10, 1*8)
+		if err != nil {
+			// Could be exponential notation - try parsing as float
+			fval, ferr := strconv.ParseFloat(v.String(), 64)
+			if ferr != nil {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			// Check if it's a whole number and in valid range
+			if fval != float64(uint64(fval)) || fval < 0 || fval > float64(^uint8(0)) {
+				return &json.UnmarshalTypeError{
+					Value:  v.String(),
+					Type:   reflect.TypeOf(uint8(0)),
+					Offset: dec.InputOffset(),
+				}
+			}
+			f = uint64(fval)
+			err = nil // Clear error after successful float parsing
+		}
 		if err != nil {
 			return &json.UnmarshalTypeError{
 				Value:  v.String(),
@@ -2433,7 +2816,9 @@ type Time32Builder struct {
 }
 
 func NewTime32Builder(mem memory.Allocator, dtype *arrow.Time32Type) *Time32Builder {
-	return &Time32Builder{builder: builder{refCount: 1, mem: mem}, dtype: dtype}
+	b := &Time32Builder{builder: builder{mem: mem}, dtype: dtype}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Time32Builder) Type() arrow.DataType { return b.dtype }
@@ -2441,9 +2826,9 @@ func (b *Time32Builder) Type() arrow.DataType { return b.dtype }
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Time32Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -2673,7 +3058,9 @@ type Time64Builder struct {
 }
 
 func NewTime64Builder(mem memory.Allocator, dtype *arrow.Time64Type) *Time64Builder {
-	return &Time64Builder{builder: builder{refCount: 1, mem: mem}, dtype: dtype}
+	b := &Time64Builder{builder: builder{mem: mem}, dtype: dtype}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Time64Builder) Type() arrow.DataType { return b.dtype }
@@ -2681,9 +3068,9 @@ func (b *Time64Builder) Type() arrow.DataType { return b.dtype }
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Time64Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -2912,7 +3299,9 @@ type Date32Builder struct {
 }
 
 func NewDate32Builder(mem memory.Allocator) *Date32Builder {
-	return &Date32Builder{builder: builder{refCount: 1, mem: mem}}
+	b := &Date32Builder{builder: builder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Date32Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Date32 }
@@ -2920,9 +3309,9 @@ func (b *Date32Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Date
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Date32Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -3151,7 +3540,9 @@ type Date64Builder struct {
 }
 
 func NewDate64Builder(mem memory.Allocator) *Date64Builder {
-	return &Date64Builder{builder: builder{refCount: 1, mem: mem}}
+	b := &Date64Builder{builder: builder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *Date64Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Date64 }
@@ -3159,9 +3550,9 @@ func (b *Date64Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.Date
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Date64Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -3391,7 +3782,9 @@ type DurationBuilder struct {
 }
 
 func NewDurationBuilder(mem memory.Allocator, dtype *arrow.DurationType) *DurationBuilder {
-	return &DurationBuilder{builder: builder{refCount: 1, mem: mem}, dtype: dtype}
+	b := &DurationBuilder{builder: builder{mem: mem}, dtype: dtype}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *DurationBuilder) Type() arrow.DataType { return b.dtype }
@@ -3399,9 +3792,9 @@ func (b *DurationBuilder) Type() arrow.DataType { return b.dtype }
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *DurationBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil

@@ -14,8 +14,12 @@ type rangeReader interface {
 	// Size returns the full size of the object.
 	Size(ctx context.Context) (int64, error)
 
+	// Read returns a reader over the entire object. Callers may create multiple
+	// concurrent instances of Read.
+	Read(ctx context.Context) (io.ReadCloser, error)
+
 	// ReadRange returns a reader over a range of bytes. Callers may create
-	// multiple current instance of ReadRange.
+	// multiple concurrent instances of ReadRange.
 	ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error)
 }
 
@@ -32,6 +36,10 @@ func (rr *bucketRangeReader) Size(ctx context.Context) (int64, error) {
 	return attrs.Size, nil
 }
 
+func (rr *bucketRangeReader) Read(ctx context.Context) (io.ReadCloser, error) {
+	return rr.bucket.Get(ctx, rr.path)
+}
+
 func (rr *bucketRangeReader) ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
 	return rr.bucket.GetRange(ctx, rr.path, offset, length)
 }
@@ -41,12 +49,24 @@ type readerAtRangeReader struct {
 	r    io.ReaderAt
 }
 
-func (rr *readerAtRangeReader) Size(_ context.Context) (int64, error) {
+func (rr *readerAtRangeReader) Size(ctx context.Context) (int64, error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
 	return rr.size, nil
 }
 
-func (rr *readerAtRangeReader) ReadRange(_ context.Context, offset int64, length int64) (io.ReadCloser, error) {
-	if length > math.MaxInt {
+func (rr *readerAtRangeReader) Read(ctx context.Context) (io.ReadCloser, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	return io.NopCloser(io.NewSectionReader(rr.r, 0, rr.size)), nil
+}
+
+func (rr *readerAtRangeReader) ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	} else if length > math.MaxInt {
 		return nil, fmt.Errorf("length too large: %d", length)
 	}
 	return io.NopCloser(io.NewSectionReader(rr.r, offset, length)), nil

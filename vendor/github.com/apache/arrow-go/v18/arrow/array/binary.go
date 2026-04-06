@@ -45,17 +45,17 @@ type Binary struct {
 // NewBinaryData constructs a new Binary array from data.
 func NewBinaryData(data arrow.ArrayData) *Binary {
 	a := &Binary{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
 
 // Value returns the slice at index i. This value should not be mutated.
 func (a *Binary) Value(i int) []byte {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	idx := a.array.data.offset + i
+	idx := a.data.offset + i
 	return a.valueBytes[a.valueOffsets[idx]:a.valueOffsets[idx+1]]
 }
 
@@ -75,10 +75,10 @@ func (a *Binary) ValueString(i int) string {
 }
 
 func (a *Binary) ValueOffset(i int) int {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return int(a.valueOffsets[a.array.data.offset+i])
+	return int(a.valueOffsets[a.data.offset+i])
 }
 
 func (a *Binary) ValueOffset64(i int) int64 {
@@ -86,22 +86,22 @@ func (a *Binary) ValueOffset64(i int) int64 {
 }
 
 func (a *Binary) ValueLen(i int) int {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	beg := a.array.data.offset + i
+	beg := a.data.offset + i
 	return int(a.valueOffsets[beg+1] - a.valueOffsets[beg])
 }
 
 func (a *Binary) ValueOffsets() []int32 {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length + 1
+	beg := a.data.offset
+	end := beg + a.data.length + 1
 	return a.valueOffsets[beg:end]
 }
 
 func (a *Binary) ValueBytes() []byte {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length
+	beg := a.data.offset
+	end := beg + a.data.length
 	return a.valueBytes[a.valueOffsets[beg]:a.valueOffsets[end]]
 }
 
@@ -138,11 +138,11 @@ func (a *Binary) setData(data *Data) {
 		a.valueOffsets = arrow.Int32Traits.CastFromBytes(valueOffsets.Bytes())
 	}
 
-	if a.array.data.length < 1 {
+	if a.data.length < 1 {
 		return
 	}
 
-	expNumOffsets := a.array.data.offset + a.array.data.length + 1
+	expNumOffsets := a.data.offset + a.data.length + 1
 	if len(a.valueOffsets) < expNumOffsets {
 		panic(fmt.Errorf("arrow/array: binary offset buffer must have at least %d values", expNumOffsets))
 	}
@@ -189,16 +189,16 @@ type LargeBinary struct {
 
 func NewLargeBinaryData(data arrow.ArrayData) *LargeBinary {
 	a := &LargeBinary{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
 
 func (a *LargeBinary) Value(i int) []byte {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	idx := a.array.data.offset + i
+	idx := a.data.offset + i
 	return a.valueBytes[a.valueOffsets[idx]:a.valueOffsets[idx+1]]
 }
 
@@ -208,16 +208,17 @@ func (a *LargeBinary) ValueStr(i int) string {
 	}
 	return base64.StdEncoding.EncodeToString(a.Value(i))
 }
+
 func (a *LargeBinary) ValueString(i int) string {
 	b := a.Value(i)
 	return *(*string)(unsafe.Pointer(&b))
 }
 
 func (a *LargeBinary) ValueOffset(i int) int64 {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return a.valueOffsets[a.array.data.offset+i]
+	return a.valueOffsets[a.data.offset+i]
 }
 
 func (a *LargeBinary) ValueOffset64(i int) int64 {
@@ -225,22 +226,22 @@ func (a *LargeBinary) ValueOffset64(i int) int64 {
 }
 
 func (a *LargeBinary) ValueLen(i int) int {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	beg := a.array.data.offset + i
+	beg := a.data.offset + i
 	return int(a.valueOffsets[beg+1] - a.valueOffsets[beg])
 }
 
 func (a *LargeBinary) ValueOffsets() []int64 {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length + 1
+	beg := a.data.offset
+	end := beg + a.data.length + 1
 	return a.valueOffsets[beg:end]
 }
 
 func (a *LargeBinary) ValueBytes() []byte {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length
+	beg := a.data.offset
+	end := beg + a.data.length
 	return a.valueBytes[a.valueOffsets[beg]:a.valueOffsets[end]]
 }
 
@@ -277,11 +278,11 @@ func (a *LargeBinary) setData(data *Data) {
 		a.valueOffsets = arrow.Int64Traits.CastFromBytes(valueOffsets.Bytes())
 	}
 
-	if a.array.data.length < 1 {
+	if a.data.length < 1 {
 		return
 	}
 
-	expNumOffsets := a.array.data.offset + a.array.data.length + 1
+	expNumOffsets := a.data.offset + a.data.length + 1
 	if len(a.valueOffsets) < expNumOffsets {
 		panic(fmt.Errorf("arrow/array: large binary offset buffer must have at least %d values", expNumOffsets))
 	}
@@ -333,7 +334,7 @@ type BinaryView struct {
 
 func NewBinaryViewData(data arrow.ArrayData) *BinaryView {
 	a := &BinaryView{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -352,10 +353,10 @@ func (a *BinaryView) setData(data *Data) {
 }
 
 func (a *BinaryView) ValueHeader(i int) *arrow.ViewHeader {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return &a.values[a.array.data.offset+i]
+	return &a.values[a.data.offset+i]
 }
 
 func (a *BinaryView) Value(i int) []byte {
@@ -450,4 +451,8 @@ var (
 
 	_ BinaryLike = (*Binary)(nil)
 	_ BinaryLike = (*LargeBinary)(nil)
+
+	_ arrow.TypedArray[[]byte] = (*Binary)(nil)
+	_ arrow.TypedArray[[]byte] = (*LargeBinary)(nil)
+	_ arrow.TypedArray[[]byte] = (*BinaryView)(nil)
 )

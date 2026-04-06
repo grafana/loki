@@ -50,6 +50,11 @@ func (m *MetricsServiceConfig) MarshalToSizedBufferVTStrict(dAtA []byte) (int, e
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.BatchSize != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BatchSize))
+		i--
+		dAtA[i] = 0x30
+	}
 	if m.HistogramEmitMode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HistogramEmitMode))
 		i--
@@ -133,6 +138,9 @@ func (m *MetricsServiceConfig) SizeVT() (n int) {
 	}
 	if m.HistogramEmitMode != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.HistogramEmitMode))
+	}
+	if m.BatchSize != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.BatchSize))
 	}
 	n += len(m.unknownFields)
 	return n

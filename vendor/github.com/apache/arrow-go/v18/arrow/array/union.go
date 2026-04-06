@@ -23,7 +23,6 @@ import (
 	"math"
 	"reflect"
 	"strings"
-	"sync/atomic"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
@@ -246,7 +245,7 @@ func NewSparseUnion(dt *arrow.SparseUnionType, length int, children []arrow.Arra
 // NewSparseUnionData constructs a SparseUnion array from the given ArrayData object.
 func NewSparseUnionData(data arrow.ArrayData) *SparseUnion {
 	a := &SparseUnion{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -506,7 +505,7 @@ func NewDenseUnion(dt *arrow.DenseUnionType, length int, children []arrow.Array,
 // NewDenseUnionData constructs a DenseUnion array from the given ArrayData object.
 func NewDenseUnionData(data arrow.ArrayData) *DenseUnion {
 	a := &DenseUnion{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -736,12 +735,12 @@ type unionBuilder struct {
 	typesBuilder *int8BufferBuilder
 }
 
-func newUnionBuilder(mem memory.Allocator, children []Builder, typ arrow.UnionType) unionBuilder {
+func newUnionBuilder(mem memory.Allocator, children []Builder, typ arrow.UnionType) *unionBuilder {
 	if children == nil {
 		children = make([]Builder, 0)
 	}
 	b := unionBuilder{
-		builder:         builder{refCount: 1, mem: mem},
+		builder:         builder{mem: mem},
 		mode:            typ.Mode(),
 		codes:           typ.TypeCodes(),
 		children:        children,
@@ -750,6 +749,7 @@ func newUnionBuilder(mem memory.Allocator, children []Builder, typ arrow.UnionTy
 		childFields:     make([]arrow.Field, len(children)),
 		typesBuilder:    newInt8BufferBuilder(mem),
 	}
+	b.refCount.Add(1)
 
 	b.typeIDtoChildID[0] = arrow.InvalidUnionChildID
 	for i := 1; i < len(b.typeIDtoChildID); i *= 2 {
@@ -767,7 +767,7 @@ func newUnionBuilder(mem memory.Allocator, children []Builder, typ arrow.UnionTy
 		b.typeIDtoBuilder[typeID] = c
 	}
 
-	return b
+	return &b
 }
 
 func (b *unionBuilder) NumChildren() int {
@@ -795,9 +795,9 @@ func (b *unionBuilder) reserve(elements int, resize func(int)) {
 }
 
 func (b *unionBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		for _, c := range b.children {
 			c.Release()
 		}
@@ -854,7 +854,6 @@ func (b *unionBuilder) nextTypeID() arrow.UnionTypeCode {
 	id := b.denseTypeID
 	b.denseTypeID++
 	return id
-
 }
 
 func (b *unionBuilder) newData() *Data {
@@ -879,7 +878,7 @@ func (b *unionBuilder) newData() *Data {
 // that they have the correct number of preceding elements that have been
 // added to the builder beforehand.
 type SparseUnionBuilder struct {
-	unionBuilder
+	*unionBuilder
 }
 
 // NewEmptySparseUnionBuilder is a helper to construct a SparseUnionBuilder
@@ -1109,7 +1108,7 @@ func (b *SparseUnionBuilder) UnmarshalOne(dec *json.Decoder) error {
 // methods. You can also add new types to the union on the fly by using
 // AppendChild.
 type DenseUnionBuilder struct {
-	unionBuilder
+	*unionBuilder
 
 	offsetsBuilder *int32BufferBuilder
 }
@@ -1228,9 +1227,9 @@ func (b *DenseUnionBuilder) Append(nextType arrow.UnionTypeCode) {
 }
 
 func (b *DenseUnionBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		for _, c := range b.children {
 			c.Release()
 		}

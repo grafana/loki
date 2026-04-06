@@ -35,7 +35,7 @@ func NewFromEnv(serviceName string, options ...jaegercfg.Option) (io.Closer, err
 	}
 
 	if cfg.Sampler.SamplingServerURL == "" && cfg.Reporter.LocalAgentHostPort == "" && cfg.Reporter.CollectorEndpoint == "" {
-		return nil, ErrBlankTraceConfiguration
+		return nil, ErrBlankJaegerTraceConfiguration
 	}
 
 	return installJaeger(serviceName, cfg, options...)

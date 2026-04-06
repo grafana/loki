@@ -52,18 +52,18 @@ func (a *File) Close() error {
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.Remove(a.File.Name())
+			_ = os.Remove(a.Name())
 		}
 	}()
 
 	merr := multierror.New()
-	merr.Add(a.File.Sync())
+	merr.Add(a.Sync())
 	merr.Add(a.File.Close())
 	if err := merr.Err(); err != nil {
 		return err
 	}
 
-	if err := os.Rename(a.File.Name(), a.finalPath); err != nil {
+	if err := os.Rename(a.Name(), a.finalPath); err != nil {
 		return err
 	}
 

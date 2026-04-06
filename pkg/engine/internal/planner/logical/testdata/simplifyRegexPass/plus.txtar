@@ -1,0 +1,11 @@
+".+" regexes should check for at least one character.
+
+-- column --
+utf8.builtin.message
+
+-- regex --
+.+
+
+-- expect --
+%1 = NEQ builtin.message ""
+RETURN %1

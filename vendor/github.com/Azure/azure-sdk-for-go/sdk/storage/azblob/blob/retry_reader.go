@@ -101,7 +101,6 @@ func (s *RetryReader) setResponse(r io.ReadCloser) {
 // Read from retry reader
 func (s *RetryReader) Read(p []byte) (n int, err error) {
 	for try := int32(0); ; try++ {
-		//fmt.Println(try)       // Comment out for debugging.
 		if s.countWasBounded && s.info.Range.Count == CountToEnd {
 			// User specified an original count and the remaining bytes are 0, return 0, EOF
 			return 0, io.EOF

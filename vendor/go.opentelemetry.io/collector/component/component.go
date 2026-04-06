@@ -46,7 +46,7 @@ type Component interface {
 	// If there are any background operations running by the component they must be aborted before
 	// this function returns. Remember that if you started any long-running background operations from
 	// the Start() method, those operations must be also cancelled. If there are any buffers in the
-	// component, they should be cleared and the data sent immediately to the next component.
+	// component, they should be flushed with the data being sent immediately to the next component.
 	//
 	// The component's lifecycle is completed once the Shutdown() method returns. No other
 	// methods of the component are called after that. If necessary a new component with
@@ -78,31 +78,20 @@ func (f ShutdownFunc) Shutdown(ctx context.Context) error {
 }
 
 // Kind represents component kinds.
-type Kind int
+type Kind struct {
+	name string
+}
 
-const (
-	_ Kind = iota // skip 0, start types from 1.
-	KindReceiver
-	KindProcessor
-	KindExporter
-	KindExtension
-	KindConnector
+var (
+	KindReceiver  = Kind{name: "Receiver"}
+	KindProcessor = Kind{name: "Processor"}
+	KindExporter  = Kind{name: "Exporter"}
+	KindExtension = Kind{name: "Extension"}
+	KindConnector = Kind{name: "Connector"}
 )
 
 func (k Kind) String() string {
-	switch k {
-	case KindReceiver:
-		return "Receiver"
-	case KindProcessor:
-		return "Processor"
-	case KindExporter:
-		return "Exporter"
-	case KindExtension:
-		return "Extension"
-	case KindConnector:
-		return "Connector"
-	}
-	return ""
+	return k.name
 }
 
 // StabilityLevel represents the stability level of the component created by the factory.

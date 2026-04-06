@@ -14,7 +14,8 @@ import (
 // as needed, and sends it to the next processing node if any or to the destination.
 type Traces interface {
 	internal.BaseConsumer
-	// ConsumeTraces receives ptrace.Traces for consumption.
+	// ConsumeTraces processes the traces. After the function returns, the traces are no longer accessible,
+	// and accessing them is considered undefined behavior.
 	ConsumeTraces(ctx context.Context, td ptrace.Traces) error
 }
 

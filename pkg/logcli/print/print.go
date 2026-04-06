@@ -135,7 +135,7 @@ func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.Log
 	printed := 0
 	for _, e := range allEntries {
 		// Skip the last entry if it overlaps, this happens because batching includes the last entry from the last batch
-		if len(lastEntry) > 0 && e.entry.Timestamp == lastEntry[0].Timestamp {
+		if len(lastEntry) > 0 && e.entry.Timestamp.Equal(lastEntry[0].Timestamp) {
 			skip := false
 			// Because many logs can share a timestamp in the unlucky event a batch ends with a timestamp
 			// shared by multiple entries we have to check all that were stored to see if we've already

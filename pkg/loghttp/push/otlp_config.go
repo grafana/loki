@@ -1,6 +1,7 @@
 package push
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 
@@ -40,10 +41,10 @@ func DefaultOTLPConfig(cfg GlobalOTLPConfig) OTLPConfig {
 }
 
 type OTLPConfig struct {
-	ResourceAttributes  ResourceAttributesConfig `yaml:"resource_attributes,omitempty" doc:"description=Configuration for resource attributes to store them as index labels or Structured Metadata or drop them altogether"`
-	ScopeAttributes     []AttributesConfig       `yaml:"scope_attributes,omitempty" doc:"description=Configuration for scope attributes to store them as Structured Metadata or drop them altogether"`
-	LogAttributes       []AttributesConfig       `yaml:"log_attributes,omitempty" doc:"description=Configuration for log attributes to store them as index labels or Structured Metadata or drop them altogether"`
-	SeverityTextAsLabel bool                     `yaml:"severity_text_as_label,omitempty" doc:"default=false|description=When true, the severity_text field from log records will be stored as an index label. It is recommended not to use this option unless absolutely necessary"`
+	ResourceAttributes  ResourceAttributesConfig `yaml:"resource_attributes,omitempty" json:"resource_attributes,omitempty" doc:"description=Configuration for resource attributes to store them as index labels or Structured Metadata or drop them altogether"`
+	ScopeAttributes     []AttributesConfig       `yaml:"scope_attributes,omitempty" json:"scope_attributes,omitempty" doc:"description=Configuration for scope attributes to store them as Structured Metadata or drop them altogether"`
+	LogAttributes       []AttributesConfig       `yaml:"log_attributes,omitempty" json:"log_attributes,omitempty" doc:"description=Configuration for log attributes to store them as index labels or Structured Metadata or drop them altogether"`
+	SeverityTextAsLabel bool                     `yaml:"severity_text_as_label,omitempty" json:"severity_text_as_label,omitempty" doc:"default=false|description=When true, the severity_text field from log records will be stored as an index label. It is recommended not to use this option unless absolutely necessary"`
 }
 
 type GlobalOTLPConfig struct {
@@ -125,9 +126,9 @@ func (c *OTLPConfig) Validate() error {
 }
 
 type AttributesConfig struct {
-	Action     Action         `yaml:"action,omitempty" doc:"description=Configures action to take on matching attributes. It allows one of [structured_metadata, drop] for all attribute types. It additionally allows index_label action for resource attributes"`
-	Attributes []string       `yaml:"attributes,omitempty" doc:"description=List of attributes to configure how to store them or drop them altogether"`
-	Regex      relabel.Regexp `yaml:"regex,omitempty" doc:"description=Regex to choose attributes to configure how to store them or drop them altogether"`
+	Action     Action         `yaml:"action,omitempty" json:"action,omitempty" doc:"description=Configures action to take on matching attributes. It allows one of [structured_metadata, drop] for all attribute types. It additionally allows index_label action for resource attributes"`
+	Attributes []string       `yaml:"attributes,omitempty" json:"attributes,omitempty" doc:"description=List of attributes to configure how to store them or drop them altogether"`
+	Regex      relabel.Regexp `yaml:"regex" json:"regex" doc:"description=Regex to choose attributes to configure how to store them or drop them altogether"`
 }
 
 func (c *AttributesConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -155,7 +156,39 @@ func (c *AttributesConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	return nil
 }
 
+func (c AttributesConfig) MarshalJSON() ([]byte, error) {
+	aux := getMarshableAttributesConfig(c)
+	return json.Marshal(aux)
+}
+
+func (c AttributesConfig) MarshalYAML() (any, error) {
+	return getMarshableAttributesConfig(c), nil
+}
+
+// getMarshableAttributesConfig overrides AttributesConfig to avoid
+// marshaling the Regex as nil or empty string when it is not set.
+// Note: we need this since relabel.Regexp is a struct and `omitempty`
+// does not have effect on nested structs.
+func getMarshableAttributesConfig(c AttributesConfig) any {
+	aux := struct {
+		Action     Action   `yaml:"action,omitempty" json:"action,omitempty"`
+		Attributes []string `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+		Regex      any      `yaml:"regex,omitempty" json:"regex,omitempty"`
+	}{
+		Action:     c.Action,
+		Attributes: c.Attributes,
+	}
+
+	if c.Regex.Regexp != nil {
+		aux.Regex = c.Regex.String()
+	} else {
+		aux.Regex = nil
+	}
+
+	return aux
+}
+
 type ResourceAttributesConfig struct {
-	IgnoreDefaults   bool               `yaml:"ignore_defaults,omitempty" doc:"default=false|description=Configure whether to ignore the default list of resource attributes set in 'distributor.otlp.default_resource_attributes_as_index_labels' to be stored as index labels and only use the given resource attributes config"`
-	AttributesConfig []AttributesConfig `yaml:"attributes_config,omitempty"`
+	IgnoreDefaults   bool               `yaml:"ignore_defaults,omitempty" json:"ignore_defaults,omitempty" doc:"default=false|description=Configure whether to ignore the default list of resource attributes set in 'distributor.otlp.default_resource_attributes_as_index_labels' to be stored as index labels and only use the given resource attributes config"`
+	AttributesConfig []AttributesConfig `yaml:"attributes_config,omitempty" json:"attributes_config,omitempty"`
 }

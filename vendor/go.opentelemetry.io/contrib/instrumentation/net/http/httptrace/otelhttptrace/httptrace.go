@@ -1,18 +1,21 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
+// Package otelhttptrace provides instrumentation for the [net/http/httptrace]
+// package.
 package otelhttptrace // import "go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 
 import (
 	"context"
 	"net/http"
 
-	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace/internal/semconv"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace/internal/semconv"
 )
 
 // Option allows configuration of the httptrace Extract()
@@ -55,7 +58,7 @@ func Extract(ctx context.Context, req *http.Request, opts ...Option) ([]attribut
 
 	semconvSrv := semconv.NewHTTPServer(nil)
 
-	attrs := append(semconvSrv.RequestTraceAttrs("", req), semconvSrv.NetworkTransportAttr("tcp")...)
+	attrs := append(semconvSrv.RequestTraceAttrs("", req, semconv.RequestTraceAttrsOpts{}), semconvSrv.NetworkTransportAttr("tcp")...)
 	attrs = append(attrs, semconvSrv.ResponseTraceAttrs(semconv.ResponseTelemetry{
 		ReadBytes: req.ContentLength,
 	})...)

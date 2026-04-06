@@ -45,6 +45,7 @@ type AppendObjectOptions struct {
 
 	customHeaders http.Header
 	checksumType  ChecksumType
+	offset        int64
 }
 
 // Header returns the custom header for AppendObject API
@@ -61,6 +62,7 @@ func (opts *AppendObjectOptions) setWriteOffset(offset int64) {
 		opts.customHeaders = make(http.Header)
 	}
 	opts.customHeaders["x-amz-write-offset-bytes"] = []string{strconv.FormatInt(offset, 10)}
+	opts.offset = offset
 }
 
 func (opts *AppendObjectOptions) setChecksumParams(info ObjectInfo) {
@@ -127,6 +129,10 @@ func (c *Client) appendObjectDo(ctx context.Context, bucketName, objectName stri
 
 	if opts.checksumType.IsSet() {
 		reqMetadata.addCrc = &opts.checksumType
+		reqMetadata.customHeader.Set(amzChecksumAlgo, opts.checksumType.String())
+		if opts.checksumType.FullObjectRequested() {
+			reqMetadata.customHeader.Set(amzChecksumMode, ChecksumFullObjectMode.String())
+		}
 	}
 
 	// Execute PUT an objectName.
@@ -145,10 +151,16 @@ func (c *Client) appendObjectDo(ctx context.Context, bucketName, objectName stri
 
 	// When AppendObject() is used, S3 Express will return final object size as x-amz-object-size
 	if amzSize := h.Get("x-amz-object-size"); amzSize != "" {
+		oSize := size
 		size, err = strconv.ParseInt(amzSize, 10, 64)
 		if err != nil {
 			return UploadInfo{}, err
 		}
+		if size != opts.offset+oSize {
+			return UploadInfo{}, errors.New("server returned incorrect object size")
+		}
+	} else {
+		return UploadInfo{}, errors.New("server does not support appends. Object has been overwritten")
 	}
 
 	return UploadInfo{
@@ -168,6 +180,7 @@ func (c *Client) appendObjectDo(ctx context.Context, bucketName, objectName stri
 }
 
 // AppendObject - S3 Express Zone https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-objects-append.html
+// Note that appending on a server without append support may overwrite the object.
 func (c *Client) AppendObject(ctx context.Context, bucketName, objectName string, reader io.Reader, objectSize int64,
 	opts AppendObjectOptions,
 ) (info UploadInfo, err error) {
@@ -183,8 +196,8 @@ func (c *Client) AppendObject(ctx context.Context, bucketName, objectName string
 	if err != nil {
 		return UploadInfo{}, err
 	}
-	if oinfo.ChecksumMode != ChecksumFullObjectMode.String() {
-		return UploadInfo{}, fmt.Errorf("append API is not allowed on objects that are not full_object checksum type: %s", oinfo.ChecksumMode)
+	if oinfo.ChecksumMode != "" && oinfo.ChecksumMode != ChecksumFullObjectMode.String() {
+		return UploadInfo{}, fmt.Errorf("Append() is not allowed on objects that are not of FULL_OBJECT checksum type: %s", oinfo.ChecksumMode)
 	}
 	opts.setChecksumParams(oinfo)   // set the appropriate checksum params based on the existing object checksum metadata.
 	opts.setWriteOffset(oinfo.Size) // First append must set the current object size as the offset.

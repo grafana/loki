@@ -169,10 +169,14 @@ func (c *storeEntry) Volume(ctx context.Context, userID string, from, through mo
 		attribute.String("from", from.Time().String()),
 		attribute.String("through", through.Time().String()),
 		attribute.String("matchers", syntax.MatchersString(matchers)),
-		attribute.String("err", err.Error()),
 		attribute.Int("limit", int(limit)),
 		attribute.String("aggregateBy", aggregateBy),
 	)
+	if err != nil {
+		sp.SetAttributes(
+			attribute.String("err", err.Error()),
+		)
+	}
 
 	return c.indexReader.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
 }
@@ -194,6 +198,25 @@ func (c *storeEntry) GetShards(
 
 func (c *storeEntry) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
 	return c.indexReader.HasForSeries(from, through)
+}
+
+func (c *storeEntry) HasChunkSizingInfo(from, through model.Time) bool {
+	return c.indexReader.HasChunkSizingInfo(from, through)
+}
+
+func (c *storeEntry) GetChunkRefsWithSizingInfo(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+
+	return c.indexReader.GetChunkRefsWithSizingInfo(ctx, userID, from, through, predicate)
 }
 
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {

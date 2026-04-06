@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
@@ -22,19 +23,25 @@ const (
 
 var SupportedDeleteRequestsStoreDBTypes = []DeleteRequestsStoreDBType{DeleteRequestsStoreDBTypeBoltDB, DeleteRequestsStoreDBTypeSQLite}
 
+// TimeRange represents an optional time range for filtering delete requests.
+// If provided, both Start and End must be set.
+type TimeRange struct {
+	Start, End model.Time
+}
+
 type DeleteRequestsStore interface {
 	AddDeleteRequest(ctx context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error)
 	addDeleteRequestWithID(ctx context.Context, requestID, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) error
-	GetAllRequests(ctx context.Context) ([]DeleteRequest, error)
-	GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool) ([]DeleteRequest, error)
+	GetAllRequests(ctx context.Context) ([]deletionproto.DeleteRequest, error)
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error)
 	RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error
-	GetDeleteRequest(ctx context.Context, userID, requestID string) (DeleteRequest, error)
+	GetDeleteRequest(ctx context.Context, userID, requestID string) (deletionproto.DeleteRequest, error)
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
 	MergeShardedRequests(ctx context.Context) error
 
 	// ToDo(Sandeep): To keep changeset smaller, below 2 methods treat a single shard as individual request. This can be refactored later in a separate PR.
-	MarkShardAsProcessed(ctx context.Context, req DeleteRequest) error
-	GetUnprocessedShards(ctx context.Context) ([]DeleteRequest, error)
+	MarkShardAsProcessed(ctx context.Context, req deletionproto.DeleteRequest) error
+	GetUnprocessedShards(ctx context.Context) ([]deletionproto.DeleteRequest, error)
 
 	Stop()
 }
@@ -92,6 +99,10 @@ func newDeleteRequestsStore(
 			if err != nil {
 				return nil, err
 			}
+		}
+
+		if err := deleteRequestsStoreSQLite.fixProcessedShardCount(context.Background()); err != nil {
+			return nil, err
 		}
 	} else {
 		// we want to cleanup SQLite DB for the scenario when SQLite is rolled back to boltDB and back to SQLite again
@@ -163,12 +174,12 @@ func (d deleteRequestsStoreTee) addDeleteRequestWithID(ctx context.Context, requ
 	return d.backupStore.addDeleteRequestWithID(ctx, requestID, userID, query, startTime, endTime, shardByInterval)
 }
 
-func (d deleteRequestsStoreTee) GetAllRequests(ctx context.Context) ([]DeleteRequest, error) {
+func (d deleteRequestsStoreTee) GetAllRequests(ctx context.Context) ([]deletionproto.DeleteRequest, error) {
 	return d.primaryStore.GetAllRequests(ctx)
 }
 
-func (d deleteRequestsStoreTee) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool) ([]DeleteRequest, error) {
-	return d.primaryStore.GetAllDeleteRequestsForUser(ctx, userID, forQuerytimeFiltering)
+func (d deleteRequestsStoreTee) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error) {
+	return d.primaryStore.GetAllDeleteRequestsForUser(ctx, userID, forQuerytimeFiltering, timeRange)
 }
 
 func (d deleteRequestsStoreTee) RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error {
@@ -179,7 +190,7 @@ func (d deleteRequestsStoreTee) RemoveDeleteRequest(ctx context.Context, userID 
 	return d.backupStore.RemoveDeleteRequest(ctx, userID, requestID)
 }
 
-func (d deleteRequestsStoreTee) GetDeleteRequest(ctx context.Context, userID, requestID string) (DeleteRequest, error) {
+func (d deleteRequestsStoreTee) GetDeleteRequest(ctx context.Context, userID, requestID string) (deletionproto.DeleteRequest, error) {
 	return d.primaryStore.GetDeleteRequest(ctx, userID, requestID)
 }
 
@@ -195,7 +206,7 @@ func (d deleteRequestsStoreTee) MergeShardedRequests(ctx context.Context) error 
 	return d.backupStore.MergeShardedRequests(ctx)
 }
 
-func (d deleteRequestsStoreTee) MarkShardAsProcessed(ctx context.Context, req DeleteRequest) error {
+func (d deleteRequestsStoreTee) MarkShardAsProcessed(ctx context.Context, req deletionproto.DeleteRequest) error {
 	if err := d.primaryStore.MarkShardAsProcessed(ctx, req); err != nil {
 		return err
 	}
@@ -203,7 +214,7 @@ func (d deleteRequestsStoreTee) MarkShardAsProcessed(ctx context.Context, req De
 	return d.backupStore.MarkShardAsProcessed(ctx, req)
 }
 
-func (d deleteRequestsStoreTee) GetUnprocessedShards(ctx context.Context) ([]DeleteRequest, error) {
+func (d deleteRequestsStoreTee) GetUnprocessedShards(ctx context.Context) ([]deletionproto.DeleteRequest, error) {
 	return d.primaryStore.GetUnprocessedShards(ctx)
 }
 

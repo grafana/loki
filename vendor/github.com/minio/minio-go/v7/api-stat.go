@@ -39,14 +39,14 @@ func (c *Client) BucketExists(ctx context.Context, bucketName string) (bool, err
 	})
 	defer closeResponse(resp)
 	if err != nil {
-		if ToErrorResponse(err).Code == "NoSuchBucket" {
+		if ToErrorResponse(err).Code == NoSuchBucket {
 			return false, nil
 		}
 		return false, err
 	}
 	if resp != nil {
 		resperr := httpRespToErrorResponse(resp, bucketName, "")
-		if ToErrorResponse(resperr).Code == "NoSuchBucket" {
+		if ToErrorResponse(resperr).Code == NoSuchBucket {
 			return false, nil
 		}
 		if resp.StatusCode != http.StatusOK {
@@ -63,14 +63,14 @@ func (c *Client) StatObject(ctx context.Context, bucketName, objectName string, 
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return ObjectInfo{}, ErrorResponse{
 			StatusCode: http.StatusBadRequest,
-			Code:       "InvalidBucketName",
+			Code:       InvalidBucketName,
 			Message:    err.Error(),
 		}
 	}
 	if err := s3utils.CheckValidObjectName(objectName); err != nil {
 		return ObjectInfo{}, ErrorResponse{
 			StatusCode: http.StatusBadRequest,
-			Code:       "XMinioInvalidObjectName",
+			Code:       XMinioInvalidObjectName,
 			Message:    err.Error(),
 		}
 	}
@@ -102,8 +102,8 @@ func (c *Client) StatObject(ctx context.Context, bucketName, objectName string, 
 			if resp.StatusCode == http.StatusMethodNotAllowed && opts.VersionID != "" && deleteMarker {
 				errResp := ErrorResponse{
 					StatusCode: resp.StatusCode,
-					Code:       "MethodNotAllowed",
-					Message:    "The specified method is not allowed against this resource.",
+					Code:       MethodNotAllowed,
+					Message:    s3ErrorResponseMap[MethodNotAllowed],
 					BucketName: bucketName,
 					Key:        objectName,
 				}

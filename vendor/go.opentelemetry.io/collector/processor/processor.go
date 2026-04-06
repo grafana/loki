@@ -5,10 +5,10 @@ package processor // import "go.opentelemetry.io/collector/processor"
 
 import (
 	"context"
-	"fmt"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/internal/componentalias"
 	"go.opentelemetry.io/collector/pipeline"
 )
 
@@ -39,6 +39,9 @@ type Settings struct {
 
 	// BuildInfo can be used by components for informational purposes
 	BuildInfo component.BuildInfo
+
+	// prevent unkeyed literal initialization
+	_ struct{}
 }
 
 // Factory is Factory interface for processors.
@@ -96,12 +99,13 @@ func (f factoryOptionFunc) applyOption(o *factory) {
 type factory struct {
 	cfgType component.Type
 	component.CreateDefaultConfigFunc
-	CreateTracesFunc
-	tracesStabilityLevel component.StabilityLevel
-	CreateMetricsFunc
+	componentalias.TypeAliasHolder
+	createTracesFunc      CreateTracesFunc
+	tracesStabilityLevel  component.StabilityLevel
+	createMetricsFunc     CreateMetricsFunc
 	metricsStabilityLevel component.StabilityLevel
-	CreateLogsFunc
-	logsStabilityLevel component.StabilityLevel
+	createLogsFunc        CreateLogsFunc
+	logsStabilityLevel    component.StabilityLevel
 }
 
 func (f *factory) Type() component.Type {
@@ -122,44 +126,56 @@ func (f *factory) LogsStability() component.StabilityLevel {
 	return f.logsStabilityLevel
 }
 
-// CreateTracesFunc is the equivalent of Factory.CreateTraces().
-type CreateTracesFunc func(context.Context, Settings, component.Config, consumer.Traces) (Traces, error)
-
-// CreateTraces implements Factory.CreateTraces.
-func (f CreateTracesFunc) CreateTraces(ctx context.Context, set Settings, cfg component.Config, next consumer.Traces) (Traces, error) {
-	if f == nil {
+func (f *factory) CreateTraces(ctx context.Context, set Settings, cfg component.Config, next consumer.Traces) (Traces, error) {
+	if f.createTracesFunc == nil {
 		return nil, pipeline.ErrSignalNotSupported
 	}
-	return f(ctx, set, cfg, next)
+
+	if err := componentalias.ValidateComponentType(f, set.ID); err != nil {
+		return nil, err
+	}
+
+	return f.createTracesFunc(ctx, set, cfg, next)
 }
+
+func (f *factory) CreateMetrics(ctx context.Context, set Settings, cfg component.Config, next consumer.Metrics) (Metrics, error) {
+	if f.createMetricsFunc == nil {
+		return nil, pipeline.ErrSignalNotSupported
+	}
+
+	if err := componentalias.ValidateComponentType(f, set.ID); err != nil {
+		return nil, err
+	}
+
+	return f.createMetricsFunc(ctx, set, cfg, next)
+}
+
+func (f *factory) CreateLogs(ctx context.Context, set Settings, cfg component.Config, next consumer.Logs) (Logs, error) {
+	if f.createLogsFunc == nil {
+		return nil, pipeline.ErrSignalNotSupported
+	}
+
+	if err := componentalias.ValidateComponentType(f, set.ID); err != nil {
+		return nil, err
+	}
+
+	return f.createLogsFunc(ctx, set, cfg, next)
+}
+
+// CreateTracesFunc is the equivalent of Factory.CreateTraces().
+type CreateTracesFunc func(context.Context, Settings, component.Config, consumer.Traces) (Traces, error)
 
 // CreateMetricsFunc is the equivalent of Factory.CreateMetrics().
 type CreateMetricsFunc func(context.Context, Settings, component.Config, consumer.Metrics) (Metrics, error)
 
-// CreateMetrics implements Factory.CreateMetrics.
-func (f CreateMetricsFunc) CreateMetrics(ctx context.Context, set Settings, cfg component.Config, next consumer.Metrics) (Metrics, error) {
-	if f == nil {
-		return nil, pipeline.ErrSignalNotSupported
-	}
-	return f(ctx, set, cfg, next)
-}
-
 // CreateLogsFunc is the equivalent of Factory.CreateLogs.
 type CreateLogsFunc func(context.Context, Settings, component.Config, consumer.Logs) (Logs, error)
-
-// CreateLogs implements Factory.CreateLogs().
-func (f CreateLogsFunc) CreateLogs(ctx context.Context, set Settings, cfg component.Config, next consumer.Logs) (Logs, error) {
-	if f == nil {
-		return nil, pipeline.ErrSignalNotSupported
-	}
-	return f(ctx, set, cfg, next)
-}
 
 // WithTraces overrides the default "error not supported" implementation for CreateTraces and the default "undefined" stability level.
 func WithTraces(createTraces CreateTracesFunc, sl component.StabilityLevel) FactoryOption {
 	return factoryOptionFunc(func(o *factory) {
 		o.tracesStabilityLevel = sl
-		o.CreateTracesFunc = createTraces
+		o.createTracesFunc = createTraces
 	})
 }
 
@@ -167,7 +183,7 @@ func WithTraces(createTraces CreateTracesFunc, sl component.StabilityLevel) Fact
 func WithMetrics(createMetrics CreateMetricsFunc, sl component.StabilityLevel) FactoryOption {
 	return factoryOptionFunc(func(o *factory) {
 		o.metricsStabilityLevel = sl
-		o.CreateMetricsFunc = createMetrics
+		o.createMetricsFunc = createMetrics
 	})
 }
 
@@ -175,7 +191,7 @@ func WithMetrics(createMetrics CreateMetricsFunc, sl component.StabilityLevel) F
 func WithLogs(createLogs CreateLogsFunc, sl component.StabilityLevel) FactoryOption {
 	return factoryOptionFunc(func(o *factory) {
 		o.logsStabilityLevel = sl
-		o.CreateLogsFunc = createLogs
+		o.createLogsFunc = createLogs
 	})
 }
 
@@ -184,22 +200,10 @@ func NewFactory(cfgType component.Type, createDefaultConfig component.CreateDefa
 	f := &factory{
 		cfgType:                 cfgType,
 		CreateDefaultConfigFunc: createDefaultConfig,
+		TypeAliasHolder:         componentalias.NewTypeAliasHolder(),
 	}
 	for _, opt := range options {
 		opt.applyOption(f)
 	}
 	return f
-}
-
-// MakeFactoryMap takes a list of factories and returns a map with Factory type as keys.
-// It returns a non-nil error when there are factories with duplicate type.
-func MakeFactoryMap(factories ...Factory) (map[component.Type]Factory, error) {
-	fMap := map[component.Type]Factory{}
-	for _, f := range factories {
-		if _, ok := fMap[f.Type()]; ok {
-			return fMap, fmt.Errorf("duplicate processor factory %q", f.Type())
-		}
-		fMap[f.Type()] = f
-	}
-	return fMap, nil
 }

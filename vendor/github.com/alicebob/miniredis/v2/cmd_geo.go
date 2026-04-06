@@ -14,33 +14,32 @@ import (
 // commandsGeo handles GEOADD, GEORADIUS etc.
 func commandsGeo(m *Miniredis) {
 	m.srv.Register("GEOADD", m.cmdGeoadd)
-	m.srv.Register("GEODIST", m.cmdGeodist)
-	m.srv.Register("GEOPOS", m.cmdGeopos)
+	m.srv.Register("GEODIST", m.cmdGeodist, server.ReadOnlyOption())
+	m.srv.Register("GEOPOS", m.cmdGeopos, server.ReadOnlyOption())
 	m.srv.Register("GEORADIUS", m.cmdGeoradius)
-	m.srv.Register("GEORADIUS_RO", m.cmdGeoradius)
+	m.srv.Register("GEORADIUS_RO", m.cmdGeoradius, server.ReadOnlyOption())
 	m.srv.Register("GEORADIUSBYMEMBER", m.cmdGeoradiusbymember)
-	m.srv.Register("GEORADIUSBYMEMBER_RO", m.cmdGeoradiusbymember)
+	m.srv.Register("GEORADIUSBYMEMBER_RO", m.cmdGeoradiusbymember, server.ReadOnlyOption())
 }
 
 // GEOADD
 func (m *Miniredis) cmdGeoadd(c *server.Peer, cmd string, args []string) {
-	if len(args) < 3 || len(args[1:])%3 != 0 {
+	if !m.isValidCMD(c, cmd, args, atLeast(3)) {
+		return
+	}
+
+	if len(args[1:])%3 != 0 {
 		setDirty(c)
 		c.WriteError(errWrongNumber(cmd))
 		return
 	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
-		return
-	}
+
 	key, args := args[0], args[1:]
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if db.exists(key) && db.t(key) != "zset" {
+		if db.exists(key) && db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -83,15 +82,7 @@ func (m *Miniredis) cmdGeoadd(c *server.Peer, cmd string, args []string) {
 
 // GEODIST
 func (m *Miniredis) cmdGeodist(c *server.Peer, cmd string, args []string) {
-	if len(args) < 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(3)) {
 		return
 	}
 
@@ -103,7 +94,7 @@ func (m *Miniredis) cmdGeodist(c *server.Peer, cmd string, args []string) {
 			c.WriteNull()
 			return
 		}
-		if db.t(key) != "zset" {
+		if db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -141,23 +132,16 @@ func (m *Miniredis) cmdGeodist(c *server.Peer, cmd string, args []string) {
 
 // GEOPOS
 func (m *Miniredis) cmdGeopos(c *server.Peer, cmd string, args []string) {
-	if len(args) < 1 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
+	if !m.isValidCMD(c, cmd, args, atLeast(1)) {
 		return
 	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
-		return
-	}
+
 	key, args := args[0], args[1:]
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if db.exists(key) && db.t(key) != "zset" {
+		if db.exists(key) && db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -187,15 +171,7 @@ type geoDistance struct {
 
 // GEORADIUS and GEORADIUS_RO
 func (m *Miniredis) cmdGeoradius(c *server.Peer, cmd string, args []string) {
-	if len(args) < 5 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(5)) {
 		return
 	}
 
@@ -374,15 +350,7 @@ func (m *Miniredis) cmdGeoradius(c *server.Peer, cmd string, args []string) {
 
 // GEORADIUSBYMEMBER and GEORADIUSBYMEMBER_RO
 func (m *Miniredis) cmdGeoradiusbymember(c *server.Peer, cmd string, args []string) {
-	if len(args) < 4 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(4)) {
 		return
 	}
 
@@ -495,7 +463,7 @@ func (m *Miniredis) cmdGeoradiusbymember(c *server.Peer, cmd string, args []stri
 			return
 		}
 
-		if db.t(opts.key) != "zset" {
+		if db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}

@@ -1,7 +1,7 @@
 # run
 
-[![GoDoc](https://godoc.org/github.com/oklog/run?status.svg)](https://godoc.org/github.com/oklog/run) 
-[![Build Status](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Factions-badge.atrox.dev%2Foklog%2Frun%2Fbadge&style=flat-square&label=build)](https://github.com/oklog/run/actions?query=workflow%3ATest)
+[![GoDoc](https://godoc.org/github.com/oklog/run?status.svg)](https://godoc.org/github.com/oklog/run)
+[![test](https://github.com/oklog/run/actions/workflows/test.yaml/badge.svg?branch=main&event=push)](https://github.com/oklog/run/actions/workflows/test.yaml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/oklog/run)](https://goreportcard.com/report/github.com/oklog/run)
 [![Apache 2 licensed](https://img.shields.io/badge/license-Apache2-blue.svg)](https://raw.githubusercontent.com/oklog/run/master/LICENSE)
 
@@ -16,8 +16,8 @@ finally returns control to the caller only once all actors have returned. This
 general-purpose API allows callers to model pretty much any runnable task, and
 achieve well-defined lifecycle semantics for the group.
 
-run.Group was written to manage component lifecycles in func main for 
-[OK Log](https://github.com/oklog/oklog). 
+run.Group was written to manage component lifecycles in func main for
+[OK Log](https://github.com/oklog/oklog).
 But it's useful in any circumstance where you need to orchestrate multiple
 goroutines as a unit whole.
 [Click here](https://www.youtube.com/watch?v=LHe1Cb_Ud_M&t=15m45s) to see a
@@ -62,14 +62,30 @@ g.Add(func() error {
 })
 ```
 
+### http.Server graceful Shutdown
+
+```go
+httpServer := &http.Server{
+	Addr:    "localhost:8080",
+	Handler: ...,
+}
+g.Add(func() error {
+	return httpServer.ListenAndServe()
+}, func(error) {
+	ctx, cancel := context.WithTimeout(context.TODO(), 3*time.Second)
+	defer cancel()
+	httpServer.Shutdown(ctx)
+})
+```
+
 ## Comparisons
 
-Package run is somewhat similar to package 
-[errgroup](https://godoc.org/golang.org/x/sync/errgroup), 
+Package run is somewhat similar to package
+[errgroup](https://godoc.org/golang.org/x/sync/errgroup),
 except it doesn't require actor goroutines to understand context semantics.
 
 It's somewhat similar to package
-[tomb.v1](https://godoc.org/gopkg.in/tomb.v1) or 
+[tomb.v1](https://godoc.org/gopkg.in/tomb.v1) or
 [tomb.v2](https://godoc.org/gopkg.in/tomb.v2),
-except it has a much smaller API surface, delegating e.g. staged shutdown of 
+except it has a much smaller API surface, delegating e.g. staged shutdown of
 goroutines to the caller.

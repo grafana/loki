@@ -151,7 +151,7 @@ func parseDetectedFieldValues(limit uint32, streams []push.Stream, name string) 
 				}
 			}
 
-			entryLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
+			entryLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, labels.StableHash(streamLbls))
 			parsedLabels, _ := parseEntry(entry, entryLbls)
 			if vals, ok := parsedLabels[name]; ok {
 				for _, v := range vals {
@@ -280,7 +280,8 @@ func determineType(value string) logproto.DetectedFieldType {
 }
 
 func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
-	detectedFields := make(map[string]*parsedFields, limit)
+	const maxDetectedFieldsPreAlloc = 1000
+	detectedFields := make(map[string]*parsedFields, min(maxDetectedFieldsPreAlloc, limit))
 	fieldCount := uint32(0)
 	emtpyparsers := []string{}
 
@@ -317,7 +318,7 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 				}
 			}
 
-			entryLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
+			entryLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, labels.StableHash(streamLbls))
 			parsedLabels, parsers := parseEntry(entry, entryLbls)
 			for k, vals := range parsedLabels {
 				df, ok := detectedFields[k]
@@ -392,7 +393,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 		lbls.Del(name)
 	}
 	streamLbls := lbls.LabelsResult().Stream()
-	lblBuilder := lbls.ForLabels(streamLbls, streamLbls.Hash())
+	lblBuilder := lbls.ForLabels(streamLbls, labels.StableHash(streamLbls))
 
 	parsed := make(map[string][]string, len(origParsed))
 	for lbl, values := range origParsed {

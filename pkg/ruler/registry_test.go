@@ -269,8 +269,10 @@ func newFakeLimits() fakeLimits {
 								Action:       "drop",
 							},
 							{
-								Regex:  regexCluster,
-								Action: "labeldrop",
+								Regex:       regexCluster,
+								Action:      "labeldrop",
+								Separator:   relabel.DefaultRelabelConfig.Separator,
+								Replacement: relabel.DefaultRelabelConfig.Replacement,
 							},
 						},
 					},
@@ -860,8 +862,12 @@ func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
 	tenantCfg, err := reg.getTenantConfig(nilRelabelsTenant)
 	require.NoError(t, err)
 
-	// if there are no relabel configs defined for the tenant, it should not override
-	assert.Equal(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, reg.config.RemoteWrite.Client.WriteRelabelConfigs)
+	// set NameValidationScheme on expected configs
+	expectedConfigs := reg.config.RemoteWrite.Client.WriteRelabelConfigs
+	for _, rc := range expectedConfigs {
+		rc.NameValidationScheme = model.UTF8Validation
+	}
+	assert.Equal(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, expectedConfigs)
 
 	reg = setupRegistry(t, cfg, newFakeLimits())
 
@@ -877,6 +883,13 @@ func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
 	expected := [][]*relabel.Config{
 		reg.config.RemoteWrite.Clients[remote1].WriteRelabelConfigs,
 		reg.config.RemoteWrite.Clients[remote2].WriteRelabelConfigs,
+	}
+
+	// set NameValidationScheme on expected configs
+	for _, configs := range expected {
+		for _, rc := range configs {
+			rc.NameValidationScheme = model.UTF8Validation
+		}
 	}
 
 	assert.ElementsMatch(t, actual, expected, "WriteRelabelConfigs do not match")

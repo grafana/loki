@@ -18,10 +18,10 @@ type Limits interface {
 	IngestionRateBytes(userID string) float64
 	IngestionBurstSizeBytes(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
+	PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool)
 }
 
 type limitsChecker struct {
-	limits           Limits
 	store            *usageStore
 	producer         *producer
 	partitionManager *partitionManager
@@ -36,9 +36,8 @@ type limitsChecker struct {
 	clock quartz.Clock
 }
 
-func newLimitsChecker(limits Limits, store *usageStore, producer *producer, partitionManager *partitionManager, numPartitions int, logger log.Logger, reg prometheus.Registerer) *limitsChecker {
+func newLimitsChecker(store *usageStore, producer *producer, partitionManager *partitionManager, numPartitions int, logger log.Logger, reg prometheus.Registerer) *limitsChecker {
 	return &limitsChecker{
-		limits:           limits,
 		store:            store,
 		producer:         producer,
 		partitionManager: partitionManager,
@@ -73,28 +72,29 @@ func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLim
 	}
 	streams = streams[:valid]
 
-	accepted, rejected, err := c.store.UpdateCond(req.Tenant, streams, c.clock.Now(), c.limits)
+	toProduce, accepted, rejected, err := c.store.UpdateCond(req.Tenant, streams, c.clock.Now())
 	if err != nil {
 		return nil, err
 	}
 
-	var ingestedBytes uint64
-	for _, stream := range accepted {
-		ingestedBytes += stream.TotalSize
-
+	for _, stream := range toProduce {
 		err := c.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
 		if err != nil {
 			level.Error(c.logger).Log("msg", "failed to send streams", "error", err)
 		}
 	}
 
+	var ingestedBytes uint64
+	for _, stream := range accepted {
+		ingestedBytes += stream.TotalSize
+	}
 	c.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
 
 	results := make([]*proto.ExceedsLimitsResult, 0, len(rejected))
 	for _, stream := range rejected {
 		results = append(results, &proto.ExceedsLimitsResult{
 			StreamHash: stream.StreamHash,
-			Reason:     uint32(ReasonExceedsMaxStreams),
+			Reason:     uint32(ReasonMaxStreams),
 		})
 	}
 

@@ -99,12 +99,12 @@ func (e *AuthenticationFailedError) Error() string {
 		anchor = "apc"
 	case credNameCert:
 		anchor = "client-cert"
+	case credNameAzurePowerShell:
+		anchor = "azure-pwsh"
 	case credNameSecret:
 		anchor = "client-secret"
 	case credNameManagedIdentity:
 		anchor = "managed-id"
-	case credNameUserPassword:
-		anchor = "username-password"
 	case credNameWorkloadIdentity:
 		anchor = "workload"
 	}

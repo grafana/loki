@@ -14,5 +14,5 @@ const (
 	module = "github.com/Azure/azure-sdk-for-go/sdk/" + component
 
 	// Version is the semantic version (see http://semver.org) of this module.
-	version = "v1.8.2"
+	version = "v1.13.1"
 )

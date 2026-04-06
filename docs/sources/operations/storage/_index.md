@@ -42,11 +42,11 @@ For more information:
 
 ### ✅ Supported and recommended chunks stores
 
-- [Amazon Simple Storage Storage (S3)](https://aws.amazon.com/s3)
+- [Amazon Simple Storage Service (S3)](https://aws.amazon.com/s3)
 - [Google Cloud Storage (GCS)](https://cloud.google.com/storage/)
 - [Microsoft Azure Blob Storage](https://azure.microsoft.com/en-us/products/storage/blobs)
 - [IBM Cloud Object Storage (COS)](https://www.ibm.com/cloud/object-storage)
-- [Baidu Object Storage (BOS)](https://cloud.baidu.com/product/bos.html)
+- [Baidu Object Storage](https://intl.cloud.baidu.com/product/bos.html)
 - [Alibaba Object Storage Service (OSS)](https://www.alibabacloud.com/product/object-storage-service)
 
 ### ⚠️ Supported chunks stores, not typically recommended for production use
@@ -148,7 +148,7 @@ See the [IBM Cloud Object Storage section](https://grafana.com/docs/loki/<LOKI_V
 +--------------------+----------------------------+
 | block 1 (n bytes)  | checksum (uint32, 4 bytes) |
 +--------------------+----------------------------+
-| block 1 (n bytes)  | checksum (uint32, 4 bytes) |
+| block 2 (n bytes)  | checksum (uint32, 4 bytes) |
 +--------------------+----------------------------+
 | ...                                             |
 +--------------------+----------------------------+

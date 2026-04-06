@@ -13,7 +13,7 @@ import (
 
 func commandsServer(m *Miniredis) {
 	m.srv.Register("COMMAND", m.cmdCommand)
-	m.srv.Register("DBSIZE", m.cmdDbsize)
+	m.srv.Register("DBSIZE", m.cmdDbsize, server.ReadOnlyOption())
 	m.srv.Register("FLUSHALL", m.cmdFlushall)
 	m.srv.Register("FLUSHDB", m.cmdFlushdb)
 	m.srv.Register("INFO", m.cmdInfo)
@@ -23,15 +23,7 @@ func commandsServer(m *Miniredis) {
 
 // MEMORY
 func (m *Miniredis) cmdMemory(c *server.Peer, cmd string, args []string) {
-	if len(args) == 0 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(1)) {
 		return
 	}
 
@@ -57,19 +49,19 @@ func (m *Miniredis) cmdMemory(c *server.Peer, cmd string, args []string) {
 				ok    bool
 			)
 			switch db.keys[args[0]] {
-			case "string":
+			case keyTypeString:
 				value, ok = db.stringKeys[args[0]]
-			case "set":
+			case keyTypeSet:
 				value, ok = db.setKeys[args[0]]
-			case "hash":
+			case keyTypeHash:
 				value, ok = db.hashKeys[args[0]]
-			case "list":
+			case keyTypeList:
 				value, ok = db.listKeys[args[0]]
-			case "hll":
+			case keyTypeHll:
 				value, ok = db.hllKeys[args[0]]
-			case "zset":
+			case keyTypeSortedSet:
 				value, ok = db.sortedsetKeys[args[0]]
-			case "stream":
+			case keyTypeStream:
 				value, ok = db.streamKeys[args[0]]
 			}
 			if !ok {
@@ -85,15 +77,7 @@ func (m *Miniredis) cmdMemory(c *server.Peer, cmd string, args []string) {
 
 // DBSIZE
 func (m *Miniredis) cmdDbsize(c *server.Peer, cmd string, args []string) {
-	if len(args) > 0 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(0)) {
 		return
 	}
 
@@ -152,15 +136,7 @@ func (m *Miniredis) cmdFlushdb(c *server.Peer, cmd string, args []string) {
 
 // TIME
 func (m *Miniredis) cmdTime(c *server.Peer, cmd string, args []string) {
-	if len(args) > 0 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(0)) {
 		return
 	}
 

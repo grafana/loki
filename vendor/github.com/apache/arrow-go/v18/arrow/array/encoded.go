@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"sync/atomic"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/encoded"
@@ -50,7 +49,7 @@ func NewRunEndEncodedArray(runEnds, values arrow.Array, logicalLength, offset in
 
 func NewRunEndEncodedData(data arrow.ArrayData) *RunEndEncoded {
 	r := &RunEndEncoded{}
-	r.refCount = 1
+	r.refCount.Add(1)
 	r.setData(data.(*Data))
 	return r
 }
@@ -210,10 +209,13 @@ func (r *RunEndEncoded) ValueStr(i int) string {
 }
 
 func (r *RunEndEncoded) String() string {
+	physOffset := r.GetPhysicalOffset()
+	physLength := r.GetPhysicalLength()
+
 	var buf bytes.Buffer
 	buf.WriteByte('[')
-	for i := 0; i < r.ends.Len(); i++ {
-		if i != 0 {
+	for i := physOffset; i < physOffset+physLength; i++ {
+		if i != physOffset {
 			buf.WriteByte(',')
 		}
 
@@ -221,7 +223,17 @@ func (r *RunEndEncoded) String() string {
 		if byts, ok := value.(json.RawMessage); ok {
 			value = string(byts)
 		}
-		fmt.Fprintf(&buf, "{%d -> %v}", r.ends.GetOneForMarshal(i), value)
+
+		var runEnd int
+		switch e := r.ends.GetOneForMarshal(i).(type) {
+		case int16:
+			runEnd = int(e) - r.data.offset
+		case int32:
+			runEnd = int(e) - r.data.offset
+		case int64:
+			runEnd = int(e) - r.data.offset
+		}
+		fmt.Fprintf(&buf, "{%d -> %v}", runEnd, value)
 	}
 
 	buf.WriteByte(']')
@@ -305,14 +317,16 @@ func NewRunEndEncodedBuilder(mem memory.Allocator, runEnds, encoded arrow.DataTy
 	case arrow.INT64:
 		maxEnd = math.MaxInt64
 	}
-	return &RunEndEncodedBuilder{
-		builder:          builder{refCount: 1, mem: mem},
+	reb := &RunEndEncodedBuilder{
+		builder:          builder{mem: mem},
 		dt:               dt,
 		runEnds:          NewBuilder(mem, runEnds),
 		values:           NewBuilder(mem, encoded),
 		maxRunEnd:        maxEnd,
 		lastUnmarshalled: nil,
 	}
+	reb.refCount.Add(1)
+	return reb
 }
 
 func (b *RunEndEncodedBuilder) Type() arrow.DataType {
@@ -320,9 +334,9 @@ func (b *RunEndEncodedBuilder) Type() arrow.DataType {
 }
 
 func (b *RunEndEncodedBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		b.values.Release()
 		b.runEnds.Release()
 	}

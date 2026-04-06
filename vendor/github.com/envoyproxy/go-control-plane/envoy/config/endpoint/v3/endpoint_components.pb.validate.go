@@ -169,7 +169,7 @@ type EndpointMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m EndpointMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -372,7 +372,7 @@ type LbEndpointMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m LbEndpointMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -435,6 +435,137 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = LbEndpointValidationError{}
+
+// Validate checks the field values on LbEndpointCollection with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *LbEndpointCollection) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LbEndpointCollection with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// LbEndpointCollectionMultiError, or nil if none found.
+func (m *LbEndpointCollection) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LbEndpointCollection) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if all {
+		switch v := interface{}(m.GetEntries()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, LbEndpointCollectionValidationError{
+					field:  "Entries",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, LbEndpointCollectionValidationError{
+					field:  "Entries",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetEntries()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return LbEndpointCollectionValidationError{
+				field:  "Entries",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return LbEndpointCollectionMultiError(errors)
+	}
+
+	return nil
+}
+
+// LbEndpointCollectionMultiError is an error wrapping multiple validation
+// errors returned by LbEndpointCollection.ValidateAll() if the designated
+// constraints aren't met.
+type LbEndpointCollectionMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LbEndpointCollectionMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LbEndpointCollectionMultiError) AllErrors() []error { return m }
+
+// LbEndpointCollectionValidationError is the validation error returned by
+// LbEndpointCollection.Validate if the designated constraints aren't met.
+type LbEndpointCollectionValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LbEndpointCollectionValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LbEndpointCollectionValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LbEndpointCollectionValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LbEndpointCollectionValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LbEndpointCollectionValidationError) ErrorName() string {
+	return "LbEndpointCollectionValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e LbEndpointCollectionValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLbEndpointCollection.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LbEndpointCollectionValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LbEndpointCollectionValidationError{}
 
 // Validate checks the field values on LedsClusterLocalityConfig with the rules
 // defined in the proto definition for this message. If any rules are
@@ -503,7 +634,7 @@ type LedsClusterLocalityConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m LedsClusterLocalityConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -839,7 +970,7 @@ type LocalityLbEndpointsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m LocalityLbEndpointsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -985,7 +1116,7 @@ type Endpoint_HealthCheckConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Endpoint_HealthCheckConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1116,7 +1247,7 @@ type Endpoint_AdditionalAddressMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Endpoint_AdditionalAddressMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1254,7 +1385,7 @@ type LocalityLbEndpoints_LbEndpointListMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m LocalityLbEndpoints_LbEndpointListMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

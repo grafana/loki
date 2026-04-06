@@ -2,9 +2,14 @@ package frontend
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/ring"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/limits"
@@ -13,21 +18,21 @@ import (
 
 func TestFrontend_ExceedsLimits(t *testing.T) {
 	tests := []struct {
-		name                   string
-		exceedsLimitsRequest   *proto.ExceedsLimitsRequest
-		exceedsLimitsResponses []*proto.ExceedsLimitsResponse
-		expected               *proto.ExceedsLimitsResponse
+		name                  string
+		exceedsLimitsRequest  *proto.ExceedsLimitsRequest
+		exceedsLimitsResponse *proto.ExceedsLimitsResponse
+		err                   error
+		expected              *proto.ExceedsLimitsResponse
 	}{{
-		name: "no streams",
+		name: "when the request contains no streams, the response is success",
 		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant:  "test",
 			Streams: nil,
 		},
-		expected: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{},
-		},
+		exceedsLimitsResponse: &proto.ExceedsLimitsResponse{},
+		expected:              &proto.ExceedsLimitsResponse{},
 	}, {
-		name: "one stream",
+		name: "request contains one stream, the response is success",
 		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
@@ -35,35 +40,10 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 				TotalSize:  0x5,
 			}},
 		},
-		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{{
-				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
-			}},
-		}},
-		expected: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{{
-				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
-			}},
-		},
+		exceedsLimitsResponse: &proto.ExceedsLimitsResponse{},
+		expected:              &proto.ExceedsLimitsResponse{},
 	}, {
-		name: "one stream, no responses",
-		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
-			Tenant: "test",
-			Streams: []*proto.StreamMetadata{{
-				StreamHash: 0x1,
-				TotalSize:  0x5,
-			}},
-		},
-		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{},
-		}},
-		expected: &proto.ExceedsLimitsResponse{
-			Results: []*proto.ExceedsLimitsResult{},
-		},
-	}, {
-		name: "two stream, one response",
+		name: "request contains two streams, the response is success",
 		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
@@ -74,26 +54,31 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 				TotalSize:  0x9,
 			}},
 		},
-		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
+		exceedsLimitsResponse: &proto.ExceedsLimitsResponse{},
+		expected:              &proto.ExceedsLimitsResponse{},
+	}, {
+		name: "request contains one stream over the stream limit",
+		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1,
+				TotalSize:  0x5,
+			}},
+		},
+		exceedsLimitsResponse: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
-			}, {
-				StreamHash: 0x4,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
-		}},
+		},
 		expected: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
-			}, {
-				StreamHash: 0x4,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 	}, {
-		name: "two stream, two responses",
+		name: "request contains two streams over the stream limit",
 		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
@@ -104,36 +89,93 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 				TotalSize:  0x9,
 			}},
 		},
-		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
+		exceedsLimitsResponse: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
-			}},
-		}, {
-			Results: []*proto.ExceedsLimitsResult{{
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}, {
 				StreamHash: 0x4,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
-		}},
+		},
 		expected: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}, {
 				StreamHash: 0x4,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}},
+		},
+	}, {
+		name: "request contains two streams, but just one stream is over the stream limit",
+		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1,
+				TotalSize:  0x5,
+			}, {
+				StreamHash: 0x4,
+				TotalSize:  0x9,
+			}},
+		},
+		exceedsLimitsResponse: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x4,
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}},
+		},
+		expected: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x4,
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}},
+		},
+	}, {
+		name: "unexpected error, response with failed reason",
+		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1,
+				TotalSize:  0x5,
+			}, {
+				StreamHash: 0x2,
+				TotalSize:  0x9,
+			}},
+		},
+		err: errors.New("an unexpected error occurred"),
+		expected: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonFailed),
+			}, {
+				StreamHash: 0x2,
+				Reason:     uint32(limits.ReasonFailed),
 			}},
 		},
 	}}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			f := Frontend{
-				gatherer: &mockExceedsLimitsGatherer{
-					t:                            t,
-					expectedExceedsLimitsRequest: test.exceedsLimitsRequest,
-					exceedsLimitsResponses:       test.exceedsLimitsResponses,
+			readRing, _ := newMockRingWithClientPool(t, "test", nil, nil)
+			f, err := New(Config{
+				LifecyclerConfig: ring.LifecyclerConfig{
+					RingConfig: ring.Config{
+						KVStore: kv.Config{
+							Store: "inmemory",
+						},
+					},
+					HeartbeatPeriod:  time.Second,
+					HeartbeatTimeout: time.Minute,
 				},
+			}, "test", readRing, log.NewNopLogger(), prometheus.NewRegistry())
+			require.NoError(t, err)
+			// Replace with our mock.
+			f.limitsClient = &mockLimitsClient{
+				t:                            t,
+				expectedExceedsLimitsRequest: test.exceedsLimitsRequest,
+				exceedsLimitsResponse:        test.exceedsLimitsResponse,
+				err:                          test.err,
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()

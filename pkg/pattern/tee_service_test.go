@@ -70,7 +70,7 @@ func TestPatternTeeBasic(t *testing.T) {
 	require.NoError(t, tee.Start(ctx))
 
 	now := time.Now()
-	tee.Duplicate("test-tenant", []distributor.KeyedStream{
+	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
 		{HashKey: 123, Stream: push.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []push.Entry{
@@ -79,9 +79,9 @@ func TestPatternTeeBasic(t *testing.T) {
 				{Timestamp: now.Add(2 * time.Second), Line: "baz1"},
 			},
 		}},
-	})
+	}, nil)
 
-	tee.Duplicate("test-tenant", []distributor.KeyedStream{
+	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
 		{HashKey: 123, Stream: push.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []push.Entry{
@@ -90,9 +90,9 @@ func TestPatternTeeBasic(t *testing.T) {
 				{Timestamp: now.Add(5 * time.Second), Line: "baz2"},
 			},
 		}},
-	})
+	}, nil)
 
-	tee.Duplicate("test-tenant", []distributor.KeyedStream{
+	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
 		{HashKey: 456, Stream: push.Stream{
 			Labels: `{ping="pong"}`,
 			Entries: []push.Entry{
@@ -100,7 +100,7 @@ func TestPatternTeeBasic(t *testing.T) {
 				{Timestamp: now.Add(2 * time.Second), Line: "pong"},
 			},
 		}},
-	})
+	}, nil)
 
 	cancel()
 
@@ -161,19 +161,19 @@ func TestPatternTeeEmptyStream(t *testing.T) {
 
 	require.NoError(t, tee.Start(ctx))
 
-	tee.Duplicate("test-tenant", []distributor.KeyedStream{
+	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
 		{HashKey: 123, Stream: push.Stream{
 			Labels:  `{foo="bar"}`,
 			Entries: []push.Entry{},
 		}},
-	})
+	}, nil)
 
-	tee.Duplicate("test-tenant", []distributor.KeyedStream{
+	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
 		{HashKey: 456, Stream: push.Stream{
 			Labels:  `{ping="pong"}`,
 			Entries: []push.Entry{},
 		}},
-	})
+	}, nil)
 
 	cancel()
 

@@ -44,7 +44,7 @@ const defaultPublicHost = "storage.googleapis.com"
 type Server struct {
 	backend      backend.Storage
 	uploads      sync.Map
-	transport    http.RoundTripper
+	transport    *muxTransport
 	ts           *httptest.Server
 	handler      http.Handler
 	options      Options
@@ -272,7 +272,6 @@ func (s *Server) buildMuxer() {
 		r.Path("/b/{bucketName}/o").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.listObjects))
 		r.Path("/b/{bucketName}/o/").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.listObjects))
 		r.Path("/b/{bucketName}/o/{objectName:.+}").Methods(http.MethodPatch).HandlerFunc(jsonToHTTPHandler(s.patchObject))
-		r.Path("/b/{bucketName}/o/{objectName:.+}").Methods(http.MethodPost).Headers("X-HTTP-Method-Override", "PATCH").HandlerFunc(jsonToHTTPHandler(s.patchObject))
 		r.Path("/b/{bucketName}/o/{objectName:.+}/acl").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.listObjectACL))
 		r.Path("/b/{bucketName}/o/{objectName:.+}/acl").Methods(http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.setObjectACL))
 		r.Path("/b/{bucketName}/o/{objectName:.+}/acl/{entity}").Methods(http.MethodDelete).HandlerFunc(jsonToHTTPHandler(s.deleteObjectACL))
@@ -455,10 +454,8 @@ func (s *Server) publicHostMatcher(r *http.Request, rm *mux.RouteMatch) bool {
 
 // Stop stops the server, closing all connections.
 func (s *Server) Stop() {
+	s.transport.closed = true
 	if s.ts != nil {
-		if transport, ok := s.transport.(*http.Transport); ok {
-			transport.CloseIdleConnections()
-		}
 		s.ts.Close()
 	}
 }

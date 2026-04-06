@@ -1,0 +1,24 @@
+---
+apiVersion: helm-chart-toolbox.grafana.com/v1
+kind: TestPlan
+name: ingress
+subject:
+  releaseName: loki
+  namespace: loki
+  path: ../../..
+  valuesFile: ingress-values.yaml
+  extraArgs:
+    - --dependency-update
+    - --set
+    - "chunksCache.allocatedMemory=1024"
+
+cluster:
+  type: kind
+
+tests:
+  - type: kubernetes-objects-test
+    values:
+      checks:
+        - kind: Ingress
+          name: loki-gateway
+          namespace: loki

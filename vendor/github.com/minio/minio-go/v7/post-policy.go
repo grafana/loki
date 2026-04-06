@@ -161,7 +161,7 @@ func (p *PostPolicy) SetTagging(tagging string) error {
 	}
 	_, err := tags.ParseObjectXML(strings.NewReader(tagging))
 	if err != nil {
-		return errors.New("The XML you provided was not well-formed or did not validate against our published schema.") //nolint
+		return errors.New(s3ErrorResponseMap[MalformedXML]) //nolint
 	}
 	policyCond := policyCondition{
 		matchType: "eq",
@@ -417,7 +417,7 @@ func (p PostPolicy) String() string {
 
 // marshalJSON - Provides Marshaled JSON in bytes.
 func (p PostPolicy) marshalJSON() []byte {
-	expirationStr := `"expiration":"` + p.expiration.Format(expirationDateFormat) + `"`
+	expirationStr := `"expiration":"` + p.expiration.UTC().Format(expirationDateFormat) + `"`
 	var conditionsStr string
 	conditions := []string{}
 	for _, po := range p.conditions {

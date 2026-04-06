@@ -35,7 +35,7 @@ func (c *Client) makeBucket(ctx context.Context, bucketName string, opts MakeBuc
 
 	err = c.doMakeBucket(ctx, bucketName, opts)
 	if err != nil && (opts.Region == "" || opts.Region == "us-east-1") {
-		if resp, ok := err.(ErrorResponse); ok && resp.Code == "AuthorizationHeaderMalformed" && resp.Region != "" {
+		if resp, ok := err.(ErrorResponse); ok && resp.Code == AuthorizationHeaderMalformed && resp.Region != "" {
 			opts.Region = resp.Region
 			err = c.doMakeBucket(ctx, bucketName, opts)
 		}

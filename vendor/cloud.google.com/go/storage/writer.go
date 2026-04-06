@@ -22,9 +22,17 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
-
-	"cloud.google.com/go/internal/trace"
 )
+
+// Interface internalWriter wraps low-level implementations which may vary
+// across client types.
+type internalWriter interface {
+	io.WriteCloser
+	Flush() (int64, error)
+	// CloseWithError terminates the write operation and sets its status.
+	// Note that CloseWithError always returns nil.
+	CloseWithError(error) error
+}
 
 // A Writer writes a Cloud Storage object.
 type Writer struct {
@@ -33,16 +41,42 @@ type Writer struct {
 	// attributes are ignored.
 	ObjectAttrs
 
-	// SendCRC32C specifies whether to transmit a CRC32C field. It should be set
-	// to true in addition to setting the Writer's CRC32C field, because zero
-	// is a valid CRC and normally a zero would not be transmitted.
-	// If a CRC32C is sent, and the data written does not match the checksum,
-	// the write will be rejected.
+	// SendCRC32C specifies whether to transmit a CRC32C checksum. When this is
+	// true and the Writer's CRC32C field is set, that checksum is sent to GCS.
+	// If the data written does not match the checksum, the write is rejected.
+	// It is necessary to set this field to true in addition to setting the
+	// Writer's CRC32C field because zero is a valid CRC.
 	//
-	// Note: SendCRC32C must be set to true BEFORE the first call to
-	// Writer.Write() in order to send the checksum. If it is set after that
-	// point, the checksum will be ignored.
+	// By default, the client automatically calculates and sends checksums.
+	// When using gRPC, checksums are sent for both individual chunks and the full object.
+	// When using JSON, checksums are sent only for the full object.
+	// However, a user-provided checksum takes precedence over the auto-calculated checksum
+	// for the full object.
+	//
+	// Note: SendCRC32C must be set before the first call to Writer.Write().
 	SendCRC32C bool
+
+	// DisableAutoChecksum disables automatic CRC32C checksum calculation and
+	// validation in the Writer. By default, the Writer automatically performs
+	// checksum validation. Setting this to true disables this behavior.
+	//
+	// Disabling automatic checksumming does not prevent a user-provided checksum
+	// from being sent. If SendCRC32C is true and the Writer's CRC32C field is
+	// populated, that checksum will still be sent to GCS for validation.
+	//
+	// For single-shot JSON uploads, a mismatch in the auto-calculated checksum returns
+	// an error but may leave data on the server. This issue does not apply when
+	// user-provided checksum is used. Callers relying on auto-checksum should handle the
+	// error by removing the object or restoring a previous version.
+	//
+	// Automatic CRC32C checksum calculation introduces increased CPU overhead
+	// because of checksum computation in writes. Use this field to disable
+	// it if needed.
+	//
+	// Note: DisableAutoChecksum must be set before the first call to
+	// Writer.Write(). Automatic checksumming is not enabled for full object
+	// checksums for unfinalized writes to appendable objects in gRPC.
+	DisableAutoChecksum bool
 
 	// ChunkSize controls the maximum number of bytes of the object that the
 	// Writer will attempt to send to the server in a single request. Objects
@@ -111,6 +145,9 @@ type Writer struct {
 	// when Writer.Close() is called; otherwise, the object is left unfinalized
 	// and can be appended to later.
 	//
+	// Defaults to false unless the experiemental WithZonalBucketAPIs option was
+	// set.
+	//
 	// Append is only supported for gRPC. This feature is in preview and is not
 	// yet available for general use.
 	Append bool
@@ -141,15 +178,14 @@ type Writer struct {
 
 	opened bool
 	closed bool
-	pw     *io.PipeWriter
+	iw     internalWriter
 
 	donec chan struct{} // closed after err and obj are set.
 	obj   *ObjectAttrs
 
-	mu             sync.Mutex
-	err            error
-	flush          func() (int64, error)
-	takeoverOffset int64 // offset from which the writer started appending to the object.
+	mu                sync.Mutex
+	err               error
+	setTakeoverOffset func(int64)
 }
 
 // Write appends to w. It implements the io.Writer interface.
@@ -173,7 +209,7 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 			return 0, err
 		}
 	}
-	n, err = w.pw.Write(p)
+	n, err = w.iw.Write(p)
 	if err != nil {
 		w.mu.Lock()
 		werr := w.err
@@ -223,14 +259,12 @@ func (w *Writer) Flush() (int64, error) {
 	// If Flush called before any bytes written, it should start the upload
 	// at zero bytes. This will make the object visible with zero length data.
 	if !w.opened {
-		err := w.openWriter()
-		if err != nil {
+		if err := w.openWriter(); err != nil {
 			return 0, err
 		}
-		w.progress(0)
 	}
 
-	return w.flush()
+	return w.iw.Flush()
 }
 
 // Close completes the write operation and flushes any buffered data.
@@ -243,8 +277,7 @@ func (w *Writer) Close() error {
 		}
 	}
 
-	// Closing either the read or write causes the entire pipe to close.
-	if err := w.pw.Close(); err != nil {
+	if err := w.iw.Close(); err != nil {
 		return err
 	}
 
@@ -252,7 +285,7 @@ func (w *Writer) Close() error {
 	w.closed = true
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	trace.EndSpan(w.ctx, w.err)
+	endSpan(w.ctx, w.err)
 	return w.err
 }
 
@@ -265,6 +298,8 @@ func (w *Writer) openWriter() (err error) {
 	}
 
 	isIdempotent := w.o.conds != nil && (w.o.conds.GenerationMatch >= 0 || w.o.conds.DoesNotExist)
+	// Append operations that takeover a specific generation are idempotent.
+	isIdempotent = isIdempotent || w.Append && w.o.gen > 0
 	opts := makeStorageOpts(isIdempotent, w.o.retry, w.o.userProject)
 	params := &openWriterParams{
 		ctx:                  w.ctx,
@@ -277,26 +312,25 @@ func (w *Writer) openWriter() (err error) {
 		appendGen:            w.o.gen,
 		encryptionKey:        w.o.encryptionKey,
 		sendCRC32C:           w.SendCRC32C,
+		disableAutoChecksum:  w.DisableAutoChecksum,
 		append:               w.Append,
 		finalizeOnClose:      w.FinalizeOnClose,
 		donec:                w.donec,
 		setError:             w.error,
 		progress:             w.progress,
 		setObj:               func(o *ObjectAttrs) { w.obj = o },
-		setFlush:             func(f func() (int64, error)) { w.flush = f },
 		setSize: func(n int64) {
 			if w.obj != nil {
 				w.obj.Size = n
 			}
 		},
-		setPipeWriter:         func(pw *io.PipeWriter) { w.pw = pw },
-		setTakeoverOffset:     func(n int64) { w.takeoverOffset = n },
+		setTakeoverOffset:     w.setTakeoverOffset,
 		forceEmptyContentType: w.ForceEmptyContentType,
 	}
 	if err := w.ctx.Err(); err != nil {
 		return err // short-circuit
 	}
-	w.pw, err = w.o.c.tc.OpenWriter(params, opts...)
+	w.iw, err = w.o.c.tc.OpenWriter(params, opts...)
 	if err != nil {
 		return err
 	}
@@ -317,7 +351,6 @@ func (w *Writer) monitorCancel() {
 		w.err = werr
 		w.mu.Unlock()
 
-		// Closing either the read or write causes the entire pipe to close.
 		w.CloseWithError(werr)
 	case <-w.donec:
 	}
@@ -331,7 +364,7 @@ func (w *Writer) CloseWithError(err error) error {
 	if !w.opened {
 		return nil
 	}
-	return w.pw.CloseWithError(err)
+	return w.iw.CloseWithError(err)
 }
 
 // Attrs returns metadata about a successfully-written object.

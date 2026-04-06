@@ -51,6 +51,13 @@ type AuthenticationScheme = authority.AuthenticationScheme
 
 type Account = shared.Account
 
+type TokenSource = base.TokenSource
+
+const (
+	TokenSourceIdentityProvider = base.TokenSourceIdentityProvider
+	TokenSourceCache            = base.TokenSourceCache
+)
+
 var errNoAccount = errors.New("no account was specified with public.WithSilentAccount(), or the specified account is invalid")
 
 // clientOptions configures the Client's behavior.
@@ -361,9 +368,9 @@ type AcquireByUsernamePasswordOption interface {
 	acquireByUsernamePasswordOption()
 }
 
-// AcquireTokenByUsernamePassword acquires a security token from the authority, via Username/Password Authentication.
-// NOTE: this flow is NOT recommended.
+// Deprecated: This API will be removed in a future release. Use a more secure flow instead. Follow this migration guide: https://aka.ms/msal-ropc-migration
 //
+// AcquireTokenByUsernamePassword acquires a security token from the authority, via Username/Password Authentication.
 // Options: [WithClaims], [WithTenantID]
 func (pca Client) AcquireTokenByUsernamePassword(ctx context.Context, scopes []string, username, password string, opts ...AcquireByUsernamePasswordOption) (AuthResult, error) {
 	o := acquireTokenByUsernamePasswordOptions{}
@@ -387,7 +394,7 @@ func (pca Client) AcquireTokenByUsernamePassword(ctx context.Context, scopes []s
 	if err != nil {
 		return AuthResult{}, err
 	}
-	return pca.base.AuthResultFromToken(ctx, authParams, token, true)
+	return pca.base.AuthResultFromToken(ctx, authParams, token)
 }
 
 type DeviceCodeResult = accesstokens.DeviceCodeResult
@@ -412,7 +419,7 @@ func (d DeviceCode) AuthenticationResult(ctx context.Context) (AuthResult, error
 	if err != nil {
 		return AuthResult{}, err
 	}
-	return d.client.base.AuthResultFromToken(ctx, d.authParams, token, true)
+	return d.client.base.AuthResultFromToken(ctx, d.authParams, token)
 }
 
 // acquireTokenByDeviceCodeOptions contains optional configuration for AcquireTokenByDeviceCode
@@ -687,7 +694,7 @@ func (pca Client) AcquireTokenInteractive(ctx context.Context, scopes []string, 
 		return AuthResult{}, err
 	}
 
-	return pca.base.AuthResultFromToken(ctx, authParams, token, true)
+	return pca.base.AuthResultFromToken(ctx, authParams, token)
 }
 
 type interactiveAuthResult struct {

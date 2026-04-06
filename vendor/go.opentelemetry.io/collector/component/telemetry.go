@@ -8,7 +8,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"go.opentelemetry.io/collector/config/configtelemetry"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -19,16 +18,17 @@ type TelemetrySettings struct {
 	Logger *zap.Logger
 
 	// TracerProvider that the factory can pass to other instrumented third-party libraries.
+	//
+	// The service may wrap this provider for attribute injection. The wrapper may implement an
+	// additional `Unwrap() trace.TracerProvider` method to grant access to the underlying SDK.
 	TracerProvider trace.TracerProvider
 
 	// MeterProvider that the factory can pass to other instrumented third-party libraries.
 	MeterProvider metric.MeterProvider
 
-	// MetricsLevel represents the configuration value set when the collector
-	// is configured. Components may use this level to decide whether it is
-	// appropriate to avoid computationally expensive calculations.
-	MetricsLevel configtelemetry.Level
-
 	// Resource contains the resource attributes for the collector's telemetry.
 	Resource pcommon.Resource
+
+	// prevent unkeyed literal initialization
+	_ struct{}
 }

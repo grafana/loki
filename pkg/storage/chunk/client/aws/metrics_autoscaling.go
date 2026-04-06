@@ -371,7 +371,7 @@ func promQuery(ctx context.Context, promAPI promV1.API, query string, duration, 
 	}
 	matrix, ok := value.(model.Matrix)
 	if !ok {
-		return nil, fmt.Errorf("Unable to convert value to matrix: %#v", value)
+		return nil, fmt.Errorf("unable to convert value to matrix: %#v", value)
 	}
 	return matrix, nil
 }

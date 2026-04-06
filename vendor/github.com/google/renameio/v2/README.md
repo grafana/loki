@@ -1,6 +1,6 @@
 [![Build Status](https://github.com/google/renameio/workflows/Test/badge.svg)](https://github.com/google/renameio/actions?query=workflow%3ATest)
-[![PkgGoDev](https://pkg.go.dev/badge/github.com/google/renameio)](https://pkg.go.dev/github.com/google/renameio)
-[![Go Report Card](https://goreportcard.com/badge/github.com/google/renameio)](https://goreportcard.com/report/github.com/google/renameio)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/google/renameio/v2)](https://pkg.go.dev/github.com/google/renameio/v2)
+[![Go Report Card](https://goreportcard.com/badge/github.com/google/renameio/v2)](https://goreportcard.com/report/github.com/google/renameio/v2)
 
 The `renameio` Go package provides a way to atomically create or replace a file or
 symbolic link.

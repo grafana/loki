@@ -4,6 +4,7 @@ menuTItle: LogCLI
 description: "LogCLI is a command-line tool for querying and exploring logs in Grafana Loki."
 aliases: 
 - ./logcli
+- ./tools/logcli/   
 weight: 600
 ---
 

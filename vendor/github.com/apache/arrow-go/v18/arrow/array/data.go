@@ -29,7 +29,7 @@ import (
 
 // Data represents the memory and metadata of an Arrow array.
 type Data struct {
-	refCount int64
+	refCount atomic.Int64
 	dtype    arrow.DataType
 	nulls    int
 	offset   int
@@ -56,8 +56,7 @@ func NewData(dtype arrow.DataType, length int, buffers []*memory.Buffer, childDa
 		}
 	}
 
-	return &Data{
-		refCount:  1,
+	d := &Data{
 		dtype:     dtype,
 		nulls:     nulls,
 		length:    length,
@@ -65,6 +64,8 @@ func NewData(dtype arrow.DataType, length int, buffers []*memory.Buffer, childDa
 		buffers:   buffers,
 		childData: childData,
 	}
+	d.refCount.Add(1)
+	return d
 }
 
 // NewDataWithDictionary creates a new data object, but also sets the provided dictionary into the data if it's not nil
@@ -129,16 +130,16 @@ func (d *Data) Reset(dtype arrow.DataType, length int, buffers []*memory.Buffer,
 // Retain increases the reference count by 1.
 // Retain may be called simultaneously from multiple goroutines.
 func (d *Data) Retain() {
-	atomic.AddInt64(&d.refCount, 1)
+	d.refCount.Add(1)
 }
 
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 // Release may be called simultaneously from multiple goroutines.
 func (d *Data) Release() {
-	debug.Assert(atomic.LoadInt64(&d.refCount) > 0, "too many releases")
+	debug.Assert(d.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&d.refCount, -1) == 0 {
+	if d.refCount.Add(-1) == 0 {
 		for _, b := range d.buffers {
 			if b != nil {
 				b.Release()
@@ -146,7 +147,9 @@ func (d *Data) Release() {
 		}
 
 		for _, b := range d.childData {
-			b.Release()
+			if b != nil {
+				b.Release()
+			}
 		}
 
 		if d.dictionary != nil {
@@ -246,7 +249,6 @@ func NewSliceData(data arrow.ArrayData, i, j int64) arrow.ArrayData {
 	}
 
 	o := &Data{
-		refCount:   1,
 		dtype:      data.DataType(),
 		nulls:      UnknownNullCount,
 		length:     int(j - i),
@@ -255,6 +257,7 @@ func NewSliceData(data arrow.ArrayData, i, j int64) arrow.ArrayData {
 		childData:  data.Children(),
 		dictionary: data.(*Data).dictionary,
 	}
+	o.refCount.Add(1)
 
 	if data.NullN() == 0 {
 		o.nulls = 0

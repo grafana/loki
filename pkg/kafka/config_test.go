@@ -10,7 +10,10 @@ import (
 func TestBothSASLParamsMustBeSet(t *testing.T) {
 	cfg := Config{
 		// Other required params
-		Address:                    "abcd",
+		ReaderConfig: ClientConfig{
+			Address:  "abcd",
+			ClientID: "reader",
+		},
 		Topic:                      "abcd",
 		ProducerMaxRecordSizeBytes: 1048576,
 	}
@@ -36,61 +39,4 @@ func TestBothSASLParamsMustBeSet(t *testing.T) {
 	cfg.SASLPassword = flagext.SecretWithValue("abcd")
 	err = cfg.Validate()
 	require.NoError(t, err)
-}
-
-func TestAmbiguousKafkaAddress(t *testing.T) {
-	cfg := Config{
-		Address:      "localhost:9092",
-		ReaderConfig: ClientConfig{Address: "localhost:9092"},
-		WriterConfig: ClientConfig{Address: "localhost:9092"},
-	}
-	err := cfg.Validate()
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrAmbiguousKafkaAddress)
-}
-
-func TestAmbiguousKafkaClientID(t *testing.T) {
-	// Disallow defining in both places
-	cfg := Config{
-		ClientID:     "abcd",
-		ReaderConfig: ClientConfig{Address: "reader:9092", ClientID: "abcd"},
-		WriterConfig: ClientConfig{Address: "writer:9092", ClientID: "abcd"},
-	}
-	err := cfg.Validate()
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrAmbiguousKafkaClientID)
-}
-
-func TestMixingOldAndNewClientConfig(t *testing.T) {
-	cfg := Config{
-		Address:      "localhost:9092",
-		ReaderConfig: ClientConfig{ClientID: "reader"},
-	}
-	err := cfg.Validate()
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrMixingOldAndNewClientConfig)
-
-	cfg = Config{
-		Address:      "localhost:9092",
-		WriterConfig: ClientConfig{ClientID: "reader"},
-	}
-	err = cfg.Validate()
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrMixingOldAndNewClientConfig)
-
-	cfg = Config{
-		ClientID:     "abcd",
-		ReaderConfig: ClientConfig{Address: "localhost:9092"},
-	}
-	err = cfg.Validate()
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrMixingOldAndNewClientConfig)
-
-	cfg = Config{
-		ClientID:     "abcd",
-		WriterConfig: ClientConfig{Address: "localhost:9092"},
-	}
-	err = cfg.Validate()
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrMixingOldAndNewClientConfig)
 }

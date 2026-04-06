@@ -281,7 +281,11 @@ func (i *Instance) Run(ctx context.Context) error {
 type noopScrapeManager struct{}
 
 func (n noopScrapeManager) Get() (*scrape.Manager, error) {
-	return nil, errors.New("No-op Scrape manager not ready")
+	return nil, errors.New("no-op Scrape manager not ready")
+}
+
+func (n noopScrapeManager) Ready() bool {
+	return false
 }
 
 // initialize sets up the various Prometheus components with their initial
@@ -518,6 +522,7 @@ type walStorage interface {
 	WriteStalenessMarkers(remoteTsFunc func() int64) error
 	SetWriteNotified(wlog.WriteNotified)
 	Appender(context.Context) storage.Appender
+	AppenderV2(context.Context) storage.AppenderV2
 	Truncate(mint int64) error
 
 	Close() error

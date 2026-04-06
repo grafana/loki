@@ -181,7 +181,7 @@ func (v2 DataPageHeaderV2) MaxValue() []byte {
 }
 
 func (v2 DataPageHeaderV2) IsCompressed() bool {
-	return v2.header.IsCompressed == nil || *v2.header.IsCompressed
+	return !v2.header.IsCompressed.Valid || v2.header.IsCompressed.V
 }
 
 func (v2 DataPageHeaderV2) String() string {

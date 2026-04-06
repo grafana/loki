@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -108,6 +109,8 @@ type ttlState struct {
 // origin for resolving relative domain names defaults to the DNS root (.).
 // Full zone file syntax is supported, including directives like $TTL and $ORIGIN.
 // All fields of the returned RR are set from the read data, except RR.Header().Rdlength which is set to 0.
+// Is you need a partial resource record with no rdata - for instance - for dynamic updates, see the [ANY]
+// documentation.
 func NewRR(s string) (RR, error) {
 	if len(s) > 0 && s[len(s)-1] != '\n' { // We need a closing newline
 		return ReadRR(strings.NewReader(s+"\n"), "")
@@ -1229,7 +1232,7 @@ func typeToInt(token string) (uint16, bool) {
 
 // stringToTTL parses things like 2w, 2m, etc, and returns the time in seconds.
 func stringToTTL(token string) (uint32, bool) {
-	var s, i uint32
+	var s, i uint
 	for _, c := range token {
 		switch c {
 		case 's', 'S':
@@ -1249,12 +1252,15 @@ func stringToTTL(token string) (uint32, bool) {
 			i = 0
 		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			i *= 10
-			i += uint32(c) - '0'
+			i += uint(c) - '0'
 		default:
 			return 0, false
 		}
 	}
-	return s + i, true
+	if s+i > math.MaxUint32 {
+		return 0, false
+	}
+	return uint32(s + i), true
 }
 
 // Parse LOC records' <digits>[.<digits>][mM] into a
@@ -1314,6 +1320,13 @@ func toAbsoluteName(name, origin string) (absolute string, ok bool) {
 			return "", false
 		}
 		return origin, true
+	}
+
+	// this can happen when we have a comment after a RR that has a domain, '...   MX 20 ; this is wrong'.
+	// technically a newline can be in a domain name, but this is clearly an error and the newline only shows
+	// because of the scanning and the comment.
+	if name == "\n" {
+		return "", false
 	}
 
 	// require a valid domain name

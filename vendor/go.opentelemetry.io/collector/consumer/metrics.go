@@ -14,7 +14,8 @@ import (
 // as needed, and sends it to the next processing node if any or to the destination.
 type Metrics interface {
 	internal.BaseConsumer
-	// ConsumeMetrics receives pmetric.Metrics for consumption.
+	// ConsumeMetrics processes the metrics. After the function returns, the metrics are no longer accessible,
+	// and accessing them is considered undefined behavior.
 	ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error
 }
 

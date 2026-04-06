@@ -19,19 +19,27 @@
 package jaegerremote // import "go.opentelemetry.io/contrib/samplers/jaegerremote"
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math"
 	"sync"
 
-	jaeger_api_v2 "go.opentelemetry.io/contrib/samplers/jaegerremote/internal/proto-gen/jaeger-idl/proto/api_v2"
-	"go.opentelemetry.io/contrib/samplers/jaegerremote/internal/utils"
+	jaeger_api_v2 "github.com/jaegertracing/jaeger-idl/proto-gen/api_v2"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
+
+	"go.opentelemetry.io/contrib/samplers/jaegerremote/internal/ratelimiter"
 )
 
 const (
 	defaultMaxOperations = 2000
+)
+
+const (
+	samplerTypeKey                = "jaeger.sampler.type"
+	samplerParamKey               = "jaeger.sampler.param"
+	samplerTypeValueProbabilistic = "probabilistic"
+	samplerTypeValueRateLimiting  = "ratelimiting"
 )
 
 // -----------------------
@@ -39,25 +47,28 @@ const (
 // probabilisticSampler is a sampler that randomly samples a certain percentage
 // of traces.
 type probabilisticSampler struct {
-	samplingRate     float64
-	samplingBoundary uint64
+	samplingRate       float64
+	sampler            trace.Sampler
+	attributes         []attribute.KeyValue
+	attributesDisabled bool
 }
 
-const maxRandomNumber = ^(uint64(1) << 63) // i.e. 0x7fffffffffffffff
-
 // newProbabilisticSampler creates a sampler that randomly samples a certain percentage of traces specified by the
-// samplingRate, in the range between 0.0 and 1.0.
-//
-// It relies on the fact that new trace IDs are 63bit random numbers themselves, thus making the sampling decision
-// without generating a new random number, but simply calculating if traceID < (samplingRate * 2^63).
-func newProbabilisticSampler(samplingRate float64) *probabilisticSampler {
-	s := new(probabilisticSampler)
+// samplingRate, in the range between 0.0 and 1.0. it utilizes the SDK `trace.TraceIDRatioBased` sampler.
+func newProbabilisticSampler(samplingRate float64, attributesDisabled bool) *probabilisticSampler {
+	s := &probabilisticSampler{
+		attributesDisabled: attributesDisabled,
+	}
 	return s.init(samplingRate)
 }
 
 func (s *probabilisticSampler) init(samplingRate float64) *probabilisticSampler {
 	s.samplingRate = math.Max(0.0, math.Min(samplingRate, 1.0))
-	s.samplingBoundary = uint64(float64(maxRandomNumber) * s.samplingRate)
+	s.sampler = trace.TraceIDRatioBased(s.samplingRate)
+	if s.attributesDisabled {
+		return s
+	}
+	s.attributes = []attribute.KeyValue{attribute.String(samplerTypeKey, samplerTypeValueProbabilistic), attribute.Float64(samplerParamKey, s.samplingRate)}
 	return s
 }
 
@@ -67,24 +78,18 @@ func (s *probabilisticSampler) SamplingRate() float64 {
 }
 
 func (s *probabilisticSampler) ShouldSample(p trace.SamplingParameters) trace.SamplingResult {
-	psc := oteltrace.SpanContextFromContext(p.ParentContext)
-	traceID := binary.BigEndian.Uint64(p.TraceID[0:8])
-	if s.samplingBoundary >= traceID&maxRandomNumber {
-		return trace.SamplingResult{
-			Decision:   trace.RecordAndSample,
-			Tracestate: psc.TraceState(),
-		}
+	r := s.sampler.ShouldSample(p)
+	if r.Decision == trace.Drop {
+		return r
 	}
-	return trace.SamplingResult{
-		Decision:   trace.Drop,
-		Tracestate: psc.TraceState(),
-	}
+	r.Attributes = s.attributes
+	return r
 }
 
 // Equal compares with another sampler.
 func (s *probabilisticSampler) Equal(other trace.Sampler) bool {
 	if o, ok := other.(*probabilisticSampler); ok {
-		return s.samplingBoundary == o.samplingBoundary
+		return math.Abs(s.samplingRate-o.samplingRate) < 1e-9 // consider equal if within 0.000001%
 	}
 	return false
 }
@@ -99,7 +104,7 @@ func (s *probabilisticSampler) Update(samplingRate float64) error {
 }
 
 func (s *probabilisticSampler) Description() string {
-	return "probabilisticSampler{}"
+	return s.sampler.Description()
 }
 
 // -----------------------
@@ -110,22 +115,31 @@ func (s *probabilisticSampler) Description() string {
 // number of sequential requests can be sampled each second.
 type rateLimitingSampler struct {
 	maxTracesPerSecond float64
-	rateLimiter        *utils.RateLimiter
+	rateLimiter        *ratelimiter.RateLimiter
+	attributes         []attribute.KeyValue
+	attributesDisabled bool
 }
 
 // newRateLimitingSampler creates new rateLimitingSampler.
-func newRateLimitingSampler(maxTracesPerSecond float64) *rateLimitingSampler {
-	s := new(rateLimitingSampler)
+func newRateLimitingSampler(maxTracesPerSecond float64, attributesDisabled bool) *rateLimitingSampler {
+	s := &rateLimitingSampler{
+		attributesDisabled: attributesDisabled,
+	}
+
 	return s.init(maxTracesPerSecond)
 }
 
 func (s *rateLimitingSampler) init(maxTracesPerSecond float64) *rateLimitingSampler {
 	if s.rateLimiter == nil {
-		s.rateLimiter = utils.NewRateLimiter(maxTracesPerSecond, math.Max(maxTracesPerSecond, 1.0))
+		s.rateLimiter = ratelimiter.NewRateLimiter(maxTracesPerSecond, math.Max(maxTracesPerSecond, 1.0))
 	} else {
 		s.rateLimiter.Update(maxTracesPerSecond, math.Max(maxTracesPerSecond, 1.0))
 	}
 	s.maxTracesPerSecond = maxTracesPerSecond
+	if s.attributesDisabled {
+		return s
+	}
+	s.attributes = []attribute.KeyValue{attribute.String(samplerTypeKey, samplerTypeValueRateLimiting), attribute.Float64(samplerParamKey, s.maxTracesPerSecond)}
 	return s
 }
 
@@ -135,6 +149,7 @@ func (s *rateLimitingSampler) ShouldSample(p trace.SamplingParameters) trace.Sam
 		return trace.SamplingResult{
 			Decision:   trace.RecordAndSample,
 			Tracestate: psc.TraceState(),
+			Attributes: s.attributes,
 		}
 	}
 	return trace.SamplingResult{
@@ -159,7 +174,7 @@ func (s *rateLimitingSampler) Equal(other trace.Sampler) bool {
 	return false
 }
 
-func (s *rateLimitingSampler) Description() string {
+func (*rateLimitingSampler) Description() string {
 	return "rateLimitingSampler{}"
 }
 
@@ -177,12 +192,14 @@ type guaranteedThroughputProbabilisticSampler struct {
 	lowerBoundSampler    *rateLimitingSampler
 	samplingRate         float64
 	lowerBound           float64
+	attributesDisabled   bool
 }
 
-func newGuaranteedThroughputProbabilisticSampler(lowerBound, samplingRate float64) *guaranteedThroughputProbabilisticSampler {
+func newGuaranteedThroughputProbabilisticSampler(lowerBound, samplingRate float64, attributesDisabled bool) *guaranteedThroughputProbabilisticSampler {
 	s := &guaranteedThroughputProbabilisticSampler{
-		lowerBoundSampler: newRateLimitingSampler(lowerBound),
-		lowerBound:        lowerBound,
+		lowerBoundSampler:  newRateLimitingSampler(lowerBound, attributesDisabled),
+		lowerBound:         lowerBound,
+		attributesDisabled: attributesDisabled,
 	}
 	s.setProbabilisticSampler(samplingRate)
 	return s
@@ -190,7 +207,7 @@ func newGuaranteedThroughputProbabilisticSampler(lowerBound, samplingRate float6
 
 func (s *guaranteedThroughputProbabilisticSampler) setProbabilisticSampler(samplingRate float64) {
 	if s.probabilisticSampler == nil {
-		s.probabilisticSampler = newProbabilisticSampler(samplingRate)
+		s.probabilisticSampler = newProbabilisticSampler(samplingRate, s.attributesDisabled)
 	} else if s.samplingRate != samplingRate {
 		s.probabilisticSampler.init(samplingRate)
 	}
@@ -216,7 +233,7 @@ func (s *guaranteedThroughputProbabilisticSampler) update(lowerBound, samplingRa
 	}
 }
 
-func (s *guaranteedThroughputProbabilisticSampler) Description() string {
+func (*guaranteedThroughputProbabilisticSampler) Description() string {
 	return "guaranteedThroughputProbabilisticSampler{}"
 }
 
@@ -234,6 +251,7 @@ type perOperationSampler struct {
 
 	// see description in perOperationSamplerParams
 	operationNameLateBinding bool
+	attributesDisabled       bool
 }
 
 // perOperationSamplerParams defines parameters when creating perOperationSampler.
@@ -254,7 +272,7 @@ type perOperationSamplerParams struct {
 }
 
 // newPerOperationSampler returns a new perOperationSampler.
-func newPerOperationSampler(params perOperationSamplerParams) *perOperationSampler {
+func newPerOperationSampler(params perOperationSamplerParams, attributesDisabled bool) *perOperationSampler {
 	if params.MaxOperations <= 0 {
 		params.MaxOperations = defaultMaxOperations
 	}
@@ -263,15 +281,17 @@ func newPerOperationSampler(params perOperationSamplerParams) *perOperationSampl
 		sampler := newGuaranteedThroughputProbabilisticSampler(
 			params.Strategies.DefaultLowerBoundTracesPerSecond,
 			strategy.ProbabilisticSampling.SamplingRate,
+			attributesDisabled,
 		)
 		samplers[strategy.Operation] = sampler
 	}
 	return &perOperationSampler{
 		samplers:                 samplers,
-		defaultSampler:           newProbabilisticSampler(params.Strategies.DefaultSamplingProbability),
+		defaultSampler:           newProbabilisticSampler(params.Strategies.DefaultSamplingProbability, attributesDisabled),
 		lowerBound:               params.Strategies.DefaultLowerBoundTracesPerSecond,
 		maxOperations:            params.MaxOperations,
 		operationNameLateBinding: params.OperationNameLateBinding,
+		attributesDisabled:       attributesDisabled,
 	}
 }
 
@@ -300,12 +320,12 @@ func (s *perOperationSampler) getSamplerForOperation(operation string) trace.Sam
 	if len(s.samplers) >= s.maxOperations {
 		return s.defaultSampler
 	}
-	newSampler := newGuaranteedThroughputProbabilisticSampler(s.lowerBound, s.defaultSampler.SamplingRate())
+	newSampler := newGuaranteedThroughputProbabilisticSampler(s.lowerBound, s.defaultSampler.SamplingRate(), s.attributesDisabled)
 	s.samplers[operation] = newSampler
 	return newSampler
 }
 
-func (s *perOperationSampler) Description() string {
+func (*perOperationSampler) Description() string {
 	return "perOperationSampler{}"
 }
 
@@ -324,13 +344,14 @@ func (s *perOperationSampler) update(strategies *jaeger_api_v2.PerOperationSampl
 			sampler := newGuaranteedThroughputProbabilisticSampler(
 				lowerBound,
 				samplingRate,
+				s.attributesDisabled,
 			)
 			newSamplers[operation] = sampler
 		}
 	}
 	s.lowerBound = strategies.DefaultLowerBoundTracesPerSecond
 	if s.defaultSampler.SamplingRate() != strategies.DefaultSamplingProbability {
-		s.defaultSampler = newProbabilisticSampler(strategies.DefaultSamplingProbability)
+		s.defaultSampler = newProbabilisticSampler(strategies.DefaultSamplingProbability, s.attributesDisabled)
 	}
 	s.samplers = newSamplers
 }

@@ -1,4 +1,5 @@
-package registry // import "github.com/docker/docker/api/types/registry"
+package registry
+
 import (
 	"context"
 	"encoding/base64"
@@ -31,8 +32,8 @@ type AuthConfig struct {
 	Auth     string `json:"auth,omitempty"`
 
 	// Email is an optional value associated with the username.
-	// This field is deprecated and will be removed in a later
-	// version of docker.
+	//
+	// Deprecated: This field is deprecated since docker 1.11 (API v1.23) and will be removed in the next release.
 	Email string `json:"email,omitempty"`
 
 	ServerAddress string `json:"serveraddress,omitempty"`
@@ -82,6 +83,8 @@ func DecodeAuthConfig(authEncoded string) (*AuthConfig, error) {
 // Like [DecodeAuthConfig], this function always returns an [AuthConfig], even if an
 // error occurs. It is up to the caller to decide if authentication is required,
 // and if the error can be ignored.
+//
+// Deprecated: this function is no longer used and will be removed in the next release.
 func DecodeAuthConfigBody(rdr io.ReadCloser) (*AuthConfig, error) {
 	return decodeAuthConfigFromReader(rdr)
 }

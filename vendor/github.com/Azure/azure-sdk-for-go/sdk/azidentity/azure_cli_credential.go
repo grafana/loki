@@ -7,14 +7,11 @@
 package azidentity
 
 import (
-	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -25,8 +22,6 @@ import (
 )
 
 const credNameAzureCLI = "AzureCLICredential"
-
-type azTokenProvider func(ctx context.Context, scopes []string, tenant, subscription string) ([]byte, error)
 
 // AzureCLICredentialOptions contains optional parameters for AzureCLICredential.
 type AzureCLICredentialOptions struct {
@@ -45,15 +40,8 @@ type AzureCLICredentialOptions struct {
 
 	// inDefaultChain is true when the credential is part of DefaultAzureCredential
 	inDefaultChain bool
-	// tokenProvider is used by tests to fake invoking az
-	tokenProvider azTokenProvider
-}
-
-// init returns an instance of AzureCLICredentialOptions initialized with default values.
-func (o *AzureCLICredentialOptions) init() {
-	if o.tokenProvider == nil {
-		o.tokenProvider = defaultAzTokenProvider
-	}
+	// exec is used by tests to fake invoking az
+	exec executor
 }
 
 // AzureCLICredential authenticates as the identity logged in to the Azure CLI.
@@ -80,7 +68,9 @@ func NewAzureCLICredential(options *AzureCLICredentialOptions) (*AzureCLICredent
 	if cp.TenantID != "" && !validTenantID(cp.TenantID) {
 		return nil, errInvalidTenantID
 	}
-	cp.init()
+	if cp.exec == nil {
+		cp.exec = shellExec
+	}
 	cp.AdditionallyAllowedTenants = resolveAdditionalTenants(cp.AdditionallyAllowedTenants)
 	return &AzureCLICredential{mu: &sync.Mutex{}, opts: cp}, nil
 }
@@ -99,70 +89,42 @@ func (c *AzureCLICredential) GetToken(ctx context.Context, opts policy.TokenRequ
 	if err != nil {
 		return at, err
 	}
+	// pass the CLI a Microsoft Entra ID v1 resource because we don't know which CLI version is installed and older ones don't support v2 scopes
+	resource := strings.TrimSuffix(opts.Scopes[0], defaultSuffix)
+	command := "az account get-access-token -o json --resource " + resource
+	tenantArg := ""
+	if tenant != "" {
+		tenantArg = " --tenant " + tenant
+		command += tenantArg
+	}
+	if c.opts.Subscription != "" {
+		// subscription needs quotes because it may contain spaces
+		command += ` --subscription "` + c.opts.Subscription + `"`
+	}
+	if opts.Claims != "" {
+		encoded := base64.StdEncoding.EncodeToString([]byte(opts.Claims))
+		return at, fmt.Errorf(
+			"%s.GetToken(): Azure CLI requires multifactor authentication or additional claims. Run this command then retry the operation: az login%s --claims-challenge %s",
+			credNameAzureCLI,
+			tenantArg,
+			encoded,
+		)
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	b, err := c.opts.tokenProvider(ctx, opts.Scopes, tenant, c.opts.Subscription)
+
+	b, err := c.opts.exec(ctx, credNameAzureCLI, command)
 	if err == nil {
 		at, err = c.createAccessToken(b)
 	}
 	if err != nil {
-		err = unavailableIfInChain(err, c.opts.inDefaultChain)
+		err = unavailableIfInDAC(err, c.opts.inDefaultChain)
 		return at, err
 	}
 	msg := fmt.Sprintf("%s.GetToken() acquired a token for scope %q", credNameAzureCLI, strings.Join(opts.Scopes, ", "))
 	log.Write(EventAuthentication, msg)
 	return at, nil
-}
-
-// defaultAzTokenProvider invokes the Azure CLI to acquire a token. It assumes
-// callers have verified that all string arguments are safe to pass to the CLI.
-var defaultAzTokenProvider azTokenProvider = func(ctx context.Context, scopes []string, tenantID, subscription string) ([]byte, error) {
-	// pass the CLI a Microsoft Entra ID v1 resource because we don't know which CLI version is installed and older ones don't support v2 scopes
-	resource := strings.TrimSuffix(scopes[0], defaultSuffix)
-	// set a default timeout for this authentication iff the application hasn't done so already
-	var cancel context.CancelFunc
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		ctx, cancel = context.WithTimeout(ctx, cliTimeout)
-		defer cancel()
-	}
-	commandLine := "az account get-access-token -o json --resource " + resource
-	if tenantID != "" {
-		commandLine += " --tenant " + tenantID
-	}
-	if subscription != "" {
-		// subscription needs quotes because it may contain spaces
-		commandLine += ` --subscription "` + subscription + `"`
-	}
-	var cliCmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		dir := os.Getenv("SYSTEMROOT")
-		if dir == "" {
-			return nil, newCredentialUnavailableError(credNameAzureCLI, "environment variable 'SYSTEMROOT' has no value")
-		}
-		cliCmd = exec.CommandContext(ctx, "cmd.exe", "/c", commandLine)
-		cliCmd.Dir = dir
-	} else {
-		cliCmd = exec.CommandContext(ctx, "/bin/sh", "-c", commandLine)
-		cliCmd.Dir = "/bin"
-	}
-	cliCmd.Env = os.Environ()
-	var stderr bytes.Buffer
-	cliCmd.Stderr = &stderr
-
-	output, err := cliCmd.Output()
-	if err != nil {
-		msg := stderr.String()
-		var exErr *exec.ExitError
-		if errors.As(err, &exErr) && exErr.ExitCode() == 127 || strings.HasPrefix(msg, "'az' is not recognized") {
-			msg = "Azure CLI not found on path"
-		}
-		if msg == "" {
-			msg = err.Error()
-		}
-		return nil, newCredentialUnavailableError(credNameAzureCLI, msg)
-	}
-
-	return output, nil
 }
 
 func (c *AzureCLICredential) createAccessToken(tk []byte) (azcore.AccessToken, error) {

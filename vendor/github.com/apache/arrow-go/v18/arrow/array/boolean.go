@@ -44,16 +44,16 @@ func NewBoolean(length int, data *memory.Buffer, nullBitmap *memory.Buffer, null
 
 func NewBooleanData(data arrow.ArrayData) *Boolean {
 	a := &Boolean{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
 
 func (a *Boolean) Value(i int) bool {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return bitutil.BitIsSet(a.values, a.array.data.offset+i)
+	return bitutil.BitIsSet(a.values, a.data.offset+i)
 }
 
 func (a *Boolean) ValueStr(i int) string {
@@ -122,5 +122,6 @@ func arrayEqualBoolean(left, right *Boolean) bool {
 }
 
 var (
-	_ arrow.Array = (*Boolean)(nil)
+	_ arrow.Array            = (*Boolean)(nil)
+	_ arrow.TypedArray[bool] = (*Boolean)(nil)
 )

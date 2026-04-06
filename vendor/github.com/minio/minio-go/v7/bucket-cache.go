@@ -84,18 +84,18 @@ func processBucketLocationResponse(resp *http.Response, bucketName string) (buck
 			// request. Move forward and let the top level callers
 			// succeed if possible based on their policy.
 			switch errResp.Code {
-			case "NotImplemented":
+			case NotImplemented:
 				switch errResp.Server {
 				case "AmazonSnowball":
 					return "snowball", nil
 				case "cloudflare":
 					return "us-east-1", nil
 				}
-			case "AuthorizationHeaderMalformed":
+			case AuthorizationHeaderMalformed:
 				fallthrough
-			case "InvalidRegion":
+			case InvalidRegion:
 				fallthrough
-			case "AccessDenied":
+			case AccessDenied:
 				if errResp.Region == "" {
 					return "us-east-1", nil
 				}
@@ -142,7 +142,7 @@ func (c *Client) getBucketLocationRequest(ctx context.Context, bucketName string
 	if h, p, err := net.SplitHostPort(targetURL.Host); err == nil {
 		if targetURL.Scheme == "http" && p == "80" || targetURL.Scheme == "https" && p == "443" {
 			targetURL.Host = h
-			if ip := net.ParseIP(h); ip != nil && ip.To16() != nil {
+			if ip := net.ParseIP(h); ip != nil && ip.To4() == nil {
 				targetURL.Host = "[" + h + "]"
 			}
 		}
@@ -209,6 +209,11 @@ func (c *Client) getBucketLocationRequest(ctx context.Context, bucketName string
 	}
 
 	req.Header.Set("X-Amz-Content-Sha256", contentSha256)
-	req = signer.SignV4(*req, accessKeyID, secretAccessKey, sessionToken, "us-east-1")
+	if s3utils.IsAmazonOutpostsEndpoint(*c.endpointURL) {
+		region := getDefaultLocation(*c.endpointURL, c.region)
+		req = signer.SignV4Outposts(*req, accessKeyID, secretAccessKey, sessionToken, region)
+	} else {
+		req = signer.SignV4(*req, accessKeyID, secretAccessKey, sessionToken, "us-east-1")
+	}
 	return req, nil
 }

@@ -19,15 +19,11 @@ type filterRowReader struct {
 
 func (f *filterRowReader) ReadRows(rows []Row) (n int, err error) {
 	for n < len(rows) {
-		r := len(rows) - n
-
-		if r > len(f.rows) {
-			r = len(f.rows)
-		}
+		r := min(len(rows)-n, len(f.rows))
 
 		r, err = f.reader.ReadRows(f.rows[:r])
 
-		for i := 0; i < r; i++ {
+		for i := range r {
 			if f.predicate(f.rows[i]) {
 				rows[n] = append(rows[n][:0], f.rows[i]...)
 				n++
@@ -63,11 +59,7 @@ func (f *filterRowWriter) WriteRows(rows []Row) (n int, err error) {
 
 	for n < len(rows) {
 		i := 0
-		j := len(rows) - n
-
-		if j > len(f.rows) {
-			j = len(f.rows)
-		}
+		j := min(len(rows)-n, len(f.rows))
 
 		for _, row := range rows[n : n+j] {
 			if f.predicate(row) {

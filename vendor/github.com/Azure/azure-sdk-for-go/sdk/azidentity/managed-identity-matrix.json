@@ -4,14 +4,13 @@
             "Agent": {
                 "msi_image": {
                     "ArmTemplateParameters": "@{deployResources = $true}",
-                    "OSVmImage": "env:LINUXNEXTVMIMAGE",
+                    "OSVmImage": "env:LINUXVMIMAGE",
                     "Pool": "env:LINUXPOOL"
                 }
             },
             "GoVersion": [
-                "1.22.1"
-            ],
-            "IDENTITY_IMDS_AVAILABLE": "1"
+                "env:GO_VERSION_PREVIOUS"
+            ]
         }
     ]
 }

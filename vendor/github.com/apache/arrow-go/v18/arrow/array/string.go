@@ -44,7 +44,7 @@ type String struct {
 // NewStringData constructs a new String array from data.
 func NewStringData(data arrow.ArrayData) *String {
 	a := &String{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -56,7 +56,7 @@ func (a *String) Reset(data arrow.ArrayData) {
 
 // Value returns the slice at index i. This value should not be mutated.
 func (a *String) Value(i int) string {
-	i = i + a.array.data.offset
+	i = i + a.data.offset
 	return a.values[a.offsets[i]:a.offsets[i+1]]
 }
 
@@ -69,10 +69,10 @@ func (a *String) ValueStr(i int) string {
 
 // ValueOffset returns the offset of the value at index i.
 func (a *String) ValueOffset(i int) int {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return int(a.offsets[i+a.array.data.offset])
+	return int(a.offsets[i+a.data.offset])
 }
 
 func (a *String) ValueOffset64(i int) int64 {
@@ -80,23 +80,23 @@ func (a *String) ValueOffset64(i int) int64 {
 }
 
 func (a *String) ValueLen(i int) int {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	beg := a.array.data.offset + i
+	beg := a.data.offset + i
 	return int(a.offsets[beg+1] - a.offsets[beg])
 }
 
 func (a *String) ValueOffsets() []int32 {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length + 1
+	beg := a.data.offset
+	end := beg + a.data.length + 1
 	return a.offsets[beg:end]
 }
 
 func (a *String) ValueBytes() []byte {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length
-	if a.array.data.buffers[2] != nil {
+	beg := a.data.offset
+	end := beg + a.data.length
+	if a.data.buffers[2] != nil {
 		return a.array.data.buffers[2].Bytes()[a.offsets[beg]:a.offsets[end]]
 	}
 	return nil
@@ -136,11 +136,11 @@ func (a *String) setData(data *Data) {
 		a.offsets = arrow.Int32Traits.CastFromBytes(offsets.Bytes())
 	}
 
-	if a.array.data.length < 1 {
+	if a.data.length < 1 {
 		return
 	}
 
-	expNumOffsets := a.array.data.offset + a.array.data.length + 1
+	expNumOffsets := a.data.offset + a.data.length + 1
 	if len(a.offsets) < expNumOffsets {
 		panic(fmt.Errorf("arrow/array: string offset buffer must have at least %d values", expNumOffsets))
 	}
@@ -191,7 +191,7 @@ type LargeString struct {
 // NewStringData constructs a new String array from data.
 func NewLargeStringData(data arrow.ArrayData) *LargeString {
 	a := &LargeString{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -203,7 +203,7 @@ func (a *LargeString) Reset(data arrow.ArrayData) {
 
 // Value returns the slice at index i. This value should not be mutated.
 func (a *LargeString) Value(i int) string {
-	i = i + a.array.data.offset
+	i = i + a.data.offset
 	return a.values[a.offsets[i]:a.offsets[i+1]]
 }
 
@@ -216,10 +216,10 @@ func (a *LargeString) ValueStr(i int) string {
 
 // ValueOffset returns the offset of the value at index i.
 func (a *LargeString) ValueOffset(i int) int64 {
-	if i < 0 || i > a.array.data.length {
+	if i < 0 || i > a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return a.offsets[i+a.array.data.offset]
+	return a.offsets[i+a.data.offset]
 }
 
 func (a *LargeString) ValueOffset64(i int) int64 {
@@ -227,23 +227,23 @@ func (a *LargeString) ValueOffset64(i int) int64 {
 }
 
 func (a *LargeString) ValueLen(i int) int {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	beg := a.array.data.offset + i
+	beg := a.data.offset + i
 	return int(a.offsets[beg+1] - a.offsets[beg])
 }
 
 func (a *LargeString) ValueOffsets() []int64 {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length + 1
+	beg := a.data.offset
+	end := beg + a.data.length + 1
 	return a.offsets[beg:end]
 }
 
 func (a *LargeString) ValueBytes() []byte {
-	beg := a.array.data.offset
-	end := beg + a.array.data.length
-	if a.array.data.buffers[2] != nil {
+	beg := a.data.offset
+	end := beg + a.data.length
+	if a.data.buffers[2] != nil {
 		return a.array.data.buffers[2].Bytes()[a.offsets[beg]:a.offsets[end]]
 	}
 	return nil
@@ -283,11 +283,11 @@ func (a *LargeString) setData(data *Data) {
 		a.offsets = arrow.Int64Traits.CastFromBytes(offsets.Bytes())
 	}
 
-	if a.array.data.length < 1 {
+	if a.data.length < 1 {
 		return
 	}
 
-	expNumOffsets := a.array.data.offset + a.array.data.length + 1
+	expNumOffsets := a.data.offset + a.data.length + 1
 	if len(a.offsets) < expNumOffsets {
 		panic(fmt.Errorf("arrow/array: string offset buffer must have at least %d values", expNumOffsets))
 	}
@@ -332,7 +332,7 @@ type StringView struct {
 
 func NewStringViewData(data arrow.ArrayData) *StringView {
 	a := &StringView{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -356,10 +356,10 @@ func (a *StringView) setData(data *Data) {
 }
 
 func (a *StringView) ValueHeader(i int) *arrow.ViewHeader {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return &a.values[a.array.data.offset+i]
+	return &a.values[a.data.offset+i]
 }
 
 func (a *StringView) Value(i int) string {
@@ -457,7 +457,7 @@ func (b *StringBuilder) Append(v string) {
 // in v are valid (not null). The valid slice must either be empty or be equal in length to v. If empty,
 // all values in v are appended and considered valid.
 func (b *StringBuilder) AppendValues(v []string, valid []bool) {
-	b.BinaryBuilder.AppendStringValues(v, valid)
+	b.AppendStringValues(v, valid)
 }
 
 // Value returns the string at index i.
@@ -550,7 +550,7 @@ func (b *LargeStringBuilder) Append(v string) {
 // in v are valid (not null). The valid slice must either be empty or be equal in length to v. If empty,
 // all values in v are appended and considered valid.
 func (b *LargeStringBuilder) AppendValues(v []string, valid []bool) {
-	b.BinaryBuilder.AppendStringValues(v, valid)
+	b.AppendStringValues(v, valid)
 }
 
 // Value returns the string at index i.
@@ -630,11 +630,11 @@ func NewStringViewBuilder(mem memory.Allocator) *StringViewBuilder {
 }
 
 func (b *StringViewBuilder) Append(v string) {
-	b.BinaryViewBuilder.AppendString(v)
+	b.AppendString(v)
 }
 
 func (b *StringViewBuilder) AppendValues(v []string, valid []bool) {
-	b.BinaryViewBuilder.AppendStringValues(v, valid)
+	b.AppendStringValues(v, valid)
 }
 
 func (b *StringViewBuilder) UnmarshalOne(dec *json.Decoder) error {
@@ -715,4 +715,8 @@ var (
 	_ StringLike        = (*String)(nil)
 	_ StringLike        = (*LargeString)(nil)
 	_ StringLike        = (*StringView)(nil)
+
+	_ arrow.TypedArray[string] = (*String)(nil)
+	_ arrow.TypedArray[string] = (*LargeString)(nil)
+	_ arrow.TypedArray[string] = (*StringView)(nil)
 )

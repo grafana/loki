@@ -13,15 +13,25 @@ type mockLimits struct {
 }
 
 func (m *mockLimits) MaxGlobalStreamsPerUser(_ string) int {
-	return m.MaxGlobalStreams
+	if m.MaxGlobalStreams != 0 {
+		return m.MaxGlobalStreams
+	}
+	return 1000
 }
 
 func (m *mockLimits) IngestionRateBytes(_ string) float64 {
-	return m.IngestionRate
+	if m.IngestionRate != 0 {
+		return m.IngestionRate
+	}
+	return 0
 }
 
 func (m *mockLimits) IngestionBurstSizeBytes(_ string) int {
 	return 1000
+}
+
+func (m *mockLimits) PolicyMaxGlobalStreamsPerUser(_ string, _ string) (int, bool) {
+	return 0, false
 }
 
 // mockKafka mocks a [kgo.Client]. The zero value is usable.

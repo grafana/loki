@@ -37,7 +37,7 @@ var _ ListLike = (*Map)(nil)
 // NewMapData returns a new Map array value, from data
 func NewMapData(data arrow.ArrayData) *Map {
 	a := &Map{List: &List{}}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }

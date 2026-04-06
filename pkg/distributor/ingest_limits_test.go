@@ -18,23 +18,37 @@ import (
 
 // mockIngestLimitsFrontendClient mocks the RPC calls for tests.
 type mockIngestLimitsFrontendClient struct {
-	t               *testing.T
-	calls           atomic.Uint64
-	expectedRequest *proto.ExceedsLimitsRequest
-	response        *proto.ExceedsLimitsResponse
-	responseErr     error
+	t                            *testing.T
+	calls                        atomic.Uint64
+	expectedExceedsLimitsRequest *proto.ExceedsLimitsRequest
+	exceedsLimitsResponse        *proto.ExceedsLimitsResponse
+	exceedsLimitsResponseErr     error
+	expectedUpdateRatesRequest   *proto.UpdateRatesRequest
+	updateRatesResponse          *proto.UpdateRatesResponse
+	updateRatesResponseErr       error
 }
 
 // Implements the ingestLimitsFrontendClient interface.
-func (c *mockIngestLimitsFrontendClient) exceedsLimits(_ context.Context, r *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+func (c *mockIngestLimitsFrontendClient) ExceedsLimits(_ context.Context, r *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	c.calls.Add(1)
-	if c.expectedRequest != nil {
-		require.Equal(c.t, c.expectedRequest, r)
+	if c.expectedExceedsLimitsRequest != nil {
+		require.Equal(c.t, c.expectedExceedsLimitsRequest, r)
 	}
-	if c.responseErr != nil {
-		return nil, c.responseErr
+	if c.exceedsLimitsResponseErr != nil {
+		return nil, c.exceedsLimitsResponseErr
 	}
-	return c.response, nil
+	return c.exceedsLimitsResponse, nil
+}
+
+func (c *mockIngestLimitsFrontendClient) UpdateRates(_ context.Context, r *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
+	c.calls.Add(1)
+	if c.expectedUpdateRatesRequest != nil {
+		require.Equal(c.t, c.expectedUpdateRatesRequest, r)
+	}
+	if c.updateRatesResponseErr != nil {
+		return nil, c.updateRatesResponseErr
+	}
+	return c.updateRatesResponse, nil
 }
 
 func TestIngestLimits_EnforceLimits(t *testing.T) {
@@ -42,15 +56,15 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 	clock.Set(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
 
 	tests := []struct {
-		name            string
-		tenant          string
-		streams         []KeyedStream
-		expectedRequest *proto.ExceedsLimitsRequest
-		response        *proto.ExceedsLimitsResponse
-		responseErr     error
-		expectedStreams []KeyedStream
-		expectedReasons map[uint64][]string
-		expectedErr     string
+		name             string
+		tenant           string
+		streams          []KeyedStream
+		expectedRequest  *proto.ExceedsLimitsRequest
+		response         *proto.ExceedsLimitsResponse
+		responseErr      error
+		expectedAccepted []KeyedStream
+		expectedRejected []KeyedStream
+		expectedErr      string
 	}{{
 		// This test also asserts that streams are returned unmodified.
 		name:   "error should be returned if limits cannot be checked",
@@ -96,6 +110,36 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		},
 		responseErr: errors.New("failed to check limits"),
 		expectedErr: "failed to check limits",
+		expectedAccepted: []KeyedStream{{
+			HashKey:        1000,
+			HashKeyNoShard: 1,
+			Stream: logproto.Stream{
+				Labels: "foo",
+				Entries: []logproto.Entry{{
+					Timestamp: clock.Now(),
+					Line:      "bar",
+					StructuredMetadata: []logproto.LabelAdapter{{
+						Name:  "baz",
+						Value: "qux",
+					}},
+				}},
+			},
+		}, {
+			HashKey:        2000,
+			HashKeyNoShard: 2,
+			Stream: logproto.Stream{
+				Labels: "bar",
+				Entries: []logproto.Entry{{
+					Timestamp: clock.Now(),
+					Line:      "baz",
+					StructuredMetadata: []logproto.LabelAdapter{{
+						Name:  "qux",
+						Value: "corge",
+					}},
+				}},
+			},
+		}},
+		expectedRejected: []KeyedStream{},
 	}, {
 		name:   "exceeds limits",
 		tenant: "test",
@@ -112,11 +156,14 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		response: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		expectedStreams: []KeyedStream{},
-		expectedReasons: map[uint64][]string{1: {"rate limit exceeded"}},
+		expectedAccepted: []KeyedStream{},
+		expectedRejected: []KeyedStream{{
+			HashKey:        1000,
+			HashKeyNoShard: 1,
+		}},
 	}, {
 		name:   "one of two streams exceeds limits",
 		tenant: "test",
@@ -138,14 +185,17 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		response: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		expectedStreams: []KeyedStream{{
+		expectedAccepted: []KeyedStream{{
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
-		expectedReasons: map[uint64][]string{1: {"rate limit exceeded"}},
+		expectedRejected: []KeyedStream{{
+			HashKey:        1000,
+			HashKeyNoShard: 1,
+		}},
 	}, {
 		name:   "does not exceed limits",
 		tenant: "test",
@@ -167,56 +217,52 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		response: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{},
 		},
-		expectedStreams: []KeyedStream{{
+		expectedAccepted: []KeyedStream{{
 			HashKey:        1000, // Should not be used.
 			HashKeyNoShard: 1,
 		}, {
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
-		expectedReasons: nil,
+		expectedRejected: []KeyedStream{},
 	}}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			mockClient := mockIngestLimitsFrontendClient{
-				t:               t,
-				expectedRequest: test.expectedRequest,
-				response:        test.response,
-				responseErr:     test.responseErr,
+				t:                            t,
+				expectedExceedsLimitsRequest: test.expectedRequest,
+				exceedsLimitsResponse:        test.response,
+				exceedsLimitsResponseErr:     test.responseErr,
 			}
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			streams, reasons, err := l.enforceLimits(ctx, test.tenant, test.streams)
+			accepted, rejected, err := l.EnforceLimits(ctx, test.tenant, test.streams)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
-				// The streams should be returned unmodified.
-				require.Equal(t, test.streams, streams)
-				require.Nil(t, reasons)
+				// The streams should be returned unmodified in accepted when there's an error.
+				require.Equal(t, test.expectedAccepted, accepted)
+				require.Equal(t, test.expectedRejected, rejected)
 			} else {
 				require.Nil(t, err)
-				require.Equal(t, test.expectedStreams, streams)
-				require.Equal(t, test.expectedReasons, reasons)
+				require.Equal(t, test.expectedAccepted, accepted)
+				require.Equal(t, test.expectedRejected, rejected)
 			}
 		})
 	}
 }
 
-// This test asserts that when checking ingest limits the expected proto
-// message is sent, and that for a given response, the result contains the
-// expected streams each with their expected reasons.
 func TestIngestLimits_ExceedsLimits(t *testing.T) {
 	tests := []struct {
-		name                  string
-		tenant                string
-		streams               []KeyedStream
-		expectedRequest       *proto.ExceedsLimitsRequest
-		response              *proto.ExceedsLimitsResponse
-		responseErr           error
-		expectedExceedsLimits bool
-		expectedReasons       map[uint64][]string
-		expectedErr           string
+		name            string
+		tenant          string
+		streams         []KeyedStream
+		expectedRequest *proto.ExceedsLimitsRequest
+		response        *proto.ExceedsLimitsResponse
+		responseErr     error
+		expectedResult  []*proto.ExceedsLimitsResult
+		expectedErr     string
 	}{{
 		name:   "error should be returned if limits cannot be checked",
 		tenant: "test",
@@ -246,11 +292,13 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		response: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		expectedExceedsLimits: true,
-		expectedReasons:       map[uint64][]string{1: {"rate limit exceeded"}},
+		expectedResult: []*proto.ExceedsLimitsResult{{
+			StreamHash: 1,
+			Reason:     uint32(limits.ReasonMaxStreams),
+		}},
 	}, {
 		name:   "does not exceed limits",
 		tenant: "test",
@@ -266,29 +314,93 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		response: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{},
 		},
-		expectedReasons: nil,
+		expectedResult: []*proto.ExceedsLimitsResult{},
 	}}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			mockClient := mockIngestLimitsFrontendClient{
-				t:               t,
-				expectedRequest: test.expectedRequest,
-				response:        test.response,
-				responseErr:     test.responseErr,
+				t:                            t,
+				expectedExceedsLimitsRequest: test.expectedRequest,
+				exceedsLimitsResponse:        test.response,
+				exceedsLimitsResponseErr:     test.responseErr,
 			}
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			exceedsLimits, reasons, err := l.exceedsLimits(ctx, test.tenant, test.streams)
+			res, err := l.ExceedsLimits(ctx, test.tenant, test.streams)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
-				require.False(t, exceedsLimits)
-				require.Nil(t, reasons)
+				require.Nil(t, res)
 			} else {
 				require.Nil(t, err)
-				require.Equal(t, test.expectedExceedsLimits, exceedsLimits)
-				require.Equal(t, test.expectedReasons, reasons)
+				require.Equal(t, test.expectedResult, res)
+			}
+		})
+	}
+}
+
+func TestIngestLimits_UpdateRates(t *testing.T) {
+	tests := []struct {
+		name            string
+		tenant          string
+		streams         []segmentedStream
+		expectedRequest *proto.UpdateRatesRequest
+		response        *proto.UpdateRatesResponse
+		responseErr     error
+		expectedResult  []*proto.UpdateRatesResult
+		expectedErr     string
+	}{{
+		name:   "error should be returned if rates cannot be updated",
+		tenant: "test",
+		streams: []segmentedStream{{
+			SegmentationKey: segmentationKey("test"),
+		}},
+		responseErr: errors.New("failed to update rates"),
+		expectedErr: "failed to update rates",
+	}, {
+		name:   "updates rates",
+		tenant: "test",
+		streams: []segmentedStream{{
+			SegmentationKey:     segmentationKey("test"),
+			SegmentationKeyHash: 13113208752873574959,
+		}},
+		expectedRequest: &proto.UpdateRatesRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 13113208752873574959,
+			}},
+		},
+		response: &proto.UpdateRatesResponse{
+			Results: []*proto.UpdateRatesResult{{
+				StreamHash: 13113208752873574959,
+				Rate:       1024,
+			}},
+		},
+		expectedResult: []*proto.UpdateRatesResult{{
+			StreamHash: 13113208752873574959,
+			Rate:       1024,
+		}},
+	}}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mockClient := mockIngestLimitsFrontendClient{
+				t:                          t,
+				expectedUpdateRatesRequest: test.expectedRequest,
+				updateRatesResponse:        test.response,
+				updateRatesResponseErr:     test.responseErr,
+			}
+			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			res, err := l.UpdateRates(ctx, test.tenant, test.streams)
+			if test.expectedErr != "" {
+				require.EqualError(t, err, test.expectedErr)
+				require.Nil(t, res)
+			} else {
+				require.Nil(t, err)
+				require.Equal(t, test.expectedResult, res)
 			}
 		})
 	}

@@ -17,17 +17,27 @@
 package api
 
 import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash"
+	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/baidubce/bce-sdk-go/auth"
 	"github.com/baidubce/bce-sdk-go/bce"
 	"github.com/baidubce/bce-sdk-go/http"
 	"github.com/baidubce/bce-sdk-go/util"
+	"github.com/baidubce/bce-sdk-go/util/log"
 )
 
 // PutObject - put the object from the string or the stream
@@ -42,97 +52,101 @@ import (
 // RETURNS:
 //   - string: the etag of the object
 //   - error: nil if ok otherwise the specific error
-func PutObject(cli bce.Client, bucket, object string, body *bce.Body,
-	args *PutObjectArgs, ctx *BosContext) (string, *PutObjectResult, error) {
-	req := &bce.BceRequest{}
+func PutObject(cli bce.Client, bucket, object string, body *bce.Body, args *PutObjectArgs,
+	ctx *BosContext, options ...Option) (string, *PutObjectResult, error) {
+	req := &BosRequest{}
+	resp := &BosResponse{}
 	NeedReturnCallback := false
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.PUT)
-	ctx.Bucket = bucket
+	req.SetBucket(bucket)
 	if body == nil {
 		return "", nil, bce.NewBceClientError("PutObject body should not be emtpy")
+	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
 	}
 	if body.Size() >= THRESHOLD_100_CONTINUE {
 		req.SetHeader("Expect", "100-continue")
 	}
 	req.SetBody(body)
-
 	// Optional arguments settings
 	if args != nil {
 		setOptionalNullHeaders(req, map[string]string{
-			http.CACHE_CONTROL:           args.CacheControl,
-			http.CONTENT_DISPOSITION:     args.ContentDisposition,
-			http.CONTENT_TYPE:            args.ContentType,
-			http.EXPIRES:                 args.Expires,
-			http.BCE_CONTENT_SHA256:      args.ContentSha256,
-			http.BCE_CONTENT_CRC32:       args.ContentCrc32,
-			http.BCE_CONTENT_CRC32C:      args.ContentCrc32c,
-			http.BCE_CONTENT_CRC32C_FLAG: strconv.FormatBool(args.ContentCrc32cFlag),
+			http.CACHE_CONTROL:                      args.CacheControl,
+			http.CONTENT_DISPOSITION:                args.ContentDisposition,
+			http.CONTENT_TYPE:                       args.ContentType,
+			http.EXPIRES:                            args.Expires,
+			http.BCE_CONTENT_SHA256:                 args.ContentSha256,
+			http.BCE_CONTENT_CRC32:                  args.ContentCrc32,
+			http.BCE_CONTENT_CRC32C:                 args.ContentCrc32c,
+			http.BCE_CONTENT_CRC32C_FLAG:            strconv.FormatBool(args.ContentCrc32cFlag),
+			http.CONTENT_ENCODING:                   args.ContentEncoding,
+			http.BCE_SERVER_SIDE_ENCRYPTION:         args.Encryption.ServerSideEncryption,
+			http.BCE_SERVER_SIDE_ENCRYPTION_KEY:     args.Encryption.SSECKey,
+			http.BCE_SERVER_SIDE_ENCRYPTION_KEY_ID:  args.Encryption.SSEKmsKeyId,
+			http.BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5: args.Encryption.SSECKeyMD5,
+			http.BCE_FORBID_OVERWRITE:               strconv.FormatBool(args.ForbidOverwrite),
+			http.BCE_CONTENT_CRC64ECMA:              args.ContentCrc64ECMA,
 		})
-		if args.ContentLength > 0 {
+
+		if args.ContentLength > body.Size() {
+			return "", nil, bce.NewBceClientError(fmt.Sprintf("ContentLength %d is bigger than body size %d", args.ContentLength, body.Size()))
+		}
+		if args.ContentLength > 0 && args.ContentLength < body.Size() {
 			// User specified Content-Length can be smaller than the body size, so the body should
 			// be reset. The `net/http.Client' does not support the Content-Length bigger than the
 			// body size.
-			if args.ContentLength > body.Size() {
-				return "", nil, bce.NewBceClientError(fmt.Sprintf("ContentLength %d is bigger than body size %d", args.ContentLength, body.Size()))
-			}
-			body, err := bce.NewBodyFromSizedReader(body.Stream(), args.ContentLength)
+			newBody, err := bce.NewBodyFromSizedReaderV2(body.Stream(), args.ContentLength, false)
 			if err != nil {
 				return "", nil, bce.NewBceClientError(err.Error())
 			}
 			req.SetHeader(http.CONTENT_LENGTH, fmt.Sprintf("%d", args.ContentLength))
-			req.SetBody(body) // re-assign body
+			req.SetBody(newBody) // re-assign body
 		}
 
-		//set traffic-limit
-		if args.TrafficLimit > 0 {
-			if args.TrafficLimit > TRAFFIC_LIMIT_MAX || args.TrafficLimit < TRAFFIC_LIMIT_MIN {
-				return "", nil, bce.NewBceClientError(fmt.Sprintf("TrafficLimit must between %d ~ %d, current value:%d", TRAFFIC_LIMIT_MIN, TRAFFIC_LIMIT_MAX, args.TrafficLimit))
-			}
-			req.SetHeader(http.BCE_TRAFFIC_LIMIT, fmt.Sprintf("%d", args.TrafficLimit))
+		if args.TrafficLimit > 0 && (args.TrafficLimit > TRAFFIC_LIMIT_MAX || args.TrafficLimit < TRAFFIC_LIMIT_MIN) {
+			return "", nil, fmt.Errorf("TrafficLimit must between %d ~ %d, current value:%d",
+				TRAFFIC_LIMIT_MIN, TRAFFIC_LIMIT_MAX, args.TrafficLimit)
 		}
 
-		// Reset the contentMD5 if set by user
-		if len(args.ContentMD5) != 0 {
-			req.SetHeader(http.CONTENT_MD5, args.ContentMD5)
-		}
-
-		if validStorageClass(args.StorageClass) {
-			req.SetHeader(http.BCE_STORAGE_CLASS, args.StorageClass)
-		} else {
-			if len(args.StorageClass) != 0 {
-				return "", nil, bce.NewBceClientError("invalid storage class value: " +
-					args.StorageClass)
-			}
+		if len(args.StorageClass) != 0 && !validStorageClass(args.StorageClass) {
+			return "", nil, fmt.Errorf("invalid storage class value: %s", args.StorageClass)
 		}
 
 		if err := setUserMetadata(req, args.UserMeta); err != nil {
 			return "", nil, err
 		}
 
-		if len(args.Process) != 0 {
-			req.SetHeader(http.BCE_PROCESS, args.Process)
-			if strings.HasPrefix(args.Process, "callback") {
-				NeedReturnCallback = true
-			}
+		if strings.HasPrefix(args.Process, "callback") {
+			NeedReturnCallback = true
 		}
-		if len(args.CannedAcl) != 0 {
-			if validCannedAcl(args.CannedAcl) {
-				req.SetHeader(http.BCE_ACL, args.CannedAcl)
-			}
-		}
-		if len(args.ObjectTagging) != 0 {
-			if ok, encodeTagging := validObjectTagging(args.ObjectTagging); ok {
-				req.SetHeader(http.BCE_OBJECT_TAGGING, encodeTagging)
-			}
-		}
+
+		options = append(options, ObjectExpires(args.ObjectExpires))
+		options = append(options, ContentMD5(args.ContentMD5))
+		options = append(options, CannedAcl(args.CannedAcl))
+		options = append(options, Process(args.Process))
+		options = append(options, TaggingStr(args.ObjectTagging))
+		options = append(options, StorageClass(args.StorageClass))
+		options = append(options, TrafficLimit(args.TrafficLimit))
+		options = append(options, IfMatch(args.IfMatch))
+		options = append(options, IfNoneMatch(args.IfNoneMatch))
 	}
 	// add content-type if not assigned by user
 	if req.Header(http.CONTENT_TYPE) == "" {
 		req.SetHeader(http.CONTENT_TYPE, getDefaultContentType(object))
 	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return "", nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	AddCrc64Check(req, resp)
+	for _, tracker := range req.Tracker {
+		if err := tracker(req); err != nil {
+			return "", nil, fmt.Errorf("handle request tracker failed: %s", err)
+		}
+	}
 
-	resp := &bce.BceResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return "", nil, err
 	}
@@ -140,13 +154,19 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body,
 		return "", nil, resp.ServiceError()
 	}
 	defer func() { resp.Body().Close() }()
-	headers := resp.Headers()
+
+	//get header
 	jsonBody := &PutObjectResult{}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32)]; ok {
-		jsonBody.ContentCrc32 = val
+	getOptions := []GetOption{
+		getHeader(http.BCE_VERSION_ID, &jsonBody.VersionId),
+		getHeader(http.BCE_STORAGE_CLASS, &jsonBody.StorageClass),
+		getHeader(http.BCE_CONTENT_CRC32, &jsonBody.ContentCrc32),
+		getHeader(http.BCE_CONTENT_CRC32C, &jsonBody.ContentCrc32c),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION, &jsonBody.ServerSideEncryption),
+		getHeader(http.BCE_CONTENT_CRC64ECMA, &jsonBody.ContentCrc64ECMA),
 	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
-		jsonBody.ContentCrc32c = val
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		return "", nil, bce.NewBceClientError(fmt.Sprintf("Handle get options error: %s", err))
 	}
 	if NeedReturnCallback {
 		if err := resp.ParseJsonBody(jsonBody); err != nil {
@@ -155,6 +175,171 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body,
 		return strings.Trim(resp.Header(http.ETAG), "\""), jsonBody, nil
 	}
 	return strings.Trim(resp.Header(http.ETAG), "\""), jsonBody, nil
+}
+
+// OptionsObject - Get the options of the given object for CORS
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name of the object
+//   - object: the name of the object
+//   - args: the optional arguments of this api
+//
+// RETURNS:
+//   - result: the supported options of the given object
+//   - error: nil if ok otherwise the specific error
+func OptionsObject(cli bce.Client, bucket, object string, args *OptionsObjectArgs,
+	ctx *BosContext, options ...Option) (*OptionsObjectResult, error) {
+	req := &BosRequest{}
+	req.SetMethod(http.OPTIONS)
+	req.SetUri(getObjectUri(bucket, object))
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	options = append(options, setHeader(http.ORIGIN, args.Origin))
+	options = append(options, setHeader(http.ACCESS_CONTROL_REQUEST_METHOD, args.RequestMethod))
+	options = append(options, setHeader(http.ACCESS_CONTROL_REQUEST_HEADERS, strings.Join(args.RequestHeaders, ",")))
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options error: %s", err))
+	}
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return nil, err
+	}
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
+	}
+	defer func() { resp.Body().Close() }()
+
+	//get header
+	result := &OptionsObjectResult{}
+	getOptions := []GetOption{
+		getHeader(http.ACCESS_CONTROL_ALLOW_CREDENTIALS, &result.AllowCredentials),
+		getHeader(http.ACCESS_CONTROL_ALLOW_HEADERS, &result.AllowHeaders),
+		getHeader(http.ACCESS_CONTROL_ALLOW_METHODS, &result.AllowMethods),
+		getHeader(http.ACCESS_CONTROL_ALLOW_ORIGIN, &result.AllowOrigin),
+		getHeader(http.ACCESS_CONTROL_EXPOSE_HEADERS, &result.ExposeHeaders),
+		getHeader(http.ACCESS_CONTROL_MAX_AGE, &result.MaxAge),
+	}
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle get options error: %s", err))
+	}
+	return result, nil
+}
+
+// PostObject - put the object by multipart/form-data
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name of the object
+//   - object: the name of the object
+//   - body: the input content of the object
+//   - args: the optional arguments of this api
+//
+// RETURNS:
+//   - result: the result of post object
+//   - error: nil if ok otherwise the specific error
+func PostObject(cli bce.Client, bucket, object string, content *bytes.Buffer, args *PostObjectArgs,
+	ctx *BosContext, options ...Option) (*PostObjectResult, error) {
+	if args == nil {
+		return nil, bce.NewBceClientError("post object argument is nil.")
+	}
+	req := &BosRequest{}
+	req.SetMethod(http.POST)
+	req.SetUri(getBucketUri(bucket))
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+
+	//post policy
+	expiration := time.Now().UTC().Add(args.Expiration)
+	policyMap := map[string]interface{}{
+		"expiration": expiration.Format(util.ISO8601Format),
+		"conditions": []interface{}{
+			map[string]string{"bucket": bucket},
+			map[string]string{"key": object},
+			[]interface{}{
+				"content-length-range",
+				args.ContentLengthLower,
+				args.ContentLengthUpper,
+			},
+		},
+	}
+	//json serialize policyMap
+	policy, err := json.Marshal(policyMap)
+	if err != nil {
+		return nil, err
+	}
+	// calc post signature
+	cred := cli.GetBceClientConfig().Credentials
+	stringToSign := base64.StdEncoding.EncodeToString([]byte(policy))
+	hmacHash := func() hash.Hash { return sha256.New() }
+	h := hmac.New(hmacHash, []byte(cred.SecretAccessKey))
+	_, err = io.WriteString(h, stringToSign)
+	if err != nil {
+		return nil, err
+	}
+	signature := hex.EncodeToString(h.Sum(nil))
+	// build post body
+	bodyBuf := &bytes.Buffer{}
+	bodyWriter := multipart.NewWriter(bodyBuf)
+	options = append(options, SetPostField("accessKey", cred.AccessKeyId))
+	options = append(options, SetPostField("policy", stringToSign))
+	options = append(options, SetPostField("signature", signature))
+	options = append(options, SetPostField("key", object))
+	if err := handlePostOptions(bodyWriter, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle post options error: %s", err))
+	}
+	// create a field named 'file', used to upload content
+	w, _ := bodyWriter.CreateFormField("file")
+	_, err = io.Copy(w, bytes.NewReader(content.Bytes()))
+	if err != nil {
+		return nil, err
+	}
+	bodyWriter.Close()
+	//build bcebody
+	body := &bce.Body{}
+	body.SetStream(ioutil.NopCloser(bytes.NewBuffer(bodyBuf.Bytes())))
+	body.SetSize(int64(len(bodyBuf.Bytes())))
+	contentMD5, err := util.CalculateContentMD5(content, int64(content.Len()))
+	if err != nil {
+		return nil, err
+	}
+	body.SetContentMD5(contentMD5)
+	if body.Size() >= THRESHOLD_100_CONTINUE {
+		req.SetHeader("Expect", "100-continue")
+	}
+	req.SetBody(body)
+	req.SetHeader(http.CONTENT_TYPE, bodyWriter.FormDataContentType())
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options error: %s", err))
+	}
+
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return nil, err
+	}
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
+	}
+	defer func() { resp.Body().Close() }()
+
+	//get header
+	result := &PostObjectResult{}
+	getOptions := []GetOption{
+		getHeader(http.ETAG, &result.ETag),
+		getHeader(http.CONTENT_MD5, &result.ContentMD5),
+		getHeader(http.BCE_CONTENT_CRC32, &result.ContentCrc32),
+	}
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle get options error: %s", err))
+	}
+	result.ETag = strings.Trim(result.ETag, "\"")
+	return result, nil
 }
 
 // CopyObject - copy one object to a new object with new bucket and/or name. It can alse set the
@@ -170,17 +355,19 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body,
 // RETURNS:
 //   - *CopyObjectResult: the result object which contains etag and lastmodified
 //   - error: nil if ok otherwise the specific error
-func CopyObject(cli bce.Client, bucket, object, source string,
-	args *CopyObjectArgs, ctx *BosContext) (*CopyObjectResult, error) {
-	req := &bce.BceRequest{}
+func CopyObject(cli bce.Client, bucket, object, source string, args *CopyObjectArgs,
+	ctx *BosContext, options ...Option) (*CopyObjectResult, error) {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.PUT)
-	ctx.Bucket = bucket
+	req.SetBucket(bucket)
 	if len(source) == 0 {
 		return nil, bce.NewBceClientError("copy source should not be null")
 	}
 	req.SetHeader(http.BCE_COPY_SOURCE, util.UriEncode(source, false))
-
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// Optional arguments settings
 	if args != nil {
 		setOptionalNullHeaders(req, map[string]string{
@@ -202,7 +389,15 @@ func CopyObject(cli bce.Client, bucket, object, source string,
 			http.BCE_COPY_SOURCE_IF_UNMODIFIED_SINCE: args.IfUnmodifiedSince,
 			http.BCE_CONTENT_CRC32C:                  args.ContentCrc32c,
 			http.BCE_CONTENT_CRC32C_FLAG:             strconv.FormatBool(args.ContentCrc32cFlag),
+			http.BCE_SERVER_SIDE_ENCRYPTION:          args.Encryption.ServerSideEncryption,
+			http.BCE_SERVER_SIDE_ENCRYPTION_KEY:      args.Encryption.SSECKey,
+			http.BCE_SERVER_SIDE_ENCRYPTION_KEY_ID:   args.Encryption.SSEKmsKeyId,
+			http.BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5:  args.Encryption.SSECKeyMD5,
+			http.BCE_CONTENT_CRC64ECMA:               args.ContentCrc64ECMA,
 		})
+		if args.ObjectExpires > 0 {
+			req.SetHeader(http.BCE_OBJECT_EXPIRES, fmt.Sprintf("%d", args.ObjectExpires))
+		}
 		if validMetadataDirective(args.MetadataDirective) {
 			req.SetHeader(http.BCE_COPY_METADATA_DIRECTIVE, args.MetadataDirective)
 		} else {
@@ -244,9 +439,13 @@ func CopyObject(cli bce.Client, bucket, object, source string,
 			return nil, err
 		}
 	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
 
 	// Send request and get the result
-	resp := &bce.BceResponse{}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return nil, err
 	}
@@ -257,8 +456,14 @@ func CopyObject(cli bce.Client, bucket, object, source string,
 	if err := resp.ParseJsonBody(jsonBody); err != nil {
 		return nil, err
 	}
+	if len(jsonBody.Code) > 0 {
+		return nil, bce.NewBceServiceError(jsonBody.Code, jsonBody.Message, jsonBody.RequestId, 500)
+	}
 	if resp.Header(http.BCE_VERSION_ID) != "" {
 		jsonBody.VersionId = resp.Header(http.BCE_VERSION_ID)
+	}
+	if resp.Header(http.BCE_REQUEST_ID) != "" {
+		jsonBody.RequestId = resp.Header(http.BCE_REQUEST_ID)
 	}
 	return jsonBody, nil
 }
@@ -279,22 +484,23 @@ func GetObject(cli bce.Client, bucket, object string, ctx *BosContext, args map[
 	ranges ...int64) (*GetObjectResult, error) {
 
 	if object == "" {
-		err := fmt.Errorf("Get Object don't accept \"\" as a parameter")
+		err := fmt.Errorf("get object don't accept \"\" as a parameter")
 		return nil, err
 	}
-	req := &bce.BceRequest{}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.GET)
-	ctx.Bucket = bucket
+	req.SetBucket(bucket)
 	// Optional arguments settings
-	if args != nil {
-		for k, v := range args {
-			if _, ok := GET_OBJECT_ALLOWED_RESPONSE_HEADERS[k]; ok {
-				req.SetParam("response"+k, v)
-			}
-			if strings.HasPrefix(k, http.BCE_PREFIX) {
-				req.SetParam(k, v)
-			}
+	for k, v := range args {
+		if _, ok := GET_OBJECT_ALLOWED_RESPONSE_HEADERS[k]; ok {
+			req.SetParam("response"+k, v)
+		}
+		if strings.HasPrefix(k, http.BCE_PREFIX) {
+			req.SetParam(k, v)
 		}
 	}
 	if len(ranges) != 0 {
@@ -308,80 +514,81 @@ func GetObject(cli bce.Client, bucket, object string, ctx *BosContext, args map[
 	}
 
 	// Send request and get the result
-	resp := &bce.BceResponse{}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return nil, err
 	}
 	if resp.IsFail() {
 		return nil, resp.ServiceError()
 	}
-	headers := resp.Headers()
+
 	result := &GetObjectResult{}
-	if val, ok := headers[http.CACHE_CONTROL]; ok {
-		result.CacheControl = val
+	getOptions := getObjectMetaOptions(&result.ObjectMeta)
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		log.Warnf("Handle get options error: %s", err)
 	}
-	if val, ok := headers[http.CONTENT_DISPOSITION]; ok {
-		result.ContentDisposition = val
+
+	result.Body = resp.Body()
+	return result, nil
+}
+
+func GetObjectWithArgs(cli bce.Client, bucket, object string, ctx *BosContext, args *GetObjectArgs,
+	options ...Option) (*GetObjectResult, error) {
+	if object == "" {
+		err := fmt.Errorf("get object don't accept \"\" as a parameter")
+		return nil, err
 	}
-	if val, ok := headers[http.CONTENT_LENGTH]; ok {
-		if length, err := strconv.ParseInt(val, 10, 64); err == nil {
-			result.ContentLength = length
-		}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
 	}
-	if val, ok := headers[http.CONTENT_RANGE]; ok {
-		result.ContentRange = val
-	}
-	if val, ok := headers[http.CONTENT_TYPE]; ok {
-		result.ContentType = val
-	}
-	if val, ok := headers[http.CONTENT_MD5]; ok {
-		result.ContentMD5 = val
-	}
-	if val, ok := headers[http.EXPIRES]; ok {
-		result.Expires = val
-	}
-	if val, ok := headers[http.LAST_MODIFIED]; ok {
-		result.LastModified = val
-	}
-	if val, ok := headers[http.ETAG]; ok {
-		result.ETag = strings.Trim(val, "\"")
-	}
-	if val, ok := headers[http.CONTENT_LANGUAGE]; ok {
-		result.ContentLanguage = val
-	}
-	if val, ok := headers[http.CONTENT_ENCODING]; ok {
-		result.ContentEncoding = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_SHA256)]; ok {
-		result.ContentSha256 = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32)]; ok {
-		result.ContentCrc32 = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_STORAGE_CLASS)]; ok {
-		result.StorageClass = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_VERSION_ID)]; ok {
-		result.VersionId = val
-	}
-	bcePrefix := toHttpHeaderKey(http.BCE_USER_METADATA_PREFIX)
-	for k, v := range headers {
-		if strings.Index(k, bcePrefix) == 0 {
-			if result.UserMeta == nil {
-				result.UserMeta = make(map[string]string)
+	req := &BosRequest{}
+	req.SetUri(getObjectUri(bucket, object))
+	req.SetMethod(http.GET)
+	req.SetBucket(bucket)
+	// Optional arguments settings
+	if args != nil {
+		for k, v := range args.Params {
+			if _, ok := GET_OBJECT_ALLOWED_RESPONSE_HEADERS[k]; ok {
+				req.SetParam("response"+k, v)
 			}
-			result.UserMeta[k[len(bcePrefix):]] = v
+			if strings.HasPrefix(k, http.BCE_PREFIX) {
+				req.SetParam(k, v)
+			}
 		}
+		if len(args.Ranges) != 0 {
+			rangeStr := "bytes="
+			if len(args.Ranges) == 1 {
+				rangeStr += fmt.Sprintf("%d", args.Ranges[0]) + "-"
+			} else {
+				rangeStr += fmt.Sprintf("%d", args.Ranges[0]) + "-" + fmt.Sprintf("%d", args.Ranges[1])
+			}
+			req.SetHeader("Range", rangeStr)
+		}
+		options = append(options, IfMatch(args.IfMatch))
+		options = append(options, IfNoneMatch(args.IfNoneMatch))
+		options = append(options, IfModifiedSince(args.IfModifiedSince))
+		options = append(options, IfUnModifiedSince(args.IfUnModifiedSince))
 	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_OBJECT_TYPE)]; ok {
-		result.ObjectType = val
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
 	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_NEXT_APPEND_OFFSET)]; ok {
-		result.NextAppendOffset = val
+
+	// Send request and get the result
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return nil, err
 	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
-		result.ContentCrc32c = val
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
 	}
+
+	result := &GetObjectResult{}
+	getOptions := getObjectMetaOptions(&result.ObjectMeta)
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		log.Warnf("Handle get options error: %s", err)
+	}
+
 	result.Body = resp.Body()
 	return result, nil
 }
@@ -396,89 +603,32 @@ func GetObject(cli bce.Client, bucket, object string, ctx *BosContext, args map[
 // RETURNS:
 //   - *GetObjectMetaResult: the result of this api
 //   - error: nil if ok otherwise the specific error
-func GetObjectMeta(cli bce.Client, bucket, object string, ctx *BosContext) (*GetObjectMetaResult, error) {
-	req := &bce.BceRequest{}
+func GetObjectMeta(cli bce.Client, bucket, object string, ctx *BosContext, options ...Option) (*GetObjectMetaResult, error) {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.HEAD)
-	ctx.Bucket = bucket
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
 	// Send request and get the result
-	resp := &bce.BceResponse{}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return nil, err
 	}
 	if resp.IsFail() {
 		return nil, resp.ServiceError()
 	}
-	headers := resp.Headers()
 	result := &GetObjectMetaResult{}
-	if val, ok := headers[http.CACHE_CONTROL]; ok {
-		result.CacheControl = val
+	getOptions := getObjectMetaOptions(&result.ObjectMeta)
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		log.Warnf("Handle get options error: %s", err)
 	}
-	if val, ok := headers[http.CONTENT_DISPOSITION]; ok {
-		result.ContentDisposition = val
-	}
-	if val, ok := headers[http.CONTENT_LENGTH]; ok {
-		if length, err := strconv.ParseInt(val, 10, 64); err == nil {
-			result.ContentLength = length
-		}
-	}
-	if val, ok := headers[http.CONTENT_RANGE]; ok {
-		result.ContentRange = val
-	}
-	if val, ok := headers[http.CONTENT_TYPE]; ok {
-		result.ContentType = val
-	}
-	if val, ok := headers[http.CONTENT_MD5]; ok {
-		result.ContentMD5 = val
-	}
-	if val, ok := headers[http.EXPIRES]; ok {
-		result.Expires = val
-	}
-	if val, ok := headers[http.LAST_MODIFIED]; ok {
-		result.LastModified = val
-	}
-	if val, ok := headers[http.ETAG]; ok {
-		result.ETag = strings.Trim(val, "\"")
-	}
-	if val, ok := headers[http.CONTENT_ENCODING]; ok {
-		result.ContentEncoding = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_SHA256)]; ok {
-		result.ContentSha256 = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32)]; ok {
-		result.ContentCrc32 = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_STORAGE_CLASS)]; ok {
-		result.StorageClass = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_RESTORE)]; ok {
-		result.BceRestore = val
-	}
-	if val, ok := headers[http.BCE_OBJECT_TYPE]; ok {
-		result.BceObjectType = val
-	}
-	if val, ok := headers[http.BCE_VERSION_ID]; ok {
-		result.VersionId = val
-	}
-	bcePrefix := toHttpHeaderKey(http.BCE_USER_METADATA_PREFIX)
-	for k, v := range headers {
-		if strings.Index(k, bcePrefix) == 0 {
-			if result.UserMeta == nil {
-				result.UserMeta = make(map[string]string)
-			}
-			result.UserMeta[k[len(bcePrefix):]] = v
-		}
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_OBJECT_TYPE)]; ok {
-		result.ObjectType = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_NEXT_APPEND_OFFSET)]; ok {
-		result.NextAppendOffset = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
-		result.ContentCrc32c = val
-	}
+
 	defer func() { resp.Body().Close() }()
 	return result, nil
 }
@@ -494,13 +644,17 @@ func GetObjectMeta(cli bce.Client, bucket, object string, ctx *BosContext) (*Get
 // RETURNS:
 //   - *SelectObjectResult: the output select content result of the object
 //   - error: nil if ok otherwise the specific error
-func SelectObject(cli bce.Client, bucket, object string, args *SelectObjectArgs, ctx *BosContext) (*SelectObjectResult, error) {
-	req := &bce.BceRequest{}
+func SelectObject(cli bce.Client, bucket, object string, args *SelectObjectArgs,
+	ctx *BosContext, options ...Option) (*SelectObjectResult, error) {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.POST)
 	req.SetParam("select", "")
 	req.SetParam("type", args.SelectType)
-	ctx.Bucket = bucket
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	jsonBytes, jsonErr := json.Marshal(args)
 	if jsonErr != nil {
 		return nil, jsonErr
@@ -510,9 +664,12 @@ func SelectObject(cli bce.Client, bucket, object string, args *SelectObjectArgs,
 		return nil, err
 	}
 	req.SetBody(body)
-
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
 	// Send request and get the result
-	resp := &bce.BceResponse{}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return nil, err
 	}
@@ -538,20 +695,29 @@ func SelectObject(cli bce.Client, bucket, object string, args *SelectObjectArgs,
 // RETURNS:
 //   - *FetchObjectArgs: the result of this api
 //   - error: nil if ok otherwise the specific error
-func FetchObject(cli bce.Client, bucket, object, source string,
-	args *FetchObjectArgs, ctx *BosContext) (*FetchObjectResult, error) {
-	req := &bce.BceRequest{}
+func FetchObject(cli bce.Client, bucket, object, source string, args *FetchObjectArgs,
+	ctx *BosContext, options ...Option) (*FetchObjectResult, error) {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.POST)
 	req.SetParam("fetch", "")
-	ctx.Bucket = bucket
+	req.SetBucket(bucket)
 	if len(source) == 0 {
 		return nil, bce.NewBceClientError("invalid fetch source value: " + source)
+	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
 	}
 	req.SetHeader(http.BCE_PREFIX+"fetch-source", source)
 
 	// Optional arguments settings
 	if args != nil {
+		setOptionalNullHeaders(req, map[string]string{
+			http.CONTENT_ENCODING: args.ContentEncoding,
+		})
+		if args.ObjectExpires > 0 {
+			req.SetHeader(http.BCE_OBJECT_EXPIRES, fmt.Sprintf("%d", args.ObjectExpires))
+		}
 		if validFetchMode(args.FetchMode) {
 			req.SetHeader(http.BCE_PREFIX+"fetch-mode", args.FetchMode)
 		} else {
@@ -571,9 +737,12 @@ func FetchObject(cli bce.Client, bucket, object, source string,
 			req.SetHeader(http.BCE_FETCH_CALLBACK_ADDRESS, args.FetchCallBackAddress)
 		}
 	}
-
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
 	// Send request and get the result
-	resp := &bce.BceResponse{}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return nil, err
 	}
@@ -599,15 +768,18 @@ func FetchObject(cli bce.Client, bucket, object, source string,
 // RETURNS:
 //   - *AppendObjectResult: the result status for this api
 //   - error: nil if ok otherwise the specific error
-func AppendObject(cli bce.Client, bucket, object string, content *bce.Body,
-	args *AppendObjectArgs, ctx *BosContext) (*AppendObjectResult, error) {
-	req := &bce.BceRequest{}
+func AppendObject(cli bce.Client, bucket, object string, content *bce.Body, args *AppendObjectArgs,
+	ctx *BosContext, options ...Option) (*AppendObjectResult, error) {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.POST)
 	req.SetParam("append", "")
-	ctx.Bucket = bucket
+	req.SetBucket(bucket)
 	if content == nil {
 		return nil, bce.NewBceClientError("AppendObject body should not be emtpy")
+	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
 	}
 	if content.Size() >= THRESHOLD_100_CONTINUE {
 		req.SetHeader("Expect", "100-continue")
@@ -633,8 +805,12 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body,
 			http.BCE_CONTENT_CRC32:       args.ContentCrc32,
 			http.BCE_CONTENT_CRC32C:      args.ContentCrc32c,
 			http.BCE_CONTENT_CRC32C_FLAG: strconv.FormatBool(args.ContentCrc32cFlag),
+			http.CONTENT_ENCODING:        args.ContentEncoding,
+			http.BCE_CONTENT_CRC64ECMA:   args.ContentCrc64ECMA,
 		})
-
+		if args.ObjectExpires > 0 {
+			req.SetHeader(http.BCE_OBJECT_EXPIRES, fmt.Sprintf("%d", args.ObjectExpires))
+		}
 		if validStorageClass(args.StorageClass) {
 			req.SetHeader(http.BCE_STORAGE_CLASS, args.StorageClass)
 		} else {
@@ -654,19 +830,29 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body,
 			req.SetHeader(http.BCE_TRAFFIC_LIMIT, fmt.Sprintf("%d", args.TrafficLimit))
 		}
 	}
-
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
 	// Send request and get the result
-	resp := &bce.BceResponse{}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return nil, err
 	}
 	if resp.IsFail() {
 		return nil, resp.ServiceError()
 	}
+	defer func() { resp.Body().Close() }()
 	headers := resp.Headers()
 	result := &AppendObjectResult{}
-	if val, ok := headers[http.CONTENT_MD5]; ok {
-		result.ContentMD5 = val
+	getOptions := []GetOption{
+		getHeader(http.CONTENT_MD5, &result.ContentMD5),
+		getHeader(http.BCE_CONTENT_CRC32, &result.ContentCrc32),
+		getHeader(http.BCE_CONTENT_CRC32C, &result.ContentCrc32c),
+		getHeader(http.BCE_CONTENT_CRC64ECMA, &result.ContentCrc64ECMA),
+	}
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		log.Warnf("Handle get options error: %s", err)
 	}
 	if val, ok := headers[toHttpHeaderKey(http.BCE_NEXT_APPEND_OFFSET)]; ok {
 		nextOffset, offsetErr := strconv.ParseInt(val, 10, 64)
@@ -677,16 +863,9 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body,
 	} else {
 		result.NextAppendOffset = content.Size()
 	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32)]; ok {
-		result.ContentCrc32 = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
-		result.ContentCrc32c = val
-	}
 	if val, ok := headers[http.ETAG]; ok {
 		result.ETag = strings.Trim(val, "\"")
 	}
-	defer func() { resp.Body().Close() }()
 	return result, nil
 }
 
@@ -699,15 +878,22 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body,
 //
 // RETURNS:
 //   - error: nil if ok otherwise the specific error
-func DeleteObject(cli bce.Client, bucket, object, versionId string, ctx *BosContext) error {
-	req := &bce.BceRequest{}
+func DeleteObject(cli bce.Client, bucket, object, versionId string, ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.DELETE)
 	if versionId != "" {
 		req.SetParam("versionId", versionId)
 	}
-	ctx.Bucket = bucket
-	resp := &bce.BceResponse{}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	req.SetBucket(bucket)
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return err
 	}
@@ -728,23 +914,29 @@ func DeleteObject(cli bce.Client, bucket, object, versionId string, ctx *BosCont
 // RETURNS:
 //   - *DeleteMultipleObjectsResult: the objects failed to delete
 //   - error: nil if ok otherwise the specific error
-func DeleteMultipleObjects(cli bce.Client, bucket string,
-	objectListStream *bce.Body, ctx *BosContext) (*DeleteMultipleObjectsResult, error) {
-	req := &bce.BceRequest{}
+func DeleteMultipleObjects(cli bce.Client, bucket string, objectListStream *bce.Body,
+	ctx *BosContext, options ...Option) (*DeleteMultipleObjectsResult, error) {
+	req := &BosRequest{}
 	req.SetUri(getBucketUri(bucket))
 	req.SetMethod(http.POST)
 	req.SetParam("delete", "")
 	req.SetHeader(http.CONTENT_TYPE, "application/json; charset=utf-8")
-	ctx.Bucket = bucket
+	req.SetBucket(bucket)
 	if objectListStream == nil {
 		return nil, bce.NewBceClientError("DeleteMultipleObjects body should not be emtpy")
 	}
 	if objectListStream.Size() >= THRESHOLD_100_CONTINUE {
 		req.SetHeader("Expect", "100-continue")
 	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	req.SetBody(objectListStream)
-
-	resp := &bce.BceResponse{}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return nil, err
 	}
@@ -793,6 +985,15 @@ func GeneratePresignedUrlInternal(conf *bce.BceClientConfiguration, signer auth.
 	if len(method) == 0 {
 		method = http.GET
 	}
+	objectTrimSlash := strings.Trim(object, "/")
+	if method == http.GET && objectTrimSlash == "" {
+		log.Warnf("objectKey is empty, cannot generate presigned url.")
+		return ""
+	}
+	if !path_style && method == http.GET && objectTrimSlash == "v1" {
+		log.Warnf("objectKey '%s' is invalid, cannot generate presigned url.", object)
+		return ""
+	}
 	req.SetMethod(method)
 	req.SetEndpoint(conf.Endpoint)
 	if req.Protocol() == "" {
@@ -822,15 +1023,11 @@ func GeneratePresignedUrlInternal(conf *bce.BceClientConfiguration, signer auth.
 	}
 	// Set headers and params if given.
 	req.SetHeader(http.HOST, req.Host())
-	if headers != nil {
-		for k, v := range headers {
-			req.SetHeader(k, v)
-		}
+	for k, v := range headers {
+		req.SetHeader(k, v)
 	}
-	if params != nil {
-		for k, v := range params {
-			req.SetParam(k, v)
-		}
+	for k, v := range params {
+		req.SetParam(k, v)
 	}
 	// Copy one SignOptions object to rewrite it.
 	option := *conf.SignOption
@@ -862,21 +1059,16 @@ func GeneratePresignedUrlInternal(conf *bce.BceClientConfiguration, signer auth.
 //
 // RETURNS:
 //   - error: nil if success otherwise the specific error
-func PutObjectAcl(cli bce.Client, bucket, object, cannedAcl string,
-	grantRead, grantFullControl []string, aclBody *bce.Body, ctx *BosContext) error {
-	req := &bce.BceRequest{}
+func PutObjectAcl(cli bce.Client, bucket, object, cannedAcl string, grantRead, grantFullControl []string,
+	aclBody *bce.Body, ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.PUT)
 	req.SetParam("acl", "")
-	ctx.Bucket = bucket
-	// Joiner for generate the user id list string for grant acl header
-	joiner := func(ids []string) string {
-		for i := range ids {
-			ids[i] = "id=\"" + ids[i] + "\""
-		}
-		return strings.Join(ids, ",")
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
 	}
-
 	// Choose a acl setting method
 	methods := 0
 	if len(cannedAcl) != 0 {
@@ -887,11 +1079,11 @@ func PutObjectAcl(cli bce.Client, bucket, object, cannedAcl string,
 	}
 	if len(grantRead) != 0 {
 		methods += 1
-		req.SetHeader(http.BCE_GRANT_READ, joiner(grantRead))
+		req.SetHeader(http.BCE_GRANT_READ, joinUserIds(grantRead))
 	}
 	if len(grantFullControl) != 0 {
 		methods += 1
-		req.SetHeader(http.BCE_GRANT_FULL_CONTROL, joiner(grantFullControl))
+		req.SetHeader(http.BCE_GRANT_FULL_CONTROL, joinUserIds(grantFullControl))
 	}
 	if aclBody != nil {
 		methods += 1
@@ -901,9 +1093,12 @@ func PutObjectAcl(cli bce.Client, bucket, object, cannedAcl string,
 	if methods != 1 {
 		return bce.NewBceClientError("BOS only support one acl setting method at the same time")
 	}
-
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
 	// Do sending request
-	resp := &bce.BceResponse{}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return err
 	}
@@ -924,13 +1119,21 @@ func PutObjectAcl(cli bce.Client, bucket, object, cannedAcl string,
 // RETURNS:
 //   - result: the object acl result object
 //   - error: nil if success otherwise the specific error
-func GetObjectAcl(cli bce.Client, bucket, object string, ctx *BosContext) (*GetObjectAclResult, error) {
-	req := &bce.BceRequest{}
+func GetObjectAcl(cli bce.Client, bucket, object string, ctx *BosContext,
+	options ...Option) (*GetObjectAclResult, error) {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.GET)
 	req.SetParam("acl", "")
-	ctx.Bucket = bucket
-	resp := &bce.BceResponse{}
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return nil, err
 	}
@@ -953,13 +1156,20 @@ func GetObjectAcl(cli bce.Client, bucket, object string, ctx *BosContext) (*GetO
 //
 // RETURNS:
 //   - error: nil if success otherwise the specific error
-func DeleteObjectAcl(cli bce.Client, bucket, object string, ctx *BosContext) error {
-	req := &bce.BceRequest{}
+func DeleteObjectAcl(cli bce.Client, bucket, object string, ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.DELETE)
 	req.SetParam("acl", "")
-	ctx.Bucket = bucket
-	resp := &bce.BceResponse{}
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return err
 	}
@@ -980,15 +1190,23 @@ func DeleteObjectAcl(cli bce.Client, bucket, object string, ctx *BosContext) err
 //
 // RETURNS:
 //   - error: nil if success otherwise the specific error
-func RestoreObject(cli bce.Client, bucket string, object string, args ArchiveRestoreArgs, ctx *BosContext) error {
-	req := &bce.BceRequest{}
+func RestoreObject(cli bce.Client, bucket string, object string, args ArchiveRestoreArgs,
+	ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetParam("restore", "")
 	req.SetMethod(http.POST)
 	req.SetHeader(http.BCE_RESTORE_DAYS, strconv.Itoa(args.RestoreDays))
 	req.SetHeader(http.BCE_RESTORE_TIER, args.RestoreTier)
-	ctx.Bucket = bucket
-	resp := &bce.BceResponse{}
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return err
 	}
@@ -1010,12 +1228,16 @@ func RestoreObject(cli bce.Client, bucket string, object string, args ArchiveRes
 //
 // RETURNS:
 //   - error: nil if ok otherwise the specific error
-func PutObjectSymlink(cli bce.Client, bucket string, object string, symlinkKey string, symlinkArgs *PutSymlinkArgs, ctx *BosContext) error {
-	req := &bce.BceRequest{}
+func PutObjectSymlink(cli bce.Client, bucket string, object string, symlinkKey string,
+	symlinkArgs *PutSymlinkArgs, ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, symlinkKey))
 	req.SetParam("symlink", "")
 	req.SetMethod(http.PUT)
-	ctx.Bucket = bucket
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	if symlinkArgs != nil {
 		if len(symlinkArgs.ForbidOverwrite) != 0 {
 			if !validForbidOverwrite(symlinkArgs.ForbidOverwrite) {
@@ -1044,8 +1266,11 @@ func PutObjectSymlink(cli bce.Client, bucket string, object string, symlinkKey s
 		}
 	}
 	req.SetHeader(http.BCE_SYMLINK_TARGET, object)
-
-	resp := &bce.BceResponse{}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return err
 	}
@@ -1066,13 +1291,21 @@ func PutObjectSymlink(cli bce.Client, bucket string, object string, symlinkKey s
 // RETURNS:
 //   - string: the name of the target object
 //   - error: nil if ok otherwise the specific error
-func GetObjectSymlink(cli bce.Client, bucket string, symlinkKey string, ctx *BosContext) (string, error) {
-	req := &bce.BceRequest{}
+func GetObjectSymlink(cli bce.Client, bucket string, symlinkKey string,
+	ctx *BosContext, options ...Option) (string, error) {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, symlinkKey))
 	req.SetParam("symlink", "")
 	req.SetMethod(http.GET)
-	ctx.Bucket = bucket
-	resp := &bce.BceResponse{}
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return "", bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return "", err
 	}
@@ -1097,19 +1330,27 @@ func GetObjectSymlink(cli bce.Client, bucket string, symlinkKey string, ctx *Bos
 // RETURNS:
 //     - error: nil if ok otherwise the specific error
 
-func PutObjectTag(cli bce.Client, bucket, object string, putObjectTagArgs *PutObjectTagArgs, ctx *BosContext) error {
-	req := &bce.BceRequest{}
+func PutObjectTag(cli bce.Client, bucket, object string, putObjectTagArgs *PutObjectTagArgs,
+	ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.PUT)
 	req.SetParam("tagging", "")
-	ctx.Bucket = bucket
+	req.SetBucket(bucket)
 	reqByte, _ := json.Marshal(putObjectTagArgs)
 	body, err := bce.NewBodyFromString(string(reqByte))
 	if err != nil {
 		return err
 	}
 	req.SetBody(body)
-	resp := &bce.BceResponse{}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return err
 	}
@@ -1120,13 +1361,21 @@ func PutObjectTag(cli bce.Client, bucket, object string, putObjectTagArgs *PutOb
 	return nil
 }
 
-func GetObjectTag(cli bce.Client, bucket, object string, ctx *BosContext) (map[string]interface{}, error) {
-	req := &bce.BceRequest{}
+func GetObjectTag(cli bce.Client, bucket, object string, ctx *BosContext,
+	options ...Option) (map[string]interface{}, error) {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.GET)
 	req.SetParam("tagging", "")
-	ctx.Bucket = bucket
-	resp := &bce.BceResponse{}
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return nil, err
 	}
@@ -1146,13 +1395,20 @@ func GetObjectTag(cli bce.Client, bucket, object string, ctx *BosContext) (map[s
 	return result, nil
 }
 
-func DeleteObjectTag(cli bce.Client, bucket, object string, ctx *BosContext) error {
-	req := &bce.BceRequest{}
+func DeleteObjectTag(cli bce.Client, bucket, object string, ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.DELETE)
 	req.SetParam("tagging", "")
-	ctx.Bucket = bucket
-	resp := &bce.BceResponse{}
+	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return err
 	}

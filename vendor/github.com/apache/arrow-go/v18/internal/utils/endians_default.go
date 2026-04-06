@@ -18,6 +18,8 @@
 
 package utils
 
+import "golang.org/x/exp/constraints"
+
 var (
 	ToLEInt16   = func(x int16) int16 { return x }
 	ToLEUint16  = func(x uint16) uint16 { return x }
@@ -28,3 +30,5 @@ var (
 	ToLEFloat32 = func(x float32) float32 { return x }
 	ToLEFloat64 = func(x float64) float64 { return x }
 )
+
+func ToLE[T constraints.Integer | constraints.Float](x T) T { return x }

@@ -7,7 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/ring"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/limits"
@@ -18,7 +23,7 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 	tests := []struct {
 		name                         string
 		expectedExceedsLimitsRequest *proto.ExceedsLimitsRequest
-		exceedsLimitsResponses       []*proto.ExceedsLimitsResponse
+		exceedsLimitsResponse        *proto.ExceedsLimitsResponse
 		request                      httpExceedsLimitsRequest
 		expected                     httpExceedsLimitsResponse
 	}{{
@@ -30,7 +35,7 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 				TotalSize:  0x5,
 			}},
 		},
-		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{}},
+		exceedsLimitsResponse: &proto.ExceedsLimitsResponse{},
 		request: httpExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
@@ -48,12 +53,12 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 				TotalSize:  0x5,
 			}},
 		},
-		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
+		exceedsLimitsResponse: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
-		}},
+		},
 		request: httpExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
@@ -64,21 +69,32 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 		expected: httpExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 	}}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			f := Frontend{
-				gatherer: &mockExceedsLimitsGatherer{
-					t:                            t,
-					expectedExceedsLimitsRequest: test.expectedExceedsLimitsRequest,
-					exceedsLimitsResponses:       test.exceedsLimitsResponses,
+			readRing, _ := newMockRingWithClientPool(t, "test", nil, nil)
+			f, err := New(Config{
+				LifecyclerConfig: ring.LifecyclerConfig{
+					RingConfig: ring.Config{
+						KVStore: kv.Config{
+							Store: "inmemory",
+						},
+					},
+					HeartbeatPeriod:  time.Millisecond,
+					HeartbeatTimeout: time.Millisecond,
 				},
+			}, "test", readRing, log.NewNopLogger(), prometheus.NewRegistry())
+			require.NoError(t, err)
+			f.limitsClient = &mockLimitsClient{
+				t:                            t,
+				expectedExceedsLimitsRequest: test.expectedExceedsLimitsRequest,
+				exceedsLimitsResponse:        test.exceedsLimitsResponse,
 			}
-			ts := httptest.NewServer(&f)
+			ts := httptest.NewServer(f)
 			defer ts.Close()
 
 			b, err := json.Marshal(test.request)

@@ -9,10 +9,12 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"maps"
 	"math"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // anonymous import to get the pprof handler registered
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -32,10 +34,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/tap"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
 	"github.com/grafana/dskit/clusterutil"
+	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/httpgrpc"
 	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
 	"github.com/grafana/dskit/log"
@@ -81,16 +85,20 @@ type Config struct {
 	// https://pkg.go.dev/github.com/prometheus/client_golang/prometheus#HistogramOpts
 	// for details. A generally useful value is 1.1.
 	MetricsNativeHistogramFactor float64 `yaml:"-"`
+	// MetricsMessageSizeNativeHistograms enables use of MetricsNativeHistogramFactor for response_message_bytes,
+	// request_message_bytes metrics
+	MetricsMessageSizeNativeHistograms bool `yaml:"-"`
 
-	HTTPListenNetwork    string `yaml:"http_listen_network"`
-	HTTPListenAddress    string `yaml:"http_listen_address"`
-	HTTPListenPort       int    `yaml:"http_listen_port"`
-	HTTPConnLimit        int    `yaml:"http_listen_conn_limit"`
-	GRPCListenNetwork    string `yaml:"grpc_listen_network"`
-	GRPCListenAddress    string `yaml:"grpc_listen_address"`
-	GRPCListenPort       int    `yaml:"grpc_listen_port"`
-	GRPCConnLimit        int    `yaml:"grpc_listen_conn_limit"`
-	ProxyProtocolEnabled bool   `yaml:"proxy_protocol_enabled"`
+	HTTPListenNetwork           string `yaml:"http_listen_network"`
+	HTTPListenAddress           string `yaml:"http_listen_address"`
+	HTTPListenPort              int    `yaml:"http_listen_port"`
+	HTTPConnLimit               int    `yaml:"http_listen_conn_limit"`
+	GRPCListenNetwork           string `yaml:"grpc_listen_network"`
+	GRPCListenAddress           string `yaml:"grpc_listen_address"`
+	GRPCListenPort              int    `yaml:"grpc_listen_port"`
+	GRPCConnLimit               int    `yaml:"grpc_listen_conn_limit"`
+	GRPCCollectMaxStreamsByConn bool   `yaml:"grpc_collect_max_streams_by_conn"`
+	ProxyProtocolEnabled        bool   `yaml:"proxy_protocol_enabled"`
 
 	CipherSuites  string    `yaml:"tls_cipher_suites"`
 	MinVersion    string    `yaml:"tls_min_version"`
@@ -114,6 +122,7 @@ type Config struct {
 	HTTPLogClosedConnectionsWithoutResponse bool `yaml:"http_log_closed_connections_without_response_enabled"`
 
 	GRPCOptions                   []grpc.ServerOption            `yaml:"-"`
+	GRPCTapHandles                []tap.ServerInHandle           `yaml:"-"`
 	GRPCMiddleware                []grpc.UnaryServerInterceptor  `yaml:"-"`
 	GRPCStreamMiddleware          []grpc.StreamServerInterceptor `yaml:"-"`
 	HTTPMiddleware                []middleware.Interface         `yaml:"-"`
@@ -133,6 +142,8 @@ type Config struct {
 	GRPCServerNumWorkers               int           `yaml:"grpc_server_num_workers"`
 	GRPCServerStatsTrackingEnabled     bool          `yaml:"grpc_server_stats_tracking_enabled"`
 	GRPCServerRecvBufferPoolsEnabled   bool          `yaml:"grpc_server_recv_buffer_pools_enabled"`
+	GRPCServerReadBufferSize           int           `yaml:"grpc_server_read_buffer_size"`
+	GRPCServerWriteBufferSize          int           `yaml:"grpc_server_write_buffer_size"`
 
 	LogFormat                    string           `yaml:"log_format"`
 	LogLevel                     log.Level        `yaml:"log_level"`
@@ -144,6 +155,9 @@ type Config struct {
 	LogRequestHeaders            bool             `yaml:"log_request_headers"`
 	LogRequestAtInfoLevel        bool             `yaml:"log_request_at_info_level_enabled"`
 	LogRequestExcludeHeadersList string           `yaml:"log_request_exclude_headers_list"`
+
+	TraceRequestHeaders            bool   `yaml:"trace_request_headers"`
+	TraceRequestExcludeHeadersList string `yaml:"trace_request_exclude_headers_list"`
 
 	// If not set, default signal handler is used.
 	SignalHandler SignalHandler `yaml:"-"`
@@ -160,6 +174,13 @@ type Config struct {
 	Throughput Throughput `yaml:"-"`
 
 	ClusterValidation clusterutil.ServerClusterValidationConfig `yaml:"cluster_validation" category:"experimental"`
+
+	// PublicEndpointFn will create a new trace instead of continuing an
+	// existing trace when the function returns true. A span link will be used
+	// to connect to any existing trace. It only works if using Open-Telemetry
+	// tracing.
+	PublicEndpointFn func(*http.Request) bool `yaml:"-"`
+	CreateNewTraces  bool                     `yaml:"create_new_traces"`
 }
 
 type Throughput struct {
@@ -189,6 +210,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.GRPCListenAddress, "server.grpc-listen-address", "", "gRPC server listen address.")
 	f.IntVar(&cfg.GRPCListenPort, "server.grpc-listen-port", 9095, "gRPC server listen port.")
 	f.IntVar(&cfg.GRPCConnLimit, "server.grpc-conn-limit", 0, "Maximum number of simultaneous grpc connections, <=0 to disable")
+	f.BoolVar(&cfg.GRPCCollectMaxStreamsByConn, "server.grpc-collect-max-streams-by-conn", true, "If true, the max streams by connection gauge will be collected.")
 	f.BoolVar(&cfg.RegisterInstrumentation, "server.register-instrumentation", true, "Register the intrumentation handlers (/metrics etc).")
 	f.BoolVar(&cfg.ReportGRPCCodesInInstrumentationLabel, "server.report-grpc-codes-in-instrumentation-label-enabled", false, "If set to true, gRPC statuses will be reported in instrumentation labels with their string representations. Otherwise, they will be reported as \"error\".")
 	f.DurationVar(&cfg.ServerGracefulShutdownTimeout, "server.graceful-shutdown-timeout", 30*time.Second, "Timeout for graceful shutdowns")
@@ -210,6 +232,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.GRPCServerStatsTrackingEnabled, "server.grpc.stats-tracking-enabled", true, "If true, the request_message_bytes, response_message_bytes, and inflight_requests metrics will be tracked. Enabling this option prevents the use of memory pools for parsing gRPC request bodies and may lead to more memory allocations.")
 	f.BoolVar(&cfg.GRPCServerRecvBufferPoolsEnabled, "server.grpc.recv-buffer-pools-enabled", false, "Deprecated option, has no effect and will be removed in a future version.")
 	f.IntVar(&cfg.GRPCServerNumWorkers, "server.grpc.num-workers", 0, "If non-zero, configures the amount of GRPC server workers used to serve the requests.")
+	f.IntVar(&cfg.GRPCServerReadBufferSize, "server.grpc.read-buffer-size-bytes", 32*1024, "Size of the read buffer for each gRPC connection (bytes). A smaller buffer may reduce memory usage but may lead to more system calls.")
+	f.IntVar(&cfg.GRPCServerWriteBufferSize, "server.grpc.write-buffer-size-bytes", 32*1024, "Size of the write buffer for each gRPC connection (bytes). A smaller buffer may reduce memory usage but may lead to more system calls.")
 	f.StringVar(&cfg.PathPrefix, "server.path-prefix", "", "Base path to serve all API routes from (e.g. /v1/)")
 	f.StringVar(&cfg.LogFormat, "log.format", log.LogfmtFormat, "Output log messages in the given format. Valid formats: [logfmt, json]")
 	cfg.LogLevel.RegisterFlags(f)
@@ -220,10 +244,15 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LogRequestHeaders, "server.log-request-headers", false, "Optionally log request headers.")
 	f.StringVar(&cfg.LogRequestExcludeHeadersList, "server.log-request-headers-exclude-list", "", "Comma separated list of headers to exclude from loggin. Only used if server.log-request-headers is true.")
 	f.BoolVar(&cfg.LogRequestAtInfoLevel, "server.log-request-at-info-level-enabled", false, "Optionally log requests at info level instead of debug level. Applies to request headers as well if server.log-request-headers is enabled.")
+
+	f.BoolVar(&cfg.TraceRequestHeaders, "server.trace-request-headers", false, "Optionally add request headers to tracing spans.")
+	f.StringVar(&cfg.TraceRequestExcludeHeadersList, "server.trace-request-headers-exclude-list", "", fmt.Sprintf("Comma separated list of headers to exclude from tracing spans. Only used if server.trace-request-headers is true. The following headers are always excluded: %s.", strings.Join(slices.Sorted(maps.Keys(middleware.AlwaysExcludedHeaders)), ", ")))
+
 	f.BoolVar(&cfg.ProxyProtocolEnabled, "server.proxy-protocol-enabled", false, "Enables PROXY protocol.")
 	f.DurationVar(&cfg.Throughput.LatencyCutoff, "server.throughput.latency-cutoff", 0, "Requests taking over the cutoff are be observed to measure throughput. Server-Timing header is used with specified unit as the indicator, for example 'Server-Timing: unit;val=8.2'. If set to 0, the throughput is not calculated.")
 	f.StringVar(&cfg.Throughput.Unit, "server.throughput.unit", "samples_processed", "Unit of the server throughput metric, for example 'processed_bytes' or 'samples_processed'. Observed values are gathered from the 'Server-Timing' header with the 'val' key. If set, it is appended to the request_server_throughput metric name.")
 	cfg.ClusterValidation.RegisterFlagsWithPrefix("server.cluster-validation.", f)
+	f.BoolVar(&cfg.CreateNewTraces, "server.create-new-traces", false, "Creates new traces for each call rather than continuing the existing trace. A span link is used to allow navigation to the parent trace. Only works when using Open-Telemetry tracing.")
 }
 
 func (cfg *Config) Validate() error {
@@ -273,6 +302,8 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	if logger == nil {
 		logger = log.NewGoKitWithLevel(cfg.LogLevel, cfg.LogFormat)
 	}
+
+	reg := cfg.registererOrDefault()
 
 	gatherer := cfg.Gatherer
 	if gatherer == nil {
@@ -420,7 +451,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	grpcMiddleware = append(grpcMiddleware, cfg.GRPCMiddleware...)
 	if cfg.ClusterValidation.GRPC.Enabled {
 		grpcMiddleware = append(grpcMiddleware, middleware.ClusterUnaryServerInterceptor(
-			cfg.ClusterValidation.Label, cfg.ClusterValidation.GRPC.SoftValidation,
+			cfg.ClusterValidation.GetAllowedClusterLabels(), cfg.ClusterValidation.GRPC.SoftValidation,
 			metrics.InvalidClusterRequests, logger,
 		))
 	}
@@ -455,7 +486,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 
 	var grpcServerLimit *grpcInflightLimitCheck
 	if cfg.GrpcMethodLimiter != nil {
-		grpcServerLimit = newGrpcInflightLimitCheck(cfg.GrpcMethodLimiter)
+		grpcServerLimit = newGrpcInflightLimitCheck(cfg.GrpcMethodLimiter, logger)
 		grpcMiddleware = append(grpcMiddleware, grpcServerLimit.UnaryServerInterceptor)
 		grpcStreamMiddleware = append(grpcStreamMiddleware, grpcServerLimit.StreamServerInterceptor)
 	}
@@ -470,23 +501,29 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		grpc.MaxSendMsgSize(cfg.GRPCServerMaxSendMsgSize),
 		grpc.MaxConcurrentStreams(uint32(cfg.GRPCServerMaxConcurrentStreams)),
 		grpc.NumStreamWorkers(uint32(cfg.GRPCServerNumWorkers)),
+		grpc.ReadBufferSize(cfg.GRPCServerReadBufferSize),
+		grpc.WriteBufferSize(cfg.GRPCServerWriteBufferSize),
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	}
 
+	var tapHandles []tap.ServerInHandle
+	tapHandles = append(tapHandles, cfg.GRPCTapHandles...)
 	if grpcServerLimit != nil {
-		grpcOptions = append(grpcOptions,
-			grpc.StatsHandler(grpcServerLimit),
-			grpc.InTapHandle(grpcServerLimit.TapHandle),
-		)
+		grpcOptions = append(grpcOptions, grpc.StatsHandler(grpcServerLimit))
+		tapHandles = append(tapHandles, grpcServerLimit.TapHandle)
+	}
+	if len(tapHandles) > 0 {
+		grpcOptions = append(grpcOptions, grpc.InTapHandle(grpcutil.ComposeTapHandles(tapHandles)))
 	}
 
 	if cfg.GRPCServerStatsTrackingEnabled {
 		grpcOptions = append(grpcOptions,
 			grpc.StatsHandler(middleware.NewStatsHandler(
+				reg,
 				metrics.ReceivedMessageSize,
 				metrics.SentMessageSize,
 				metrics.InflightRequests,
-				metrics.GRPCConcurrentStreamsByConnMax,
+				cfg.GRPCCollectMaxStreamsByConn,
 			)),
 		)
 	}
@@ -548,6 +585,7 @@ func RegisterInstrumentationWithGatherer(router *mux.Router, gatherer prometheus
 	router.Handle("/metrics", promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{
 		EnableOpenMetrics: true,
 	}))
+	router.Handle("/debug/pprof/cmdline", http.NotFoundHandler())
 	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
 }
 
@@ -566,13 +604,17 @@ func BuildHTTPMiddleware(cfg Config, router *mux.Router, metrics *Metrics, logge
 	defaultLogMiddleware := middleware.NewLogMiddleware(logger, cfg.LogRequestHeaders, cfg.LogRequestAtInfoLevel, logSourceIPs, strings.Split(cfg.LogRequestExcludeHeadersList, ","))
 	defaultLogMiddleware.DisableRequestSuccessLog = cfg.DisableRequestSuccessLog
 
+	publicEndpointFn := cfg.PublicEndpointFn
+	if publicEndpointFn == nil && cfg.CreateNewTraces {
+		publicEndpointFn = func(*http.Request) bool {
+			return true
+		}
+	}
 	defaultHTTPMiddleware := []middleware.Interface{
 		middleware.RouteInjector{
 			RouteMatcher: router,
 		},
-		middleware.Tracer{
-			SourceIPs: sourceIPs,
-		},
+		middleware.NewTracer(sourceIPs, cfg.TraceRequestHeaders, strings.Split(cfg.TraceRequestExcludeHeadersList, ","), publicEndpointFn),
 		defaultLogMiddleware,
 		middleware.Instrument{
 			Duration:          metrics.RequestDuration,
@@ -595,9 +637,10 @@ func BuildHTTPMiddleware(cfg Config, router *mux.Router, metrics *Metrics, logge
 	}
 	if cfg.ClusterValidation.HTTP.Enabled {
 		httpMiddleware = append(httpMiddleware, middleware.ClusterValidationMiddleware(
-			cfg.ClusterValidation.Label, cfg.ClusterValidation.HTTP.ExcludedPaths,
-			cfg.ClusterValidation.HTTP.SoftValidation,
-			metrics.InvalidClusterRequests, logger,
+			cfg.ClusterValidation.GetAllowedClusterLabels(),
+			cfg.ClusterValidation.HTTP,
+			metrics.InvalidClusterRequests,
+			logger,
 		))
 	}
 

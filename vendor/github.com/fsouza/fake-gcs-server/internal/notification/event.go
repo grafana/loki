@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"cloud.google.com/go/pubsub"
+	"cloud.google.com/go/pubsub/v2"
 	"github.com/fsouza/fake-gcs-server/internal/backend"
 )
 
@@ -89,7 +89,7 @@ func NewPubsubEventManager(options EventManagerOptions, w io.Writer) (*PubsubEve
 		if err != nil {
 			return nil, fmt.Errorf("error creating pubsub client: %v", err)
 		}
-		manager.publisher = client.Topic(options.TopicName)
+		manager.publisher = client.Publisher(options.TopicName)
 	}
 	return manager, nil
 }

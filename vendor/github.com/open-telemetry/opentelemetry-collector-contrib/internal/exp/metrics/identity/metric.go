@@ -4,13 +4,12 @@
 package identity // import "github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/identity"
 
 import (
+	"fmt"
 	"hash"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
-
-type metric = Metric
 
 type Metric struct {
 	scope
@@ -23,21 +22,21 @@ type Metric struct {
 	temporality pmetric.AggregationTemporality
 }
 
-func (i Metric) Hash() hash.Hash64 {
-	sum := i.scope.Hash()
-	sum.Write([]byte(i.name))
-	sum.Write([]byte(i.unit))
+func (m Metric) Hash() hash.Hash64 {
+	sum := m.scope.Hash()
+	sum.Write([]byte(m.name))
+	sum.Write([]byte(m.unit))
 
 	var mono byte
-	if i.monotonic {
+	if m.monotonic {
 		mono = 1
 	}
-	sum.Write([]byte{byte(i.ty), mono, byte(i.temporality)})
+	sum.Write([]byte{byte(m.ty), mono, byte(m.temporality)})
 	return sum
 }
 
-func (i Metric) Scope() Scope {
-	return i.scope
+func (m Metric) Scope() Scope {
+	return m.scope
 }
 
 func OfMetric(scope Scope, m pmetric.Metric) Metric {
@@ -64,6 +63,10 @@ func OfMetric(scope Scope, m pmetric.Metric) Metric {
 	}
 
 	return id
+}
+
+func (m Metric) String() string {
+	return fmt.Sprintf("metric/%x", m.Hash().Sum64())
 }
 
 func OfResourceMetric(res pcommon.Resource, scope pcommon.InstrumentationScope, metric pmetric.Metric) Metric {

@@ -6,8 +6,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
-
-	"github.com/olekukonko/tablewriter"
+	"text/tabwriter"
 )
 
 func PrintSchema(w io.Writer, name string, node Node) error {
@@ -209,12 +208,11 @@ func sprint(name string, node Node) string {
 func PrintRowGroup(w io.Writer, rowGroup RowGroup) error {
 	schema := rowGroup.Schema()
 	pw := &printWriter{writer: w}
-	tw := tablewriter.NewWriter(pw)
+	tw := tabwriter.NewWriter(pw, 0, 0, 2, ' ', 0)
 
 	columns := schema.Columns()
 	header := make([]string, len(columns))
 	footer := make([]string, len(columns))
-	alignment := make([]int, len(columns))
 
 	for i, column := range columns {
 		leaf, _ := schema.Lookup(column...)
@@ -222,14 +220,25 @@ func PrintRowGroup(w io.Writer, rowGroup RowGroup) error {
 
 		header[i] = strings.Join(column, ".")
 		footer[i] = columnType.String()
-
-		switch columnType.Kind() {
-		case ByteArray:
-			alignment[i] = tablewriter.ALIGN_LEFT
-		default:
-			alignment[i] = tablewriter.ALIGN_RIGHT
-		}
 	}
+
+	// Print header
+	for i, h := range header {
+		if i > 0 {
+			pw.WriteString("\t")
+		}
+		pw.WriteString(h)
+	}
+	pw.WriteString("\n")
+
+	// Print separator line
+	for i := range header {
+		if i > 0 {
+			pw.WriteString("\t")
+		}
+		pw.WriteString(strings.Repeat("-", len(header[i])))
+	}
+	pw.WriteString("\n")
 
 	rowbuf := make([]Row, defaultRowBufferSize)
 	cells := make([]string, 0, len(columns))
@@ -253,11 +262,17 @@ func PrintRowGroup(w io.Writer, rowGroup RowGroup) error {
 					cells[columnIndex] = value.String()
 				} else {
 					cells[columnIndex] += "," + value.String()
-					alignment[columnIndex] = tablewriter.ALIGN_LEFT
 				}
 			}
 
-			tw.Append(cells)
+			// Print row
+			for i, cell := range cells {
+				if i > 0 {
+					tw.Write([]byte("\t"))
+				}
+				tw.Write([]byte(cell))
+			}
+			tw.Write([]byte("\n"))
 		}
 
 		if err != nil {
@@ -268,14 +283,23 @@ func PrintRowGroup(w io.Writer, rowGroup RowGroup) error {
 		}
 	}
 
-	tw.SetAutoFormatHeaders(false)
-	tw.SetColumnAlignment(alignment)
-	tw.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	tw.SetFooterAlignment(tablewriter.ALIGN_LEFT)
-	tw.SetHeader(header)
-	tw.SetFooter(footer)
-	tw.Render()
+	// Print footer
+	for i := range header {
+		if i > 0 {
+			pw.WriteString("\t")
+		}
+		pw.WriteString(strings.Repeat("-", len(header[i])))
+	}
+	pw.WriteString("\n")
+	for i, f := range footer {
+		if i > 0 {
+			pw.WriteString("\t")
+		}
+		pw.WriteString(f)
+	}
+	pw.WriteString("\n")
 
+	tw.Flush()
 	fmt.Fprintf(pw, "%d rows\n\n", rowGroup.NumRows())
 	return pw.err
 }

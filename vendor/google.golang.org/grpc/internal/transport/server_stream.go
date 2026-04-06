@@ -32,21 +32,24 @@ import (
 
 // ServerStream implements streaming functionality for a gRPC server.
 type ServerStream struct {
-	*Stream // Embed for common stream functionality.
+	Stream // Embed for common stream functionality.
 
 	st      internalServerTransport
-	ctxDone <-chan struct{}    // closed at the end of stream.  Cache of ctx.Done() (for performance)
-	cancel  context.CancelFunc // invoked at the end of stream to cancel ctx.
+	ctxDone <-chan struct{} // closed at the end of stream.  Cache of ctx.Done() (for performance)
+	// cancel is invoked at the end of stream to cancel ctx. It also stops the
+	// timer for monitoring the rpc deadline if configured.
+	cancel func()
 
 	// Holds compressor names passed in grpc-accept-encoding metadata from the
 	// client.
 	clientAdvertisedCompressors string
-	headerWireLength            int
 
 	// hdrMu protects outgoing header and trailer metadata.
 	hdrMu      sync.Mutex
 	header     metadata.MD // the outgoing header metadata.  Updated by WriteHeader.
 	headerSent atomic.Bool // atomically set when the headers are sent out.
+
+	headerWireLength int
 }
 
 // Read reads an n byte message from the input stream.
@@ -175,4 +178,12 @@ func (s *ServerStream) SetTrailer(md metadata.MD) error {
 	s.trailer = metadata.Join(s.trailer, md)
 	s.hdrMu.Unlock()
 	return nil
+}
+
+func (s *ServerStream) requestRead(n int) {
+	s.st.adjustWindow(s, uint32(n))
+}
+
+func (s *ServerStream) updateWindow(n int) {
+	s.st.updateWindow(s, uint32(n))
 }

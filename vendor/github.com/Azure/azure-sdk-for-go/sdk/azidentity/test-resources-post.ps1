@@ -41,7 +41,7 @@ if ($CI) {
   az account set --subscription $SubscriptionId
 }
 
-Write-Host "Building container"
+Write-Host "##[group]Building container"
 $image = "$($DeploymentOutputs['AZIDENTITY_ACR_LOGIN_SERVER'])/azidentity-managed-id-test"
 Set-Content -Path "$PSScriptRoot/Dockerfile" -Value @"
 FROM mcr.microsoft.com/oss/go/microsoft/golang:latest AS builder
@@ -62,16 +62,40 @@ CMD ["./managed-id-test"]
 docker build -t $image "$PSScriptRoot"
 az acr login -n $DeploymentOutputs['AZIDENTITY_ACR_NAME']
 docker push $image
+Write-Host "##[endgroup]"
 
 $rg = $DeploymentOutputs['AZIDENTITY_RESOURCE_GROUP']
 
+Write-Host "##[group]Deploying to VM"
+# az will return 0 when the script fails on the VM, so the script prints a UUID to indicate all commands succeeded
+$uuid = [guid]::NewGuid().ToString()
+$vmScript = @"
+az acr login -n $($DeploymentOutputs['AZIDENTITY_ACR_NAME']) && \
+sudo docker run \
+-e AZIDENTITY_STORAGE_NAME=$($DeploymentOutputs['AZIDENTITY_STORAGE_NAME']) \
+-e AZIDENTITY_STORAGE_NAME_USER_ASSIGNED=$($DeploymentOutputs['AZIDENTITY_STORAGE_NAME_USER_ASSIGNED']) \
+-e AZIDENTITY_USER_ASSIGNED_IDENTITY=$($DeploymentOutputs['AZIDENTITY_USER_ASSIGNED_IDENTITY']) \
+-e AZIDENTITY_USER_ASSIGNED_IDENTITY_CLIENT_ID=$($DeploymentOutputs['AZIDENTITY_USER_ASSIGNED_IDENTITY_CLIENT_ID']) \
+-e AZIDENTITY_USER_ASSIGNED_IDENTITY_OBJECT_ID=$($DeploymentOutputs['AZIDENTITY_USER_ASSIGNED_IDENTITY_OBJECT_ID']) \
+-p 80:8080 -d \
+$image && \
+/usr/bin/echo $uuid
+"@
+$output = az vm run-command invoke -g $rg -n $DeploymentOutputs['AZIDENTITY_VM_NAME'] --command-id RunShellScript --scripts "$vmScript" | Out-String
+Write-Host $output
+if (-not $output.Contains($uuid)) {
+  throw "couldn't start container on VM"
+}
+Write-Host "##[endgroup]"
+
 # ACI is easier to provision here than in the bicep file because the image isn't available before now
-Write-Host "Deploying Azure Container Instance"
+Write-Host "##[group]Deploying Azure Container Instance"
 $aciName = "azidentity-test"
 az container create -g $rg -n $aciName --image $image `
   --acr-identity $($DeploymentOutputs['AZIDENTITY_USER_ASSIGNED_IDENTITY']) `
   --assign-identity [system] $($DeploymentOutputs['AZIDENTITY_USER_ASSIGNED_IDENTITY']) `
   --cpu 1 `
+  --ip-address Public `
   --memory 1.0 `
   --os-type Linux `
   --role "Storage Blob Data Reader" `
@@ -82,24 +106,29 @@ az container create -g $rg -n $aciName --image $image `
   AZIDENTITY_USER_ASSIGNED_IDENTITY_CLIENT_ID=$($DeploymentOutputs['AZIDENTITY_USER_ASSIGNED_IDENTITY_CLIENT_ID']) `
   AZIDENTITY_USER_ASSIGNED_IDENTITY_OBJECT_ID=$($DeploymentOutputs['AZIDENTITY_USER_ASSIGNED_IDENTITY_OBJECT_ID']) `
   FUNCTIONS_CUSTOMHANDLER_PORT=80
-Write-Host "##vso[task.setvariable variable=AZIDENTITY_ACI_NAME;]$aciName"
+$aciIP = az container show -g $rg -n $aciName --query ipAddress.ip --output tsv
+Write-Host "##vso[task.setvariable variable=AZIDENTITY_ACI_IP;]$aciIP"
+Write-Host "##[endgroup]"
 
 # Azure Functions deployment: copy the Windows binary from the Docker image, deploy it in a zip
-Write-Host "Deploying to Azure Functions"
+Write-Host "##[group]Deploying to Azure Functions"
 $container = docker create $image
 docker cp ${container}:managed-id-test.exe "$PSScriptRoot/testdata/managed-id-test/"
 docker rm -v $container
 Compress-Archive -Path "$PSScriptRoot/testdata/managed-id-test/*" -DestinationPath func.zip -Force
 az functionapp deploy -g $rg -n $DeploymentOutputs['AZIDENTITY_FUNCTION_NAME'] --src-path func.zip --type zip
+Write-Host "##[endgroup]"
 
-Write-Host "Creating federated identity"
+Write-Host "##[group]Creating federated identity"
 $aksName = $DeploymentOutputs['AZIDENTITY_AKS_NAME']
 $idName = $DeploymentOutputs['AZIDENTITY_USER_ASSIGNED_IDENTITY_NAME']
 $issuer = az aks show -g $rg -n $aksName --query "oidcIssuerProfile.issuerUrl" -otsv
 $podName = "azidentity-test"
 $serviceAccountName = "workload-identity-sa"
-az identity federated-credential create -g $rg --identity-name $idName --issuer $issuer --name $idName --subject system:serviceaccount:default:$serviceAccountName
-Write-Host "Deploying to AKS"
+az identity federated-credential create -g $rg --identity-name $idName --issuer $issuer --name $idName --subject system:serviceaccount:default:$serviceAccountName --audiences api://AzureADTokenExchange
+Write-Host "##[endgroup]"
+
+Write-Host "##[group]Deploying to AKS"
 az aks get-credentials -g $rg -n $aksName
 az aks update --attach-acr $DeploymentOutputs['AZIDENTITY_ACR_NAME'] -g $rg -n $aksName
 Set-Content -Path "$PSScriptRoot/k8s.yaml" -Value @"
@@ -136,3 +165,4 @@ spec:
 "@
 kubectl apply -f "$PSScriptRoot/k8s.yaml"
 Write-Host "##vso[task.setvariable variable=AZIDENTITY_POD_NAME;]$podName"
+Write-Host "##[endgroup]"

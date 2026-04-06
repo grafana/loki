@@ -3,63 +3,93 @@ package ansi
 import (
 	"fmt"
 	"image/color"
+
+	"github.com/lucasb-eyer/go-colorful"
 )
 
-// Colorizer is a [color.Color] interface that can be formatted as a string.
-type Colorizer interface {
-	color.Color
-	fmt.Stringer
+// HexColor is a [color.Color] that can be formatted as a hex string.
+type HexColor string
+
+// RGBA returns the RGBA values of the color.
+func (h HexColor) RGBA() (r, g, b, a uint32) {
+	hex := h.color()
+	if hex == nil {
+		return 0, 0, 0, 0
+	}
+	return hex.RGBA()
 }
 
-// HexColorizer is a [color.Color] that can be formatted as a hex string.
-type HexColorizer struct{ color.Color }
-
-var _ Colorizer = HexColorizer{}
+// Hex returns the hex representation of the color. If the color is invalid, it
+// returns an empty string.
+func (h HexColor) Hex() string {
+	hex := h.color()
+	if hex == nil {
+		return ""
+	}
+	return hex.Hex()
+}
 
 // String returns the color as a hex string. If the color is nil, an empty
 // string is returned.
-func (h HexColorizer) String() string {
-	if h.Color == nil {
-		return ""
-	}
-	r, g, b, _ := h.RGBA()
-	// Get the lower 8 bits
-	r &= 0xff
-	g &= 0xff
-	b &= 0xff
-	return fmt.Sprintf("#%02x%02x%02x", uint8(r), uint8(g), uint8(b)) //nolint:gosec
+func (h HexColor) String() string {
+	return h.Hex()
 }
 
-// XRGBColorizer is a [color.Color] that can be formatted as an XParseColor
+// color returns the underlying color of the HexColor.
+func (h HexColor) color() *colorful.Color {
+	hex, err := colorful.Hex(string(h))
+	if err != nil {
+		return nil
+	}
+	return &hex
+}
+
+// XRGBColor is a [color.Color] that can be formatted as an XParseColor
 // rgb: string.
 //
 // See: https://linux.die.net/man/3/xparsecolor
-type XRGBColorizer struct{ color.Color }
+type XRGBColor struct {
+	color.Color
+}
 
-var _ Colorizer = XRGBColorizer{}
+// RGBA returns the RGBA values of the color.
+func (x XRGBColor) RGBA() (r, g, b, a uint32) {
+	if x.Color == nil {
+		return 0, 0, 0, 0
+	}
+	return x.Color.RGBA()
+}
 
 // String returns the color as an XParseColor rgb: string. If the color is nil,
 // an empty string is returned.
-func (x XRGBColorizer) String() string {
+func (x XRGBColor) String() string {
 	if x.Color == nil {
 		return ""
 	}
-	r, g, b, _ := x.RGBA()
+	r, g, b, _ := x.Color.RGBA()
 	// Get the lower 8 bits
 	return fmt.Sprintf("rgb:%04x/%04x/%04x", r, g, b)
 }
 
-// XRGBAColorizer is a [color.Color] that can be formatted as an XParseColor
+// XRGBAColor is a [color.Color] that can be formatted as an XParseColor
 // rgba: string.
 //
 // See: https://linux.die.net/man/3/xparsecolor
-type XRGBAColorizer struct{ color.Color }
+type XRGBAColor struct {
+	color.Color
+}
 
-var _ Colorizer = XRGBAColorizer{}
+// RGBA returns the RGBA values of the color.
+func (x XRGBAColor) RGBA() (r, g, b, a uint32) {
+	if x.Color == nil {
+		return 0, 0, 0, 0
+	}
+	return x.Color.RGBA()
+}
 
 // String returns the color as an XParseColor rgba: string. If the color is nil,
 // an empty string is returned.
-func (x XRGBAColorizer) String() string {
+func (x XRGBAColor) String() string {
 	if x.Color == nil {
 		return ""
 	}
@@ -74,19 +104,12 @@ func (x XRGBAColorizer) String() string {
 //	OSC 10 ; color ST
 //	OSC 10 ; color BEL
 //
-// Where color is the encoded color number.
+// Where color is the encoded color number. Most terminals support hex,
+// XParseColor rgb: and rgba: strings. You could use [HexColor], [XRGBColor],
+// or [XRGBAColor] to format the color.
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands
-func SetForegroundColor(c color.Color) string {
-	var s string
-	switch c := c.(type) {
-	case Colorizer:
-		s = c.String()
-	case fmt.Stringer:
-		s = c.String()
-	default:
-		s = HexColorizer{c}.String()
-	}
+func SetForegroundColor(s string) string {
 	return "\x1b]10;" + s + "\x07"
 }
 
@@ -108,19 +131,12 @@ const ResetForegroundColor = "\x1b]110\x07"
 //	OSC 11 ; color ST
 //	OSC 11 ; color BEL
 //
-// Where color is the encoded color number.
+// Where color is the encoded color number. Most terminals support hex,
+// XParseColor rgb: and rgba: strings. You could use [HexColor], [XRGBColor],
+// or [XRGBAColor] to format the color.
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands
-func SetBackgroundColor(c color.Color) string {
-	var s string
-	switch c := c.(type) {
-	case Colorizer:
-		s = c.String()
-	case fmt.Stringer:
-		s = c.String()
-	default:
-		s = HexColorizer{c}.String()
-	}
+func SetBackgroundColor(s string) string {
 	return "\x1b]11;" + s + "\x07"
 }
 
@@ -141,19 +157,12 @@ const ResetBackgroundColor = "\x1b]111\x07"
 //	OSC 12 ; color ST
 //	OSC 12 ; color BEL
 //
-// Where color is the encoded color number.
+// Where color is the encoded color number. Most terminals support hex,
+// XParseColor rgb: and rgba: strings. You could use [HexColor], [XRGBColor],
+// or [XRGBAColor] to format the color.
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands
-func SetCursorColor(c color.Color) string {
-	var s string
-	switch c := c.(type) {
-	case Colorizer:
-		s = c.String()
-	case fmt.Stringer:
-		s = c.String()
-	default:
-		s = HexColorizer{c}.String()
-	}
+func SetCursorColor(s string) string {
 	return "\x1b]12;" + s + "\x07"
 }
 

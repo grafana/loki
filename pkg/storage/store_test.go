@@ -1224,7 +1224,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
-				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "logs"),
 			},
 		},
 		{
@@ -1238,7 +1238,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 			),
 			[]*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
-				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "logs"),
 				labels.MustNewMatcher(
 					labels.MatchEqual,
 					astmapper.ShardLabel,
@@ -1591,10 +1591,10 @@ func parseDate(in string) time.Time {
 	return t
 }
 
-func buildTestStreams(labels labels.Labels, tr timeRange) logproto.Stream {
+func buildTestStreams(ls labels.Labels, tr timeRange) logproto.Stream {
 	stream := logproto.Stream{
-		Labels:  labels.String(),
-		Hash:    labels.Hash(),
+		Labels:  ls.String(),
+		Hash:    labels.StableHash(ls),
 		Entries: []logproto.Entry{},
 	}
 
@@ -2032,7 +2032,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 			panic(err)
 		}
 		labelsBuilder := labels.NewBuilder(lbs)
-		labelsBuilder.Set(labels.MetricName, "logs")
+		labelsBuilder.Set(model.MetricNameLabel, "logs")
 		metric := labelsBuilder.Labels()
 		fp := client.Fingerprint(lbs)
 

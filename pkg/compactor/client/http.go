@@ -13,7 +13,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/crypto/tls"
 
+	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -39,27 +41,24 @@ func (cfg *HTTPConfig) RegisterFlags(f *flag.FlagSet) {
 type compactorHTTPClient struct {
 	httpClient *http.Client
 
-	deleteRequestsURL string
+	deleteRequestsURL *url.URL
 	cacheGenURL       string
 }
 
 // NewHTTPClient creates a client which talks to compactor over HTTP.
 // It uses provided TLS config which creating HTTP client.
-func NewHTTPClient(addr string, cfg HTTPConfig) (deletion.CompactorClient, error) {
+func NewHTTPClient(addr string, cfg HTTPConfig) (CompactorClient, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		level.Error(log.Logger).Log("msg", "error parsing url", "err", err)
 		return nil, err
 	}
 
-	u.Path = getDeletePath
-	q := u.Query()
-	q.Set(deletion.ForQuerytimeFilteringQueryParam, "true")
-	u.RawQuery = q.Encode()
-	deleteRequestsURL := u.String()
+	deleteRequestsURL := *u
+	deleteRequestsURL.Path = getDeletePath
 
-	u.Path = cacheGenNumPath
-	cacheGenURL := u.String()
+	cacheGenURL := *u
+	cacheGenURL.Path = cacheGenNumPath
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConns = 250
@@ -76,8 +75,8 @@ func NewHTTPClient(addr string, cfg HTTPConfig) (deletion.CompactorClient, error
 
 	return &compactorHTTPClient{
 		httpClient:        &http.Client{Timeout: 5 * time.Second, Transport: transport},
-		deleteRequestsURL: deleteRequestsURL,
-		cacheGenURL:       cacheGenURL,
+		deleteRequestsURL: &deleteRequestsURL,
+		cacheGenURL:       cacheGenURL.String(),
 	}, nil
 }
 
@@ -87,8 +86,22 @@ func (c *compactorHTTPClient) Name() string {
 
 func (c *compactorHTTPClient) Stop() {}
 
-func (c *compactorHTTPClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.deleteRequestsURL, nil)
+func (c *compactorHTTPClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *deletion.TimeRange) ([]deletionproto.DeleteRequest, error) {
+	u := *c.deleteRequestsURL
+	q := u.Query()
+
+	if forQuerytimeFiltering {
+		q.Set(deletion.ForQuerytimeFilteringQueryParam, "true")
+	}
+
+	if timeRange != nil {
+		q.Set("start", fmt.Sprintf("%d", timeRange.Start.Unix()))
+		q.Set("end", fmt.Sprintf("%d", timeRange.End.Unix()))
+	}
+
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		level.Error(log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		return nil, err
@@ -112,7 +125,7 @@ func (c *compactorHTTPClient) GetAllDeleteRequestsForUser(ctx context.Context, u
 		return nil, err
 	}
 
-	var deleteRequests []deletion.DeleteRequest
+	var deleteRequests []deletionproto.DeleteRequest
 	if err := json.NewDecoder(resp.Body).Decode(&deleteRequests); err != nil {
 		level.Error(log.Logger).Log("msg", "error marshalling response", "err", err)
 		return nil, err
@@ -150,4 +163,8 @@ func (c *compactorHTTPClient) GetCacheGenerationNumber(ctx context.Context, user
 	}
 
 	return genNumber, err
+}
+
+func (c *compactorHTTPClient) JobQueueClient() grpc.JobQueueClient {
+	panic("compactor does not support interacting with job queue over HTTP")
 }

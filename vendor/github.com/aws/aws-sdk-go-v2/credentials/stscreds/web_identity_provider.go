@@ -3,7 +3,7 @@ package stscreds
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -64,6 +64,10 @@ type WebIdentityRoleOptions struct {
 	// want to use as managed session policies.  The policies must exist in the
 	// same account as the role.
 	PolicyARNs []types.PolicyDescriptorType
+
+	// The chain of providers that was used to create this provider
+	// These values are for reporting purposes and are not meant to be set up directly
+	CredentialSources []aws.CredentialSource
 }
 
 // IdentityTokenRetriever is an interface for retrieving a JWT
@@ -76,7 +80,7 @@ type IdentityTokenFile string
 
 // GetIdentityToken retrieves the JWT token from the file and returns the contents as a []byte
 func (j IdentityTokenFile) GetIdentityToken() ([]byte, error) {
-	b, err := ioutil.ReadFile(string(j))
+	b, err := os.ReadFile(string(j))
 	if err != nil {
 		return nil, fmt.Errorf("unable to read file at %s: %v", string(j), err)
 	}
@@ -166,4 +170,12 @@ func getAccountID(u *types.AssumedRoleUser) string {
 		return ""
 	}
 	return parts[4]
+}
+
+// ProviderSources returns the credential chain that was used to construct this provider
+func (p *WebIdentityRoleProvider) ProviderSources() []aws.CredentialSource {
+	if p.options.CredentialSources == nil {
+		return []aws.CredentialSource{aws.CredentialSourceSTSAssumeRoleWebID}
+	}
+	return p.options.CredentialSources
 }

@@ -44,6 +44,8 @@ type HealthCheck struct {
 	checks []Check
 }
 
+var _ grpc_health_v1.HealthServer = (*HealthCheck)(nil)
+
 // NewHealthCheck returns a new HealthCheck for the provided service manager.
 func NewHealthCheck(sm *services.Manager) *HealthCheck {
 	return NewHealthCheckFrom(WithManager(sm))
@@ -70,4 +72,18 @@ func (h *HealthCheck) Check(ctx context.Context, _ *grpc_health_v1.HealthCheckRe
 // Watch implements the grpc healthcheck.
 func (h *HealthCheck) Watch(_ *grpc_health_v1.HealthCheckRequest, _ grpc_health_v1.Health_WatchServer) error {
 	return status.Error(codes.Unimplemented, "Watching is not supported")
+}
+
+// List implements the grpc healthcheck.
+func (h *HealthCheck) List(ctx context.Context, _ *grpc_health_v1.HealthListRequest) (*grpc_health_v1.HealthListResponse, error) {
+	checkResp, err := h.Check(ctx, nil)
+	if err != nil {
+		return &grpc_health_v1.HealthListResponse{}, err
+	}
+
+	return &grpc_health_v1.HealthListResponse{
+		Statuses: map[string]*grpc_health_v1.HealthCheckResponse{
+			"server": checkResp,
+		},
+	}, nil
 }

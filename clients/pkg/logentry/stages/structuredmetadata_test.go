@@ -102,6 +102,22 @@ pipeline_stages:
     pod_name: pod
 `
 
+var pipelineStagesStructuredMetadataFromStreamLabels = `
+pipeline_stages:
+- structured_metadata:
+    pod:
+`
+
+var pipelineStagesStructuredMetadataDuplicateKeysInStreamLabelsAndExtractedMap = `
+pipeline_stages:
+- logfmt:
+    mapping:
+      pod:
+- structured_metadata:
+    pod_name: pod
+    source_name: source
+`
+
 func Test_StructuredMetadataStage(t *testing.T) {
 	tests := map[string]struct {
 		pipelineStagesYaml         string
@@ -160,13 +176,27 @@ func Test_StructuredMetadataStage(t *testing.T) {
 			expectedStructuredMetadata: push.LabelsAdapter{push.LabelAdapter{Name: "pod_name", Value: "loki-querier-664f97db8d-qhnwg"}},
 			expectedLabels:             model.LabelSet{model.LabelName("component"): model.LabelValue("querier")},
 		},
+		"expected structured metadata to be extracted from stream labels": {
+			pipelineStagesYaml:         pipelineStagesStructuredMetadataFromStreamLabels,
+			logLine:                    `app=loki component=ingester`,
+			expectedStructuredMetadata: push.LabelsAdapter{push.LabelAdapter{Name: "pod", Value: "ingester-0"}},
+			expectedLabels:             model.LabelSet{model.LabelName("source"): model.LabelValue("test")},
+			streamLabels:               model.LabelSet{model.LabelName("source"): model.LabelValue("test"), model.LabelName("pod"): model.LabelValue("ingester-0")},
+		},
+		"expected structured metadata to be extracted from extracted map first": {
+			pipelineStagesYaml:         pipelineStagesStructuredMetadataDuplicateKeysInStreamLabelsAndExtractedMap,
+			logLine:                    `app=loki pod=ingester`,
+			expectedStructuredMetadata: push.LabelsAdapter{push.LabelAdapter{Name: "pod_name", Value: "ingester"}, push.LabelAdapter{Name: "source_name", Value: "test"}},
+			expectedLabels:             model.LabelSet{model.LabelName("pod"): model.LabelValue("ingester-0")},
+			streamLabels:               model.LabelSet{model.LabelName("source"): model.LabelValue("test"), model.LabelName("pod"): model.LabelValue("ingester-0")},
+		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			pl, err := NewPipeline(util_log.Logger, loadConfig(test.pipelineStagesYaml), nil, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			result := processEntries(pl, newEntry(nil, test.streamLabels, test.logLine, time.Now()))[0]
-			require.Equal(t, test.expectedStructuredMetadata, result.StructuredMetadata)
+			require.ElementsMatch(t, test.expectedStructuredMetadata, result.StructuredMetadata)
 			if test.expectedLabels != nil {
 				require.Equal(t, test.expectedLabels, result.Labels)
 			} else {

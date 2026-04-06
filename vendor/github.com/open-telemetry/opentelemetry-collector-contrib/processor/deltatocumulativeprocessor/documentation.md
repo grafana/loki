@@ -6,74 +6,34 @@
 
 The following telemetry is emitted by this component.
 
-### otelcol_deltatocumulative.datapoints.dropped
+### otelcol_deltatocumulative_datapoints
 
-number of datapoints dropped due to given 'reason'
+total number of datapoints processed. may have 'error' attribute, if processing failed [Development]
 
-| Unit | Metric Type | Value Type | Monotonic |
+| Unit | Metric Type | Value Type | Monotonic | Stability |
+| ---- | ----------- | ---------- | --------- | --------- |
+| {datapoint} | Sum | Int | true | Development |
+
+### otelcol_deltatocumulative_streams_limit
+
+upper limit of tracked streams [Development]
+
+| Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| {datapoint} | Sum | Int | true |
+| {stream} | Gauge | Int | Development |
 
-### otelcol_deltatocumulative.datapoints.linear
+### otelcol_deltatocumulative_streams_max_stale
 
-total number of datapoints processed. may have 'error' attribute, if processing failed
+duration after which streams inactive streams are dropped [Development]
 
-| Unit | Metric Type | Value Type | Monotonic |
+| Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| {datapoint} | Sum | Int | true |
+| s | Gauge | Int | Development |
 
-### otelcol_deltatocumulative.datapoints.processed
+### otelcol_deltatocumulative_streams_tracked
 
-number of datapoints processed
+number of streams tracked [Development]
 
-| Unit | Metric Type | Value Type | Monotonic |
-| ---- | ----------- | ---------- | --------- |
-| {datapoint} | Sum | Int | true |
-
-### otelcol_deltatocumulative.gaps.length
-
-total duration where data was expected but not received
-
-| Unit | Metric Type | Value Type | Monotonic |
-| ---- | ----------- | ---------- | --------- |
-| s | Sum | Int | true |
-
-### otelcol_deltatocumulative.streams.evicted
-
-number of streams evicted
-
-| Unit | Metric Type | Value Type | Monotonic |
-| ---- | ----------- | ---------- | --------- |
-| {stream} | Sum | Int | true |
-
-### otelcol_deltatocumulative.streams.limit
-
-upper limit of tracked streams
-
-| Unit | Metric Type | Value Type |
-| ---- | ----------- | ---------- |
-| {stream} | Gauge | Int |
-
-### otelcol_deltatocumulative.streams.max_stale
-
-duration after which streams inactive streams are dropped
-
-| Unit | Metric Type | Value Type |
-| ---- | ----------- | ---------- |
-| s | Gauge | Int |
-
-### otelcol_deltatocumulative.streams.tracked
-
-number of streams tracked
-
-| Unit | Metric Type | Value Type | Monotonic |
-| ---- | ----------- | ---------- | --------- |
-| {dps} | Sum | Int | false |
-
-### otelcol_deltatocumulative.streams.tracked.linear
-
-number of streams tracked
-
-| Unit | Metric Type | Value Type | Monotonic |
-| ---- | ----------- | ---------- | --------- |
-| {dps} | Sum | Int | false |
+| Unit | Metric Type | Value Type | Monotonic | Stability |
+| ---- | ----------- | ---------- | --------- | --------- |
+| {dps} | Sum | Int | false | Development |

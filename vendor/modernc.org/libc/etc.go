@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
-	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -99,7 +98,6 @@ func todo(s string, args ...interface{}) string { //TODO-
 		dmesg("%s", r)
 	}
 	fmt.Fprintf(os.Stdout, "%s\n", r)
-	fmt.Fprintf(os.Stdout, "%s\n", debug.Stack()) //TODO-
 	os.Stdout.Sync()
 	os.Exit(1)
 	panic("unrechable")

@@ -57,9 +57,7 @@ func newStreamKey() *streamKey {
 }
 
 // generateID doesn't lock the mutex
-func (s *streamKey) generateID(now time.Time) string {
-	ts := uint64(now.UnixNano()) / 1_000_000
-
+func (s *streamKey) generateID(ts uint64) string {
 	next := fmt.Sprintf("%d-%d", ts, 0)
 	if s.lastAllocatedID != "" && streamCmp(s.lastAllocatedID, next) >= 0 {
 		last, _ := parseStreamID(s.lastAllocatedID)
@@ -230,14 +228,23 @@ func (s *streamKey) createGroup(group, id string) error {
 }
 
 // streamAdd adds an entry to a stream. Returns the new entry ID.
-// If id is empty or "*" the ID will be generated automatically.
+// If id is empty, "*", or "123-*", the ID will be generated automatically.
 // `values` should have an even length.
 func (s *streamKey) add(entryID string, values []string, now time.Time) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if entryID == "" || entryID == "*" {
-		entryID = s.generateID(now)
+	switch {
+	case entryID == "" || entryID == "*":
+		entryID = s.generateID(uint64(now.UnixMilli()))
+	default:
+		// "<timestamp>-*"
+		parts := strings.Split(entryID, "-")
+		if len(parts) == 2 && parts[1] == "*" {
+			if ts, err := strconv.ParseUint(parts[0], 10, 64); err == nil {
+				entryID = s.generateID(uint64(ts))
+			}
+		}
 	}
 
 	entryID, err := formatStreamID(entryID)
@@ -438,6 +445,13 @@ func (s *streamKey) delete(ids []string) (int, error) {
 		count++
 	}
 	return count, nil
+}
+
+func (g *streamGroup) pendingAfterOrEqual(id string) []pendingEntry {
+	pos := sort.Search(len(g.pending), func(i int) bool {
+		return streamCmp(id, g.pending[i].id) <= 0
+	})
+	return g.pending[pos:]
 }
 
 func (g *streamGroup) pendingAfter(id string) []pendingEntry {

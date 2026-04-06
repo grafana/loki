@@ -51,6 +51,27 @@ func (m *TlsParameters) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.CompliancePolicies) > 0 {
+		var pksize2 int
+		for _, num := range m.CompliancePolicies {
+			pksize2 += protohelpers.SizeOfVarint(uint64(num))
+		}
+		i -= pksize2
+		j1 := i
+		for _, num1 := range m.CompliancePolicies {
+			num := uint64(num1)
+			for num >= 1<<7 {
+				dAtA[j1] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j1++
+			}
+			dAtA[j1] = uint8(num)
+			j1++
+		}
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(pksize2))
+		i--
+		dAtA[i] = 0x32
+	}
 	if len(m.SignatureAlgorithms) > 0 {
 		for iNdEx := len(m.SignatureAlgorithms) - 1; iNdEx >= 0; iNdEx-- {
 			i -= len(m.SignatureAlgorithms[iNdEx])
@@ -847,6 +868,13 @@ func (m *TlsParameters) SizeVT() (n int) {
 			l = len(s)
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if len(m.CompliancePolicies) > 0 {
+		l = 0
+		for _, e := range m.CompliancePolicies {
+			l += protohelpers.SizeOfVarint(uint64(e))
+		}
+		n += 1 + protohelpers.SizeOfVarint(uint64(l)) + l
 	}
 	n += len(m.unknownFields)
 	return n
