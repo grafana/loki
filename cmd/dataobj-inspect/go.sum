@@ -144,8 +144,8 @@ github.com/prometheus/otlptranslator v1.0.0 h1:s0LJW/iN9dkIH+EnhiD3BlkkP5QVIUVEo
 github.com/prometheus/otlptranslator v1.0.0/go.mod h1:vRYWnXvI6aWGpsdY/mOT/cbeVRBlPWtBNDb7kGR3uKM=
 github.com/prometheus/procfs v0.19.2 h1:zUMhqEW66Ex7OXIiDkll3tl9a1ZdilUOd/F6ZXw4Vws=
 github.com/prometheus/procfs v0.19.2/go.mod h1:M0aotyiemPhBCM0z5w87kL22CxfcH05ZpYlu+b4J7mw=
-github.com/prometheus/prometheus v0.310.1-0.20260401093033-4b562bba6e26 h1:JDp6iBmL/YywoW9zJhsmJ8pcJX3zzwr6oixb+iKLK44=
-github.com/prometheus/prometheus v0.310.1-0.20260401093033-4b562bba6e26/go.mod h1:cWuW8rtk0MsIqrr6Jn3QUUl5bwioo4DjDrwEUhF/Lhc=
+github.com/prometheus/prometheus v0.310.1-0.20260403121107-477bbb6b2c07 h1:xgZN4SMW8fLbtNxmRtB/ieU9ED0DSIsV0S1Qbc6SfGM=
+github.com/prometheus/prometheus v0.310.1-0.20260403121107-477bbb6b2c07/go.mod h1:Kz5VKRdmhqoXslSUN05wZZsKF26MWLolRgwekmvfLsA=
 github.com/sercand/kuberesolver/v6 v6.0.1 h1:XZUTA0gy/lgDYp/UhEwv7Js24F1j8NJ833QrWv0Xux4=
 github.com/sercand/kuberesolver/v6 v6.0.1/go.mod h1:C0tsTuRMONSY+Xf7pv7RMW1/JlewY1+wS8SZE+1lf1s=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

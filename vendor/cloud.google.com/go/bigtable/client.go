@@ -46,7 +46,6 @@ type Client struct {
 	disableRetryInfo        bool
 	retryOption             gax.CallOption
 	executeQueryRetryOption gax.CallOption
-	enableDirectAccess      bool
 	featureFlagsMD          metadata.MD // Pre-computed feature flags metadata to be sent with each request.
 	dynamicScaleMonitor     *btransport.DynamicScaleMonitor
 	connsRecycler           *btransport.ConnectionRecycler
@@ -126,12 +125,9 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(1<<28), grpc.MaxCallRecvMsgSize(1<<28))),
 	)
 
-	enableDirectAccess, _ := strconv.ParseBool(os.Getenv("CBT_ENABLE_DIRECTPATH"))
-	if enableDirectAccess {
-		o = append(o, internaloption.EnableDirectPath(true), internaloption.EnableDirectPathXds())
-		if disableBoundToken, _ := strconv.ParseBool(os.Getenv("CBT_DISABLE_DIRECTPATH_BOUND_TOKEN")); !disableBoundToken {
-			o = append(o, internaloption.AllowHardBoundTokens("ALTS"))
-		}
+	var directPathOptions = []option.ClientOption{
+		internaloption.EnableDirectPath(true),
+		internaloption.EnableDirectPathXds(),
 	}
 
 	// Allow non-default service account in DirectPath.
@@ -153,9 +149,11 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 		executeQueryRetryOption = clientOnlyExecuteQueryRetryOption
 	}
 
-	// Create the feature flags metadata once
-	ffMD := createFeatureFlagsMD(metricsTracerFactory.enabled, disableRetryInfo, enableDirectAccess)
-	// Set direct Access to be true.
+	// Create the feature flags metadata with direct access enabled
+	// setting feature flags for direct access is good
+	// as CFE/GFE will call RLS with gslb target type
+	// only TD calls the RLS with grpc target type
+	// and we evaluate the directAccess option after that.
 	directAccessMD := createFeatureFlagsMD(metricsTracerFactory.enabled, disableRetryInfo, true)
 
 	var connPool gtransport.ConnPool
@@ -180,9 +178,14 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 
 		fullInstanceName := fmt.Sprintf("projects/%s/instances/%s", project, instance)
 
+		directAccessDialerOptions := make([]option.ClientOption, len(o))
+		copy(directAccessDialerOptions, o)
+		directAccessDialerOptions = append(directAccessDialerOptions, directPathOptions...)
+		// enable hard bound tokens by default
+		directAccessDialerOptions = append(directAccessDialerOptions, internaloption.AllowHardBoundTokens("ALTS"))
+
 		directAccessDialer := func() (*btransport.BigtableConn, error) {
-			directAccessOptions := append(o, internaloption.EnableDirectPath(true), internaloption.EnableDirectPathXds())
-			grpcConn, err := gtransport.Dial(ctx, directAccessOptions...)
+			grpcConn, err := gtransport.Dial(ctx, directAccessDialerOptions...)
 			if err != nil {
 				return nil, err
 			}
@@ -203,7 +206,7 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 			// options
 			btransport.WithInstanceName(fullInstanceName),
 			btransport.WithAppProfile(config.AppProfile),
-			btransport.WithFeatureFlagsMetadata(ffMD),
+			btransport.WithFeatureFlagsMetadata(directAccessMD),
 			btransport.WithMetricsReporterConfig(btopt.DefaultMetricsReporterConfig()),
 			btransport.WithMeterProvider(metricsTracerFactory.otelMeterProvider),
 			btransport.WithDirectAccessFeatureFlagsMetadata(directAccessMD),
@@ -233,6 +236,13 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 		}
 
 	} else {
+		enableDirectAccess, _ := strconv.ParseBool(os.Getenv("CBT_ENABLE_DIRECTPATH"))
+		if enableDirectAccess {
+			o = append(o, directPathOptions...)
+			if disableBoundToken, _ := strconv.ParseBool(os.Getenv("CBT_DISABLE_DIRECTPATH_BOUND_TOKEN")); !disableBoundToken {
+				o = append(o, internaloption.AllowHardBoundTokens("ALTS"))
+			}
+		}
 		// use to regular ConnPool
 		connPool, connPoolErr = gtransport.DialPool(ctx, o...)
 	}
@@ -251,8 +261,7 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 		disableRetryInfo:        disableRetryInfo,
 		retryOption:             retryOption,
 		executeQueryRetryOption: executeQueryRetryOption,
-		enableDirectAccess:      enableDirectAccess,
-		featureFlagsMD:          ffMD,
+		featureFlagsMD:          directAccessMD,
 		dynamicScaleMonitor:     dsm,
 		connsRecycler:           connRecycler,
 	}, nil
