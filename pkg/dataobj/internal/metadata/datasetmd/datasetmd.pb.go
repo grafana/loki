@@ -743,6 +743,10 @@ type SortInfo struct {
 	// contain a single element. Otherwise, this field will contain multiple
 	// elements when compound sorting is used.
 	ColumnSorts []*SortInfo_ColumnSort `protobuf:"bytes,1,rep,name=column_sorts,json=columnSorts,proto3" json:"column_sorts,omitempty"`
+	// schema_labels, if non-empty, indicates that rows are sorted by the values
+	// of these stream label names (in order) as the primary sort keys, followed
+	// by column_sorts as tiebreakers.
+	SchemaLabels []string `protobuf:"bytes,2,rep,name=schema_labels,json=schemaLabels,proto3" json:"schema_labels,omitempty"`
 }
 
 func (m *SortInfo) Reset()      { *m = SortInfo{} }
@@ -780,6 +784,13 @@ var xxx_messageInfo_SortInfo proto.InternalMessageInfo
 func (m *SortInfo) GetColumnSorts() []*SortInfo_ColumnSort {
 	if m != nil {
 		return m.ColumnSorts
+	}
+	return nil
+}
+
+func (m *SortInfo) GetSchemaLabels() []string {
+	if m != nil {
+		return m.SchemaLabels
 	}
 	return nil
 }
@@ -1791,6 +1802,15 @@ func (m *SortInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.SchemaLabels) > 0 {
+		for iNdEx := len(m.SchemaLabels) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.SchemaLabels[iNdEx])
+			copy(dAtA[i:], m.SchemaLabels[iNdEx])
+			i = encodeVarintDatasetmd(dAtA, i, uint64(len(m.SchemaLabels[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
 	if len(m.ColumnSorts) > 0 {
 		for iNdEx := len(m.ColumnSorts) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -2032,6 +2052,12 @@ func (m *SortInfo) Size() (n int) {
 	if len(m.ColumnSorts) > 0 {
 		for _, e := range m.ColumnSorts {
 			l = e.Size()
+			n += 1 + l + sovDatasetmd(uint64(l))
+		}
+	}
+	if len(m.SchemaLabels) > 0 {
+		for _, s := range m.SchemaLabels {
+			l = len(s)
 			n += 1 + l + sovDatasetmd(uint64(l))
 		}
 	}
@@ -3360,6 +3386,38 @@ func (m *SortInfo) Unmarshal(dAtA []byte) error {
 			if err := m.ColumnSorts[len(m.ColumnSorts)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SchemaLabels", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SchemaLabels = append(m.SchemaLabels, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
