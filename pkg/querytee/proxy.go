@@ -289,6 +289,7 @@ func NewProxy(
 
 	// Pre-initialize raceWins metric for all backend/route/issuer combinations
 	if cfg.Routing.Mode == RoutingModeRace {
+		p.metrics.raceModeEnabled.Set(1)
 		for _, backend := range p.backends {
 			for _, route := range p.readRoutes {
 				for _, issuer := range []string{unknownIssuer, canaryIssuer} {

@@ -3009,6 +3009,8 @@ type MetricsAndOperator struct {
 	Prefix *string
 
 	// The list of tags used when evaluating an AND predicate.
+	//
+	// Tag filters are not supported for directory buckets.
 	Tags []Tag
 
 	noSmithyDocumentSerde
@@ -3032,6 +3034,8 @@ type MetricsConfiguration struct {
 	// Specifies a metrics configuration filter. The metrics configuration will only
 	// include objects that meet the filter's criteria. A filter must be a prefix, an
 	// object tag, an access point ARN, or a conjunction (MetricsAndOperator).
+	//
+	// Metrics configurations for directory buckets do not support tag filters.
 	Filter MetricsFilter
 
 	noSmithyDocumentSerde
@@ -3084,6 +3088,8 @@ type MetricsFilterMemberPrefix struct {
 func (*MetricsFilterMemberPrefix) isMetricsFilter() {}
 
 // The tag used when evaluating a metrics filter.
+//
+// Tag filters are not supported for directory buckets.
 type MetricsFilterMemberTag struct {
 	Value Tag
 

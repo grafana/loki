@@ -198,6 +198,9 @@ func New(endpoint string, opts *Options) (*Client, error) {
 		// Amazon S3 endpoints are resolved into dual-stack endpoints by default
 		// for backwards compatibility.
 		clnt.s3DualstackEnabled = true
+	} else if s3utils.IsAmazonOutpostsEndpoint(*clnt.endpointURL) {
+		// S3 on Outposts uses signature v4 with service name s3-outposts.
+		clnt.overrideSignerType = credentials.SignatureV4
 	}
 
 	return clnt, nil
@@ -912,7 +915,11 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 			req = signer.PreSignV2(*req, accessKeyID, secretAccessKey, metadata.expires, isVirtualHost)
 		} else if signerType.IsV4() {
 			// Presign URL with signature v4.
-			req = signer.PreSignV4(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.expires)
+			if s3utils.IsAmazonOutpostsEndpoint(*c.endpointURL) {
+				req = signer.PreSignV4Outposts(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.expires)
+			} else {
+				req = signer.PreSignV4(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.expires)
+			}
 		}
 		return req, nil
 	}
@@ -971,6 +978,9 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 		if s3utils.IsAmazonExpressRegionalEndpoint(*c.endpointURL) {
 			req = signer.StreamingSignV4Express(req, accessKeyID,
 				secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC(), c.sha256Hasher())
+		} else if s3utils.IsAmazonOutpostsEndpoint(*c.endpointURL) {
+			req = signer.StreamingSignV4Outposts(req, accessKeyID,
+				secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC(), c.sha256Hasher())
 		} else {
 			req = signer.StreamingSignV4(req, accessKeyID,
 				secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC(), c.sha256Hasher())
@@ -991,6 +1001,8 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 
 		if s3utils.IsAmazonExpressRegionalEndpoint(*c.endpointURL) {
 			req = signer.SignV4TrailerExpress(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.trailer)
+		} else if s3utils.IsAmazonOutpostsEndpoint(*c.endpointURL) {
+			req = signer.SignV4TrailerOutposts(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.trailer)
 		} else {
 			// Add signature version '4' authorization header.
 			req = signer.SignV4Trailer(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.trailer)

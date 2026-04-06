@@ -35,7 +35,8 @@ func columnForFQN(fqn string, batch arrow.RecordBatch) (arrow.Array, int, error)
 }
 
 // labelValuesCache returns label values for a given row in range and vector aggregators, but cache them in order
-// to reduce object allocations for repeated label sets. It first scans the row for non-empty labels and computes xxhash.
+// to reduce object allocations for repeated label sets. It computes an xxhash over the non-null label values
+// to form the cache key, then returns the full slice of values.
 // In case of a cache miss it scans the row again and allocates arrays for label values.
 type labelValuesCache struct {
 	digest *xxhash.Digest
@@ -52,10 +53,9 @@ func newLabelValuesCache() *labelValuesCache {
 func (c *labelValuesCache) getLabelValues(arrays []*array.String, row int) []string {
 	c.digest.Reset()
 	for _, arr := range arrays {
-		val := arr.Value(row)
-		if val != "" {
+		if !arr.IsNull(row) {
 			_, _ = c.digest.Write(separator)
-			_, _ = c.digest.WriteString(val)
+			_, _ = c.digest.WriteString(arr.Value(row))
 		}
 	}
 	key := c.digest.Sum64()
@@ -63,11 +63,9 @@ func (c *labelValuesCache) getLabelValues(arrays []*array.String, row int) []str
 	labelValues, ok := c.cache[key]
 	if !ok {
 		labelValues = make([]string, 0, len(arrays))
-
 		for _, arr := range arrays {
-			val := arr.Value(row)
-			if val != "" {
-				labelValues = append(labelValues, val)
+			if !arr.IsNull(row) {
+				labelValues = append(labelValues, arr.Value(row))
 			}
 		}
 		c.cache[key] = labelValues
@@ -77,7 +75,7 @@ func (c *labelValuesCache) getLabelValues(arrays []*array.String, row int) []str
 }
 
 // fieldsCache returns labels for a given row in range and vector aggregators, but cache them in order
-// to reduce object allocations for repeated label sets. It first scans the row for non-empty labels and computes xxhash.
+// to reduce object allocations for repeated label sets. It first scans the row for non-null labels and computes xxhash.
 // In case of a cache miss it scans the row again and allocates arrays for label names.
 type fieldsCache struct {
 	digest *xxhash.Digest
@@ -94,8 +92,7 @@ func newFieldsCache() *fieldsCache {
 func (c *fieldsCache) getFields(arrays []*array.String, fields []arrow.Field, row int) []arrow.Field {
 	c.digest.Reset()
 	for i, arr := range arrays {
-		val := arr.Value(row)
-		if val != "" {
+		if !arr.IsNull(row) {
 			_, _ = c.digest.Write(separator)
 			_, _ = c.digest.WriteString(fields[i].Name)
 		}
@@ -106,8 +103,7 @@ func (c *fieldsCache) getFields(arrays []*array.String, fields []arrow.Field, ro
 	if !ok {
 		labels = make([]arrow.Field, 0, len(arrays))
 		for i, arr := range arrays {
-			val := arr.Value(row)
-			if val != "" {
+			if !arr.IsNull(row) {
 				labels = append(labels, fields[i])
 			}
 		}

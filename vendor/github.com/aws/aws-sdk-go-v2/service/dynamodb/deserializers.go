@@ -14424,6 +14424,15 @@ func awsAwsjson10_deserializeDocumentReplicaDescription(v **types.ReplicaDescrip
 				sv.RegionName = ptr.String(jtv)
 			}
 
+		case "ReplicaArn":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected String to be of type string, got %T instead", value)
+				}
+				sv.ReplicaArn = ptr.String(jtv)
+			}
+
 		case "ReplicaInaccessibleDateTime":
 			if value != nil {
 				switch jtv := value.(type) {

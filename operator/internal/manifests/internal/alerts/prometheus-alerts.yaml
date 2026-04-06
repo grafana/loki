@@ -78,7 +78,7 @@ groups:
     annotations:
       description: |-
         {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
-      summary: "The 99th percentile is experiencing high latency (higher than 1 second)."
+      summary: "The 99th percentile is experiencing high latency (higher than 5 seconds)."
       runbook_url: "[[ .RunbookURL ]]#Loki-Request-Latency"
     expr: |
       histogram_quantile(0.99,
@@ -88,7 +88,7 @@ groups:
           )
         ) by (job, le, namespace, route)
       )
-      > 1
+      > 5
     for: 15m
     labels:
       severity: critical

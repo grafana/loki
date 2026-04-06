@@ -183,7 +183,7 @@ kubectl create service externalname mmc-alloy-external --external-name meta-allo
 Finally, upgrade the Loki installation with the new configuration:
 
 ```bash
-helm upgrade --values values.yaml loki grafana/loki
+helm upgrade --values values.yaml loki grafana-community/loki
 ```
 
 ## Import the Loki Dashboards to Grafana Cloud
