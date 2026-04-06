@@ -309,7 +309,7 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, from, throug
 	resp := &logproto.ShardsResponse{}
 
 	series := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(m)))
-	defer sharding.SizedFPsPool.Put(series)
+	defer func() { sharding.SizedFPsPool.Put(series) }()
 
 	for fp, chks := range m {
 		x := sharding.SizedFP{Fp: fp}

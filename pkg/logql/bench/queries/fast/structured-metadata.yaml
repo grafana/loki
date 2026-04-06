@@ -6,9 +6,10 @@ queries:
     kind: log
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     requires:
-      structured_metadata: ["detected_level"]
+      structured_metadata:
+        - detected_level
     tags:
       - structured-metadata
       - filter
@@ -18,10 +19,11 @@ queries:
     kind: log
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     requires:
       log_format: logfmt
-      structured_metadata: ["detected_level"]
+      structured_metadata:
+        - detected_level
     tags:
       - structured-metadata
       - logfmt
@@ -32,10 +34,11 @@ queries:
     kind: log
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     requires:
       log_format: logfmt
-      structured_metadata: ["detected_level"]
+      structured_metadata:
+        - detected_level
     tags:
       - structured-metadata
       - logfmt
@@ -46,10 +49,11 @@ queries:
     kind: log
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     requires:
       log_format: json
-      structured_metadata: ["detected_level"]
+      structured_metadata:
+        - detected_level
     tags:
       - structured-metadata
       - json
@@ -58,13 +62,14 @@ queries:
   - description: JSON parsing with structured metadata filter first
     query: ${SELECTOR} | detected_level="error" | json
     kind: log
-    skip: true # timing out
+    skip: true # timing out - requires dataobj engine schema fix for structured metadata columns
     time_range:
       length: 24h
     directions: both
     requires:
       log_format: json
-      structured_metadata: ["detected_level"]
+      structured_metadata:
+        - detected_level
     tags:
       - structured-metadata
       - json

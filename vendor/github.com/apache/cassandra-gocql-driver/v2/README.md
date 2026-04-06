@@ -19,8 +19,8 @@ The following matrix shows the versions of Go and Cassandra that are tested with
 
 | Go/Cassandra | 4.1.x | 5.0.x | 
 |--------------|-------|-------|
-| 1.22         | yes   | yes   |
-| 1.23         | yes   | yes   |
+| 1.25         | yes   | yes   |
+| 1.26         | yes   | yes   |
 
 Gocql has been tested in production against many versions of Cassandra. Due to limits in our CI setup we only
 test against the latest 2 GA releases.

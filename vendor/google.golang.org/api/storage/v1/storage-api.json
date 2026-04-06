@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"3130353639373731363639313032363439383430\"",
+  "etag": "\"31363539393037303230303637393438373935\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -1778,6 +1778,50 @@
             }
           },
           "path": "b/{bucket}/folders/{folder}",
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "deleteRecursive": {
+          "description": "Deletes a folder recursively. Only applicable to buckets with hierarchical namespace enabled.",
+          "httpMethod": "POST",
+          "id": "storage.folders.deleteRecursive",
+          "parameterOrder": [
+            "bucket",
+            "folder"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which the folder resides.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "folder": {
+              "description": "Name of a folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "ifMetagenerationMatch": {
+              "description": "If set, only deletes the folder if its metageneration matches this value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifMetagenerationNotMatch": {
+              "description": "If set, only deletes the folder if its metageneration does not match this value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/folders/{folder}/deleteRecursive",
+          "response": {
+            "$ref": "GoogleLongrunningOperation"
+          },
           "scopes": [
             "https://www.googleapis.com/auth/cloud-platform",
             "https://www.googleapis.com/auth/devstorage.full_control",
@@ -4561,7 +4605,7 @@
       }
     }
   },
-  "revision": "20260131",
+  "revision": "20260204",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {

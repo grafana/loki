@@ -109,7 +109,10 @@ func (m *Merge) read(ctx context.Context) (arrow.RecordBatch, error) {
 			}
 			return nil, err
 		}
-		return rec, nil
+
+		if rec.NumRows() != 0 {
+			return rec, nil
+		}
 	}
 
 	// Return EOF if none of the inputs returned a record.

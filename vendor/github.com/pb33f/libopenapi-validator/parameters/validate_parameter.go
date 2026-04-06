@@ -32,6 +32,8 @@ func ValidateSingleParameterSchema(
 	validationType string,
 	subValType string,
 	o *config.ValidationOptions,
+	pathTemplate string,
+	operation string,
 ) (validationErrors []*errors.ValidationError) {
 	// Get the JSON Schema for the parameter definition.
 	jsonSchema, err := buildJsonRender(schema)
@@ -49,7 +51,7 @@ func ValidateSingleParameterSchema(
 	scErrs := jsch.Validate(rawObject)
 	var werras *jsonschema.ValidationError
 	if stdError.As(scErrs, &werras) {
-		validationErrors = formatJsonSchemaValidationError(schema, werras, entity, reasonEntity, name, validationType, subValType)
+		validationErrors = formatJsonSchemaValidationError(schema, werras, entity, reasonEntity, name, validationType, subValType, pathTemplate, operation)
 	}
 	return validationErrors
 }
@@ -127,23 +129,17 @@ func ValidateParameterSchema(
 	jsch, err := helpers.NewCompiledSchema(name, jsonSchema, validationOptions)
 	if err != nil {
 		// schema compilation failed, return validation error instead of panicking
-		violation := &errors.SchemaValidationFailure{
-			Reason:          fmt.Sprintf("failed to compile JSON schema: %s", err.Error()),
-			Location:        "schema compilation",
-			ReferenceSchema: string(jsonSchema),
-		}
 		validationErrors = append(validationErrors, &errors.ValidationError{
 			ValidationType:    validationType,
 			ValidationSubType: subValType,
 			Message:           fmt.Sprintf("%s '%s' failed schema compilation", entity, name),
 			Reason: fmt.Sprintf("%s '%s' schema compilation failed: %s",
 				reasonEntity, name, err.Error()),
-			SpecLine:               1,
-			SpecCol:                0,
-			ParameterName:          name,
-			SchemaValidationErrors: []*errors.SchemaValidationFailure{violation},
-			HowToFix:               "check the parameter schema for invalid JSON Schema syntax, complex regex patterns, or unsupported schema constructs",
-			Context:                string(jsonSchema),
+			SpecLine:      1,
+			SpecCol:       0,
+			ParameterName: name,
+			HowToFix:      "check the parameter schema for invalid JSON Schema syntax, complex regex patterns, or unsupported schema constructs",
+			Context:       string(jsonSchema),
 		})
 		return validationErrors
 	}
@@ -189,7 +185,7 @@ func ValidateParameterSchema(
 	}
 	var werras *jsonschema.ValidationError
 	if stdError.As(scErrs, &werras) {
-		validationErrors = formatJsonSchemaValidationError(schema, werras, entity, reasonEntity, name, validationType, subValType)
+		validationErrors = formatJsonSchemaValidationError(schema, werras, entity, reasonEntity, name, validationType, subValType, "", "")
 	}
 
 	// if there are no validationErrors, check that the supplied value is even JSON
@@ -213,7 +209,7 @@ func ValidateParameterSchema(
 	return validationErrors
 }
 
-func formatJsonSchemaValidationError(schema *base.Schema, scErrs *jsonschema.ValidationError, entity string, reasonEntity string, name string, validationType string, subValType string) (validationErrors []*errors.ValidationError) {
+func formatJsonSchemaValidationError(schema *base.Schema, scErrs *jsonschema.ValidationError, entity string, reasonEntity string, name string, validationType string, subValType string, pathTemplate string, operation string) (validationErrors []*errors.ValidationError) {
 	// flatten the validationErrors
 	schFlatErrs := scErrs.BasicOutput().Errors
 	var schemaValidationErrors []*errors.SchemaValidationFailure
@@ -225,19 +221,28 @@ func formatJsonSchemaValidationError(schema *base.Schema, scErrs *jsonschema.Val
 			continue // ignore this error, it's not useful
 		}
 
+		// Construct full OpenAPI path for KeywordLocation if pathTemplate and operation are provided
+		keywordLocation := er.KeywordLocation
+		if pathTemplate != "" && operation != "" && validationType == helpers.ParameterValidation {
+			// er.KeywordLocation is relative to the schema (e.g., "/minLength" or "/enum")
+			keyword := strings.TrimPrefix(er.KeywordLocation, "/")
+			keywordLocation = helpers.ConstructParameterJSONPointer(pathTemplate, operation, name, keyword)
+		}
+
 		fail := &errors.SchemaValidationFailure{
-			Reason:        errMsg,
-			Location:      er.KeywordLocation,
-			FieldName:     helpers.ExtractFieldNameFromStringLocation(er.InstanceLocation),
-			FieldPath:     helpers.ExtractJSONPathFromStringLocation(er.InstanceLocation),
-			InstancePath:  helpers.ConvertStringLocationToPathSegments(er.InstanceLocation),
-			OriginalError: scErrs,
+			Reason:                  errMsg,
+			FieldName:               helpers.ExtractFieldNameFromStringLocation(er.InstanceLocation),
+			FieldPath:               helpers.ExtractJSONPathFromStringLocation(er.InstanceLocation),
+			InstancePath:            helpers.ConvertStringLocationToPathSegments(er.InstanceLocation),
+			KeywordLocation:         keywordLocation,
+			OriginalJsonSchemaError: scErrs,
 		}
 		if schema != nil {
 			renderCtx := base.NewInlineRenderContext()
 			rendered, err := schema.RenderInlineWithContext(renderCtx)
 			if err == nil && rendered != nil {
-				fail.ReferenceSchema = string(rendered)
+				renderedBytes, _ := json.Marshal(rendered)
+				fail.ReferenceSchema = string(renderedBytes)
 			}
 		}
 		schemaValidationErrors = append(schemaValidationErrors, fail)

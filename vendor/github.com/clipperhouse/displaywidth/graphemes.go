@@ -1,7 +1,6 @@
 package displaywidth
 
 import (
-	"github.com/clipperhouse/stringish"
 	"github.com/clipperhouse/uax29/v2/graphemes"
 )
 
@@ -9,7 +8,7 @@ import (
 //
 // Iterate using the Next method, and get the width of the current grapheme
 // using the Width method.
-type Graphemes[T stringish.Interface] struct {
+type Graphemes[T ~string | []byte] struct {
 	iter    *graphemes.Iterator[T]
 	options Options
 }
@@ -44,10 +43,11 @@ func StringGraphemes(s string) Graphemes[string] {
 // Iterate using the Next method, and get the width of the current grapheme
 // using the Width method.
 func (options Options) StringGraphemes(s string) Graphemes[string] {
-	return Graphemes[string]{
-		iter:    graphemes.FromString(s),
-		options: options,
-	}
+	g := graphemes.FromString(s)
+	g.AnsiEscapeSequences = options.ControlSequences
+	g.AnsiEscapeSequences8Bit = options.ControlSequences8Bit
+
+	return Graphemes[string]{iter: g, options: options}
 }
 
 // BytesGraphemes returns an iterator over grapheme clusters for the given
@@ -65,8 +65,9 @@ func BytesGraphemes(s []byte) Graphemes[[]byte] {
 // Iterate using the Next method, and get the width of the current grapheme
 // using the Width method.
 func (options Options) BytesGraphemes(s []byte) Graphemes[[]byte] {
-	return Graphemes[[]byte]{
-		iter:    graphemes.FromBytes(s),
-		options: options,
-	}
+	g := graphemes.FromBytes(s)
+	g.AnsiEscapeSequences = options.ControlSequences
+	g.AnsiEscapeSequences8Bit = options.ControlSequences8Bit
+
+	return Graphemes[[]byte]{iter: g, options: options}
 }

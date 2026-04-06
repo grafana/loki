@@ -6,7 +6,6 @@ package v2
 import (
 	"context"
 	"hash/maphash"
-	"strings"
 	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel"
@@ -87,7 +86,7 @@ func (p *Paths) Build(ctx context.Context, _, root *yaml.Node, idx *index.SpecIn
 		skip := false
 		var currentNode *yaml.Node
 		for i, pathNode := range root.Content {
-			if strings.HasPrefix(strings.ToLower(pathNode.Value), "x-") {
+			if len(pathNode.Value) >= 2 && (pathNode.Value[0] == 'x' || pathNode.Value[0] == 'X') && pathNode.Value[1] == '-' {
 				skip = true
 				continue
 			}

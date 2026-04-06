@@ -395,6 +395,16 @@ func summarizeObservations(capture *Capture) *observations {
 				StatTaskCount.Key(),
 				StatTaskAdmissionWaitDuration.Key(), StatTaskAssignmentTailDuration.Key(),
 				StatTaskMaxQueueDuration.Key(),
+				// task send/recv durations and task/drain stats
+				TaskRecvDuration.Key(), TaskSendDuration.Key(),
+				TaskRecordsSent.Key(), TaskRowsSent.Key(),
+				TaskDrainRecordsReceived.Key(),
+				TaskBatchingRecordsReceived.Key(), TaskBatchingRowsReceived.Key(),
+				TaskBatchingBatchesProduced.Key(), TaskBatchingRowsWritten.Key(),
+				TaskExternalSourcesCount.Key(), TaskExternalSinksCount.Key(),
+				// task cache stats
+				TaskCacheHits.Key(), TaskCacheMisses.Key(),
+				TaskCacheBatches.Key(), TaskCacheRows.Key(), TaskCacheBytes.Key(),
 			).
 			prefix("metastore_").
 			normalizeKeys(),
@@ -419,6 +429,26 @@ func summarizeObservations(capture *Capture) *observations {
 				StatTaskCount.Key(),
 				StatTaskAdmissionWaitDuration.Key(), StatTaskAssignmentTailDuration.Key(),
 				StatTaskMaxQueueDuration.Key(),
+			).
+			normalizeKeys(),
+	)
+
+	// task recv/send and drain stats at worker level (thread.runJob)
+	result.merge(
+		collect.fromRegions("thread.runJob", true).
+			filter(
+				TaskRecvDuration.Key(), TaskSendDuration.Key(),
+				TaskRecordsSent.Key(), TaskRowsSent.Key(),
+				TaskDrainRecordsReceived.Key(),
+				TaskBatchingRecordsReceived.Key(), TaskBatchingRowsReceived.Key(),
+				TaskBatchingBatchesProduced.Key(), TaskBatchingRowsWritten.Key(),
+				TaskExternalSourcesCount.Key(), TaskExternalSinksCount.Key(),
+				// task cache stats
+				TaskCacheHits.Key(), TaskCacheMisses.Key(),
+				TaskCacheBatches.Key(), TaskCacheRows.Key(), TaskCacheBytes.Key(),
+				// dataobjscan cache stats
+				DataObjScanCacheHits.Key(), DataObjScanCacheMisses.Key(),
+				DataObjScanCacheBatches.Key(), DataObjScanCacheRows.Key(), DataObjScanCacheBytes.Key(),
 			).
 			normalizeKeys(),
 	)

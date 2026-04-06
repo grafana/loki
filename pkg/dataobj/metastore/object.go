@@ -84,16 +84,15 @@ func NewSectionDescriptor(pointer pointers.SectionPointer, ambiguousLabelNames [
 			ObjectPath: pointer.Path,
 			SectionIdx: pointer.Section,
 		},
-		StreamIDs: []int64{pointer.StreamIDRef},
-		RowCount:  int(pointer.LineCount),
-		Size:      pointer.UncompressedSize,
-		Start:     pointer.StartTs,
-		End:       pointer.EndTs,
+		StreamIDs:                   []int64{pointer.StreamIDRef},
+		RowCount:                    int(pointer.LineCount),
+		Size:                        pointer.UncompressedSize,
+		Start:                       pointer.StartTs,
+		End:                         pointer.EndTs,
+		AmbiguousPredicatesByStream: make(map[int64][]string),
 	}
 	if len(ambiguousLabelNames) > 0 {
-		obj.AmbiguousPredicatesByStream = map[int64][]string{
-			pointer.StreamIDRef: ambiguousLabelNames,
-		}
+		obj.AmbiguousPredicatesByStream[pointer.StreamIDRef] = ambiguousLabelNames
 	}
 	return obj
 }
@@ -363,7 +362,7 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 
 	for _, path := range paths {
 		g.Go(func() error {
-			object, err := dataobj.FromBucket(ctx, m.bucket, path)
+			object, err := dataobj.FromBucket(ctx, m.bucket, path, 0)
 			if err != nil {
 				return fmt.Errorf("getting object from bucket: %w", err)
 			}
@@ -669,7 +668,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("at least one selector is required")
 	}
 
-	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath)
+	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath, req.PrefetchBytes)
 	if err != nil {
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
@@ -681,6 +680,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		req.SectionsRequest.End,
 		req.SectionsRequest.Matchers,
 		req.SectionsRequest.Predicates,
+		req.BatchSize,
 	)
 
 	return IndexSectionsReaderResponse{Reader: reader}, nil

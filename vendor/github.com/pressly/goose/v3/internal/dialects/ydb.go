@@ -15,7 +15,12 @@ type ydb struct{}
 
 var _ dialect.Querier = (*ydb)(nil)
 
+func formatYDBTableName(tableName string) string {
+	return fmt.Sprintf("`%s`", tableName)
+}
+
 func (c *ydb) CreateTable(tableName string) string {
+	formatedYDBTableName := formatYDBTableName(tableName)
 	q := `CREATE TABLE %s (
 		version_id Uint64,
 		is_applied Bool,
@@ -23,10 +28,11 @@ func (c *ydb) CreateTable(tableName string) string {
 
 		PRIMARY KEY(version_id)
 	)`
-	return fmt.Sprintf(q, tableName)
+	return fmt.Sprintf(q, formatedYDBTableName)
 }
 
 func (c *ydb) InsertVersion(tableName string) string {
+	formatedYDBTableName := formatYDBTableName(tableName)
 	q := `INSERT INTO %s (
 		version_id, 
 		is_applied, 
@@ -36,27 +42,31 @@ func (c *ydb) InsertVersion(tableName string) string {
 		$2, 
 		CurrentUtcTimestamp()
 	)`
-	return fmt.Sprintf(q, tableName)
+	return fmt.Sprintf(q, formatedYDBTableName)
 }
 
 func (c *ydb) DeleteVersion(tableName string) string {
+	formatedYDBTableName := formatYDBTableName(tableName)
 	q := `DELETE FROM %s WHERE version_id = $1`
-	return fmt.Sprintf(q, tableName)
+	return fmt.Sprintf(q, formatedYDBTableName)
 }
 
 func (c *ydb) GetMigrationByVersion(tableName string) string {
+	formatedYDBTableName := formatYDBTableName(tableName)
 	q := `SELECT tstamp, is_applied FROM %s WHERE version_id = $1 ORDER BY tstamp DESC LIMIT 1`
-	return fmt.Sprintf(q, tableName)
+	return fmt.Sprintf(q, formatedYDBTableName)
 }
 
 func (c *ydb) ListMigrations(tableName string) string {
+	formatedYDBTableName := formatYDBTableName(tableName)
 	q := `
 	SELECT version_id, is_applied, tstamp AS __discard_column_tstamp 
 	FROM %s ORDER BY __discard_column_tstamp DESC`
-	return fmt.Sprintf(q, tableName)
+	return fmt.Sprintf(q, formatedYDBTableName)
 }
 
 func (c *ydb) GetLatestVersion(tableName string) string {
+	formatedYDBTableName := formatYDBTableName(tableName)
 	q := `SELECT MAX(version_id) FROM %s`
-	return fmt.Sprintf(q, tableName)
+	return fmt.Sprintf(q, formatedYDBTableName)
 }

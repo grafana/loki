@@ -92,8 +92,35 @@ var (
 	StatDeletePredicates = NewStatisticInt64("delete.request.predicates", AggregationTypeFirst)
 )
 
+// Task cache statistics.
+var (
+	TaskCacheHits    = NewStatisticInt64("task.cache.hits", AggregationTypeSum)
+	TaskCacheMisses  = NewStatisticInt64("task.cache.misses", AggregationTypeSum)
+	TaskCacheBatches = NewStatisticInt64("task.cache.batches", AggregationTypeSum)
+	TaskCacheRows    = NewStatisticInt64("task.cache.rows", AggregationTypeSum)
+	TaskCacheBytes   = NewStatisticInt64("task.cache.bytes", AggregationTypeSum)
+)
+
+// DataObjScan cache statistics.
+var (
+	DataObjScanCacheHits    = NewStatisticInt64("dataobjscan.cache.hits", AggregationTypeSum)
+	DataObjScanCacheMisses  = NewStatisticInt64("dataobjscan.cache.misses", AggregationTypeSum)
+	DataObjScanCacheBatches = NewStatisticInt64("dataobjscan.cache.batches", AggregationTypeSum)
+	DataObjScanCacheRows    = NewStatisticInt64("dataobjscan.cache.rows", AggregationTypeSum)
+	DataObjScanCacheBytes   = NewStatisticInt64("dataobjscan.cache.bytes", AggregationTypeSum)
+)
+
 // Task statistics.
 var (
-	TaskRecvDuration = NewStatisticFloat64("task.recv.duration", AggregationTypeSum)
-	TaskSendDuration = NewStatisticFloat64("task.send.duration", AggregationTypeSum)
+	TaskRecvDuration            = NewStatisticFloat64("task.recv.duration", AggregationTypeSum)
+	TaskSendDuration            = NewStatisticFloat64("task.send.duration", AggregationTypeSum)
+	TaskRecordsSent             = NewStatisticInt64("task.records.sent", AggregationTypeSum)
+	TaskRowsSent                = NewStatisticInt64("task.rows.sent", AggregationTypeSum)
+	TaskDrainRecordsReceived    = NewStatisticInt64("task.drain.records.received", AggregationTypeSum)
+	TaskBatchingRecordsReceived = NewStatisticInt64("task.batching.records.received", AggregationTypeSum)
+	TaskBatchingRowsReceived    = NewStatisticInt64("task.batching.rows.received", AggregationTypeSum)
+	TaskBatchingBatchesProduced = NewStatisticInt64("task.batching.batches.produced", AggregationTypeSum)
+	TaskBatchingRowsWritten     = NewStatisticInt64("task.batching.rows.written", AggregationTypeSum)
+	TaskExternalSourcesCount    = NewStatisticInt64("task.external.sources.count", AggregationTypeFirst)
+	TaskExternalSinksCount      = NewStatisticInt64("task.external.sinks.count", AggregationTypeFirst)
 )

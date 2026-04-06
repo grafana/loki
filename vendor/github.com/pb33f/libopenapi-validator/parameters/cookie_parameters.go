@@ -4,6 +4,7 @@
 package parameters
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -20,7 +21,7 @@ import (
 )
 
 func (v *paramValidator) ValidateCookieParams(request *http.Request) (bool, []*errors.ValidationError) {
-	pathItem, errs, foundPath := paths.FindPath(request, v.document, v.options.RegexCache)
+	pathItem, errs, foundPath := paths.FindPath(request, v.document, v.options)
 	if len(errs) > 0 {
 		return false, errs
 	}
@@ -44,6 +45,7 @@ func (v *paramValidator) ValidateCookieParamsWithPathItem(request *http.Request,
 	// extract params for the operation
 	params := helpers.ExtractParamsForOperation(request, pathItem)
 	var validationErrors []*errors.ValidationError
+	operation := strings.ToLower(request.Method)
 
 	// build a map of cookies from the request for efficient lookup
 	cookieMap := make(map[string]*http.Cookie)
@@ -58,7 +60,7 @@ func (v *paramValidator) ValidateCookieParamsWithPathItem(request *http.Request,
 			if !found {
 				// cookie not present in request - check if required
 				if p.Required != nil && *p.Required {
-					validationErrors = append(validationErrors, errors.CookieParameterMissing(p))
+					validationErrors = append(validationErrors, errors.CookieParameterMissing(p, pathValue, operation, ""))
 				}
 				continue
 			}
@@ -67,6 +69,15 @@ func (v *paramValidator) ValidateCookieParamsWithPathItem(request *http.Request,
 			if p.Schema != nil {
 				sch = p.Schema.Schema()
 			}
+
+			// Render schema once for ReferenceSchema field in errors
+			var renderedSchema string
+			if sch != nil {
+				rendered, _ := sch.RenderInline()
+				schemaBytes, _ := json.Marshal(rendered)
+				renderedSchema = string(schemaBytes)
+			}
+
 			pType := sch.Type
 
 			for _, ty := range pType {
@@ -74,7 +85,7 @@ func (v *paramValidator) ValidateCookieParamsWithPathItem(request *http.Request,
 				case helpers.Integer:
 					if _, err := strconv.ParseInt(cookie.Value, 10, 64); err != nil {
 						validationErrors = append(validationErrors,
-							errors.InvalidCookieParamInteger(p, strings.ToLower(cookie.Value), sch))
+							errors.InvalidCookieParamInteger(p, strings.ToLower(cookie.Value), sch, pathValue, operation, renderedSchema))
 						break
 					}
 					// validate value matches allowed enum values
@@ -88,13 +99,13 @@ func (v *paramValidator) ValidateCookieParamsWithPathItem(request *http.Request,
 						}
 						if !matchFound {
 							validationErrors = append(validationErrors,
-								errors.IncorrectCookieParamEnum(p, strings.ToLower(cookie.Value), sch))
+								errors.IncorrectCookieParamEnum(p, strings.ToLower(cookie.Value), sch, pathValue, operation, renderedSchema))
 						}
 					}
 				case helpers.Number:
 					if _, err := strconv.ParseFloat(cookie.Value, 64); err != nil {
 						validationErrors = append(validationErrors,
-							errors.InvalidCookieParamNumber(p, strings.ToLower(cookie.Value), sch))
+							errors.InvalidCookieParamNumber(p, strings.ToLower(cookie.Value), sch, pathValue, operation, renderedSchema))
 						break
 					}
 					// validate value matches allowed enum values
@@ -108,13 +119,13 @@ func (v *paramValidator) ValidateCookieParamsWithPathItem(request *http.Request,
 						}
 						if !matchFound {
 							validationErrors = append(validationErrors,
-								errors.IncorrectCookieParamEnum(p, strings.ToLower(cookie.Value), sch))
+								errors.IncorrectCookieParamEnum(p, strings.ToLower(cookie.Value), sch, pathValue, operation, renderedSchema))
 						}
 					}
 				case helpers.Boolean:
 					if _, err := strconv.ParseBool(cookie.Value); err != nil {
 						validationErrors = append(validationErrors,
-							errors.IncorrectCookieParamBool(p, strings.ToLower(cookie.Value), sch))
+							errors.IncorrectCookieParamBool(p, strings.ToLower(cookie.Value), sch, pathValue, operation, renderedSchema))
 					}
 				case helpers.Object:
 					if !p.IsExploded() {
@@ -140,7 +151,7 @@ func (v *paramValidator) ValidateCookieParamsWithPathItem(request *http.Request,
 						// only check if items is a schema, not a boolean
 						if sch.Items.IsA() {
 							validationErrors = append(validationErrors,
-								ValidateCookieArray(sch, p, cookie.Value)...)
+								ValidateCookieArray(sch, p, cookie.Value, pathValue, operation, renderedSchema)...)
 						}
 					}
 
@@ -158,7 +169,7 @@ func (v *paramValidator) ValidateCookieParamsWithPathItem(request *http.Request,
 						}
 						if !matchFound {
 							validationErrors = append(validationErrors,
-								errors.IncorrectCookieParamEnum(p, strings.ToLower(cookie.Value), sch))
+								errors.IncorrectCookieParamEnum(p, strings.ToLower(cookie.Value), sch, pathValue, operation, renderedSchema))
 							break
 						}
 					}
@@ -172,6 +183,8 @@ func (v *paramValidator) ValidateCookieParamsWithPathItem(request *http.Request,
 							helpers.ParameterValidation,
 							helpers.ParameterValidationCookie,
 							v.options,
+							pathValue,
+							operation,
 						)...)
 				}
 			}

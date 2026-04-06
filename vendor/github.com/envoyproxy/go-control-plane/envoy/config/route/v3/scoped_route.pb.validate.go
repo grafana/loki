@@ -156,7 +156,7 @@ type ScopedRouteConfigurationMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ScopedRouteConfigurationMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -303,7 +303,7 @@ type ScopedRouteConfiguration_KeyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ScopedRouteConfiguration_KeyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -437,7 +437,7 @@ type ScopedRouteConfiguration_Key_FragmentMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ScopedRouteConfiguration_Key_FragmentMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

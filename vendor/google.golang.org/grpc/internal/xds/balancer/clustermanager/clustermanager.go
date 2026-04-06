@@ -141,7 +141,7 @@ func (b *bal) updateChildren(s balancer.ClientConnState, newConfig *lbConfig) er
 			},
 			BalancerConfig: lbCfg,
 		}); err != nil {
-			retErr = fmt.Errorf("failed to push new configuration %v to child %q", childCfg.ChildPolicy.Config, childName)
+			retErr = fmt.Errorf("failed to push new configuration %v to child %q: %v", childCfg.ChildPolicy.Config, childName, err)
 			b.setErrorPickerForChild(childName, retErr)
 		}
 

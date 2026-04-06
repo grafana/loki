@@ -154,6 +154,13 @@ func (m *CommandLineOptions) MarshalToSizedBufferVTStrict(dAtA []byte) (int, err
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.FileFlushMinSize != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FileFlushMinSize))
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xd0
+	}
 	if m.SkipDeprecatedLogs {
 		i--
 		if m.SkipDeprecatedLogs {
@@ -680,6 +687,9 @@ func (m *CommandLineOptions) SizeVT() (n int) {
 	}
 	if m.SkipDeprecatedLogs {
 		n += 3
+	}
+	if m.FileFlushMinSize != 0 {
+		n += 2 + protohelpers.SizeOfVarint(uint64(m.FileFlushMinSize))
 	}
 	n += len(m.unknownFields)
 	return n

@@ -29,9 +29,12 @@ func Equal(expected, actual interface{}) bool {
 type MockRoundTripperOption func(*MockRoundTripper)
 
 type MockRoundTripper struct {
-	Err         error
-	StatusCode  int
-	StatusMsg   string
+	Err         []error
+	ErrCount    int
+	StatusCode  []int
+	CodeCount   int
+	StatusMsg   []string
+	MsgCount    int
 	RespBody    []string
 	RequestTime *time.Duration
 	Headers     map[string]string
@@ -46,15 +49,27 @@ var (
 )
 
 func SetHTTPClientDoError(err error) MockRoundTripperOption {
-	return func(m *MockRoundTripper) { m.Err = err }
+	return func(m *MockRoundTripper) { m.Err = []error{err} }
+}
+
+func AppendHTTPClientDoError(err []error) MockRoundTripperOption {
+	return func(m *MockRoundTripper) { m.Err = append(m.Err, err...) }
 }
 
 func SetStatusCode(statusCode int) MockRoundTripperOption {
-	return func(m *MockRoundTripper) { m.StatusCode = statusCode }
+	return func(m *MockRoundTripper) { m.StatusCode = []int{statusCode} }
+}
+
+func AppendStatusCode(statusCode []int) MockRoundTripperOption {
+	return func(m *MockRoundTripper) { m.StatusCode = append(m.StatusCode, statusCode...) }
 }
 
 func SetStatusMsg(statusMsg string) MockRoundTripperOption {
-	return func(m *MockRoundTripper) { m.StatusMsg = statusMsg }
+	return func(m *MockRoundTripper) { m.StatusMsg = []string{statusMsg} }
+}
+
+func AppendStatusMsg(statusMsg []string) MockRoundTripperOption {
+	return func(m *MockRoundTripper) { m.StatusMsg = append(m.StatusMsg, statusMsg...) }
 }
 
 func SetRespBody(respBody string) MockRoundTripperOption {
@@ -81,8 +96,13 @@ func AddHeaders(kv map[string]string) MockRoundTripperOption {
 }
 
 func (m *MockRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
-	if m.Err != nil {
-		return nil, m.Err
+	errIndex := m.ErrCount
+	if errIndex >= len(m.Err) {
+		errIndex = len(m.Err) - 1
+	}
+	m.ErrCount++
+	if errIndex >= 0 && m.Err[errIndex] != nil {
+		return nil, m.Err[errIndex]
 	}
 
 	if m.RequestTime != nil {
@@ -97,9 +117,28 @@ func (m *MockRoundTripper) RoundTrip(request *http.Request) (*http.Response, err
 		}
 	}
 
+	statusCode := http.StatusOK
+	statusMsg := http.StatusText(http.StatusOK)
+	codeIndex := m.CodeCount
+	if codeIndex >= len(m.StatusCode) {
+		codeIndex = len(m.StatusCode) - 1
+	}
+	m.CodeCount++
+	if codeIndex >= 0 {
+		statusCode = m.StatusCode[codeIndex]
+	}
+	msgIndex := m.MsgCount
+	if msgIndex >= len(m.StatusMsg) {
+		msgIndex = len(m.StatusMsg) - 1
+	}
+	m.MsgCount++
+	if msgIndex >= 0 {
+		statusMsg = m.StatusMsg[msgIndex]
+	}
+
 	resp := &http.Response{
-		StatusCode: m.StatusCode,
-		Status:     m.StatusMsg,
+		StatusCode: statusCode,
+		Status:     statusMsg,
 		Header:     make(http.Header),
 	}
 	respIndex := m.RespCount

@@ -5,6 +5,8 @@ package workflow
 import (
 	"context"
 	"fmt"
+	gotrace "runtime/trace"
+	"strconv"
 	"sync"
 	"time"
 
@@ -56,6 +58,22 @@ type Options struct {
 	// DebugStreams toggles debug messages for data streams. This is very
 	// verbose and should only be enabled for debugging purposes.
 	DebugStreams bool
+
+	// CacheEnabled controls whether task fragments and DataObjScan nodes are
+	// wrapped with a Cache node during workflow planning.
+	CacheEnabled bool
+
+	// MaxTaskCacheSize is the maximum size in bytes of a task result that can be
+	// stored in the cache. 0 means only empty responses are cached.
+	MaxTaskCacheSize uint64
+
+	// MaxDataObjScanCacheSize is the maximum encoded size in bytes of a DataObjScan
+	// result that may be stored. 0 means only empty scan responses are cached.
+	MaxDataObjScanCacheSize uint64
+
+	// CacheCompression is the compression codec to use when encoding cache entries
+	// (e.g. "snappy"). An empty string means no compression.
+	CacheCompression string
 }
 
 var _ fmt.Stringer = (*Workflow)(nil)
@@ -96,7 +114,12 @@ type Workflow struct {
 //
 // The provided Runner will be used for Workflow execution.
 func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
-	graph, err := planWorkflow(opts.Tenant, plan)
+	graph, err := planWorkflow(opts.Tenant, plan, cacheParams{
+		enabled:                 opts.CacheEnabled,
+		taskCacheMaxSizeBytes:   opts.MaxTaskCacheSize,
+		dataObjScanMaxSizeBytes: opts.MaxDataObjScanCacheSize,
+		compression:             opts.CacheCompression,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +193,9 @@ func (wf *Workflow) String() string {
 	return Sprint(wf)
 }
 
+// Opts returns options of the workflow (mostly for testing purposes).
+func (wf *Workflow) Opts() Options { return wf.opts }
+
 // Len returns the total number of tasks in the workflow.
 func (wf *Workflow) Len() int { return len(wf.manifest.Tasks) }
 
@@ -207,11 +233,14 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 	}
 
 	// Start dispatching in background goroutine
+	gotrace.Log(ctx, "dispatch_tasks", "starting dispatch of "+strconv.Itoa(len(wf.manifest.Tasks))+" tasks")
 	go func() {
 		err := wf.dispatchTasks(ctx, wf.manifest.Tasks)
 		if err != nil {
 			wf.resultsPipeline.SetError(err)
 			wrapped.Close()
+		} else {
+			gotrace.Log(ctx, "dispatch_tasks", "all tasks dispatched")
 		}
 	}()
 

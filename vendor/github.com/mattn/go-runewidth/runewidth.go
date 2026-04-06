@@ -316,6 +316,11 @@ func IsAmbiguousWidth(r rune) bool {
 	return inTables(r, private, ambiguous)
 }
 
+// IsCombiningWidth returns whether is combining width or not.
+func IsCombiningWidth(r rune) bool {
+	return inTable(r, combining)
+}
+
 // IsNeutralWidth returns whether is neutral width or not.
 func IsNeutralWidth(r rune) bool {
 	return inTable(r, neutral)

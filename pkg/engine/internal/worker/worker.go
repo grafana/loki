@@ -64,8 +64,12 @@ type Config struct {
 	SchedulerLookupInterval time.Duration
 
 	// BatchSize specifies the maximum number of rows to retrieve in a single
-	// read call of a task pipeline.
+	// read call of a task pipeline, or to send in a single message to a peer (sink).
 	BatchSize int64
+
+	// PrefetchBytes controls the number of bytes prefetched when opening a
+	// data object in scan tasks.
+	PrefetchBytes int64
 
 	// NumThreads is the number of worker threads to spawn. The number of
 	// threads corresponds to the number of tasks that can be executed
@@ -81,6 +85,9 @@ type Config struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
+
+	// TaskCaches is an optional registry of backing caches for task results.
+	TaskCaches executor.TaskCacheRegistry
 }
 
 // readyRequest is a message sent from a thread to notify the worker that it's
@@ -108,6 +115,7 @@ type Worker struct {
 	config     Config
 	logger     log.Logger
 	numThreads int
+	taskCaches executor.TaskCacheRegistry
 
 	initOnce sync.Once
 	svc      services.Service
@@ -156,6 +164,7 @@ func New(config Config) (*Worker, error) {
 		logger:      config.Logger,
 		wireMetrics: wire.NewMetrics(),
 		numThreads:  numThreads,
+		taskCaches:  config.TaskCaches,
 
 		dialer:   config.Dialer,
 		listener: config.Listener,
@@ -191,10 +200,12 @@ func (w *Worker) run(ctx context.Context) error {
 	for i := range w.numThreads {
 		t := &thread{
 			BatchSize:      w.config.BatchSize,
+			PrefetchBytes:  w.config.PrefetchBytes,
 			Logger:         log.With(w.logger, "thread", i),
 			Bucket:         w.config.Bucket,
 			Metastore:      w.config.Metastore,
 			StreamFilterer: w.config.StreamFilterer,
+			TaskCaches:     w.taskCaches,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,

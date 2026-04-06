@@ -4,6 +4,7 @@
 package parameters
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -21,7 +22,7 @@ import (
 )
 
 func (v *paramValidator) ValidatePathParams(request *http.Request) (bool, []*errors.ValidationError) {
-	pathItem, errs, foundPath := paths.FindPath(request, v.document, v.options.RegexCache)
+	pathItem, errs, foundPath := paths.FindPath(request, v.document, v.options)
 	if len(errs) > 0 {
 		return false, errs
 	}
@@ -45,6 +46,9 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 	// split the path into segments
 	submittedSegments := strings.Split(paths.StripRequestPath(request, v.document), helpers.Slash)
 	pathSegments := strings.Split(pathValue, helpers.Slash)
+
+	// get the operation method for error reporting
+	operation := strings.ToLower(request.Method)
 
 	// extract params for the operation
 	params := helpers.ExtractParamsForOperation(request, pathItem)
@@ -129,7 +133,7 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 					if decodedParamValue == "" {
 						// Mandatory path parameter cannot be empty
 						if p.Required != nil && *p.Required {
-							validationErrors = append(validationErrors, errors.PathParameterMissing(p))
+							validationErrors = append(validationErrors, errors.PathParameterMissing(p, pathValue, request.URL.Path))
 							break
 						}
 						continue
@@ -137,6 +141,14 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 
 					// extract the schema from the parameter
 					sch := p.Schema.Schema()
+
+					// Render schema once for ReferenceSchema field in errors
+					var renderedSchema string
+					if sch != nil {
+						rendered, _ := sch.RenderInline()
+						schemaBytes, _ := json.Marshal(rendered)
+						renderedSchema = string(schemaBytes)
+					}
 
 					// check enum (if present)
 					enumCheck := func(decodedValue string) {
@@ -149,7 +161,7 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 						}
 						if !matchFound {
 							validationErrors = append(validationErrors,
-								errors.IncorrectPathParamEnum(p, strings.ToLower(decodedValue), sch))
+								errors.IncorrectPathParamEnum(p, strings.ToLower(decodedValue), sch, pathValue, renderedSchema))
 						}
 					}
 
@@ -176,11 +188,13 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 										helpers.ParameterValidation,
 										helpers.ParameterValidationPath,
 										v.options,
+										pathValue,
+										operation,
 									)...)
 
 							case helpers.Integer:
 								// simple use case is already handled in find param.
-								rawParamValue, paramValueParsed, err := v.resolveInteger(sch, p, isLabel, isMatrix, decodedParamValue)
+								rawParamValue, paramValueParsed, err := v.resolveInteger(sch, p, isLabel, isMatrix, decodedParamValue, pathValue, renderedSchema)
 								if err != nil {
 									validationErrors = append(validationErrors, err...)
 									break
@@ -199,11 +213,13 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 									helpers.ParameterValidation,
 									helpers.ParameterValidationPath,
 									v.options,
+									pathValue,
+									operation,
 								)...)
 
 							case helpers.Number:
 								// simple use case is already handled in find param.
-								rawParamValue, paramValueParsed, err := v.resolveNumber(sch, p, isLabel, isMatrix, decodedParamValue)
+								rawParamValue, paramValueParsed, err := v.resolveNumber(sch, p, isLabel, isMatrix, decodedParamValue, pathValue, renderedSchema)
 								if err != nil {
 									validationErrors = append(validationErrors, err...)
 									break
@@ -222,19 +238,21 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 									helpers.ParameterValidation,
 									helpers.ParameterValidationPath,
 									v.options,
+									pathValue,
+									operation,
 								)...)
 
 							case helpers.Boolean:
 								if isLabel && p.Style == helpers.LabelStyle {
 									if _, err := strconv.ParseBool(decodedParamValue[1:]); err != nil {
 										validationErrors = append(validationErrors,
-											errors.IncorrectPathParamBool(p, decodedParamValue[1:], sch))
+											errors.IncorrectPathParamBool(p, decodedParamValue[1:], sch, pathValue, renderedSchema))
 									}
 								}
 								if isSimple {
 									if _, err := strconv.ParseBool(decodedParamValue); err != nil {
 										validationErrors = append(validationErrors,
-											errors.IncorrectPathParamBool(p, decodedParamValue, sch))
+											errors.IncorrectPathParamBool(p, decodedParamValue, sch, pathValue, renderedSchema))
 									}
 								}
 								if isMatrix && p.Style == helpers.MatrixStyle {
@@ -242,7 +260,7 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 									decodedForMatrix := strings.Replace(decodedParamValue[1:], fmt.Sprintf("%s=", p.Name), "", 1)
 									if _, err := strconv.ParseBool(decodedForMatrix); err != nil {
 										validationErrors = append(validationErrors,
-											errors.IncorrectPathParamBool(p, decodedForMatrix, sch))
+											errors.IncorrectPathParamBool(p, decodedForMatrix, sch, pathValue, renderedSchema))
 									}
 								}
 							case helpers.Object:
@@ -290,6 +308,15 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 								// extract the items schema in order to validate the array items.
 								if sch.Items != nil && sch.Items.IsA() {
 									iSch := sch.Items.A.Schema()
+
+									// Render items schema once for ReferenceSchema field in array errors
+									var renderedItemsSchema string
+									if iSch != nil {
+										rendered, _ := iSch.RenderInline()
+										schemaBytes, _ := json.Marshal(rendered)
+										renderedItemsSchema = string(schemaBytes)
+									}
+
 									for n := range iSch.Type {
 										// determine how to explode the array
 										var arrayValues []string
@@ -317,14 +344,14 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 											for pv := range arrayValues {
 												if _, err := strconv.ParseInt(arrayValues[pv], 10, 64); err != nil {
 													validationErrors = append(validationErrors,
-														errors.IncorrectPathParamArrayInteger(p, arrayValues[pv], sch, iSch))
+														errors.IncorrectPathParamArrayInteger(p, arrayValues[pv], sch, iSch, pathValue, renderedItemsSchema))
 												}
 											}
 										case helpers.Number:
 											for pv := range arrayValues {
 												if _, err := strconv.ParseFloat(arrayValues[pv], 64); err != nil {
 													validationErrors = append(validationErrors,
-														errors.IncorrectPathParamArrayNumber(p, arrayValues[pv], sch, iSch))
+														errors.IncorrectPathParamArrayNumber(p, arrayValues[pv], sch, iSch, pathValue, renderedItemsSchema))
 												}
 											}
 										case helpers.Boolean:
@@ -332,7 +359,7 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 												bc := len(validationErrors)
 												if _, err := strconv.ParseBool(arrayValues[pv]); err != nil {
 													validationErrors = append(validationErrors,
-														errors.IncorrectPathParamArrayBoolean(p, arrayValues[pv], sch, iSch))
+														errors.IncorrectPathParamArrayBoolean(p, arrayValues[pv], sch, iSch, pathValue, renderedItemsSchema))
 													continue
 												}
 												if len(validationErrors) == bc {
@@ -340,7 +367,7 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 													// need to catch this edge case.
 													if arrayValues[pv] == "0" || arrayValues[pv] == "1" {
 														validationErrors = append(validationErrors,
-															errors.IncorrectPathParamArrayBoolean(p, arrayValues[pv], sch, iSch))
+															errors.IncorrectPathParamArrayBoolean(p, arrayValues[pv], sch, iSch, pathValue, renderedItemsSchema))
 														continue
 													}
 												}
@@ -364,11 +391,11 @@ func (v *paramValidator) ValidatePathParamsWithPathItem(request *http.Request, p
 	return true, nil
 }
 
-func (v *paramValidator) resolveNumber(sch *base.Schema, p *v3.Parameter, isLabel bool, isMatrix bool, paramValue string) (string, float64, []*errors.ValidationError) {
+func (v *paramValidator) resolveNumber(sch *base.Schema, p *v3.Parameter, isLabel bool, isMatrix bool, paramValue string, pathValue string, renderedSchema string) (string, float64, []*errors.ValidationError) {
 	if isLabel && p.Style == helpers.LabelStyle {
 		paramValueParsed, err := strconv.ParseFloat(paramValue[1:], 64)
 		if err != nil {
-			return "", 0, []*errors.ValidationError{errors.IncorrectPathParamNumber(p, paramValue[1:], sch)}
+			return "", 0, []*errors.ValidationError{errors.IncorrectPathParamNumber(p, paramValue[1:], sch, pathValue, renderedSchema)}
 		}
 		return paramValue[1:], paramValueParsed, nil
 	}
@@ -377,22 +404,22 @@ func (v *paramValidator) resolveNumber(sch *base.Schema, p *v3.Parameter, isLabe
 		paramValue = strings.Replace(paramValue[1:], fmt.Sprintf("%s=", p.Name), "", 1)
 		paramValueParsed, err := strconv.ParseFloat(paramValue, 64)
 		if err != nil {
-			return "", 0, []*errors.ValidationError{errors.IncorrectPathParamNumber(p, paramValue[1:], sch)}
+			return "", 0, []*errors.ValidationError{errors.IncorrectPathParamNumber(p, paramValue[1:], sch, pathValue, renderedSchema)}
 		}
 		return paramValue, paramValueParsed, nil
 	}
 	paramValueParsed, err := strconv.ParseFloat(paramValue, 64)
 	if err != nil {
-		return "", 0, []*errors.ValidationError{errors.IncorrectPathParamNumber(p, paramValue, sch)}
+		return "", 0, []*errors.ValidationError{errors.IncorrectPathParamNumber(p, paramValue, sch, pathValue, renderedSchema)}
 	}
 	return paramValue, paramValueParsed, nil
 }
 
-func (v *paramValidator) resolveInteger(sch *base.Schema, p *v3.Parameter, isLabel bool, isMatrix bool, paramValue string) (string, int64, []*errors.ValidationError) {
+func (v *paramValidator) resolveInteger(sch *base.Schema, p *v3.Parameter, isLabel bool, isMatrix bool, paramValue string, pathValue string, renderedSchema string) (string, int64, []*errors.ValidationError) {
 	if isLabel && p.Style == helpers.LabelStyle {
 		paramValueParsed, err := strconv.ParseInt(paramValue[1:], 10, 64)
 		if err != nil {
-			return "", 0, []*errors.ValidationError{errors.IncorrectPathParamInteger(p, paramValue[1:], sch)}
+			return "", 0, []*errors.ValidationError{errors.IncorrectPathParamInteger(p, paramValue[1:], sch, pathValue, renderedSchema)}
 		}
 		return paramValue[1:], paramValueParsed, nil
 	}
@@ -401,13 +428,13 @@ func (v *paramValidator) resolveInteger(sch *base.Schema, p *v3.Parameter, isLab
 		paramValue = strings.Replace(paramValue[1:], fmt.Sprintf("%s=", p.Name), "", 1)
 		paramValueParsed, err := strconv.ParseInt(paramValue, 10, 64)
 		if err != nil {
-			return "", 0, []*errors.ValidationError{errors.IncorrectPathParamInteger(p, paramValue[1:], sch)}
+			return "", 0, []*errors.ValidationError{errors.IncorrectPathParamInteger(p, paramValue[1:], sch, pathValue, renderedSchema)}
 		}
 		return paramValue, paramValueParsed, nil
 	}
 	paramValueParsed, err := strconv.ParseInt(paramValue, 10, 64)
 	if err != nil {
-		return "", 0, []*errors.ValidationError{errors.IncorrectPathParamInteger(p, paramValue, sch)}
+		return "", 0, []*errors.ValidationError{errors.IncorrectPathParamInteger(p, paramValue, sch, pathValue, renderedSchema)}
 	}
 	return paramValue, paramValueParsed, nil
 }

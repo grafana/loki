@@ -7,11 +7,16 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
+
+func init() {
+	assertions.Enabled = true
+}
 
 func TestNewProjectPipeline(t *testing.T) {
 	fields := []arrow.Field{

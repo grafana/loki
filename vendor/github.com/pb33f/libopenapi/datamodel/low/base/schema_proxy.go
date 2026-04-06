@@ -10,6 +10,7 @@ import (
 	"hash/maphash"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	"github.com/pb33f/libopenapi/datamodel"
 	"github.com/pb33f/libopenapi/datamodel/low"
@@ -50,21 +51,32 @@ import (
 // Schemas are where things can get messy, mainly because the Schema standard changes between versions, and
 // it's not actually JSONSchema until 3.1, so lots of times a bad schema will break parsing. Errors are only found
 // when a schema is needed, so the rest of the document is parsed and ready to use.
+//
+// [ There is a good amount of async code in here, many different ways to slam into the same schema being built/read/ ]
+// [ hashed or cached at the same time. So just a warning, if you're thinking of working on this - async safety       ]
+// [ should be your main concern, cheers - quobix.                                                                    ]
 type SchemaProxy struct {
 	low.Reference
 	kn             *yaml.Node
 	vn             *yaml.Node
 	idx            *index.SpecIndex
-	rendered       *Schema
-	buildError     error
+	schemaOnce     sync.Once              // guards lazy Schema() build
+	rendered       atomic.Pointer[Schema] // atomic for safe reads from any goroutine
+	buildError     error                  // protected by schemaOnce (write-once)
 	ctx            context.Context
-	cachedHash     *uint64    // Cache computed hash to avoid recalculation
+	hashMu         sync.Mutex // protects cachedHash + hashGen
+	cachedHash     *uint64    // protected by hashMu
+	hashGen        uint64     // generation counter for invalidation
 	TransformedRef *yaml.Node // Original node that contained the ref before transformation
 	*low.NodeMap
 }
 
 // Build will prepare the SchemaProxy for rendering, it does not build the Schema, only sets up internal state.
 // Key maybe nil if absent.
+//
+// Lifecycle: Build() must be called exactly once per SchemaProxy, before Schema() is called.
+// Calling Build() after Schema() has already been invoked will update internal state (kn, vn, idx, ctx)
+// but will NOT re-trigger schema building due to sync.Once semantics.
 func (sp *SchemaProxy) Build(ctx context.Context, key, value *yaml.Node, idx *index.SpecIndex) error {
 	sp.kn = key
 	sp.idx = idx
@@ -141,48 +153,55 @@ func applySchemaIdScope(ctx context.Context, node *yaml.Node, idx *index.SpecInd
 // If anything goes wrong during the build, then nothing is returned and the error that occurred can
 // be retrieved by using GetBuildError()
 func (sp *SchemaProxy) Schema() *Schema {
-	if sp.rendered != nil {
-		return sp.rendered
-	}
+	sp.schemaOnce.Do(func() {
+		cfg := sp.getSpecConfig()
 
-	// If this proxy represents an unresolved external ref, return nil without error.
-	if sp.IsReference() && sp.idx != nil && sp.idx.GetConfig() != nil &&
-		sp.idx.GetConfig().SkipExternalRefResolution && utils.IsExternalRef(sp.GetReference()) {
-		return nil
-	}
+		// if this proxy represents an unresolved external ref, return nil without error
+		if sp.IsReference() && cfg != nil &&
+			cfg.SkipExternalRefResolution && utils.IsExternalRef(sp.GetReference()) {
+			return
+		}
 
-	// handle property merging for references with sibling properties
-	buildNode := sp.vn
-	if sp.idx != nil && sp.idx.GetConfig() != nil {
-		if docConfig := sp.getDocumentConfig(); docConfig != nil && docConfig.MergeReferencedProperties {
-			if mergedNode := sp.attemptPropertyMerging(buildNode, docConfig); mergedNode != nil {
-				buildNode = mergedNode
+		// handle property merging for references with sibling properties
+		buildNode := sp.vn
+		if cfg != nil {
+			if docConfig := sp.getDocumentConfig(); docConfig != nil && docConfig.MergeReferencedProperties {
+				if mergedNode := sp.attemptPropertyMerging(buildNode, docConfig); mergedNode != nil {
+					buildNode = mergedNode
+				}
 			}
 		}
-	}
 
-	schema := new(Schema)
-	utils.CheckForMergeNodes(buildNode)
-	err := schema.Build(sp.ctx, buildNode, sp.idx)
-	if err != nil {
-		sp.buildError = err
-		return nil
-	}
-	schema.ParentProxy = sp // https://github.com/pb33f/libopenapi/issues/29
-	sp.rendered = schema
+		schema := new(Schema)
+		utils.CheckForMergeNodes(buildNode)
+		err := schema.Build(sp.ctx, buildNode, sp.idx)
+		if err != nil {
+			sp.buildError = err
+			return
+		}
+		schema.ParentProxy = sp // https://github.com/pb33f/libopenapi/issues/29
 
-	// for all the nodes added, copy them over to the schema
-	if sp.NodeMap != nil {
-		sp.NodeMap.Nodes.Range(func(key, value any) bool {
-			schema.AddNode(key.(int), value.(*yaml.Node))
-			return true
-		})
-	}
-	return schema
+		// Store rendered FIRST — must happen before NodeMap copy.
+		// If AddNode() runs during the Range window, it sees rendered != nil
+		// and writes directly to the schema instead of NodeMap (where it would be missed).
+		sp.rendered.Store(schema)
+
+		// Copy accumulated nodes to the built schema
+		if sp.NodeMap != nil {
+			sp.NodeMap.Nodes.Range(func(key, value any) bool {
+				schema.AddNode(key.(int), value.(*yaml.Node))
+				return true
+			})
+		}
+	})
+	return sp.rendered.Load()
 }
 
 // GetBuildError returns the build error that was set when Schema() was called. If Schema() has not been run, or
 // there were no errors during build, then nil will be returned.
+//
+// Thread safety: GetBuildError() is safe to call concurrently only after Schema() has been called at least once
+// on this proxy (from any goroutine). All standard code paths (Hash(), high-level Schema()) call Schema() first.
 func (sp *SchemaProxy) GetBuildError() error {
 	return sp.buildError
 }
@@ -218,85 +237,102 @@ func (sp *SchemaProxy) GetValueNode() *yaml.Node {
 
 // Hash will return a consistent Hash of the SchemaProxy object (it will resolve it)
 func (sp *SchemaProxy) Hash() uint64 {
+	sp.hashMu.Lock()
 	if sp.cachedHash != nil {
-		return *sp.cachedHash
+		h := *sp.cachedHash
+		sp.hashMu.Unlock()
+		return h
 	}
+	gen := sp.hashGen
+	sp.hashMu.Unlock()
 
-	var hash uint64
+	hash := sp.computeHash()
 
-	if sp.rendered != nil {
-		if !sp.IsReference() {
-			hash = sp.rendered.Hash()
-		} else {
-			// For references, hash the reference value
-			hash = low.WithHasher(func(h *maphash.Hash) uint64 {
-				h.WriteString(sp.GetReference())
-				return h.Sum64()
-			})
-		}
-	} else {
-		if !sp.IsReference() {
-			// Only resolve this proxy if it's not a ref.
-			sch := sp.Schema()
-			sp.rendered = sch
-			hashError := fmt.Errorf("circular reference detected: %s", sp.GetReference())
-			if sch != nil {
-				if sp.idx != nil && sp.idx.GetConfig() != nil && sp.idx.GetConfig().UseSchemaQuickHash {
-					if !CheckSchemaProxyForCircularRefs(sp) {
-						hash = sch.Hash()
-					}
-				} else {
-					hash = sch.Hash()
-				}
-			} else {
-				var logger *slog.Logger
-				if sp.idx != nil && sp.idx.GetLogger() != nil {
-					logger = sp.idx.GetLogger()
-				}
-				if logger != nil {
-					bErr := errors.Join(sp.GetBuildError(), hashError)
-					if bErr != nil {
-						logger.Warn("SchemaProxy.Hash() unable to complete hash: ", "error", bErr.Error())
-					}
-				}
-				hash = 0
-			}
-		} else {
-			// Handle UseSchemaQuickHash case for references
-			if sp.idx != nil && sp.idx.GetConfig() != nil && sp.idx.GetConfig().UseSchemaQuickHash {
-				if sp.idx != nil && !CheckSchemaProxyForCircularRefs(sp) {
-					if sp.rendered == nil {
-						sp.rendered = sp.Schema()
-					}
-					hash = sp.rendered.QuickHash() // quick hash uses a cache to keep things fast.
-				} else {
-					hash = low.WithHasher(func(h *maphash.Hash) uint64 {
-						h.WriteString(sp.GetReference())
-						return h.Sum64()
-					})
-				}
-			} else {
-				// Hash reference value only, do not resolve!
-				hash = low.WithHasher(func(h *maphash.Hash) uint64 {
-					h.WriteString(sp.GetReference())
-					return h.Sum64()
-				})
-			}
-		}
+	// store only if not invalidated during computation
+	sp.hashMu.Lock()
+	if sp.hashGen == gen {
+		sp.cachedHash = &hash
 	}
-
-	// Cache the computed hash for future calls
-	sp.cachedHash = &hash
+	sp.hashMu.Unlock()
 	return hash
+}
+
+// computeHash contains the actual hash computation logic, called outside the hash lock.
+func (sp *SchemaProxy) computeHash() uint64 {
+	// for unresolved references, hash the ref string without resolving the target schema
+	sch := sp.rendered.Load()
+
+	if sch != nil {
+		if !sp.IsReference() {
+			return sch.Hash()
+		}
+		return sp.hashReference()
+	}
+
+	if !sp.IsReference() {
+		sch = sp.Schema()
+		if sch != nil {
+			useQuickHash := sp.getSpecConfig() != nil && sp.getSpecConfig().UseSchemaQuickHash
+			if !useQuickHash || !CheckSchemaProxyForCircularRefs(sp) {
+				return sch.Hash()
+			}
+		} else {
+			// build failed — log warning
+			var logger *slog.Logger
+			if sp.idx != nil && sp.idx.GetLogger() != nil {
+				logger = sp.idx.GetLogger()
+			}
+			if logger != nil {
+				hashError := fmt.Errorf("circular reference detected: %s", sp.GetReference())
+				bErr := errors.Join(sp.GetBuildError(), hashError)
+				if bErr != nil {
+					logger.Warn("SchemaProxy.Hash() unable to complete hash: ", "error", bErr.Error())
+				}
+			}
+		}
+		return 0
+	}
+
+	// unresolved reference
+	cfg := sp.getSpecConfig()
+	if cfg != nil && cfg.UseSchemaQuickHash {
+		if !CheckSchemaProxyForCircularRefs(sp) {
+			sch = sp.Schema()
+			if sch != nil {
+				return sch.QuickHash()
+			}
+		} else {
+			return sp.hashReference()
+		}
+	}
+	return sp.hashReference()
+}
+
+// hashReference hashes the $ref string value without resolving the target.
+func (sp *SchemaProxy) hashReference() uint64 {
+	return low.WithHasher(func(h *maphash.Hash) uint64 {
+		h.WriteString(sp.GetReference())
+		return h.Sum64()
+	})
+}
+
+// getSpecConfig returns the SpecIndexConfig if available, or nil.
+func (sp *SchemaProxy) getSpecConfig() *index.SpecIndexConfig {
+	if sp.idx != nil && sp.idx.GetConfig() != nil {
+		return sp.idx.GetConfig()
+	}
+	return nil
 }
 
 // AddNode stores nodes in the underlying schema if rendered, otherwise holds in the proxy until build.
 func (sp *SchemaProxy) AddNode(key int, node *yaml.Node) {
-	// Clear cached hash since content is being modified
+	sp.hashMu.Lock()
 	sp.cachedHash = nil
+	sp.hashGen++
+	sp.hashMu.Unlock()
 
-	if sp.rendered != nil {
-		sp.rendered.AddNode(key, node)
+	if sch := sp.rendered.Load(); sch != nil {
+		sch.AddNode(key, node)
 	} else {
 		sp.Nodes.Store(key, node)
 	}

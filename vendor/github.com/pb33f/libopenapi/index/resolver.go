@@ -72,6 +72,20 @@ type Resolver struct {
 	circChecked            bool
 }
 
+// Release nils all fields that can pin YAML node trees or SpecIndex references in
+// memory. Call this once all consumers of the resolver are finished.
+func (resolver *Resolver) Release() {
+	if resolver == nil {
+		return
+	}
+	resolver.specIndex = nil
+	resolver.resolvedRoot = nil
+	resolver.resolvingErrors = nil
+	resolver.circularReferences = nil
+	resolver.ignoredPolyReferences = nil
+	resolver.ignoredArrayReferences = nil
+}
+
 // NewResolver will create a new resolver from a *index.SpecIndex
 func NewResolver(index *SpecIndex) *Resolver {
 	if index == nil {

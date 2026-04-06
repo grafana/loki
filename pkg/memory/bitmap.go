@@ -244,7 +244,7 @@ func (bmap *Bitmap) Slice(i, j int) *Bitmap {
 
 	var (
 		startWord = (bmap.off + i) / 8
-		endWord   = ((bmap.off + j) / 8) + 1
+		endWord   = ((bmap.off + j) + 7) / 8
 
 		off    = (bmap.off + i) % 8
 		newLen = j - i

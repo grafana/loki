@@ -3,6 +3,7 @@ package frontend
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -24,30 +25,19 @@ func TestRingLimitsClient_ExceedsLimits(t *testing.T) {
 		// to one instance, then just one InstanceDesc is required.
 		instances     []ring.InstanceDesc
 		numPartitions int
-		// The size of the following slices must match len(instances), where
-		// each value is another slice containing the expected requests and
-		// responses for the instance. While complex, having a slice of slices
-		// means we can set the expectations for each instance such that
-		// different instances can expect to receive different numbers of
-		// requests for each of the RPCs (as an example, retrying unanswered
-		// streams on another zone). The response and responseErr slices
-		// behave as enums. For each index, there should be either one non-nil
-		// response or one non-nil error, but not both.
-		getAssignedPartitionsResponses [][]*proto.GetAssignedPartitionsResponse
-		// Even if no errors are expected for the GetAssignedPartitions RPC,
-		// each per-instance error slice must have a nil error for each
-		// expected response. For example []error{nil, nil} when we expect
-		// two successful responses.
-		getAssignedPartitionsResponseErrs [][]error
-		expectedExceedsLimitsRequests     [][]*proto.ExceedsLimitsRequest
-		exceedsLimitsResponses            [][]*proto.ExceedsLimitsResponse
-		// Even if no errors are expected for the ExceedsLimits RPC, each
-		// per-instance error slice must have a nil error for each expected
-		// response. For example []error{nil, nil} when we expect two
-		// successful responses.
-		exceedsLimitsResponseErrs [][]error
-		expected                  []*proto.ExceedsLimitsResponse
-		expectedErr               string
+		// The following request and response slices contain the expected
+		// RPCs for each instance, and MUST be the same size as the instances
+		// slice (otherwise the test will panic).
+		getAssignedPartitionsResponses    []*proto.GetAssignedPartitionsResponse
+		getAssignedPartitionsResponseErrs []error
+		expectedExceedsLimitsRequests     []*proto.ExceedsLimitsRequest
+		exceedsLimitsResponses            []*proto.ExceedsLimitsResponse
+		exceedsLimitsResponseErrs         []error
+		// The results are sorted by StreamHash before asserting against the
+		// expected results. [ExceedsLimits] does not guarantee that results
+		// are returned in a deterministic order as sorting is expensive.
+		expected    *proto.ExceedsLimitsResponse
+		expectedErr string
 	}{{
 		// When there are no streams, no RPCs should be sent.
 		name: "no streams",
@@ -57,11 +47,12 @@ func TestRingLimitsClient_ExceedsLimits(t *testing.T) {
 		},
 		instances:                         []ring.InstanceDesc{{Addr: "instance-0"}},
 		numPartitions:                     1,
-		getAssignedPartitionsResponses:    [][]*proto.GetAssignedPartitionsResponse{nil},
-		getAssignedPartitionsResponseErrs: [][]error{nil},
-		expectedExceedsLimitsRequests:     [][]*proto.ExceedsLimitsRequest{nil},
-		exceedsLimitsResponses:            [][]*proto.ExceedsLimitsResponse{nil},
-		exceedsLimitsResponseErrs:         [][]error{nil},
+		getAssignedPartitionsResponses:    []*proto.GetAssignedPartitionsResponse{nil},
+		getAssignedPartitionsResponseErrs: []error{nil},
+		expectedExceedsLimitsRequests:     []*proto.ExceedsLimitsRequest{nil},
+		exceedsLimitsResponses:            []*proto.ExceedsLimitsResponse{nil},
+		exceedsLimitsResponseErrs:         []error{nil},
+		expected:                          &proto.ExceedsLimitsResponse{},
 	}, {
 		// When there is one instance owning all partitions, that instance is
 		// responsible for enforcing limits of all streams.
@@ -77,32 +68,32 @@ func TestRingLimitsClient_ExceedsLimits(t *testing.T) {
 			Addr: "instance-0",
 		}},
 		numPartitions: 1,
-		getAssignedPartitionsResponses: [][]*proto.GetAssignedPartitionsResponse{{{
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
-		}}},
-		getAssignedPartitionsResponseErrs: [][]error{{nil}},
-		expectedExceedsLimitsRequests: [][]*proto.ExceedsLimitsRequest{{{
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil},
+		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
 				TotalSize:  0x5,
 			}},
-		}}},
-		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
-			Results: []*proto.ExceedsLimitsResult{{
-				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonMaxStreams),
-			}},
-		}}},
-		exceedsLimitsResponseErrs: [][]error{{nil}},
-		expected: []*proto.ExceedsLimitsResponse{{
+		}},
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
+		exceedsLimitsResponseErrs: []error{nil},
+		expected: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}},
+		},
 	}, {
 		// When there are two instances, each instance is responsible for
 		// enforcing limits on just the streams that shard to its consumed
@@ -122,40 +113,40 @@ func TestRingLimitsClient_ExceedsLimits(t *testing.T) {
 			Addr: "instance-1",
 		}},
 		numPartitions: 2,
-		getAssignedPartitionsResponses: [][]*proto.GetAssignedPartitionsResponse{{{
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
-		}}, {{
+		}, {
 			AssignedPartitions: map[int32]int64{
 				1: time.Now().UnixNano(),
 			},
-		}}},
-		getAssignedPartitionsResponseErrs: [][]error{{nil}, {nil}},
-		expectedExceedsLimitsRequests: [][]*proto.ExceedsLimitsRequest{
-			nil, {{
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{
+			nil, {
 				Tenant: "test",
 				Streams: []*proto.StreamMetadata{{
 					StreamHash: 0x1,
 					TotalSize:  0x5,
 				}},
-			}},
+			},
 		},
-		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{
-			nil, {{
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{
+			nil, {
 				Results: []*proto.ExceedsLimitsResult{{
 					StreamHash: 0x1,
 					Reason:     uint32(limits.ReasonMaxStreams),
 				}},
-			}},
+			},
 		},
-		exceedsLimitsResponseErrs: [][]error{{nil}, {nil}},
-		expected: []*proto.ExceedsLimitsResponse{{
+		exceedsLimitsResponseErrs: []error{nil, nil},
+		expected: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
-		}},
+		},
 	}, {
 		// When there are two streams and two instances, but all streams
 		// shard to one partition, just the instance that consumes that
@@ -177,18 +168,18 @@ func TestRingLimitsClient_ExceedsLimits(t *testing.T) {
 			Addr: "instance-1",
 		}},
 		numPartitions: 2,
-		getAssignedPartitionsResponses: [][]*proto.GetAssignedPartitionsResponse{{{
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
-		}}, {{
+		}, {
 			AssignedPartitions: map[int32]int64{
 				1: time.Now().UnixNano(),
 			},
-		}}},
-		getAssignedPartitionsResponseErrs: [][]error{{nil}, {nil}},
-		expectedExceedsLimitsRequests: [][]*proto.ExceedsLimitsRequest{
-			nil, {{
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{
+			nil, {
 				Tenant: "test",
 				Streams: []*proto.StreamMetadata{{
 					StreamHash: 0x1,
@@ -197,23 +188,23 @@ func TestRingLimitsClient_ExceedsLimits(t *testing.T) {
 					StreamHash: 0x3,
 					TotalSize:  0x9,
 				}},
-			}},
+			},
 		},
-		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{
-			nil, {{
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{
+			nil, {
 				Results: []*proto.ExceedsLimitsResult{{
 					StreamHash: 0x1,
 					Reason:     uint32(limits.ReasonMaxStreams),
 				}},
-			}},
+			},
 		},
-		exceedsLimitsResponseErrs: [][]error{{nil}, {nil}},
-		expected: []*proto.ExceedsLimitsResponse{{
+		exceedsLimitsResponseErrs: []error{nil, nil},
+		expected: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
-		}},
+		},
 	}, {
 		// When there are two streams and two instances, and each stream
 		// shards to different partitions, all instances should be called
@@ -235,52 +226,50 @@ func TestRingLimitsClient_ExceedsLimits(t *testing.T) {
 			Addr: "instance-1",
 		}},
 		numPartitions: 2,
-		getAssignedPartitionsResponses: [][]*proto.GetAssignedPartitionsResponse{{{
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
-		}}, {{
+		}, {
 			AssignedPartitions: map[int32]int64{
 				1: time.Now().UnixNano(),
 			},
-		}}},
-		getAssignedPartitionsResponseErrs: [][]error{{nil}, {nil}},
-		expectedExceedsLimitsRequests: [][]*proto.ExceedsLimitsRequest{{{
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x2,
 				TotalSize:  0x9,
 			}},
-		}}, {{
+		}, {
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
 				TotalSize:  0x5,
 			}},
-		}}},
-		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
+		}},
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonMaxStreams),
-			}},
-		}}, {{
-			Results: []*proto.ExceedsLimitsResult{{
-				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonMaxStreams),
-			}},
-		}}},
-		exceedsLimitsResponseErrs: [][]error{{nil}, {nil}},
-		expected: []*proto.ExceedsLimitsResponse{{
-			Results: []*proto.ExceedsLimitsResult{{
-				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}, {
 			Results: []*proto.ExceedsLimitsResult{{
-				StreamHash: 0x2,
+				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
+		exceedsLimitsResponseErrs: []error{nil, nil},
+		expected: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}, {
+				StreamHash: 0x2,
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}},
+		},
 	}, {
 		// When one instance returns an error, the streams for that instance
 		// are failed.
@@ -301,49 +290,45 @@ func TestRingLimitsClient_ExceedsLimits(t *testing.T) {
 			Addr: "instance-1",
 		}},
 		numPartitions: 2,
-		getAssignedPartitionsResponses: [][]*proto.GetAssignedPartitionsResponse{{{
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
-		}}, {{
+		}, {
 			AssignedPartitions: map[int32]int64{
 				1: time.Now().UnixNano(),
 			},
-		}}},
-		getAssignedPartitionsResponseErrs: [][]error{{nil}, {nil}},
-		expectedExceedsLimitsRequests: [][]*proto.ExceedsLimitsRequest{{{
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x2,
 				TotalSize:  0x9,
 			}},
-		}}, {{
+		}, {
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
 				TotalSize:  0x5,
 			}},
-		}}},
-		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
-			Results: []*proto.ExceedsLimitsResult{{
-				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonMaxStreams),
-			}},
-		}}, nil},
-		exceedsLimitsResponseErrs: [][]error{{nil}, {
-			errors.New("an unexpected error occurred"),
 		}},
-		expected: []*proto.ExceedsLimitsResponse{{
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
-		}, {
+		}, nil},
+		exceedsLimitsResponseErrs: []error{nil, errors.New("an unexpected error occurred")},
+		expected: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonFailed),
+			}, {
+				StreamHash: 0x2,
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
-		}},
+		},
 	}, {
 		// When one zone returns an error, the streams for that instance
 		// should be checked against the other zone.
@@ -363,23 +348,23 @@ func TestRingLimitsClient_ExceedsLimits(t *testing.T) {
 			Zone: "b",
 		}},
 		numPartitions: 1,
-		getAssignedPartitionsResponses: [][]*proto.GetAssignedPartitionsResponse{{{
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
-		}}, {{
+		}, {
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
-		}}},
-		getAssignedPartitionsResponseErrs: [][]error{{nil}, {nil}},
-		expectedExceedsLimitsRequests: [][]*proto.ExceedsLimitsRequest{{{
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
 				StreamHash: 0x1,
 				TotalSize:  0x5,
 			}},
-		}}, {{
+		}, {
 			// The instance in zone b should receive the same request as the
 			// instance in zone a.
 			Tenant: "test",
@@ -387,24 +372,20 @@ func TestRingLimitsClient_ExceedsLimits(t *testing.T) {
 				StreamHash: 0x1,
 				TotalSize:  0x5,
 			}},
-		}}},
-		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{nil}, {{
-			Results: []*proto.ExceedsLimitsResult{{
-				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonMaxStreams),
-			}},
-		}}},
-		exceedsLimitsResponseErrs: [][]error{{
-			errors.New("an unexpected error occurred"),
-		}, {
-			nil,
 		}},
-		expected: []*proto.ExceedsLimitsResponse{{
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{nil, {
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
+		exceedsLimitsResponseErrs: []error{errors.New("an unexpected error occurred"), nil},
+		expected: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}},
+		},
 	}}
 
 	for _, test := range tests {
@@ -412,13 +393,23 @@ func TestRingLimitsClient_ExceedsLimits(t *testing.T) {
 			// Set up the mock clients, one for each set of mock RPC responses.
 			mockClients := make([]*mockLimitsProtoClient, len(test.instances))
 			for i := 0; i < len(test.instances); i++ {
+				expectedNumAssignedPartitionsRequests := 0
+				if test.getAssignedPartitionsResponses[i] != nil {
+					expectedNumAssignedPartitionsRequests = 1
+				}
+				expectedNumExceedsLimitsRequests := 0
+				if test.expectedExceedsLimitsRequests[i] != nil {
+					expectedNumExceedsLimitsRequests = 1
+				}
 				mockClients[i] = &mockLimitsProtoClient{
-					t:                                 t,
-					getAssignedPartitionsResponses:    test.getAssignedPartitionsResponses[i],
-					getAssignedPartitionsResponseErrs: test.getAssignedPartitionsResponseErrs[i],
-					expectedExceedsLimitsRequests:     test.expectedExceedsLimitsRequests[i],
-					exceedsLimitsResponses:            test.exceedsLimitsResponses[i],
-					exceedsLimitsResponseErrs:         test.exceedsLimitsResponseErrs[i],
+					t:                                     t,
+					getAssignedPartitionsResponse:         test.getAssignedPartitionsResponses[i],
+					getAssignedPartitionsResponseErr:      test.getAssignedPartitionsResponseErrs[i],
+					expectedExceedsLimitsRequest:          test.expectedExceedsLimitsRequests[i],
+					exceedsLimitsResponse:                 test.exceedsLimitsResponses[i],
+					exceedsLimitsResponseErr:              test.exceedsLimitsResponseErrs[i],
+					expectedNumAssignedPartitionsRequests: expectedNumAssignedPartitionsRequests,
+					expectedNumExceedsLimitsRequests:      expectedNumExceedsLimitsRequests,
 				}
 				t.Cleanup(mockClients[i].Finished)
 			}
@@ -436,7 +427,16 @@ func TestRingLimitsClient_ExceedsLimits(t *testing.T) {
 				require.Nil(t, actual)
 			} else {
 				require.NoError(t, err)
-				require.ElementsMatch(t, test.expected, actual)
+				slices.SortFunc(actual.Results, func(a, b *proto.ExceedsLimitsResult) int {
+					if a.StreamHash < b.StreamHash {
+						return -1
+					} else if a.StreamHash == b.StreamHash {
+						return 0
+					} else { //nolint:revive
+						return 1
+					}
+				})
+				require.Equal(t, test.expected, actual)
 			}
 		})
 	}
@@ -581,9 +581,10 @@ func TestRingLimitsClient_GetZoneAwarePartitionConsumers(t *testing.T) {
 			for i := range test.instances {
 				// These test cases assume one request/response per instance.
 				mockClients[i] = &mockLimitsProtoClient{
-					t:                                 t,
-					getAssignedPartitionsResponses:    []*proto.GetAssignedPartitionsResponse{test.getAssignedPartitionsResponses[i]},
-					getAssignedPartitionsResponseErrs: []error{test.getAssignedPartitionsResponseErrs[i]},
+					t:                                     t,
+					getAssignedPartitionsResponse:         test.getAssignedPartitionsResponses[i],
+					getAssignedPartitionsResponseErr:      test.getAssignedPartitionsResponseErrs[i],
+					expectedNumAssignedPartitionsRequests: 1,
 				}
 				t.Cleanup(mockClients[i].Finished)
 			}
@@ -606,14 +607,13 @@ func TestRingLimitsClient_GetZoneAwarePartitionConsumers(t *testing.T) {
 func TestRingLimitsClient_GetPartitionConsumers(t *testing.T) {
 	tests := []struct {
 		name string
-		// Instances contains the complete set of instances that should be mocked.
-		// For example, if a test case is expected to make RPC calls to one instance,
-		// then just one InstanceDesc is required.
+		// Instances contains the complete set of instances that should be
+		// mocked. For example, if a test case is expected to make RPC calls
+		// to one instance, then just one InstanceDesc is required.
 		instances []ring.InstanceDesc
-		// The size of the following slices must match len(instances), where each
-		// value contains the expected request/response for the instance at the
-		// same index in the instances slice. If a request/response is not expected,
-		// the value can be set to nil.
+		// The following request and response slices contain the expected
+		// RPCs for each instance, and MUST be the same size as the instances
+		// slice (otherwise the test will panic).
 		getAssignedPartitionsResponses    []*proto.GetAssignedPartitionsResponse
 		getAssignedPartitionsResponseErrs []error
 		// The expected result.
@@ -718,9 +718,10 @@ func TestRingLimitsClient_GetPartitionConsumers(t *testing.T) {
 			for i := range test.instances {
 				// These test cases assume one request/response per instance.
 				mockClients[i] = &mockLimitsProtoClient{
-					t:                                 t,
-					getAssignedPartitionsResponses:    []*proto.GetAssignedPartitionsResponse{test.getAssignedPartitionsResponses[i]},
-					getAssignedPartitionsResponseErrs: []error{test.getAssignedPartitionsResponseErrs[i]},
+					t:                                     t,
+					getAssignedPartitionsResponse:         test.getAssignedPartitionsResponses[i],
+					getAssignedPartitionsResponseErr:      test.getAssignedPartitionsResponseErrs[i],
+					expectedNumAssignedPartitionsRequests: 1,
 				}
 				t.Cleanup(mockClients[i].Finished)
 			}
@@ -742,30 +743,28 @@ func TestRingLimitsClient_GetPartitionConsumers(t *testing.T) {
 
 func TestRingLimitsClient_GetPartitionConsumers_Caching(t *testing.T) {
 	// Set up the mock clients.
-	req0 := proto.GetAssignedPartitionsResponse{
-		AssignedPartitions: map[int32]int64{
-			0: time.Now().UnixNano(),
-		},
-	}
 	client0 := mockLimitsProtoClient{
 		t: t,
+		getAssignedPartitionsResponse: &proto.GetAssignedPartitionsResponse{
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		},
 		// Expect the same request twice. The first time on the first
 		// cache miss, and the second time on the second cache miss after
 		// resetting the cache.
-		getAssignedPartitionsResponses:    []*proto.GetAssignedPartitionsResponse{&req0, &req0},
-		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		expectedNumAssignedPartitionsRequests: 2,
 	}
 	t.Cleanup(client0.Finished)
-	req1 := proto.GetAssignedPartitionsResponse{
-		AssignedPartitions: map[int32]int64{
-			1: time.Now().UnixNano(),
-		},
-	}
 	client1 := mockLimitsProtoClient{
 		t: t,
+		getAssignedPartitionsResponse: &proto.GetAssignedPartitionsResponse{
+			AssignedPartitions: map[int32]int64{
+				1: time.Now().UnixNano(),
+			},
+		},
 		// Expect the same request twice too for the same reasons.
-		getAssignedPartitionsResponses:    []*proto.GetAssignedPartitionsResponse{&req1, &req1},
-		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		expectedNumAssignedPartitionsRequests: 2,
 	}
 	t.Cleanup(client1.Finished)
 	mockClients := []*mockLimitsProtoClient{&client0, &client1}

@@ -458,6 +458,9 @@ func (r *RowReader) init(ctx context.Context) error {
 	if err := r.initDownloader(ctx); err != nil {
 		return err
 	}
+	if err := r.prefetchPages(ctx); err != nil {
+		return fmt.Errorf("prefetching pages: %w", err)
+	}
 
 	if r.inner == nil {
 		r.inner = newBasicRowReader(r.allColumns())
@@ -467,6 +470,13 @@ func (r *RowReader) init(ctx context.Context) error {
 
 	r.ready = true
 	return nil
+}
+
+func (r *RowReader) prefetchPages(ctx context.Context) error {
+	if !r.opts.Prefetch {
+		return nil
+	}
+	return r.dl.Prefetch(ctx)
 }
 
 // allColumns returns the full set of column to read. If r was configured with

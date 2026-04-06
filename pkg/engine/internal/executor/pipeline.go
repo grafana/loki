@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -107,7 +108,11 @@ func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if p.read == nil {
 		return nil, EOF
 	}
-	return p.read(ctx, p.inputs)
+	rec, err := p.read(ctx, p.inputs)
+
+	assertions.CheckColumnDuplicates(rec)
+
+	return rec, err
 }
 
 // Close implements Pipeline.

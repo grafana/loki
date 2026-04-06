@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -132,6 +133,10 @@ func (p *topkPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if !p.computed {
 		rec, err := p.compute(ctx)
 		p.computed = true
+
+		assertions.CheckColumnDuplicates(rec)
+		assertions.CheckLabelValuesDuplicates(rec)
+
 		return rec, err
 	}
 	return nil, EOF

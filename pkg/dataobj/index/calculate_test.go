@@ -169,7 +169,7 @@ func TestCalculator_Calculate(t *testing.T) {
 			require.NoError(t, err)
 			err = bucket.Upload(context.Background(), fmt.Sprintf("obj-%d", i), reader)
 			require.NoError(t, err)
-			bucketObj, err := dataobj.FromBucket(context.Background(), bucket, fmt.Sprintf("obj-%d", i))
+			bucketObj, err := dataobj.FromBucket(context.Background(), bucket, fmt.Sprintf("obj-%d", i), 0)
 			require.NoError(t, err)
 
 			err = calculator.Calculate(context.Background(), logger, bucketObj, fmt.Sprintf("test/path-%d", i))

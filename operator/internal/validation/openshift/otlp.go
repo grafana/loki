@@ -13,15 +13,15 @@ func ValidateOTLPInvalidDrop(spec *lokiv1.LokiStackSpec) field.ErrorList {
 		return nil
 	}
 
-	disableRecommendedAttributes := false
+	enableConsoleLabels := false
 	if spec.Tenants != nil &&
 		spec.Tenants.Openshift != nil &&
 		spec.Tenants.Openshift.OTLP != nil {
-		disableRecommendedAttributes = spec.Tenants.Openshift.OTLP.DisableRecommendedAttributes
+		enableConsoleLabels = spec.Tenants.Openshift.OTLP.EnableConsoleLabels
 	}
 
 	requiredAttributes := map[string]bool{}
-	for _, label := range otlp.DefaultOTLPAttributes(disableRecommendedAttributes) {
+	for _, label := range otlp.DefaultOTLPAttributes(enableConsoleLabels) {
 		requiredAttributes[label] = true
 	}
 

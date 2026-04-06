@@ -7,6 +7,7 @@ import (
 	"hash/maphash"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
@@ -14,6 +15,7 @@ import (
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
 	"go.yaml.in/yaml/v4"
+	"golang.org/x/sync/errgroup"
 )
 
 // SchemaDynamicValue is used to hold multiple possible types for a schema property. There are two values, a left
@@ -158,8 +160,6 @@ type Schema struct {
 	RootNode *yaml.Node
 	index    *index.SpecIndex
 	context  context.Context
-	hashed   uint64     // quick hash of the schema, used for quick equality checking
-	hashLock sync.Mutex // lock to prevent concurrent hashing of the same schema
 	*low.Reference
 	low.NodeMap
 }
@@ -196,6 +196,12 @@ func (s *Schema) Hash() uint64 {
 // The hash map means each schema is hashed once, and then the hash is reused for quick equality checking.
 var SchemaQuickHashMap sync.Map
 
+// ClearSchemaQuickHashMap resets the schema quick-hash cache.
+// Call this between document lifecycles in long-running processes to bound memory.
+func ClearSchemaQuickHashMap() {
+	SchemaQuickHashMap.Clear()
+}
+
 func (s *Schema) hash(quick bool) uint64 {
 	if s == nil {
 		return 0
@@ -217,7 +223,16 @@ func (s *Schema) hash(quick bool) uint64 {
 			cfId = s.Index.GetConfig().GetId()
 		}
 	}
-	key := fmt.Sprintf("%s:%d:%d:%s", path, s.RootNode.Line, s.RootNode.Column, cfId)
+	var keyBuf strings.Builder
+	keyBuf.Grow(len(path) + len(cfId) + 16)
+	keyBuf.WriteString(path)
+	keyBuf.WriteByte(':')
+	keyBuf.WriteString(strconv.Itoa(s.RootNode.Line))
+	keyBuf.WriteByte(':')
+	keyBuf.WriteString(strconv.Itoa(s.RootNode.Column))
+	keyBuf.WriteByte(':')
+	keyBuf.WriteString(cfId)
+	key := keyBuf.String()
 	if quick {
 		if v, ok := SchemaQuickHashMap.Load(key); ok {
 			if r, k := v.(uint64); k {
@@ -240,23 +255,23 @@ func (s *Schema) hash(quick bool) uint64 {
 		sb.WriteByte('|')
 	}
 	if !s.MultipleOf.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.MultipleOf.Value))
+		sb.WriteString(strconv.FormatFloat(s.MultipleOf.Value, 'g', -1, 64))
 		sb.WriteByte('|')
 	}
 	if !s.Maximum.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.Maximum.Value))
+		sb.WriteString(strconv.FormatFloat(s.Maximum.Value, 'g', -1, 64))
 		sb.WriteByte('|')
 	}
 	if !s.Minimum.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.Minimum.Value))
+		sb.WriteString(strconv.FormatFloat(s.Minimum.Value, 'g', -1, 64))
 		sb.WriteByte('|')
 	}
 	if !s.MaxLength.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.MaxLength.Value))
+		sb.WriteString(strconv.FormatInt(s.MaxLength.Value, 10))
 		sb.WriteByte('|')
 	}
 	if !s.MinLength.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.MinLength.Value))
+		sb.WriteString(strconv.FormatInt(s.MinLength.Value, 10))
 		sb.WriteByte('|')
 	}
 	if !s.Pattern.IsEmpty() {
@@ -268,23 +283,23 @@ func (s *Schema) hash(quick bool) uint64 {
 		sb.WriteByte('|')
 	}
 	if !s.MaxItems.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.MaxItems.Value))
+		sb.WriteString(strconv.FormatInt(s.MaxItems.Value, 10))
 		sb.WriteByte('|')
 	}
 	if !s.MinItems.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.MinItems.Value))
+		sb.WriteString(strconv.FormatInt(s.MinItems.Value, 10))
 		sb.WriteByte('|')
 	}
 	if !s.UniqueItems.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.UniqueItems.Value))
+		sb.WriteString(strconv.FormatBool(s.UniqueItems.Value))
 		sb.WriteByte('|')
 	}
 	if !s.MaxProperties.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.MaxProperties.Value))
+		sb.WriteString(strconv.FormatInt(s.MaxProperties.Value, 10))
 		sb.WriteByte('|')
 	}
 	if !s.MinProperties.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.MinProperties.Value))
+		sb.WriteString(strconv.FormatInt(s.MinProperties.Value, 10))
 		sb.WriteByte('|')
 	}
 	if !s.AdditionalProperties.IsEmpty() {
@@ -312,35 +327,35 @@ func (s *Schema) hash(quick bool) uint64 {
 		sb.WriteByte('|')
 	}
 	if !s.Nullable.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.Nullable.Value))
+		sb.WriteString(strconv.FormatBool(s.Nullable.Value))
 		sb.WriteByte('|')
 	}
 	if !s.ReadOnly.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.ReadOnly.Value))
+		sb.WriteString(strconv.FormatBool(s.ReadOnly.Value))
 		sb.WriteByte('|')
 	}
 	if !s.WriteOnly.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.WriteOnly.Value))
+		sb.WriteString(strconv.FormatBool(s.WriteOnly.Value))
 		sb.WriteByte('|')
 	}
 	if !s.Deprecated.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.Deprecated.Value))
+		sb.WriteString(strconv.FormatBool(s.Deprecated.Value))
 		sb.WriteByte('|')
 	}
 	if !s.ExclusiveMaximum.IsEmpty() && s.ExclusiveMaximum.Value.IsA() {
-		sb.WriteString(fmt.Sprint(s.ExclusiveMaximum.Value.A))
+		sb.WriteString(strconv.FormatBool(s.ExclusiveMaximum.Value.A))
 		sb.WriteByte('|')
 	}
 	if !s.ExclusiveMaximum.IsEmpty() && s.ExclusiveMaximum.Value.IsB() {
-		sb.WriteString(fmt.Sprint(s.ExclusiveMaximum.Value.B))
+		sb.WriteString(strconv.FormatFloat(s.ExclusiveMaximum.Value.B, 'g', -1, 64))
 		sb.WriteByte('|')
 	}
 	if !s.ExclusiveMinimum.IsEmpty() && s.ExclusiveMinimum.Value.IsA() {
-		sb.WriteString(fmt.Sprint(s.ExclusiveMinimum.Value.A))
+		sb.WriteString(strconv.FormatBool(s.ExclusiveMinimum.Value.A))
 		sb.WriteByte('|')
 	}
 	if !s.ExclusiveMinimum.IsEmpty() && s.ExclusiveMinimum.Value.IsB() {
-		sb.WriteString(fmt.Sprint(s.ExclusiveMinimum.Value.B))
+		sb.WriteString(strconv.FormatFloat(s.ExclusiveMinimum.Value.B, 'g', -1, 64))
 		sb.WriteByte('|')
 	}
 	if !s.Type.IsEmpty() && s.Type.Value.IsA() {
@@ -408,16 +423,12 @@ func (s *Schema) hash(quick bool) uint64 {
 	// hash polymorphic data - OneOf
 	if len(s.OneOf.Value) > 0 {
 		oneOfKeys := make([]string, len(s.OneOf.Value))
-		oneOfEntities := make(map[string]*SchemaProxy, len(s.OneOf.Value))
 		for i := range s.OneOf.Value {
-			g := s.OneOf.Value[i].Value
-			r := low.GenerateHashString(g)
-			oneOfEntities[r] = g
-			oneOfKeys[i] = r
+			oneOfKeys[i] = low.GenerateHashString(s.OneOf.Value[i].Value)
 		}
 		sort.Strings(oneOfKeys)
 		for _, key := range oneOfKeys {
-			sb.WriteString(low.GenerateHashString(oneOfEntities[key]))
+			sb.WriteString(key)
 			sb.WriteByte('|')
 		}
 	}
@@ -425,16 +436,12 @@ func (s *Schema) hash(quick bool) uint64 {
 	// hash polymorphic data - AllOf
 	if len(s.AllOf.Value) > 0 {
 		allOfKeys := make([]string, len(s.AllOf.Value))
-		allOfEntities := make(map[string]*SchemaProxy, len(s.AllOf.Value))
 		for i := range s.AllOf.Value {
-			g := s.AllOf.Value[i].Value
-			r := low.GenerateHashString(g)
-			allOfEntities[r] = g
-			allOfKeys[i] = r
+			allOfKeys[i] = low.GenerateHashString(s.AllOf.Value[i].Value)
 		}
 		sort.Strings(allOfKeys)
 		for _, key := range allOfKeys {
-			sb.WriteString(low.GenerateHashString(allOfEntities[key]))
+			sb.WriteString(key)
 			sb.WriteByte('|')
 		}
 	}
@@ -442,16 +449,12 @@ func (s *Schema) hash(quick bool) uint64 {
 	// hash polymorphic data - AnyOf
 	if len(s.AnyOf.Value) > 0 {
 		anyOfKeys := make([]string, len(s.AnyOf.Value))
-		anyOfEntities := make(map[string]*SchemaProxy, len(s.AnyOf.Value))
 		for i := range s.AnyOf.Value {
-			g := s.AnyOf.Value[i].Value
-			r := low.GenerateHashString(g)
-			anyOfEntities[r] = g
-			anyOfKeys[i] = r
+			anyOfKeys[i] = low.GenerateHashString(s.AnyOf.Value[i].Value)
 		}
 		sort.Strings(anyOfKeys)
 		for _, key := range anyOfKeys {
-			sb.WriteString(low.GenerateHashString(anyOfEntities[key]))
+			sb.WriteString(key)
 			sb.WriteByte('|')
 		}
 	}
@@ -467,7 +470,7 @@ func (s *Schema) hash(quick bool) uint64 {
 		sb.WriteByte('|')
 	}
 	if !s.Items.IsEmpty() && s.Items.Value.IsB() {
-		sb.WriteString(fmt.Sprint(s.Items.Value.B))
+		sb.WriteString(strconv.FormatBool(s.Items.Value.B))
 		sb.WriteByte('|')
 	}
 	// 3.1 only props
@@ -533,7 +536,7 @@ func (s *Schema) hash(quick bool) uint64 {
 		for _, k := range vocabKeys {
 			sb.WriteString(k)
 			sb.WriteByte(':')
-			sb.WriteString(fmt.Sprint(vocabMap[k]))
+			sb.WriteString(strconv.FormatBool(vocabMap[k]))
 			sb.WriteByte('|')
 		}
 	}
@@ -577,16 +580,12 @@ func (s *Schema) hash(quick bool) uint64 {
 	// Process PrefixItems
 	if len(s.PrefixItems.Value) > 0 {
 		itemsKeys := make([]string, len(s.PrefixItems.Value))
-		itemsEntities := make(map[string]*SchemaProxy, len(s.PrefixItems.Value))
 		for i := range s.PrefixItems.Value {
-			g := s.PrefixItems.Value[i].Value
-			r := low.GenerateHashString(g)
-			itemsEntities[r] = g
-			itemsKeys[i] = r
+			itemsKeys[i] = low.GenerateHashString(s.PrefixItems.Value[i].Value)
 		}
 		sort.Strings(itemsKeys)
 		for _, key := range itemsKeys {
-			sb.WriteString(low.GenerateHashString(itemsEntities[key]))
+			sb.WriteString(key)
 			sb.WriteByte('|')
 		}
 	}
@@ -608,11 +607,11 @@ func (s *Schema) hash(quick bool) uint64 {
 		sb.WriteByte('|')
 	}
 	if !s.MinContains.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.MinContains.Value))
+		sb.WriteString(strconv.FormatInt(s.MinContains.Value, 10))
 		sb.WriteByte('|')
 	}
 	if !s.MaxContains.IsEmpty() {
-		sb.WriteString(fmt.Sprint(s.MaxContains.Value))
+		sb.WriteString(strconv.FormatInt(s.MaxContains.Value, 10))
 		sb.WriteByte('|')
 	}
 	if !s.Examples.IsEmpty() {
@@ -1136,140 +1135,155 @@ func (s *Schema) Build(ctx context.Context, root *yaml.Node, idx *index.SpecInde
 	_, sthenLabel, sthenValue := utils.FindKeyNodeFullTop(ThenLabel, root.Content)
 	_, propNamesLabel, propNamesValue := utils.FindKeyNodeFullTop(PropertyNamesLabel, root.Content)
 	_, unevalItemsLabel, unevalItemsValue := utils.FindKeyNodeFullTop(UnevaluatedItemsLabel, root.Content)
-	_, unevalPropsLabel, unevalPropsValue := utils.FindKeyNodeFullTop(UnevaluatedPropertiesLabel, root.Content)
-	_, addPropsLabel, addPropsValue := utils.FindKeyNodeFullTop(AdditionalPropertiesLabel, root.Content)
+	// Reuse earlier lookups for unevaluatedProperties and additionalProperties instead of re-scanning.
+	unevalPropsLabel, unevalPropsValue := unevalLabel, unevalValue
+	addPropsLabel, addPropsValue := addPLabel, addPValue
 	_, contentSchLabel, contentSchValue := utils.FindKeyNodeFullTop(ContentSchemaLabel, root.Content)
 
-	errorChan := make(chan error)
-	allOfChan := make(chan schemaProxyBuildResult)
-	anyOfChan := make(chan schemaProxyBuildResult)
-	oneOfChan := make(chan schemaProxyBuildResult)
-	itemsChan := make(chan schemaProxyBuildResult)
-	prefixItemsChan := make(chan schemaProxyBuildResult)
-	notChan := make(chan schemaProxyBuildResult)
-	containsChan := make(chan schemaProxyBuildResult)
-	ifChan := make(chan schemaProxyBuildResult)
-	elseChan := make(chan schemaProxyBuildResult)
-	thenChan := make(chan schemaProxyBuildResult)
-	propNamesChan := make(chan schemaProxyBuildResult)
-	unevalItemsChan := make(chan schemaProxyBuildResult)
-	unevalPropsChan := make(chan schemaProxyBuildResult)
-	addPropsChan := make(chan schemaProxyBuildResult)
-	contentSchChan := make(chan schemaProxyBuildResult)
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
-	totalBuilds := countSubSchemaItems(allOfValue) +
-		countSubSchemaItems(anyOfValue) +
-		countSubSchemaItems(oneOfValue) +
-		countSubSchemaItems(prefixItemsValue)
+	g, gCtx := errgroup.WithContext(ctx)
 
 	if allOfValue != nil {
-		go buildSchema(ctx, allOfChan, allOfLabel, allOfValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchemaList(gCtx, allOfLabel, allOfValue, idx)
+			if err == nil {
+				allOf = res
+			}
+			return err
+		})
 	}
 	if anyOfValue != nil {
-		go buildSchema(ctx, anyOfChan, anyOfLabel, anyOfValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchemaList(gCtx, anyOfLabel, anyOfValue, idx)
+			if err == nil {
+				anyOf = res
+			}
+			return err
+		})
 	}
 	if oneOfValue != nil {
-		go buildSchema(ctx, oneOfChan, oneOfLabel, oneOfValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchemaList(gCtx, oneOfLabel, oneOfValue, idx)
+			if err == nil {
+				oneOf = res
+			}
+			return err
+		})
 	}
 	if prefixItemsValue != nil {
-		go buildSchema(ctx, prefixItemsChan, prefixItemsLabel, prefixItemsValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchemaList(gCtx, prefixItemsLabel, prefixItemsValue, idx)
+			if err == nil {
+				prefixItems = res
+			}
+			return err
+		})
 	}
 	if notValue != nil {
-		totalBuilds++
-		go buildSchema(ctx, notChan, notLabel, notValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchema(gCtx, notLabel, notValue, idx)
+			if err == nil {
+				not = res
+			}
+			return err
+		})
 	}
 	if containsValue != nil {
-		totalBuilds++
-		go buildSchema(ctx, containsChan, containsLabel, containsValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchema(gCtx, containsLabel, containsValue, idx)
+			if err == nil {
+				contains = res
+			}
+			return err
+		})
 	}
 	if !itemsIsBool && itemsValue != nil {
-		totalBuilds++
-		go buildSchema(ctx, itemsChan, itemsLabel, itemsValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchema(gCtx, itemsLabel, itemsValue, idx)
+			if err == nil {
+				items = res
+			}
+			return err
+		})
 	}
 	if sifValue != nil {
-		totalBuilds++
-		go buildSchema(ctx, ifChan, sifLabel, sifValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchema(gCtx, sifLabel, sifValue, idx)
+			if err == nil {
+				sif = res
+			}
+			return err
+		})
 	}
 	if selseValue != nil {
-		totalBuilds++
-		go buildSchema(ctx, elseChan, selseLabel, selseValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchema(gCtx, selseLabel, selseValue, idx)
+			if err == nil {
+				selse = res
+			}
+			return err
+		})
 	}
 	if sthenValue != nil {
-		totalBuilds++
-		go buildSchema(ctx, thenChan, sthenLabel, sthenValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchema(gCtx, sthenLabel, sthenValue, idx)
+			if err == nil {
+				sthen = res
+			}
+			return err
+		})
 	}
 	if propNamesValue != nil {
-		totalBuilds++
-		go buildSchema(ctx, propNamesChan, propNamesLabel, propNamesValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchema(gCtx, propNamesLabel, propNamesValue, idx)
+			if err == nil {
+				propertyNames = res
+			}
+			return err
+		})
 	}
 	if unevalItemsValue != nil {
-		totalBuilds++
-		go buildSchema(ctx, unevalItemsChan, unevalItemsLabel, unevalItemsValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchema(gCtx, unevalItemsLabel, unevalItemsValue, idx)
+			if err == nil {
+				unevalItems = res
+			}
+			return err
+		})
 	}
 	if !unevalIsBool && unevalPropsValue != nil {
-		totalBuilds++
-		go buildSchema(ctx, unevalPropsChan, unevalPropsLabel, unevalPropsValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchema(gCtx, unevalPropsLabel, unevalPropsValue, idx)
+			if err == nil {
+				unevalProperties = res
+			}
+			return err
+		})
 	}
 	if !addPropsIsBool && addPropsValue != nil {
-		totalBuilds++
-		go buildSchema(ctx, addPropsChan, addPropsLabel, addPropsValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchema(gCtx, addPropsLabel, addPropsValue, idx)
+			if err == nil {
+				addProperties = res
+			}
+			return err
+		})
 	}
 	if contentSchValue != nil {
-		totalBuilds++
-		go buildSchema(ctx, contentSchChan, contentSchLabel, contentSchValue, errorChan, idx)
+		g.Go(func() error {
+			res, err := buildSchema(gCtx, contentSchLabel, contentSchValue, idx)
+			if err == nil {
+				contentSch = res
+			}
+			return err
+		})
 	}
 
-	completeCount := 0
-	for completeCount < totalBuilds {
-		select {
-		case e := <-errorChan:
-			return e
-		case r := <-allOfChan:
-			completeCount++
-			allOf = append(allOf, r.v)
-		case r := <-anyOfChan:
-			completeCount++
-			anyOf = append(anyOf, r.v)
-		case r := <-oneOfChan:
-			completeCount++
-			oneOf = append(oneOf, r.v)
-		case r := <-itemsChan:
-			completeCount++
-			items = r.v
-		case r := <-prefixItemsChan:
-			completeCount++
-			prefixItems = append(prefixItems, r.v)
-		case r := <-notChan:
-			completeCount++
-			not = r.v
-		case r := <-containsChan:
-			completeCount++
-			contains = r.v
-		case r := <-ifChan:
-			completeCount++
-			sif = r.v
-		case r := <-elseChan:
-			completeCount++
-			selse = r.v
-		case r := <-thenChan:
-			completeCount++
-			sthen = r.v
-		case r := <-propNamesChan:
-			completeCount++
-			propertyNames = r.v
-		case r := <-unevalItemsChan:
-			completeCount++
-			unevalItems = r.v
-		case r := <-unevalPropsChan:
-			completeCount++
-			unevalProperties = r.v
-		case r := <-addPropsChan:
-			completeCount++
-			addProperties = r.v
-		case r := <-contentSchChan:
-			completeCount++
-			contentSch = r.v
-		}
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("failed to build schema: %w", err)
 	}
 
 	if len(anyOf) > 0 {
@@ -1488,143 +1502,112 @@ func buildDependentRequiredMap(root *yaml.Node, label string) (*low.NodeReferenc
 	return nil, nil
 }
 
-// count the number of sub-schemas in a node.
-func countSubSchemaItems(node *yaml.Node) int {
-	if utils.IsNodeMap(node) {
-		return 1
-	}
-	if utils.IsNodeArray(node) {
-		return len(node.Content)
-	}
-	return 0
-}
-
-// schema build result container used for async building.
-type schemaProxyBuildResult struct {
-	k low.KeyReference[string]
-	v low.ValueReference[*SchemaProxy]
-}
-
 // extract extensions from schema
 func (s *Schema) extractExtensions(root *yaml.Node) {
 	s.Extensions = low.ExtractExtensions(root)
 }
 
-// build out a child schema for parent schema.
-func buildSchema(ctx context.Context, schemas chan schemaProxyBuildResult, labelNode, valueNode *yaml.Node, errors chan error, idx *index.SpecIndex) {
-	if valueNode != nil {
-		type buildResult struct {
-			res *low.ValueReference[*SchemaProxy]
-			idx int
+// buildSchemaProxy builds out a SchemaProxy for a single node.
+func buildSchemaProxy(ctx context.Context, idx *index.SpecIndex, kn, vn *yaml.Node, rf *yaml.Node, isRef bool, refLocation string) low.ValueReference[*SchemaProxy] {
+	// a proxy design works best here. polymorphism, pretty much guarantees that a sub-schema can
+	// take on circular references through polymorphism. Like the resolver, if we try and follow these
+	// journey's through hyperspace, we will end up creating endless amounts of threads, spinning off
+	// chasing down circles, that in turn spin up endless threads.
+	// In order to combat this, we need a schema proxy that will only resolve the schema when asked, and then
+	// it will only do it one level at a time.
+	sp := new(SchemaProxy)
+
+	// call Build to ensure transformation happens
+	_ = sp.Build(ctx, kn, vn, idx)
+
+	if isRef {
+		sp.SetReference(refLocation, rf)
+	}
+	return low.ValueReference[*SchemaProxy]{
+		Value:     sp,
+		ValueNode: sp.vn, // use transformed node
+	}
+}
+
+// buildSchema builds out a child schema for parent schema. Expected to be a singular schema object.
+func buildSchema(ctx context.Context, labelNode, valueNode *yaml.Node, idx *index.SpecIndex) (low.ValueReference[*SchemaProxy], error) {
+	if valueNode == nil {
+		return low.ValueReference[*SchemaProxy]{}, nil
+	}
+
+	if !utils.IsNodeMap(valueNode) {
+		return low.ValueReference[*SchemaProxy]{}, fmt.Errorf("build schema failed: expected a single schema object for '%s', but found an array or scalar at line %d, col %d",
+			utils.MakeTagReadable(valueNode), valueNode.Line, valueNode.Column)
+	}
+
+	isRef := false
+	refLocation := ""
+	var refNode *yaml.Node
+	foundCtx := ctx
+	foundIdx := idx
+
+	h := false
+	if h, _, refLocation = utils.IsNodeRefValue(valueNode); h {
+		isRef = true
+		ref, fIdx, err, fctx := low.LocateRefNodeWithContext(foundCtx, valueNode, foundIdx)
+		if ref != nil {
+			refNode = valueNode
+			valueNode = ref
+			foundCtx = fctx
+			foundIdx = fIdx
+		} else if errors.Is(err, low.ErrExternalRefSkipped) {
+			refNode = valueNode
+		} else {
+			return low.ValueReference[*SchemaProxy]{}, fmt.Errorf("build schema failed: reference cannot be found: %s, line %d, col %d",
+				valueNode.Content[1].Value, valueNode.Content[1].Line, valueNode.Content[1].Column)
 		}
+	}
 
-		syncChan := make(chan buildResult)
+	return buildSchemaProxy(foundCtx, foundIdx, labelNode, valueNode, refNode, isRef, refLocation), nil
+}
 
-		// build out a SchemaProxy for every sub-schema.
-		build := func(pctx context.Context, fIdx *index.SpecIndex, kn, vn *yaml.Node, rf *yaml.Node, schemaIdx int, c chan buildResult,
-			isRef bool, refLocation string,
-		) buildResult {
-			// a proxy design works best here. polymorphism, pretty much guarantees that a sub-schema can
-			// take on circular references through polymorphism. Like the resolver, if we try and follow these
-			// journey's through hyperspace, we will end up creating endless amounts of threads, spinning off
-			// chasing down circles, that in turn spin up endless threads.
-			// In order to combat this, we need a schema proxy that will only resolve the schema when asked, and then
-			// it will only do it one level at a time.
-			sp := new(SchemaProxy)
+// buildSchemaList builds out child schemas for a parent schema. Expected to be an array of schema objects.
+func buildSchemaList(ctx context.Context, labelNode, valueNode *yaml.Node, idx *index.SpecIndex) ([]low.ValueReference[*SchemaProxy], error) {
+	if valueNode == nil {
+		return nil, nil
+	}
 
-			// call Build to ensure transformation happens
-			_ = sp.Build(pctx, kn, vn, fIdx)
+	if !utils.IsNodeArray(valueNode) {
+		return nil, fmt.Errorf("build schema failed: expected an array of schemas for '%s', but found an object or scalar at line %d, col %d",
+			utils.MakeTagReadable(valueNode), valueNode.Line, valueNode.Column)
+	}
 
-			if isRef {
-				sp.SetReference(refLocation, rf)
-			}
-			res := &low.ValueReference[*SchemaProxy]{
-				Value:     sp,
-				ValueNode: sp.vn, // use transformed node
-			}
-			return buildResult{
-				res: res,
-				idx: schemaIdx,
-			}
-		}
+	results := make([]low.ValueReference[*SchemaProxy], 0, len(valueNode.Content))
 
+	for _, vn := range valueNode.Content {
 		isRef := false
 		refLocation := ""
 		var refNode *yaml.Node
 		foundCtx := ctx
 		foundIdx := idx
-		if utils.IsNodeMap(valueNode) {
-			h := false
-			if h, _, refLocation = utils.IsNodeRefValue(valueNode); h {
-				isRef = true
-				ref, fIdx, err, fctx := low.LocateRefNodeWithContext(foundCtx, valueNode, foundIdx)
-				if ref != nil {
-					refNode = valueNode
-					valueNode = ref
-					foundCtx = fctx
-					foundIdx = fIdx
-				} else if err == low.ErrExternalRefSkipped {
-					refNode = valueNode
-				} else {
-					errors <- fmt.Errorf("build schema failed: reference cannot be found: %s, line %d, col %d",
-						valueNode.Content[1].Value, valueNode.Content[1].Line, valueNode.Content[1].Column)
-				}
-			}
 
-			// this only runs once, however to keep things consistent, it makes sense to use the same async method
-			// that arrays will use.
-			r := build(foundCtx, foundIdx, labelNode, valueNode, refNode, -1, syncChan, isRef, refLocation)
-			schemas <- schemaProxyBuildResult{
-				k: low.KeyReference[string]{
-					KeyNode: labelNode,
-					Value:   labelNode.Value,
-				},
-				v: *r.res,
+		h := false
+		if h, _, refLocation = utils.IsNodeRefValue(vn); h {
+			isRef = true
+			ref, fIdx, err, fctx := low.LocateRefNodeWithContext(foundCtx, vn, foundIdx)
+			if ref != nil {
+				refNode = vn
+				vn = ref
+				foundCtx = fctx
+				foundIdx = fIdx
+			} else if errors.Is(err, low.ErrExternalRefSkipped) {
+				refNode = vn
+			} else {
+				return nil, fmt.Errorf("build schema failed: reference cannot be found: %s, line %d, col %d",
+					vn.Content[1].Value, vn.Content[1].Line, vn.Content[1].Column)
 			}
-		} else if utils.IsNodeArray(valueNode) {
-			refBuilds := 0
-			results := make([]*low.ValueReference[*SchemaProxy], len(valueNode.Content))
-
-			for i, vn := range valueNode.Content {
-				isRef = false
-				h := false
-				foundIdx = idx
-				foundCtx = ctx
-				if h, _, refLocation = utils.IsNodeRefValue(vn); h {
-					isRef = true
-					ref, fIdx, err, fctx := low.LocateRefNodeWithContext(foundCtx, vn, foundIdx)
-					if ref != nil {
-						refNode = vn
-						vn = ref
-						foundCtx = fctx
-						foundIdx = fIdx
-					} else if err == low.ErrExternalRefSkipped {
-						refNode = vn
-					} else {
-						errors <- fmt.Errorf("build schema failed: reference cannot be found: %s, line %d, col %d",
-							vn.Content[1].Value, vn.Content[1].Line, vn.Content[1].Column)
-						return
-					}
-				}
-				refBuilds++
-				r := build(foundCtx, foundIdx, vn, vn, refNode, i, syncChan, isRef, refLocation)
-				results[r.idx] = r.res
-			}
-
-			for _, r := range results {
-				schemas <- schemaProxyBuildResult{
-					k: low.KeyReference[string]{
-						KeyNode: labelNode,
-						Value:   labelNode.Value,
-					},
-					v: *r,
-				}
-			}
-		} else {
-			errors <- fmt.Errorf("build schema failed: unexpected data type: '%s', line %d, col %d",
-				utils.MakeTagReadable(valueNode), valueNode.Line, valueNode.Column)
 		}
+
+		r := buildSchemaProxy(foundCtx, foundIdx, vn, vn, refNode, isRef, refLocation)
+		results = append(results, r)
 	}
+
+	return results, nil
 }
 
 // ExtractSchema will return a pointer to a NodeReference that contains a *SchemaProxy if successful. The function

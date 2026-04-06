@@ -1,3 +1,25 @@
+# v1.4.22 (2026-03-26)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.4.21 (2026-03-13)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.4.20 (2026-03-05)
+
+* **Bug Fix**: Read the correct auth property for SigV4A signing names.
+
+# v1.4.19 (2026-03-03)
+
+* **Bug Fix**: Modernize non codegen files with go fix
+* **Dependency Update**: Bump minimum Go version to 1.24
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.4.18 (2026-02-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.4.17 (2026-01-09)
 
 * **Dependency Update**: Updated to the latest SDK module versions

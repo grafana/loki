@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"sync"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -31,6 +33,23 @@ const (
 	AppendUnordered = iota
 	AppendOrdered
 )
+
+var (
+	sharedZstdCompressionOptions = make([]*dataset.CompressionOptions, zstd.EncoderLevelFromZstd(math.MaxInt)+1)
+	sharedZstdOptionsMutex       = sync.Mutex{}
+)
+
+func zstdCompressionOpts(encLevel zstd.EncoderLevel) *dataset.CompressionOptions {
+	sharedZstdOptionsMutex.Lock()
+	defer sharedZstdOptionsMutex.Unlock()
+
+	if sharedZstdCompressionOptions[encLevel] == nil {
+		sharedZstdCompressionOptions[encLevel] = &dataset.CompressionOptions{
+			Zstd: []zstd.EOption{zstd.WithEncoderLevel(encLevel)},
+		}
+	}
+	return sharedZstdCompressionOptions[encLevel]
+}
 
 type SortOrder int
 
@@ -171,12 +190,7 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 		panic("must not call flushRecords multiple times for a single section when using AppendOrdered strategy")
 	}
 
-	// Our stripes are intermediate tables that don't need to have the best
-	// compression. To maintain high throughput on appends, we use the fastest
-	// compression for a stripe. Better compression is then used for sections.
-	compressionOpts := &dataset.CompressionOptions{
-		Zstd: []zstd.EOption{zstd.WithEncoderLevel(encLevel)},
-	}
+	compressionOpts := zstdCompressionOpts(encLevel)
 
 	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
 	b.stripes = append(b.stripes, stripe)
@@ -192,9 +206,7 @@ func (b *Builder) flushSection() *table {
 		return nil
 	}
 
-	compressionOpts := &dataset.CompressionOptions{
-		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedDefault)},
-	}
+	compressionOpts := zstdCompressionOpts(zstd.SpeedDefault)
 
 	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.stripes, b.opts.StripeMergeLimit, b.opts.SortOrder)
 	if err != nil {

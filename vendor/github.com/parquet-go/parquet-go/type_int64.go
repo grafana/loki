@@ -10,19 +10,19 @@ import (
 
 type int64Type struct{}
 
-func (t int64Type) String() string                   { return "INT64" }
-func (t int64Type) Kind() Kind                       { return Int64 }
-func (t int64Type) Length() int                      { return 64 }
-func (t int64Type) EstimateSize(n int) int           { return 8 * n }
-func (t int64Type) EstimateNumValues(n int) int      { return n / 8 }
-func (t int64Type) Compare(a, b Value) int           { return compareInt64(a.int64(), b.int64()) }
-func (t int64Type) ColumnOrder() *format.ColumnOrder { return &typeDefinedColumnOrder }
-func (t int64Type) LogicalType() *format.LogicalType {
-	return &format.LogicalType{Integer: &format.IntType{
-		BitWidth: 64,
-		IsSigned: true,
-	}}
-}
+var int64LogicalType = format.LogicalType{Integer: &format.IntType{
+	BitWidth: 64,
+	IsSigned: true,
+}}
+
+func (t int64Type) String() string                           { return "INT64" }
+func (t int64Type) Kind() Kind                               { return Int64 }
+func (t int64Type) Length() int                              { return 64 }
+func (t int64Type) EstimateSize(n int) int                   { return 8 * n }
+func (t int64Type) EstimateNumValues(n int) int              { return n / 8 }
+func (t int64Type) Compare(a, b Value) int                   { return compareInt64(a.int64(), b.int64()) }
+func (t int64Type) ColumnOrder() *format.ColumnOrder         { return &typeDefinedColumnOrder }
+func (t int64Type) LogicalType() *format.LogicalType         { return &int64LogicalType }
 func (t int64Type) ConvertedType() *deprecated.ConvertedType { return nil }
 func (t int64Type) PhysicalType() *format.Type               { return &physicalTypes[Int64] }
 

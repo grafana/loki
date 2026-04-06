@@ -155,6 +155,17 @@ func (m *MetricsServiceConfig) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
+	if m.GetBatchSize() < 0 {
+		err := MetricsServiceConfigValidationError{
+			field:  "BatchSize",
+			reason: "value must be greater than or equal to 0",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
 	if len(errors) > 0 {
 		return MetricsServiceConfigMultiError(errors)
 	}
@@ -169,7 +180,7 @@ type MetricsServiceConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m MetricsServiceConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

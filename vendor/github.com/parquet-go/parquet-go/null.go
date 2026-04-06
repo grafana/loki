@@ -62,6 +62,12 @@ func nullIndexFuncOf(t reflect.Type) nullIndexFunc {
 	case reflect.Int:
 		return nullIndexInt
 
+	case reflect.Int8:
+		return nullIndexInt8
+
+	case reflect.Int16:
+		return nullIndexInt16
+
 	case reflect.Int32:
 		return nullIndexInt32
 
@@ -70,6 +76,12 @@ func nullIndexFuncOf(t reflect.Type) nullIndexFunc {
 
 	case reflect.Uint:
 		return nullIndexUint
+
+	case reflect.Uint8:
+		return nullIndexUint8
+
+	case reflect.Uint16:
+		return nullIndexUint16
 
 	case reflect.Uint32:
 		return nullIndexUint32

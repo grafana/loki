@@ -281,7 +281,14 @@ func (s *sink) anyCtx() context.Context {
 		if len(recBuf.batches) > 0 {
 			batch0 := recBuf.batches[0]
 			batch0.mu.Lock()
-			if batch0.canFailFromLoadErrs && len(batch0.records) > 0 {
+			// We grab the first context we can. If a batch can't
+			// be canceled, we skip it since that context is
+			// irrelevant. It's possible that a future batch also
+			// can't be canceled after we grab a canceling context;
+			// that's fine, this is just to cancel a request, we
+			// will handle retrying those batches when when
+			// handling the response.
+			if batch0.canFailFromLoadErrs && !batch0.unsureIfProduced && len(batch0.records) > 0 {
 				r0 := batch0.records[0]
 				if rctx := r0.cancelingCtx(); rctx != nil {
 					batch0.mu.Unlock()
@@ -373,7 +380,7 @@ func (s *sink) produce(sem <-chan struct{}) bool {
 					if len(recBuf.batches) > 0 {
 						batch0 := recBuf.batches[0]
 						batch0.mu.Lock()
-						if batch0.canFailFromLoadErrs && len(batch0.records) > 0 {
+						if batch0.canFailFromLoadErrs && !batch0.unsureIfProduced && len(batch0.records) > 0 {
 							r0 := batch0.records[0]
 							if rctx := r0.cancelingCtx(); rctx != nil {
 								select {
@@ -681,7 +688,7 @@ func (s *sink) handleReqRespNoack(b *bytes.Buffer, debug bool, req *produceReque
 				if debug {
 					fmt.Fprintf(b, "%d{0=>%d}, ", partition, len(batch.records))
 				}
-				s.cl.finishBatch(batch.recBatch, req.producerID, req.producerEpoch, partition, 0, nil)
+				s.cl.finishBatch(batch.recBatch, req.producerID, req.producerEpoch, 0, nil)
 			} else if debug {
 				fmt.Fprintf(b, "%d{skipped}, ", partition)
 			}
@@ -850,9 +857,18 @@ func (s *sink) handleReqRespBatch(
 	// recBuf mu (guarding most concurrency). The only place batch fields
 	// are accessed & modified without the recBuf mu is when writing a
 	// batch, and we only ever use a batch in inflight request at a time
-	// (regardless of the partition  being canceled or moving to a
+	// (regardless of the partition being canceled or moving to a
 	// different sink).
 	batch.canFailFromLoadErrs = true
+
+	// If the response was from a timeout, or the record was written but
+	// not to enough replicas, we actually do not know whether the record
+	// was persisted or not. We need to poison this batch: if we encounter
+	// a retryable error the NEXT time we produce, we still are unsure of
+	// the final state, and we need to block canceling producing.
+	if rp.ErrorCode == kerr.RequestTimedOut.Code || rp.ErrorCode == kerr.NotEnoughReplicasAfterAppend.Code {
+		batch.unsureIfProduced = true
+	}
 
 	// By default, we assume we errored. Non-error updates this back
 	// to true.
@@ -877,8 +893,7 @@ func (s *sink) handleReqRespBatch(
 	case kerr.IsRetriable(err) &&
 		!failUnknown &&
 		err != kerr.CorruptMessage &&
-		batch.tries <= s.cl.cfg.recordRetries:
-
+		(batch.tries <= s.cl.cfg.recordRetries || batch.unsureIfProduced): // we need to bypass the retry limit if we are not sure of the state
 		if debug {
 			fmt.Fprintf(b, "retrying@%d,%d(%s)}, ", rp.BaseOffset, nrec, err)
 		}
@@ -964,7 +979,7 @@ func (s *sink) handleReqRespBatch(
 			)
 			s.cl.failProducerID(producerID, producerEpoch, err)
 
-			s.cl.finishBatch(batch.recBatch, producerID, producerEpoch, rp.Partition, rp.BaseOffset, err)
+			s.cl.finishBatch(batch.recBatch, producerID, producerEpoch, rp.BaseOffset, err)
 			if debug {
 				fmt.Fprintf(b, "fatal@%d,%d(%s)}, ", rp.BaseOffset, nrec, err)
 			}
@@ -1028,7 +1043,7 @@ func (s *sink) handleReqRespBatch(
 				batch.owner.addedToTxn.Swap(true)
 			}
 		}
-		s.cl.finishBatch(batch.recBatch, producerID, producerEpoch, rp.Partition, rp.BaseOffset, err)
+		s.cl.finishBatch(batch.recBatch, producerID, producerEpoch, rp.BaseOffset, err)
 		didProduce = err == nil
 		if debug {
 			if err != nil {
@@ -1046,7 +1061,7 @@ func (s *sink) handleReqRespBatch(
 //
 // This is safe even if the owning recBuf migrated sinks, since we are
 // finishing based off the status of an inflight req from the original sink.
-func (cl *Client) finishBatch(batch *recBatch, producerID int64, producerEpoch int16, partition int32, baseOffset int64, err error) {
+func (cl *Client) finishBatch(batch *recBatch, producerID int64, producerEpoch int16, baseOffset int64, err error) {
 	recBuf := batch.owner
 
 	if err != nil {
@@ -1080,9 +1095,8 @@ func (cl *Client) finishBatch(batch *recBatch, producerID int64, producerEpoch i
 		// corresponding to our own RecordAttr's bit 8 being no
 		// timestamp type. Thus, we can directly convert the batch
 		// attrs to our own RecordAttrs.
-		attrs:     RecordAttrs{uint8(attrs)},
-		partition: partition,
-		recs:      records,
+		attrs: RecordAttrs{uint8(attrs)},
+		recs:  records,
 	})
 }
 
@@ -1137,7 +1151,7 @@ func (s *sink) handleRetryBatches(
 			return
 		}
 
-		if canFail || s.cl.cfg.disableIdempotency {
+		if (canFail && !batch.unsureIfProduced) || s.cl.cfg.disableIdempotency {
 			if err := batch.maybeFailErr(&s.cl.cfg); err != nil {
 				batch.owner.failAllRecords(err)
 				return
@@ -1489,11 +1503,11 @@ func (recBuf *recBuf) bumpRepeatedLoadErr(err error) {
 	batch0.mu.Lock()
 	batch0.tries++
 	var (
-		canFail        = !recBuf.cl.idempotent() || batch0.canFailFromLoadErrs // we can only fail if we are not idempotent or if we have no outstanding requests
-		batch0Fail     = batch0.maybeFailErr(&recBuf.cl.cfg) != nil            // timeout, retries, or aborting
-		netErr         = isRetryableBrokerErr(err) || isDialNonTimeoutErr(err) // we can fail if this is *not* a network error
-		retryableKerr  = kerr.IsRetriable(err)                                 // we fail if this is not a retryable kerr,
-		isUnknownLimit = recBuf.checkUnknownFailLimit(err)                     // or if it is, but it is UnknownTopicOrPartition and we are at our limit
+		canFail        = !recBuf.cl.idempotent() || (batch0.canFailFromLoadErrs && !batch0.unsureIfProduced) // we can only fail if we are not idempotent or if we have no outstanding requests
+		batch0Fail     = batch0.maybeFailErr(&recBuf.cl.cfg) != nil                                          // timeout, retries, or aborting
+		netErr         = isRetryableBrokerErr(err) || isDialNonTimeoutErr(err)                               // we can fail if this is *not* a network error
+		retryableKerr  = kerr.IsRetriable(err)                                                               // we fail if this is not a retryable kerr,
+		isUnknownLimit = recBuf.checkUnknownFailLimit(err)                                                   // or if it is, but it is UnknownTopicOrPartition and we are at our limit
 
 		willFail = canFail && (batch0Fail || !netErr && (!retryableKerr || retryableKerr && isUnknownLimit))
 	)
@@ -1614,6 +1628,14 @@ type recBatch struct {
 	// request with this batch, and then reset it to true whenever we
 	// process a response.
 	canFailFromLoadErrs bool
+	// If we receive a response, but the error code is REQUEST_TIMED_OUT or
+	// NOT_ENOUGH_REPLICAS_AFTER_APPEND, we actually do not know the state
+	// of producing this on the broker. Further, we need to persist this
+	// state: if we produce a second time and receive a different retryable
+	// error, we need to ensure we do not allow the record to be canceled
+	// *then*. Once we do not know the state, we need to block cancelation
+	// until we definitively produce or definitively fail.
+	unsureIfProduced bool
 	// If we are going to fail the batch in bumpRepeatedLoadErr, we need to
 	// set this bool to true. There could be a concurrent request about to
 	// be written. See more comments below where this is used.
@@ -1853,7 +1875,7 @@ func (p *produceRequest) tryAddBatch(produceVersion int32, recBuf *recBuf, batch
 	}
 
 	if recBuf.batches[0] == batch {
-		if !p.idempotent() || batch.canFailFromLoadErrs {
+		if !p.idempotent() || (batch.canFailFromLoadErrs && !batch.unsureIfProduced) {
 			if err := batch.maybeFailErr(&batch.owner.cl.cfg); err != nil {
 				recBuf.failAllRecords(err)
 				return false

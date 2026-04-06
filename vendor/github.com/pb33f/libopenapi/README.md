@@ -14,6 +14,8 @@
 libopenapi has full support for OpenAPI 3, 3.1 and 3.2. It can handle the largest and most
 complex specifications you can think of.
 
+Overlays and Arazzo are also fully supported.
+
 ---
 
 ## Sponsors & users
@@ -78,6 +80,7 @@ See all the documentation at https://pb33f.io/libopenapi/
 - [Bundling Specs](https://pb33f.io/libopenapi/bundling/)
 - [What Changed / Diff Engine](https://pb33f.io/libopenapi/what-changed/)
 - [Overlays](https://pb33f.io/libopenapi/overlays/)
+- [Arazzo](https://pb33f.io/libopenapi/arazzo/)
 - [FAQ](https://pb33f.io/libopenapi/faq/)
 - [About libopenapi](https://pb33f.io/libopenapi/about/)
 ---

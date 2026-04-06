@@ -6,12 +6,15 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	gotrace "runtime/trace"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/alecthomas/units"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,6 +33,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -62,6 +67,10 @@ type ExecutorConfig struct {
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
 
+	// PrefetchBytes controls the number of bytes read ahead from a data object
+	// when opening it.
+	PrefetchBytes flagext.Bytes `yaml:"prefetch_bytes" category:"experimental"`
+
 	// MergePrefetchCount controls the number of inputs that are prefetched simultaneously by any Merge node.
 	MergePrefetchCount int `yaml:"merge_prefetch_count" category:"experimental"`
 
@@ -71,12 +80,35 @@ type ExecutorConfig struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
+
+	// TasksResultCache configures the backing cache for task results.
+	TasksResultCache TaskCacheConfig `yaml:"tasks_result_cache" category:"experimental"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.PrefetchBytes = flagext.Bytes(16 * units.KiB)
+
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
+	f.Var(&cfg.PrefetchBytes, prefix+"prefetch-bytes", "Experimental: Number of bytes to prefetch when opening a data object for decoding metadata and overlapping section reads. Clamps to at least 16KiB.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
+	cfg.TasksResultCache.RegisterFlagsWithPrefix(prefix+"tasks-result-cache.", f)
+}
+
+// TaskCacheConfig extends resultscache.Config with additional task-cache-specific settings.
+type TaskCacheConfig struct {
+	resultscache.Config               `yaml:",inline"`
+	TaskResultMaxCacheableSize        flagext.Bytes `yaml:"task_result_max_cacheable_size" category:"experimental"`
+	DataObjScanResultMaxCacheableSize flagext.Bytes `yaml:"dataobjscan_result_max_cacheable_size" category:"experimental"`
+}
+
+// RegisterFlagsWithPrefix registers flags for TaskCacheConfig with the given prefix.
+func (cfg *TaskCacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.Config.RegisterFlagsWithPrefix(f, prefix)
+	f.Var(&cfg.TaskResultMaxCacheableSize, prefix+"task-result-max-cacheable-size",
+		"Experimental: Maximum size for a task result to be cacheable. 0 means only empty responses are cached.")
+	f.Var(&cfg.DataObjScanResultMaxCacheableSize, prefix+"dataobjscan-result-max-cacheable-size",
+		"Experimental: Maximum size for a DataObjScan result to be cacheable. 0 means only empty responses are cached.")
 }
 
 // Params holds parameters for constructing a new [Engine].
@@ -163,10 +195,15 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	defer capture.End()
 	startTime := time.Now()
 
+	ctx, task := gotrace.NewTask(ctx, "Engine.Execute")
+	defer task.End()
+
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return logqlmodel.Result{}, httpgrpc.Error(http.StatusBadRequest, err.Error())
 	}
+
+	cacheEnabled := cache.IsCacheConfigured(e.cfg.Executor.TasksResultCache.CacheConfig) && !params.CachingOptions().Disabled
 
 	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.Execute",
 		trace.WithAttributes(
@@ -177,6 +214,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 			attribute.Stringer("step", params.Step()),
 			attribute.Stringer("length", params.End().Sub(params.Start())),
 			attribute.StringSlice("shards", params.Shards()),
+			attribute.Bool("cache_enabled", cacheEnabled),
 		),
 	)
 	defer span.End()
@@ -194,21 +232,27 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		span.SetStatus(codes.Error, "failed to create logical plan")
 		return logqlmodel.Result{}, ErrNotSupported
 	}
+	gotrace.Log(ctx, "logical_planning", "done")
 
-	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, tenantID, logger, params, logicalPlan)
+	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, tenantID, logger, params, logicalPlan, cacheEnabled)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		span.SetStatus(codes.Error, "failed to create physical plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
+	gotrace.Log(ctx, "physical_planning", "done")
 
-	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan)
+	// Enable admission lanes only for log queries
+	useAdmissionLanes := !isMetricQuery(params.GetExpression())
+
+	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan, useAdmissionLanes, cacheEnabled)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		span.SetStatus(codes.Error, "failed to create execution plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 	defer wf.Close()
+	gotrace.Log(ctx, "workflow_planning", "done")
 
 	pipeline, err := wf.Run(ctx)
 	if err != nil {
@@ -220,6 +264,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	}
 	defer pipeline.Close()
 
+	gotrace.Log(ctx, "collect_result", "start")
 	builder, durExecution, err := e.collectResult(ctx, logger, params, pipeline)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
@@ -239,6 +284,8 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		"duration_execution", durExecution,
 		"duration_full", durFull,
 	}
+
+	gotrace.Log(ctx, "collect_result", "done")
 
 	// Close the pipeline to calculate the stats.
 	pipeline.Close()
@@ -287,6 +334,13 @@ func injectQueryTags(ctx context.Context, logger log.Logger) log.Logger {
 	return log.With(logger, httpreq.TagsToKeyValues(tags)...)
 }
 
+// isMetricQuery returns true if the given expression is a metric query,
+// false if it is a log query.
+func isMetricQuery(expr syntax.Expr) bool {
+	_, ok := expr.(syntax.SampleExpr)
+	return ok
+}
+
 // buildLogicalPlan builds a logical plan from the given params.
 func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params logql.Params) (*logical.Plan, time.Duration, error) {
 	span := trace.SpanFromContext(ctx)
@@ -331,11 +385,11 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 }
 
 // buildPhysicalPlan builds a physical plan from the given logical plan.
-func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) (*physical.Plan, time.Duration, error) {
+func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger log.Logger, params logql.Params, logicalPlan *logical.Plan, taskCacheEnabled bool) (*physical.Plan, time.Duration, error) {
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID))
+	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID, taskCacheEnabled))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -362,6 +416,13 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 		return nil, 0, ErrNotSupported
 	}
 
+	physicalPlan, err = physical.WrapWithBatching(physicalPlan, e.cfg.Executor.BatchSize)
+	if err != nil {
+		level.Warn(logger).Log("msg", "failed to wrap physical plan with batching", "err", err)
+		span.RecordError(err)
+		return nil, 0, ErrNotSupported
+	}
+
 	duration := timer.ObserveDuration()
 	level.Info(logger).Log(
 		"msg", "finished physical planning",
@@ -373,8 +434,8 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	return physicalPlan, duration, nil
 }
 
-func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string) physical.MetastoreSectionsResolver {
-	planner := physical.NewMetastorePlanner(e.metastore)
+func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string, cacheEnabled bool) physical.MetastoreSectionsResolver {
+	planner := physical.NewMetastorePlanner(e.metastore, e.cfg.Executor.BatchSize)
 	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
 		ctx, span := xcap.StartSpan(ctx, tracer, "engine.metastoreResolver")
 		defer span.End()
@@ -384,7 +445,10 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 			return nil, fmt.Errorf("metastore: build plan: %w", err)
 		}
 
-		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan)
+		// Disable admission lanes for metastore queries
+		useAdmissionLanes := false
+
+		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan, useAdmissionLanes, cacheEnabled)
 		if err != nil {
 			return nil, fmt.Errorf("metastore: build workflow: %w", err)
 		}
@@ -417,16 +481,27 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 }
 
 // buildWorkflow builds a workflow from the given physical plan.
-func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.Logger, physicalPlan *physical.Plan) (*workflow.Workflow, time.Duration, error) {
+func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.Logger, physicalPlan *physical.Plan, useAdmissionLanes bool, cacheEnabled bool) (*workflow.Workflow, time.Duration, error) {
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
+
+	maxRunningScanTasks := 0
+	// Set max running tasks limits on when admission lanes are enabled
+	if useAdmissionLanes {
+		maxRunningScanTasks = e.limits.MaxScanTaskParallelism(tenantID)
+	}
 
 	opts := workflow.Options{
 		Tenant: tenantID,
 		Actor:  httpreq.ExtractActorPath(ctx),
 
-		MaxRunningScanTasks:  e.limits.MaxScanTaskParallelism(tenantID),
+		MaxRunningScanTasks:  maxRunningScanTasks,
 		MaxRunningOtherTasks: 0,
+
+		CacheEnabled:            cacheEnabled,
+		MaxTaskCacheSize:        uint64(e.cfg.Executor.TasksResultCache.TaskResultMaxCacheableSize),
+		MaxDataObjScanCacheSize: uint64(e.cfg.Executor.TasksResultCache.DataObjScanResultMaxCacheableSize),
+		CacheCompression:        e.cfg.Executor.TasksResultCache.Compression,
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),
