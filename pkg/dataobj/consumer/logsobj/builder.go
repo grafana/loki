@@ -74,6 +74,13 @@ type BuilderBaseConfig struct {
 	// values of MergeSize trade off lower memory overhead for higher time spent
 	// merging.
 	SectionStripeMergeLimit int `yaml:"section_stripe_merge_limit"`
+
+	// EstimatedCompressionRatio is the expected compression ratio for log data,
+	// used to approximate compressed output size from uncompressed buffered
+	// records. This only takes effect when using the AppendOrdered strategy.
+	// Higher values allow more data to accumulate before the builder reports
+	// full, producing larger objects. Set to 0 or 1 to disable.
+	EstimatedCompressionRatio int `yaml:"estimated_compression_ratio"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -84,6 +91,7 @@ func (cfg *BuilderBaseConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Fla
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "The target maximum amount of uncompressed data to hold in sections, for sections that support being limited by size. Uncompressed size is used for consistent I/O and planning.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of logs to buffer in memory before adding into columnar builders, used to reduce CPU load of sorting.")
 	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of dataobj section stripes to merge into a section at once. Must be greater than 1.")
+	f.IntVar(&cfg.EstimatedCompressionRatio, prefix+"estimated-compression-ratio", 8, "Expected compression ratio for log data, used to estimate compressed output size from uncompressed buffered records. Only takes effect with ordered append. Set to 0 or 1 to disable.")
 }
 
 // Validate validates the BuilderConfig.
@@ -231,12 +239,13 @@ func (b *Builder) initBuilder(tenant string) {
 	}
 	if _, ok := b.logs[tenant]; !ok {
 		lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
-			PageSizeHint:     int(b.cfg.TargetPageSize),
-			PageMaxRowCount:  b.cfg.MaxPageRows,
-			BufferSize:       int(b.cfg.BufferSize),
-			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-			AppendStrategy:   logs.AppendOrdered,
-			SortOrder:        parseSortOrder(b.cfg.DataobjSortOrder),
+			PageSizeHint:              int(b.cfg.TargetPageSize),
+			PageMaxRowCount:           b.cfg.MaxPageRows,
+			BufferSize:                int(b.cfg.BufferSize),
+			StripeMergeLimit:          b.cfg.SectionStripeMergeLimit,
+			AppendStrategy:            logs.AppendOrdered,
+			EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
+			SortOrder:                 parseSortOrder(b.cfg.DataobjSortOrder),
 		})
 		lb.SetTenant(tenant)
 		b.logs[tenant] = lb
