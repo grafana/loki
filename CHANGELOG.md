@@ -1,5 +1,59 @@
 # Changelog
 
+## [3.8.0](https://github.com/grafana/loki/compare/v3.7.1...v3.8.0) (2026-04-06)
+
+
+### Features
+
+* Add a metric that reports when goldfish racing is enabled ([#21376](https://github.com/grafana/loki/issues/21376)) ([b48a70c](https://github.com/grafana/loki/commit/b48a70c64db884a0a4d71b43bfa84aafe5ae5cd3))
+* Add caching node to dataobjscan node ([#21246](https://github.com/grafana/loki/issues/21246)) ([9ed2dd0](https://github.com/grafana/loki/commit/9ed2dd0e7db92842f97a15e20cfd4cb540c80cfb))
+* **dataobj-inspect:** support more section types ([#21269](https://github.com/grafana/loki/issues/21269)) ([286bca7](https://github.com/grafana/loki/commit/286bca75857334097d8b906a3a42a6df5de720b7))
+* **fluentd:** bump version ([#21337](https://github.com/grafana/loki/issues/21337)) ([33fdfa1](https://github.com/grafana/loki/commit/33fdfa11c86c63506924ec7f8316b33cad48aa94))
+* **otlp:** add event_name to OTLP log structured metadata ([#21229](https://github.com/grafana/loki/issues/21229)) ([c9a1785](https://github.com/grafana/loki/commit/c9a1785d4066b7e44dd3b8d34bd67035dabad162))
+* Remove Promtail support ([#21245](https://github.com/grafana/loki/issues/21245)) ([572df01](https://github.com/grafana/loki/commit/572df0168ff92c9f6e1b03457682093faf5de39f))
+* **WIP:** Task level caching ([#21160](https://github.com/grafana/loki/issues/21160)) ([bd51fca](https://github.com/grafana/loki/commit/bd51fcae09d1301f3d9b58ac81dac427e88819ff))
+
+
+### Bug Fixes
+
+* Bloom index gateway skipping chunks with 1 log line ([#21237](https://github.com/grafana/loki/issues/21237)) ([067d55d](https://github.com/grafana/loki/commit/067d55d655b33821b259d0fcb18a9e383fdcde6d))
+* Bump release please version. ([#21319](https://github.com/grafana/loki/issues/21319)) ([91e355e](https://github.com/grafana/loki/commit/91e355e24dfe542cf1afcf3a0c31ad14ec945c48))
+* clarify retention cutoff timestamp in compactor log ([#21119](https://github.com/grafana/loki/issues/21119)) ([581a9fd](https://github.com/grafana/loki/commit/581a9fd3c78c4a1be4f3d504258b310c1c839d6c))
+* **compactor:** prevent FD leak on partial compaction failure ([#20913](https://github.com/grafana/loki/issues/20913)) ([2b5d26d](https://github.com/grafana/loki/commit/2b5d26dc706ab19a114014e8fd1221d0557570ee))
+* **deps:** update github.com/prometheus/prometheus digest to 9670de1 (main) ([#21215](https://github.com/grafana/loki/issues/21215)) ([2be356f](https://github.com/grafana/loki/commit/2be356fcf8042daf210c7743e57907916d53c1bd))
+* **deps:** update module charm.land/bubbles/v2 to v2.1.0 (main) ([#21303](https://github.com/grafana/loki/issues/21303)) ([8348756](https://github.com/grafana/loki/commit/8348756734e30b1feb90d64df057a03ddf58b326))
+* **deps:** update module cloud.google.com/go/pubsub/v2 to v2.5.0 (main) ([#21231](https://github.com/grafana/loki/issues/21231)) ([66b7c06](https://github.com/grafana/loki/commit/66b7c06877f0dcf5f4c29b10117cf86941660853))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.98.0 (main) ([#21283](https://github.com/grafana/loki/issues/21283)) ([835fff4](https://github.com/grafana/loki/commit/835fff4bd4efcb812bfd06879f35f0255a8ca14c))
+* **deps:** update module github.com/baidubce/bce-sdk-go to v0.9.263 (main) ([#21326](https://github.com/grafana/loki/issues/21326)) ([6d2923b](https://github.com/grafana/loki/commit/6d2923b18d164b271c4a2a0b64214599df63fa14))
+* **deps:** update module github.com/fatih/color to v1.19.0 (main) ([#21234](https://github.com/grafana/loki/issues/21234)) ([6769e67](https://github.com/grafana/loki/commit/6769e67107cb8e8d52f3fde8aa1c0e3425f78c2d))
+* **deps:** update module github.com/klauspost/compress to v1.18.5 (main) ([#21226](https://github.com/grafana/loki/issues/21226)) ([74d36e9](https://github.com/grafana/loki/commit/74d36e988d39945a56cf0a8d296a235811477ca6))
+* **deps:** update module github.com/minio/minio-go/v7 to v7.0.100 (main) ([#21375](https://github.com/grafana/loki/issues/21375)) ([edb6f56](https://github.com/grafana/loki/commit/edb6f56d2f9e496082932dd0e6d838d431e13361))
+* **deps:** update module github.com/shirou/gopsutil/v4 to v4.26.3 (main) ([#21350](https://github.com/grafana/loki/issues/21350)) ([a2bc46e](https://github.com/grafana/loki/commit/a2bc46e20aba1927f7bcf5936052f3e6db39ec3b))
+* **deps:** update module go.opentelemetry.io/collector/pdata to v1.54.0 (main) ([#21216](https://github.com/grafana/loki/issues/21216)) ([5f4b4ab](https://github.com/grafana/loki/commit/5f4b4ab71f59cb4bd308e3f707738306eb51239b))
+* **deps:** update module go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc to v0.67.0 (main) ([#21072](https://github.com/grafana/loki/issues/21072)) ([07bd5dc](https://github.com/grafana/loki/commit/07bd5dc41be6631dac8a74044d7a31f5541ed101))
+* **deps:** update module google.golang.org/api to v0.273.0 (main) ([#21309](https://github.com/grafana/loki/issues/21309)) ([d403344](https://github.com/grafana/loki/commit/d4033440c620b1b33ea09965f8de115d9eeb5ad1))
+* **deps:** update module google.golang.org/grpc to v1.79.3 [security] (main) ([#21192](https://github.com/grafana/loki/issues/21192)) ([606472c](https://github.com/grafana/loki/commit/606472cc13a795501ddd2a59102661a80170f124))
+* Fix assignment to entry in nil map in DataobjSectionDescriptor.Merge ([#21268](https://github.com/grafana/loki/issues/21268)) ([bb48b9c](https://github.com/grafana/loki/commit/bb48b9c247cfc308bcdec6523d2623be6be5ab12))
+* Fix ruler panic related to unset validation scheme ([#21400](https://github.com/grafana/loki/issues/21400)) ([a5bd996](https://github.com/grafana/loki/commit/a5bd996168c3dbed3bb48e1be83a6ce977f03788))
+* **fluentd:** support certificate chain files in mTLS client config ([#21296](https://github.com/grafana/loki/issues/21296)) ([e6ca622](https://github.com/grafana/loki/commit/e6ca62211e0b786f9b76099b9b8fc156ea6fdf90))
+* **index-builder:** don't repeatedly build indexes for stale partitions ([#21213](https://github.com/grafana/loki/issues/21213)) ([4725e2b](https://github.com/grafana/loki/commit/4725e2bb3ef3f3f01927a7aebd29cf65cfe094a1))
+* make the chunkFilter apply to new MultiIndex/s ([#21187](https://github.com/grafana/loki/issues/21187)) ([444462c](https://github.com/grafana/loki/commit/444462c02e7e56bb491a6421f7438810bfd9346e))
+* **memory:** fix off-by-one in Bitmap.Slice for byte-aligned ends ([#21354](https://github.com/grafana/loki/issues/21354)) ([93650c0](https://github.com/grafana/loki/commit/93650c0dfb7a58647dd16d7d4875d64884969b35))
+* **nix:** update flake.lock ([#21353](https://github.com/grafana/loki/issues/21353)) ([567b579](https://github.com/grafana/loki/commit/567b5795ba6ffd257e5d835bc68fe04613033fe4))
+* **operator:** tidy go.mod ([#21323](https://github.com/grafana/loki/issues/21323)) ([119622b](https://github.com/grafana/loki/commit/119622b87e696e4a5a873e86aace4a93ebfcdece))
+* **operator:** update latency alert to reflect ingester timeout ([#21370](https://github.com/grafana/loki/issues/21370)) ([91f0ce4](https://github.com/grafana/loki/commit/91f0ce486fd0628ffd296883b440ed8ffb3cf062))
+* **otel:** update dskit version ([#21343](https://github.com/grafana/loki/issues/21343)) ([b1c6ac2](https://github.com/grafana/loki/commit/b1c6ac25e6b996d6cd04f6f1b37f534c0122f7e3))
+* Preserve caching options after query split ([#21320](https://github.com/grafana/loki/issues/21320)) ([9bafc1e](https://github.com/grafana/loki/commit/9bafc1e36404ab43fe0a3447403c3f1244afc1ad))
+* preserve parsed labels with empty values in samples query response from thor engine ([#21351](https://github.com/grafana/loki/issues/21351)) ([399efb0](https://github.com/grafana/loki/commit/399efb0d67e29fc0584c9d0731db485557b4334a))
+* protobuf decoding for DetectedLabelsRequest ([#21223](https://github.com/grafana/loki/issues/21223)) ([277e439](https://github.com/grafana/loki/commit/277e439d0f4373e32e112c055d1148bf65d5ea59))
+* Use newer Go in fluentbit and fix canary test ([#21254](https://github.com/grafana/loki/issues/21254)) ([0cfd943](https://github.com/grafana/loki/commit/0cfd943365b6a78148d3242fde0edfe9522eb8cb))
+
+
+### Performance Improvements
+
+* avoid unnecessary shuffle sharding ([#21344](https://github.com/grafana/loki/issues/21344)) ([34e5cc9](https://github.com/grafana/loki/commit/34e5cc937e8ef3802de9cdb5b98607ac0eef1486))
+* short-circuit cache when over max cacheable size ([#21277](https://github.com/grafana/loki/issues/21277)) ([5f06abe](https://github.com/grafana/loki/commit/5f06abe88d1a5cb7df12cfd2e07808c9d3238312))
+
 ## [3.6.0](https://github.com/grafana/loki/compare/v3.5.8...v3.6.0) (2025-11-05)
 
 * Add method to get zone-aware partition consumers ([#17377](https://github.com/grafana/loki/issues/17377)) ([4a733fc](https://github.com/grafana/loki/commit/4a733fcf7db6421d28a535667f9dc31f67ec00b0))
