@@ -27,7 +27,7 @@ services:
 
   write:
     image: grafana/loki:latest
-    command: "-config.file=/etc/loki/config.yaml -target=write -query-scheduler.use-scheduler-ring=false"
+    command: "-config.file=/etc/loki/config.yaml -target=write"
     ports:
       - 3102:3100
       - 7946
