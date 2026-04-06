@@ -78,7 +78,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.67.5
-	github.com/prometheus/prometheus 477bbb6b2c07
+	github.com/prometheus/prometheus v0.310.1-0.20260403121107-477bbb6b2c07
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker/v2 v2.4.0
@@ -169,7 +169,7 @@ require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/apache/thrift v0.22.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
-	github.com/aws/aws-sdk-go v1.55.7 // indirect
+	github.com/aws/aws-sdk-go v1.55.8 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.22 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.7 // indirect
@@ -286,7 +286,7 @@ require (
 	go.opentelemetry.io/collector/confmap v1.54.0 // indirect
 	go.opentelemetry.io/collector/confmap/xconfmap v0.148.0 // indirect
 	go.opentelemetry.io/collector/consumer v1.54.0 // indirect
-	go.opentelemetry.io/collector/featuregate v1.54.0 // indirect
+	go.opentelemetry.io/collector/featuregate v1.55.0 // indirect
 	go.opentelemetry.io/collector/internal/componentalias v0.148.0 // indirect
 	go.opentelemetry.io/collector/pipeline v1.54.0 // indirect
 	go.opentelemetry.io/collector/processor v1.54.0 // indirect
@@ -452,9 +452,9 @@ require (
 	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/term v0.41.0 // indirect
 	golang.org/x/tools v0.43.0
-	google.golang.org/genproto v0.0.0-20260217215200-42d3e9bedb6d // indirect
+	google.golang.org/genproto v0.0.0-20260316180232-0b37fe3546d5 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260319201613-d00831a3d3e7 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260311181403-84a4fc48630c
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260319201613-d00831a3d3e7
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/client-go v0.35.3 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
