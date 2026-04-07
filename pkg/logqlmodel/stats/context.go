@@ -71,16 +71,16 @@ const (
 	ChunkCache                CacheType = "chunk"                 //nolint:staticcheck
 	IndexCache                CacheType = "index"                 //nolint:staticcheck
 	ResultCache               CacheType = "result"                //nolint:staticcheck
+	LogResultCache            CacheType = "log-result"            //nolint:staticcheck
+	InstantMetricResultsCache CacheType = "instant-metric-result" // nolint:staticcheck
 	StatsResultCache          CacheType = "stats-result"          //nolint:staticcheck
 	VolumeResultCache         CacheType = "volume-result"         //nolint:staticcheck
-	InstantMetricResultsCache CacheType = "instant-metric-result" // nolint:staticcheck
 	WriteDedupeCache          CacheType = "write-dedupe"          //nolint:staticcheck
 	SeriesResultCache         CacheType = "series-result"         //nolint:staticcheck
 	LabelResultCache          CacheType = "label-result"          //nolint:staticcheck
 	BloomFilterCache          CacheType = "bloom-filter"          //nolint:staticcheck
 	BloomBlocksCache          CacheType = "bloom-blocks"          //nolint:staticcheck
 	BloomMetasCache           CacheType = "bloom-metas"           //nolint:staticcheck
-	EngineLogResultCache      CacheType = "engine-log-result"     //nolint:staticcheck
 	TaskResultCache           CacheType = "task-result"           //nolint:staticcheck
 )
 
@@ -140,6 +140,8 @@ func (c *Context) Caches() Caches {
 		SeriesResult:        c.caches.SeriesResult,
 		LabelResult:         c.caches.LabelResult,
 		InstantMetricResult: c.caches.InstantMetricResult,
+		LogResult:           c.caches.LogResult,
+		TaskResult:          c.caches.TaskResult,
 	}
 }
 
@@ -313,6 +315,8 @@ func (c *Caches) Merge(m Caches) {
 	c.SeriesResult.Merge(m.SeriesResult)
 	c.LabelResult.Merge(m.LabelResult)
 	c.InstantMetricResult.Merge(m.InstantMetricResult)
+	c.LogResult.Merge(m.LogResult)
+	c.TaskResult.Merge(m.TaskResult)
 }
 
 func (c *Cache) Merge(m Cache) {
@@ -656,6 +660,10 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 		stats = &c.caches.LabelResult
 	case InstantMetricResultsCache:
 		stats = &c.caches.InstantMetricResult
+	case LogResultCache:
+		stats = &c.caches.LogResult
+	case TaskResultCache:
+		stats = &c.caches.TaskResult
 	default:
 		return nil
 	}
@@ -775,6 +783,17 @@ func (c Caches) kvList() []any {
 		"Cache.InstantMetricResult.BytesSent", humanize.Bytes(uint64(c.InstantMetricResult.BytesSent)),
 		"Cache.InstantMetricResult.BytesReceived", humanize.Bytes(uint64(c.InstantMetricResult.BytesReceived)),
 		"Cache.InstantMetricResult.DownloadTime", c.InstantMetricResult.CacheDownloadTime(),
+		"Cache.LogResult.Requests", c.LogResult.Requests,
+		"Cache.LogResult.EntriesRequested", c.LogResult.EntriesRequested,
+		"Cache.LogResult.EntriesFound", c.LogResult.EntriesFound,
+		"Cache.LogResult.EntriesStored", c.LogResult.EntriesStored,
+		"Cache.LogResult.BytesSent", humanize.Bytes(uint64(c.LogResult.BytesSent)),
+		"Cache.LogResult.BytesReceived", humanize.Bytes(uint64(c.LogResult.BytesReceived)),
+		"Cache.LogResult.DownloadTime", c.LogResult.CacheDownloadTime(),
+		"Cache.TaskResult.Requests", c.TaskResult.Requests,
+		"Cache.TaskResult.EntriesRequested", c.TaskResult.EntriesRequested,
+		"Cache.TaskResult.EntriesFound", c.TaskResult.EntriesFound,
+		"Cache.TaskResult.BytesReceived", humanize.Bytes(uint64(c.TaskResult.BytesReceived)),
 	}
 }
 
