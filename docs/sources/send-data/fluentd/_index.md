@@ -66,7 +66,7 @@ services:
       - /var/run/systemd/journal/:/var/run/systemd/journal/
     logging:
       options:
-         tag: infra.monitoring
+        tag: infra.monitoring
 ```
 
 ## Usage

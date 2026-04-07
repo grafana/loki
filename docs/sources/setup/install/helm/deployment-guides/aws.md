@@ -256,32 +256,32 @@ Create a `values.yaml` file choosing the configuration options that best suit yo
 
 ```yaml
 loki:
-   schemaConfig:
-     configs:
-       - from: "2024-04-01"
-         store: tsdb
-         object_store: s3
-         schema: v13
-         index:
-           prefix: loki_index_
-           period: 24h
-   storage_config:
-     aws:
-       region: <S3 BUCKET REGION> # for example, eu-west-2  
-       bucketnames: <CHUNK BUCKET NAME> # Your actual S3 bucket name, for example, loki-aws-dev-chunks
-       s3forcepathstyle: false
-   ingester:
-       chunk_encoding: snappy
-   pattern_ingester:
-       enabled: true
-   limits_config:
-     allow_structured_metadata: true
-     volume_enabled: true
-     retention_period: 672h # 28 days retention
-   compactor:
-     retention_enabled: true 
-     delete_request_store: s3
-   ruler:
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  storage_config:
+    aws:
+      region: <S3 BUCKET REGION> # for example, eu-west-2  
+      bucketnames: <CHUNK BUCKET NAME> # Your actual S3 bucket name, for example, loki-aws-dev-chunks
+      s3forcepathstyle: false
+  ingester:
+    chunk_encoding: snappy
+  pattern_ingester:
+    enabled: true
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+    retention_period: 672h # 28 days retention
+  compactor:
+    retention_enabled: true
+    delete_request_store: s3
+  ruler:
     enable_api: true
     storage:
       type: s3
@@ -291,65 +291,65 @@ loki:
         s3forcepathstyle: false
       alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
 
-   querier:
-      max_concurrent: 4
+  querier:
+    max_concurrent: 4
 
-   storage:
-      type: s3
-      bucketNames:
-        chunks: "<CHUNK BUCKET NAME>" # Your actual S3 bucket name (loki-aws-dev-chunks)
-        ruler: "<RULER BUCKET NAME>" # Your actual S3 bucket name (loki-aws-dev-ruler)
-        # admin: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-admin) - GEL customers only
-      s3:
-        region: <S3 BUCKET REGION> # eu-west-2
-        #insecure: false
+  storage:
+    type: s3
+    bucketNames:
+      chunks: "<CHUNK BUCKET NAME>" # Your actual S3 bucket name (loki-aws-dev-chunks)
+      ruler: "<RULER BUCKET NAME>" # Your actual S3 bucket name (loki-aws-dev-ruler)
+      # admin: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-admin) - GEL customers only
+    s3:
+      region: <S3 BUCKET REGION> # eu-west-2
+      #insecure: false
       # s3forcepathstyle: false
 
 serviceAccount:
- create: true
- annotations:
-   "eks.amazonaws.com/role-arn": "arn:aws:iam::<Account ID>:role/LokiServiceAccountRole" # The service role you created
+  create: true
+  annotations:
+    "eks.amazonaws.com/role-arn": "arn:aws:iam::<Account ID>:role/LokiServiceAccountRole" # The service role you created
 
 deploymentMode: Distributed
 
 ingester:
- replicas: 3
- zoneAwareReplication:
-  enabled: false
+  replicas: 3
+  zoneAwareReplication:
+    enabled: false
 
 querier:
- replicas: 3
- maxUnavailable: 2
+  replicas: 3
+  maxUnavailable: 2
 
 queryFrontend:
- replicas: 2
- maxUnavailable: 1
+  replicas: 2
+  maxUnavailable: 1
 
 queryScheduler:
- replicas: 2
+  replicas: 2
 
 distributor:
- replicas: 3
- maxUnavailable: 2
+  replicas: 3
+  maxUnavailable: 2
 compactor:
- replicas: 1
+  replicas: 1
 
 indexGateway:
- replicas: 2
- maxUnavailable: 1
+  replicas: 2
+  maxUnavailable: 1
 
 ruler:
- replicas: 1
- maxUnavailable: 1
+  replicas: 1
+  maxUnavailable: 1
 
 
 # This exposes the Loki gateway so it can be written to and queried externaly
 gateway:
- service:
-   type: LoadBalancer
- basicAuth: 
-     enabled: true
-     existingSecret: loki-basic-auth
+  service:
+    type: LoadBalancer
+  basicAuth:
+    enabled: true
+    existingSecret: loki-basic-auth
 
 # Since we are using basic auth, we need to pass the username and password to the canary
 lokiCanary:
@@ -370,17 +370,17 @@ lokiCanary:
 
 # Enable minio for storage
 minio:
- enabled: false
+  enabled: false
 
 backend:
- replicas: 0
+  replicas: 0
 read:
- replicas: 0
+  replicas: 0
 write:
- replicas: 0
+  replicas: 0
 
 singleBinary:
- replicas: 0
+  replicas: 0
 ```
 
 {{< admonition type="caution" >}}

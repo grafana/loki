@@ -323,30 +323,30 @@ Create a `values.yaml` file choosing the configuration options that best suit yo
 
 ```yaml
 loki:
-   schemaConfig:
-     configs:
-       - from: "2024-04-01"
-         store: tsdb
-         object_store: gcs
-         schema: v13
-         index:
-           prefix: loki_index_
-           period: 24h
-   storage_config:
-     gcs:
-       bucket_name: <CHUNK_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-chunks
-   ingester:
-       chunk_encoding: snappy
-   pattern_ingester:
-       enabled: true
-   limits_config:
-     allow_structured_metadata: true
-     volume_enabled: true
-     retention_period: 672h # 28 days retention
-   compactor:
-     retention_enabled: true 
-     delete_request_store: gcs
-   ruler:
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: gcs
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  storage_config:
+    gcs:
+      bucket_name: <CHUNK_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-chunks
+  ingester:
+    chunk_encoding: snappy
+  pattern_ingester:
+    enabled: true
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+    retention_period: 672h # 28 days retention
+  compactor:
+    retention_enabled: true
+    delete_request_store: gcs
+  ruler:
     enable_api: true
     storage_config:
       type: gcs
@@ -355,60 +355,60 @@ loki:
         bucketnames: <RULER_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-ruler
       alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
 
-   querier:
-      max_concurrent: 4
+  querier:
+    max_concurrent: 4
 
-   storage:
-      type: gcs
-      bucketNames:
-        chunks: <CHUNK_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-chunks
-        ruler: <RULER_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-ruler
+  storage:
+    type: gcs
+    bucketNames:
+      chunks: <CHUNK_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-chunks
+      ruler: <RULER_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-ruler
       
 serviceAccount:
- create: false
- name: <KSA_NAME>
+  create: false
+  name: <KSA_NAME>
 
 deploymentMode: Distributed
 
 ingester:
- replicas: 3
- zoneAwareReplication:
-  enabled: false
+  replicas: 3
+  zoneAwareReplication:
+    enabled: false
 
 querier:
- replicas: 3
- maxUnavailable: 2
+  replicas: 3
+  maxUnavailable: 2
 
 queryFrontend:
- replicas: 2
- maxUnavailable: 1
+  replicas: 2
+  maxUnavailable: 1
 
 queryScheduler:
- replicas: 2
+  replicas: 2
 
 distributor:
- replicas: 3
- maxUnavailable: 2
+  replicas: 3
+  maxUnavailable: 2
  
 compactor:
- replicas: 1
+  replicas: 1
 
 indexGateway:
- replicas: 2
- maxUnavailable: 1
+  replicas: 2
+  maxUnavailable: 1
 
 ruler:
- replicas: 1
- maxUnavailable: 1
+  replicas: 1
+  maxUnavailable: 1
 
 
 # This exposes the Loki gateway so it can be written to and queried externaly
 gateway:
- service:
-   type: LoadBalancer
- basicAuth: 
-     enabled: true
-     existingSecret: loki-basic-auth
+  service:
+    type: LoadBalancer
+  basicAuth:
+    enabled: true
+    existingSecret: loki-basic-auth
 
 # Since we are using basic auth, we need to pass the username and password to the canary
 lokiCanary:
@@ -429,17 +429,17 @@ lokiCanary:
 
 # Enable minio for storage
 minio:
- enabled: false
+  enabled: false
 
 backend:
- replicas: 0
+  replicas: 0
 read:
- replicas: 0
+  replicas: 0
 write:
- replicas: 0
+  replicas: 0
 
 singleBinary:
- replicas: 0
+  replicas: 0
 ```
 
 {{< admonition type="caution" >}}
