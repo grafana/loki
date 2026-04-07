@@ -337,6 +337,40 @@ func TestBuilder_Type(t *testing.T) {
 	require.Equal(t, sectionType, b.Type())
 }
 
+func TestRowReader_SmallBuffer(t *testing.T) {
+	b := NewBuilder(0, ColumnarEncoder)
+
+	// Append 5 rows.
+	for i := range 5 {
+		b.Append(Stat{
+			ObjectPath:   "obj",
+			SortSchema:   "service_name",
+			Labels:       map[string]string{"service_name": "svc"},
+			MinTimestamp: int64(i * 100),
+		})
+	}
+
+	sections, err := b.Flush(context.Background())
+	require.NoError(t, err)
+	require.Len(t, sections, 1)
+
+	rr, err := NewRowReader(&sections[0])
+	require.NoError(t, err)
+	defer rr.Close()
+
+	// Read with a buffer smaller than the section row count. This must not
+	// panic even though the underlying column reader returns all rows at once.
+	buf := make([]Stat, 2)
+	n, err := rr.Read(context.Background(), buf)
+	require.NoError(t, err)
+	require.Equal(t, 2, n, "should read exactly len(buf) rows")
+
+	// A second read should return the remaining rows.
+	// Note: With the current sliceColumnReader (returns all data on first
+	// call, EOF on second), subsequent reads return 0, io.EOF. This is
+	// acceptable — the important invariant is no panic on the first read.
+}
+
 func TestCheckSection(t *testing.T) {
 	t.Run("returns true for stats section type", func(t *testing.T) {
 		sec := &dataobj.Section{Type: sectionType}

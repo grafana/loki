@@ -97,8 +97,9 @@ func (r *RowReader) Read(ctx context.Context, s []Stat) (int, error) {
 		labelColumns[key] = vals
 	}
 
-	// All columns should have the same length.
-	read := len(objectPaths)
+	// All columns should have the same length. Clamp to len(s) so callers
+	// passing a smaller destination buffer don't trigger an out-of-bounds write.
+	read := min(len(objectPaths), len(s))
 	for i := range read {
 		labels := make(map[string]string, len(keys))
 		for _, key := range keys {

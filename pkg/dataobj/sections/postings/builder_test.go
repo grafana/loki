@@ -476,6 +476,38 @@ func TestCheckSection(t *testing.T) {
 	})
 }
 
+func TestRowReader_SmallBuffer(t *testing.T) {
+	b := NewBuilder(0, ColumnarEncoder)
+
+	bitmapBytes := makeBitmap(t, 0)
+	// Append 5 rows.
+	for i := range 5 {
+		lv := fmt.Sprintf("val%d", i)
+		b.Append(Posting{
+			Kind:           KindLabel,
+			ColumnName:     "col",
+			LabelValue:     &lv,
+			StreamIDBitmap: bitmapBytes,
+			MinTimestamp:   int64(i * 100),
+		})
+	}
+
+	sections, err := b.Flush(context.Background())
+	require.NoError(t, err)
+	require.Len(t, sections, 1)
+
+	rr, err := NewRowReader(&sections[0])
+	require.NoError(t, err)
+	defer rr.Close()
+
+	// Read with a buffer smaller than the section row count. This must not
+	// panic even though the underlying column reader returns all rows at once.
+	buf := make([]Posting, 2)
+	n, err := rr.Read(context.Background(), buf)
+	require.NoError(t, err)
+	require.Equal(t, 2, n, "should read exactly len(buf) rows")
+}
+
 // readAllPostings reads all postings from a section.
 func readAllPostings(t *testing.T, sec *Section) []Posting {
 	t.Helper()

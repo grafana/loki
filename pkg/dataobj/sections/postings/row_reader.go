@@ -84,8 +84,9 @@ func (r *RowReader) Read(ctx context.Context, p []Posting) (int, error) {
 		return 0, fmt.Errorf("reading max_timestamp: %w", err)
 	}
 
-	// All columns should have the same length.
-	read := len(kinds)
+	// All columns should have the same length. Clamp to len(p) so callers
+	// passing a smaller destination buffer don't trigger an out-of-bounds write.
+	read := min(len(kinds), len(p))
 	for i := range read {
 		p[i] = Posting{
 			Kind:             PostingKind(kinds[i]),

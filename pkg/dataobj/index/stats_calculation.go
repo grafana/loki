@@ -30,28 +30,33 @@ func (c *statsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs
 }
 
 func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculationContext, batch []logs.Record) error {
+	// Reuse a single strings.Builder across all records to avoid per-record
+	// allocation. The labelMap is only allocated when creating a new aggregate.
+	var compositeKey strings.Builder
 	for _, log := range batch {
 		streamLbls := calcCtx.streamLabels[log.StreamID]
 
-		// Build composite key and labels map from all sort schema keys.
+		// Build composite key from all sort schema keys.
 		// The composite key uses key=value pairs separated by \x00 to avoid
 		// ambiguity from values containing commas or other delimiters.
-		labelMap := make(map[string]string, len(c.sortSchemaKeys))
-		var compositeKey strings.Builder
+		compositeKey.Reset()
 		for i, key := range c.sortSchemaKeys {
-			val := streamLbls.Get(key)
-			labelMap[key] = val
 			if i > 0 {
 				compositeKey.WriteByte(0)
 			}
 			compositeKey.WriteString(key)
 			compositeKey.WriteByte('=')
-			compositeKey.WriteString(val)
+			compositeKey.WriteString(streamLbls.Get(key))
 		}
 
 		aggKey := compositeKey.String()
 		agg, ok := c.aggregates[aggKey]
 		if !ok {
+			// Only allocate the labels map when creating a new aggregate.
+			labelMap := make(map[string]string, len(c.sortSchemaKeys))
+			for _, key := range c.sortSchemaKeys {
+				labelMap[key] = streamLbls.Get(key)
+			}
 			agg = &statsAggregate{
 				labels:       labelMap,
 				minTimestamp: log.Timestamp,
