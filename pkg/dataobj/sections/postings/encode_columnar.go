@@ -9,8 +9,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-// ColumnarEncoder encodes Posting rows using the existing columnar primitives.
-// This is an alternative to DatasetEncoder for use without the new dataset API.
+// ColumnarEncoder encodes Posting rows using columnar primitives.
 func ColumnarEncoder(_ context.Context, rows []Posting) (Section, error) {
 	var alloc memory.Allocator
 	buildAlloc := memory.NewAllocator(&alloc)
@@ -24,8 +23,8 @@ func ColumnarEncoder(_ context.Context, rows []Posting) (Section, error) {
 	bloomFilterBuilder := columnar.NewUTF8Builder(buildAlloc)
 	streamIDBitmapBuilder := columnar.NewUTF8Builder(buildAlloc)
 	uncompressedSizeBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
-	minTsBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
-	maxTsBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
+	minTSBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
+	maxTSBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
 
 	// Normalize stream ID bitmaps to the same length.
 	normalizedBitmaps := columnarNormalizeBitmaps(rows)
@@ -50,8 +49,8 @@ func ColumnarEncoder(_ context.Context, rows []Posting) (Section, error) {
 
 		streamIDBitmapBuilder.AppendValue(normalizedBitmaps[i])
 		uncompressedSizeBuilder.AppendValue(r.UncompressedSize)
-		minTsBuilder.AppendValue(r.MinTimestamp)
-		maxTsBuilder.AppendValue(r.MaxTimestamp)
+		minTSBuilder.AppendValue(r.MinTimestamp)
+		maxTSBuilder.AppendValue(r.MaxTimestamp)
 	}
 
 	// Column order must match the order used by DatasetEncoder.
@@ -69,8 +68,8 @@ func ColumnarEncoder(_ context.Context, rows []Posting) (Section, error) {
 		colBloomFilter:      bloomFilterBuilder.Build(),
 		colStreamIDBitmap:   streamIDBitmapBuilder.Build(),
 		colUncompressedSize: uncompressedSizeBuilder.Build(),
-		colMinTimestamp:     minTsBuilder.Build(),
-		colMaxTimestamp:     maxTsBuilder.Build(),
+		colMinTimestamp:     minTSBuilder.Build(),
+		colMaxTimestamp:     maxTSBuilder.Build(),
 	}
 
 	return Section{

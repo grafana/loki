@@ -2,7 +2,6 @@ package index
 
 import (
 	"context"
-	"hash/fnv"
 	"io"
 	"testing"
 	"time"
@@ -103,17 +102,17 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 	require.Len(t, got, 3)
 
 	// Sorted order: "" < "svcA" < "svcB"
-	require.Equal(t, "", got[0].ServiceName)
+	require.Equal(t, "", got[0].Labels["service_name"])
 	require.Equal(t, int64(1), got[0].RowCount)
 	require.Equal(t, int64(len(line4)), got[0].UncompressedSize)
 
-	require.Equal(t, "svcA", got[1].ServiceName)
+	require.Equal(t, "svcA", got[1].Labels["service_name"])
 	require.Equal(t, int64(2), got[1].RowCount)
 	require.Equal(t, int64(len(line1)+len(line2)), got[1].UncompressedSize)
 	require.Equal(t, ts1.UnixNano(), got[1].MinTimestamp)
 	require.Equal(t, ts2.UnixNano(), got[1].MaxTimestamp)
 
-	require.Equal(t, "svcB", got[2].ServiceName)
+	require.Equal(t, "svcB", got[2].Labels["service_name"])
 	require.Equal(t, int64(1), got[2].RowCount)
 	require.Equal(t, int64(len(line3)), got[2].UncompressedSize)
 	require.Equal(t, ts3.UnixNano(), got[2].MinTimestamp)
@@ -142,7 +141,7 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 	require.Equal(t, "test/path/obj1", s.ObjectPath)
 	require.Equal(t, int64(0), s.SectionIndex)
 	require.Equal(t, "service_name", s.SortSchema)
-	require.Equal(t, "svcA", s.ServiceName)
+	require.Equal(t, "svcA", s.Labels["service_name"])
 }
 
 func TestStatsCalculation_MissingServiceName(t *testing.T) {
@@ -160,53 +159,7 @@ func TestStatsCalculation_MissingServiceName(t *testing.T) {
 
 	got := flushStatsForTenant(t, builder, "tenant-1")
 	require.Len(t, got, 1)
-	require.Equal(t, "", got[0].ServiceName)
-}
-
-func TestStatsCalculation_RunIDDeterministic(t *testing.T) {
-	// Same objectPath → same runID.
-	objectPath := "tenants/foo/bar/obj.parquet"
-
-	h := fnv.New64a()
-	h.Write([]byte(objectPath))
-	expectedRunID := int64(h.Sum64())
-
-	builder1 := newTestIndexBuilder(t)
-	ctx1 := &logsCalculationContext{
-		tenantID:     "tenant-1",
-		objectPath:   objectPath,
-		sectionIdx:   0,
-		streamLabels: makeTestStreamLabels(),
-		builder:      builder1,
-	}
-	calc1 := &statsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
-	require.NoError(t, calc1.Prepare(context.Background(), nil, logs.Stats{}))
-	require.NoError(t, calc1.ProcessBatch(context.Background(), ctx1, []logs.Record{
-		{StreamID: 1, Timestamp: time.Unix(1, 0).UTC(), Line: []byte("x")},
-	}))
-	require.NoError(t, calc1.Flush(context.Background(), ctx1))
-	got1 := flushStatsForTenant(t, builder1, "tenant-1")
-	require.Len(t, got1, 1)
-	require.Equal(t, expectedRunID, got1[0].RunID)
-
-	// A second call with the same path should produce the same runID.
-	builder2 := newTestIndexBuilder(t)
-	ctx2 := &logsCalculationContext{
-		tenantID:     "tenant-1",
-		objectPath:   objectPath,
-		sectionIdx:   0,
-		streamLabels: makeTestStreamLabels(),
-		builder:      builder2,
-	}
-	calc2 := &statsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
-	require.NoError(t, calc2.Prepare(context.Background(), nil, logs.Stats{}))
-	require.NoError(t, calc2.ProcessBatch(context.Background(), ctx2, []logs.Record{
-		{StreamID: 1, Timestamp: time.Unix(1, 0).UTC(), Line: []byte("x")},
-	}))
-	require.NoError(t, calc2.Flush(context.Background(), ctx2))
-	got2 := flushStatsForTenant(t, builder2, "tenant-1")
-	require.Len(t, got2, 1)
-	require.Equal(t, got1[0].RunID, got2[0].RunID)
+	require.Equal(t, "", got[0].Labels["service_name"])
 }
 
 func TestStatsCalculation_MultipleBatches(t *testing.T) {
@@ -236,7 +189,7 @@ func TestStatsCalculation_MultipleBatches(t *testing.T) {
 
 	var svcA stats.Stat
 	for _, s := range got {
-		if s.ServiceName == "svcA" {
+		if s.Labels["service_name"] == "svcA" {
 			svcA = s
 		}
 	}

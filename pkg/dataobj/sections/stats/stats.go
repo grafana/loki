@@ -28,9 +28,9 @@ type Stat struct {
 	SectionIndex     int64
 	RunID            int64
 	SortSchema       string
-	ServiceName      string // Label value for the service_name sort key
-	MinTimestamp     int64  // UnixNano
-	MaxTimestamp     int64  // UnixNano
+	Labels           map[string]string // Label values keyed by sort schema key name
+	MinTimestamp     int64             // UnixNano
+	MaxTimestamp     int64             // UnixNano
 	RowCount         int64
 	UncompressedSize int64
 }

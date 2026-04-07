@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 )
@@ -14,7 +15,6 @@ const (
 	colSectionIndex     = "section_index"
 	colRunID            = "run_id"
 	colSortSchema       = "sort_schema"
-	colServiceName      = "service_name"
 	colMinTimestamp     = "min_timestamp"
 	colMaxTimestamp     = "max_timestamp"
 	colRowCount         = "row_count"
@@ -37,7 +37,8 @@ type Builder struct {
 	rows []Stat
 }
 
-// defaultTargetSectionSize is a sensible default for the target section size.
+// defaultTargetSectionSize is used when no target section size is provided
+// (e.g., in tests). Production callers always pass TargetSectionSize from config.
 const defaultTargetSectionSize = 256 * 1024 * 1024 // 256 MiB
 
 // NewBuilder creates a new Builder. targetSectionSize controls when accumulated
@@ -70,12 +71,16 @@ func (b *Builder) Append(stat Stat) {
 // EstimatedSize returns an estimate of the encoded size of the accumulated
 // rows in bytes. The estimate uses a per-row heuristic:
 //   - 6 int64 columns × 8 bytes = 48 bytes (SectionIndex, RunID, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
-//   - len(ObjectPath) + len(SortSchema) + len(ServiceName) bytes for string columns
+//   - len(ObjectPath) + len(SortSchema) bytes for fixed string columns
+//   - sum of len(k)+len(v) for all entries in Labels
 func (b *Builder) EstimatedSize() int {
 	var total int
 	for _, r := range b.rows {
 		total += 6 * 8 // int64 columns: SectionIndex, RunID, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize
-		total += len(r.ObjectPath) + len(r.SortSchema) + len(r.ServiceName)
+		total += len(r.ObjectPath) + len(r.SortSchema)
+		for k, v := range r.Labels {
+			total += len(k) + len(v)
+		}
 	}
 	return total
 }
@@ -85,10 +90,11 @@ func (b *Builder) Reset() {
 	b.rows = b.rows[:0]
 }
 
-// Flush sorts the accumulated rows by [ServiceName, MinTimestamp],
-// encodes them column-by-column into [Section] values, and returns one or more
-// [Section] values. When the accumulated row size exceeds the configured
-// targetSectionSize, the rows are split across multiple sections.
+// Flush sorts the accumulated rows by label values in sort schema order, then
+// by MinTimestamp. It encodes them column-by-column into [Section] values,
+// and returns one or more [Section] values. When the accumulated row size
+// exceeds the configured targetSectionSize, the rows are split across multiple
+// sections.
 //
 // After a successful flush, the builder is reset.
 func (b *Builder) Flush(ctx context.Context) ([]Section, error) {
@@ -96,11 +102,16 @@ func (b *Builder) Flush(ctx context.Context) ([]Section, error) {
 		return nil, nil
 	}
 
-	// Sort rows by [ServiceName, MinTimestamp].
+	// Sort rows by label values in sort schema order, then by MinTimestamp.
+	// Get sort key order from the first row's SortSchema.
+	keys := strings.Split(b.rows[0].SortSchema, ",")
 	sort.SliceStable(b.rows, func(i, j int) bool {
 		ri, rj := b.rows[i], b.rows[j]
-		if ri.ServiceName != rj.ServiceName {
-			return ri.ServiceName < rj.ServiceName
+		for _, key := range keys {
+			vi, vj := ri.Labels[key], rj.Labels[key]
+			if vi != vj {
+				return vi < vj
+			}
 		}
 		return ri.MinTimestamp < rj.MinTimestamp
 	})
@@ -135,7 +146,10 @@ func (b *Builder) computeSplits() [][]Stat {
 	)
 
 	for i, r := range b.rows {
-		rowSize := 6*8 + len(r.ObjectPath) + len(r.SortSchema) + len(r.ServiceName)
+		rowSize := 6*8 + len(r.ObjectPath) + len(r.SortSchema)
+		for k, v := range r.Labels {
+			rowSize += len(k) + len(v)
+		}
 		if chunkSize+rowSize > b.targetSectionSize && chunkSize > 0 {
 			chunks = append(chunks, b.rows[chunkStart:i])
 			chunkStart = i

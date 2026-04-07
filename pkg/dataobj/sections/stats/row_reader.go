@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 )
@@ -42,7 +43,7 @@ func (r *RowReader) Read(ctx context.Context, s []Stat) (int, error) {
 		return 0, nil
 	}
 
-	// Read all columns for the requested batch.
+	// Read all fixed columns for the requested batch.
 	objectPaths, err := r.reader.readStringColumn(ctx, colObjectPath, n)
 	if err != nil && err != io.EOF {
 		return 0, fmt.Errorf("reading object_path: %w", err)
@@ -58,10 +59,6 @@ func (r *RowReader) Read(ctx context.Context, s []Stat) (int, error) {
 	sortSchemas, err := r.reader.readStringColumn(ctx, colSortSchema, n)
 	if err != nil && err != io.EOF {
 		return 0, fmt.Errorf("reading sort_schema: %w", err)
-	}
-	serviceNames, err := r.reader.readStringColumn(ctx, colServiceName, n)
-	if err != nil && err != io.EOF {
-		return 0, fmt.Errorf("reading service_name: %w", err)
 	}
 	minTimestamps, err := r.reader.readInt64Column(ctx, colMinTimestamp, n)
 	if err != nil && err != io.EOF {
@@ -80,15 +77,41 @@ func (r *RowReader) Read(ctx context.Context, s []Stat) (int, error) {
 		return 0, fmt.Errorf("reading uncompressed_size: %w", err)
 	}
 
+	// Discover label column names from the sort_schema of the first row.
+	var keys []string
+	if len(sortSchemas) > 0 && sortSchemas[0] != "" {
+		for _, k := range strings.Split(sortSchemas[0], ",") {
+			if k != "" {
+				keys = append(keys, k)
+			}
+		}
+	}
+
+	// Read each label column.
+	labelColumns := make(map[string][]string, len(keys))
+	for _, key := range keys {
+		vals, err := r.reader.readStringColumn(ctx, key, n)
+		if err != nil && err != io.EOF {
+			return 0, fmt.Errorf("reading label column %q: %w", key, err)
+		}
+		labelColumns[key] = vals
+	}
+
 	// All columns should have the same length.
 	read := len(objectPaths)
 	for i := range read {
+		labels := make(map[string]string, len(keys))
+		for _, key := range keys {
+			if i < len(labelColumns[key]) {
+				labels[key] = labelColumns[key][i]
+			}
+		}
 		s[i] = Stat{
 			ObjectPath:       objectPaths[i],
 			SectionIndex:     sectionIndexes[i],
 			RunID:            runIDs[i],
 			SortSchema:       sortSchemas[i],
-			ServiceName:      serviceNames[i],
+			Labels:           labels,
 			MinTimestamp:     minTimestamps[i],
 			MaxTimestamp:     maxTimestamps[i],
 			RowCount:         rowCounts[i],

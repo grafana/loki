@@ -27,7 +27,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 			SectionIndex:     0,
 			RunID:            42,
 			SortSchema:       "service_name",
-			ServiceName:      "foo",
+			Labels:           map[string]string{"service_name": "foo"},
 			MinTimestamp:     1000,
 			MaxTimestamp:     2000,
 			RowCount:         100,
@@ -38,7 +38,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 			SectionIndex:     1,
 			RunID:            43,
 			SortSchema:       "service_name",
-			ServiceName:      "bar",
+			Labels:           map[string]string{"service_name": "bar"},
 			MinTimestamp:     500,
 			MaxTimestamp:     1500,
 			RowCount:         50,
@@ -49,7 +49,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 			SectionIndex:     2,
 			RunID:            44,
 			SortSchema:       "service_name",
-			ServiceName:      "baz",
+			Labels:           map[string]string{"service_name": "baz"},
 			MinTimestamp:     3000,
 			MaxTimestamp:     4000,
 			RowCount:         200,
@@ -75,11 +75,11 @@ func TestBuilder_RoundTrip(t *testing.T) {
 	require.Equal(t, 3, n)
 	got = got[:n]
 
-	// All rows should round-trip; sort order is by ServiceName then MinTimestamp.
+	// All rows should round-trip; sort order is by service_name then MinTimestamp.
 	// bar < baz < foo
-	require.Equal(t, "bar", got[0].ServiceName)
-	require.Equal(t, "baz", got[1].ServiceName)
-	require.Equal(t, "foo", got[2].ServiceName)
+	require.Equal(t, "bar", got[0].Labels["service_name"])
+	require.Equal(t, "baz", got[1].Labels["service_name"])
+	require.Equal(t, "foo", got[2].Labels["service_name"])
 
 	// Verify all fields for the "foo" stat (last after sort).
 	fooStat := got[2]
@@ -87,7 +87,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 	require.Equal(t, int64(0), fooStat.SectionIndex)
 	require.Equal(t, int64(42), fooStat.RunID)
 	require.Equal(t, "service_name", fooStat.SortSchema)
-	require.Equal(t, "foo", fooStat.ServiceName)
+	require.Equal(t, "foo", fooStat.Labels["service_name"])
 	require.Equal(t, int64(1000), fooStat.MinTimestamp)
 	require.Equal(t, int64(2000), fooStat.MaxTimestamp)
 	require.Equal(t, int64(100), fooStat.RowCount)
@@ -98,11 +98,11 @@ func TestBuilder_SortOrder(t *testing.T) {
 	b := NewBuilder(0, ColumnarEncoder)
 
 	// Intentionally appended out of order.
-	b.Append(Stat{ServiceName: "beta", MinTimestamp: 200})
-	b.Append(Stat{ServiceName: "alpha", MinTimestamp: 300})
-	b.Append(Stat{ServiceName: "alpha", MinTimestamp: 100})
-	b.Append(Stat{ServiceName: "gamma", MinTimestamp: 50})
-	b.Append(Stat{ServiceName: "alpha", MinTimestamp: 200})
+	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "beta"}, MinTimestamp: 200})
+	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 300})
+	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 100})
+	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "gamma"}, MinTimestamp: 50})
+	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 200})
 
 	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
@@ -119,25 +119,25 @@ func TestBuilder_SortOrder(t *testing.T) {
 	got = got[:n]
 
 	// Verify sort order: alpha(100), alpha(200), alpha(300), beta(200), gamma(50).
-	require.Equal(t, "alpha", got[0].ServiceName)
+	require.Equal(t, "alpha", got[0].Labels["service_name"])
 	require.Equal(t, int64(100), got[0].MinTimestamp)
-	require.Equal(t, "alpha", got[1].ServiceName)
+	require.Equal(t, "alpha", got[1].Labels["service_name"])
 	require.Equal(t, int64(200), got[1].MinTimestamp)
-	require.Equal(t, "alpha", got[2].ServiceName)
+	require.Equal(t, "alpha", got[2].Labels["service_name"])
 	require.Equal(t, int64(300), got[2].MinTimestamp)
-	require.Equal(t, "beta", got[3].ServiceName)
+	require.Equal(t, "beta", got[3].Labels["service_name"])
 	require.Equal(t, int64(200), got[3].MinTimestamp)
-	require.Equal(t, "gamma", got[4].ServiceName)
+	require.Equal(t, "gamma", got[4].Labels["service_name"])
 	require.Equal(t, int64(50), got[4].MinTimestamp)
 }
 
 func TestBuilder_AllSameServiceName(t *testing.T) {
 	b := NewBuilder(0, ColumnarEncoder)
 
-	// Multiple rows with the same ServiceName, different timestamps.
-	b.Append(Stat{ServiceName: "svc", MinTimestamp: 300, ObjectPath: "c"})
-	b.Append(Stat{ServiceName: "svc", MinTimestamp: 100, ObjectPath: "a"})
-	b.Append(Stat{ServiceName: "svc", MinTimestamp: 200, ObjectPath: "b"})
+	// Multiple rows with the same service_name, different timestamps.
+	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 300, ObjectPath: "c"})
+	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100, ObjectPath: "a"})
+	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 200, ObjectPath: "b"})
 
 	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
@@ -153,7 +153,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 	require.Equal(t, 3, n)
 	got = got[:n]
 
-	// Sort is by MinTimestamp within the same ServiceName.
+	// Sort is by MinTimestamp within the same service_name.
 	require.Equal(t, int64(100), got[0].MinTimestamp)
 	require.Equal(t, int64(200), got[1].MinTimestamp)
 	require.Equal(t, int64(300), got[2].MinTimestamp)
@@ -162,8 +162,8 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 func TestBuilder_MissingServiceName(t *testing.T) {
 	b := NewBuilder(0, ColumnarEncoder)
 
-	b.Append(Stat{ServiceName: "", ObjectPath: "obj1", MinTimestamp: 100})
-	b.Append(Stat{ServiceName: "svc", ObjectPath: "obj2", MinTimestamp: 200})
+	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": ""}, ObjectPath: "obj1", MinTimestamp: 100})
+	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, ObjectPath: "obj2", MinTimestamp: 200})
 
 	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
@@ -180,30 +180,31 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 	got = got[:n]
 
 	// Empty string sorts before "svc".
-	require.Equal(t, "", got[0].ServiceName)
-	require.Equal(t, "svc", got[1].ServiceName)
+	require.Equal(t, "", got[0].Labels["service_name"])
+	require.Equal(t, "svc", got[1].Labels["service_name"])
 }
 
 func TestBuilder_SectionSplitting(t *testing.T) {
 	// Use a very small targetSectionSize to force splitting.
-	// Each row with ObjectPath="obj" (3 bytes) + SortSchema="" (0) + ServiceName (varies):
-	// rowSize = 40 + len(ObjectPath) + len(SortSchema) + len(ServiceName)
-	// With ObjectPath="x" (1 byte) and ServiceName="svc" (3 bytes), rowSize = 44.
-	// Set targetSectionSize to 100 to get at most 2 rows per section.
+	// Each row with ObjectPath="x" (1 byte) + SortSchema="service_name" (12 bytes) + Labels key "service_name" (12 bytes) + value "svc" (3 bytes):
+	// Per-row size: 6*8 (int64s) + len("x") + len("service_name") + len("service_name") + len("svc")
+	//             = 48 + 1 + 12 + 12 + 3 = 76 bytes.
+	// targetSectionSize=100: each row fits alone (76 < 100) but two don't (152 > 100),
+	// so 6 rows produce exactly 6 sections of 1 row each.
 	b := NewBuilder(100, ColumnarEncoder)
 
-	// Add 6 rows, which should split into at least 3 sections.
 	for i := range 6 {
 		b.Append(Stat{
 			ObjectPath:   "x",
-			ServiceName:  "svc",
+			SortSchema:   "service_name",
+			Labels:       map[string]string{"service_name": "svc"},
 			MinTimestamp: int64(i * 100),
 		})
 	}
 
 	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
-	require.Greater(t, len(sections), 1, "expected multiple sections due to splitting")
+	require.Len(t, sections, 6, "6 rows at 76 bytes each with targetSectionSize=100 should produce 6 sections")
 
 	// Collect all rows across sections and verify total count.
 	var allStats []Stat
@@ -240,7 +241,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 	b.Append(Stat{
 		ObjectPath:       longPath,
 		SortSchema:       longSchema,
-		ServiceName:      longLabel,
+		Labels:           map[string]string{longSchema: longLabel},
 		SectionIndex:     99,
 		RunID:            123456,
 		MinTimestamp:     1_000_000,
@@ -265,7 +266,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 	stat := got[0]
 	require.Equal(t, longPath, stat.ObjectPath)
 	require.Equal(t, longSchema, stat.SortSchema)
-	require.Equal(t, longLabel, stat.ServiceName)
+	require.Equal(t, longLabel, stat.Labels[longSchema])
 	require.Equal(t, int64(99), stat.SectionIndex)
 	require.Equal(t, int64(123456), stat.RunID)
 	require.Equal(t, int64(1_000_000), stat.MinTimestamp)
@@ -277,7 +278,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 func TestBuilder_ResetAndReuse(t *testing.T) {
 	b := NewBuilder(0, ColumnarEncoder)
 
-	b.Append(Stat{ServiceName: "first", MinTimestamp: 100})
+	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "first"}, MinTimestamp: 100})
 	b.Reset()
 
 	// After Reset, Flush should produce no sections.
@@ -286,7 +287,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 	require.Empty(t, sections)
 
 	// Add new data after reset.
-	b.Append(Stat{ServiceName: "second", MinTimestamp: 200})
+	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "second"}, MinTimestamp: 200})
 	sections, err = b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
@@ -299,7 +300,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 	n, err := rr.Read(context.Background(), got)
 	require.ErrorIs(t, err, io.EOF)
 	require.Equal(t, 1, n)
-	require.Equal(t, "second", got[0].ServiceName)
+	require.Equal(t, "second", got[0].Labels["service_name"])
 }
 
 func TestBuilder_EstimatedSize(t *testing.T) {
@@ -308,17 +309,18 @@ func TestBuilder_EstimatedSize(t *testing.T) {
 	require.Equal(t, 0, b.EstimatedSize(), "empty builder should have zero estimated size")
 
 	b.Append(Stat{
-		ObjectPath:  "obj", // 3 bytes
-		SortSchema:  "sch", // 3 bytes
-		ServiceName: "svc", // 3 bytes
+		ObjectPath: "obj",                           // 3 bytes
+		SortSchema: "sch",                           // 3 bytes
+		Labels:     map[string]string{"sch": "svc"}, // key: 3 bytes, value: 3 bytes
 	})
-	// 6 * 8 = 48 for int64s (SectionIndex, RunID, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize), plus 3+3+3 = 9 for strings = 57
-	require.Equal(t, 57, b.EstimatedSize())
+	// 6 * 8 = 48 for int64s (SectionIndex, RunID, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
+	// + 3 (ObjectPath) + 3 (SortSchema) + 3 (key) + 3 (value) = 60
+	require.Equal(t, 60, b.EstimatedSize())
 }
 
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
 	b := NewBuilder(0, ColumnarEncoder)
-	b.Append(Stat{ServiceName: "svc", MinTimestamp: 100})
+	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100})
 
 	_, err := b.Flush(context.Background())
 	require.NoError(t, err)

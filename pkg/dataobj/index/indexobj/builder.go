@@ -142,7 +142,7 @@ func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder
 
 // AppendStat records a per-sort-key aggregate for a data object section.
 func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
-	sortSchema string, labelValue string, minTs, maxTs time.Time, rows int, uncompressedSize int64, runID int64) error {
+	sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64, runID int64) error {
 
 	tenantStats := b.getStatsBuilderForTenant(tenantID)
 
@@ -151,17 +151,14 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 		SectionIndex:     sectionIdx,
 		RunID:            runID,
 		SortSchema:       sortSchema,
-		ServiceName:      labelValue,
+		Labels:           labels,
 		MinTimestamp:     minTs.UnixNano(),
 		MaxTimestamp:     maxTs.UnixNano(),
 		RowCount:         int64(rows),
 		UncompressedSize: uncompressedSize,
 	})
 
-	// Note: we intentionally do NOT set b.state = builderStateDirty here.
-	// Stats/postings are not serialized yet (flush is a no-op), so marking
-	// dirty would cause empty index objects to be flushed when only new
-	// section data has been appended.
+	// TODO: set b.state = builderStateDirty when we implement flush.
 	return nil
 }
 
@@ -185,6 +182,7 @@ func (b *Builder) AppendLabelPosting(tenantID, objectPath string, sectionIdx int
 		MaxTimestamp:     maxTs.UnixNano(),
 	})
 
+	// TODO: set b.state = builderStateDirty when we implement flush.
 	return nil
 }
 
@@ -208,6 +206,7 @@ func (b *Builder) AppendBloomPosting(tenantID, objectPath string, sectionIdx int
 		MaxTimestamp:     maxTs.UnixNano(),
 	})
 
+	// TODO: set b.state = builderStateDirty when we implement flush.
 	return nil
 }
 

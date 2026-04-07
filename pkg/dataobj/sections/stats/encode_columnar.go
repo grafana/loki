@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/memory"
@@ -20,40 +21,66 @@ func ColumnarEncoder(_ context.Context, rows []Stat) (Section, error) {
 	sectionIndexBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
 	runIDBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
 	sortSchemaBuilder := columnar.NewUTF8Builder(buildAlloc)
-	serviceNameBuilder := columnar.NewUTF8Builder(buildAlloc)
 	minTsBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
 	maxTsBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
 	rowCountBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
 	uncompressedSizeBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
+
+	// Determine dynamic label columns from the sort schema of the first row.
+	var labelKeys []string
+	if len(rows) > 0 {
+		labelKeys = strings.Split(rows[0].SortSchema, ",")
+		// Filter out empty strings (e.g. when SortSchema is "")
+		filtered := labelKeys[:0]
+		for _, k := range labelKeys {
+			if k != "" {
+				filtered = append(filtered, k)
+			}
+		}
+		labelKeys = filtered
+	}
+
+	// Build a builder for each label key.
+	labelBuilders := make(map[string]*columnar.UTF8Builder, len(labelKeys))
+	for _, key := range labelKeys {
+		labelBuilders[key] = columnar.NewUTF8Builder(buildAlloc)
+	}
 
 	for _, r := range rows {
 		objectPathBuilder.AppendValue([]byte(r.ObjectPath))
 		sectionIndexBuilder.AppendValue(r.SectionIndex)
 		runIDBuilder.AppendValue(r.RunID)
 		sortSchemaBuilder.AppendValue([]byte(r.SortSchema))
-		serviceNameBuilder.AppendValue([]byte(r.ServiceName))
+		for _, key := range labelKeys {
+			labelBuilders[key].AppendValue([]byte(r.Labels[key]))
+		}
 		minTsBuilder.AppendValue(r.MinTimestamp)
 		maxTsBuilder.AppendValue(r.MaxTimestamp)
 		rowCountBuilder.AppendValue(r.RowCount)
 		uncompressedSizeBuilder.AppendValue(r.UncompressedSize)
 	}
 
-	// Column order must match the order used by DatasetEncoder.
+	// Column order: fixed prefix, dynamic label columns, fixed suffix.
+	// object_path, section_index, run_id, sort_schema, <label columns>, min_timestamp, max_timestamp, row_count, uncompressed_size
 	columnOrder := []string{
-		colObjectPath, colSectionIndex, colRunID, colSortSchema, colServiceName,
-		colMinTimestamp, colMaxTimestamp, colRowCount, colUncompressedSize,
+		colObjectPath, colSectionIndex, colRunID, colSortSchema,
 	}
+	columnOrder = append(columnOrder, labelKeys...)
+	columnOrder = append(columnOrder, colMinTimestamp, colMaxTimestamp, colRowCount, colUncompressedSize)
 
+	// Build the columns map with fixed columns plus dynamic label columns.
 	columns := map[string]columnar.Array{
 		colObjectPath:       objectPathBuilder.Build(),
 		colSectionIndex:     sectionIndexBuilder.Build(),
 		colRunID:            runIDBuilder.Build(),
 		colSortSchema:       sortSchemaBuilder.Build(),
-		colServiceName:      serviceNameBuilder.Build(),
 		colMinTimestamp:     minTsBuilder.Build(),
 		colMaxTimestamp:     maxTsBuilder.Build(),
 		colRowCount:         rowCountBuilder.Build(),
 		colUncompressedSize: uncompressedSizeBuilder.Build(),
+	}
+	for _, key := range labelKeys {
+		columns[key] = labelBuilders[key].Build()
 	}
 
 	return Section{

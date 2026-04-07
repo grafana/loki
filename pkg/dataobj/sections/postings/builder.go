@@ -34,7 +34,8 @@ type Builder struct {
 	rows []Posting
 }
 
-// defaultTargetSectionSize is a sensible default for the target section size.
+// defaultTargetSectionSize is used when no target section size is provided
+// (e.g., in tests). Production callers always pass TargetSectionSize from config.
 const defaultTargetSectionSize = 256 * 1024 * 1024 // 256 MiB
 
 // NewBuilder creates a new Builder. targetSectionSize controls when accumulated
@@ -64,9 +65,25 @@ func (b *Builder) Append(p Posting) {
 	b.rows = append(b.rows, p)
 }
 
-// labelValueSortKey returns the sort key for a label value. Nil (Bloom
-// postings) sorts as empty string so Bloom entries come before Label entries
-// for the same column_name.
+// comparePostings returns true if a should sort before b, using the sort order
+// [Kind, ColumnName, LabelValue, MinTimestamp]. All comparisons are
+// lexicographic. Nil LabelValue sorts as empty string so Bloom entries come
+// before Label entries for the same column_name.
+func comparePostings(a, b Posting) bool {
+	if a.Kind != b.Kind {
+		return a.Kind < b.Kind
+	}
+	if a.ColumnName != b.ColumnName {
+		return a.ColumnName < b.ColumnName
+	}
+	lvi := labelValueSortKey(a.LabelValue)
+	lvj := labelValueSortKey(b.LabelValue)
+	if lvi != lvj {
+		return lvi < lvj
+	}
+	return a.MinTimestamp < b.MinTimestamp
+}
+
 func labelValueSortKey(lv *string) string {
 	if lv == nil {
 		return ""
@@ -79,7 +96,7 @@ func labelValueSortKey(lv *string) string {
 func (b *Builder) EstimatedSize() int {
 	var total int
 	for _, r := range b.rows {
-		// 4 int64 columns × 8 bytes + kind (int64) = 5 * 8 = 40
+		// 5 int64 columns (kind, section_index, uncompressed_size, min_timestamp, max_timestamp) × 8 bytes
 		total += 5 * 8
 		total += len(r.ObjectPath) + len(r.ColumnName)
 		if r.LabelValue != nil {
@@ -105,21 +122,9 @@ func (b *Builder) Flush(ctx context.Context) ([]Section, error) {
 		return nil, nil
 	}
 
-	// Sort rows by [Kind, ColumnName, LabelValue, MinTimestamp].
+	// Sort rows by [Kind, ColumnName, LabelValue, MinTimestamp] (lexicographic).
 	sort.SliceStable(b.rows, func(i, j int) bool {
-		ri, rj := b.rows[i], b.rows[j]
-		if ri.Kind != rj.Kind {
-			return ri.Kind < rj.Kind
-		}
-		if ri.ColumnName != rj.ColumnName {
-			return ri.ColumnName < rj.ColumnName
-		}
-		lvi := labelValueSortKey(ri.LabelValue)
-		lvj := labelValueSortKey(rj.LabelValue)
-		if lvi != lvj {
-			return lvi < lvj
-		}
-		return ri.MinTimestamp < rj.MinTimestamp
+		return comparePostings(b.rows[i], b.rows[j])
 	})
 
 	// Determine section splits based on targetSectionSize.
@@ -152,7 +157,7 @@ func (b *Builder) computeSplits() [][]Posting {
 	)
 
 	for i, r := range b.rows {
-		rowSize := 5*8 + len(r.ObjectPath) + len(r.ColumnName) + len(r.BloomFilter) + len(r.StreamIDBitmap)
+		rowSize := 5*8 + len(r.ObjectPath) + len(r.ColumnName) + len(r.BloomFilter) + len(r.StreamIDBitmap) // 5 int64 columns × 8 bytes + variable-length fields
 		if r.LabelValue != nil {
 			rowSize += len(*r.LabelValue)
 		}
