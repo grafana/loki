@@ -214,7 +214,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           )
                         )
                         .addRowIf(
-                          !$._config.ssd.enabled && !$._config.tsdb,
+                          !$._config.ssd.enabled,
                           $.row('BoltDB Index')
                           .addPanel(
                             $.newQueryPanel('QPS') +
