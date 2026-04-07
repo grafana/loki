@@ -57,7 +57,7 @@ func evaluateWithSelection(alloc *memory.Allocator, expr Expression, input colum
 	case *Column:
 		s, ok := input.(*columnar.Struct)
 		if !ok {
-			return nil, fmt.Errorf("Column expression requires Struct input, got %T", input)
+			return nil, fmt.Errorf("expected Struct input, got %T", input)
 		}
 
 		columnIndex := -1
@@ -72,6 +72,18 @@ func evaluateWithSelection(alloc *memory.Allocator, expr Expression, input colum
 		}
 
 		return s.Field(columnIndex), nil
+
+	case *Extract:
+		return evaluateExtract(alloc, expr, input, selection)
+
+	case *Include:
+		return evaluateInclude(alloc, expr, input, selection)
+
+	case *Exclude:
+		return evaluateExclude(alloc, expr, input, selection)
+
+	case *MakeStruct:
+		return evaluateMakeStruct(alloc, expr, input, selection)
 
 	case *Unary:
 		return evaluateUnary(alloc, expr, input, selection)
@@ -95,14 +107,10 @@ func evaluateExtract(alloc *memory.Allocator, expr *Extract, input columnar.Datu
 
 	s, ok := value.(*columnar.Struct)
 	if !ok {
-		return nil, fmt.Errorf("Extract expression requires Struct input, got %T", value)
+		return nil, fmt.Errorf("expected Struct input, got %T", value)
 	}
 
-	columnIndex := -1
-	if schema := s.Schema(); schema != nil {
-		_, columnIndex = schema.ColumnIndex(expr.Name)
-	}
-
+	_, columnIndex := s.Schema().ColumnIndex(expr.Name)
 	if columnIndex == -1 {
 		validity := memory.NewBitmap(alloc, s.Len())
 		validity.AppendCount(false, s.Len())
@@ -118,9 +126,17 @@ func evaluateInclude(alloc *memory.Allocator, expr *Include, input columnar.Datu
 		return nil, err
 	}
 
+	seen := make(map[string]struct{}, len(expr.Names))
+	for _, name := range expr.Names {
+		if _, ok := seen[name]; ok {
+			return nil, fmt.Errorf("duplicate field name %q", name)
+		}
+		seen[name] = struct{}{}
+	}
+
 	s, ok := value.(*columnar.Struct)
 	if !ok {
-		return nil, fmt.Errorf("Include expression requires Struct input, got %T", value)
+		return nil, fmt.Errorf("expected Struct input, got %T", value)
 	}
 
 	var (
@@ -142,18 +158,20 @@ func evaluateInclude(alloc *memory.Allocator, expr *Include, input columnar.Datu
 
 func evaluateMakeStruct(alloc *memory.Allocator, expr *MakeStruct, input columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
 	if len(expr.Names) != len(expr.Values) {
-		return nil, fmt.Errorf("MakeStruct: names and values count mismatch: %d != %d", len(expr.Names), len(expr.Values))
+		return nil, fmt.Errorf("names and values count mismatch: %d != %d", len(expr.Names), len(expr.Values))
 	}
 
 	seen := make(map[string]struct{}, len(expr.Names))
 	for _, name := range expr.Names {
 		if _, ok := seen[name]; ok {
-			return nil, fmt.Errorf("MakeStruct: duplicate field name %q", name)
+			return nil, fmt.Errorf("duplicate field name %q", name)
 		}
 		seen[name] = struct{}{}
 	}
 
 	var (
+		length = inputNumRows(input)
+
 		columns = make([]columnar.Column, len(expr.Names))
 		fields  = make([]columnar.Array, len(expr.Values))
 	)
@@ -164,15 +182,14 @@ func evaluateMakeStruct(alloc *memory.Allocator, expr *MakeStruct, input columna
 		}
 		arr, ok := val.(columnar.Array)
 		if !ok {
-			return nil, fmt.Errorf("MakeStruct: value %d (%q) must be an array, got %T", i, name, val)
+			return nil, fmt.Errorf("value %d (%q) must be an array, got %T", i, name, val)
 		}
 		columns[i] = columnar.Column{Name: name}
 		fields[i] = arr
-	}
 
-	length := inputNumRows(input)
-	if len(fields) > 0 {
-		length = fields[0].Len()
+		if arr.Len() != length {
+			return nil, fmt.Errorf("value %d (%q) must have length %d, got %d", i, name, length, arr.Len())
+		}
 	}
 
 	schema := columnar.NewSchema(columns)
@@ -187,7 +204,7 @@ func evaluateExclude(alloc *memory.Allocator, expr *Exclude, input columnar.Datu
 
 	s, ok := value.(*columnar.Struct)
 	if !ok {
-		return nil, fmt.Errorf("Exclude expression requires Struct input, got %T", value)
+		return nil, fmt.Errorf("expected Struct input, got %T", value)
 	}
 
 	excludeSet := make(map[string]struct{}, len(expr.Names))

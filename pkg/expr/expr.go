@@ -101,14 +101,14 @@ type (
 	}
 )
 
-func (*Constant) isExpr() {}
-func (*Column) isExpr()   {}
-func (*Unary) isExpr()    {}
-func (*Binary) isExpr()   {}
-func (*Regexp) isExpr()   {}
-func (*ValueSet) isExpr() {}
-func (*Identity) isExpr() {}
-func (*Extract) isExpr()  {}
-func (*Include) isExpr()  {}
+func (*Constant) isExpr()   {}
+func (*Column) isExpr()     {}
+func (*Unary) isExpr()      {}
+func (*Binary) isExpr()     {}
+func (*Regexp) isExpr()     {}
+func (*ValueSet) isExpr()   {}
+func (*Identity) isExpr()   {}
+func (*Extract) isExpr()    {}
+func (*Include) isExpr()    {}
 func (*Exclude) isExpr()    {}
 func (*MakeStruct) isExpr() {}
