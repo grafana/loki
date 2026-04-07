@@ -21,8 +21,8 @@ func ColumnarEncoder(_ context.Context, rows []Stat) (Section, error) {
 	sectionIndexBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
 	runIDBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
 	sortSchemaBuilder := columnar.NewUTF8Builder(buildAlloc)
-	minTsBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
-	maxTsBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
+	minTSBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
+	maxTSBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
 	rowCountBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
 	uncompressedSizeBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
 
@@ -54,8 +54,8 @@ func ColumnarEncoder(_ context.Context, rows []Stat) (Section, error) {
 		for _, key := range labelKeys {
 			labelBuilders[key].AppendValue([]byte(r.Labels[key]))
 		}
-		minTsBuilder.AppendValue(r.MinTimestamp)
-		maxTsBuilder.AppendValue(r.MaxTimestamp)
+		minTSBuilder.AppendValue(r.MinTimestamp)
+		maxTSBuilder.AppendValue(r.MaxTimestamp)
 		rowCountBuilder.AppendValue(r.RowCount)
 		uncompressedSizeBuilder.AppendValue(r.UncompressedSize)
 	}
@@ -74,8 +74,8 @@ func ColumnarEncoder(_ context.Context, rows []Stat) (Section, error) {
 		colSectionIndex:     sectionIndexBuilder.Build(),
 		colRunID:            runIDBuilder.Build(),
 		colSortSchema:       sortSchemaBuilder.Build(),
-		colMinTimestamp:     minTsBuilder.Build(),
-		colMaxTimestamp:     maxTsBuilder.Build(),
+		colMinTimestamp:     minTSBuilder.Build(),
+		colMaxTimestamp:     maxTSBuilder.Build(),
 		colRowCount:         rowCountBuilder.Build(),
 		colUncompressedSize: uncompressedSizeBuilder.Build(),
 	}
