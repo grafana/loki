@@ -253,13 +253,22 @@ func TestClampPredicates(t *testing.T) {
 		start := time.Date(2026, 3, 11, 12, 41, 44, 0, time.UTC)
 		end := time.Date(2026, 3, 11, 12, 41, 46, 0, time.UTC)
 		tr := TimeRange{Start: start, End: end}
-		filterTime := time.Date(2026, 3, 11, 12, 41, 42, 0, time.UTC).UnixNano()
+		dataObjScanPredTime := time.Date(2026, 3, 11, 12, 41, 40, 0, time.UTC).UnixNano()
+		filterPredTime1 := time.Date(2026, 3, 11, 12, 41, 42, 0, time.UTC).UnixNano()
+		filterPredTime2 := time.Date(2026, 3, 11, 12, 41, 50, 0, time.UTC).UnixNano()
 		plan := &Plan{}
 		{
-			dataObjScan := plan.graph.Add(&DataObjScan{MaxTimeRange: tr})
+			dataObjScan := plan.graph.Add(&DataObjScan{MaxTimeRange: tr,
+				Predicates: []Expression{&BinaryExpr{Op: types.BinaryOpGte,
+					Left:  newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+					Right: NewLiteral(types.Timestamp(dataObjScanPredTime))}}})
 			filter := plan.graph.Add(&Filter{Predicates: []Expression{&BinaryExpr{Op: types.BinaryOpGt,
 				Left:  newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
-				Right: NewLiteral(types.Timestamp(filterTime))}}})
+				Right: NewLiteral(types.Timestamp(filterPredTime1))},
+				&BinaryExpr{Op: types.BinaryOpLt,
+					Left:  newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+					Right: NewLiteral(types.Timestamp(filterPredTime2))},
+			}})
 
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: dataObjScan})
 		}
@@ -275,10 +284,18 @@ func TestClampPredicates(t *testing.T) {
 
 		expectedPlan := &Plan{}
 		{
-			dataObjScan := expectedPlan.graph.Add(&DataObjScan{MaxTimeRange: tr})
+			dataObjScan := expectedPlan.graph.Add(&DataObjScan{MaxTimeRange: tr,
+				Predicates: []Expression{&BinaryExpr{Op: types.BinaryOpGte,
+					Left:  newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+					Right: NewLiteral(types.Timestamp(start.UnixNano()))}},
+			})
 			filter := expectedPlan.graph.Add(&Filter{Predicates: []Expression{&BinaryExpr{Op: types.BinaryOpGte,
 				Left:  newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
-				Right: NewLiteral(types.Timestamp(start.UnixNano()))}}})
+				Right: NewLiteral(types.Timestamp(start.UnixNano()))},
+				&BinaryExpr{Op: types.BinaryOpLte,
+					Left:  newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+					Right: NewLiteral(types.Timestamp(end.UnixNano()))},
+			}})
 
 			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: dataObjScan})
 		}
