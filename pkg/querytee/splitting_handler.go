@@ -209,7 +209,6 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// V2 only supports query and query_range endpoints (LokiRequest and LokiInstantRequest).
 	// For unsupported request types, route directly to v1 to avoid errors from v2.
-	// This decouples the "does v2 support this type?" decision from splitLag configuration.
 	if !isV2SupportedRequest(req) && (f.routingMode == RoutingModeV2Preferred || f.routingMode == RoutingModeRace) {
 		level.Debug(f.logger).Log(
 			"msg", "request type not supported by v2, routing to v1 only",
@@ -370,9 +369,8 @@ func (f *SplittingHandler) serveSplits(ctx context.Context, req queryrangebase.R
 // gains support for additional request types (e.g., labels, series).
 //
 // Note: when splitLag > 0, unsupported types are also caught by the serveSplits
-// default case (line 342). This check covers the splitLag=0 path where requests
-// go directly to fanOutHandler.Do, and makes the routing decision explicit
-// regardless of split configuration.
+// default case (line 342). This check makes this requirement more clear, and catches
+// the case where splitLag=0.
 func isV2SupportedRequest(req queryrangebase.Request) bool {
 	switch req.(type) {
 	case *queryrange.LokiRequest, *queryrange.LokiInstantRequest:

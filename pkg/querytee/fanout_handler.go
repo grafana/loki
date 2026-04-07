@@ -168,7 +168,6 @@ func (h *FanOutHandler) doWithRacing(results <-chan *backendResult, collected []
 		result := <-results
 		collected = append(collected, result)
 
-		//TODO(twhitney): 404s are treated as successful responses in racing mode, which may not be correct
 		if result.err == nil && result.backendResp.succeeded() {
 			winner := result
 			remaining := len(h.backends) - i - 1
