@@ -151,7 +151,7 @@ func (c *client) exportContext(parent context.Context) (context.Context, context
 	if c.exportTimeout > 0 {
 		ctx, cancel = context.WithTimeoutCause(parent, c.exportTimeout, errors.New("exporter export timeout"))
 	} else {
-		ctx, cancel = context.WithCancel(parent)
+		ctx, cancel = context.WithCancel(parent) //nolint:gosec  // cancel is handled by the caller.
 	}
 
 	if c.metadata.Len() > 0 {

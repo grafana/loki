@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package clusterresolver
+package cdsbalancer
 
 import (
 	"fmt"
@@ -31,9 +31,10 @@ import (
 // struct keeps state between generate() calls, and a later generate() might
 // return names returned by the previous call.
 type nameGenerator struct {
-	existingNames map[clients.Locality]string
-	prefix        uint64
-	nextID        uint64
+	prevLocalitiesToChildNames map[clients.Locality]string // locality to child name mapping generated for the previous update
+	prevChildNames             []string                    // prioritized list of child names generated for the previous update
+	prefix                     uint64
+	nextID                     uint64
 }
 
 func newNameGenerator(prefix uint64) *nameGenerator {
@@ -53,36 +54,58 @@ func newNameGenerator(prefix uint64) *nameGenerator {
 // - update 3: [[L1, L2], [L3]] --> ["0", "2"]   (Two priorities were merged)
 // - update 4: [[L1], [L4]] --> ["0", "3",]      (A priority was split, and a new priority was added)
 func (ng *nameGenerator) generate(priorities [][]xdsresource.Locality) []string {
-	var ret []string
+	ret := make([]string, len(priorities))
 	usedNames := make(map[string]bool)
 	newNames := make(map[clients.Locality]string)
-	for _, priority := range priorities {
-		var nameFound string
+
+	// Pass 1: Same priority index match.
+	for i, priority := range priorities {
+		if i >= len(ng.prevChildNames) {
+			continue
+		}
+		targetName := ng.prevChildNames[i]
 		for _, locality := range priority {
-			if name, ok := ng.existingNames[locality.ID]; ok {
+			if name, ok := ng.prevLocalitiesToChildNames[locality.ID]; ok && name == targetName {
+				ret[i] = targetName
+				usedNames[targetName] = true
+				break
+			}
+		}
+	}
+
+	// Pass 2: Greedy reuse.
+	for i, priority := range priorities {
+		if ret[i] != "" {
+			continue
+		}
+		for _, locality := range priority {
+			if name, ok := ng.prevLocalitiesToChildNames[locality.ID]; ok {
 				if !usedNames[name] {
-					nameFound = name
-					// Found a name to use. No need to process the remaining
-					// localities.
+					ret[i] = name
+					usedNames[name] = true
 					break
 				}
 			}
 		}
-
-		if nameFound == "" {
-			// No appropriate used name is found. Make a new name.
-			nameFound = fmt.Sprintf("priority-%d-%d", ng.prefix, ng.nextID)
-			ng.nextID++
-		}
-
-		ret = append(ret, nameFound)
-		// All localities in this priority share the same name. Add them all to
-		// the new map.
-		for _, l := range priority {
-			newNames[l.ID] = nameFound
-		}
-		usedNames[nameFound] = true
 	}
-	ng.existingNames = newNames
+
+	// Pass 3: New name.
+	for i, name := range ret {
+		if name == "" {
+			newID := fmt.Sprintf("priority-%d-%d", ng.prefix, ng.nextID)
+			ng.nextID++
+			ret[i] = newID
+			usedNames[newID] = true
+		}
+	}
+
+	// Update state.
+	for i, priority := range priorities {
+		for _, l := range priority {
+			newNames[l.ID] = ret[i]
+		}
+	}
+	ng.prevLocalitiesToChildNames = newNames
+	ng.prevChildNames = ret
 	return ret
 }

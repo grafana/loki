@@ -98,7 +98,9 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 		{colTs: time.Unix(20, 0).UTC(), colVal: float64(2), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1"},
 		{colTs: time.Unix(20, 0).UTC(), colVal: float64(3), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2"},
 		{colTs: time.Unix(20, 0).UTC(), colVal: float64(2), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app3"},
-		{colTs: time.Unix(20, 0).UTC(), colVal: float64(1), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": nil},
+		// Empty service label must be preserved in the aggregation result, not dropped or turned into NULL.
+		// Pipeline stages like `| json` can produce parsed labels with empty values.
+		{colTs: time.Unix(20, 0).UTC(), colVal: float64(1), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": ""},
 	}
 
 	rows, err := arrowtest.RecordRows(record)
@@ -645,6 +647,59 @@ func TestMatcher(t *testing.T) {
 			})
 		}
 	})
+}
+
+// TestRangeAggregationPipeline_EmptyLabelValues is a regression test: empty parsed label values must be
+// preserved in the aggregation output so the downstream result builder can include them in the metric
+// label set (matching classic Loki engine behaviour).
+func TestRangeAggregationPipeline_EmptyLabelValues(t *testing.T) {
+	fields := []arrow.Field{
+		semconv.FieldFromFQN(colTs, false),
+		semconv.FieldFromFQN(colEnv, false),
+		semconv.FieldFromFQN(colSvc, false),
+	}
+	schema := arrow.NewSchema(fields, nil)
+
+	rows := []arrowtest.Rows{
+		{
+			{colTs: time.Unix(20, 0).UTC(), colEnv: "prod", colSvc: "app1"},
+			{colTs: time.Unix(15, 0).UTC(), colEnv: "prod", colSvc: "app1"},
+			// svc="" — a parsed label with empty value; must be preserved, not collapsed with absent svc.
+			{colTs: time.Unix(18, 0).UTC(), colEnv: "dev", colSvc: ""},
+		},
+	}
+
+	opts := rangeAggregationOptions{
+		grouping: physical.Grouping{
+			Columns: []physical.ColumnExpression{
+				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeAmbiguous}},
+				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeAmbiguous}},
+			},
+		},
+		startTs:       time.Unix(20, 0).UTC(),
+		endTs:         time.Unix(20, 0).UTC(),
+		rangeInterval: 10 * time.Second,
+		operation:     types.RangeAggregationTypeCount,
+	}
+
+	input := NewArrowtestPipeline(schema, rows...)
+	pipeline, err := newRangeAggregationPipeline([]Pipeline{input}, newExpressionEvaluator(), opts)
+	require.NoError(t, err)
+	defer pipeline.Close()
+
+	record, err := pipeline.Read(t.Context())
+	require.NoError(t, err)
+
+	result, err := arrowtest.RecordRows(record)
+	require.NoError(t, err)
+
+	expect := arrowtest.Rows{
+		{colTs: time.Unix(20, 0).UTC(), colVal: float64(2), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1"},
+		// svc="" must appear as empty string in the output row, not nil (NULL).
+		{colTs: time.Unix(20, 0).UTC(), colVal: float64(1), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": ""},
+	}
+	require.Equal(t, len(expect), len(result))
+	require.ElementsMatch(t, expect, result)
 }
 
 // requireEqualWindows asserts that two slices of window structs contain the same elements.

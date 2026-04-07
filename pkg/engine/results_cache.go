@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -206,16 +207,53 @@ type cacheHandler struct {
 }
 
 func (h *cacheHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	statsCtx, ctx := stats.NewContext(ctx)
+
+	resp, err := h.doForQueryType(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Merge cache stats from the stats context into the response statistics.
+	//
+	// The v2 engine uses two separate stat-tracking mechanisms that must be reconciled:
+	//   - executor.Execute() translates xcap observations into logql stats via
+	//     capture.ToStatsSummary(), which covers execution stats (dataobj rows/bytes, etc.)
+	//     but not the query results cache stats.
+	//   - The cache implementations, which is reused from the old engine,
+	//     write cache hit/miss/byte metrics directly into the logql stats.Context via
+	//     stats.FromContext(ctx).
+	//
+	// Because Execute() is unaware of the stats.Context, its result contains zero cache
+	// stats. The cache stats live only in statsCtx. We merge them here so the final
+	// response reflects both the execution metrics from xcap and the cache metrics from
+	// CollectStats.
+	//
+	// TODO(salvacorts): Once we remove the old engine, we can instrument the results cache impl with xcap
+	//                   and stop relying on stats.Context
+	switch r := resp.(type) {
+	case *queryrange.LokiResponse:
+		r.Statistics.Caches.Merge(statsCtx.Caches())
+	case *queryrange.LokiPromResponse:
+		r.Statistics.Caches.Merge(statsCtx.Caches())
+	}
+
+	return resp, nil
+}
+
+func (h *cacheHandler) doForQueryType(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	expr, err := syntax.ParseExpr(req.GetQuery())
 	if err != nil {
 		return h.next.Do(ctx, req)
 	}
+
 	if isMetricQuery(expr) {
 		if req.GetStep() == 0 { // instant metric query
 			return h.instantMetricHandler.Do(ctx, req)
 		}
 		return h.metricHandler.Do(ctx, req)
 	}
+
 	return h.logHandler.Do(ctx, req)
 }
 

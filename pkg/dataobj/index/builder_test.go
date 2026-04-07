@@ -231,6 +231,75 @@ func TestIndexBuilder(t *testing.T) {
 	require.Equal(t, 30, len(indexes))
 }
 
+func TestIndexBuilder_stalePartition(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	// Setup test dependencies
+	bucket := objstore.NewInMemBucket()
+
+	cluster, configString := testkafka.CreateClusterWithoutCustomConsumerGroupsSupport(t, 1, "loki.metastore-events")
+	defer cluster.Close()
+
+	client, err := kgo.NewClient(kgo.ConsumerGroup("test-consumer-group"), kgo.ConsumeTopics("loki.metastore-events"), kgo.SeedBrokers(configString))
+	require.NoError(t, err)
+
+	p, err := NewIndexBuilder(
+		Config{
+			BuilderBaseConfig: testBuilderConfig,
+			EventsPerIndex:    16,
+			FlushInterval:     time.Millisecond, // Flush stale partitions very often
+			MaxIdleTime:       0,                // Consider all partitions stale
+		},
+		metastore.Config{},
+		kafka.Config{},
+		log.NewNopLogger(),
+		"instance-id",
+		bucket,
+		nil,
+		prometheus.NewRegistry(),
+	)
+	require.NoError(t, err)
+	p.client.Close()
+	p.client = client
+	require.NoError(t, p.StartAsync(ctx))
+	require.NoError(t, p.AwaitRunning(ctx))
+
+	// Assign some partitions to the builder.
+	p.handlePartitionsAssigned(ctx, nil, map[string][]int32{
+		"loki.metastore-events": {0},
+	})
+
+	buildLogObject(t, "loki", "test-path-0", bucket)
+	buildLogObject(t, "testing", "test-path-1", bucket)
+	buildLogObject(t, "three", "test-path-2", bucket)
+
+	for i := 0; i < 3; i++ {
+		event := metastore.ObjectWrittenEvent{
+			ObjectPath: fmt.Sprintf("test-path-%d", i),
+			WriteTime:  time.Now().Format(time.RFC3339),
+		}
+		eventBytes, err := event.Marshal()
+		require.NoError(t, err)
+
+		p.processRecord(context.Background(), &kgo.Record{
+			Value:     eventBytes,
+			Partition: int32(0),
+		})
+	}
+
+	// Wait for stale partition to be flushed
+	for i := 0; i < 100; i++ {
+		if len(readAllSectionPointers(t, bucket)) == 30 && len(p.partitionStates[0].events) == 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	require.Equal(t, 30, len(readAllSectionPointers(t, bucket)))
+	require.Equal(t, 0, len(p.partitionStates[0].events)) // Events should be gone now they've been processed
+}
+
 func readAllSectionPointers(t *testing.T, bucket objstore.Bucket) []pointers.SectionPointer {
 	var out []pointers.SectionPointer
 
