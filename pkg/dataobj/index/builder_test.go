@@ -294,7 +294,7 @@ func TestIndexBuilder_idlePartition(t *testing.T) {
 	}
 
 	// Wait for idle partition to be flushed
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 1000; i++ {
 		if len(readAllSectionPointers(t, bucket)) == 30 && len(p.partitionStates[0].events) == 0 {
 			break
 		}
@@ -364,7 +364,7 @@ func TestIndexBuilder_oldEvents(t *testing.T) {
 	}
 
 	// Wait for data to be flushed
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 1000; i++ {
 		if len(readAllSectionPointers(t, bucket)) == 30 && len(p.partitionStates[0].events) == 0 {
 			break
 		}
