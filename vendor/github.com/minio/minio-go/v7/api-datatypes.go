@@ -168,11 +168,12 @@ type ObjectInfo struct {
 	// each parts concatenated into one string.
 	ETag string `json:"etag"`
 
-	Key          string    `json:"name"`         // Name of the object
-	LastModified time.Time `json:"lastModified"` // Date and time the object was last modified.
-	Size         int64     `json:"size"`         // Size in bytes of the object.
-	ContentType  string    `json:"contentType"`  // A standard MIME type describing the format of the object data.
-	Expires      time.Time `json:"expires"`      // The date and time at which the object is no longer able to be cached.
+	Key             string    `json:"name"`            // Name of the object
+	LastModified    time.Time `json:"lastModified"`    // Date and time the object was last modified.
+	Size            int64     `json:"size"`            // Size in bytes of the object.
+	ContentType     string    `json:"contentType"`     // A standard MIME type describing the format of the object data.
+	ContentEncoding string    `json:"contentEncoding"` // A standard MIME type describing encoding of the object data.
+	Expires         time.Time `json:"expires"`         // The date and time at which the object is no longer able to be cached.
 
 	// Collection of additional metadata on the object.
 	// eg: x-amz-meta-*, content-encoding etc.
@@ -226,6 +227,7 @@ type ObjectInfo struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumAlgorithm string
 	ChecksumMode      string `xml:"ChecksumType"`
 
 	Internal *struct {

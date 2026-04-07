@@ -1954,6 +1954,14 @@ ingest_limits_frontend_client:
     # CLI flag: -ingest-limits-frontend-client.remote-timeout
     [remote_timeout: <duration> | default = 1s]
 
+  # [Experimental]: Enable shuffle sharding.
+  # CLI flag: -ingest-limits-frontend-client.shuffle-shard-enabled
+  [shuffle_shard_enabled: <boolean> | default = false]
+
+  # [Experimental]: The number of shards per tenant.
+  # CLI flag: -ingest-limits-frontend-client.shuffle-shard-size
+  [shuffle_shard_size: <int> | default = 1]
+
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]
