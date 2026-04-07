@@ -122,7 +122,7 @@ Before marking a PR as ready for review:
 
 **Note:** A maintainer must approve and trigger CI for community contributions.
 
-**Note:** For automated agent PRs, append 🤖🤖🤖 to the PR title to opt into the dedicated agent review process.
+**Note:** For automated agent PRs, append 🤖🤖🤖 to the PR title to opt into a dedicated agent review process.
 
 ## Dependency management
 
@@ -148,24 +148,7 @@ Always commit changes to `go.mod`, `go.sum`, and `vendor/` together in the same 
 
 ## Coding standards
 
-Refer to [CODING_STANDARDS.md](CODING_STANDARDS.md) for the full style guide. The most important rule at a glance:
-
-**Go import grouping** — three groups separated by blank lines: standard library, external packages, internal packages:
-
-```go
-import (
-    "fmt"
-    "math"
-
-    "github.com/prometheus/common/model"
-    "github.com/prometheus/prometheus/pkg/labels"
-
-    "github.com/grafana/loki/v3/pkg/logproto"
-    "github.com/grafana/loki/v3/pkg/logql"
-)
-```
-
-Run `make lint` before submitting — it enforces import ordering and other style rules automatically.
+Refer to [CODING_STANDARDS.md](CODING_STANDARDS.md) for the full style guide. Standards are enforced by CI and can be validated with the `make lint` command before submitting a PR.
 
 ## Contribute to documentation
 
@@ -186,7 +169,7 @@ If your changes need to be immediately published to the latest release, you must
 
 ### Preview docs locally
 
-You can preview the documentation locally after installing [Docker](https://www.docker.com/) or [Podman](https://podman.io/).
+You can preview the documentation locally after installing [Docker](https://www.docker.com/) or [Podman](https://podman.io/) and building the static pages.
 
 ```bash
 # Navigate to the docs/ folder with the Makefile
