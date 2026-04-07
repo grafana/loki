@@ -6,18 +6,19 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 // StructField pairs a field name, kind, and values for use with [Struct].
 type StructField struct {
 	Name   string
-	Kind   columnar.Kind
+	Kind   types.Kind
 	Values []any
 }
 
 // Field creates a [StructField] for use with [Struct].
-func Field(name string, kind columnar.Kind, values ...any) StructField {
+func Field(name string, kind types.Kind, values ...any) StructField {
 	return StructField{Name: name, Kind: kind, Values: values}
 }
 
