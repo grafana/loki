@@ -467,9 +467,9 @@ In this case we are using the provisioning method. Instead of mounting the Grafa
     ports:
       - 3000:3000/tcp
     entrypoint:
-       - sh
-       - -euc
-       - |
+      - sh
+      - -euc
+      - |
          mkdir -p /etc/grafana/provisioning/datasources
          cat <<EOF > /etc/grafana/provisioning/datasources/ds.yaml
          apiVersion: 1
