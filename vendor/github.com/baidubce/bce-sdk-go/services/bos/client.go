@@ -29,6 +29,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/baidubce/bce-sdk-go/auth"
@@ -36,6 +37,7 @@ import (
 	sdk_http "github.com/baidubce/bce-sdk-go/http"
 	"github.com/baidubce/bce-sdk-go/services/bos/api"
 	"github.com/baidubce/bce-sdk-go/services/sts"
+	"github.com/baidubce/bce-sdk-go/util"
 	"github.com/baidubce/bce-sdk-go/util/log"
 )
 
@@ -2037,6 +2039,15 @@ func (c *Client) BasicUploadPart(bucket, object, uploadId string, partNumber int
 	return api.UploadPart(c, bucket, object, uploadId, partNumber, content, nil, bosContext, options...)
 }
 
+func (c *Client) UploadPartWithArgs(bucket, object, uploadId string, partNumber int,
+	content *bce.Body, args *api.UploadPartArgs, options ...api.Option) (string, error) {
+	bosContext := c.NewBosContext(context.Background())
+	if err := api.HandleBosClientOptions(c.BceClient, bosContext, options); err != nil {
+		return "", bce.NewBceClientError(fmt.Sprintf("Handle bos client options failed: %s", err))
+	}
+	return api.UploadPart(c, bucket, object, uploadId, partNumber, content, nil, bosContext, options...)
+}
+
 // UploadPartFromSectionFile - upload the single part from the section of a file
 //
 // PARAMS:
@@ -2335,8 +2346,8 @@ func (c *Client) UploadSuperFile(bucket, object, fileName, storageClass string) 
 
 	// Inner wrapper function of parallel uploading each part to get the ETag of the part
 	uploadPart := func(bucket, object, uploadId string, partNumber int, body *bce.Body,
-		result chan *api.UploadInfoType, ret chan error, id int64, pool chan int64) {
-		etag, err := c.BasicUploadPart(bucket, object, uploadId, partNumber, body)
+		result chan *api.UploadInfoType, ret chan error, id int64, pool chan int64, args *api.UploadPartArgs) {
+		etag, err := c.UploadPartWithArgs(bucket, object, uploadId, partNumber, body, args)
 		if err != nil {
 			result <- nil
 			ret <- err
@@ -2356,6 +2367,8 @@ func (c *Client) UploadSuperFile(bucket, object, fileName, storageClass string) 
 	uploadedResult := make(chan *api.UploadInfoType, partNum)
 	retChan := make(chan error, partNum)
 	workerPool := make(chan int64, c.MaxParallel)
+	totalCrc32Hash := crc32.NewIEEE()
+	crc32CaclSucc := true
 	for i := int64(0); i < c.MaxParallel; i++ {
 		workerPool <- i
 	}
@@ -2366,11 +2379,21 @@ func (c *Client) UploadSuperFile(bucket, object, fileName, storageClass string) 
 		if uploadSize > left {
 			uploadSize = left
 		}
+		if crc32CaclSucc {
+			file.Seek(offset, io.SeekStart)
+			n, copyErr := io.CopyN(totalCrc32Hash, file, uploadSize)
+			if copyErr != nil || n != uploadSize {
+				crc32CaclSucc = false
+			}
+		}
 		partBody, _ := bce.NewBodyFromSectionFileV2(file, offset, uploadSize, false)
 		select { // wait until get a worker to upload
 		case workerId := <-workerPool:
+			args := &api.UploadPartArgs{}
+			args.ContentCrc32, _ = util.CalculateContentCrc32FromFile(file, offset, uploadSize)
+			args.ContentCrc32cFlag = true
 			go uploadPart(bucket, object, uploadId, int(partId), partBody,
-				uploadedResult, retChan, workerId, workerPool)
+				uploadedResult, retChan, workerId, workerPool, args)
 		case uploadPartErr := <-retChan:
 			c.AbortMultipartUpload(bucket, object, uploadId)
 			return uploadPartErr
@@ -2380,6 +2403,9 @@ func (c *Client) UploadSuperFile(bucket, object, fileName, storageClass string) 
 	// Check the return of each part uploading, and decide to complete or abort it
 	completeArgs := &api.CompleteMultipartUploadArgs{
 		Parts: make([]api.UploadInfoType, partNum),
+	}
+	if crc32CaclSucc {
+		completeArgs.ContentCrc32 = strconv.FormatUint(uint64(totalCrc32Hash.Sum32()), 10)
 	}
 	for i := partNum; i > 0; i-- {
 		uploaded := <-uploadedResult
@@ -2796,15 +2822,12 @@ func (c *Client) ParallelUpload(bucket string, object string, filename string, c
 		return nil, err
 	}
 
-	partEtags, err := c.parallelPartUpload(bucket, object, filename, initiateMultipartUploadResult.UploadId)
+	completeArgs, err := c.parallelPartUpload(bucket, object, filename, initiateMultipartUploadResult.UploadId)
 	if err != nil {
 		c.AbortMultipartUpload(bucket, object, initiateMultipartUploadResult.UploadId)
 		return nil, err
 	}
 
-	completeArgs := &api.CompleteMultipartUploadArgs{
-		Parts: partEtags,
-	}
 	if args != nil {
 		if args.ObjectExpires > 0 {
 			completeArgs.ObjectExpires = args.ObjectExpires
@@ -2836,7 +2859,8 @@ func (c *Client) ParallelUpload(bucket string, object string, filename string, c
 // RETURNS:
 //   - []api.UploadInfoType: multipart upload result
 //   - error: nil if success otherwise the specific error
-func (c *Client) parallelPartUpload(bucket string, object string, filename string, uploadId string) ([]api.UploadInfoType, error) {
+func (c *Client) parallelPartUpload(bucket string, object string, filename string,
+	uploadId string) (*api.CompleteMultipartUploadArgs, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -2866,6 +2890,11 @@ func (c *Client) parallelPartUpload(bucket string, object string, filename strin
 
 	resultChan := make(chan api.UploadInfoType, partNum)
 
+	completeArgs := &api.CompleteMultipartUploadArgs{}
+
+	totalCrc32Hash := crc32.NewIEEE()
+	crc32CalcSucc := true
+
 	// 逐个分块上传
 	for i := int64(1); i <= partNum; i++ {
 		// 计算偏移offset和本次上传的大小uploadSize
@@ -2874,6 +2903,14 @@ func (c *Client) parallelPartUpload(bucket string, object string, filename strin
 		left := fileSize - offset
 		if left < partSize {
 			uploadSize = left
+		}
+
+		if crc32CalcSucc {
+			file.Seek(offset, io.SeekStart)
+			n, crc32Err := io.CopyN(totalCrc32Hash, file, uploadSize)
+			if crc32Err != nil || n != uploadSize {
+				crc32CalcSucc = false
+			}
 		}
 
 		// 创建指定偏移、指定大小的文件流
@@ -2888,23 +2925,31 @@ func (c *Client) parallelPartUpload(bucket string, object string, filename strin
 			case err = <-errChan:
 				return nil, err
 			case parallelChan <- 1:
-				go c.singlePartUpload(bucket, object, uploadId, int(i), partBody, parallelChan, errChan, resultChan)
+				args := &api.UploadPartArgs{}
+				args.ContentCrc32, _ = util.CalculateContentCrc32FromFile(file, offset, uploadSize)
+				args.ContentCrc32cFlag = true
+				go c.singlePartUpload(bucket, object, uploadId, int(i), partBody, parallelChan, errChan, resultChan, args)
 			}
 
 		}
 	}
 
-	partEtags := make([]api.UploadInfoType, partNum)
+	if crc32CalcSucc {
+		completeArgs.ContentCrc32 = strconv.FormatUint(uint64(totalCrc32Hash.Sum32()), 10)
+		completeArgs.ContentCrc32cFlag = true
+	}
+
+	completeArgs.Parts = make([]api.UploadInfoType, partNum)
 	for i := int64(0); i < partNum; i++ {
 		select {
 		case err := <-errChan:
 			return nil, err
 		case result := <-resultChan:
-			partEtags[result.PartNumber-1].PartNumber = result.PartNumber
-			partEtags[result.PartNumber-1].ETag = result.ETag
+			completeArgs.Parts[result.PartNumber-1].PartNumber = result.PartNumber
+			completeArgs.Parts[result.PartNumber-1].ETag = result.ETag
 		}
 	}
-	return partEtags, nil
+	return completeArgs, nil
 }
 
 // singlePartUpload - single part upload
@@ -2918,10 +2963,9 @@ func (c *Client) parallelPartUpload(bucket string, object string, filename strin
 //   - uploadId: the uploadId
 //   - partNumber: the part number of the object
 //   - content: the content of current part
-func (c *Client) singlePartUpload(
-	bucket string, object string, uploadId string,
-	partNumber int, content *bce.Body,
-	parallelChan chan int, errChan chan error, result chan api.UploadInfoType) {
+func (c *Client) singlePartUpload(bucket string, object string, uploadId string,
+	partNumber int, content *bce.Body, parallelChan chan int, errChan chan error,
+	result chan api.UploadInfoType, args *api.UploadPartArgs) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -2931,10 +2975,12 @@ func (c *Client) singlePartUpload(
 		<-parallelChan
 	}()
 
-	var args api.UploadPartArgs
+	if args == nil {
+		args = &api.UploadPartArgs{}
+	}
 	args.ContentMD5 = content.ContentMD5()
 
-	etag, err := api.UploadPart(c, bucket, object, uploadId, partNumber, content, &args, c.NewBosContext(context.Background()))
+	etag, err := api.UploadPart(c, bucket, object, uploadId, partNumber, content, args, c.NewBosContext(context.Background()))
 	if err != nil {
 		errChan <- err
 		log.Error("upload part fail,err:%v", err)

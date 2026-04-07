@@ -199,7 +199,7 @@ func (b *UTF8Builder) Grow(n int) {
 }
 
 func (b *UTF8Builder) needGrow(n int) bool {
-	return b.offsets.Len()+n > b.offsets.Cap()
+	return b.validity.Len()+n > b.validity.Cap() || b.offsets.Len()+n > b.offsets.Cap()
 }
 
 // GrowData increases b's bytes capacity, if necessary, to guarantee space

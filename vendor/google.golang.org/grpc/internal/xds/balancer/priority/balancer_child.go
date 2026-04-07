@@ -126,12 +126,16 @@ func (cb *childBalancer) sendUpdate() {
 // It doesn't do it directly. It asks the balancer group to remove it.
 //
 // Note that the underlying balancer group could keep the child in a cache.
-func (cb *childBalancer) stop() {
+func (cb *childBalancer) stop(immediate bool) {
 	if !cb.started {
 		return
 	}
 	cb.stopInitTimer()
-	cb.parent.bg.Remove(cb.name)
+	if immediate {
+		cb.parent.bg.RemoveImmediately(cb.name)
+	} else {
+		cb.parent.bg.Remove(cb.name)
+	}
 	cb.started = false
 	cb.state = balancer.State{
 		ConnectivityState: connectivity.Connecting,

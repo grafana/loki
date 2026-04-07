@@ -25,6 +25,10 @@ import (
 //
 // For information about the Amazon S3 inventory feature, see [Amazon S3 Inventory].
 //
+// After deleting a configuration, Amazon S3 might still deliver one additional
+// inventory report during a brief transition period while the system processes the
+// deletion.
+//
 // Operations related to DeleteBucketInventoryConfiguration include:
 //
 // [GetBucketInventoryConfiguration]
@@ -125,7 +129,7 @@ func (c *Client) addOperationDeleteBucketInventoryConfigurationMiddlewares(stack
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -150,9 +154,6 @@ func (c *Client) addOperationDeleteBucketInventoryConfigurationMiddlewares(stack
 		return err
 	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
