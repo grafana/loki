@@ -11,7 +11,11 @@ keywords:
 This Helm Chart deploys Grafana Loki on Kubernetes.
 
 {{< admonition type="note" >}}
-As of March 16, 2026, the Loki Helm Chart is being maintained by Grafana Champions andthe Grafana Community in the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts). Please open issues and pull requests for the chart against the Grafana-commmunity repo.
+As of March 16, 2026, the Loki Helm Chart is being maintained by Grafana Champions and the Grafana Community in the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts). Please open issues and pull requests for the chart against the Grafana-community repo.
+{{< /admonition >}}
+
+{{< admonition type="tip" >}}
+With the move to the Grafana-community repository, the chart numbering has changed. Major version updates signal breaking changes in the chart. For more information, refer to the [README](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/README.md#upgrading).
 {{< /admonition >}}
 
 This Helm chart deploys Loki to run Loki in [microservice mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) within a Kubernetes cluster. The microservices deployment is also referred to as a Distributed deployment. The microservices deployment mode runs components of Loki as distinct processes.
