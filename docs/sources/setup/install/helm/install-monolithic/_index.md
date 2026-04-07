@@ -63,7 +63,7 @@ loki:
           prefix: loki_index_
           period: 24h
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
@@ -140,7 +140,7 @@ loki:
           prefix: loki_index_
           period: 24h
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
@@ -249,7 +249,7 @@ loki:
       bucketnames: <Your AWS bucket for chunk, for exaxmple,  `aws-loki-dev-chunk`>
       s3forcepathstyle: false
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
@@ -258,9 +258,9 @@ loki:
   storage:
     type: s3
     bucketNames:
-        chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
-        ruler: <Your AWS bucket for ruler, for example, `aws-loki-dev-ruler`>
-        admin: <Your AWS bucket for admin, for example, `aws-loki-dev-admin`>
+      chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
+      ruler: <Your AWS bucket for ruler, for example, `aws-loki-dev-ruler`>
+      admin: <Your AWS bucket for admin, for example, `aws-loki-dev-admin`>
     s3:
       # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storages or are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
       s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name

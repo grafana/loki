@@ -66,25 +66,25 @@ We do not recommend running in microservices mode with `filesystem` storage. For
 
      ```yaml
      loki:
-        schemaConfig:
-          configs:
-            - from: "2024-04-01"
-              store: tsdb
-              object_store: s3
-              schema: v13
-              index:
-                prefix: loki_index_
-                period: 24h
-        ingester:
-          chunk_encoding: snappy
-        querier:
-          # Default is 4, if you have enough memory and CPU you can increase, reduce if OOMing
-          max_concurrent: 4
-        pattern_ingester:
-          enabled: true
-        limits_config:
-          allow_structured_metadata: true
-          volume_enabled: true
+       schemaConfig:
+         configs:
+           - from: "2024-04-01"
+             store: tsdb
+             object_store: s3
+             schema: v13
+             index:
+               prefix: loki_index_
+               period: 24h
+       ingester:
+         chunk_encoding: snappy
+       querier:
+         # Default is 4, if you have enough memory and CPU you can increase, reduce if OOMing
+         max_concurrent: 4
+       pattern_ingester:
+         enabled: true
+       limits_config:
+         allow_structured_metadata: true
+         volume_enabled: true
 
 
      deploymentMode: Distributed
@@ -92,7 +92,7 @@ We do not recommend running in microservices mode with `filesystem` storage. For
      ingester:
        replicas: 3 # To ensure data durability with replication
        zoneAwareReplication:
-          enabled: false
+         enabled: false
      querier:
        replicas: 3 # Improve query performance via parallelism
        maxUnavailable: 2
@@ -118,19 +118,19 @@ We do not recommend running in microservices mode with `filesystem` storage. For
        replicas: 0
     
      backend:
-        replicas: 0
+       replicas: 0
      read:
-        replicas: 0
+       replicas: 0
      write:
-        replicas: 0
+       replicas: 0
 
      singleBinary:
-        replicas: 0
+       replicas: 0
 
-      # This exposes the Loki gateway so it can be written to and queried externaly
+     # This exposes the Loki gateway so it can be written to and queried externaly
      gateway:
-        service:
-          type: LoadBalancer
+       service:
+         type: LoadBalancer
 
 
      # Enable minio for storage
@@ -214,22 +214,22 @@ loki:
       bucketnames: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
       s3forcepathstyle: false
   ingester:
-      chunk_encoding: snappy
+    chunk_encoding: snappy
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
     retention_period: 672h # 28 days retention
   querier:
-      max_concurrent: 4
+    max_concurrent: 4
 
   storage:
     type: s3
     bucketNames:
-        chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
-        ruler: <Your AWS bucket for ruler, for example,  `aws-loki-dev-ruler`>
-        admin: <Your AWS bucket for admin, for example,  `aws-loki-dev-admin`>
+      chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
+      ruler: <Your AWS bucket for ruler, for example,  `aws-loki-dev-ruler`>
+      admin: <Your AWS bucket for admin, for example,  `aws-loki-dev-admin`>
     s3:
       # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storage or if you are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
       s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
@@ -254,7 +254,7 @@ deploymentMode: Distributed
 
 # Disable minio storage
 minio:
-    enabled: false
+  enabled: false
 
 ingester:
   replicas: 3
