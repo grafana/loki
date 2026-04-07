@@ -383,7 +383,7 @@ func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
 		}
 
 		// Flush partitions which haven't received new events for MaxIdleTime
-		if time.Since(state.lastActivity) >= p.cfg.MaxIdleTime {
+		if len(state.events) > 0 && time.Since(state.lastActivity) >= p.cfg.MaxIdleTime {
 			partitionsToFlush[partition] = triggerTypeMaxIdle
 			continue
 		}
@@ -417,9 +417,6 @@ func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
 
 func (p *Builder) flushPartition(ctx context.Context, partition int32, triggerType triggerType) {
 	calculationCtx, eventsToFlush := p.bufferAndTryProcess(ctx, partition, nil, triggerType)
-	if len(eventsToFlush) == 0 {
-		return
-	}
 
 	p.wg.Add(1)
 	go func() {
