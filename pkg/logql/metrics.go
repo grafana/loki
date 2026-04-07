@@ -139,6 +139,11 @@ func RecordRangeAndInstantQueryMetrics(
 		resultCache = stats.Caches.InstantMetricResult
 	}
 
+	// In the Thor engine, we track stats for log queries in a different category
+	if queryType == QueryTypeFilter && stats.QueryUsedV2Engine() {
+		resultCache = stats.Caches.LogResult
+	}
+
 	// Tag throughput metric by latency type based on a threshold.
 	// Latency below the threshold is fast, above is slow.
 	if stats.Summary.ExecTime > slowQueryThresholdSecond {
