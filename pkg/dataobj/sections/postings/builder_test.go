@@ -16,15 +16,15 @@ func strPtr(s string) *string { return &s }
 
 // TestBuilder_Empty verifies that an empty builder produces no sections.
 func TestBuilder_Empty(t *testing.T) {
-	b := NewBuilder(0)
-	sections, err := b.FlushToArrays(context.Background())
+	b := NewBuilder(0, DatasetEncoder)
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, sections, "empty builder should produce no sections")
 }
 
 // TestBuilder_LabelPostingRoundTrip verifies a label posting round-trips correctly.
 func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	bitmap := makeBitmap(t, 3, 7, 15)
 	lv := "value1"
@@ -42,7 +42,7 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 	}
 	b.Append(input)
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -65,7 +65,7 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 
 // TestBuilder_BloomPostingRoundTrip verifies a bloom posting round-trips correctly.
 func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	bitmap := makeBitmap(t, 0, 2, 8)
 	bloomFilter := []byte{0xDE, 0xAD, 0xBE, 0xEF}
@@ -83,7 +83,7 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 	}
 	b.Append(input)
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -105,7 +105,7 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 
 // TestBuilder_MixedPostings verifies both Bloom and Label postings work together.
 func TestBuilder_MixedPostings(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	bloom := Posting{
 		Kind:           KindBloom,
@@ -131,7 +131,7 @@ func TestBuilder_MixedPostings(t *testing.T) {
 	b.Append(label) // Append out of sort order
 	b.Append(bloom)
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -150,7 +150,7 @@ func TestBuilder_MixedPostings(t *testing.T) {
 
 // TestBuilder_SortOrder verifies the sort order: [Kind, ColumnName, LabelValue, MinTimestamp].
 func TestBuilder_SortOrder(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 
@@ -169,7 +169,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		b.Append(p)
 	}
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -207,7 +207,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 
 // TestBuilder_NullableHandling verifies nullable column correctness.
 func TestBuilder_NullableHandling(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 
@@ -222,7 +222,7 @@ func TestBuilder_NullableHandling(t *testing.T) {
 		StreamIDBitmap: bitmapBytes,
 	})
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -244,7 +244,7 @@ func TestBuilder_NullableHandling(t *testing.T) {
 
 // TestBuilder_BitmapCorrectness verifies that stream ID bitmaps are LSB-encoded correctly.
 func TestBuilder_BitmapCorrectness(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	// Build bitmap with stream IDs 0, 3, 7.
 	// Byte 0: bit 0 = 1 (stream 0), bit 3 = 1 (stream 3), bit 7 = 1 (stream 7).
@@ -266,7 +266,7 @@ func TestBuilder_BitmapCorrectness(t *testing.T) {
 		StreamIDBitmap: bitmapBytes,
 	})
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -296,7 +296,7 @@ func TestBuilder_BitmapCorrectness(t *testing.T) {
 // TestBuilder_BitmapNormalization verifies that bitmaps of different sizes are
 // padded to the same length.
 func TestBuilder_BitmapNormalization(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	short := []byte{0x01}            // 1 byte
 	long := []byte{0x01, 0x02, 0x03} // 3 bytes
@@ -316,7 +316,7 @@ func TestBuilder_BitmapNormalization(t *testing.T) {
 		MinTimestamp:   200,
 	})
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -340,7 +340,7 @@ func TestBuilder_BitmapNormalization(t *testing.T) {
 // rows to be split across multiple sections.
 func TestBuilder_SectionSplitting(t *testing.T) {
 	// Use a very small targetSectionSize to force splitting.
-	b := NewBuilder(100)
+	b := NewBuilder(100, DatasetEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 	for i := range 6 {
@@ -353,7 +353,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 		})
 	}
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Greater(t, len(sections), 1, "expected multiple sections due to splitting")
 
@@ -384,7 +384,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 
 // TestBuilder_AllBloom verifies that a builder with only Bloom postings works.
 func TestBuilder_AllBloom(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 	for i := range 3 {
@@ -397,7 +397,7 @@ func TestBuilder_AllBloom(t *testing.T) {
 		})
 	}
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -412,7 +412,7 @@ func TestBuilder_AllBloom(t *testing.T) {
 
 // TestBuilder_AllLabel verifies that a builder with only Label postings works.
 func TestBuilder_AllLabel(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 	for i := range 3 {
@@ -426,7 +426,7 @@ func TestBuilder_AllLabel(t *testing.T) {
 		})
 	}
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -441,21 +441,21 @@ func TestBuilder_AllLabel(t *testing.T) {
 
 // TestBuilder_FlushResetsBuilder verifies that a flush resets the builder.
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 	b.Append(Posting{Kind: KindLabel, ColumnName: "col", LabelValue: strPtr("v"), StreamIDBitmap: makeBitmap(t, 0)})
 
-	_, err := b.FlushToArrays(context.Background())
+	_, err := b.Flush(context.Background())
 	require.NoError(t, err)
 
 	// After flush, builder should be empty.
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, sections)
 }
 
 // TestBuilder_Type verifies that the section type is correct.
 func TestBuilder_Type(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 	require.Equal(t, sectionType, b.Type())
 }
 

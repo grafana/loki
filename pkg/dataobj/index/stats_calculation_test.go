@@ -50,7 +50,7 @@ func flushStatsForTenant(t *testing.T, builder *indexobj.Builder, tenantID strin
 	if sb == nil {
 		return nil
 	}
-	sections, err := sb.FlushToArrays(context.Background())
+	sections, err := sb.Flush(context.Background())
 	require.NoError(t, err)
 
 	var allStats []stats.Stat

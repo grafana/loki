@@ -124,7 +124,7 @@ func (b *Builder) getIndexPointerBuilderForTenant(tenantID string) *indexpointer
 
 func (b *Builder) getStatsBuilderForTenant(tenantID string) *stats.Builder {
 	if _, ok := b.stats[tenantID]; !ok {
-		sb := stats.NewBuilder(int(b.cfg.TargetSectionSize))
+		sb := stats.NewBuilder(int(b.cfg.TargetSectionSize), stats.DatasetEncoder)
 		sb.SetTenant(tenantID)
 		b.stats[tenantID] = sb
 	}
@@ -133,7 +133,7 @@ func (b *Builder) getStatsBuilderForTenant(tenantID string) *stats.Builder {
 
 func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder {
 	if _, ok := b.postings[tenantID]; !ok {
-		pb := postings.NewBuilder(int(b.cfg.TargetSectionSize))
+		pb := postings.NewBuilder(int(b.cfg.TargetSectionSize), postings.DatasetEncoder)
 		pb.SetTenant(tenantID)
 		b.postings[tenantID] = pb
 	}

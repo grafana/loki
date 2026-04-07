@@ -3,7 +3,12 @@
 // data objects referenced in an index object.
 package postings
 
-import "github.com/grafana/loki/v3/pkg/dataobj"
+import (
+	"context"
+
+	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj"
+)
 
 // sectionType identifies postings sections in a data object.
 var sectionType = dataobj.SectionType{
@@ -41,3 +46,23 @@ type Posting struct {
 	MinTimestamp     int64
 	MaxTimestamp     int64
 }
+
+// ColumnReader reads batches of columnar values from a single column.
+type ColumnReader interface {
+	// Read reads up to count values. Returns columnar.Array and any error.
+	// Returns io.EOF when no more data is available.
+	Read(ctx context.Context, count int) (columnar.Array, error)
+	Close() error
+}
+
+// Section holds encoded column data for one flushed postings section.
+type Section struct {
+	ColumnNames []string
+	RowCount    int
+	// OpenColumn returns a ColumnReader for the named column.
+	// Returns an error if the column is not found.
+	OpenColumn func(name string) (ColumnReader, error)
+}
+
+// SectionEncoder encodes a batch of sorted Posting rows into a Section.
+type SectionEncoder func(ctx context.Context, rows []Posting) (Section, error)

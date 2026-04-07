@@ -20,7 +20,7 @@ func readAllPostingsForTenant(t *testing.T, builder *indexobj.Builder, tenantID 
 	if pb == nil {
 		return nil
 	}
-	sections, err := pb.FlushToArrays(context.Background())
+	sections, err := pb.Flush(context.Background())
 	require.NoError(t, err)
 
 	var allPostings []postings.Posting

@@ -12,14 +12,14 @@ import (
 )
 
 func TestBuilder_Empty(t *testing.T) {
-	b := NewBuilder(0)
-	sections, err := b.FlushToArrays(context.Background())
+	b := NewBuilder(0, DatasetEncoder)
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, sections, "empty builder should produce no sections")
 }
 
 func TestBuilder_RoundTrip(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	input := []Stat{
 		{
@@ -61,7 +61,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		b.Append(s)
 	}
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -95,7 +95,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 }
 
 func TestBuilder_SortOrder(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	// Intentionally appended out of order.
 	b.Append(Stat{ServiceName: "beta", MinTimestamp: 200})
@@ -104,7 +104,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 	b.Append(Stat{ServiceName: "gamma", MinTimestamp: 50})
 	b.Append(Stat{ServiceName: "alpha", MinTimestamp: 200})
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -132,14 +132,14 @@ func TestBuilder_SortOrder(t *testing.T) {
 }
 
 func TestBuilder_AllSameServiceName(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	// Multiple rows with the same ServiceName, different timestamps.
 	b.Append(Stat{ServiceName: "svc", MinTimestamp: 300, ObjectPath: "c"})
 	b.Append(Stat{ServiceName: "svc", MinTimestamp: 100, ObjectPath: "a"})
 	b.Append(Stat{ServiceName: "svc", MinTimestamp: 200, ObjectPath: "b"})
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -160,12 +160,12 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 }
 
 func TestBuilder_MissingServiceName(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	b.Append(Stat{ServiceName: "", ObjectPath: "obj1", MinTimestamp: 100})
 	b.Append(Stat{ServiceName: "svc", ObjectPath: "obj2", MinTimestamp: 200})
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -190,7 +190,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 	// rowSize = 40 + len(ObjectPath) + len(SortSchema) + len(ServiceName)
 	// With ObjectPath="x" (1 byte) and ServiceName="svc" (3 bytes), rowSize = 44.
 	// Set targetSectionSize to 100 to get at most 2 rows per section.
-	b := NewBuilder(100)
+	b := NewBuilder(100, DatasetEncoder)
 
 	// Add 6 rows, which should split into at least 3 sections.
 	for i := range 6 {
@@ -201,7 +201,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 		})
 	}
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Greater(t, len(sections), 1, "expected multiple sections due to splitting")
 
@@ -231,7 +231,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 }
 
 func TestBuilder_LargeValues(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	longPath := "/" + strings.Repeat("a", 10000)
 	longLabel := strings.Repeat("b", 5000)
@@ -249,7 +249,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 		UncompressedSize: 1_000_000_000,
 	})
 
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -275,19 +275,19 @@ func TestBuilder_LargeValues(t *testing.T) {
 }
 
 func TestBuilder_ResetAndReuse(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	b.Append(Stat{ServiceName: "first", MinTimestamp: 100})
 	b.Reset()
 
-	// After Reset, FlushToArrays should produce no sections.
-	sections, err := b.FlushToArrays(context.Background())
+	// After Reset, Flush should produce no sections.
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, sections)
 
 	// Add new data after reset.
 	b.Append(Stat{ServiceName: "second", MinTimestamp: 200})
-	sections, err = b.FlushToArrays(context.Background())
+	sections, err = b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sections, 1)
 
@@ -303,7 +303,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 }
 
 func TestBuilder_EstimatedSize(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 
 	require.Equal(t, 0, b.EstimatedSize(), "empty builder should have zero estimated size")
 
@@ -317,21 +317,21 @@ func TestBuilder_EstimatedSize(t *testing.T) {
 }
 
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 	b.Append(Stat{ServiceName: "svc", MinTimestamp: 100})
 
-	_, err := b.FlushToArrays(context.Background())
+	_, err := b.Flush(context.Background())
 	require.NoError(t, err)
 
 	// After flush, builder should be empty.
 	require.Equal(t, 0, b.EstimatedSize())
-	sections, err := b.FlushToArrays(context.Background())
+	sections, err := b.Flush(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, sections)
 }
 
 func TestBuilder_Type(t *testing.T) {
-	b := NewBuilder(0)
+	b := NewBuilder(0, DatasetEncoder)
 	require.Equal(t, sectionType, b.Type())
 }
 
