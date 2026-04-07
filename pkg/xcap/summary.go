@@ -295,10 +295,10 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	taskBatches := readInt64(workerCache, TaskCacheBatches.Key()) + readInt64(workerCache, DataObjScanCacheBatches.Key())
 	taskBytes := readInt64(workerCache, TaskCacheBytes.Key()) + readInt64(workerCache, DataObjScanCacheBytes.Key())
 
-	result.Caches.TaskResults.EntriesFound = int32(taskHits)
-	result.Caches.TaskResults.EntriesRequested = int32(taskHits + taskMisses)
-	result.Caches.TaskResults.Requests = int32(taskBatches)
-	result.Caches.TaskResults.BytesReceived = taskBytes
+	result.Caches.TaskResult.EntriesFound = int32(taskHits)
+	result.Caches.TaskResult.EntriesRequested = int32(taskHits + taskMisses)
+	result.Caches.TaskResult.Requests = int32(taskBatches)
+	result.Caches.TaskResult.BytesReceived = taskBytes
 
 	result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
 	return result
