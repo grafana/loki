@@ -279,6 +279,15 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 	}, nil
 }
 
+// NewTestTaskCacheRegistry builds a TaskCacheRegistry backed by the provided
+// cache map. Intended for use in tests that need to pre-populate cache entries.
+func NewTestTaskCacheRegistry(caches map[physical.TaskCacheName]cache.Cache) TaskCacheRegistry {
+	return TaskCacheRegistry{
+		caches: caches,
+		stats:  make(map[physical.TaskCacheName]CacheStats),
+	}
+}
+
 // GetForType returns the raw cache backend for the given cache type.
 func (r TaskCacheRegistry) GetForType(cacheType physical.TaskCacheName) (cache.Cache, CacheStats, error) {
 	if c, ok := r.caches[cacheType]; ok {
@@ -286,6 +295,8 @@ func (r TaskCacheRegistry) GetForType(cacheType physical.TaskCacheName) (cache.C
 	}
 	return nil, CacheStats{}, fmt.Errorf("no cache registered for type %q", cacheType)
 }
+
+
 
 // Compression codec identifiers stored in the per-record wire format.
 const (
