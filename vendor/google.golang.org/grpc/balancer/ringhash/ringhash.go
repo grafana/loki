@@ -166,7 +166,7 @@ func (b *ringhashBalancer) UpdateState(state balancer.State) {
 		}
 	}
 
-	for _, endpoint := range b.endpointStates.Keys() {
+	for endpoint := range b.endpointStates.All() {
 		if _, ok := endpointsSet.Get(endpoint); ok {
 			continue
 		}
@@ -261,9 +261,9 @@ func (b *ringhashBalancer) updatePickerLocked() {
 		// non-deterministic, the list of `endpointState`s must be sorted to
 		// ensure `ExitIdle` is called on the same child, preventing unnecessary
 		// connections.
-		var endpointStates = make([]*endpointState, b.endpointStates.Len())
-		for i, s := range b.endpointStates.Values() {
-			endpointStates[i] = s
+		var endpointStates = make([]*endpointState, 0, b.endpointStates.Len())
+		for _, s := range b.endpointStates.All() {
+			endpointStates = append(endpointStates, s)
 		}
 		sort.Slice(endpointStates, func(i, j int) bool {
 			return endpointStates[i].hashKey < endpointStates[j].hashKey
@@ -322,7 +322,7 @@ func (b *ringhashBalancer) ExitIdle() {
 func (b *ringhashBalancer) newPickerLocked() *picker {
 	states := make(map[string]endpointState)
 	hasEndpointConnecting := false
-	for _, epState := range b.endpointStates.Values() {
+	for _, epState := range b.endpointStates.All() {
 		// Copy the endpoint state to avoid races, since ring hash
 		// mutates the state, weight and hash key in place.
 		states[epState.hashKey] = *epState
@@ -356,7 +356,7 @@ func (b *ringhashBalancer) newPickerLocked() *picker {
 // failure to failover to the lower priority.
 func (b *ringhashBalancer) aggregatedStateLocked() connectivity.State {
 	var nums [5]int
-	for _, es := range b.endpointStates.Values() {
+	for _, es := range b.endpointStates.All() {
 		nums[es.state.ConnectivityState]++
 	}
 

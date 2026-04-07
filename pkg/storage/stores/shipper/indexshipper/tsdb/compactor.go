@@ -116,21 +116,30 @@ func (t *tableCompactor) CompactTable() error {
 
 		return nil
 	})
-	if err != nil {
-		return err
-	}
 
+	// Register cleanup before checking error to prevent FD leaks when
+	// ForEachJob partially succeeds: some goroutines may have already
+	// opened Index objects (holding mmap file descriptors) before another
+	// goroutine's failure cancels the group.
 	defer func() {
 		for i, idx := range multiTenantIndices {
-			if err := idx.Close(); err != nil {
-				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to close multi-tenant source index file", "path", downloadPaths[i], "err", err)
+			if idx != nil {
+				if err := idx.Close(); err != nil {
+					level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to close multi-tenant source index file", "path", downloadPaths[i], "err", err)
+				}
 			}
 
-			if err := os.Remove(downloadPaths[i]); err != nil {
-				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove downloaded index file", "path", downloadPaths[i], "err", err)
+			if downloadPaths[i] != "" {
+				if err := os.Remove(downloadPaths[i]); err != nil {
+					level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove downloaded index file", "path", downloadPaths[i], "err", err)
+				}
 			}
 		}
 	}()
+
+	if err != nil {
+		return err
+	}
 
 	var multiTenantIndex Index = NoopIndex{}
 	if len(multiTenantIndices) > 0 {

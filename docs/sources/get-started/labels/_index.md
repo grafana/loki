@@ -250,18 +250,18 @@ The two previous examples use statically defined labels with a single value; how
 ```yaml
 - job_name: system
   pipeline_stages:
-     - regex:
-       expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status_code>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$"
-   - labels:
-       action:
-       status_code:
+    - regex:
+        expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status_code>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$"
+    - labels:
+        action:
+        status_code:
   static_configs:
-  - targets:
-     - localhost
-    labels:
-     job: apache
-     env: dev
-     __path__: /var/log/apache.log
+    - targets:
+        - localhost
+      labels:
+        job: apache
+        env: dev
+        __path__: /var/log/apache.log
 ```
 
 This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows use for several purposes during the processing of that log line (at which point that temp data is discarded). Much more detail about this can be found in the Alloy [`loki.process`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/) documentation.

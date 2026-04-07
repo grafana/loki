@@ -59,7 +59,8 @@ type ObjectSummaryType struct {
 	StorageClass string    `json:"storageClass"`
 	Owner        OwnerType `json:"owner"`
 	VersionId    string    `json:"versionId,omitempty"`
-	IsLatest     int       `json:"isLatest,omitempty"`
+	IsLatest     bool      `json:"isLatest,omitempty"`
+	DeleteMarker bool      `json:"deleteMarker,omitempty"`
 }
 
 type PrefixType struct {

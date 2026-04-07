@@ -75,11 +75,14 @@ type xdsClusterManagerConfig struct {
 // serviceConfigJSON produces a service config in JSON format that contains LB
 // policy config for the "xds_cluster_manager" LB policy, with entries in the
 // children map for all active clusters.
-func serviceConfigJSON(activeClusters map[string]*clusterInfo) []byte {
+func serviceConfigJSON(activeClusters map[string]*clusterInfo, activePlugins map[string]*clusterInfo) []byte {
 	// Generate children (all entries in activeClusters).
 	children := make(map[string]xdsChildConfig)
 	for cluster, ci := range activeClusters {
 		children[cluster] = ci.cfg
+	}
+	for plugin, ci := range activePlugins {
+		children[plugin] = ci.cfg
 	}
 
 	sc := serviceConfig{
@@ -156,6 +159,7 @@ type configSelector struct {
 	virtualHost      virtualHost
 	routes           []route
 	clusters         map[string]*clusterInfo
+	plugins          map[string]*clusterInfo
 	httpFilterConfig []xdsresource.HTTPFilter
 }
 
@@ -194,7 +198,13 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 
 	// Add a ref to the selected cluster, as this RPC needs this cluster until
 	// it is committed.
-	ref := &cs.clusters[cluster.name].refCount
+	var ref *int32
+	if info, ok := cs.clusters[cluster.name]; ok {
+		ref = &info.refCount
+	}
+	if info, ok := cs.plugins[cluster.name]; ok {
+		ref = &info.refCount
+	}
 	atomic.AddInt32(ref, 1)
 
 	lbCtx := clustermanager.SetPickedCluster(rpcInfo.Context, cluster.name)
@@ -209,10 +219,25 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 		OnCommitted: func() {
 			// When the RPC is committed, the cluster is no longer required.
 			// Decrease its ref.
-			if v := atomic.AddInt32(ref, -1); v == 0 {
-				// This entry will be removed from activeClusters when
-				// producing the service config for the empty update.
-				cs.sendNewServiceConfig()
+			if info, ok := cs.clusters[cluster.name]; ok {
+				ref := &info.refCount
+				if v := atomic.AddInt32(ref, -1); v == 0 {
+					// We call unsubscribe rather than sendNewServiceConfig to
+					// prevent redundant updates. If the reference count in the
+					// dependency manager drops to zero, it will automatically
+					// trigger a service config update with this cluster
+					// removed. Calling unsubscribe allows the dependency
+					// manager to handle the update flow once and for all.
+					info.unsubscribe()
+				}
+			}
+			if info, ok := cs.plugins[cluster.name]; ok {
+				ref := &info.refCount
+				if v := atomic.AddInt32(ref, -1); v == 0 {
+					// This entry will be removed from activePlugins when
+					// producing a new service config update.
+					cs.sendNewServiceConfig()
+				}
 			}
 		},
 		Interceptor: cluster.interceptor,
@@ -311,21 +336,19 @@ func (cs *configSelector) stop() {
 	if cs == nil {
 		return
 	}
-	// If any refs drop to zero, we'll need a service config update to delete
-	// the cluster.
-	needUpdate := false
-	// Loops over cs.clusters, but these are pointers to entries in
-	// activeClusters.
+	// If any reference counts drop to zero, a service config update is required
+	// to remove the clusters. Since the old config selector is stopped
+	// after a new one is active, we must trigger a subsequent update to delete
+	// the now-unused clusters.
 	for _, ci := range cs.clusters {
 		if v := atomic.AddInt32(&ci.refCount, -1); v == 0 {
-			needUpdate = true
+			ci.unsubscribe()
 		}
 	}
-	// We stop the old config selector immediately after sending a new config
-	// selector; we need another update to delete clusters from the config (if
-	// we don't have another update pending already).
-	if needUpdate {
-		cs.sendNewServiceConfig()
+	for _, ci := range cs.plugins {
+		if v := atomic.AddInt32(&ci.refCount, -1); v == 0 {
+			cs.sendNewServiceConfig()
+		}
 	}
 }
 
