@@ -262,43 +262,43 @@ Create a `values.yaml` file choosing the configuration options that best suit yo
 
 ```yaml
 loki:
-   podLabels:
+  podLabels:
     "azure.workload.identity/use": "true" # Add this label to the Loki pods to enable workload identity
-   schemaConfig:
-     configs:
-       - from: "2024-04-01"
-         store: tsdb
-         object_store: azure
-         schema: v13
-         index:
-           prefix: loki_index_
-           period: 24h
-   storage:
-     type: azure
-     bucketNames:
-       chunks: "<CHUNK-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-chunks)
-       ruler: "<RULER-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-ruler)
-       # admin: "admin-loki-devrel" # Your actual Azure Blob Storage container name (loki-azure-dev-admin)
-     azure:
-       accountName: <INSERT-STORAGE-ACCOUNT-NAME>
-       useFederatedToken: true # Use federated token for authentication
-   ingester:
-     chunk_encoding: snappy
-   pattern_ingester:
-     enabled: true
-   limits_config:
-     allow_structured_metadata: true
-     volume_enabled: true
-     retention_period: 672h # 28 days retention
-   compactor:
-     retention_enabled: true 
-     delete_request_store: azure
-   ruler:
-     enable_api: true
-     alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: azure
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  storage:
+    type: azure
+    bucketNames:
+      chunks: "<CHUNK-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-chunks)
+      ruler: "<RULER-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-ruler)
+      # admin: "admin-loki-devrel" # Your actual Azure Blob Storage container name (loki-azure-dev-admin)
+    azure:
+      accountName: <INSERT-STORAGE-ACCOUNT-NAME>
+      useFederatedToken: true # Use federated token for authentication
+  ingester:
+    chunk_encoding: snappy
+  pattern_ingester:
+    enabled: true
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+    retention_period: 672h # 28 days retention
+  compactor:
+    retention_enabled: true
+    delete_request_store: azure
+  ruler:
+    enable_api: true
+    alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
 
-   querier:
-     max_concurrent: 4
+  querier:
+    max_concurrent: 4
 
 # Define the Azure workload identity
 serviceAccount:
@@ -309,9 +309,9 @@ serviceAccount:
 deploymentMode: Distributed
 
 ingester:
- replicas: 3
- zoneAwareReplication:
-  enabled: false
+  replicas: 3
+  zoneAwareReplication:
+    enabled: false
 
 querier:
   replicas: 3
