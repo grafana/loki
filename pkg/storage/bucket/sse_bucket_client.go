@@ -22,6 +22,9 @@ type SSEConfigProvider interface {
 
 	// S3SSEKMSEncryptionContext returns the per-tenant S3 KMS-SSE key id or an empty string if not set.
 	S3SSEKMSEncryptionContext(userID string) string
+
+	// S3SSECEncryptionKey returns the per-tenant S3 SSE-C encryption key or an empty string if not set.
+	S3SSECEncryptionKey(userID string) string
 }
 
 // SSEBucketClient is a wrapper around a objstore.BucketReader that configures the object
@@ -85,9 +88,10 @@ func (b *SSEBucketClient) getCustomS3SSEConfig() (encrypt.ServerSide, error) {
 	}
 
 	cfg := s3.SSEConfig{
-		Type:                 sseType,
-		KMSKeyID:             b.cfgProvider.S3SSEKMSKeyID(b.userID),
-		KMSEncryptionContext: b.cfgProvider.S3SSEKMSEncryptionContext(b.userID),
+		Type:                  sseType,
+		KMSKeyID:              b.cfgProvider.S3SSEKMSKeyID(b.userID),
+		KMSEncryptionContext:  b.cfgProvider.S3SSEKMSEncryptionContext(b.userID),
+		CustomerEncryptionKey: b.cfgProvider.S3SSECEncryptionKey(b.userID),
 	}
 
 	sse, err := cfg.BuildMinioConfig()
