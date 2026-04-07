@@ -9,7 +9,9 @@ type Kind uint8
 const (
 	KindNull   Kind = iota // KindNull represents a null value.
 	KindBool               // KindBool represents a boolean value.
+	KindInt32              // KindInt32 represents a 32-bit integer value.
 	KindInt64              // KindInt64 represents a 64-bit integer value.
+	KindUint32             // KindUint32 represents a 32-bit unsigned integer value.
 	KindUint64             // KindUint64 represents a 64-bit unsigned integer value.
 	KindUTF8               // KindUTF8 represents a UTF-8 encoded string value.
 )
@@ -17,7 +19,9 @@ const (
 var kindNames = [...]string{
 	KindNull:   "null",
 	KindBool:   "bool",
+	KindInt32:  "int32",
 	KindInt64:  "int64",
+	KindUint32: "uint32",
 	KindUint64: "uint64",
 	KindUTF8:   "utf8",
 }

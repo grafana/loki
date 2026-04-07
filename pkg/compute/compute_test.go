@@ -112,8 +112,22 @@ func evalCaseFunction(t *testing.T, alloc *memory.Allocator, tc computetest.Case
 				values[i] = string(arr.Get(i))
 			}
 			set = columnar.NewUTF8Set(values...)
+		case *columnar.Number[int32]:
+			values := make([]int32, arr.Len())
+			require.Equal(t, 0, arr.Nulls(), "ISMEMBER set must not contain null values")
+			for i := 0; i < arr.Len(); i++ {
+				values[i] = arr.Get(i)
+			}
+			set = columnar.NewNumberSet(values...)
 		case *columnar.Number[int64]:
 			values := make([]int64, arr.Len())
+			require.Equal(t, 0, arr.Nulls(), "ISMEMBER set must not contain null values")
+			for i := 0; i < arr.Len(); i++ {
+				values[i] = arr.Get(i)
+			}
+			set = columnar.NewNumberSet(values...)
+		case *columnar.Number[uint32]:
+			values := make([]uint32, arr.Len())
 			require.Equal(t, 0, arr.Nulls(), "ISMEMBER set must not contain null values")
 			for i := 0; i < arr.Len(); i++ {
 				values[i] = arr.Get(i)

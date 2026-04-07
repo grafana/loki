@@ -20,14 +20,20 @@ func NewUTF8Set(values ...string) *Set {
 
 // NewNumberSet creates a new Set of a numeric Kind T initialized with the provided values.
 // The Numeric type T will map to the following Kinds:
-// - int64 -> KindInt64
-// - uint64 -> KindUint64
+//   - int32 -> KindInt32
+//   - int64 -> KindInt64
+//   - uint32 -> KindUint32
+//   - uint64 -> KindUint64
 func NewNumberSet[T Numeric](values ...T) *Set {
 	var kind Kind
 	var zero T
 	switch any(zero).(type) {
+	case int32:
+		kind = KindInt32
 	case int64:
 		kind = KindInt64
+	case uint32:
+		kind = KindUint32
 	case uint64:
 		kind = KindUint64
 	default:
