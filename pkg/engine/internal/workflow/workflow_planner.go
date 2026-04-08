@@ -171,7 +171,7 @@ func isCacheEntryEmpty(ctx context.Context, c cache.Cache, rawKey string) (hit b
 		return false, false, err
 	}
 
-	// Empty responses should be stores as empty buffers, but just in case,
+	// Empty responses should be stored as empty buffers, but just in case,
 	// we will also (lazily) decode and see how may records are there
 	if len(found) == 0 {
 		return false, false, nil
