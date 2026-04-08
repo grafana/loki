@@ -142,6 +142,7 @@ func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*
 	// All tasks were eliminated at plan time — return an empty workflow whose
 	// Run() immediately yields EOF without dispatching any work.
 	if graph.Len() == 0 {
+		level.Debug(logger).Log("msg", "workflow plan is empty")
 		return &Workflow{
 			opts:         opts,
 			logger:       logger,
@@ -259,6 +260,7 @@ func (wf *Workflow) Close() {
 // resources.
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
 	if wf.Empty() {
+		level.Debug(wf.logger).Log("msg", "workflow is empty. will return an empty pipeline.")
 		return newEOFPipeline(), nil
 	}
 

@@ -111,19 +111,26 @@ func eliminateEmptyCachedTasks(p *planner, caches executor.TaskCacheRegistry, lo
 	// NOTE: eliminateTask cannot be called here since dag.Graph.Eliminate uses
 	// slices.DeleteFunc which zeroes the tail of the underlying slice array,
 	// corrupting the range slice captured by the walk.
+	var taskCount int
 	var toEliminate []*Task
 	for _, root := range p.graph.Roots() {
 		_ = p.graph.Walk(root, func(task *Task) error {
 			if shouldEliminateTask(task, caches, logger) {
 				toEliminate = append(toEliminate, task)
 			}
+			taskCount++
 			return nil
 		}, dag.PreOrderWalk)
 	}
 
+	var tasksRemoved int
 	for _, task := range toEliminate {
-		eliminateTask(p, task)
+		tasksRemoved += eliminateTask(p, task)
 	}
+
+	// Log the number of tasks removed. Note that if removed_tasks is bigger than to_eliminate
+	// then, (removed_tasks-to_eliminate) parents were removed because all their children were removed,
+	level.Debug(logger).Log("msg", "removed empty cached tasks from workflow", "removed_tasks", tasksRemoved, "total_tasks", taskCount, "to_eliminate", len(toEliminate))
 	return nil
 }
 
@@ -173,7 +180,7 @@ func isCacheEntryEmpty(ctx context.Context, c cache.Cache, rawKey string) (hit b
 // references. Each sink stream of task is removed from the Sources maps of
 // parent tasks and from planner.streamWriters. Parents that reach zero sources
 // after the removal are also eliminated.
-func eliminateTask(p *planner, task *Task) {
+func eliminateTask(p *planner, task *Task) (totalTasksRemoved int) {
 	parents := p.graph.Parents(task)
 
 	for _, sinkStreams := range task.Sinks {
@@ -193,14 +200,17 @@ func eliminateTask(p *planner, task *Task) {
 
 	p.graph.Eliminate(task)
 	eliminatedCachedTasksTotal.Inc()
+	totalTasksRemoved++
 
 	for _, parent := range parents {
 		if len(parent.Sources) == 0 {
 			// Eliminate the parent recursively so the ancestors of this
 			// task are removed if all their sources are empty as well.
-			eliminateTask(p, parent)
+			totalTasksRemoved += eliminateTask(p, parent)
 		}
 	}
+
+	return totalTasksRemoved
 }
 
 // injectTaskCaching wraps each cacheable task fragment with a Cache node.
