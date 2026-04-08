@@ -259,7 +259,7 @@ func (wf *Workflow) Close() {
 // resources.
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
 	if wf.Empty() {
-		return newEofPipeline(), nil
+		return newEOFPipeline(), nil
 	}
 
 	wf.capture = xcap.CaptureFromContext(ctx)
