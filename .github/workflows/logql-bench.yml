@@ -80,7 +80,7 @@ jobs:
 
   benchmarks:
     name: Run benchmarks for ${{ matrix.store }}
-    runs-on: github-hosted-ubuntu-arm64-large
+    runs-on: ubuntu-arm64-large
     needs: setup-matrix
     strategy:
       matrix: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
