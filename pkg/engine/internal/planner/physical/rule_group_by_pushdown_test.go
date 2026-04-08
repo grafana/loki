@@ -43,13 +43,13 @@ func TestGroupByPushdown(t *testing.T) {
 		}
 
 		// apply optimisation
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("groupBy pushdown", plan).withRules(
 				&groupByPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -111,13 +111,13 @@ func TestGroupByPushdown(t *testing.T) {
 		orig := PrintAsTree(plan)
 
 		// apply optimisation
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("projection pushdown", plan).withRules(
 				&groupByPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		actual := PrintAsTree(plan)
 		require.Equal(t, orig, actual)

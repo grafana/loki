@@ -29,13 +29,13 @@ func TestLimitPushdown(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("limit pushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -92,13 +92,13 @@ func TestLimitPushdown(t *testing.T) {
 		orig := PrintAsTree(plan)
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("limit pushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		actual := PrintAsTree(plan)
 		require.Equal(t, orig, actual)

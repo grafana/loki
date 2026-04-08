@@ -40,13 +40,13 @@ func TestProjectionPushdown(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("projection pushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -109,13 +109,13 @@ func TestProjectionPushdown(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("projection pushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{
@@ -180,13 +180,13 @@ func TestProjectionPushdown(t *testing.T) {
 		}
 
 		// apply optimisations
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("projection pushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
 		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
+		o := NewOptimizer(plan, optimizations)
+		o.Optimize(plan.Roots()[0])
 
 		expectedPlan := &Plan{}
 		{

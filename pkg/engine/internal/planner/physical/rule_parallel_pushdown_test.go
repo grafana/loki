@@ -74,11 +74,11 @@ func TestParallelPushdown(t *testing.T) {
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
 		}
 
-		opt := newOptimizer(&plan, []*optimization{
+		opt := NewOptimizer(&plan, []*Optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
 		root, _ := plan.graph.Root()
-		opt.optimize(root)
+		opt.Optimize(root)
 
 		var expectedPlan Plan
 		{
@@ -111,7 +111,7 @@ func TestParallelPushdown(t *testing.T) {
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
 		}
 
-		opt := newOptimizer(&plan, []*optimization{
+		opt := NewOptimizer(&plan, []*Optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
 		root, _ := plan.graph.Root()
@@ -127,7 +127,7 @@ func TestParallelPushdown(t *testing.T) {
 		//         TopK # Shard from second iteration
 		//           TopK # Shard from third iteration
 		//             DataObjScan
-		opt.optimize(root)
+		opt.Optimize(root)
 
 		var expectedPlan Plan
 		{
@@ -162,11 +162,11 @@ func TestParallelPushdown(t *testing.T) {
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
 		}
 
-		opt := newOptimizer(&plan, []*optimization{
+		opt := NewOptimizer(&plan, []*Optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
 		root, _ := plan.graph.Root()
-		opt.optimize(root)
+		opt.Optimize(root)
 
 		var expectedPlan Plan
 		{

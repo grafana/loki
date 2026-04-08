@@ -11,14 +11,14 @@ import (
 
 func TestPredicatePushdown(t *testing.T) {
 	plan := dummyPlan()
-	optimizations := []*optimization{
+	optimizations := []*Optimization{
 		newOptimization("predicate pushdown", plan).withRules(
 			&predicatePushdown{plan},
 		),
 	}
 
-	o := newOptimizer(plan, optimizations)
-	o.optimize(plan.Roots()[0])
+	o := NewOptimizer(plan, optimizations)
+	o.Optimize(plan.Roots()[0])
 	actual := PrintAsTree(plan)
 
 	optimized := &Plan{}
