@@ -105,9 +105,7 @@ func injectDataObjScanCaching(tenantID string, graph dag.Graph[*Task], maxSizeBy
 // task-level cache entry or its DataObjScan-level cache entry is an empty hit,
 // since zero scan rows guarantee zero rows from any operators above.
 //
-// The graph root task (no parents) is never eliminated because it becomes the
-// sink for final results after planning. Cache fetch errors are non-fatal: a
-// warning is logged and the task is left in the graph.
+// Cache fetch errors are non-fatal: a warning is logged and the task is left in the graph.
 func eliminateEmptyCachedTasks(p *planner, caches executor.TaskCacheRegistry, logger log.Logger) error {
 	// Walk the graph to collect tasks to eliminate before mutating.
 	// NOTE: eliminateTask cannot be called here since dag.Graph.Eliminate uses
@@ -198,8 +196,9 @@ func eliminateTask(p *planner, task *Task) {
 
 	for _, parent := range parents {
 		if len(parent.Sources) == 0 {
-			p.graph.Eliminate(parent)
-			eliminatedCachedTasksTotal.Inc()
+			// Eliminate the parent recursively so the ancestors of this
+			// task are removed if all their sources are empty as well.
+			eliminateTask(p, parent)
 		}
 	}
 }
