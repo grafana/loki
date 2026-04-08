@@ -378,6 +378,13 @@ func (s *startupCoordinator) setupConn(ctx context.Context) error {
 	select {
 	case err := <-startupErr:
 		if err != nil {
+			if s.checkProtocolRelatedError(err) {
+				return &unsupportedProtocolVersionError{
+					err:      err,
+					hostInfo: s.conn.host,
+					version:  protoVersion(s.conn.version),
+				}
+			}
 			return err
 		}
 	case <-ctx.Done():
@@ -385,6 +392,38 @@ func (s *startupCoordinator) setupConn(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// Checks if the error is protocol related and should be retried during startup.
+// It returns the frame that caused the error and whether the error should be retried.
+func (s *startupCoordinator) checkProtocolRelatedError(err error) bool {
+	var unwrappedFrame frame
+
+	var protocolErr *protocolError
+	if !errors.As(err, &protocolErr) {
+		var errFrame errorFrame
+		if !errors.As(err, &errFrame) {
+			return false
+		} else {
+			unwrappedFrame = errFrame
+		}
+	} else {
+		unwrappedFrame = protocolErr.frame
+	}
+
+	switch frame := unwrappedFrame.(type) {
+	case *supportedFrame:
+		// We can receive a supportedFrame wrapped in protocolError from Conn.recv if the host responds to a 0 stream id.
+		// If we receive a supportedFrame then we know that the host is not compatible with the protocol version, but it is reachable, so we can retry
+		return true
+	case errorFrame:
+		// If we receive an errorFrame with codes ErrCodeProtocol or ErrCodeServer,
+		// then we should try to downgrade a protocol version, so do not skip the host
+		return frame.code == ErrCodeProtocol || frame.code == ErrCodeServer
+	default:
+		// In any other case we should not retry as it means the host is not reachable or some other error happened
+		return false
+	}
 }
 
 func (s *startupCoordinator) write(ctx context.Context, frame frameBuilder, startupCompleted *atomic.Bool) (frame, error) {
@@ -408,12 +447,14 @@ func (s *startupCoordinator) options(ctx context.Context, startupCompleted *atom
 		return err
 	}
 
-	supported, ok := frame.(*supportedFrame)
-	if !ok {
-		return NewErrProtocol("Unknown type of response to startup frame: %T", frame)
+	switch frame := frame.(type) {
+	case *supportedFrame:
+		return s.startup(ctx, frame.supported, startupCompleted)
+	case error:
+		return frame
+	default:
+		return NewErrProtocol("Unknown type of response to startup frame: %T (frame=%s)", frame, frame.String())
 	}
-
-	return s.startup(ctx, supported.supported, startupCompleted)
 }
 
 func (s *startupCoordinator) startup(ctx context.Context, supported map[string][]string, startupCompleted *atomic.Bool) error {
@@ -709,7 +750,7 @@ func (c *Conn) processFrame(ctx context.Context, r io.Reader) error {
 	delete(c.calls, head.stream)
 	c.mu.Unlock()
 	if call == nil || !ok {
-		c.logger.Warning("Received response for stream which has no handler.", newLogFieldString("header", head.String()))
+		c.logger.Warning("Received response for stream which has no handler.", NewLogFieldString("header", head.String()))
 		return c.discardFrame(r, head)
 	} else if head.stream != call.streamID {
 		panic(fmt.Sprintf("call has incorrect streamID: got %d expected %d", call.streamID, head.stream))
@@ -1316,7 +1357,7 @@ func (c *Conn) execInternal(ctx context.Context, req frameBuilder, tracer Tracer
 			responseFrame, err := resp.framer.parseFrame()
 			if err != nil {
 				c.logger.Warning("Framer error while attempting to parse potential protocol error.",
-					newLogFieldError("err", err))
+					NewLogFieldError("err", err))
 				return nil, errProtocol
 			}
 			//goland:noinspection GoTypeAssertionOnErrors
@@ -1333,17 +1374,17 @@ func (c *Conn) execInternal(ctx context.Context, req frameBuilder, tracer Tracer
 	case <-timeoutCh:
 		close(call.timeout)
 		c.logger.Debug("Request timed out on connection.",
-			newLogFieldString("host_id", c.host.HostID()), newLogFieldIp("addr", c.host.ConnectAddress()))
+			NewLogFieldString("host_id", c.host.HostID()), NewLogFieldIP("addr", c.host.ConnectAddress()))
 		return nil, ErrTimeoutNoResponse
 	case <-ctxDone:
 		c.logger.Debug("Request failed because context elapsed out on connection.",
-			newLogFieldString("host_id", c.host.HostID()), newLogFieldIp("addr", c.host.ConnectAddress()),
-			newLogFieldError("ctx_err", ctx.Err()))
+			NewLogFieldString("host_id", c.host.HostID()), NewLogFieldIP("addr", c.host.ConnectAddress()),
+			NewLogFieldError("ctx_err", ctx.Err()))
 		close(call.timeout)
 		return nil, ctx.Err()
 	case <-c.ctx.Done():
 		c.logger.Debug("Request failed because connection closed.",
-			newLogFieldString("host_id", c.host.HostID()), newLogFieldIp("addr", c.host.ConnectAddress()))
+			NewLogFieldString("host_id", c.host.HostID()), NewLogFieldIP("addr", c.host.ConnectAddress()))
 		close(call.timeout)
 		return nil, ErrConnectionClosed
 	}
@@ -1698,7 +1739,7 @@ func (c *Conn) executeQuery(ctx context.Context, q *internalQuery) *Iter {
 		iter.framer = framer
 		if err := c.awaitSchemaAgreement(ctx); err != nil {
 			// TODO: should have this behind a flag
-			c.logger.Warning("Error while awaiting for schema agreement after a schema change event.", newLogFieldError("err", err))
+			c.logger.Warning("Error while awaiting for schema agreement after a schema change event.", NewLogFieldError("err", err))
 		}
 		// dont return an error from this, might be a good idea to give a warning
 		// though. The impact of this returning an error would be that the cluster
@@ -1931,13 +1972,17 @@ func (c *Conn) querySystemLocal(ctx context.Context) *Iter {
 }
 
 func (c *Conn) awaitSchemaAgreement(ctx context.Context) (err error) {
+	return c.awaitSchemaAgreementWithTimeout(ctx, c.session.cfg.MaxWaitSchemaAgreement)
+}
+
+func (c *Conn) awaitSchemaAgreementWithTimeout(ctx context.Context, timeout time.Duration) (err error) {
 	const localSchemas = "SELECT schema_version FROM system.local WHERE key='local'"
 
 	var versions map[string]struct{}
 	var schemaVersion string
 	var rows []map[string]interface{}
 
-	endDeadline := time.Now().Add(c.session.cfg.MaxWaitSchemaAgreement)
+	endDeadline := time.Now().Add(timeout)
 
 	for time.Now().Before(endDeadline) {
 		iter := c.querySystemPeers(ctx, c.host.version)
@@ -1956,7 +2001,7 @@ func (c *Conn) awaitSchemaAgreement(ctx context.Context) (err error) {
 				goto cont
 			}
 			if !isValidPeer(host) || host.schemaVersion == "" {
-				c.logger.Warning("Invalid peer or peer with empty schema_version.", newLogFieldIp("peer", host.ConnectAddress()))
+				c.logger.Warning("Invalid peer or peer with empty schema_version.", NewLogFieldIP("peer", host.ConnectAddress()))
 				continue
 			}
 

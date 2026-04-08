@@ -9,7 +9,9 @@ import (
 )
 
 // Numeric is a constraint for recognized numeric types.
-type Numeric interface{ int64 | uint64 }
+type Numeric interface {
+	int32 | int64 | uint32 | uint64
+}
 
 // NumberScalar is a [Scalar] representing a [Numeric] value.
 type NumberScalar[T Numeric] struct {
@@ -33,8 +35,12 @@ func (s *NumberScalar[T]) Kind() Kind {
 func (s *NumberScalar[T]) init() {
 	var zero T
 	switch reflect.TypeOf(zero).Kind() {
+	case reflect.Int32:
+		s.kind = KindInt32
 	case reflect.Int64:
 		s.kind = KindInt64
+	case reflect.Uint32:
+		s.kind = KindUint32
 	case reflect.Uint64:
 		s.kind = KindUint64
 	default:
@@ -85,8 +91,12 @@ func (arr *Number[T]) init() {
 
 	var zero T
 	switch reflect.TypeOf(zero).Kind() {
+	case reflect.Int32:
+		arr.kind = KindInt32
 	case reflect.Int64:
 		arr.kind = KindInt64
+	case reflect.Uint32:
+		arr.kind = KindUint32
 	case reflect.Uint64:
 		arr.kind = KindUint64
 	default:

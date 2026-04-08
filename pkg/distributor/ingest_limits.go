@@ -25,25 +25,39 @@ type ingestLimitsFrontendClient interface {
 // ingestLimitsFrontendRingClient uses the ring to discover ingest-limits-frontend
 // instances and proxy requests to them.
 type ingestLimitsFrontendRingClient struct {
-	ring ring.ReadRing
-	pool *ring_client.Pool
+	ring                ring.ReadRing
+	pool                *ring_client.Pool
+	shuffleShardEnabled bool
+	shuffleShardSize    int
 }
 
-func newIngestLimitsFrontendRingClient(ring ring.ReadRing, pool *ring_client.Pool) *ingestLimitsFrontendRingClient {
+func newIngestLimitsFrontendRingClient(ring ring.ReadRing, pool *ring_client.Pool, shuffleShardEnabled bool, shuffleShardSize int) *ingestLimitsFrontendRingClient {
 	return &ingestLimitsFrontendRingClient{
-		ring: ring,
-		pool: pool,
+		ring:                ring,
+		pool:                pool,
+		shuffleShardEnabled: shuffleShardEnabled,
+		shuffleShardSize:    shuffleShardSize,
 	}
 }
 
 // Implements the [ingestLimitsFrontendClient] interface.
 func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
-	var resp *proto.ExceedsLimitsResponse
-	err := c.withRandomShuffle(ctx, func(ctx context.Context, client proto.IngestLimitsFrontendClient) error {
-		var clientErr error
-		resp, clientErr = client.ExceedsLimits(ctx, req)
-		return clientErr
-	})
+	var (
+		err  error
+		resp *proto.ExceedsLimitsResponse
+		// doExceedsLimitsFn is used as a closure to call [ExceedsLimits] and then
+		// update the [resp] variable which we can then return to the caller.
+		doExceedsLimitsFn = func(ctx context.Context, client proto.IngestLimitsFrontendClient) error {
+			var clientErr error
+			resp, clientErr = client.ExceedsLimits(ctx, req)
+			return clientErr
+		}
+	)
+	if c.shuffleShardEnabled {
+		err = c.withTenantShuffleShard(ctx, req.Tenant, doExceedsLimitsFn)
+	} else {
+		err = c.withRandomShuffle(ctx, doExceedsLimitsFn)
+	}
 	return resp, err
 }
 
@@ -56,6 +70,23 @@ func (c *ingestLimitsFrontendRingClient) UpdateRates(ctx context.Context, req *p
 		return clientErr
 	})
 	return resp, err
+}
+
+// withTenantShuffleShard shuffle shards the tenant over [shuffleShardSize] frontends.
+func (c *ingestLimitsFrontendRingClient) withTenantShuffleShard(ctx context.Context, tenant string, f func(ctx context.Context, client proto.IngestLimitsFrontendClient) error) error {
+	subring := c.ring.ShuffleShard(tenant, c.shuffleShardSize)
+	rs, err := subring.GetAllHealthy(limits_frontend_client.LimitsRead)
+	if err != nil {
+		return fmt.Errorf("failed to get limits-frontend instances from ring: %w", err)
+	}
+	if len(rs.Instances) == 0 {
+		return errors.New("no healthy instances found")
+	}
+	// Randomly shuffle instances to evenly distribute requests amongst the shards.
+	rand.Shuffle(len(rs.Instances), func(i, j int) {
+		rs.Instances[i], rs.Instances[j] = rs.Instances[j], rs.Instances[i]
+	})
+	return c.walkInstances(ctx, rs.Instances, f)
 }
 
 // withRandomShuffle gets all healthy frontends in the ring, randomly shuffles
@@ -72,10 +103,14 @@ func (c *ingestLimitsFrontendRingClient) withRandomShuffle(ctx context.Context, 
 	rand.Shuffle(len(rs.Instances), func(i, j int) {
 		rs.Instances[i], rs.Instances[j] = rs.Instances[j], rs.Instances[i]
 	})
+	return c.walkInstances(ctx, rs.Instances, f)
+}
+
+func (c *ingestLimitsFrontendRingClient) walkInstances(ctx context.Context, instances []ring.InstanceDesc, f func(ctx context.Context, client proto.IngestLimitsFrontendClient) error) error {
 	var lastErr error
 	// Pass the instance to f. If it fails, failover to the next instance.
 	// Repeat until there are no more instances.
-	for _, instance := range rs.Instances {
+	for _, instance := range instances {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

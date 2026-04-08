@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/grpclog"
+	"google.golang.org/grpc/internal/envconfig"
 	igrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/xds/clients"
 	"google.golang.org/grpc/internal/xds/clients/internal"
@@ -253,7 +254,16 @@ func decodeResponse(opts *DecodeOptions, rType *ResourceType, resp response) (ma
 	perResourceErrors := make(map[string]error) // Tracks resource validation errors, where we have a resource name.
 	ret := make(map[string]dataAndErrTuple)     // Return result, a map from resource name to either resource data or error.
 	for _, r := range resp.resources {
-		result, err := rType.Decoder.Decode(NewAnyProto(r), *opts)
+		result, err := func() (res *DecodeResult, err error) {
+			defer func() {
+				if envconfig.XDSRecoverPanicInResourceParsing {
+					if p := recover(); p != nil {
+						err = fmt.Errorf("recovered from panic during resource parsing, resource: %v, panic: %v", r, p)
+					}
+				}
+			}()
+			return rType.Decoder.Decode(NewAnyProto(r), *opts)
+		}()
 
 		// Name field of the result is left unpopulated only when resource
 		// deserialization fails.

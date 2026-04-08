@@ -4,17 +4,27 @@
 
 # Selection masking - alternating pattern [true, false, true, false]
 NOT     bool:[true false true false]                               select:[true false true false] -> bool:[false null false null]
+EQ      int32:[1 2 3 4]              int32:[1 0 3 0]               select:[true false true false] -> bool:[true null true null]
+EQ      int64:[1 2 3 4]              int64:[1 0 3 0]               select:[true false true false] -> bool:[true null true null]
+EQ      uint32:[1 2 3 4]             uint32:[1 0 3 0]              select:[true false true false] -> bool:[true null true null]
 EQ      uint64:[1 2 3 4]             uint64:[1 0 3 0]              select:[true false true false] -> bool:[true null true null]
 AND     bool:[true true false false] bool:[true false true false]  select:[true false true false] -> bool:[true null false null]
 SUBSTRI utf8:["a" "b" "A" "c"]       utf8:"a"                      select:[true false true false] -> bool:[true null true null]
 
 # Single element with selection
 NOT  bool:[true]               select:[true]   -> bool:[false]
+EQ   int32:[42]   int32:[42]   select:[true]   -> bool:[true]
+EQ   int32:[42]   int32:[42]   select:[false]  -> bool:[null]
+EQ   uint32:[42]  uint32:[42]  select:[true]   -> bool:[true]
+EQ   uint32:[42]  uint32:[42]  select:[false]  -> bool:[null]
 EQ   uint64:[42]  uint64:[42]  select:[true]   -> bool:[true]
 EQ   uint64:[42]  uint64:[42]  select:[false]  -> bool:[null]
 
 # All false selection - no rows selected
 NOT      bool:[true false true false]                                 select:[false false false false] -> bool:[null null null null]
+EQ       int32:[1 2 3 4]                int32:[1 0 3 0]               select:[false false false false] -> bool:[null null null null]
+EQ       int64:[1 2 3 4]                int64:[1 0 3 0]               select:[false false false false] -> bool:[null null null null]
+EQ       uint32:[1 2 3 4]               uint32:[1 0 3 0]              select:[false false false false] -> bool:[null null null null]
 EQ       uint64:[1 2 3 4]               uint64:[1 0 3 0]              select:[false false false false] -> bool:[null null null null]
 AND      bool:[true true false false]   bool:[true false true false]  select:[false false false false] -> bool:[null null null null]
 OR       bool:[true true false false]   bool:[true false true false]  select:[false false false false] -> bool:[null null null null]

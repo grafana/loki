@@ -94,15 +94,15 @@ var awsS3EndpointMap = map[string]awsS3Endpoint{
 	},
 	"us-iso-east-1": {
 		"s3.us-iso-east-1.c2s.ic.gov",
-		"s3.dualstack.us-iso-east-1.c2s.ic.gov",
+		"", // dualstack endpoint doesn't exist
 	},
 	"us-isob-east-1": {
 		"s3.us-isob-east-1.sc2s.sgov.gov",
-		"s3.dualstack.us-isob-east-1.sc2s.sgov.gov",
+		"", // dualstack endpoint doesn't exist
 	},
 	"us-iso-west-1": {
 		"s3.us-iso-west-1.c2s.ic.gov",
-		"s3.dualstack.us-iso-west-1.c2s.ic.gov",
+		"", // dualstack endpoint doesn't exist
 	},
 	"us-west-2": {
 		"s3.us-west-2.amazonaws.com",
@@ -269,7 +269,7 @@ func getS3Endpoint(bucketLocation string, useDualstack bool) (endpoint string) {
 		}
 		return "s3.us-east-1.amazonaws.com"
 	}
-	if useDualstack {
+	if useDualstack && s3Endpoint.dualstackEndpoint != "" {
 		return s3Endpoint.dualstackEndpoint
 	}
 	return s3Endpoint.endpoint

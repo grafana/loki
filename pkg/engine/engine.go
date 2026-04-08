@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	gotrace "runtime/trace"
-	"strconv"
 	"strings"
 	"time"
 
@@ -307,7 +306,6 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	stats := capture.ToStatsSummary(durFull, 0, builder.Len())
 	result := builder.Build(stats, md)
 
-	logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), stats, result.Data)
 	return result, nil
 }
 

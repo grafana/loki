@@ -13,7 +13,11 @@ weight: 100
 This Helm Chart installation deploys Grafana Loki in [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) within a Kubernetes cluster.
 
 {{< admonition type="note" >}}
-As of March 16, 2026, the Loki Helm Chart is being maintained by Grafana Champions andthe Grafana Community in the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts). Please open issues and pull requests for the chart against the Grafana-commmunity repo.
+As of March 16, 2026, the Loki Helm Chart is being maintained by Grafana Champions and the Grafana Community in the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts). Please open issues and pull requests for the chart against the Grafana-community repo.
+{{< /admonition >}}
+
+{{< admonition type="tip" >}}
+With the move to the Grafana-community repository, the chart numbering has changed. Major version updates signal breaking changes in the chart. For more information, refer to the [README](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/README.md#upgrading).
 {{< /admonition >}}
 
 ## Prerequisites
@@ -59,7 +63,7 @@ loki:
           prefix: loki_index_
           period: 24h
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
@@ -136,7 +140,7 @@ loki:
           prefix: loki_index_
           period: 24h
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
@@ -245,7 +249,7 @@ loki:
       bucketnames: <Your AWS bucket for chunk, for exaxmple,  `aws-loki-dev-chunk`>
       s3forcepathstyle: false
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
@@ -254,9 +258,9 @@ loki:
   storage:
     type: s3
     bucketNames:
-        chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
-        ruler: <Your AWS bucket for ruler, for example, `aws-loki-dev-ruler`>
-        admin: <Your AWS bucket for admin, for example, `aws-loki-dev-admin`>
+      chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
+      ruler: <Your AWS bucket for ruler, for example, `aws-loki-dev-ruler`>
+      admin: <Your AWS bucket for admin, for example, `aws-loki-dev-admin`>
     s3:
       # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storages or are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
       s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
