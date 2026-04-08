@@ -11,26 +11,33 @@ type rule interface {
 	apply(Node) bool
 }
 
-// optimization represents a single optimization pass and can hold multiple rules.
-type optimization struct {
+func WorkflowOptimizations(plan *Plan) []*Optimization {
+	return []*Optimization{
+		newOptimization("ClampPredicates", plan).withRules(
+			&clampPredicates{plan: plan}),
+	}
+}
+
+// Optimization represents a single Optimization pass and can hold multiple rules.
+type Optimization struct {
 	plan  *Plan
 	name  string
 	rules []rule
 }
 
-func newOptimization(name string, plan *Plan) *optimization {
-	return &optimization{
+func newOptimization(name string, plan *Plan) *Optimization {
+	return &Optimization{
 		name: name,
 		plan: plan,
 	}
 }
 
-func (o *optimization) withRules(rules ...rule) *optimization {
+func (o *Optimization) withRules(rules ...rule) *Optimization {
 	o.rules = append(o.rules, rules...)
 	return o
 }
 
-func (o *optimization) optimize(node Node) {
+func (o *Optimization) optimize(node Node) {
 	iterations, maxIterations := 0, 10
 
 	for iterations < maxIterations {
@@ -43,7 +50,7 @@ func (o *optimization) optimize(node Node) {
 	}
 }
 
-func (o *optimization) applyRules(node Node) bool {
+func (o *Optimization) applyRules(node Node) bool {
 	anyChanged := false
 
 	for _, rule := range o.rules {
@@ -55,17 +62,17 @@ func (o *optimization) applyRules(node Node) bool {
 	return anyChanged
 }
 
-// The optimizer can optimize physical plans using the provided optimization passes.
-type optimizer struct {
+// The Optimizer can optimize physical plans using the provided optimization passes.
+type Optimizer struct {
 	plan          *Plan
-	optimisations []*optimization
+	optimisations []*Optimization
 }
 
-func newOptimizer(plan *Plan, passes []*optimization) *optimizer {
-	return &optimizer{plan: plan, optimisations: passes}
+func NewOptimizer(plan *Plan, passes []*Optimization) *Optimizer {
+	return &Optimizer{plan: plan, optimisations: passes}
 }
 
-func (o *optimizer) optimize(node Node) {
+func (o *Optimizer) Optimize(node Node) {
 	for _, optimisation := range o.optimisations {
 		optimisation.optimize(node)
 	}
