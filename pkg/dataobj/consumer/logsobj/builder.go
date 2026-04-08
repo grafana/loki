@@ -136,6 +136,10 @@ type BuilderConfig struct {
 	// that is already in sort order. When false, the classic
 	// AppendUnordered strategy is used.
 	AppendOrderedEnabled bool `yaml:"append_ordered_enabled" doc:"hidden"`
+
+	// DataobjSortSchemaEnabled controls whether the per-tenant sort_schema tenant config is used
+	// to determine sort order instead of DataobjSortOrder.
+	DataobjUseSortSchema bool `yaml:"dataobj_use_sort_schema" doc:"hidden"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -149,6 +153,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 
 	f.StringVar(&cfg.DataobjSortOrder, prefix+"dataobj-sort-order", sortStreamASC, "The desired sort order of the logs section. Can either be `stream-asc` (order by streamID ascending and timestamp descending) or `timestamp-desc` (order by timestamp descending and streamID ascending).")
 	f.BoolVar(&cfg.AppendOrderedEnabled, prefix+"append-ordered-enabled", true, "Use the ordered append strategy, which skips intermediate stripe sorting and merging. Disable to fall back to the classic unordered strategy.")
+	f.BoolVar(&cfg.DataobjUseSortSchema, prefix+"dataobj-use-sort-schema", false, "Experimental: When enabled, use the per-tenant sort_schema tenant config to determine sort order of data objects instead of dataobj-sort-order.")
 }
 
 // Validate validates the BuilderConfig.

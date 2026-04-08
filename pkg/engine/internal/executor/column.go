@@ -69,6 +69,16 @@ func NewScalar(value types.Literal, rows int) arrow.Array {
 	return builder.NewArray()
 }
 
+// newNullStringArray returns a string Arrow array of length rows with all values null.
+func newNullStringArray(rows int) arrow.Array {
+	b := array.NewStringBuilder(memory.DefaultAllocator)
+	b.Reserve(rows)
+	for range rows {
+		b.AppendNull()
+	}
+	return b.NewArray()
+}
+
 func NewCoalesce(columns []*columnWithType) arrow.Array {
 	if len(columns) == 0 {
 		return nil
