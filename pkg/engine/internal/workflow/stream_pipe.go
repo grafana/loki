@@ -32,9 +32,9 @@ var _ executor.Pipeline = (*streamPipe)(nil)
 // Read. It is used when the workflow has no tasks to execute.
 type eofPipeline struct{}
 
-func (eofPipeline) Open(_ context.Context) error                       { return nil }
-func (eofPipeline) Read(_ context.Context) (arrow.RecordBatch, error)  { return nil, executor.EOF }
-func (eofPipeline) Close()                                             {}
+func (eofPipeline) Open(_ context.Context) error                      { return nil }
+func (eofPipeline) Read(_ context.Context) (arrow.RecordBatch, error) { return nil, executor.EOF }
+func (eofPipeline) Close()                                            {}
 
 // newEofPipeline returns a pipeline that immediately returns [executor.EOF] on
 // Read, without blocking. It is used when the workflow has no tasks.

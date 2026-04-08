@@ -296,8 +296,6 @@ func (r TaskCacheRegistry) GetForType(cacheType physical.TaskCacheName) (cache.C
 	return nil, CacheStats{}, fmt.Errorf("no cache registered for type %q", cacheType)
 }
 
-
-
 // Compression codec identifiers stored in the per-record wire format.
 const (
 	compressionNone   byte = 0
