@@ -55,8 +55,7 @@ type Builder struct {
 
 	client protos.PlannerForBuilderClient
 
-	// used only in SSD mode where a single planner of the backend replicas needs to create tasksQueue
-	// therefore is nil when planner is run in microservice mode (default)
+	// ringWatcher is nil when builder is run without an index gateway ring (default microservice mode)
 	ringWatcher *common.RingWatcher
 }
 
@@ -71,7 +70,7 @@ func New(
 	bloomGateway bloomgateway.Client,
 	logger log.Logger,
 	r prometheus.Registerer,
-	rm *ring.RingManager,
+	rm *ring.RingManager, // Unused, please remove
 ) (*Builder, error) {
 	utillog.WarnExperimentalUse("Bloom Builder", logger)
 

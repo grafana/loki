@@ -56,8 +56,7 @@ type Planner struct {
 	metrics *Metrics
 	logger  log.Logger
 
-	// used only in SSD mode where a single planner of the backend replicas needs to create tasksQueue
-	// therefore is nil when planner is run in microservice mode (default)
+	// ringWatcher is nil when planner is run without an index gateway ring (default microservice mode)
 	ringWatcher *common.RingWatcher
 }
 
@@ -70,7 +69,7 @@ func New(
 	bloomStore bloomshipper.StoreBase,
 	logger log.Logger,
 	r prometheus.Registerer,
-	rm *ring.RingManager,
+	rm *ring.RingManager, // Unused, please remove
 ) (*Planner, error) {
 	utillog.WarnExperimentalUse("Bloom Planner", logger)
 
@@ -157,7 +156,7 @@ func (p *Planner) stopping(_ error) error {
 func (p *Planner) running(ctx context.Context) error {
 	go p.trackInflightRequests(ctx)
 
-	// run once at beginning, but delay by 1m to allow ring consolidation when running in SSD mode
+	// run once at beginning, but delay by 1m to allow ring consolidation
 	initialPlanningTimer := time.NewTimer(time.Minute)
 	defer initialPlanningTimer.Stop()
 
