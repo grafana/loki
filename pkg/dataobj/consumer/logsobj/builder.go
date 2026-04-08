@@ -488,7 +488,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		PageMaxRowCount:           b.cfg.MaxPageRows,
 		BufferSize:                int(b.cfg.BufferSize),
 		StripeMergeLimit:          b.cfg.SectionStripeMergeLimit,
-		AppendStrategy:            appendStrategy(b.cfg.AppendOrderedEnabled),
+		AppendStrategy:            logs.AppendOrdered,
 		EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
 		SortOrder:                 sort,
 	})
