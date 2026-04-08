@@ -366,6 +366,11 @@ query_engine:
     # CLI flag: -query-engine.tasks-result-cache.dataobjscan-result-max-cacheable-size
     [dataobjscan_result_max_cacheable_size: <int> | default = 0B]
 
+    # Experimental: When enabled, the scheduler checks cached results at plan
+    # time and prunes tasks whose cached result is known to be empty.
+    # CLI flag: -query-engine.tasks-result-cache.prune-empty-cached-tasks
+    [prune_empty_cached_tasks: <boolean> | default = false]
+
   # Experimental: Number of worker threads to spawn. Each worker thread runs one
   # task at a time. 0 means to use GOMAXPROCS value.
   # CLI flag: -query-engine.worker-threads
