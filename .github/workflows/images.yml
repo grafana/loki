@@ -92,13 +92,13 @@
         "include":
         - "arch": "linux/amd64"
           "runs_on":
-          - "ubuntu-latest"
+          - "github-hosted-ubuntu-x64-small"
         - "arch": "linux/arm64"
           "runs_on":
-          - "ubuntu-24.04-arm"
+          - "github-hosted-ubuntu-arm64-small"
         - "arch": "linux/arm"
           "runs_on":
-          - "ubuntu-24.04-arm"
+          - "github-hosted-ubuntu-arm64-small"
   "loki-canary-boringcrypto-manifest":
     "env":
       "BUILD_TIMEOUT": 60
@@ -216,13 +216,13 @@
         "include":
         - "arch": "linux/amd64"
           "runs_on":
-          - "ubuntu-latest"
+          - "github-hosted-ubuntu-x64-small"
         - "arch": "linux/arm64"
           "runs_on":
-          - "ubuntu-24.04-arm"
+          - "github-hosted-ubuntu-arm64-small"
         - "arch": "linux/arm"
           "runs_on":
-          - "ubuntu-24.04-arm"
+          - "github-hosted-ubuntu-arm64-small"
   "loki-canary-manifest":
     "env":
       "BUILD_TIMEOUT": 60
@@ -340,13 +340,13 @@
         "include":
         - "arch": "linux/amd64"
           "runs_on":
-          - "ubuntu-latest"
+          - "github-hosted-ubuntu-x64-small"
         - "arch": "linux/arm64"
           "runs_on":
-          - "ubuntu-24.04-arm"
+          - "github-hosted-ubuntu-arm64-small"
         - "arch": "linux/arm"
           "runs_on":
-          - "ubuntu-24.04-arm"
+          - "github-hosted-ubuntu-arm64-small"
   "loki-manifest":
     "env":
       "BUILD_TIMEOUT": 60
@@ -464,13 +464,13 @@
         "include":
         - "arch": "linux/amd64"
           "runs_on":
-          - "ubuntu-latest"
+          - "github-hosted-ubuntu-x64-small"
         - "arch": "linux/arm64"
           "runs_on":
-          - "ubuntu-24.04-arm"
+          - "github-hosted-ubuntu-arm64-small"
         - "arch": "linux/arm"
           "runs_on":
-          - "ubuntu-24.04-arm"
+          - "github-hosted-ubuntu-arm64-small"
   "querytee-manifest":
     "env":
       "BUILD_TIMEOUT": 60

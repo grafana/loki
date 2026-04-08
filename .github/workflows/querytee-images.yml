@@ -31,10 +31,10 @@ jobs:
         include:
           - arch: linux/amd64
             runs_on:
-              - ubuntu-latest
+              - github-hosted-ubuntu-x64-small
           - arch: linux/arm64
             runs_on:
-              - ubuntu-24.04-arm
+              - github-hosted-ubuntu-arm64-small
     outputs:
       image_digest_linux_amd64: ${{ steps.digest.outputs.digest_linux_amd64 }}
       image_digest_linux_arm64: ${{ steps.digest.outputs.digest_linux_arm64 }}

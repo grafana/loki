@@ -67,7 +67,7 @@ jobs:
 
   tests:
     name: Run ${{ matrix.store }}/${{ matrix.range_type }}/${{ matrix.remote_transport == true && 'remote' || 'local' }}
-    runs-on: ubuntu-arm64-large
+    runs-on: github-hosted-ubuntu-arm64-large
     needs: generate-testdata
     timeout-minutes: 60
     strategy:
