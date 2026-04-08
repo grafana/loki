@@ -268,7 +268,7 @@ It worth changing the visualization from `lines` to `bars` to visualize the erro
 Another example is to get the top 10 services producing the highest rate of errors:
 <!-- INTERACTIVE copy START -->
 ```logql
-topk(10,sum(rate({level="error"} | logfmt [5m])) by (service_name))
+topk(10, sum(rate({env="production"} | logfmt | level="ERROR" [5m])) by (service_name))
 ```
 <!-- INTERACTIVE copy END -->
 {{< admonition type="note" >}}
@@ -488,8 +488,7 @@ In this case we are using the provisioning method. Instead of mounting the Grafa
     networks:
       - loki
 ```
-Within the entrypoint section of the `docker-compose.yml` file, we have defined a file called `run.sh` this runs on startup and creates the data source configuration file `ds.yaml` in the Grafana provisioning directory. 
-This file defines the Loki data source and tells Grafana to use it. Since Loki is running in the same Docker network as Grafana, we can use the service name `loki` as the URL.
+The entrypoint overrides the default startup command to first create the datasource provisioning file `ds.yaml`, which configures Loki as the default datasource. It then calls `/run.sh`, the default Grafana startup script included in the `grafana/grafana` Docker image, which starts the Grafana server. Since Loki is running in the same Docker network as Grafana, the datasource URL uses the service name `loki`.
 
 <!-- INTERACTIVE page step8.md END -->
 
