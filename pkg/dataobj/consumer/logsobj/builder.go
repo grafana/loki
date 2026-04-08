@@ -130,6 +130,12 @@ type BuilderConfig struct {
 	// DataobjSortOrder defines the order in which the rows of the logs sections are sorted.
 	// They can either be sorted by [streamID ASC, timestamp DESC] or [timestamp DESC, streamID ASC].
 	DataobjSortOrder string `yaml:"dataobj_sort_order" doc:"hidden"`
+
+	// AppendOrderedEnabled controls whether the builder uses the AppendOrdered
+	// strategy, which skips intermediate stripe sorting and merging for data
+	// that is already in sort order. When false, the classic
+	// AppendUnordered strategy is used.
+	AppendOrderedEnabled bool `yaml:"append_ordered_enabled" doc:"hidden"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -142,6 +148,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	cfg.BuilderBaseConfig.RegisterFlagsWithPrefix(prefix, f)
 
 	f.StringVar(&cfg.DataobjSortOrder, prefix+"dataobj-sort-order", sortStreamASC, "The desired sort order of the logs section. Can either be `stream-asc` (order by streamID ascending and timestamp descending) or `timestamp-desc` (order by timestamp descending and streamID ascending).")
+	f.BoolVar(&cfg.AppendOrderedEnabled, prefix+"append-ordered-enabled", true, "Use the ordered append strategy, which skips intermediate stripe sorting and merging. Disable to fall back to the classic unordered strategy.")
 }
 
 // Validate validates the BuilderConfig.
@@ -171,6 +178,13 @@ var sortOrderMapping = map[string]logs.SortOrder{
 func parseSortOrder(s string) logs.SortOrder {
 	val := sortOrderMapping[s]
 	return val
+}
+
+func appendStrategy(ordered bool) logs.AppendStrategy {
+	if ordered {
+		return logs.AppendOrdered
+	}
+	return logs.AppendUnordered
 }
 
 // A Builder constructs a logs-oriented data object from a set of incoming
@@ -243,7 +257,7 @@ func (b *Builder) initBuilder(tenant string) {
 			PageMaxRowCount:           b.cfg.MaxPageRows,
 			BufferSize:                int(b.cfg.BufferSize),
 			StripeMergeLimit:          b.cfg.SectionStripeMergeLimit,
-			AppendStrategy:            logs.AppendOrdered,
+			AppendStrategy:            appendStrategy(b.cfg.AppendOrderedEnabled),
 			EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
 			SortOrder:                 parseSortOrder(b.cfg.DataobjSortOrder),
 		})
@@ -469,7 +483,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		PageMaxRowCount:  b.cfg.MaxPageRows,
 		BufferSize:       int(b.cfg.BufferSize),
 		StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-		AppendStrategy:   logs.AppendOrdered,
+		AppendStrategy:   appendStrategy(b.cfg.AppendOrderedEnabled),
 		SortOrder:        sort,
 	})
 
