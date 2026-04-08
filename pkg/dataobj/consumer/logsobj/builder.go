@@ -479,12 +479,13 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 
 	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 	lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
-		PageSizeHint:     int(b.cfg.TargetPageSize),
-		PageMaxRowCount:  b.cfg.MaxPageRows,
-		BufferSize:       int(b.cfg.BufferSize),
-		StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-		AppendStrategy:   appendStrategy(b.cfg.AppendOrderedEnabled),
-		SortOrder:        sort,
+		PageSizeHint:              int(b.cfg.TargetPageSize),
+		PageMaxRowCount:           b.cfg.MaxPageRows,
+		BufferSize:                int(b.cfg.BufferSize),
+		StripeMergeLimit:          b.cfg.SectionStripeMergeLimit,
+		AppendStrategy:            appendStrategy(b.cfg.AppendOrderedEnabled),
+		EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
+		SortOrder:                 sort,
 	})
 
 	// Sort the set of tenants so the new object has a deterministic order of sections.
