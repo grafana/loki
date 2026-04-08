@@ -1551,7 +1551,7 @@ dataobj:
     # output size from uncompressed buffered records. Only takes effect with
     # ordered append. Set to 0 or 1 to disable.
     # CLI flag: -dataobj-index-builder.estimated-compression-ratio
-    [estimated_compression_ratio: <int> | default = 8]
+    [estimated_compression_ratio: <int> | default = 1]
 
     # Experimental: The number of events to batch before building an index
     # CLI flag: -dataobj-index-builder.events-per-index
