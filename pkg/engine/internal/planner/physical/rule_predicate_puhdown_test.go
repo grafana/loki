@@ -3,9 +3,10 @@ package physical
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
-	"github.com/stretchr/testify/require"
 )
 
 func TestPredicatePushdown(t *testing.T) {
