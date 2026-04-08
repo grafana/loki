@@ -170,10 +170,18 @@ func isCacheEntryEmpty(ctx context.Context, c cache.Cache, rawKey string) (hit b
 	if err != nil {
 		return false, false, err
 	}
+
+	// Empty responses should be stores as empty buffers, but just in case,
+	// we will also (lazily) decode and see how may records are there
 	if len(found) == 0 {
 		return false, false, nil
 	}
-	return true, len(buffs[0]) == 0, nil
+
+	dec, err := executor.NewCacheEntryDecoder(buffs[0])
+	if err != nil {
+		return false, false, err
+	}
+	return true, dec.Len() == 0, nil
 }
 
 // eliminateTask removes task from the planner graph and cleans up all stream
