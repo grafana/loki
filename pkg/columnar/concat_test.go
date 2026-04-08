@@ -41,6 +41,21 @@ func TestConcat_Bool(t *testing.T) {
 	columnartest.RequireArraysEqual(t, expect, actual)
 }
 
+func TestConcat_Int32(t *testing.T) {
+	var alloc memory.Allocator
+
+	in := []columnar.Array{
+		columnartest.Array(t, columnar.KindInt32, &alloc, 1, 2, 3, 4),
+		columnartest.Array(t, columnar.KindInt32, &alloc),
+		columnartest.Array(t, columnar.KindInt32, &alloc, 5, nil),
+	}
+
+	expect := columnartest.Array(t, columnar.KindInt32, &alloc, 1, 2, 3, 4, 5, nil)
+	actual, err := columnar.Concat(&alloc, in)
+	require.NoError(t, err)
+	columnartest.RequireArraysEqual(t, expect, actual)
+}
+
 func TestConcat_Int64(t *testing.T) {
 	var alloc memory.Allocator
 
@@ -51,6 +66,36 @@ func TestConcat_Int64(t *testing.T) {
 	}
 
 	expect := columnartest.Array(t, columnar.KindInt64, &alloc, 1, 2, 3, 4, 5, nil)
+	actual, err := columnar.Concat(&alloc, in)
+	require.NoError(t, err)
+	columnartest.RequireArraysEqual(t, expect, actual)
+}
+
+func TestConcat_Uint32(t *testing.T) {
+	var alloc memory.Allocator
+
+	in := []columnar.Array{
+		columnartest.Array(t, columnar.KindUint32, &alloc, 1, 2, 3, 4),
+		columnartest.Array(t, columnar.KindUint32, &alloc),
+		columnartest.Array(t, columnar.KindUint32, &alloc, 5, nil),
+	}
+
+	expect := columnartest.Array(t, columnar.KindUint32, &alloc, 1, 2, 3, 4, 5, nil)
+	actual, err := columnar.Concat(&alloc, in)
+	require.NoError(t, err)
+	columnartest.RequireArraysEqual(t, expect, actual)
+}
+
+func TestConcat_Uint64(t *testing.T) {
+	var alloc memory.Allocator
+
+	in := []columnar.Array{
+		columnartest.Array(t, columnar.KindUint64, &alloc, 1, 2, 3, 4),
+		columnartest.Array(t, columnar.KindUint64, &alloc),
+		columnartest.Array(t, columnar.KindUint64, &alloc, 5, nil),
+	}
+
+	expect := columnartest.Array(t, columnar.KindUint64, &alloc, 1, 2, 3, 4, 5, nil)
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
 	columnartest.RequireArraysEqual(t, expect, actual)

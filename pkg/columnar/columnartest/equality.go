@@ -53,8 +53,12 @@ func RequireArraysEqual(t testing.TB, expect, actual columnar.Array) {
 		requireNullArraysEqual(t, expect.(*columnar.Null), actual.(*columnar.Null))
 	case columnar.KindBool:
 		requireArraysEqual(t, expect.(*columnar.Bool), actual.(*columnar.Bool))
+	case columnar.KindInt32:
+		requireArraysEqual(t, expect.(*columnar.Number[int32]), actual.(*columnar.Number[int32]))
 	case columnar.KindInt64:
 		requireArraysEqual(t, expect.(*columnar.Number[int64]), actual.(*columnar.Number[int64]))
+	case columnar.KindUint32:
+		requireArraysEqual(t, expect.(*columnar.Number[uint32]), actual.(*columnar.Number[uint32]))
 	case columnar.KindUint64:
 		requireArraysEqual(t, expect.(*columnar.Number[uint64]), actual.(*columnar.Number[uint64]))
 	case columnar.KindUTF8:

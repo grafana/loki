@@ -559,7 +559,7 @@ those labels:
 
 #### unpack
 
-The `unpack` parser parses a JSON log line, unpacking all embedded labels from the [`stage.pack` block](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagepack).
+The `unpack` parser parses a JSON log line, unpacking all embedded labels from the [`pack` stage](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagepack-block).
 **A special property `_entry` will also be used to replace the original log line**.
 
 For example, using `| unpack` with the log line:
