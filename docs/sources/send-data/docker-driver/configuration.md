@@ -40,7 +40,7 @@ The Loki logging driver still uses the json-log driver in combination with sendi
 to keep the `docker logs` command working.
 You can adjust file size and rotation using the respective log option `max-size` and `max-file`. Keep in mind that
 default values for these options are not taken from json-log configuration.
-You can deactivate this behavior by setting the log option `no-file` to true.
+You can disable JSON log file creation by setting the log option `no-file` to `true`, but this also disables `docker logs` for the container.
 {{< /admonition >}}
 
 ## Change the default logging driver
@@ -238,13 +238,23 @@ To specify additional logging driver options, you can use the --log-opt NAME=VAL
 | `loki-tls-server-name`          |    No     |                            | Name used to validate the server certificate.                                                                                                                                                                                                                                                                   |
 | `loki-tls-insecure-skip-verify` |    No     |          `false`*          | Allow to skip tls verification.                                                                                                                                                                                                                                                                                 |
 | `loki-proxy-url`                |    No     |                            | Proxy URL use to connect to Loki.                                                                                                                                                                                                                                                                               |
-| `no-file`                       |    No     |          `false`*          | Default is "false" and log files are created.  Set to "true" to tell driver not to ever create log files on disk. However, this means you won't be able to use `docker logs` on the container anymore. Use this setting if you don't need to use `docker logs` or run with limited disk space.                      |
-| `keep-file`                     |    No     |          `false`*          | Default is "false" and log files are removed once a container is stopped. Set to "true" to tell driver to keep json log files once a container is stopped.                                                                                                                                                 |
+| `no-file`                       |    No     |          `false`*          | When `false` (default), the driver creates a local JSON log file for each container, which enables `docker logs`. Set to `true` to skip creating JSON log files entirely — no disk space is used for logs, but `docker logs` will not work for the container.                                |
+| `keep-file`                     |    No     |          `false`*          | When `false` (default), the JSON log file for a container is deleted when the container stops. Set to `true` to retain the JSON log file after the container stops. Has no effect when `no-file=true`, because no JSON log file is created.                                                                      |
 | `max-size`                      |    No     |             -1             | The maximum size of the log before it is rolled. A positive integer plus a modifier representing the unit of measure (k, m, or g). Defaults to -1 (unlimited). This is used by json-log required to keep the `docker log` command working.                                                                      |
 | `max-file`                      |    No     |             1              | The maximum number of log files that can be present. If rolling the logs creates excess files, the oldest file is removed. Only effective when max-size is also set. A positive integer. Defaults to 1.                                                                                                         |
 | `labels`                        |    No     |                            | Comma-separated list of keys of labels, which should be included in message, if these labels are specified for container.                                                                                                                                                                                       |
 | `env`                           |    No     |                            | Comma-separated list of keys of environment variables to be included in message if they specified for a container.                                                                                                                                                                                              |
 | `env-regex`                     |    No     |                            | A regular expression to match logging-related environment variables. Used for advanced log label options. If there is collision between the label and env keys, the value of the env takes precedence. Both options add additional fields to the labels of a logging message.                                   |
+
+### `no-file` and `keep-file` interactions
+
+The `no-file` and `keep-file` options control whether JSON log files are created and how long they are kept:
+
+| `no-file` | `keep-file` | JSON log file created? | Deleted on container stop? | `docker logs` available? |
+|:---------:|:-----------:|:----------------------:|:--------------------------:|:------------------------:|
+| `false`   | `false`     | Yes                    | Yes                        | Yes                      |
+| `false`   | `true`      | Yes                    | No                         | Yes                      |
+| `true`    | (any)       | No                     | N/A                        | No                       |
 
 ### *note:
 
