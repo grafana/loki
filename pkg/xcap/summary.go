@@ -276,7 +276,7 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	// pick the min of row_out from filter and scan nodes.
 	result.Querier.Store.Dataobj.PostFilterRows = readInt64(observations, StatDatasetSecondaryRowsRead.Key())
 
-	// Collect task cache stats from worker threads (thread.runJob).
+	// Collect task cache stats and scheduler transfer stats from worker threads (thread.runJob).
 	// All tasks — both metastore and execution tasks run on worker threads,
 	// so thread.runJob captures the full picture.
 	//
@@ -288,6 +288,7 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 		TaskCacheBatches.Key(), TaskCacheBytes.Key(),
 		DataObjScanCacheHits.Key(), DataObjScanCacheMisses.Key(),
 		DataObjScanCacheBatches.Key(), DataObjScanCacheBytes.Key(),
+		TaskWireBytes.Key(),
 	)
 
 	taskHits := readInt64(workerCache, TaskCacheHits.Key()) + readInt64(workerCache, DataObjScanCacheHits.Key())
@@ -299,6 +300,8 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	result.Caches.TaskResult.EntriesRequested = int32(taskHits + taskMisses)
 	result.Caches.TaskResult.Requests = int32(taskBatches)
 	result.Caches.TaskResult.BytesReceived = taskBytes
+
+	result.Querier.Store.Dataobj.WireBytesTransferred = readInt64(workerCache, TaskWireBytes.Key())
 
 	result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
 	return result
@@ -473,6 +476,8 @@ func summarizeObservations(capture *Capture) *observations {
 				// dataobjscan cache stats
 				DataObjScanCacheHits.Key(), DataObjScanCacheMisses.Key(),
 				DataObjScanCacheBatches.Key(), DataObjScanCacheRows.Key(), DataObjScanCacheBytes.Key(),
+				// scheduler bytes transferred
+				TaskWireBytes.Key(),
 			).
 			normalizeKeys(),
 	)

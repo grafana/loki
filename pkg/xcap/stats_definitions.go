@@ -123,4 +123,5 @@ var (
 	TaskBatchingRowsWritten     = NewStatisticInt64("task.batching.rows.written", AggregationTypeSum)
 	TaskExternalSourcesCount    = NewStatisticInt64("task.external.sources.count", AggregationTypeFirst)
 	TaskExternalSinksCount      = NewStatisticInt64("task.external.sinks.count", AggregationTypeFirst)
+	TaskWireBytes               = NewStatisticInt64("task.wire.bytes", AggregationTypeSum)
 )

@@ -99,7 +99,8 @@ var queryTests = []struct {
 							"prePredicateDecompressedBytes": 0,
 							"prePredicateDecompressedStructuredMetadataBytes": 0,
 							"totalPageDownloadTime": 0,
-							"totalRowsAvailable": 0
+							"totalRowsAvailable": 0,
+							"wireBytesTransferred": 0
 						}
 					},
 					"totalBatches": 0,
@@ -142,7 +143,8 @@ var queryTests = []struct {
 							"prePredicateDecompressedBytes": 0,
 							"prePredicateDecompressedStructuredMetadataBytes": 0,
 							"totalPageDownloadTime": 0,
-							"totalRowsAvailable": 0
+							"totalRowsAvailable": 0,
+							"wireBytesTransferred": 0
 						}
 					}
 				},
