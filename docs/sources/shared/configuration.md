@@ -1289,6 +1289,12 @@ dataobj:
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
 
+      # Expected compression ratio for log data, used to estimate compressed
+      # output size from uncompressed buffered records. Only takes effect with
+      # ordered append. Set to 0 or 1 to disable.
+      # CLI flag: -dataobj-consumer.estimated-compression-ratio
+      [estimated_compression_ratio: <int> | default = 8]
+
     lifecycler:
       ring:
         kvstore:
@@ -1545,6 +1551,12 @@ dataobj:
     # once. Must be greater than 1.
     # CLI flag: -dataobj-index-builder.section-stripe-merge-limit
     [section_stripe_merge_limit: <int> | default = 2]
+
+    # Expected compression ratio for log data, used to estimate compressed
+    # output size from uncompressed buffered records. Only takes effect with
+    # ordered append. Set to 0 or 1 to disable.
+    # CLI flag: -dataobj-index-builder.estimated-compression-ratio
+    [estimated_compression_ratio: <int> | default = 1]
 
     # Experimental: The number of events to batch before building an index
     # CLI flag: -dataobj-index-builder.events-per-index

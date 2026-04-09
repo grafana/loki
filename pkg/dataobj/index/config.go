@@ -27,6 +27,11 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	_ = cfg.BufferSize.Set("2MB")
 	_ = cfg.TargetSectionSize.Set("16MB")
 	cfg.BuilderBaseConfig.RegisterFlagsWithPrefix(prefix, f)
+	cfg.EstimatedCompressionRatio = 1
+	if ecr := f.Lookup(prefix + "estimated-compression-ratio"); ecr != nil {
+		// Hack to set the default value for the flag only for the index builder.
+		ecr.DefValue = "1"
+	}
 
 	f.IntVar(&cfg.EventsPerIndex, prefix+"events-per-index", 32, "Experimental: The number of events to batch before building an index")
 	f.DurationVar(&cfg.FlushInterval, prefix+"flush-interval", 1*time.Minute, "Experimental: How often to check for idle partitions and old events to flush")
