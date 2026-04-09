@@ -765,6 +765,8 @@ type Dataobj struct {
 	TotalRowsAvailable int64 `protobuf:"varint,12,opt,name=totalRowsAvailable,proto3" json:"totalRowsAvailable"`
 	// Time spent fetching page metadata or data from object storage in nanoseconds.
 	TotalPageDownloadTime int64 `protobuf:"varint,13,opt,name=totalPageDownloadTime,proto3" json:"totalPageDownloadTime"`
+	// Total bytes transferred between tasks via scheduler streams (sources and sinks).
+	SchedulerBytesTransferred int64 `protobuf:"varint,14,opt,name=schedulerBytesTransferred,proto3" json:"schedulerBytesTransferred"`
 }
 
 func (m *Dataobj) Reset()      { *m = Dataobj{} }
@@ -886,6 +888,13 @@ func (m *Dataobj) GetTotalRowsAvailable() int64 {
 func (m *Dataobj) GetTotalPageDownloadTime() int64 {
 	if m != nil {
 		return m.TotalPageDownloadTime
+	}
+	return 0
+}
+
+func (m *Dataobj) GetSchedulerBytesTransferred() int64 {
+	if m != nil {
+		return m.SchedulerBytesTransferred
 	}
 	return 0
 }
@@ -1599,6 +1608,9 @@ func (this *Dataobj) Equal(that interface{}) bool {
 	if this.TotalPageDownloadTime != that1.TotalPageDownloadTime {
 		return false
 	}
+	if this.SchedulerBytesTransferred != that1.SchedulerBytesTransferred {
+		return false
+	}
 	return true
 }
 func (this *Chunk) Equal(that interface{}) bool {
@@ -1828,6 +1840,7 @@ func (this *Dataobj) GoString() string {
 	s = append(s, "PageBatches: "+fmt.Sprintf("%#v", this.PageBatches)+",\n")
 	s = append(s, "TotalRowsAvailable: "+fmt.Sprintf("%#v", this.TotalRowsAvailable)+",\n")
 	s = append(s, "TotalPageDownloadTime: "+fmt.Sprintf("%#v", this.TotalPageDownloadTime)+",\n")
+	s = append(s, "SchedulerBytesTransferred: "+fmt.Sprintf("%#v", this.SchedulerBytesTransferred)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2431,6 +2444,11 @@ func (m *Dataobj) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.SchedulerBytesTransferred != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.SchedulerBytesTransferred))
+		i--
+		dAtA[i] = 0x70
+	}
 	if m.TotalPageDownloadTime != 0 {
 		i = encodeVarintStats(dAtA, i, uint64(m.TotalPageDownloadTime))
 		i--
@@ -2886,6 +2904,9 @@ func (m *Dataobj) Size() (n int) {
 	if m.TotalPageDownloadTime != 0 {
 		n += 1 + sovStats(uint64(m.TotalPageDownloadTime))
 	}
+	if m.SchedulerBytesTransferred != 0 {
+		n += 1 + sovStats(uint64(m.SchedulerBytesTransferred))
+	}
 	return n
 }
 
@@ -3097,6 +3118,7 @@ func (this *Dataobj) String() string {
 		`PageBatches:` + fmt.Sprintf("%v", this.PageBatches) + `,`,
 		`TotalRowsAvailable:` + fmt.Sprintf("%v", this.TotalRowsAvailable) + `,`,
 		`TotalPageDownloadTime:` + fmt.Sprintf("%v", this.TotalPageDownloadTime) + `,`,
+		`SchedulerBytesTransferred:` + fmt.Sprintf("%v", this.SchedulerBytesTransferred) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4996,6 +5018,25 @@ func (m *Dataobj) Unmarshal(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.TotalPageDownloadTime |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 14:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SchedulerBytesTransferred", wireType)
+			}
+			m.SchedulerBytesTransferred = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SchedulerBytesTransferred |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
