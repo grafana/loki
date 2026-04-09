@@ -196,11 +196,40 @@ func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedTok
 	require.NoError(suite.T(), err)
 }
 
-func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedToken_ActiveDirectoryEndpoint_Override() {
+func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedToken_AzureAuthorityHost() {
+	suite.config.cfg.ActiveDirectoryEndpoint = ""
+	suite.config.cfg.Environment = azureGlobal
+
+	// Simulate the Azure Workload Identity webhook injecting
+	// AZURE_AUTHORITY_HOST for a sovereign cloud.
+	suite.T().Setenv("AZURE_AUTHORITY_HOST", "https://login.microsoftonline.us/")
+
+	newOAuthConfigFunc := func(activeDirectoryEndpoint, _ string) (*adal.OAuthConfig, error) {
+		// The trailing slash should be trimmed.
+		require.Equal(suite.T(), "https://login.microsoftonline.us", activeDirectoryEndpoint)
+		return suite.mockOAuthConfig, nil
+	}
+
+	servicePrincipalTokenFromFederatedTokenFunc := func(_ adal.OAuthConfig, _, _, _ string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
+		return suite.mockedServicePrincipalToken, nil
+	}
+
+	_, err := suite.config.servicePrincipalTokenFromFederatedToken(
+		"https://test.blob.core.windows.net",
+		newOAuthConfigFunc,
+		servicePrincipalTokenFromFederatedTokenFunc,
+	)
+
+	require.NoError(suite.T(), err)
+}
+
+func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedToken_ActiveDirectoryEndpoint_OverridesAuthorityHost() {
+	// Explicit config takes precedence over AZURE_AUTHORITY_HOST.
 	testAdEndpoint := "https://login.microsoftonline.test"
 
 	suite.config.cfg.ActiveDirectoryEndpoint = testAdEndpoint
 	suite.config.cfg.Environment = azureGlobal
+	suite.T().Setenv("AZURE_AUTHORITY_HOST", "https://login.microsoftonline.us/")
 
 	newOAuthConfigFunc := func(activeDirectoryEndpoint, _ string) (*adal.OAuthConfig, error) {
 		require.Equal(suite.T(), testAdEndpoint, activeDirectoryEndpoint)
