@@ -301,7 +301,7 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	result.Caches.TaskResult.Requests = int32(taskBatches)
 	result.Caches.TaskResult.BytesReceived = taskBytes
 
-	result.Querier.Store.Dataobj.SchedulerBytesTransferred = readInt64(workerCache, TaskWireBytes.Key())
+	result.Querier.Store.Dataobj.WireBytesTransferred = readInt64(workerCache, TaskWireBytes.Key())
 
 	result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
 	return result

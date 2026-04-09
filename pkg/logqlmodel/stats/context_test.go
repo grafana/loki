@@ -27,7 +27,7 @@ func TestResult(t *testing.T) {
 	stats.AddCacheRequest(ResultCache, 1)
 	stats.SetQueryReferencedStructuredMetadata()
 	stats.AddPipelineWrapperFilterdLines(1)
-	stats.AddSchedulerBytesTransferred(42)
+	stats.AddWireBytesTransferred(42)
 
 	fakeIngesterQuery(ctx)
 	fakeIngesterQuery(ctx)
@@ -68,7 +68,7 @@ func TestResult(t *testing.T) {
 					TotalDuplicates:   10,
 				},
 				Dataobj: Dataobj{
-					SchedulerBytesTransferred: 42,
+					WireBytesTransferred: 42,
 				},
 			},
 		},
