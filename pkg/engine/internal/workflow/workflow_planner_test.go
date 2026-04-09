@@ -1,17 +1,22 @@
 package workflow
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 // TODO(rfratto): Once physical plans can be serializable, we should be able to
@@ -34,7 +39,7 @@ func Test_planWorkflow(t *testing.T) {
 
 		physicalPlan := physical.FromGraph(physicalGraph)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{})
+		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 1, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -72,7 +77,7 @@ func Test_planWorkflow(t *testing.T) {
 
 		physicalPlan := physical.FromGraph(physicalGraph)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{})
+		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 1, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -115,7 +120,7 @@ func Test_planWorkflow(t *testing.T) {
 		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
 		require.NoError(t, err)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{})
+		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 2, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -150,7 +155,7 @@ func Test_planWorkflow(t *testing.T) {
 				enabled:                 true,
 				taskCacheMaxSizeBytes:   1 * 1024 * 1024,
 				dataObjScanMaxSizeBytes: 0,
-			})
+			}, log.NewNopLogger())
 			require.NoError(t, err)
 			require.Equal(t, 2, graph.Len())
 			requireUniqueStreams(t, graph)
@@ -247,7 +252,7 @@ func Test_planWorkflow(t *testing.T) {
 		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
 		require.NoError(t, err)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{})
+		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 5, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -313,7 +318,7 @@ func Test_planWorkflow(t *testing.T) {
 				enabled:                 true,
 				taskCacheMaxSizeBytes:   1 * 1024 * 1024,
 				dataObjScanMaxSizeBytes: 0,
-			})
+			}, log.NewNopLogger())
 			require.NoError(t, err)
 			require.Equal(t, 5, graph.Len())
 			requireUniqueStreams(t, graph)
@@ -416,7 +421,7 @@ func Test_planWorkflow(t *testing.T) {
 		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
 		require.NoError(t, err)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{})
+		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 3, graph.Len()) // 1 global + 2 local (one per scan target)
 		requireUniqueStreams(t, graph)
@@ -466,7 +471,7 @@ func Test_planWorkflow(t *testing.T) {
 				enabled:                 true,
 				taskCacheMaxSizeBytes:   1 * 1024 * 1024,
 				dataObjScanMaxSizeBytes: 0,
-			})
+			}, log.NewNopLogger())
 			require.NoError(t, err)
 			require.Equal(t, 3, graph.Len())
 			requireUniqueStreams(t, graph)
@@ -550,7 +555,7 @@ func Test_planWorkflow(t *testing.T) {
 
 		physicalPlan := physical.FromGraph(physicalGraph)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{})
+		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 2, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -629,7 +634,7 @@ func Test_planWorkflow(t *testing.T) {
 		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
 		require.NoError(t, err)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{})
+		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 4, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -680,7 +685,7 @@ func Test_planWorkflow(t *testing.T) {
 		t.Run("with caching", func(t *testing.T) {
 			ulidGen := ulidGenerator{}
 
-			graph, err := planWorkflow("", physicalPlan, cacheParams{enabled: true, taskCacheMaxSizeBytes: 1 * 1024 * 1024, dataObjScanMaxSizeBytes: 1 * 1024 * 1024})
+			graph, err := planWorkflow("", physicalPlan, cacheParams{enabled: true, taskCacheMaxSizeBytes: 1 * 1024 * 1024, dataObjScanMaxSizeBytes: 1 * 1024 * 1024}, log.NewNopLogger())
 			require.NoError(t, err)
 			require.Equal(t, 4, graph.Len())
 			requireUniqueStreams(t, graph)
@@ -813,6 +818,247 @@ func generateConsistentULIDs(gen *ulidGenerator, g dag.Graph[*Task]) {
 	}
 }
 
+// Test_eliminateEmptyCachedTasks verifies that tasks whose cached result is
+// empty are removed from the workflow graph at plan time.
+func Test_eliminateEmptyCachedTasks(t *testing.T) {
+	// Create a physical plan:
+	//    VectorAggregation --> Parallelize --> RangeAggr --> ScanSet{DataAbjScan(A), DataAbjScan(B)}
+	// That will translate into three tasks:
+	//   - Task 1 (root): global VectorAggregation
+	//   - Task 2 (leaf): RangeAggregation + DataObjScan for location "a"
+	//   - Task 3 (leaf): RangeAggregation + DataObjScan for location "b"
+	var physicalGraph dag.Graph[physical.Node]
+	var (
+		vecAgg      = physicalGraph.Add(&physical.VectorAggregation{Operation: types.VectorAggregationTypeSum})
+		parallelize = physicalGraph.Add(&physical.Parallelize{})
+		rangeAgg    = physicalGraph.Add(&physical.RangeAggregation{
+			Operation: types.RangeAggregationTypeCount,
+			Start:     time.Unix(5, 0).UTC(),
+			End:       time.Unix(45, 0).UTC(),
+		})
+		scanSet = physicalGraph.Add(&physical.ScanSet{
+			Targets: []*physical.ScanTarget{
+				{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+					Location:     "a",
+					MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
+				}},
+				{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+					Location:     "b",
+					MaxTimeRange: physical.TimeRange{Start: time.Unix(20, 0).UTC(), End: time.Unix(60, 0).UTC()},
+				}},
+			},
+		})
+	)
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vecAgg, Child: parallelize})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: rangeAgg})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: scanSet})
+	physicalPlan := physical.FromGraph(physicalGraph)
+	physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
+	require.NoError(t, err)
+
+	cacheP := cacheParams{
+		enabled:               true,
+		taskCacheMaxSizeBytes: 1 << 20,
+		// dataObjScanMaxSizeBytes=0: DataObjScan Cache nodes are still injected
+		// (with max_cacheable_size=0 B) so their keys can be used for elimination.
+		dataObjScanMaxSizeBytes: 0,
+		pruneEmptyCachedTasks:   true,
+	}
+
+	// Extract raw cache keys for every task in graph traversal order.
+	// tasks[0] = root (VecAgg, no graph parents), tasks[1] = leaf "a", tasks[2] = leaf "b".
+	// Each entry maps cache-type name → raw key for that task.
+	baseGraph, err := planWorkflow("", physicalPlan, cacheP, log.NewNopLogger())
+	require.NoError(t, err)
+	require.Equal(t, 3, baseGraph.Len())
+
+	// Collect cache keys from all tasks in the workflow
+	var tasks []map[physical.TaskCacheName]string
+	for _, root := range baseGraph.Roots() {
+		_ = baseGraph.Walk(root, func(task *Task) error {
+			keys := make(map[physical.TaskCacheName]string)
+			if fragRoot, err := task.Fragment.Root(); err == nil {
+				if cn, ok := fragRoot.(*physical.Cache); ok {
+					keys[cn.CacheName] = cn.Key
+				}
+			}
+			for n := range task.Fragment.Graph().Nodes() {
+				if cn, ok := n.(*physical.Cache); ok && cn.CacheName == physical.TaskCacheDataObjScanResult {
+					keys[cn.CacheName] = cn.Key
+				}
+			}
+			tasks = append(tasks, keys)
+			return nil
+		}, dag.PreOrderWalk)
+	}
+	require.Len(t, tasks, 3, "expected three tasks in traversal order")
+	require.Len(t, tasks[0], 0, "task[0] must not have any cache keys")
+	require.Contains(t, tasks[1], physical.TaskCacheLogsScanRangeAggr, "task[1] must have a task-level cache key")
+	require.Contains(t, tasks[2], physical.TaskCacheLogsScanRangeAggr, "task[2] must have a task-level cache key")
+	require.Contains(t, tasks[1], physical.TaskCacheDataObjScanResult, "task[1] must have a DataObjScan cache key")
+	require.Contains(t, tasks[2], physical.TaskCacheDataObjScanResult, "task[2] must have a DataObjScan cache key")
+
+	baseUlidGen := ulidGenerator{}
+	generateConsistentULIDs(&baseUlidGen, baseGraph)
+	originalPlan := strings.TrimSpace(Sprint(&Workflow{graph: baseGraph}))
+
+	for _, tc := range []struct {
+		name     string
+		payloads map[string][]byte // raw cache key → payload; absent keys = cache miss
+		expected string            // expected Sprint output after elimination
+	}{
+		{
+			// All cache keys miss → no elimination; plan is identical to baseGraph.
+			name:     "cache miss",
+			payloads: nil,
+			expected: originalPlan,
+		},
+		{
+			// All task-level cache keys return non-empty → no elimination; plan is identical to baseGraph.
+			name: "cache non-empty",
+			payloads: map[string][]byte{
+				tasks[1][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
+				tasks[2][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
+			},
+			expected: originalPlan,
+		},
+		{
+			// Task "a" task-level cache returns empty → task "a" eliminated;
+			// root and task "b" remain.
+			name: "one task empty",
+			payloads: map[string][]byte{
+				tasks[1][physical.TaskCacheLogsScanRangeAggr]: emptyResultPayload(),
+			},
+			expected: `
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ └── VectorAggregation operation=sum group_by=()
+│         └── @source stream=00000000000000000000000003
+└
+┌ Task 00000000000000000000000002
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Cache max_cacheable_size=1.0 MiB hashed_key=9888d9ec9f19e11e key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│ │   └── @sink stream=00000000000000000000000003
+│ └── Batching batch_size=500
+│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         └── Cache max_cacheable_size=0 B hashed_key=57460db08f81adaf key= |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│             └── DataObjScan location=b streams=0 section_id=0 projections=()
+│                     └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
+└`,
+		},
+		{
+			// Task "a" DataObjScan-level cache returns empty → task "a" eliminated
+			// because zero scan rows guarantee zero rows from all operators above;
+			// root and task "b" remain.
+			name: "one task empty at scan",
+			payloads: map[string][]byte{
+				tasks[1][physical.TaskCacheDataObjScanResult]: emptyResultPayload(),
+			},
+			expected: `
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ └── VectorAggregation operation=sum group_by=()
+│         └── @source stream=00000000000000000000000003
+└
+┌ Task 00000000000000000000000002
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Cache max_cacheable_size=1.0 MiB hashed_key=9888d9ec9f19e11e key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│ │   └── @sink stream=00000000000000000000000003
+│ └── Batching batch_size=500
+│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         └── Cache max_cacheable_size=0 B hashed_key=57460db08f81adaf key= |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│             └── DataObjScan location=b streams=0 section_id=0 projections=()
+│                     └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
+└`,
+		},
+		{
+			// Both task-level caches return empty → both leaves eliminated; the root
+			// is cascade-eliminated because all its sources are gone.
+			name: "both tasks empty",
+			payloads: map[string][]byte{
+				tasks[1][physical.TaskCacheLogsScanRangeAggr]: emptyResultPayload(),
+				tasks[2][physical.TaskCacheLogsScanRangeAggr]: emptyResultPayload(),
+			},
+			expected: "Empty",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ulidGen := ulidGenerator{}
+
+			p := cacheP
+			if len(tc.payloads) > 0 {
+				mc := newWorkflowMockCache()
+				for rawKey, payload := range tc.payloads {
+					mc.storeHashed(cache.HashKey(rawKey), payload)
+				}
+				p.registry = executor.NewTestTaskCacheRegistry(map[physical.TaskCacheName]cache.Cache{
+					physical.TaskCacheLogsScanRangeAggr: mc,
+					physical.TaskCacheDataObjScanResult: mc,
+				})
+			}
+
+			g, err := planWorkflow("", physicalPlan, p, log.NewNopLogger())
+			require.NoError(t, err)
+			requireUniqueStreams(t, g)
+			generateConsistentULIDs(&ulidGen, g)
+
+			actualOutput := Sprint(&Workflow{graph: g})
+			require.Equal(t, strings.TrimSpace(tc.expected), strings.TrimSpace(actualOutput))
+		})
+	}
+}
+
+// workflowMockCache is a simple in-memory cache.Cache for workflow planning tests.
+type workflowMockCache struct {
+	data map[string][]byte
+}
+
+func newWorkflowMockCache() *workflowMockCache {
+	return &workflowMockCache{data: make(map[string][]byte)}
+}
+
+func (m *workflowMockCache) storeHashed(hashedKey string, buf []byte) {
+	m.data[hashedKey] = buf
+}
+
+func (m *workflowMockCache) Store(_ context.Context, keys []string, bufs [][]byte) error {
+	for i, k := range keys {
+		m.data[k] = bufs[i]
+	}
+	return nil
+}
+
+func (m *workflowMockCache) Fetch(_ context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+	for _, k := range keys {
+		if buf, ok := m.data[k]; ok {
+			found = append(found, k)
+			bufs = append(bufs, buf)
+		} else {
+			missing = append(missing, k)
+		}
+	}
+	return
+}
+
+func (m *workflowMockCache) Stop() {}
+
+func (m *workflowMockCache) GetCacheType() stats.CacheType { return stats.TaskResultCache }
+
+// emptyResultPayload returns a zero-length buffer which is treated as an empty cached result.
+func emptyResultPayload() []byte { return []byte{} }
+
+// nonEmptyResultPayload returns a non-empty buffer so that isCacheEntryEmpty returns false.
+func nonEmptyResultPayload() []byte {
+	// Wire format: [8 bytes count big-endian] [1 byte codec]
+	return []byte{0, 0, 0, 0, 0, 0, 0, 1, 0}
+}
+
 type ulidGenerator struct {
 	lastCounter uint64
 }
@@ -827,5 +1073,5 @@ func (g *ulidGenerator) Make() ulid.ULID {
 	for i := range 8 {
 		ulidBytes[15-i] = byte(value >> (8 * i))
 	}
-	return ulid.ULID(ulidBytes)
+	return ulidBytes
 }

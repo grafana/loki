@@ -99,6 +99,7 @@ type TaskCacheConfig struct {
 	resultscache.Config               `yaml:",inline"`
 	TaskResultMaxCacheableSize        flagext.Bytes `yaml:"task_result_max_cacheable_size" category:"experimental"`
 	DataObjScanResultMaxCacheableSize flagext.Bytes `yaml:"dataobjscan_result_max_cacheable_size" category:"experimental"`
+	PruneEmptyCachedTasks             bool          `yaml:"prune_empty_cached_tasks" category:"experimental"`
 }
 
 // RegisterFlagsWithPrefix registers flags for TaskCacheConfig with the given prefix.
@@ -108,6 +109,8 @@ func (cfg *TaskCacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 		"Experimental: Maximum size for a task result to be cacheable. 0 means only empty responses are cached.")
 	f.Var(&cfg.DataObjScanResultMaxCacheableSize, prefix+"dataobjscan-result-max-cacheable-size",
 		"Experimental: Maximum size for a DataObjScan result to be cacheable. 0 means only empty responses are cached.")
+	f.BoolVar(&cfg.PruneEmptyCachedTasks, prefix+"prune-empty-cached-tasks", false,
+		"Experimental: When enabled, the scheduler checks cached results at plan time and prunes tasks whose cached result is known to be empty.")
 }
 
 // Params holds parameters for constructing a new [Engine].
@@ -153,13 +156,23 @@ type Engine struct {
 	limits       logql.Limits    // Limits to apply to engine queries.
 	deleteGetter deletion.Getter // DeleteGetter to fetch delete requests for query-time filtering.
 
-	metastore metastore.Metastore
+	metastore  metastore.Metastore
+	taskCaches executor.TaskCacheRegistry
 }
 
 // New creates a new Engine.
 func New(params Params) (*Engine, error) {
 	if err := params.validate(); err != nil {
 		return nil, err
+	}
+
+	var taskCaches executor.TaskCacheRegistry
+	if params.Config.Executor.TasksResultCache.PruneEmptyCachedTasks {
+		var err error
+		taskCaches, err = executor.NewTaskCacheRegistry(params.Config.Executor.TasksResultCache.Config, params.Registerer, params.Logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating task cache registry: %w", err)
+		}
 	}
 
 	e := &Engine{
@@ -171,7 +184,8 @@ func New(params Params) (*Engine, error) {
 		limits:       params.Limits,
 		deleteGetter: params.DeleteGetter,
 
-		metastore: params.Metastore,
+		metastore:  params.Metastore,
+		taskCaches: taskCaches,
 	}
 
 	return e, nil
@@ -500,6 +514,8 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 		MaxTaskCacheSize:        uint64(e.cfg.Executor.TasksResultCache.TaskResultMaxCacheableSize),
 		MaxDataObjScanCacheSize: uint64(e.cfg.Executor.TasksResultCache.DataObjScanResultMaxCacheableSize),
 		CacheCompression:        e.cfg.Executor.TasksResultCache.Compression,
+		PruneEmptyCachedTasks:   e.cfg.Executor.TasksResultCache.PruneEmptyCachedTasks,
+		TaskCacheRegistry:       e.taskCaches,
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),
