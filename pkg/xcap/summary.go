@@ -288,7 +288,7 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 		TaskCacheBatches.Key(), TaskCacheBytes.Key(),
 		DataObjScanCacheHits.Key(), DataObjScanCacheMisses.Key(),
 		DataObjScanCacheBatches.Key(), DataObjScanCacheBytes.Key(),
-		TaskSchedulerBytesTransferred.Key(),
+		TaskWireBytes.Key(),
 	)
 
 	taskHits := readInt64(workerCache, TaskCacheHits.Key()) + readInt64(workerCache, DataObjScanCacheHits.Key())
@@ -301,7 +301,7 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	result.Caches.TaskResult.Requests = int32(taskBatches)
 	result.Caches.TaskResult.BytesReceived = taskBytes
 
-	result.Querier.Store.Dataobj.SchedulerBytesTransferred = readInt64(workerCache, TaskSchedulerBytesTransferred.Key())
+	result.Querier.Store.Dataobj.SchedulerBytesTransferred = readInt64(workerCache, TaskWireBytes.Key())
 
 	result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
 	return result
@@ -477,7 +477,7 @@ func summarizeObservations(capture *Capture) *observations {
 				DataObjScanCacheHits.Key(), DataObjScanCacheMisses.Key(),
 				DataObjScanCacheBatches.Key(), DataObjScanCacheRows.Key(), DataObjScanCacheBytes.Key(),
 				// scheduler bytes transferred
-				TaskSchedulerBytesTransferred.Key(),
+				TaskWireBytes.Key(),
 			).
 			normalizeKeys(),
 	)

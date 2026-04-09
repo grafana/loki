@@ -365,7 +365,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		}
 		region.Record(xcap.TaskRecordsSent.Observe(1))
 		region.Record(xcap.TaskRowsSent.Observe(rec.NumRows()))
-		region.Record(xcap.TaskSchedulerBytesTransferred.Observe(recordBatchBytes(rec)))
+		region.Record(xcap.TaskWireBytes.Observe(recordBatchBytes(rec)))
 		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
 	}
 
