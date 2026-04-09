@@ -22,36 +22,64 @@ func TestSimpleScalable_IngestQuery(t *testing.T) {
 		assert.NoError(t, clu.Cleanup())
 	}()
 
+	// Start compactor, index-gateway, and distributor first.
 	var (
-		tWrite = clu.AddComponent(
-			"write",
-			"-target=write",
+		tCompactor = clu.AddComponent(
+			"compactor",
+			"-target=compactor",
 		)
-		tBackend = clu.AddComponent(
-			"backend",
-			"-target=backend",
-			"-legacy-read-mode=false",
+		tIndexGateway = clu.AddComponent(
+			"index-gateway",
+			"-target=index-gateway",
+		)
+		tDistributor = clu.AddComponent(
+			"distributor",
+			"-target=distributor",
 		)
 	)
 	require.NoError(t, clu.Run())
 
-	tRead := clu.AddComponent(
-		"read",
-		"-target=read",
-		"-common.compactor-address="+tBackend.HTTPURL(),
-		"-legacy-read-mode=false",
+	// Then start ingester and query-scheduler (both need the index-gateway address).
+	tQueryScheduler := clu.AddComponent(
+		"query-scheduler",
+		"-target=query-scheduler",
+		"-query-scheduler.use-scheduler-ring=false",
+		"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+	)
+	clu.AddComponent(
+		"ingester",
+		"-target=ingester",
+		"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+	)
+	require.NoError(t, clu.Run())
+
+	// Then start querier (needs query-scheduler address).
+	clu.AddComponent(
+		"querier",
+		"-target=querier",
+		"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+		"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		"-common.compactor-address="+tCompactor.HTTPURL(),
+	)
+	require.NoError(t, clu.Run())
+
+	// Finally start query-frontend (needs query-scheduler address).
+	tQueryFrontend := clu.AddComponent(
+		"query-frontend",
+		"-target=query-frontend",
+		"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
+		"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		"-common.compactor-address="+tCompactor.HTTPURL(),
 	)
 	require.NoError(t, clu.Run())
 
 	tenantID := randStringRunes()
 
 	now := time.Now()
-	cliWrite := client.New(tenantID, "", tWrite.HTTPURL())
+	cliWrite := client.New(tenantID, "", tDistributor.HTTPURL())
 	cliWrite.Now = now
-	cliRead := client.New(tenantID, "", tRead.HTTPURL())
+	cliRead := client.New(tenantID, "", tQueryFrontend.HTTPURL())
 	cliRead.Now = now
-	cliBackend := client.New(tenantID, "", tBackend.HTTPURL())
-	cliBackend.Now = now
 
 	t.Run("ingest logs", func(t *testing.T) {
 		// ingest some log lines
