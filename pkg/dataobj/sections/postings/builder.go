@@ -26,6 +26,10 @@ const (
 //
 // Flush writes are done via [Builder.Flush], which encodes all accumulated
 // rows into a set of [Section] values that can be read back via a [Reader].
+//
+// TODO(twhitney): Implement the [dataobj.SectionBuilder] interface by changing
+// Flush to accept a [dataobj.SectionWriter] and encode via [columnar.Encoder].
+// This should be done alongside the stats builder when on-disk serialization lands.
 type Builder struct {
 	tenant            string
 	targetSectionSize int

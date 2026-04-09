@@ -56,24 +56,28 @@ func (c *columnValuesCalculation) ProcessBatch(_ context.Context, _ *logsCalcula
 		}
 
 		log.Metadata.Range(func(md labels.Label) {
-			if bf, ok := c.columnBloomBuilders[md.Name]; ok {
-				bf.Add([]byte(md.Value))
+			bf, ok := c.columnBloomBuilders[md.Name]
+			if !ok {
+				return
 			}
 
-			if bm, ok := c.columnStreamBitmaps[md.Name]; ok {
-				if int(log.StreamID) >= bm.Len() {
-					bm.Resize(int(log.StreamID) + 1)
-				}
-				bm.Set(int(log.StreamID), true)
+			bf.Add([]byte(md.Value))
 
-				if ts, ok := c.columnMinTimestamps[md.Name]; !ok || log.Timestamp.Before(ts) {
-					c.columnMinTimestamps[md.Name] = log.Timestamp
-				}
-				if ts, ok := c.columnMaxTimestamps[md.Name]; !ok || log.Timestamp.After(ts) {
-					c.columnMaxTimestamps[md.Name] = log.Timestamp
-				}
-				c.columnSizes[md.Name] += int64(len(log.Line))
+			// columnStreamBitmaps was populated with the same metadata keys as
+			// columnBloomBuilders in Prepare, so the bitmap will exist
+			bm := c.columnStreamBitmaps[md.Name]
+			if int(log.StreamID) >= bm.Len() {
+				bm.Resize(int(log.StreamID) + 1)
 			}
+			bm.Set(int(log.StreamID), true)
+
+			if ts, ok := c.columnMinTimestamps[md.Name]; !ok || log.Timestamp.Before(ts) {
+				c.columnMinTimestamps[md.Name] = log.Timestamp
+			}
+			if ts, ok := c.columnMaxTimestamps[md.Name]; !ok || log.Timestamp.After(ts) {
+				c.columnMaxTimestamps[md.Name] = log.Timestamp
+			}
+			c.columnSizes[md.Name] += int64(len(log.Line))
 		})
 	}
 	return nil

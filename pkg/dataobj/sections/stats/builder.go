@@ -26,9 +26,9 @@ const (
 // Flush writes are done via [Builder.Flush], which encodes all accumulated
 // rows into a set of [Section] values that can be read back via a [Reader].
 //
-// The full [dataobj.SectionBuilder] interface (including Flush to a
-// [dataobj.SectionWriter]) is not yet implemented; that will be added when
-// on-disk serialization lands.
+// TODO(twhitney): Implement the [dataobj.SectionBuilder] interface by changing
+// Flush to accept a [dataobj.SectionWriter] and encode via [columnar.Encoder].
+// This should be done alongside the postings builder when on-disk serialization lands.
 type Builder struct {
 	tenant            string
 	targetSectionSize int

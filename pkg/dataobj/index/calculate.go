@@ -50,7 +50,7 @@ func getLogsCalculationSteps() []logsIndexCalculation {
 		&streamStatisticsCalculation{},
 		&columnValuesCalculation{},
 		&statsCalculation{sortSchemaKeys: defaultSortSchemaKeys},
-		&labelPostingsCalculation{sortSchemaKeys: defaultSortSchemaKeys},
+		&labelPostingsCalculation{},
 	}
 }
 

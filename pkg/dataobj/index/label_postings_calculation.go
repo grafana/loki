@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/facette/natsort"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -13,9 +13,8 @@ import (
 )
 
 type labelPostingsCalculation struct {
-	sortSchemaKeys []string // label keys to generate postings for
-	postingsByKey  map[postingKey]*labelPosting
-	maxStreamID    int64
+	postingsByKey map[postingKey]*labelPosting
+	maxStreamID   int64
 }
 
 type postingKey struct {
@@ -46,9 +45,9 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 			c.maxStreamID = log.StreamID
 		}
 
-		for _, key := range c.sortSchemaKeys {
-			labelValue := streamLbls.Get(key)
-			pk := postingKey{columnName: key, labelValue: labelValue}
+		// Create postings for every stream label key/value pair
+		streamLbls.Range(func(lbl labels.Label) {
+			pk := postingKey{columnName: lbl.Name, labelValue: lbl.Value}
 
 			posting, ok := c.postingsByKey[pk]
 			if !ok {
@@ -73,7 +72,7 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 				posting.maxTimestamp = log.Timestamp
 			}
 			posting.uncompressedSize += int64(len(log.Line))
-		}
+		})
 	}
 	return nil
 }
@@ -91,16 +90,16 @@ func (c *labelPostingsCalculation) Flush(_ context.Context, calcCtx *logsCalcula
 		}
 	}
 
-	// Sort postings by [columnName, labelValue] using natural sort order
+	// Sort postings by [columnName, labelValue] for deterministic output.
 	keys := make([]postingKey, 0, len(c.postingsByKey))
 	for k := range c.postingsByKey {
 		keys = append(keys, k)
 	}
 	sort.Slice(keys, func(i, j int) bool {
 		if keys[i].columnName != keys[j].columnName {
-			return natsort.Compare(keys[i].columnName, keys[j].columnName)
+			return keys[i].columnName < keys[j].columnName
 		}
-		return natsort.Compare(keys[i].labelValue, keys[j].labelValue)
+		return keys[i].labelValue < keys[j].labelValue
 	})
 
 	for _, key := range keys {

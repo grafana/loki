@@ -4,11 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"hash"
+	"hash/fnv"
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/facette/natsort"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -16,7 +16,7 @@ import (
 
 type statsCalculation struct {
 	sortSchemaKeys []string                   // label keys to aggregate by
-	aggregates     map[string]*statsAggregate // keyed by composite label value
+	aggregates     map[uint64]*statsAggregate // keyed by hash of composite label values
 }
 
 type statsAggregate struct {
@@ -30,31 +30,31 @@ type statsAggregate struct {
 func (c *statsCalculation) Name() string { return "stats" }
 
 func (c *statsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs.Stats) error {
-	c.aggregates = make(map[string]*statsAggregate)
+	c.aggregates = make(map[uint64]*statsAggregate)
 	return nil
 }
 
 func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculationContext, batch []logs.Record) error {
-	// Reuse a single strings.Builder across all records to avoid per-record
-	// allocation. The labelMap is only allocated when creating a new aggregate.
-	var compositeKey strings.Builder
+	// Reuse a single hasher across all records. hash.Reset() retains the
+	// internal buffer, so this avoids per-record allocations on the hot path.
+	// The hash is only used as a map key; actual label values are stored in the
+	// aggregate's labels map (created only on first encounter).
+	var h = fnv.New64a()
 	for _, log := range batch {
 		streamLbls := calcCtx.streamLabels[log.StreamID]
 
-		// Build composite key from all sort schema keys.
-		// The composite key uses key=value pairs separated by \x00 to avoid
-		// ambiguity from values containing commas or other delimiters.
-		compositeKey.Reset()
+		// Hash the composite key from all sort schema keys.
+		// Uses key=value pairs separated by \x00 to avoid ambiguity.
+		h.Reset()
 		for i, key := range c.sortSchemaKeys {
-			if i > 0 {
-				compositeKey.WriteByte(0)
+			value := streamLbls.Get(key)
+			err := writeHashKey(h, i, key, value)
+			if err != nil {
+				return err
 			}
-			compositeKey.WriteString(key)
-			compositeKey.WriteByte('=')
-			compositeKey.WriteString(streamLbls.Get(key))
 		}
 
-		aggKey := compositeKey.String()
+		aggKey := h.Sum64()
 		agg, ok := c.aggregates[aggKey]
 		if !ok {
 			// Only allocate the labels map when creating a new aggregate.
@@ -82,6 +82,33 @@ func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculat
 	return nil
 }
 
+func writeHashKey(h hash.Hash64, i int, key, value string) error {
+	var err error
+	if i > 0 {
+		// write delimeter value in between key/value pairs
+		_, err = h.Write([]byte{0})
+		if err != nil {
+			return err
+		}
+	}
+	_, err = h.Write([]byte(key))
+	if err != nil {
+		return err
+	}
+
+	_, err = h.Write([]byte{'='})
+	if err != nil {
+		return err
+	}
+
+	_, err = h.Write([]byte(value))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationContext) error {
 	if len(c.aggregates) == 0 {
 		return nil
@@ -92,7 +119,7 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 	sum := sha256.Sum224([]byte(calcCtx.objectPath))
 	runID := int64(binary.BigEndian.Uint64(sum[:8]))
 
-	// Sort aggregates by label values in schema key order using natural sort order
+	// Sort aggregates by label values in schema key order
 	sorted := make([]*statsAggregate, 0, len(c.aggregates))
 	for _, agg := range c.aggregates {
 		sorted = append(sorted, agg)
@@ -101,7 +128,7 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 		for _, key := range c.sortSchemaKeys {
 			vi, vj := sorted[i].labels[key], sorted[j].labels[key]
 			if vi != vj {
-				return natsort.Compare(vi, vj)
+				return vi < vj
 			}
 		}
 		return false

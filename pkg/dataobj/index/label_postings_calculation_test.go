@@ -44,10 +44,20 @@ func readAllPostingsForTenant(t *testing.T, builder *indexobj.Builder, tenantID 
 	return allPostings
 }
 
+// findPosting returns the first posting matching the given column name and label value.
+func findPosting(pp []postings.Posting, columnName, labelValue string) *postings.Posting {
+	for i := range pp {
+		if pp[i].ColumnName == columnName && pp[i].LabelValue != nil && *pp[i].LabelValue == labelValue {
+			return &pp[i]
+		}
+	}
+	return nil
+}
+
 func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	calcCtx := makeTestCalcContext(builder)
-	calc := &labelPostingsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
+	calc := &labelPostingsCalculation{}
 
 	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
 
@@ -55,10 +65,12 @@ func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	ts2 := time.Unix(200, 0).UTC()
 	ts3 := time.Unix(150, 0).UTC()
 
+	// Stream 1: service_name=svcA, env=prod
+	// Stream 2: service_name=svcB, env=dev
 	batch := []logs.Record{
-		{StreamID: 1, Timestamp: ts1, Line: []byte("hello")}, // svcA
-		{StreamID: 2, Timestamp: ts2, Line: []byte("world")}, // svcB
-		{StreamID: 1, Timestamp: ts3, Line: []byte("again")}, // svcA again
+		{StreamID: 1, Timestamp: ts1, Line: []byte("hello")}, // svcA, prod
+		{StreamID: 2, Timestamp: ts2, Line: []byte("world")}, // svcB, dev
+		{StreamID: 1, Timestamp: ts3, Line: []byte("again")}, // svcA, prod again
 	}
 
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
@@ -66,26 +78,18 @@ func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 
 	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
 
-	// We expect 2 label postings: one for svcA, one for svcB.
-	require.Len(t, allPostings, 2)
+	// We expect 4 label postings: service_name=svcA, service_name=svcB, env=prod, env=dev.
+	require.Len(t, allPostings, 4)
 
 	// All should be label-kind.
 	for _, p := range allPostings {
 		require.Equal(t, postings.KindLabel, p.Kind)
-		require.Equal(t, "service_name", p.ColumnName)
 		require.NotNil(t, p.LabelValue)
 	}
 
 	// Find svcA and svcB.
-	var svcAPosting, svcBPosting *postings.Posting
-	for i := range allPostings {
-		switch *allPostings[i].LabelValue {
-		case "svcA":
-			svcAPosting = &allPostings[i]
-		case "svcB":
-			svcBPosting = &allPostings[i]
-		}
-	}
+	svcAPosting := findPosting(allPostings, "service_name", "svcA")
+	svcBPosting := findPosting(allPostings, "service_name", "svcB")
 	require.NotNil(t, svcAPosting, "expected svcA posting")
 	require.NotNil(t, svcBPosting, "expected svcB posting")
 
@@ -97,41 +101,43 @@ func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	// Verify timestamps for svcA (min=ts1, max=ts3).
 	require.Equal(t, ts1.UnixNano(), svcAPosting.MinTimestamp)
 	require.Equal(t, ts3.UnixNano(), svcAPosting.MaxTimestamp)
+
+	// Verify env labels are also present.
+	envProd := findPosting(allPostings, "env", "prod")
+	envDev := findPosting(allPostings, "env", "dev")
+	require.NotNil(t, envProd, "expected env=prod posting")
+	require.NotNil(t, envDev, "expected env=dev posting")
 }
 
 func TestLabelPostingsCalculation_BitmapsNormalized(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	calcCtx := makeTestCalcContext(builder)
-	calc := &labelPostingsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
+	calc := &labelPostingsCalculation{}
 
 	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
 
-	// Stream 1 = svcA, Stream 2 = svcB (from makeTestStreamLabels).
+	// Stream 1 = svcA/prod, Stream 2 = svcB/dev (from makeTestStreamLabels).
 	batch := []logs.Record{
-		{StreamID: 1, Timestamp: time.Unix(1, 0).UTC(), Line: []byte("a")}, // svcA
-		{StreamID: 2, Timestamp: time.Unix(2, 0).UTC(), Line: []byte("b")}, // svcB
+		{StreamID: 1, Timestamp: time.Unix(1, 0).UTC(), Line: []byte("a")}, // svcA, prod
+		{StreamID: 2, Timestamp: time.Unix(2, 0).UTC(), Line: []byte("b")}, // svcB, dev
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
 	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
-	require.Len(t, allPostings, 2)
+	// 4 postings: service_name=svcA, service_name=svcB, env=prod, env=dev
+	require.Len(t, allPostings, 4)
 
-	var svcAPosting, svcBPosting *postings.Posting
-	for i := range allPostings {
-		switch *allPostings[i].LabelValue {
-		case "svcA":
-			svcAPosting = &allPostings[i]
-		case "svcB":
-			svcBPosting = &allPostings[i]
-		}
-	}
+	svcAPosting := findPosting(allPostings, "service_name", "svcA")
+	svcBPosting := findPosting(allPostings, "service_name", "svcB")
 	require.NotNil(t, svcAPosting)
 	require.NotNil(t, svcBPosting)
 
-	// Both bitmaps should be the same length after normalization.
-	require.Equal(t, len(svcAPosting.StreamIDBitmap), len(svcBPosting.StreamIDBitmap),
-		"both bitmaps should be normalized to the same size")
+	// All bitmaps should be the same length after normalization.
+	for i := 1; i < len(allPostings); i++ {
+		require.Equal(t, len(allPostings[0].StreamIDBitmap), len(allPostings[i].StreamIDBitmap),
+			"all bitmaps should be normalized to the same size")
+	}
 
 	// svcA posting should include stream 1 but not stream 2.
 	require.True(t, isBitSet(svcAPosting.StreamIDBitmap, 1), "svcA bitmap should have bit 1 set")
@@ -153,7 +159,7 @@ func isBitSet(bitmap []byte, n int) bool {
 func TestLabelPostingsCalculation_TimestampsAndSizes(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	calcCtx := makeTestCalcContext(builder)
-	calc := &labelPostingsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
+	calc := &labelPostingsCalculation{}
 
 	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
 
@@ -161,6 +167,7 @@ func TestLabelPostingsCalculation_TimestampsAndSizes(t *testing.T) {
 	ts2 := time.Unix(20, 0).UTC()
 	ts3 := time.Unix(30, 0).UTC()
 
+	// All records are stream 1 (service_name=svcA, env=prod).
 	batch := []logs.Record{
 		{StreamID: 1, Timestamp: ts1, Line: []byte("hello")},  // svcA, ts=10
 		{StreamID: 1, Timestamp: ts2, Line: []byte("world!")}, // svcA, ts=20
@@ -170,9 +177,12 @@ func TestLabelPostingsCalculation_TimestampsAndSizes(t *testing.T) {
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
 	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
-	require.Len(t, allPostings, 1) // Only svcA has records.
+	// 2 postings: service_name=svcA, env=prod (both from stream 1).
+	require.Len(t, allPostings, 2)
 
-	p := allPostings[0]
+	// Check timestamps and sizes on the service_name=svcA posting.
+	p := findPosting(allPostings, "service_name", "svcA")
+	require.NotNil(t, p)
 	require.Equal(t, ts1.UnixNano(), p.MinTimestamp)
 	require.Equal(t, ts3.UnixNano(), p.MaxTimestamp)
 	expectedSize := int64(len("hello") + len("world!") + len("mid"))
@@ -182,7 +192,7 @@ func TestLabelPostingsCalculation_TimestampsAndSizes(t *testing.T) {
 func TestLabelPostingsCalculation_EmptyBatch(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	calcCtx := makeTestCalcContext(builder)
-	calc := &labelPostingsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
+	calc := &labelPostingsCalculation{}
 
 	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, nil))
@@ -196,7 +206,7 @@ func TestLabelPostingsCalculation_EmptyBatch(t *testing.T) {
 func TestLabelPostingsCalculation_MultipleBatches(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	calcCtx := makeTestCalcContext(builder)
-	calc := &labelPostingsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
+	calc := &labelPostingsCalculation{}
 
 	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
 
@@ -211,17 +221,15 @@ func TestLabelPostingsCalculation_MultipleBatches(t *testing.T) {
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
 	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
-	require.Len(t, allPostings, 2)
+	// 4 postings: service_name=svcA, service_name=svcB, env=prod, env=dev
+	require.Len(t, allPostings, 4)
 
 	// Verify that both svcA and svcB postings are present.
-	labels := make(map[string]bool)
-	for _, p := range allPostings {
-		if p.LabelValue != nil {
-			labels[*p.LabelValue] = true
-		}
-	}
-	require.True(t, labels["svcA"])
-	require.True(t, labels["svcB"])
+	require.NotNil(t, findPosting(allPostings, "service_name", "svcA"))
+	require.NotNil(t, findPosting(allPostings, "service_name", "svcB"))
+	// Verify env labels are also present.
+	require.NotNil(t, findPosting(allPostings, "env", "prod"))
+	require.NotNil(t, findPosting(allPostings, "env", "dev"))
 }
 
 // BenchmarkLabelPostingsCalculation_ProcessBatch benchmarks ProcessBatch with
@@ -243,10 +251,14 @@ func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
 
 	for _, bc := range benchCases {
 		b.Run(fmt.Sprintf("records=%d/streams=%d", bc.records, bc.streams), func(b *testing.B) {
-			// Build stream labels map.
+			// Build stream labels map with multiple labels per stream.
 			streamLabels := make(map[int64]labels.Labels, bc.streams)
 			for i := range bc.streams {
-				streamLabels[int64(i)] = labels.FromStrings("service_name", fmt.Sprintf("svc-%d", i))
+				streamLabels[int64(i)] = labels.FromStrings(
+					"service_name", fmt.Sprintf("svc-%d", i),
+					"cluster", fmt.Sprintf("cluster-%d", i%5),
+					"namespace", fmt.Sprintf("ns-%d", i%10),
+				)
 			}
 
 			// Pre-build the batch: records are distributed round-robin across streams.
@@ -274,7 +286,7 @@ func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
 					streamLabels: streamLabels,
 					builder:      builder,
 				}
-				calc := &labelPostingsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
+				calc := &labelPostingsCalculation{}
 
 				if err := calc.Prepare(context.Background(), nil, logs.Stats{}); err != nil {
 					b.Fatal(err)
