@@ -276,9 +276,7 @@ def push_logs(
             }
         ]
     }
-    req_headers = {"Content-Type": "application/json"}
-    if headers:
-        req_headers.update(headers)
+    req_headers = {**(headers or {}), "Content-Type": "application/json"}
     resp = requests.post(
         f"{url}/loki/api/v1/push",
         headers=req_headers,
