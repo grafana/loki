@@ -13,6 +13,7 @@ type Config struct {
 	EventsPerIndex            int           `yaml:"events_per_index" experimental:"true"`
 	FlushInterval             time.Duration `yaml:"flush_interval" experimental:"true"`
 	MaxIdleTime               time.Duration `yaml:"max_idle_time" experimental:"true"`
+	MaxAge                    time.Duration `yaml:"max_age" experimental:"true"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -28,8 +29,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.BuilderBaseConfig.RegisterFlagsWithPrefix(prefix, f)
 
 	f.IntVar(&cfg.EventsPerIndex, prefix+"events-per-index", 32, "Experimental: The number of events to batch before building an index")
-	f.DurationVar(&cfg.FlushInterval, prefix+"flush-interval", 1*time.Minute, "Experimental: How often to check for stale partitions to flush")
-	f.DurationVar(&cfg.MaxIdleTime, prefix+"max-idle-time", 30*time.Minute, "Experimental: Maximum time to wait before flushing buffered events")
+	f.DurationVar(&cfg.FlushInterval, prefix+"flush-interval", 1*time.Minute, "Experimental: How often to check for idle partitions and old events to flush")
+	f.DurationVar(&cfg.MaxIdleTime, prefix+"max-idle-time", 30*time.Minute, "Experimental: Maximum time between events before a partition is considered idle and flushed")
+	f.DurationVar(&cfg.MaxAge, prefix+"max-age", 60*time.Minute, "Experimental: Maximum age of a buffered event before it will be flushed")
 }
 
 // Validate validates the BuilderConfig.

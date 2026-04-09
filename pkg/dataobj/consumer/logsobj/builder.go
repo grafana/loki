@@ -122,6 +122,10 @@ type BuilderConfig struct {
 	// DataobjSortOrder defines the order in which the rows of the logs sections are sorted.
 	// They can either be sorted by [streamID ASC, timestamp DESC] or [timestamp DESC, streamID ASC].
 	DataobjSortOrder string `yaml:"dataobj_sort_order" doc:"hidden"`
+
+	// DataobjSortSchemaEnabled controls whether the per-tenant sort_schema tenant config is used
+	// to determine sort order instead of DataobjSortOrder.
+	DataobjUseSortSchema bool `yaml:"dataobj_use_sort_schema" doc:"hidden"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -134,6 +138,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	cfg.BuilderBaseConfig.RegisterFlagsWithPrefix(prefix, f)
 
 	f.StringVar(&cfg.DataobjSortOrder, prefix+"dataobj-sort-order", sortStreamASC, "The desired sort order of the logs section. Can either be `stream-asc` (order by streamID ascending and timestamp descending) or `timestamp-desc` (order by timestamp descending and streamID ascending).")
+	f.BoolVar(&cfg.DataobjUseSortSchema, prefix+"dataobj-use-sort-schema", false, "Experimental: When enabled, use the per-tenant sort_schema tenant config to determine sort order of data objects instead of dataobj-sort-order.")
 }
 
 // Validate validates the BuilderConfig.

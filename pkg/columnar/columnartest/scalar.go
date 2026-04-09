@@ -15,7 +15,9 @@ import (
 //
 //   - nil for [columnar.KindNull]
 //   - bool for [columnar.KindBool]
+//   - int32 for [columnar.KindInt32]
 //   - int64 for [columnar.KindInt64]
+//   - uint32 for [columnar.KindUint32]
 //   - uint64 for [columnar.KindUint64]
 //   - string or a byte slice for [columnar.KindUTF8]
 //
@@ -28,8 +30,12 @@ func Scalar(t testing.TB, kind columnar.Kind, value any) columnar.Scalar {
 		return scalarNull(t, value)
 	case columnar.KindBool:
 		return scalarBool(t, value)
+	case columnar.KindInt32:
+		return scalarNumber[int32](t, value)
 	case columnar.KindInt64:
 		return scalarNumber[int64](t, value)
+	case columnar.KindUint32:
+		return scalarNumber[uint32](t, value)
 	case columnar.KindUint64:
 		return scalarNumber[uint64](t, value)
 	case columnar.KindUTF8:

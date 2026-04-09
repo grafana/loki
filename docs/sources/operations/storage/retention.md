@@ -72,20 +72,20 @@ compactor:
   retention_delete_worker_count: 150
   delete_request_store: gcs
 schema_config:
-    configs:
-      - from: "2020-07-31"
-        index:
-            period: 24h
-            prefix: index_
-        object_store: gcs
-        schema: v13
-        store: tsdb
+  configs:
+    - from: "2020-07-31"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: gcs
+      schema: v13
+      store: tsdb
 storage_config:
-    tsdb_shipper:
-        active_index_directory: /data/index
-        cache_location: /data/index_cache
-    gcs:
-        bucket_name: loki
+  tsdb_shipper:
+    active_index_directory: /data/index
+    cache_location: /data/index_cache
+  gcs:
+    bucket_name: loki
 ```
 
 {{< admonition type="note" >}}
@@ -240,13 +240,13 @@ Example configuration with GCS with a 28 day retention:
 ```yaml
 schema_config:
   configs:
-  - from: 2018-04-15
-    store: tsdb
-    object_store: gcs
-    schema: v13
-    index:
-      prefix: loki_index_
-      period: 24h
+    - from: 2018-04-15
+      store: tsdb
+      object_store: gcs
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
 
 storage_config:
   tsdb_shipper:

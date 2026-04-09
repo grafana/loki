@@ -69,6 +69,15 @@ func planWorkflow(tenantID string, plan *physical.Plan, cacheOpts cacheParams, l
 		return dag.Graph[*Task]{}, err
 	}
 
+	for _, root := range planner.graph.Roots() {
+		if err := planner.graph.Walk(root, func(t *Task) error {
+			optimize(t)
+			return nil
+		}, dag.PostOrderWalk); err != nil {
+			return dag.Graph[*Task]{}, err
+		}
+	}
+
 	if cacheOpts.enabled {
 		if err := injectTaskCaching(tenantID, planner.graph, cacheOpts.taskCacheMaxSizeBytes, cacheOpts.compression); err != nil {
 			return dag.Graph[*Task]{}, fmt.Errorf("injecting task caching: %w", err)
@@ -98,6 +107,13 @@ func injectDataObjScanCaching(tenantID string, graph dag.Graph[*Task], maxSizeBy
 		}
 	}
 	return nil
+}
+
+func optimize(t *Task) {
+	for _, root := range t.Fragment.Roots() {
+		optimizer := physical.NewOptimizer(t.Fragment, physical.WorkflowOptimizations(t.Fragment))
+		optimizer.Optimize(root)
+	}
 }
 
 // eliminateEmptyCachedTasks removes tasks from the workflow graph whose cached

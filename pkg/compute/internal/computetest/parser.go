@@ -116,8 +116,12 @@ func (p *parser) parseDatum() (columnar.Datum, error) {
 	switch kind {
 	case "bool":
 		return p.parseBoolDatum()
+	case "int32":
+		return p.parseInt32Datum()
 	case "int64":
 		return p.parseInt64Datum()
+	case "uint32":
+		return p.parseUint32Datum()
 	case "uint64":
 		return p.parseUint64Datum()
 	case "utf8":
@@ -224,6 +228,72 @@ func (p *parser) parseBoolArray() (*columnar.Bool, error) {
 	return builder.Build(), nil
 }
 
+// parseInt32Datum := NumberValue
+func (p *parser) parseInt32Datum() (columnar.Datum, error) {
+	if p.tok == tokenLBrack {
+		return p.parseInt32Array()
+	}
+	return p.parseInt32Scalar()
+}
+
+// parseInt32Scalar := <number> | "null"
+func (p *parser) parseInt32Scalar() (columnar.Datum, error) {
+	if p.tok == tokenIdent && p.lit == nullLit {
+		p.next()
+		return &columnar.NumberScalar[int32]{Null: true}, nil
+	}
+
+	var negative bool
+	if p.tok == tokenSub {
+		negative = true
+		p.next()
+	}
+
+	if p.tok != tokenInteger {
+		return nil, fmt.Errorf("line %d:%d: expected integer, got %s", p.pos.Line, p.pos.Col, p.tok)
+	}
+
+	value, err := strconv.ParseInt(p.lit, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("line %d:%d: %w", p.pos.Line, p.pos.Col, err)
+	}
+	if negative {
+		value = -value
+	}
+
+	p.next()
+	return &columnar.NumberScalar[int32]{Value: int32(value)}, nil
+}
+
+// parseInt32Array := "[" Int32Scalar* "]"
+func (p *parser) parseInt32Array() (columnar.Datum, error) {
+	if err := p.expect(tokenLBrack); err != nil {
+		return nil, err
+	}
+
+	builder := columnar.NewNumberBuilder[int32](p.alloc)
+
+	for p.tok != tokenRBrack && p.tok != tokenEOF {
+		scalar, err := p.parseInt32Scalar()
+		if err != nil {
+			return nil, err
+		}
+
+		int32Scalar := scalar.(*columnar.NumberScalar[int32])
+		if int32Scalar.Null {
+			builder.AppendNull()
+		} else {
+			builder.AppendValue(int32Scalar.Value)
+		}
+	}
+
+	if err := p.expect(tokenRBrack); err != nil {
+		return nil, err
+	}
+
+	return builder.Build(), nil
+}
+
 // parseInt64Datum := NumberValue
 func (p *parser) parseInt64Datum() (columnar.Datum, error) {
 	if p.tok == tokenLBrack {
@@ -287,6 +357,62 @@ func (p *parser) parseInt64Array() (columnar.Datum, error) {
 		return nil, err
 	}
 
+	return builder.Build(), nil
+}
+
+// parseUint32Datum := NumberValue
+func (p *parser) parseUint32Datum() (columnar.Datum, error) {
+	if p.tok == tokenLBrack {
+		return p.parseUint32Array()
+	}
+	return p.parseUint32Scalar()
+}
+
+// parseUint32Scalar := <number> | "null"
+func (p *parser) parseUint32Scalar() (columnar.Datum, error) {
+	if p.tok == tokenIdent && p.lit == nullLit {
+		p.next()
+		return &columnar.NumberScalar[uint32]{Null: true}, nil
+	}
+
+	if p.tok != tokenInteger {
+		return nil, fmt.Errorf("line %d:%d: expected integer, got %s", p.pos.Line, p.pos.Col, p.tok)
+	}
+
+	value, err := strconv.ParseUint(p.lit, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("line %d:%d: %w", p.pos.Line, p.pos.Col, err)
+	}
+
+	p.next()
+	return &columnar.NumberScalar[uint32]{Value: uint32(value)}, nil
+}
+
+// parseUint32Array := "[" Uint32Scalar* "]"
+func (p *parser) parseUint32Array() (columnar.Datum, error) {
+	if err := p.expect(tokenLBrack); err != nil {
+		return nil, err
+	}
+
+	builder := columnar.NewNumberBuilder[uint32](p.alloc)
+
+	for p.tok != tokenRBrack && p.tok != tokenEOF {
+		scalar, err := p.parseUint32Scalar()
+		if err != nil {
+			return nil, err
+		}
+
+		uint32Scalar := scalar.(*columnar.NumberScalar[uint32])
+		if uint32Scalar.Null {
+			builder.AppendNull()
+		} else {
+			builder.AppendValue(uint32Scalar.Value)
+		}
+	}
+
+	if err := p.expect(tokenRBrack); err != nil {
+		return nil, err
+	}
 	return builder.Build(), nil
 }
 
