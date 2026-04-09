@@ -2010,7 +2010,8 @@ var (
 					"prePredicateDecompressedBytes": 0,
 					"prePredicateDecompressedStructuredMetadataBytes": 0,
 					"totalPageDownloadTime": 0,
-					"totalRowsAvailable": 0
+					"totalRowsAvailable": 0,
+					"wireBytesTransferred": 0
 				},
 				"totalChunksRef": 0,
 				"totalChunksDownloaded": 0,
@@ -2053,7 +2054,8 @@ var (
 					"prePredicateDecompressedBytes": 0,
 					"prePredicateDecompressedStructuredMetadataBytes": 0,
 					"totalPageDownloadTime": 0,
-					"totalRowsAvailable": 0
+					"totalRowsAvailable": 0,
+					"wireBytesTransferred": 0
 				},
 				"totalChunksRef": 17,
 				"totalChunksDownloaded": 18,
