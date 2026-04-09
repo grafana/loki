@@ -135,6 +135,7 @@ func canSplitRangeAggregation(rangeAgg *RangeAggregation) bool {
 	// Skip aggregations with overlapping windows (Step < Range) because
 	// it can lead to traffic amplification (each raw datapoint can produce
 	// several aggregated datapoints from inner aggregation).
+	// TODO(spiridonov): Think if there is a way around this.
 	if rangeAgg.Step > 0 && rangeAgg.Step < rangeAgg.Range {
 		return false
 	}
