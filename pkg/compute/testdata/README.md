@@ -18,7 +18,7 @@ TypedValue   := Type ":" Value
 Type         := "bool" | "int32" | "int64" | "uint32" | "uint64" | "utf8" | "null"
 
 Value        := Scalar | Array
-Scalar       := <literal> | "null"
+Scalar       := <literal> | "null" | "_"
 Array        := "[" Scalar* "]"
 
 TERMINATOR   := "\n"
@@ -36,6 +36,7 @@ ignored.
 - **uint64**: Unsigned 64-bit integers (e.g., `0`, `456`)
 - **utf8**: UTF-8 strings, must be quoted (e.g., `"hello"`, `"test string"`). Escape sequences are supported.
 - **null**: Explicit null type for null-only values
+- **`_`**: Undefined value. Represents a position where the value is undefined, such as an unselected row in a selection vector.
 
 ## Adding new compute functions
 

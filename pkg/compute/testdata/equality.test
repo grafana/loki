@@ -607,46 +607,46 @@ GTE  utf8:["b" "b" "c" "z" null null null]  utf8:["a" "b" "z" "z" "foo" "bar" nu
 #
 
 # (Array, Array)
-EQ  bool:[true false true false]    bool:[true true true true]      select:[true false true false]  -> bool:[true null true null]  # Partial
-EQ  bool:[true false true]          bool:[true true false]          select:[false false false]      -> bool:[null null null]       # No selection
-EQ  bool:[true false true]          bool:[true false false]         select:[false true false]       -> bool:[null true null]       # Single selection
+EQ  bool:[true false true false]    bool:[true true true true]      select:[true false true false]  -> bool:[true _ true _]  # Partial
+EQ  bool:[true false true]          bool:[true true false]          select:[false false false]      -> bool:[_ _ _]       # No selection
+EQ  bool:[true false true]          bool:[true false false]         select:[false true false]       -> bool:[_ true _]       # Single selection
 EQ  bool:[true false]               bool:[true true]                select:[true true]              -> bool:[true false]           # Full selection
-EQ  int32:[10 20 30 40]              int32:[10 21 30 41]              select:[true false true false]  -> bool:[true null true null]
-EQ  int32:[1 2]                      int32:[1 3]                      select:[false false]            -> bool:[null null]
-EQ  int64:[10 20 30 40]             int64:[10 21 30 41]             select:[true false true false]  -> bool:[true null true null]
-EQ  int64:[1 2]                     int64:[1 3]                     select:[false false]            -> bool:[null null]
-EQ  uint32:[10 20 30 40]            uint32:[10 21 30 41]            select:[true false true false]  -> bool:[true null true null]
-EQ  uint64:[10 20 30 40]            uint64:[10 21 30 41]            select:[true false true false]  -> bool:[true null true null]
-EQ  utf8:["foo" "bar" "baz" "qux"]  utf8:["foo" "BAR" "baz" "QUX"]  select:[true false true false]  -> bool:[true null true null]
-EQ  utf8:["a" "b" "c"]              utf8:["a" "x" "c"]              select:[false false false]      -> bool:[null null null]
-EQ  null:[null null null]           null:[null null null]           select:[true false true]        -> bool:[null null null]
+EQ  int32:[10 20 30 40]              int32:[10 21 30 41]              select:[true false true false]  -> bool:[true _ true _]
+EQ  int32:[1 2]                      int32:[1 3]                      select:[false false]            -> bool:[_ _]
+EQ  int64:[10 20 30 40]             int64:[10 21 30 41]             select:[true false true false]  -> bool:[true _ true _]
+EQ  int64:[1 2]                     int64:[1 3]                     select:[false false]            -> bool:[_ _]
+EQ  uint32:[10 20 30 40]            uint32:[10 21 30 41]            select:[true false true false]  -> bool:[true _ true _]
+EQ  uint64:[10 20 30 40]            uint64:[10 21 30 41]            select:[true false true false]  -> bool:[true _ true _]
+EQ  utf8:["foo" "bar" "baz" "qux"]  utf8:["foo" "BAR" "baz" "QUX"]  select:[true false true false]  -> bool:[true _ true _]
+EQ  utf8:["a" "b" "c"]              utf8:["a" "x" "c"]              select:[false false false]      -> bool:[_ _ _]
+EQ  null:[null null null]           null:[null null null]           select:[true false true]        -> bool:[null _ null]
 
 # (Scalar, Array)
-EQ  int32:10     int32:[10 20 10 30]         select:[true false true false]  -> bool:[true null true null]
-EQ  int64:10     int64:[10 20 10 30]         select:[true false true false]  -> bool:[true null true null]
-EQ  utf8:"test"  utf8:["test" "foo" "test"]  select:[false false false]      -> bool:[null null null]
+EQ  int32:10     int32:[10 20 10 30]         select:[true false true false]  -> bool:[true _ true _]
+EQ  int64:10     int64:[10 20 10 30]         select:[true false true false]  -> bool:[true _ true _]
+EQ  utf8:"test"  utf8:["test" "foo" "test"]  select:[false false false]      -> bool:[_ _ _]
 
 # (Array, Scalar)
-EQ  int32:[5 10 5 15]  int32:5  select:[true false true false]  -> bool:[true null true null]
-EQ  int64:[5 10 5 15]  int64:5  select:[true false true false]  -> bool:[true null true null]
+EQ  int32:[5 10 5 15]  int32:5  select:[true false true false]  -> bool:[true _ true _]
+EQ  int64:[5 10 5 15]  int64:5  select:[true false true false]  -> bool:[true _ true _]
 
 # Other operators
-NEQ  int32:[10 20 30]        int32:[10 21 30]          select:[true false true]        -> bool:[false null false]
-NEQ  int64:[10 20 30]        int64:[10 21 30]          select:[true false true]        -> bool:[false null false]
-NEQ  bool:[true false true]  bool:[false false false]  select:[false true false]       -> bool:[null false null]
-LT   int32:[5 10 15 20]      int32:[10 10 10 10]       select:[true false true false]  -> bool:[true null false null]
-LT   int64:[5 10 15 20]      int64:[10 10 10 10]       select:[true false true false]  -> bool:[true null false null]
-LT   uint32:[15 25]          uint32:[20 20]            select:[false false]            -> bool:[null null]
-LT   uint64:[15 25]          uint64:[20 20]            select:[false false]            -> bool:[null null]
-LT   utf8:["a" "b" "c" "d"]  utf8:["b" "b" "b" "b"]    select:[true false true false]  -> bool:[true null false null]
-LTE  int32:[10 20 10]        int32:[10 15 10]          select:[true false true]        -> bool:[true null true]
-LTE  int64:[10 20 10]        int64:[10 15 10]          select:[true false true]        -> bool:[true null true]
+NEQ  int32:[10 20 30]        int32:[10 21 30]          select:[true false true]        -> bool:[false _ false]
+NEQ  int64:[10 20 30]        int64:[10 21 30]          select:[true false true]        -> bool:[false _ false]
+NEQ  bool:[true false true]  bool:[false false false]  select:[false true false]       -> bool:[_ false _]
+LT   int32:[5 10 15 20]      int32:[10 10 10 10]       select:[true false true false]  -> bool:[true _ false _]
+LT   int64:[5 10 15 20]      int64:[10 10 10 10]       select:[true false true false]  -> bool:[true _ false _]
+LT   uint32:[15 25]          uint32:[20 20]            select:[false false]            -> bool:[_ _]
+LT   uint64:[15 25]          uint64:[20 20]            select:[false false]            -> bool:[_ _]
+LT   utf8:["a" "b" "c" "d"]  utf8:["b" "b" "b" "b"]    select:[true false true false]  -> bool:[true _ false _]
+LTE  int32:[10 20 10]        int32:[10 15 10]          select:[true false true]        -> bool:[true _ true]
+LTE  int64:[10 20 10]        int64:[10 15 10]          select:[true false true]        -> bool:[true _ true]
 LTE  uint32:[10 20]          uint32:[10 30]            select:[true true]              -> bool:[true true]
 LTE  uint64:[10 20]          uint64:[10 30]            select:[true true]              -> bool:[true true]
-GT   int32:[15 5 20]         int32:[10 10 10]          select:[true false true]        -> bool:[true null true]
-GT   int64:[15 5 20]         int64:[10 10 10]          select:[true false true]        -> bool:[true null true]
-GT   utf8:["x" "y" "z"]      utf8:["y" "y" "y"]        select:[false true false]       -> bool:[null false null]
-GTE  int32:[10 5 10]         int32:[10 10 5]           select:[true false true]        -> bool:[true null true]
-GTE  int64:[10 5 10]         int64:[10 10 5]           select:[true false true]        -> bool:[true null true]
-GTE  uint32:[10 5]           uint32:[5 5]              select:[false false]            -> bool:[null null]
-GTE  uint64:[10 5]           uint64:[5 5]              select:[false false]            -> bool:[null null]
+GT   int32:[15 5 20]         int32:[10 10 10]          select:[true false true]        -> bool:[true _ true]
+GT   int64:[15 5 20]         int64:[10 10 10]          select:[true false true]        -> bool:[true _ true]
+GT   utf8:["x" "y" "z"]      utf8:["y" "y" "y"]        select:[false true false]       -> bool:[_ false _]
+GTE  int32:[10 5 10]         int32:[10 10 5]           select:[true false true]        -> bool:[true _ true]
+GTE  int64:[10 5 10]         int64:[10 10 5]           select:[true false true]        -> bool:[true _ true]
+GTE  uint32:[10 5]           uint32:[5 5]              select:[false false]            -> bool:[_ _]
+GTE  uint64:[10 5]           uint64:[5 5]              select:[false false]            -> bool:[_ _]
