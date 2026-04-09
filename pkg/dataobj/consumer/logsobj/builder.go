@@ -74,6 +74,13 @@ type BuilderBaseConfig struct {
 	// values of MergeSize trade off lower memory overhead for higher time spent
 	// merging.
 	SectionStripeMergeLimit int `yaml:"section_stripe_merge_limit"`
+
+	// EstimatedCompressionRatio is the expected compression ratio for log data,
+	// used to approximate compressed output size from uncompressed buffered
+	// records. This only takes effect when using the AppendOrdered strategy.
+	// Higher values allow more data to accumulate before the builder reports
+	// full, producing larger objects. Set to 0 or 1 to disable.
+	EstimatedCompressionRatio int `yaml:"estimated_compression_ratio"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -84,6 +91,7 @@ func (cfg *BuilderBaseConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Fla
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "The target maximum amount of uncompressed data to hold in sections, for sections that support being limited by size. Uncompressed size is used for consistent I/O and planning.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of logs to buffer in memory before adding into columnar builders, used to reduce CPU load of sorting.")
 	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of dataobj section stripes to merge into a section at once. Must be greater than 1.")
+	f.IntVar(&cfg.EstimatedCompressionRatio, prefix+"estimated-compression-ratio", 8, "Expected compression ratio for log data, used to estimate compressed output size from uncompressed buffered records. Only takes effect with ordered append. Set to 0 or 1 to disable.")
 }
 
 // Validate validates the BuilderConfig.
@@ -123,6 +131,12 @@ type BuilderConfig struct {
 	// They can either be sorted by [streamID ASC, timestamp DESC] or [timestamp DESC, streamID ASC].
 	DataobjSortOrder string `yaml:"dataobj_sort_order" doc:"hidden"`
 
+	// AppendOrderedEnabled controls whether the builder uses the AppendOrdered
+	// strategy, which skips intermediate stripe sorting and merging for data
+	// that is already in sort order. When false, the classic
+	// AppendUnordered strategy is used.
+	AppendOrderedEnabled bool `yaml:"append_ordered_enabled" doc:"hidden"`
+
 	// DataobjSortSchemaEnabled controls whether the per-tenant sort_schema tenant config is used
 	// to determine sort order instead of DataobjSortOrder.
 	DataobjUseSortSchema bool `yaml:"dataobj_use_sort_schema" doc:"hidden"`
@@ -138,6 +152,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	cfg.BuilderBaseConfig.RegisterFlagsWithPrefix(prefix, f)
 
 	f.StringVar(&cfg.DataobjSortOrder, prefix+"dataobj-sort-order", sortStreamASC, "The desired sort order of the logs section. Can either be `stream-asc` (order by streamID ascending and timestamp descending) or `timestamp-desc` (order by timestamp descending and streamID ascending).")
+	f.BoolVar(&cfg.AppendOrderedEnabled, prefix+"append-ordered-enabled", true, "Skips intermediate stripe sorting and merging. Expects data to be sorted before appending.")
 	f.BoolVar(&cfg.DataobjUseSortSchema, prefix+"dataobj-use-sort-schema", false, "Experimental: When enabled, use the per-tenant sort_schema tenant config to determine sort order of data objects instead of dataobj-sort-order.")
 }
 
@@ -168,6 +183,13 @@ var sortOrderMapping = map[string]logs.SortOrder{
 func parseSortOrder(s string) logs.SortOrder {
 	val := sortOrderMapping[s]
 	return val
+}
+
+func appendStrategy(ordered bool) logs.AppendStrategy {
+	if ordered {
+		return logs.AppendOrdered
+	}
+	return logs.AppendUnordered
 }
 
 // A Builder constructs a logs-oriented data object from a set of incoming
@@ -236,11 +258,13 @@ func (b *Builder) initBuilder(tenant string) {
 	}
 	if _, ok := b.logs[tenant]; !ok {
 		lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
-			PageSizeHint:     int(b.cfg.TargetPageSize),
-			PageMaxRowCount:  b.cfg.MaxPageRows,
-			BufferSize:       int(b.cfg.BufferSize),
-			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-			SortOrder:        parseSortOrder(b.cfg.DataobjSortOrder),
+			PageSizeHint:              int(b.cfg.TargetPageSize),
+			PageMaxRowCount:           b.cfg.MaxPageRows,
+			BufferSize:                int(b.cfg.BufferSize),
+			StripeMergeLimit:          b.cfg.SectionStripeMergeLimit,
+			AppendStrategy:            appendStrategy(b.cfg.AppendOrderedEnabled),
+			EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
+			SortOrder:                 parseSortOrder(b.cfg.DataobjSortOrder),
 		})
 		lb.SetTenant(tenant)
 		b.logs[tenant] = lb
@@ -460,12 +484,13 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 
 	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 	lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
-		PageSizeHint:     int(b.cfg.TargetPageSize),
-		PageMaxRowCount:  b.cfg.MaxPageRows,
-		BufferSize:       int(b.cfg.BufferSize),
-		StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-		AppendStrategy:   logs.AppendOrdered,
-		SortOrder:        sort,
+		PageSizeHint:              int(b.cfg.TargetPageSize),
+		PageMaxRowCount:           b.cfg.MaxPageRows,
+		BufferSize:                int(b.cfg.BufferSize),
+		StripeMergeLimit:          b.cfg.SectionStripeMergeLimit,
+		AppendStrategy:            logs.AppendOrdered,
+		EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
+		SortOrder:                 sort,
 	})
 
 	// Sort the set of tenants so the new object has a deterministic order of sections.
