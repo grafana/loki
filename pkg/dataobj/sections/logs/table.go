@@ -112,6 +112,18 @@ func (t *table) CompressedSize() int {
 // A tableBuffer holds a set of column builders used for constructing tables.
 // The zero value is ready for use.
 type tableBuffer struct {
+	// binaryCompression controls the compression type for binary columns
+	// (message, metadata). When zero (UNSPECIFIED), defaults to ZSTD.
+	binaryCompression datasetmd.CompressionType
+
+	// skipStats disables all statistics collection (range and cardinality).
+	// Useful for intermediate stripes where stats are recomputed during merge.
+	skipStats bool
+
+	// skipCRC disables CRC32 checksums for pages. Useful for intermediate
+	// stripes that are always read from memory.
+	skipCRC bool
+
 	streamID  *dataset.ColumnBuilder
 	timestamp *dataset.ColumnBuilder
 
@@ -138,9 +150,10 @@ func (b *tableBuffer) StreamID(pageSize, pageRowCount int) *dataset.ColumnBuilde
 		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
 		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
-			StoreRangeStats:       true,
-			StoreCardinalityStats: true,
+			StoreRangeStats:       !b.skipStats,
+			StoreCardinalityStats: !b.skipStats,
 		},
+		SkipCRC: b.skipCRC,
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
@@ -169,8 +182,9 @@ func (b *tableBuffer) Timestamp(pageSize, pageRowCount int) *dataset.ColumnBuild
 		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
 		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
-			StoreRangeStats: true,
+			StoreRangeStats: !b.skipStats,
 		},
+		SkipCRC: b.skipCRC,
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
@@ -197,6 +211,10 @@ func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressi
 		return builder
 	}
 
+	compression := b.binaryCompression
+	if compression == datasetmd.COMPRESSION_TYPE_UNSPECIFIED {
+		compression = datasetmd.COMPRESSION_TYPE_ZSTD
+	}
 	col, err := dataset.NewColumnBuilder(key, dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
@@ -205,12 +223,13 @@ func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressi
 			Logical:  ColumnTypeMetadata.String(),
 		},
 		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
+		Compression:        compression,
 		CompressionOptions: compressionOpts,
 		Statistics: dataset.StatisticsOptions{
-			StoreRangeStats:       true,
-			StoreCardinalityStats: true,
+			StoreRangeStats:       !b.skipStats,
+			StoreCardinalityStats: !b.skipStats,
 		},
+		SkipCRC: b.skipCRC,
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
@@ -235,6 +254,10 @@ func (b *tableBuffer) Message(pageSize, pageRowCount int, compressionOpts *datas
 		return b.message
 	}
 
+	msgCompression := b.binaryCompression
+	if msgCompression == datasetmd.COMPRESSION_TYPE_UNSPECIFIED {
+		msgCompression = datasetmd.COMPRESSION_TYPE_ZSTD
+	}
 	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
@@ -243,7 +266,7 @@ func (b *tableBuffer) Message(pageSize, pageRowCount int, compressionOpts *datas
 			Logical:  ColumnTypeMessage.String(),
 		},
 		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
+		Compression:        msgCompression,
 		CompressionOptions: compressionOpts,
 
 		// We explicitly don't have range stats for the message column:
@@ -253,6 +276,7 @@ func (b *tableBuffer) Message(pageSize, pageRowCount int, compressionOpts *datas
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: false,
 		},
+		SkipCRC: b.skipCRC,
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,

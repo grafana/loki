@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,11 +19,14 @@ import (
 )
 
 // A Record is an individual log record within the logs section.
+// TimestampNano stores the timestamp as nanoseconds since Unix epoch (int64)
+// instead of time.Time to reduce struct size by 16 bytes and eliminate a
+// GC-traced pointer per record.
 type Record struct {
-	StreamID  int64
-	Timestamp time.Time
-	Metadata  labels.Labels
-	Line      []byte
+	StreamID      int64
+	TimestampNano int64
+	Metadata      labels.Labels
+	Line          []byte
 }
 
 type AppendStrategy int
@@ -113,11 +115,18 @@ type Builder struct {
 
 	records     []Record // Buffered records to flush to a group.
 	recordsSize int      // Byte size of all buffered records (uncompressed).
+	lastBatchLen int     // Length of last sorted batch, used for pre-allocation hint.
 
 	stripes                 []*table // In-progress section; flushed with [mergeTables] into a single table.
 	stripeBuffer            tableBuffer
 	stripesUncompressedSize int // Estimated byte size of all elements in stripes (uncompressed).
 	stripesCompressedSize   int // Estimated byte size of all elements in stripes (compressed).
+
+	// sortedBatches holds sorted record slices for the direct-merge path.
+	// Instead of encoding records into intermediate stripes (encode→decode→merge),
+	// sorted batches are k-way merged directly into the final table.
+	sortedBatches     [][]Record
+	sortedBatchesSize int // uncompressed byte size of all sorted batches
 
 	sectionBuffer tableBuffer
 }
@@ -129,10 +138,16 @@ func NewBuilder(metrics *Metrics, opts BuilderOptions) *Builder {
 		metrics = NewMetrics()
 	}
 
-	return &Builder{
+	b := &Builder{
 		metrics: metrics,
 		opts:    opts,
 	}
+	// Stripes are intermediate — they get compressed then decompressed during
+	// merge. Skip compression for stripes to avoid this double work.
+	b.stripeBuffer.binaryCompression = datasetmd_v2.COMPRESSION_TYPE_NONE
+	b.stripeBuffer.skipStats = true
+	b.stripeBuffer.skipCRC = true
+	return b
 }
 
 // Tenant returns the optional tenant that owns the builder.
@@ -147,11 +162,17 @@ func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // Append adds a new entry to b.
 func (b *Builder) Append(entry Record) {
-	b.metrics.appendsTotal.Inc()
-	b.metrics.recordCount.Inc()
+	b.AppendWithSize(entry, recordSize(entry))
+}
 
+// AppendWithSize adds a new entry with a precomputed size, avoiding redundant
+// metadata iteration for size calculation.
+func (b *Builder) AppendWithSize(entry Record, size int) {
+	if b.records == nil && b.lastBatchLen > 0 {
+		b.records = make([]Record, 0, b.lastBatchLen)
+	}
 	b.records = append(b.records, entry)
-	b.recordsSize += recordSize(entry)
+	b.recordsSize += size
 
 	// Shortcut for when logs are appending in strict sort order.
 	// We skip building temporarily compressed stripes in favour of a speed
@@ -166,15 +187,12 @@ func (b *Builder) Append(entry Record) {
 }
 
 func recordSize(record Record) int {
-	var size int
-
-	size++    // One byte per stream ID (for uvarint).
-	size += 8 // Eight bytes for timestamp.
-	record.Metadata.Range(func(metadata labels.Label) {
-		size += len(metadata.Value)
-	})
-	size += len(record.Line)
-
+	size := 1 + 8 + len(record.Line) // streamID (uvarint) + timestamp + line
+	if !record.Metadata.IsEmpty() {
+		record.Metadata.Range(func(metadata labels.Label) {
+			size += len(metadata.Value)
+		})
+	}
 	return size
 }
 
@@ -183,11 +201,27 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 		return
 	}
 
+	// Batch metric updates — avoid per-entry atomic increments.
+	n := float64(len(b.records))
+	b.metrics.appendsTotal.Add(n)
+	b.metrics.recordCount.Add(n)
+
 	// We can panic in case flushRecords is called multiple times before flushing a section
 	// when using the [AppendOrdered] strategy, because that should not happen and is
 	// considered a programming error.
 	if b.opts.AppendStrategy == AppendOrdered && len(b.stripes) > 0 {
 		panic("must not call flushRecords multiple times for a single section when using AppendOrdered strategy")
+	}
+
+	// For AppendUnordered, keep the unsorted batch. Sorting is deferred
+	// to flushSection where all batches are sorted in parallel.
+	if b.opts.AppendStrategy == AppendUnordered {
+		b.lastBatchLen = len(b.records)
+		b.sortedBatches = append(b.sortedBatches, b.records)
+		b.sortedBatchesSize += b.recordsSize
+		b.records = nil // allocate fresh on next Append
+		b.recordsSize = 0
+		return
 	}
 
 	compressionOpts := zstdCompressionOpts(encLevel)
@@ -202,11 +236,33 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 }
 
 func (b *Builder) flushSection() *table {
+	// Direct merge path: sort batches in parallel, then merge.
+	if len(b.sortedBatches) > 0 {
+		// Sort all batches in parallel.
+		var wg sync.WaitGroup
+		for i := range b.sortedBatches {
+			wg.Add(1)
+			go func(batch []Record) {
+				sortRecords(batch, b.opts.SortOrder)
+				wg.Done()
+			}(b.sortedBatches[i])
+		}
+		wg.Wait()
+
+		compressionOpts := zstdCompressionOpts(zstd.SpeedFastest)
+		section := mergeRecordBatches(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.sortedBatches, b.opts.SortOrder)
+		b.sortedBatches = b.sortedBatches[:0]
+		b.sortedBatchesSize = 0
+		return section
+	}
+
+	// Legacy path: merge encoded stripes (used by AppendOrdered or when
+	// sortedBatches is empty).
 	if len(b.stripes) == 0 {
 		return nil
 	}
 
-	compressionOpts := zstdCompressionOpts(zstd.SpeedDefault)
+	compressionOpts := zstdCompressionOpts(zstd.SpeedFastest)
 
 	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.stripes, b.opts.StripeMergeLimit, b.opts.SortOrder)
 	if err != nil {
@@ -221,7 +277,7 @@ func (b *Builder) flushSection() *table {
 }
 
 func (b *Builder) flushSectionOrdered() *table {
-	b.flushRecords(zstd.SpeedDefault)
+	b.flushRecords(zstd.SpeedFastest)
 
 	if len(b.stripes) == 0 {
 		return nil
@@ -241,6 +297,7 @@ func (b *Builder) UncompressedSize() int {
 
 	size += b.recordsSize
 	size += b.stripesUncompressedSize
+	size += b.sortedBatchesSize
 
 	return size
 }
@@ -251,6 +308,7 @@ func (b *Builder) EstimatedSize() int {
 
 	size += b.recordsSize
 	size += b.stripesCompressedSize
+	size += b.sortedBatchesSize // uncompressed is the best estimate for unserialized records
 
 	return size
 }
@@ -393,6 +451,9 @@ func (b *Builder) Reset() {
 	b.stripeBuffer.Reset()
 	b.stripesCompressedSize = 0
 	b.stripesUncompressedSize = 0
+
+	b.sortedBatches = b.sortedBatches[:0]
+	b.sortedBatchesSize = 0
 
 	b.sectionBuffer.Reset()
 }

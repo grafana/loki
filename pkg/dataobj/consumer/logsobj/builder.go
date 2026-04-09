@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"unsafe"
 
 	"github.com/facette/natsort"
 	"github.com/grafana/dskit/flagext"
@@ -83,7 +84,7 @@ func (cfg *BuilderBaseConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Fla
 	f.Var(&cfg.TargetObjectSize, prefix+"target-builder-memory-limit", "The target maximum size of the encoded object and all of its encoded sections (after compression), to limit memory usage of a builder.")
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "The target maximum amount of uncompressed data to hold in sections, for sections that support being limited by size. Uncompressed size is used for consistent I/O and planning.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of logs to buffer in memory before adding into columnar builders, used to reduce CPU load of sorting.")
-	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of dataobj section stripes to merge into a section at once. Must be greater than 1.")
+	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 16, "The maximum number of dataobj section stripes to merge into a section at once. Must be greater than 1.")
 }
 
 // Validate validates the BuilderConfig.
@@ -180,7 +181,13 @@ type Builder struct {
 	cfg     BuilderConfig
 	metrics *builderMetrics
 
-	labelCache *lru.Cache[string, labels.Labels]
+	labelCache     *lru.Cache[string, labels.Labels]
+	scratchBuilder labels.ScratchBuilder // reused for convertMetadata
+
+	// Cache last metadata conversion to reuse Labels when consecutive entries
+	// have identical structured metadata (common in log streams).
+	lastMD       push.LabelsAdapter
+	lastMDLabels labels.Labels
 
 	currentSizeEstimate int
 
@@ -277,35 +284,40 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 	sb, lb := b.streams[tenant], b.logs[tenant]
 
 	b.metrics.appends.Inc()
-	timer := prometheus.NewTimer(b.metrics.appendTime)
-	defer timer.ObserveDuration()
 
-	for _, entry := range stream.Entries {
+	// Look up the stream once, then use RecordToStream for each entry to avoid
+	// re-hashing labels on every entry.
+	cachedStream := sb.GetOrAddStream(ls)
+
+	targetSectionSize := int(b.cfg.TargetSectionSize)
+	for i, entry := range stream.Entries {
 		sz := int64(len(entry.Line))
 		for _, md := range entry.StructuredMetadata {
 			sz += int64(len(md.Value))
 		}
 
-		streamID := sb.Record(ls, entry.Timestamp, sz)
+		sb.RecordToStream(cachedStream, entry.Timestamp, sz)
 
-		lb.Append(logs.Record{
-			StreamID:  streamID,
-			Timestamp: entry.Timestamp,
-			Metadata:  convertMetadata(entry.StructuredMetadata),
-			Line:      []byte(entry.Line),
-		})
+		// Use AppendWithSize to avoid redundant metadata size computation
+		// inside recordSize (we already computed sz above).
+		recordSz := 1 + 8 + int(sz) // streamID varint + timestamp + line + metadata values
+		lb.AppendWithSize(logs.Record{
+			StreamID:      cachedStream.ID,
+			TimestampNano: entry.Timestamp.UnixNano(),
+			Metadata:      b.convertMetadata(entry.StructuredMetadata),
+			Line:          unsafe.Slice(unsafe.StringData(entry.Line), len(entry.Line)),
+		}, recordSz)
 
-		// If our logs section has gotten big enough, we want to flush it to the
-		// encoder and start a new section.
-		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
+		// Check section size every 1024 entries to reduce overhead.
+		if i&1023 == 0 && lb.UncompressedSize() > targetSectionSize {
 			if err := b.builder.Append(lb); err != nil {
 				return err
 			}
-			// We need to set the tenant again after flushing because the builder is reset.
 			lb.SetTenant(tenant)
 		}
 	}
 
+	sb.FlushMetrics()
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 	return nil
@@ -357,15 +369,37 @@ func streamSizeEstimate(stream logproto.Stream) int {
 	return size
 }
 
-func convertMetadata(md push.LabelsAdapter) labels.Labels {
-	l := labels.NewScratchBuilder(len(md))
-
-	for _, label := range md {
-		l.Add(label.Name, label.Value)
+func (b *Builder) convertMetadata(md push.LabelsAdapter) labels.Labels {
+	if len(md) == 0 {
+		return labels.EmptyLabels()
 	}
 
-	l.Sort()
-	return l.Labels()
+	// Fast path: reuse the last Labels if the metadata matches exactly.
+	if len(md) == len(b.lastMD) {
+		match := true
+		for i := range md {
+			if md[i].Name != b.lastMD[i].Name || md[i].Value != b.lastMD[i].Value {
+				match = false
+				break
+			}
+		}
+		if match {
+			return b.lastMDLabels
+		}
+	}
+
+	b.scratchBuilder.Reset()
+	for _, label := range md {
+		b.scratchBuilder.Add(label.Name, label.Value)
+	}
+
+	b.scratchBuilder.Sort()
+	result := b.scratchBuilder.Labels()
+
+	// Cache for next call.
+	b.lastMD = md
+	b.lastMDLabels = result
+	return result
 }
 
 func (b *Builder) estimatedSize() int {

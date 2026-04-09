@@ -23,6 +23,9 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 		messageBuilder   = buf.Message(pageSize, pageRowCount, compressionOpts)
 	)
 
+	// Cache metadata column builders by name to avoid repeated map lookups.
+	metadataCache := make(map[string]*dataset.ColumnBuilder, 8)
+
 	var prev Record
 	row := 0
 	for _, record := range records {
@@ -37,13 +40,17 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 		// to keep the code readable we ignore the error values.
 
 		_ = streamIDBuilder.Append(row, dataset.Int64Value(record.StreamID))
-		_ = timestampBuilder.Append(row, dataset.Int64Value(record.Timestamp.UnixNano()))
+		_ = timestampBuilder.Append(row, dataset.Int64Value(record.TimestampNano))
 		_ = messageBuilder.Append(row, dataset.BinaryValue(record.Line))
 
 		record.Metadata.Range(func(md labels.Label) {
 			// Passing around md.Value as an unsafe slice is safe here: appending
 			// values is always read-only and the byte slice will never be mutated.
-			metadataBuilder := buf.Metadata(md.Name, pageSize, pageRowCount, compressionOpts)
+			metadataBuilder, ok := metadataCache[md.Name]
+			if !ok {
+				metadataBuilder = buf.Metadata(md.Name, pageSize, pageRowCount, compressionOpts)
+				metadataCache[md.Name] = metadataBuilder
+			}
 			_ = metadataBuilder.Append(row, dataset.BinaryValue(unsafeSlice(md.Value, 0)))
 		})
 		row++
@@ -59,31 +66,33 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 
 // sortRecords sorts the set of records according to the specified sort order.
 func sortRecords(records []Record, sortOrder SortOrder) {
-	slices.SortFunc(records, func(a, b Record) int {
-		switch sortOrder {
-		case SortStreamASC:
-			// Sort by [streamID ASC, timestamp DESC]
+	switch sortOrder {
+	case SortStreamASC:
+		slices.SortFunc(records, func(a, b Record) int {
 			if res := cmp.Compare(a.StreamID, b.StreamID); res != 0 {
 				return res
 			}
-			return b.Timestamp.Compare(a.Timestamp)
-		case SortTimestampDESC:
-			// Sort by [timestamp DESC, streamID ASC]
-			if res := b.Timestamp.Compare(a.Timestamp); res != 0 {
+			// Timestamp DESC: compare b before a.
+			return cmp.Compare(b.TimestampNano, a.TimestampNano)
+		})
+	case SortTimestampDESC:
+		slices.SortFunc(records, func(a, b Record) int {
+			// Timestamp DESC: compare b before a.
+			if res := cmp.Compare(b.TimestampNano, a.TimestampNano); res != 0 {
 				return res
 			}
 			return cmp.Compare(a.StreamID, b.StreamID)
-		default:
-			panic("invalid sort order")
-		}
-	})
+		})
+	default:
+		panic("invalid sort order")
+	}
 }
 
 func equalRecords(a, b Record) bool {
 	if a.StreamID != b.StreamID {
 		return false
 	}
-	if a.Timestamp != b.Timestamp {
+	if a.TimestampNano != b.TimestampNano {
 		return false
 	}
 	if !labels.Equal(a.Metadata, b.Metadata) {

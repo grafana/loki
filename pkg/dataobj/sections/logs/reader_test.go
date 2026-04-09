@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"testing"
-	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -23,11 +22,11 @@ import (
 // TestReader does a basic end-to-end test over a reader with a predicate applied.
 func TestReader(t *testing.T) {
 	sec := buildSection(t, []logs.Record{
-		{StreamID: 2, Timestamp: unixTime(40), Metadata: labels.FromStrings("trace_id", "789012"), Line: []byte("baz qux")},
-		{StreamID: 2, Timestamp: unixTime(30), Metadata: labels.FromStrings("trace_id", "123456"), Line: []byte("foo bar")},
-		{StreamID: 1, Timestamp: unixTime(20), Metadata: labels.FromStrings("trace_id", "abcdef"), Line: []byte("goodbye, world!")},
-		{StreamID: 1, Timestamp: unixTime(10), Metadata: labels.EmptyLabels(), Line: []byte("hello, world!")},
-		{StreamID: 1, Timestamp: unixTime(5), Metadata: labels.FromStrings("trace_id", "abcdef", "foo", ""), Line: []byte("")},
+		{StreamID: 2, TimestampNano: unixNano(40), Metadata: labels.FromStrings("trace_id", "789012"), Line: []byte("baz qux")},
+		{StreamID: 2, TimestampNano: unixNano(30), Metadata: labels.FromStrings("trace_id", "123456"), Line: []byte("foo bar")},
+		{StreamID: 1, TimestampNano: unixNano(20), Metadata: labels.FromStrings("trace_id", "abcdef"), Line: []byte("goodbye, world!")},
+		{StreamID: 1, TimestampNano: unixNano(10), Metadata: labels.EmptyLabels(), Line: []byte("hello, world!")},
+		{StreamID: 1, TimestampNano: unixNano(5), Metadata: labels.FromStrings("trace_id", "abcdef", "foo", ""), Line: []byte("")},
 	})
 
 	var (
@@ -109,7 +108,7 @@ func TestReader(t *testing.T) {
 
 func TestReader_ReadBeforeOpen(t *testing.T) {
 	sec := buildSection(t, []logs.Record{
-		{StreamID: 1, Timestamp: unixTime(10), Line: []byte("hello")},
+		{StreamID: 1, TimestampNano: unixNano(10), Line: []byte("hello")},
 	})
 
 	r := logs.NewReader(logs.ReaderOptions{
@@ -148,7 +147,7 @@ func buildSection(t *testing.T, recs []logs.Record) *logs.Section {
 	return sec
 }
 
-func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
+func unixNano(sec int64) int64 { return sec * 1e9 }
 
 func readTable(ctx context.Context, r *logs.Reader) (arrow.Table, error) {
 	var recs []arrow.RecordBatch

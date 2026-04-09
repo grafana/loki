@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -119,7 +118,7 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			record.Timestamp = time.Unix(0, columnValue.Int64())
+			record.TimestampNano = columnValue.Int64()
 
 		case ColumnTypeMetadata:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {

@@ -2,7 +2,6 @@ package logs
 
 import (
 	"testing"
-	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -38,7 +37,7 @@ func TestDecode(t *testing.T) {
 			},
 			expected: Record{
 				StreamID:  123,
-				Timestamp: time.Unix(0, 1234567890000000000),
+				TimestampNano: 1234567890000000000,
 				Metadata:  labels.New(labels.Label{Name: "app", Value: "test-app"}, labels.Label{Name: "env", Value: "prod"}),
 				Line:      []byte("test message"),
 			},
@@ -61,7 +60,7 @@ func TestDecode(t *testing.T) {
 			},
 			expected: Record{
 				StreamID:  123,
-				Timestamp: time.Unix(0, 1234567890000000000),
+				TimestampNano: 1234567890000000000,
 				Metadata:  labels.EmptyLabels(),
 				Line:      []byte("test message"),
 			},

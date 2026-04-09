@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -8,6 +9,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
+
+// ErrRowOutOfOrder is returned when a row number is older than the current row.
+var ErrRowOutOfOrder = errors.New("row out of order")
 
 // BuilderOptions configures common settings for building pages.
 type BuilderOptions struct {
@@ -36,6 +40,10 @@ type BuilderOptions struct {
 
 	// StatisticsOptions holds optional configuration for statistics.
 	Statistics StatisticsOptions
+
+	// SkipCRC disables CRC32 checksum computation during page building.
+	// Useful for intermediate pages that will be merged and rewritten.
+	SkipCRC bool
 }
 
 // StatisticsOptions customizes the collection of statistics for a column.
@@ -119,7 +127,7 @@ func NewColumnBuilder(tag string, opts BuilderOptions) (*ColumnBuilder, error) {
 // Append returns an error if the row number is out-of-order.
 func (cb *ColumnBuilder) Append(row int, value Value) error {
 	if row < cb.rows {
-		return fmt.Errorf("row %d is older than current row %d", row, cb.rows)
+		return ErrRowOutOfOrder
 	}
 
 	// We give three attempts to append the data to the buffer; if the buffer is

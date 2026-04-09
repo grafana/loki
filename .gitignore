@@ -77,3 +77,4 @@ mem.prof
 **/.claude/settings.local.json
 
 host-*.json
+autoresearch-results.tsv

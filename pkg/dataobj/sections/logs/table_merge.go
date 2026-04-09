@@ -99,6 +99,10 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 	tree := loser.New(tableSequences, maxValue, tableSequenceAt, CompareForSortOrder(sort), tableSequenceClose)
 	defer tree.Close()
 
+	// Cache metadata column builders by *tableColumn pointer to avoid
+	// interface-keyed map lookups on every row.
+	metadataCache := make(map[*tableColumn]*dataset.ColumnBuilder, 8)
+
 	var prev dataset.Row
 	for tree.Next() {
 		seq := tree.Winner()
@@ -116,24 +120,28 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 
 		for i, column := range seq.columns {
 			// column is guaranteed to be a *tableColumn since we got it from *table.
-			column := column.(*tableColumn)
+			tc := column.(*tableColumn)
 
 			// dataset.Iter returns values in the same order as the number of
 			// columns.
 			value := row.Values[i]
 
-			switch column.Type {
+			switch tc.Type {
 			case ColumnTypeStreamID:
 				_ = streamIDBuilder.Append(rows, value)
 			case ColumnTypeTimestamp:
 				_ = timestampBuilder.Append(rows, value)
 			case ColumnTypeMetadata:
-				columnBuilder := buf.Metadata(column.Desc.Tag, pageSize, pageRowCount, compressionOpts)
+				columnBuilder, ok := metadataCache[tc]
+				if !ok {
+					columnBuilder = buf.Metadata(tc.Desc.Tag, pageSize, pageRowCount, compressionOpts)
+					metadataCache[tc] = columnBuilder
+				}
 				_ = columnBuilder.Append(rows, value)
 			case ColumnTypeMessage:
 				_ = messageBuilder.Append(rows, value)
 			default:
-				return nil, fmt.Errorf("unknown column type %s", column.Type)
+				return nil, fmt.Errorf("unknown column type %s", tc.Type)
 			}
 		}
 
