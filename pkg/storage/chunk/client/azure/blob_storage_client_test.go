@@ -51,6 +51,7 @@ func (suite *FederatedTokenTestSuite) SetupTest() {
 
 	suite.T().Setenv("AZURE_CLIENT_ID", "myClientId")
 	suite.T().Setenv("AZURE_TENANT_ID", "myTenantId")
+	suite.T().Setenv("AZURE_AUTHORITY_HOST", "")
 
 	tmpDir := suite.T().TempDir()
 	_ = os.WriteFile(tmpDir+"/jwtToken", []byte("myJwtToken"), 0666)
