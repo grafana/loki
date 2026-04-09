@@ -20,13 +20,13 @@ var (
 // processingDelayCollector implements prometheus.Collector to dynamically report
 // processing delay only for active partitions, preventing cardinality explosion.
 type processingDelayCollector struct {
-	mtx    sync.RWMutex
-	delays map[int32]float64 // partition -> delay in seconds
+	mtx        sync.RWMutex
+	timestamps map[int32]time.Time // partition -> reference time; zero time means idle (emits 0)
 }
 
 func newProcessingDelayCollector() *processingDelayCollector {
 	return &processingDelayCollector{
-		delays: make(map[int32]float64),
+		timestamps: make(map[int32]time.Time),
 	}
 }
 
@@ -39,7 +39,11 @@ func (c *processingDelayCollector) Describe(descs chan<- *prometheus.Desc) {
 func (c *processingDelayCollector) Collect(metrics chan<- prometheus.Metric) {
 	c.mtx.RLock()
 	defer c.mtx.RUnlock()
-	for partition, delay := range c.delays {
+	for partition, t := range c.timestamps {
+		var delay float64
+		if !t.IsZero() {
+			delay = time.Since(t).Seconds()
+		}
 		metrics <- prometheus.MustNewConstMetric(
 			processingDelayDesc,
 			prometheus.GaugeValue,
@@ -49,16 +53,16 @@ func (c *processingDelayCollector) Collect(metrics chan<- prometheus.Metric) {
 	}
 }
 
-func (c *processingDelayCollector) set(partition int32, delay float64) {
+func (c *processingDelayCollector) set(partition int32, t time.Time) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	c.delays[partition] = delay
+	c.timestamps[partition] = t
 }
 
 func (c *processingDelayCollector) delete(partition int32) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	delete(c.delays, partition)
+	delete(c.timestamps, partition)
 }
 
 type builderMetrics struct {
@@ -151,8 +155,12 @@ func (p *builderMetrics) incPartitionsRevoked(n int) {
 
 func (p *builderMetrics) setProcessingDelay(partition int32, recordTimestamp time.Time) {
 	if !recordTimestamp.IsZero() {
-		p.processingDelay.set(partition, time.Since(recordTimestamp).Seconds())
+		p.processingDelay.set(partition, recordTimestamp)
 	}
+}
+
+func (p *builderMetrics) resetProcessingDelay(partition int32) {
+	p.processingDelay.set(partition, time.Time{})
 }
 
 func (p *builderMetrics) deletePartitionMetrics(partition int32) {

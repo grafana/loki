@@ -416,6 +416,7 @@ func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {
 func (p *Builder) flushPartition(ctx context.Context, partition int32) {
 	calculationCtx, eventsToFlush := p.bufferAndTryProcess(ctx, partition, nil, triggerTypeMaxIdle)
 	if len(eventsToFlush) == 0 {
+		p.metrics.resetProcessingDelay(partition)
 		return
 	}
 
@@ -448,7 +449,7 @@ func (p *Builder) flushPartition(ctx context.Context, partition int32) {
 		}
 
 		// Reset metrics for stale partition so we don't leave it high indefinitely if the partition stays inactive
-		p.metrics.setProcessingDelay(partition, time.Now())
+		p.metrics.resetProcessingDelay(partition)
 
 		p.markEventsCompleted(partition, len(records))
 	}()
