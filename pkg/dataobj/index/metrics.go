@@ -70,6 +70,10 @@ type builderMetrics struct {
 
 	// Processing delay metrics
 	processingDelay *processingDelayCollector
+
+	// Partition rebalance counters
+	partitionsAssigned prometheus.Counter
+	partitionsRevoked  prometheus.Counter
 }
 
 func newBuilderMetrics() *builderMetrics {
@@ -83,6 +87,14 @@ func newBuilderMetrics() *builderMetrics {
 			Help: "Total number of commits",
 		}),
 		processingDelay: newProcessingDelayCollector(),
+		partitionsAssigned: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_index_builder_partition_assignments_total",
+			Help: "Total number of partitions assigned",
+		}),
+		partitionsRevoked: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_index_builder_partition_revocations_total",
+			Help: "Total number of partitions revoked or lost",
+		}),
 	}
 
 	return p
@@ -93,6 +105,8 @@ func (p *builderMetrics) register(reg prometheus.Registerer) error {
 		p.commitFailures,
 		p.commitsTotal,
 		p.processingDelay,
+		p.partitionsAssigned,
+		p.partitionsRevoked,
 	}
 
 	for _, collector := range collectors {
@@ -110,6 +124,8 @@ func (p *builderMetrics) unregister(reg prometheus.Registerer) {
 		p.commitFailures,
 		p.commitsTotal,
 		p.processingDelay,
+		p.partitionsAssigned,
+		p.partitionsRevoked,
 	}
 
 	for _, collector := range collectors {
@@ -123,6 +139,14 @@ func (p *builderMetrics) incCommitFailures() {
 
 func (p *builderMetrics) incCommitsTotal() {
 	p.commitsTotal.Inc()
+}
+
+func (p *builderMetrics) incPartitionsAssigned(n int) {
+	p.partitionsAssigned.Add(float64(n))
+}
+
+func (p *builderMetrics) incPartitionsRevoked(n int) {
+	p.partitionsRevoked.Add(float64(n))
 }
 
 func (p *builderMetrics) setProcessingDelay(partition int32, recordTimestamp time.Time) {

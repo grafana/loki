@@ -203,6 +203,7 @@ func (p *Builder) handlePartitionsAssigned(_ context.Context, _ *kgo.Client, top
 	p.partitionsMutex.Lock()
 	defer p.partitionsMutex.Unlock()
 
+	count := 0
 	for _, partitions := range topics {
 		for _, partition := range partitions {
 			p.partitionStates[partition] = &partitionState{
@@ -210,8 +211,10 @@ func (p *Builder) handlePartitionsAssigned(_ context.Context, _ *kgo.Client, top
 				lastActivity: time.Now(),
 				isProcessing: false,
 			}
+			count++
 		}
 	}
+	p.metrics.incPartitionsAssigned(count)
 }
 
 // This is not thread-safe
@@ -219,6 +222,7 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 	p.partitionsMutex.Lock()
 	defer p.partitionsMutex.Unlock()
 
+	count := 0
 	for _, partitions := range topics {
 		for _, partition := range partitions {
 			// Delete partition metrics to prevent cardinality growth
@@ -231,8 +235,10 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 				cancel(ErrPartitionRevoked)
 				delete(p.activeCalculations, partition)
 			}
+			count++
 		}
 	}
+	p.metrics.incPartitionsRevoked(count)
 }
 
 func (p *Builder) handlePartitionsLost(ctx context.Context, client *kgo.Client, topics map[string][]int32) {
