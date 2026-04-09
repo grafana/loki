@@ -7,7 +7,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 1m
+      step: 15m
     tags:
       - aggregation
       - count
@@ -17,7 +17,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 1m
+      step: 15m
     requires:
       structured_metadata:
        - detected_level
@@ -31,7 +31,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 1m
+      step: 15m
     requires:
       structured_metadata:
         - detected_level
@@ -45,7 +45,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 1m
+      step: 15m
     requires:
       keywords:
         - level

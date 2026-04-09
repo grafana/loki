@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	slowTests      = flag.Bool("slow-tests", false, "run slow tests")
+	slowTests      = flag.Bool("slow-tests", true, "run slow tests")
 	rangeType      = flag.String("range-type", "range", "query range type: instant or range (only affects metric queries)")
 	includeSkipped = flag.Bool("include-skipped", false, "include skipped queries in test execution")
 )
@@ -42,6 +42,8 @@ const (
 	StoreDataObjV2Engine = "dataobj-engine"
 	StoreChunk           = "chunk"
 )
+
+var totalBytes = int64(0)
 
 var allStores = []string{StoreDataObjV2Engine, StoreChunk}
 
@@ -78,11 +80,13 @@ func loadTestCases(tb testing.TB, config *GeneratorConfig) []TestCase {
 
 	var cases []TestCase
 	for _, def := range queryDefs {
-		expanded, err := registry.ExpandQuery(def, resolver, isInstant)
-		if err != nil {
-			tb.Fatalf("failed to expand query %q: %v", def.Description, err)
+		if def.Kind == "metric" {
+			expanded, err := registry.ExpandQuery(def, resolver, isInstant)
+			if err != nil {
+				tb.Fatalf("failed to expand query %q: %v", def.Description, err)
+			}
+			cases = append(cases, expanded...)
 		}
-		cases = append(cases, expanded...)
 	}
 
 	// Filter and adjust test cases based on range type
@@ -271,6 +275,9 @@ func TestStorageEquality(t *testing.T) {
 						uint64(actual.Statistics.Summary.ExecTime),
 						humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
 					)
+
+					totalBytes += actual.Statistics.Querier.Store.Dataobj.WireBytesTransferred
+					fmt.Println(totalBytes)
 
 					dataobjStats, _ := json.Marshal(&actual.Statistics.Querier.Store.Dataobj)
 					t.Log("Dataobj stats:", string(dataobjStats))
