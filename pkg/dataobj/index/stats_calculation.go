@@ -2,10 +2,13 @@ package index
 
 import (
 	"context"
-	"hash/fnv"
+	"crypto/sha256"
+	"encoding/binary"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/facette/natsort"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -82,12 +85,12 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 		return nil
 	}
 
-	// Compute run-ID from object path.
-	h := fnv.New64a()
-	h.Write([]byte(calcCtx.objectPath))
-	runID := int64(h.Sum64())
+	// Compute run-ID from object path using SHA-224.
+	// We take the first 8 bytes as an int64.
+	sum := sha256.Sum224([]byte(calcCtx.objectPath))
+	runID := int64(binary.BigEndian.Uint64(sum[:8]))
 
-	// Sort aggregates by label values in schema key order for deterministic output.
+	// Sort aggregates by label values in schema key order using natural sort order
 	sorted := make([]*statsAggregate, 0, len(c.aggregates))
 	for _, agg := range c.aggregates {
 		sorted = append(sorted, agg)
@@ -96,18 +99,19 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 		for _, key := range c.sortSchemaKeys {
 			vi, vj := sorted[i].labels[key], sorted[j].labels[key]
 			if vi != vj {
-				return vi < vj
+				return natsort.Compare(vi, vj)
 			}
 		}
 		return false
 	})
 
+	sortSchema := strings.Join(c.sortSchemaKeys, ",")
 	for _, agg := range sorted {
 		err := calcCtx.builder.AppendStat(
 			calcCtx.tenantID,
 			calcCtx.objectPath,
 			calcCtx.sectionIdx,
-			strings.Join(c.sortSchemaKeys, ","),
+			sortSchema,
 			agg.labels,
 			agg.minTimestamp,
 			agg.maxTimestamp,

@@ -5,6 +5,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/facette/natsort"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/memory"
@@ -87,16 +89,16 @@ func (c *labelPostingsCalculation) Flush(_ context.Context, calcCtx *logsCalcula
 		}
 	}
 
-	// Sort postings by [columnName, labelValue] for deterministic output.
+	// Sort postings by [columnName, labelValue] using natural sort order
 	keys := make([]postingKey, 0, len(c.postingsByKey))
 	for k := range c.postingsByKey {
 		keys = append(keys, k)
 	}
 	sort.Slice(keys, func(i, j int) bool {
 		if keys[i].columnName != keys[j].columnName {
-			return keys[i].columnName < keys[j].columnName
+			return natsort.Compare(keys[i].columnName, keys[j].columnName)
 		}
-		return keys[i].labelValue < keys[j].labelValue
+		return natsort.Compare(keys[i].labelValue, keys[j].labelValue)
 	})
 
 	for _, key := range keys {
