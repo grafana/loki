@@ -1,3 +1,12 @@
+# v1.97.3 (2026-03-26)
+
+* **Bug Fix**: Fix a bug where a recorded clock skew could persist on the client even if the client and server clock ended up realigning.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.97.2 (2026-03-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.97.1 (2026-03-13)
 
 * **Bug Fix**: Replace usages of the old ioutil/ package throughout the SDK.
