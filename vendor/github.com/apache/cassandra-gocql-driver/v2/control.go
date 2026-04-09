@@ -32,7 +32,6 @@ import (
 	"math/rand"
 	"net"
 	"os"
-	"regexp"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -105,7 +104,7 @@ func (c *controlConn) heartBeat() {
 
 		resp, err := c.writeFrame(&writeOptionsFrame{})
 		if err != nil {
-			c.session.logger.Debug("Control connection failed to send heartbeat.", newLogFieldError("err", err))
+			c.session.logger.Debug("Control connection failed to send heartbeat.", NewLogFieldError("err", err))
 			goto reconn
 		}
 
@@ -115,10 +114,10 @@ func (c *controlConn) heartBeat() {
 			sleepTime = 5 * time.Second
 			continue
 		case error:
-			c.session.logger.Debug("Control connection heartbeat failed.", newLogFieldError("err", actualResp))
+			c.session.logger.Debug("Control connection heartbeat failed.", NewLogFieldError("err", actualResp))
 			goto reconn
 		default:
-			c.session.logger.Error("Unknown frame in response to options.", newLogFieldString("frame_type", fmt.Sprintf("%T", resp)))
+			c.session.logger.Error("Unknown frame in response to options.", NewLogFieldString("frame_type", fmt.Sprintf("%T", resp)))
 		}
 
 	reconn:
@@ -202,55 +201,8 @@ func shuffleHosts(hosts []*HostInfo) []*HostInfo {
 	return shuffled
 }
 
-// this is going to be version dependant and a nightmare to maintain :(
-var protocolSupportRe = regexp.MustCompile(`the lowest supported version is \d+ and the greatest is (\d+)$`)
-var betaProtocolRe = regexp.MustCompile(`Beta version of the protocol used \(.*\), but USE_BETA flag is unset`)
-
-func parseProtocolFromError(err error) int {
-	errStr := err.Error()
-
-	var errProtocol ErrProtocol
-	if errors.As(err, &errProtocol) {
-		err = errProtocol.error
-	}
-
-	// I really wish this had the actual info in the error frame...
-	matches := betaProtocolRe.FindAllStringSubmatch(errStr, -1)
-	if len(matches) == 1 {
-		var protoErr *protocolError
-		if errors.As(err, &protoErr) {
-			version := protoErr.frame.Header().version.version()
-			if version > 0 {
-				return int(version - 1)
-			}
-		}
-		return 0
-	}
-
-	matches = protocolSupportRe.FindAllStringSubmatch(errStr, -1)
-	if len(matches) != 1 || len(matches[0]) != 2 {
-		var protoErr *protocolError
-		if errors.As(err, &protoErr) {
-			return int(protoErr.frame.Header().version.version())
-		}
-		return 0
-	}
-
-	max, err := strconv.Atoi(matches[0][1])
-	if err != nil {
-		return 0
-	}
-
-	return max
-}
-
-const highestProtocolVersionSupported = 5
-
 func (c *controlConn) discoverProtocol(hosts []*HostInfo) (int, error) {
 	hosts = shuffleHosts(hosts)
-
-	connCfg := *c.session.connCfg
-	connCfg.ProtoVersion = highestProtocolVersionSupported
 
 	handler := connErrorHandlerFn(func(c *Conn, err error, closed bool) {
 		// we should never get here, but if we do it means we connected to a
@@ -261,30 +213,56 @@ func (c *controlConn) discoverProtocol(hosts []*HostInfo) (int, error) {
 	})
 
 	var err error
+	var proto int
 	for _, host := range hosts {
-		var conn *Conn
-		conn, err = c.session.dial(c.session.ctx, host, &connCfg, handler)
+		proto, err = c.tryProtocolVersionsForHost(host, handler)
+		if err == nil {
+			return proto, nil
+		}
+
+		c.session.logger.Debug("Failed to discover protocol version for host.",
+			NewLogFieldIP("host_addr", host.ConnectAddress()),
+			NewLogFieldError("err", err))
+	}
+
+	return 0, err
+}
+
+func (c *controlConn) tryProtocolVersionsForHost(host *HostInfo, handler ConnErrorHandler) (int, error) {
+	connCfg := *c.session.connCfg
+
+	var triedVersions []int
+
+	for proto := highestProtocolVersionSupported; proto >= lowestProtocolVersionSupported; proto-- {
+		connCfg.ProtoVersion = proto
+
+		conn, err := c.session.dial(c.session.ctx, host, &connCfg, handler)
 		if conn != nil {
 			conn.Close()
 		}
 
 		if err == nil {
-			c.session.logger.Debug("Discovered protocol version using host.",
-				newLogFieldInt("protocol_version", connCfg.ProtoVersion), newLogFieldIp("host_addr", host.ConnectAddress()), newLogFieldString("host_id", host.HostID()))
-			return connCfg.ProtoVersion, nil
-		}
-
-		if proto := parseProtocolFromError(err); proto > 0 {
-			c.session.logger.Debug("Discovered protocol version using host after parsing protocol error.",
-				newLogFieldInt("protocol_version", proto), newLogFieldIp("host_addr", host.ConnectAddress()), newLogFieldString("host_id", host.HostID()))
 			return proto, nil
 		}
 
-		c.session.logger.Debug("Failed to discover protocol version using host.",
-			newLogFieldIp("host_addr", host.ConnectAddress()), newLogFieldString("host_id", host.HostID()), newLogFieldError("err", err))
+		var unsupportedErr *unsupportedProtocolVersionError
+		if errors.As(err, &unsupportedErr) {
+			// the host does not support this protocol version, try a lower version
+			c.session.logger.Debug("Failed to connect to host during protocol negotiation.",
+				NewLogFieldIP("host_addr", host.ConnectAddress()),
+				NewLogFieldInt("proto_version", proto),
+				NewLogFieldError("err", err))
+			triedVersions = append(triedVersions, connCfg.ProtoVersion)
+			continue
+		}
+
+		c.session.logger.Debug("Error connecting to host during protocol negotiation.",
+			NewLogFieldIP("host_addr", host.ConnectAddress()),
+			NewLogFieldError("err", err))
+		return 0, err
 	}
 
-	return 0, err
+	return 0, fmt.Errorf("gocql: failed to discover protocol version for host %s, tried versions: %v", host.ConnectAddress(), triedVersions)
 }
 
 func (c *controlConn) connect(hosts []*HostInfo, sessionInit bool) error {
@@ -305,10 +283,10 @@ func (c *controlConn) connect(hosts []*HostInfo, sessionInit bool) error {
 		conn, err = c.session.dial(c.session.ctx, host, &cfg, c)
 		if err != nil {
 			c.session.logger.Info("Control connection failed to establish a connection to host.",
-				newLogFieldIp("host_addr", host.ConnectAddress()),
-				newLogFieldInt("port", host.Port()),
-				newLogFieldString("host_id", host.HostID()),
-				newLogFieldError("err", err))
+				NewLogFieldIP("host_addr", host.ConnectAddress()),
+				NewLogFieldInt("port", host.Port()),
+				NewLogFieldString("host_id", host.HostID()),
+				NewLogFieldError("err", err))
 			continue
 		}
 		err = c.setupConn(conn, sessionInit)
@@ -316,10 +294,10 @@ func (c *controlConn) connect(hosts []*HostInfo, sessionInit bool) error {
 			break
 		}
 		c.session.logger.Info("Control connection setup failed after connecting to host.",
-			newLogFieldIp("host_addr", host.ConnectAddress()),
-			newLogFieldInt("port", host.Port()),
-			newLogFieldString("host_id", host.HostID()),
-			newLogFieldError("err", err))
+			NewLogFieldIP("host_addr", host.ConnectAddress()),
+			NewLogFieldInt("port", host.Port()),
+			NewLogFieldString("host_id", host.HostID()),
+			NewLogFieldError("err", err))
 		conn.Close()
 		conn = nil
 	}
@@ -368,7 +346,7 @@ func (c *controlConn) setupConn(conn *Conn, sessionInit bool) error {
 			msg = "Added control host (session initialization)."
 		}
 		logHelper(c.session.logger, logLevel, msg,
-			newLogFieldIp("host_addr", host.ConnectAddress()), newLogFieldString("host_id", host.HostID()))
+			NewLogFieldIP("host_addr", host.ConnectAddress()), NewLogFieldString("host_id", host.HostID()))
 	}
 
 	if err := c.registerEvents(conn); err != nil {
@@ -383,9 +361,16 @@ func (c *controlConn) setupConn(conn *Conn, sessionInit bool) error {
 	c.conn.Store(ch)
 
 	c.session.logger.Info("Control connection connected to host.",
-		newLogFieldIp("host_addr", host.ConnectAddress()), newLogFieldString("host_id", host.HostID()))
+		NewLogFieldIP("host_addr", host.ConnectAddress()), NewLogFieldString("host_id", host.HostID()))
 
 	if c.session.initialized() {
+		refreshErr := c.session.schemaDescriber.refreshSchemaMetadata()
+		if refreshErr != nil {
+			c.session.logger.Warning("Failed to refresh schema metadata after reconnecting. "+
+				"Schema might be stale or missing, causing token-aware routing to fall back to the configured fallback policy. "+
+				"Keyspace metadata queries might fail with ErrKeyspaceDoesNotExist until schema refresh succeeds.",
+				NewLogFieldError("err", refreshErr))
+		}
 		// We connected to control conn, so add the connect the host in pool as well.
 		// Notify session we can start trying to connect to the node.
 		// We can't start the fill before the session is initialized, otherwise the fill would interfere
@@ -445,14 +430,14 @@ func (c *controlConn) reconnect() {
 
 	if err != nil {
 		c.session.logger.Error("Unable to reconnect control connection.",
-			newLogFieldError("err", err))
+			NewLogFieldError("err", err))
 		return
 	}
 
 	err = c.session.refreshRing()
 	if err != nil {
 		c.session.logger.Warning("Unable to refresh ring.",
-			newLogFieldError("err", err))
+			NewLogFieldError("err", err))
 	}
 }
 
@@ -482,7 +467,7 @@ func (c *controlConn) attemptReconnect() (*Conn, error) {
 		return conn, err
 	}
 
-	c.session.logger.Error("Unable to connect to any ring node, control connection falling back to initial contact points.", newLogFieldError("err", err))
+	c.session.logger.Error("Unable to connect to any ring node, control connection falling back to initial contact points.", NewLogFieldError("err", err))
 	// Fallback to initial contact points, as it may be the case that all known initialHosts
 	// changed their IPs while keeping the same hostname(s).
 	initialHosts, resolvErr := addrsToHosts(c.session.cfg.Hosts, c.session.cfg.Port, c.session.logger)
@@ -500,10 +485,10 @@ func (c *controlConn) attemptReconnectToAnyOfHosts(hosts []*HostInfo) (*Conn, er
 		conn, err = c.session.connect(c.session.ctx, host, c)
 		if err != nil {
 			c.session.logger.Info("During reconnection, control connection failed to establish a connection to host.",
-				newLogFieldIp("host_addr", host.ConnectAddress()),
-				newLogFieldInt("port", host.Port()),
-				newLogFieldString("host_id", host.HostID()),
-				newLogFieldError("err", err))
+				NewLogFieldIP("host_addr", host.ConnectAddress()),
+				NewLogFieldInt("port", host.Port()),
+				NewLogFieldString("host_id", host.HostID()),
+				NewLogFieldError("err", err))
 			continue
 		}
 		err = c.setupConn(conn, false)
@@ -511,10 +496,10 @@ func (c *controlConn) attemptReconnectToAnyOfHosts(hosts []*HostInfo) (*Conn, er
 			break
 		}
 		c.session.logger.Info("During reconnection, control connection setup failed after connecting to host.",
-			newLogFieldIp("host_addr", host.ConnectAddress()),
-			newLogFieldInt("port", host.Port()),
-			newLogFieldString("host_id", host.HostID()),
-			newLogFieldError("err", err))
+			NewLogFieldIP("host_addr", host.ConnectAddress()),
+			NewLogFieldInt("port", host.Port()),
+			NewLogFieldString("host_id", host.HostID()),
+			NewLogFieldError("err", err))
 		conn.Close()
 		conn = nil
 	}
@@ -535,9 +520,9 @@ func (c *controlConn) HandleError(conn *Conn, err error, closed bool) {
 	}
 
 	c.session.logger.Warning("Control connection error.",
-		newLogFieldIp("host_addr", conn.host.ConnectAddress()),
-		newLogFieldString("host_id", conn.host.HostID()),
-		newLogFieldError("err", err))
+		NewLogFieldIP("host_addr", conn.host.ConnectAddress()),
+		NewLogFieldString("host_id", conn.host.HostID()),
+		NewLogFieldError("err", err))
 
 	c.reconnect()
 }
@@ -602,7 +587,7 @@ func (c *controlConn) query(statement string, values ...interface{}) (iter *Iter
 
 		if iter.err != nil {
 			c.session.logger.Warning("Error executing control connection statement.",
-				newLogFieldString("statement", statement), newLogFieldError("err", iter.err))
+				NewLogFieldString("statement", statement), NewLogFieldError("err", iter.err))
 		}
 
 		qry.metrics.attempt(0)
@@ -618,6 +603,12 @@ func (c *controlConn) query(statement string, values ...interface{}) (iter *Iter
 func (c *controlConn) awaitSchemaAgreement() error {
 	return c.withConn(func(conn *Conn) *Iter {
 		return newErrIter(conn.awaitSchemaAgreement(context.TODO()), &queryMetrics{}, "", nil, nil)
+	}).err
+}
+
+func (c *controlConn) awaitSchemaAgreementWithTimeout(timeout time.Duration) error {
+	return c.withConn(func(conn *Conn) *Iter {
+		return newErrIter(conn.awaitSchemaAgreementWithTimeout(context.TODO(), timeout), &queryMetrics{}, "", nil, nil)
 	}).err
 }
 

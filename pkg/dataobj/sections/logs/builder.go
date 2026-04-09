@@ -82,6 +82,13 @@ type BuilderOptions struct {
 	// creating and sorting of stripes.
 	AppendStrategy AppendStrategy
 
+	// EstimatedCompressionRatio is the expected compression ratio used by
+	// [EstimatedSize] to approximate compressed output size from uncompressed
+	// buffered records when using [AppendOrdered]. Only takes effect with
+	// AppendOrdered; ignored for AppendUnordered where stripes are already
+	// compressed. A value of 0 or 1 disables the adjustment.
+	EstimatedCompressionRatio int
+
 	// SortOrder defines the order in which the rows of the logs sections are sorted.
 	// They can either be sorted by [streamID ASC, timestamp DESC] ([SortStreamASC]) or [timestamp DESC, streamID ASC] ([SortTimestampDESC]).
 	SortOrder SortOrder
@@ -192,7 +199,12 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 
 	compressionOpts := zstdCompressionOpts(encLevel)
 
-	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
+	buf := &b.stripeBuffer
+	if b.opts.AppendStrategy == AppendOrdered {
+		// If we are in AppendOrdered mode, we skip the stripe part of the algorithm, so we use the section buffer instead.
+		buf = &b.sectionBuffer
+	}
+	stripe := buildTable(buf, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
 	b.stripes = append(b.stripes, stripe)
 	b.stripesUncompressedSize += stripe.UncompressedSize()
 	b.stripesCompressedSize += stripe.CompressedSize()
@@ -246,10 +258,19 @@ func (b *Builder) UncompressedSize() int {
 }
 
 // EstimatedSize returns the estimated size of the Logs section in bytes.
+//
+// When using [AppendOrdered], records are held uncompressed in memory until
+// flush. If [BuilderOptions.EstimatedCompressionRatio] is set (> 1), the
+// uncompressed record size is divided by that ratio to approximate compressed
+// output size.
 func (b *Builder) EstimatedSize() int {
 	var size int
 
-	size += b.recordsSize
+	if b.opts.AppendStrategy == AppendOrdered && b.opts.EstimatedCompressionRatio > 1 {
+		size += b.recordsSize / b.opts.EstimatedCompressionRatio
+	} else {
+		size += b.recordsSize
+	}
 	size += b.stripesCompressedSize
 
 	return size

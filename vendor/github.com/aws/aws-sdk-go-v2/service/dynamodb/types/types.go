@@ -2650,6 +2650,9 @@ type ReplicaDescription struct {
 	// The name of the Region.
 	RegionName *string
 
+	// The Amazon Resource Name (ARN) of the global table replica.
+	ReplicaArn *string
+
 	// The time at which the replica was first detected as inaccessible. To determine
 	// cause of inaccessibility check the ReplicaStatus property.
 	ReplicaInaccessibleDateTime *time.Time

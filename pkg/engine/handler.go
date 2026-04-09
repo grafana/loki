@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -110,7 +112,7 @@ func executorHandler(
 		if err != nil {
 			return nil, fmt.Errorf("creating engine instant-metric results cache: %w", err)
 		}
-		logCache, err := newCache("log.", stats.EngineLogResultCache)
+		logCache, err := newCache("log.", stats.LogResultCache)
 		if err != nil {
 			return nil, fmt.Errorf("creating engine log results cache: %w", err)
 		}
@@ -122,7 +124,51 @@ func executorHandler(
 		h = cacheMw.Wrap(h)
 	}
 
+	h = metricsRecordingMiddleware{logger: logger}.Wrap(h)
+
 	return queryrange.NewSerializeHTTPHandler(h, queryrange.DefaultCodec), nil
+}
+
+// metricsRecordingMiddleware records query metrics (latency, cache stats, etc.)
+// for every request — including full cache hits where Execute() is never called.
+// It sits as the outermost middleware so it fires exactly once per request.
+type metricsRecordingMiddleware struct {
+	logger log.Logger
+}
+
+func (m metricsRecordingMiddleware) Wrap(next queryrangebase.Handler) queryrangebase.Handler {
+	return &metricsRecordingHandler{next: next, logger: m.logger}
+}
+
+type metricsRecordingHandler struct {
+	next   queryrangebase.Handler
+	logger log.Logger
+}
+
+func (h *metricsRecordingHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	resp, err := h.next.Do(ctx, req)
+	if err != nil || resp == nil {
+		return resp, err
+	}
+
+	params, paramsErr := queryrange.ParamsFromRequest(req)
+	if paramsErr != nil {
+		return resp, nil
+	}
+
+	logger := utillog.WithContext(ctx, h.logger)
+	switch r := resp.(type) {
+	case *queryrange.LokiResponse:
+		var result logqlmodel.Streams
+		if r.Data.ResultType == loghttp.ResultTypeStream {
+			result = r.Data.Result
+		}
+		logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), r.Statistics, result)
+	case *queryrange.LokiPromResponse:
+		logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), r.Statistics, nil)
+	}
+
+	return resp, nil
 }
 
 // newMetricStepAlignMiddleware returns a middleware that applies step alignment

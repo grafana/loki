@@ -108,9 +108,9 @@ Now that you have prepared your environment and collected the necessary credenti
          usernameKey: username
          passwordKey: password
        secret:
-           create: false
-           name: metrics
-           namespace: meta
+         create: false
+         name: metrics
+         namespace: meta
 
      - name: loki
        type: loki
@@ -120,9 +120,9 @@ Now that you have prepared your environment and collected the necessary credenti
          usernameKey: username
          passwordKey: password
        secret:
-           create: false
-           name: logs
-           namespace: meta
+         create: false
+         name: logs
+         namespace: meta
 
    ```
 
@@ -130,8 +130,8 @@ Now that you have prepared your environment and collected the necessary credenti
 
    ```yaml
    # Global Label to be added to all telemetry data. Should reflect a recognizable name for the cluster.
-    cluster:
-        name: loki-meta-monitoring-cluster
+   cluster:
+     name: loki-meta-monitoring-cluster
    ```
 
 1. The default values file assumes that you have deployed Loki in the `loki` namespace and will deploy the Kubernetes monitoring stack in the `meta` namespace. If you have deployed Loki in a different namespace, you will need to update `namespaces` in the `values.yaml` file to match the namespace where Loki is deployed. Here is an example:

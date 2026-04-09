@@ -26,8 +26,12 @@ func Concat(alloc *memory.Allocator, in []Array) (Array, error) {
 		return concatNull(alloc, in)
 	case KindBool:
 		return concatBool(alloc, in)
+	case KindInt32:
+		return concatNumber[int32](alloc, in)
 	case KindInt64:
 		return concatNumber[int64](alloc, in)
+	case KindUint32:
+		return concatNumber[uint32](alloc, in)
 	case KindUint64:
 		return concatNumber[uint64](alloc, in)
 	case KindUTF8:

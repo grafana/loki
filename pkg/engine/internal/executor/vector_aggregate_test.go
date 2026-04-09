@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 func init() {
@@ -148,4 +149,78 @@ func TestVectorAggregationPipeline(t *testing.T) {
 				"value mismatch for group %s at timestamp %v", group, ts)
 		}
 	}
+}
+
+// TestVectorAggregationPipeline_MissingGroupingColumn verifies that a "by" grouping column
+// absent from the Arrow schema is eliminated from the series.
+//
+// Before the fix, an absent column fell back to a scalar "" (non-null), which was included
+// in the aggregation label set with empty value causing a mismatch in response compared to chunks engine.
+func TestVectorAggregationPipeline_MissingGroupingColumn(t *testing.T) {
+	const (
+		fqnDetectedLevel = "utf8.metadata.detected_level"
+		fqnLevel         = "utf8.label.level"
+	)
+
+	schemaWithLevel := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromFQN(colTs, false),
+		semconv.FieldFromFQN(colVal, false),
+		semconv.FieldFromFQN(fqnDetectedLevel, true),
+		semconv.FieldFromFQN(fqnLevel, true),
+	}, nil)
+
+	schemaWithoutLevel := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromFQN(colTs, false),
+		semconv.FieldFromFQN(colVal, false),
+		semconv.FieldFromFQN(fqnDetectedLevel, true),
+	}, nil)
+
+	ts := time.Unix(20, 0).UTC()
+
+	rowsWithLevel := arrowtest.Rows{
+		{colTs: ts, colVal: float64(1), fqnDetectedLevel: "info", fqnLevel: nil},
+		{colTs: ts, colVal: float64(2), fqnDetectedLevel: "info", fqnLevel: nil},
+	}
+
+	rowsWithoutLevel := arrowtest.Rows{
+		{colTs: ts, colVal: float64(3), fqnDetectedLevel: "info"},
+		{colTs: ts, colVal: float64(4), fqnDetectedLevel: "info"},
+	}
+
+	opts := vectorAggregationOptions{
+		grouping: physical.Grouping{
+			Columns: []physical.ColumnExpression{
+				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeAmbiguous}},
+				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "detected_level", Type: types.ColumnTypeAmbiguous}},
+			},
+		},
+		operation:      types.VectorAggregationTypeSum,
+		maxQuerySeries: 0,
+	}
+
+	inputA := NewArrowtestPipeline(schemaWithLevel, rowsWithLevel)
+	inputB := NewArrowtestPipeline(schemaWithoutLevel, rowsWithoutLevel)
+
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
+	require.NoError(t, err)
+	defer pipeline.Close()
+
+	record, err := pipeline.Read(t.Context())
+	require.NoError(t, err)
+
+	result, err := arrowtest.RecordRows(record)
+	require.NoError(t, err)
+
+	// All four rows share the same logical series — detected_level="info" with level absent.
+	// They must merge into a single bucket (sum=10), not split by whether level was in the schema.
+	expect := arrowtest.Rows{
+		{
+			colTs:                           ts,
+			colVal:                          float64(10), // 1+2+3+4
+			"utf8.ambiguous.detected_level": "info",
+			"utf8.ambiguous.level":          nil,
+		},
+	}
+	require.Equal(t, len(expect), len(result), "absent grouping column must not split series into separate streams")
+	require.ElementsMatch(t, expect, result)
 }

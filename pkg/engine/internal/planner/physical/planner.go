@@ -751,7 +751,7 @@ func disambiguateExpression(expr Expression, conflictingLabels []string) (Expres
 // if any optimizations can be applied.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	for i, root := range plan.Roots() {
-		optimizations := []*optimization{
+		optimizations := []*Optimization{
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
 			),
@@ -773,8 +773,8 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 				&removeNoopFilter{plan: plan},
 			),
 		}
-		optimizer := newOptimizer(plan, optimizations)
-		optimizer.optimize(root)
+		optimizer := NewOptimizer(plan, optimizations)
+		optimizer.Optimize(root)
 		if i == 1 {
 			return nil, errors.New("physical plan must only have exactly one root node")
 		}

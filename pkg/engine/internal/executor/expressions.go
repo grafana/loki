@@ -27,60 +27,12 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.RecordBa
 		return NewScalar(expr.Literal(), int(input.NumRows())), nil
 
 	case *physical.ColumnExpr:
-		colIdent := semconv.NewIdentifier(expr.Ref.Column, expr.Ref.Type, types.Loki.String)
-
-		// For non-ambiguous columns, we can look up the column in the schema by its fully qualified name.
-		if expr.Ref.Type != types.ColumnTypeAmbiguous {
-			for idx, field := range input.Schema().Fields() {
-				ident, err := e.identCache.ParseFQN(field.Name)
-				if err != nil {
-					return nil, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
-				}
-				if ident.ShortName() == colIdent.ShortName() && ident.ColumnType() == colIdent.ColumnType() {
-					return input.Column(idx), nil
-				}
-			}
+		arr, found, err := e.lookupColumnExpr(expr, input)
+		if err != nil {
+			return nil, err
 		}
-
-		// For ambiguous columns, we need to filter on the name and type and combine matching columns into a CoalesceVector.
-		if expr.Ref.Type == types.ColumnTypeAmbiguous {
-			var fieldIndices []int
-			var fieldIdents []*semconv.Identifier
-
-			for idx, field := range input.Schema().Fields() {
-				ident, err := e.identCache.ParseFQN(field.Name)
-				if err != nil {
-					return nil, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
-				}
-				if ident.ShortName() == colIdent.ShortName() {
-					fieldIndices = append(fieldIndices, idx)
-					fieldIdents = append(fieldIdents, ident)
-				}
-			}
-
-			// Collect all matching columns and order by precedence
-			var vecs []*columnWithType
-			for i := range fieldIndices {
-				idx := fieldIndices[i]
-				ident := fieldIdents[i]
-
-				// TODO(ashwanth): Support other data types in CoalesceVector.
-				// For now, ensure all vectors are strings to avoid type conflicts.
-				if ident.DataType() != types.Loki.String {
-					return nil, fmt.Errorf("column %s has datatype %s, but expression expects %s", ident.ShortName(), ident.DataType(), types.Loki.String)
-				}
-				vecs = append(vecs, &columnWithType{col: input.Column(idx), ct: ident.ColumnType()})
-			}
-
-			// Single column matches
-			if len(vecs) == 1 {
-				return vecs[0].col, nil
-			}
-
-			// Multiple columns match
-			if len(vecs) > 1 {
-				return NewCoalesce(vecs), nil
-			}
+		if found {
+			return arr, nil
 		}
 
 		// A non-existent column is represented as a string scalar with zero-value.
@@ -147,6 +99,81 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.RecordBa
 	}
 
 	return nil, fmt.Errorf("unknown expression: %v", expr)
+}
+
+// lookupColumnExpr attempts to find the column(s) referenced by colExpr in the given record.
+// It returns (array, true, nil) when the column is found, or (nil, false, nil) when it is absent.
+func (e expressionEvaluator) lookupColumnExpr(colExpr *physical.ColumnExpr, input arrow.RecordBatch) (arrow.Array, bool, error) {
+	colIdent := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
+
+	// For non-ambiguous columns, we can look up the column in the schema by its fully qualified name.
+	if colExpr.Ref.Type != types.ColumnTypeAmbiguous {
+		for idx, field := range input.Schema().Fields() {
+			ident, err := e.identCache.ParseFQN(field.Name)
+			if err != nil {
+				return nil, false, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
+			}
+			if ident.ShortName() == colIdent.ShortName() && ident.ColumnType() == colIdent.ColumnType() {
+				return input.Column(idx), true, nil
+			}
+		}
+		return nil, false, nil
+	}
+
+	// For ambiguous columns, we need to filter on the name and type and combine matching columns into a CoalesceVector.
+	if colExpr.Ref.Type == types.ColumnTypeAmbiguous {
+		// Collect all matching columns and order by precedence
+		var vecs []*columnWithType
+		for idx, field := range input.Schema().Fields() {
+			ident, err := e.identCache.ParseFQN(field.Name)
+			if err != nil {
+				return nil, false, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
+			}
+			if ident.ShortName() != colIdent.ShortName() {
+				continue
+			}
+			// TODO(ashwanth): Support other data types in CoalesceVector.
+			// For now, ensure all vectors are strings to avoid type conflicts.
+			if ident.DataType() != types.Loki.String {
+				return nil, false, fmt.Errorf("column %s has datatype %s, but expression expects %s", ident.ShortName(), ident.DataType(), types.Loki.String)
+			}
+			vecs = append(vecs, &columnWithType{col: input.Column(idx), ct: ident.ColumnType()})
+		}
+
+		// Single column matches
+		if len(vecs) == 1 {
+			return vecs[0].col, true, nil
+		}
+
+		// Multiple columns match
+		if len(vecs) > 1 {
+			return NewCoalesce(vecs), true, nil
+		}
+	}
+
+	return nil, false, nil
+}
+
+// evalForGrouping is like eval but treats absent columns as null rather than empty string.
+// When a column referenced in a grouping expression does not exist in the record, the
+// regular eval returns a scalar "" so that label-filter expressions like `| foo=""` match
+// entries where foo is absent. For grouping that behaviour is wrong: a missing label must
+// not appear in the output label set at all.  Returning an all-null array lets
+// getLabelValues/getFields skip the column for those rows, so they merge into the same
+// aggregation bucket as rows from data objects where the column is present but null.
+func (e expressionEvaluator) evalForGrouping(expr physical.Expression, input arrow.RecordBatch) (arrow.Array, error) {
+	colExpr, ok := expr.(*physical.ColumnExpr)
+	if !ok {
+		return e.eval(expr, input)
+	}
+	arr, found, err := e.lookupColumnExpr(colExpr, input)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return arr, nil
+	}
+	return newNullStringArray(int(input.NumRows())), nil
 }
 
 // newFunc returns a new function that can evaluate an input against a binded expression.

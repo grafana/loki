@@ -115,7 +115,7 @@ func (arr *UTF8) Offsets() []int32 { return arr.offsets }
 func (arr *UTF8) Size() int {
 	var (
 		validitySize = arr.validity.Len() / 8
-		dataSize     = len(arr.data)
+		dataSize     = arr.DataLen()
 		offsetsSize  = len(arr.offsets) * 4 // *4 for int32
 	)
 	return validitySize + dataSize + offsetsSize
@@ -199,7 +199,7 @@ func (b *UTF8Builder) Grow(n int) {
 }
 
 func (b *UTF8Builder) needGrow(n int) bool {
-	return b.offsets.Len()+n > b.offsets.Cap()
+	return b.validity.Len()+n > b.validity.Cap() || b.offsets.Len()+n > b.offsets.Cap()
 }
 
 // GrowData increases b's bytes capacity, if necessary, to guarantee space

@@ -96,19 +96,19 @@ Additionally, there are the below config options available for the Main compacto
 
 ```yaml
 compactor:
-   jobs_config:
-      deletion:
-         # Object storage path prefix for storing deletion manifests.
-         # CLI flag: -compactor.jobs.deletion.deletion-manifest-store-prefix
-         [deletion_manifest_store_prefix: <string> | default = "__deletion_manifest__/"]
-         
-         # Maximum time to wait for a job before considering it failed and retrying.
-         # CLI flag: -compactor.jobs.deletion.timeout
-         [timeout: <duration> | default = 15m]
-         
-         # Maximum number of times to retry a failed or timed out job.
-         # CLI flag: -compactor.jobs.deletion.max-retries
-         [max_retries: <int> | default = 3]
+  jobs_config:
+    deletion:
+      # Object storage path prefix for storing deletion manifests.
+      # CLI flag: -compactor.jobs.deletion.deletion-manifest-store-prefix
+      [deletion_manifest_store_prefix: <string> | default = "__deletion_manifest__/"]
+      
+      # Maximum time to wait for a job before considering it failed and retrying.
+      # CLI flag: -compactor.jobs.deletion.timeout
+      [timeout: <duration> | default = 15m]
+      
+      # Maximum number of times to retry a failed or timed out job.
+      # CLI flag: -compactor.jobs.deletion.max-retries
+      [max_retries: <int> | default = 3]
 ```
 
 ### Config for Worker mode
@@ -116,7 +116,7 @@ compactor:
 To run Compactor in Worker mode, the Horizontal Scaling Mode needs to be set to "worker" and Main compactor's GRPC address needs to be set:
 ```yaml
 common:
-   compactor_grpc_address: <HOST>:<GRPC_PORT>
+  compactor_grpc_address: <HOST>:<GRPC_PORT>
 compactor:
   # CLI flag: -compactor.horizontal-scaling-mode="worker"
   horizontal_scaling_mode: "worker"
@@ -126,15 +126,15 @@ Additionally, there are the below config options available for the Worker to con
 
 ```yaml
 compactor:
-   jobs_config:
-      deletion:
-         # Maximum number of chunks to process concurrently in each worker.
-         # CLI flag: -compactor.jobs.deletion.chunk-processing-concurrency
-         [chunk_processing_concurrency: <int> | default = 3]
+  jobs_config:
+    deletion:
+      # Maximum number of chunks to process concurrently in each worker.
+      # CLI flag: -compactor.jobs.deletion.chunk-processing-concurrency
+      [chunk_processing_concurrency: <int> | default = 3]
 
 worker_config:
-   # Number of sub-workers to run for concurrent processing of jobs. Setting it to 0
-   # will run a subworker per available CPU core.
-   # CLI flag: -compactor.worker.num-sub-workers
-   [num_sub_workers: <int> | default = 0]
+  # Number of sub-workers to run for concurrent processing of jobs. Setting it to 0
+  # will run a subworker per available CPU core.
+  # CLI flag: -compactor.worker.num-sub-workers
+  [num_sub_workers: <int> | default = 0]
 ```

@@ -2,6 +2,7 @@ package querytee
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -206,6 +207,19 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// V2 only supports query and query_range endpoints (LokiRequest and LokiInstantRequest).
+	// For unsupported request types, route directly to v1 to avoid errors from v2.
+	if !isV2SupportedRequest(req) && (f.routingMode == RoutingModeV2Preferred || f.routingMode == RoutingModeRace) {
+		level.Debug(f.logger).Log(
+			"msg", "request type not supported by v2, routing to v1 only",
+			"path", r.URL.Path,
+			"type", fmt.Sprintf("%T", req),
+		)
+		resp, err = f.v1Handler.Do(ctx, req)
+		f.writeResponse(ctx, r, w, resp, err)
+		return
+	}
+
 	// Determine sampling decision for this request.
 	var sampled bool
 	var correlationID string
@@ -346,6 +360,23 @@ func (f *SplittingHandler) serveSplits(ctx context.Context, req queryrangebase.R
 			addWarningToResponse(resp, "unsupported query was not split and sent to v1 backend only")
 		}
 		return resp, err
+	}
+}
+
+// isV2SupportedRequest returns true if the decoded request type is supported by the
+// v2 backend (Thor query engine). Currently only range queries (LokiRequest) and
+// instant queries (LokiInstantRequest) are supported. Update this function as Thor
+// gains support for additional request types (e.g., labels, series).
+//
+// Note: when splitLag > 0, unsupported types are also caught by the serveSplits
+// default case (line 342). This check makes this requirement more clear, and catches
+// the case where splitLag=0.
+func isV2SupportedRequest(req queryrangebase.Request) bool {
+	switch req.(type) {
+	case *queryrange.LokiRequest, *queryrange.LokiInstantRequest:
+		return true
+	default:
+		return false
 	}
 }
 
