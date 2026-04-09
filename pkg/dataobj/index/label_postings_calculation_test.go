@@ -2,10 +2,12 @@ package index
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
@@ -220,4 +222,70 @@ func TestLabelPostingsCalculation_MultipleBatches(t *testing.T) {
 	}
 	require.True(t, labels["svcA"])
 	require.True(t, labels["svcB"])
+}
+
+// BenchmarkLabelPostingsCalculation_ProcessBatch benchmarks ProcessBatch with
+// varying numbers of log records and distinct streams. This helps track
+// performance since the calculation must iterate through all rows in a logs
+// section.
+func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
+	benchCases := []struct {
+		records int
+		streams int
+	}{
+		{records: 1_000, streams: 10},
+		{records: 10_000, streams: 10},
+		{records: 10_000, streams: 100},
+		{records: 100_000, streams: 10},
+		{records: 100_000, streams: 100},
+		{records: 100_000, streams: 1_000},
+	}
+
+	for _, bc := range benchCases {
+		b.Run(fmt.Sprintf("records=%d/streams=%d", bc.records, bc.streams), func(b *testing.B) {
+			// Build stream labels map.
+			streamLabels := make(map[int64]labels.Labels, bc.streams)
+			for i := range bc.streams {
+				streamLabels[int64(i)] = labels.FromStrings("service_name", fmt.Sprintf("svc-%d", i))
+			}
+
+			// Pre-build the batch: records are distributed round-robin across streams.
+			batch := make([]logs.Record, bc.records)
+			for i := range batch {
+				batch[i] = logs.Record{
+					StreamID:  int64(i % bc.streams),
+					Timestamp: time.Unix(int64(i), 0).UTC(),
+					Line:      []byte("log line payload for benchmarking"),
+				}
+			}
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for range b.N {
+				builder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
+				if err != nil {
+					b.Fatal(err)
+				}
+				calcCtx := &logsCalculationContext{
+					tenantID:     "bench-tenant",
+					objectPath:   "bench/path",
+					sectionIdx:   0,
+					streamLabels: streamLabels,
+					builder:      builder,
+				}
+				calc := &labelPostingsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
+
+				if err := calc.Prepare(context.Background(), nil, logs.Stats{}); err != nil {
+					b.Fatal(err)
+				}
+				if err := calc.ProcessBatch(context.Background(), calcCtx, batch); err != nil {
+					b.Fatal(err)
+				}
+				if err := calc.Flush(context.Background(), calcCtx); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }

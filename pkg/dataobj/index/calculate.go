@@ -7,9 +7,11 @@ import (
 	"io"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
@@ -21,6 +23,8 @@ import (
 )
 
 type logsIndexCalculation interface {
+	// Name returns a short identifier for this calculation step, used for metrics labels.
+	Name() string
 	// Prepare is called before the first batch of logs is processed in order to initialize any state.
 	Prepare(ctx context.Context, section *dataobj.Section, stats logs.Stats) error
 	// ProcessBatch is called for each batch of logs records.
@@ -55,10 +59,24 @@ func getLogsCalculationSteps() []logsIndexCalculation {
 type Calculator struct {
 	indexobjBuilder *indexobj.Builder
 	builderMtx      sync.Mutex
+	metrics         *calculatorMetrics
 }
 
 func NewCalculator(indexobjBuilder *indexobj.Builder) *Calculator {
-	return &Calculator{indexobjBuilder: indexobjBuilder}
+	return &Calculator{
+		indexobjBuilder: indexobjBuilder,
+		metrics:         newCalculatorMetrics(),
+	}
+}
+
+// RegisterMetrics registers the calculator's prometheus metrics with the given registerer.
+func (c *Calculator) RegisterMetrics(reg prometheus.Registerer) error {
+	return c.metrics.register(reg)
+}
+
+// UnregisterMetrics unregisters the calculator's prometheus metrics.
+func (c *Calculator) UnregisterMetrics(reg prometheus.Registerer) {
+	c.metrics.unregister(reg)
 }
 
 func (c *Calculator) Reset() {
@@ -214,6 +232,9 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 
 	calculationSteps := getLogsCalculationSteps()
 
+	// Track cumulative duration per calculation step across all batches + flush.
+	stepDurations := make([]time.Duration, len(calculationSteps))
+
 	for _, calculation := range calculationSteps {
 		if err := calculation.Prepare(ctx, section, stats); err != nil {
 			return fmt.Errorf("failed to prepare calculation: %w", err)
@@ -240,23 +261,31 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 
 		cnt += n
 		c.builderMtx.Lock()
-		for _, calculation := range calculationSteps {
+		for i, calculation := range calculationSteps {
+			start := time.Now()
 			if err := calculation.ProcessBatch(ctx, calculationContext, logsBuf[:n]); err != nil {
 				c.builderMtx.Unlock()
 				return fmt.Errorf("failed to process batch: %w", err)
 			}
+			stepDurations[i] += time.Since(start)
 		}
 		c.builderMtx.Unlock()
 	}
 
 	c.builderMtx.Lock()
-	for _, calculation := range calculationSteps {
+	for i, calculation := range calculationSteps {
+		start := time.Now()
 		if err := calculation.Flush(ctx, calculationContext); err != nil {
 			c.builderMtx.Unlock()
 			return fmt.Errorf("failed to flush calculation results: %w", err)
 		}
+		stepDurations[i] += time.Since(start)
 	}
 	c.builderMtx.Unlock()
+
+	for i, calculation := range calculationSteps {
+		c.metrics.observeStepDuration(calculation.Name(), stepDurations[i])
+	}
 
 	level.Info(sectionLogger).Log("msg", "finished processing logs section", "rowsProcessed", cnt)
 	return nil

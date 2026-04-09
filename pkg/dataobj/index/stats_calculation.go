@@ -27,6 +27,8 @@ type statsAggregate struct {
 	uncompressedSize int64
 }
 
+func (c *statsCalculation) Name() string { return "stats" }
+
 func (c *statsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs.Stats) error {
 	c.aggregates = make(map[string]*statsAggregate)
 	return nil

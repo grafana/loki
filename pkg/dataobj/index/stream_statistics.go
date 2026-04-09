@@ -10,6 +10,8 @@ import (
 
 type streamStatisticsCalculation struct{}
 
+func (c *streamStatisticsCalculation) Name() string { return "stream_statistics" }
+
 func (c *streamStatisticsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs.Stats) error {
 	return nil
 }

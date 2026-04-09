@@ -25,6 +25,8 @@ type columnValuesCalculation struct {
 	maxStreamID         int64
 }
 
+func (c *columnValuesCalculation) Name() string { return "column_values" }
+
 func (c *columnValuesCalculation) Prepare(_ context.Context, _ *dataobj.Section, stats logs.Stats) error {
 	c.columnBloomBuilders = make(map[string]*bloom.BloomFilter)
 	c.columnIndexes = make(map[string]int64)
