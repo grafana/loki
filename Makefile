@@ -345,7 +345,6 @@ GOFLAGS=""
 endif
 lint: ## run linters
 ifeq ($(BUILD_IN_CONTAINER),true)
-	docker pull $(BUILD_IMAGE)
 	$(run_in_container)
 else
 	go version
