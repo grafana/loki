@@ -1415,7 +1415,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Limit:     1000,
 				Step:      1,
 				Direction: logproto.BACKWARD,
-				Path:      "/api/prom/query_range",
+				Path:      "/loki/api/v1/query_range",
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
@@ -1448,7 +1448,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Limit:     1000,
 				Step:      1,
 				Direction: logproto.FORWARD,
-				Path:      "/api/prom/query_range",
+				Path:      "/loki/api/v1/query_range",
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
@@ -1481,7 +1481,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Limit:     2,
 				Step:      1,
 				Direction: logproto.FORWARD,
-				Path:      "/api/prom/query_range",
+				Path:      "/loki/api/v1/query_range",
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
@@ -1512,7 +1512,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Limit:     2,
 				Step:      1,
 				Direction: logproto.BACKWARD,
-				Path:      "/api/prom/query_range",
+				Path:      "/loki/api/v1/query_range",
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
@@ -1817,7 +1817,7 @@ func Test_ExitEarly(t *testing.T) {
 		Limit:     2,
 		Step:      1,
 		Direction: logproto.FORWARD,
-		Path:      "/api/prom/query_range",
+		Path:      "/loki/api/v1/query_range",
 	}
 
 	expected := &LokiResponse{
@@ -1905,7 +1905,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 		Limit:     uint32(n / 2),
 		Step:      1,
 		Direction: logproto.FORWARD,
-		Path:      "/api/prom/query_range",
+		Path:      "/loki/api/v1/query_range",
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")

@@ -528,7 +528,7 @@ func extractTenant(r *http.Request) string {
 }
 
 func getQueryType(path, query string) string {
-	isQueryRoute := path == constants.PathLokiQueryRange || path == constants.PathLokiQuery || path == constants.PathPromQuery
+	isQueryRoute := path == constants.PathLokiQueryRange || path == constants.PathLokiQuery
 	if isQueryRoute {
 		if query == "" {
 			return unknown
@@ -543,13 +543,10 @@ func getQueryType(path, query string) string {
 		}
 		return qt
 	}
-	if path == constants.PathLokiSeries || path == constants.PathPromSeries {
+	if path == constants.PathLokiSeries {
 		return logql.QueryTypeSeries
 	}
-	if path == constants.PathLokiLabels || path == constants.PathLokiLabel || path == constants.PathPromLabel {
-		return logql.QueryTypeLabels
-	}
-	if strings.HasPrefix(path, constants.PathPromLabelPrefix) && strings.HasSuffix(path, constants.PathPromLabelSuffix) {
+	if path == constants.PathLokiLabels || path == constants.PathLokiLabel {
 		return logql.QueryTypeLabels
 	}
 	if path == constants.PathLokiIndexStats {

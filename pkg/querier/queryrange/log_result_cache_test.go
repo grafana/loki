@@ -707,9 +707,9 @@ func TestExtractLokiResponse(t *testing.T) {
 			extractThrough: time.Unix(52, 0),
 			expectedResp: mergeLokiResponse(
 				// empty responses here are to avoid failing test due to difference in count of subqueries in query stats
-				&LokiResponse{Limit: entriesLimit},
-				&LokiResponse{Limit: entriesLimit},
-				&LokiResponse{Limit: entriesLimit},
+				&LokiResponse{Limit: entriesLimit, Version: uint32(loghttp.VersionV1)},
+				&LokiResponse{Limit: entriesLimit, Version: uint32(loghttp.VersionV1)},
+				&LokiResponse{Limit: entriesLimit, Version: uint32(loghttp.VersionV1)},
 			),
 		},
 	} {

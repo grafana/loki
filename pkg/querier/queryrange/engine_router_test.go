@@ -336,7 +336,7 @@ func Test_engineRouter_Do(t *testing.T) {
 				Limit:     1000,
 				Step:      1000,
 				Direction: logproto.BACKWARD,
-				Path:      "/api/prom/query_range",
+				Path:      "/loki/api/v1/query_range",
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{foo="bar"}`),
 				},

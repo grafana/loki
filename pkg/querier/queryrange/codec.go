@@ -42,7 +42,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
-	marshal_legacy "github.com/grafana/loki/v3/pkg/util/marshal/legacy"
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
 )
 
@@ -777,8 +776,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			params["storeChunks"] = []string{string(b)}
 		}
 		u := &url.URL{
-			// the request could come /api/prom/query but we want to only use the new api.
-			Path:     "/loki/api/v1/query_range",
+				Path:     "/loki/api/v1/query_range",
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{
@@ -841,8 +839,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			params["shards"] = request.Shards
 		}
 		u := &url.URL{
-			// the request could come /api/prom/query but we want to only use the new api.
-			Path:     "/loki/api/v1/query",
+				Path:     "/loki/api/v1/query",
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{
@@ -1337,18 +1334,8 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 				Entries: stream.Entries,
 			}
 		}
-		if version == loghttp.VersionLegacy {
-			result := logqlmodel.Result{
-				Data:       logqlmodel.Streams(streams),
-				Statistics: response.Statistics,
-			}
-			if err := marshal_legacy.WriteQueryResponseJSON(result, w); err != nil {
-				return err
-			}
-		} else {
-			if err := marshal.WriteQueryResponseJSON(logqlmodel.Streams(streams), response.Warnings, response.Statistics, w, encodeFlags); err != nil {
-				return err
-			}
+		if err := marshal.WriteQueryResponseJSON(logqlmodel.Streams(streams), response.Warnings, response.Statistics, w, encodeFlags); err != nil {
+			return err
 		}
 	case *MergedSeriesResponseView:
 		if err := WriteSeriesResponseViewJSON(response, w); err != nil {
@@ -1359,14 +1346,8 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 			return err
 		}
 	case *LokiLabelNamesResponse:
-		if loghttp.Version(response.Version) == loghttp.VersionLegacy {
-			if err := marshal_legacy.WriteLabelResponseJSON(logproto.LabelResponse{Values: response.Data}, w); err != nil {
-				return err
-			}
-		} else {
-			if err := marshal.WriteLabelResponseJSON(response.Data, w); err != nil {
-				return err
-			}
+		if err := marshal.WriteLabelResponseJSON(response.Data, w); err != nil {
+			return err
 		}
 	case *IndexStatsResponse:
 		if err := marshal.WriteIndexStatsResponseJSON(response.Response, w); err != nil {
