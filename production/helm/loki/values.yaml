@@ -2439,6 +2439,8 @@ querier:
 queryFrontend:
   # -- Number of replicas for the query-frontend
   replicas: 0
+  # -- DNSConfig for query-frontend
+  dnsConfig: {}
   # -- hostAliases to add
   hostAliases: []
   #  - ip: 1.2.3.4
