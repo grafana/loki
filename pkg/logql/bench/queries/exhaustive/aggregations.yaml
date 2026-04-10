@@ -6,7 +6,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 23m
+      step: 1m
     tags:
       - unwrap
       - aggregation
@@ -22,7 +22,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - aggregation
@@ -41,7 +41,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 16m
+      step: 1m
     tags:
       - unwrap
       - aggregation
@@ -59,7 +59,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 30m
+      step: 1m
     tags:
       - unwrap
       - aggregation
@@ -77,7 +77,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - aggregation
       - count
@@ -90,7 +90,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 5m
+      step: 1m
     tags:
       - aggregation
       - count
@@ -103,7 +103,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - aggregation
       - count
@@ -116,7 +116,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 10m
+      step: 1m
     tags:
       - aggregation
       - count
@@ -130,7 +130,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - aggregation
       - count
@@ -145,7 +145,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - aggregation
       - count
@@ -160,7 +160,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - aggregation
@@ -178,7 +178,7 @@ queries:
     query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - aggregation
@@ -194,7 +194,7 @@ queries:
     query: max by (level) (min_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - aggregation
@@ -210,7 +210,7 @@ queries:
     query: avg by (level) (avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - aggregation
@@ -226,7 +226,7 @@ queries:
     query: max by () (avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - aggregation
@@ -240,7 +240,7 @@ queries:
     query: max by (level) (avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]) without (service_name))
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - aggregation
@@ -258,7 +258,7 @@ queries:
     query: max without () (sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}]))
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - aggregation
@@ -272,7 +272,7 @@ queries:
     query: avg_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration_seconds(duration) [${RANGE}])
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - aggregation
@@ -286,7 +286,7 @@ queries:
     query: sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}])
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - aggregation
@@ -302,7 +302,7 @@ queries:
     kind: metric
     time_range:
       length: 1h
-      step: 15m
+      step: 1m
     tags:
       - count_over_time
       - grouping

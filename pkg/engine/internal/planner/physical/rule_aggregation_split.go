@@ -132,11 +132,13 @@ func (a *aggregationSplit) applySplit(rangeAgg *RangeAggregation) {
 // canSplitRangeAggregation returns true if the range aggregation operation
 // can be split into parallel pieces.
 func canSplitRangeAggregation(rangeAgg *RangeAggregation) bool {
-	// Skip aggregations with overlapping windows (Step < Range) because
-	// it can lead to traffic amplification (each raw datapoint can produce
-	// several aggregated datapoints from inner aggregation).
-	// TODO(spiridonov): Think if there is a way around this.
-	if rangeAgg.Step > 0 && rangeAgg.Step < rangeAgg.Range {
+	// Splitting aggregations with overlapping windows (Step < Range) can
+	// lead to traffic amplification (each raw datapoint can produce several
+	// aggregated datapoints from inner aggregation). However, if `by (...)`
+	// grouping is narrow (few labels) it should theoretically aggregate a lot
+	// of streams into a few datapoints. For now just skip all `without` groupings.
+	// TODO(spiridonov): Think if there is a better way to estimate amplification.
+	if rangeAgg.Step > 0 && rangeAgg.Step < rangeAgg.Range && rangeAgg.Grouping.Without {
 		return false
 	}
 

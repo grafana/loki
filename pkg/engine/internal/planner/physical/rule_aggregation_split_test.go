@@ -2,6 +2,7 @@ package physical
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -155,6 +156,146 @@ func TestAggregationSplit(t *testing.T) {
 		root, _ := plan.graph.Root()
 		newOptimizer(&plan).Optimize(root)
 		require.Equal(t, before, PrintAsTree(&plan))
+	})
+
+	t.Run("does not split when step < range with without grouping (overlapping windows)", func(t *testing.T) {
+		var plan Plan
+		{
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Step:      30 * time.Second,
+				Range:     time.Minute,
+				Grouping:  Grouping{Without: true},
+			})
+			scan := plan.graph.Add(&DataObjScan{})
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan}))
+		}
+
+		before := PrintAsTree(&plan)
+		root, _ := plan.graph.Root()
+		newOptimizer(&plan).Optimize(root)
+
+		require.Equal(t, before, PrintAsTree(&plan))
+	})
+
+	t.Run("splits when step < range with by grouping (overlapping windows)", func(t *testing.T) {
+		var plan Plan
+		{
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Step:      30 * time.Second,
+				Range:     time.Minute,
+			})
+			scan := plan.graph.Add(&DataObjScan{})
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan}))
+		}
+
+		root, _ := plan.graph.Root()
+		newOptimizer(&plan).Optimize(root)
+
+		var expectedPlan Plan
+		{
+			// Outer: Range is set to Step to capture exactly one inner result point.
+			outerSum := expectedPlan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Step:      30 * time.Second,
+				Range:     30 * time.Second, // outer.Range = Step = 30s
+			})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			// Inner: clone of original, Range unchanged.
+			innerSum := expectedPlan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Step:      30 * time.Second,
+				Range:     time.Minute,
+			})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: outerSum, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: innerSum}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: innerSum, Child: scan}))
+		}
+
+		require.Equal(t, PrintAsTree(&expectedPlan), PrintAsTree(&plan))
+	})
+
+	t.Run("splits when step == range (aligned windows)", func(t *testing.T) {
+		var plan Plan
+		{
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Step:      time.Minute,
+				Range:     time.Minute,
+			})
+			scan := plan.graph.Add(&DataObjScan{})
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan}))
+		}
+
+		root, _ := plan.graph.Root()
+		newOptimizer(&plan).Optimize(root)
+
+		var expectedPlan Plan
+		{
+			// Outer: Range is set to Step (== Range here, so unchanged).
+			outerSum := expectedPlan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Step:      time.Minute,
+				Range:     time.Minute, // outer.Range = Step = 1m
+			})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			// Inner: clone of original, Range unchanged.
+			innerSum := expectedPlan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Step:      time.Minute,
+				Range:     time.Minute,
+			})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: outerSum, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: innerSum}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: innerSum, Child: scan}))
+		}
+
+		require.Equal(t, PrintAsTree(&expectedPlan), PrintAsTree(&plan))
+	})
+
+	t.Run("splits when step > range (gapped windows)", func(t *testing.T) {
+		var plan Plan
+		{
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Step:      2 * time.Minute,
+				Range:     time.Minute,
+			})
+			scan := plan.graph.Add(&DataObjScan{})
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan}))
+		}
+
+		root, _ := plan.graph.Root()
+		newOptimizer(&plan).Optimize(root)
+
+		var expectedPlan Plan
+		{
+			// Outer: Range is widened to Step.
+			outerSum := expectedPlan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Step:      2 * time.Minute,
+				Range:     2 * time.Minute, // outer.Range = Step = 2m
+			})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			// Inner: clone of original, Range unchanged.
+			innerSum := expectedPlan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Step:      2 * time.Minute,
+				Range:     time.Minute,
+			})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: outerSum, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: innerSum}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: innerSum, Child: scan}))
+		}
+
+		require.Equal(t, PrintAsTree(&expectedPlan), PrintAsTree(&plan))
 	})
 
 	t.Run("splits when Parallelize is already a direct child", func(t *testing.T) {

@@ -227,10 +227,10 @@ VectorAggregation operation=sum group_by=()
 		},
 		{
 			comment: "math expression",
-			query:   `sum by (bar) (rate({app="foo"}[1m]))`,
+			query:   `sum by (bar) (count_over_time({app="foo"}[1m]) / 300)`,
 			expected: `
 VectorAggregation operation=sum group_by=(ambiguous.bar)
-└── Projection all=true expand=(DIV(generated.value, 60))
+└── Projection all=true expand=(DIV(generated.value, 300))
     └── RangeAggregation operation=sum start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s group_by=(ambiguous.bar)
         └── Parallelize
             └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s group_by=(ambiguous.bar)

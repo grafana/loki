@@ -6,7 +6,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - rate
@@ -21,7 +21,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - rate
@@ -37,7 +37,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - rate
@@ -52,7 +52,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - sum_over_time
@@ -67,7 +67,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - sum_over_time
@@ -83,7 +83,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - sum_over_time
@@ -99,7 +99,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - sum_over_time
@@ -115,7 +115,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - sum_over_time
@@ -132,7 +132,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - sum_over_time
@@ -148,7 +148,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - avg_over_time
@@ -163,7 +163,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - avg_over_time
@@ -179,7 +179,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - avg_over_time
@@ -195,7 +195,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - avg_over_time
@@ -211,7 +211,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - max_over_time
@@ -226,7 +226,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - max_over_time
@@ -242,7 +242,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - max_over_time
@@ -258,7 +258,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - max_over_time
@@ -274,7 +274,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - min_over_time
@@ -289,7 +289,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - min_over_time
@@ -305,7 +305,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - min_over_time
@@ -321,7 +321,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - min_over_time
@@ -337,7 +337,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - count_over_time
@@ -353,7 +353,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - count_over_time
@@ -370,7 +370,7 @@ queries:
     skip: true # stdvar_over_time unsupported by v2 engine
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - stdvar_over_time
@@ -387,7 +387,7 @@ queries:
     skip: true # stdvar_over_time unsupported by v2 engine
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - stdvar_over_time
@@ -404,7 +404,7 @@ queries:
     skip: true # stddev_over_time unsupported by v2 engine
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - stddev_over_time
@@ -421,7 +421,7 @@ queries:
     skip: true # stddev_over_time unsupported by v2 engine
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - stddev_over_time
@@ -438,7 +438,7 @@ queries:
     skip: true # quantile_over_time unsupported by v2 engine
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - quantile_over_time
@@ -456,7 +456,7 @@ queries:
     skip: true # quantile_over_time unsupported by v2 engine
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - quantile_over_time
@@ -473,7 +473,7 @@ queries:
     skip: true # quantile_over_time unsupported by v2 engine
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - quantile_over_time
@@ -490,7 +490,7 @@ queries:
     skip: true # quantile_over_time unsupported by v2 engine
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - quantile_over_time
@@ -507,7 +507,7 @@ queries:
     skip: true # quantile_over_time unsupported by v2 engine
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - quantile_over_time
@@ -525,7 +525,7 @@ queries:
     skip: true # quantile_over_time unsupported by v2 engine
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - quantile_over_time
@@ -541,7 +541,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - avg_over_time
@@ -557,7 +557,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - avg_over_time
@@ -573,7 +573,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - sum_over_time
@@ -589,7 +589,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - max_over_time
@@ -606,7 +606,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - sum_over_time
@@ -623,7 +623,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - avg_over_time
@@ -641,7 +641,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - sum_over_time
@@ -660,7 +660,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - avg_over_time
@@ -680,7 +680,7 @@ queries:
     kind: metric
     time_range:
       length: 24h
-      step: 15m
+      step: 1m
     tags:
       - unwrap
       - sum_over_time
