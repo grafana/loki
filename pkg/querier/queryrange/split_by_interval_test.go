@@ -1376,7 +1376,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
 			Limit:     r.(*LokiRequest).Limit,
-			Version:   uint32(loghttp.VersionV1),
+			Version:   1,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result: []logproto.Stream{
@@ -1550,7 +1550,7 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiSeriesResponse{
 			Status:  "success",
-			Version: uint32(loghttp.VersionV1),
+			Version: 1,
 			Data: []logproto.SeriesIdentifier{
 				{
 					Labels: []logproto.SeriesIdentifier_LabelsEntry{
@@ -1782,7 +1782,7 @@ func Test_ExitEarly(t *testing.T) {
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
 			Limit:     r.(*LokiRequest).Limit,
-			Version:   uint32(loghttp.VersionV1),
+			Version:   1,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result: []logproto.Stream{
@@ -1869,7 +1869,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
 			Limit:     r.(*LokiRequest).Limit,
-			Version:   uint32(loghttp.VersionV1),
+			Version:   1,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result: []logproto.Stream{

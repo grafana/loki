@@ -673,12 +673,11 @@ func (Codec) DecodeHTTPGrpcResponse(r *httpgrpc.HTTPResponse, req queryrangebase
 }
 
 func (Codec) EncodeHTTPGrpcResponse(_ context.Context, req *httpgrpc.HTTPRequest, res queryrangebase.Response) (*httpgrpc.HTTPResponse, error) {
-	version := loghttp.GetVersion(req.Url)
 	var buf bytes.Buffer
 
 	encodingFlags := httpreq.ExtractEncodingFlagsFromProto(req)
 
-	err := encodeResponseJSONTo(version, res, &buf, encodingFlags)
+	err := encodeResponseJSONTo(res, &buf, encodingFlags)
 	if err != nil {
 		return nil, err
 	}
@@ -776,7 +775,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			params["storeChunks"] = []string{string(b)}
 		}
 		u := &url.URL{
-				Path:     "/loki/api/v1/query_range",
+			Path:     "/loki/api/v1/query_range",
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{
@@ -839,7 +838,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			params["shards"] = request.Shards
 		}
 		u := &url.URL{
-				Path:     "/loki/api/v1/query",
+			Path:     "/loki/api/v1/query",
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{
@@ -1085,7 +1084,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 
 		return &LokiSeriesResponse{
 			Status:  resp.Status,
-			Version: uint32(loghttp.GetVersion(req.Path)),
+			Version: 1,
 			Headers: httpResponseHeadersToPromResponseHeaders(headers),
 			Data:    resp.Data,
 		}, nil
@@ -1096,7 +1095,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 		return &LokiLabelNamesResponse{
 			Status:  resp.Status,
-			Version: uint32(loghttp.GetVersion(req.Path())),
+			Version: 1,
 			Data:    resp.Data,
 			Headers: httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
@@ -1180,20 +1179,18 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 				return nil, err
 			}
 
-			var path string
 			switch r := req.(type) {
-			case *LokiRequest:
-				path = r.GetPath()
-			case *LokiInstantRequest:
-				path = r.GetPath()
+			case *LokiRequest, *LokiInstantRequest:
+				// do nothing
 			default:
 				return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
 			}
+
 			return &LokiResponse{
 				Status:     resp.Status,
 				Direction:  params.Direction(),
 				Limit:      params.Limit(),
-				Version:    uint32(loghttp.GetVersion(path)),
+				Version:    1,
 				Statistics: resp.Data.Statistics,
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
@@ -1293,18 +1290,17 @@ func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryran
 	}
 
 	// Default to JSON.
-	version := loghttp.GetVersion(req.RequestURI)
 	encodingFlags := httpreq.ExtractEncodingFlags(req)
-	return encodeResponseJSON(ctx, version, res, encodingFlags)
+	return encodeResponseJSON(ctx, res, encodingFlags)
 }
 
-func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryrangebase.Response, encodeFlags httpreq.EncodingFlags) (*http.Response, error) {
+func encodeResponseJSON(ctx context.Context, res queryrangebase.Response, encodeFlags httpreq.EncodingFlags) (*http.Response, error) {
 	_, sp := tracer.Start(ctx, "codec.EncodeResponse")
 	defer sp.End()
 
 	var buf bytes.Buffer
 
-	err := encodeResponseJSONTo(version, res, &buf, encodeFlags)
+	err := encodeResponseJSONTo(res, &buf, encodeFlags)
 	if err != nil {
 		return nil, err
 	}
@@ -1321,7 +1317,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 	return &resp, nil
 }
 
-func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
+func encodeResponseJSONTo(res queryrangebase.Response, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
 	switch response := res.(type) {
 	case *LokiPromResponse:
 		return response.encodeTo(w)
@@ -2145,12 +2141,12 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 	case *LokiSeriesRequest:
 		return &LokiSeriesResponse{
 			Status:  loghttp.QueryStatusSuccess,
-			Version: uint32(loghttp.GetVersion(req.Path)),
+			Version: 1,
 		}, nil
 	case *LabelRequest:
 		return &LokiLabelNamesResponse{
 			Status:  loghttp.QueryStatusSuccess,
-			Version: uint32(loghttp.GetVersion(req.Path())),
+			Version: 1,
 		}, nil
 	case *LokiInstantRequest:
 		// instant queries in the frontend are always metrics queries.
@@ -2177,7 +2173,7 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: req.Direction,
 			Limit:     req.Limit,
-			Version:   uint32(loghttp.GetVersion(req.Path)),
+			Version:   1,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 			},

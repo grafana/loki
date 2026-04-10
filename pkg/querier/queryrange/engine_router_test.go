@@ -283,7 +283,7 @@ func Test_engineRouter_Do(t *testing.T) {
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
 			Limit:     r.(*LokiRequest).Limit,
-			Version:   uint32(loghttp.VersionV1),
+			Version:   1,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result: []logproto.Stream{

@@ -473,7 +473,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
 				Limit:     100,
-				Version:   uint32(loghttp.VersionV1),
+				Version:   1,
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreams,
@@ -488,7 +488,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
 				Limit:     100,
-				Version:   uint32(loghttp.VersionV1),
+				Version:   1,
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreamsWithStructuredMetadata,
@@ -503,7 +503,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
 				Limit:     100,
-				Version:   uint32(loghttp.VersionV1),
+				Version:   1,
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreamsWithCategories,
@@ -517,7 +517,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			&LokiSeriesRequest{Path: "/loki/api/v1/series"},
 			&LokiSeriesResponse{
 				Status:  "success",
-				Version: uint32(loghttp.VersionV1),
+				Version: 1,
 				Data:    seriesData,
 			}, "",
 		},
@@ -1195,7 +1195,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
 				Limit:     100,
-				Version:   uint32(loghttp.VersionV1),
+				Version:   1,
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreams,
@@ -1209,7 +1209,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
 				Limit:     100,
-				Version:   uint32(loghttp.VersionV1),
+				Version:   1,
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreamsWithCategories,
@@ -1226,7 +1226,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			"loki series", "/loki/api/v1/series",
 			&LokiSeriesResponse{
 				Status:  "success",
-				Version: uint32(loghttp.VersionV1),
+				Version: 1,
 				Data:    seriesData,
 			}, seriesString, false, nil,
 		},
@@ -1234,7 +1234,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			"loki labels", "/loki/api/v1/labels",
 			&LokiLabelNamesResponse{
 				Status:  "success",
-				Version: uint32(loghttp.VersionV1),
+				Version: 1,
 				Data:    labelsData,
 			}, labelsString, false, nil,
 		},
@@ -2638,7 +2638,7 @@ func Benchmark_CodecDecodeLogs(b *testing.B) {
 	resp, err := DefaultCodec.EncodeResponse(ctx, req, &LokiResponse{
 		Status:    loghttp.QueryStatusSuccess,
 		Direction: logproto.BACKWARD,
-		Version:   uint32(loghttp.VersionV1),
+		Version:   1,
 		Limit:     1000,
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,

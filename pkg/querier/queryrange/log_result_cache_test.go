@@ -707,9 +707,9 @@ func TestExtractLokiResponse(t *testing.T) {
 			extractThrough: time.Unix(52, 0),
 			expectedResp: mergeLokiResponse(
 				// empty responses here are to avoid failing test due to difference in count of subqueries in query stats
-				&LokiResponse{Limit: entriesLimit, Version: uint32(loghttp.VersionV1)},
-				&LokiResponse{Limit: entriesLimit, Version: uint32(loghttp.VersionV1)},
-				&LokiResponse{Limit: entriesLimit, Version: uint32(loghttp.VersionV1)},
+				&LokiResponse{Limit: entriesLimit, Version: 1},
+				&LokiResponse{Limit: entriesLimit, Version: 1},
+				&LokiResponse{Limit: entriesLimit, Version: 1},
 			),
 		},
 	} {
@@ -761,7 +761,7 @@ func nonEmptyResponse(lokiReq *LokiRequest, start, end time.Time, labels string)
 		Statistics: stats.Result{},
 		Direction:  lokiReq.Direction,
 		Limit:      lokiReq.Limit,
-		Version:    uint32(loghttp.GetVersion(lokiReq.Path)),
+		Version:    1,
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,
 			Result: []logproto.Stream{
