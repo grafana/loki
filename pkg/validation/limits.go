@@ -1532,3 +1532,9 @@ func (o *Overrides) SortSchema(userID string) SortSchema {
 	}
 	return s
 }
+
+// SortSchemaLabels returns the ordered label names from the per-tenant sort schema.
+// Implements logsobj.TenantOverrides.
+func (o *Overrides) SortSchemaLabels(userID string) []string {
+	return o.SortSchema(userID).LabelNames()
+}

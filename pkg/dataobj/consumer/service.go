@@ -49,6 +49,13 @@ type Service struct {
 	watcher                     *services.FailureWatcher
 	logger                      log.Logger
 	reg                         prometheus.Registerer
+	builderFactory              *logsobj.BuilderFactory
+}
+
+// SetOverrides configures per-tenant overrides on the underlying builder factory.
+// Must be called before the service starts.
+func (s *Service) SetOverrides(overrides logsobj.TenantOverrides) {
+	s.builderFactory.SetOverrides(overrides)
 }
 
 func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, _ string, _ ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) (*Service, error) {
@@ -148,13 +155,13 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
-	builderFactory := logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore)
-	sorter := logsobj.NewSorter(builderFactory, reg)
+	s.builderFactory = logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore)
+	sorter := logsobj.NewSorter(s.builderFactory, reg)
 	s.flusher = newFlusher(sorter, uploader, logger, reg)
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
 		"partition": strconv.Itoa(int(partitionID)),
 	}, reg)
-	builder, err := builderFactory.NewBuilder(wrapped)
+	builder, err := s.builderFactory.NewBuilder(wrapped)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
 	}

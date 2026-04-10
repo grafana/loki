@@ -2445,6 +2445,7 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 		return nil, err
 	}
 	t.dataObjConsumer = dataObjConsumer
+	dataObjConsumer.SetOverrides(t.Overrides)
 
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
