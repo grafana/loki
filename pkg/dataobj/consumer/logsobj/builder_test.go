@@ -324,7 +324,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 	t.Run("schema tenant sorted by label, plain tenant by DataobjSortOrder", func(t *testing.T) {
 		cfg := makeCfg(true)
-		overrides := tenantOverrides{"schema-tenant": {"app"}}
+		overrides := tenantOverrides{"schema-tenant": {"label:app"}}
 
 		b, err := NewBuilder(cfg, nil)
 		require.NoError(t, err)
@@ -368,7 +368,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 	t.Run("schema labels persisted in section metadata", func(t *testing.T) {
 		cfg := makeCfg(true)
-		overrides := tenantOverrides{"t1": {"app"}}
+		overrides := tenantOverrides{"t1": {"label:app"}}
 		obj1 := buildObj(t, cfg, "t1", []string{"b", "a"}, overrides)
 		obj2 := copyAndSort(t, cfg, obj1, overrides)
 
@@ -379,7 +379,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			require.NoError(t, err)
 			labels, err := logsSection.SchemaLabels()
 			require.NoError(t, err)
-			require.Equal(t, []string{"app"}, labels, "SchemaLabels must be persisted in section metadata")
+			require.Equal(t, []string{"label:app"}, labels, "SchemaLabels must be persisted in section metadata")
 		}
 
 		require.Equal(t, []string{"a", "b"}, appOrder(t, obj2, "t1"))
@@ -388,7 +388,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 	t.Run("idempotent: second CopyAndSort reads schema from metadata, not overrides", func(t *testing.T) {
 		cfg := makeCfg(true)
-		overrides := tenantOverrides{"t1": {"app"}}
+		overrides := tenantOverrides{"t1": {"label:app"}}
 		obj1 := buildObj(t, cfg, "t1", []string{"zoo", "alpha", "middle"}, overrides)
 		obj2 := copyAndSort(t, cfg, obj1, overrides)
 		obj3 := copyAndSort(t, cfg, obj2, nil)
@@ -400,7 +400,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 	t.Run("multi-label compound key", func(t *testing.T) {
 		cfg := makeCfg(true)
-		overrides := tenantOverrides{"t1": {"namespace", "app"}}
+		overrides := tenantOverrides{"t1": {"label:namespace", "label:app"}}
 		b, err := NewBuilder(cfg, nil)
 		require.NoError(t, err)
 		b.SetOverrides(overrides)
@@ -452,7 +452,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 	t.Run("flag off: schema config ignored, DataobjSortOrder used", func(t *testing.T) {
 		cfg := makeCfg(false)
-		overrides := tenantOverrides{"t1": {"app"}}
+		overrides := tenantOverrides{"t1": {"label:app"}}
 		obj1 := buildObj(t, cfg, "t1", []string{"zoo", "alpha", "middle"}, overrides)
 		obj2 := copyAndSort(t, cfg, obj1, overrides)
 

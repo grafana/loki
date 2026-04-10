@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -300,53 +301,56 @@ type FieldDetectorConfig struct {
 	Fields map[string][]string `yaml:"fields,omitempty" json:"fields,omitempty"`
 }
 
-// SortSchemaTimestampName is the reserved name for the timestamp entry in a sort schema.
-const SortSchemaTimestampName = "__timestamp__"
+// SortKeyFqn is a fully-qualified sort key of the form "type:name".
+// Currently only the "label" type is supported (e.g. "label:service_name").
+type SortKeyFqn string
 
-// SortSchemaEntry is one element in a per-tenant sort schema.
-// Name is the label name to sort by. SortSchemaTimestampName is reserved and must not appear
-// in the schema — the timestamp is always implicitly the final sort key.
-type SortSchemaEntry struct {
-	Name string `yaml:"name" json:"name"`
+// Type returns the type component of the SortKeyFqn (e.g. "label").
+func (f SortKeyFqn) Type() string {
+	typ, _, _ := strings.Cut(string(f), ":")
+	return typ
 }
 
-// SortSchema is an ordered list of sort schema entries for a tenant.
-// The timestamp is always implicitly appended as the final sort key and must not be listed.
-// An empty schema means "use DefaultSortSchema".
-// Example: [{Name: "service_name"}]
-type SortSchema []SortSchemaEntry
-
-// DefaultSortSchema is the broad default schema used when no tenant-specific schema is configured.
-var DefaultSortSchema = SortSchema{
-	{Name: "service_name"},
+// Name returns the name component of the SortKeyFqn (e.g. "service_name").
+func (f SortKeyFqn) Name() string {
+	_, name, _ := strings.Cut(string(f), ":")
+	return name
 }
 
-// Validate checks that the sort schema is well-formed.
-// An empty schema is valid (callers fall back to DefaultSortSchema).
-func (s SortSchema) Validate() error {
-	seen := make(map[string]struct{}, len(s))
-	for i, e := range s {
-		if e.Name == "" {
-			return fmt.Errorf("sort_schema entry %d has an empty name", i)
-		}
-		if e.Name == SortSchemaTimestampName {
-			return fmt.Errorf("sort_schema must not include %q — the timestamp is always the implicit last sort key", SortSchemaTimestampName)
-		}
-		if _, dup := seen[e.Name]; dup {
-			return fmt.Errorf("sort_schema entry %q is duplicated", e.Name)
-		}
-		seen[e.Name] = struct{}{}
+// Validate checks that the SortKeyFqn is well-formed and uses a supported type.
+func (f SortKeyFqn) Validate() error {
+	typ, name, ok := strings.Cut(string(f), ":")
+	if !ok || name == "" {
+		return fmt.Errorf("%q is not a valid SortKeyFqn — expected \"label:<name>\"", f)
+	}
+	if typ != "label" {
+		return fmt.Errorf("%q has unsupported type %q — only \"label\" is currently supported", f, typ)
 	}
 	return nil
 }
 
-// LabelNames returns the ordered label names in the schema.
-func (s SortSchema) LabelNames() []string {
-	names := make([]string, 0, len(s))
-	for _, e := range s {
-		names = append(names, e.Name)
+// SortSchema is an ordered list of SortKeyFqn sort keys for a tenant.
+// The timestamp is always implicitly appended as the final sort key.
+// An empty schema means "use DefaultSortSchema".
+type SortSchema []SortKeyFqn
+
+// DefaultSortSchema is the broad default schema used when no tenant-specific schema is configured.
+var DefaultSortSchema = SortSchema{"label:service_name"}
+
+// Validate checks that the sort schema is well-formed.
+// An empty schema is valid (callers fall back to DefaultSortSchema).
+func (s SortSchema) Validate() error {
+	seen := make(map[SortKeyFqn]struct{}, len(s))
+	for _, fqn := range s {
+		if err := fqn.Validate(); err != nil {
+			return fmt.Errorf("sort_schema: %w", err)
+		}
+		if _, dup := seen[fqn]; dup {
+			return fmt.Errorf("sort_schema entry %q is duplicated", fqn)
+		}
+		seen[fqn] = struct{}{}
 	}
-	return names
+	return nil
 }
 
 type StreamRetention struct {
@@ -1533,8 +1537,13 @@ func (o *Overrides) SortSchema(userID string) SortSchema {
 	return s
 }
 
-// SortSchemaLabels returns the ordered label names from the per-tenant sort schema.
+// SortSchemaLabels returns the ordered SortKeyFqn sort keys from the per-tenant sort schema as strings.
 // Implements logsobj.TenantOverrides.
 func (o *Overrides) SortSchemaLabels(userID string) []string {
-	return o.SortSchema(userID).LabelNames()
+	schema := o.SortSchema(userID)
+	out := make([]string, len(schema))
+	for i, fqn := range schema {
+		out[i] = string(fqn)
+	}
+	return out
 }

@@ -713,19 +713,28 @@ func buildSortKeys(ctx context.Context, obj *dataobj.Object, tenant string, sche
 	return sortKeys, nil
 }
 
+// computeSortKey builds a composite sort key from stream labels using FQN entries.
+// Each FQN must be "label:<name>" — validation.SortSchema.Validate() enforces this.
 func computeSortKey(ls labels.Labels, schemaLabels []string) string {
 	if len(schemaLabels) == 0 {
 		return ""
 	}
+	resolveLabel := func(fqn string) string {
+		typ, name, ok := strings.Cut(fqn, ":")
+		if !ok || typ != "label" {
+			panic(fmt.Sprintf("computeSortKey: unexpected FQN %q — only \"label:<name>\" is supported", fqn))
+		}
+		return ls.Get(name)
+	}
 	if len(schemaLabels) == 1 {
-		return ls.Get(schemaLabels[0])
+		return resolveLabel(schemaLabels[0])
 	}
 	var b strings.Builder
-	for i, name := range schemaLabels {
+	for i, fqn := range schemaLabels {
 		if i > 0 {
 			b.WriteByte(0)
 		}
-		b.WriteString(ls.Get(name))
+		b.WriteString(resolveLabel(fqn))
 	}
 	return b.String()
 }
