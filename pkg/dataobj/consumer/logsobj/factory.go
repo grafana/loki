@@ -12,6 +12,13 @@ import (
 type BuilderFactory struct {
 	cfg          BuilderConfig
 	scratchStore scratch.Store
+	overrides    TenantOverrides
+}
+
+// SetOverrides configures per-tenant overrides propagated to every builder
+// created by this factory.
+func (f *BuilderFactory) SetOverrides(overrides TenantOverrides) {
+	f.overrides = overrides
 }
 
 func NewBuilderFactory(cfg BuilderConfig, scratchStore scratch.Store) *BuilderFactory {
@@ -27,6 +34,9 @@ func (f *BuilderFactory) NewBuilder(r prometheus.Registerer) (*Builder, error) {
 	b, err := NewBuilder(f.cfg, f.scratchStore)
 	if err != nil {
 		return nil, err
+	}
+	if f.overrides != nil {
+		b.SetOverrides(f.overrides)
 	}
 	if r != nil {
 		if err = b.RegisterMetrics(r); err != nil {
