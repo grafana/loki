@@ -101,6 +101,17 @@ func (s *Section) PrimarySortOrder() (ColumnType, SortDirection, error) {
 	return colType, dir, nil
 }
 
+// SchemaLabels returns the ordered list of label names used to define the
+// schema sort key for this section. It returns nil, nil if the section was
+// not sorted by schema (i.e., SortInfo is absent or has no SchemaLabels).
+func (s *Section) SchemaLabels() ([]string, error) {
+	si := s.inner.SortInfo()
+	if si == nil || len(si.SchemaLabels) == 0 {
+		return nil, nil
+	}
+	return si.SchemaLabels, nil
+}
+
 // A Column represents one of the columns in the logs section. Valid columns
 // can only be retrieved by calling [Section.Columns].
 //
