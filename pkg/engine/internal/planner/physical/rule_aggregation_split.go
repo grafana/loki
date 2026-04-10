@@ -136,9 +136,11 @@ func canSplitRangeAggregation(rangeAgg *RangeAggregation) bool {
 	// lead to traffic amplification (each raw datapoint can produce several
 	// aggregated datapoints from inner aggregation). However, if `by (...)`
 	// grouping is narrow (few labels) it should theoretically aggregate a lot
-	// of streams into a few datapoints. For now just skip all `without` groupings.
+	// of streams into a few datapoints. For now just skip all `without` groupings
+	// and `by` groupings with 5+ labels.
 	// TODO(spiridonov): Think if there is a better way to estimate amplification.
-	if rangeAgg.Step > 0 && rangeAgg.Step < rangeAgg.Range && rangeAgg.Grouping.Without {
+	if rangeAgg.Step > 0 && rangeAgg.Step < rangeAgg.Range &&
+		(rangeAgg.Grouping.Without || len(rangeAgg.Grouping.Columns) > 4) {
 		return false
 	}
 

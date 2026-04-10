@@ -178,6 +178,32 @@ func TestAggregationSplit(t *testing.T) {
 		require.Equal(t, before, PrintAsTree(&plan))
 	})
 
+	t.Run("does not split when step < range with by grouping having 5+ labels (overlapping windows)", func(t *testing.T) {
+		var plan Plan
+		{
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+				Step:      30 * time.Second,
+				Range:     time.Minute,
+				Grouping: Grouping{Columns: []ColumnExpression{
+					newColumnExpr("a", types.ColumnTypeLabel),
+					newColumnExpr("b", types.ColumnTypeLabel),
+					newColumnExpr("c", types.ColumnTypeLabel),
+					newColumnExpr("d", types.ColumnTypeLabel),
+					newColumnExpr("e", types.ColumnTypeLabel),
+				}},
+			})
+			scan := plan.graph.Add(&DataObjScan{})
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan}))
+		}
+
+		before := PrintAsTree(&plan)
+		root, _ := plan.graph.Root()
+		newOptimizer(&plan).Optimize(root)
+
+		require.Equal(t, before, PrintAsTree(&plan))
+	})
+
 	t.Run("splits when step < range with by grouping (overlapping windows)", func(t *testing.T) {
 		var plan Plan
 		{
