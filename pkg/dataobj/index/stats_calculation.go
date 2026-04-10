@@ -1,12 +1,11 @@
 package index
 
 import (
+	"bytes"
+	"cmp"
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
-	"hash"
 	"hash/fnv"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 )
 
+// created for and scoped to each logs section
 type statsCalculation struct {
 	sortSchemaKeys []string                   // label keys to aggregate by
 	aggregates     map[uint64]*statsAggregate // keyed by hash of composite label values
@@ -35,24 +35,29 @@ func (c *statsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs
 }
 
 func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculationContext, batch []logs.Record) error {
-	// Reuse a single hasher across all records. hash.Reset() retains the
-	// internal buffer, so this avoids per-record allocations on the hot path.
-	// The hash is only used as a map key; actual label values are stored in the
-	// aggregate's labels map (created only on first encounter).
-	var h = fnv.New64a()
+	// Reuse a single hasher and buffer across all records to avoid
+	// per-record allocations on the hot path.
+	var (
+		h   = fnv.New64a()
+		buf bytes.Buffer
+	)
 	for _, log := range batch {
 		streamLbls := calcCtx.streamLabels[log.StreamID]
 
-		// Hash the composite key from all sort schema keys.
+		// Build the composite key from all sort schema keys.
 		// Uses key=value pairs separated by \x00 to avoid ambiguity.
-		h.Reset()
+		buf.Reset()
 		for i, key := range c.sortSchemaKeys {
-			value := streamLbls.Get(key)
-			err := writeHashKey(h, i, key, value)
-			if err != nil {
-				return err
+			if i > 0 {
+				buf.WriteByte(0)
 			}
+
+			buf.WriteString(key)
+			buf.WriteByte('=')
+			buf.WriteString(streamLbls.Get(key))
 		}
+		h.Reset()
+		h.Write(buf.Bytes())
 
 		aggKey := h.Sum64()
 		agg, ok := c.aggregates[aggKey]
@@ -82,56 +87,23 @@ func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculat
 	return nil
 }
 
-func writeHashKey(h hash.Hash64, i int, key, value string) error {
-	var err error
-	if i > 0 {
-		// write delimeter value in between key/value pairs
-		_, err = h.Write([]byte{0})
-		if err != nil {
-			return err
-		}
-	}
-	_, err = h.Write([]byte(key))
-	if err != nil {
-		return err
-	}
-
-	_, err = h.Write([]byte{'='})
-	if err != nil {
-		return err
-	}
-
-	_, err = h.Write([]byte(value))
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationContext) error {
 	if len(c.aggregates) == 0 {
 		return nil
 	}
-
-	// Compute run-ID from object path using SHA-224.
-	// We take the first 8 bytes as an int64.
-	sum := sha256.Sum224([]byte(calcCtx.objectPath))
-	runID := int64(binary.BigEndian.Uint64(sum[:8]))
 
 	// Sort aggregates by label values in schema key order
 	sorted := make([]*statsAggregate, 0, len(c.aggregates))
 	for _, agg := range c.aggregates {
 		sorted = append(sorted, agg)
 	}
-	sort.Slice(sorted, func(i, j int) bool {
+	slices.SortFunc(sorted, func(a, b *statsAggregate) int {
 		for _, key := range c.sortSchemaKeys {
-			vi, vj := sorted[i].labels[key], sorted[j].labels[key]
-			if vi != vj {
-				return vi < vj
+			if n := cmp.Compare(a.labels[key], b.labels[key]); n != 0 {
+				return n
 			}
 		}
-		return false
+		return 0
 	})
 
 	sortSchema := strings.Join(c.sortSchemaKeys, ",")
@@ -146,7 +118,6 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 			agg.maxTimestamp,
 			agg.rowCount,
 			agg.uncompressedSize,
-			runID,
 		)
 		if err != nil {
 			return err

@@ -40,8 +40,11 @@ type logsCalculationContext struct {
 	objectPath     string
 	sectionIdx     int64
 	streamIDLookup map[int64]int64
-	streamLabels   map[int64]labels.Labels // source stream ID -> labels
-	builder        *indexobj.Builder
+	// TODO(twhitney): monitor the memory of this. [streamLabels] is passed in from Calculate,
+	// and is thus object scoped. As longs as streams sections stay small enough this shouldn't
+	// be a problem.
+	streamLabels map[int64]labels.Labels // source stream ID -> labels
+	builder      *indexobj.Builder
 }
 
 // These steps are applied to all logs and are unique to a section
@@ -175,7 +178,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 	}
 
 	streamBuf := make([]streams.Stream, 8192)
-	streamLabels := make(map[int64]labels.Labels, len(streamBuf))
+	streamLabels := map[int64]labels.Labels{}
 	for {
 		n, err := rowReader.Read(ctx, streamBuf)
 		if err != nil && !errors.Is(err, io.EOF) {

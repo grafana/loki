@@ -35,10 +35,10 @@ func ColumnarEncoder(_ context.Context, rows []Posting) (Section, error) {
 		sectionIndexBuilder.AppendValue(r.SectionIndex)
 		columnNameBuilder.AppendValue([]byte(r.ColumnName))
 
-		if r.LabelValue == nil {
+		if r.Kind == KindBloom {
 			labelValueBuilder.AppendNull()
 		} else {
-			labelValueBuilder.AppendValue([]byte(*r.LabelValue))
+			labelValueBuilder.AppendValue([]byte(r.LabelValue))
 		}
 
 		if r.BloomFilter == nil {

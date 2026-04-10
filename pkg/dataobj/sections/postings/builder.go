@@ -65,14 +65,16 @@ func (b *Builder) Tenant() string { return b.tenant }
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // Append adds a [Posting] row to the builder.
+// TODO(twhitney): revisit overhead of accumulating all postings for the lifetime of
+// a builder after implementing serialization.
 func (b *Builder) Append(p Posting) {
 	b.rows = append(b.rows, p)
 }
 
 // comparePostings returns true if a should sort before b, using the sort order
-// [Kind, ColumnName, LabelValue, MinTimestamp]. All comparisons are
-// lexicographic. Nil LabelValue sorts as empty string so Bloom entries come
-// before Label entries for the same column_name.
+// [Kind, ColumnName, LabelValue, MinTimestamp, MaxTimestamp]. All comparisons
+// are lexicographic. Empty LabelValue (used by Bloom entries) sorts before any
+// non-empty value for the same column_name.
 func comparePostings(a, b Posting) bool {
 	if a.Kind != b.Kind {
 		return a.Kind < b.Kind
@@ -80,19 +82,13 @@ func comparePostings(a, b Posting) bool {
 	if a.ColumnName != b.ColumnName {
 		return a.ColumnName < b.ColumnName
 	}
-	lvi := labelValueSortKey(a.LabelValue)
-	lvj := labelValueSortKey(b.LabelValue)
-	if lvi != lvj {
-		return lvi < lvj
+	if a.LabelValue != b.LabelValue {
+		return a.LabelValue < b.LabelValue
 	}
-	return a.MinTimestamp < b.MinTimestamp
-}
-
-func labelValueSortKey(lv *string) string {
-	if lv == nil {
-		return ""
+	if a.MinTimestamp != b.MinTimestamp {
+		return a.MinTimestamp < b.MinTimestamp
 	}
-	return *lv
+	return a.MaxTimestamp < b.MaxTimestamp
 }
 
 // EstimatedSize returns an estimate of the encoded size of the accumulated
@@ -100,13 +96,7 @@ func labelValueSortKey(lv *string) string {
 func (b *Builder) EstimatedSize() int {
 	var total int
 	for _, r := range b.rows {
-		// 5 int64 columns (kind, section_index, uncompressed_size, min_timestamp, max_timestamp) × 8 bytes
-		total += 5 * 8
-		total += len(r.ObjectPath) + len(r.ColumnName)
-		if r.LabelValue != nil {
-			total += len(*r.LabelValue)
-		}
-		total += len(r.BloomFilter) + len(r.StreamIDBitmap)
+		total += r.Size()
 	}
 	return total
 }
@@ -117,8 +107,8 @@ func (b *Builder) Reset() {
 }
 
 // Flush sorts the accumulated rows by [Kind, ColumnName, LabelValue,
-// MinTimestamp], encodes them column-by-column into [Section] values,
-// and returns one or more [Section] values.
+// MinTimestamp, MaxTimestamp], encodes them column-by-column into [Section]
+// values, and returns one or more [Section] values.
 //
 // After a successful flush, the builder is reset.
 func (b *Builder) Flush(ctx context.Context) ([]Section, error) {
@@ -126,7 +116,7 @@ func (b *Builder) Flush(ctx context.Context) ([]Section, error) {
 		return nil, nil
 	}
 
-	// Sort rows by [Kind, ColumnName, LabelValue, MinTimestamp] (lexicographic).
+	// Sort rows by [Kind, ColumnName, LabelValue, MinTimestamp, MaxTimestamp] (lexicographic).
 	sort.SliceStable(b.rows, func(i, j int) bool {
 		return comparePostings(b.rows[i], b.rows[j])
 	})
@@ -161,10 +151,7 @@ func (b *Builder) computeSplits() [][]Posting {
 	)
 
 	for i, r := range b.rows {
-		rowSize := 5*8 + len(r.ObjectPath) + len(r.ColumnName) + len(r.BloomFilter) + len(r.StreamIDBitmap) // 5 int64 columns × 8 bytes + variable-length fields
-		if r.LabelValue != nil {
-			rowSize += len(*r.LabelValue)
-		}
+		rowSize := r.Size()
 		if chunkSize+rowSize > b.targetSectionSize && chunkSize > 0 {
 			chunks = append(chunks, b.rows[chunkStart:i])
 			chunkStart = i

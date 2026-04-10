@@ -39,12 +39,18 @@ type Posting struct {
 	ObjectPath       string
 	SectionIndex     int64
 	ColumnName       string
-	LabelValue       *string // nil for Bloom postings
-	BloomFilter      []byte  // nil for Label postings
-	StreamIDBitmap   []byte  // always present
+	LabelValue       string // empty for Bloom postings
+	BloomFilter      []byte // nil for Label postings
+	StreamIDBitmap   []byte // always present
 	UncompressedSize int64
 	MinTimestamp     int64
 	MaxTimestamp     int64
+}
+
+// Size returns an estimate of the encoded size of this posting in bytes.
+func (p Posting) Size() int {
+	// 5 int64 columns (kind, section_index, uncompressed_size, min_timestamp, max_timestamp) × 8 bytes
+	return 5*8 + len(p.ObjectPath) + len(p.ColumnName) + len(p.LabelValue) + len(p.BloomFilter) + len(p.StreamIDBitmap)
 }
 
 // ColumnReader reads batches of columnar values from a single column.

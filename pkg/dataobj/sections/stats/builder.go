@@ -13,7 +13,6 @@ import (
 const (
 	colObjectPath       = "object_path"
 	colSectionIndex     = "section_index"
-	colRunID            = "run_id"
 	colSortSchema       = "sort_schema"
 	colMinTimestamp     = "min_timestamp"
 	colMaxTimestamp     = "max_timestamp"
@@ -70,13 +69,13 @@ func (b *Builder) Append(stat Stat) {
 
 // EstimatedSize returns an estimate of the encoded size of the accumulated
 // rows in bytes. The estimate uses a per-row heuristic:
-//   - 6 int64 columns × 8 bytes = 48 bytes (SectionIndex, RunID, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
+//   - 5 int64 columns × 8 bytes = 40 bytes (SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
 //   - len(ObjectPath) + len(SortSchema) bytes for fixed string columns
 //   - sum of len(k)+len(v) for all entries in Labels
 func (b *Builder) EstimatedSize() int {
 	var total int
 	for _, r := range b.rows {
-		total += 6 * 8 // int64 columns: SectionIndex, RunID, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize
+		total += 5 * 8 // int64 columns: SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize
 		total += len(r.ObjectPath) + len(r.SortSchema)
 		for k, v := range r.Labels {
 			total += len(k) + len(v)
@@ -102,7 +101,8 @@ func (b *Builder) Flush(ctx context.Context) ([]Section, error) {
 		return nil, nil
 	}
 
-	// Sort rows by label values in sort schema order, then by MinTimestamp.
+	// Sort rows by label values in sort schema order, then by MinTimestamp,
+	// then by MaxTimestamp as a final tie-breaker.
 	// Get sort key order from the first row's SortSchema.
 	keys := strings.Split(b.rows[0].SortSchema, ",")
 	sort.SliceStable(b.rows, func(i, j int) bool {
@@ -113,7 +113,10 @@ func (b *Builder) Flush(ctx context.Context) ([]Section, error) {
 				return vi < vj
 			}
 		}
-		return ri.MinTimestamp < rj.MinTimestamp
+		if ri.MinTimestamp != rj.MinTimestamp {
+			return ri.MinTimestamp < rj.MinTimestamp
+		}
+		return ri.MaxTimestamp < rj.MaxTimestamp
 	})
 
 	// Determine section splits based on targetSectionSize.

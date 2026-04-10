@@ -25,7 +25,6 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		{
 			ObjectPath:       "/tenant/abc/obj1",
 			SectionIndex:     0,
-			RunID:            42,
 			SortSchema:       "service_name",
 			Labels:           map[string]string{"service_name": "foo"},
 			MinTimestamp:     1000,
@@ -36,7 +35,6 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		{
 			ObjectPath:       "/tenant/abc/obj2",
 			SectionIndex:     1,
-			RunID:            43,
 			SortSchema:       "service_name",
 			Labels:           map[string]string{"service_name": "bar"},
 			MinTimestamp:     500,
@@ -47,7 +45,6 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		{
 			ObjectPath:       "/tenant/abc/obj3",
 			SectionIndex:     2,
-			RunID:            44,
 			SortSchema:       "service_name",
 			Labels:           map[string]string{"service_name": "baz"},
 			MinTimestamp:     3000,
@@ -85,7 +82,6 @@ func TestBuilder_RoundTrip(t *testing.T) {
 	fooStat := got[2]
 	require.Equal(t, "/tenant/abc/obj1", fooStat.ObjectPath)
 	require.Equal(t, int64(0), fooStat.SectionIndex)
-	require.Equal(t, int64(42), fooStat.RunID)
 	require.Equal(t, "service_name", fooStat.SortSchema)
 	require.Equal(t, "foo", fooStat.Labels["service_name"])
 	require.Equal(t, int64(1000), fooStat.MinTimestamp)
@@ -243,7 +239,6 @@ func TestBuilder_LargeValues(t *testing.T) {
 		SortSchema:       longSchema,
 		Labels:           map[string]string{longSchema: longLabel},
 		SectionIndex:     99,
-		RunID:            123456,
 		MinTimestamp:     1_000_000,
 		MaxTimestamp:     2_000_000,
 		RowCount:         99999,
@@ -268,7 +263,6 @@ func TestBuilder_LargeValues(t *testing.T) {
 	require.Equal(t, longSchema, stat.SortSchema)
 	require.Equal(t, longLabel, stat.Labels[longSchema])
 	require.Equal(t, int64(99), stat.SectionIndex)
-	require.Equal(t, int64(123456), stat.RunID)
 	require.Equal(t, int64(1_000_000), stat.MinTimestamp)
 	require.Equal(t, int64(2_000_000), stat.MaxTimestamp)
 	require.Equal(t, int64(99999), stat.RowCount)
@@ -313,9 +307,9 @@ func TestBuilder_EstimatedSize(t *testing.T) {
 		SortSchema: "sch",                           // 3 bytes
 		Labels:     map[string]string{"sch": "svc"}, // key: 3 bytes, value: 3 bytes
 	})
-	// 6 * 8 = 48 for int64s (SectionIndex, RunID, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
-	// + 3 (ObjectPath) + 3 (SortSchema) + 3 (key) + 3 (value) = 60
-	require.Equal(t, 60, b.EstimatedSize())
+	// 5 * 8 = 40 for int64s (SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
+	// + 3 (ObjectPath) + 3 (SortSchema) + 3 (key) + 3 (value) = 52
+	require.Equal(t, 52, b.EstimatedSize())
 }
 
 func TestBuilder_FlushResetsBuilder(t *testing.T) {

@@ -59,7 +59,7 @@ func (r *RowReader) Read(ctx context.Context, p []Posting) (int, error) {
 	if err != nil && err != io.EOF {
 		return 0, fmt.Errorf("reading column_name: %w", err)
 	}
-	labelValues, err := r.reader.readNullableStringColumn(ctx, colLabelValue, n)
+	labelValues, err := r.reader.readStringColumn(ctx, colLabelValue, n)
 	if err != nil && err != io.EOF {
 		return 0, fmt.Errorf("reading label_value: %w", err)
 	}
@@ -135,25 +135,6 @@ func extractStringValues(arr columnar.Array) ([]string, error) {
 	result := make([]string, utf8Arr.Len())
 	for i := range utf8Arr.Len() {
 		result[i] = string(utf8Arr.Get(i))
-	}
-	return result, nil
-}
-
-// extractNullableStringValues extracts string values from a nullable UTF8
-// columnar.Array. Null entries are returned as nil pointers.
-func extractNullableStringValues(arr columnar.Array) ([]*string, error) {
-	utf8Arr, ok := arr.(*columnar.UTF8)
-	if !ok {
-		return nil, fmt.Errorf("expected *columnar.UTF8, got %T", arr)
-	}
-	result := make([]*string, utf8Arr.Len())
-	for i := range utf8Arr.Len() {
-		if utf8Arr.IsNull(i) {
-			result[i] = nil
-		} else {
-			s := string(utf8Arr.Get(i))
-			result[i] = &s
-		}
 	}
 	return result, nil
 }

@@ -47,7 +47,7 @@ func readAllPostingsForTenant(t *testing.T, builder *indexobj.Builder, tenantID 
 // findPosting returns the first posting matching the given column name and label value.
 func findPosting(pp []postings.Posting, columnName, labelValue string) *postings.Posting {
 	for i := range pp {
-		if pp[i].ColumnName == columnName && pp[i].LabelValue != nil && *pp[i].LabelValue == labelValue {
+		if pp[i].ColumnName == columnName && pp[i].LabelValue == labelValue {
 			return &pp[i]
 		}
 	}
@@ -84,7 +84,7 @@ func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	// All should be label-kind.
 	for _, p := range allPostings {
 		require.Equal(t, postings.KindLabel, p.Kind)
-		require.NotNil(t, p.LabelValue)
+		require.NotEmpty(t, p.LabelValue)
 	}
 
 	// Find svcA and svcB.

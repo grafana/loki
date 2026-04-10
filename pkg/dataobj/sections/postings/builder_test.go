@@ -12,8 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-func strPtr(s string) *string { return &s }
-
 // TestBuilder_Empty verifies that an empty builder produces no sections.
 func TestBuilder_Empty(t *testing.T) {
 	b := NewBuilder(0, ColumnarEncoder)
@@ -27,13 +25,12 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 	b := NewBuilder(0, ColumnarEncoder)
 
 	bitmap := makeBitmap(t, 3, 7, 15)
-	lv := "value1"
 	input := Posting{
 		Kind:             KindLabel,
 		ObjectPath:       "/tenant/abc/obj1",
 		SectionIndex:     0,
 		ColumnName:       "env",
-		LabelValue:       &lv,
+		LabelValue:       "value1",
 		BloomFilter:      nil,
 		StreamIDBitmap:   bitmap,
 		UncompressedSize: 4096,
@@ -54,8 +51,7 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 	require.Equal(t, "/tenant/abc/obj1", p.ObjectPath)
 	require.Equal(t, int64(0), p.SectionIndex)
 	require.Equal(t, "env", p.ColumnName)
-	require.NotNil(t, p.LabelValue)
-	require.Equal(t, "value1", *p.LabelValue)
+	require.Equal(t, "value1", p.LabelValue)
 	require.Nil(t, p.BloomFilter)
 	require.Equal(t, bitmap, p.StreamIDBitmap)
 	require.Equal(t, int64(4096), p.UncompressedSize)
@@ -74,7 +70,6 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 		ObjectPath:       "/tenant/abc/obj2",
 		SectionIndex:     1,
 		ColumnName:       "service_name",
-		LabelValue:       nil,
 		BloomFilter:      bloomFilter,
 		StreamIDBitmap:   bitmap,
 		UncompressedSize: 8192,
@@ -95,7 +90,7 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 	require.Equal(t, "/tenant/abc/obj2", p.ObjectPath)
 	require.Equal(t, int64(1), p.SectionIndex)
 	require.Equal(t, "service_name", p.ColumnName)
-	require.Nil(t, p.LabelValue)
+	require.Empty(t, p.LabelValue)
 	require.Equal(t, bloomFilter, p.BloomFilter)
 	require.Equal(t, bitmap, p.StreamIDBitmap)
 	require.Equal(t, int64(8192), p.UncompressedSize)
@@ -111,7 +106,6 @@ func TestBuilder_MixedPostings(t *testing.T) {
 		Kind:           KindBloom,
 		ObjectPath:     "/obj1",
 		ColumnName:     "col_a",
-		LabelValue:     nil,
 		BloomFilter:    []byte{0x01, 0x02},
 		StreamIDBitmap: makeBitmap(t, 0),
 		MinTimestamp:   100,
@@ -121,7 +115,7 @@ func TestBuilder_MixedPostings(t *testing.T) {
 		Kind:           KindLabel,
 		ObjectPath:     "/obj2",
 		ColumnName:     "col_b",
-		LabelValue:     strPtr("myval"),
+		LabelValue:     "myval",
 		BloomFilter:    nil,
 		StreamIDBitmap: makeBitmap(t, 1, 3),
 		MinTimestamp:   300,
@@ -140,11 +134,11 @@ func TestBuilder_MixedPostings(t *testing.T) {
 
 	// Bloom (KindBloom=0) sorts before Label (KindLabel=1).
 	require.Equal(t, KindBloom, got[0].Kind)
-	require.Nil(t, got[0].LabelValue)
+	require.Empty(t, got[0].LabelValue)
 	require.NotNil(t, got[0].BloomFilter)
 
 	require.Equal(t, KindLabel, got[1].Kind)
-	require.NotNil(t, got[1].LabelValue)
+	require.NotEmpty(t, got[1].LabelValue)
 	require.Nil(t, got[1].BloomFilter)
 }
 
@@ -158,11 +152,11 @@ func TestBuilder_SortOrder(t *testing.T) {
 	// same column. Within Bloom, sort by ColumnName then MinTimestamp.
 	// Nil LabelValue for Bloom sorts as "" (before any label value string).
 	postings := []Posting{
-		{Kind: KindLabel, ColumnName: "col_a", LabelValue: strPtr("beta"), MinTimestamp: 200, StreamIDBitmap: bitmapBytes},
-		{Kind: KindLabel, ColumnName: "col_a", LabelValue: strPtr("alpha"), MinTimestamp: 100, StreamIDBitmap: bitmapBytes},
-		{Kind: KindBloom, ColumnName: "col_a", LabelValue: nil, BloomFilter: []byte{0x01}, MinTimestamp: 50, StreamIDBitmap: bitmapBytes},
-		{Kind: KindLabel, ColumnName: "col_a", LabelValue: strPtr("alpha"), MinTimestamp: 50, StreamIDBitmap: bitmapBytes},
-		{Kind: KindBloom, ColumnName: "col_b", LabelValue: nil, BloomFilter: []byte{0x02}, MinTimestamp: 10, StreamIDBitmap: bitmapBytes},
+		{Kind: KindLabel, ColumnName: "col_a", LabelValue: "beta", MinTimestamp: 200, StreamIDBitmap: bitmapBytes},
+		{Kind: KindLabel, ColumnName: "col_a", LabelValue: "alpha", MinTimestamp: 100, StreamIDBitmap: bitmapBytes},
+		{Kind: KindBloom, ColumnName: "col_a", BloomFilter: []byte{0x01}, MinTimestamp: 50, StreamIDBitmap: bitmapBytes},
+		{Kind: KindLabel, ColumnName: "col_a", LabelValue: "alpha", MinTimestamp: 50, StreamIDBitmap: bitmapBytes},
+		{Kind: KindBloom, ColumnName: "col_b", BloomFilter: []byte{0x02}, MinTimestamp: 10, StreamIDBitmap: bitmapBytes},
 	}
 
 	for _, p := range postings {
@@ -184,25 +178,25 @@ func TestBuilder_SortOrder(t *testing.T) {
 	// 4: KindLabel, col_a, beta, ts=200
 	require.Equal(t, KindBloom, got[0].Kind)
 	require.Equal(t, "col_a", got[0].ColumnName)
-	require.Nil(t, got[0].LabelValue)
+	require.Empty(t, got[0].LabelValue)
 
 	require.Equal(t, KindBloom, got[1].Kind)
 	require.Equal(t, "col_b", got[1].ColumnName)
-	require.Nil(t, got[1].LabelValue)
+	require.Empty(t, got[1].LabelValue)
 
 	require.Equal(t, KindLabel, got[2].Kind)
 	require.Equal(t, "col_a", got[2].ColumnName)
-	require.Equal(t, "alpha", *got[2].LabelValue)
+	require.Equal(t, "alpha", got[2].LabelValue)
 	require.Equal(t, int64(50), got[2].MinTimestamp)
 
 	require.Equal(t, KindLabel, got[3].Kind)
 	require.Equal(t, "col_a", got[3].ColumnName)
-	require.Equal(t, "alpha", *got[3].LabelValue)
+	require.Equal(t, "alpha", got[3].LabelValue)
 	require.Equal(t, int64(100), got[3].MinTimestamp)
 
 	require.Equal(t, KindLabel, got[4].Kind)
 	require.Equal(t, "col_a", got[4].ColumnName)
-	require.Equal(t, "beta", *got[4].LabelValue)
+	require.Equal(t, "beta", got[4].LabelValue)
 }
 
 // TestBuilder_NullableHandling verifies nullable column correctness.
@@ -213,12 +207,12 @@ func TestBuilder_NullableHandling(t *testing.T) {
 
 	b.Append(Posting{
 		Kind: KindBloom, ColumnName: "col",
-		LabelValue: nil, BloomFilter: []byte{0xAB},
+		BloomFilter:    []byte{0xAB},
 		StreamIDBitmap: bitmapBytes,
 	})
 	b.Append(Posting{
 		Kind: KindLabel, ColumnName: "col",
-		LabelValue: strPtr("val"), BloomFilter: nil,
+		LabelValue:     "val",
 		StreamIDBitmap: bitmapBytes,
 	})
 
@@ -229,16 +223,16 @@ func TestBuilder_NullableHandling(t *testing.T) {
 	got := readAllPostings(t, &sections[0])
 	require.Len(t, got, 2)
 
-	// Bloom posting: label_value is null, bloom_filter is non-null
+	// Bloom posting: label_value is empty, bloom_filter is non-null
 	bloom := got[0]
 	require.Equal(t, KindBloom, bloom.Kind)
-	require.Nil(t, bloom.LabelValue, "Bloom posting should have nil LabelValue")
+	require.Empty(t, bloom.LabelValue, "Bloom posting should have empty LabelValue")
 	require.NotNil(t, bloom.BloomFilter, "Bloom posting should have non-nil BloomFilter")
 
-	// Label posting: bloom_filter is null, label_value is non-null
+	// Label posting: bloom_filter is null, label_value is non-empty
 	label := got[1]
 	require.Equal(t, KindLabel, label.Kind)
-	require.NotNil(t, label.LabelValue, "Label posting should have non-nil LabelValue")
+	require.NotEmpty(t, label.LabelValue, "Label posting should have non-empty LabelValue")
 	require.Nil(t, label.BloomFilter, "Label posting should have nil BloomFilter")
 }
 
@@ -304,14 +298,14 @@ func TestBuilder_BitmapNormalization(t *testing.T) {
 	b.Append(Posting{
 		Kind:           KindLabel,
 		ColumnName:     "col",
-		LabelValue:     strPtr("a"),
+		LabelValue:     "a",
 		StreamIDBitmap: short,
 		MinTimestamp:   100,
 	})
 	b.Append(Posting{
 		Kind:           KindLabel,
 		ColumnName:     "col",
-		LabelValue:     strPtr("b"),
+		LabelValue:     "b",
 		StreamIDBitmap: long,
 		MinTimestamp:   200,
 	})
@@ -347,7 +341,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 		b.Append(Posting{
 			Kind:           KindLabel,
 			ColumnName:     "col",
-			LabelValue:     strPtr("val"),
+			LabelValue:     "val",
 			StreamIDBitmap: bitmapBytes,
 			MinTimestamp:   int64(i * 100),
 		})
@@ -405,7 +399,7 @@ func TestBuilder_AllBloom(t *testing.T) {
 	require.Len(t, got, 3)
 	for _, p := range got {
 		require.Equal(t, KindBloom, p.Kind)
-		require.Nil(t, p.LabelValue)
+		require.Empty(t, p.LabelValue)
 		require.NotNil(t, p.BloomFilter)
 	}
 }
@@ -420,7 +414,7 @@ func TestBuilder_AllLabel(t *testing.T) {
 		b.Append(Posting{
 			Kind:           KindLabel,
 			ColumnName:     "col",
-			LabelValue:     &lv,
+			LabelValue:     lv,
 			StreamIDBitmap: bitmapBytes,
 			MinTimestamp:   int64(i * 100),
 		})
@@ -434,7 +428,7 @@ func TestBuilder_AllLabel(t *testing.T) {
 	require.Len(t, got, 3)
 	for _, p := range got {
 		require.Equal(t, KindLabel, p.Kind)
-		require.NotNil(t, p.LabelValue)
+		require.NotEmpty(t, p.LabelValue)
 		require.Nil(t, p.BloomFilter)
 	}
 }
@@ -442,7 +436,7 @@ func TestBuilder_AllLabel(t *testing.T) {
 // TestBuilder_FlushResetsBuilder verifies that a flush resets the builder.
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
 	b := NewBuilder(0, ColumnarEncoder)
-	b.Append(Posting{Kind: KindLabel, ColumnName: "col", LabelValue: strPtr("v"), StreamIDBitmap: makeBitmap(t, 0)})
+	b.Append(Posting{Kind: KindLabel, ColumnName: "col", LabelValue: "v", StreamIDBitmap: makeBitmap(t, 0)})
 
 	_, err := b.Flush(context.Background())
 	require.NoError(t, err)
@@ -482,11 +476,10 @@ func TestRowReader_SmallBuffer(t *testing.T) {
 	bitmapBytes := makeBitmap(t, 0)
 	// Append 5 rows.
 	for i := range 5 {
-		lv := fmt.Sprintf("val%d", i)
 		b.Append(Posting{
 			Kind:           KindLabel,
 			ColumnName:     "col",
-			LabelValue:     &lv,
+			LabelValue:     fmt.Sprintf("val%d", i),
 			StreamIDBitmap: bitmapBytes,
 			MinTimestamp:   int64(i * 100),
 		})

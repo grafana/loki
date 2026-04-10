@@ -52,10 +52,6 @@ func (r *RowReader) Read(ctx context.Context, s []Stat) (int, error) {
 	if err != nil && err != io.EOF {
 		return 0, fmt.Errorf("reading section_index: %w", err)
 	}
-	runIDs, err := r.reader.readInt64Column(ctx, colRunID, n)
-	if err != nil && err != io.EOF {
-		return 0, fmt.Errorf("reading run_id: %w", err)
-	}
 	sortSchemas, err := r.reader.readStringColumn(ctx, colSortSchema, n)
 	if err != nil && err != io.EOF {
 		return 0, fmt.Errorf("reading sort_schema: %w", err)
@@ -110,7 +106,6 @@ func (r *RowReader) Read(ctx context.Context, s []Stat) (int, error) {
 		s[i] = Stat{
 			ObjectPath:       objectPaths[i],
 			SectionIndex:     sectionIndexes[i],
-			RunID:            runIDs[i],
 			SortSchema:       sortSchemas[i],
 			Labels:           labels,
 			MinTimestamp:     minTimestamps[i],

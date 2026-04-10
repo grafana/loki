@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
+// created for and scoped to each logs section
 type columnValuesCalculation struct {
 	columnBloomBuilders map[string]*bloom.BloomFilter
 	columnIndexes       map[string]int64

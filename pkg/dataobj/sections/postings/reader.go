@@ -75,23 +75,6 @@ func (r *Reader) readStringColumn(ctx context.Context, name string, count int) (
 	return extractStringValues(arr)
 }
 
-// readNullableStringColumn reads up to count values from a named nullable UTF8
-// column. Null entries are returned as nil pointers.
-func (r *Reader) readNullableStringColumn(ctx context.Context, name string, count int) ([]*string, error) {
-	cr, err := r.getOrOpenColumn(name)
-	if err != nil {
-		return nil, fmt.Errorf("column %q not found: %w", name, err)
-	}
-	arr, err := cr.Read(ctx, count)
-	if err != nil && err != io.EOF {
-		return nil, fmt.Errorf("reading column %q: %w", name, err)
-	}
-	if arr == nil {
-		return nil, io.EOF
-	}
-	return extractNullableStringValues(arr)
-}
-
 // readBytesColumn reads up to count values from a named binary column.
 // Null entries are returned as nil slices.
 func (r *Reader) readBytesColumn(ctx context.Context, name string, count int) ([][]byte, error) {

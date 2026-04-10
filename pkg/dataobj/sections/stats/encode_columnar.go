@@ -19,7 +19,6 @@ func ColumnarEncoder(_ context.Context, rows []Stat) (Section, error) {
 
 	objectPathBuilder := columnar.NewUTF8Builder(buildAlloc)
 	sectionIndexBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
-	runIDBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
 	sortSchemaBuilder := columnar.NewUTF8Builder(buildAlloc)
 	minTSBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
 	maxTSBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
@@ -49,7 +48,6 @@ func ColumnarEncoder(_ context.Context, rows []Stat) (Section, error) {
 	for _, r := range rows {
 		objectPathBuilder.AppendValue([]byte(r.ObjectPath))
 		sectionIndexBuilder.AppendValue(r.SectionIndex)
-		runIDBuilder.AppendValue(r.RunID)
 		sortSchemaBuilder.AppendValue([]byte(r.SortSchema))
 		for _, key := range labelKeys {
 			labelBuilders[key].AppendValue([]byte(r.Labels[key]))
@@ -61,9 +59,9 @@ func ColumnarEncoder(_ context.Context, rows []Stat) (Section, error) {
 	}
 
 	// Column order: fixed prefix, dynamic label columns, fixed suffix.
-	// object_path, section_index, run_id, sort_schema, <label columns>, min_timestamp, max_timestamp, row_count, uncompressed_size
+	// object_path, section_index, sort_schema, <label columns>, min_timestamp, max_timestamp, row_count, uncompressed_size
 	columnOrder := []string{
-		colObjectPath, colSectionIndex, colRunID, colSortSchema,
+		colObjectPath, colSectionIndex, colSortSchema,
 	}
 	columnOrder = append(columnOrder, labelKeys...)
 	columnOrder = append(columnOrder, colMinTimestamp, colMaxTimestamp, colRowCount, colUncompressedSize)
@@ -72,7 +70,6 @@ func ColumnarEncoder(_ context.Context, rows []Stat) (Section, error) {
 	columns := map[string]columnar.Array{
 		colObjectPath:       objectPathBuilder.Build(),
 		colSectionIndex:     sectionIndexBuilder.Build(),
-		colRunID:            runIDBuilder.Build(),
 		colSortSchema:       sortSchemaBuilder.Build(),
 		colMinTimestamp:     minTSBuilder.Build(),
 		colMaxTimestamp:     maxTSBuilder.Build(),

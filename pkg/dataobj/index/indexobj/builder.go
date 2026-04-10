@@ -142,14 +142,13 @@ func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder
 
 // AppendStat records a per-sort-key aggregate for a data object section.
 func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
-	sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64, runID int64) error {
+	sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
 
 	tenantStats := b.getStatsBuilderForTenant(tenantID)
 
 	tenantStats.Append(stats.Stat{
 		ObjectPath:       objectPath,
 		SectionIndex:     sectionIdx,
-		RunID:            runID,
 		SortSchema:       sortSchema,
 		Labels:           labels,
 		MinTimestamp:     minTs.UnixNano(),
@@ -174,7 +173,7 @@ func (b *Builder) AppendLabelPosting(tenantID, objectPath string, sectionIdx int
 		ObjectPath:       objectPath,
 		SectionIndex:     sectionIdx,
 		ColumnName:       columnName,
-		LabelValue:       &labelValue,
+		LabelValue:       labelValue,
 		BloomFilter:      nil,
 		StreamIDBitmap:   streamIDBitmap,
 		UncompressedSize: uncompressedSize,
@@ -198,7 +197,6 @@ func (b *Builder) AppendBloomPosting(tenantID, objectPath string, sectionIdx int
 		ObjectPath:       objectPath,
 		SectionIndex:     sectionIdx,
 		ColumnName:       columnName,
-		LabelValue:       nil,
 		BloomFilter:      bloomFilter,
 		StreamIDBitmap:   streamIDBitmap,
 		UncompressedSize: uncompressedSize,

@@ -1,8 +1,9 @@
 package index
 
 import (
+	"cmp"
 	"context"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
+// created for and scoped to each logs section
 type labelPostingsCalculation struct {
 	postingsByKey map[postingKey]*labelPosting
 	maxStreamID   int64
@@ -95,11 +97,11 @@ func (c *labelPostingsCalculation) Flush(_ context.Context, calcCtx *logsCalcula
 	for k := range c.postingsByKey {
 		keys = append(keys, k)
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		if keys[i].columnName != keys[j].columnName {
-			return keys[i].columnName < keys[j].columnName
+	slices.SortFunc(keys, func(a, b postingKey) int {
+		if c := cmp.Compare(a.columnName, b.columnName); c != 0 {
+			return c
 		}
-		return keys[i].labelValue < keys[j].labelValue
+		return cmp.Compare(a.labelValue, b.labelValue)
 	})
 
 	for _, key := range keys {

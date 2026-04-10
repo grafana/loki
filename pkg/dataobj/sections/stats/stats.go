@@ -26,7 +26,6 @@ func CheckSection(section *dataobj.Section) bool {
 type Stat struct {
 	ObjectPath       string
 	SectionIndex     int64
-	RunID            int64
 	SortSchema       string
 	Labels           map[string]string // Label values keyed by sort schema key name
 	MinTimestamp     int64             // UnixNano
