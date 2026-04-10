@@ -36,6 +36,8 @@ func TestMain(m *testing.M) {
 	// that fail validation (e.g. SSO profiles missing required fields).
 	os.Setenv("AWS_CONFIG_FILE", "/dev/null")
 	os.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/dev/null")
+	os.Setenv("AWS_PROFILE", "")
+	os.Setenv("AWS_REGION", "")
 	os.Exit(m.Run())
 }
 
