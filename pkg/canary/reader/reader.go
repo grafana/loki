@@ -75,6 +75,7 @@ type Reader struct {
 	done            chan struct{}
 	queryAppend     string
 	labels          string
+	lastRecvTs      time.Time
 }
 
 func NewReader(writer io.Writer,
@@ -440,6 +441,9 @@ func (r *Reader) run() {
 					fmt.Fprint(r.w, err)
 					continue
 				}
+				if ts.After(r.lastRecvTs) {
+					r.lastRecvTs = *ts
+				}
 				r.recv <- *ts
 			}
 		}
@@ -474,11 +478,15 @@ func (r *Reader) closeAndReconnect() {
 		if r.useTLS {
 			scheme = "wss"
 		}
+		q := "query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"} %v", r.sName, r.sValue, r.lName, r.lVal, r.queryAppend))
+		if !r.lastRecvTs.IsZero() {
+			q += "&start=" + strconv.FormatInt(r.lastRecvTs.UnixNano()+1, 10)
+		}
 		u := url.URL{
 			Scheme:   scheme,
 			Host:     r.addr,
 			Path:     "/loki/api/v1/tail",
-			RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"} %v", r.sName, r.sValue, r.lName, r.lVal, r.queryAppend)),
+			RawQuery: q,
 		}
 
 		fmt.Fprintf(r.w, "Connecting to loki at %v, querying for label '%v' with value '%v'\n", u.String(), r.lName, r.lVal)
