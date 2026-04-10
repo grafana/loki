@@ -1291,15 +1291,16 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 }
 
 func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker *PushTracker, subring *ring.PartitionRing) {
-	for _, s := range streams {
-		go func(s KeyedStream) {
+	go func() {
+		for _, s := range streams {
 			err := d.sendStreamToKafka(ctx, s, tenant, subring)
 			if err != nil {
 				err = fmt.Errorf("failed to write stream to kafka: %w", err)
 			}
 			tracker.doneWithResult(err)
-		}(s)
-	}
+		}
+	}()
+
 }
 
 func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream, tenant string, subring *ring.PartitionRing) error {
