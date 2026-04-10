@@ -37,7 +37,18 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
-#### Distributor Max Receive Limits for uncompressed bytes
+### Breaking change: Removal of deprecated storage backends
+
+We deprecated legacy storage backends in Loki 3.0 and now they are subsequently removed:
+- Google BigTable (for chunks and indexes)
+
+Loki will fail to start if a deprecated and removed storage backend is referenced in the schema or storage configuration. You must not upgrade if you still use one of the above mentioned backends.
+
+Please refer to [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/) for more information about how to evolve your schema.
+
+If the latest entry of your schema config is older than retention period of your data, then it is safe to remove any old entries from the `schema_config.configs` when upgrading.
+
+### Distributor Max Receive Limits for uncompressed bytes
 
 The next Loki release introduces a new configuration option (i.e. `-distibutor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
 
