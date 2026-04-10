@@ -146,7 +146,10 @@ func eliminateEmptyCachedTasks(p *planner, caches executor.TaskCacheRegistry, lo
 
 	// Log the number of tasks removed. Note that if removed_tasks is bigger than to_eliminate
 	// then, (removed_tasks-to_eliminate) parents were removed because all their children were removed,
-	level.Debug(logger).Log("msg", "removed empty cached tasks from workflow", "removed_tasks", tasksRemoved, "total_tasks", taskCount, "to_eliminate", len(toEliminate))
+	if tasksRemoved > 0 {
+		level.Debug(logger).Log("msg", "removed empty cached tasks from workflow", "removed_tasks", tasksRemoved, "total_tasks", taskCount, "to_eliminate", len(toEliminate))
+	}
+
 	return nil
 }
 

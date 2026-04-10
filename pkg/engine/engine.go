@@ -401,7 +401,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID, taskCacheEnabled))
+	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID, logger, taskCacheEnabled))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -446,8 +446,9 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	return physicalPlan, duration, nil
 }
 
-func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string, cacheEnabled bool) physical.MetastoreSectionsResolver {
+func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string, logger log.Logger, cacheEnabled bool) physical.MetastoreSectionsResolver {
 	planner := physical.NewMetastorePlanner(e.metastore, e.cfg.Executor.BatchSize)
+	logger = log.With(logger, "subcomponent", "metastore")
 	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
 		ctx, span := xcap.StartSpan(ctx, tracer, "engine.metastoreResolver")
 		defer span.End()
@@ -460,7 +461,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string,
 		// Disable admission lanes for metastore queries
 		useAdmissionLanes := false
 
-		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan, useAdmissionLanes, cacheEnabled)
+		wf, _, err := e.buildWorkflow(ctx, tenantID, logger, plan, useAdmissionLanes, cacheEnabled)
 		if err != nil {
 			return nil, fmt.Errorf("metastore: build workflow: %w", err)
 		}
