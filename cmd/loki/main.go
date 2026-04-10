@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"reflect"
 	"runtime"
@@ -21,6 +22,7 @@ import (
 	// import itself.
 	_ "google.golang.org/grpc/encoding/proto"
 
+	"github.com/KimMachineGun/automemlimit/memlimit"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/tracing"
@@ -127,6 +129,7 @@ func main() {
 	}
 
 	setProfilingOptions(config.Profiling)
+	setGCOptions(config.GC)
 
 	// Allocate a block of memory to reduce the frequency of garbage collection.
 	// The larger the ballast, the lower the garbage collection frequency.
@@ -160,4 +163,28 @@ func setProfilingOptions(cfg loki.ProfilingConfig) {
 	if cfg.MutexProfileFraction > 0 {
 		runtime.SetMutexProfileFraction(cfg.MutexProfileFraction)
 	}
+}
+
+func setGCOptions(cfg loki.GCConfig) {
+	if !cfg.AutoMemLimitEnabled {
+		return
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	limit, err := memlimit.SetGoMemLimitWithOpts(
+		memlimit.WithRatio(cfg.AutoMemLimitRatio),
+		memlimit.WithProvider(
+			memlimit.ApplyFallback(
+				memlimit.FromCgroup,
+				memlimit.FromSystem,
+			),
+		),
+		memlimit.WithRefreshInterval(15*time.Second),
+		memlimit.WithLogger(logger),
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to set GOMEMLIMIT: %v\n", err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "info: GOMEMLIMIT set to %d bytes (ratio: %.2f)\n", limit, cfg.AutoMemLimitRatio)
 }

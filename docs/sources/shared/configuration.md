@@ -2003,6 +2003,17 @@ ingest_limits_frontend_client:
 # Configuration for profiling options.
 [profiling: <profiling>]
 
+gc:
+  # Set to true to enable automatic adjustment of GOMEMLIMIT based on available
+  # memory.
+  # CLI flag: -gc.automemlimit_enabled
+  [automemlimit_enabled: <boolean> | default = false]
+
+  # The proportion of available memory to use for GOMEMLIMIT. Must be between 0
+  # and 1.
+  # CLI flag: -gc.automemlimit_ratio
+  [automemlimit_ratio: <float> | default = 0.8]
+
 # List of limit fields to publish from the tenant limits endpoint. If empty, all
 # fields are returned. Use YAML field names (e.g., 'retention_period',
 # 'max_query_series').

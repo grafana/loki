@@ -126,6 +126,7 @@ type Config struct {
 	Tracing           tracing.Config       `yaml:"tracing"`
 	Analytics         analytics.Config     `yaml:"analytics"`
 	Profiling         ProfilingConfig      `yaml:"profiling,omitempty"`
+	GC                GCConfig             `yaml:"gc,omitempty"`
 
 	// TenantLimitsAllowPublish specifies which limit fields to return from the tenant limits endpoint.
 	// If empty, all fields are returned. This allows filtering of sensitive or unwanted configuration.
@@ -230,6 +231,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Analytics.RegisterFlags(f)
 	c.OperationalConfig.RegisterFlags(f)
 	c.Profiling.RegisterFlags(f)
+	c.GC.RegisterFlags(f)
 	c.KafkaConfig.RegisterFlags(f)
 	c.IngestLimits.RegisterFlags(f)
 	c.IngestLimitsFrontend.RegisterFlags(f)
