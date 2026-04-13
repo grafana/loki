@@ -90,13 +90,23 @@ Create a LID as a pull request using the [LID template](docs/sources/community/l
 
 ### Commit messages
 
-Loki uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Every commit message must follow the format `<type>: description`, for example:
+Loki uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Every commit message must follow the format `<type>(<scope>): description`, where `(<scope>)` is optional, for example:
 
 ```
-fix: correct chunk iterator off-by-one error
-feat(querier): add partition-aware query path
-docs: update upgrade guide for 3.x
+fix: Correct chunk iterator off-by-one error
+feat(querier): Add partition-aware query path
+feat!: Remove deprecated querier code
+docs: Update upgrade guide for 3.x
 ```
+
+When there is a new release, the [`CHANGELOG.md`](CHANGELOG.md) is automatically populated by [release-please](https://github.com/googleapis/release-please).
+Commit messages of the same type are grouped into sections, such as `### Features` for `fix` and `### Bug Fixes` for `fix`.
+
+The types `chore`, `docs`, `test`, `style`, `ci`, `build`, and `refactor` are not included in the changelog.
+`feat!`, `fix!`, or any type with `BREAKING CHANGE:` in the footer is listed in the `### ⚠ BREAKING CHANGES` section.
+
+Because the PR title is used directly as the changelog entry, write it as a clear, self-contained statement for a reader who has no other context.
+The existing [PR checklist](#pr-checklist) item 1 gives guidance on phrasing.
 
 ### PR checklist
 
