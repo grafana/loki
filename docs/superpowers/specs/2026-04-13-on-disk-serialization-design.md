@@ -68,12 +68,13 @@ If the builder has zero rows, `Flush` writes nothing and returns `(0, nil)`. Cal
 The builder stores the encoder at construction and delegates to it in `Flush`:
 
 ```go
-func NewBuilder(encode SectionEncoder) *Builder
+func NewBuilder(encode SectionEncoder, opts ...BuilderOption) *Builder
 
 func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
     if len(b.rows) == 0 {
         return 0, nil
     }
+    sort.SliceStable(b.rows, b.sortFunc)  // sort before encoding
     var enc columnar.Encoder
     defer enc.Reset()
     if err := b.encode(b.rows, &enc); err != nil {
@@ -88,7 +89,11 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 }
 ```
 
-Note: `dataobj.Builder.Append` calls `Reset()` unconditionally after `Flush`, so on error, rows are lost. This matches the convention used by `streams.Builder` and other existing implementations.
+The `SectionEncoder` receives rows in sorted order. Sorting is the builder's responsibility, performed in `Flush` before delegating to the encoder.
+
+**Page size configuration:** The `dataset.ColumnBuilder` requires `PageSizeHint` and `PageMaxRowCount` parameters. These are captured in the `ColumnarSectionEncoder` closure when it is constructed by `getStatsBuilderForTenant`/`getPostingsBuilderForTenant` in `indexobj/builder.go`, using values from `cfg.TargetPageSize` and `cfg.MaxPageRows` (or suitable defaults). This follows the pattern used by `streams.Builder` where page sizes are constructor parameters threaded through to the encoding logic.
+
+**Error contract:** On `columnar.Encoder.Flush` error, `b.Reset()` is **not** called — rows are retained in the builder. The caller (`dataobj.Builder.Append`) propagates the error and does **not** call `sec.Reset()` on failure (see `dataobj/builder.go:46-55`). This matches the convention in `streams.Builder`.
 
 **Rationale:** Retaining the pluggable `SectionEncoder` from #21442 is cheaper than removing it. Today's implementation (`ColumnarSectionEncoder`) uses `dataset.ColumnBuilder` + `columnar.Encoder`. If a second encoder using the dataset package directly is needed in the future, it can be provided as a different `SectionEncoder` function without changing the builder.
 
@@ -123,9 +128,19 @@ func Open(ctx context.Context, section *dataobj.Section) (*Section, error)
 
 This creates a `columnar.Decoder` -> `columnar.Section`, then constructs a package-specific `Section` value whose `OpenColumn` closure reads from disk.
 
-**The bridging mechanism:** The `Open` function populates the `Section.OpenColumn` closure so that each call to `OpenColumn(name)` returns a `ColumnReader` implementation backed by on-disk data. The concrete `ColumnReader` wraps the `columnar.ReaderAdapter` (which converts `dataset.RowReader` output into `columnar.RecordBatch`), extracting the single column's `columnar.Array` from the batch. This bridging type is new — it adapts `ReaderAdapter.Read(ctx, alloc, batchSize) (*RecordBatch, error)` to `ColumnReader.Read(ctx, count) (Array, error)` by managing the allocator internally and extracting the target column from the record batch.
+**`Section` population:** After this change, `Section` remains the shared value type — the only production code path populating it is `Open`. The in-memory path used in pre-existing tests is deleted.
 
-Alternatively, the implementation may bypass `ReaderAdapter` entirely and read column data directly from the `columnar.Section`'s `Dataset` interface, similar to how `streams.Iter` reads rows. The exact approach is an implementation detail — what matters is that `Open` returns a `*Section` whose `OpenColumn` produces valid `ColumnReader`s backed by on-disk data.
+`Open` populates:
+- `Section.ColumnNames` — from the `columnar.Section` column metadata
+- `Section.RowCount` — derived from the first column's row count in the `columnar.Section` metadata (all columns in a well-formed section have the same row count). This is required for `Reader`/`RowReader` EOF detection.
+- `Section.OpenColumn` — a closure that returns a `ColumnReader` backed by on-disk data
+
+**The `ColumnReader` bridge:** The `OpenColumn` closure returns a new concrete type that implements `ColumnReader`. This type must satisfy the following contract:
+- `Read(ctx, count)` returns a `columnar.Array` of up to `count` elements, or `(nil, io.EOF)` when no more data is available
+- The returned arrays must be the concrete types expected by `RowReader` — specifically `*columnar.Number[int64]` for INT64 columns and `*columnar.UTF8` for BINARY columns (these are used in type assertions in `row_reader.go`)
+- `Close()` releases any internal resources (allocator, decoder state)
+
+The bridge reads column data from the `columnar.Section`'s `Dataset` interface (via `dataset.RowReader` or `columnar.ReaderAdapter`), manages a `memory.Allocator` internally, and extracts the target column from the results. The exact internal approach is an implementation detail as long as the above contract is satisfied.
 
 #### Validation in `Open`
 
@@ -158,12 +173,14 @@ Six changes:
 **c) Mid-accumulation flushing** — After each append to a tenant builder, check `EstimatedSize()` and flush if it exceeds `TargetSectionSize`:
 ```go
 if tenantBuilder.EstimatedSize() > int(b.cfg.TargetSectionSize) {
+    flushedSize := tenantBuilder.EstimatedSize()
     if err := b.builder.Append(tenantBuilder); err != nil {
         return err
     }
+    b.unflushedSizeEstimate -= flushedSize
 }
 ```
-After a mid-accumulation flush, decrement `b.unflushedSizeEstimate` by the pre-flush `EstimatedSize()`.
+The `flushedSize` is captured **before** `Append` (which calls `Flush` + `Reset`, zeroing the tenant builder's `EstimatedSize()`). The decrement only happens on success — if `Append` returns an error, `unflushedSizeEstimate` is left unchanged since the function returns the error immediately.
 
 **d) Final Flush serialization** — Replace the no-op reset of stats/postings builders with actual serialization via `b.builder.Append`, guarded by `EstimatedSize() > 0`, matching how streams/pointers/indexPointers are flushed:
 ```go
@@ -187,20 +204,20 @@ for _, tenantPostings := range b.postings {
 
 ### Postings Columns
 
-All columns are always present for every row. Columns that are semantically irrelevant for a given `PostingKind` are populated with empty/zero values, not nulls. This matches the current data model where `ColumnName`, `LabelValue`, `BloomFilter`, and `StreamIDBitmap` are always populated by the producer (`indexobj/builder.go`).
+All columns are present for every row. Columns that are semantically irrelevant for a given `PostingKind` use **null values** (via `dataset.NullValue()` / `builder.Append` with null, producing validity bitmap entries). This preserves the existing behavior where the current `ColumnarEncoder` uses `AppendNull()` for irrelevant fields, and `RowReader` checks `IsNull(i)` to return `nil` for `BloomFilter` and other fields. Existing tests (e.g., `require.Nil(t, label.BloomFilter)`) depend on null round-trip semantics.
 
-| Column | Physical Type | Encoding | Compression | Notes |
-|--------|--------------|----------|-------------|-------|
-| `kind` | INT64 | DELTA | NONE | `PostingKind` as int |
-| `object_path` | BINARY | PLAIN | ZSTD | |
-| `section_index` | INT64 | DELTA | NONE | |
-| `column_name` | BINARY | PLAIN | ZSTD | Empty string for label postings |
-| `label_value` | BINARY | PLAIN | ZSTD | Empty string for bloom postings |
-| `bloom_filter` | BINARY | PLAIN | NONE | Empty for label postings; bloom data is pre-compressed by the caller, encoder applies no additional compression |
-| `stream_id_bitmap` | BINARY | PLAIN | ZSTD | Present for all posting kinds |
-| `uncompressed_size` | INT64 | DELTA | NONE | |
-| `min_timestamp` | INT64 | DELTA | NONE | |
-| `max_timestamp` | INT64 | DELTA | NONE | |
+| Column | Physical Type | Encoding | Compression | Nullable | Notes |
+|--------|--------------|----------|-------------|----------|-------|
+| `kind` | INT64 | DELTA | NONE | No | `PostingKind` as int |
+| `object_path` | BINARY | PLAIN | ZSTD | No | |
+| `section_index` | INT64 | DELTA | NONE | No | |
+| `column_name` | BINARY | PLAIN | ZSTD | Yes | Null for label postings |
+| `label_value` | BINARY | PLAIN | ZSTD | Yes | Null for bloom postings |
+| `bloom_filter` | BINARY | PLAIN | NONE | Yes | Null for label postings; bloom data is pre-compressed by the caller, encoder applies no additional compression |
+| `stream_id_bitmap` | BINARY | PLAIN | ZSTD | Yes | Null for bloom postings |
+| `uncompressed_size` | INT64 | DELTA | NONE | No | |
+| `min_timestamp` | INT64 | DELTA | NONE | No | |
+| `max_timestamp` | INT64 | DELTA | NONE | No | |
 
 **Sort info:** `[kind, column_name, label_value, min_timestamp, max_timestamp]` ascending. Since these are fixed columns at known positions, the `SortInfo` is constructed with hardcoded column indices matching the order columns are opened in the encoder.
 
@@ -217,13 +234,19 @@ All columns are always present for every row. Columns that are semantically irre
 | `uncompressed_size` | INT64 | DELTA | NONE | |
 | Dynamic label columns | BINARY | PLAIN | ZSTD | One per unique label key; sparse/nullable |
 
+#### Stats Column Layout Change
+
+Note: the column layout changes from the current in-memory encoder. The existing `encode_columnar.go` interleaves dynamic label columns between `sort_schema` and `min_timestamp`. The new on-disk layout places all fixed columns first (indices 0-6), then dynamic label columns (indices 7+). This is intentional — it simplifies `SortInfo` construction and aligns with the `streams.Builder` pattern where dynamic columns come after fixed columns. Since stats sections have never been persisted to disk, there is no migration concern.
+
 #### Stats SortSchema Invariant
 
-All rows within a single section (single `Flush` call) must share the same `SortSchema`. This is guaranteed by the builder being per-tenant and the calculation pipeline producing rows with a consistent schema per tenant. The encoder should validate this invariant: if rows have differing `SortSchema` values, return an error.
+All rows within a single section (single `Flush` call) must share the same `SortSchema`. This is guaranteed by the builder being per-tenant and the calculation pipeline producing rows with a consistent schema per tenant. The encoder validates this invariant at encode time (inside the `SectionEncoder` function): it reads `SortSchema` from the first row, then checks all subsequent rows for consistency. If any row has a differing `SortSchema`, the encoder returns an error.
 
 #### Stats Dynamic Label Columns and SortInfo
 
-The encoder determines dynamic label columns by parsing `SortSchema` from the first row (validated to be consistent across all rows). Label columns are opened in sort-schema order, after all fixed columns. The `SortInfo` is constructed after all columns are opened:
+The encoder determines dynamic label columns by parsing `SortSchema` from the first row (validated to be consistent across all rows). For rows where a label key from the schema is absent in the `Labels` map, the encoder appends a null value (`dataset.NullValue()`). At the `RowReader` boundary, null label values map to empty string in the `Stat.Labels` map (matching current behavior).
+
+Label columns are opened in sort-schema order, after all fixed columns. The `SortInfo` is constructed after all columns are opened:
 
 1. Open fixed columns (object_path through uncompressed_size) — indices 0-6
 2. Open dynamic label columns in sort-schema order — indices 7, 8, ...
@@ -240,11 +263,11 @@ The encoder determines dynamic label columns by parsing `SortSchema` from the fi
 ### Modified Files
 - `pkg/dataobj/sections/postings/builder.go` — New `Flush(w SectionWriter)` signature, remove `computeSplits`, remove `targetSectionSize`, implement `SectionBuilder`
 - `pkg/dataobj/sections/postings/encode_columnar.go` — Replace in-memory `ColumnarEncoder` with `ColumnarSectionEncoder` using `dataset.ColumnBuilder` + `columnar.Encoder`; new `SectionEncoder` signature; add `encodeColumn` helper; delete `columnarSliceColumnReader`
-- `pkg/dataobj/sections/postings/postings.go` — Add `ColumnType` enum and constants (e.g., `ColumnTypeKind`, `ColumnTypeLabelValue`) for use in `encodeColumn` and `Open`; bump `sectionType.Version` to `columnar.FormatVersion`
+- `pkg/dataobj/sections/postings/postings.go` — Add `ColumnType` enum with `String()` method producing logical type names for on-disk metadata (e.g., `ColumnTypeKind` → `"kind"`, `ColumnTypeLabelValue` → `"label_value"`, etc., matching the column names in the Column Definitions table). These strings are stored in the section's protobuf metadata dictionary and used by `Open` to reconstruct typed columns via `ParseColumnType`. Also bump `sectionType.Version` to `columnar.FormatVersion`
 - `pkg/dataobj/sections/postings/builder_test.go` — Rewrite tests to round-trip through disk
 - `pkg/dataobj/sections/stats/builder.go` — Same changes as postings builder
 - `pkg/dataobj/sections/stats/encode_columnar.go` — Same changes as postings encoder
-- `pkg/dataobj/sections/stats/stats.go` — Add `ColumnType` enum and constants; bump `sectionType.Version` to `columnar.FormatVersion`
+- `pkg/dataobj/sections/stats/stats.go` — Add `ColumnType` enum with `String()` method (same pattern as postings); dynamic label columns use a shared `ColumnTypeLabel` with the tag field carrying the label name (matching the `streams` convention). Bump `sectionType.Version` to `columnar.FormatVersion`
 - `pkg/dataobj/sections/stats/builder_test.go` — Rewrite tests to round-trip through disk
 - `pkg/dataobj/index/indexobj/builder.go` — Set `builderStateDirty`, size estimate tracking, mid-accumulation flushing, final Flush serialization, constructor changes
 - `pkg/dataobj/index/stats_calculation_test.go` — Update to flush and read back from object
@@ -266,3 +289,7 @@ The encoder determines dynamic label columns by parsing `SortSchema` from the fi
 **indexobj builder tests:** Verify that `Flush` serializes stats and postings sections into the object (no longer just resetting). Verify `builderStateDirty` is set correctly. Verify size estimate tracking and `builderFull` signaling work for stats/postings appends.
 
 **Calculation tests:** Update `stats_calculation_test.go` and `label_postings_calculation_test.go` to flush the indexobj builder and read back from the resulting object via `Open`, instead of using test accessors to read from the in-memory path.
+
+**Negative/error tests:**
+- Stats encoder returns an error when rows have inconsistent `SortSchema` values
+- `Open` rejects sections with wrong section type or version mismatch
