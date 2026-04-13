@@ -2,11 +2,9 @@ package log
 
 import (
 	"context"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
-
-	"sync"
-	"unsafe"
 )
 
 // NoopStage is a stage that doesn't process a log line.
@@ -51,35 +49,24 @@ func NewNoopPipeline() Pipeline {
 	}
 }
 
+// noopPipeline is not safe for concurrent use. Callers must serialize access
+// externally; see the pipelineMtx pattern in pkg/ingester/tailer.go.
 type noopPipeline struct {
 	cache       map[uint64]*noopStreamPipeline
 	baseBuilder *BaseLabelsBuilder
-	mu          sync.RWMutex
 }
 
 func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 	h := n.baseBuilder.Hash(labels)
-
-	n.mu.RLock()
 	if cached, ok := n.cache[h]; ok {
-		n.mu.RUnlock()
 		return cached
 	}
-	n.mu.RUnlock()
-
 	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h)}
-
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
 	n.cache[h] = sp
 	return sp
 }
 
 func (n *noopPipeline) Reset() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
 	for k := range n.cache {
 		delete(n.cache, k)
 	}
@@ -137,11 +124,12 @@ func (fn StageFunc) RequiredLabelNames() []string {
 
 // pipeline is a combinations of multiple stages.
 // It can also be reduced into a single stage for convenience.
+// pipeline is not safe for concurrent use. Callers must serialize access
+// externally; see the pipelineMtx pattern in pkg/ingester/tailer.go.
 type pipeline struct {
 	AnalyzablePipeline
 	stages      []Stage
 	baseBuilder *BaseLabelsBuilder
-	mu          sync.RWMutex
 
 	streamPipelines map[uint64]StreamPipeline
 }
@@ -186,27 +174,15 @@ func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipel
 
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 	hash := p.baseBuilder.Hash(labels)
-
-	p.mu.RLock()
 	if res, ok := p.streamPipelines[hash]; ok {
-		p.mu.RUnlock()
 		return res
 	}
-	p.mu.RUnlock()
-
 	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(labels, hash))
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	p.streamPipelines[hash] = res
 	return res
 }
 
 func (p *pipeline) Reset() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	p.baseBuilder.Reset()
 	for k := range p.streamPipelines {
 		delete(p.streamPipelines, k)
