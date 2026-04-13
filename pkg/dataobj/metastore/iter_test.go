@@ -3,7 +3,6 @@ package metastore
 import (
 	"testing"
 
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -98,9 +97,9 @@ func TestBuildLabelPredicate_MatchNotRegexp_NilColumn(t *testing.T) {
 	// If the empty string DOES match the regex, we should return FalsePredicate.
 
 	tests := []struct {
-		name           string
-		regex          string
-		expectTrue     bool // true if we expect TruePredicate (empty string doesn't match regex)
+		name       string
+		regex      string
+		expectTrue bool // true if we expect TruePredicate (empty string doesn't match regex)
 	}{
 		{
 			name:       "nil column with regex that doesn't match empty string",
@@ -182,13 +181,4 @@ func TestBuildLabelPredicate_MatchRegexp(t *testing.T) {
 				tc.regex, tc.labelValue, tc.shouldMatch, result)
 		})
 	}
-}
-
-func scalar_NewStringScalar(s string) *scalar.String {
-	return scalar.NewStringScalar(s)
-}
-
-func init() {
-	// Ensure memory allocator is available
-	_ = memory.NewGoAllocator()
 }
