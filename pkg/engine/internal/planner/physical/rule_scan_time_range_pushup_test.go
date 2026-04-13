@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
 func TestScanTimeRangePushup(t *testing.T) {
