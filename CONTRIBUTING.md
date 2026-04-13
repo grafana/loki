@@ -117,6 +117,7 @@ Before marking a PR as ready for review:
 3. **Branch** is synced with `main`.
 4. **Tests** are added or updated where appropriate.
 5. **Upgrade guide** at `docs/sources/setup/upgrade/_index.md` is updated if the change affects any of:
+   - Any breaking changes
    - Default configuration values
    - Metric or label names
    - Log lines used in dashboards or alerts (e.g., lines in `metrics.go` files)
@@ -168,7 +169,8 @@ The Loki documentation is written using the CommonMark flavor of markdown, inclu
 
 Loki uses the static site generator [Hugo](https://gohugo.io/) to generate the documentation. Loki uses a continuous integration (CI) action to sync documentation to the Grafana. The CI is triggered on every merge to `main` in the `docs` subfolder.
 
-If your changes need to be immediately published to the latest release, you must add the appropriate backport label to your PR, for example, `backport-release-2.9.x`. If the changes in your PR can be automatically backported, the backport label will trigger GrafanaBot to create the backport PR, otherwise you will need to create a PR to manually backport your changes.
+If your changes need to be immediately published to the latest release, you must add the `type/docs` and the appropriate backport labels to your PR, for example, and `backport-release-2.9.x`.
+However, only PRs from within the repository can be automatically backported. If this is the case, the backport label will trigger GrafanaBot to create the backport PR. Otherwise, PRs submitted via a fork require manual backporting of the changes.
 
 * [Latest release](https://grafana.com/docs/loki/latest/)
 * [Upcoming release](https://grafana.com/docs/loki/next/), at the tip of the `main` branch
