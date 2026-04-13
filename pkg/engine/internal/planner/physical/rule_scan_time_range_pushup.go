@@ -61,7 +61,7 @@ func (r *scanTimeRangePushup) applyToTargets(node Node, timeRange TimeRange) boo
 
 			endPlusRange := timeRange.End.Add(node.Range)
 			trSteppedEnd := time.UnixMilli((endPlusRange.UnixMilli() / node.Step.Milliseconds()) * node.Step.Milliseconds()).UTC()
-			for trSteppedEnd.Compare(timeRange.End) < 0 {
+			for trSteppedEnd.Compare(endPlusRange) < 0 {
 				trSteppedEnd = trSteppedEnd.Add(node.Step)
 			}
 			if node.Start.Compare(trSteppedStart) < 0 {
