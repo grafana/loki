@@ -580,6 +580,19 @@ func dedupeAndSortEntries(batches [][]IndexEntry) []IndexEntry {
 	uniqueEntries := make(map[string]IndexEntry)
 	for _, batch := range batches {
 		for _, entry := range batch {
+			// This should not happen, but just in case, adjust the index time range to cover the union of the time ranges.
+			// E.g. if first entry covers [T0, T10] and second [T5, T15], the final index time range should be [T0, T15].
+			if existing, ok := uniqueEntries[entry.Path]; ok {
+				if entry.Start.Before(existing.Start) {
+					existing.Start = entry.Start
+				}
+				if entry.End.After(existing.End) {
+					existing.End = entry.End
+				}
+				uniqueEntries[entry.Path] = existing
+				continue
+			}
+
 			uniqueEntries[entry.Path] = entry
 		}
 	}
