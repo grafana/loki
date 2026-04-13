@@ -2,8 +2,6 @@
 
 Thank you for your interest in contributing to Loki! This guide covers everything you need to get started, from setting up a development environment to submitting your first pull request.
 
-> **Note:** Promtail is considered feature-complete. Future log collection development happens in [Grafana Alloy](https://github.com/grafana/alloy).
-
 ## Table of contents
 
 - [Getting help](#getting-help)
@@ -21,9 +19,7 @@ Thank you for your interest in contributing to Loki! This guide covers everythin
 Before opening an issue or pull request, check whether your question or idea has already been discussed:
 
 - **Slack**: Join the `#loki` channel on [Grafana Labs Slack](https://slack.grafana.com/)
-- **Community forum**: Post in the [Grafana Loki category](https://community.grafana.com) on community.grafana.com
-- **Community call**: Monthly on the first Thursday, alternating EU (12:00 UTC) and US (17:00 UTC) — refer to the [agenda doc](https://docs.google.com/document/d/1MNjiHQxwFukm2J4NJRWyRgRIiK7VpokYyATzJ5ce-O8/edit?usp=sharing) for the calendar invite
-- **Mailing list**: [loki-developers](https://groups.google.com/forum/#!forum/loki-developers) for development discussion
+- **Community forum**: Post in the [Grafana Loki category](https://community.grafana.com/c/grafana-loki/41) on community.grafana.com
 
 ## Before you contribute
 
@@ -44,9 +40,9 @@ Before opening an issue or pull request, check whether your question or idea has
 ### Prerequisites
 
 - **Go** 1.25 or later (check `go.mod` for the exact minimum version in use)
-- **Docker** or **Podman** (for integration tests and docs preview)
-- **Git**
-- **Make**
+- **Docker** or **Podman** (for integration tests, docs preview, as well as `make` targets that run in containers)
+- **Git** for version control
+- **Make** for building binaries, running tests, linter, etc.
 
 ### Clone and build
 
@@ -190,4 +186,6 @@ Then you can go to Docker Desktop settings and open the resources, add the tempo
 
 ## Contribute to Helm chart
 
-Refer to [production/helm/loki/CONTRIBUTING.md](production/helm/loki/CONTRIBUTING.md) for chart-specific guidelines.
+The Helm chart for Loki is developed and maintained in the
+[grafana/helm-charts](https://github.com/grafana/helm-charts) respository.
+Refer to their [CONTRIBUTING.md](https://github.com/grafana/helm-charts/blob/main/CONTRIBUTING.md) for chart specific guidelines.
