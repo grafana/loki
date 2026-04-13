@@ -282,6 +282,7 @@ func buildLabelPredicate(matcher *labels.Matcher, columns map[string]*streams.Co
 		return streams.FuncPredicate{
 			Column: col,
 			Keep: func(_ *streams.Column, value scalar.Scalar) bool {
+				// we don't need the negation here because matcher.Matches() already handles the negation correctly.
 				return matcher.Matches(string(getBytes(value)))
 			},
 		}
