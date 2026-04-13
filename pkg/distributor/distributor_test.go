@@ -831,6 +831,26 @@ func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
 	})
 }
 
+func TestDistributor_BytesAcceptedTotal(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	// Generous limits so the request is not rate-limited.
+	limits.IngestionRateMB = 100
+	limits.IngestionBurstSizeMB = 100
+
+	ingester := &mockIngester{}
+	distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+	const lines, lineSize = 5, 10
+	_, err := distributors[0].Push(ctx, makeWriteRequest(lines, lineSize))
+	require.NoError(t, err)
+
+	// makeWriteRequest produces `lines` entries of `lineSize` bytes each,
+	// no structured metadata, so accepted bytes == lines * lineSize.
+	got := testutil.ToFloat64(distributors[0].bytesAcceptedTotal.WithLabelValues("test"))
+	require.Equal(t, float64(lines*lineSize), got)
+}
+
 func TestStreamShard(t *testing.T) {
 	// setup base stream.
 	baseStream := logproto.Stream{}
