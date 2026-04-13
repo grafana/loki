@@ -146,13 +146,17 @@ The bridge reads column data from the `columnar.Section`'s `Dataset` interface (
 
 Following the `streams.Open` pattern:
 - Check `section.Type` matches the package's section type (namespace + kind)
-- Check `section.Type.Version` matches `columnar.FormatVersion`
+- Check `section.Type.Version` matches the package's declared version
 - Skip unrecognized columns (forward compatibility)
 - No fail-fast on missing columns at open time — let the reader surface errors when a required column is accessed
 
 #### Section Type Version
 
-Both `postings.sectionType` and `stats.sectionType` are updated from `Version: 1` to `Version: columnar.FormatVersion` (currently `2`). Since these sections have never been written to disk before (the current code resets builders without flushing), there is no backward compatibility concern.
+Both `postings.sectionType` and `stats.sectionType` retain `Version: 1`. Section versions are section-specific — they version the section's logical schema and semantics, not the internal encoding format. The columnar encoding format has its own version (`columnar.FormatVersion`), but that is an internal implementation detail of how data is serialized, not a section-level concern. Tying section version to `columnar.FormatVersion` would couple them unnecessarily — a change in the columnar encoding library would force a section version bump even if the section's schema hasn't changed.
+
+The `Open` function checks `section.Type.Version == 1`. If the section schema changes in the future (new columns, changed semantics), the version is bumped at that point.
+
+Note: `streams.Open` happens to check against `columnar.FormatVersion` because the streams section was introduced alongside that encoding format. That is a streams-specific choice, not a pattern that all sections must follow.
 
 #### Deleted In-Memory Producer Code
 
@@ -263,11 +267,11 @@ Label columns are opened in sort-schema order, after all fixed columns. The `Sor
 ### Modified Files
 - `pkg/dataobj/sections/postings/builder.go` — New `Flush(w SectionWriter)` signature, remove `computeSplits`, remove `targetSectionSize`, implement `SectionBuilder`
 - `pkg/dataobj/sections/postings/encode_columnar.go` — Replace in-memory `ColumnarEncoder` with `ColumnarSectionEncoder` using `dataset.ColumnBuilder` + `columnar.Encoder`; new `SectionEncoder` signature; add `encodeColumn` helper; delete `columnarSliceColumnReader`
-- `pkg/dataobj/sections/postings/postings.go` — Add `ColumnType` enum with `String()` method producing logical type names for on-disk metadata (e.g., `ColumnTypeKind` → `"kind"`, `ColumnTypeLabelValue` → `"label_value"`, etc., matching the column names in the Column Definitions table). These strings are stored in the section's protobuf metadata dictionary and used by `Open` to reconstruct typed columns via `ParseColumnType`. Also bump `sectionType.Version` to `columnar.FormatVersion`
+- `pkg/dataobj/sections/postings/postings.go` — Add `ColumnType` enum with `String()` method producing logical type names for on-disk metadata (e.g., `ColumnTypeKind` → `"kind"`, `ColumnTypeLabelValue` → `"label_value"`, etc., matching the column names in the Column Definitions table). These strings are stored in the section's protobuf metadata dictionary and used by `Open` to reconstruct typed columns via `ParseColumnType`. `sectionType.Version` stays at `1`
 - `pkg/dataobj/sections/postings/builder_test.go` — Rewrite tests to round-trip through disk
 - `pkg/dataobj/sections/stats/builder.go` — Same changes as postings builder
 - `pkg/dataobj/sections/stats/encode_columnar.go` — Same changes as postings encoder
-- `pkg/dataobj/sections/stats/stats.go` — Add `ColumnType` enum with `String()` method (same pattern as postings); dynamic label columns use a shared `ColumnTypeLabel` with the tag field carrying the label name (matching the `streams` convention). Bump `sectionType.Version` to `columnar.FormatVersion`
+- `pkg/dataobj/sections/stats/stats.go` — Add `ColumnType` enum with `String()` method (same pattern as postings); dynamic label columns use a shared `ColumnTypeLabel` with the tag field carrying the label name (matching the `streams` convention). `sectionType.Version` stays at `1`
 - `pkg/dataobj/sections/stats/builder_test.go` — Rewrite tests to round-trip through disk
 - `pkg/dataobj/index/indexobj/builder.go` — Set `builderStateDirty`, size estimate tracking, mid-accumulation flushing, final Flush serialization, constructor changes
 - `pkg/dataobj/index/stats_calculation_test.go` — Update to flush and read back from object
