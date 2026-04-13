@@ -18,6 +18,11 @@ const (
 	flushReasonIdle        = "idle"
 )
 
+// A builder allows mocking of [logsobj.Builder] in tests.
+type builder interface {
+	Flush() (*dataobj.Object, io.Closer, error)
+}
+
 // A sorter allows mocking of [logsobj.Sorter] in tests.
 type sorter interface {
 	Sort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error)

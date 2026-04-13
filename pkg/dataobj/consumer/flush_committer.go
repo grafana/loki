@@ -27,7 +27,8 @@ type flusher interface {
 	Flush(ctx context.Context, builder builder, reason string) (string, error)
 }
 
-// A flushCommitterImpl manages the flushing of data objects and commits.
+// A flushCommitterImpl flushes data objects. It produces a metastore event and
+// commits the Kafka offsets on success, and returns an error on failure.
 type flushCommitterImpl struct {
 	flusher         flusher
 	metastoreEvents metastoreEventEmitter

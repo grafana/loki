@@ -13,10 +13,8 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
-	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // A mockBucket mocks an [objstore.Bucket].
@@ -95,40 +93,6 @@ func (m *mockBucket) Provider() objstore.ObjProvider {
 
 func (m *mockBucket) SupportedIterOptions() []objstore.IterOptionType {
 	return nil
-}
-
-// mockBuilder mocks a [logsobj.Builder].
-type mockBuilder struct {
-	builder *logsobj.Builder
-	nextErr error
-}
-
-func (m *mockBuilder) Append(tenant string, stream logproto.Stream) error {
-	if err := m.nextErr; err != nil {
-		m.nextErr = nil
-		return err
-	}
-	return m.builder.Append(tenant, stream)
-}
-
-func (m *mockBuilder) GetEstimatedSize() int {
-	return m.builder.GetEstimatedSize()
-}
-
-func (m *mockBuilder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	return m.builder.CopyAndSort(ctx, obj)
-}
-
-func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
-	if err := m.nextErr; err != nil {
-		m.nextErr = nil
-		return nil, nil, err
-	}
-	return m.builder.Flush()
-}
-
-func (m *mockBuilder) TimeRanges() []multitenancy.TimeRange {
-	return m.builder.TimeRanges()
 }
 
 // A mockCommitter implements the committer interface for tests.

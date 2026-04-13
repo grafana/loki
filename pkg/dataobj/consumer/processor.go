@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -13,34 +13,55 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/logproto"
 )
-
-// A builder allows mocking of [logsobj.Builder] in tests.
-type builder interface {
-	Append(tenant string, stream logproto.Stream) error
-	GetEstimatedSize() int
-	Flush() (*dataobj.Object, io.Closer, error)
-	TimeRanges() []multitenancy.TimeRange
-	CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
-}
 
 // A flushCommitter allows mocking of flushes in tests.
 type flushCommitter interface {
 	Flush(ctx context.Context, builder builder, reason string, offset int64, earliestRecordTime time.Time) error
 }
 
+// A flushLocker is used to hold a lock for the duration of a flush.
+type flushLocker struct {
+	lock chan struct{}
+}
+
+// newFlushLocker returns a new flushLocker.
+func newFlushLocker() *flushLocker {
+	return &flushLocker{
+		lock: make(chan struct{}, 1),
+	}
+}
+
+// Lock acquires the lock. It blocks until the lock is available or the context is canceled.
+func (l *flushLocker) Lock(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case l.lock <- struct{}{}:
+		return nil
+	}
+}
+
+// Unlock releases the lock.
+func (l *flushLocker) Unlock() {
+	<-l.lock
+}
+
 // A processor receives records and builds data objects from them.
 type processor struct {
 	*services.BasicService
-	builder        builder
+	currentBuilder *logsobj.Builder
+	builderPool    *logsobj.SizedBuilderPool
 	decoder        *kafka.Decoder
 	records        chan *kgo.Record
 	flushCommitter flushCommitter
+	flushLocker    *flushLocker
+
+	// lastFlushError contains the error of the last failed flush.
+	lastFlushErr    error
+	lastFlushErrMtx sync.Mutex
 
 	// lastOffset contains the offset of the last record appended to the data object
 	// builder. It is used to commit the correct offset after a flush.
@@ -78,7 +99,7 @@ type processor struct {
 }
 
 func newProcessor(
-	builder builder,
+	builderPool *logsobj.SizedBuilderPool,
 	records chan *kgo.Record,
 	flushCommitter flushCommitter,
 	idleFlushTimeout time.Duration,
@@ -91,10 +112,11 @@ func newProcessor(
 		panic(err)
 	}
 	p := &processor{
-		builder:          builder,
+		builderPool:      builderPool,
 		decoder:          decoder,
 		records:          records,
 		flushCommitter:   flushCommitter,
+		flushLocker:      newFlushLocker(),
 		idleFlushTimeout: idleFlushTimeout,
 		maxBuilderAge:    maxBuilderAge,
 		metrics:          newMetrics(reg),
@@ -162,20 +184,32 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 		return fmt.Errorf("failed to decode stream: %w", err)
 	}
 
+	// Check if we have an active builder, and if not, wait for the next builder
+	// to be available.
+	if err := p.waitForBuilder(ctx); err != nil {
+		return fmt.Errorf("failed to wait for builder: %w", err)
+	}
+
 	if p.shouldFlushDueToMaxAge() {
 		if err := p.flush(ctx, flushReasonMaxAge); err != nil {
 			return fmt.Errorf("failed to flush: %w", err)
 		}
+		if err := p.waitForBuilder(ctx); err != nil {
+			return fmt.Errorf("failed to wait for builder: %w", err)
+		}
 	}
 
-	if err := p.builder.Append(tenant, stream); err != nil {
+	if err := p.currentBuilder.Append(tenant, stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
 			return fmt.Errorf("failed to append stream: %w", err)
 		}
 		if err := p.flush(ctx, flushReasonBuilderFull); err != nil {
 			return fmt.Errorf("failed to flush and commit: %w", err)
 		}
-		if err := p.builder.Append(tenant, stream); err != nil {
+		if err := p.waitForBuilder(ctx); err != nil {
+			return fmt.Errorf("failed to wait for builder: %w", err)
+		}
+		if err := p.currentBuilder.Append(tenant, stream); err != nil {
 			return fmt.Errorf("failed to append stream after flushing: %w", err)
 		}
 	}
@@ -194,7 +228,8 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 
 func (p *processor) shouldFlushDueToMaxAge() bool {
 	return p.maxBuilderAge > 0 &&
-		p.builder.GetEstimatedSize() > 0 &&
+		p.currentBuilder != nil &&
+		p.currentBuilder.GetEstimatedSize() > 0 &&
 		!p.firstAppend.IsZero() &&
 		time.Since(p.firstAppend) > p.maxBuilderAge
 }
@@ -222,22 +257,42 @@ func (p *processor) needsIdleFlush() bool {
 	// This is a safety check to make sure we never flush empty data objects.
 	// It should never happen that lastAppend is non-zero while the builder
 	// is empty.
-	if p.builder.GetEstimatedSize() == 0 {
+	if p.currentBuilder == nil || p.currentBuilder.GetEstimatedSize() == 0 {
 		return false
 	}
 	return time.Since(p.lastAppend) > p.idleFlushTimeout
 }
 
 func (p *processor) flush(ctx context.Context, reason string) error {
-	defer func() {
-		// Reset the state to prepare for building the next data object.
-		p.earliestRecordTime = time.Time{}
-		p.firstAppend = time.Time{}
-		p.lastAppend = time.Time{}
-	}()
-	return p.flushCommitter.Flush(ctx, p.builder, reason, p.lastOffset, p.earliestRecordTime)
+	if err := p.flushLocker.Lock(ctx); err != nil {
+		return err
+	}
+	go p.doFlush(ctx, p.currentBuilder, reason, p.lastOffset, p.earliestRecordTime)
+	// Reset the state to prepare for building the next data object.
+	p.earliestRecordTime = time.Time{}
+	p.firstAppend = time.Time{}
+	p.lastAppend = time.Time{}
+	p.currentBuilder = nil
+	return nil
 }
 
+func (p *processor) doFlush(ctx context.Context, builder *logsobj.Builder, reason string, offset int64, earliestRecordTime time.Time) {
+	defer func() {
+		// When the flush is complete, we must return the builder to the pool
+		// and also release the lock so the next flush can occur.
+		p.builderPool.Put(builder)
+		p.flushLocker.Unlock()
+	}()
+	err := p.flushCommitter.Flush(ctx, builder, reason, offset, earliestRecordTime)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to flush data object", "error", err)
+		p.lastFlushErrMtx.Lock()
+		p.lastFlushErr = err
+		p.lastFlushErrMtx.Unlock()
+	}
+}
+
+// observeRecord updates the metrics each time a record is fetched.
 func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
 	p.metrics.records.Inc()
 	p.metrics.receivedBytes.Add(float64(len(rec.Value)))
@@ -245,7 +300,32 @@ func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
 	p.metrics.setConsumptionLag(now.Sub(rec.Timestamp))
 }
 
+// observeRecordErr updates metrics when a record could not be processed and
+// must be discarded.
 func (p *processor) observeRecordErr(rec *kgo.Record) {
 	p.metrics.recordFailures.Inc()
 	p.metrics.discardedBytes.Add(float64(len(rec.Value)))
+}
+
+// waitForBuilder checks if we have a current builder, and if not, waits for one
+// to be available, or for the context to be canceled, whichever happens first.
+func (p *processor) waitForBuilder(ctx context.Context) error {
+	if p.currentBuilder == nil {
+		var err error
+		p.currentBuilder, err = p.builderPool.Wait(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Used in tests. If there is a flush in-progress, it waits until it completes,
+// or the context is canceled, whichever happens first.
+func (p *processor) waitForFlush(ctx context.Context) error {
+	if err := p.flushLocker.Lock(ctx); err != nil {
+		return err
+	}
+	p.flushLocker.Unlock()
+	return nil
 }
