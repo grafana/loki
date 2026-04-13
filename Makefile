@@ -26,9 +26,9 @@ DOCKER_INTERACTIVE_FLAGS := --tty --interactive
 endif
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.26.0
+GO_VERSION         := 1.26.2
 # Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
-BUILD_IMAGE_TAG    := 0.35.0
+BUILD_IMAGE_TAG    := 0.35.1
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -794,14 +794,7 @@ dev-k3d-enterprise-logs:
 dev-k3d-down:
 	$(MAKE) -C $(CURDIR)/tools/dev/k3d down
 
-# Trivy is used to scan images for vulnerabilities
-.PHONY: trivy
-trivy: loki-image build-image
-	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
-	trivy i $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
-	trivy fs go.mod
-
-# Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
+# Snyk is used to scan for vulnerabilities
 .PHONY: snyk
 snyk: loki-image build-image
 	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
@@ -809,7 +802,7 @@ snyk: loki-image build-image
 	snyk code test
 
 .PHONY: scan-vulnerabilities
-scan-vulnerabilities: trivy snyk
+scan-vulnerabilities: snyk
 
 .PHONY: release-workflows
 release-workflows:

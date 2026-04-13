@@ -291,10 +291,62 @@ type Limits struct {
 	MaxScanTaskParallelism int  `yaml:"max_scan_task_parallelism" json:"max_scan_task_parallelism"`
 	DebugEngineTasks       bool `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
 	DebugEngineStreams     bool `yaml:"debug_engine_streams" json:"debug_engine_streams"`
+
+	// Data-objects sort schema
+	SortSchema SortSchema `yaml:"sort_schema,omitempty" json:"sort_schema,omitempty" doc:"hidden"`
 }
 
 type FieldDetectorConfig struct {
 	Fields map[string][]string `yaml:"fields,omitempty" json:"fields,omitempty"`
+}
+
+// SortSchemaTimestampName is the reserved name for the timestamp entry in a sort schema.
+const SortSchemaTimestampName = "__timestamp__"
+
+// SortSchemaEntry is one element in a per-tenant sort schema.
+// Name is the label name to sort by. SortSchemaTimestampName is reserved and must not appear
+// in the schema — the timestamp is always implicitly the final sort key.
+type SortSchemaEntry struct {
+	Name string `yaml:"name" json:"name"`
+}
+
+// SortSchema is an ordered list of sort schema entries for a tenant.
+// The timestamp is always implicitly appended as the final sort key and must not be listed.
+// An empty schema means "use DefaultSortSchema".
+// Example: [{Name: "service_name"}]
+type SortSchema []SortSchemaEntry
+
+// DefaultSortSchema is the broad default schema used when no tenant-specific schema is configured.
+var DefaultSortSchema = SortSchema{
+	{Name: "service_name"},
+}
+
+// Validate checks that the sort schema is well-formed.
+// An empty schema is valid (callers fall back to DefaultSortSchema).
+func (s SortSchema) Validate() error {
+	seen := make(map[string]struct{}, len(s))
+	for i, e := range s {
+		if e.Name == "" {
+			return fmt.Errorf("sort_schema entry %d has an empty name", i)
+		}
+		if e.Name == SortSchemaTimestampName {
+			return fmt.Errorf("sort_schema must not include %q — the timestamp is always the implicit last sort key", SortSchemaTimestampName)
+		}
+		if _, dup := seen[e.Name]; dup {
+			return fmt.Errorf("sort_schema entry %q is duplicated", e.Name)
+		}
+		seen[e.Name] = struct{}{}
+	}
+	return nil
+}
+
+// LabelNames returns the ordered label names in the schema.
+func (s SortSchema) LabelNames() []string {
+	names := make([]string, 0, len(s))
+	for _, e := range s {
+		names = append(names, e.Name)
+	}
+	return names
 }
 
 type StreamRetention struct {
@@ -655,6 +707,10 @@ func (l *Limits) Validate() error {
 	if time.Duration(l.EngineResultsCacheTimeBucketInterval) < time.Minute {
 		return fmt.Errorf("engine_results_cache_time_bucket_interval must be >= 1m, got %s",
 			l.EngineResultsCacheTimeBucketInterval)
+	}
+
+	if err := l.SortSchema.Validate(); err != nil {
+		return fmt.Errorf("sort_schema: %w", err)
 	}
 
 	return nil
@@ -1466,4 +1522,13 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}
 
 func (o *Overrides) SimulatedPushLatency(userID string) time.Duration {
 	return o.getOverridesForUser(userID).SimulatedPushLatency
+}
+
+// SortSchema returns the per-tenant sort schema. Falls back to DefaultSortSchema if not set.
+func (o *Overrides) SortSchema(userID string) SortSchema {
+	s := o.getOverridesForUser(userID).SortSchema
+	if len(s) == 0 {
+		return DefaultSortSchema
+	}
+	return s
 }

@@ -36,6 +36,25 @@ This guide assumes Loki will be installed in one of the modes above and that a `
       enabled: true
     ```
 
+**To use Thanos object store clients (experimental):**
+
+Loki supports using Thanos-compatible storage clients as an alternative to the built-in storage clients. This is configured via `loki.storage.use_thanos_objstore` and will become the default in a future release.
+
+1. Enable Thanos object store in `values.yaml`:
+
+   ```yaml
+   loki:
+     storage:
+       use_thanos_objstore: true
+       object_store:
+         type: s3  # Valid options: s3, gcs, azure
+         s3:
+           endpoint: <YOUR_ENDPOINT>
+           region: <YOUR_REGION>
+   ```
+
+1. Configure the storage client under `loki.storage.object_store.s3`, `loki.storage.object_store.gcs`, or `loki.storage.object_store.azure`.
+
 **To grant access to S3 via an IAM role without providing credentials:**
 
 1. Provision an IAM role, policy and S3 bucket as described in [Storage](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#aws-deployment-s3-single-store).

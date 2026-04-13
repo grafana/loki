@@ -767,6 +767,9 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("ParallelPushdown", plan).withRules(
 				&parallelPushdown{plan: plan},
 			),
+			newOptimization("AggregationSplit", plan).withRules(
+				&aggregationSplit{plan: plan},
+			),
 
 			// Perform cleanups at the very end.
 			newOptimization("Cleanup", plan).withRules(

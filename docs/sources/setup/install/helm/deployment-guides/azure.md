@@ -206,12 +206,12 @@ The following steps require the use of `helm` and `kubectl`. Make sure you have 
 az aks get-credentials --resource-group <MY_RESOURCE_GROUP_NAME> --name <MY_AKS_CLUSTER_NAME>
 ```
 
-Before we can deploy the Loki Helm chart, we need to add the Grafana chart repository to Helm. This repository contains the Loki Helm chart.
+Before we can deploy the Loki Helm chart, we need to add the Grafana Community chart repository to Helm. This repository contains the Loki Helm chart.
 
-1. Add the Grafana chart repository to Helm:
+1. Add the Grafana Community chart repository to Helm:
 
     ```bash
-    helm repo add grafana https://grafana.github.io/helm-charts
+    helm repo add grafana-community https://grafana-community.github.io/helm-charts
     ```
 1. Update the chart repository:
 
@@ -262,58 +262,56 @@ Create a `values.yaml` file choosing the configuration options that best suit yo
 
 ```yaml
 loki:
-   podLabels:
+  podLabels:
     "azure.workload.identity/use": "true" # Add this label to the Loki pods to enable workload identity
-   schemaConfig:
-     configs:
-       - from: "2024-04-01"
-         store: tsdb
-         object_store: azure
-         schema: v13
-         index:
-           prefix: loki_index_
-           period: 24h
-   storage:
-     type: azure
-     bucketNames:
-       chunks: "<CHUNK-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-chunks)
-       ruler: "<RULER-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-ruler)
-       # admin: "admin-loki-devrel" # Your actual Azure Blob Storage container name (loki-azure-dev-admin)
-     azure:
-       accountName: <INSERT-STORAGE-ACCOUNT-NAME>
-       useFederatedToken: true # Use federated token for authentication
-   ingester:
-     chunk_encoding: snappy
-   pattern_ingester:
-     enabled: true
-   limits_config:
-     allow_structured_metadata: true
-     volume_enabled: true
-     retention_period: 672h # 28 days retention
-   compactor:
-     retention_enabled: true 
-     delete_request_store: azure
-   ruler:
-     enable_api: true
-     alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: azure
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  storage:
+    type: azure
+    bucketNames:
+      chunks: "<CHUNK-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-chunks)
+      ruler: "<RULER-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-ruler)
+      # admin: "admin-loki-devrel" # Your actual Azure Blob Storage container name (loki-azure-dev-admin)
+    azure:
+      accountName: <INSERT-STORAGE-ACCOUNT-NAME>
+      useFederatedToken: true # Use federated token for authentication
+  ingester:
+    chunk_encoding: snappy
+  pattern_ingester:
+    enabled: true
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+    retention_period: 672h # 28 days retention
+  compactor:
+    retention_enabled: true
+    delete_request_store: azure
+  ruler:
+    enable_api: true
+    alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
 
-   querier:
-     max_concurrent: 4
+  querier:
+    max_concurrent: 4
 
 # Define the Azure workload identity
 serviceAccount:
   name: loki
   annotations:
     "azure.workload.identity/client-id": "<APP-ID>" # The app ID of the Azure AD app
-  labels:
-    "azure.workload.identity/use": "true"
 
 deploymentMode: Distributed
 
 ingester:
- replicas: 3
- zoneAwareReplication:
-  enabled: false
+  replicas: 3
+  zoneAwareReplication:
+    enabled: false
 
 querier:
   replicas: 3
@@ -405,6 +403,10 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
   - The `serviceAccount` section is used to define the federated workload identity Loki will use to authenticate with Azure AD.
   - We set the `azure.workload.identity/client-id` annotation to the app ID of the Azure AD app.
 
+- **Zone-Aware Replication:**
+  - The Helm chart enables zone-aware ingester replication by default, which creates three ingester StatefulSets (zone-a, zone-b, zone-c) for faster rollouts.
+  - In this guide, zone-aware replication is explicitly disabled (`ingester.zoneAwareReplication.enabled: false`) for simplicity. For production deployments, consider enabling it to improve rollout resilience.
+
 - **Gateway:**
   - Defines how the Loki gateway will be exposed.
   - We are using a `LoadBalancer` service type in this configuration.
@@ -417,7 +419,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
 1. Deploy using the newly created `values.yaml` file:
 
     ```bash
-    helm install --values values.yaml loki grafana/loki -n loki --create-namespace
+    helm install --values values.yaml loki grafana-community/loki -n loki --create-namespace
     ```
     It is important to create a namespace called `loki` as our federated credentials were generated with the  value `system:serviceaccount:loki:loki`. This translates to the `loki` service account in the `loki` namespace. This is configurable but make sure to update the federated credentials file first.
 

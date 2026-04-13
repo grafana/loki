@@ -34,6 +34,10 @@ A [list of clients](../../send-data/) can be found in the clients documentation.
 Requests sent to the query endpoints must use valid LogQL syntax. For more information, see the [LogQL](../../query/) section of the documentation.
 {{< /admonition >}}
 
+{{< admonition type="tip" >}}
+For Python examples of these endpoints, see [Query Loki with Python](../python-client-examples/).
+{{< /admonition >}}
+
 These HTTP endpoints are exposed by the `querier`, `query-frontend`, `read`, and `all` components:
 
 - [`GET /loki/api/v1/query`](#query-logs-at-a-single-point-in-time)
@@ -1372,32 +1376,32 @@ List all rules configured for the authenticated tenant. This endpoint returns a 
   interval: <duration;optional>
   rules:
   - alert: <string>
-      expr: <string>
-      for: <duration>
-      annotations:
+    expr: <string>
+    for: <duration>
+    annotations:
       <annotation_name>: <string>
-      labels:
+    labels:
       <label_name>: <string>
 - name: <string>
   interval: <duration;optional>
   rules:
   - alert: <string>
-      expr: <string>
-      for: <duration>
-      annotations:
+    expr: <string>
+    for: <duration>
+    annotations:
       <annotation_name>: <string>
-      labels:
+    labels:
       <label_name>: <string>
 <namespace2>:
 - name: <string>
   interval: <duration;optional>
   rules:
   - alert: <string>
-      expr: <string>
-      for: <duration>
-      annotations:
+    expr: <string>
+    for: <duration>
+    annotations:
       <annotation_name>: <string>
-      labels:
+    labels:
       <label_name>: <string>
 ```
 

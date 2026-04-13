@@ -280,7 +280,7 @@ This cache is only applicable when using single store TSDB.
 The **query scheduler** is an **optional service** providing more [advanced queuing functionality](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/query-fairness/) than the [query frontend](#query-frontend).
 When using this component in the Loki deployment, query frontend pushes split up queries to the query scheduler which enqueues them in an internal in-memory queue.
 There is a queue for each tenant to guarantee the query fairness across all tenants.
-The queriers that connect to the query scheduler act as workers that pull their jobs from the queue, execute them, and return them to the query frontend for aggregation. Queriers therefore need to be configured with the query scheduler address (via the `-querier.scheduler-address` CLI flag) in order to allow them to connect to the query scheduler.
+The queriers that connect to the query scheduler act as workers that pull their jobs from the queue, execute them, and return them to the query frontend for aggregation. Queriers therefore need to be configured with the query scheduler address (via the `-querier.scheduler-address` CLI flag, or the `scheduler_address` field in the [`frontend_worker`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#frontend_worker) YAML block) in order to allow them to connect to the query scheduler.
 
 Query schedulers are **stateless**. However, due to the in-memory queue, it's recommended to run more than one replica to keep the benefit of high availability. Two replicas should suffice in most cases.
 

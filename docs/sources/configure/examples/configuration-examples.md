@@ -27,13 +27,13 @@ common:
 
 schema_config:
   configs:
-  - from: 2020-05-15
-    store: tsdb
-    object_store: filesystem
-    schema: v13
-    index:
-      prefix: index_
-      period: 24h
+    - from: 2020-05-15
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
 
 storage_config:
   filesystem:
@@ -65,21 +65,21 @@ common:
 
 schema_config:
   configs:
-  - from: 2020-05-15
-    store: tsdb
-    object_store: s3
-    schema: v13
-    index:
-      prefix: index_
-      period: 24h
+    - from: 2020-05-15
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
 
 storage_config:
- tsdb_shipper:
-   active_index_directory: /loki/index
-   cache_location: /loki/index_cache
- aws:
-   s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
-   s3forcepathstyle: true
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+  aws:
+    s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
+    s3forcepathstyle: true
 
 ```
 
@@ -121,13 +121,13 @@ common:
 
 schema_config:
   configs:
-  - from: 2020-05-15
-    store: tsdb
-    object_store: gcs
-    schema: v13
-    index:
-      prefix: index_
-      period: 24h
+    - from: 2020-05-15
+      store: tsdb
+      object_store: gcs
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
 
 storage_config:
   tsdb_shipper:
@@ -194,21 +194,21 @@ schema_config:
     # Starting from 2018-04-15 Loki should store indexes on BoltDB with the v11 schema
     # using daily periodic tables and chunks on filesystem.
     # The index tables will be prefixed with "index_".
-  - from: "2018-04-15"
-    store: boltdb-shipper
-    object_store: filesystem
-    schema: v11
-    index:
+    - from: "2018-04-15"
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v11
+      index:
         period: 24h
         prefix: index_
 
   # Starting from 2023-6-15 Loki should store indexes on TSDB with the v13 schema
   # using daily periodic tables and chunks on AWS S3.
-  - from: "2023-06-15"
-    store: tsdb
-    object_store: s3
-    schema: v13
-    index:
+    - from: "2023-06-15"
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
         period: 24h
         prefix: index_
 
@@ -225,13 +225,13 @@ common:
 
 schema_config:
   configs:
-  - from: 2020-05-15
-    store: tsdb
-    object_store: alibabacloud
-    schema: v13
-    index:
-      prefix: index_
-      period: 24h
+    - from: 2020-05-15
+      store: tsdb
+      object_store: alibabacloud
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
 
 storage_config:
   tsdb_shipper:

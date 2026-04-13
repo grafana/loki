@@ -959,65 +959,6 @@ func (o *Optimizer) Optimize(node Node) {
 	}
 }
 
-func extractColumnsFromPredicates(predicates []Expression) []ColumnExpression {
-	columns := make([]ColumnExpression, 0, len(predicates))
-	for _, p := range predicates {
-		extractColumnsFromExpression(p, &columns)
-	}
-
-	return deduplicateColumns(columns)
-}
-
-func extractColumnsFromExpression(expr Expression, columns *[]ColumnExpression) {
-	switch e := expr.(type) {
-	case *ColumnExpr:
-		*columns = append(*columns, e)
-	case *BinaryExpr:
-		extractColumnsFromExpression(e.Left, columns)
-		extractColumnsFromExpression(e.Right, columns)
-	case *UnaryExpr:
-		extractColumnsFromExpression(e.Left, columns)
-	default:
-		// Ignore other expression types
-	}
-}
-
-// disambiguateColumns splits columns into ambiguous and unambiguous columns
-func disambiguateColumns(columns []ColumnExpression) ([]ColumnExpression, []ColumnExpression) {
-	ambiguousColumns := make([]ColumnExpression, 0, len(columns))
-	unambiguousColumns := make([]ColumnExpression, 0, len(columns))
-	for _, col := range columns {
-		if colExpr, ok := col.(*ColumnExpr); ok {
-			// Only collect ambiguous columns (might need parsing)
-			// Skip labels (from stream selector) and builtins (like timestamp/message)
-			if colExpr.Ref.Type == types.ColumnTypeAmbiguous {
-				ambiguousColumns = append(ambiguousColumns, col)
-			} else {
-				unambiguousColumns = append(unambiguousColumns, col)
-			}
-		}
-	}
-
-	return unambiguousColumns, ambiguousColumns
-}
-
-func deduplicateColumns(columns []ColumnExpression) []ColumnExpression {
-	seen := make(map[string]bool)
-	var result []ColumnExpression
-
-	for _, col := range columns {
-		if colExpr, ok := col.(*ColumnExpr); ok {
-			key := colExpr.Ref.Column
-			if !seen[key] {
-				seen[key] = true
-				result = append(result, col)
-			}
-		}
-	}
-
-	return result
-}
-
 // addUniqueColumnExpr adds a column to the projections list if it's not already present
 func addUniqueColumnExpr(projections []ColumnExpression, colExpr *ColumnExpr) ([]ColumnExpression, bool) {
 	for _, existing := range projections {

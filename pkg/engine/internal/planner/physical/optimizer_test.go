@@ -15,64 +15,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
-func TestCanApplyPredicate(t *testing.T) {
-	tests := []struct {
-		predicate Expression
-		want      bool
-	}{
-		{
-			predicate: NewLiteral(int64(123)),
-			want:      true,
-		},
-		{
-			predicate: newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-			want:      true,
-		},
-		{
-			predicate: newColumnExpr("foo", types.ColumnTypeLabel),
-			want:      false,
-		},
-		{
-			predicate: &BinaryExpr{
-				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(types.Timestamp(3600000)),
-				Op:    types.BinaryOpGt,
-			},
-			want: true,
-		},
-		{
-			predicate: &BinaryExpr{
-				Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
-				Right: NewLiteral("debug|info"),
-				Op:    types.BinaryOpMatchRe,
-			},
-			want: false,
-		},
-		{
-			predicate: &BinaryExpr{
-				Left:  newColumnExpr("level", types.ColumnTypeMetadata),
-				Right: NewLiteral("debug|info"),
-				Op:    types.BinaryOpMatchRe,
-			},
-			want: true,
-		},
-		{
-			predicate: &BinaryExpr{
-				Left:  newColumnExpr("foo", types.ColumnTypeLabel),
-				Right: NewLiteral("bar"),
-				Op:    types.BinaryOpEq,
-			},
-			want: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.predicate.String(), func(t *testing.T) {
-			got := canApplyPredicate(tt.predicate)
-			require.Equal(t, tt.want, got)
-		})
-	}
-}
-
 var time1000 = types.Timestamp(1000000000)
 
 func dummyPlan() *Plan {

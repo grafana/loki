@@ -230,7 +230,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 
 				// Gouping by a label set. Take only labels from that set.
 				for _, columnExpr := range r.opts.grouping.Columns {
-					vec, err := r.evaluator.eval(columnExpr, record)
+					vec, err := r.evaluator.evalForGrouping(columnExpr, record)
 					if err != nil {
 						return nil, err
 					}

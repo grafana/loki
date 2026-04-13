@@ -42,26 +42,26 @@ REGEXP  utf8:[null]   utf8:null     -> bool:[null]
 
 # REGEXP with selection
 REGEXP  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba."  select:[true true true true true]      -> bool:[false true true false false]  # Full selection
-REGEXP  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba."  select:[true true true false false]    -> bool:[false true true null null]    # Partial (first three)
-REGEXP  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba."  select:[false true true true false]    -> bool:[null true true false null]    # Partial (middle)
-REGEXP  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba."  select:[false false false false false] -> bool:[null null null null null]     # No selection
-REGEXP  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba."  select:[false false true false false]  -> bool:[null null true null null]     # Single row
+REGEXP  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba."  select:[true true true false false]    -> bool:[false true true _ _]    # Partial (first three)
+REGEXP  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba."  select:[false true true true false]    -> bool:[_ true true false _]    # Partial (middle)
+REGEXP  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba."  select:[false false false false false] -> bool:[_ _ _ _ _]     # No selection
+REGEXP  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba."  select:[false false true false false]  -> bool:[_ _ true _ _]     # Single row
 
 # SUBSTRI with selection - case-insensitive
 SUBSTRI  utf8:["FOO" "BAR" "BAZ" "QUX" "TEST"]  utf8:"ba"  select:[true true true true true]      -> bool:[false true true false false]  # Full selection
-SUBSTRI  utf8:["FOO" "BAR" "BAZ" "QUX" "TEST"]  utf8:"ba"  select:[false false true true true]    -> bool:[null null true false false]   # Partial (last three)
-SUBSTRI  utf8:["FOO" "BAR" "BAZ" "QUX" "TEST"]  utf8:"ba"  select:[false false false false false] -> bool:[null null null null null]     # No selection
-SUBSTRI  utf8:["FOO" "BAR" "BAZ" "QUX" "TEST"]  utf8:"ba"  select:[false true false false false]  -> bool:[null true null null null]     # Single row
+SUBSTRI  utf8:["FOO" "BAR" "BAZ" "QUX" "TEST"]  utf8:"ba"  select:[false false true true true]    -> bool:[_ _ true false false]   # Partial (last three)
+SUBSTRI  utf8:["FOO" "BAR" "BAZ" "QUX" "TEST"]  utf8:"ba"  select:[false false false false false] -> bool:[_ _ _ _ _]     # No selection
+SUBSTRI  utf8:["FOO" "BAR" "BAZ" "QUX" "TEST"]  utf8:"ba"  select:[false true false false false]  -> bool:[_ true _ _ _]     # Single row
 
-SUBSTRI  utf8:["FOO" "BAR" "BAZ" "QUX" "TEST"]  utf8:""    select:[true false true false true]    -> bool:[true null true null true]  # Empty needle
+SUBSTRI  utf8:["FOO" "BAR" "BAZ" "QUX" "TEST"]  utf8:""    select:[true false true false true]    -> bool:[true _ true _ true]  # Empty needle
 SUBSTRI  utf8:["FOO" "BAR" "BAZ" "QUX" "TEST"]  utf8:null  select:[true true false false true]    -> bool:[null null null null null]  # Null needle
 
 # SUBSTR with selection - case-sensitive
 SUBSTR  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba"  select:[true true true true true]      -> bool:[false true true false false]  # Full selection
-SUBSTR  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba"  select:[true false true false true]    -> bool:[false null true null false]   # Partial (alternating)
-SUBSTR  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba"  select:[false false false false false] -> bool:[null null null null null]     # No selection
-SUBSTR  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba"  select:[false true false false false]  -> bool:[null true null null null]     # Single row
+SUBSTR  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba"  select:[true false true false true]    -> bool:[false _ true _ false]   # Partial (alternating)
+SUBSTR  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba"  select:[false false false false false] -> bool:[_ _ _ _ _]     # No selection
+SUBSTR  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:"ba"  select:[false true false false false]  -> bool:[_ true _ _ _]     # Single row
 
-SUBSTR  utf8:["FOO" "BAR" "BAZ" "qux" "test"]  utf8:"ba"  select:[true true true false false]    -> bool:[false false false null null]  # Case-sensitive no match
-SUBSTR  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:""    select:[false true false true false]   -> bool:[null true null true null]     # Empty needle
+SUBSTR  utf8:["FOO" "BAR" "BAZ" "qux" "test"]  utf8:"ba"  select:[true true true false false]    -> bool:[false false false _ _]  # Case-sensitive no match
+SUBSTR  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:""    select:[false true false true false]   -> bool:[_ true _ true _]     # Empty needle
 SUBSTR  utf8:["foo" "bar" "baz" "qux" "test"]  utf8:null  select:[true false true false true]    -> bool:[null null null null null]     # Null needle

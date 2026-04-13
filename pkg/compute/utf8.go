@@ -42,7 +42,8 @@ func regexpMatchAS(alloc *memory.Allocator, haystack *columnar.UTF8, regexp *reg
 		return builder.Build(), nil
 	}
 
-	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	// Compute rows to look at by merging selection with input validity.
+	fullSelection, err := computeValidityAA(alloc, haystack.Validity(), selection)
 	if err != nil {
 		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
@@ -50,10 +51,17 @@ func regexpMatchAS(alloc *memory.Allocator, haystack *columnar.UTF8, regexp *reg
 	values := memory.NewBitmap(alloc, haystack.Len())
 	values.Resize(haystack.Len())
 
-	for i := range iterTrue(validity, haystack.Len()) {
+	for i := range iterTrue(fullSelection, haystack.Len()) {
 		values.Set(i, regexp.Match(haystack.Get(i)))
 	}
 
+	var validity memory.Bitmap
+	if haystack.Nulls() > 0 {
+		// Output validity is always based purely on input validity, not
+		// selection.
+		validity = memory.NewBitmap(alloc, haystack.Len())
+		validity.AppendBitmap(haystack.Validity())
+	}
 	return columnar.NewBool(values, validity), nil
 }
 
@@ -100,7 +108,8 @@ func substrInsensitiveAS(alloc *memory.Allocator, haystack *columnar.UTF8, needl
 		return builder.Build(), nil
 	}
 
-	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	// Compute rows to look at by merging selection with input validity.
+	fullSelection, err := computeValidityAA(alloc, haystack.Validity(), selection)
 	if err != nil {
 		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
@@ -110,11 +119,18 @@ func substrInsensitiveAS(alloc *memory.Allocator, haystack *columnar.UTF8, needl
 	values := memory.NewBitmap(alloc, haystack.Len())
 	values.Resize(haystack.Len())
 
-	for i := range iterTrue(validity, haystack.Len()) {
+	for i := range iterTrue(fullSelection, haystack.Len()) {
 		haystackValueUpper := bytes.ToUpper(haystack.Get(i))
 		values.Set(i, bytes.Contains(haystackValueUpper, needleUpper))
 	}
 
+	var validity memory.Bitmap
+	if haystack.Nulls() > 0 {
+		// Output validity is always based purely on input validity, not
+		// selection.
+		validity = memory.NewBitmap(alloc, haystack.Len())
+		validity.AppendBitmap(haystack.Validity())
+	}
 	return columnar.NewBool(values, validity), nil
 }
 
@@ -164,7 +180,8 @@ func substrAS(alloc *memory.Allocator, haystack *columnar.UTF8, needle *columnar
 		return builder.Build(), nil
 	}
 
-	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	// Compute rows to look at by merging selection with input validity.
+	fullSelection, err := computeValidityAA(alloc, haystack.Validity(), selection)
 	if err != nil {
 		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
@@ -172,10 +189,17 @@ func substrAS(alloc *memory.Allocator, haystack *columnar.UTF8, needle *columnar
 	values := memory.NewBitmap(alloc, haystack.Len())
 	values.Resize(haystack.Len())
 
-	for i := range iterTrue(validity, haystack.Len()) {
+	for i := range iterTrue(fullSelection, haystack.Len()) {
 		values.Set(i, bytes.Contains(haystack.Get(i), needle.Value))
 	}
 
+	var validity memory.Bitmap
+	if haystack.Nulls() > 0 {
+		// Output validity is always based purely on input validity, not
+		// selection.
+		validity = memory.NewBitmap(alloc, haystack.Len())
+		validity.AppendBitmap(haystack.Validity())
+	}
 	return columnar.NewBool(values, validity), nil
 }
 

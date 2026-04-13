@@ -429,5 +429,6 @@ func (n *Cache) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		Key:          n.Key,
 		CacheName:    n.CacheName,
 		MaxSizeBytes: n.MaxCacheableSizeBytes,
+		Compression:  n.Compression,
 	}, nil
 }
