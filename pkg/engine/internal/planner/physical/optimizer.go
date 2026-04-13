@@ -318,17 +318,21 @@ func (r *scanTimeRangePushup) applyToTargets(node Node, timeRange TimeRange) boo
 			}
 		} else {
 			trSteppedStart := time.UnixMilli((timeRange.Start.UnixMilli() / node.Step.Milliseconds()) * node.Step.Milliseconds()).UTC()
-			for trSteppedStart.Compare(timeRange.Start) < 0 { // should only happen at most once, but just in case
-				trSteppedStart = trSteppedStart.Add(node.Step)
-			}
-			trSteppedEnd := time.UnixMilli((timeRange.End.UnixMilli() / node.Step.Milliseconds()) * node.Step.Milliseconds()).UTC()
-			for trSteppedEnd.Compare(timeRange.End) > 0 {
-				trSteppedEnd = trSteppedEnd.Add(-node.Step)
+
+			endPlusRange := node.End.Add(node.Range)
+			trSteppedEnd := time.UnixMilli((endPlusRange.UnixMilli() / node.Step.Milliseconds()) * node.Step.Milliseconds()).UTC()
+			for trSteppedEnd.Compare(timeRange.End) < 0 {
+				trSteppedEnd = trSteppedEnd.Add(node.Step)
 			}
 			if node.Start.Compare(trSteppedStart) < 0 {
 				node.Start = trSteppedStart
 				changed = true
 			}
+			// trSteppedEnd could still be before node.Start; make sure it isn't
+			for trSteppedEnd.Compare(node.Start) <= 0 {
+				trSteppedEnd = trSteppedEnd.Add(node.Step)
+			}
+
 			if node.End.Compare(trSteppedEnd) > 0 {
 				node.End = trSteppedEnd
 				changed = true
