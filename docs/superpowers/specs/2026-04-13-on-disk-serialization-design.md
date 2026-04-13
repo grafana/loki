@@ -27,10 +27,43 @@ type SectionEncoder func(rows []Stat, enc *columnar.Encoder) error
 The encoder function is responsible for:
 - Creating `dataset.ColumnBuilder`s for each column
 - Iterating rows and appending values via `dataset.Int64Value` / `dataset.BinaryValue`
-- Calling `encodeColumn(enc, colType, builder)` to flush each builder into the `columnar.Encoder`
-- Setting sort info on the encoder
+- Flushing each builder into the `columnar.Encoder` via `encodeColumn` (see below)
+- Setting sort info on the encoder via `enc.SetSortInfo(*datasetmd.SortInfo)`
+- Normalizing bitmap data (see Bitmap Normalization below)
 
 This replaces the old signature `func(ctx, rows) (Section, error)` which returned in-memory sections.
+
+#### The `encodeColumn` Helper
+
+Both packages define an `encodeColumn` helper function following the pattern from `streams/builder.go` and `pointers/builder.go`:
+
+```go
+func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset.ColumnBuilder) error {
+    column, err := builder.Flush()      // -> *dataset.MemColumn with pages
+    if err != nil { return err }
+
+    columnEnc, err := enc.OpenColumn(column.ColumnDesc())
+    if err != nil { return err }
+    defer func() { _ = columnEnc.Discard() }()
+
+    if len(column.Pages) == 0 { return nil }
+
+    for _, page := range column.Pages {
+        if err := columnEnc.AppendPage(page); err != nil { return err }
+    }
+    return columnEnc.Commit()
+}
+```
+
+This bridges `dataset.ColumnBuilder` -> `columnar.Encoder` via the `ColumnEncoder.AppendPage` -> `Commit` flow.
+
+#### Bitmap Normalization
+
+The current `ColumnarEncoder` normalizes all `StreamIDBitmap` values to the same byte length within a section (via `columnarNormalizeBitmaps`). The new `ColumnarSectionEncoder` must preserve this behavior — padding all bitmaps to the maximum length found in the current batch before encoding them into the `stream_id_bitmap` column. This is a correctness requirement tested by `TestBuilder_BitmapNormalization`.
+
+#### Empty-Flush Contract
+
+If the builder has zero rows, `Flush` writes nothing and returns `(0, nil)`. Callers should guard with `EstimatedSize() > 0` before calling `dataobj.Builder.Append`.
 
 The builder stores the encoder at construction and delegates to it in `Flush`:
 
@@ -38,6 +71,9 @@ The builder stores the encoder at construction and delegates to it in `Flush`:
 func NewBuilder(encode SectionEncoder) *Builder
 
 func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
+    if len(b.rows) == 0 {
+        return 0, nil
+    }
     var enc columnar.Encoder
     defer enc.Reset()
     if err := b.encode(b.rows, &enc); err != nil {
@@ -52,7 +88,9 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 }
 ```
 
-**Rationale:** Keeps the pluggable strategy from #21442. Today's implementation (`ColumnarSectionEncoder`) uses `dataset.ColumnBuilder` + `columnar.Encoder`. A future implementation can use the dataset package directly by providing a different `SectionEncoder` function.
+Note: `dataobj.Builder.Append` calls `Reset()` unconditionally after `Flush`, so on error, rows are lost. This matches the convention used by `streams.Builder` and other existing implementations.
+
+**Rationale:** Retaining the pluggable `SectionEncoder` from #21442 is cheaper than removing it. Today's implementation (`ColumnarSectionEncoder`) uses `dataset.ColumnBuilder` + `columnar.Encoder`. If a second encoder using the dataset package directly is needed in the future, it can be provided as a different `SectionEncoder` function without changing the builder.
 
 ### 2. Caller-Driven Section Splitting
 
@@ -69,10 +107,13 @@ This matches:
 
 ### 3. Read-Side Architecture
 
-The existing read-side abstraction is preserved:
-- `Section` type with `OpenColumn` closure returning `ColumnReader` -> `columnar.Array`
+The existing read-side types are preserved:
+- `Section` type with `ColumnNames`, `RowCount`, and `OpenColumn` closure
+- `ColumnReader` interface: `Read(ctx, count) (columnar.Array, error)` + `Close() error`
 - `Reader` — reads column data from a `Section`
 - `RowReader` — converts columnar data back to typed `Posting`/`Stat` rows
+
+#### How `Open` Backs the `Section` Type
 
 A new `Open` function is added to each package, following the `streams.Open` pattern:
 
@@ -80,17 +121,41 @@ A new `Open` function is added to each package, following the `streams.Open` pat
 func Open(ctx context.Context, section *dataobj.Section) (*Section, error)
 ```
 
-This creates a `columnar.Decoder` -> `columnar.Section`, then wraps it in a package-specific `Section` by mapping generic columns back to typed `ColumnReader` implementations backed by on-disk data via `columnar.ReaderAdapter`.
+This creates a `columnar.Decoder` -> `columnar.Section`, then constructs a package-specific `Section` value whose `OpenColumn` closure reads from disk.
 
-**Deleted:** The in-memory producer code (`ColumnarEncoder` function body, `columnarSliceColumnReader` / `sliceColumnReader` helper types) that constructed `Section` from in-memory arrays. These are replaced by the `Open` function reading from disk.
+**The bridging mechanism:** The `Open` function populates the `Section.OpenColumn` closure so that each call to `OpenColumn(name)` returns a `ColumnReader` implementation backed by on-disk data. The concrete `ColumnReader` wraps the `columnar.ReaderAdapter` (which converts `dataset.RowReader` output into `columnar.RecordBatch`), extracting the single column's `columnar.Array` from the batch. This bridging type is new — it adapts `ReaderAdapter.Read(ctx, alloc, batchSize) (*RecordBatch, error)` to `ColumnReader.Read(ctx, count) (Array, error)` by managing the allocator internally and extracting the target column from the record batch.
+
+Alternatively, the implementation may bypass `ReaderAdapter` entirely and read column data directly from the `columnar.Section`'s `Dataset` interface, similar to how `streams.Iter` reads rows. The exact approach is an implementation detail — what matters is that `Open` returns a `*Section` whose `OpenColumn` produces valid `ColumnReader`s backed by on-disk data.
+
+#### Validation in `Open`
+
+Following the `streams.Open` pattern:
+- Check `section.Type` matches the package's section type (namespace + kind)
+- Check `section.Type.Version` matches `columnar.FormatVersion`
+- Skip unrecognized columns (forward compatibility)
+- No fail-fast on missing columns at open time — let the reader surface errors when a required column is accessed
+
+#### Section Type Version
+
+Both `postings.sectionType` and `stats.sectionType` are updated from `Version: 1` to `Version: columnar.FormatVersion` (currently `2`). Since these sections have never been written to disk before (the current code resets builders without flushing), there is no backward compatibility concern.
+
+#### Deleted In-Memory Producer Code
+
+The in-memory producer code is deleted:
+- `ColumnarEncoder` function body (the one using `pkg/columnar/` Arrow arrays)
+- `columnarSliceColumnReader` / `sliceColumnReader` helper types
+
+These are replaced by the `Open` function reading from disk.
 
 ### 4. `indexobj/builder.go` Wiring
 
-Four changes:
+Six changes:
 
 **a) `builderStateDirty` tracking** — Set `b.state = builderStateDirty` in `AppendStat`, `AppendLabelPosting`, and `AppendBloomPosting` (replacing TODOs at lines 160, 184, 207).
 
-**b) Mid-accumulation flushing** — After each append to a tenant builder, check `EstimatedSize()` and flush if it exceeds `TargetSectionSize`:
+**b) Size estimate tracking** — Each `Append*` method must track the pre/post `EstimatedSize()` delta on the tenant builder and update `b.unflushedSizeEstimate`, matching the pattern from `AppendIndexPointer` (`builder.go:222-228`). After updating `unflushedSizeEstimate`, recompute `b.currentSizeEstimate` via `b.estimatedSize()` and check `builderFull` against `TargetObjectSize`, same as other append paths.
+
+**c) Mid-accumulation flushing** — After each append to a tenant builder, check `EstimatedSize()` and flush if it exceeds `TargetSectionSize`:
 ```go
 if tenantBuilder.EstimatedSize() > int(b.cfg.TargetSectionSize) {
     if err := b.builder.Append(tenantBuilder); err != nil {
@@ -98,61 +163,90 @@ if tenantBuilder.EstimatedSize() > int(b.cfg.TargetSectionSize) {
     }
 }
 ```
+After a mid-accumulation flush, decrement `b.unflushedSizeEstimate` by the pre-flush `EstimatedSize()`.
 
-**c) Final Flush serialization** — Replace the no-op reset of stats/postings builders with actual serialization via `b.builder.Append`, matching how streams/pointers/indexPointers are flushed.
+**d) Final Flush serialization** — Replace the no-op reset of stats/postings builders with actual serialization via `b.builder.Append`, guarded by `EstimatedSize() > 0`, matching how streams/pointers/indexPointers are flushed:
+```go
+for _, tenantStats := range b.stats {
+    if tenantStats.EstimatedSize() > 0 {
+        flushErrors = append(flushErrors, b.builder.Append(tenantStats))
+    }
+}
+for _, tenantPostings := range b.postings {
+    if tenantPostings.EstimatedSize() > 0 {
+        flushErrors = append(flushErrors, b.builder.Append(tenantPostings))
+    }
+}
+```
 
-**d) Constructor changes** — `getStatsBuilderForTenant` and `getPostingsBuilderForTenant` pass `ColumnarSectionEncoder` instead of `targetSectionSize` + old encoder.
+**e) Constructor changes** — `getStatsBuilderForTenant` and `getPostingsBuilderForTenant` pass `ColumnarSectionEncoder` instead of `targetSectionSize` + old encoder.
+
+**f) Metrics observation (out of scope)** — The `observeObject` method currently handles indexpointers, pointers, and streams sections. Adding postings/stats observation is out of scope for this PR — it can be added in a follow-up alongside item #7 (tenant count metrics) from the follow-up list.
 
 ## Column Definitions
 
 ### Postings Columns
 
-| Column | Physical Type | Encoding | Compression | Nullable | Notes |
-|--------|--------------|----------|-------------|----------|-------|
-| `kind` | INT64 | DELTA | NONE | No | `PostingKind` as int |
-| `object_path` | BINARY | PLAIN | ZSTD | No | |
-| `section_index` | INT64 | DELTA | NONE | No | |
-| `column_name` | BINARY | PLAIN | ZSTD | Yes | Only for bloom postings |
-| `label_value` | BINARY | PLAIN | ZSTD | Yes | Only for label postings |
-| `bloom_filter` | BINARY | PLAIN | NONE | Yes | Pre-compressed bloom data |
-| `stream_id_bitmap` | BINARY | PLAIN | ZSTD | Yes | Only for label postings |
-| `uncompressed_size` | INT64 | DELTA | NONE | No | |
-| `min_timestamp` | INT64 | DELTA | NONE | No | |
-| `max_timestamp` | INT64 | DELTA | NONE | No | |
+All columns are always present for every row. Columns that are semantically irrelevant for a given `PostingKind` are populated with empty/zero values, not nulls. This matches the current data model where `ColumnName`, `LabelValue`, `BloomFilter`, and `StreamIDBitmap` are always populated by the producer (`indexobj/builder.go`).
 
-**Sort info:** `[kind, column_name, label_value, min_timestamp, max_timestamp]` ascending.
+| Column | Physical Type | Encoding | Compression | Notes |
+|--------|--------------|----------|-------------|-------|
+| `kind` | INT64 | DELTA | NONE | `PostingKind` as int |
+| `object_path` | BINARY | PLAIN | ZSTD | |
+| `section_index` | INT64 | DELTA | NONE | |
+| `column_name` | BINARY | PLAIN | ZSTD | Empty string for label postings |
+| `label_value` | BINARY | PLAIN | ZSTD | Empty string for bloom postings |
+| `bloom_filter` | BINARY | PLAIN | NONE | Empty for label postings; bloom data is pre-compressed by the caller, encoder applies no additional compression |
+| `stream_id_bitmap` | BINARY | PLAIN | ZSTD | Present for all posting kinds |
+| `uncompressed_size` | INT64 | DELTA | NONE | |
+| `min_timestamp` | INT64 | DELTA | NONE | |
+| `max_timestamp` | INT64 | DELTA | NONE | |
+
+**Sort info:** `[kind, column_name, label_value, min_timestamp, max_timestamp]` ascending. Since these are fixed columns at known positions, the `SortInfo` is constructed with hardcoded column indices matching the order columns are opened in the encoder.
 
 ### Stats Columns
 
-| Column | Physical Type | Encoding | Compression | Nullable | Notes |
-|--------|--------------|----------|-------------|----------|-------|
-| `object_path` | BINARY | PLAIN | ZSTD | No | |
-| `section_index` | INT64 | DELTA | NONE | No | |
-| `sort_schema` | BINARY | PLAIN | ZSTD | No | |
-| `min_timestamp` | INT64 | DELTA | NONE | No | |
-| `max_timestamp` | INT64 | DELTA | NONE | No | |
-| `row_count` | INT64 | DELTA | NONE | No | |
-| `uncompressed_size` | INT64 | DELTA | NONE | No | |
-| Dynamic label columns | BINARY | PLAIN | ZSTD | Yes | One per unique label key from `SortSchema`; sparse |
+| Column | Physical Type | Encoding | Compression | Notes |
+|--------|--------------|----------|-------------|-------|
+| `object_path` | BINARY | PLAIN | ZSTD | |
+| `section_index` | INT64 | DELTA | NONE | |
+| `sort_schema` | BINARY | PLAIN | ZSTD | |
+| `min_timestamp` | INT64 | DELTA | NONE | |
+| `max_timestamp` | INT64 | DELTA | NONE | |
+| `row_count` | INT64 | DELTA | NONE | |
+| `uncompressed_size` | INT64 | DELTA | NONE | |
+| Dynamic label columns | BINARY | PLAIN | ZSTD | One per unique label key; sparse/nullable |
+
+#### Stats SortSchema Invariant
+
+All rows within a single section (single `Flush` call) must share the same `SortSchema`. This is guaranteed by the builder being per-tenant and the calculation pipeline producing rows with a consistent schema per tenant. The encoder should validate this invariant: if rows have differing `SortSchema` values, return an error.
+
+#### Stats Dynamic Label Columns and SortInfo
+
+The encoder determines dynamic label columns by parsing `SortSchema` from the first row (validated to be consistent across all rows). Label columns are opened in sort-schema order, after all fixed columns. The `SortInfo` is constructed after all columns are opened:
+
+1. Open fixed columns (object_path through uncompressed_size) — indices 0-6
+2. Open dynamic label columns in sort-schema order — indices 7, 8, ...
+3. Build `SortInfo` with column sorts: dynamic label columns (in order), then `min_timestamp` (index 3), then `max_timestamp` (index 4), all ascending
 
 **Sort info:** Label values in sort-schema order, then `min_timestamp`, then `max_timestamp`, all ascending.
 
 ## Files Changed
 
 ### New Files
-- `pkg/dataobj/sections/postings/open.go` — `Open` function for reading postings sections from disk
-- `pkg/dataobj/sections/stats/open.go` — `Open` function for reading stats sections from disk
+- `pkg/dataobj/sections/postings/open.go` — `Open` function for reading postings sections from disk, `ColumnReader` bridging type
+- `pkg/dataobj/sections/stats/open.go` — `Open` function for reading stats sections from disk, `ColumnReader` bridging type
 
 ### Modified Files
 - `pkg/dataobj/sections/postings/builder.go` — New `Flush(w SectionWriter)` signature, remove `computeSplits`, remove `targetSectionSize`, implement `SectionBuilder`
 - `pkg/dataobj/sections/postings/encode_columnar.go` — Replace in-memory `ColumnarEncoder` with `ColumnarSectionEncoder` using `dataset.ColumnBuilder` + `columnar.Encoder`; new `SectionEncoder` signature; add `encodeColumn` helper; delete `columnarSliceColumnReader`
-- `pkg/dataobj/sections/postings/postings.go` — May need column type constants for `encodeColumn`/`Open`
+- `pkg/dataobj/sections/postings/postings.go` — Add `ColumnType` enum and constants (e.g., `ColumnTypeKind`, `ColumnTypeLabelValue`) for use in `encodeColumn` and `Open`; bump `sectionType.Version` to `columnar.FormatVersion`
 - `pkg/dataobj/sections/postings/builder_test.go` — Rewrite tests to round-trip through disk
 - `pkg/dataobj/sections/stats/builder.go` — Same changes as postings builder
 - `pkg/dataobj/sections/stats/encode_columnar.go` — Same changes as postings encoder
-- `pkg/dataobj/sections/stats/stats.go` — May need column type constants
+- `pkg/dataobj/sections/stats/stats.go` — Add `ColumnType` enum and constants; bump `sectionType.Version` to `columnar.FormatVersion`
 - `pkg/dataobj/sections/stats/builder_test.go` — Rewrite tests to round-trip through disk
-- `pkg/dataobj/index/indexobj/builder.go` — Set `builderStateDirty`, mid-accumulation flushing, final Flush serialization, constructor changes
+- `pkg/dataobj/index/indexobj/builder.go` — Set `builderStateDirty`, size estimate tracking, mid-accumulation flushing, final Flush serialization, constructor changes
 - `pkg/dataobj/index/stats_calculation_test.go` — Update to flush and read back from object
 - `pkg/dataobj/index/label_postings_calculation_test.go` — Update to flush and read back from object
 
@@ -161,13 +255,14 @@ if tenantBuilder.EstimatedSize() > int(b.cfg.TargetSectionSize) {
 - In-memory `ColumnarEncoder` function body in both `encode_columnar.go` files
 - `columnarSliceColumnReader` / `sliceColumnReader` types in both packages
 - `computeSplits` function in both builders
+- `StatsBuilderForTenant` / `PostingsBuilderForTenant` test accessors in `indexobj/builder.go` (no longer needed since tests go through the full flush + `Open` path)
 
 ## Testing Strategy
 
-**Builder tests:** Rewrite to round-trip through disk. Use a `buildObject` test helper (like `streams/builder_test.go` has) that creates a `dataobj.Builder`, appends the section builder, flushes to an `Object`, then reads back via `Open` + `RowReader`. Existing test cases (empty builder, round-trip, sort order, nullable handling, bitmap correctness, flush reset, etc.) are preserved with the new round-trip mechanism.
+**Builder tests:** Rewrite to round-trip through disk. Use a `buildObject` test helper (like `streams/builder_test.go` has) that creates a `dataobj.Builder`, appends the section builder, flushes to an `Object`, then reads back via `Open` + `RowReader`. Existing test cases (empty builder, round-trip, sort order, nullable handling, bitmap correctness/normalization, flush reset, etc.) are preserved with the new round-trip mechanism.
 
-**Section splitting tests:** Instead of testing `computeSplits` internally, test that the caller can flush mid-accumulation and produce multiple sections in the resulting object.
+**Section splitting tests:** Instead of testing `computeSplits` internally, test that the caller can flush mid-accumulation and produce multiple sections in the resulting object. The test creates a builder, appends some rows, calls `dataobj.Builder.Append` (triggering `Flush`), appends more rows, calls `Append` again, then verifies the object contains two sections with the expected rows in each.
 
-**indexobj builder tests:** Verify that `Flush` serializes stats and postings sections into the object (no longer just resetting). Verify `builderStateDirty` is set correctly.
+**indexobj builder tests:** Verify that `Flush` serializes stats and postings sections into the object (no longer just resetting). Verify `builderStateDirty` is set correctly. Verify size estimate tracking and `builderFull` signaling work for stats/postings appends.
 
 **Calculation tests:** Update `stats_calculation_test.go` and `label_postings_calculation_test.go` to flush the indexobj builder and read back from the resulting object via `Open`, instead of using test accessors to read from the in-memory path.
