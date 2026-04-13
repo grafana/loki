@@ -1540,10 +1540,6 @@ func (o *Overrides) SortSchema(userID string) SortSchema {
 // SortSchemaLabels returns the ordered SortKeyFqn sort keys from the per-tenant sort schema as strings.
 // Implements logsobj.TenantOverrides.
 func (o *Overrides) SortSchemaLabels(userID string) []string {
-	schema := o.SortSchema(userID)
-	out := make([]string, len(schema))
-	for i, fqn := range schema {
-		out[i] = string(fqn)
-	}
-	return out
+	// TODO(dev): hard-coded for local testing — remove before merge
+	return []string{"label:service_name", "label:namespace"}
 }
