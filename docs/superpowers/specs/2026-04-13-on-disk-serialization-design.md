@@ -154,9 +154,9 @@ Following the `streams.Open` pattern:
 
 Both `postings.sectionType` and `stats.sectionType` retain `Version: 1`. Section versions are section-specific — they version the section's logical schema and semantics, not the internal encoding format. The columnar encoding format has its own version (`columnar.FormatVersion`), but that is an internal implementation detail of how data is serialized, not a section-level concern. Tying section version to `columnar.FormatVersion` would couple them unnecessarily — a change in the columnar encoding library would force a section version bump even if the section's schema hasn't changed.
 
-The `Open` function checks `section.Type.Version == 1`. If the section schema changes in the future (new columns, changed semantics), the version is bumped at that point.
+The `Open` function checks `section.Type.Version == 1` for schema validation. When calling `columnar.NewDecoder`, it passes `columnar.FormatVersion` directly (not `section.Type.Version`), because `NewDecoder` validates the encoding format version, which is a separate concern from the section schema version. This decouples the two version concepts at the call site.
 
-Note: `streams.Open` happens to check against `columnar.FormatVersion` because the streams section was introduced alongside that encoding format. That is a streams-specific choice, not a pattern that all sections must follow.
+Note: other section packages (`streams`, `pointers`, `indexpointers`, `logs`) pass `section.Type.Version` to `NewDecoder` because they set their section version to `columnar.FormatVersion`. That coupling is a pre-existing design choice in those packages, not a requirement we need to follow.
 
 #### Deleted In-Memory Producer Code
 
