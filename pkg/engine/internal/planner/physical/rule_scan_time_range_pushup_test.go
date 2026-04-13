@@ -1,3 +1,13 @@
+package physical
+
+import (
+	"testing"
+	"time"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/stretchr/testify/require"
+)
+
 func TestScanTimeRangePushup(t *testing.T) {
 	t.Run("pushup time range to RangeAggregation with zero step", func(t *testing.T) {
 		plan := &Plan{}
