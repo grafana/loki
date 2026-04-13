@@ -212,7 +212,7 @@ All columns are present for every row. Columns that are semantically irrelevant 
 
 | Column | Physical Type | Encoding | Compression | Nullable | Notes |
 |--------|--------------|----------|-------------|----------|-------|
-| `kind` | INT64 | DELTA | NONE | No | `PostingKind` as int |
+| `kind` | INT64 | PLAIN | NONE | No | `PostingKind` as int (only 2 values: 0=bloom, 1=label) |
 | `object_path` | BINARY | PLAIN | ZSTD | No | |
 | `section_index` | INT64 | DELTA | NONE | No | |
 | `column_name` | BINARY | PLAIN | ZSTD | Yes | Null for label postings |
