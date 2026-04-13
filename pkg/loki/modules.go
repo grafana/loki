@@ -2440,12 +2440,12 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 		t.partitionRing,
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
+		t.Overrides,
 	)
 	if err != nil {
 		return nil, err
 	}
 	t.dataObjConsumer = dataObjConsumer
-	dataObjConsumer.SetOverrides(t.Overrides)
 
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,

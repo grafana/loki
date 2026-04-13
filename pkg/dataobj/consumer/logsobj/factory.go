@@ -3,6 +3,7 @@ package logsobj
 import (
 	"fmt"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -13,6 +14,7 @@ type BuilderFactory struct {
 	cfg          BuilderConfig
 	scratchStore scratch.Store
 	overrides    TenantOverrides
+	logger       log.Logger
 }
 
 // SetOverrides configures per-tenant overrides propagated to every builder
@@ -21,10 +23,11 @@ func (f *BuilderFactory) SetOverrides(overrides TenantOverrides) {
 	f.overrides = overrides
 }
 
-func NewBuilderFactory(cfg BuilderConfig, scratchStore scratch.Store) *BuilderFactory {
+func NewBuilderFactory(cfg BuilderConfig, scratchStore scratch.Store, logger log.Logger) *BuilderFactory {
 	return &BuilderFactory{
 		cfg:          cfg,
 		scratchStore: scratchStore,
+		logger:       logger,
 	}
 }
 
@@ -38,6 +41,7 @@ func (f *BuilderFactory) NewBuilder(r prometheus.Registerer) (*Builder, error) {
 	if f.overrides != nil {
 		b.SetOverrides(f.overrides)
 	}
+	b.SetLogger(f.logger)
 	if r != nil {
 		if err = b.RegisterMetrics(r); err != nil {
 			return nil, fmt.Errorf("failed to register metrics: %w", err)

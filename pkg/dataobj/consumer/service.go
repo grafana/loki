@@ -53,12 +53,14 @@ type Service struct {
 }
 
 // SetOverrides configures per-tenant overrides on the underlying builder factory.
-// Must be called before the service starts.
+// This affects builders created after this call. The overrides should be passed
+// to New() instead to ensure the initial builder also has them configured.
 func (s *Service) SetOverrides(overrides logsobj.TenantOverrides) {
+	level.Info(s.logger).Log("msg", "sort schema overrides configured on builder factory")
 	s.builderFactory.SetOverrides(overrides)
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, _ string, _ ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) (*Service, error) {
+func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, _ string, _ ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
 	logger = log.With(logger, "component", "dataobj-consumer")
 
 	s := &Service{
@@ -155,7 +157,13 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
-	s.builderFactory = logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore)
+	s.builderFactory = logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore, logger)
+	if overrides != nil {
+		s.builderFactory.SetOverrides(overrides)
+		level.Info(logger).Log("msg", "sort schema overrides wired to builder factory at construction")
+	} else {
+		level.Warn(logger).Log("msg", "sort schema overrides not provided at construction; schema sort will not apply to the initial builder")
+	}
 	sorter := logsobj.NewSorter(s.builderFactory, reg)
 	s.flusher = newFlusher(sorter, uploader, logger, reg)
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{

@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/facette/natsort"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -209,6 +211,7 @@ type Builder struct {
 	cfg       BuilderConfig
 	metrics   *builderMetrics
 	overrides TenantOverrides
+	logger    log.Logger
 
 	labelCache *lru.Cache[string, labels.Labels]
 
@@ -250,6 +253,7 @@ func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store) (*Builder, error)
 	return &Builder{
 		cfg:        cfg,
 		metrics:    metrics,
+		logger:     log.NewNopLogger(),
 		labelCache: labelCache,
 		builder:    dataobj.NewBuilder(scratchStore),
 		streams:    make(map[string]*streams.Builder),
@@ -260,6 +264,11 @@ func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store) (*Builder, error)
 // SetOverrides configures per-tenant overrides used when DataobjUseSortSchema is enabled.
 func (b *Builder) SetOverrides(overrides TenantOverrides) {
 	b.overrides = overrides
+}
+
+// SetLogger sets the logger used by the builder.
+func (b *Builder) SetLogger(logger log.Logger) {
+	b.logger = logger
 }
 
 // initBuilder initializes the builders for the tenant.
@@ -495,7 +504,6 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 
 	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 
-
 	// Sort the set of tenants so the new object has a deterministic order of sections.
 	tenants := obj.Tenants()
 	natsort.Sort(tenants)
@@ -560,10 +568,21 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 				if err != nil {
 					return nil, nil, fmt.Errorf("reading schema labels from logs section: %w", err)
 				}
+				if len(schemaLabels) > 0 {
+					level.Debug(b.logger).Log("msg", "sort schema: using labels from existing section metadata", "tenant", tenant, "schema_labels", fmt.Sprintf("%v", schemaLabels))
+				}
 			}
 			if len(schemaLabels) == 0 && b.overrides != nil {
 				schemaLabels = b.overrides.SortSchemaLabels(tenant)
+				if len(schemaLabels) > 0 {
+					level.Debug(b.logger).Log("msg", "sort schema: using labels from tenant overrides", "tenant", tenant, "schema_labels", fmt.Sprintf("%v", schemaLabels))
+				}
 			}
+			if len(schemaLabels) == 0 {
+				level.Debug(b.logger).Log("msg", "sort schema: no schema labels resolved, falling back to dataobj_sort_order", "tenant", tenant, "overrides_configured", b.overrides != nil)
+			}
+		} else {
+			level.Debug(b.logger).Log("msg", "sort schema: feature disabled, using dataobj_sort_order", "tenant", tenant, "dataobj_sort_order", b.cfg.DataobjSortOrder)
 		}
 
 		if len(schemaLabels) > 0 {
@@ -573,9 +592,11 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			}
 			sortOrder = logs.SortSchemaASC
 			iter, iterErr = sortMergeIteratorWithSchema(ctx, sections, sortKeys)
+			level.Info(b.logger).Log("msg", "sort schema: sorting by schema", "tenant", tenant, "schema_labels", fmt.Sprintf("%v", schemaLabels))
 		} else {
 			sortOrder = parseSortOrder(b.cfg.DataobjSortOrder)
 			iter, iterErr = sortMergeIterator(ctx, sections, sortOrder)
+			level.Info(b.logger).Log("msg", "sort schema: sorting by dataobj_sort_order", "tenant", tenant, "sort_order", b.cfg.DataobjSortOrder)
 		}
 		if iterErr != nil {
 			return nil, nil, fmt.Errorf("creating sort iterator: %w", iterErr)
