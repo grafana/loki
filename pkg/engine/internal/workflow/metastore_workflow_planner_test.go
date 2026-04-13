@@ -14,20 +14,24 @@ import (
 
 type fakeMetastoreIndexes struct {
 	metastore.Metastore
-	indexPaths []string
+	indexes []metastore.IndexEntry
 }
 
 func (f fakeMetastoreIndexes) GetIndexes(_ context.Context, _ metastore.GetIndexesRequest) (metastore.GetIndexesResponse, error) {
-	return metastore.GetIndexesResponse{IndexesPaths: f.indexPaths}, nil
+	return metastore.GetIndexesResponse{Indexes: f.indexes}, nil
 }
 
 func TestPlanWorkflow_MetastorePlan_UsesMergeRootAndPointersPartitions(t *testing.T) {
-	ms := fakeMetastoreIndexes{
-		indexPaths: []string{"index/0", "index/1", "index/2"},
-	}
-
 	start := time.Unix(10, 0)
 	end := start.Add(time.Hour)
+
+	ms := fakeMetastoreIndexes{
+		indexes: []metastore.IndexEntry{
+			{Path: "index/0", Start: start, End: end},
+			{Path: "index/1", Start: start, End: end},
+			{Path: "index/2", Start: start, End: end},
+		},
+	}
 
 	p := physical.NewMetastorePlanner(ms, 100)
 	plan, err := p.Plan(context.Background(), nil, nil, start, end)
@@ -49,10 +53,10 @@ func TestPlanWorkflow_MetastorePlan_UsesMergeRootAndPointersPartitions(t *testin
 	require.Len(t, mergeNode, 1)
 	require.IsType(t, &physical.Merge{}, mergeNode[0])
 
-	require.Len(t, rootTask.Sources[mergeNode[0]], len(ms.indexPaths))
+	require.Len(t, rootTask.Sources[mergeNode[0]], len(ms.indexes))
 
 	children := graph.Children(rootTask)
-	require.Len(t, children, len(ms.indexPaths))
+	require.Len(t, children, len(ms.indexes))
 
 	gotLocations := make(map[physical.DataObjLocation]struct{}, len(children))
 	for _, child := range children {
@@ -73,8 +77,8 @@ func TestPlanWorkflow_MetastorePlan_UsesMergeRootAndPointersPartitions(t *testin
 		gotLocations[batchingChildren[0].(*physical.PointersScan).Location] = struct{}{}
 	}
 
-	for _, indexPath := range ms.indexPaths {
-		_, ok := gotLocations[physical.DataObjLocation(indexPath)]
-		require.True(t, ok, "missing partition for %q", indexPath)
+	for _, entry := range ms.indexes {
+		_, ok := gotLocations[physical.DataObjLocation(entry.Path)]
+		require.True(t, ok, "missing partition for %q", entry.Path)
 	}
 }
