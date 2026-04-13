@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -635,7 +634,7 @@ func Test_planWorkflow(t *testing.T) {
 		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
 		require.NoError(t, err)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{})
+		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 4, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -666,7 +665,7 @@ func Test_planWorkflow(t *testing.T) {
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000006
 │ └── RangeAggregation operation=invalid start=1970-01-01T00:00:20Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
-│     └── DataObjScan location=b streams=0 section_id=0 projections=() predicate[0]=GT(builtin.timestamp, 1970-01-01T00:00:20Z)
+│     └── DataObjScan location=b streams=0 section_id=0 projections=() predicate[0]=GTE(builtin.timestamp, 1970-01-01T00:00:20Z)
 │             └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
 └
 ┌ Task 00000000000000000000000004
@@ -686,7 +685,11 @@ func Test_planWorkflow(t *testing.T) {
 		t.Run("with caching", func(t *testing.T) {
 			ulidGen := ulidGenerator{}
 
-			graph, err := planWorkflow("", physicalPlan, cacheParams{enabled: true, maxSizeBytes: 1 * 1024 * 1024})
+			graph, err := planWorkflow("", physicalPlan, cacheParams{
+				enabled:                 true,
+				taskCacheMaxSizeBytes:   1 * 1024 * 1024,
+				dataObjScanMaxSizeBytes: 0,
+			}, log.NewNopLogger())
 			require.NoError(t, err)
 			require.Equal(t, 4, graph.Len())
 			requireUniqueStreams(t, graph)
@@ -709,18 +712,20 @@ func Test_planWorkflow(t *testing.T) {
 │ │   └── @sink stream=00000000000000000000000005
 │ └── Batching batch_size=500
 │     └── RangeAggregation operation=invalid start=1970-01-01T00:00:10Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
-│         └── DataObjScan location=a streams=0 section_id=0 projections=() predicate[0]=LTE(builtin.timestamp, 1970-01-01T00:00:50Z)
-│                 └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│         └── Cache max_cacheable_size=0 B hashed_key=cfbb813ac32eac14 key= |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[LTE(builtin.timestamp, 1970-01-01T00:00:50Z)],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
+│             └── DataObjScan location=a streams=0 section_id=0 projections=() predicate[0]=LTE(builtin.timestamp, 1970-01-01T00:00:50Z)
+│                     └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
 ┌ Task 00000000000000000000000003
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ Cache max_cacheable_size=1.0 MiB hashed_key=619e7ddde6ee0f47 key= |>>| Batching |>>| RangeAggregation{operation=invalid,start=1970-01-01T00:00:20Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[GT(builtin.timestamp, 1970-01-01T00:00:20Z)],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│ Cache max_cacheable_size=1.0 MiB hashed_key=d3a63ec686242542 key= |>>| Batching |>>| RangeAggregation{operation=invalid,start=1970-01-01T00:00:20Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[GTE(builtin.timestamp, 1970-01-01T00:00:20Z)],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
 │ │   └── @sink stream=00000000000000000000000006
 │ └── Batching batch_size=500
 │     └── RangeAggregation operation=invalid start=1970-01-01T00:00:20Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
-│         └── DataObjScan location=b streams=0 section_id=0 projections=() predicate[0]=GT(builtin.timestamp, 1970-01-01T00:00:20Z)
-│                 └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
+│         └── Cache max_cacheable_size=0 B hashed_key=ec866af4d1638d82 key= |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[GTE(builtin.timestamp, 1970-01-01T00:00:20Z)],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│             └── DataObjScan location=b streams=0 section_id=0 projections=() predicate[0]=GTE(builtin.timestamp, 1970-01-01T00:00:20Z)
+│                     └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
 └
 ┌ Task 00000000000000000000000004
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
@@ -729,17 +734,13 @@ func Test_planWorkflow(t *testing.T) {
 │ │   └── @sink stream=00000000000000000000000007
 │ └── Batching batch_size=500
 │     └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:40Z step=0s range=0s group_by=()
-│         └── DataObjScan location=c streams=0 section_id=0 projections=()
-│                 └── @max_time_range start=1970-01-01T00:00:00Z end=1970-01-01T00:00:40Z
+│         └── Cache max_cacheable_size=0 B hashed_key=acadc504b7eeee93 key= |>>| DataObjScan{location=c,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:00Z,max_time_range_end=1970-01-01T00:00:40Z}
+│             └── DataObjScan location=c streams=0 section_id=0 projections=()
+│                     └── @max_time_range start=1970-01-01T00:00:00Z end=1970-01-01T00:00:40Z
 └
 `)
 
 			actualOutput := Sprint(&Workflow{graph: graph})
-
-			fmt.Println("")
-			fmt.Println(actualOutput)
-			fmt.Println("")
-
 			require.Equal(t, strings.TrimSpace(expectOutput), strings.TrimSpace(actualOutput))
 		})
 	})
@@ -943,10 +944,10 @@ func Test_eliminateEmptyCachedTasks(t *testing.T) {
 ┌ Task 00000000000000000000000002
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ Cache max_cacheable_size=1.0 MiB hashed_key=9888d9ec9f19e11e key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│ Cache max_cacheable_size=1.0 MiB hashed_key=73d7a06ab8903dbb key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:20Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
 │ │   └── @sink stream=00000000000000000000000003
 │ └── Batching batch_size=500
-│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── RangeAggregation operation=count start=1970-01-01T00:00:20Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
 │         └── Cache max_cacheable_size=0 B hashed_key=57460db08f81adaf key= |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
 │             └── DataObjScan location=b streams=0 section_id=0 projections=()
 │                     └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
@@ -971,10 +972,10 @@ func Test_eliminateEmptyCachedTasks(t *testing.T) {
 ┌ Task 00000000000000000000000002
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ Cache max_cacheable_size=1.0 MiB hashed_key=9888d9ec9f19e11e key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│ Cache max_cacheable_size=1.0 MiB hashed_key=73d7a06ab8903dbb key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:20Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
 │ │   └── @sink stream=00000000000000000000000003
 │ └── Batching batch_size=500
-│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── RangeAggregation operation=count start=1970-01-01T00:00:20Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
 │         └── Cache max_cacheable_size=0 B hashed_key=57460db08f81adaf key= |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
 │             └── DataObjScan location=b streams=0 section_id=0 projections=()
 │                     └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z

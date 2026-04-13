@@ -17,7 +17,7 @@ func TestScanTimeRangePushup(t *testing.T) {
 			rangeAgg := plan.graph.Add(&RangeAggregation{
 				Start: time.Date(2026, 3, 14, 16, 43, 30, 0, time.UTC),
 				End:   time.Date(2026, 3, 14, 16, 53, 30, 0, time.UTC),
-				Step:  0, Range: time.Minute})
+				Step:  0, Range: 0})
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
 		}
 
@@ -37,7 +37,7 @@ func TestScanTimeRangePushup(t *testing.T) {
 			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
 				Start: time.Date(2026, 3, 14, 16, 45, 29, 0, time.UTC),
 				End:   time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC),
-				Step:  0, Range: time.Minute})
+				Step:  0, Range: 0})
 			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
 		}
 
@@ -71,8 +71,8 @@ func TestScanTimeRangePushup(t *testing.T) {
 			dataObjScan := expectedPlan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 14, 16, 44, 29, 0, time.UTC),
 				End: time.Date(2026, 3, 14, 16, 46, 31, 0, time.UTC)}})
 			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
-				Start: time.Date(2026, 3, 14, 16, 45, 0, 0, time.UTC),
-				End:   time.Date(2026, 3, 14, 16, 46, 0, 0, time.UTC),
+				Start: time.Date(2026, 3, 14, 16, 44, 0, 0, time.UTC),
+				End:   time.Date(2026, 3, 14, 16, 53, 30, 0, time.UTC),
 				Step:  time.Minute, Range: time.Minute})
 			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
 		}
@@ -89,7 +89,7 @@ func TestScanTimeRangePushup(t *testing.T) {
 			rangeAgg := plan.graph.Add(&RangeAggregation{
 				Start: time.Date(2026, 3, 20, 16, 43, 30, 0, time.UTC),
 				End:   time.Date(2026, 3, 20, 18, 53, 30, 0, time.UTC),
-				Step:  63 * time.Second, Range: time.Minute})
+				Step:  63 * time.Second, Range: 0})
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
 		}
 
@@ -107,9 +107,9 @@ func TestScanTimeRangePushup(t *testing.T) {
 			dataObjScan := expectedPlan.graph.Add(&DataObjScan{MaxTimeRange: TimeRange{Start: time.Date(2026, 3, 20, 17, 53, 41, 0, time.UTC),
 				End: time.Date(2026, 3, 20, 17, 54, 49, 0, time.UTC)}})
 			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
-				Start: time.Date(2026, 3, 20, 17, 53, 42, 0, time.UTC),
-				End:   time.Date(2026, 3, 20, 17, 54, 45, 0, time.UTC),
-				Step:  63 * time.Second, Range: time.Minute})
+				Start: time.Date(2026, 3, 20, 17, 52, 39, 0, time.UTC),
+				End:   time.Date(2026, 3, 20, 18, 52, 30, 0, time.UTC),
+				Step:  63 * time.Second, Range: 0})
 			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: dataObjScan})
 		}
 
