@@ -16,7 +16,7 @@ If you have not yet [migrated to TSDB](https://grafana.com/docs/loki/<LOKI_VERSI
 {{< /admonition >}}
 
 {{< admonition type="note" >}}
-Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released. When you upgrade to Loki 3.x, you should choose either monolithic (single-binary) or microservices (distributed) as your [deployment mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/).
+Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0. When you upgrade to Loki 3.x, you should choose either monolithic (single-binary) or microservices (distributed) as your [deployment mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/).
 {{< /admonition >}}
 
 {{< admonition type="tip" >}}

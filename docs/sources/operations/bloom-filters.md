@@ -36,8 +36,7 @@ To learn how to write queries to use bloom filters, refer to [Query acceleration
 ## Enable bloom filters
 
 {{< admonition type="warning" >}}
-Building and querying bloom filters are by design not supported in single binary deployment.
-It can be used with Simple Scalable deployment (SSD), but it is recommended to run bloom components only in fully distributed microservice mode.
+Building and querying bloom filters are by design not supported in single binary deployment, it can only be used with distributed microservice mode.
 The reason is that bloom filters also come with a relatively high cost for both building and querying the bloom filters that only pays off at large scale deployments.
 {{< /admonition >}}
 
