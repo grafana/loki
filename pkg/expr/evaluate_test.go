@@ -47,7 +47,7 @@ func TestEvaluate(t *testing.T) {
 
 	result, err := expr.Evaluate(&alloc, e, record)
 	require.NoError(t, err)
-	columnartest.RequireDatumsEqual(t, expect, result)
+	columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
 }
 
 func TestEvaluate_Constant(t *testing.T) {
@@ -59,7 +59,7 @@ func TestEvaluate_Constant(t *testing.T) {
 
 	result, err := expr.Evaluate(&alloc, e, nil)
 	require.NoError(t, err)
-	columnartest.RequireDatumsEqual(t, expect, result)
+	columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
 }
 
 func TestEvaluate_Column(t *testing.T) {
@@ -86,7 +86,7 @@ func TestEvaluate_Column(t *testing.T) {
 
 		result, err := expr.Evaluate(&alloc, e, record)
 		require.NoError(t, err)
-		columnartest.RequireDatumsEqual(t, expect, result)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
 	})
 
 	t.Run("non-existing column", func(t *testing.T) {
@@ -96,7 +96,7 @@ func TestEvaluate_Column(t *testing.T) {
 
 		result, err := expr.Evaluate(&alloc, e, record)
 		require.NoError(t, err)
-		columnartest.RequireDatumsEqual(t, expect, result)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
 	})
 }
 
@@ -122,7 +122,7 @@ func TestEvaluate_Unary(t *testing.T) {
 
 	result, err := expr.Evaluate(&alloc, e, record)
 	require.NoError(t, err)
-	columnartest.RequireDatumsEqual(t, expect, result)
+	columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
 }
 
 func TestEvaluate_Binary(t *testing.T) {
@@ -226,7 +226,7 @@ func TestEvaluate_Binary(t *testing.T) {
 
 			result, err := expr.Evaluate(&alloc, e, record)
 			require.NoError(t, err)
-			columnartest.RequireDatumsEqual(t, tt.expect, result)
+			columnartest.RequireDatumsEqual(t, tt.expect, result, memory.Bitmap{})
 		})
 	}
 }

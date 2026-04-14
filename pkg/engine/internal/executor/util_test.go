@@ -10,6 +10,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
@@ -101,13 +102,14 @@ func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 			pos += batch.NumRows()
 			return batch, nil
 		},
-		nil,
 	)
 }
 
 // collect reads all data from the pipeline until it is exhausted or returns an error.
 func collect(t *testing.T, pipeline Pipeline) (batches int64, rows int64) {
 	ctx := t.Context()
+	require.NoError(t, pipeline.Open(ctx))
+
 	for {
 		batch, err := pipeline.Read(ctx)
 		if errors.Is(err, EOF) {
@@ -145,6 +147,8 @@ func NewArrowtestPipeline(schema *arrow.Schema, rows ...arrowtest.Rows) *Arrowte
 		rows:   rows,
 	}
 }
+
+func (p *ArrowtestPipeline) Open(_ context.Context) error { return nil }
 
 // Read implements [Pipeline], converting the next [arrowtest.Rows] into a
 // [arrow.RecordBatch] and storing it in the pipeline's state. The state can then be

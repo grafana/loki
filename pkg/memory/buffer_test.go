@@ -115,3 +115,19 @@ func TestBuffer_Grow(t *testing.T) {
 	require.Equal(t, 128, alloc.AllocatedBytes(), "expected unused memory to be released")
 	require.Equal(t, 0, alloc.FreeBytes(), "expected unused memory to be released")
 }
+
+func TestBuffer_Slice(t *testing.T) {
+	var alloc memory.Allocator
+	defer alloc.Reset()
+
+	buf := memory.NewBuffer[int32](&alloc, 10)
+	buf.Append(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+
+	slice := buf.Slice(3, 7)
+	require.Equal(t, 4, slice.Len())
+	require.Equal(t, 4, slice.Cap())
+
+	for i := 0; i < slice.Len(); i++ {
+		require.Equal(t, int32(i+4), slice.Get(i), "unexpected slice value at index %d", i)
+	}
+}

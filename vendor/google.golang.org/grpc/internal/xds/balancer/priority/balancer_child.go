@@ -28,6 +28,8 @@ import (
 	"google.golang.org/grpc/serviceconfig"
 )
 
+var timeAfterFunc = time.AfterFunc
+
 type childBalancer struct {
 	name         string
 	parent       *priorityBalancer
@@ -124,12 +126,16 @@ func (cb *childBalancer) sendUpdate() {
 // It doesn't do it directly. It asks the balancer group to remove it.
 //
 // Note that the underlying balancer group could keep the child in a cache.
-func (cb *childBalancer) stop() {
+func (cb *childBalancer) stop(immediate bool) {
 	if !cb.started {
 		return
 	}
 	cb.stopInitTimer()
-	cb.parent.bg.Remove(cb.name)
+	if immediate {
+		cb.parent.bg.RemoveImmediately(cb.name)
+	} else {
+		cb.parent.bg.Remove(cb.name)
+	}
 	cb.started = false
 	cb.state = balancer.State{
 		ConnectivityState: connectivity.Connecting,
@@ -148,7 +154,7 @@ func (cb *childBalancer) startInitTimer() {
 	// to check the stopped boolean.
 	timerW := &timerWrapper{}
 	cb.initTimer = timerW
-	timerW.timer = time.AfterFunc(DefaultPriorityInitTimeout, func() {
+	timerW.timer = timeAfterFunc(DefaultPriorityInitTimeout, func() {
 		cb.parent.mu.Lock()
 		defer cb.parent.mu.Unlock()
 		if timerW.stopped {

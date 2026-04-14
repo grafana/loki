@@ -6,8 +6,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type Metastore interface {
@@ -41,15 +39,23 @@ type GetIndexesRequest struct {
 	End   time.Time
 }
 
+// IndexEntry is a reference to an index object together with the time range it covers.
+type IndexEntry struct {
+	Path  string
+	Start time.Time
+	End   time.Time
+}
+
 type GetIndexesResponse struct {
 	TableOfContentsPaths []string
-	IndexesPaths         []string
+	Indexes              []IndexEntry
 }
 
 type IndexSectionsReaderRequest struct {
 	IndexPath       string
-	Region          *xcap.Region
 	SectionsRequest SectionsRequest
+	PrefetchBytes   int64
+	BatchSize       int
 }
 
 type IndexSectionsReaderResponse struct {
@@ -65,6 +71,7 @@ type CollectSectionsResponse struct {
 }
 
 type ArrowRecordBatchReader interface {
+	Open(ctx context.Context) error
 	Read(ctx context.Context) (arrow.RecordBatch, error)
 	Close()
 }

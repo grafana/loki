@@ -1,4 +1,4 @@
-// Copyright 2016 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -475,6 +475,7 @@ func (m *Manager) allGroups() map[string][]*targetgroup.Group {
 
 	for setName, v := range n {
 		m.metrics.DiscoveredTargets.WithLabelValues(setName).Set(float64(v))
+		m.metrics.LastUpdated.WithLabelValues(setName).SetToCurrentTime()
 	}
 
 	return tSets

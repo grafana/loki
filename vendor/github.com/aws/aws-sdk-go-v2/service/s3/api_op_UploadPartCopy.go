@@ -84,9 +84,11 @@ import (
 //
 //   - If the source object that you want to copy is in a directory bucket, you
 //     must have the s3express:CreateSession permission in the Action element of a
-//     policy to read the object. By default, the session is in the ReadWrite mode.
-//     If you want to restrict the access, you can explicitly set the
-//     s3express:SessionMode condition key to ReadOnly on the copy source bucket.
+//     policy to read the object. If no session mode is specified, the session will be
+//     created with the maximum allowable privilege, attempting ReadWrite first, then
+//     ReadOnly if ReadWrite is not permitted. If you want to explicitly restrict the
+//     access to be read-only, you can set the s3express:SessionMode condition key to
+//     ReadOnly on the copy source bucket.
 //
 //   - If the copy destination is a directory bucket, you must have the
 //     s3express:CreateSession permission in the Action element of a policy to write
@@ -545,7 +547,7 @@ func (c *Client) addOperationUploadPartCopyMiddlewares(stack *middleware.Stack, 
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -570,9 +572,6 @@ func (c *Client) addOperationUploadPartCopyMiddlewares(stack *middleware.Stack, 
 		return err
 	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
@@ -54,6 +55,12 @@ func mergeOptionsFromFile(o manager.Options, cfg *configv1.ProjectConfig) manage
 
 	if o.Metrics.BindAddress == "" && cfg.Metrics.BindAddress != "" {
 		o.Metrics.BindAddress = cfg.Metrics.BindAddress
+
+		// Only enable Secure Serving when explicitly configured
+		if cfg.Metrics.Secure {
+			o.Metrics.SecureServing = true
+			o.Metrics.FilterProvider = filters.WithAuthenticationAndAuthorization
+		}
 
 		endpoints := map[string]http.HandlerFunc{
 			"/debug/pprof/":        pprof.Index,

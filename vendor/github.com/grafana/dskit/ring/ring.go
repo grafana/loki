@@ -548,10 +548,10 @@ func (r *Ring) getReplicationSetForKey(key uint32, op Operation, bufDescs []Inst
 // This function needs to be called with read lock on the ring.
 func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts []string, replicationFactor int, instanceFilter func(instanceID string) (include, keepGoing bool)) ([]InstanceDesc, error) {
 	var (
-		n          = replicationFactor
-		instances  = bufDescs[:0]
-		start      = searchToken(r.ringTokens, key)
-		iterations = 0
+		replicaSetSize = replicationFactor
+		instances      = bufDescs[:0]
+		start          = searchToken(r.ringTokens, key)
+		iterations     = 0
 		// The configured replication factor is treated as the expected number of zones
 		// when zone-awareness is enabled. Per-call replication factor may increase the
 		// number of instances selected per zone, but the number of inferred zones does
@@ -559,19 +559,46 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 		maxZones     = r.cfg.ReplicationFactor
 		maxInstances = len(r.ringDesc.Ingesters)
 
-		// We use a slice instead of a map because it's faster to search within a
-		// slice than lookup a map for a very low number of items, we only expect
-		// to have low single-digit number of hosts.
-		distinctHosts = bufHosts[:0]
+		// distinctHosts tracks which instances we've already examined.
+		distinctHosts = newStringSet(bufHosts)
 
-		examinedHostsPerZone = make(map[string]int)
-		foundHostsPerZone    = make(map[string]int)
+		// Fixed-size buffers for zone tracking slices. Using arrays with a fixed size allows
+		// the compiler to allocate them on the stack, avoiding heap allocations. The size of 5
+		// is chosen as a reasonable upper bound for zones (most deployments use 3).
+		totalHostsPerZoneBuf    [5]int
+		examinedHostsPerZoneBuf [5]int
+		foundHostsPerZoneBuf    [5]int
+
+		// These slices are indexed by the zone index, that is the index of a zone in r.ringZones.
+		// We use this technique – instead of a map – to optimize the lookup of the number of hosts by zones.
+		totalHostsPerZone    []int
+		examinedHostsPerZone []int
+		foundHostsPerZone    []int
 		targetHostsPerZone   = max(1, replicationFactor/maxZones)
 	)
 
-	for i := start; len(distinctHosts) < min(maxInstances, n) && iterations < len(r.ringTokens); i++ {
+	if r.cfg.ZoneAwarenessEnabled {
+		// Initialize the per-zone hosts counters only if zone-awareness is enabled.
+		// If zone-awareness is disabled and these slices get used by mistake, the code will intentionally panic.
+		if numZones := len(r.ringZones); numZones <= len(totalHostsPerZoneBuf) {
+			totalHostsPerZone = totalHostsPerZoneBuf[:numZones]
+			examinedHostsPerZone = examinedHostsPerZoneBuf[:numZones]
+			foundHostsPerZone = foundHostsPerZoneBuf[:numZones]
+		} else {
+			totalHostsPerZone = make([]int, numZones)
+			examinedHostsPerZone = make([]int, numZones)
+			foundHostsPerZone = make([]int, numZones)
+		}
+
+		// Pre-populate the total number of hosts per zone.
+		for zoneIndex, zone := range r.ringZones {
+			totalHostsPerZone[zoneIndex] = r.instancesCountPerZone[zone]
+		}
+	}
+
+	for i := start; distinctHosts.len() < min(maxInstances, replicaSetSize) && iterations < len(r.ringTokens); i++ {
 		// If we have the target number of instances or have looked at all instances in each zone, stop looking
-		if r.cfg.ZoneAwarenessEnabled && r.canStopLooking(foundHostsPerZone, examinedHostsPerZone, targetHostsPerZone) {
+		if r.cfg.ZoneAwarenessEnabled && r.canStopLooking(totalHostsPerZone, foundHostsPerZone, examinedHostsPerZone, targetHostsPerZone) {
 			break
 		}
 
@@ -586,34 +613,45 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 			return nil, ErrInconsistentTokensInfo
 		}
 
-		// We want n *distinct* instances && distinct zones.
-		if slices.Contains(distinctHosts, info.InstanceID) {
+		// We want replicaSetSize *distinct* instances && distinct zones.
+		if distinctHosts.contains(info.InstanceID) {
 			continue
+		}
+
+		// Look for the zone index. We only need it if zone-awareness is enabled. If zone-awareness
+		// is disabled, we intentionally use a negative value so that if the index is used unintentionally,
+		// the code will panic.
+		zoneIndex := -1
+		if r.cfg.ZoneAwarenessEnabled {
+			zoneIndex = slices.Index(r.ringZones, info.Zone)
+			if zoneIndex == -1 {
+				return nil, errors.Wrapf(ErrInconsistentTokensInfo, "the zone %q is not present in the ring zones %v", info.Zone, r.ringZones)
+			}
 		}
 
 		if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
 			// If we already have the required number of instances for this zone, skip.
-			if foundHostsPerZone[info.Zone] >= targetHostsPerZone {
+			if foundHostsPerZone[zoneIndex] >= targetHostsPerZone {
 				continue
 			}
 
 			// Keep track of the number of hosts we have examined in each zone. Once we've looked
 			// at every host in a zone, we can stop looking at each token: we won't find any more
 			// hosts to add to the replication set.
-			examinedHostsPerZone[info.Zone]++
+			examinedHostsPerZone[zoneIndex]++
 		}
 
-		distinctHosts = append(distinctHosts, info.InstanceID)
+		distinctHosts.add(info.InstanceID)
 		instance := r.ringDesc.Ingesters[info.InstanceID]
 
 		// Check whether the replica set should be extended given we're including
 		// this instance.
 		if op.ShouldExtendReplicaSetOnState(instance.State) {
-			n++
+			replicaSetSize++
 		} else if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
 			// We should only increment the count for this zone if we are not going to
 			// extend, as we want to extend the instance in the same AZ.
-			foundHostsPerZone[info.Zone]++
+			foundHostsPerZone[zoneIndex]++
 		}
 
 		include, keepGoing := true, true
@@ -633,9 +671,12 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 // canStopLooking returns true if we have enough hosts for the replication factor
 // or if we have looked at all hosts, for all zones. This method assumes that the
 // lock for ring state is held.
-func (r *Ring) canStopLooking(foundPerZone map[string]int, examinedPerZone map[string]int, targetPerZone int) bool {
-	for zone, total := range r.instancesCountPerZone {
-		zoneOk := foundPerZone[zone] >= targetPerZone || examinedPerZone[zone] >= total
+//
+// All input slices must have consistent zone indexes. It means that the index 0
+// of each slice must correspond to the same zone, and the same for all other indexes.
+func (r *Ring) canStopLooking(totalHostsPerZone []int, foundHostsPerZone []int, examinedHostsPerZone []int, targetPerZone int) bool {
+	for zoneIndex, total := range totalHostsPerZone {
+		zoneOk := foundHostsPerZone[zoneIndex] >= targetPerZone || examinedHostsPerZone[zoneIndex] >= total
 		if !zoneOk {
 			return false
 		}
@@ -1507,7 +1548,8 @@ func (r *Ring) readOnlyInstanceCount() int {
 // Implemented as bitmap, with upper 16-bits used for encoding extendReplicaSet, and lower 16-bits used for encoding healthy states.
 type Operation uint32
 
-// NewOp constructs new Operation with given "healthy" states for operation, and optional function to extend replica set.
+// NewOp constructs new Operation with given "healthy" states for operation, and optional function to extend replica set
+// (see [Operation.ShouldExtendReplicaSetOnState]).
 // Result of calling shouldExtendReplicaSet is cached.
 func NewOp(healthyStates []InstanceState, shouldExtendReplicaSet func(s InstanceState) bool) Operation {
 	op := Operation(0)
@@ -1531,9 +1573,19 @@ func (op Operation) IsInstanceInStateHealthy(s InstanceState) bool {
 	return op&(1<<s) > 0
 }
 
-// ShouldExtendReplicaSetOnState returns true if given a state of instance that's going to be
-// added to the replica set, the replica set size should be extended by 1
-// more instance for the given operation.
+// ShouldExtendReplicaSetOnState returns true if given a state of instance
+// that's going to be added to the replica set, for which
+// [Operation.IsInstanceInStateHealthy] returns true, the instance should still
+// be added to the replica set, but shouldn't count towards fulfilling the
+// replication factor.
+//
+// The ring will then continue finding instances to handle the operation as if
+// this instance wasn't picked.
+//
+// This allows the ring to make sure the operation is handled by replicas in a
+// "primary" state, while still possibly being handled by other, secondary
+// replicas (e. g. [Read], which allows PENDING replicas but still requires
+// ACTIVE or LEAVING replicas to handle the operation).
 func (op Operation) ShouldExtendReplicaSetOnState(s InstanceState) bool {
 	return op&(0x10000<<s) > 0
 }

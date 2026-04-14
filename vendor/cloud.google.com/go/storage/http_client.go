@@ -983,11 +983,48 @@ func (c *httpStorageClient) newRangeReaderJSON(ctx context.Context, params *newR
 	return parseReadResponse(res, params, reopen)
 }
 
+// httpInternalWriter writes data for an HTTP upload. For single-shot uploads,
+// it also calculates the CRC32C checksum of the data and validates it against
+// the checksum returned by the server.
 type httpInternalWriter struct {
 	*io.PipeWriter
+	chunkSize          int
+	checksumDisabled   bool
+	fullObjectChecksum uint32
+	// In single-shot mode, the server-provided checksum is received on this
+	// channel for validation after the upload is complete.
+	serverChecksumChan chan uint32
 }
 
-func (hiw httpInternalWriter) Flush() (int64, error) {
+// validateChecksum validates the computed checksum against the server-provided checksum.
+func (hiw *httpInternalWriter) validateChecksumFromServer() error {
+	serverChecksum, ok := <-hiw.serverChecksumChan
+	// Do not check for channel closure as error is already set on the writer
+	// if serverChecksumChan is closed without checksum
+	if ok && hiw.fullObjectChecksum != serverChecksum {
+		return fmt.Errorf("storage: object checksum mismatch: computed %q, server %q; the bucket may contain corrupted object", encodeUint32(hiw.fullObjectChecksum), encodeUint32(serverChecksum))
+	}
+	return nil
+}
+
+func (hiw *httpInternalWriter) Write(data []byte) (n int, err error) {
+	if !hiw.checksumDisabled && hiw.chunkSize == 0 {
+		hiw.fullObjectChecksum = crc32.Update(hiw.fullObjectChecksum, crc32cTable, data)
+	}
+	return hiw.PipeWriter.Write(data)
+}
+
+func (hiw *httpInternalWriter) Close() error {
+	if err := hiw.PipeWriter.Close(); err != nil {
+		return err
+	}
+	if !hiw.checksumDisabled && hiw.chunkSize == 0 {
+		return hiw.validateChecksumFromServer()
+	}
+	return nil
+}
+
+func (hiw *httpInternalWriter) Flush() (int64, error) {
 	return 0, errors.New("Writer.Flush is only supported for gRPC-based clients")
 }
 
@@ -1016,10 +1053,18 @@ func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 	}
 
 	pr, pw := io.Pipe()
-
+	var (
+		serverChecksumChan = make(chan uint32, 1)
+		checksumDisabled   = params.disableAutoChecksum || params.sendCRC32C
+	)
+	if !checksumDisabled {
+		mediaOpts = append(mediaOpts, googleapi.EnableAutoChecksum())
+	}
 	go func() {
-		defer close(params.donec)
-
+		defer func() {
+			close(params.donec)
+			close(serverChecksumChan)
+		}()
 		rawObj := attrs.toRawObject(params.bucket)
 		if params.sendCRC32C {
 			rawObj.Crc32c = encodeUint32(attrs.CRC32C)
@@ -1081,10 +1126,18 @@ func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 			pr.CloseWithError(err)
 			return
 		}
-		setObj(newObject(resp))
+		newObj := newObject(resp)
+		if !checksumDisabled && params.chunkSize == 0 {
+			serverChecksumChan <- newObj.CRC32C
+		}
+		setObj(newObj)
 	}()
-
-	return httpInternalWriter{pw}, nil
+	return &httpInternalWriter{
+		PipeWriter:         pw,
+		chunkSize:          params.chunkSize,
+		serverChecksumChan: serverChecksumChan,
+		checksumDisabled:   checksumDisabled,
+	}, nil
 }
 
 // IAM methods.

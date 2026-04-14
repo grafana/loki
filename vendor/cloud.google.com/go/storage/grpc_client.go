@@ -24,6 +24,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"cloud.google.com/go/iam/apiv1/iampb"
 	gapic "cloud.google.com/go/storage/internal/apiv2"
@@ -67,6 +68,12 @@ const (
 	// Default value for Read ID on BidiReadObject streams. Used for NewRangeReader
 	// which only does a single read per stream.
 	defaultReadID = 1
+
+	forceDirectConnectivityEnforced       = "ENFORCED"
+	directConnectivityHeaderKey           = "force_direct_connectivity"
+	directConnectivityDiagnosticHeaderKey = "direct_connectivity_diagnostic"
+	requestParamsHeaderKey                = "x-goog-request-params"
+	directPathEndpointPrefix              = "google-c2p:///"
 )
 
 // defaultGRPCOptions returns a set of the default client options
@@ -116,6 +123,7 @@ type grpcStorageClient struct {
 	raw      *gapic.Client
 	settings *settings
 	config   *storageConfig
+	dpDiag   string
 }
 
 func enableClientMetrics(ctx context.Context, s *settings, config storageConfig) (*metricsContext, error) {
@@ -160,16 +168,79 @@ func newGRPCStorageClient(ctx context.Context, opts ...storageOption) (*grpcStor
 			log.Printf("Failed to enable client metrics: %v", err)
 		}
 	}
+	c := &grpcStorageClient{
+		settings: s,
+		config:   &config,
+	}
+	// Add routing interceptors to inject headers.
+	ui, si := c.routingInterceptors()
+	s.clientOption = append(s.clientOption,
+		option.WithGRPCDialOption(grpc.WithChainUnaryInterceptor(ui)),
+		option.WithGRPCDialOption(grpc.WithChainStreamInterceptor(si)),
+	)
+	c.dpDiag = directPathDiagnostic(ctx, s.clientOption...)
 	g, err := gapic.NewClient(ctx, s.clientOption...)
 	if err != nil {
 		return nil, err
 	}
+	c.raw = g
+	return c, nil
+}
 
-	return &grpcStorageClient{
-		raw:      g,
-		settings: s,
-		config:   &config,
-	}, nil
+func (c *grpcStorageClient) routingInterceptors() (grpc.UnaryClientInterceptor, grpc.StreamClientInterceptor) {
+	unary := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		ctx, err := c.prepareDirectPathMetadata(ctx, cc.Target())
+		if err != nil {
+			return err
+		}
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+
+	stream := func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		ctx, err := c.prepareDirectPathMetadata(ctx, cc.Target())
+		if err != nil {
+			return nil, err
+		}
+		return streamer(ctx, desc, cc, method, opts...)
+	}
+
+	return unary, stream
+}
+
+func (c *grpcStorageClient) prepareDirectPathMetadata(ctx context.Context, target string) (context.Context, error) {
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		md = metadata.MD{}
+	}
+
+	// Determine the intended mode based on user configuration.
+	value := ""
+	if c.config.grpcDirectPathEnforced {
+		value = forceDirectConnectivityEnforced
+	}
+
+	dc := directConnectivityHeaderKey + "=" + value
+
+	// Inject the header only if we have a value to set.
+	if value != "" {
+		if vals := md.Get(requestParamsHeaderKey); len(vals) > 0 {
+			md.Set(requestParamsHeaderKey, vals[0]+"&"+dc)
+		} else {
+			md.Set(requestParamsHeaderKey, dc)
+		}
+	}
+	// Check if the connection target supports DirectPath.
+	// Target should not be empty in a normal scenario, but treat empty target
+	// as DirectPath incompatible.
+	if !strings.HasPrefix(target, directPathEndpointPrefix) {
+		reason := directConnectivityDiagnosticHeaderKey + "=" + c.dpDiag
+		if vals := md.Get(requestParamsHeaderKey); len(vals) > 0 {
+			md.Set(requestParamsHeaderKey, vals[0]+"&"+reason)
+		} else {
+			md.Set(requestParamsHeaderKey, reason)
+		}
+	}
+	return metadata.NewOutgoingContext(ctx, md), nil
 }
 
 func (c *grpcStorageClient) Close() error {
@@ -355,7 +426,16 @@ func (c *grpcStorageClient) UpdateBucket(ctx context.Context, bucket string, uat
 		fieldMask.Paths = append(fieldMask.Paths, "iam_config")
 	}
 	if uattrs.Encryption != nil {
-		fieldMask.Paths = append(fieldMask.Paths, "encryption")
+		fieldMask.Paths = append(fieldMask.Paths, "encryption.default_kms_key")
+	}
+	if uattrs.GoogleManagedEncryptionEnforcementConfig != nil {
+		fieldMask.Paths = append(fieldMask.Paths, "encryption.google_managed_encryption_enforcement_config")
+	}
+	if uattrs.CustomerManagedEncryptionEnforcementConfig != nil {
+		fieldMask.Paths = append(fieldMask.Paths, "encryption.customer_managed_encryption_enforcement_config")
+	}
+	if uattrs.CustomerSuppliedEncryptionEnforcementConfig != nil {
+		fieldMask.Paths = append(fieldMask.Paths, "encryption.customer_supplied_encryption_enforcement_config")
 	}
 	if uattrs.Lifecycle != nil {
 		fieldMask.Paths = append(fieldMask.Paths, "lifecycle")

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"sync"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -31,6 +33,23 @@ const (
 	AppendUnordered = iota
 	AppendOrdered
 )
+
+var (
+	sharedZstdCompressionOptions = make([]*dataset.CompressionOptions, zstd.EncoderLevelFromZstd(math.MaxInt)+1)
+	sharedZstdOptionsMutex       = sync.Mutex{}
+)
+
+func zstdCompressionOpts(encLevel zstd.EncoderLevel) *dataset.CompressionOptions {
+	sharedZstdOptionsMutex.Lock()
+	defer sharedZstdOptionsMutex.Unlock()
+
+	if sharedZstdCompressionOptions[encLevel] == nil {
+		sharedZstdCompressionOptions[encLevel] = &dataset.CompressionOptions{
+			Zstd: []zstd.EOption{zstd.WithEncoderLevel(encLevel)},
+		}
+	}
+	return sharedZstdCompressionOptions[encLevel]
+}
 
 type SortOrder int
 
@@ -62,6 +81,13 @@ type BuilderOptions struct {
 	// When appending logs to the section in strict sort order, the [AppendOrdered] can be used to avoid
 	// creating and sorting of stripes.
 	AppendStrategy AppendStrategy
+
+	// EstimatedCompressionRatio is the expected compression ratio used by
+	// [EstimatedSize] to approximate compressed output size from uncompressed
+	// buffered records when using [AppendOrdered]. Only takes effect with
+	// AppendOrdered; ignored for AppendUnordered where stripes are already
+	// compressed. A value of 0 or 1 disables the adjustment.
+	EstimatedCompressionRatio int
 
 	// SortOrder defines the order in which the rows of the logs sections are sorted.
 	// They can either be sorted by [streamID ASC, timestamp DESC] ([SortStreamASC]) or [timestamp DESC, streamID ASC] ([SortTimestampDESC]).
@@ -171,14 +197,14 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 		panic("must not call flushRecords multiple times for a single section when using AppendOrdered strategy")
 	}
 
-	// Our stripes are intermediate tables that don't need to have the best
-	// compression. To maintain high throughput on appends, we use the fastest
-	// compression for a stripe. Better compression is then used for sections.
-	compressionOpts := &dataset.CompressionOptions{
-		Zstd: []zstd.EOption{zstd.WithEncoderLevel(encLevel)},
-	}
+	compressionOpts := zstdCompressionOpts(encLevel)
 
-	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
+	buf := &b.stripeBuffer
+	if b.opts.AppendStrategy == AppendOrdered {
+		// If we are in AppendOrdered mode, we skip the stripe part of the algorithm, so we use the section buffer instead.
+		buf = &b.sectionBuffer
+	}
+	stripe := buildTable(buf, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
 	b.stripes = append(b.stripes, stripe)
 	b.stripesUncompressedSize += stripe.UncompressedSize()
 	b.stripesCompressedSize += stripe.CompressedSize()
@@ -192,9 +218,7 @@ func (b *Builder) flushSection() *table {
 		return nil
 	}
 
-	compressionOpts := &dataset.CompressionOptions{
-		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedDefault)},
-	}
+	compressionOpts := zstdCompressionOpts(zstd.SpeedDefault)
 
 	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.stripes, b.opts.StripeMergeLimit, b.opts.SortOrder)
 	if err != nil {
@@ -234,10 +258,19 @@ func (b *Builder) UncompressedSize() int {
 }
 
 // EstimatedSize returns the estimated size of the Logs section in bytes.
+//
+// When using [AppendOrdered], records are held uncompressed in memory until
+// flush. If [BuilderOptions.EstimatedCompressionRatio] is set (> 1), the
+// uncompressed record size is divided by that ratio to approximate compressed
+// output size.
 func (b *Builder) EstimatedSize() int {
 	var size int
 
-	size += b.recordsSize
+	if b.opts.AppendStrategy == AppendOrdered && b.opts.EstimatedCompressionRatio > 1 {
+		size += b.recordsSize / b.opts.EstimatedCompressionRatio
+	} else {
+		size += b.recordsSize
+	}
 	size += b.stripesCompressedSize
 
 	return size

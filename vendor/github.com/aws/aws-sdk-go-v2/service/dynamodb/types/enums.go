@@ -411,6 +411,28 @@ func (ExportViewType) Values() []ExportViewType {
 	}
 }
 
+type GlobalTableSettingsReplicationMode string
+
+// Enum values for GlobalTableSettingsReplicationMode
+const (
+	GlobalTableSettingsReplicationModeEnabled              GlobalTableSettingsReplicationMode = "ENABLED"
+	GlobalTableSettingsReplicationModeDisabled             GlobalTableSettingsReplicationMode = "DISABLED"
+	GlobalTableSettingsReplicationModeEnabledWithOverrides GlobalTableSettingsReplicationMode = "ENABLED_WITH_OVERRIDES"
+)
+
+// Values returns all known values for GlobalTableSettingsReplicationMode. Note
+// that this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (GlobalTableSettingsReplicationMode) Values() []GlobalTableSettingsReplicationMode {
+	return []GlobalTableSettingsReplicationMode{
+		"ENABLED",
+		"DISABLED",
+		"ENABLED_WITH_OVERRIDES",
+	}
+}
+
 type GlobalTableStatus string
 
 // Enum values for GlobalTableStatus

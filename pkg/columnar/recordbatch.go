@@ -37,3 +37,22 @@ func (rb *RecordBatch) NumCols() int64 {
 func (rb *RecordBatch) Column(i int64) Array {
 	return rb.arrs[i]
 }
+
+// Slice returns a slice of rb from index i to j. The returned slice has a
+// length of j-i and shares memory with rb.
+//
+// Slice panics if the following invariant is not met: 0 <= i <= j <= rb.NumRows()
+func (rb *RecordBatch) Slice(i, j int) *RecordBatch {
+	if i < 0 || j < i || j > int(rb.NumRows()) {
+		panic(errorSliceBounds{i, j, int(rb.NumRows())})
+	}
+
+	var (
+		nrows = j - i
+		arrs  = make([]Array, len(rb.arrs))
+	)
+	for idx := range len(arrs) {
+		arrs[idx] = rb.arrs[idx].Slice(i, j)
+	}
+	return NewRecordBatch(rb.schema, int64(nrows), arrs)
+}

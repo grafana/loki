@@ -11,7 +11,6 @@ import (
 	"github.com/redis/go-redis/v9/internal"
 	"github.com/redis/go-redis/v9/internal/proto"
 	"github.com/redis/go-redis/v9/internal/rand"
-	"github.com/redis/go-redis/v9/internal/util"
 )
 
 var (
@@ -33,6 +32,42 @@ var (
 
 	// errConnNotPooled is returned when trying to return a non-pooled connection to the pool.
 	errConnNotPooled = errors.New("connection not pooled")
+	// metricCallbackMu protects all global metric callback functions for thread-safe access.
+	metricCallbackMu sync.RWMutex
+
+	// Global metric callbacks for connection state changes
+	metricConnectionStateChangeCallback func(ctx context.Context, cn *Conn, fromState, toState string)
+
+	// Global metric callback for connection creation time
+	metricConnectionCreateTimeCallback func(ctx context.Context, duration time.Duration, cn *Conn)
+
+	// Global metric callback for connection relaxed timeout changes
+	// Parameters: ctx, delta (+1/-1), cn, poolName, notificationType
+	metricConnectionRelaxedTimeoutCallback func(ctx context.Context, delta int, cn *Conn, poolName, notificationType string)
+
+	// Global metric callback for connection handoff
+	// Parameters: ctx, cn, poolName
+	metricConnectionHandoffCallback func(ctx context.Context, cn *Conn, poolName string)
+
+	// Global metric callback for error tracking
+	// Parameters: ctx, errorType, cn, statusCode, isInternal, retryAttempts
+	metricErrorCallback func(ctx context.Context, errorType string, cn *Conn, statusCode string, isInternal bool, retryAttempts int)
+
+	// Global metric callback for maintenance notifications
+	// Parameters: ctx, cn, notificationType
+	metricMaintenanceNotificationCallback func(ctx context.Context, cn *Conn, notificationType string)
+
+	// Global metric callback for connection wait time
+	// Parameters: ctx, duration, cn
+	metricConnectionWaitTimeCallback func(ctx context.Context, duration time.Duration, cn *Conn)
+
+	// Global metric callback for connection timeouts
+	// Parameters: ctx, cn, timeoutType
+	metricConnectionTimeoutCallback func(ctx context.Context, cn *Conn, timeoutType string)
+
+	// Global metric callback for connection closed
+	// Parameters: ctx, cn, reason, err
+	metricConnectionClosedCallback func(ctx context.Context, cn *Conn, reason string, err error)
 
 	// errPanicInDial is returned when a panic occurs in the dial function.
 	errPanicInQueuedNewConn = errors.New("panic in queuedNewConn")
@@ -55,6 +90,139 @@ var (
 	noExpiration = maxTime
 )
 
+// MetricCallbacks holds all metric callback functions.
+// Use SetAllMetricCallbacks to register all callbacks atomically.
+type MetricCallbacks struct {
+	// ConnectionCreateTime is called when a new connection is created
+	ConnectionCreateTime func(ctx context.Context, duration time.Duration, cn *Conn)
+
+	// ConnectionRelaxedTimeout is called when connection timeout is relaxed/unrelaxed
+	// delta: +1 for relaxed, -1 for unrelaxed
+	ConnectionRelaxedTimeout func(ctx context.Context, delta int, cn *Conn, poolName, notificationType string)
+
+	// ConnectionHandoff is called when a connection is handed off to another node
+	ConnectionHandoff func(ctx context.Context, cn *Conn, poolName string)
+
+	// Error is called when an error occurs
+	Error func(ctx context.Context, errorType string, cn *Conn, statusCode string, isInternal bool, retryAttempts int)
+
+	// MaintenanceNotification is called when a maintenance notification is received
+	MaintenanceNotification func(ctx context.Context, cn *Conn, notificationType string)
+
+	// ConnectionWaitTime is called to record time spent waiting for a connection
+	ConnectionWaitTime func(ctx context.Context, duration time.Duration, cn *Conn)
+
+	// ConnectionClosed is called when a connection is closed
+	ConnectionClosed func(ctx context.Context, cn *Conn, reason string, err error)
+}
+
+// SetAllMetricCallbacks sets all metric callbacks atomically.
+// Pass nil to clear all callbacks (disable metrics).
+// This ensures all callbacks are set together under a single lock,
+// preventing inconsistent state during registration.
+//
+// Note on thread safety: After returning, there is a small window where
+// concurrent getMetric* calls may return the old callback value. This is
+// acceptable for metrics - at most one event may go to the old recorder
+// or be missed during the transition. The callbacks themselves are immutable
+// function pointers, so calling an "old" callback is safe.
+func SetAllMetricCallbacks(callbacks *MetricCallbacks) {
+	metricCallbackMu.Lock()
+	defer metricCallbackMu.Unlock()
+
+	if callbacks == nil {
+		metricConnectionCreateTimeCallback = nil
+		metricConnectionRelaxedTimeoutCallback = nil
+		metricConnectionHandoffCallback = nil
+		metricErrorCallback = nil
+		metricMaintenanceNotificationCallback = nil
+		metricConnectionWaitTimeCallback = nil
+		metricConnectionClosedCallback = nil
+		return
+	}
+
+	metricConnectionCreateTimeCallback = callbacks.ConnectionCreateTime
+	metricConnectionRelaxedTimeoutCallback = callbacks.ConnectionRelaxedTimeout
+	metricConnectionHandoffCallback = callbacks.ConnectionHandoff
+	metricErrorCallback = callbacks.Error
+	metricMaintenanceNotificationCallback = callbacks.MaintenanceNotification
+	metricConnectionWaitTimeCallback = callbacks.ConnectionWaitTime
+	metricConnectionClosedCallback = callbacks.ConnectionClosed
+}
+
+// getMetricConnectionStateChangeCallback returns the metric callback for connection state changes.
+func getMetricConnectionStateChangeCallback() func(ctx context.Context, cn *Conn, fromState, toState string) {
+	metricCallbackMu.RLock()
+	cb := metricConnectionStateChangeCallback
+	metricCallbackMu.RUnlock()
+	return cb
+}
+
+// GetMetricConnectionCreateTimeCallback returns the metric callback for connection creation time.
+func GetMetricConnectionCreateTimeCallback() func(ctx context.Context, duration time.Duration, cn *Conn) {
+	metricCallbackMu.RLock()
+	cb := metricConnectionCreateTimeCallback
+	metricCallbackMu.RUnlock()
+	return cb
+}
+
+// GetMetricConnectionRelaxedTimeoutCallback returns the metric callback for connection relaxed timeout changes.
+// This is used by maintnotifications to record relaxed timeout metrics.
+func GetMetricConnectionRelaxedTimeoutCallback() func(ctx context.Context, delta int, cn *Conn, poolName, notificationType string) {
+	metricCallbackMu.RLock()
+	cb := metricConnectionRelaxedTimeoutCallback
+	metricCallbackMu.RUnlock()
+	return cb
+}
+
+// GetMetricConnectionHandoffCallback returns the metric callback for connection handoffs.
+// This is used by maintnotifications to record handoff metrics.
+func GetMetricConnectionHandoffCallback() func(ctx context.Context, cn *Conn, poolName string) {
+	metricCallbackMu.RLock()
+	cb := metricConnectionHandoffCallback
+	metricCallbackMu.RUnlock()
+	return cb
+}
+
+// GetMetricErrorCallback returns the metric callback for error tracking.
+// This is used by cluster and client code to record error metrics.
+func GetMetricErrorCallback() func(ctx context.Context, errorType string, cn *Conn, statusCode string, isInternal bool, retryAttempts int) {
+	metricCallbackMu.RLock()
+	cb := metricErrorCallback
+	metricCallbackMu.RUnlock()
+	return cb
+}
+
+// GetMetricMaintenanceNotificationCallback returns the metric callback for maintenance notifications.
+// This is used by maintnotifications to record notification metrics.
+func GetMetricMaintenanceNotificationCallback() func(ctx context.Context, cn *Conn, notificationType string) {
+	metricCallbackMu.RLock()
+	cb := metricMaintenanceNotificationCallback
+	metricCallbackMu.RUnlock()
+	return cb
+}
+
+func getMetricConnectionWaitTimeCallback() func(ctx context.Context, duration time.Duration, cn *Conn) {
+	metricCallbackMu.RLock()
+	cb := metricConnectionWaitTimeCallback
+	metricCallbackMu.RUnlock()
+	return cb
+}
+
+func getMetricConnectionTimeoutCallback() func(ctx context.Context, cn *Conn, timeoutType string) {
+	metricCallbackMu.RLock()
+	cb := metricConnectionTimeoutCallback
+	metricCallbackMu.RUnlock()
+	return cb
+}
+
+func getMetricConnectionClosedCallback() func(ctx context.Context, cn *Conn, reason string, err error) {
+	metricCallbackMu.RLock()
+	cb := metricConnectionClosedCallback
+	metricCallbackMu.RUnlock()
+	return cb
+}
+
 // Stats contains pool state information and accumulated stats.
 type Stats struct {
 	Hits           uint32 // number of times free connection was found in the pool
@@ -64,9 +232,10 @@ type Stats struct {
 	Unusable       uint32 // number of times a connection was found to be unusable
 	WaitDurationNs int64  // total time spent for waiting a connection in nanoseconds
 
-	TotalConns uint32 // number of total connections in the pool
-	IdleConns  uint32 // number of idle connections in the pool
-	StaleConns uint32 // number of stale connections removed from the pool
+	TotalConns      uint32 // number of total connections in the pool
+	IdleConns       uint32 // number of idle connections in the pool
+	StaleConns      uint32 // number of stale connections removed from the pool
+	PendingRequests uint32 // number of pending requests waiting for a connection
 
 	PubSubStats PubSubStats
 }
@@ -124,6 +293,10 @@ type Options struct {
 	// DialerRetryTimeout is the backoff duration between retry attempts.
 	// Default: 100ms
 	DialerRetryTimeout time.Duration
+
+	// Name is a unique identifier for this pool, used in metrics.
+	// Format: addr_uniqueID (e.g., "localhost:6379_a1b2c3d4")
+	Name string
 }
 
 type lastDialErrorWrap struct {
@@ -245,9 +418,9 @@ func (p *ConnPool) checkMinIdleConns() {
 		for p.poolSize.Load() < p.cfg.PoolSize && p.idleConnsLen.Load() < p.cfg.MinIdleConns {
 			// Try to acquire a semaphore token
 			if !p.semaphore.TryAcquire() {
-				// Semaphore is full, can't create more connections
-				p.idleCheckInProgress.Store(false)
-				return
+				// Semaphore is full, can't create more connections right now
+				// Break out of inner loop to check if we need to retry
+				break
 			}
 
 			p.poolSize.Add(1)
@@ -370,6 +543,11 @@ func (p *ConnPool) newConn(ctx context.Context, pooled bool) (*Conn, error) {
 		}
 	}
 
+	// Notify metrics: new connection created and idle
+	if cb := getMetricConnectionStateChangeCallback(); cb != nil {
+		cb(ctx, cn, "", "idle")
+	}
+
 	return cn, nil
 }
 
@@ -380,6 +558,14 @@ func (p *ConnPool) dialConn(ctx context.Context, pooled bool) (*Conn, error) {
 
 	if atomic.LoadUint32(&p.dialErrorsNum) >= uint32(p.cfg.PoolSize) {
 		return nil, p.getLastDialError()
+	}
+
+	// Record dial start time for connection creation metric
+	// This will be used after handshake completes in redis.go _getConn()
+	// Only call time.Now() if callback is registered to avoid overhead
+	var dialStartNs int64
+	if GetMetricConnectionCreateTimeCallback() != nil {
+		dialStartNs = time.Now().UnixNano()
 	}
 
 	// Retry dialing with backoff
@@ -415,10 +601,15 @@ func (p *ConnPool) dialConn(ctx context.Context, pooled bool) (*Conn, error) {
 			continue
 		}
 
-		// Success - create connection
 		cn := NewConnWithBufferSize(netConn, p.cfg.ReadBufferSize, p.cfg.WriteBufferSize)
 		cn.pooled = pooled
+		// Store dial start time only if we recorded it
+		if dialStartNs > 0 {
+			cn.dialStartNs.Store(dialStartNs)
+		}
 		cn.expiresAt = p.calcConnExpiresAt()
+		// Set pool name for metrics
+		cn.SetPoolName(p.cfg.Name)
 
 		return cn, nil
 	}
@@ -492,16 +683,43 @@ func (p *ConnPool) Get(ctx context.Context) (*Conn, error) {
 }
 
 // getConn returns a connection from the pool.
-func (p *ConnPool) getConn(ctx context.Context) (*Conn, error) {
-	var cn *Conn
-	var err error
-
+func (p *ConnPool) getConn(ctx context.Context) (cn *Conn, err error) {
 	if p.closed() {
 		return nil, ErrClosed
 	}
 
-	if err := p.waitTurn(ctx); err != nil {
+	// Track pending requests in pool stats
+	// NOTE: We only track in stats, not via callback. The AsyncGauge reads stats directly.
+	atomic.AddUint32(&p.stats.PendingRequests, 1)
+	defer func() {
+		if err != nil {
+			// Failed to get connection, decrement pending requests
+			atomic.AddUint32(&p.stats.PendingRequests, ^uint32(0)) // -1
+		}
+	}()
+
+	// Track wait time - only call time.Now() if callback is registered
+	var waitStart time.Time
+	waitTimeCallback := getMetricConnectionWaitTimeCallback()
+	if waitTimeCallback != nil {
+		waitStart = time.Now()
+	}
+	if err = p.waitTurn(ctx); err != nil {
+		// Record timeout if applicable
+		if err == ErrPoolTimeout {
+			if cb := getMetricConnectionTimeoutCallback(); cb != nil {
+				cb(ctx, nil, "pool")
+			}
+			// Record general error metric for pool timeout
+			if cb := GetMetricErrorCallback(); cb != nil {
+				cb(ctx, "POOL_TIMEOUT", nil, "POOL_TIMEOUT", true, 0)
+			}
+		}
 		return nil, err
+	}
+	var waitDuration time.Duration
+	if waitTimeCallback != nil {
+		waitDuration = time.Since(waitStart)
 	}
 
 	// Use cached time for health checks (max 50ms staleness is acceptable)
@@ -533,10 +751,10 @@ func (p *ConnPool) getConn(ctx context.Context) (*Conn, error) {
 		// Process connection using the hooks system
 		// Combine error and rejection checks to reduce branches
 		if hookManager != nil {
-			acceptConn, err := hookManager.ProcessOnGet(ctx, cn, false)
-			if err != nil || !acceptConn {
-				if err != nil {
-					internal.Logger.Printf(ctx, "redis: connection pool: failed to process idle connection by hook: %v", err)
+			acceptConn, hookErr := hookManager.ProcessOnGet(ctx, cn, false)
+			if hookErr != nil || !acceptConn {
+				if hookErr != nil {
+					internal.Logger.Printf(ctx, "redis: connection pool: failed to process idle connection by hook: %v", hookErr)
 					_ = p.CloseConn(cn)
 				} else {
 					internal.Logger.Printf(ctx, "redis: connection pool: conn[%d] rejected by hook, returning to pool", cn.GetID())
@@ -550,19 +768,37 @@ func (p *ConnPool) getConn(ctx context.Context) (*Conn, error) {
 		}
 
 		atomic.AddUint32(&p.stats.Hits, 1)
+
+		// Notify metrics: connection moved from idle to used
+		if cb := getMetricConnectionStateChangeCallback(); cb != nil {
+			cb(ctx, cn, "idle", "used")
+		}
+
+		// Record wait time (use cached callback from above)
+		if waitTimeCallback != nil {
+			waitTimeCallback(ctx, waitDuration, cn)
+		}
+
+		// Decrement pending requests (connection acquired successfully)
+		// NOTE: We only track in stats, not via callback. The AsyncGauge reads stats directly.
+		atomic.AddUint32(&p.stats.PendingRequests, ^uint32(0)) // -1
+
 		return cn, nil
 	}
 
 	atomic.AddUint32(&p.stats.Misses, 1)
 
-	newcn, err := p.queuedNewConn(ctx)
+	var newcn *Conn
+	newcn, err = p.queuedNewConn(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Process connection using the hooks system
+	// This includes the handshake (HELLO/AUTH) via initConn hook
 	if hookManager != nil {
-		acceptConn, err := hookManager.ProcessOnGet(ctx, newcn, true)
+		var acceptConn bool
+		acceptConn, err = hookManager.ProcessOnGet(ctx, newcn, true)
 		// both errors and accept=false mean a hook rejected the connection
 		// this should not happen with a new connection, but we handle it gracefully
 		if err != nil || !acceptConn {
@@ -572,6 +808,21 @@ func (p *ConnPool) getConn(ctx context.Context) (*Conn, error) {
 			return nil, err
 		}
 	}
+
+	// Notify metrics: new connection is created and used
+	if cb := getMetricConnectionStateChangeCallback(); cb != nil {
+		cb(ctx, newcn, "", "used")
+	}
+
+	// Record wait time (use cached callback from above)
+	if waitTimeCallback != nil {
+		waitTimeCallback(ctx, waitDuration, newcn)
+	}
+
+	// Decrement pending requests (connection acquired successfully)
+	// NOTE: We only track in stats, not via callback. The AsyncGauge reads stats directly.
+	atomic.AddUint32(&p.stats.PendingRequests, ^uint32(0)) // -1
+
 	return newcn, nil
 }
 
@@ -726,7 +977,7 @@ func (p *ConnPool) popIdle() (*Conn, error) {
 	var cn *Conn
 	attempts := 0
 
-	maxAttempts := util.Min(popAttempts, n)
+	maxAttempts := min(popAttempts, n)
 	for attempts < maxAttempts {
 		if len(p.idleConns) == 0 {
 			return nil, nil
@@ -787,6 +1038,15 @@ func (p *ConnPool) putConnWithoutTurn(ctx context.Context, cn *Conn) {
 
 // putConn is the internal implementation of Put that optionally frees a turn.
 func (p *ConnPool) putConn(ctx context.Context, cn *Conn, freeTurn bool) {
+	// Guard against nil connection
+	if cn == nil {
+		internal.Logger.Printf(ctx, "putConn called with nil connection")
+		if freeTurn {
+			p.freeTurn()
+		}
+		return
+	}
+
 	// Process connection using the hooks system
 	shouldPool := true
 	shouldRemove := false
@@ -837,7 +1097,14 @@ func (p *ConnPool) putConn(ctx context.Context, cn *Conn, freeTurn bool) {
 		if !transitionedToIdle {
 			// Fast path failed - hook might have changed state (e.g., to UNUSABLE for handoff)
 			// Keep the state set by the hook and pool the connection anyway
-			currentState := cn.GetStateMachine().GetState()
+			sm := cn.GetStateMachine()
+			if sm == nil {
+				// State machine is nil - connection is in an invalid state, remove it
+				internal.Logger.Printf(ctx, "conn[%d] has nil state machine, removing it", cn.GetID())
+				p.removeConnInternal(ctx, cn, errConnNotPooled, freeTurn)
+				return
+			}
+			currentState := sm.GetState()
 			switch currentState {
 			case StateUnusable:
 				// expected state, don't log it
@@ -871,9 +1138,19 @@ func (p *ConnPool) putConn(ctx context.Context, cn *Conn, freeTurn bool) {
 			p.connsMu.Unlock()
 			p.idleConnsLen.Add(1)
 		}
+
+		// Notify metrics: connection moved from used to idle
+		if cb := getMetricConnectionStateChangeCallback(); cb != nil {
+			cb(ctx, cn, "used", "idle")
+		}
 	} else {
 		shouldCloseConn = true
 		p.removeConnWithLock(cn)
+
+		// Notify metrics: connection removed (used -> nothing)
+		if cb := getMetricConnectionStateChangeCallback(); cb != nil {
+			cb(ctx, cn, "used", "")
+		}
 	}
 
 	if freeTurn {
@@ -912,6 +1189,20 @@ func (p *ConnPool) removeConnInternal(ctx context.Context, cn *Conn, reason erro
 
 	if freeTurn {
 		p.freeTurn()
+	}
+
+	// Notify metrics: connection removed (assume from used state)
+	if cb := getMetricConnectionStateChangeCallback(); cb != nil {
+		cb(ctx, cn, "used", "")
+	}
+
+	// Record connection closed
+	if cb := getMetricConnectionClosedCallback(); cb != nil {
+		reasonStr := "unknown"
+		if reason != nil {
+			reasonStr = reason.Error()
+		}
+		cb(ctx, cn, reasonStr, reason)
 	}
 
 	_ = p.closeConn(cn)
@@ -980,12 +1271,13 @@ func (p *ConnPool) Size() int {
 
 func (p *ConnPool) Stats() *Stats {
 	return &Stats{
-		Hits:           atomic.LoadUint32(&p.stats.Hits),
-		Misses:         atomic.LoadUint32(&p.stats.Misses),
-		Timeouts:       atomic.LoadUint32(&p.stats.Timeouts),
-		WaitCount:      atomic.LoadUint32(&p.stats.WaitCount),
-		Unusable:       atomic.LoadUint32(&p.stats.Unusable),
-		WaitDurationNs: p.waitDurationNs.Load(),
+		Hits:            atomic.LoadUint32(&p.stats.Hits),
+		Misses:          atomic.LoadUint32(&p.stats.Misses),
+		Timeouts:        atomic.LoadUint32(&p.stats.Timeouts),
+		WaitCount:       atomic.LoadUint32(&p.stats.WaitCount),
+		Unusable:        atomic.LoadUint32(&p.stats.Unusable),
+		WaitDurationNs:  p.waitDurationNs.Load(),
+		PendingRequests: atomic.LoadUint32(&p.stats.PendingRequests),
 
 		TotalConns: uint32(p.Len()),
 		IdleConns:  uint32(p.IdleLen()),

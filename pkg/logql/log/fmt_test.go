@@ -353,7 +353,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"timestamp",
 			newMustLineFormatter("{{ __timestamp__ | date \"2006-01-02\" }} bar {{ .bar }}"),
 			labels.FromStrings("bar", "2"),
-			1656353124120000000,
+			1656331200000000000,
 			[]byte("2022-06-27 bar 2"),
 			labels.FromStrings("bar", "2"),
 			[]byte("1"),

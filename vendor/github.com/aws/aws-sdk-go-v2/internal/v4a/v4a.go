@@ -430,7 +430,7 @@ func (s *httpSigner) buildCanonicalHeaders(host string, rule v4Internal.Rule, he
 	var canonicalHeaders strings.Builder
 	n := len(headers)
 	const colon = ':'
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if headers[i] == hostHeader {
 			canonicalHeaders.WriteString(hostHeader)
 			canonicalHeaders.WriteRune(colon)

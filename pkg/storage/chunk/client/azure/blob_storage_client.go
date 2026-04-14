@@ -87,7 +87,7 @@ type BlobStorageConfig struct {
 	Environment             string         `yaml:"environment"`
 	StorageAccountName      string         `yaml:"account_name"`
 	StorageAccountKey       flagext.Secret `yaml:"account_key"`
-	ConnectionString        string         `yaml:"connection_string"`
+	ConnectionString        flagext.Secret `yaml:"connection_string"`
 	ContainerName           string         `yaml:"container_name"`
 	ActiveDirectoryEndpoint string         `yaml:"active_directory_endpoint"`
 	EndpointSuffix          string         `yaml:"endpoint_suffix"`
@@ -123,7 +123,7 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.StringVar(&c.Environment, prefix+"azure.environment", azureGlobal, fmt.Sprintf("Azure Cloud environment. Supported values are: %s.", strings.Join(supportedEnvironments, ", ")))
 	f.StringVar(&c.StorageAccountName, prefix+"azure.account-name", "", "Azure storage account name.")
 	f.Var(&c.StorageAccountKey, prefix+"azure.account-key", "Azure storage account key.")
-	f.StringVar(&c.ConnectionString, prefix+"azure.connection-string", "", "If `connection-string` is set, the values of `account-name` and `endpoint-suffix` values will not be used. Use this method over `account-key` if you need to authenticate via a SAS token. Or if you use the Azurite emulator.")
+	f.Var(&c.ConnectionString, prefix+"azure.connection-string", "If `connection-string` is set, the values of `account-name` and `endpoint-suffix` values will not be used. Use this method over `account-key` if you need to authenticate via a SAS token. Or if you use the Azurite emulator.")
 	f.StringVar(&c.ContainerName, prefix+"azure.container-name", constants.Loki, "Name of the storage account blob container used to store chunks. This container must be created before running cortex.")
 	f.StringVar(&c.EndpointSuffix, prefix+"azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The storage account name will be prefixed to this value to create the FQDN.")
 	f.StringVar(&c.ActiveDirectoryEndpoint, prefix+"azure.active-directory-endpoint", "", "Azure active directory endpoint override. Use when the Azure SDK does not support your environment.")
@@ -407,8 +407,8 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 		})
 	}
 
-	if b.cfg.ConnectionString != "" {
-		parsed, err := parseConnectionString(b.cfg.ConnectionString)
+	if b.cfg.ConnectionString.String() != "" {
+		parsed, err := parseConnectionString(b.cfg.ConnectionString.String())
 		if err != nil {
 			return nil, err
 		}
@@ -626,7 +626,7 @@ func (c *BlobStorageConfig) Validate() error {
 }
 
 func (b *BlobStorage) fmtResourceURL() string {
-	if b.cfg.ConnectionString != "" {
+	if b.cfg.ConnectionString.String() != "" {
 		return b.endpointFromConnectionString()
 	}
 
@@ -641,7 +641,7 @@ func (b *BlobStorage) fmtResourceURL() string {
 }
 
 func (b *BlobStorage) endpointFromConnectionString() string {
-	parsed, err := parseConnectionString(b.cfg.ConnectionString)
+	parsed, err := parseConnectionString(b.cfg.ConnectionString.String())
 	if err != nil || parsed.ServiceURL == "" {
 		level.Warn(log.Logger).Log("msg", "could not get resource URL from connection string", "err", err)
 	}

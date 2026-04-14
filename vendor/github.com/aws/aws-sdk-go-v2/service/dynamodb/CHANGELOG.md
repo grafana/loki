@@ -1,3 +1,31 @@
+# v1.57.1 (2026-03-26)
+
+* **Bug Fix**: Fix a bug where a recorded clock skew could persist on the client even if the client and server clock ended up realigning.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.57.0 (2026-03-20)
+
+* **Feature**: Adding ReplicaArn to ReplicaDescription of a global table replica
+
+# v1.56.2 (2026-03-13)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.56.1 (2026-03-03)
+
+* **Bug Fix**: Modernize non codegen files with go fix
+* **Dependency Update**: Bump minimum Go version to 1.24
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.56.0 (2026-02-23)
+
+* **Feature**: This change supports the creation of multi-account global tables. It adds one new arguments to UpdateTable, GlobalTableSettingsReplicationMode.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.55.0 (2026-02-03)
+
+* **Feature**: This change supports the creation of multi-account global tables. It adds two new arguments to CreateTable, GlobalTableSourceArn and GlobalTableSettingsReplicationMode. DescribeTable is also updated to include information about GlobalTableSettingsReplicationMode.
+
 # v1.54.0 (2026-01-22)
 
 * **Feature**: Adds additional waiters to Amazon DynamoDB.

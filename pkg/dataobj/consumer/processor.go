@@ -29,18 +29,18 @@ type builder interface {
 	CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
 }
 
-// A flushManager allows mocking of flushes in tests.
-type flushManager interface {
+// A flushCommitter allows mocking of flushes in tests.
+type flushCommitter interface {
 	Flush(ctx context.Context, builder builder, reason string, offset int64, earliestRecordTime time.Time) error
 }
 
 // A processor receives records and builds data objects from them.
 type processor struct {
 	*services.BasicService
-	builder      builder
-	decoder      *kafka.Decoder
-	records      chan *kgo.Record
-	flushManager flushManager
+	builder        builder
+	decoder        *kafka.Decoder
+	records        chan *kgo.Record
+	flushCommitter flushCommitter
 
 	// lastOffset contains the offset of the last record appended to the data object
 	// builder. It is used to commit the correct offset after a flush.
@@ -73,6 +73,10 @@ type processor struct {
 	// to the data object builder. It is required for the metastore index.
 	earliestRecordTime time.Time
 
+	// timePartitionedEstimates counts how many data objects we would build
+	// per flush with 12 hour windows.
+	timePartitionedEstimates map[time.Time]struct{}
+
 	metrics *metrics
 	logger  log.Logger
 }
@@ -80,7 +84,7 @@ type processor struct {
 func newProcessor(
 	builder builder,
 	records chan *kgo.Record,
-	flushManager flushManager,
+	flushCommitter flushCommitter,
 	idleFlushTimeout time.Duration,
 	maxBuilderAge time.Duration,
 	logger log.Logger,
@@ -91,14 +95,15 @@ func newProcessor(
 		panic(err)
 	}
 	p := &processor{
-		builder:          builder,
-		decoder:          decoder,
-		records:          records,
-		flushManager:     flushManager,
-		idleFlushTimeout: idleFlushTimeout,
-		maxBuilderAge:    maxBuilderAge,
-		metrics:          newMetrics(reg),
-		logger:           logger,
+		builder:                  builder,
+		decoder:                  decoder,
+		records:                  records,
+		flushCommitter:           flushCommitter,
+		idleFlushTimeout:         idleFlushTimeout,
+		maxBuilderAge:            maxBuilderAge,
+		metrics:                  newMetrics(reg),
+		logger:                   logger,
+		timePartitionedEstimates: make(map[time.Time]struct{}),
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p
@@ -153,6 +158,10 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 	// consumption lag, the age of the data object builder, etc.
 	now := time.Now()
 	p.observeRecord(rec, now)
+
+	// Find the 12 hour window.
+	window := rec.Timestamp.UTC().Truncate(12 * time.Hour)
+	p.timePartitionedEstimates[window] = struct{}{}
 
 	// Try to decode the stream in the record.
 	tenant := string(rec.Key)
@@ -234,8 +243,10 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 		p.earliestRecordTime = time.Time{}
 		p.firstAppend = time.Time{}
 		p.lastAppend = time.Time{}
+		clear(p.timePartitionedEstimates)
 	}()
-	return p.flushManager.Flush(ctx, p.builder, reason, p.lastOffset, p.earliestRecordTime)
+	p.metrics.timePartitionEstimate.Add(float64(len(p.timePartitionedEstimates)))
+	return p.flushCommitter.Flush(ctx, p.builder, reason, p.lastOffset, p.earliestRecordTime)
 }
 
 func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
@@ -243,9 +254,6 @@ func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
 	p.metrics.receivedBytes.Add(float64(len(rec.Value)))
 	p.metrics.setLastOffset(rec.Offset)
 	p.metrics.setConsumptionLag(now.Sub(rec.Timestamp))
-	// Deprecated metrics.
-	p.metrics.processedBytes.Add(float64(len(rec.Value)))
-	p.metrics.processedRecords.Inc()
 }
 
 func (p *processor) observeRecordErr(rec *kgo.Record) {

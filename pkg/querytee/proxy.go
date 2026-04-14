@@ -289,6 +289,7 @@ func NewProxy(
 
 	// Pre-initialize raceWins metric for all backend/route/issuer combinations
 	if cfg.Routing.Mode == RoutingModeRace {
+		p.metrics.raceModeEnabled.Set(1)
 		for _, backend := range p.backends {
 			for _, route := range p.readRoutes {
 				for _, issuer := range []string{unknownIssuer, canaryIssuer} {
@@ -439,7 +440,7 @@ func (p *Proxy) Start() error {
 	var handler http.Handler = router
 	// Configure tracing middleware to extract trace headers
 	// This ensures trace context is properly propagated from incoming requests
-	tracer := middleware.NewTracer(nil, true, nil) // true enables trace header extraction
+	tracer := middleware.NewTracer(nil, true, nil, nil) // true enables trace header extraction
 	handler = tracer.Wrap(router)
 	level.Info(p.logger).Log("msg", "HTTP tracing middleware enabled with header extraction")
 

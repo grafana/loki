@@ -28,6 +28,18 @@ type streamPipe struct {
 
 var _ executor.Pipeline = (*streamPipe)(nil)
 
+// eofPipeline is a [executor.Pipeline] that always returns [executor.EOF] on
+// Read. It is used when the workflow has no tasks to execute.
+type eofPipeline struct{}
+
+func (eofPipeline) Open(_ context.Context) error                      { return nil }
+func (eofPipeline) Read(_ context.Context) (arrow.RecordBatch, error) { return nil, executor.EOF }
+func (eofPipeline) Close()                                            {}
+
+// newEOFPipeline returns a pipeline that immediately returns [executor.EOF] on
+// Read, without blocking. It is used when the workflow has no tasks.
+func newEOFPipeline() eofPipeline { return eofPipeline{} }
+
 // newStreamPipe creates a new streamPipe.
 func newStreamPipe() *streamPipe {
 	return &streamPipe{
@@ -36,6 +48,8 @@ func newStreamPipe() *streamPipe {
 		errCond: make(chan struct{}),
 	}
 }
+
+func (pipe *streamPipe) Open(_ context.Context) error { return nil }
 
 // Read returns the next record of the stream data. Blocks until results are
 // available or until the provided ctx is canceled.

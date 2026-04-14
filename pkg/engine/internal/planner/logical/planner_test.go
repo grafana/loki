@@ -102,19 +102,21 @@ func TestConvertAST_Success(t *testing.T) {
 %6 = OR %4 %5
 %7 = MATCH_STR builtin.message "metric.go"
 %8 = MATCH_STR builtin.message "foo"
-%9 = AND %7 %8
-%10 = NOT_MATCH_RE builtin.message "(a|b|c)"
-%11 = AND %9 %10
-%12 = MAKETABLE [selector=%3, predicates=[%6, %11], shard=0_of_1]
-%13 = GTE builtin.timestamp 1970-01-01T01:00:00Z
-%14 = SELECT %12 [predicate=%13]
-%15 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%9 = MATCH_STR builtin.message "bar"
+%10 = OR %8 %9
+%11 = AND %7 %10
+%12 = NOT_MATCH_RE builtin.message "(a|b|c)"
+%13 = AND %11 %12
+%14 = MAKETABLE [selector=%3, predicates=[%6, %13], shard=0_of_1]
+%15 = GTE builtin.timestamp 1970-01-01T01:00:00Z
 %16 = SELECT %14 [predicate=%15]
-%17 = SELECT %16 [predicate=%6]
-%18 = SELECT %17 [predicate=%11]
-%19 = TOPK %18 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
-%20 = LOGQL_COMPAT %19
-RETURN %20
+%17 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%18 = SELECT %16 [predicate=%17]
+%19 = SELECT %18 [predicate=%6]
+%20 = SELECT %19 [predicate=%13]
+%21 = TOPK %20 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%22 = LOGQL_COMPAT %21
+RETURN %22
 `
 
 	require.Equal(t, expected, logicalPlan.String())
@@ -123,6 +125,84 @@ RETURN %20
 	PrintTree(&sb, logicalPlan.Value())
 
 	t.Logf("\n%s\n", sb.String())
+}
+
+func TestConvertAST_LineFilterOr(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    string
+		contains []string
+	}{
+		{
+			name:  "simple or",
+			query: `{app="loki"} |= "foo" or "bar"`,
+			contains: []string{
+				`MATCH_STR builtin.message "foo"`,
+				`MATCH_STR builtin.message "bar"`,
+				"OR %",
+			},
+		},
+		{
+			name:  "or with regex",
+			query: `{app="loki"} |~ "(?i)abc" or "(?i)def"`,
+			contains: []string{
+				`MATCH_RE builtin.message "(?i)abc"`,
+				`MATCH_RE builtin.message "(?i)def"`,
+				"OR %",
+			},
+		},
+		{
+			name:  "three-way or",
+			query: `{app="loki"} |= "a" or "b" or "c"`,
+			contains: []string{
+				`MATCH_STR builtin.message "a"`,
+				`MATCH_STR builtin.message "b"`,
+				`MATCH_STR builtin.message "c"`,
+				"OR %",
+			},
+		},
+		{
+			name:  "or preceded by and",
+			query: `{app="loki"} |= "first" |= "foo" or "bar"`,
+			contains: []string{
+				`MATCH_STR builtin.message "first"`,
+				`MATCH_STR builtin.message "foo"`,
+				`MATCH_STR builtin.message "bar"`,
+				"OR %",
+				"AND %",
+			},
+		},
+		{
+			name:  "negative filter or becomes and",
+			query: `{app="loki"} != "foo" or "bar"`,
+			contains: []string{
+				`NOT_MATCH_STR builtin.message "foo"`,
+				`NOT_MATCH_STR builtin.message "bar"`,
+				"AND %",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			q := &query{
+				statement: tc.query,
+				start:     3600,
+				end:       7200,
+				direction: logproto.BACKWARD,
+				limit:     1000,
+			}
+			plan, err := BuildPlan(context.Background(), q)
+			require.NoError(t, err)
+
+			planStr := plan.String()
+			t.Logf("\n%s\n", planStr)
+
+			for _, substr := range tc.contains {
+				require.Contains(t, planStr, substr, "plan should contain %q", substr)
+			}
+		})
+	}
 }
 
 func TestConvertAST_MetricQuery_Success(t *testing.T) {
@@ -148,14 +228,10 @@ func TestConvertAST_MetricQuery_Success(t *testing.T) {
 %8 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %9 = SELECT %7 [predicate=%8]
 %10 = SELECT %9 [predicate=%4]
-%11 = EQ generated.__error__ ""
-%12 = EQ generated.__error_details__ ""
-%13 = AND %11 %12
-%14 = SELECT %10 [predicate=%13]
-%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.level)]
-%17 = LOGQL_COMPAT %16
-RETURN %17
+%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.level)]
+%13 = LOGQL_COMPAT %12
+RETURN %13
 `
 
 		require.Equal(t, expected, logicalPlan.String())
@@ -186,15 +262,11 @@ RETURN %17
 %6 = SELECT %4 [predicate=%5]
 %7 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %8 = SELECT %6 [predicate=%7]
-%9 = EQ generated.__error__ ""
-%10 = EQ generated.__error_details__ ""
-%11 = AND %9 %10
-%12 = SELECT %8 [predicate=%11]
-%13 = RANGE_AGGREGATION %12 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%14 = DIV %13 300
-%15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.level)]
-%16 = LOGQL_COMPAT %15
-RETURN %16
+%9 = RANGE_AGGREGATION %8 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%10 = DIV %9 300
+%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
+%12 = LOGQL_COMPAT %11
+RETURN %12
 `
 
 		require.Equal(t, expected, logicalPlan.String())
@@ -223,17 +295,13 @@ RETURN %16
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = EQ generated.__error__ ""
-%8 = EQ generated.__error_details__ ""
-%9 = AND %7 %8
-%10 = SELECT %6 [predicate=%9]
-%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%12 = DIV %11 300
-%13 = SUB %12 100
-%14 = POW %13 2
-%15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.level)]
-%16 = LOGQL_COMPAT %15
-RETURN %16
+%7 = RANGE_AGGREGATION %6 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%8 = DIV %7 300
+%9 = SUB %8 100
+%10 = POW %9 2
+%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
+%12 = LOGQL_COMPAT %11
+RETURN %12
 `
 
 		require.Equal(t, expected, logicalPlan.String())
@@ -497,6 +565,7 @@ func TestPlannerCreatesCastOperationForUnwrap(t *testing.T) {
 
 		// Assert against the correct SSA representation
 		// The UNWRAP should appear after SELECT operations but before RANGE_AGGREGATION
+		// Error filtering is added after unwrap to exclude rows with invalid numeric values
 		expected := `%1 = EQ label.app "api"
 %2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
 %3 = GTE builtin.timestamp 1970-01-01T00:55:00Z
@@ -545,14 +614,10 @@ func TestPlannerCreatesProjectionWithParseOperation(t *testing.T) {
 %8 = PROJECT %6 [mode=*E, expr=%7]
 %9 = EQ ambiguous.level "error"
 %10 = SELECT %8 [predicate=%9]
-%11 = EQ generated.__error__ ""
-%12 = EQ generated.__error_details__ ""
-%13 = AND %11 %12
-%14 = SELECT %10 [predicate=%13]
-%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.level)]
-%17 = LOGQL_COMPAT %16
-RETURN %17
+%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.level)]
+%13 = LOGQL_COMPAT %12
+RETURN %13
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -612,14 +677,10 @@ RETURN %12
 %8 = PROJECT %6 [mode=*E, expr=%7]
 %9 = EQ ambiguous.level "error"
 %10 = SELECT %8 [predicate=%9]
-%11 = EQ generated.__error__ ""
-%12 = EQ generated.__error_details__ ""
-%13 = AND %11 %12
-%14 = SELECT %10 [predicate=%13]
-%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.level)]
-%17 = LOGQL_COMPAT %16
-RETURN %17
+%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.level)]
+%13 = LOGQL_COMPAT %12
+RETURN %13
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -679,14 +740,10 @@ RETURN %12
 %8 = PROJECT %6 [mode=*E, expr=%7]
 %9 = EQ ambiguous.foo "bar"
 %10 = SELECT %8 [predicate=%9]
-%11 = EQ generated.__error__ ""
-%12 = EQ generated.__error_details__ ""
-%13 = AND %11 %12
-%14 = SELECT %10 [predicate=%13]
-%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.foo)]
-%17 = LOGQL_COMPAT %16
-RETURN %17
+%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.foo)]
+%13 = LOGQL_COMPAT %12
+RETURN %13
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -809,14 +866,10 @@ RETURN %16
 %12 = PROJECT %10 [mode=*E, expr=%11]
 %13 = EQ ambiguous.level "debug"
 %14 = SELECT %12 [predicate=%13]
-%15 = EQ generated.__error__ ""
-%16 = EQ generated.__error_details__ ""
-%17 = AND %15 %16
-%18 = SELECT %14 [predicate=%17]
-%19 = RANGE_AGGREGATION %18 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%20 = VECTOR_AGGREGATION %19 [operation=sum, group_by=(ambiguous.level)]
-%21 = LOGQL_COMPAT %20
-RETURN %21
+%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.level)]
+%17 = LOGQL_COMPAT %16
+RETURN %17
 `, "{PARSE_STATEMENT}", statement, 1)
 
 			require.Equal(t, expected, plan.String(), "Metric query should preserve operation order: filters before parse, then parse, then filters after parse")

@@ -312,9 +312,35 @@ type TableAutomatedBackupPolicy struct {
 	// How frequently automated backups should occur. The only
 	// supported value at this time is 24 hours.
 	Frequency optional.Duration
+	// Optional. A list of Cloud Bigtable zones where automated backups are
+	// allowed to be created. If empty, automated backups will be created in all
+	// zones of the instance. Locations are in the format
+	// `projects/{project}/locations/{zone}`.
+	// This field can only set for tables in Enterprise Plus instances.
+	Locations []string
 }
 
 func (*TableAutomatedBackupPolicy) isTableAutomatedBackupConfig() {}
+
+// TieredStorageConfig defines a tiered storage configuration for a table.
+type TieredStorageConfig struct {
+	// Rule to specify what data is stored in the infrequent access(IA) tier.
+	// The IA tier allows storing more data per node with reduced performance.
+	InfrequentAccess TieredStorageRule
+}
+
+// TieredStorageRule defines a tiered storage rule for a table.
+type TieredStorageRule interface {
+	isTieredStorageRule()
+}
+
+// TieredStorageIncludeIfOlderThan defines a tiered storage rule that includes
+// cells older than the given age.
+type TieredStorageIncludeIfOlderThan struct {
+	Duration optional.Duration
+}
+
+func (*TieredStorageIncludeIfOlderThan) isTieredStorageRule() {}
 
 func toAutomatedBackupConfigProto(automatedBackupConfig TableAutomatedBackupConfig) (*btapb.Table_AutomatedBackupPolicy_, error) {
 	if automatedBackupConfig == nil {
@@ -332,6 +358,7 @@ func (abp *TableAutomatedBackupPolicy) toProto() (*btapb.Table_AutomatedBackupPo
 	pbAutomatedBackupPolicy := &btapb.Table_AutomatedBackupPolicy{
 		RetentionPeriod: durationpb.New(0),
 		Frequency:       durationpb.New(0),
+		Locations:       abp.Locations,
 	}
 	if abp.RetentionPeriod == nil && abp.Frequency == nil {
 		return nil, errors.New("at least one of RetentionPeriod and Frequency must be set")
@@ -345,6 +372,26 @@ func (abp *TableAutomatedBackupPolicy) toProto() (*btapb.Table_AutomatedBackupPo
 	return &btapb.Table_AutomatedBackupPolicy_{
 		AutomatedBackupPolicy: pbAutomatedBackupPolicy,
 	}, nil
+}
+
+func (tsc *TieredStorageConfig) toProto() (*btapb.TieredStorageConfig, error) {
+	if tsc == nil {
+		return nil, nil
+	}
+	pb := &btapb.TieredStorageConfig{}
+	if tsc.InfrequentAccess != nil {
+		switch rule := tsc.InfrequentAccess.(type) {
+		case *TieredStorageIncludeIfOlderThan:
+			pb.InfrequentAccess = &btapb.TieredStorageRule{
+				Rule: &btapb.TieredStorageRule_IncludeIfOlderThan{
+					IncludeIfOlderThan: durationpb.New(optional.ToDuration(rule.Duration)),
+				},
+			}
+		default:
+			return nil, fmt.Errorf("bigtable: unknown tiered storage rule type: %T", rule)
+		}
+	}
+	return pb, nil
 }
 
 // Family represents a column family with its optional GC policy and value type.
@@ -371,10 +418,12 @@ type TableConf struct {
 	// set to protected to make the table protected against data loss
 	DeletionProtection    DeletionProtection
 	ChangeStreamRetention ChangeStreamRetention
-	// Configure an automated backup policy for the table
+	// AutomatedBackupConfig defines the automated backup policy for the table.
 	AutomatedBackupConfig TableAutomatedBackupConfig
-	// Configure a row key schema for the table
+	// RowKeySchema describes the structure of the row keys in the table.
 	RowKeySchema *StructType
+	// TieredStorageConfig represents rules for the table to specify what data is stored in each storage tier.
+	TieredStorageConfig *TieredStorageConfig
 }
 
 // CreateTable creates a new table in the instance.
@@ -425,6 +474,14 @@ func (ac *AdminClient) CreateTableFromConf(ctx context.Context, conf *TableConf)
 
 	if conf.RowKeySchema != nil {
 		tbl.RowKeySchema = conf.RowKeySchema.proto().GetStructType()
+	}
+
+	if conf.TieredStorageConfig != nil {
+		proto, err := conf.TieredStorageConfig.toProto()
+		if err != nil {
+			return err
+		}
+		tbl.TieredStorageConfig = proto
 	}
 
 	if conf.Families != nil && conf.ColumnFamilies != nil {
@@ -511,7 +568,9 @@ const (
 	automatedBackupPolicyFieldMask = "automated_backup_policy"
 	retentionPeriodFieldMaskPath   = "retention_period"
 	frequencyFieldMaskPath         = "frequency"
+	locationsFieldMaskPath         = "locations"
 	rowKeySchemaMaskPath           = "row_key_schema"
+	tieredStorageConfigFieldMask   = "tiered_storage_config"
 )
 
 func (ac *AdminClient) newUpdateTableRequestProto(tableID string) (*btapb.UpdateTableRequest, error) {
@@ -615,6 +674,10 @@ func (ac *AdminClient) UpdateTableWithAutomatedBackupPolicy(ctx context.Context,
 		// Update Frequency
 		req.UpdateMask.Paths = append(req.UpdateMask.Paths, automatedBackupPolicyFieldMask+"."+frequencyFieldMaskPath)
 	}
+	if automatedBackupPolicy.Locations != nil {
+		// Update Locations
+		req.UpdateMask.Paths = append(req.UpdateMask.Paths, automatedBackupPolicyFieldMask+"."+locationsFieldMaskPath)
+	}
 	req.Table.AutomatedBackupConfig = abc
 	return ac.updateTableAndWait(ctx, req)
 }
@@ -638,6 +701,31 @@ func (ac *AdminClient) UpdateTableRemoveRowKeySchema(ctx context.Context, tableI
 	}
 	req.UpdateMask.Paths = append(req.UpdateMask.Paths, rowKeySchemaMaskPath)
 	req.IgnoreWarnings = true
+	return ac.updateTableAndWait(ctx, req)
+}
+
+// UpdateTableWithTieredStorageConfig updates a table with TieredStorageConfig.
+func (ac *AdminClient) UpdateTableWithTieredStorageConfig(ctx context.Context, tableID string, tieredStorageConfig *TieredStorageConfig) error {
+	req, err := ac.newUpdateTableRequestProto(tableID)
+	if err != nil {
+		return err
+	}
+	proto, err := tieredStorageConfig.toProto()
+	if err != nil {
+		return err
+	}
+	req.UpdateMask.Paths = append(req.UpdateMask.Paths, tieredStorageConfigFieldMask)
+	req.Table.TieredStorageConfig = proto
+	return ac.updateTableAndWait(ctx, req)
+}
+
+// UpdateTableRemoveTieredStorageConfig removes a TieredStorageConfig from a table.
+func (ac *AdminClient) UpdateTableRemoveTieredStorageConfig(ctx context.Context, tableID string) error {
+	req, err := ac.newUpdateTableRequestProto(tableID)
+	if err != nil {
+		return err
+	}
+	req.UpdateMask.Paths = append(req.UpdateMask.Paths, tieredStorageConfigFieldMask)
 	return ac.updateTableAndWait(ctx, req)
 }
 
@@ -679,6 +767,7 @@ type TableInfo struct {
 	ChangeStreamRetention ChangeStreamRetention
 	AutomatedBackupConfig TableAutomatedBackupConfig
 	RowKeySchema          *StructType
+	TieredStorageConfig   *TieredStorageConfig
 }
 
 // FamilyInfo represents information about a column family.
@@ -745,6 +834,7 @@ func (ac *AdminClient) TableInfo(ctx context.Context, table string) (*TableInfo,
 			ti.AutomatedBackupConfig = &TableAutomatedBackupPolicy{
 				RetentionPeriod: res.GetAutomatedBackupPolicy().GetRetentionPeriod().AsDuration(),
 				Frequency:       res.GetAutomatedBackupPolicy().GetFrequency().AsDuration(),
+				Locations:       res.GetAutomatedBackupPolicy().GetLocations(),
 			}
 		default:
 			return nil, fmt.Errorf("error: Unknown type of automated backup configuration")
@@ -753,6 +843,17 @@ func (ac *AdminClient) TableInfo(ctx context.Context, table string) (*TableInfo,
 	if res.RowKeySchema != nil {
 		structType := structProtoToType(res.RowKeySchema).(StructType)
 		ti.RowKeySchema = &structType
+	}
+	if res.TieredStorageConfig != nil {
+		ti.TieredStorageConfig = &TieredStorageConfig{}
+		if res.TieredStorageConfig.InfrequentAccess != nil {
+			switch rule := res.TieredStorageConfig.InfrequentAccess.Rule.(type) {
+			case *btapb.TieredStorageRule_IncludeIfOlderThan:
+				ti.TieredStorageConfig.InfrequentAccess = &TieredStorageIncludeIfOlderThan{
+					Duration: rule.IncludeIfOlderThan.AsDuration(),
+				}
+			}
+		}
 	}
 
 	return ti, nil
@@ -1296,6 +1397,10 @@ type InstanceConf struct {
 	// latency and more throughput by removing node boundaries. It is optional,
 	// with the default being 1X.
 	NodeScalingFactor NodeScalingFactor
+
+	// Tags maps TagKey resource names (e.g., "tagKeys/123") to TagValue
+	// resource names (e.g., "tagValues/456") to be associated with the instance.
+	Tags map[string]string
 }
 
 // InstanceWithClustersConfig contains the information necessary to create an Instance
@@ -1304,6 +1409,9 @@ type InstanceWithClustersConfig struct {
 	Clusters                []ClusterConfig
 	InstanceType            InstanceType
 	Labels                  map[string]string
+	// Tags maps TagKey resource names (e.g., "tagKeys/123") to TagValue
+	// resource names (e.g., "tagValues/456") to be associated with the instance.
+	Tags map[string]string
 }
 
 var instanceNameRegexp = regexp.MustCompile(`^projects/([^/]+)/instances/([a-z][-a-z0-9]*)$`)
@@ -1317,6 +1425,7 @@ func (iac *InstanceAdminClient) CreateInstance(ctx context.Context, conf *Instan
 		DisplayName:  conf.DisplayName,
 		InstanceType: conf.InstanceType,
 		Labels:       conf.Labels,
+		Tags:         conf.Tags,
 		Clusters: []ClusterConfig{
 			{
 				InstanceID:        conf.InstanceId,
@@ -1348,6 +1457,7 @@ func (iac *InstanceAdminClient) CreateInstanceWithClusters(ctx context.Context, 
 			DisplayName: conf.DisplayName,
 			Type:        btapb.Instance_Type(conf.InstanceType),
 			Labels:      conf.Labels,
+			Tags:        conf.Tags,
 		},
 		Clusters: clusters,
 	}

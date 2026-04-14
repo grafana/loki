@@ -134,6 +134,7 @@ func (b *xdsResolverBuilder) Build(target resolver.Target, cc resolver.ClientCon
 		xdsClient:       client,
 		xdsClientClose:  xdsClientClose,
 		activeClusters:  make(map[string]*clusterInfo),
+		activePlugins:   make(map[string]*clusterInfo),
 		channelID:       rand.Uint64(),
 		ldsResourceName: ldsResourceName,
 
@@ -150,7 +151,21 @@ func (b *xdsResolverBuilder) Build(target resolver.Target, cc resolver.ClientCon
 	}
 	r.logger = prefixLogger(r)
 	r.logger.Infof("Creating resolver for target: %+v", target)
+
+	dmSet := make(chan struct{})
+	// Schedule a callback that blocks until r.dm is set i.e xdsdepmgr.New()
+	// returns. This acts as a gatekeeper: even if dependency manager sends the
+	// updates before the xdsdepmgr.New() has a chance to return, they will be
+	// queued behind this blocker and processed only after initialization is
+	// complete.
+	r.serializer.TrySchedule(func(ctx context.Context) {
+		select {
+		case <-dmSet:
+		case <-ctx.Done():
+		}
+	})
 	r.dm = xdsdepmgr.New(r.ldsResourceName, opts.Authority, r.xdsClient, r)
+	close(dmSet)
 	return r, nil
 }
 
@@ -225,13 +240,29 @@ type xdsResolver struct {
 	// callbacks.
 	xdsConfig *xdsresource.XDSConfig
 	// activeClusters is a map from cluster name to information about the
-	// cluster that includes a ref count and load balancing configuration.
-	activeClusters    map[string]*clusterInfo
+	// weighted cluster that includes a reference count and load balancing
+	// configuration. These counts are used only by the resolver. The current
+	// configSelector holds one reference, and each ongoing RPC holds an
+	// additional reference. When the count hits zero, the resolver removes the
+	// cluster from this map and calls unsubscribe. This signals the dependency
+	// manager to stop the xDS watch once its own reference count reaches zero.
+	activeClusters map[string]*clusterInfo
+	// activePlugins is a map from cluster specifier plugin name to information
+	// about the cluster specifier plugin that includes a ref count and load
+	// balancing configuration. These counts are used only by the resolver. The
+	// current configSelector holds one reference, and each ongoing RPC holds an
+	// additional reference. When the count hits zero, the resolver removes the
+	// plugin name from this map.
+	activePlugins     map[string]*clusterInfo
 	curConfigSelector stoppableConfigSelector
 }
 
-// ResolveNow is a no-op at this point.
-func (*xdsResolver) ResolveNow(resolver.ResolveNowOptions) {}
+// ResolveNow calls RequestDNSReresolution on the dependency manager.
+func (r *xdsResolver) ResolveNow(opts resolver.ResolveNowOptions) {
+	if r.dm != nil {
+		r.dm.RequestDNSReresolution(opts)
+	}
+}
 
 func (r *xdsResolver) Close() {
 	// Cancel the context passed to the serializer and wait for any scheduled
@@ -297,11 +328,9 @@ func (r *xdsResolver) sendNewServiceConfig(cs stoppableConfigSelector) bool {
 	// Delete entries from r.activeClusters with zero references;
 	// otherwise serviceConfigJSON will generate a config including
 	// them.
-	r.pruneActiveClusters()
+	r.pruneActiveClustersAndPlugins()
 
-	errCS, ok := cs.(*erroringConfigSelector)
-	if ok && len(r.activeClusters) == 0 {
-		// There are no clusters and we are sending a failing configSelector.
+	if errCS, ok := cs.(*erroringConfigSelector); ok {
 		// Send an empty config, which picks pick-first, with no address, and
 		// puts the ClientConn into transient failure.
 		//
@@ -316,15 +345,17 @@ func (r *xdsResolver) sendNewServiceConfig(cs stoppableConfigSelector) bool {
 		return true
 	}
 
-	sc := serviceConfigJSON(r.activeClusters)
+	sc := serviceConfigJSON(r.activeClusters, r.activePlugins)
 	if r.logger.V(2) {
-		r.logger.Infof("For Listener resource %q and RouteConfiguration resource %q, generated service config: %+v", r.ldsResourceName, r.xdsConfig.Listener.RouteConfigName, sc)
+		r.logger.Infof("For Listener resource %q and RouteConfiguration resource %q, generated service config: %+v", r.ldsResourceName, r.xdsConfig.Listener.APIListener.RouteConfigName, sc)
 	}
 
 	// Send the update to the ClientConn.
 	state := iresolver.SetConfigSelector(resolver.State{
 		ServiceConfig: r.cc.ParseServiceConfig(string(sc)),
 	}, cs)
+	state = xdsresource.SetXDSConfig(state, r.xdsConfig)
+	state = xdsdepmgr.SetXDSClusterSubscriber(state, r.dm)
 	if err := r.cc.UpdateState(xdsclient.SetClient(state, r.xdsClient)); err != nil {
 		if r.logger.V(2) {
 			r.logger.Infof("Channel rejected new state: %+v with error: %v", state, err)
@@ -353,7 +384,8 @@ func (r *xdsResolver) newConfigSelector() (*configSelector, error) {
 		},
 		routes:           make([]route, len(r.xdsConfig.VirtualHost.Routes)),
 		clusters:         make(map[string]*clusterInfo),
-		httpFilterConfig: r.xdsConfig.Listener.HTTPFilters,
+		plugins:          make(map[string]*clusterInfo),
+		httpFilterConfig: r.xdsConfig.Listener.APIListener.HTTPFilters,
 	}
 
 	for i, rt := range r.xdsConfig.VirtualHost.Routes {
@@ -361,13 +393,13 @@ func (r *xdsResolver) newConfigSelector() (*configSelector, error) {
 		if rt.ClusterSpecifierPlugin != "" {
 			clusterName := clusterSpecifierPluginPrefix + rt.ClusterSpecifierPlugin
 			clusters.Add(&routeCluster{name: clusterName}, 1)
-			ci := r.addOrGetActiveClusterInfo(clusterName)
+			ci := r.addOrGetActiveClusterInfo(clusterName, "")
 			ci.cfg = xdsChildConfig{ChildPolicy: balancerConfig(r.xdsConfig.RouteConfig.ClusterSpecifierPlugins[rt.ClusterSpecifierPlugin])}
-			cs.clusters[clusterName] = ci
+			cs.plugins[clusterName] = ci
 		} else {
 			for _, wc := range rt.WeightedClusters {
 				clusterName := clusterPrefix + wc.Name
-				interceptor, err := newInterceptor(r.xdsConfig.Listener.HTTPFilters, wc.HTTPFilterConfigOverride, rt.HTTPFilterConfigOverride, r.xdsConfig.VirtualHost.HTTPFilterConfigOverride)
+				interceptor, err := newInterceptor(r.xdsConfig.Listener.APIListener.HTTPFilters, wc.HTTPFilterConfigOverride, rt.HTTPFilterConfigOverride, r.xdsConfig.VirtualHost.HTTPFilterConfigOverride)
 				if err != nil {
 					return nil, err
 				}
@@ -375,7 +407,7 @@ func (r *xdsResolver) newConfigSelector() (*configSelector, error) {
 					name:        clusterName,
 					interceptor: interceptor,
 				}, int64(wc.Weight))
-				ci := r.addOrGetActiveClusterInfo(clusterName)
+				ci := r.addOrGetActiveClusterInfo(clusterName, wc.Name)
 				ci.cfg = xdsChildConfig{ChildPolicy: newBalancerConfig(cdsName, cdsBalancerConfig{Cluster: wc.Name})}
 				cs.clusters[clusterName] = ci
 			}
@@ -385,7 +417,7 @@ func (r *xdsResolver) newConfigSelector() (*configSelector, error) {
 		cs.routes[i].m = xdsresource.RouteToMatcher(rt)
 		cs.routes[i].actionType = rt.ActionType
 		if rt.MaxStreamDuration == nil {
-			cs.routes[i].maxStreamDuration = r.xdsConfig.Listener.MaxStreamDuration
+			cs.routes[i].maxStreamDuration = r.xdsConfig.Listener.APIListener.MaxStreamDuration
 		} else {
 			cs.routes[i].maxStreamDuration = *rt.MaxStreamDuration
 		}
@@ -395,34 +427,63 @@ func (r *xdsResolver) newConfigSelector() (*configSelector, error) {
 		cs.routes[i].autoHostRewrite = rt.AutoHostRewrite
 	}
 
-	// Account for this config selector's clusters.  Do this after no further
-	// errors may occur.  Note: cs.clusters are pointers to entries in
+	// Account for this config selector's clusters. Do this after no further
+	// errors may occur. Note: cs.clusters are pointers to entries in
 	// activeClusters.
 	for _, ci := range cs.clusters {
+		atomic.AddInt32(&ci.refCount, 1)
+	}
+	for _, ci := range cs.plugins {
 		atomic.AddInt32(&ci.refCount, 1)
 	}
 
 	return cs, nil
 }
 
-// pruneActiveClusters deletes entries in r.activeClusters with zero
-// references.
-func (r *xdsResolver) pruneActiveClusters() {
+// pruneActiveClustersAndPlugins removes entries from activeClusters and
+// activePlugins that have a reference count of zero. For clusters, it also
+// invokes the unsubscribe function to signal the dependency manager to stop the
+// xDS watch. Because cluster specifier plugins do not have their own watches,
+// they are simply removed from the map without an unsubscribe call.
+//
+// Only executed in the context of a serializer callback.
+func (r *xdsResolver) pruneActiveClustersAndPlugins() {
 	for cluster, ci := range r.activeClusters {
 		if atomic.LoadInt32(&ci.refCount) == 0 {
+			ci.unsubscribe()
 			delete(r.activeClusters, cluster)
+		}
+	}
+	for cluster, ci := range r.activePlugins {
+		if atomic.LoadInt32(&ci.refCount) == 0 {
+			delete(r.activePlugins, cluster)
 		}
 	}
 }
 
-func (r *xdsResolver) addOrGetActiveClusterInfo(name string) *clusterInfo {
-	ci := r.activeClusters[name]
-	if ci != nil {
+// addOrGetActiveClusterInfo returns the clusterInfo for the provided key,
+// creating it if it does not exist. It accepts the following parameters:
+//   - key: Formatted as "cluster:<name>" or "cluster_specifier_plugin:<name>",
+//     this is the lookup key for the activeClusters or activePlugins maps.
+//   - name: The actual xDS resource name used to initiate a CDS watch.
+//     If empty (e.g., for plugins), no resource watch is triggered.
+//
+// This function manages entry creation and xDS subscriptions but does not
+// increment the reference count of the returned clusterInfo.
+func (r *xdsResolver) addOrGetActiveClusterInfo(key string, name string) *clusterInfo {
+	if name == "" {
+		ci, ok := r.activePlugins[key]
+		if !ok {
+			ci = &clusterInfo{}
+			r.activePlugins[key] = ci
+		}
 		return ci
 	}
-
-	ci = &clusterInfo{refCount: 0}
-	r.activeClusters[name] = ci
+	ci, ok := r.activeClusters[key]
+	if !ok {
+		ci = &clusterInfo{unsubscribe: r.dm.SubscribeToCluster(name)}
+		r.activeClusters[key] = ci
+	}
 	return ci
 }
 
@@ -432,6 +493,13 @@ type clusterInfo struct {
 	// cfg is the child configuration for this cluster, containing either the
 	// csp config or the cds cluster config.
 	cfg xdsChildConfig
+	// unsubscribe is the function to call to unsubscribe from this cluster's
+	// CDS resource. It is populated only for clusters in activeClusters and not
+	// for cluster specifier plugins. When invoked, it decrements the reference
+	// count in the dependency manager; once that count reaches zero, the
+	// underlying CDS watch is terminated. Plugins do not have associated
+	// watches and therefore do not require an unsubscribe function.
+	unsubscribe func()
 }
 
 // Contains common functionality to be executed when resources of either type

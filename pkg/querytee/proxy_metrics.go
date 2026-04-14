@@ -6,9 +6,10 @@ import (
 )
 
 const (
-	comparisonSuccess = "success"
-	comparisonFailed  = "fail"
-	comparisonSkipped = "skipped"
+	comparisonMatch    = "match"
+	comparisonMismatch = "mismatch"
+	comparisonFailed   = "fail"
+	comparisonSkipped  = "skipped"
 
 	unknownIssuer = "unknown"
 	canaryIssuer  = "loki-canary"
@@ -26,7 +27,8 @@ type ProxyMetrics struct {
 	samplingDecisions *prometheus.CounterVec
 
 	// Race metrics
-	raceWins *prometheus.CounterVec
+	raceWins        *prometheus.CounterVec
+	raceModeEnabled prometheus.Gauge
 }
 
 func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
@@ -51,7 +53,7 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Namespace: "cortex_querytee",
 			Name:      "responses_compared_total",
 			Help:      "Total number of responses compared per route and backend name by result.",
-		}, []string{"backend", "backend_alias", "route", "result", "issuer"}),
+		}, []string{"backend", "backend_alias", "route", "result", "issuer", "tenant"}),
 		missingMetrics: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex_querytee",
 			Name:      "missing_metrics_series",
@@ -76,6 +78,12 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Name:      "race_wins_total",
 			Help:      "Total number of times each backend won the race (when racing is enabled).",
 		}, []string{"backend", "backend_alias", "route", "issuer"}),
+
+		raceModeEnabled: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki_querytee",
+			Name:      "race_mode_enabled",
+			Help:      "Set to 1 if race mode is enabled for this querytee instance, 0 otherwise.",
+		}),
 	}
 
 	return m

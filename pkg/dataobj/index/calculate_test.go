@@ -169,7 +169,7 @@ func TestCalculator_Calculate(t *testing.T) {
 			require.NoError(t, err)
 			err = bucket.Upload(context.Background(), fmt.Sprintf("obj-%d", i), reader)
 			require.NoError(t, err)
-			bucketObj, err := dataobj.FromBucket(context.Background(), bucket, fmt.Sprintf("obj-%d", i))
+			bucketObj, err := dataobj.FromBucket(context.Background(), bucket, fmt.Sprintf("obj-%d", i), 0)
 			require.NoError(t, err)
 
 			err = calculator.Calculate(context.Background(), logger, bucketObj, fmt.Sprintf("test/path-%d", i))
@@ -210,6 +210,8 @@ func requireValidPointers(t *testing.T, obj *dataobj.Object) {
 		require.NoError(t, err)
 
 		reader := pointers.NewRowReader(sec)
+		require.NoError(t, reader.Open(context.Background()))
+
 		buf := make([]pointers.SectionPointer, 1024)
 		for {
 			n, err := reader.Read(context.Background(), buf)

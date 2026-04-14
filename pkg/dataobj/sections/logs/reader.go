@@ -9,6 +9,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	columnarv2 "github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
@@ -16,7 +18,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
+
+var tracer = otel.Tracer("pkg/dataobj/sections/logs")
 
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
@@ -117,10 +122,17 @@ type Reader struct {
 	inner *columnar.ReaderAdapter
 
 	alloc *memoryv2.Allocator
+
+	// readSpan for recording observations, it is created once during init
+	// and is passed down via context so that inner readers can record
+	// observations to it.
+	readSpan trace.Span
 }
 
+var errReaderNotOpen = errors.New("reader not opened")
+
 // NewReader creates a new Reader from the provided options. Options are not
-// validated until the first call to [Reader.Read].
+// validated until the first call to [Reader.Open].
 func NewReader(opts ReaderOptions) *Reader {
 	var r Reader
 	r.Reset(opts)
@@ -135,6 +147,23 @@ func NewReader(opts ReaderOptions) *Reader {
 //
 // The returned Schema must not be modified.
 func (r *Reader) Schema() *arrow.Schema { return r.schema }
+
+// Open initializes Reader resources.
+//
+// Open must be called before [Reader.Read]. Open is safe to call multiple
+// times.
+func (r *Reader) Open(ctx context.Context) error {
+	if r.ready {
+		return nil
+	}
+
+	if err := r.init(ctx); err != nil {
+		_ = r.Close()
+		return fmt.Errorf("initializing Reader: %w", err)
+	}
+
+	return nil
+}
 
 // Read reads the batch of rows from the section, returning them as an Arrow
 // record.
@@ -155,13 +184,18 @@ func (r *Reader) Schema() *arrow.Schema { return r.schema }
 // [Reader.Schema]. These records must always be released after use.
 func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error) {
 	if !r.ready {
-		err := r.init(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("initializing Reader: %w", err)
-		}
+		return nil, errReaderNotOpen
+	}
+
+	if r.readSpan == nil {
+		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "logs.Reader.Read")
+	} else {
+		// inject span into context for inner readers to record observations.
+		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
 	}
 
 	defer r.alloc.Reclaim()
+
 	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
 	if len(r.opts.Columns) < int(rb.NumCols()) {
 		// Ignore columns that are not in projection list.
@@ -181,12 +215,15 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	return result, readErr
 }
 
-func (r *Reader) init(_ context.Context) error {
+func (r *Reader) init(ctx context.Context) error {
 	if err := r.opts.Validate(); err != nil {
 		return fmt.Errorf("invalid options: %w", err)
 	} else if r.opts.Allocator == nil {
 		r.opts.Allocator = memory.DefaultAllocator
 	}
+
+	ctx, span := xcap.StartSpan(ctx, tracer, "logs.Reader.Open")
+	defer span.End()
 
 	// Compose dataset using projected columns and any additional columns
 	// used for evaluating predicates.
@@ -221,7 +258,7 @@ func (r *Reader) init(_ context.Context) error {
 		return fmt.Errorf("mapping predicates: %w", err)
 	}
 
-	innerOptions := dataset.ReaderOptions{
+	innerOptions := dataset.RowReaderOptions{
 		Dataset:    dset,
 		Columns:    dset.Columns(),
 		Predicates: orderPredicates(preds),
@@ -231,6 +268,9 @@ func (r *Reader) init(_ context.Context) error {
 		r.inner = columnar.NewReaderAdapter(innerOptions)
 	} else {
 		r.inner.Reset(innerOptions)
+	}
+	if err := r.inner.Open(ctx); err != nil {
+		return fmt.Errorf("opening reader: %w", err)
 	}
 
 	r.ready = true
@@ -381,12 +421,13 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	}
 	r.opts = opts
 	r.schema = columnsSchema(opts.Columns)
+	r.readSpan = nil
 
 	r.ready = false
 
 	if r.inner != nil {
 		// Close our inner reader so it releases resources immediately. It'll be
-		// fully reset on the next call to [Reader.init].
+		// fully reset on the next call to [Reader.Open].
 		_ = r.inner.Close()
 	}
 }
@@ -394,9 +435,14 @@ func (r *Reader) Reset(opts ReaderOptions) {
 // Close closes the Reader and releases any resources it holds. Closed Readers
 // can be reused by calling [Reader.Reset].
 func (r *Reader) Close() error {
+	if r.readSpan != nil {
+		r.readSpan.End()
+	}
+
 	if r.inner != nil {
 		return r.inner.Close()
 	}
+
 	return nil
 }
 

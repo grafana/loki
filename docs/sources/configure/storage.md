@@ -71,7 +71,7 @@ You can authenticate Blob Storage access by using a storage account name and key
 
 #### Baidu Object Storage (BOS)
 
-[BOS](https://intl.cloud.baidu.com/product/bos.html) is the Baidu CLoud hosted object storage.
+[BOS](https://intl.cloud.baidu.com/product/bos.html) is the Baidu Cloud hosted object storage.
 
 #### Alibaba Object Storage Service (OSS)
 
@@ -243,12 +243,12 @@ storage_config:
     cache_location: /loki/index_cache
     cache_ttl: 24h # Can be increased for faster performance over longer query periods, uses more disk space
   gcs:
-      bucket_name: <bucket>
-      service_account: |    
-        {
-          "type": "service_account",
-          ...
-        }
+    bucket_name: <bucket>
+    service_account: |
+      {
+        "type": "service_account",
+        ...
+      }
 
 schema_config:
   configs:
@@ -366,13 +366,13 @@ This guide assumes a provisioned EKS cluster.
 ```yaml
 schema_config:
   configs:
-  - from: "2020-12-11"
-    index:
-      period: 24h
-      prefix: index_
-    object_store: azure
-    schema: v13
-    store: tsdb
+    - from: "2020-12-11"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: azure
+      schema: v13
+      store: tsdb
 storage_config:
   azure:
     # Your Azure storage account name
@@ -402,13 +402,13 @@ storage_config:
 ```yaml
 schema_config:
   configs:
-  - from: "2020-12-11"
-    index:
-      period: 24h
-      prefix: index_
-    object_store: azure
-    schema: v13
-    store: tsdb
+    - from: "2020-12-11"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: azure
+      schema: v13
+      store: tsdb
 storage_config:
   azure:
     use_service_principal: true
@@ -444,8 +444,8 @@ schema_config:
 
 storage_config:
   tsdb_shipper:
-   active_index_directory: /loki/index
-   cache_location: /loki/index_cache
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>

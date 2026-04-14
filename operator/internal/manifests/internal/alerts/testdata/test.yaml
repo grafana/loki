@@ -66,7 +66,7 @@ tests:
       - series: 'loki_discarded_samples_total{namespace="my-ns", tenant="application", reason="line_too_long"}'
         values: '0x5 0+120x25 3000'
 
-      - series: 'lokistack_status_condition{stack_name="mystack", stack_namespace="my-ns", reason="ReadyComponents", status="false"}'
+      - series: 'lokistack_status_condition{stack_name="mystack", stack_namespace="my-ns", condition="Ready", status="false"}'
         values: '1+0x25'
 
       - series: 'loki_ingester_chunks_flush_failures_total{namespace="my-ns", pod="ingester-0"}'
@@ -129,7 +129,7 @@ tests:
               route: my-route
               severity: critical
             exp_annotations:
-              summary: "The 99th percentile is experiencing high latency (higher than 1 second)."
+              summary: "The 99th percentile is experiencing high latency (higher than 5 seconds)."
               description: "ingester my-route is experiencing 9.90s 99th percentile latency."
               runbook_url: "[[ .RunbookURL ]]#Loki-Request-Latency"
       - eval_time: 16m

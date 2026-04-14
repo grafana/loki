@@ -241,7 +241,7 @@ func (a *ArraySpan) GetBuffer(idx int) *memory.Buffer {
 // convenience function to resize the children slice if necessary,
 // or just shrink the slice without re-allocating if there's enough
 // capacity already.
-func (a *ArraySpan) resizeChildren(i int) {
+func (a *ArraySpan) ResizeChildren(i int) {
 	if cap(a.Children) >= i {
 		a.Children = a.Children[:i]
 	} else {
@@ -295,7 +295,7 @@ func (a *ArraySpan) FillFromScalar(val scalar.Scalar) {
 		a.Buffers[1].Buf = sc.Data()
 		a.Buffers[1].Owner = nil
 		a.Buffers[1].SelfAlloc = false
-		a.resizeChildren(1)
+		a.ResizeChildren(1)
 		a.Children[0].SetMembers(val.(*scalar.Dictionary).Value.Dict.Data())
 	case arrow.IsBaseBinary(typeID):
 		sc := val.(scalar.BinaryScalar)
@@ -334,7 +334,7 @@ func (a *ArraySpan) FillFromScalar(val scalar.Scalar) {
 	case arrow.IsListLike(typeID):
 		sc := val.(scalar.ListScalar)
 		valueLen := 0
-		a.resizeChildren(1)
+		a.ResizeChildren(1)
 
 		if sc.GetList() != nil {
 			a.Children[0].SetMembers(sc.GetList().Data())
@@ -364,7 +364,7 @@ func (a *ArraySpan) FillFromScalar(val scalar.Scalar) {
 		a.Buffers[1].Buf = nil
 		a.Buffers[1].Owner = nil
 		a.Buffers[1].SelfAlloc = false
-		a.resizeChildren(len(sc.Value))
+		a.ResizeChildren(len(sc.Value))
 		for i, v := range sc.Value {
 			a.Children[i].FillFromScalar(v)
 		}
@@ -378,7 +378,7 @@ func (a *ArraySpan) FillFromScalar(val scalar.Scalar) {
 		a.Buffers[1].SelfAlloc = false
 		codes := unsafe.Slice((*arrow.UnionTypeCode)(unsafe.Pointer(&a.Buffers[1].Buf[0])), 1)
 
-		a.resizeChildren(len(a.Type.(arrow.UnionType).Fields()))
+		a.ResizeChildren(len(a.Type.(arrow.UnionType).Fields()))
 		switch sc := val.(type) {
 		case *scalar.DenseUnion:
 			codes[0] = sc.TypeCode
@@ -421,7 +421,7 @@ func (a *ArraySpan) FillFromScalar(val scalar.Scalar) {
 }
 
 func (a *ArraySpan) SetDictionary(span *ArraySpan) {
-	a.resizeChildren(1)
+	a.ResizeChildren(1)
 	a.Children[0].Release()
 	a.Children[0] = *span
 }
@@ -468,13 +468,13 @@ func (a *ArraySpan) TakeOwnership(data arrow.ArrayData) {
 	}
 
 	if typeID == arrow.DICTIONARY {
-		a.resizeChildren(1)
+		a.ResizeChildren(1)
 		dict := data.Dictionary()
 		if dict != (*array.Data)(nil) {
 			a.Children[0].TakeOwnership(dict)
 		}
 	} else {
-		a.resizeChildren(len(data.Children()))
+		a.ResizeChildren(len(data.Children()))
 		for i, c := range data.Children() {
 			a.Children[i].TakeOwnership(c)
 		}
@@ -522,7 +522,7 @@ func (a *ArraySpan) SetMembers(data arrow.ArrayData) {
 	}
 
 	if typeID == arrow.DICTIONARY {
-		a.resizeChildren(1)
+		a.ResizeChildren(1)
 		dict := data.Dictionary()
 		if dict != (*array.Data)(nil) {
 			a.Children[0].SetMembers(dict)
@@ -603,7 +603,7 @@ func FillZeroLength(dt arrow.DataType, span *ArraySpan) {
 	}
 
 	if dt.ID() == arrow.DICTIONARY {
-		span.resizeChildren(1)
+		span.ResizeChildren(1)
 		FillZeroLength(dt.(*arrow.DictionaryType).ValueType, &span.Children[0])
 		return
 	}
@@ -616,7 +616,7 @@ func FillZeroLength(dt arrow.DataType, span *ArraySpan) {
 		return
 	}
 
-	span.resizeChildren(nt.NumFields())
+	span.ResizeChildren(nt.NumFields())
 	for i, f := range nt.Fields() {
 		FillZeroLength(f.Type, &span.Children[i])
 	}

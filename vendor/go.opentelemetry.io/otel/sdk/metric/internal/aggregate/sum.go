@@ -8,21 +8,23 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/internal/x"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 type sumValue[N int64 | float64] struct {
-	n     atomicCounter[N]
-	res   FilteredExemplarReservoir[N]
-	attrs attribute.Set
+	n         atomicCounter[N]
+	res       FilteredExemplarReservoir[N]
+	attrs     attribute.Set
+	startTime time.Time
 }
 
-type valueMap[N int64 | float64] struct {
+type sumValueMap[N int64 | float64] struct {
 	values limitedSyncMap
 	newRes func(attribute.Set) FilteredExemplarReservoir[N]
 }
 
-func (s *valueMap[N]) measure(
+func (s *sumValueMap[N]) measure(
 	ctx context.Context,
 	value N,
 	fltrAttr attribute.Set,
@@ -30,8 +32,9 @@ func (s *valueMap[N]) measure(
 ) {
 	sv := s.values.LoadOrStoreAttr(fltrAttr, func(attr attribute.Set) any {
 		return &sumValue[N]{
-			res:   s.newRes(attr),
-			attrs: attr,
+			res:       s.newRes(attr),
+			attrs:     attr,
+			startTime: now(),
 		}
 	}).(*sumValue[N])
 	sv.n.add(value)
@@ -52,7 +55,7 @@ func newDeltaSum[N int64 | float64](
 	return &deltaSum[N]{
 		monotonic: monotonic,
 		start:     now(),
-		hotColdValMap: [2]valueMap[N]{
+		hotColdValMap: [2]sumValueMap[N]{
 			{
 				values: limitedSyncMap{aggLimit: limit},
 				newRes: r,
@@ -71,7 +74,7 @@ type deltaSum[N int64 | float64] struct {
 	start     time.Time
 
 	hcwg          hotColdWaitGroup
-	hotColdValMap [2]valueMap[N]
+	hotColdValMap [2]sumValueMap[N]
 }
 
 func (s *deltaSum[N]) measure(ctx context.Context, value N, fltrAttr attribute.Set, droppedAttr []attribute.KeyValue) {
@@ -130,7 +133,7 @@ func newCumulativeSum[N int64 | float64](
 	return &cumulativeSum[N]{
 		monotonic: monotonic,
 		start:     now(),
-		valueMap: valueMap[N]{
+		sumValueMap: sumValueMap[N]{
 			values: limitedSyncMap{aggLimit: limit},
 			newRes: r,
 		},
@@ -142,7 +145,7 @@ type cumulativeSum[N int64 | float64] struct {
 	monotonic bool
 	start     time.Time
 
-	valueMap[N]
+	sumValueMap[N]
 }
 
 func (s *cumulativeSum[N]) collect(
@@ -160,12 +163,19 @@ func (s *cumulativeSum[N]) collect(
 	// current length for capacity.
 	dPts := reset(sData.DataPoints, 0, s.values.Len())
 
+	perSeriesStartTimeEnabled := x.PerSeriesStartTimestamps.Enabled()
+
 	var i int
 	s.values.Range(func(_, value any) bool {
 		val := value.(*sumValue[N])
+
+		startTime := s.start
+		if perSeriesStartTimeEnabled {
+			startTime = val.startTime
+		}
 		newPt := metricdata.DataPoint[N]{
 			Attributes: val.attrs,
-			StartTime:  s.start,
+			StartTime:  startTime,
 			Time:       t,
 			Value:      val.n.load(),
 		}

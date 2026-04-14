@@ -1,46 +1,276 @@
 package workflow
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid/v2"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 // planner is responsible for constructing the Task graph held by a [Workflow].
 type planner struct {
-	tenantID string
-	graph    dag.Graph[*Task]
-	physical *physical.Plan
+	tenantID  string
+	batchSize int // batch size to wrap each task fragment with; 0 means no wrapping
+	graph     dag.Graph[*Task]
+	physical  *physical.Plan
 
 	streamWriters map[*Stream]*Task // Lookup of stream to which task writes to it
+}
+
+// cacheParams bundles cache-related configuration for workflow planning.
+type cacheParams struct {
+	enabled                 bool
+	taskCacheMaxSizeBytes   uint64
+	dataObjScanMaxSizeBytes uint64
+	compression             string
+	registry                executor.TaskCacheRegistry
+	pruneEmptyCachedTasks   bool
 }
 
 // planWorkflow partitions a physical plan into a graph of tasks.
 //
 // planWorkflow returns an error if the provided physical plan does not
 // have exactly one root node, or if the physical plan cannot be partitioned.
-func planWorkflow(tenantID string, plan *physical.Plan) (dag.Graph[*Task], error) {
+func planWorkflow(tenantID string, plan *physical.Plan, cacheOpts cacheParams, logger log.Logger) (dag.Graph[*Task], error) {
 	root, err := plan.Root()
 	if err != nil {
 		return dag.Graph[*Task]{}, err
 	}
 
-	planner := &planner{
-		tenantID: tenantID,
-		physical: plan,
+	var batchSize int
+	if b, ok := root.(*physical.Batching); ok {
+		batchSize = int(b.BatchSize)
+		// The Batching node is consumed here to extract the batch size. Advance
+		// root to its child so the Batching wrapper itself is never turned into a
+		// standalone task fragment.
+		//
+		// The planner.Process will add the batch node on top of task in the workflow.
+		if children := plan.Children(b); len(children) == 1 {
+			root = children[0]
+		}
+	}
 
+	planner := &planner{
+		tenantID:      tenantID,
+		batchSize:     batchSize,
+		physical:      plan,
 		streamWriters: make(map[*Stream]*Task),
 	}
 	if err := planner.Process(root); err != nil {
 		return dag.Graph[*Task]{}, err
 	}
 
+	for _, root := range planner.graph.Roots() {
+		if err := planner.graph.Walk(root, func(t *Task) error {
+			optimize(t)
+			return nil
+		}, dag.PostOrderWalk); err != nil {
+			return dag.Graph[*Task]{}, err
+		}
+	}
+
+	if cacheOpts.enabled {
+		if err := injectTaskCaching(tenantID, planner.graph, cacheOpts.taskCacheMaxSizeBytes, cacheOpts.compression); err != nil {
+			return dag.Graph[*Task]{}, fmt.Errorf("injecting task caching: %w", err)
+		}
+		if err := injectDataObjScanCaching(tenantID, planner.graph, cacheOpts.dataObjScanMaxSizeBytes, cacheOpts.compression); err != nil {
+			return dag.Graph[*Task]{}, fmt.Errorf("injecting DataObjScan caching: %w", err)
+		}
+		if cacheOpts.pruneEmptyCachedTasks {
+			if err := eliminateEmptyCachedTasks(planner, cacheOpts.registry, logger); err != nil {
+				return dag.Graph[*Task]{}, fmt.Errorf("eliminating empty cached tasks: %w", err)
+			}
+		}
+	}
+
 	return planner.graph, nil
+}
+
+// injectDataObjScanCaching wraps each DataObjScan node in every task fragment
+// with a Cache node (using TaskCacheDataObjScanResult), placing the cache directly
+// above the scan regardless of what operators sit on top.
+func injectDataObjScanCaching(tenantID string, graph dag.Graph[*Task], maxSizeBytes uint64, compression string) error {
+	for _, root := range graph.Roots() {
+		if err := graph.Walk(root, func(task *Task) error {
+			return physical.WrapDataObjScansWithCache(context.Background(), tenantID, task.Fragment, maxSizeBytes, compression)
+		}, dag.PreOrderWalk); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func optimize(t *Task) {
+	for _, root := range t.Fragment.Roots() {
+		optimizer := physical.NewOptimizer(t.Fragment, physical.WorkflowOptimizations(t.Fragment))
+		optimizer.Optimize(root)
+	}
+}
+
+// eliminateEmptyCachedTasks removes tasks from the workflow graph whose cached
+// result is known to be empty (zero records). A task is eliminated if either its
+// task-level cache entry or its DataObjScan-level cache entry is an empty hit,
+// since zero scan rows guarantee zero rows from any operators above.
+//
+// Cache fetch errors are non-fatal: a warning is logged and the task is left in the graph.
+func eliminateEmptyCachedTasks(p *planner, caches executor.TaskCacheRegistry, logger log.Logger) error {
+	// Walk the graph to collect tasks to eliminate before mutating.
+	// NOTE: eliminateTask cannot be called here since dag.Graph.Eliminate uses
+	// slices.DeleteFunc which zeroes the tail of the underlying slice array,
+	// corrupting the range slice captured by the walk.
+	var taskCount int
+	var toEliminate []*Task
+	for _, root := range p.graph.Roots() {
+		_ = p.graph.Walk(root, func(task *Task) error {
+			if shouldEliminateTask(task, caches, logger) {
+				toEliminate = append(toEliminate, task)
+			}
+			taskCount++
+			return nil
+		}, dag.PreOrderWalk)
+	}
+
+	var tasksRemoved int
+	for _, task := range toEliminate {
+		tasksRemoved += eliminateTask(p, task)
+	}
+
+	// Log the number of tasks removed. Note that if removed_tasks is bigger than to_eliminate
+	// then, (removed_tasks-to_eliminate) parents were removed because all their children were removed,
+	if tasksRemoved > 0 {
+		level.Debug(logger).Log("msg", "removed empty cached tasks from workflow", "removed_tasks", tasksRemoved, "total_tasks", taskCount, "to_eliminate", len(toEliminate))
+	}
+
+	return nil
+}
+
+// shouldEliminateTask returns true if any cache node in the task fragment
+// has a cached result that is empty. Either the task-level cache or any
+// DataObjScan-level cache returning empty is sufficient to eliminate the task.
+func shouldEliminateTask(task *Task, registry executor.TaskCacheRegistry, logger log.Logger) bool {
+	ctx := context.Background()
+
+	for n := range task.Fragment.Graph().Nodes() {
+		cacheNode, ok := n.(*physical.Cache)
+		if !ok {
+			continue
+		}
+		c, _, err := registry.GetForType(cacheNode.CacheName)
+		if err != nil || c == nil {
+			continue
+		}
+		hit, isEmpty, err := isCacheEntryEmpty(ctx, c, cacheNode.Key)
+		if err != nil {
+			level.Warn(logger).Log("msg", "cache fetch failed during task elimination", "cache_name", cacheNode.CacheName, "err", err)
+			return false
+		}
+		if hit && isEmpty {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isCacheEntryEmpty fetches rawKey from c and reports whether the cached entry
+// exists and encodes an empty result (zero records). The key is hashed before
+// the fetch. Returns (false, false, nil) on miss.
+func isCacheEntryEmpty(ctx context.Context, c cache.Cache, rawKey string) (hit bool, isEmpty bool, err error) {
+	found, buffs, _, err := c.Fetch(ctx, []string{cache.HashKey(rawKey)})
+	if err != nil {
+		return false, false, err
+	}
+
+	// Empty responses should be stored as empty buffers, but just in case,
+	// we will also (lazily) decode and see how may records are there
+	if len(found) == 0 {
+		return false, false, nil
+	}
+
+	dec, err := executor.NewCacheEntryDecoder(buffs[0])
+	if err != nil {
+		return false, false, err
+	}
+	return true, dec.Len() == 0, nil
+}
+
+// eliminateTask removes task from the planner graph and cleans up all stream
+// references. Each sink stream of task is removed from the Sources maps of
+// parent tasks and from planner.streamWriters. Parents that reach zero sources
+// after the removal are also eliminated.
+func eliminateTask(p *planner, task *Task) (totalTasksRemoved int) {
+	parents := p.graph.Parents(task)
+
+	for _, sinkStreams := range task.Sinks {
+		for _, stream := range sinkStreams {
+			for _, parent := range parents {
+				for node, parentStreams := range parent.Sources {
+					parent.Sources[node] = slices.DeleteFunc(parentStreams,
+						func(s *Stream) bool { return s == stream })
+					if len(parent.Sources[node]) == 0 {
+						delete(parent.Sources, node)
+					}
+				}
+			}
+			delete(p.streamWriters, stream)
+		}
+	}
+
+	p.graph.Eliminate(task)
+	eliminatedCachedTasksTotal.Inc()
+	totalTasksRemoved++
+
+	for _, parent := range parents {
+		if len(parent.Sources) == 0 {
+			// Eliminate the parent recursively so the ancestors of this
+			// task are removed if all their sources are empty as well.
+			totalTasksRemoved += eliminateTask(p, parent)
+		}
+	}
+
+	return totalTasksRemoved
+}
+
+// injectTaskCaching wraps each cacheable task fragment with a Cache node.
+// A fragment is cacheable when TaskCacheKey returns a non-empty string
+// (requires at least one DataObjScan or PointersScan and no non-cacheable nodes).
+func injectTaskCaching(tenantID string, graph dag.Graph[*Task], maxSizeBytes uint64, compression string) error {
+	for _, root := range graph.Roots() {
+		if err := graph.Walk(root, func(task *Task) error {
+			oldRoot, err := task.Fragment.Root()
+			if err != nil {
+				return err
+			}
+			newRoot, wrapped, err := physical.WrapWithCacheIfSupported(context.Background(), tenantID, task.Fragment, maxSizeBytes, compression)
+			if err != nil {
+				return err
+			}
+			if !wrapped {
+				// The task is not cacheable, so it stays as it is.
+				return nil
+			}
+
+			// Migrate Sinks from the old root to the new Cache root so the
+			// workflow executor and Sprint printer find streams at the right node.
+			if streams, ok := task.Sinks[oldRoot]; ok {
+				task.Sinks[newRoot] = streams
+				delete(task.Sinks, oldRoot)
+			}
+			return nil
+		}, dag.PreOrderWalk); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Process builds a set of tasks from a root physical plan node. Built tasks are
@@ -167,6 +397,16 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 	if !planTimeRange.IsZero() {
 		timeRange = planTimeRange
 	}
+
+	// If batching is enabled, wrap every task fragment with a Batching node so all task outputs are batched.
+	// Batching is enabled when the root of the original plan is a Batching node.
+	if p.batchSize > 0 {
+		var err error
+		if fragment, err = physical.WrapWithBatching(fragment, p.batchSize); err != nil {
+			return nil, fmt.Errorf("wrapping task fragment with batching: %w", err)
+		}
+	}
+
 	task := &Task{
 		ULID:         ulid.Make(),
 		TenantID:     p.tenantID,

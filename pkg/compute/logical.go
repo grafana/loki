@@ -15,7 +15,7 @@ import (
 // Special cases:
 //
 //   - The negation of null is null.
-func Not(alloc *memory.Allocator, input columnar.Datum) (columnar.Datum, error) {
+func Not(alloc *memory.Allocator, input columnar.Datum, _ memory.Bitmap) (columnar.Datum, error) {
 	if got, want := input.Kind(), columnar.KindBool; got != want {
 		return nil, fmt.Errorf("invalid input kind %s, expected %s", got, want)
 	}
@@ -68,8 +68,8 @@ func notArray(alloc *memory.Allocator, input *columnar.Bool) *columnar.Bool {
 // Special cases:
 //
 //   - If either side of the AND is null, the result is null.
-func And(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
-	return dispatchLogical(alloc, logicalAndKernel, left, right)
+func And(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+	return dispatchLogical(alloc, logicalAndKernel, left, right, selection)
 }
 
 // Or computes the logical OR of two input boolean datums. Or returns an error
@@ -79,11 +79,11 @@ func And(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, e
 // Special cases:
 //
 //   - If either side of the OR is null, the result is null.
-func Or(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
-	return dispatchLogical(alloc, logicalOrKernel, left, right)
+func Or(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+	return dispatchLogical(alloc, logicalOrKernel, left, right, selection)
 }
 
-func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right columnar.Datum) (columnar.Datum, error) {
+func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right columnar.Datum, _ memory.Bitmap) (columnar.Datum, error) {
 	if got, want := left.Kind(), columnar.KindBool; got != want {
 		return nil, fmt.Errorf("invalid input kind %s, expected %s", got, want)
 	} else if left.Kind() != right.Kind() {

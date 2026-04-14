@@ -21,9 +21,9 @@ There are two types of alerts in Grafana:
     These alert rules can query a wide range of backend data sources, including multiple data sources in a single alert rule. They support expression-based transformations, advanced alert conditions, images in notifications, handling of error and no data states, and more.
 - **Data-source-managed alerts:** These alert rules can only query Prometheus-based data sources such as Mimir, Loki, and Prometheus. The rules are stored in the data source.
 
-To learn more about Grafana managed alerts, you can refer to the [Alerts and IRM documentation](https://grafana.com/docs/grafana-cloud/alerting-and-irm/), or take a short Learning Journey.
+To learn more about Grafana managed alerts, you can refer to the [Alerts and IRM documentation](https://grafana.com/docs/grafana-cloud/alerting-and-irm/), or follow this Learning Path.
 
-{{< docs/learning-journeys title="Create infrastructure alerts" url="https://grafana.com/docs/learning-journeys/infrastructure-alerting/" >}}
+{{< docs/learning-paths title="Create infrastructure alerts" url="https://grafana.com/docs/learning-paths/infrastructure-alerting/" >}}
 
 ## Loki alerting and recording rules
 

@@ -26,12 +26,18 @@ func Concat(alloc *memory.Allocator, in []Array) (Array, error) {
 		return concatNull(alloc, in)
 	case KindBool:
 		return concatBool(alloc, in)
+	case KindInt32:
+		return concatNumber[int32](alloc, in)
 	case KindInt64:
 		return concatNumber[int64](alloc, in)
+	case KindUint32:
+		return concatNumber[uint32](alloc, in)
 	case KindUint64:
 		return concatNumber[uint64](alloc, in)
 	case KindUTF8:
 		return concatUTF8(alloc, in)
+	case KindStruct:
+		return concatStruct(alloc, in)
 	default:
 		return nil, fmt.Errorf("unsupported array kind %s", kind)
 	}
@@ -114,12 +120,64 @@ func concatNumber[T Numeric](alloc *memory.Allocator, in []Array) (Array, error)
 	return NewNumber[T](values.Data(), validity), nil
 }
 
+func concatStruct(alloc *memory.Allocator, in []Array) (Array, error) {
+	first := in[0].(*Struct)
+	numFields := first.NumFields()
+
+	for _, arr := range in[1:] {
+		s := arr.(*Struct)
+		if s.NumFields() != numFields {
+			return nil, fmt.Errorf("concat struct: field count mismatch: %d != %d", s.NumFields(), numFields)
+		}
+		for i := range numFields {
+			if want, got := first.Schema().Column(i).Name, s.Schema().Column(i).Name; want != got {
+				return nil, fmt.Errorf("concat struct: field %d name mismatch: %q != %q", i, want, got)
+			}
+		}
+	}
+	totalLen := getTotalLen(in)
+
+	var (
+		// fields is the final concatenated array for each field.
+		fields = make([]Array, 0, numFields)
+
+		// buf is a temporary buffer used to hold individual field arrays for
+		// concatenation.
+		buf = make([]Array, 0, len(in))
+	)
+
+	for i := range numFields {
+		buf = buf[:0]
+		for _, arr := range in {
+			buf = append(buf, arr.(*Struct).Field(i))
+		}
+
+		res, err := Concat(alloc, buf)
+		if err != nil {
+			return nil, fmt.Errorf("concat struct field %d: %w", i, err)
+		}
+		fields = append(fields, res)
+	}
+
+	validity := memory.NewBitmap(alloc, totalLen)
+	for _, arr := range in {
+		s := arr.(*Struct)
+		appendValidityBitmap(&validity, s)
+	}
+	cleanValidity(&validity)
+
+	return NewStruct(first.Schema(), fields, totalLen, validity), nil
+}
+
+// concatUTF8 concatenates UTF8 arrays, normalizing offsets to be zero-based.
 func concatUTF8(alloc *memory.Allocator, in []Array) (Array, error) {
 	totalLen := getTotalLen(in)
 
 	var totalDataLen int
 	for _, arr := range in {
-		totalDataLen += len(arr.(*UTF8).Data())
+		// NOTE(rfratto): This is more accurate than len(arr.(*UTF8).Data()),
+		// which doesn't account arr being a slice.
+		totalDataLen += arr.(*UTF8).DataLen()
 	}
 
 	var (
@@ -144,12 +202,25 @@ func concatUTF8(alloc *memory.Allocator, in []Array) (Array, error) {
 
 		appendValidityBitmap(&validity, arr)
 
-		utf8Array := arr.(*UTF8)
-		data.Append(utf8Array.Data()...)
+		var (
+			utf8Array   = arr.(*UTF8)
+			fullArrData = utf8Array.Data()
+			arrOffsets  = utf8Array.Offsets()
 
-		// Appending arrOffsets requires more caution, since all arrOffsets need to be
-		// adjusted based on the most recent offset.
-		arrOffsets := utf8Array.Offsets()
+			// arrData holds the subset of data used by arrOffsets.
+			//
+			// This is smaller than fullArrData when arr is a slice, where
+			// arrOffsets points to a subset of data.
+			//
+			// This reduces the amount of data we write, but is also needed for
+			// correctness, as we need everything in the final data buffer to be
+			// contiguous with no gaps.
+			arrData = fullArrData[arrOffsets[0]:arrOffsets[len(arrOffsets)-1]]
+		)
+
+		// We're going to normalize offsets and data as we write, so we need to
+		// shrink arrData to what's actually used.
+		data.Append(arrData...)
 
 		// We don't want to append the first offset from an array; it's always
 		// the last offset we already added. Appending the first offset would

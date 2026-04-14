@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/klauspost/compress/zstd"
@@ -40,6 +41,7 @@ const (
 
 	OTLPSeverityNumber = "severity_number"
 	OTLPSeverityText   = "severity_text"
+	OTLPEventName      = "event_name"
 
 	messageSizeLargerErrFmt = "%w than max (%d vs %d)"
 )
@@ -242,6 +244,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		}
 		labelsStr := streamLabels.String()
 
+		if len(labelsStr) > maxStreamLabelsSize {
+			return nil, fmt.Errorf("%w: stream labels size %s exceeds limit of %s", ErrRequestBodyTooLarge, humanize.Bytes(uint64(len(labelsStr))), humanize.Bytes(maxStreamLabelsSize))
+		}
+
 		lbs := modelLabelsSetToLabelsList(streamLabels)
 		totalBytesReceived := int64(0)
 
@@ -370,6 +376,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					}
 
 					entryLabelsStr = combinedLabels.String()
+					if len(entryLabelsStr) > maxStreamLabelsSize {
+						return nil, fmt.Errorf("%w: stream labels size %s exceeds limit of %s", ErrRequestBodyTooLarge, humanize.Bytes(uint64(len(entryLabelsStr))), humanize.Bytes(maxStreamLabelsSize))
+					}
 					entryLbs = modelLabelsSetToLabelsList(combinedLabels)
 
 					if _, ok := pushRequestsByStream[entryLabelsStr]; !ok {
@@ -474,13 +483,20 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNameDiscovery bool, pushedLabels model.LabelSet) (model.LabelSet, push.Entry, error) {
 	// copy log attributes and all the fields from log(except log.Body) to structured metadata
 	logAttrs := log.Attributes()
-	structuredMetadata := make(push.LabelsAdapter, 0, logAttrs.Len()+7)
+	structuredMetadata := make(push.LabelsAdapter, 0, logAttrs.Len()+8)
 	logLabels := make(model.LabelSet)
 
 	var rangeErr error
 	logAttrs.Range(func(k string, v pcommon.Value) bool {
 		action := otlpConfig.ActionForLogAttribute(k)
 		if action == Drop {
+			return true
+		}
+
+		// If the dedicated OTLP EventName field is set, skip any log attribute
+		// also named event_name to avoid duplicate entries. The first-class field
+		// takes precedence over the attribute.
+		if k == OTLPEventName && log.EventName() != "" {
 			return true
 		}
 
@@ -561,6 +577,12 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
 			Name:  "span_id",
 			Value: hex.EncodeToString(spanID[:]),
+		})
+	}
+	if eventName := log.EventName(); eventName != "" {
+		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
+			Name:  OTLPEventName,
+			Value: eventName,
 		})
 	}
 

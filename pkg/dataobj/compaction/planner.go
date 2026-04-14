@@ -57,7 +57,7 @@ type BucketIndexStreamReader struct {
 
 // ReadStreams reads stream metadata from an index object in the bucket.
 func (r *BucketIndexStreamReader) ReadStreams(ctx context.Context, indexPath, tenant string, windowStart, windowEnd time.Time) (*IndexStreamResult, error) {
-	obj, err := dataobj.FromBucket(ctx, r.bucket, indexPath)
+	obj, err := dataobj.FromBucket(ctx, r.bucket, indexPath, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open index object %s: %w", indexPath, err)
 	}

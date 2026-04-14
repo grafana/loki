@@ -18,13 +18,11 @@ package bigtable
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 
 	"google.golang.org/api/option"
+	"google.golang.org/api/option/internaloption"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
 )
@@ -34,17 +32,16 @@ const (
 	directPathIPV4Prefix = "34.126"
 )
 
-// This function attempts to establish a connection to the Bigtable instance using
-// Direct Access. It then checks if the underlying
+// CheckDirectAccessSupported attempts to establish a connection to the Bigtable instance
+// using Direct Access by enforcing internal gRPC options. It then checks if the underlying
 // gRPC connection is indeed using a DirectPath IP address.
 //
 // Prerequisites for successful Direct Access connectivity:
-// 1. The environment variable `CBT_ENABLE_DIRECTPATH` must be set to "true".
-//  2. The code must be running in a Google Cloud environment (e.g., GCE VM, GKE)
+//  1. The code must be running in a Google Cloud environment (e.g., GCE VM, GKE)
 //     that is properly configured for Direct Access. This includes ensuring
 //     that your routes and firewall rules allow egress traffic to the
 //     Direct Access IP ranges: 34.126.0.0/18 and 2001:4860:8040::/42.
-//  3. The service account must have the necessary IAM permissions.
+//  2. The service account must have the necessary IAM permissions.
 //
 // Parameters:
 //   - ctx: The context for the operation.
@@ -56,9 +53,7 @@ const (
 //
 // Returns:
 //   - bool: True if DirectPath is successfully used for the connection, False otherwise.
-//   - error: An error if the check could not be completed, or if DirectPath is not
-//            enabled/configured. Specific error causes include:
-//            - "CBT_ENABLE_DIRECTPATH=true is not set in env var": The required environment variable is missing.
+//   - error: An error if the check could not be completed. Specific error causes include:
 //            - Failure to create the Bigtable client (e.g., invalid project/instance).
 //            - Failure during the PingAndWarm call (e.g., network issue, permissions).
 //
@@ -66,19 +61,6 @@ const (
 // CheckDirectAccessSupported verifies if Direct Access connectivity is enabled, configured,
 // and actively being used for the given Cloud Bigtable instance.
 func CheckDirectAccessSupported(ctx context.Context, project, instance, appProfile string, opts ...option.ClientOption) (bool, error) {
-	// Check if env variable is set to true
-	// Inside the function
-	envVal := os.Getenv("CBT_ENABLE_DIRECTPATH")
-	if envVal == "" {
-		return false, errors.New("CBT_ENABLE_DIRECTPATH environment variable is not set")
-	}
-	isEnvEnabled, err := strconv.ParseBool(envVal)
-	if err != nil {
-		return false, fmt.Errorf("invalid value for CBT_ENABLE_DIRECTPATH: %s, must be true or false: %w", envVal, err)
-	}
-	if !isEnvEnabled {
-		return false, errors.New("CBT_ENABLE_DIRECTPATH is not set to true")
-	}
 	isDirectPathUsed := false
 	// Define the unary client interceptor
 	interceptor := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, callOpts ...grpc.CallOption) error {
@@ -107,6 +89,14 @@ func CheckDirectAccessSupported(ctx context.Context, project, instance, appProfi
 	allOpts := append([]option.ClientOption{
 		option.WithGRPCDialOption(grpc.WithUnaryInterceptor(interceptor)),
 	}, opts...)
+
+	// Force DirectPath and ALTS using internal options
+	allOpts = append(allOpts,
+		internaloption.EnableDirectPath(true),
+		internaloption.EnableDirectPathXds(),
+		internaloption.AllowHardBoundTokens("ALTS"),
+		internaloption.AllowNonDefaultServiceAccount(true),
+	)
 
 	config := ClientConfig{
 		AppProfile:      appProfile,

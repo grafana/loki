@@ -139,6 +139,28 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			}, nil,
 		},
 		{
+			"non-matching hash does not prevent subsequent pattern from matching",
+			defaultQuery, []*validation.BlockedQuery{
+				{
+					Hash: util.HashedQuery(defaultQuery) + 1, // does not match
+				},
+				{
+					Pattern: defaultQuery, // should still be evaluated
+				},
+			}, logqlmodel.ErrBlocked,
+		},
+		{
+			"second hash in list matches when first does not",
+			defaultQuery, []*validation.BlockedQuery{
+				{
+					Hash: util.HashedQuery(defaultQuery) + 1, // does not match
+				},
+				{
+					Hash: util.HashedQuery(defaultQuery), // matches
+				},
+			}, logqlmodel.ErrBlocked,
+		},
+		{
 			"no blocked queries",
 			defaultQuery, []*validation.BlockedQuery{}, nil,
 		},

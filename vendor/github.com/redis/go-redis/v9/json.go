@@ -68,8 +68,9 @@ var _ Cmder = (*JSONCmd)(nil)
 func newJSONCmd(ctx context.Context, args ...interface{}) *JSONCmd {
 	return &JSONCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeJSON,
 		},
 	}
 }
@@ -165,6 +166,14 @@ func (cmd *JSONCmd) readReply(rd *proto.Reader) error {
 	return nil
 }
 
+func (cmd *JSONCmd) Clone() Cmder {
+	return &JSONCmd{
+		baseCmd:  cmd.cloneBaseCmd(),
+		val:      cmd.val,
+		expanded: cmd.expanded, // interface{} can be shared as it should be immutable after parsing
+	}
+}
+
 // -------------------------------------------
 
 type JSONSliceCmd struct {
@@ -175,8 +184,9 @@ type JSONSliceCmd struct {
 func NewJSONSliceCmd(ctx context.Context, args ...interface{}) *JSONSliceCmd {
 	return &JSONSliceCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeJSONSlice,
 		},
 	}
 }
@@ -233,6 +243,18 @@ func (cmd *JSONSliceCmd) readReply(rd *proto.Reader) error {
 	return nil
 }
 
+func (cmd *JSONSliceCmd) Clone() Cmder {
+	var val []interface{}
+	if cmd.val != nil {
+		val = make([]interface{}, len(cmd.val))
+		copy(val, cmd.val)
+	}
+	return &JSONSliceCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     val,
+	}
+}
+
 /*******************************************************************************
 *
 * IntPointerSliceCmd
@@ -249,8 +271,9 @@ type IntPointerSliceCmd struct {
 func NewIntPointerSliceCmd(ctx context.Context, args ...interface{}) *IntPointerSliceCmd {
 	return &IntPointerSliceCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeIntPointerSlice,
 		},
 	}
 }
@@ -288,6 +311,18 @@ func (cmd *IntPointerSliceCmd) readReply(rd *proto.Reader) error {
 	}
 
 	return nil
+}
+
+func (cmd *IntPointerSliceCmd) Clone() Cmder {
+	var val []*int64
+	if cmd.val != nil {
+		val = make([]*int64, len(cmd.val))
+		copy(val, cmd.val)
+	}
+	return &IntPointerSliceCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     val,
+	}
 }
 
 //------------------------------------------------------------------------------

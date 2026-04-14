@@ -112,7 +112,7 @@ func (p *defaultS3ExpressCredentialsProvider) Retrieve(ctx context.Context, buck
 }
 
 func (p *defaultS3ExpressCredentialsProvider) doChanRetrieve(ctx context.Context, key cacheKey) <-chan singleflight.Result {
-	return p.sf.DoChan(key.Slug(), func() (interface{}, error) {
+	return p.sf.DoChan(key.Slug(), func() (any, error) {
 		return p.retrieve(ctx, key)
 	})
 }
