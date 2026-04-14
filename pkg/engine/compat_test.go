@@ -639,6 +639,121 @@ func TestStreamsResultBuilder(t *testing.T) {
 		}
 		require.Equal(t, expected, streams)
 	})
+
+	// Regression test: entries with different __error__ values must NOT be split into separate streams.
+	//
+	// BUG: When categorizeLabels=false, the new engine was incorrectly adding __error__ and
+	// __error_details__ to stream labels (via lbsBuilder). This caused entries with different
+	// error messages to be placed in separate streams.
+	//
+	// Example: A query like `{app="foo"} | logfmt` parsing logs with invalid logfmt syntax
+	// would produce errors like "logfmt syntax error at pos 74" and "logfmt syntax error at pos 75".
+	// The old engine correctly keeps all entries in one stream {app="foo"}, but the buggy new
+	// engine would create separate streams:
+	//   - {app="foo", __error__="LogfmtParserErr", __error_details__="...pos 74"}
+	//   - {app="foo", __error__="LogfmtParserErr", __error_details__="...pos 75"}
+	//
+	// The fix ensures error labels are only added to parsed labels (per-entry), never to stream labels.
+	t.Run("regression: error labels must not cause stream splitting", func(t *testing.T) {
+		colTs := semconv.ColumnIdentTimestamp
+		colMsg := semconv.ColumnIdentMessage
+		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
+		colError := semconv.NewIdentifier(types.ColumnNameError, types.ColumnTypeGenerated, types.Loki.String)
+		colErrorDetails := semconv.NewIdentifier(types.ColumnNameErrorDetails, types.ColumnTypeGenerated, types.Loki.String)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colTs, false),
+				semconv.FieldFromIdent(colMsg, false),
+				semconv.FieldFromIdent(colEnv, false),
+				semconv.FieldFromIdent(colError, true),
+				semconv.FieldFromIdent(colErrorDetails, true),
+			},
+			nil,
+		)
+
+		rows := arrowtest.Rows{
+			// Entry 1: no error (successfully parsed)
+			{
+				colTs.FQN():           time.Unix(0, 1620000000000000001).UTC(),
+				colMsg.FQN():          "level=info msg=success",
+				colEnv.FQN():          "prod",
+				colError.FQN():        nil,
+				colErrorDetails.FQN(): nil,
+			},
+			// Entry 2: logfmt parse error at position 74
+			{
+				colTs.FQN():           time.Unix(0, 1620000000000000002).UTC(),
+				colMsg.FQN():          "invalid {json broken at pos 74",
+				colEnv.FQN():          "prod",
+				colError.FQN():        "LogfmtParserErr",
+				colErrorDetails.FQN(): "logfmt syntax error at pos 74",
+			},
+			// Entry 3: logfmt parse error at position 75 (DIFFERENT error details)
+			// BUG: This entry was incorrectly placed in a separate stream due to different __error_details__
+			{
+				colTs.FQN():           time.Unix(0, 1620000000000000003).UTC(),
+				colMsg.FQN():          "invalid {json broken at pos 75",
+				colEnv.FQN():          "prod",
+				colError.FQN():        "LogfmtParserErr",
+				colErrorDetails.FQN(): "logfmt syntax error at pos 75",
+			},
+		}
+
+		record := rows.Record(memory.DefaultAllocator, schema)
+		defer record.Release()
+
+		// categorizeLabels=false is the default API behavior where parsed labels
+		// are merged into stream labels. Error labels must be excluded from this.
+		builder := newStreamsResultBuilder(logproto.FORWARD, false)
+		builder.CollectRecord(record)
+
+		require.Equal(t, 3, builder.Len(), "should have 3 entries")
+
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
+		streams := result.Data.(logqlmodel.Streams)
+
+		// CRITICAL ASSERTION: All 3 entries must be in ONE stream.
+		// Before the fix, this would fail with len(streams) == 3 (each entry in its own stream).
+		require.Equal(t, 1, len(streams), "BUG: error labels caused stream splitting - expected 1 stream, got %d", len(streams))
+		require.Equal(t, 3, len(streams[0].Entries), "all 3 entries should be in the same stream")
+
+		// Verify stream labels do NOT contain error labels
+		streamLabels := streams[0].Labels
+		require.NotContains(t, streamLabels, types.ColumnNameError,
+			"stream labels must not contain __error__")
+		require.NotContains(t, streamLabels, types.ColumnNameErrorDetails,
+			"stream labels must not contain __error_details__")
+
+		// Verify error labels ARE present in the parsed labels of entries that have errors
+		entry2 := streams[0].Entries[1] // Second entry has error at pos 74
+		entry3 := streams[0].Entries[2] // Third entry has error at pos 75
+
+		// Helper to find a label in parsed labels
+		findParsedLabel := func(entry logproto.Entry, name string) (string, bool) {
+			for _, l := range entry.Parsed {
+				if l.Name == name {
+					return l.Value, true
+				}
+			}
+			return "", false
+		}
+
+		// Entry 2 should have error at pos 74
+		errVal, found := findParsedLabel(entry2, types.ColumnNameError)
+		require.True(t, found, "entry 2 should have __error__ in parsed labels")
+		require.Equal(t, "LogfmtParserErr", errVal)
+
+		errDetails, found := findParsedLabel(entry2, types.ColumnNameErrorDetails)
+		require.True(t, found, "entry 2 should have __error_details__ in parsed labels")
+		require.Equal(t, "logfmt syntax error at pos 74", errDetails)
+
+		// Entry 3 should have error at pos 75 (different from entry 2)
+		errDetails3, found := findParsedLabel(entry3, types.ColumnNameErrorDetails)
+		require.True(t, found, "entry 3 should have __error_details__ in parsed labels")
+		require.Equal(t, "logfmt syntax error at pos 75", errDetails3)
+	})
 }
 
 func TestVectorResultBuilder(t *testing.T) {

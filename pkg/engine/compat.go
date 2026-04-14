@@ -149,7 +149,9 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 				}
 
 				b.rowBuilders[rowIdx].parsedBuilder.Set(shortName, parsedVal)
-				if !b.categorizeLabels {
+				// Error labels should never be included in stream labels to match classic Loki engine behavior.
+				// They are only included in the parsed labels of each entry.
+				if !b.categorizeLabels && !isErrorColumn {
 					b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, parsedVal)
 				}
 				if b.rowBuilders[rowIdx].metadataBuilder.Get(shortName) != "" {
