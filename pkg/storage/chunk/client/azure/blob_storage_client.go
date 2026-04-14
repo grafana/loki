@@ -704,17 +704,6 @@ func parseConnectionString(connectionString string) (ParsedConnectionString, err
 		return ParsedConnectionString{}, errors.New("connection string missing AccountName")
 	}
 
-	accountKey, ok := connStrMap["AccountKey"]
-	if !ok {
-		sharedAccessSignature, ok := connStrMap["SharedAccessSignature"]
-		if !ok {
-			return ParsedConnectionString{}, errors.New("connection string missing AccountKey and SharedAccessSignature")
-		}
-		return ParsedConnectionString{
-			ServiceURL: fmt.Sprintf("%v://%v.blob.%v/?%v", defaultScheme, accountName, defaultSuffix, sharedAccessSignature),
-		}, nil
-	}
-
 	protocol, ok := connStrMap["DefaultEndpointsProtocol"]
 	if !ok {
 		protocol = defaultScheme
@@ -723,6 +712,19 @@ func parseConnectionString(connectionString string) (ParsedConnectionString, err
 	suffix, ok := connStrMap["EndpointSuffix"]
 	if !ok {
 		suffix = defaultSuffix
+	}
+
+	accountKey, ok := connStrMap["AccountKey"]
+	if !ok {
+		sharedAccessSignature, ok := connStrMap["SharedAccessSignature"]
+		if !ok {
+			return ParsedConnectionString{}, errors.New("connection string missing AccountKey and SharedAccessSignature")
+		}
+		// Use protocol and suffix from the connection string (not hardcoded defaults)
+		// so that sovereign cloud / custom endpoint configurations are respected.
+		return ParsedConnectionString{
+			ServiceURL: fmt.Sprintf("%v://%v.blob.%v/?%v", protocol, accountName, suffix, sharedAccessSignature),
+		}, nil
 	}
 
 	if blobEndpoint, ok := connStrMap["BlobEndpoint"]; ok {
