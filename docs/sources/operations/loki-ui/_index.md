@@ -35,7 +35,7 @@ For Loki Helm users discoverability of the UI service needs to be enabled in the
 ```yaml
 loki:
   ui:
-   enabled: true
+    enabled: true
 ```
 
 ## Accessing the Loki Deployment UI

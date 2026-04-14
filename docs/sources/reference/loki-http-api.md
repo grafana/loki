@@ -1376,32 +1376,32 @@ List all rules configured for the authenticated tenant. This endpoint returns a 
   interval: <duration;optional>
   rules:
   - alert: <string>
-      expr: <string>
-      for: <duration>
-      annotations:
+    expr: <string>
+    for: <duration>
+    annotations:
       <annotation_name>: <string>
-      labels:
+    labels:
       <label_name>: <string>
 - name: <string>
   interval: <duration;optional>
   rules:
   - alert: <string>
-      expr: <string>
-      for: <duration>
-      annotations:
+    expr: <string>
+    for: <duration>
+    annotations:
       <annotation_name>: <string>
-      labels:
+    labels:
       <label_name>: <string>
 <namespace2>:
 - name: <string>
   interval: <duration;optional>
   rules:
   - alert: <string>
-      expr: <string>
-      for: <duration>
-      annotations:
+    expr: <string>
+    for: <duration>
+    annotations:
       <annotation_name>: <string>
-      labels:
+    labels:
       <label_name>: <string>
 ```
 

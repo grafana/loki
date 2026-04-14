@@ -197,7 +197,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 			} else {
 				// Gouping by a label set. Take only labels from that set.
 				for _, columnExpr := range v.grouping.Columns {
-					vec, err := v.evaluator.eval(columnExpr, record)
+					vec, err := v.evaluator.evalForGrouping(columnExpr, record)
 					if err != nil {
 						return nil, err
 					}
