@@ -521,17 +521,24 @@ func (b *BlobStorage) servicePrincipalTokenFromFederatedToken(resource string, n
 	activeDirectoryEndpoint := b.cfg.ActiveDirectoryEndpoint
 
 	if activeDirectoryEndpoint == "" {
-		environmentName := azurePublicCloud
-		if b.cfg.Environment != azureGlobal {
-			environmentName = b.cfg.Environment
-		}
+		// Respect AZURE_AUTHORITY_HOST injected by the Azure Workload Identity
+		// webhook (e.g. for sovereign clouds like Azure Government) before
+		// falling back to environment-name resolution.
+		if h := os.Getenv("AZURE_AUTHORITY_HOST"); h != "" {
+			activeDirectoryEndpoint = h
+		} else {
+			environmentName := azurePublicCloud
+			if b.cfg.Environment != azureGlobal {
+				environmentName = b.cfg.Environment
+			}
 
-		// Azure SDK does NOT ship with endpoints for certain environments, e.g. IL6
-		env, err := azure.EnvironmentFromName(environmentName)
-		if err != nil {
-			return nil, err
+			// Azure SDK does NOT ship with endpoints for certain environments, e.g. IL6
+			env, err := azure.EnvironmentFromName(environmentName)
+			if err != nil {
+				return nil, err
+			}
+			activeDirectoryEndpoint = env.ActiveDirectoryEndpoint
 		}
-		activeDirectoryEndpoint = env.ActiveDirectoryEndpoint
 	}
 
 	azClientID := os.Getenv("AZURE_CLIENT_ID")
