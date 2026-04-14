@@ -17,7 +17,7 @@ type DiscoverEndpointOptions struct {
 
 	// EndpointResolverUsedForDiscovery is the endpoint resolver used to
 	// resolve an endpoint for discovery api call.
-	EndpointResolverUsedForDiscovery interface{}
+	EndpointResolverUsedForDiscovery any
 
 	// DisableHTTPS will disable tls for endpoint discovery call and
 	// subsequent discovered endpoint if service did not return an

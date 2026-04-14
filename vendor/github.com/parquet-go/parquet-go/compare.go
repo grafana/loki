@@ -2,9 +2,9 @@ package parquet
 
 import (
 	"encoding/binary"
-	"sync"
 
 	"github.com/parquet-go/parquet-go/deprecated"
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 // CompareDescending constructs a comparison function which inverses the order
@@ -259,7 +259,7 @@ func compareRowsFuncOfColumnIndexes(leafColumns []leafColumn, sortingColumns []S
 	}
 }
 
-var columnPool = &sync.Pool{New: func() any { return make([][2]int32, 0, 128) }}
+var columnPool memory.Pool[[][2]int32]
 
 //go:noinline
 func compareRowsFuncOfColumnValues(leafColumns []leafColumn, sortingColumns []SortingColumn) func(Row, Row) int {
@@ -292,14 +292,10 @@ func compareRowsFuncOfColumnValues(leafColumns []leafColumn, sortingColumns []So
 	}
 
 	return func(row1, row2 Row) int {
-		columns1 := columnPool.Get().([][2]int32)
-		columns2 := columnPool.Get().([][2]int32)
-		defer func() {
-			columns1 = columns1[:0]
-			columns2 = columns2[:0]
-			columnPool.Put(columns1)
-			columnPool.Put(columns2)
-		}()
+		columns1 := columnPool.Get(compareColumnNew, compareColumnReset)
+		columns2 := columnPool.Get(compareColumnNew, compareColumnReset)
+		defer columnPool.Put(columns1)
+		defer columnPool.Put(columns2)
 
 		i1 := 0
 		i2 := 0
@@ -316,16 +312,16 @@ func compareRowsFuncOfColumnValues(leafColumns []leafColumn, sortingColumns []So
 				j2++
 			}
 
-			columns1 = append(columns1, [2]int32{int32(i1), int32(j1)})
-			columns2 = append(columns2, [2]int32{int32(i2), int32(j2)})
+			*columns1 = append(*columns1, [2]int32{int32(i1), int32(j1)})
+			*columns2 = append(*columns2, [2]int32{int32(i2), int32(j2)})
 			i1 = j1
 			i2 = j2
 		}
 
 		for i, compare := range compareFuncs {
 			columnIndex := columnIndexes[i]
-			offsets1 := columns1[columnIndex]
-			offsets2 := columns2[columnIndex]
+			offsets1 := (*columns1)[columnIndex]
+			offsets2 := (*columns2)[columnIndex]
 			values1 := row1[offsets1[0]:offsets1[1]:offsets1[1]]
 			values2 := row2[offsets2[0]:offsets2[1]:offsets2[1]]
 			i1 := 0
@@ -348,4 +344,13 @@ func compareRowsFuncOfColumnValues(leafColumns []leafColumn, sortingColumns []So
 		}
 		return 0
 	}
+}
+
+func compareColumnNew() *[][2]int32 {
+	s := make([][2]int32, 0, 128)
+	return &s
+}
+
+func compareColumnReset(c *[][2]int32) {
+	*c = (*c)[:0]
 }

@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//	http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package swag
 
@@ -33,17 +22,17 @@ type JSONMapItem = jsonutils.JSONMapItem
 // WriteJSON writes json data.
 //
 // Deprecated: use [jsonutils.WriteJSON] instead.
-func WriteJSON(data interface{}) ([]byte, error) { return jsonutils.WriteJSON(data) }
+func WriteJSON(data any) ([]byte, error) { return jsonutils.WriteJSON(data) }
 
 // ReadJSON reads json data.
 //
 // Deprecated: use [jsonutils.ReadJSON] instead.
-func ReadJSON(data []byte, value interface{}) error { return jsonutils.ReadJSON(data, value) }
+func ReadJSON(data []byte, value any) error { return jsonutils.ReadJSON(data, value) }
 
 // DynamicJSONToStruct converts an untyped JSON structure into a target data type.
 //
 // Deprecated: use [jsonutils.FromDynamicJSON] instead.
-func DynamicJSONToStruct(data interface{}, target interface{}) error {
+func DynamicJSONToStruct(data any, target any) error {
 	return jsonutils.FromDynamicJSON(data, target)
 }
 
@@ -57,8 +46,8 @@ func ConcatJSON(blobs ...[]byte) []byte { return jsonutils.ConcatJSON(blobs...) 
 // It is the same as [FromDynamicJSON], but doesn't check for errors.
 //
 // Deprecated: this function is a misnomer and is unsafe. Use [jsonutils.FromDynamicJSON] instead.
-func ToDynamicJSON(value interface{}) interface{} {
-	var res interface{}
+func ToDynamicJSON(value any) any {
+	var res any
 	if err := FromDynamicJSON(value, &res); err != nil {
 		log.Println(err)
 	}
@@ -68,9 +57,9 @@ func ToDynamicJSON(value interface{}) interface{} {
 
 // FromDynamicJSON turns a go value into a properly JSON typed structure.
 //
-// "Dynamic JSON" refers to what you get when unmarshaling JSON into an untyped interface{},
-// i.e. objects are represented by map[string]interface{}, arrays by []interface{}, and all
-// scalar values are interface{}.
+// "Dynamic JSON" refers to what you get when unmarshaling JSON into an untyped any,
+// i.e. objects are represented by map[string]any, arrays by []any, and all
+// scalar values are any.
 //
 // Deprecated: use [jsonutils.FromDynamicJSON] instead.
-func FromDynamicJSON(data, target interface{}) error { return jsonutils.FromDynamicJSON(data, target) }
+func FromDynamicJSON(data, target any) error { return jsonutils.FromDynamicJSON(data, target) }

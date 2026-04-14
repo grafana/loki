@@ -13,12 +13,11 @@ import (
 
 func NewScalar(value types.Literal, rows int) arrow.Array {
 	builder := array.NewBuilder(memory.DefaultAllocator, value.Type().ArrowType())
+	builder.Reserve(rows)
 
 	switch builder := builder.(type) {
 	case *array.NullBuilder:
-		for range rows {
-			builder.AppendNull()
-		}
+		builder.AppendNulls(rows)
 	case *array.BooleanBuilder:
 		value := value.Any().(bool)
 		for range rows {
@@ -70,6 +69,16 @@ func NewScalar(value types.Literal, rows int) arrow.Array {
 	return builder.NewArray()
 }
 
+// newNullStringArray returns a string Arrow array of length rows with all values null.
+func newNullStringArray(rows int) arrow.Array {
+	b := array.NewStringBuilder(memory.DefaultAllocator)
+	b.Reserve(rows)
+	for range rows {
+		b.AppendNull()
+	}
+	return b.NewArray()
+}
+
 func NewCoalesce(columns []*columnWithType) arrow.Array {
 	if len(columns) == 0 {
 		return nil
@@ -85,6 +94,7 @@ func NewCoalesce(columns []*columnWithType) arrow.Array {
 
 	// Only string columns are supported
 	builder := array.NewBuilder(memory.DefaultAllocator, columns[0].col.DataType()).(*array.StringBuilder)
+	builder.Reserve(columns[0].col.Len())
 	for i := 0; i < columns[0].col.Len(); i++ {
 		val, isNull := firstNotNullValue(i, columns)
 		if isNull {

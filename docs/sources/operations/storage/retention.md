@@ -72,20 +72,20 @@ compactor:
   retention_delete_worker_count: 150
   delete_request_store: gcs
 schema_config:
-    configs:
-      - from: "2020-07-31"
-        index:
-            period: 24h
-            prefix: index_
-        object_store: gcs
-        schema: v13
-        store: tsdb
+  configs:
+    - from: "2020-07-31"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: gcs
+      schema: v13
+      store: tsdb
 storage_config:
-    tsdb_shipper:
-        active_index_directory: /data/index
-        cache_location: /data/index_cache
-    gcs:
-        bucket_name: loki
+  tsdb_shipper:
+    active_index_directory: /data/index
+    cache_location: /data/index_cache
+  gcs:
+    bucket_name: loki
 ```
 
 {{< admonition type="note" >}}
@@ -161,7 +161,7 @@ Retention period for a given stream is decided based on the first match in this 
 2. If multiple global `retention_stream` selectors match the stream, retention period with the highest priority is picked. This value is not considered if per-tenant `retention_stream` is set.
 3. If a per-tenant `retention_period` is specified, it will be applied.
 4. The global `retention_period` will be applied if none of the above match.
-5. If no global `retention_period` is specified, the default value of `744h` (30days) retention is used.
+5. If no global `retention_period` is specified, the default value of `0s` is used, which means logs are kept indefinitely.
 
 {{< admonition type="note" >}}
 The larger the priority value, the higher the priority.
@@ -240,13 +240,13 @@ Example configuration with GCS with a 28 day retention:
 ```yaml
 schema_config:
   configs:
-  - from: 2018-04-15
-    store: tsdb
-    object_store: gcs
-    schema: v13
-    index:
-      prefix: loki_index_
-      period: 24h
+    - from: 2018-04-15
+      store: tsdb
+      object_store: gcs
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
 
 storage_config:
   tsdb_shipper:

@@ -1,4 +1,4 @@
-// Copyright 2024 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -23,6 +23,9 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 )
+
+// ImplementationName is the name of the labels implementation.
+const ImplementationName = "dedupelabels"
 
 // Labels is implemented by a SymbolTable and string holding name/value
 // pairs encoded as indexes into the table in varint encoding.
@@ -160,7 +163,7 @@ func (ls Labels) Bytes(buf []byte) []byte {
 
 // IsZero implements yaml.IsZeroer - if we don't have this then 'omitempty' fields are always omitted.
 func (ls Labels) IsZero() bool {
-	return len(ls.data) == 0
+	return ls.data == ""
 }
 
 // MatchLabels returns a subset of Labels that matches/does not match with the provided label names based on the 'on' boolean.
@@ -513,7 +516,7 @@ func (ls *Labels) CopyFrom(b Labels) {
 
 // IsEmpty returns true if ls represents an empty set of labels.
 func (ls Labels) IsEmpty() bool {
-	return len(ls.data) == 0
+	return ls.data == ""
 }
 
 // Len returns the number of labels; it is relatively slow.

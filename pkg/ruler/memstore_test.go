@@ -155,7 +155,7 @@ func TestMemStoreStopBeforeStart(t *testing.T) {
 		done <- struct{}{}
 	}()
 	select {
-	case <-time.After(time.Millisecond):
+	case <-time.After(100 * time.Millisecond):
 		t.FailNow()
 	case <-done:
 	}

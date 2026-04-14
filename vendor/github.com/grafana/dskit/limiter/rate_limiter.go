@@ -66,6 +66,21 @@ func (l *RateLimiter) Burst(now time.Time, tenantID string) int {
 	return l.getTenantLimiter(now, tenantID).Burst()
 }
 
+// RemoveStaleEntries removes entries that have not been accessed since
+// the given cutoff time and returns the number of removed entries.
+func (l *RateLimiter) RemoveStaleEntries(cutoff time.Time) int {
+	l.tenantsLock.Lock()
+	defer l.tenantsLock.Unlock()
+	removed := 0
+	for tenantID, entry := range l.tenants {
+		if entry.recheckAt.Before(cutoff) {
+			delete(l.tenants, tenantID)
+			removed++
+		}
+	}
+	return removed
+}
+
 func (l *RateLimiter) getTenantLimiter(now time.Time, tenantID string) *rate.Limiter {
 	recheck := false
 
@@ -108,7 +123,12 @@ func (l *RateLimiter) recheckTenantLimiter(now time.Time, tenantID string) *rate
 	l.tenantsLock.Lock()
 	defer l.tenantsLock.Unlock()
 
-	entry := l.tenants[tenantID]
+	entry, ok := l.tenants[tenantID]
+	if !ok {
+		entry = &tenantLimiter{rate.NewLimiter(limit, burst), now.Add(l.recheckPeriod)}
+		l.tenants[tenantID] = entry
+		return entry.limiter
+	}
 
 	// We check again if the recheck period elapsed, cause it may
 	// have already been rechecked in the meanwhile.

@@ -1,3 +1,46 @@
+# v1.30.15 (2026-04-02)
+
+* No change notes available for this release.
+
+# v1.30.14 (2026-03-26)
+
+* **Bug Fix**: Fix a bug where a recorded clock skew could persist on the client even if the client and server clock ended up realigning.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.30.13 (2026-03-13)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.30.12 (2026-03-03)
+
+* **Dependency Update**: Bump minimum Go version to 1.24
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.30.11 (2026-02-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.30.10 (2026-02-18)
+
+* No change notes available for this release.
+
+# v1.30.9 (2026-01-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.30.8 (2025-12-16)
+
+* No change notes available for this release.
+
+# v1.30.7 (2025-12-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.30.6 (2025-12-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.24.0. Notably this version of the library reduces the allocation footprint of the middleware system. We observe a ~10% reduction in allocations per SDK call with this change.
+
 # v1.30.5 (2025-11-25)
 
 * **Bug Fix**: Add error check for endpoint param binding during auth scheme resolution to fix panic reported in #3234

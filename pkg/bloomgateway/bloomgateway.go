@@ -220,13 +220,8 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		sp.End()
 	}()
 
-	// start time == end time --> empty response
-	if req.From.Equal(req.Through) {
-		stats.Status = labelSuccess
-		return &logproto.FilterChunkRefResponse{
-			ChunkRefs: []*logproto.GroupedChunkRefs{},
-		}, nil
-	}
+	// We must not shortcut requests with start time == end time, because there is a valid case when
+	// a chunk can contain a single log line which results in ref.From being equal to ref.Through.
 
 	// start time > end time --> error response
 	if req.Through.Before(req.From) {

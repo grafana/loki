@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -50,9 +51,9 @@ func (m *Exemplar) GetAsInt() int64 {
 // Exemplars also hold information about the environment when the measurement was recorded,
 // for example the span and trace ID of the active span when the exemplar was recorded.
 type Exemplar struct {
+	Value              any
 	FilteredAttributes []KeyValue
 	TimeUnixNano       uint64
-	Value              any
 	TraceId            TraceID
 	SpanId             SpanID
 }
@@ -78,7 +79,7 @@ var (
 )
 
 func NewExemplar() *Exemplar {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &Exemplar{}
 	}
 	return protoPoolExemplar.Get().(*Exemplar)
@@ -89,30 +90,28 @@ func DeleteExemplar(orig *Exemplar, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.FilteredAttributes {
 		DeleteKeyValue(&orig.FilteredAttributes[i], false)
 	}
+
 	switch ov := orig.Value.(type) {
 	case *Exemplar_AsDouble:
-		if UseProtoPooling.IsEnabled() {
+		if metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov.AsDouble = float64(0)
 			ProtoPoolExemplar_AsDouble.Put(ov)
 		}
 	case *Exemplar_AsInt:
-		if UseProtoPooling.IsEnabled() {
+		if metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov.AsInt = int64(0)
 			ProtoPoolExemplar_AsInt.Put(ov)
 		}
-
 	}
 	DeleteTraceID(&orig.TraceId, false)
 	DeleteSpanID(&orig.SpanId, false)
-
 	orig.Reset()
 	if nullable {
 		protoPoolExemplar.Put(orig)
@@ -135,26 +134,27 @@ func CopyExemplar(dest, src *Exemplar) *Exemplar {
 	dest.FilteredAttributes = CopyKeyValueSlice(dest.FilteredAttributes, src.FilteredAttributes)
 
 	dest.TimeUnixNano = src.TimeUnixNano
-
 	switch t := src.Value.(type) {
 	case *Exemplar_AsDouble:
 		var ov *Exemplar_AsDouble
-		if !UseProtoPooling.IsEnabled() {
+		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov = &Exemplar_AsDouble{}
 		} else {
 			ov = ProtoPoolExemplar_AsDouble.Get().(*Exemplar_AsDouble)
 		}
 		ov.AsDouble = t.AsDouble
 		dest.Value = ov
+
 	case *Exemplar_AsInt:
 		var ov *Exemplar_AsInt
-		if !UseProtoPooling.IsEnabled() {
+		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 			ov = &Exemplar_AsInt{}
 		} else {
 			ov = ProtoPoolExemplar_AsInt.Get().(*Exemplar_AsInt)
 		}
 		ov.AsInt = t.AsInt
 		dest.Value = ov
+
 	default:
 		dest.Value = nil
 	}
@@ -269,7 +269,7 @@ func (orig *Exemplar) UnmarshalJSON(iter *json.Iterator) {
 		case "asDouble", "as_double":
 			{
 				var ov *Exemplar_AsDouble
-				if !UseProtoPooling.IsEnabled() {
+				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 					ov = &Exemplar_AsDouble{}
 				} else {
 					ov = ProtoPoolExemplar_AsDouble.Get().(*Exemplar_AsDouble)
@@ -277,11 +277,10 @@ func (orig *Exemplar) UnmarshalJSON(iter *json.Iterator) {
 				ov.AsDouble = iter.ReadFloat64()
 				orig.Value = ov
 			}
-
 		case "asInt", "as_int":
 			{
 				var ov *Exemplar_AsInt
-				if !UseProtoPooling.IsEnabled() {
+				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 					ov = &Exemplar_AsInt{}
 				} else {
 					ov = ProtoPoolExemplar_AsInt.Get().(*Exemplar_AsInt)
@@ -310,7 +309,7 @@ func (orig *Exemplar) SizeProto() int {
 		l = orig.FilteredAttributes[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.TimeUnixNano != 0 {
+	if orig.TimeUnixNano != uint64(0) {
 		n += 9
 	}
 	switch orig := orig.Value.(type) {
@@ -318,8 +317,10 @@ func (orig *Exemplar) SizeProto() int {
 		_ = orig
 		break
 	case *Exemplar_AsDouble:
+
 		n += 9
 	case *Exemplar_AsInt:
+
 		n += 9
 	}
 	l = orig.TraceId.SizeProto()
@@ -340,7 +341,7 @@ func (orig *Exemplar) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x3a
 	}
-	if orig.TimeUnixNano != 0 {
+	if orig.TimeUnixNano != uint64(0) {
 		pos -= 8
 		binary.LittleEndian.PutUint64(buf[pos:], uint64(orig.TimeUnixNano))
 		pos--
@@ -428,7 +429,7 @@ func (orig *Exemplar) UnmarshalProto(buf []byte) error {
 				return err
 			}
 			var ov *Exemplar_AsDouble
-			if !UseProtoPooling.IsEnabled() {
+			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 				ov = &Exemplar_AsDouble{}
 			} else {
 				ov = ProtoPoolExemplar_AsDouble.Get().(*Exemplar_AsDouble)
@@ -446,7 +447,7 @@ func (orig *Exemplar) UnmarshalProto(buf []byte) error {
 				return err
 			}
 			var ov *Exemplar_AsInt
-			if !UseProtoPooling.IsEnabled() {
+			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 				ov = &Exemplar_AsInt{}
 			} else {
 				ov = ProtoPoolExemplar_AsInt.Get().(*Exemplar_AsInt)

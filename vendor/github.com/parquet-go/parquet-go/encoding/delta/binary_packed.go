@@ -7,10 +7,10 @@ import (
 	"math"
 	"math/bits"
 
+	"github.com/parquet-go/bitpack"
+	"github.com/parquet-go/bitpack/unsafecast"
 	"github.com/parquet-go/parquet-go/encoding"
 	"github.com/parquet-go/parquet-go/format"
-	"github.com/parquet-go/parquet-go/internal/bitpack"
-	"github.com/parquet-go/parquet-go/internal/unsafecast"
 )
 
 type BinaryPackedEncoding struct {
@@ -324,7 +324,7 @@ func decodeInt32(dst, src []byte) ([]byte, []byte, error) {
 					miniBlockData = miniBlockTemp[:copy(miniBlockTemp, miniBlockData)]
 				}
 				miniBlockData = miniBlockData[:miniBlockSize]
-				bitpack.UnpackInt32(out[writeOffset:writeOffset+n], miniBlockData, uint(bitWidth))
+				bitpack.Unpack(out[writeOffset:writeOffset+n], miniBlockData, uint(bitWidth))
 			}
 			writeOffset += n
 			totalValues -= n
@@ -387,7 +387,7 @@ func decodeInt64(dst, src []byte) ([]byte, []byte, error) {
 					miniBlockData = miniBlockTemp[:copy(miniBlockTemp, miniBlockData)]
 				}
 				miniBlockData = miniBlockData[:miniBlockSize]
-				bitpack.UnpackInt64(out[writeOffset:writeOffset+n], miniBlockData, uint(bitWidth))
+				bitpack.Unpack(out[writeOffset:writeOffset+n], miniBlockData, uint(bitWidth))
 			}
 			writeOffset += n
 			totalValues -= n

@@ -15,9 +15,12 @@ import (
 
 // This operation is not supported for directory buckets.
 //
-// Removes the PublicAccessBlock configuration for an Amazon S3 bucket. To use
-// this operation, you must have the s3:PutBucketPublicAccessBlock permission. For
-// more information about permissions, see [Permissions Related to Bucket Subresource Operations]and [Managing Access Permissions to Your Amazon S3 Resources].
+// Removes the PublicAccessBlock configuration for an Amazon S3 bucket. This
+// operation removes the bucket-level configuration only. The effective public
+// access behavior will still be governed by account-level settings (which may
+// inherit from organization-level policies). To use this operation, you must have
+// the s3:PutBucketPublicAccessBlock permission. For more information about
+// permissions, see [Permissions Related to Bucket Subresource Operations]and [Managing Access Permissions to Your Amazon S3 Resources].
 //
 // The following operations are related to DeletePublicAccessBlock :
 //
@@ -116,7 +119,7 @@ func (c *Client) addOperationDeletePublicAccessBlockMiddlewares(stack *middlewar
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -141,9 +144,6 @@ func (c *Client) addOperationDeletePublicAccessBlockMiddlewares(stack *middlewar
 		return err
 	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

@@ -91,7 +91,7 @@ func (i *Identifier) FQN() string {
 	return i.fqn
 }
 
-// Equal checks equality of of the identifier against a second identifier.
+// Equal checks equality of the identifier against a second identifier.
 func (i *Identifier) Equal(other *Identifier) bool {
 	if i == nil || other == nil {
 		return false

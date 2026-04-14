@@ -7,6 +7,8 @@ import (
 // A ColumnRef referenes a column within a table relation. ColumnRef only
 // implements [Value].
 type ColumnRef struct {
+	b baseNode
+
 	Ref types.ColumnRef
 }
 
@@ -25,7 +27,14 @@ func (c *ColumnRef) String() string {
 	return c.Ref.String()
 }
 
-func (c *ColumnRef) isValue() {}
+// Referrers returns a list of instructions that reference c.
+//
+// The list of instructions can be modified to update the reference list, such
+// as when modifying the plan.
+func (c *ColumnRef) Referrers() *[]Instruction { return &c.b.referrers }
+
+func (c *ColumnRef) base() *baseNode { return &c.b }
+func (c *ColumnRef) isValue()        {}
 
 func NewColumnRef(name string, ty types.ColumnType) *ColumnRef {
 	return &ColumnRef{

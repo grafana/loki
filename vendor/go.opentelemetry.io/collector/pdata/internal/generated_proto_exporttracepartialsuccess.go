@@ -11,13 +11,14 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // ExportPartialSuccess represents the details of a partially successful export request.
 type ExportTracePartialSuccess struct {
-	RejectedSpans int64
 	ErrorMessage  string
+	RejectedSpans int64
 }
 
 var (
@@ -29,7 +30,7 @@ var (
 )
 
 func NewExportTracePartialSuccess() *ExportTracePartialSuccess {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ExportTracePartialSuccess{}
 	}
 	return protoPoolExportTracePartialSuccess.Get().(*ExportTracePartialSuccess)
@@ -40,7 +41,7 @@ func DeleteExportTracePartialSuccess(orig *ExportTracePartialSuccess, nullable b
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -65,7 +66,6 @@ func CopyExportTracePartialSuccess(dest, src *ExportTracePartialSuccess) *Export
 		dest = NewExportTracePartialSuccess()
 	}
 	dest.RejectedSpans = src.RejectedSpans
-
 	dest.ErrorMessage = src.ErrorMessage
 
 	return dest
@@ -155,9 +155,10 @@ func (orig *ExportTracePartialSuccess) SizeProto() int {
 	var n int
 	var l int
 	_ = l
-	if orig.RejectedSpans != 0 {
+	if orig.RejectedSpans != int64(0) {
 		n += 1 + proto.Sov(uint64(orig.RejectedSpans))
 	}
+
 	l = len(orig.ErrorMessage)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
@@ -169,7 +170,7 @@ func (orig *ExportTracePartialSuccess) MarshalProto(buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	if orig.RejectedSpans != 0 {
+	if orig.RejectedSpans != int64(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.RejectedSpans))
 		pos--
 		buf[pos] = 0x8
@@ -209,7 +210,6 @@ func (orig *ExportTracePartialSuccess) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.RejectedSpans = int64(num)
 
 		case 2:

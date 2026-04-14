@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -18,8 +19,8 @@ import (
 // style of encoding attributes which is more convenient
 // for profiles than opentelemetry.proto.common.v1.KeyValue.
 type KeyValueAndUnit struct {
-	KeyStrindex  int32
 	Value        AnyValue
+	KeyStrindex  int32
 	UnitStrindex int32
 }
 
@@ -32,7 +33,7 @@ var (
 )
 
 func NewKeyValueAndUnit() *KeyValueAndUnit {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &KeyValueAndUnit{}
 	}
 	return protoPoolKeyValueAndUnit.Get().(*KeyValueAndUnit)
@@ -43,7 +44,7 @@ func DeleteKeyValueAndUnit(orig *KeyValueAndUnit, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -70,7 +71,6 @@ func CopyKeyValueAndUnit(dest, src *KeyValueAndUnit) *KeyValueAndUnit {
 		dest = NewKeyValueAndUnit()
 	}
 	dest.KeyStrindex = src.KeyStrindex
-
 	CopyAnyValue(&dest.Value, &src.Value)
 
 	dest.UnitStrindex = src.UnitStrindex
@@ -167,12 +167,12 @@ func (orig *KeyValueAndUnit) SizeProto() int {
 	var n int
 	var l int
 	_ = l
-	if orig.KeyStrindex != 0 {
+	if orig.KeyStrindex != int32(0) {
 		n += 1 + proto.Sov(uint64(orig.KeyStrindex))
 	}
 	l = orig.Value.SizeProto()
 	n += 1 + proto.Sov(uint64(l)) + l
-	if orig.UnitStrindex != 0 {
+	if orig.UnitStrindex != int32(0) {
 		n += 1 + proto.Sov(uint64(orig.UnitStrindex))
 	}
 	return n
@@ -182,7 +182,7 @@ func (orig *KeyValueAndUnit) MarshalProto(buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	if orig.KeyStrindex != 0 {
+	if orig.KeyStrindex != int32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.KeyStrindex))
 		pos--
 		buf[pos] = 0x8
@@ -193,7 +193,7 @@ func (orig *KeyValueAndUnit) MarshalProto(buf []byte) int {
 	pos--
 	buf[pos] = 0x12
 
-	if orig.UnitStrindex != 0 {
+	if orig.UnitStrindex != int32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.UnitStrindex))
 		pos--
 		buf[pos] = 0x18
@@ -225,7 +225,6 @@ func (orig *KeyValueAndUnit) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.KeyStrindex = int32(num)
 
 		case 2:
@@ -253,7 +252,6 @@ func (orig *KeyValueAndUnit) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.UnitStrindex = int32(num)
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)

@@ -1171,7 +1171,7 @@
       }
     }
   },
-  "revision": "20250606",
+  "revision": "20251103",
   "rootUrl": "https://cloudresourcemanager.googleapis.com/",
   "schemas": {
     "Ancestor": {
@@ -1567,7 +1567,8 @@
             "CYCLE_INTRODUCED_VIOLATION",
             "FOLDER_BEING_MOVED_VIOLATION",
             "FOLDER_TO_DELETE_NON_EMPTY_VIOLATION",
-            "DELETED_FOLDER_HEIGHT_VIOLATION"
+            "DELETED_FOLDER_HEIGHT_VIOLATION",
+            "FOLDER_TO_DELETE_CONFIGURED_CAPABILITY_VIOLATION"
           ],
           "enumDescriptions": [
             "The error type was unrecognized or unspecified.",
@@ -1579,7 +1580,8 @@
             "The attempted action would introduce cycle in resource path.",
             "The attempted action would move a folder that is already being moved.",
             "The folder the caller is trying to delete contains active resources.",
-            "The attempted action would violate the max deleted folder depth constraint."
+            "The attempted action would violate the max deleted folder depth constraint.",
+            "The folder being deleted has a configured capability."
           ],
           "type": "string"
         }

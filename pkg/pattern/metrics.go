@@ -60,7 +60,7 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Subsystem: "pattern_ingester",
 			Name:      "metric_samples",
 			Help:      "The total number of metric samples created to write back to Loki.",
-		}, []string{"service_name"}),
+		}, []string{"tenant"}),
 	}
 }
 

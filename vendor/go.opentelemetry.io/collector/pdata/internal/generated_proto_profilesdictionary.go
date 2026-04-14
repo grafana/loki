@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -34,7 +35,7 @@ var (
 )
 
 func NewProfilesDictionary() *ProfilesDictionary {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ProfilesDictionary{}
 	}
 	return protoPoolProfilesDictionary.Get().(*ProfilesDictionary)
@@ -45,11 +46,10 @@ func DeleteProfilesDictionary(orig *ProfilesDictionary, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.MappingTable {
 		DeleteMapping(orig.MappingTable[i], true)
 	}
@@ -62,13 +62,13 @@ func DeleteProfilesDictionary(orig *ProfilesDictionary, nullable bool) {
 	for i := range orig.LinkTable {
 		DeleteLink(orig.LinkTable[i], true)
 	}
+
 	for i := range orig.AttributeTable {
 		DeleteKeyValueAndUnit(orig.AttributeTable[i], true)
 	}
 	for i := range orig.StackTable {
 		DeleteStack(orig.StackTable[i], true)
 	}
-
 	orig.Reset()
 	if nullable {
 		protoPoolProfilesDictionary.Put(orig)
@@ -97,6 +97,7 @@ func CopyProfilesDictionary(dest, src *ProfilesDictionary) *ProfilesDictionary {
 	dest.LinkTable = CopyLinkPtrSlice(dest.LinkTable, src.LinkTable)
 
 	dest.StringTable = append(dest.StringTable[:0], src.StringTable...)
+
 	dest.AttributeTable = CopyKeyValueAndUnitPtrSlice(dest.AttributeTable, src.AttributeTable)
 
 	dest.StackTable = CopyStackPtrSlice(dest.StackTable, src.StackTable)
@@ -209,6 +210,7 @@ func (orig *ProfilesDictionary) MarshalJSON(dest *json.Stream) {
 		}
 		dest.WriteArrayEnd()
 	}
+
 	if len(orig.AttributeTable) > 0 {
 		dest.WriteObjectField("attributeTable")
 		dest.WriteArrayStart()

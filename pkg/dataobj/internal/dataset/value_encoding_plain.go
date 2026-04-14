@@ -2,13 +2,13 @@ package dataset
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 func init() {
@@ -16,8 +16,10 @@ func init() {
 	registerValueEncoding(
 		datasetmd.PHYSICAL_TYPE_BINARY,
 		datasetmd.ENCODING_TYPE_PLAIN,
-		func(w streamio.Writer) valueEncoder { return newPlainBytesEncoder(w) },
-		func(r streamio.Reader) valueDecoder { return newPlainBytesDecoder(r) },
+		registryEntry{
+			NewEncoder: func(w streamio.Writer) valueEncoder { return newPlainBytesEncoder(w) },
+			NewDecoder: func(data []byte) valueDecoder { return newPlainBytesDecoder(data) },
+		},
 	)
 }
 
@@ -71,16 +73,17 @@ func (enc *plainBytesEncoder) Reset(w streamio.Writer) {
 	enc.w = w
 }
 
-// plainBytesDecoder decodes byte arrays from an [streamio.Reader].
+// plainBytesDecoder decodes byte arrays from a byte slice.
 type plainBytesDecoder struct {
-	r streamio.Reader
+	data []byte
+	off  int // Last read offset into data.
 }
 
 var _ valueDecoder = (*plainBytesDecoder)(nil)
 
-// newPlainBytesDecoder creates a plainDecoder that reads encoded strings from r.
-func newPlainBytesDecoder(r streamio.Reader) *plainBytesDecoder {
-	return &plainBytesDecoder{r: r}
+// newPlainBytesDecoder creates a decoder that reads encoded strings from data.
+func newPlainBytesDecoder(data []byte) *plainBytesDecoder {
+	return &plainBytesDecoder{data: data}
 }
 
 // PhysicalType returns [datasetmd.PHYSICAL_TYPE_BINARY].
@@ -93,48 +96,74 @@ func (dec *plainBytesDecoder) EncodingType() datasetmd.EncodingType {
 	return datasetmd.ENCODING_TYPE_PLAIN
 }
 
-// Decode decodes up to len(s) values, storing the results into s. The
-// number of decoded values is returned, followed by an error (if any).
-// At the end of the stream, Decode returns 0, [io.EOF].
-func (dec *plainBytesDecoder) Decode(s []Value) (int, error) {
-	if len(s) == 0 {
-		return 0, nil
-	}
+// Decode decodes up to count values using the provided allocator to store the
+// At the end of the stream, Decode returns nil, [io.EOF].
+//
+// The return value is a [columnar.UTF8].
+func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
+	var (
+		// Strings need a an offsets and a value buffer.
+		//
+		// Offsets are in pairs, so there's always one additional offset from the
+		// requested count.
+		//
+		// Meanwhile, there's no good way of knowing how many bytes we might need to
+		// store all the strings. It's probably better to overestimate so we have
+		// exactly one allocated reusable memory region than to have it grow a few
+		// times as we try to discover the true size.
 
-	var err error
+		offsetsBuf = memory.NewBuffer[int32](alloc, count+1)
+		valuesBuf  = memory.NewBuffer[byte](alloc, len(dec.data))
 
-	for i := range s {
-		err = dec.decode(&s[i])
-		if errors.Is(err, io.EOF) {
+		// It's going to be far more efficient for us to manipulate the output
+		// slices ourselves, so we'll do that here.
+
+		offsets = offsetsBuf.Data()[:count+1]
+		values  = valuesBuf.Data()[:len(dec.data)]
+
+		totalBytes int // Last offset to values written.
+	)
+
+	// Store state on stack to avoid indirection.
+	var (
+		data = dec.data
+		off  = dec.off
+	)
+	defer func() { dec.off = off }()
+
+	// First offset is always 0.
+	offsets[0] = 0
+
+	for i := range count {
+		stringSize, uvarintSize := binary.Uvarint(data[off:])
+		if uvarintSize <= 0 {
 			if i == 0 {
-				return 0, io.EOF
+				return nil, io.EOF
 			}
-			return i, nil
-		} else if err != nil {
-			return i, err
+
+			return columnar.NewUTF8(
+				values[:totalBytes],
+				offsets[:i+1],
+				memory.Bitmap{},
+			), io.EOF
 		}
+
+		copied := copy(values[totalBytes:], data[off+uvarintSize:off+uvarintSize+int(stringSize)])
+
+		off += uvarintSize + copied
+		totalBytes += int(stringSize)
+		offsets[i+1] = int32(totalBytes)
 	}
-	return len(s), nil
+
+	return columnar.NewUTF8(
+		values[:totalBytes],
+		offsets[:count+1],
+		memory.Bitmap{},
+	), nil
 }
 
-// decode decodes a string.
-func (dec *plainBytesDecoder) decode(v *Value) error {
-	sz, err := binary.ReadUvarint(dec.r)
-	if err != nil {
-		return err
-	}
-
-	dst := slicegrow.GrowToCap(v.Buffer(), int(sz))
-	dst = dst[:sz]
-	if _, err := io.ReadFull(dec.r, dst); err != nil {
-		return err
-	}
-
-	*v = BinaryValue(dst)
-	return nil
-}
-
-// Reset implements [valueDecoder]. It resets the decoder to read from r.
-func (dec *plainBytesDecoder) Reset(r streamio.Reader) {
-	dec.r = r
+// Reset implements [valueDecoder]. It resets the decoder to read from data.
+func (dec *plainBytesDecoder) Reset(data []byte) {
+	dec.data = data
+	dec.off = 0
 }

@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-kit/log"
@@ -82,6 +83,12 @@ func (i *Ingester) PreparePartitionDownscaleHandler(w http.ResponseWriter, r *ht
 			// "lookback period" ago, but since we delete inactive partitions with no owners that moved to inactive since longer
 			// than "lookback period" ago, it looks to be an edge case not worth to address.
 			if err := i.partitionRingLifecycler.ChangePartitionState(r.Context(), ring.PartitionActive); err != nil {
+				if errors.Is(err, ring.ErrPartitionStateChangeLocked) {
+					level.Warn(logger).Log("msg", "failed to change partition state to active", "err", err)
+					w.WriteHeader(http.StatusConflict)
+					return
+				}
+
 				level.Error(logger).Log("msg", "failed to change partition state to active", "err", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return

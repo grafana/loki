@@ -11,11 +11,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/thanos-io/objstore"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 // addMetastoreCommand adds the metastore command to the application
@@ -30,7 +32,6 @@ func addMetastoreCommand(app *kingpin.Application) {
 	cmd.Flag("query", "LogQL query to analyze").Required().StringVar(&cfg.Query)
 
 	cmd.Action(func(_ *kingpin.ParseContext) error {
-		storageBucket = cfg.Bucket
 		orgID = cfg.OrgID
 
 		parsed, err := parseTimeConfig(&cfg)
@@ -38,17 +39,19 @@ func addMetastoreCommand(app *kingpin.Application) {
 			return err
 		}
 
+		bucket := MustGCSDataobjBucket(cfg.Bucket)
+
 		params, err := logql.NewLiteralParams(cfg.Query, parsed.StartTime, parsed.EndTime, 0, 0, logproto.BACKWARD, 10, nil, nil)
 		if err != nil {
 			return err
 		}
 
-		return queryMetastore(params)
+		return queryMetastore(params, bucket)
 	})
 }
 
 // queryMetastore queries the metastore for stream sections
-func queryMetastore(params logql.LiteralParams) error {
+func queryMetastore(params logql.LiteralParams, bucket objstore.Bucket) error {
 	query := params.QueryString()
 	closeIdx := strings.Index(query, "}")
 	streamMatchers, err := syntax.ParseMatchers(query[:closeIdx+1], true)
@@ -56,7 +59,7 @@ func queryMetastore(params logql.LiteralParams) error {
 		return err
 	}
 
-	sections, err := getSections(params.Start(), params.End(), streamMatchers)
+	sections, err := getSections(bucket, params.Start(), params.End(), streamMatchers)
 	if err != nil {
 		return err
 	}
@@ -69,12 +72,17 @@ func queryMetastore(params logql.LiteralParams) error {
 
 // getSections queries the metastore for dataobject sections matching the query selector
 // Currently, it does not pass structured metadata predicates
-func getSections(start, end time.Time, streamMatchers []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
+func getSections(bucket objstore.Bucket, start, end time.Time, streamMatchers []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
 	ctx := user.InjectOrgID(context.Background(), orgID)
-	metastore := metastore.NewObjectMetastore(MustIndexBucket(), log.NewLogfmtLogger(os.Stderr), nil)
-	sections, err := metastore.Sections(ctx, start, end, streamMatchers, nil)
+	ms := metastore.NewObjectMetastore(
+		bucket,
+		metastore.Config{IndexStoragePrefix: indexStoragePrefix},
+		log.NewLogfmtLogger(os.Stderr),
+		metastore.NewObjectMetastoreMetrics(nil),
+	)
+	sectionsResp, err := ms.Sections(ctx, metastore.SectionsRequest{Start: start, End: end, Matchers: streamMatchers})
 	if err != nil {
 		return nil, err
 	}
-	return sections, nil
+	return sectionsResp.Sections, nil
 }

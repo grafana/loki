@@ -96,6 +96,18 @@ type UpdateTableInput struct {
 	// [Managing Global Secondary Indexes]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GSI.OnlineOps.html
 	GlobalSecondaryIndexUpdates []types.GlobalSecondaryIndexUpdate
 
+	// Controls the settings replication mode for a global table replica. This
+	// attribute can be defined using UpdateTable operation only on a regional table
+	// with values:
+	//
+	//   - ENABLED : Defines settings replication on a regional table to be used as a
+	//   source table for creating Multi-Account Global Table.
+	//
+	//   - DISABLED : Remove settings replication on a regional table. Settings
+	//   replication needs to be defined to ENABLED again in order to create a
+	//   Multi-Account Global Table using this table.
+	GlobalTableSettingsReplicationMode types.GlobalTableSettingsReplicationMode
+
 	// A list of witness updates for a MRSC global table. A witness provides a
 	// cost-effective alternative to a full replica in a MRSC global table by
 	// maintaining replicated change data written to global table replicas. You cannot
@@ -218,7 +230,7 @@ func (c *Client) addOperationUpdateTableMiddlewares(stack *middleware.Stack, opt
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -243,9 +255,6 @@ func (c *Client) addOperationUpdateTableMiddlewares(stack *middleware.Stack, opt
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

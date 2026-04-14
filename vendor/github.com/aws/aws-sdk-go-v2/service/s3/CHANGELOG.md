@@ -1,3 +1,73 @@
+# v1.98.0 (2026-03-31)
+
+* **Feature**: Add Bucket Metrics configuration support to directory buckets
+
+# v1.97.3 (2026-03-26)
+
+* **Bug Fix**: Fix a bug where a recorded clock skew could persist on the client even if the client and server clock ended up realigning.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.97.2 (2026-03-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.97.1 (2026-03-13)
+
+* **Bug Fix**: Replace usages of the old ioutil/ package throughout the SDK.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.97.0 (2026-03-12)
+
+* **Feature**: Adds support for account regional namespaces for general purpose buckets. The account regional namespace is a reserved subdivision of the global bucket namespace where only your account can create general purpose buckets.
+
+# v1.96.4 (2026-03-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.96.3 (2026-03-03)
+
+* **Bug Fix**: Modernize non codegen files with go fix
+* **Dependency Update**: Bump minimum Go version to 1.24
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.96.2 (2026-02-26)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.96.1 (2026-02-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.96.0 (2026-01-28)
+
+* **Feature**: Adds support for the UpdateObjectEncryption API to change the server-side encryption type of objects in general purpose buckets.
+
+# v1.95.1 (2026-01-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.95.0 (2025-12-23)
+
+* **Feature**: Add additional validation to Outpost bucket names.
+
+# v1.94.0 (2025-12-15)
+
+* **Feature**: This release adds support for the new optional field 'LifecycleExpirationDate' in S3 Inventory configurations.
+
+# v1.93.2 (2025-12-09)
+
+* No change notes available for this release.
+
+# v1.93.1 (2025-12-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.93.0 (2025-12-02)
+
+* **Feature**: New S3 Storage Class FSX_ONTAP
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.24.0. Notably this version of the library reduces the allocation footprint of the middleware system. We observe a ~10% reduction in allocations per SDK call with this change.
+
 # v1.92.1 (2025-11-25)
 
 * **Bug Fix**: Add error check for endpoint param binding during auth scheme resolution to fix panic reported in #3234

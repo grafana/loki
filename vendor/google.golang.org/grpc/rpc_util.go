@@ -33,6 +33,8 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/encoding/proto"
+	"google.golang.org/grpc/internal"
+	"google.golang.org/grpc/internal/grpcutil"
 	"google.golang.org/grpc/internal/transport"
 	"google.golang.org/grpc/mem"
 	"google.golang.org/grpc/metadata"
@@ -40,6 +42,10 @@ import (
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 )
+
+func init() {
+	internal.AcceptCompressors = acceptCompressors
+}
 
 // Compressor defines the interface gRPC uses to compress a message.
 //
@@ -151,16 +157,32 @@ func (d *gzipDecompressor) Type() string {
 
 // callInfo contains all related configuration and information about an RPC.
 type callInfo struct {
-	compressorName        string
-	failFast              bool
-	maxReceiveMessageSize *int
-	maxSendMessageSize    *int
-	creds                 credentials.PerRPCCredentials
-	contentSubtype        string
-	codec                 baseCodec
-	maxRetryRPCBufferSize int
-	onFinish              []func(err error)
-	authority             string
+	compressorName              string
+	failFast                    bool
+	maxReceiveMessageSize       *int
+	maxSendMessageSize          *int
+	creds                       credentials.PerRPCCredentials
+	contentSubtype              string
+	codec                       baseCodec
+	maxRetryRPCBufferSize       int
+	onFinish                    []func(err error)
+	authority                   string
+	acceptedResponseCompressors []string
+}
+
+func acceptedCompressorAllows(allowed []string, name string) bool {
+	if allowed == nil {
+		return true
+	}
+	if name == "" || name == encoding.Identity {
+		return true
+	}
+	for _, a := range allowed {
+		if a == name {
+			return true
+		}
+	}
+	return false
 }
 
 func defaultCallInfo() *callInfo {
@@ -168,6 +190,29 @@ func defaultCallInfo() *callInfo {
 		failFast:              true,
 		maxRetryRPCBufferSize: 256 * 1024, // 256KB
 	}
+}
+
+func newAcceptedCompressionConfig(names []string) ([]string, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	var allowed []string
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || name == encoding.Identity {
+			continue
+		}
+		if !grpcutil.IsCompressorNameRegistered(name) {
+			return nil, status.Errorf(codes.InvalidArgument, "grpc: compressor %q is not registered", name)
+		}
+		if _, dup := seen[name]; dup {
+			continue
+		}
+		seen[name] = struct{}{}
+		allowed = append(allowed, name)
+	}
+	return allowed, nil
 }
 
 // CallOption configures a Call before it starts or extracts information from
@@ -470,6 +515,31 @@ func (o CompressorCallOption) before(c *callInfo) error {
 	return nil
 }
 func (o CompressorCallOption) after(*callInfo, *csAttempt) {}
+
+// acceptCompressors returns a CallOption that limits the compression algorithms
+// advertised in the grpc-accept-encoding header for response messages.
+// Compression algorithms not in the provided list will not be advertised, and
+// responses compressed with non-listed algorithms will be rejected.
+func acceptCompressors(names ...string) CallOption {
+	cp := append([]string(nil), names...)
+	return acceptCompressorsCallOption{names: cp}
+}
+
+// acceptCompressorsCallOption is a CallOption that limits response compression.
+type acceptCompressorsCallOption struct {
+	names []string
+}
+
+func (o acceptCompressorsCallOption) before(c *callInfo) error {
+	allowed, err := newAcceptedCompressionConfig(o.names)
+	if err != nil {
+		return err
+	}
+	c.acceptedResponseCompressors = allowed
+	return nil
+}
+
+func (acceptCompressorsCallOption) after(*callInfo, *csAttempt) {}
 
 // CallContentSubtype returns a CallOption that will set the content-subtype
 // for a call. For example, if content-subtype is "json", the Content-Type over
@@ -857,8 +927,7 @@ func (p *payloadInfo) free() {
 // the buffer is no longer needed.
 // TODO: Refactor this function to reduce the number of arguments.
 // See: https://google.github.io/styleguide/go/best-practices.html#function-argument-lists
-func recvAndDecompress(p *parser, s recvCompressor, dc Decompressor, maxReceiveMessageSize int, payInfo *payloadInfo, compressor encoding.Compressor, isServer bool,
-) (out mem.BufferSlice, err error) {
+func recvAndDecompress(p *parser, s recvCompressor, dc Decompressor, maxReceiveMessageSize int, payInfo *payloadInfo, compressor encoding.Compressor, isServer bool) (out mem.BufferSlice, err error) {
 	pf, compressed, err := p.recvMsg(maxReceiveMessageSize)
 	if err != nil {
 		return nil, err
@@ -892,24 +961,32 @@ func recvAndDecompress(p *parser, s recvCompressor, dc Decompressor, maxReceiveM
 	return out, nil
 }
 
-// decompress processes the given data by decompressing it using either a custom decompressor or a standard compressor.
-// If a custom decompressor is provided, it takes precedence. The function validates that the decompressed data
-// does not exceed the specified maximum size and returns an error if this limit is exceeded.
-// On success, it returns the decompressed data. Otherwise, it returns an error if decompression fails or the data exceeds the size limit.
+// decompress processes the given data by decompressing it using either
+// a custom decompressor or a standard compressor. If a custom decompressor
+// is provided, it takes precedence. The function validates that
+// the decompressed data does not exceed the specified maximum size and returns
+// an error if this limit is exceeded. On success, it returns the decompressed
+// data. Otherwise, it returns an error if decompression fails or the data
+// exceeds the size limit.
 func decompress(compressor encoding.Compressor, d mem.BufferSlice, dc Decompressor, maxReceiveMessageSize int, pool mem.BufferPool) (mem.BufferSlice, error) {
 	if dc != nil {
-		uncompressed, err := dc.Do(d.Reader())
+		r := d.Reader()
+		uncompressed, err := dc.Do(r)
 		if err != nil {
+			r.Close() // ensure buffers are reused
 			return nil, status.Errorf(codes.Internal, "grpc: failed to decompress the received message: %v", err)
 		}
 		if len(uncompressed) > maxReceiveMessageSize {
+			r.Close() // ensure buffers are reused
 			return nil, status.Errorf(codes.ResourceExhausted, "grpc: message after decompression larger than max (%d vs. %d)", len(uncompressed), maxReceiveMessageSize)
 		}
 		return mem.BufferSlice{mem.SliceBuffer(uncompressed)}, nil
 	}
 	if compressor != nil {
-		dcReader, err := compressor.Decompress(d.Reader())
+		r := d.Reader()
+		dcReader, err := compressor.Decompress(r)
 		if err != nil {
+			r.Close() // ensure buffers are reused
 			return nil, status.Errorf(codes.Internal, "grpc: failed to decompress the message: %v", err)
 		}
 
@@ -921,11 +998,13 @@ func decompress(compressor encoding.Compressor, d mem.BufferSlice, dc Decompress
 		}
 		out, err := mem.ReadAll(dcReader, pool)
 		if err != nil {
+			r.Close() // ensure buffers are reused
 			out.Free()
 			return nil, status.Errorf(codes.Internal, "grpc: failed to read decompressed data: %v", err)
 		}
 
 		if out.Len() > maxReceiveMessageSize {
+			r.Close() // ensure buffers are reused
 			out.Free()
 			return nil, status.Errorf(codes.ResourceExhausted, "grpc: received message after decompression larger than max %d", maxReceiveMessageSize)
 		}

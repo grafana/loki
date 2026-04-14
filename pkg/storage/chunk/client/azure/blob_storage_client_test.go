@@ -174,6 +174,52 @@ func Test_Hedging(t *testing.T) {
 	}
 }
 
+func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedToken_ActiveDirectoryEndpoint_Default() {
+	suite.config.cfg.ActiveDirectoryEndpoint = ""
+	suite.config.cfg.Environment = azureGlobal
+
+	newOAuthConfigFunc := func(activeDirectoryEndpoint, _ string) (*adal.OAuthConfig, error) {
+		require.Equal(suite.T(), azure.PublicCloud.ActiveDirectoryEndpoint, activeDirectoryEndpoint)
+		return suite.mockOAuthConfig, nil
+	}
+
+	servicePrincipalTokenFromFederatedTokenFunc := func(_ adal.OAuthConfig, _, _, _ string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
+		return suite.mockedServicePrincipalToken, nil
+	}
+
+	_, err := suite.config.servicePrincipalTokenFromFederatedToken(
+		"https://test.blob.core.windows.net",
+		newOAuthConfigFunc,
+		servicePrincipalTokenFromFederatedTokenFunc,
+	)
+
+	require.NoError(suite.T(), err)
+}
+
+func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedToken_ActiveDirectoryEndpoint_Override() {
+	testAdEndpoint := "https://login.microsoftonline.test"
+
+	suite.config.cfg.ActiveDirectoryEndpoint = testAdEndpoint
+	suite.config.cfg.Environment = azureGlobal
+
+	newOAuthConfigFunc := func(activeDirectoryEndpoint, _ string) (*adal.OAuthConfig, error) {
+		require.Equal(suite.T(), testAdEndpoint, activeDirectoryEndpoint)
+		return suite.mockOAuthConfig, nil
+	}
+
+	servicePrincipalTokenFromFederatedTokenFunc := func(_ adal.OAuthConfig, _, _, _ string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
+		return suite.mockedServicePrincipalToken, nil
+	}
+
+	_, err := suite.config.servicePrincipalTokenFromFederatedToken(
+		"https://test.blob.core.windows.net",
+		newOAuthConfigFunc,
+		servicePrincipalTokenFromFederatedTokenFunc,
+	)
+
+	require.NoError(suite.T(), err)
+}
+
 func Test_DefaultContainerURL(t *testing.T) {
 	c, err := NewBlobStorage(&BlobStorageConfig{
 		ContainerName:      "foo",
@@ -200,7 +246,7 @@ func Test_EndpointSuffixWithContainer(t *testing.T) {
 func Test_ConnectionStringWithContainer(t *testing.T) {
 	c, err := NewBlobStorage(&BlobStorageConfig{
 		ContainerName:    "foo",
-		ConnectionString: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=shorter=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;",
+		ConnectionString: flagext.SecretWithValue("DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=shorter=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"),
 	}, metrics, hedging.Config{})
 	require.NoError(t, err)
 	expect, _ := url.Parse("http://127.0.0.1:10000/devstoreaccount1/foo")
@@ -241,7 +287,7 @@ func Test_EndpointSuffixWithBlob(t *testing.T) {
 func Test_ConnectionStringWithBlob(t *testing.T) {
 	c, err := NewBlobStorage(&BlobStorageConfig{
 		ContainerName:    "foo",
-		ConnectionString: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=shorter=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;",
+		ConnectionString: flagext.SecretWithValue("DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=shorter=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"),
 	}, metrics, hedging.Config{})
 	require.NoError(t, err)
 	expect, _ := url.Parse("http://127.0.0.1:10000/devstoreaccount1/foo/blob")

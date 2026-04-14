@@ -44,7 +44,7 @@ jobs:
           echo "semver=$SEMVER" >> $GITHUB_OUTPUT
 
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: main
           path: "release"

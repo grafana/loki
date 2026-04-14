@@ -35,16 +35,7 @@ var ErrNotSupported = errors.New("feature not supported in new query engine")
 // NewBasic creates a new instance of the basic query engine that implements the
 // [logql.Engine] interface. The basic engine executes plans sequentially with
 // no local or distributed parallelism.
-func NewBasic(cfg ExecutorConfig, metastoreCfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *Basic {
-	var ms metastore.Metastore
-	if bucket != nil {
-		indexBucket := bucket
-		if metastoreCfg.IndexStoragePrefix != "" {
-			indexBucket = objstore.NewPrefixedBucket(bucket, metastoreCfg.IndexStoragePrefix)
-		}
-		ms = metastore.NewObjectMetastore(indexBucket, logger, reg)
-	}
-
+func NewBasic(cfg ExecutorConfig, ms metastore.Metastore, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *Basic {
 	if cfg.BatchSize <= 0 {
 		panic(fmt.Sprintf("invalid batch size for query engine. must be greater than 0, got %d", cfg.BatchSize))
 	}
@@ -52,25 +43,32 @@ func NewBasic(cfg ExecutorConfig, metastoreCfg metastore.Config, bucket objstore
 		cfg.RangeConfig = rangeio.DefaultConfig
 	}
 
+	taskCaches, err := executor.NewTaskCacheRegistry(cfg.TaskResultsCache.Config, reg, logger)
+	if err != nil {
+		panic(fmt.Sprintf("creating task results cache: %v", err))
+	}
+
 	return &Basic{
-		logger:    logger,
-		metrics:   newMetrics(reg),
-		limits:    limits,
-		metastore: ms,
-		bucket:    bucket,
-		cfg:       cfg,
+		logger:     logger,
+		metrics:    newMetrics(reg),
+		limits:     limits,
+		metastore:  ms,
+		bucket:     bucket,
+		cfg:        cfg,
+		taskCaches: taskCaches,
 	}
 }
 
 // Basic is a basic LogQL evaluation engine. Evaluation is performed
 // sequentially, with no local or distributed parallelism.
 type Basic struct {
-	logger    log.Logger
-	metrics   *metrics
-	limits    logql.Limits
-	metastore metastore.Metastore
-	bucket    objstore.Bucket
-	cfg       ExecutorConfig
+	logger     log.Logger
+	metrics    *metrics
+	limits     logql.Limits
+	metastore  metastore.Metastore
+	bucket     objstore.Bucket
+	cfg        ExecutorConfig
+	taskCaches executor.TaskCacheRegistry
 }
 
 // Query implements [logql.Engine].
@@ -91,7 +89,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
 		attribute.Stringer("start", params.Start()),
-		attribute.Stringer("end", params.Start()),
+		attribute.Stringer("end", params.End()),
 		attribute.Stringer("step", params.Step()),
 		attribute.Stringer("length", params.End().Sub(params.Start())),
 		attribute.StringSlice("shards", params.Shards()),
@@ -124,7 +122,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		defer span.End()
 
 		timer := prometheus.NewTimer(e.metrics.logicalPlanning)
-		logicalPlan, err := logical.BuildPlan(params)
+		logicalPlan, err := logical.BuildPlan(ctx, params)
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
 			e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
@@ -154,7 +152,14 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 
 		timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-		catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+		catalog := physical.NewMetastoreCatalog(func(selectors physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+			req, err := physical.CatalogRequestToMetastoreSectionsRequest(selectors, predicates, start, end)
+			if err != nil {
+				return nil, err
+			}
+			resp, err := e.metastore.Sections(ctx, req)
+			return resp.Sections, err
+		})
 		planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 		plan, err := planner.Build(logicalPlan)
 		if err != nil {
@@ -171,6 +176,15 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "failed to optimize physical plan")
+			return nil, ErrNotSupported
+		}
+
+		plan, err = physical.WrapWithBatching(plan, e.cfg.BatchSize)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to wrap physical plan with batching", "err", err)
+			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "failed to wrap physical plan with batching")
 			return nil, ErrNotSupported
 		}
 
@@ -202,6 +216,9 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			BatchSize:          int64(e.cfg.BatchSize),
 			MergePrefetchCount: e.cfg.MergePrefetchCount,
 			Bucket:             e.bucket,
+			Metastore:          e.metastore,
+			StreamFilterer:     e.cfg.StreamFilterer,
+			TaskCaches:         e.taskCaches,
 		}
 
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
@@ -259,11 +276,15 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 }
 
 func IsQuerySupported(params logql.Params) bool {
-	_, err := logical.BuildPlan(params)
+	_, err := logical.BuildPlan(context.Background(), params)
 	return err == nil
 }
 
 func collectResult(ctx context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
+	if err := pipeline.Open(ctx); err != nil {
+		return err
+	}
+
 	for {
 		rec, err := pipeline.Read(ctx)
 		if err != nil {
