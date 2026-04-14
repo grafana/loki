@@ -136,11 +136,11 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 
 		// One of the parsed columns
 		case ident.ColumnType() == types.ColumnTypeParsed || (ident.ColumnType() == types.ColumnTypeGenerated &&
-			shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails):
+			(shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails)):
 			parsedCol := col.(*array.String)
 
 			isErrorColumn := ident.ColumnType() == types.ColumnTypeGenerated &&
-				shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails
+				(shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails)
 
 			forEachNotNullRowColValue(numRows, parsedCol, func(rowIdx int) {
 				parsedVal := parsedCol.Value(rowIdx)
