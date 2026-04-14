@@ -37,6 +37,15 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Fully remove SSD deployment mode
+
+Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0. The targets `write`, `read`, and `backend`, as well as the configuration option `-legacy-read-mode` are not available any more and Loki will fail to start if used.
+
+For the best possible experience in production, we recommend deploying Loki in distributed mode. Please refer to the [Migrating from SSD to distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/migrate/ssd-to-distributed/) guide for instructions how to migrate your deployment to distributed mode.
+
+A second option, especially for smaller scale deployments, is to migrate to single binary, which reduces the complexity of the deployment.
+
+
 ### Breaking change: Removal of deprecated `/api/prom` API endpoints
 
 The legacy Prometheus-compatible `/api/prom` endpoints that were deprecated in Loki 2.x have been removed:
