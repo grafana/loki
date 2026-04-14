@@ -374,7 +374,7 @@ query_engine:
     # Experimental: Maximum number of cache keys fetched per batch when pruning
     # empty cached tasks at plan time. 0 means unlimited (single batch).
     # CLI flag: -query-engine.task-results-cache.task-pruning-cache-fetch-batch-size
-    [task_pruning_cache_fetch_batch_size: <int> | default = 256]
+    [task_pruning_cache_fetch_batch_size: <int> | default = 5000]
 
   # Experimental: Number of worker threads to spawn. Each worker thread runs one
   # task at a time. 0 means to use GOMAXPROCS value.

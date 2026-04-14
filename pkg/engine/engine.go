@@ -112,7 +112,7 @@ func (cfg *TaskCacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 		"Experimental: Maximum size for a DataObjScan result to be cacheable. 0 means only empty responses are cached.")
 	f.BoolVar(&cfg.PruneEmptyCachedTasks, prefix+"prune-empty-cached-tasks", false,
 		"Experimental: When enabled, the scheduler checks cached results at plan time and prunes tasks whose cached result is known to be empty.")
-	f.IntVar(&cfg.TaskPruningCacheFetchBatchSize, prefix+"task-pruning-cache-fetch-batch-size", 256,
+	f.IntVar(&cfg.TaskPruningCacheFetchBatchSize, prefix+"task-pruning-cache-fetch-batch-size", 5000,
 		"Experimental: Maximum number of cache keys fetched per batch when pruning empty cached tasks at plan time. 0 means unlimited (single batch).")
 }
 
