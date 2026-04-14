@@ -2655,8 +2655,7 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 [chunk_cache_config_l2: <cache_config>]
 
 # Write dedupe cache is deprecated along with legacy index types (aws,
-# aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey,
-# grpc-store).
+# aws-dynamo, cassandra, gcp, gcp-columnkey, grpc-store).
 # Consider using TSDB index which does not require a write dedupe cache.
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]

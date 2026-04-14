@@ -26,7 +26,7 @@ func MustParseDayTime(s string) config.DayTime {
 var testPeriodConfigs = []config.PeriodConfig{
 	{
 		From:      MustParseDayTime("2020-01-01"),
-		IndexType: types.StorageTypeBigTable,
+		IndexType: types.StorageTypeCassandra,
 	},
 	{
 		From:      MustParseDayTime("2021-01-01"),
