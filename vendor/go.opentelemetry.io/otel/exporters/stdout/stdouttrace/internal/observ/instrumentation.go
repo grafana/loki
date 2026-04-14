@@ -17,8 +17,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace/internal"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace/internal/x"
 	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
-	"go.opentelemetry.io/otel/semconv/v1.37.0/otelconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/semconv/v1.40.0/otelconv"
 )
 
 const (
@@ -150,10 +150,12 @@ func NewInstrumentation(id int64) (*Instrumentation, error) {
 func (i *Instrumentation) ExportSpans(ctx context.Context, nSpans int) ExportOp {
 	start := time.Now()
 
-	addOpt := get[metric.AddOption](addOptPool)
-	defer put(addOptPool, addOpt)
-	*addOpt = append(*addOpt, i.setOpt)
-	i.inflightSpans.Add(ctx, int64(nSpans), *addOpt...)
+	if i.inflightSpans.Enabled(ctx) {
+		addOpt := get[metric.AddOption](addOptPool)
+		defer put(addOptPool, addOpt)
+		*addOpt = append(*addOpt, i.setOpt)
+		i.inflightSpans.Add(ctx, int64(nSpans), *addOpt...)
+	}
 
 	return ExportOp{
 		ctx:    ctx,
@@ -177,20 +179,32 @@ type ExportOp struct {
 // The err parameter indicates whether the operation failed. If err is not nil,
 // the number of failed spans (nSpans - success) is also recorded.
 func (e ExportOp) End(success int64, err error) {
+	inflightSpansEnable := e.inst.inflightSpans.Enabled(e.ctx)
+	exportedSpansEnable := e.inst.exportedSpans.Enabled(e.ctx)
+	opDurationEnable := e.inst.opDuration.Enabled(e.ctx)
+
+	if !inflightSpansEnable && !exportedSpansEnable && !opDurationEnable {
+		return
+	}
+
 	addOpt := get[metric.AddOption](addOptPool)
 	defer put(addOptPool, addOpt)
 	*addOpt = append(*addOpt, e.inst.setOpt)
 
-	e.inst.inflightSpans.Add(e.ctx, -e.nSpans, *addOpt...)
+	if inflightSpansEnable {
+		e.inst.inflightSpans.Add(e.ctx, -e.nSpans, *addOpt...)
+	}
 
 	// Record the success and duration of the operation.
 	//
 	// Do not exclude 0 values, as they are valid and indicate no spans
 	// were exported which is meaningful for certain aggregations.
-	e.inst.exportedSpans.Add(e.ctx, success, *addOpt...)
+	if exportedSpansEnable {
+		e.inst.exportedSpans.Add(e.ctx, success, *addOpt...)
+	}
 
 	mOpt := e.inst.setOpt
-	if err != nil {
+	if err != nil && exportedSpansEnable {
 		attrs := get[attribute.KeyValue](measureAttrsPool)
 		defer put(measureAttrsPool, attrs)
 		*attrs = append(*attrs, e.inst.attrs...)
@@ -207,8 +221,10 @@ func (e ExportOp) End(success int64, err error) {
 		e.inst.exportedSpans.Add(e.ctx, e.nSpans-success, *addOpt...)
 	}
 
-	recordOpt := get[metric.RecordOption](recordOptPool)
-	defer put(recordOptPool, recordOpt)
-	*recordOpt = append(*recordOpt, mOpt)
-	e.inst.opDuration.Record(e.ctx, time.Since(e.start).Seconds(), *recordOpt...)
+	if opDurationEnable {
+		recordOpt := get[metric.RecordOption](recordOptPool)
+		defer put(recordOptPool, recordOpt)
+		*recordOpt = append(*recordOpt, mOpt)
+		e.inst.opDuration.Record(e.ctx, time.Since(e.start).Seconds(), *recordOpt...)
+	}
 }

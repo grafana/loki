@@ -68,8 +68,9 @@
       s3: true,
       // Whether or not to include azure blob in the operational dashboard
       azureBlob: true,
-      // Whether or not to include bolt db in the operational dashboard
-      boltDB: true,
+      // Whether or not to include BoltDB Shipper in the operational dashboard.
+      // Kept as a legacy toggle; defaults to false since TSDB is the default index.
+      boltDB: false,
     },
 
     // Enable TSDB specific dashboards

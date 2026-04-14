@@ -2402,7 +2402,6 @@ func TestBuild_ConfigAndRuntimeConfig_STS(t *testing.T) {
 			},
 		},
 	}
-
 	expCfg, _ := loadTestData(t, "sts")
 
 	opts := defaultOptions()

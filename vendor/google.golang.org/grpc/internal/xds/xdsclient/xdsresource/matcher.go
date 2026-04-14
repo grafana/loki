@@ -253,31 +253,3 @@ func FindBestMatchingVirtualHost(host string, vHosts []*VirtualHost) *VirtualHos
 	}
 	return matchVh
 }
-
-// FindBestMatchingVirtualHostServer returns the virtual host whose domains field best
-// matches authority.
-func FindBestMatchingVirtualHostServer(authority string, vHosts []VirtualHostWithInterceptors) *VirtualHostWithInterceptors {
-	var (
-		matchVh   *VirtualHostWithInterceptors
-		matchType = domainMatchTypeInvalid
-		matchLen  int
-	)
-	for _, vh := range vHosts {
-		for _, domain := range vh.Domains {
-			typ, matched := match(domain, authority)
-			if typ == domainMatchTypeInvalid {
-				// The rds response is invalid.
-				return nil
-			}
-			if matchType.betterThan(typ) || matchType == typ && matchLen >= len(domain) || !matched {
-				// The previous match has better type, or the previous match has
-				// better length, or this domain isn't a match.
-				continue
-			}
-			matchVh = &vh
-			matchType = typ
-			matchLen = len(domain)
-		}
-	}
-	return matchVh
-}

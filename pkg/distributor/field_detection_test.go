@@ -1510,6 +1510,21 @@ func Test_detectLevelFromLogLine_earliestPosition(t *testing.T) {
 			log:      "2024-01-01T10:00:00.000000Z    info    Envoy command: [-c /etc/envoy.json -l warning --component-log-level misc:error --concurrency 2]",
 			expected: constants.LogLevelInfo,
 		},
+		{
+			name:     "pipe-delimited INFO level",
+			log:      "Tue Mar 24 2026 19:49:19 GMT+0000 (Coordinated Universal Time)|INFO|Integration|core-api-service:server|undefined|Received request from API GW",
+			expected: constants.LogLevelInfo,
+		},
+		{
+			name:     "structlog KeyValueRenderer single-quoted info level",
+			log:      "event='User logged in' level='info' timestamp='2022-10-13T16:29:27Z'",
+			expected: constants.LogLevelInfo,
+		},
+		{
+			name:     "structlog KeyValueRenderer single-quoted error level",
+			log:      "event='Connection refused' level='error' timestamp='2022-10-13T16:30:01Z' host='db.internal'",
+			expected: constants.LogLevelError,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result := detectLevelFromLogLine(tc.log)

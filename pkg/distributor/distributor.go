@@ -276,6 +276,8 @@ func New(
 	limitsFrontendClient := newIngestLimitsFrontendRingClient(
 		limitsFrontendRing,
 		limitsFrontendClientPool,
+		limitsFrontendCfg.ShuffleShardEnabled,
+		limitsFrontendCfg.ShuffleShardSize,
 	)
 
 	// Create the configured ingestion rate limit strategy (local or global).
@@ -475,9 +477,12 @@ func (d *Distributor) running(ctx context.Context) error {
 		cancel()
 		d.ingesterTaskWg.Wait()
 	}()
-	d.ingesterTaskWg.Add(d.cfg.PushWorkerCount)
-	for i := 0; i < d.cfg.PushWorkerCount; i++ {
-		go d.pushIngesterWorker(ctx)
+	if d.cfg.IngesterEnabled {
+		// Spawn workers if ingesters are enabled.
+		d.ingesterTaskWg.Add(d.cfg.PushWorkerCount)
+		for i := 0; i < d.cfg.PushWorkerCount; i++ {
+			go d.pushIngesterWorker(ctx)
+		}
 	}
 	select {
 	case <-ctx.Done():
@@ -859,9 +864,16 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if d.cfg.KafkaEnabled {
-		subring, err := d.partitionRing.PartitionRing().ShuffleShard(tenantID, d.validator.IngestionPartitionsTenantShardSize(tenantID))
-		if err != nil {
-			return nil, err
+		shardSize := d.validator.IngestionPartitionsTenantShardSize(tenantID)
+		var subring *ring.PartitionRing
+		if shardSize == 0 {
+			// Optimization - don't need to create shuffle shards in this case
+			subring = d.partitionRing.PartitionRing()
+		} else {
+			subring, err = d.partitionRing.PartitionRing().ShuffleShard(tenantID, shardSize)
+			if err != nil {
+				return nil, err
+			}
 		}
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
 		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, subring)

@@ -80,6 +80,10 @@ type processor struct {
 	// to the data object builder. It is required for the metastore index.
 	earliestRecordTime time.Time
 
+	// timePartitionedEstimates counts how many data objects we would build
+	// per flush with 12 hour windows.
+	timePartitionedEstimates map[time.Time]struct{}
+
 	metrics *metrics
 	logger  log.Logger
 }
@@ -98,15 +102,16 @@ func newProcessor(
 		panic(err)
 	}
 	p := &processor{
-		builder:          builder,
-		decoder:          decoder,
-		records:          records,
-		flushCommitter:   flushCommitter,
-		flushRequests:    make(chan flushRequest, 1),
-		idleFlushTimeout: idleFlushTimeout,
-		maxBuilderAge:    maxBuilderAge,
-		metrics:          newMetrics(reg),
-		logger:           logger,
+		builder:                  builder,
+		decoder:                  decoder,
+		records:                  records,
+		flushCommitter:           flushCommitter,
+		flushRequests:            make(chan flushRequest, 1),
+		idleFlushTimeout:         idleFlushTimeout,
+		maxBuilderAge:            maxBuilderAge,
+		metrics:                  newMetrics(reg),
+		logger:                   logger,
+		timePartitionedEstimates: make(map[time.Time]struct{}),
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p
@@ -230,6 +235,10 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 	now := time.Now()
 	p.observeRecord(rec, now)
 
+	// Find the 12 hour window.
+	window := rec.Timestamp.UTC().Truncate(12 * time.Hour)
+	p.timePartitionedEstimates[window] = struct{}{}
+
 	// Try to decode the stream in the record.
 	tenant := string(rec.Key)
 	stream, err := p.decoder.DecodeWithoutLabels(rec.Value)
@@ -327,7 +336,9 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 		p.earliestRecordTime = time.Time{}
 		p.firstAppend = time.Time{}
 		p.lastAppend = time.Time{}
+		clear(p.timePartitionedEstimates)
 	}()
+	p.metrics.timePartitionEstimate.Add(float64(len(p.timePartitionedEstimates)))
 	return p.flushCommitter.Flush(ctx, p.builder, reason, p.lastOffset, p.earliestRecordTime)
 }
 

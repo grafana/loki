@@ -129,7 +129,7 @@ tests:
               route: my-route
               severity: critical
             exp_annotations:
-              summary: "The 99th percentile is experiencing high latency (higher than 1 second)."
+              summary: "The 99th percentile is experiencing high latency (higher than 5 seconds)."
               description: "ingester my-route is experiencing 9.90s 99th percentile latency."
               runbook_url: "[[ .RunbookURL ]]#Loki-Request-Latency"
       - eval_time: 16m

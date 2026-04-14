@@ -124,7 +124,7 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		return nil, errors.New("either an advertise address or a local scheduler listener must be provided")
 	}
 
-	taskCaches, err := executor.NewTaskCacheRegistry(params.Executor.TasksResultCache.Config, reg, params.Logger)
+	taskCaches, err := executor.NewTaskCacheRegistry(params.Executor.TaskResultsCache.Config, reg, params.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("creating task results cache: %w", err)
 	}

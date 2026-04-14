@@ -784,7 +784,7 @@ func (a *authority) unwatchResource(rType ResourceType, resourceName string, wat
 			// reference to the xdsChannels.
 			if len(a.resources) == 0 {
 				if a.logger.V(2) {
-					a.logger.Infof("Removing last watch for for any resource type, releasing reference to the xdsChannel")
+					a.logger.Infof("Removing last watch for any resource type, releasing reference to the xdsChannel")
 				}
 				a.closeXDSChannels()
 			}

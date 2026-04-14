@@ -19,6 +19,10 @@ If you have not yet [migrated to TSDB](https://grafana.com/docs/loki/<LOKI_VERSI
 Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released. When you upgrade to Loki 3.x, you should choose either monolithic (single-binary) or microservices (distributed) as your [deployment mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/).
 {{< /admonition >}}
 
+{{< admonition type="tip" >}}
+With the move to the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts), the chart numbering has changed. Major version updates signal breaking changes in the chart. For more information, refer to the [README](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/README.md#upgrading).
+{{< /admonition >}}
+
 
 ### Changes
 

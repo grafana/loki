@@ -297,8 +297,10 @@ message Batching {
 // If the `key` is empty no caching is done.
 // If max_cacheable_size_bytes > 0, the Cache pipeline will store results
 // that are at most max_cacheable_size_bytes in size.
+// If `compression` is set, the compression method identified by it will be used to encode records in the cache.
 message Cache {
   string key = 1;
   string cache_name = 2;
   uint64 max_cacheable_size_bytes = 3;
+  string compression = 4;
 }

@@ -685,6 +685,69 @@ func TestDistributorPushToKafka(t *testing.T) {
 			return len(ingesters[2].pushed) == 1
 		}, time.Second, 10*time.Millisecond)
 	})
+
+	t.Run("with kafka, does shuffle sharding", func(t *testing.T) {
+		tests := map[string]struct {
+			numIngesters                int
+			shardSize                   int
+			expectedPartitionsShardedTo int
+		}{
+			"shardSize=0 -> shards to all partitions": {
+				numIngesters:                3,
+				shardSize:                   0,
+				expectedPartitionsShardedTo: 3,
+			},
+			"shardSize=1 -> shards to one partition": {
+				numIngesters:                3,
+				shardSize:                   1,
+				expectedPartitionsShardedTo: 1,
+			},
+			"shardSize=2 -> shards to two partitions": {
+				numIngesters:                3,
+				shardSize:                   2,
+				expectedPartitionsShardedTo: 2,
+			},
+		}
+		for name, test := range tests {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				kafkaWriter := &mockKafkaProducer{
+					failOnWrite: false,
+				}
+				distributors, _ := prepare(t, 1, test.numIngesters, limits, nil)
+				for _, d := range distributors {
+					d.cfg.KafkaEnabled = true
+					d.cfg.IngesterEnabled = false
+					d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
+					d.kafkaWriter = kafkaWriter
+
+					distributorLimits := &validation.Limits{}
+					flagext.DefaultValues(distributorLimits)
+					distributorLimits.IngestionPartitionsTenantShardSize = test.shardSize
+					overrides, err := validation.NewOverrides(*distributorLimits, nil)
+					require.NoError(t, err)
+					validator, err := NewValidator(overrides, nil)
+					require.NoError(t, err)
+					d.validator = validator
+				}
+
+				for i := 0; i < 1000; i++ {
+					_, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(
+						10, 64, []string{fmt.Sprintf(`{foo="%s"}`, strconv.Itoa(i))},
+						false, false, false))
+					require.NoError(t, err)
+				}
+
+				require.Greater(t, kafkaWriter.pushes, uint64(0))
+				partitionCounts := map[int32]uint32{}
+				for _, record := range kafkaWriter.records {
+					partitionID := record.Partition
+					partitionCounts[partitionID]++
+				}
+				require.Equal(t, test.expectedPartitionsShardedTo, len(partitionCounts))
+			})
+		}
+	})
 }
 
 func Test_SortLabelsOnPush(t *testing.T) {
@@ -1879,22 +1942,25 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))
 
+	partitions := map[int32]ring.PartitionDesc{}
+	owners := map[string]ring.OwnerDesc{}
+	numPartitions := max(1, numIngesters)
+	for i := 0; i < numPartitions; i++ {
+		partitions[int32(i)] = ring.PartitionDesc{
+			Id:             int32(i),
+			Tokens:         []uint32{uint32((math.MaxUint32 / numPartitions) * i)},
+			State:          ring.PartitionActive,
+			StateTimestamp: time.Now().Unix(),
+		}
+		owners[fmt.Sprintf("owner%d", i)] = ring.OwnerDesc{
+			OwnedPartition:   int32(i),
+			State:            ring.OwnerActive,
+			UpdatedTimestamp: time.Now().Unix(),
+		}
+	}
 	partitionRing, err := ring.NewPartitionRing(ring.PartitionRingDesc{
-		Partitions: map[int32]ring.PartitionDesc{
-			1: {
-				Id:             1,
-				Tokens:         []uint32{1},
-				State:          ring.PartitionActive,
-				StateTimestamp: time.Now().Unix(),
-			},
-		},
-		Owners: map[string]ring.OwnerDesc{
-			"test": {
-				OwnedPartition:   1,
-				State:            ring.OwnerActive,
-				UpdatedTimestamp: time.Now().Unix(),
-			},
-		},
+		Partitions: partitions,
+		Owners:     owners,
 	})
 	require.NoError(t, err)
 	partitionRingReader := mockPartitionRingReader{

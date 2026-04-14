@@ -15,10 +15,11 @@ Loki uses the defined schemas to determine which format to use when storing and 
 Use of a schema allows Loki to iterate over the storage layer without requiring migration of existing data.
 
 ## New Loki installs
+
 For a new Loki install with no previous data, here is an example schema configuration with recommended values
 
-```
-schemaConfig:
+```yaml
+schema_config:
   configs:
     - from: 2024-04-01
       object_store: s3
@@ -29,7 +30,6 @@ schemaConfig:
         period: 24h
 ```
 
-
 | Property     | Description                                                                                                                                            |
 |--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
 | from         | for a new install, this must be a date in the past, use a recent date. Format is YYYY-MM-DD.                                                           |
@@ -39,10 +39,22 @@ schemaConfig:
 | prefix:      | any value without spaces is acceptable.                                                                                                                |
 | period:      | must be `24h`.                                                                                                                                         |
 
+{{< admonition type="note" >}}
+For a new install, the `from` date must be in the past so the schema is immediately active when Loki starts. If you set it to a future date, Loki will have no valid schema for the current time and will not be able to store incoming data.
+
+This is different from adding a new schema entry to an existing install, where the `from` date must be in the future. See [Changing the schema](#changing-the-schema) below.
+{{< /admonition >}}
 
 ## Changing the schema
 
+{{< admonition type="note" >}}
+The guidance in this section applies when you are adding a new schema entry to an existing Loki install that already has data. Setting the `from` date to a future date gives Loki time to transition to the new schema and ensures that existing data continues to be read using the old schema. If the `from` date is not in the future, data written just before the cutover may become unreadable because Loki would try to query it using the wrong schema.
+
+For a brand new install with no previous data, the `from` date should be in the past instead. See [New Loki installs](#new-loki-installs) above.
+{{< /admonition >}}
+
 Here are items to consider when changing the schema; if schema changes are not done properly, a scenario can be created which prevents data from being read.
+
 - Always set the `from` date in the new schema to a date in the future.
 
   The `from` date is interpreted by Loki to start at 00:00:00 UTC. Therefore, Loki must have a date in the future to be able to transition to the new schema when that date and time arrives.
@@ -57,8 +69,8 @@ Here are items to consider when changing the schema; if schema changes are not d
 
 ## Schema configuration example
 
-```
-schemaConfig:
+```yaml
+schema_config:
   configs:
     - from: "2020-07-31"
       index:

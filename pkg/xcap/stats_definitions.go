@@ -101,6 +101,15 @@ var (
 	TaskCacheBytes   = NewStatisticInt64("task.cache.bytes", AggregationTypeSum)
 )
 
+// DataObjScan cache statistics.
+var (
+	DataObjScanCacheHits    = NewStatisticInt64("dataobjscan.cache.hits", AggregationTypeSum)
+	DataObjScanCacheMisses  = NewStatisticInt64("dataobjscan.cache.misses", AggregationTypeSum)
+	DataObjScanCacheBatches = NewStatisticInt64("dataobjscan.cache.batches", AggregationTypeSum)
+	DataObjScanCacheRows    = NewStatisticInt64("dataobjscan.cache.rows", AggregationTypeSum)
+	DataObjScanCacheBytes   = NewStatisticInt64("dataobjscan.cache.bytes", AggregationTypeSum)
+)
+
 // Task statistics.
 var (
 	TaskRecvDuration            = NewStatisticFloat64("task.recv.duration", AggregationTypeSum)
@@ -114,4 +123,5 @@ var (
 	TaskBatchingRowsWritten     = NewStatisticInt64("task.batching.rows.written", AggregationTypeSum)
 	TaskExternalSourcesCount    = NewStatisticInt64("task.external.sources.count", AggregationTypeFirst)
 	TaskExternalSinksCount      = NewStatisticInt64("task.external.sinks.count", AggregationTypeFirst)
+	TaskWireBytes               = NewStatisticInt64("task.wire.bytes", AggregationTypeSum)
 )
