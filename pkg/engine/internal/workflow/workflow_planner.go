@@ -560,7 +560,10 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 		// has a child ScanSet with multiple ScanTargets, we will end up with one task per ScanTarget.
 		// If the ScanTarget includes a predicate that clamps the time range, we need to make sure
 		// only the RangeAggregation for that specific ScanTarget is also clamped.
-		cloneAllParents(shard, shardedPlan, templateTask, map[physical.Node]bool{})
+		visited := map[physical.Node]bool{}
+		for _, p := range shardedPlan.Parents(shard) {
+			cloneAllNodes(p, shardedPlan, templateTask, visited)
+		}
 
 		// The sources of the template task need to be replaced with new unique
 		// streams.
@@ -625,29 +628,24 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 	return partitions, nil
 }
 
-// takes a starting node and a graph and recursively replaces
-// all parents of that node in the graph with clones.
-func cloneAllParents(node physical.Node, graph *dag.Graph[physical.Node], task *Task, visited map[physical.Node]bool) {
-	visited[node] = true
-	parents := graph.Parents(node)
-	for _, parent := range parents {
-		if visited[parent] {
-			continue
-		}
-		clone := parent.Clone()
-		_, ok := task.Sources[parent]
-		if ok {
-			tmp := task.Sources[parent]
-			task.Sources[clone] = tmp
-			delete(task.Sources, parent)
-		}
-		graph.Inject(parent, clone)
-		graph.Eliminate(parent)
-		visited[clone] = true
-		cloneParents := graph.Parents(clone)
-		for _, p := range cloneParents {
-			cloneAllParents(p, graph, task, visited)
-		}
+// Recursively replaces a node and all of its parents in the graph with clones.
+func cloneAllNodes(node physical.Node, graph *dag.Graph[physical.Node], task *Task, visited map[physical.Node]bool) {
+	if visited[node] {
+		return
+	}
+	clone := node.Clone()
+	_, ok := task.Sources[node]
+	if ok {
+		tmp := task.Sources[node]
+		task.Sources[clone] = tmp
+		delete(task.Sources, node)
+	}
+	graph.Inject(node, clone)
+	graph.Eliminate(node)
+	visited[clone] = true
+	cloneParents := graph.Parents(clone)
+	for _, p := range cloneParents {
+		cloneAllNodes(p, graph, task, visited)
 	}
 }
 
