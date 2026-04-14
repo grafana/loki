@@ -3688,6 +3688,7 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `querier.scheduler-grpc-client`
 - `query-scheduler.grpc-client-config`
 - `ruler.client`
+- `ruler.evaluation.query-frontend`
 - `tsdb.shipper.index-gateway-client.grpc`
 
 &nbsp;
@@ -6084,14 +6085,11 @@ evaluation:
     # CLI flag: -ruler.evaluation.query-frontend.address
     [address: <string> | default = ""]
 
-    # Set to true if query-frontend connection requires TLS.
-    # CLI flag: -ruler.evaluation.query-frontend.tls-enabled
-    [tls_enabled: <boolean> | default = false]
-
-    # The TLS configuration.
+    # The grpc_client block configures the gRPC client used to communicate
+    # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
     # ruler.evaluation.query-frontend
-    [<tls_config>]
+    [<grpc_client>]
 ```
 
 ### runtime_config
