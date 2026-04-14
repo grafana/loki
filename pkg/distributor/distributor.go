@@ -847,7 +847,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	if d.cfg.KafkaEnabled {
 		// When Kafka is enabled, we track just one stream, instead of len(streams),
 		// as all streams are written to Kafka at once.
-		streamsToWrite += 1
+		streamsToWrite++
 	}
 
 	// We must correctly set streamsPending before beginning any writes to ensure we don't have a race between finishing all of one path before starting the other.
