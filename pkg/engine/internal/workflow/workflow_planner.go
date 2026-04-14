@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -123,6 +124,8 @@ func optimize(t *Task) {
 //
 // Cache fetch errors are non-fatal: a warning is logged and the task is left in the graph.
 func eliminateEmptyCachedTasks(p *planner, caches executor.TaskCacheRegistry, logger log.Logger) error {
+	start := time.Now()
+
 	// Walk the graph to collect tasks to eliminate before mutating.
 	// NOTE: eliminateTask cannot be called here since dag.Graph.Eliminate uses
 	// slices.DeleteFunc which zeroes the tail of the underlying slice array,
@@ -147,7 +150,13 @@ func eliminateEmptyCachedTasks(p *planner, caches executor.TaskCacheRegistry, lo
 	// Log the number of tasks removed. Note that if removed_tasks is bigger than to_eliminate
 	// then, (removed_tasks-to_eliminate) parents were removed because all their children were removed,
 	if tasksRemoved > 0 {
-		level.Debug(logger).Log("msg", "removed empty cached tasks from workflow", "removed_tasks", tasksRemoved, "total_tasks", taskCount, "to_eliminate", len(toEliminate))
+		level.Debug(logger).Log(
+			"msg", "removed empty cached tasks from workflow",
+			"total_tasks", taskCount,
+			"removed_tasks", tasksRemoved,
+			"to_eliminate", len(toEliminate),
+			"elapsed", time.Since(start),
+		)
 	}
 
 	return nil
