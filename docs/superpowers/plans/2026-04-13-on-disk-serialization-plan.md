@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **IMPORTANT: Commit protocol.** Do NOT commit at the end of each task. Instead: stage all changed files with `git add`, present a brief summary of what was done, and **PAUSE for user review**. The user will review the staged diff and approve or request changes before committing. Only commit after explicit user approval.
+
 **Goal:** Make `postings.Builder` and `stats.Builder` implement `dataobj.SectionBuilder` so they serialize to disk via `dataobj.Builder.Append`.
 
 **Architecture:** Replace the in-memory `ColumnarEncoder` (using `pkg/columnar/` Arrow arrays) with on-disk encoding via `dataset.ColumnBuilder` + `columnar.Encoder` + `SectionWriter` — the same path used by streams/pointers/indexpointers. Add `Open` functions for reading sections back from disk. Wire up `indexobj/builder.go` to actually flush stats and postings.
@@ -125,12 +127,15 @@ Delete `computeSplits` method. Remove `context` import; add `columnar` import.
 Run: `go build ./pkg/dataobj/sections/postings/...`
 Expected: PASS (all three files compile together)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Stage and pause for review**
 
 ```bash
 git add pkg/dataobj/sections/postings/postings.go pkg/dataobj/sections/postings/encode_columnar.go pkg/dataobj/sections/postings/builder.go
-git commit -m "feat(postings): implement SectionBuilder with on-disk ColumnarSectionEncoder"
 ```
+
+Present a brief summary of changes. **PAUSE** — wait for user to review staged diff and approve before committing.
+
+Suggested commit message: `feat(postings): implement SectionBuilder with on-disk ColumnarSectionEncoder`
 
 ---
 
@@ -155,12 +160,15 @@ Create `open.go` with:
 Run: `go build ./pkg/dataobj/sections/postings/...`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Stage and pause for review**
 
 ```bash
 git add pkg/dataobj/sections/postings/open.go
-git commit -m "feat(postings): add Open function for reading postings sections from disk"
 ```
+
+Present a brief summary of changes. **PAUSE** — wait for user to review staged diff and approve before committing.
+
+Suggested commit message: `feat(postings): add Open function for reading postings sections from disk`
 
 ---
 
@@ -240,12 +248,15 @@ Preserve all existing test cases:
 Run: `go test -v ./pkg/dataobj/sections/postings/...`
 Expected: ALL PASS
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Stage and pause for review**
 
 ```bash
 git add pkg/dataobj/sections/postings/builder_test.go
-git commit -m "test(postings): rewrite builder tests for on-disk round-trip"
 ```
+
+Present a brief summary of changes. **PAUSE** — wait for user to review staged diff and approve before committing.
+
+Suggested commit message: `test(postings): rewrite builder tests for on-disk round-trip`
 
 ---
 
@@ -306,12 +317,15 @@ Same changes as postings Task 1 Step 4. Remove `targetSectionSize`, change `Flus
 Run: `go build ./pkg/dataobj/sections/stats/...`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Stage and pause for review**
 
 ```bash
 git add pkg/dataobj/sections/stats/stats.go pkg/dataobj/sections/stats/encode_columnar.go pkg/dataobj/sections/stats/builder.go
-git commit -m "feat(stats): implement SectionBuilder with on-disk ColumnarSectionEncoder"
 ```
+
+Present a brief summary of changes. **PAUSE** — wait for user to review staged diff and approve before committing.
+
+Suggested commit message: `feat(stats): implement SectionBuilder with on-disk ColumnarSectionEncoder`
 
 ---
 
@@ -334,12 +348,15 @@ Same pattern as postings Task 2, adapted for stats:
 Run: `go build ./pkg/dataobj/sections/stats/...`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Stage and pause for review**
 
 ```bash
 git add pkg/dataobj/sections/stats/open.go
-git commit -m "feat(stats): add Open function for reading stats sections from disk"
 ```
+
+Present a brief summary of changes. **PAUSE** — wait for user to review staged diff and approve before committing.
+
+Suggested commit message: `feat(stats): add Open function for reading stats sections from disk`
 
 ---
 
@@ -364,12 +381,15 @@ Preserve existing tests adapted for on-disk round-trip. Also add:
 Run: `go test -v ./pkg/dataobj/sections/stats/...`
 Expected: ALL PASS
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Stage and pause for review**
 
 ```bash
 git add pkg/dataobj/sections/stats/builder_test.go
-git commit -m "test(stats): rewrite builder tests for on-disk round-trip"
 ```
+
+Present a brief summary of changes. **PAUSE** — wait for user to review staged diff and approve before committing.
+
+Suggested commit message: `test(stats): rewrite builder tests for on-disk round-trip`
 
 ---
 
@@ -433,12 +453,15 @@ Delete `StatsBuilderForTenant` (line 545) and `PostingsBuilderForTenant` (line 5
 Run: `go build ./pkg/dataobj/index/...`
 Expected: Compilation errors in test files that use deleted accessors. This is expected — we fix those in Task 8.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Stage and pause for review**
 
 ```bash
 git add pkg/dataobj/index/indexobj/builder.go
-git commit -m "feat(indexobj): wire up stats/postings flushing, add dirty state + size tracking"
 ```
+
+Present a brief summary of changes. **PAUSE** — wait for user to review staged diff and approve before committing.
+
+Suggested commit message: `feat(indexobj): wire up stats/postings flushing, add dirty state + size tracking`
 
 ---
 
@@ -497,12 +520,15 @@ After accessor deletion, rewrite these tests to: call `builder.Flush()` and chec
 Run: `go test -v ./pkg/dataobj/index/...`
 Expected: ALL PASS
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Stage and pause for review**
 
 ```bash
 git add pkg/dataobj/index/stats_calculation_test.go pkg/dataobj/index/label_postings_calculation_test.go
-git commit -m "test(index): update calculation tests to use Open for on-disk round-trip"
 ```
+
+Present a brief summary of changes. **PAUSE** — wait for user to review staged diff and approve before committing.
+
+Suggested commit message: `test(index): update calculation tests to use Open for on-disk round-trip`
 
 ---
 
