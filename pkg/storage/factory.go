@@ -182,7 +182,7 @@ func (ns *NamedStores) populateStoreType() error {
 	checkForDuplicates := func(name string) error {
 		switch name {
 		case types.StorageTypeAWS, types.StorageTypeAWSDynamo, types.StorageTypeS3,
-			types.StorageTypeGCS,
+			types.StorageTypeGCP, types.StorageTypeGCPColumnKey, types.StorageTypeBigTable, types.StorageTypeBigTableHashed, types.StorageTypeGCS,
 			types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCassandra,
 			types.StorageTypeFileSystem, types.StorageTypeInMemory, types.StorageTypeGrpc:
 			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
