@@ -54,9 +54,7 @@ const (
 	EvalModeRemote = "remote"
 )
 
-var (
-	userAgent = fmt.Sprintf("loki-ruler/%s", build.Version)
-)
+var userAgent = fmt.Sprintf("loki-ruler/%s", build.Version)
 
 type metrics struct {
 	reqDurationSecs     *prometheus.HistogramVec
@@ -192,6 +190,7 @@ func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
 			),
 			grpc.WithDefaultServiceConfig(serviceConfig),
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(100 << 20)),
 		},
 		tlsDialOptions...,
 	)
