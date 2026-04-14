@@ -7,8 +7,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"google.golang.org/api/option"
-	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
@@ -32,14 +30,6 @@ func gcsInstrumentation(transport http.RoundTripper) *http.Client {
 		},
 	}
 	return client
-}
-
-func toOptions(opts []grpc.DialOption) []option.ClientOption {
-	result := make([]option.ClientOption, 0, len(opts))
-	for _, opt := range opts {
-		result = append(result, option.WithGRPCDialOption(opt))
-	}
-	return result
 }
 
 type instrumentedTransport struct {
