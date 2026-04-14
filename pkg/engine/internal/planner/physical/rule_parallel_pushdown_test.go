@@ -219,7 +219,7 @@ func TestParallelPushdown_canShardAggregation(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				vec := &VectorAggregation{Operation: tc.vecOp}
 				rng := &RangeAggregation{Operation: tc.rangeOp}
-				require.Equal(t, tc.expected, canShardAggregation(vec, rng))
+				require.Equal(t, tc.expected, (&parallelPushdown{}).canShardAggregation(vec, rng))
 			})
 		}
 	})
@@ -231,7 +231,7 @@ func TestParallelPushdown_canShardAggregation(t *testing.T) {
 				Grouping:  Grouping{Without: true},
 			}
 			rng := &RangeAggregation{Operation: types.RangeAggregationTypeSum}
-			require.False(t, canShardAggregation(vec, rng))
+			require.False(t, (&parallelPushdown{}).canShardAggregation(vec, rng))
 		})
 
 		t.Run("rejects mismatched grouping columns", func(t *testing.T) {
@@ -247,7 +247,7 @@ func TestParallelPushdown_canShardAggregation(t *testing.T) {
 					Columns: []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: "bar"}}},
 				},
 			}
-			require.False(t, canShardAggregation(vec, rng))
+			require.False(t, (&parallelPushdown{}).canShardAggregation(vec, rng))
 		})
 
 		t.Run("accepts matching grouping columns", func(t *testing.T) {
@@ -263,7 +263,7 @@ func TestParallelPushdown_canShardAggregation(t *testing.T) {
 					Columns: []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: "foo"}}},
 				},
 			}
-			require.True(t, canShardAggregation(vec, rng))
+			require.True(t, (&parallelPushdown{}).canShardAggregation(vec, rng))
 		})
 	})
 }

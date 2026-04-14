@@ -80,8 +80,8 @@ type ExecutorConfig struct {
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
 
-	// TasksResultCache configures the backing cache for task results.
-	TasksResultCache TaskCacheConfig `yaml:"tasks_result_cache" category:"experimental"`
+	// TaskResultsCache configures the backing cache for task results.
+	TaskResultsCache TaskCacheConfig `yaml:"task_results_cache" category:"experimental"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -91,7 +91,7 @@ func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 	f.Var(&cfg.PrefetchBytes, prefix+"prefetch-bytes", "Experimental: Number of bytes to prefetch when opening a data object for decoding metadata and overlapping section reads. Clamps to at least 16KiB.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
-	cfg.TasksResultCache.RegisterFlagsWithPrefix(prefix+"tasks-result-cache.", f)
+	cfg.TaskResultsCache.RegisterFlagsWithPrefix(prefix+"task-results-cache.", f)
 }
 
 // TaskCacheConfig extends resultscache.Config with additional task-cache-specific settings.
@@ -167,9 +167,9 @@ func New(params Params) (*Engine, error) {
 	}
 
 	var taskCaches executor.TaskCacheRegistry
-	if params.Config.Executor.TasksResultCache.PruneEmptyCachedTasks {
+	if params.Config.Executor.TaskResultsCache.PruneEmptyCachedTasks {
 		var err error
-		taskCaches, err = executor.NewTaskCacheRegistry(params.Config.Executor.TasksResultCache.Config, params.Registerer, params.Logger)
+		taskCaches, err = executor.NewTaskCacheRegistry(params.Config.Executor.TaskResultsCache.Config, params.Registerer, params.Logger)
 		if err != nil {
 			return nil, fmt.Errorf("creating task cache registry: %w", err)
 		}
@@ -216,7 +216,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		return logqlmodel.Result{}, httpgrpc.Error(http.StatusBadRequest, err.Error())
 	}
 
-	cacheEnabled := cache.IsCacheConfigured(e.cfg.Executor.TasksResultCache.CacheConfig) && !params.CachingOptions().Disabled
+	cacheEnabled := cache.IsCacheConfigured(e.cfg.Executor.TaskResultsCache.CacheConfig) && !params.CachingOptions().Disabled
 
 	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.Execute",
 		trace.WithAttributes(
@@ -401,7 +401,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID, taskCacheEnabled))
+	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID, logger, taskCacheEnabled))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -446,8 +446,9 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 	return physicalPlan, duration, nil
 }
 
-func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string, cacheEnabled bool) physical.MetastoreSectionsResolver {
+func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string, logger log.Logger, cacheEnabled bool) physical.MetastoreSectionsResolver {
 	planner := physical.NewMetastorePlanner(e.metastore, e.cfg.Executor.BatchSize)
+	logger = log.With(logger, "subcomponent", "metastore")
 	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
 		ctx, span := xcap.StartSpan(ctx, tracer, "engine.metastoreResolver")
 		defer span.End()
@@ -460,7 +461,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string,
 		// Disable admission lanes for metastore queries
 		useAdmissionLanes := false
 
-		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan, useAdmissionLanes, cacheEnabled)
+		wf, _, err := e.buildWorkflow(ctx, tenantID, logger, plan, useAdmissionLanes, cacheEnabled)
 		if err != nil {
 			return nil, fmt.Errorf("metastore: build workflow: %w", err)
 		}
@@ -511,10 +512,10 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 		MaxRunningOtherTasks: 0,
 
 		CacheEnabled:            cacheEnabled,
-		MaxTaskCacheSize:        uint64(e.cfg.Executor.TasksResultCache.TaskResultMaxCacheableSize),
-		MaxDataObjScanCacheSize: uint64(e.cfg.Executor.TasksResultCache.DataObjScanResultMaxCacheableSize),
-		CacheCompression:        e.cfg.Executor.TasksResultCache.Compression,
-		PruneEmptyCachedTasks:   e.cfg.Executor.TasksResultCache.PruneEmptyCachedTasks,
+		MaxTaskCacheSize:        uint64(e.cfg.Executor.TaskResultsCache.TaskResultMaxCacheableSize),
+		MaxDataObjScanCacheSize: uint64(e.cfg.Executor.TaskResultsCache.DataObjScanResultMaxCacheableSize),
+		CacheCompression:        e.cfg.Executor.TaskResultsCache.Compression,
+		PruneEmptyCachedTasks:   e.cfg.Executor.TaskResultsCache.PruneEmptyCachedTasks,
 		TaskCacheRegistry:       e.taskCaches,
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),

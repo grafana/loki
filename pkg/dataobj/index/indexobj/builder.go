@@ -17,6 +17,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -47,6 +49,8 @@ type Builder struct {
 	streams       map[string]*streams.Builder       // The key is the TenantID.
 	pointers      map[string]*pointers.Builder      // The key is the TenantID.
 	indexPointers map[string]*indexpointers.Builder // The key is the TenantID.
+	stats         map[string]*stats.Builder         // The key is the TenantID.
+	postings      map[string]*postings.Builder      // The key is the TenantID.
 
 	// Optimization to avoid recalculating the size by asking all tenants for their estimated size.
 	unflushedSizeEstimate int
@@ -91,6 +95,8 @@ func NewBuilder(cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store) (*Bui
 		streams:       make(map[string]*streams.Builder),
 		pointers:      make(map[string]*pointers.Builder),
 		indexPointers: make(map[string]*indexpointers.Builder),
+		stats:         make(map[string]*stats.Builder),
+		postings:      make(map[string]*postings.Builder),
 	}, nil
 }
 
@@ -114,6 +120,92 @@ func (b *Builder) getIndexPointerBuilderForTenant(tenantID string) *indexpointer
 	b.indexPointers[tenantID] = tenantIndexPointers
 
 	return tenantIndexPointers
+}
+
+func (b *Builder) getStatsBuilderForTenant(tenantID string) *stats.Builder {
+	if _, ok := b.stats[tenantID]; !ok {
+		sb := stats.NewBuilder(int(b.cfg.TargetSectionSize), stats.ColumnarEncoder)
+		sb.SetTenant(tenantID)
+		b.stats[tenantID] = sb
+	}
+	return b.stats[tenantID]
+}
+
+func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder {
+	if _, ok := b.postings[tenantID]; !ok {
+		pb := postings.NewBuilder(int(b.cfg.TargetSectionSize), postings.ColumnarEncoder)
+		pb.SetTenant(tenantID)
+		b.postings[tenantID] = pb
+	}
+	return b.postings[tenantID]
+}
+
+// AppendStat records a per-sort-key aggregate for a data object section.
+func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
+	sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
+
+	tenantStats := b.getStatsBuilderForTenant(tenantID)
+
+	tenantStats.Append(stats.Stat{
+		ObjectPath:       objectPath,
+		SectionIndex:     sectionIdx,
+		SortSchema:       sortSchema,
+		Labels:           labels,
+		MinTimestamp:     minTs.UnixNano(),
+		MaxTimestamp:     maxTs.UnixNano(),
+		RowCount:         int64(rows),
+		UncompressedSize: uncompressedSize,
+	})
+
+	// TODO: set b.state = builderStateDirty when we implement flush.
+	return nil
+}
+
+// AppendLabelPosting records a label-based posting for a data object column.
+func (b *Builder) AppendLabelPosting(tenantID, objectPath string, sectionIdx int64,
+	columnName string, labelValue string, streamIDBitmap []byte,
+	uncompressedSize int64, minTs, maxTs time.Time) error {
+
+	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
+
+	tenantPostings.Append(postings.Posting{
+		Kind:             postings.KindLabel,
+		ObjectPath:       objectPath,
+		SectionIndex:     sectionIdx,
+		ColumnName:       columnName,
+		LabelValue:       labelValue,
+		BloomFilter:      nil,
+		StreamIDBitmap:   streamIDBitmap,
+		UncompressedSize: uncompressedSize,
+		MinTimestamp:     minTs.UnixNano(),
+		MaxTimestamp:     maxTs.UnixNano(),
+	})
+
+	// TODO: set b.state = builderStateDirty when we implement flush.
+	return nil
+}
+
+// AppendBloomPosting records a Bloom-filter posting for a data object column.
+func (b *Builder) AppendBloomPosting(tenantID, objectPath string, sectionIdx int64,
+	columnName string, bloomFilter []byte, streamIDBitmap []byte,
+	uncompressedSize int64, minTs, maxTs time.Time) error {
+
+	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
+
+	tenantPostings.Append(postings.Posting{
+		Kind:             postings.KindBloom,
+		ObjectPath:       objectPath,
+		SectionIndex:     sectionIdx,
+		ColumnName:       columnName,
+		BloomFilter:      bloomFilter,
+		StreamIDBitmap:   streamIDBitmap,
+		UncompressedSize: uncompressedSize,
+		MinTimestamp:     minTs.UnixNano(),
+		MaxTimestamp:     maxTs.UnixNano(),
+	})
+
+	// TODO: set b.state = builderStateDirty when we implement flush.
+	return nil
 }
 
 func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.Time, endTs time.Time) error {
@@ -356,6 +448,14 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 		}
 	}
 
+	// Stats and postings builders - reset only (no-op flush until serialization lands)
+	for _, tenantStats := range b.stats {
+		tenantStats.Reset()
+	}
+	for _, tenantPostings := range b.postings {
+		tenantPostings.Reset()
+	}
+
 	if err := errors.Join(flushErrors...); err != nil {
 		b.metrics.flushFailures.Inc()
 		return nil, nil, fmt.Errorf("building object: %w", err)
@@ -415,6 +515,8 @@ func (b *Builder) Reset() {
 	clear(b.streams)
 	clear(b.pointers)
 	clear(b.indexPointers)
+	b.stats = make(map[string]*stats.Builder)
+	b.postings = make(map[string]*postings.Builder)
 
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
@@ -435,4 +537,18 @@ func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
 // UnregisterMetrics unregisters metrics about builder from reg.
 func (b *Builder) UnregisterMetrics(reg prometheus.Registerer) {
 	b.metrics.Unregister(reg)
+}
+
+// StatsBuilderForTenant returns the stats builder for the given tenant. If no
+// stats have been appended for this tenant, nil is returned.
+// This is intended for testing only.
+func (b *Builder) StatsBuilderForTenant(tenantID string) *stats.Builder {
+	return b.stats[tenantID]
+}
+
+// PostingsBuilderForTenant returns the postings builder for the given tenant. If no
+// postings have been appended for this tenant, nil is returned.
+// This is intended for testing only.
+func (b *Builder) PostingsBuilderForTenant(tenantID string) *postings.Builder {
+	return b.postings[tenantID]
 }

@@ -81,7 +81,7 @@ func (p *parallelPushdown) applyParallelization(node Node) bool {
 
 		// RangeAggregation can be parallelized only when the operation
 		// is associative and commutative with the parent vector aggregation.
-		if !canShardAggregation(vecAgg, node) {
+		if !p.canShardAggregation(vecAgg, node) {
 			return false
 		}
 
@@ -134,8 +134,8 @@ func (p *parallelPushdown) findParentVectorAggregation(node Node) *VectorAggrega
 // Supported combinations:
 //   - sum over sum/count: additive operations can be summed across partitions
 //   - max over max: max of local maxes equals global max
-//   - min over min: min of loca mins equals global min
-func canShardAggregation(vec *VectorAggregation, rng *RangeAggregation) bool {
+//   - min over min: min of local mins equals global min
+func (p *parallelPushdown) canShardAggregation(vec *VectorAggregation, rng *RangeAggregation) bool {
 	// without grouping is not pushed down.
 	if vec.Grouping.Without || rng.Grouping.Without {
 		return false

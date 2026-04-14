@@ -150,6 +150,10 @@ func NewIndexBuilder(
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
 
+	if err := calculator.RegisterMetrics(builderReg); err != nil {
+		return nil, fmt.Errorf("failed to register metrics for calculator: %w", err)
+	}
+
 	s := &Builder{
 		cfg:                cfg,
 		mCfg:               mCfg,
