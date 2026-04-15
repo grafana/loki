@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -162,6 +163,13 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 	var connRecycler *btransport.ConnectionRecycler
 
 	enableBigtableConnPool := btopt.EnableBigtableConnectionPool()
+	grpcConnOptType := reflect.TypeOf(option.WithGRPCConn(nil))
+	for _, opt := range opts {
+		if reflect.TypeOf(opt) == grpcConnOptType {
+			enableBigtableConnPool = false
+			break
+		}
+	}
 	var connPoolSize int
 	if enableBigtableConnPool {
 		uResolver, err := internaloption.NewUnsafeResolver(o...)
