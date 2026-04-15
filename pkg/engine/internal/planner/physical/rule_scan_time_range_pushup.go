@@ -47,13 +47,16 @@ func (r *scanTimeRangePushup) applyToTargets(node Node, timeRange TimeRange) boo
 	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
-		if node.Step == 0 {
-			if node.Start.Compare(timeRange.Start) < 0 {
-				node.Start = timeRange.Start
-				changed = true
-			}
-			if node.End.Compare(timeRange.End) > 0 {
-				node.End = timeRange.End
+		if node.Step == 0 { // instant query
+			if node.End.Compare(timeRange.End) > 0 && node.End.Add(-1*node.Range).Compare(timeRange.End) < 0 { // node range overlaps the scan range
+				// reduce the node range and clamp to the scan range end
+				node.Range = node.Range - (node.End.Sub(timeRange.End))
+				node.Start = timeRange.End.UTC()
+				node.End = timeRange.End.UTC()
+				// if the node range is longer than the scan range, just use the scan range
+				if node.End.Add(-1*node.Range).Compare(timeRange.Start) < 0 {
+					node.Range = node.End.Sub(timeRange.Start)
+				}
 				changed = true
 			}
 		} else {
