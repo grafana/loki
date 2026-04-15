@@ -50,7 +50,7 @@ func tokenizeLabelfmt(input arrow.RecordBatch, line string, decoder *log.LabelsF
 	}
 	ts, err := time.Parse("2006-01-02T15:04:05.999999999Z", input.Column(timestampIdx).ValueStr(0))
 	if err != nil {
-		panic(fmt.Sprintf("Unable to convert timestamp %v", input.Column(timestampIdx).ValueStr(0)))
+		return map[string]string{}, fmt.Errorf("Unable to convert timestamp %v", input.Column(timestampIdx).ValueStr(0))
 	}
 
 	decoder.Process(ts.UnixNano(), unsafeBytes(line), builder)
