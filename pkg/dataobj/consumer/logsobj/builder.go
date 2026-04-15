@@ -568,21 +568,13 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 				if err != nil {
 					return nil, nil, fmt.Errorf("reading schema labels from logs section: %w", err)
 				}
-				if len(schemaLabels) > 0 {
-					level.Debug(b.logger).Log("msg", "sort schema: using labels from existing section metadata", "tenant", tenant, "schema_labels", fmt.Sprintf("%v", schemaLabels))
-				}
 			}
 			if len(schemaLabels) == 0 && b.overrides != nil {
 				schemaLabels = b.overrides.SortSchemaLabels(tenant)
-				if len(schemaLabels) > 0 {
-					level.Debug(b.logger).Log("msg", "sort schema: using labels from tenant overrides", "tenant", tenant, "schema_labels", fmt.Sprintf("%v", schemaLabels))
-				}
 			}
 			if len(schemaLabels) == 0 {
-				level.Debug(b.logger).Log("msg", "sort schema: no schema labels resolved, falling back to dataobj_sort_order", "tenant", tenant, "overrides_configured", b.overrides != nil)
+				level.Warn(b.logger).Log("msg", "sort schema: no schema labels resolved, falling back to dataobj_sort_order", "tenant", tenant, "overrides_configured", b.overrides != nil)
 			}
-		} else {
-			level.Debug(b.logger).Log("msg", "sort schema: feature disabled, using dataobj_sort_order", "tenant", tenant, "dataobj_sort_order", b.cfg.DataobjSortOrder)
 		}
 
 		if len(schemaLabels) > 0 {
@@ -596,7 +588,6 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		} else {
 			sortOrder = parseSortOrder(b.cfg.DataobjSortOrder)
 			iter, iterErr = sortMergeIterator(ctx, sections, sortOrder)
-			level.Info(b.logger).Log("msg", "sort schema: sorting by dataobj_sort_order", "tenant", tenant, "sort_order", b.cfg.DataobjSortOrder)
 		}
 		if iterErr != nil {
 			return nil, nil, fmt.Errorf("creating sort iterator: %w", iterErr)

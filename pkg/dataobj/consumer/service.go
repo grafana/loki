@@ -52,14 +52,6 @@ type Service struct {
 	builderFactory              *logsobj.BuilderFactory
 }
 
-// SetOverrides configures per-tenant overrides on the underlying builder factory.
-// This affects builders created after this call. The overrides should be passed
-// to New() instead to ensure the initial builder also has them configured.
-func (s *Service) SetOverrides(overrides logsobj.TenantOverrides) {
-	level.Info(s.logger).Log("msg", "sort schema overrides configured on builder factory")
-	s.builderFactory.SetOverrides(overrides)
-}
-
 func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, _ string, _ ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
 	logger = log.With(logger, "component", "dataobj-consumer")
 
