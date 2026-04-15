@@ -876,7 +876,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			}
 		}
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
-		d.sendStreamsToKafka(ctx, tenantID, streams, &tracker, subring)
+		go d.sendStreamsToKafka(ctx, tenantID, streams, &tracker, subring)
 	}
 
 	if d.cfg.IngesterEnabled {
