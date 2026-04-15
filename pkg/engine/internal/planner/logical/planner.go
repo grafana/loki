@@ -80,6 +80,7 @@ func buildPlanForLogQuery(
 		hasLogfmtParser  bool
 		hasJSONParser    bool
 		hasRegexParser   bool
+		hasFmtExpr       bool
 	)
 
 	// Do the first pass to collect the stream selector, line filters, and predicates. Only predicates listed
@@ -108,7 +109,7 @@ func buildPlanForLogQuery(
 			}
 		case *syntax.LabelFilterExpr:
 			// Collect following filters only before we met any parse stage.
-			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser {
+			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser && !hasFmtExpr {
 				val, innerErr := convertLabelFilter(e.LabelFilterer)
 				if innerErr != nil {
 					err = innerErr
@@ -120,8 +121,10 @@ func buildPlanForLogQuery(
 
 			return true
 		case *syntax.LineFmtExpr:
+			hasFmtExpr = true
 			return true
 		case *syntax.LabelFmtExpr:
+			hasFmtExpr = true
 			return true
 		}
 		return true
@@ -180,6 +183,7 @@ func buildPlanForLogQuery(
 	hasLogfmtParser = false
 	hasJSONParser = false
 	hasRegexParser = false
+	hasFmtExpr = false
 
 	// TODO(chaudum): Implement a Walk function that can return an error
 	expr.Walk(func(e syntax.Expr) bool {
@@ -222,7 +226,7 @@ func buildPlanForLogQuery(
 			}
 		case *syntax.LabelFilterExpr:
 			// Add following filters only after we met any parse stage.
-			if hasLogfmtParser || hasJSONParser || hasRegexParser {
+			if hasLogfmtParser || hasJSONParser || hasRegexParser || hasFmtExpr {
 				val, innerErr := convertLabelFilter(e.LabelFilterer)
 				if innerErr != nil {
 					err = innerErr
@@ -236,9 +240,11 @@ func buildPlanForLogQuery(
 			err = errUnimplemented
 			return false // do not traverse children
 		case *syntax.LineFmtExpr:
+			hasFmtExpr = true
 			builder = builder.Format(types.VariadicOpParseLinefmt, NewLiteral(e.Value))
 			return true
 		case *syntax.LabelFmtExpr:
+			hasFmtExpr = true
 			builder = builder.Format(types.VariadicOpParseLabelfmt, NewLiteral(e.Formats))
 			return false // do not traverse children
 		case *syntax.KeepLabelsExpr:
