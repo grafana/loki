@@ -150,7 +150,7 @@ func extractLabelFmtParameters(args []arrow.Array) (*array.String, []log.LabelFm
 	switch listValues := listValues.(type) {
 	case *array.Struct:
 		if sourceCol.Len() == 0 {
-			return sourceCol, nil, []log.LabelFmt{}, nil
+			return sourceCol, []log.LabelFmt{}, nil
 		}
 		// listValues will repeat one copy for each line of input; we want to only grab one copy
 		for i := 0; i < (listValues.Len() / sourceCol.Len()); i++ {
