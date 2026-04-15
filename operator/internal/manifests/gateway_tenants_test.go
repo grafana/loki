@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -15,6 +16,7 @@ import (
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
@@ -476,7 +478,9 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 	for _, tc := range tc {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := ApplyGatewayDefaultOptions(tc.opts)
+			k := &k8sfakes.FakeClient{}
+			var log logr.Logger
+			err := ApplyGatewayDefaultOptions(tc.opts, k, log)
 			require.NoError(t, err)
 
 			for i, a := range tc.opts.OpenShiftOptions.Authentication {

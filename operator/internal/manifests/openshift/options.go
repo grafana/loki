@@ -26,6 +26,12 @@ type AuthenticationSpec struct {
 	ServiceAccount string
 	RedirectURL    string
 	CookieSecret   string
+
+	// ExternalOIDC fields
+	OIDCIssuer       string
+	OIDCClientID     string
+	OIDCClientSecret string
+	OIDCCA           string
 }
 
 // AuthorizationSpec describes the authorization specification

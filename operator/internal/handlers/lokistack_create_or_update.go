@@ -124,7 +124,7 @@ func CreateOrUpdateLokiStack(
 	}
 
 	if fg.LokiStackGateway {
-		if optErr := manifests.ApplyGatewayDefaultOptions(&opts); optErr != nil {
+		if optErr := manifests.ApplyGatewayDefaultOptions(&opts, k, ll); optErr != nil {
 			ll.Error(optErr, "failed to apply defaults options to gateway settings")
 			return nil, optErr
 		}

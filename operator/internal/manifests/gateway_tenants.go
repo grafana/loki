@@ -1,8 +1,11 @@
 package manifests
 
 import (
+	"context"
 	"maps"
 	"strings"
+
+	"github.com/go-logr/logr"
 
 	"dario.cat/mergo"
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -15,6 +18,7 @@ import (
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
@@ -23,7 +27,7 @@ import (
 // tenant mode. Currently nothing is applied for modes static and dynamic.
 // For modes openshift-logging and openshift-network
 // the tenant spec is filled with defaults for authentication and authorization.
-func ApplyGatewayDefaultOptions(opts *Options) error {
+func ApplyGatewayDefaultOptions(opts *Options, k k8s.Client, logger logr.Logger) error {
 	if opts.Stack.Tenants == nil {
 		return nil
 	}
@@ -43,6 +47,11 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 		RulerName(opts.Name),
 	)
 
+	externalOIDC, err := openshift.DetectExternalOIDC(context.Background(), k, &opts.Stack, opts.Namespace, logger)
+	if err != nil {
+		// handle error
+	}
+
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		// Do nothing as per tenants provided by LokiStack CR
@@ -55,6 +64,16 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 		}
 
 		o.WithTenantsForMode(opts.Stack.Tenants.Mode, opts.GatewayBaseDomain, tenantData)
+
+		if externalOIDC != nil {
+			println("OIDC!!!")
+			for i := range o.Authentication {
+				o.Authentication[i].OIDCIssuer = externalOIDC.IssuerURL
+				o.Authentication[i].OIDCClientID = externalOIDC.ClientID
+				o.Authentication[i].OIDCClientSecret = externalOIDC.ClientSecret
+				o.Authentication[i].OIDCCA = externalOIDC.CA
+			}
+		}
 
 		o.BuildOpts.ExternalAccessEnabled = opts.Stack.Tenants == nil || !opts.Stack.Tenants.DisableIngress
 	}
