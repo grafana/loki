@@ -16,22 +16,33 @@
 
 ## File Structure
 
-### New Files
-- `pkg/dataobj/sections/postings/open.go` — `Open` function + `ColumnReader` bridge type
-- `pkg/dataobj/sections/stats/open.go` — `Open` function + `ColumnReader` bridge type
-
-### Modified Files
-- `pkg/dataobj/sections/postings/postings.go` — `ColumnType` enum, `SectionEncoder` signature change
+### Modified Files (Write Side — Task 1 DONE, Task 4)
+- `pkg/dataobj/sections/postings/postings.go` — `ColumnType` enum, `SectionEncoder` signature change, `Section`/`Column` types refactored
 - `pkg/dataobj/sections/postings/encode_columnar.go` — Replace `ColumnarEncoder` with `ColumnarSectionEncoder`
 - `pkg/dataobj/sections/postings/builder.go` — `Flush(w SectionWriter)`, remove `computeSplits`/`targetSectionSize`
+- `pkg/dataobj/sections/stats/stats.go` — Same as postings
+- `pkg/dataobj/sections/stats/encode_columnar.go` — Same as postings
+- `pkg/dataobj/sections/stats/builder.go` — Same as postings
+
+### Refactored Files (Read Side — Tasks 2, 5)
+- `pkg/dataobj/sections/postings/postings.go` — Replace old `Section`/`ColumnReader` with new `Section` (wrapping `columnar.Section`), `Column` (wrapping `columnar.Column`), `Open`, `CheckSection`
+- `pkg/dataobj/sections/postings/row_reader.go` — Rewrite to use `dataset.RowReader`, matching `streams.RowReader` lifecycle
+- `pkg/dataobj/sections/stats/stats.go` — Same refactoring as postings
+- `pkg/dataobj/sections/stats/row_reader.go` — Same refactoring as postings
+
+### Deleted Files (Tasks 2, 5)
+- `pkg/dataobj/sections/postings/reader.go` — Replaced by `RowReader` reading from `dataset.RowReader` directly
+- `pkg/dataobj/sections/postings/open.go` — Delete the bridge-based version; `Open` moves to `postings.go`
+- `pkg/dataobj/sections/stats/reader.go` — Same
+
+### Test Files (Tasks 3, 6, 8)
 - `pkg/dataobj/sections/postings/builder_test.go` — Rewrite for on-disk round-trip
-- `pkg/dataobj/sections/stats/stats.go` — `ColumnType` enum, `SectionEncoder` signature change
-- `pkg/dataobj/sections/stats/encode_columnar.go` — Replace `ColumnarEncoder` with `ColumnarSectionEncoder`
-- `pkg/dataobj/sections/stats/builder.go` — `Flush(w SectionWriter)`, remove `computeSplits`/`targetSectionSize`
-- `pkg/dataobj/sections/stats/builder_test.go` — Rewrite for on-disk round-trip
+- `pkg/dataobj/sections/stats/builder_test.go` — Same
+- `pkg/dataobj/index/stats_calculation_test.go` — Use `Open` + `RowReader` instead of test accessors
+- `pkg/dataobj/index/label_postings_calculation_test.go` — Same
+
+### Wiring (Task 7)
 - `pkg/dataobj/index/indexobj/builder.go` — Wire up stats/postings flushing, dirty state, size tracking
-- `pkg/dataobj/index/stats_calculation_test.go` — Use `Open` instead of test accessors
-- `pkg/dataobj/index/label_postings_calculation_test.go` — Use `Open` instead of test accessors
 
 ---
 
@@ -139,36 +150,105 @@ Suggested commit message: `feat(postings): implement SectionBuilder with on-disk
 
 ---
 
-## Task 2: Postings — Open Function
+## Task 2: Postings — Read-Side Refactoring (Section, Open, RowReader)
+
+Refactor the read side to match the established streams/pointers/logs pattern. This replaces the custom `Section`/`ColumnReader`/`Reader` architecture from #21442.
 
 **Files:**
 
-- Create: `pkg/dataobj/sections/postings/open.go`
+- Modify: `pkg/dataobj/sections/postings/postings.go` — replace `Section`/`ColumnReader` types, add `Column`, `Open`
+- Delete: `pkg/dataobj/sections/postings/reader.go` — replaced by `RowReader` using `dataset.RowReader`
+- Delete: `pkg/dataobj/sections/postings/open.go` — the bridge-based version created earlier; `Open` moves to `postings.go`
+- Rewrite: `pkg/dataobj/sections/postings/row_reader.go` — use `dataset.RowReader`, match `streams.RowReader` lifecycle
 
-- [ ] **Step 1: Write the Open function and ColumnReader bridge**
+- [ ] **Step 1: Refactor Section and Column types in postings.go**
 
-Create `open.go` with:
-1. `Open(ctx context.Context, section *dataobj.Section) (*Section, error)` — validates section type (namespace + kind), validates `section.Type.Version == 1` (schema version), then calls `columnar.NewDecoder(section.Reader, columnar.FormatVersion)` (passing `FormatVersion` directly, NOT `section.Type.Version`, to decouple schema version from encoding format version). Uses `columnar.Open` to get a `columnar.Section`, then populates a `Section` value.
-2. Populate `Section.RowCount` from the first column's row count metadata.
-3. Populate `Section.ColumnNames` from the columnar section's column metadata.
-4. Populate `Section.OpenColumn` with a closure that returns a `columnReader` bridge type implementing `ColumnReader`.
-5. The `columnReader` bridge must produce `*columnar.Number[int64]` for INT64 columns and `*columnar.UTF8` for BINARY columns (required by `RowReader` type assertions). Returns `(nil, io.EOF)` when exhausted.
-6. Skip unrecognized columns (forward compat) — `ParseColumnType` returns error for unknown types, `Open` skips those columns.
+Replace the old types:
+```go
+// OLD (delete):
+// type ColumnReader interface { Read(ctx, count) (columnar.Array, error); Close() error }
+// type Section struct { ColumnNames []string; RowCount int; OpenColumn func(name string) (ColumnReader, error) }
+// type SectionEncoder func(ctx context.Context, rows []Posting) (Section, error)
 
-- [ ] **Step 2: Verify compilation**
+// NEW (add):
+type Section struct {
+    inner   *columnar.Section
+    columns []*Column
+}
 
-Run: `go build ./pkg/dataobj/sections/postings/...`
+func (s *Section) Columns() []*Column { return s.columns }
+
+type Column struct {
+    Section *Section
+    Name    string
+    Type    ColumnType
+    inner   *columnar.Column
+}
+```
+
+Add `Open` function following `streams.Open` pattern:
+```go
+func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
+    if !CheckSection(section) {
+        return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
+    }
+    if section.Type.Version != 1 {
+        return nil, fmt.Errorf("unsupported section schema version: got=%d want=1", section.Type.Version)
+    }
+    dec, err := columnar.NewDecoder(section.Reader, columnar.FormatVersion)
+    // ... columnar.Open, init columns (skip unrecognized), return Section
+}
+```
+
+The `SectionEncoder` type (already changed in Task 1) stays as-is.
+
+- [ ] **Step 2: Delete reader.go and open.go**
+
+Delete `reader.go` entirely — the intermediate column-by-column Reader is no longer needed.
+Delete `open.go` (the bridge-based version) — `Open` now lives in `postings.go`.
+
+- [ ] **Step 3: Rewrite row_reader.go**
+
+Rewrite to match `streams.RowReader` pattern. Key differences from the old version:
+
+```go
+type RowReader struct {
+    sec     *Section
+    ready   bool
+    buf     []dataset.Row
+    reader  *dataset.RowReader
+    columns []dataset.Column
+}
+
+func NewRowReader(sec *Section) *RowReader
+func (r *RowReader) Open(ctx context.Context) error   // creates dataset, opens reader
+func (r *RowReader) Read(ctx context.Context, p []Posting) (int, error)  // reads rows, decodes
+func (r *RowReader) Reset(sec *Section)
+func (r *RowReader) Close() error
+```
+
+`Read` reads `dataset.Row`s and decodes them into `Posting` structs by matching column positions from `Section.Columns()` to fields:
+- INT64 values → `dataset.Row.Values[i].Int64()` for kind, section_index, uncompressed_size, min_timestamp, max_timestamp
+- BINARY values → `dataset.Row.Values[i].Binary()` for object_path, column_name, label_value, bloom_filter, stream_id_bitmap
+- Null check → `dataset.Row.Values[i].IsNull()` for nullable fields (bloom_filter, label_value, stream_id_bitmap)
+
+Follow `streams.RowReader` for the `initReader`/`decodeRow` pattern.
+
+- [ ] **Step 4: Verify compilation**
+
+Run: `CGO_ENABLED=0 go build ./pkg/dataobj/sections/postings/...`
 Expected: PASS
 
-- [ ] **Step 3: Stage and pause for review**
+- [ ] **Step 5: Stage and pause for review**
 
 ```bash
-git add pkg/dataobj/sections/postings/open.go
+git add pkg/dataobj/sections/postings/postings.go pkg/dataobj/sections/postings/row_reader.go
+git rm pkg/dataobj/sections/postings/reader.go pkg/dataobj/sections/postings/open.go
 ```
 
 Present a brief summary of changes. **PAUSE** — wait for user to review staged diff and approve before committing.
 
-Suggested commit message: `feat(postings): add Open function for reading postings sections from disk`
+Suggested commit message: `refactor(postings): align read-side with streams/pointers pattern (Section, Column, Open, RowReader)`
 
 ---
 
@@ -205,8 +285,8 @@ func readAllPostingsFromObject(t *testing.T, obj *dataobj.Object) []postings.Pos
         if !postings.CheckSection(sec) { continue }
         opened, err := postings.Open(context.Background(), sec)
         require.NoError(t, err)
-        rr, err := postings.NewRowReader(opened)
-        require.NoError(t, err)
+        rr := postings.NewRowReader(opened)
+        require.NoError(t, rr.Open(context.Background()))
         defer rr.Close()
         buf := make([]postings.Posting, 100)
         for {
@@ -220,7 +300,7 @@ func readAllPostingsFromObject(t *testing.T, obj *dataobj.Object) []postings.Pos
 }
 ```
 
-Note: `NewRowReader` takes only `*Section` (no buffer size param) and returns `(*RowReader, error)`. `RowReader.Read` takes `(ctx, []Posting)` and returns `(int, error)`.
+Note: `NewRowReader` takes `*Section` and returns `*RowReader` (no error). Caller must call `rr.Open(ctx)` before `rr.Read`. `Read` takes `(ctx, []Posting)` and returns `(int, error)`. This matches the `streams.RowReader` lifecycle.
 
 - [ ] **Step 2: Rewrite all test functions**
 
@@ -329,34 +409,43 @@ Suggested commit message: `feat(stats): implement SectionBuilder with on-disk Co
 
 ---
 
-## Task 5: Stats — Open Function
+## Task 5: Stats — Read-Side Refactoring (Section, Open, RowReader)
+
+Same pattern as postings Task 2, adapted for stats.
 
 **Files:**
 
-- Create: `pkg/dataobj/sections/stats/open.go`
+- Modify: `pkg/dataobj/sections/stats/stats.go` — replace `Section`/`ColumnReader` types, add `Column`, `Open`
+- Delete: `pkg/dataobj/sections/stats/reader.go` — replaced by `RowReader` using `dataset.RowReader`
+- Rewrite: `pkg/dataobj/sections/stats/row_reader.go` — use `dataset.RowReader`, match `streams.RowReader` lifecycle
 
-- [ ] **Step 1: Write the Open function and ColumnReader bridge**
+- [ ] **Step 1: Refactor Section and Column types in stats.go**
 
-Same pattern as postings Task 2, adapted for stats:
-- Validate `section.Type.Version == 1`, pass `columnar.FormatVersion` to `NewDecoder`
-- Handle dynamic label columns (identified by `ColumnTypeLabel` with tag = label name)
-- Populate `Section.RowCount` from first column's metadata
-- ColumnReader bridge produces `*columnar.Number[int64]` for INT64 and `*columnar.UTF8` for BINARY
+Same pattern as postings Task 2. `Section` wraps `columnar.Section`, `Column` wraps `columnar.Column`. `Open` validates version == 1, passes `columnar.FormatVersion` to decoder.
 
-- [ ] **Step 2: Verify compilation**
+Handle dynamic label columns: `ColumnTypeLabel` with tag = label name (matching streams convention).
 
-Run: `go build ./pkg/dataobj/sections/stats/...`
+- [ ] **Step 2: Delete reader.go**
+
+- [ ] **Step 3: Rewrite row_reader.go**
+
+Same pattern as postings, adapted for stats fields. Dynamic label columns are decoded by iterating `Section.Columns()` and collecting `ColumnTypeLabel` columns, populating `Stat.Labels` map from their tag and value. Null label values map to empty string.
+
+- [ ] **Step 4: Verify compilation**
+
+Run: `CGO_ENABLED=0 go build ./pkg/dataobj/sections/stats/...`
 Expected: PASS
 
-- [ ] **Step 3: Stage and pause for review**
+- [ ] **Step 5: Stage and pause for review**
 
 ```bash
-git add pkg/dataobj/sections/stats/open.go
+git add pkg/dataobj/sections/stats/stats.go pkg/dataobj/sections/stats/row_reader.go
+git rm pkg/dataobj/sections/stats/reader.go
 ```
 
 Present a brief summary of changes. **PAUSE** — wait for user to review staged diff and approve before committing.
 
-Suggested commit message: `feat(stats): add Open function for reading stats sections from disk`
+Suggested commit message: `refactor(stats): align read-side with streams/pointers pattern (Section, Column, Open, RowReader)`
 
 ---
 
@@ -368,7 +457,7 @@ Suggested commit message: `feat(stats): add Open function for reading stats sect
 
 - [ ] **Step 1: Add test helpers**
 
-Same `buildObject` and `readAllStatsFromObject` pattern as postings Task 3. Use `stats.CheckSection` to filter, `stats.NewRowReader(opened)` (single arg, returns error), `rr.Read(ctx, buf)` for batch reading.
+Same `buildObject` and `readAllStatsFromObject` pattern as postings Task 3. Use `stats.CheckSection` to filter, `stats.NewRowReader(opened)` (returns `*RowReader`), `rr.Open(ctx)` then `rr.Read(ctx, buf)` for batch reading. Matches `streams.RowReader` lifecycle.
 
 - [ ] **Step 2: Rewrite all test functions**
 
@@ -486,11 +575,10 @@ func flushStatsForTenant(t *testing.T, builder *indexobj.Builder, tenantID strin
     var result []stats.Stat
     for _, sec := range obj.Sections() {
         if !stats.CheckSection(sec) { continue }
-        // Filter by tenant if needed
         opened, err := stats.Open(context.Background(), sec)
         if err != nil { continue }
-        rr, err := stats.NewRowReader(opened)
-        if err != nil { continue }
+        rr := stats.NewRowReader(opened)
+        if err := rr.Open(context.Background()); err != nil { continue }
         buf := make([]stats.Stat, 100)
         for {
             n, readErr := rr.Read(context.Background(), buf)
