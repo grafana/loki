@@ -31,7 +31,7 @@ func columnarEncode(rows []Posting, enc *columnar.Encoder, pageSizeHint, pageMax
 			Physical: datasetmd.PHYSICAL_TYPE_INT64,
 			Logical:  ColumnTypeKind.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
+		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
 		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 	})
 	if err != nil {

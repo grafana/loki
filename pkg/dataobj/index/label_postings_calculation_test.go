@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
@@ -22,14 +23,27 @@ func readAllPostingsForTenant(t *testing.T, builder *indexobj.Builder, tenantID 
 	if pb == nil {
 		return nil
 	}
-	sections, err := pb.Flush(context.Background())
+
+	// Flush the postings builder into a dataobj.Object so we can open the
+	// resulting sections using the standard Open API.
+	objBuilder := dataobj.NewBuilder(nil)
+	err := objBuilder.Append(pb)
 	require.NoError(t, err)
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
 
 	var allPostings []postings.Posting
-	for _, sec := range sections {
-		rr, err := postings.NewRowReader(&sec)
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		sec, err := postings.Open(context.Background(), s)
 		require.NoError(t, err)
+
+		rr := postings.NewRowReader(sec)
 		defer rr.Close()
+		require.NoError(t, rr.Open(context.Background()))
 
 		buf := make([]postings.Posting, 64)
 		for {

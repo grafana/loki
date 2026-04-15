@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	sectionscolumnar "github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
@@ -125,21 +124,78 @@ func (p Posting) Size() int {
 	return 5*8 + len(p.ObjectPath) + len(p.ColumnName) + len(p.LabelValue) + len(p.BloomFilter) + len(p.StreamIDBitmap)
 }
 
-// ColumnReader reads batches of columnar values from a single column.
-type ColumnReader interface {
-	// Read reads up to count values. Returns columnar.Array and any error.
-	// Returns io.EOF when no more data is available.
-	Read(ctx context.Context, count int) (columnar.Array, error)
-	Close() error
+// Section represents an opened postings section.
+type Section struct {
+	inner   *sectionscolumnar.Section
+	columns []*Column
 }
 
-// Section holds encoded column data for one flushed postings section.
-type Section struct {
-	ColumnNames []string
-	RowCount    int
-	// OpenColumn returns a ColumnReader for the named column.
-	// Returns an error if the column is not found.
-	OpenColumn func(name string) (ColumnReader, error)
+// Open opens a [Section] from an underlying [dataobj.Section]. Open returns an
+// error if the section metadata could not be read or if the provided ctx is
+// canceled.
+func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
+	if !CheckSection(section) {
+		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
+	}
+	if section.Type.Version != 1 {
+		return nil, fmt.Errorf("unsupported section schema version: got=%d want=1", section.Type.Version)
+	}
+
+	dec, err := sectionscolumnar.NewDecoder(section.Reader, sectionscolumnar.FormatVersion)
+	if err != nil {
+		return nil, fmt.Errorf("creating decoder: %w", err)
+	}
+
+	columnarSection, err := sectionscolumnar.Open(ctx, section.Tenant, dec)
+	if err != nil {
+		return nil, fmt.Errorf("opening columnar section: %w", err)
+	}
+
+	sec := &Section{inner: columnarSection}
+	if err := sec.init(); err != nil {
+		return nil, fmt.Errorf("initializing section: %w", err)
+	}
+	return sec, nil
+}
+
+func (s *Section) init() error {
+	for _, col := range s.inner.Columns() {
+		colType, err := ParseColumnType(col.Type.Logical)
+		if err != nil {
+			// Skip over unrecognized columns; probably come from a newer
+			// version of the code.
+			continue
+		}
+
+		s.columns = append(s.columns, &Column{
+			Section: s,
+			Name:    col.Tag,
+			Type:    colType,
+
+			inner: col,
+		})
+	}
+
+	return nil
+}
+
+// Columns returns the set of Columns in the section. The slice of returned
+// columns must not be mutated.
+//
+// Unrecognized columns (e.g., when running older code against newer postings
+// sections) are skipped.
+func (s *Section) Columns() []*Column { return s.columns }
+
+// A Column represents one of the columns in the postings section. Valid columns
+// can only be retrieved by calling [Section.Columns].
+//
+// Data in columns can be read by using a [RowReader].
+type Column struct {
+	Section *Section   // Section that contains the column.
+	Name    string     // Optional name of the column.
+	Type    ColumnType // Type of data in the column.
+
+	inner *sectionscolumnar.Column
 }
 
 // SectionEncoder encodes a batch of sorted Posting rows into a columnar encoder.

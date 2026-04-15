@@ -12,17 +12,21 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
+// defaultEncoder is a SectionEncoder using default page sizes for testing.
+var defaultEncoder = ColumnarSectionEncoder(0, 0)
+
 // TestBuilder_Empty verifies that an empty builder produces no sections.
 func TestBuilder_Empty(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
-	require.Empty(t, sections, "empty builder should produce no sections")
+	b := NewBuilder(defaultEncoder)
+	require.Zero(t, b.EstimatedSize(), "empty builder should have zero size")
+	// An empty builder writes 0 bytes; the dataobj builder would fail to flush
+	// without any data. This verifies the postings builder is truly empty.
+	require.Empty(t, b.rows, "empty builder should have no rows")
 }
 
 // TestBuilder_LabelPostingRoundTrip verifies a label posting round-trips correctly.
 func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(defaultEncoder)
 
 	bitmap := makeBitmap(t, 3, 7, 15)
 	input := Posting{
@@ -39,11 +43,10 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 	}
 	b.Append(input)
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
+	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, &sections[0])
+	got := readAllPostings(t, sections[0])
 	require.Len(t, got, 1)
 
 	p := got[0]
@@ -61,7 +64,7 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 
 // TestBuilder_BloomPostingRoundTrip verifies a bloom posting round-trips correctly.
 func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(defaultEncoder)
 
 	bitmap := makeBitmap(t, 0, 2, 8)
 	bloomFilter := []byte{0xDE, 0xAD, 0xBE, 0xEF}
@@ -78,11 +81,10 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 	}
 	b.Append(input)
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
+	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, &sections[0])
+	got := readAllPostings(t, sections[0])
 	require.Len(t, got, 1)
 
 	p := got[0]
@@ -100,7 +102,7 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 
 // TestBuilder_MixedPostings verifies both Bloom and Label postings work together.
 func TestBuilder_MixedPostings(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(defaultEncoder)
 
 	bloom := Posting{
 		Kind:           KindBloom,
@@ -125,11 +127,10 @@ func TestBuilder_MixedPostings(t *testing.T) {
 	b.Append(label) // Append out of sort order
 	b.Append(bloom)
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
+	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, &sections[0])
+	got := readAllPostings(t, sections[0])
 	require.Len(t, got, 2)
 
 	// Bloom (KindBloom=0) sorts before Label (KindLabel=1).
@@ -144,7 +145,7 @@ func TestBuilder_MixedPostings(t *testing.T) {
 
 // TestBuilder_SortOrder verifies the sort order: [Kind, ColumnName, LabelValue, MinTimestamp].
 func TestBuilder_SortOrder(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(defaultEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 
@@ -163,11 +164,10 @@ func TestBuilder_SortOrder(t *testing.T) {
 		b.Append(p)
 	}
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
+	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, &sections[0])
+	got := readAllPostings(t, sections[0])
 	require.Len(t, got, 5)
 
 	// Expected order:
@@ -201,7 +201,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 
 // TestBuilder_NullableHandling verifies nullable column correctness.
 func TestBuilder_NullableHandling(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(defaultEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 
@@ -216,11 +216,10 @@ func TestBuilder_NullableHandling(t *testing.T) {
 		StreamIDBitmap: bitmapBytes,
 	})
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
+	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, &sections[0])
+	got := readAllPostings(t, sections[0])
 	require.Len(t, got, 2)
 
 	// Bloom posting: label_value is empty, bloom_filter is non-null
@@ -238,7 +237,7 @@ func TestBuilder_NullableHandling(t *testing.T) {
 
 // TestBuilder_BitmapCorrectness verifies that stream ID bitmaps are LSB-encoded correctly.
 func TestBuilder_BitmapCorrectness(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(defaultEncoder)
 
 	// Build bitmap with stream IDs 0, 3, 7.
 	// Byte 0: bit 0 = 1 (stream 0), bit 3 = 1 (stream 3), bit 7 = 1 (stream 7).
@@ -260,11 +259,10 @@ func TestBuilder_BitmapCorrectness(t *testing.T) {
 		StreamIDBitmap: bitmapBytes,
 	})
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
+	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, &sections[0])
+	got := readAllPostings(t, sections[0])
 	require.Len(t, got, 1)
 
 	// Verify LSB encoding: bit N at byte N/8, position N%8.
@@ -290,7 +288,7 @@ func TestBuilder_BitmapCorrectness(t *testing.T) {
 // TestBuilder_BitmapNormalization verifies that bitmaps of different sizes are
 // padded to the same length.
 func TestBuilder_BitmapNormalization(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(defaultEncoder)
 
 	short := []byte{0x01}            // 1 byte
 	long := []byte{0x01, 0x02, 0x03} // 3 bytes
@@ -310,11 +308,10 @@ func TestBuilder_BitmapNormalization(t *testing.T) {
 		MinTimestamp:   200,
 	})
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
+	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, &sections[0])
+	got := readAllPostings(t, sections[0])
 	require.Len(t, got, 2)
 
 	// All bitmaps should be the same length (3 bytes, the maximum).
@@ -333,8 +330,9 @@ func TestBuilder_BitmapNormalization(t *testing.T) {
 // TestBuilder_SectionSplitting verifies that a small targetSectionSize causes
 // rows to be split across multiple sections.
 func TestBuilder_SectionSplitting(t *testing.T) {
-	// Use a very small targetSectionSize to force splitting.
-	b := NewBuilder(100, ColumnarEncoder)
+	// Use a very small page size to force splitting across multiple pages.
+	smallEncoder := ColumnarSectionEncoder(100, 2)
+	b := NewBuilder(smallEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 	for i := range 6 {
@@ -347,30 +345,14 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 		})
 	}
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
-	require.Greater(t, len(sections), 1, "expected multiple sections due to splitting")
+	sections := flushAndOpenSections(t, b)
+	require.Len(t, sections, 1, "all postings go in one section")
 
-	// Collect all rows across sections.
-	var allPostings []Posting
-	for _, sec := range sections {
-		rr, err := NewRowReader(&sec)
-		require.NoError(t, err)
-		defer rr.Close()
-
-		buf := make([]Posting, 10)
-		for {
-			n, err := rr.Read(context.Background(), buf)
-			allPostings = append(allPostings, buf[:n]...)
-			if err == io.EOF {
-				break
-			}
-			require.NoError(t, err)
-		}
-	}
+	// Collect all rows.
+	allPostings := readAllPostings(t, sections[0])
 	require.Len(t, allPostings, 6)
 
-	// Rows should be in sorted order across sections.
+	// Rows should be in sorted order.
 	for i := 1; i < len(allPostings); i++ {
 		require.LessOrEqual(t, allPostings[i-1].MinTimestamp, allPostings[i].MinTimestamp)
 	}
@@ -378,7 +360,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 
 // TestBuilder_AllBloom verifies that a builder with only Bloom postings works.
 func TestBuilder_AllBloom(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(defaultEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 	for i := range 3 {
@@ -391,11 +373,10 @@ func TestBuilder_AllBloom(t *testing.T) {
 		})
 	}
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
+	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, &sections[0])
+	got := readAllPostings(t, sections[0])
 	require.Len(t, got, 3)
 	for _, p := range got {
 		require.Equal(t, KindBloom, p.Kind)
@@ -406,7 +387,7 @@ func TestBuilder_AllBloom(t *testing.T) {
 
 // TestBuilder_AllLabel verifies that a builder with only Label postings works.
 func TestBuilder_AllLabel(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(defaultEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 	for i := range 3 {
@@ -420,11 +401,10 @@ func TestBuilder_AllLabel(t *testing.T) {
 		})
 	}
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
+	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, &sections[0])
+	got := readAllPostings(t, sections[0])
 	require.Len(t, got, 3)
 	for _, p := range got {
 		require.Equal(t, KindLabel, p.Kind)
@@ -435,21 +415,21 @@ func TestBuilder_AllLabel(t *testing.T) {
 
 // TestBuilder_FlushResetsBuilder verifies that a flush resets the builder.
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(defaultEncoder)
 	b.Append(Posting{Kind: KindLabel, ColumnName: "col", LabelValue: "v", StreamIDBitmap: makeBitmap(t, 0)})
 
-	_, err := b.Flush(context.Background())
-	require.NoError(t, err)
+	obj, closer := flushToObject(t, b)
+	closer.Close()
+	require.Len(t, obj.Sections(), 1)
 
-	// After flush, builder should be empty.
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
-	require.Empty(t, sections)
+	// After flush, builder should be empty (Reset was called).
+	require.Empty(t, b.rows, "builder should be empty after flush")
+	require.Zero(t, b.EstimatedSize(), "builder should have zero estimated size after flush")
 }
 
 // TestBuilder_Type verifies that the section type is correct.
 func TestBuilder_Type(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(defaultEncoder)
 	require.Equal(t, sectionType, b.Type())
 }
 
@@ -471,7 +451,7 @@ func TestCheckSection(t *testing.T) {
 }
 
 func TestRowReader_SmallBuffer(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(defaultEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 	// Append 5 rows.
@@ -485,28 +465,57 @@ func TestRowReader_SmallBuffer(t *testing.T) {
 		})
 	}
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
+	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	rr, err := NewRowReader(&sections[0])
-	require.NoError(t, err)
+	rr := NewRowReader(sections[0])
 	defer rr.Close()
 
-	// Read with a buffer smaller than the section row count. This must not
-	// panic even though the underlying column reader returns all rows at once.
+	require.NoError(t, rr.Open(context.Background()))
+
+	// Read with a buffer smaller than the section row count.
 	buf := make([]Posting, 2)
 	n, err := rr.Read(context.Background(), buf)
 	require.NoError(t, err)
 	require.Equal(t, 2, n, "should read exactly len(buf) rows")
 }
 
+// flushToObject flushes the builder into a dataobj.Object using dataobj.Builder.
+func flushToObject(t *testing.T, b *Builder) (*dataobj.Object, io.Closer) {
+	t.Helper()
+	objBuilder := dataobj.NewBuilder(nil)
+	err := objBuilder.Append(b)
+	require.NoError(t, err)
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	return obj, closer
+}
+
+// flushAndOpenSections flushes the builder and opens all resulting postings sections.
+func flushAndOpenSections(t *testing.T, b *Builder) []*Section {
+	t.Helper()
+	obj, closer := flushToObject(t, b)
+	t.Cleanup(func() { _ = closer.Close() })
+
+	var sections []*Section
+	for _, s := range obj.Sections() {
+		if !CheckSection(s) {
+			continue
+		}
+		sec, err := Open(context.Background(), s)
+		require.NoError(t, err)
+		sections = append(sections, sec)
+	}
+	return sections
+}
+
 // readAllPostings reads all postings from a section.
 func readAllPostings(t *testing.T, sec *Section) []Posting {
 	t.Helper()
-	rr, err := NewRowReader(sec)
-	require.NoError(t, err)
+	rr := NewRowReader(sec)
 	defer rr.Close()
+
+	require.NoError(t, rr.Open(context.Background()))
 
 	var all []Posting
 	buf := make([]Posting, 100)
