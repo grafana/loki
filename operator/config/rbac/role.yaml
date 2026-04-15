@@ -62,6 +62,7 @@ rules:
   - config.openshift.io
   resources:
   - apiservers
+  - authentications
   - clusterversions
   - dnses
   - proxies
