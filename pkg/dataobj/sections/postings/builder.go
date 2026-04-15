@@ -1,11 +1,11 @@
 package postings
 
 import (
-	"context"
 	"fmt"
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // columnName constants for each column in the postings section.
@@ -22,36 +22,23 @@ const (
 	colMaxTimestamp     = "max_timestamp"
 )
 
-// Builder accumulates [Posting] rows and encodes them into columnar arrays.
+// Builder accumulates [Posting] rows and encodes them into a section via a
+// [dataobj.SectionWriter].
 //
 // Flush writes are done via [Builder.Flush], which encodes all accumulated
-// rows into a set of [Section] values that can be read back via a [Reader].
-//
-// TODO(twhitney): Implement the [dataobj.SectionBuilder] interface by changing
-// Flush to accept a [dataobj.SectionWriter] and encode via [columnar.Encoder].
-// This should be done alongside the stats builder when on-disk serialization lands.
+// rows and writes them to the provided [dataobj.SectionWriter].
 type Builder struct {
-	tenant            string
-	targetSectionSize int
-	encode            SectionEncoder
+	tenant string
+	encode SectionEncoder
 
 	rows []Posting
 }
 
-// defaultTargetSectionSize is used when no target section size is provided
-// (e.g., in tests). Production callers always pass TargetSectionSize from config.
-const defaultTargetSectionSize = 256 * 1024 * 1024 // 256 MiB
-
-// NewBuilder creates a new Builder. targetSectionSize controls when accumulated
-// data is large enough to split into multiple sections; use 0 for the default.
-// encode is the SectionEncoder to use for encoding rows.
-func NewBuilder(targetSectionSize int, encode SectionEncoder) *Builder {
-	if targetSectionSize <= 0 {
-		targetSectionSize = defaultTargetSectionSize
-	}
+// NewBuilder creates a new Builder.
+// encode is the [SectionEncoder] to use for encoding rows.
+func NewBuilder(encode SectionEncoder) *Builder {
 	return &Builder{
-		targetSectionSize: targetSectionSize,
-		encode:            encode,
+		encode: encode,
 	}
 }
 
@@ -65,8 +52,6 @@ func (b *Builder) Tenant() string { return b.tenant }
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // Append adds a [Posting] row to the builder.
-// TODO(twhitney): revisit overhead of accumulating all postings for the lifetime of
-// a builder after implementing serialization.
 func (b *Builder) Append(p Posting) {
 	b.rows = append(b.rows, p)
 }
@@ -107,13 +92,13 @@ func (b *Builder) Reset() {
 }
 
 // Flush sorts the accumulated rows by [Kind, ColumnName, LabelValue,
-// MinTimestamp, MaxTimestamp], encodes them column-by-column into [Section]
-// values, and returns one or more [Section] values.
+// MinTimestamp, MaxTimestamp], encodes them into the provided
+// [dataobj.SectionWriter], and returns the number of bytes written.
 //
 // After a successful flush, the builder is reset.
-func (b *Builder) Flush(ctx context.Context) ([]Section, error) {
+func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	if len(b.rows) == 0 {
-		return nil, nil
+		return 0, nil
 	}
 
 	// Sort rows by [Kind, ColumnName, LabelValue, MinTimestamp, MaxTimestamp] (lexicographic).
@@ -121,46 +106,17 @@ func (b *Builder) Flush(ctx context.Context) ([]Section, error) {
 		return comparePostings(b.rows[i], b.rows[j])
 	})
 
-	// Determine section splits based on targetSectionSize.
-	splits := b.computeSplits()
+	var enc columnar.Encoder
+	defer enc.Reset()
 
-	sections := make([]Section, 0, len(splits))
-	for _, chunk := range splits {
-		sec, err := b.encode(ctx, chunk)
-		if err != nil {
-			return nil, fmt.Errorf("encoding postings rows: %w", err)
-		}
-		sections = append(sections, sec)
+	if err := b.encode(b.rows, &enc); err != nil {
+		return 0, fmt.Errorf("encoding postings: %w", err)
 	}
 
-	b.Reset()
-	return sections, nil
-}
-
-// computeSplits divides b.rows into chunks, each estimated to be at most
-// targetSectionSize bytes. Returns at least one chunk.
-func (b *Builder) computeSplits() [][]Posting {
-	if len(b.rows) == 0 {
-		return nil
+	enc.SetTenant(b.tenant)
+	n, err = enc.Flush(w)
+	if err == nil {
+		b.Reset()
 	}
-
-	var (
-		chunks     [][]Posting
-		chunkStart = 0
-		chunkSize  = 0
-	)
-
-	for i, r := range b.rows {
-		rowSize := r.Size()
-		if chunkSize+rowSize > b.targetSectionSize && chunkSize > 0 {
-			chunks = append(chunks, b.rows[chunkStart:i])
-			chunkStart = i
-			chunkSize = 0
-		}
-		chunkSize += rowSize
-	}
-
-	// Append final chunk.
-	chunks = append(chunks, b.rows[chunkStart:])
-	return chunks
+	return n, err
 }
