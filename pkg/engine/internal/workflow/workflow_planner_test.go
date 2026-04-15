@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -820,7 +821,7 @@ func generateConsistentULIDs(gen *ulidGenerator, g dag.Graph[*Task]) {
 
 // Test_eliminateEmptyCachedTasks verifies that tasks whose cached result is
 // empty are removed from the workflow graph at plan time.
-func Test_eliminateEmptyCachedTasks(t *testing.T) {
+func Test_pruneCachedTasks(t *testing.T) {
 	// Create a physical plan:
 	//    VectorAggregation --> Parallelize --> RangeAggr --> ScanSet{DataAbjScan(A), DataAbjScan(B)}
 	// That will translate into three tasks:
@@ -861,8 +862,9 @@ func Test_eliminateEmptyCachedTasks(t *testing.T) {
 		taskCacheMaxSizeBytes: 1 << 20,
 		// dataObjScanMaxSizeBytes=0: DataObjScan Cache nodes are still injected
 		// (with max_cacheable_size=0 B) so their keys can be used for elimination.
-		dataObjScanMaxSizeBytes: 0,
-		pruneEmptyCachedTasks:   true,
+		dataObjScanMaxSizeBytes:     0,
+		pruneEmptyCachedTasks:       true,
+		nonEmptyCachedTasksMaxBytes: math.MaxUint64,
 	}
 
 	// Extract raw cache keys for every task in graph traversal order.
@@ -903,9 +905,12 @@ func Test_eliminateEmptyCachedTasks(t *testing.T) {
 	originalPlan := strings.TrimSpace(Sprint(&Workflow{graph: baseGraph}))
 
 	for _, tc := range []struct {
-		name     string
-		payloads map[string][]byte // raw cache key → payload; absent keys = cache miss
-		expected string            // expected Sprint output after elimination
+		name              string
+		payloads          map[string][]byte // raw cache key → payload; absent keys = cache miss
+		maxNonEmptyBytes  *uint64           // nil = use cacheP default (math.MaxUint64)
+		pruneFetchTimeout time.Duration     // 0 = no timeout
+		cacheOverride     cache.Cache       // if non-nil, used instead of building from payloads
+		expected          string            // expected Sprint output after elimination
 	}{
 		{
 			// All cache keys miss → no elimination; plan is identical to baseGraph.
@@ -914,13 +919,21 @@ func Test_eliminateEmptyCachedTasks(t *testing.T) {
 			expected: originalPlan,
 		},
 		{
-			// All task-level cache keys return non-empty → no elimination; plan is identical to baseGraph.
+			// Both task-level cache keys return non-empty with pruneCachedTasks=true →
+			// both leaves eliminated; root gets @cachedSource buffers=2.
 			name: "cache non-empty",
 			payloads: map[string][]byte{
 				tasks[1][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
 				tasks[2][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
 			},
-			expected: originalPlan,
+			expected: `
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ └── VectorAggregation operation=sum group_by=()
+│         └── @cachedSource buffers=2 size=18 B
+└`,
 		},
 		{
 			// Task "a" task-level cache returns empty → task "a" eliminated;
@@ -978,6 +991,62 @@ func Test_eliminateEmptyCachedTasks(t *testing.T) {
 └`,
 		},
 		{
+			// Task "a" returns empty, task "b" returns non-empty with pruneCachedTasks=true →
+			// both leaves eliminated; root gets @cachedSource buffers=1.
+			name: "cache one empty one non-empty",
+			payloads: map[string][]byte{
+				tasks[1][physical.TaskCacheLogsScanRangeAggr]: emptyResultPayload(),
+				tasks[2][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
+			},
+			expected: `
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ └── VectorAggregation operation=sum group_by=()
+│         └── @cachedSource buffers=1 size=9 B
+└`,
+		},
+		{
+			// Scan-level cache non-empty should NOT eliminate the task: the parent
+			// expects task-level (aggregated) results, not raw scan data.
+			// Plan is identical to the full base graph.
+			name: "cache non-empty at scan",
+			payloads: map[string][]byte{
+				tasks[1][physical.TaskCacheDataObjScanResult]: nonEmptyResultPayload(),
+			},
+			expected: originalPlan,
+		},
+		{
+			// Task "a" is a cache miss → stays as network stream source.
+			// Task "b" is non-empty with pruneCachedTasks=true → eliminated; root gets @cachedSource keys=1.
+			// Root shows both @source (task "a" stream) and @cachedSource (task "b" result).
+			name: "cache one miss one non-empty",
+			payloads: map[string][]byte{
+				tasks[2][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
+			},
+			expected: `
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ └── VectorAggregation operation=sum group_by=()
+│         ├── @source stream=00000000000000000000000003
+│         └── @cachedSource buffers=1 size=9 B
+└
+┌ Task 00000000000000000000000002
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Cache max_cacheable_size=1.0 MiB hashed_key=502e8c56ecf762f4 key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
+│ │   └── @sink stream=00000000000000000000000003
+│ └── Batching batch_size=500
+│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         └── Cache max_cacheable_size=0 B hashed_key=4a6082f4d1b54ead key= |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
+│             └── DataObjScan location=a streams=0 section_id=0 projections=()
+│                     └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+└`,
+		},
+		{
 			// Both task-level caches return empty → both leaves eliminated; the root
 			// is cascade-eliminated because all its sources are gone.
 			name: "both tasks empty",
@@ -987,12 +1056,75 @@ func Test_eliminateEmptyCachedTasks(t *testing.T) {
 			},
 			expected: "Empty",
 		},
+		{
+			// Fetch times out mid-flight: task "a" is returned as a partial result
+			// (empty hit) before the deadline; task "b" is missed. Task "a" is still
+			// eliminated from the partial result; task "b" stays scheduled.
+			name: "fetch timeout with partial results",
+			cacheOverride: func() cache.Cache {
+				mc := newWorkflowMockCache()
+				mc.storeHashed(cache.HashKey(tasks[1][physical.TaskCacheLogsScanRangeAggr]), emptyResultPayload())
+				return &timeoutMockCache{workflowMockCache: *mc}
+			}(),
+			pruneFetchTimeout: time.Second,
+			expected: `
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ └── VectorAggregation operation=sum group_by=()
+│         └── @source stream=00000000000000000000000003
+└
+┌ Task 00000000000000000000000002
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Cache max_cacheable_size=1.0 MiB hashed_key=9888d9ec9f19e11e key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│ │   └── @sink stream=00000000000000000000000003
+│ └── Batching batch_size=500
+│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         └── Cache max_cacheable_size=0 B hashed_key=57460db08f81adaf key= |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│             └── DataObjScan location=b streams=0 section_id=0 projections=()
+│                     └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
+└`,
+		},
+		{
+			// maxNonEmptyBytes=0 disables non-empty pruning even when both tasks hit.
+			// Neither leaf is eliminated; plan is identical to baseGraph.
+			name: "non-empty pruning disabled when max size is 0",
+			payloads: map[string][]byte{
+				tasks[1][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
+				tasks[2][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
+			},
+			maxNonEmptyBytes: ptr[uint64](0),
+			expected:         originalPlan,
+		},
+		{
+			// Budget (5 B) is smaller than a single cached result (9 B) → the result
+			// is skipped by the greedy bin-packing loop; the task stays scheduled.
+			name: "non-empty result skipped when it exceeds size budget",
+			payloads: map[string][]byte{
+				tasks[2][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
+			},
+			maxNonEmptyBytes: ptr[uint64](5),
+			expected:         originalPlan,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ulidGen := ulidGenerator{}
 
 			p := cacheP
-			if len(tc.payloads) > 0 {
+			if tc.maxNonEmptyBytes != nil {
+				p.nonEmptyCachedTasksMaxBytes = *tc.maxNonEmptyBytes
+			}
+			if tc.pruneFetchTimeout != 0 {
+				p.pruneFetchTimeout = tc.pruneFetchTimeout
+			}
+			if tc.cacheOverride != nil {
+				p.registry = executor.NewTestTaskCacheRegistry(map[physical.TaskCacheName]cache.Cache{
+					physical.TaskCacheLogsScanRangeAggr: tc.cacheOverride,
+					physical.TaskCacheDataObjScanResult: tc.cacheOverride,
+				})
+			} else if len(tc.payloads) > 0 {
 				mc := newWorkflowMockCache()
 				for rawKey, payload := range tc.payloads {
 					mc.storeHashed(cache.HashKey(rawKey), payload)
@@ -1049,6 +1181,22 @@ func (m *workflowMockCache) Fetch(_ context.Context, keys []string) (found []str
 func (m *workflowMockCache) Stop() {}
 
 func (m *workflowMockCache) GetCacheType() stats.CacheType { return stats.TaskResultCache }
+
+// timeoutMockCache wraps workflowMockCache and always returns context.DeadlineExceeded
+// alongside whatever results were found, simulating a cache backend that times out
+// mid-flight after returning partial results.
+type timeoutMockCache struct {
+	workflowMockCache
+}
+
+func (m *timeoutMockCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+	found, bufs, missing, _ = m.workflowMockCache.Fetch(ctx, keys)
+	err = context.DeadlineExceeded
+	return
+}
+
+// ptr returns a pointer to v. Used to set optional test-case fields inline.
+func ptr[T any](v T) *T { return &v }
 
 // emptyResultPayload returns a zero-length buffer which is treated as an empty cached result.
 func emptyResultPayload() []byte { return []byte{} }

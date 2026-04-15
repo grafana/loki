@@ -369,6 +369,18 @@ query_engine:
     # CLI flag: -query-engine.task-results-cache.prune-empty-cached-tasks
     [prune_empty_cached_tasks: <boolean> | default = false]
 
+    # Experimental: Maximum total size of non-empty cached task results embedded
+    # in task assignments. Results that would exceed the budget are skipped
+    # (smaller results that fit are still included). 0 disables non-empty task
+    # pruning.
+    # CLI flag: -query-engine.task-results-cache.prune-cached-tasks-max-size
+    [prune_cached_tasks_max_size: <int> | default = 0B]
+
+    # Experimental: Timeout for cache fetch operations during cached-task
+    # pruning at plan time. 0 disables the timeout.
+    # CLI flag: -query-engine.task-results-cache.prune-cached-tasks-fetch-timeout
+    [prune_cached_tasks_fetch_timeout: <duration> | default = 1s]
+
   # Experimental: Number of worker threads to spawn. Each worker thread runs one
   # task at a time. 0 means to use GOMAXPROCS value.
   # CLI flag: -query-engine.worker-threads
