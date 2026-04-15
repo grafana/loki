@@ -112,43 +112,64 @@ This matches:
 
 ### 3. Read-Side Architecture
 
-The existing read-side types are preserved:
-- `Section` type with `ColumnNames`, `RowCount`, and `OpenColumn` closure
-- `ColumnReader` interface: `Read(ctx, count) (columnar.Array, error)` + `Close() error`
-- `Reader` — reads column data from a `Section`
-- `RowReader` — converts columnar data back to typed `Posting`/`Stat` rows
+The read-side is refactored to follow the established pattern used by `streams`, `pointers`, `indexpointers`, and `logs` — replacing the custom `Section`/`ColumnReader`/`Reader` architecture from #21442.
 
-#### How `Open` Backs the `Section` Type
+#### Types (matching streams/pointers pattern)
 
-A new `Open` function is added to each package, following the `streams.Open` pattern:
+**`Section`** — wraps `columnar.Section`, exposes typed `[]*Column`:
+```go
+type Section struct {
+    inner   *columnar.Section
+    columns []*Column
+}
+func (s *Section) Columns() []*Column
+```
+
+**`Column`** — wraps `columnar.Column` with typed metadata:
+```go
+type Column struct {
+    Section *Section
+    Name    string
+    Type    ColumnType
+    inner   *columnar.Column
+}
+```
+
+**`RowReader`** — reads `dataset.Row`s from the `Section` via `dataset.RowReader`, decodes each row into a typed `Posting`/`Stat` struct. Supports predicates and `Reset`/`Open`/`Read`/`Close` lifecycle matching `streams.RowReader`.
+
+#### Deleted Types
+
+The following types from #21442 are deleted:
+- `ColumnReader` interface — replaced by `columnar.ReaderAdapter` / `dataset.RowReader` internally
+- `Reader` (the intermediate column-by-column reader) — replaced by `RowReader` reading directly from `dataset.RowReader`
+- The old `Section` struct (with `ColumnNames`, `RowCount`, `OpenColumn` closure) — replaced by the new `Section` wrapping `columnar.Section`
+
+#### `Open` Function
 
 ```go
 func Open(ctx context.Context, section *dataobj.Section) (*Section, error)
 ```
 
-This creates a `columnar.Decoder` -> `columnar.Section`, then constructs a package-specific `Section` value whose `OpenColumn` closure reads from disk.
+Validates section type (namespace + kind + version), creates `columnar.Decoder` -> `columnar.Section`, initializes typed columns. Follows the `streams.Open` pattern exactly, with version decoupling (see below).
 
-**`Section` population:** After this change, `Section` remains the shared value type — the only production code path populating it is `Open`. The in-memory path used in pre-existing tests is deleted.
+Unrecognized columns are skipped (forward compatibility).
 
-`Open` populates:
-- `Section.ColumnNames` — from the `columnar.Section` column metadata
-- `Section.RowCount` — derived from the first column's row count in the `columnar.Section` metadata (all columns in a well-formed section have the same row count). This is required for `Reader`/`RowReader` EOF detection.
-- `Section.OpenColumn` — a closure that returns a `ColumnReader` backed by on-disk data
+#### `RowReader`
 
-**The `ColumnReader` bridge:** The `OpenColumn` closure returns a new concrete type that implements `ColumnReader`. This type must satisfy the following contract:
-- `Read(ctx, count)` returns a `columnar.Array` of up to `count` elements, or `(nil, io.EOF)` when no more data is available
-- The returned arrays must be the concrete types expected by `RowReader` — specifically `*columnar.Number[int64]` for INT64 columns and `*columnar.UTF8` for BINARY columns (these are used in type assertions in `row_reader.go`)
-- `Close()` releases any internal resources (allocator, decoder state)
+```go
+type RowReader struct {
+    sec     *Section
+    reader  *dataset.RowReader
+    // ...
+}
+func NewRowReader(sec *Section) *RowReader
+func (r *RowReader) Open(ctx context.Context) error
+func (r *RowReader) Read(ctx context.Context, p []Posting) (int, error)
+func (r *RowReader) Reset(sec *Section)
+func (r *RowReader) Close() error
+```
 
-The bridge reads column data from the `columnar.Section`'s `Dataset` interface (via `dataset.RowReader` or `columnar.ReaderAdapter`), manages a `memory.Allocator` internally, and extracts the target column from the results. The exact internal approach is an implementation detail as long as the above contract is satisfied.
-
-#### Validation in `Open`
-
-Following the `streams.Open` pattern:
-- Check `section.Type` matches the package's section type (namespace + kind)
-- Check `section.Type.Version` matches the package's declared version
-- Skip unrecognized columns (forward compatibility)
-- No fail-fast on missing columns at open time — let the reader surface errors when a required column is accessed
+`RowReader.Read` reads `dataset.Row`s and decodes them into `Posting`/`Stat` structs by extracting values from the row's `Values()` slice, matching column indices to the `Section.Columns()` order. This follows the `streams.RowReader` pattern where `decodeRow` maps `dataset.Row` values to typed struct fields.
 
 #### Section Type Version
 
@@ -158,13 +179,18 @@ The `Open` function checks `section.Type.Version == 1` for schema validation. Wh
 
 Note: other section packages (`streams`, `pointers`, `indexpointers`, `logs`) pass `section.Type.Version` to `NewDecoder` because they set their section version to `columnar.FormatVersion`. That coupling is a pre-existing design choice in those packages, not a requirement we need to follow.
 
+#### Future Encoding Format Swap
+
+The abstraction boundary for swapping to a future encoding format (e.g., rfratto's dataset/vortex package) is at the `Open` function. `Open` is the only place that creates a `columnar.Decoder` — everything downstream (`Section`, `Column`, `RowReader`) works against `columnar.Section` / `columnar.Column` / `dataset.RowReader`, which are abstractions over the underlying encoding. When a new format arrives, `Open` would dispatch based on version or create a different decoder, but the downstream types remain unchanged.
+
+On the write side, the `SectionEncoder` function type provides the same abstraction — a new encoder function can be provided without changing the builder.
+
 #### Deleted In-Memory Producer Code
 
 The in-memory producer code is deleted:
 - `ColumnarEncoder` function body (the one using `pkg/columnar/` Arrow arrays)
 - `columnarSliceColumnReader` / `sliceColumnReader` helper types
-
-These are replaced by the `Open` function reading from disk.
+- Old `Section` struct, `ColumnReader` interface, `Reader` type
 
 ### 4. `indexobj/builder.go` Wiring
 
@@ -260,28 +286,38 @@ Label columns are opened in sort-schema order, after all fixed columns. The `Sor
 
 ## Files Changed
 
-### New Files
-- `pkg/dataobj/sections/postings/open.go` — `Open` function for reading postings sections from disk, `ColumnReader` bridging type
-- `pkg/dataobj/sections/stats/open.go` — `Open` function for reading stats sections from disk, `ColumnReader` bridging type
-
-### Modified Files
+### Modified Files (Write Side)
 - `pkg/dataobj/sections/postings/builder.go` — New `Flush(w SectionWriter)` signature, remove `computeSplits`, remove `targetSectionSize`, implement `SectionBuilder`
-- `pkg/dataobj/sections/postings/encode_columnar.go` — Replace in-memory `ColumnarEncoder` with `ColumnarSectionEncoder` using `dataset.ColumnBuilder` + `columnar.Encoder`; new `SectionEncoder` signature; add `encodeColumn` helper; delete `columnarSliceColumnReader`
-- `pkg/dataobj/sections/postings/postings.go` — Add `ColumnType` enum with `String()` method producing logical type names for on-disk metadata (e.g., `ColumnTypeKind` → `"kind"`, `ColumnTypeLabelValue` → `"label_value"`, etc., matching the column names in the Column Definitions table). These strings are stored in the section's protobuf metadata dictionary and used by `Open` to reconstruct typed columns via `ParseColumnType`. `sectionType.Version` stays at `1`
-- `pkg/dataobj/sections/postings/builder_test.go` — Rewrite tests to round-trip through disk
+- `pkg/dataobj/sections/postings/encode_columnar.go` — Replace in-memory `ColumnarEncoder` with `ColumnarSectionEncoder` using `dataset.ColumnBuilder` + `columnar.Encoder`; new `SectionEncoder` signature; add `encodeColumn`/`binaryColumnBuilder`/`numberColumnBuilder` helpers; delete `columnarSliceColumnReader`
 - `pkg/dataobj/sections/stats/builder.go` — Same changes as postings builder
 - `pkg/dataobj/sections/stats/encode_columnar.go` — Same changes as postings encoder
-- `pkg/dataobj/sections/stats/stats.go` — Add `ColumnType` enum with `String()` method (same pattern as postings); dynamic label columns use a shared `ColumnTypeLabel` with the tag field carrying the label name (matching the `streams` convention). `sectionType.Version` stays at `1`
+
+### Refactored Files (Read Side — match streams/pointers pattern)
+- `pkg/dataobj/sections/postings/postings.go` — Replace old `Section`/`ColumnReader`/`SectionEncoder` types with new `Section` (wrapping `columnar.Section`), `Column` (wrapping `columnar.Column`), `Open` function, `CheckSection`, `ColumnType` enum with `ParseColumnType(string) (ColumnType, error)` and `String()`. `sectionType.Version` stays at `1`
+- `pkg/dataobj/sections/postings/reader.go` — Delete entirely (the intermediate column-by-column reader is replaced by `RowReader` reading directly from `dataset.RowReader`)
+- `pkg/dataobj/sections/postings/row_reader.go` — Rewrite to use `dataset.RowReader` against `columnar.Section`, decoding `dataset.Row` into `Posting` structs. Match `streams.RowReader` lifecycle (`NewRowReader`, `Open`, `Read`, `Reset`, `Close`)
+- `pkg/dataobj/sections/stats/stats.go` — Same refactoring as postings: new `Section`, `Column`, `Open`, `ColumnType` enum. Dynamic label columns use `ColumnTypeLabel` with tag carrying label name (matching `streams` convention). `sectionType.Version` stays at `1`
+- `pkg/dataobj/sections/stats/reader.go` — Delete entirely
+- `pkg/dataobj/sections/stats/row_reader.go` — Rewrite to match streams pattern
+
+### Modified Files (Wiring + Tests)
 - `pkg/dataobj/sections/stats/builder_test.go` — Rewrite tests to round-trip through disk
 - `pkg/dataobj/index/indexobj/builder.go` — Set `builderStateDirty`, size estimate tracking, mid-accumulation flushing, final Flush serialization, constructor changes
 - `pkg/dataobj/index/stats_calculation_test.go` — Update to flush and read back from object
 - `pkg/dataobj/index/label_postings_calculation_test.go` — Update to flush and read back from object
 
+### Deleted Files
+- `pkg/dataobj/sections/postings/reader.go` — replaced by `RowReader` reading from `dataset.RowReader` directly
+- `pkg/dataobj/sections/stats/reader.go` — same
+
 ### Deleted Code (within modified files)
 - Old `SectionEncoder` function type (`func(ctx, rows) (Section, error)`) in both packages
+- Old `Section` struct (with `ColumnNames`, `RowCount`, `OpenColumn` closure) in both packages
+- `ColumnReader` interface in both packages
 - In-memory `ColumnarEncoder` function body in both `encode_columnar.go` files
 - `columnarSliceColumnReader` / `sliceColumnReader` types in both packages
 - `computeSplits` function in both builders
+- `extractInt64Values`, `extractStringValues`, `extractBytesValues` helpers in both `row_reader.go` files (replaced by `dataset.Row` value extraction)
 - `StatsBuilderForTenant` / `PostingsBuilderForTenant` test accessors in `indexobj/builder.go` (no longer needed since tests go through the full flush + `Open` path)
 
 ## Testing Strategy
