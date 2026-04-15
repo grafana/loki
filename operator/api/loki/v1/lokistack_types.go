@@ -329,6 +329,13 @@ type OpenshiftTenantSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="OpenTelemetry Protocol"
 	OTLP *OpenshiftOTLPConfig `json:"otlp,omitempty"`
+
+	// OIDC contains the external OIDC authentication provider configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="OpenTelemetry Protocol"
+	OIDC *OIDCSpec `json:"oidc,omitempty"`
 }
 
 // OpenshiftOTLPConfig defines configuration specific to users using OTLP together with an OpenShift tenancy mode.
