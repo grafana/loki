@@ -306,7 +306,7 @@ func fieldNameFromParam(param *spec.Parameter) string {
 // whenever an error is encountered while resolving references
 // on parameters.
 //
-// This function takes as input the spec.Parameter which triggered the
+// This function takes as input the [spec.Parameter] which triggered the
 // error and the error itself.
 //
 // If the callback function returns false, the calling function should bail.
@@ -329,7 +329,7 @@ func (s *Spec) ParametersFor(operationID string) []spec.Parameter {
 // Does not assume parameters properly resolve references or that
 // such references actually resolve to a parameter object.
 //
-// Upon error, invoke a ErrorOnParamFunc callback with the erroneous
+// Upon error, invoke a [ErrorOnParamFunc] callback with the erroneous
 // parameters. If the callback is set to nil, panics upon errors.
 func (s *Spec) SafeParametersFor(operationID string, callmeOnError ErrorOnParamFunc) []spec.Parameter {
 	gatherParams := func(pi *spec.PathItem, op *spec.Operation) []spec.Parameter {
@@ -337,7 +337,7 @@ func (s *Spec) SafeParametersFor(operationID string, callmeOnError ErrorOnParamF
 		s.paramsAsMap(pi.Parameters, bag, callmeOnError)
 		s.paramsAsMap(op.Parameters, bag, callmeOnError)
 
-		var res []spec.Parameter
+		res := make([]spec.Parameter, 0, len(bag))
 		for _, v := range bag {
 			res = append(res, v)
 		}
@@ -388,7 +388,7 @@ func (s *Spec) ParamsFor(method, path string) map[string]spec.Parameter {
 // Does not assume parameters properly resolve references or that
 // such references actually resolve to a parameter object.
 //
-// Upon error, invoke a ErrorOnParamFunc callback with the erroneous
+// Upon error, invoke a [ErrorOnParamFunc] callback with the erroneous
 // parameters. If the callback is set to nil, panics upon errors.
 func (s *Spec) SafeParamsFor(method, path string, callmeOnError ErrorOnParamFunc) map[string]spec.Parameter {
 	res := make(map[string]spec.Parameter)
@@ -516,7 +516,7 @@ func (s *Spec) AllDefinitions() (result []SchemaRef) {
 	return
 }
 
-// AllDefinitionReferences returns json refs for all the discovered schemas.
+// AllDefinitionReferences returns JSON references for all the discovered schemas.
 func (s *Spec) AllDefinitionReferences() (result []string) {
 	for _, v := range s.references.schemas {
 		result = append(result, v.String())
@@ -525,7 +525,7 @@ func (s *Spec) AllDefinitionReferences() (result []string) {
 	return
 }
 
-// AllParameterReferences returns json refs for all the discovered parameters.
+// AllParameterReferences returns JSON references for all the discovered parameters.
 func (s *Spec) AllParameterReferences() (result []string) {
 	for _, v := range s.references.parameters {
 		result = append(result, v.String())
@@ -534,7 +534,7 @@ func (s *Spec) AllParameterReferences() (result []string) {
 	return
 }
 
-// AllResponseReferences returns json refs for all the discovered responses.
+// AllResponseReferences returns JSON references for all the discovered responses.
 func (s *Spec) AllResponseReferences() (result []string) {
 	for _, v := range s.references.responses {
 		result = append(result, v.String())

@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0]
+
+### Added
+
+- Session.StatementMetadata (CASSGO-92)
+- NewLogFieldIP, NewLogFieldError, NewLogFieldStringer, NewLogFieldString, NewLogFieldInt, NewLogFieldBool (CASSGO-92)
+- Introduced configurable schema metadata caching modes to control what metadata is cached (CASSGO-107)
+- Support for session ready, host state, topology change and schema changes custom listeners (CASSGO-101)
+- Add Session.AllKeyspaceMetadata() (CASSGO-109)
+- Add GetSerialConsistency method to Query and Batch (CASSGO-103)
+- Add RequestErrOverloaded, RequestErrBootstrapping, RequestErrInvalid, RequestErrConfig, RequestErrCredentials, RequestErrSyntax, RequestErrTruncate, RequestErrUnauthorized for dedicated error handling (CASSGO-113)
+
+### Changed
+
+- Use protocol downgrading approach during protocol negotiation (CASSGO-97)
+- TokenAwareHostPolicy now populates replica maps for non-default keyspaces (CASSGO-104)
+- Add options to shuffle replicas for token-aware policy and log warning when the default behavior is used (CASSGO-106)
+- Bump Go version support from 1.22 and 1.23 to 1.25 and 1.26 (CASSGO-110)
+- Upgraded Github actions dependencies versions (CASSGO-111)
+- Fix a couple of issues related to CASSGO-101 (CASSGO-114)
+
+### Fixed
+
+- Prevent panic with queries during session init (CASSGO-92)
+- Return correct values from RowData (CASSGO-95)
+- Prevent setting a compression flag in a frame header when native proto v5 is being used (CASSGO-98)
+- Prevent panic iin compileMetadata() when final func is not defined for an aggregate (CASSGO-105)
+- Framer drops error silently (CASSGO-108)
+
 ## [2.0.0]
 
 ### Removed

@@ -8,7 +8,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 )
 
+// created for and scoped to each logs section
 type streamStatisticsCalculation struct{}
+
+func (c *streamStatisticsCalculation) Name() string { return "stream_statistics" }
 
 func (c *streamStatisticsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs.Stats) error {
 	return nil

@@ -151,7 +151,7 @@ distributor:
   otlp_config:
     # List of default otlp resource attributes to be picked as index labels - EDIT TO REMOVE k8s.pod.name AND service.instance.id FROM THE LIST
     # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
-      default_resource_attributes_as_index_labels: [service.name service.namespace deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]
+    default_resource_attributes_as_index_labels: [service.name service.namespace deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]
 
 ```
 

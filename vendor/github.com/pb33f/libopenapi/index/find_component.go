@@ -26,6 +26,10 @@ func (index *SpecIndex) FindComponent(ctx context.Context, componentId string) *
 		return nil
 	}
 
+	if resolved := index.ResolveRefViaSchemaId(componentId); resolved != nil {
+		return resolved
+	}
+
 	if strings.HasPrefix(componentId, "/") {
 		baseUri, fragment := SplitRefFragment(componentId)
 		if resolved := index.resolveRefViaSchemaIdPath(baseUri); resolved != nil {

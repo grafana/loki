@@ -15,7 +15,7 @@ import (
 // Special cases:
 //
 //   - The negation of null is null.
-func Not(alloc *memory.Allocator, input columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+func Not(alloc *memory.Allocator, input columnar.Datum, _ memory.Bitmap) (columnar.Datum, error) {
 	if got, want := input.Kind(), columnar.KindBool; got != want {
 		return nil, fmt.Errorf("invalid input kind %s, expected %s", got, want)
 	}
@@ -24,8 +24,7 @@ func Not(alloc *memory.Allocator, input columnar.Datum, selection memory.Bitmap)
 	case *columnar.BoolScalar:
 		return notScalar(input), nil
 	case *columnar.Bool:
-		out := notArray(alloc, input)
-		return applySelectionToBoolArray(alloc, out, selection)
+		return notArray(alloc, input), nil
 	default:
 		panic(fmt.Sprintf("unexpected input type %T", input))
 	}
@@ -84,7 +83,7 @@ func Or(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bi
 	return dispatchLogical(alloc, logicalOrKernel, left, right, selection)
 }
 
-func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right columnar.Datum, _ memory.Bitmap) (columnar.Datum, error) {
 	if got, want := left.Kind(), columnar.KindBool; got != want {
 		return nil, fmt.Errorf("invalid input kind %s, expected %s", got, want)
 	} else if left.Kind() != right.Kind() {
@@ -98,17 +97,11 @@ func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right 
 	case leftScalar && rightScalar:
 		return logicalSS(kernel, left.(*columnar.BoolScalar), right.(*columnar.BoolScalar)), nil
 	case leftScalar && !rightScalar:
-		out := logicalSA(alloc, kernel, left.(*columnar.BoolScalar), right.(*columnar.Bool))
-		return applySelectionToBoolArray(alloc, out, selection)
+		return logicalSA(alloc, kernel, left.(*columnar.BoolScalar), right.(*columnar.Bool)), nil
 	case !leftScalar && rightScalar:
-		out := logicalAS(alloc, kernel, left.(*columnar.Bool), right.(*columnar.BoolScalar))
-		return applySelectionToBoolArray(alloc, out, selection)
+		return logicalAS(alloc, kernel, left.(*columnar.Bool), right.(*columnar.BoolScalar)), nil
 	case !leftScalar && !rightScalar:
-		out, err := logicalAA(alloc, kernel, left.(*columnar.Bool), right.(*columnar.Bool))
-		if err != nil {
-			return nil, err
-		}
-		return applySelectionToBoolArray(alloc, out, selection)
+		return logicalAA(alloc, kernel, left.(*columnar.Bool), right.(*columnar.Bool))
 	}
 
 	panic("unreachable")

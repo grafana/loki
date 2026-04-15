@@ -43,7 +43,7 @@ func NewBasic(cfg ExecutorConfig, ms metastore.Metastore, bucket objstore.Bucket
 		cfg.RangeConfig = rangeio.DefaultConfig
 	}
 
-	taskCaches, err := executor.NewTaskCacheRegistry(cfg.TasksResultCache.Config, reg, logger)
+	taskCaches, err := executor.NewTaskCacheRegistry(cfg.TaskResultsCache.Config, reg, logger)
 	if err != nil {
 		panic(fmt.Sprintf("creating task results cache: %v", err))
 	}

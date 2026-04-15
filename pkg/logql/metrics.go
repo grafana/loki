@@ -139,6 +139,11 @@ func RecordRangeAndInstantQueryMetrics(
 		resultCache = stats.Caches.InstantMetricResult
 	}
 
+	// In the Thor engine, we track stats for log queries in a different category
+	if queryType == QueryTypeFilter && stats.QueryUsedV2Engine() {
+		resultCache = stats.Caches.LogResult
+	}
+
 	// Tag throughput metric by latency type based on a threshold.
 	// Latency below the threshold is fast, above is slow.
 	if stats.Summary.ExecTime > slowQueryThresholdSecond {
@@ -208,6 +213,11 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_result_hit", resultCache.EntriesFound,
 		"cache_result_download_time", resultCache.CacheDownloadTime(),
 		"cache_result_query_length_served", resultCache.CacheQueryLengthServed(),
+		"cache_task_result_req", stats.Caches.TaskResult.EntriesRequested,
+		"cache_task_result_hit", stats.Caches.TaskResult.EntriesFound,
+		"cache_task_result_bytes", stats.Caches.TaskResult.BytesReceived,
+		"cache_task_result_download_time", stats.Caches.TaskResult.CacheDownloadTime(),
+		"cache_task_result_query_length_served", stats.Caches.TaskResult.CacheQueryLengthServed(),
 		// The total of chunk reference fetched from index.
 		"ingester_chunk_refs", stats.Ingester.Store.GetTotalChunksRef(),
 		// Total number of chunks fetched.
@@ -584,7 +594,7 @@ func RecordDetectedFieldsQueryMetrics(ctx context.Context, log log.Logger, start
 		"status", status,
 		// "duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 	)
-	//TODO(twhitney): add stats and exec time
+	// TODO(twhitney): add stats and exec time
 	// execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
@@ -727,11 +737,11 @@ func RecordDetectedLabelsQueryMetrics(ctx context.Context, log log.Logger, start
 		"splits", stats.Summary.Splits,
 		"total_entries", stats.Summary.TotalEntriesReturned,
 		// cache is accumulated by middleware used by the frontend only; logs from the queriers will not show cache stats
-		//"cache_volume_results_req", stats.Caches.VolumeResult.EntriesRequested,
-		//"cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
-		//"cache_volume_results_stored", stats.Caches.VolumeResult.EntriesStored,
-		//"cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
-		//"cache_volume_results_query_length_served", stats.Caches.VolumeResult.CacheQueryLengthServed(),
+		// "cache_volume_results_req", stats.Caches.VolumeResult.EntriesRequested,
+		// "cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
+		// "cache_volume_results_stored", stats.Caches.VolumeResult.EntriesStored,
+		// "cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
+		// "cache_volume_results_query_length_served", stats.Caches.VolumeResult.CacheQueryLengthServed(),
 	)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)

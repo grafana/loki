@@ -158,7 +158,7 @@ func convertWeightedRoundRobinProtoToServiceConfig(rawProto []byte, _ int) (json
 	if blackoutPeriodCfg := cswrrProto.GetBlackoutPeriod(); blackoutPeriodCfg != nil {
 		wrrLBCfg.BlackoutPeriod = internalserviceconfig.Duration(blackoutPeriodCfg.AsDuration())
 	}
-	if weightExpirationPeriodCfg := cswrrProto.GetBlackoutPeriod(); weightExpirationPeriodCfg != nil {
+	if weightExpirationPeriodCfg := cswrrProto.GetWeightExpirationPeriod(); weightExpirationPeriodCfg != nil {
 		wrrLBCfg.WeightExpirationPeriod = internalserviceconfig.Duration(weightExpirationPeriodCfg.AsDuration())
 	}
 	if weightUpdatePeriodCfg := cswrrProto.GetWeightUpdatePeriod(); weightUpdatePeriodCfg != nil {
