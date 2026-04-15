@@ -344,27 +344,37 @@ query_engine:
     # CLI flag: -query-engine.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
 
-  tasks_result_cache:
+  task_results_cache:
     # The cache_config block configures the cache backend for a specific Loki
     # component.
     # The CLI flags prefix for this block configuration is:
-    # query-engine.tasks-result-cache
+    # query-engine.task-results-cache
     [cache: <cache_config>]
 
     # Use compression in cache. The default is an empty value '', which disables
     # compression. Supported values are: 'snappy' and ''.
-    # CLI flag: -query-engine.tasks-result-cache.compression
+    # CLI flag: -query-engine.task-results-cache.compression
     [compression: <string> | default = ""]
 
     # Experimental: Maximum size for a task result to be cacheable. 0 means only
     # empty responses are cached.
-    # CLI flag: -query-engine.tasks-result-cache.task-result-max-cacheable-size
+    # CLI flag: -query-engine.task-results-cache.task-result-max-cacheable-size
     [task_result_max_cacheable_size: <int> | default = 0B]
 
     # Experimental: Maximum size for a DataObjScan result to be cacheable. 0
     # means only empty responses are cached.
-    # CLI flag: -query-engine.tasks-result-cache.dataobjscan-result-max-cacheable-size
+    # CLI flag: -query-engine.task-results-cache.dataobjscan-result-max-cacheable-size
     [dataobjscan_result_max_cacheable_size: <int> | default = 0B]
+
+    # Experimental: When enabled, the scheduler checks cached results at plan
+    # time and prunes tasks whose cached result is known to be empty.
+    # CLI flag: -query-engine.task-results-cache.prune-empty-cached-tasks
+    [prune_empty_cached_tasks: <boolean> | default = false]
+
+    # Experimental: Maximum number of cache keys fetched per batch when pruning
+    # empty cached tasks at plan time. 0 means unlimited (single batch).
+    # CLI flag: -query-engine.task-results-cache.task-pruning-cache-fetch-batch-size
+    [task_pruning_cache_fetch_batch_size: <int> | default = 5000]
 
   # Experimental: Number of worker threads to spawn. Each worker thread runs one
   # task at a time. 0 means to use GOMAXPROCS value.
@@ -1284,6 +1294,12 @@ dataobj:
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
 
+      # Expected compression ratio for log data, used to estimate compressed
+      # output size from uncompressed buffered records. Only takes effect with
+      # ordered append. Set to 0 or 1 to disable.
+      # CLI flag: -dataobj-consumer.estimated-compression-ratio
+      [estimated_compression_ratio: <int> | default = 8]
+
     lifecycler:
       ring:
         kvstore:
@@ -1541,17 +1557,29 @@ dataobj:
     # CLI flag: -dataobj-index-builder.section-stripe-merge-limit
     [section_stripe_merge_limit: <int> | default = 2]
 
+    # Expected compression ratio for log data, used to estimate compressed
+    # output size from uncompressed buffered records. Only takes effect with
+    # ordered append. Set to 0 or 1 to disable.
+    # CLI flag: -dataobj-index-builder.estimated-compression-ratio
+    [estimated_compression_ratio: <int> | default = 1]
+
     # Experimental: The number of events to batch before building an index
     # CLI flag: -dataobj-index-builder.events-per-index
     [events_per_index: <int> | default = 32]
 
-    # Experimental: How often to check for stale partitions to flush
+    # Experimental: How often to check for idle partitions and old events to
+    # flush
     # CLI flag: -dataobj-index-builder.flush-interval
     [flush_interval: <duration> | default = 1m]
 
-    # Experimental: Maximum time to wait before flushing buffered events
+    # Experimental: Maximum time between events before a partition is considered
+    # idle and flushed
     # CLI flag: -dataobj-index-builder.max-idle-time
     [max_idle_time: <duration> | default = 30m]
+
+    # Experimental: Maximum age of a buffered event before it will be flushed
+    # CLI flag: -dataobj-index-builder.max-age
+    [max_age: <duration> | default = 1h]
 
   metastore:
     # Experimental: A prefix to use for storing indexes in object storage. Used
@@ -1953,6 +1981,14 @@ ingest_limits_frontend_client:
     # Timeout for the health check.
     # CLI flag: -ingest-limits-frontend-client.remote-timeout
     [remote_timeout: <duration> | default = 1s]
+
+  # [Experimental]: Enable shuffle sharding.
+  # CLI flag: -ingest-limits-frontend-client.shuffle-shard-enabled
+  [shuffle_shard_enabled: <boolean> | default = false]
+
+  # [Experimental]: The number of shards per tenant.
+  # CLI flag: -ingest-limits-frontend-client.shuffle-shard-size
+  [shuffle_shard_size: <int> | default = 1]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
@@ -2426,7 +2462,7 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `query-engine.results-cache`
-- `query-engine.tasks-result-cache`
+- `query-engine.task-results-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
 - `store.index-cache-read`
@@ -3657,6 +3693,7 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `querier.scheduler-grpc-client`
 - `query-scheduler.grpc-client-config`
 - `ruler.client`
+- `ruler.evaluation.query-frontend`
 - `tsdb.shipper.index-gateway-client.grpc`
 
 &nbsp;
@@ -6053,14 +6090,11 @@ evaluation:
     # CLI flag: -ruler.evaluation.query-frontend.address
     [address: <string> | default = ""]
 
-    # Set to true if query-frontend connection requires TLS.
-    # CLI flag: -ruler.evaluation.query-frontend.tls-enabled
-    [tls_enabled: <boolean> | default = false]
-
-    # The TLS configuration.
+    # The grpc_client block configures the gRPC client used to communicate
+    # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
     # ruler.evaluation.query-frontend
-    [<tls_config>]
+    [<grpc_client>]
 ```
 
 ### runtime_config
@@ -7950,7 +7984,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`
 - `query-engine.results-cache.memcached`
-- `query-engine.tasks-result-cache.memcached`
+- `query-engine.task-results-cache.memcached`
 - `query-scheduler.grpc-client-config`
 - `query-scheduler.ring.etcd`
 - `reporting.tls-config`

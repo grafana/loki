@@ -275,6 +275,8 @@ func New(
 	limitsFrontendClient := newIngestLimitsFrontendRingClient(
 		limitsFrontendRing,
 		limitsFrontendClientPool,
+		limitsFrontendCfg.ShuffleShardEnabled,
+		limitsFrontendCfg.ShuffleShardSize,
 	)
 
 	// Create the configured ingestion rate limit strategy (local or global).
@@ -474,9 +476,12 @@ func (d *Distributor) running(ctx context.Context) error {
 		cancel()
 		d.ingesterTaskWg.Wait()
 	}()
-	d.ingesterTaskWg.Add(d.cfg.PushWorkerCount)
-	for i := 0; i < d.cfg.PushWorkerCount; i++ {
-		go d.pushIngesterWorker(ctx)
+	if d.cfg.IngesterEnabled {
+		// Spawn workers if ingesters are enabled.
+		d.ingesterTaskWg.Add(d.cfg.PushWorkerCount)
+		for i := 0; i < d.cfg.PushWorkerCount; i++ {
+			go d.pushIngesterWorker(ctx)
+		}
 	}
 	select {
 	case <-ctx.Done():

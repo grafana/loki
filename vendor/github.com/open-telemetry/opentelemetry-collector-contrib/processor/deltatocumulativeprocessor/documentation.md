@@ -8,7 +8,7 @@ The following telemetry is emitted by this component.
 
 ### otelcol_deltatocumulative_datapoints
 
-total number of datapoints processed. may have 'error' attribute, if processing failed [Development]
+total number of datapoints processed. may have 'error' attribute, if processing failed
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -16,7 +16,7 @@ total number of datapoints processed. may have 'error' attribute, if processing 
 
 ### otelcol_deltatocumulative_streams_limit
 
-upper limit of tracked streams [Development]
+upper limit of tracked streams
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -24,7 +24,7 @@ upper limit of tracked streams [Development]
 
 ### otelcol_deltatocumulative_streams_max_stale
 
-duration after which streams inactive streams are dropped [Development]
+duration after which streams inactive streams are dropped
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -32,7 +32,7 @@ duration after which streams inactive streams are dropped [Development]
 
 ### otelcol_deltatocumulative_streams_tracked
 
-number of streams tracked [Development]
+number of streams tracked
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |

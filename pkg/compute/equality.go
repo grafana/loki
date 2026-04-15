@@ -23,12 +23,18 @@ func Equals(alloc *memory.Allocator, left, right columnar.Datum, selection memor
 		return dispatchNullEquality(alloc, left, right, selection)
 	case columnar.KindBool:
 		return dispatchBoolEquality(alloc, boolEqualKernel, left, right, selection)
+	case columnar.KindInt32:
+		return dispatchNumericEquality(alloc, int32EqualKernel, left, right, selection)
 	case columnar.KindInt64:
 		return dispatchNumericEquality(alloc, int64EqualKernel, left, right, selection)
+	case columnar.KindUint32:
+		return dispatchNumericEquality(alloc, uint32EqualKernel, left, right, selection)
 	case columnar.KindUint64:
 		return dispatchNumericEquality(alloc, uint64EqualKernel, left, right, selection)
 	case columnar.KindUTF8:
 		return dispatchUTF8Equality(alloc, utf8EqualKernel, left, right, selection)
+	case columnar.KindStruct:
+		return structEquals(alloc, left.(*columnar.Struct), right.(*columnar.Struct), selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not comparable", left.Kind())
 	}
@@ -50,12 +56,18 @@ func NotEquals(alloc *memory.Allocator, left, right columnar.Datum, selection me
 		return dispatchNullEquality(alloc, left, right, selection)
 	case columnar.KindBool:
 		return dispatchBoolEquality(alloc, boolNotEqualKernel, left, right, selection)
+	case columnar.KindInt32:
+		return dispatchNumericEquality(alloc, int32NotEqualKernel, left, right, selection)
 	case columnar.KindInt64:
 		return dispatchNumericEquality(alloc, int64NotEqualKernel, left, right, selection)
+	case columnar.KindUint32:
+		return dispatchNumericEquality(alloc, uint32NotEqualKernel, left, right, selection)
 	case columnar.KindUint64:
 		return dispatchNumericEquality(alloc, uint64NotEqualKernel, left, right, selection)
 	case columnar.KindUTF8:
 		return dispatchUTF8Equality(alloc, utf8NotEqualKernel, left, right, selection)
+	case columnar.KindStruct:
+		return structNotEquals(alloc, left.(*columnar.Struct), right.(*columnar.Struct), selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not comparable", left.Kind())
 	}
@@ -75,8 +87,12 @@ func LessThan(alloc *memory.Allocator, left, right columnar.Datum, selection mem
 	switch left.Kind() {
 	case columnar.KindNull:
 		return dispatchNullEquality(alloc, left, right, selection)
+	case columnar.KindInt32:
+		return dispatchNumericEquality(alloc, int32LTKernel, left, right, selection)
 	case columnar.KindInt64:
 		return dispatchNumericEquality(alloc, int64LTKernel, left, right, selection)
+	case columnar.KindUint32:
+		return dispatchNumericEquality(alloc, uint32LTKernel, left, right, selection)
 	case columnar.KindUint64:
 		return dispatchNumericEquality(alloc, uint64LTKernel, left, right, selection)
 	case columnar.KindUTF8:
@@ -100,8 +116,12 @@ func LessOrEqual(alloc *memory.Allocator, left, right columnar.Datum, selection 
 	switch left.Kind() {
 	case columnar.KindNull:
 		return dispatchNullEquality(alloc, left, right, selection)
+	case columnar.KindInt32:
+		return dispatchNumericEquality(alloc, int32LTEKernel, left, right, selection)
 	case columnar.KindInt64:
 		return dispatchNumericEquality(alloc, int64LTEKernel, left, right, selection)
+	case columnar.KindUint32:
+		return dispatchNumericEquality(alloc, uint32LTEKernel, left, right, selection)
 	case columnar.KindUint64:
 		return dispatchNumericEquality(alloc, uint64LTEKernel, left, right, selection)
 	case columnar.KindUTF8:
@@ -125,8 +145,12 @@ func GreaterThan(alloc *memory.Allocator, left, right columnar.Datum, selection 
 	switch left.Kind() {
 	case columnar.KindNull:
 		return dispatchNullEquality(alloc, left, right, selection)
+	case columnar.KindInt32:
+		return dispatchNumericEquality(alloc, int32GTKernel, left, right, selection)
 	case columnar.KindInt64:
 		return dispatchNumericEquality(alloc, int64GTKernel, left, right, selection)
+	case columnar.KindUint32:
+		return dispatchNumericEquality(alloc, uint32GTKernel, left, right, selection)
 	case columnar.KindUint64:
 		return dispatchNumericEquality(alloc, uint64GTKernel, left, right, selection)
 	case columnar.KindUTF8:
@@ -150,8 +174,12 @@ func GreaterOrEqual(alloc *memory.Allocator, left, right columnar.Datum, selecti
 	switch left.Kind() {
 	case columnar.KindNull:
 		return dispatchNullEquality(alloc, left, right, selection)
+	case columnar.KindInt32:
+		return dispatchNumericEquality(alloc, int32GTEKernel, left, right, selection)
 	case columnar.KindInt64:
 		return dispatchNumericEquality(alloc, int64GTEKernel, left, right, selection)
+	case columnar.KindUint32:
+		return dispatchNumericEquality(alloc, uint32GTEKernel, left, right, selection)
 	case columnar.KindUint64:
 		return dispatchNumericEquality(alloc, uint64GTEKernel, left, right, selection)
 	case columnar.KindUTF8:

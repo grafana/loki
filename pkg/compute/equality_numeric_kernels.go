@@ -13,6 +13,20 @@ type numericEqualityKernel[T columnar.Numeric] interface {
 }
 
 var (
+	int32EqualKernel    numericEqualityKernel[int32] = numericEqualKernelImpl[int32]{}
+	int32NotEqualKernel numericEqualityKernel[int32] = numericNotEqualKernelImpl[int32]{}
+	int32GTEKernel      numericEqualityKernel[int32] = numericGTEKernelImpl[int32]{}
+	int32GTKernel       numericEqualityKernel[int32] = numericGTKernelImpl[int32]{}
+	int32LTEKernel      numericEqualityKernel[int32] = numericLTEKernelImpl[int32]{}
+	int32LTKernel       numericEqualityKernel[int32] = numericLTKernelImpl[int32]{}
+
+	uint32EqualKernel    numericEqualityKernel[uint32] = numericEqualKernelImpl[uint32]{}
+	uint32NotEqualKernel numericEqualityKernel[uint32] = numericNotEqualKernelImpl[uint32]{}
+	uint32GTEKernel      numericEqualityKernel[uint32] = numericGTEKernelImpl[uint32]{}
+	uint32GTKernel       numericEqualityKernel[uint32] = numericGTKernelImpl[uint32]{}
+	uint32LTEKernel      numericEqualityKernel[uint32] = numericLTEKernelImpl[uint32]{}
+	uint32LTKernel       numericEqualityKernel[uint32] = numericLTKernelImpl[uint32]{}
+
 	int64EqualKernel    numericEqualityKernel[int64] = numericEqualKernelImpl[int64]{}
 	int64NotEqualKernel numericEqualityKernel[int64] = numericNotEqualKernelImpl[int64]{}
 	int64GTEKernel      numericEqualityKernel[int64] = numericGTEKernelImpl[int64]{}

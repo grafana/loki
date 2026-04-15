@@ -8,13 +8,14 @@ chunk_store_config:
       max_size_mb: 500
 common:
   storage:
-    s3:
-      endpoint: http://test.default.svc.cluster.local.:9000
-      bucketnames: loki
-      region: us-east
-      access_key_id: ${AWS_ACCESS_KEY_ID}
-      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-      s3forcepathstyle: true
+    object_store:
+      s3:
+        endpoint: http://test.default.svc.cluster.local.:9000
+        bucket_name: loki
+        region: us-east
+        access_key_id: ${AWS_ACCESS_KEY_ID}
+        secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+        bucket_lookup_type: path
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
     kvstore:
@@ -219,6 +220,7 @@ server:
   http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
+  use_thanos_objstore: true
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache

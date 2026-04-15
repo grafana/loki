@@ -185,7 +185,7 @@ func (b *wrrBalancer) updateEndpointsLocked(endpoints []resolver.Endpoint) {
 		ew.updateConfig(b.cfg)
 	}
 
-	for _, endpoint := range b.endpointToWeight.Keys() {
+	for endpoint := range b.endpointToWeight.All() {
 		if _, ok := endpointSet.Get(endpoint); ok {
 			// Existing endpoint also in new endpoint list; skip.
 			continue
@@ -412,7 +412,7 @@ func (b *wrrBalancer) Close() {
 	b.mu.Unlock()
 
 	// Ensure any lingering OOB watchers are stopped.
-	for _, ew := range b.endpointToWeight.Values() {
+	for _, ew := range b.endpointToWeight.All() {
 		if ew.stopORCAListener != nil {
 			ew.stopORCAListener()
 		}

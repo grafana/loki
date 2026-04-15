@@ -702,6 +702,88 @@ func TestRangeAggregationPipeline_EmptyLabelValues(t *testing.T) {
 	require.ElementsMatch(t, expect, result)
 }
 
+// TestRangeAggregationPipeline_MissingGroupingColumn verifies that a "by" grouping column
+// absent from the Arrow schema is eliminated from the series.
+//
+// Before the fix, an absent column fell back to a scalar "" (non-null), which was included
+// in the aggregation label set with empty value causing a mismatch in response compared to chunks engine.
+func TestRangeAggregationPipeline_MissingGroupingColumn(t *testing.T) {
+	colDetectedLevel := "utf8.metadata.detected_level"
+	colLevel := "utf8.label.level"
+
+	// schemaWithLevel simulates a data object whose Arrow schema includes a "level" index
+	// label (because other streams stored in the same object use it).  For the stream under
+	// test, level is absent for every row, so all values are null.
+	schemaWithLevel := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromFQN(colTs, false),
+		semconv.FieldFromFQN(colDetectedLevel, true),
+		semconv.FieldFromFQN(colLevel, true),
+	}, nil)
+
+	// schemaWithoutLevel simulates a data object that has no "level" column at all
+	// (none of the streams stored there carry that label).
+	schemaWithoutLevel := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromFQN(colTs, false),
+		semconv.FieldFromFQN(colDetectedLevel, true),
+	}, nil)
+
+	rowsWithLevel := arrowtest.Rows{
+		// level is null — the schema has the column, but this stream never sets it.
+		{colTs: time.Unix(20, 0).UTC(), colDetectedLevel: "info", colLevel: nil},
+		{colTs: time.Unix(18, 0).UTC(), colDetectedLevel: "info", colLevel: nil},
+	}
+
+	rowsWithoutLevel := arrowtest.Rows{
+		// level column is absent entirely from this batch's schema.
+		{colTs: time.Unix(20, 0).UTC(), colDetectedLevel: "info"},
+		{colTs: time.Unix(15, 0).UTC(), colDetectedLevel: "info"},
+	}
+
+	opts := rangeAggregationOptions{
+		grouping: physical.Grouping{
+			Columns: []physical.ColumnExpression{
+				// "by (level, detected_level)" — both referenced as ambiguous because the
+				// LogQL planner does not know the column type at planning time.
+				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeAmbiguous}},
+				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "detected_level", Type: types.ColumnTypeAmbiguous}},
+			},
+		},
+		startTs:       time.Unix(20, 0).UTC(),
+		endTs:         time.Unix(20, 0).UTC(),
+		rangeInterval: 10 * time.Second,
+		operation:     types.RangeAggregationTypeCount,
+	}
+
+	inputA := NewArrowtestPipeline(schemaWithLevel, rowsWithLevel)
+	inputB := NewArrowtestPipeline(schemaWithoutLevel, rowsWithoutLevel)
+
+	pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
+	require.NoError(t, err)
+	defer pipeline.Close()
+
+	record, err := pipeline.Read(t.Context())
+	require.NoError(t, err)
+
+	result, err := arrowtest.RecordRows(record)
+	require.NoError(t, err)
+
+	// All four rows belong to the same logical series — detected_level="info" with level
+	// absent.  They must be merged into a single aggregation bucket, not split into
+	// {detected_level="info"} and {detected_level="info", level=""}.
+	expect := arrowtest.Rows{
+		{
+			colTs:  time.Unix(20, 0).UTC(),
+			colVal: float64(4),
+			// detected_level is present with value "info".
+			"utf8.ambiguous.detected_level": "info",
+			// level is absent in the aggregation key, so the aggregator emits NULL here.
+			"utf8.ambiguous.level": nil,
+		},
+	}
+	require.Equal(t, len(expect), len(result), "absent grouping column must not split series into separate streams")
+	require.ElementsMatch(t, expect, result)
+}
+
 // requireEqualWindows asserts that two slices of window structs contain the same elements.
 func requireEqualWindows(t *testing.T, expected, actual []window) {
 	t.Helper()
