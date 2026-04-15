@@ -328,7 +328,7 @@ func UpdateRefWithSchema(sp *spec.Swagger, key string, sch *spec.Schema) error {
 	return nil
 }
 
-// DeepestRefResult holds the results from DeepestRef analysis.
+// DeepestRefResult holds the results from [DeepestRef] analysis.
 type DeepestRefResult struct {
 	Ref      spec.Ref
 	Schema   *spec.Schema
@@ -336,12 +336,13 @@ type DeepestRefResult struct {
 }
 
 // DeepestRef finds the first definition ref, from a cascade of nested refs which are not definitions.
+//
 //   - if no definition is found, returns the deepest ref.
 //   - pointers to external files are expanded
 //
 // NOTE: all external $ref's are assumed to be already expanded at this stage.
 //
-//nolint:gocognit,cyclop,gocyclo // this is the most complex method in this package and we'll have to break it down some day
+//nolint:gocognit,gocyclo,cyclop // definitely needs a refactoring, in a follow-up PR
 func DeepestRef(sp *spec.Swagger, opts *spec.ExpandOptions, ref spec.Ref) (*DeepestRefResult, error) {
 	if !ref.HasFragmentOnly {
 		// we found an external $ref, which is odd at this stage:
