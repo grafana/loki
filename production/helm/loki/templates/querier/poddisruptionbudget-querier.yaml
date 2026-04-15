@@ -1,0 +1,21 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed (gt (int .Values.querier.replicas) 1) }}
+{{- if kindIs "invalid" .Values.querier.maxUnavailable }}
+{{- fail "`.Values.querier.maxUnavailable` must be set when `.Values.querier.replicas` is greater than 1." }}
+{{- else }}
+apiVersion: {{ include "loki.pdb.apiVersion" . }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "loki.querierFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.querierLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "loki.querierSelectorLabels" . | nindent 6 }}
+  {{- with .Values.querier.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
+{{- end }}
+{{- end }}

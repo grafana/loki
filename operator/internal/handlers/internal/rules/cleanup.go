@@ -4,25 +4,49 @@ import (
 	"context"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
+	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	v1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests"
 )
 
-// RemoveRulesConfigMap removes the rules configmaps if any exists.
-func RemoveRulesConfigMap(ctx context.Context, req ctrl.Request, c client.Client) error {
+// Cleanup removes the ruler component's statefulset and configmaps if available, or
+// else it returns an error to retry the reconciliation loop.
+func Cleanup(ctx context.Context, log logr.Logger, k k8s.Client, stack *v1.LokiStack) error {
+	if stack.Spec.Rules != nil && stack.Spec.Rules.Enabled {
+		return nil
+	}
+
+	stackKey := client.ObjectKeyFromObject(stack)
+
+	// Clean up ruler resources
+	if err := removeRulesConfigMap(ctx, k, stackKey); err != nil {
+		log.Error(err, "failed to remove rules ConfigMap")
+		return err
+	}
+
+	if err := removeRuler(ctx, k, stackKey); err != nil {
+		log.Error(err, "failed to remove ruler StatefulSet")
+		return err
+	}
+
+	return nil
+}
+
+func removeRulesConfigMap(ctx context.Context, c client.Client, key client.ObjectKey) error {
 	var rulesCmList corev1.ConfigMapList
 
 	err := c.List(ctx, &rulesCmList, &client.ListOptions{
-		Namespace: req.Namespace,
+		Namespace: key.Namespace,
 		LabelSelector: labels.SelectorFromSet(labels.Set{
 			"app.kubernetes.io/component": manifests.LabelRulerComponent,
-			"app.kubernetes.io/instance":  req.Name,
+			"app.kubernetes.io/instance":  key.Name,
 		}),
 	})
 	if err != nil {
@@ -41,10 +65,9 @@ func RemoveRulesConfigMap(ctx context.Context, req ctrl.Request, c client.Client
 	return nil
 }
 
-// RemoveRuler removes the ruler statefulset if it exists.
-func RemoveRuler(ctx context.Context, req ctrl.Request, c client.Client) error {
+func removeRuler(ctx context.Context, c client.Client, stack client.ObjectKey) error {
 	// Check if the Statefulset exists before proceeding.
-	key := client.ObjectKey{Name: manifests.RulerName(req.Name), Namespace: req.Namespace}
+	key := client.ObjectKey{Name: manifests.RulerName(stack.Name), Namespace: stack.Namespace}
 
 	var ruler appsv1.StatefulSet
 	if err := c.Get(ctx, key, &ruler); err != nil {

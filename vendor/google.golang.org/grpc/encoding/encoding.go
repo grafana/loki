@@ -27,14 +27,34 @@ package encoding
 
 import (
 	"io"
+	"slices"
 	"strings"
 
+	"google.golang.org/grpc/encoding/internal"
 	"google.golang.org/grpc/internal/grpcutil"
 )
 
 // Identity specifies the optional encoding for uncompressed streams.
 // It is intended for grpc internal use only.
 const Identity = "identity"
+
+func init() {
+	internal.RegisterCompressorForTesting = func(c Compressor) func() {
+		name := c.Name()
+		curCompressor, found := registeredCompressor[name]
+		RegisterCompressor(c)
+		return func() {
+			if found {
+				registeredCompressor[name] = curCompressor
+				return
+			}
+			delete(registeredCompressor, name)
+			grpcutil.RegisteredCompressorNames = slices.DeleteFunc(grpcutil.RegisteredCompressorNames, func(s string) bool {
+				return s == name
+			})
+		}
+	}
+}
 
 // Compressor is used for compressing and decompressing when sending or
 // receiving messages.
@@ -51,15 +71,6 @@ type Compressor interface {
 	// coding header.  The result must be static; the result cannot change
 	// between calls.
 	Name() string
-	// If a Compressor implements
-	// DecompressedSize(compressedBytes []byte) int, gRPC will call it
-	// to determine the size of the buffer allocated for the result of decompression.
-	// Return -1 to indicate unknown size.
-	//
-	// Experimental
-	//
-	// Notice: This API is EXPERIMENTAL and may be changed or removed in a
-	// later release.
 }
 
 var registeredCompressor = make(map[string]Compressor)
@@ -90,16 +101,16 @@ func GetCompressor(name string) Compressor {
 // methods can be called from concurrent goroutines.
 type Codec interface {
 	// Marshal returns the wire format of v.
-	Marshal(v interface{}) ([]byte, error)
+	Marshal(v any) ([]byte, error)
 	// Unmarshal parses the wire format into v.
-	Unmarshal(data []byte, v interface{}) error
+	Unmarshal(data []byte, v any) error
 	// Name returns the name of the Codec implementation. The returned string
 	// will be used as part of content type in transmission.  The result must be
 	// static; the result cannot change between calls.
 	Name() string
 }
 
-var registeredCodecs = make(map[string]Codec)
+var registeredCodecs = make(map[string]any)
 
 // RegisterCodec registers the provided Codec for use with all gRPC clients and
 // servers.
@@ -131,5 +142,6 @@ func RegisterCodec(codec Codec) {
 //
 // The content-subtype is expected to be lowercase.
 func GetCodec(contentSubtype string) Codec {
-	return registeredCodecs[contentSubtype]
+	c, _ := registeredCodecs[contentSubtype].(Codec)
+	return c
 }

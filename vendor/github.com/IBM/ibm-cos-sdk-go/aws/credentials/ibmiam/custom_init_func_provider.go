@@ -12,14 +12,17 @@ const CustomInitFuncProviderName = "CustomInitFuncProviderIBM"
 
 // NewCustomInitFuncProvider constructor of IBM IAM Provider with a custom init Function
 // Parameters:
-// 			aws.config: AWS Config to provide service configuration for service clients. By default,
-//				all clients will use the defaults.DefaultConfig structure.
-//			initFunc token: Contents of the token
-//			authEndPoint: IAM Authentication Server end point
-//			serviceInstanceID: service instance ID of the IBM account
-//			client: Token Management's client
+//
+//	aws.config: AWS Config to provide service configuration for service clients. By default,
+//		all clients will use the defaults.DefaultConfig structure.
+//	initFunc token: Contents of the token
+//	authEndPoint: IAM Authentication Server end point
+//	serviceInstanceID: service instance ID of the IBM account
+//	client: Token Management's client
+//
 // Returns:
-// 			A complete Provider with Token Manager initialized
+//
+//	A complete Provider with Token Manager initialized
 func NewCustomInitFuncProvider(config *aws.Config, initFunc func() (*token.Token, error), authEndPoint,
 	serviceInstanceID string, client tokenmanager.IBMClientDo) *Provider {
 

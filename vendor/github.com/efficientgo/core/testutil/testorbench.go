@@ -30,7 +30,13 @@ type TB interface {
 
 	SetBytes(n int64)
 	N() int
+
 	ResetTimer()
+	StartTimer()
+	StopTimer()
+
+	ReportAllocs()
+	ReportMetric(n float64, unit string)
 }
 
 // tb implements TB as well as testing.TB interfaces.
@@ -78,8 +84,36 @@ func (t *tb) ResetTimer() {
 	}
 }
 
+// StartTimer starts a timer, if it's a benchmark, noop otherwise.
+func (t *tb) StartTimer() {
+	if b, ok := t.TB.(*testing.B); ok {
+		b.StartTimer()
+	}
+}
+
+// StopTimer stops a timer, if it's a benchmark, noop otherwise.
+func (t *tb) StopTimer() {
+	if b, ok := t.TB.(*testing.B); ok {
+		b.StopTimer()
+	}
+}
+
 // IsBenchmark returns true if it's a benchmark.
 func (t *tb) IsBenchmark() bool {
 	_, ok := t.TB.(*testing.B)
 	return ok
+}
+
+// ReportAllocs reports allocs if it's a benchmark, noop otherwise.
+func (t *tb) ReportAllocs() {
+	if b, ok := t.TB.(*testing.B); ok {
+		b.ReportAllocs()
+	}
+}
+
+// ReportMetric reports metrics if it's a benchmark, noop otherwise.
+func (t *tb) ReportMetric(n float64, unit string) {
+	if b, ok := t.TB.(*testing.B); ok {
+		b.ReportMetric(n, unit)
+	}
 }

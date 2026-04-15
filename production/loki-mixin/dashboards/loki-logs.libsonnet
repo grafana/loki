@@ -3,28 +3,13 @@ local template = import 'grafonnet/template.libsonnet';
 
 
 (import 'dashboard-utils.libsonnet') {
-  local deploymentTemplate =
-    template.new(
-      'deployment',
-      '$datasource',
-      'label_values(kube_deployment_created{' + $._config.per_cluster_label + '="$cluster", namespace="$namespace"}, deployment)',
-      sort=1,
-    ),
-
-  local podTemplate =
-    template.new(
-      'pod',
-      '$datasource',
-      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", namespace="$namespace", pod=~"$deployment.*"}, pod)',
-      sort=1,
-    ),
-
   local containerTemplate =
     template.new(
       'container',
       '$datasource',
-      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", namespace="$namespace", pod=~"$pod", pod=~"$deployment.*"}, container)',
+      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", ' + $._config.per_namespace_label + '="$namespace"}, container)',
       sort=1,
+      multi=true,
     ),
 
   local levelTemplate =
@@ -48,7 +33,6 @@ local template = import 'grafonnet/template.libsonnet';
                         local cfg = self,
 
                         showMultiCluster:: true,
-                        clusterLabel:: $._config.per_cluster_label,
 
                       } + lokiLogs +
                       $.dashboard('Loki / Logs', uid='logs')
@@ -61,8 +45,9 @@ local template = import 'grafonnet/template.libsonnet';
                           p {
                             targets: [
                               e {
-                                expr: if dashboards['loki-logs.json'].showMultiCluster then super.expr
-                                else std.strReplace(super.expr, $._config.per_cluster_label + '="$cluster", ', ''),
+                                expr: if dashboards['loki-logs.json'].showMultiCluster
+                                then std.strReplace(super.expr, 'cluster="$cluster"', $._config.per_cluster_label + '="$cluster"')
+                                else std.strReplace(super.expr, 'cluster="$cluster", ', ''),
                               }
                               for e in p.targets
                             ],
@@ -71,8 +56,6 @@ local template = import 'grafonnet/template.libsonnet';
                         ],
                         templating+: {
                           list+: [
-                            deploymentTemplate,
-                            podTemplate,
                             containerTemplate,
                             levelTemplate,
                             logTemplate,

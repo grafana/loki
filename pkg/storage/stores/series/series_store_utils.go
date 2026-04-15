@@ -5,10 +5,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
@@ -36,13 +37,12 @@ func filterChunkRefsByTime(from, through model.Time, chunks []logproto.ChunkRef)
 func labelNamesFromChunks(chunks []chunk.Chunk) []string {
 	var result util.UniqueStrings
 	for _, c := range chunks {
-		for _, l := range c.Metric {
+		c.Metric.Range(func(l labels.Label) {
 			if l.Name == model.MetricNameLabel {
-				continue
+				return // (will continue Range loop, not abort)
 			}
-
 			result.Add(l.Name)
-		}
+		})
 	}
 	return result.Strings()
 }

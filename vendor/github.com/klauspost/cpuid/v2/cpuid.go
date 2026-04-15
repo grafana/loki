@@ -55,6 +55,12 @@ const (
 	Qualcomm
 	Marvell
 
+	QEMU
+	QNX
+	ACRN
+	SRE
+	Apple
+
 	lastVendor
 )
 
@@ -67,188 +73,211 @@ const (
 	// Keep index -1 as unknown
 	UNKNOWN = -1
 
-	// Add features
-	ADX                FeatureID = iota // Intel ADX (Multi-Precision Add-Carry Instruction Extensions)
-	AESNI                               // Advanced Encryption Standard New Instructions
-	AMD3DNOW                            // AMD 3DNOW
-	AMD3DNOWEXT                         // AMD 3DNowExt
-	AMXBF16                             // Tile computational operations on BFLOAT16 numbers
-	AMXFP16                             // Tile computational operations on FP16 numbers
-	AMXINT8                             // Tile computational operations on 8-bit integers
-	AMXTILE                             // Tile architecture
-	AVX                                 // AVX functions
-	AVX2                                // AVX2 functions
-	AVX512BF16                          // AVX-512 BFLOAT16 Instructions
-	AVX512BITALG                        // AVX-512 Bit Algorithms
-	AVX512BW                            // AVX-512 Byte and Word Instructions
-	AVX512CD                            // AVX-512 Conflict Detection Instructions
-	AVX512DQ                            // AVX-512 Doubleword and Quadword Instructions
-	AVX512ER                            // AVX-512 Exponential and Reciprocal Instructions
-	AVX512F                             // AVX-512 Foundation
-	AVX512FP16                          // AVX-512 FP16 Instructions
-	AVX512IFMA                          // AVX-512 Integer Fused Multiply-Add Instructions
-	AVX512PF                            // AVX-512 Prefetch Instructions
-	AVX512VBMI                          // AVX-512 Vector Bit Manipulation Instructions
-	AVX512VBMI2                         // AVX-512 Vector Bit Manipulation Instructions, Version 2
-	AVX512VL                            // AVX-512 Vector Length Extensions
-	AVX512VNNI                          // AVX-512 Vector Neural Network Instructions
-	AVX512VP2INTERSECT                  // AVX-512 Intersect for D/Q
-	AVX512VPOPCNTDQ                     // AVX-512 Vector Population Count Doubleword and Quadword
-	AVXIFMA                             // AVX-IFMA instructions
-	AVXNECONVERT                        // AVX-NE-CONVERT instructions
-	AVXSLOW                             // Indicates the CPU performs 2 128 bit operations instead of one
-	AVXVNNI                             // AVX (VEX encoded) VNNI neural network instructions
-	AVXVNNIINT8                         // AVX-VNNI-INT8 instructions
-	BHI_CTRL                            // Branch History Injection and Intra-mode Branch Target Injection / CVE-2022-0001, CVE-2022-0002 / INTEL-SA-00598
-	BMI1                                // Bit Manipulation Instruction Set 1
-	BMI2                                // Bit Manipulation Instruction Set 2
-	CETIBT                              // Intel CET Indirect Branch Tracking
-	CETSS                               // Intel CET Shadow Stack
-	CLDEMOTE                            // Cache Line Demote
-	CLMUL                               // Carry-less Multiplication
-	CLZERO                              // CLZERO instruction supported
-	CMOV                                // i686 CMOV
-	CMPCCXADD                           // CMPCCXADD instructions
-	CMPSB_SCADBS_SHORT                  // Fast short CMPSB and SCASB
-	CMPXCHG8                            // CMPXCHG8 instruction
-	CPBOOST                             // Core Performance Boost
-	CPPC                                // AMD: Collaborative Processor Performance Control
-	CX16                                // CMPXCHG16B Instruction
-	EFER_LMSLE_UNS                      // AMD: =Core::X86::Msr::EFER[LMSLE] is not supported, and MBZ
-	ENQCMD                              // Enqueue Command
-	ERMS                                // Enhanced REP MOVSB/STOSB
-	F16C                                // Half-precision floating-point conversion
-	FLUSH_L1D                           // Flush L1D cache
-	FMA3                                // Intel FMA 3. Does not imply AVX.
-	FMA4                                // Bulldozer FMA4 functions
-	FP128                               // AMD: When set, the internal FP/SIMD execution datapath is no more than 128-bits wide
-	FP256                               // AMD: When set, the internal FP/SIMD execution datapath is no more than 256-bits wide
-	FSRM                                // Fast Short Rep Mov
-	FXSR                                // FXSAVE, FXRESTOR instructions, CR4 bit 9
-	FXSROPT                             // FXSAVE/FXRSTOR optimizations
-	GFNI                                // Galois Field New Instructions. May require other features (AVX, AVX512VL,AVX512F) based on usage.
-	HLE                                 // Hardware Lock Elision
-	HRESET                              // If set CPU supports history reset and the IA32_HRESET_ENABLE MSR
-	HTT                                 // Hyperthreading (enabled)
-	HWA                                 // Hardware assert supported. Indicates support for MSRC001_10
-	HYBRID_CPU                          // This part has CPUs of more than one type.
-	HYPERVISOR                          // This bit has been reserved by Intel & AMD for use by hypervisors
-	IA32_ARCH_CAP                       // IA32_ARCH_CAPABILITIES MSR (Intel)
-	IA32_CORE_CAP                       // IA32_CORE_CAPABILITIES MSR
-	IBPB                                // Indirect Branch Restricted Speculation (IBRS) and Indirect Branch Predictor Barrier (IBPB)
-	IBRS                                // AMD: Indirect Branch Restricted Speculation
-	IBRS_PREFERRED                      // AMD: IBRS is preferred over software solution
-	IBRS_PROVIDES_SMP                   // AMD: IBRS provides Same Mode Protection
-	IBS                                 // Instruction Based Sampling (AMD)
-	IBSBRNTRGT                          // Instruction Based Sampling Feature (AMD)
-	IBSFETCHSAM                         // Instruction Based Sampling Feature (AMD)
-	IBSFFV                              // Instruction Based Sampling Feature (AMD)
-	IBSOPCNT                            // Instruction Based Sampling Feature (AMD)
-	IBSOPCNTEXT                         // Instruction Based Sampling Feature (AMD)
-	IBSOPSAM                            // Instruction Based Sampling Feature (AMD)
-	IBSRDWROPCNT                        // Instruction Based Sampling Feature (AMD)
-	IBSRIPINVALIDCHK                    // Instruction Based Sampling Feature (AMD)
-	IBS_FETCH_CTLX                      // AMD: IBS fetch control extended MSR supported
-	IBS_OPDATA4                         // AMD: IBS op data 4 MSR supported
-	IBS_OPFUSE                          // AMD: Indicates support for IbsOpFuse
-	IBS_PREVENTHOST                     // Disallowing IBS use by the host supported
-	IBS_ZEN4                            // AMD: Fetch and Op IBS support IBS extensions added with Zen4
-	IDPRED_CTRL                         // IPRED_DIS
-	INT_WBINVD                          // WBINVD/WBNOINVD are interruptible.
-	INVLPGB                             // NVLPGB and TLBSYNC instruction supported
-	LAHF                                // LAHF/SAHF in long mode
-	LAM                                 // If set, CPU supports Linear Address Masking
-	LBRVIRT                             // LBR virtualization
-	LZCNT                               // LZCNT instruction
-	MCAOVERFLOW                         // MCA overflow recovery support.
-	MCDT_NO                             // Processor do not exhibit MXCSR Configuration Dependent Timing behavior and do not need to mitigate it.
-	MCOMMIT                             // MCOMMIT instruction supported
-	MD_CLEAR                            // VERW clears CPU buffers
-	MMX                                 // standard MMX
-	MMXEXT                              // SSE integer functions or AMD MMX ext
-	MOVBE                               // MOVBE instruction (big-endian)
-	MOVDIR64B                           // Move 64 Bytes as Direct Store
-	MOVDIRI                             // Move Doubleword as Direct Store
-	MOVSB_ZL                            // Fast Zero-Length MOVSB
-	MOVU                                // AMD: MOVU SSE instructions are more efficient and should be preferred to SSE	MOVL/MOVH. MOVUPS is more efficient than MOVLPS/MOVHPS. MOVUPD is more efficient than MOVLPD/MOVHPD
-	MPX                                 // Intel MPX (Memory Protection Extensions)
-	MSRIRC                              // Instruction Retired Counter MSR available
-	MSRLIST                             // Read/Write List of Model Specific Registers
-	MSR_PAGEFLUSH                       // Page Flush MSR available
-	NRIPS                               // Indicates support for NRIP save on VMEXIT
-	NX                                  // NX (No-Execute) bit
-	OSXSAVE                             // XSAVE enabled by OS
-	PCONFIG                             // PCONFIG for Intel Multi-Key Total Memory Encryption
-	POPCNT                              // POPCNT instruction
-	PPIN                                // AMD: Protected Processor Inventory Number support. Indicates that Protected Processor Inventory Number (PPIN) capability can be enabled
-	PREFETCHI                           // PREFETCHIT0/1 instructions
-	PSFD                                // Predictive Store Forward Disable
-	RDPRU                               // RDPRU instruction supported
-	RDRAND                              // RDRAND instruction is available
-	RDSEED                              // RDSEED instruction is available
-	RDTSCP                              // RDTSCP Instruction
-	RRSBA_CTRL                          // Restricted RSB Alternate
-	RTM                                 // Restricted Transactional Memory
-	RTM_ALWAYS_ABORT                    // Indicates that the loaded microcode is forcing RTM abort.
-	SERIALIZE                           // Serialize Instruction Execution
-	SEV                                 // AMD Secure Encrypted Virtualization supported
-	SEV_64BIT                           // AMD SEV guest execution only allowed from a 64-bit host
-	SEV_ALTERNATIVE                     // AMD SEV Alternate Injection supported
-	SEV_DEBUGSWAP                       // Full debug state swap supported for SEV-ES guests
-	SEV_ES                              // AMD SEV Encrypted State supported
-	SEV_RESTRICTED                      // AMD SEV Restricted Injection supported
-	SEV_SNP                             // AMD SEV Secure Nested Paging supported
-	SGX                                 // Software Guard Extensions
-	SGXLC                               // Software Guard Extensions Launch Control
-	SHA                                 // Intel SHA Extensions
-	SME                                 // AMD Secure Memory Encryption supported
-	SME_COHERENT                        // AMD Hardware cache coherency across encryption domains enforced
-	SPEC_CTRL_SSBD                      // Speculative Store Bypass Disable
-	SRBDS_CTRL                          // SRBDS mitigation MSR available
-	SSE                                 // SSE functions
-	SSE2                                // P4 SSE functions
-	SSE3                                // Prescott SSE3 functions
-	SSE4                                // Penryn SSE4.1 functions
-	SSE42                               // Nehalem SSE4.2 functions
-	SSE4A                               // AMD Barcelona microarchitecture SSE4a instructions
-	SSSE3                               // Conroe SSSE3 functions
-	STIBP                               // Single Thread Indirect Branch Predictors
-	STIBP_ALWAYSON                      // AMD: Single Thread Indirect Branch Prediction Mode has Enhanced Performance and may be left Always On
-	STOSB_SHORT                         // Fast short STOSB
-	SUCCOR                              // Software uncorrectable error containment and recovery capability.
-	SVM                                 // AMD Secure Virtual Machine
-	SVMDA                               // Indicates support for the SVM decode assists.
-	SVMFBASID                           // SVM, Indicates that TLB flush events, including CR3 writes and CR4.PGE toggles, flush only the current ASID's TLB entries. Also indicates support for the extended VMCBTLB_Control
-	SVML                                // AMD SVM lock. Indicates support for SVM-Lock.
-	SVMNP                               // AMD SVM nested paging
-	SVMPF                               // SVM pause intercept filter. Indicates support for the pause intercept filter
-	SVMPFT                              // SVM PAUSE filter threshold. Indicates support for the PAUSE filter cycle count threshold
-	SYSCALL                             // System-Call Extension (SCE): SYSCALL and SYSRET instructions.
-	SYSEE                               // SYSENTER and SYSEXIT instructions
-	TBM                                 // AMD Trailing Bit Manipulation
-	TDX_GUEST                           // Intel Trust Domain Extensions Guest
-	TLB_FLUSH_NESTED                    // AMD: Flushing includes all the nested translations for guest translations
-	TME                                 // Intel Total Memory Encryption. The following MSRs are supported: IA32_TME_CAPABILITY, IA32_TME_ACTIVATE, IA32_TME_EXCLUDE_MASK, and IA32_TME_EXCLUDE_BASE.
-	TOPEXT                              // TopologyExtensions: topology extensions support. Indicates support for CPUID Fn8000_001D_EAX_x[N:0]-CPUID Fn8000_001E_EDX.
-	TSCRATEMSR                          // MSR based TSC rate control. Indicates support for MSR TSC ratio MSRC000_0104
-	TSXLDTRK                            // Intel TSX Suspend Load Address Tracking
-	VAES                                // Vector AES. AVX(512) versions requires additional checks.
-	VMCBCLEAN                           // VMCB clean bits. Indicates support for VMCB clean bits.
-	VMPL                                // AMD VM Permission Levels supported
-	VMSA_REGPROT                        // AMD VMSA Register Protection supported
-	VMX                                 // Virtual Machine Extensions
-	VPCLMULQDQ                          // Carry-Less Multiplication Quadword. Requires AVX for 3 register versions.
-	VTE                                 // AMD Virtual Transparent Encryption supported
-	WAITPKG                             // TPAUSE, UMONITOR, UMWAIT
-	WBNOINVD                            // Write Back and Do Not Invalidate Cache
-	WRMSRNS                             // Non-Serializing Write to Model Specific Register
-	X87                                 // FPU
-	XGETBV1                             // Supports XGETBV with ECX = 1
-	XOP                                 // Bulldozer XOP functions
-	XSAVE                               // XSAVE, XRESTOR, XSETBV, XGETBV
-	XSAVEC                              // Supports XSAVEC and the compacted form of XRSTOR.
-	XSAVEOPT                            // XSAVEOPT available
-	XSAVES                              // Supports XSAVES/XRSTORS and IA32_XSS
+	// x86 features
+	ADX                 FeatureID = iota // Intel ADX (Multi-Precision Add-Carry Instruction Extensions)
+	AESNI                                // Advanced Encryption Standard New Instructions
+	AMD3DNOW                             // AMD 3DNOW
+	AMD3DNOWEXT                          // AMD 3DNowExt
+	AMXBF16                              // Tile computational operations on BFLOAT16 numbers
+	AMXFP16                              // Tile computational operations on FP16 numbers
+	AMXINT8                              // Tile computational operations on 8-bit integers
+	AMXFP8                               // Tile computational operations on FP8 numbers
+	AMXTILE                              // Tile architecture
+	AMXTF32                              // Tile architecture
+	AMXCOMPLEX                           // Matrix Multiplication of TF32 Tiles into Packed Single Precision Tile
+	AMXTRANSPOSE                         // Tile multiply where the first operand is transposed
+	APX_F                                // Intel APX
+	AVX                                  // AVX functions
+	AVX10                                // If set the Intel AVX10 Converged Vector ISA is supported
+	AVX10_128                            // If set indicates that AVX10 128-bit vector support is present
+	AVX10_256                            // If set indicates that AVX10 256-bit vector support is present
+	AVX10_512                            // If set indicates that AVX10 512-bit vector support is present
+	AVX2                                 // AVX2 functions
+	AVX512BF16                           // AVX-512 BFLOAT16 Instructions
+	AVX512BITALG                         // AVX-512 Bit Algorithms
+	AVX512BW                             // AVX-512 Byte and Word Instructions
+	AVX512CD                             // AVX-512 Conflict Detection Instructions
+	AVX512DQ                             // AVX-512 Doubleword and Quadword Instructions
+	AVX512ER                             // AVX-512 Exponential and Reciprocal Instructions
+	AVX512F                              // AVX-512 Foundation
+	AVX512FP16                           // AVX-512 FP16 Instructions
+	AVX512IFMA                           // AVX-512 Integer Fused Multiply-Add Instructions
+	AVX512PF                             // AVX-512 Prefetch Instructions
+	AVX512VBMI                           // AVX-512 Vector Bit Manipulation Instructions
+	AVX512VBMI2                          // AVX-512 Vector Bit Manipulation Instructions, Version 2
+	AVX512VL                             // AVX-512 Vector Length Extensions
+	AVX512VNNI                           // AVX-512 Vector Neural Network Instructions
+	AVX512VP2INTERSECT                   // AVX-512 Intersect for D/Q
+	AVX512VPOPCNTDQ                      // AVX-512 Vector Population Count Doubleword and Quadword
+	AVXIFMA                              // AVX-IFMA instructions
+	AVXNECONVERT                         // AVX-NE-CONVERT instructions
+	AVXSLOW                              // Indicates the CPU performs 2 128 bit operations instead of one
+	AVXVNNI                              // AVX (VEX encoded) VNNI neural network instructions
+	AVXVNNIINT8                          // AVX-VNNI-INT8 instructions
+	AVXVNNIINT16                         // AVX-VNNI-INT16 instructions
+	BHI_CTRL                             // Branch History Injection and Intra-mode Branch Target Injection / CVE-2022-0001, CVE-2022-0002 / INTEL-SA-00598
+	BMI1                                 // Bit Manipulation Instruction Set 1
+	BMI2                                 // Bit Manipulation Instruction Set 2
+	CETIBT                               // Intel CET Indirect Branch Tracking
+	CETSS                                // Intel CET Shadow Stack
+	CLDEMOTE                             // Cache Line Demote
+	CLMUL                                // Carry-less Multiplication
+	CLZERO                               // CLZERO instruction supported
+	CMOV                                 // i686 CMOV
+	CMPCCXADD                            // CMPCCXADD instructions
+	CMPSB_SCADBS_SHORT                   // Fast short CMPSB and SCASB
+	CMPXCHG8                             // CMPXCHG8 instruction
+	CPBOOST                              // Core Performance Boost
+	CPPC                                 // AMD: Collaborative Processor Performance Control
+	CX16                                 // CMPXCHG16B Instruction
+	EFER_LMSLE_UNS                       // AMD: =Core::X86::Msr::EFER[LMSLE] is not supported, and MBZ
+	ENQCMD                               // Enqueue Command
+	ERMS                                 // Enhanced REP MOVSB/STOSB
+	F16C                                 // Half-precision floating-point conversion
+	FLUSH_L1D                            // Flush L1D cache
+	FMA3                                 // Intel FMA 3. Does not imply AVX.
+	FMA4                                 // Bulldozer FMA4 functions
+	FP128                                // AMD: When set, the internal FP/SIMD execution datapath is no more than 128-bits wide
+	FP256                                // AMD: When set, the internal FP/SIMD execution datapath is no more than 256-bits wide
+	FSRM                                 // Fast Short Rep Mov
+	FXSR                                 // FXSAVE, FXRESTOR instructions, CR4 bit 9
+	FXSROPT                              // FXSAVE/FXRSTOR optimizations
+	GFNI                                 // Galois Field New Instructions. May require other features (AVX, AVX512VL,AVX512F) based on usage.
+	HLE                                  // Hardware Lock Elision
+	HRESET                               // If set CPU supports history reset and the IA32_HRESET_ENABLE MSR
+	HTT                                  // Hyperthreading (enabled)
+	HWA                                  // Hardware assert supported. Indicates support for MSRC001_10
+	HYBRID_CPU                           // This part has CPUs of more than one type.
+	HYPERVISOR                           // This bit has been reserved by Intel & AMD for use by hypervisors
+	IA32_ARCH_CAP                        // IA32_ARCH_CAPABILITIES MSR (Intel)
+	IA32_CORE_CAP                        // IA32_CORE_CAPABILITIES MSR
+	IBPB                                 // Indirect Branch Restricted Speculation (IBRS) and Indirect Branch Predictor Barrier (IBPB)
+	IBPB_BRTYPE                          // Indicates that MSR 49h (PRED_CMD) bit 0 (IBPB) flushes	all branch type predictions from the CPU branch predictor
+	IBRS                                 // AMD: Indirect Branch Restricted Speculation
+	IBRS_PREFERRED                       // AMD: IBRS is preferred over software solution
+	IBRS_PROVIDES_SMP                    // AMD: IBRS provides Same Mode Protection
+	IBS                                  // Instruction Based Sampling (AMD)
+	IBSBRNTRGT                           // Instruction Based Sampling Feature (AMD)
+	IBSFETCHSAM                          // Instruction Based Sampling Feature (AMD)
+	IBSFFV                               // Instruction Based Sampling Feature (AMD)
+	IBSOPCNT                             // Instruction Based Sampling Feature (AMD)
+	IBSOPCNTEXT                          // Instruction Based Sampling Feature (AMD)
+	IBSOPSAM                             // Instruction Based Sampling Feature (AMD)
+	IBSRDWROPCNT                         // Instruction Based Sampling Feature (AMD)
+	IBSRIPINVALIDCHK                     // Instruction Based Sampling Feature (AMD)
+	IBS_FETCH_CTLX                       // AMD: IBS fetch control extended MSR supported
+	IBS_OPDATA4                          // AMD: IBS op data 4 MSR supported
+	IBS_OPFUSE                           // AMD: Indicates support for IbsOpFuse
+	IBS_PREVENTHOST                      // Disallowing IBS use by the host supported
+	IBS_ZEN4                             // AMD: Fetch and Op IBS support IBS extensions added with Zen4
+	IDPRED_CTRL                          // IPRED_DIS
+	INT_WBINVD                           // WBINVD/WBNOINVD are interruptible.
+	INVLPGB                              // NVLPGB and TLBSYNC instruction supported
+	KEYLOCKER                            // Key locker
+	KEYLOCKERW                           // Key locker wide
+	LAHF                                 // LAHF/SAHF in long mode
+	LAM                                  // If set, CPU supports Linear Address Masking
+	LBRVIRT                              // LBR virtualization
+	LZCNT                                // LZCNT instruction
+	MCAOVERFLOW                          // MCA overflow recovery support.
+	MCDT_NO                              // Processor do not exhibit MXCSR Configuration Dependent Timing behavior and do not need to mitigate it.
+	MCOMMIT                              // MCOMMIT instruction supported
+	MD_CLEAR                             // VERW clears CPU buffers
+	MMX                                  // standard MMX
+	MMXEXT                               // SSE integer functions or AMD MMX ext
+	MOVBE                                // MOVBE instruction (big-endian)
+	MOVDIR64B                            // Move 64 Bytes as Direct Store
+	MOVDIRI                              // Move Doubleword as Direct Store
+	MOVSB_ZL                             // Fast Zero-Length MOVSB
+	MOVU                                 // AMD: MOVU SSE instructions are more efficient and should be preferred to SSE	MOVL/MOVH. MOVUPS is more efficient than MOVLPS/MOVHPS. MOVUPD is more efficient than MOVLPD/MOVHPD
+	MPX                                  // Intel MPX (Memory Protection Extensions)
+	MSRIRC                               // Instruction Retired Counter MSR available
+	MSRLIST                              // Read/Write List of Model Specific Registers
+	MSR_PAGEFLUSH                        // Page Flush MSR available
+	NRIPS                                // Indicates support for NRIP save on VMEXIT
+	NX                                   // NX (No-Execute) bit
+	OSXSAVE                              // XSAVE enabled by OS
+	PCONFIG                              // PCONFIG for Intel Multi-Key Total Memory Encryption
+	POPCNT                               // POPCNT instruction
+	PPIN                                 // AMD: Protected Processor Inventory Number support. Indicates that Protected Processor Inventory Number (PPIN) capability can be enabled
+	PREFETCHI                            // PREFETCHIT0/1 instructions
+	PSFD                                 // Predictive Store Forward Disable
+	RDPRU                                // RDPRU instruction supported
+	RDRAND                               // RDRAND instruction is available
+	RDSEED                               // RDSEED instruction is available
+	RDTSCP                               // RDTSCP Instruction
+	RRSBA_CTRL                           // Restricted RSB Alternate
+	RTM                                  // Restricted Transactional Memory
+	RTM_ALWAYS_ABORT                     // Indicates that the loaded microcode is forcing RTM abort.
+	SBPB                                 // Indicates support for the Selective Branch Predictor Barrier
+	SERIALIZE                            // Serialize Instruction Execution
+	SEV                                  // AMD Secure Encrypted Virtualization supported
+	SEV_64BIT                            // AMD SEV guest execution only allowed from a 64-bit host
+	SEV_ALTERNATIVE                      // AMD SEV Alternate Injection supported
+	SEV_DEBUGSWAP                        // Full debug state swap supported for SEV-ES guests
+	SEV_ES                               // AMD SEV Encrypted State supported
+	SEV_RESTRICTED                       // AMD SEV Restricted Injection supported
+	SEV_SNP                              // AMD SEV Secure Nested Paging supported
+	SGX                                  // Software Guard Extensions
+	SGXLC                                // Software Guard Extensions Launch Control
+	SGXPQC                               // Software Guard Extensions 256-bit Encryption
+	SHA                                  // Intel SHA Extensions
+	SME                                  // AMD Secure Memory Encryption supported
+	SME_COHERENT                         // AMD Hardware cache coherency across encryption domains enforced
+	SM3_X86                              // SM3 instructions
+	SM4_X86                              // SM4 instructions
+	SPEC_CTRL_SSBD                       // Speculative Store Bypass Disable
+	SRBDS_CTRL                           // SRBDS mitigation MSR available
+	SRSO_MSR_FIX                         // Indicates that software may use MSR BP_CFG[BpSpecReduce] to mitigate SRSO.
+	SRSO_NO                              // Indicates the CPU is not subject to the SRSO vulnerability
+	SRSO_USER_KERNEL_NO                  // Indicates the CPU is not subject to the SRSO vulnerability across user/kernel boundaries
+	SSE                                  // SSE functions
+	SSE2                                 // P4 SSE functions
+	SSE3                                 // Prescott SSE3 functions
+	SSE4                                 // Penryn SSE4.1 functions
+	SSE42                                // Nehalem SSE4.2 functions
+	SSE4A                                // AMD Barcelona microarchitecture SSE4a instructions
+	SSSE3                                // Conroe SSSE3 functions
+	STIBP                                // Single Thread Indirect Branch Predictors
+	STIBP_ALWAYSON                       // AMD: Single Thread Indirect Branch Prediction Mode has Enhanced Performance and may be left Always On
+	STOSB_SHORT                          // Fast short STOSB
+	SUCCOR                               // Software uncorrectable error containment and recovery capability.
+	SVM                                  // AMD Secure Virtual Machine
+	SVMDA                                // Indicates support for the SVM decode assists.
+	SVMFBASID                            // SVM, Indicates that TLB flush events, including CR3 writes and CR4.PGE toggles, flush only the current ASID's TLB entries. Also indicates support for the extended VMCBTLB_Control
+	SVML                                 // AMD SVM lock. Indicates support for SVM-Lock.
+	SVMNP                                // AMD SVM nested paging
+	SVMPF                                // SVM pause intercept filter. Indicates support for the pause intercept filter
+	SVMPFT                               // SVM PAUSE filter threshold. Indicates support for the PAUSE filter cycle count threshold
+	SYSCALL                              // System-Call Extension (SCE): SYSCALL and SYSRET instructions.
+	SYSEE                                // SYSENTER and SYSEXIT instructions
+	TBM                                  // AMD Trailing Bit Manipulation
+	TDX_GUEST                            // Intel Trust Domain Extensions Guest
+	TLB_FLUSH_NESTED                     // AMD: Flushing includes all the nested translations for guest translations
+	TME                                  // Intel Total Memory Encryption. The following MSRs are supported: IA32_TME_CAPABILITY, IA32_TME_ACTIVATE, IA32_TME_EXCLUDE_MASK, and IA32_TME_EXCLUDE_BASE.
+	TOPEXT                               // TopologyExtensions: topology extensions support. Indicates support for CPUID Fn8000_001D_EAX_x[N:0]-CPUID Fn8000_001E_EDX.
+	TSA_L1_NO                            // AMD only: Not vulnerable to TSA-L1
+	TSA_SQ_NO                            // AM onlyD: Not vulnerable to TSA-SQ
+	TSA_VERW_CLEAR                       // If set, the memory form of the VERW instruction may be used to help mitigate TSA
+	TSCRATEMSR                           // MSR based TSC rate control. Indicates support for MSR TSC ratio MSRC000_0104
+	TSXLDTRK                             // Intel TSX Suspend Load Address Tracking
+	VAES                                 // Vector AES. AVX(512) versions requires additional checks.
+	VMCBCLEAN                            // VMCB clean bits. Indicates support for VMCB clean bits.
+	VMPL                                 // AMD VM Permission Levels supported
+	VMSA_REGPROT                         // AMD VMSA Register Protection supported
+	VMX                                  // Virtual Machine Extensions
+	VPCLMULQDQ                           // Carry-Less Multiplication Quadword. Requires AVX for 3 register versions.
+	VTE                                  // AMD Virtual Transparent Encryption supported
+	WAITPKG                              // TPAUSE, UMONITOR, UMWAIT
+	WBNOINVD                             // Write Back and Do Not Invalidate Cache
+	WRMSRNS                              // Non-Serializing Write to Model Specific Register
+	X87                                  // FPU
+	XGETBV1                              // Supports XGETBV with ECX = 1
+	XOP                                  // Bulldozer XOP functions
+	XSAVE                                // XSAVE, XRESTOR, XSETBV, XGETBV
+	XSAVEC                               // Supports XSAVEC and the compacted form of XRSTOR.
+	XSAVEOPT                             // XSAVEOPT available
+	XSAVES                               // Supports XSAVES/XRSTORS and IA32_XSS
 
 	// ARM features:
 	AESARM   // AES instructions
@@ -261,13 +290,17 @@ const (
 	CRC32    // CRC32/CRC32C instructions
 	DCPOP    // Data cache clean to Point of Persistence (DC CVAP)
 	EVTSTRM  // Generic timer
-	FCMA     // Floatin point complex number addition and multiplication
+	FCMA     // Floating point complex number addition and multiplication
+	FHM      // FMLAL and FMLSL instructions
 	FP       // Single-precision and double-precision floating point
 	FPHP     // Half-precision floating point
 	GPA      // Generic Pointer Authentication
 	JSCVT    // Javascript-style double->int convert (FJCVTZS)
 	LRCPC    // Weaker release consistency (LDAPR, etc)
 	PMULL    // Polynomial Multiply instructions (PMULL/PMULL2)
+	RNDR     // Random Number instructions
+	TLB      // Outer Shareable and TLB range maintenance instructions
+	TS       // Flag manipulation instructions
 	SHA1     // SHA-1 instructions (SHA1C, etc)
 	SHA2     // SHA-2 instructions (SHA256H, etc)
 	SHA3     // SHA-3 instructions (EOR3, RAXI, XAR, BCAX)
@@ -275,6 +308,13 @@ const (
 	SM3      // SM3 instructions
 	SM4      // SM4 instructions
 	SVE      // Scalable Vector Extension
+
+	// PMU
+	PMU_FIXEDCOUNTER_CYCLES
+	PMU_FIXEDCOUNTER_REFCYCLES
+	PMU_FIXEDCOUNTER_INSTRUCTIONS
+	PMU_FIXEDCOUNTER_TOPDOWN_SLOTS
+
 	// Keep it last. It automatically defines the size of []flagSet
 	lastID
 
@@ -283,28 +323,58 @@ const (
 
 // CPUInfo contains information about the detected system CPU.
 type CPUInfo struct {
-	BrandName      string  // Brand name reported by the CPU
-	VendorID       Vendor  // Comparable CPU vendor ID
-	VendorString   string  // Raw vendor string.
-	featureSet     flagSet // Features of the CPU
-	PhysicalCores  int     // Number of physical processor cores in your CPU. Will be 0 if undetectable.
-	ThreadsPerCore int     // Number of threads per physical core. Will be 1 if undetectable.
-	LogicalCores   int     // Number of physical cores times threads that can run on each core through the use of hyperthreading. Will be 0 if undetectable.
-	Family         int     // CPU family number
-	Model          int     // CPU model number
-	Stepping       int     // CPU stepping info
-	CacheLine      int     // Cache line size in bytes. Will be 0 if undetectable.
-	Hz             int64   // Clock speed, if known, 0 otherwise. Will attempt to contain base clock speed.
-	BoostFreq      int64   // Max clock speed, if known, 0 otherwise
-	Cache          struct {
+	BrandName              string  // Brand name reported by the CPU
+	VendorID               Vendor  // Comparable CPU vendor ID
+	VendorString           string  // Raw vendor string.
+	HypervisorVendorID     Vendor  // Hypervisor vendor
+	HypervisorVendorString string  // Raw hypervisor vendor string
+	featureSet             flagSet // Features of the CPU
+	PhysicalCores          int     // Number of physical processor cores in your CPU. Will be 0 if undetectable.
+	ThreadsPerCore         int     // Number of threads per physical core. Will be 1 if undetectable.
+	LogicalCores           int     // Number of physical cores times threads that can run on each core through the use of hyperthreading. Will be 0 if undetectable.
+	Family                 int     // CPU family number
+	Model                  int     // CPU model number
+	Stepping               int     // CPU stepping info
+	CacheLine              int     // Cache line size in bytes. Will be 0 if undetectable.
+	Hz                     int64   // Clock speed, if known, 0 otherwise. Will attempt to contain base clock speed.
+	BoostFreq              int64   // Max clock speed, if known, 0 otherwise
+	Cache                  struct {
 		L1I int // L1 Instruction Cache (per core or shared). Will be -1 if undetected
 		L1D int // L1 Data Cache (per core or shared). Will be -1 if undetected
 		L2  int // L2 Cache (per core or shared). Will be -1 if undetected
 		L3  int // L3 Cache (per core, per ccx or shared). Will be -1 if undetected
 	}
-	SGX       SGXSupport
+	SGX              SGXSupport
+	AMDMemEncryption AMDMemEncryptionSupport
+	AVX10Level       uint8
+	PMU              PerformanceMonitoringInfo //  holds information about the PMU
+
 	maxFunc   uint32
 	maxExFunc uint32
+}
+
+// PerformanceMonitoringInfo holds information about CPU performance monitoring capabilities.
+// This is primarily populated from CPUID leaf 0xAh on x86
+type PerformanceMonitoringInfo struct {
+	// VersionID (x86 only): Version ID of architectural performance monitoring.
+	// A value of 0 means architectural performance monitoring is not supported or information is unavailable.
+	VersionID uint8
+	// NumGPPMC: Number of General-Purpose Performance Monitoring Counters per logical processor.
+	// On ARM, this is derived from PMCR_EL0.N (number of event counters).
+	NumGPCounters uint8
+	// GPPMCWidth: Bit width of General-Purpose Performance Monitoring Counters.
+	// On ARM, typically 64 for PMU event counters.
+	GPPMCWidth uint8
+	// NumFixedPMC: Number of Fixed-Function Performance Counters.
+	// Valid on x86 if VersionID > 1. On ARM, this typically includes at least the cycle counter (PMCCNTR_EL0).
+	NumFixedPMC uint8
+	// FixedPMCWidth: Bit width of Fixed-Function Performance Counters.
+	// Valid on x86 if VersionID > 1. On ARM, the cycle counter (PMCCNTR_EL0) is 64-bit.
+	FixedPMCWidth uint8
+	// Raw register output from CPUID leaf 0xAh.
+	RawEBX uint32
+	RawEAX uint32
+	RawEDX uint32
 }
 
 var cpuid func(op uint32) (eax, ebx, ecx, edx uint32)
@@ -488,7 +558,7 @@ func (c CPUInfo) FeatureSet() []string {
 // Uses the RDTSCP instruction. The value 0 is returned
 // if the CPU does not support the instruction.
 func (c CPUInfo) RTCounter() uint64 {
-	if !c.Supports(RDTSCP) {
+	if !c.Has(RDTSCP) {
 		return 0
 	}
 	a, _, _, d := rdtscpAsm()
@@ -500,11 +570,20 @@ func (c CPUInfo) RTCounter() uint64 {
 // about the current cpu/core the code is running on.
 // If the RDTSCP instruction isn't supported on the CPU, the value 0 is returned.
 func (c CPUInfo) Ia32TscAux() uint32 {
-	if !c.Supports(RDTSCP) {
+	if !c.Has(RDTSCP) {
 		return 0
 	}
 	_, _, ecx, _ := rdtscpAsm()
 	return ecx
+}
+
+// SveLengths returns arm SVE vector and predicate lengths in bits.
+// Will return 0, 0 if SVE is not enabled or otherwise unable to detect.
+func (c CPUInfo) SveLengths() (vl, pl uint64) {
+	if !c.Has(SVE) {
+		return 0, 0
+	}
+	return getVectorLength()
 }
 
 // LogicalCPU will return the Logical CPU the code is currently executing on.
@@ -766,11 +845,16 @@ func threadsPerCore() int {
 	_, b, _, _ := cpuidex(0xb, 0)
 	if b&0xffff == 0 {
 		if vend == AMD {
-			// Workaround for AMD returning 0, assume 2 if >= Zen 2
-			// It will be more correct than not.
+			// if >= Zen 2 0x8000001e EBX 15-8 bits means threads per core.
+			// The number of threads per core is ThreadsPerCore+1
+			// See PPR for AMD Family 17h Models 00h-0Fh (page 82)
 			fam, _, _ := familyModel()
 			_, _, _, d := cpuid(1)
 			if (d&(1<<28)) != 0 && fam >= 23 {
+				if maxExtendedFunction() >= 0x8000001e {
+					_, b, _, _ := cpuid(0x8000001e)
+					return int((b>>8)&0xff) + 1
+				}
 				return 2
 			}
 		}
@@ -833,7 +917,12 @@ func physicalCores() int {
 	v, _ := vendorID()
 	switch v {
 	case Intel:
-		return logicalCores() / threadsPerCore()
+		lc := logicalCores()
+		tpc := threadsPerCore()
+		if lc > 0 && tpc > 0 {
+			return lc / tpc
+		}
+		return 0
 	case AMD, Hygon:
 		lc := logicalCores()
 		tpc := threadsPerCore()
@@ -862,7 +951,9 @@ var vendorMapping = map[string]Vendor{
 	"GenuineTMx86": Transmeta,
 	"Geode by NSC": NSC,
 	"VIA VIA VIA ": VIA,
-	"KVMKVMKVMKVM": KVM,
+	"KVMKVMKVM":    KVM,
+	"Linux KVM Hv": KVM,
+	"TCGTCGTCGTCG": QEMU,
 	"Microsoft Hv": MSVM,
 	"VMwareVMware": VMware,
 	"XenVMMXenVMM": XenHVM,
@@ -872,11 +963,26 @@ var vendorMapping = map[string]Vendor{
 	"SiS SiS SiS ": SiS,
 	"RiseRiseRise": SiS,
 	"Genuine  RDC": RDC,
+	"QNXQVMBSQG":   QNX,
+	"ACRNACRNACRN": ACRN,
+	"SRESRESRESRE": SRE,
+	"Apple VZ":     Apple,
 }
 
 func vendorID() (Vendor, string) {
 	_, b, c, d := cpuid(0)
 	v := string(valAsString(b, d, c))
+	vend, ok := vendorMapping[v]
+	if !ok {
+		return VendorUnknown, v
+	}
+	return vend, v
+}
+
+func hypervisorVendorID() (Vendor, string) {
+	// https://lwn.net/Articles/301888/
+	_, b, c, d := cpuid(0x40000000)
+	v := string(valAsString(b, c, d))
 	vend, ok := vendorMapping[v]
 	if !ok {
 		return VendorUnknown, v
@@ -1071,6 +1177,32 @@ func hasSGX(available, lc bool) (rval SGXSupport) {
 	return
 }
 
+type AMDMemEncryptionSupport struct {
+	Available          bool
+	CBitPossition      uint32
+	NumVMPL            uint32
+	PhysAddrReduction  uint32
+	NumEntryptedGuests uint32
+	MinSevNoEsAsid     uint32
+}
+
+func hasAMDMemEncryption(available bool) (rval AMDMemEncryptionSupport) {
+	rval.Available = available
+	if !available {
+		return
+	}
+
+	_, b, c, d := cpuidex(0x8000001f, 0)
+
+	rval.CBitPossition = b & 0x3f
+	rval.PhysAddrReduction = (b >> 6) & 0x3F
+	rval.NumVMPL = (b >> 12) & 0xf
+	rval.NumEntryptedGuests = c
+	rval.MinSevNoEsAsid = d
+
+	return
+}
+
 func support() flagSet {
 	var fs flagSet
 	mfi := maxFunctionID()
@@ -1165,6 +1297,7 @@ func support() flagSet {
 		fs.setIf(ecx&(1<<10) != 0, VPCLMULQDQ)
 		fs.setIf(ecx&(1<<13) != 0, TME)
 		fs.setIf(ecx&(1<<25) != 0, CLDEMOTE)
+		fs.setIf(ecx&(1<<23) != 0, KEYLOCKER)
 		fs.setIf(ecx&(1<<27) != 0, MOVDIRI)
 		fs.setIf(ecx&(1<<28) != 0, MOVDIR64B)
 		fs.setIf(ecx&(1<<29) != 0, ENQCMD)
@@ -1190,6 +1323,8 @@ func support() flagSet {
 		// CPUID.(EAX=7, ECX=1).EAX
 		eax1, _, _, edx1 := cpuidex(7, 1)
 		fs.setIf(fs.inSet(AVX) && eax1&(1<<4) != 0, AVXVNNI)
+		fs.setIf(eax1&(1<<1) != 0, SM3_X86)
+		fs.setIf(eax1&(1<<2) != 0, SM4_X86)
 		fs.setIf(eax1&(1<<7) != 0, CMPCCXADD)
 		fs.setIf(eax1&(1<<10) != 0, MOVSB_ZL)
 		fs.setIf(eax1&(1<<11) != 0, STOSB_SHORT)
@@ -1201,7 +1336,13 @@ func support() flagSet {
 		// CPUID.(EAX=7, ECX=1).EDX
 		fs.setIf(edx1&(1<<4) != 0, AVXVNNIINT8)
 		fs.setIf(edx1&(1<<5) != 0, AVXNECONVERT)
+		fs.setIf(edx1&(1<<6) != 0, AMXTRANSPOSE)
+		fs.setIf(edx1&(1<<7) != 0, AMXTF32)
+		fs.setIf(edx1&(1<<8) != 0, AMXCOMPLEX)
+		fs.setIf(edx1&(1<<10) != 0, AVXVNNIINT16)
 		fs.setIf(edx1&(1<<14) != 0, PREFETCHI)
+		fs.setIf(edx1&(1<<19) != 0, AVX10)
+		fs.setIf(edx1&(1<<21) != 0, APX_F)
 
 		// Only detect AVX-512 features if XGETBV is supported
 		if c&((1<<26)|(1<<27)) == (1<<26)|(1<<27) {
@@ -1226,6 +1367,7 @@ func support() flagSet {
 				fs.setIf(ebx&(1<<31) != 0, AVX512VL)
 				// ecx
 				fs.setIf(ecx&(1<<1) != 0, AVX512VBMI)
+				fs.setIf(ecx&(1<<3) != 0, AMXFP8)
 				fs.setIf(ecx&(1<<6) != 0, AVX512VBMI2)
 				fs.setIf(ecx&(1<<11) != 0, AVX512VNNI)
 				fs.setIf(ecx&(1<<12) != 0, AVX512BITALG)
@@ -1251,6 +1393,25 @@ func support() flagSet {
 		fs.setIf(edx&(1<<2) != 0, RRSBA_CTRL)
 		fs.setIf(edx&(1<<4) != 0, BHI_CTRL)
 		fs.setIf(edx&(1<<5) != 0, MCDT_NO)
+
+		if fs.inSet(SGX) {
+			eax, _, _, _ := cpuidex(0x12, 0)
+			fs.setIf(eax&(1<<12) != 0, SGXPQC)
+		}
+
+		// Add keylocker features.
+		if fs.inSet(KEYLOCKER) && mfi >= 0x19 {
+			_, ebx, _, _ := cpuidex(0x19, 0)
+			fs.setIf(ebx&5 == 5, KEYLOCKERW) // Bit 0 and 2 (1+4)
+		}
+
+		// Add AVX10 features.
+		if fs.inSet(AVX10) && mfi >= 0x24 {
+			_, ebx, _, _ := cpuidex(0x24, 0)
+			fs.setIf(ebx&(1<<16) != 0, AVX10_128)
+			fs.setIf(ebx&(1<<17) != 0, AVX10_256)
+			fs.setIf(ebx&(1<<18) != 0, AVX10_512)
+		}
 
 	}
 
@@ -1394,6 +1555,45 @@ func support() flagSet {
 		fs.setIf((a>>24)&1 == 1, VMSA_REGPROT)
 	}
 
+	if maxExtendedFunction() >= 0x80000021 && vend == AMD {
+		a, _, c, _ := cpuid(0x80000021)
+		fs.setIf((a>>31)&1 == 1, SRSO_MSR_FIX)
+		fs.setIf((a>>30)&1 == 1, SRSO_USER_KERNEL_NO)
+		fs.setIf((a>>29)&1 == 1, SRSO_NO)
+		fs.setIf((a>>28)&1 == 1, IBPB_BRTYPE)
+		fs.setIf((a>>27)&1 == 1, SBPB)
+		fs.setIf((c>>1)&1 == 1, TSA_L1_NO)
+		fs.setIf((c>>2)&1 == 1, TSA_SQ_NO)
+		fs.setIf((a>>5)&1 == 1, TSA_VERW_CLEAR)
+	}
+	if vend == AMD {
+		if family < 0x19 {
+			// AMD CPUs that are older than Family 19h are not vulnerable to TSA but do not set TSA_L1_NO or TSA_SQ_NO.
+			// Source: https://www.amd.com/content/dam/amd/en/documents/resources/bulletin/technical-guidance-for-mitigating-transient-scheduler-attacks.pdf
+			fs.set(TSA_L1_NO)
+			fs.set(TSA_SQ_NO)
+		} else if family == 0x1a {
+			// AMD Family 1Ah models 00h-4Fh and 60h-7Fh are also not vulnerable to TSA but do not set TSA_L1_NO or TSA_SQ_NO.
+			// Future AMD CPUs will set these CPUID bits if appropriate. CPUs will be designed to set these CPUID bits if appropriate.
+			notVuln := model <= 0x4f || (model >= 0x60 && model <= 0x7f)
+			fs.setIf(notVuln, TSA_L1_NO, TSA_SQ_NO)
+		}
+	}
+
+	if mfi >= 0x20 {
+		// Microsoft has decided to purposefully hide the information
+		// of the guest TEE when VMs are being created using Hyper-V.
+		//
+		// This leads us to check for the Hyper-V cpuid features
+		// (0x4000000C), and then for the `ebx` value set.
+		//
+		// For Intel TDX, `ebx` is set as `0xbe3`, being 3 the part
+		// we're mostly interested about,according to:
+		// https://github.com/torvalds/linux/blob/d2f51b3516dade79269ff45eae2a7668ae711b25/arch/x86/include/asm/hyperv-tlfs.h#L169-L174
+		_, ebx, _, _ := cpuid(0x4000000C)
+		fs.setIf(ebx == 0xbe3, TDX_GUEST)
+	}
+
 	if mfi >= 0x21 {
 		// Intel Trusted Domain Extensions Guests have their own cpuid leaf (0x21).
 		_, ebx, ecx, edx := cpuid(0x21)
@@ -1402,6 +1602,14 @@ func support() flagSet {
 	}
 
 	return fs
+}
+
+func (c *CPUInfo) supportAVX10() uint8 {
+	if c.maxFunc >= 0x24 && c.featureSet.inSet(AVX10) {
+		_, ebx, _, _ := cpuidex(0x24, 0)
+		return uint8(ebx)
+	}
+	return 0
 }
 
 func valAsString(values ...uint32) []byte {
@@ -1424,4 +1632,48 @@ func valAsString(values ...uint32) []byte {
 		}
 	}
 	return r
+}
+
+func parseLeaf0AH(c *CPUInfo, eax, ebx, edx uint32) (info PerformanceMonitoringInfo) {
+	info.VersionID = uint8(eax & 0xFF)
+	info.NumGPCounters = uint8((eax >> 8) & 0xFF)
+	info.GPPMCWidth = uint8((eax >> 16) & 0xFF)
+
+	info.RawEBX = ebx
+	info.RawEAX = eax
+	info.RawEDX = edx
+
+	if info.VersionID > 1 { // This information is only valid if VersionID > 1
+		info.NumFixedPMC = uint8(edx & 0x1F)          // Bits 4:0
+		info.FixedPMCWidth = uint8((edx >> 5) & 0xFF) // Bits 12:5
+	}
+	if info.VersionID > 0 {
+		// first 4 fixed events are always instructions retired, cycles, ref cycles and topdown slots
+		if ebx == 0x0 && info.NumFixedPMC == 3 {
+			c.featureSet.set(PMU_FIXEDCOUNTER_INSTRUCTIONS)
+			c.featureSet.set(PMU_FIXEDCOUNTER_CYCLES)
+			c.featureSet.set(PMU_FIXEDCOUNTER_REFCYCLES)
+		}
+		if ebx == 0x0 && info.NumFixedPMC == 4 {
+			c.featureSet.set(PMU_FIXEDCOUNTER_INSTRUCTIONS)
+			c.featureSet.set(PMU_FIXEDCOUNTER_CYCLES)
+			c.featureSet.set(PMU_FIXEDCOUNTER_REFCYCLES)
+			c.featureSet.set(PMU_FIXEDCOUNTER_TOPDOWN_SLOTS)
+		}
+		if ebx != 0x0 {
+			if ((ebx >> 0) & 1) == 0 {
+				c.featureSet.set(PMU_FIXEDCOUNTER_INSTRUCTIONS)
+			}
+			if ((ebx >> 1) & 1) == 0 {
+				c.featureSet.set(PMU_FIXEDCOUNTER_CYCLES)
+			}
+			if ((ebx >> 2) & 1) == 0 {
+				c.featureSet.set(PMU_FIXEDCOUNTER_REFCYCLES)
+			}
+			if ((ebx >> 3) & 1) == 0 {
+				c.featureSet.set(PMU_FIXEDCOUNTER_TOPDOWN_SLOTS)
+			}
+		}
+	}
+	return info
 }

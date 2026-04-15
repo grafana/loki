@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var testTemplateYaml = `
@@ -82,7 +82,7 @@ func TestPipelineWithMissingKey_Template(t *testing.T) {
 
 	_ = processEntries(pl, newEntry(nil, nil, testTemplateLogLineWithMissingKey, time.Now()))
 
-	expectedLog := "level=debug msg=\"extracted template could not be converted to a string\" err=\"Can't convert <nil> to string\" type=null"
+	expectedLog := "level=debug msg=\"extracted template could not be converted to a string\" err=\"can't convert <nil> to string\" type=null"
 	if !(strings.Contains(buf.String(), expectedLog)) {
 		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
 	}
@@ -105,7 +105,6 @@ func TestTemplateValidation(t *testing.T) {
 		},
 	}
 	for name, test := range tests {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			_, err := validateTemplateConfig(test.config)
@@ -375,7 +374,6 @@ func TestTemplateStage_Process(t *testing.T) {
 		},
 	}
 	for name, test := range tests {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			st, err := newTemplateStage(util_log.Logger, test.config)

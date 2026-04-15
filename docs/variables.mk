@@ -1,8 +1,4 @@
 # List of projects to provide to the make-docs script.
-PROJECTS := loki
-
-# Use alternative image until make-docs 3.0.0 is rolled out.
-export DOCS_IMAGE := grafana/docs-base:dbd975af06
-
-# Set the DOC_VALIDATOR_IMAGE to match the one defined in CI.
-export DOC_VALIDATOR_IMAGE := $(shell sed -En 's, *image: "(grafana/doc-validator.*)",\1,p' "$(shell git rev-parse --show-toplevel)/.github/workflows/doc-validator.yml")
+# Format is PROJECT[:[VERSION][:[REPOSITORY][:[DIRECTORY]]]]
+# This overrides the default behavior of assuming the repository directory is the same as the project name.
+PROJECTS := loki:UNVERSIONED:$(notdir $(basename $(shell git rev-parse --show-toplevel)))

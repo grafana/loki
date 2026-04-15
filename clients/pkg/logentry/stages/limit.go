@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 
 	"github.com/go-kit/log"
 	"github.com/mitchellh/mapstructure"
@@ -136,6 +136,11 @@ func (m *limitStage) shouldThrottle(labels model.LabelSet) bool {
 // Name implements Stage
 func (m *limitStage) Name() string {
 	return StageTypeLimit
+}
+
+// Cleanup implements Stage.
+func (*limitStage) Cleanup() {
+	// no-op
 }
 
 func getDropCountByLabelMetric(registerer prometheus.Registerer) *prometheus.CounterVec {

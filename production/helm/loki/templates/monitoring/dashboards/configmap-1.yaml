@@ -1,12 +1,11 @@
-{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- with .Values.monitoring.dashboards }}
-{{- if and $isSimpleScalable .enabled }}
+{{- if .enabled }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "loki.dashboardsName" $ }}-1
-  namespace: {{ .namespace | default $.Release.Namespace }}
+  namespace: {{ .namespace | default (include "loki.namespace" $) }}
   labels:
     {{- include "loki.labels" $ | nindent 4 }}
     {{- with .labels }}

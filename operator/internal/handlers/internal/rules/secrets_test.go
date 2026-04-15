@@ -3,11 +3,12 @@ package rules_test
 import (
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
+	"github.com/grafana/loki/operator/internal/manifests"
 )
 
 func TestExtractRulerSecret(t *testing.T) {
@@ -69,7 +70,6 @@ func TestExtractRulerSecret(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 

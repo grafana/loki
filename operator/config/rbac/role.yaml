@@ -2,7 +2,6 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  creationTimestamp: null
   name: lokistack-manager
 rules:
 - nonResourceURLs:
@@ -49,9 +48,21 @@ rules:
   - update
   - watch
 - apiGroups:
+  - cloudcredential.openshift.io
+  resources:
+  - credentialsrequests
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
   - config.openshift.io
   resources:
   - apiservers
+  - clusterversions
   - dnses
   - proxies
   verbs:
@@ -67,86 +78,19 @@ rules:
   - get
   - update
 - apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - loki.grafana.com
   resources:
   - alertingrules
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - loki.grafana.com
-  resources:
-  - alertingrules/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - loki.grafana.com
-  resources:
-  - alertingrules/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - loki.grafana.com
-  resources:
   - lokistacks
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - loki.grafana.com
-  resources:
-  - lokistacks/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - loki.grafana.com
-  resources:
-  - lokistacks/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - loki.grafana.com
-  resources:
   - recordingrules
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - loki.grafana.com
-  resources:
-  - recordingrules/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - loki.grafana.com
-  resources:
-  - recordingrules/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - loki.grafana.com
-  resources:
   - rulerconfigs
   verbs:
   - create
@@ -159,12 +103,18 @@ rules:
 - apiGroups:
   - loki.grafana.com
   resources:
+  - alertingrules/finalizers
+  - lokistacks/finalizers
+  - recordingrules/finalizers
   - rulerconfigs/finalizers
   verbs:
   - update
 - apiGroups:
   - loki.grafana.com
   resources:
+  - alertingrules/status
+  - lokistacks/status
+  - recordingrules/status
   - rulerconfigs/status
   verbs:
   - get
@@ -176,6 +126,12 @@ rules:
   - alertmanagers
   verbs:
   - patch
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - alertmanagers/api
+  verbs:
+  - create
 - apiGroups:
   - monitoring.coreos.com
   resources:
@@ -192,8 +148,10 @@ rules:
   - networking.k8s.io
   resources:
   - ingresses
+  - networkpolicies
   verbs:
   - create
+  - delete
   - get
   - list
   - update

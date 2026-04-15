@@ -2,15 +2,11 @@
 package nat
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
 	"strings"
-)
-
-const (
-	// portSpecTemplate is the expected format for port specifications
-	portSpecTemplate = "ip:hostPort:containerPort"
 )
 
 // PortBinding represents a binding between a Host IP address and a Host Port
@@ -48,19 +44,19 @@ func NewPort(proto, port string) (Port, error) {
 
 // ParsePort parses the port number string and returns an int
 func ParsePort(rawPort string) (int, error) {
-	if len(rawPort) == 0 {
+	if rawPort == "" {
 		return 0, nil
 	}
 	port, err := strconv.ParseUint(rawPort, 10, 16)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("invalid port '%s': %w", rawPort, errors.Unwrap(err))
 	}
 	return int(port), nil
 }
 
 // ParsePortRangeToInt parses the port range string and returns start/end ints
 func ParsePortRangeToInt(rawPort string) (int, int, error) {
-	if len(rawPort) == 0 {
+	if rawPort == "" {
 		return 0, 0, nil
 	}
 	start, end, err := ParsePortRange(rawPort)
@@ -96,29 +92,31 @@ func (p Port) Range() (int, int, error) {
 	return ParsePortRangeToInt(p.Port())
 }
 
-// SplitProtoPort splits a port in the format of proto/port
-func SplitProtoPort(rawPort string) (string, string) {
-	parts := strings.Split(rawPort, "/")
-	l := len(parts)
-	if len(rawPort) == 0 || l == 0 || len(parts[0]) == 0 {
+// SplitProtoPort splits a port(range) and protocol, formatted as "<portnum>/[<proto>]"
+// "<startport-endport>/[<proto>]". It returns an empty string for both if
+// no port(range) is provided. If a port(range) is provided, but no protocol,
+// the default ("tcp") protocol is returned.
+//
+// SplitProtoPort does not validate or normalize the returned values.
+func SplitProtoPort(rawPort string) (proto string, port string) {
+	port, proto, _ = strings.Cut(rawPort, "/")
+	if port == "" {
 		return "", ""
 	}
-	if l == 1 {
-		return "tcp", rawPort
+	if proto == "" {
+		proto = "tcp"
 	}
-	if len(parts[1]) == 0 {
-		return "tcp", parts[0]
-	}
-	return parts[1], parts[0]
+	return proto, port
 }
 
-func validateProto(proto string) bool {
-	for _, availableProto := range []string{"tcp", "udp", "sctp"} {
-		if availableProto == proto {
-			return true
-		}
+func validateProto(proto string) error {
+	switch proto {
+	case "tcp", "udp", "sctp":
+		// All good
+		return nil
+	default:
+		return errors.New("invalid proto: " + proto)
 	}
-	return false
 }
 
 // ParsePortSpecs receives port specs in the format of ip:public:private/proto and parses
@@ -128,22 +126,18 @@ func ParsePortSpecs(ports []string) (map[Port]struct{}, map[Port][]PortBinding, 
 		exposedPorts = make(map[Port]struct{}, len(ports))
 		bindings     = make(map[Port][]PortBinding)
 	)
-	for _, rawPort := range ports {
-		portMappings, err := ParsePortSpec(rawPort)
+	for _, p := range ports {
+		portMappings, err := ParsePortSpec(p)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		for _, portMapping := range portMappings {
-			port := portMapping.Port
-			if _, exists := exposedPorts[port]; !exists {
+		for _, pm := range portMappings {
+			port := pm.Port
+			if _, ok := exposedPorts[port]; !ok {
 				exposedPorts[port] = struct{}{}
 			}
-			bslice, exists := bindings[port]
-			if !exists {
-				bslice = []PortBinding{}
-			}
-			bindings[port] = append(bslice, portMapping.Binding)
+			bindings[port] = append(bindings[port], pm.Binding)
 		}
 	}
 	return exposedPorts, bindings, nil
@@ -155,88 +149,89 @@ type PortMapping struct {
 	Binding PortBinding
 }
 
-func splitParts(rawport string) (string, string, string) {
-	parts := strings.Split(rawport, ":")
-	n := len(parts)
-	containerport := parts[n-1]
+func (p *PortMapping) String() string {
+	return net.JoinHostPort(p.Binding.HostIP, p.Binding.HostPort+":"+string(p.Port))
+}
 
-	switch n {
+func splitParts(rawport string) (hostIP, hostPort, containerPort string) {
+	parts := strings.Split(rawport, ":")
+
+	switch len(parts) {
 	case 1:
-		return "", "", containerport
+		return "", "", parts[0]
 	case 2:
-		return "", parts[0], containerport
+		return "", parts[0], parts[1]
 	case 3:
-		return parts[0], parts[1], containerport
+		return parts[0], parts[1], parts[2]
 	default:
-		return strings.Join(parts[:n-2], ":"), parts[n-2], containerport
+		n := len(parts)
+		return strings.Join(parts[:n-2], ":"), parts[n-2], parts[n-1]
 	}
 }
 
 // ParsePortSpec parses a port specification string into a slice of PortMappings
 func ParsePortSpec(rawPort string) ([]PortMapping, error) {
-	var proto string
-	rawIP, hostPort, containerPort := splitParts(rawPort)
-	proto, containerPort = SplitProtoPort(containerPort)
+	ip, hostPort, containerPort := splitParts(rawPort)
+	proto, containerPort := SplitProtoPort(containerPort)
+	proto = strings.ToLower(proto)
+	if err := validateProto(proto); err != nil {
+		return nil, err
+	}
 
-	// Strip [] from IPV6 addresses
-	ip, _, err := net.SplitHostPort(rawIP + ":")
-	if err != nil {
-		return nil, fmt.Errorf("Invalid ip address %v: %s", rawIP, err)
+	if ip != "" && ip[0] == '[' {
+		// Strip [] from IPV6 addresses
+		rawIP, _, err := net.SplitHostPort(ip + ":")
+		if err != nil {
+			return nil, fmt.Errorf("invalid IP address %v: %w", ip, err)
+		}
+		ip = rawIP
 	}
 	if ip != "" && net.ParseIP(ip) == nil {
-		return nil, fmt.Errorf("Invalid ip address: %s", ip)
+		return nil, errors.New("invalid IP address: " + ip)
 	}
 	if containerPort == "" {
-		return nil, fmt.Errorf("No port specified: %s<empty>", rawPort)
+		return nil, fmt.Errorf("no port specified: %s<empty>", rawPort)
 	}
 
 	startPort, endPort, err := ParsePortRange(containerPort)
 	if err != nil {
-		return nil, fmt.Errorf("Invalid containerPort: %s", containerPort)
+		return nil, errors.New("invalid containerPort: " + containerPort)
 	}
 
-	var startHostPort, endHostPort uint64 = 0, 0
-	if len(hostPort) > 0 {
+	var startHostPort, endHostPort uint64
+	if hostPort != "" {
 		startHostPort, endHostPort, err = ParsePortRange(hostPort)
 		if err != nil {
-			return nil, fmt.Errorf("Invalid hostPort: %s", hostPort)
+			return nil, errors.New("invalid hostPort: " + hostPort)
+		}
+		if (endPort - startPort) != (endHostPort - startHostPort) {
+			// Allow host port range iff containerPort is not a range.
+			// In this case, use the host port range as the dynamic
+			// host port range to allocate into.
+			if endPort != startPort {
+				return nil, fmt.Errorf("invalid ranges specified for container and host Ports: %s and %s", containerPort, hostPort)
+			}
 		}
 	}
 
-	if hostPort != "" && (endPort-startPort) != (endHostPort-startHostPort) {
-		// Allow host port range iff containerPort is not a range.
-		// In this case, use the host port range as the dynamic
-		// host port range to allocate into.
-		if endPort != startPort {
-			return nil, fmt.Errorf("Invalid ranges specified for container and host Ports: %s and %s", containerPort, hostPort)
-		}
-	}
+	count := endPort - startPort + 1
+	ports := make([]PortMapping, 0, count)
 
-	if !validateProto(strings.ToLower(proto)) {
-		return nil, fmt.Errorf("Invalid proto: %s", proto)
-	}
-
-	ports := []PortMapping{}
-	for i := uint64(0); i <= (endPort - startPort); i++ {
-		containerPort = strconv.FormatUint(startPort+i, 10)
-		if len(hostPort) > 0 {
-			hostPort = strconv.FormatUint(startHostPort+i, 10)
+	for i := uint64(0); i < count; i++ {
+		cPort := Port(strconv.FormatUint(startPort+i, 10) + "/" + proto)
+		hPort := ""
+		if hostPort != "" {
+			hPort = strconv.FormatUint(startHostPort+i, 10)
+			// Set hostPort to a range only if there is a single container port
+			// and a dynamic host port.
+			if count == 1 && startHostPort != endHostPort {
+				hPort += "-" + strconv.FormatUint(endHostPort, 10)
+			}
 		}
-		// Set hostPort to a range only if there is a single container port
-		// and a dynamic host port.
-		if startPort == endPort && startHostPort != endHostPort {
-			hostPort = fmt.Sprintf("%s-%s", hostPort, strconv.FormatUint(endHostPort, 10))
-		}
-		port, err := NewPort(strings.ToLower(proto), containerPort)
-		if err != nil {
-			return nil, err
-		}
-
-		binding := PortBinding{
-			HostIP:   ip,
-			HostPort: hostPort,
-		}
-		ports = append(ports, PortMapping{Port: port, Binding: binding})
+		ports = append(ports, PortMapping{
+			Port:    cPort,
+			Binding: PortBinding{HostIP: ip, HostPort: hPort},
+		})
 	}
 	return ports, nil
 }

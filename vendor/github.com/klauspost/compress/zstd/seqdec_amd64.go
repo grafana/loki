@@ -1,5 +1,4 @@
 //go:build amd64 && !appengine && !noasm && gc
-// +build amd64,!appengine,!noasm,gc
 
 package zstd
 
@@ -79,10 +78,7 @@ func (s *sequenceDecs) decodeSyncSimple(hist []byte) (bool, error) {
 
 	br := s.br
 
-	maxBlockSize := maxCompressedBlockSize
-	if s.windowSize < maxBlockSize {
-		maxBlockSize = s.windowSize
-	}
+	maxBlockSize := min(s.windowSize, maxCompressedBlockSize)
 
 	ctx := decodeSyncAsmContext{
 		llTable:     s.litLengths.fse.dt[:maxTablesize],
@@ -146,7 +142,7 @@ func (s *sequenceDecs) decodeSyncSimple(hist []byte) (bool, error) {
 		return true, fmt.Errorf("output bigger than max block size (%d)", maxBlockSize)
 
 	default:
-		return true, fmt.Errorf("sequenceDecs_decode returned erronous code %d", errCode)
+		return true, fmt.Errorf("sequenceDecs_decode returned erroneous code %d", errCode)
 	}
 
 	s.seqSize += ctx.litRemain
@@ -237,10 +233,7 @@ func sequenceDecs_decode_56_bmi2(s *sequenceDecs, br *bitReader, ctx *decodeAsmC
 func (s *sequenceDecs) decode(seqs []seqVals) error {
 	br := s.br
 
-	maxBlockSize := maxCompressedBlockSize
-	if s.windowSize < maxBlockSize {
-		maxBlockSize = s.windowSize
-	}
+	maxBlockSize := min(s.windowSize, maxCompressedBlockSize)
 
 	ctx := decodeAsmContext{
 		llTable:   s.litLengths.fse.dt[:maxTablesize],
@@ -292,7 +285,7 @@ func (s *sequenceDecs) decode(seqs []seqVals) error {
 			return io.ErrUnexpectedEOF
 		}
 
-		return fmt.Errorf("sequenceDecs_decode_amd64 returned erronous code %d", errCode)
+		return fmt.Errorf("sequenceDecs_decode_amd64 returned erroneous code %d", errCode)
 	}
 
 	if ctx.litRemain < 0 {

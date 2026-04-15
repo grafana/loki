@@ -55,6 +55,24 @@ func NewChainCredentials(providers []Provider) *Credentials {
 	})
 }
 
+// RetrieveWithCredContext is like Retrieve with CredContext
+func (c *Chain) RetrieveWithCredContext(cc *CredContext) (Value, error) {
+	for _, p := range c.Providers {
+		creds, _ := p.RetrieveWithCredContext(cc)
+		// Always prioritize non-anonymous providers, if any.
+		if creds.AccessKeyID == "" && creds.SecretAccessKey == "" {
+			continue
+		}
+		c.curr = p
+		return creds, nil
+	}
+	// At this point we have exhausted all the providers and
+	// are left without any credentials return anonymous.
+	return Value{
+		SignerType: SignatureAnonymous,
+	}, nil
+}
+
 // Retrieve returns the credentials value, returns no credentials(anonymous)
 // if no credentials provider returned any value.
 //

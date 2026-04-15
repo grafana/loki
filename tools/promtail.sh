@@ -5,8 +5,8 @@ APIKEY="${2:-}"
 INSTANCEURL="${3:-}"
 NAMESPACE="${4:-default}"
 CONTAINERROOT="${5:-/var/lib/docker}"
-PARSER="${6:-- docker:}"
-VERSION="${PROMTAIL_VERSION:-2.7.1}"
+PARSER="${6:-- cri: {}}"
+VERSION="${PROMTAIL_VERSION:-3.4.2}"
 
 if [ -z "${INSTANCEID}" ] || [ -z "${APIKEY}" ] || [ -z "${INSTANCEURL}" ] || [ -z "${NAMESPACE}" ] || [ -z "${CONTAINERROOT}" ] || [ -z "${PARSER}" ]; then
     echo "usage: $0 <instanceId> <apiKey> <url> [<namespace>[<container_root_path>[<parser>]]]"

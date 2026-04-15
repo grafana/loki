@@ -1,46 +1,41 @@
-// Package v4 implements signing for AWS V4 signer
+// Package v4 implements the AWS signature version 4 algorithm (commonly known
+// as SigV4).
 //
-// Provides request signing for request that need to be signed with
-// AWS V4 Signatures.
+// For more information about SigV4, see [Signing AWS API requests] in the IAM
+// user guide.
 //
-// Standalone Signer
+// While this implementation CAN work in an external context, it is developed
+// primarily for SDK use and you may encounter fringe behaviors around header
+// canonicalization.
 //
-// Generally using the signer outside of the SDK should not require any additional
-//  The signer does this by taking advantage of the URL.EscapedPath method. If your request URI requires
-// additional escaping you many need to use the URL.Opaque to define what the raw URI should be sent
-// to the service as.
-//
-// The signer will first check the URL.Opaque field, and use its value if set.
-// The signer does require the URL.Opaque field to be set in the form of:
-//
-//     "//<hostname>/<path>"
-//
-//     // e.g.
-//     "//example.com/some/path"
-//
-// The leading "//" and hostname are required or the URL.Opaque escaping will
-// not work correctly.
-//
-// If URL.Opaque is not set the signer will fallback to the URL.EscapedPath()
-// method and using the returned value.
+// # Pre-escaping a request URI
 //
 // AWS v4 signature validation requires that the canonical string's URI path
-// element must be the URI escaped form of the HTTP request's path.
-// http://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html
+// component must be the escaped form of the HTTP request's path.
 //
-// The Go HTTP client will perform escaping automatically on the request. Some
-// of these escaping may cause signature validation errors because the HTTP
-// request differs from the URI path or query that the signature was generated.
-// https://golang.org/pkg/net/url/#URL.EscapedPath
+// The Go HTTP client will perform escaping automatically on the HTTP request.
+// This may cause signature validation errors because the request differs from
+// the URI path or query from which the signature was generated.
 //
-// Because of this, it is recommended that when using the signer outside of the
-// SDK that explicitly escaping the request prior to being signed is preferable,
-// and will help prevent signature validation errors. This can be done by setting
-// the URL.Opaque or URL.RawPath. The SDK will use URL.Opaque first and then
-// call URL.EscapedPath() if Opaque is not set.
+// Because of this, we recommend that you explicitly escape the request when
+// using this signer outside of the SDK to prevent possible signature mismatch.
+// This can be done by setting URL.Opaque on the request. The signer will
+// prefer that value, falling back to the return of URL.EscapedPath if unset.
 //
-// Test `TestStandaloneSign` provides a complete example of using the signer
-// outside of the SDK and pre-escaping the URI path.
+// When setting URL.Opaque you must do so in the form of:
+//
+//	"//<hostname>/<path>"
+//
+//	// e.g.
+//	"//example.com/some/path"
+//
+// The leading "//" and hostname are required or the escaping will not work
+// correctly.
+//
+// The TestStandaloneSign unit test provides a complete example of using the
+// signer outside of the SDK and pre-escaping the URI path.
+//
+// [Signing AWS API requests]: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_aws-signing.html
 package v4
 
 import (
@@ -66,6 +61,9 @@ import (
 const (
 	signingAlgorithm    = "AWS4-HMAC-SHA256"
 	authorizationHeader = "Authorization"
+
+	// Version of signing v4
+	Version = "SigV4"
 )
 
 // HTTPSigner is an interface to a SigV4 signer that can sign HTTP requests
@@ -101,6 +99,11 @@ type SignerOptions struct {
 	// This will enable logging of the canonical request, the string to sign, and for presigning the subsequent
 	// presigned URL.
 	LogSigning bool
+
+	// Disables setting the session token on the request as part of signing
+	// through X-Amz-Security-Token. This is needed for variations of v4 that
+	// present the token elsewhere.
+	DisableSessionToken bool
 }
 
 // Signer applies AWS v4 signing to given request. Use this to sign requests
@@ -134,6 +137,7 @@ type httpSigner struct {
 
 	DisableHeaderHoisting  bool
 	DisableURIPathEscaping bool
+	DisableSessionToken    bool
 }
 
 func (s *httpSigner) Build() (signedRequest, error) {
@@ -252,7 +256,7 @@ func buildAuthorizationHeader(credentialStr, signedHeadersStr, signingSignature 
 // request has no payload you should use the hex encoded SHA-256 of an empty
 // string as the payloadHash value.
 //
-//   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+//	"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 //
 // Some services such as Amazon S3 accept alternative values for the payload
 // hash, such as "UNSIGNED-PAYLOAD" for requests where the body will not be
@@ -282,6 +286,7 @@ func (s Signer) SignHTTP(ctx context.Context, credentials aws.Credentials, r *ht
 		Time:                   v4Internal.NewSigningTime(signingTime.UTC()),
 		DisableHeaderHoisting:  options.DisableHeaderHoisting,
 		DisableURIPathEscaping: options.DisableURIPathEscaping,
+		DisableSessionToken:    options.DisableSessionToken,
 		KeyDerivator:           s.keyDerivator,
 	}
 
@@ -311,7 +316,7 @@ func (s Signer) SignHTTP(ctx context.Context, credentials aws.Credentials, r *ht
 // request has no payload you should use the hex encoded SHA-256 of an empty
 // string as the payloadHash value.
 //
-//   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+//	"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 //
 // Some services such as Amazon S3 accept alternative values for the payload
 // hash, such as "UNSIGNED-PAYLOAD" for requests where the body will not be
@@ -331,10 +336,10 @@ func (s Signer) SignHTTP(ctx context.Context, credentials aws.Credentials, r *ht
 // parameter is not used by all AWS services, and is most notable used by
 // Amazon S3 APIs.
 //
-//   expires := 20 * time.Minute
-//   query := req.URL.Query()
-//   query.Set("X-Amz-Expires", strconv.FormatInt(int64(expires/time.Second), 10)
-//   req.URL.RawQuery = query.Encode()
+//	expires := 20 * time.Minute
+//	query := req.URL.Query()
+//	query.Set("X-Amz-Expires", strconv.FormatInt(int64(expires/time.Second), 10))
+//	req.URL.RawQuery = query.Encode()
 //
 // This method does not modify the provided request.
 func (s *Signer) PresignHTTP(
@@ -358,6 +363,7 @@ func (s *Signer) PresignHTTP(
 		IsPreSign:              true,
 		DisableHeaderHoisting:  options.DisableHeaderHoisting,
 		DisableURIPathEscaping: options.DisableURIPathEscaping,
+		DisableSessionToken:    options.DisableSessionToken,
 		KeyDerivator:           s.keyDerivator,
 	}
 
@@ -388,7 +394,18 @@ func (s *httpSigner) buildCredentialScope() string {
 func buildQuery(r v4Internal.Rule, header http.Header) (url.Values, http.Header) {
 	query := url.Values{}
 	unsignedHeaders := http.Header{}
+
+	// A list of headers to be converted to lower case to mitigate a limitation from S3
+	lowerCaseHeaders := map[string]string{
+		"X-Amz-Expected-Bucket-Owner": "x-amz-expected-bucket-owner", // see #2508
+		"X-Amz-Request-Payer":         "x-amz-request-payer",         // see #2764
+	}
+
 	for k, h := range header {
+		if newKey, ok := lowerCaseHeaders[k]; ok {
+			k = newKey
+		}
+
 		if r.IsValid(k) {
 			query[k] = h
 		} else {
@@ -407,8 +424,8 @@ func (s *httpSigner) buildCanonicalHeaders(host string, rule v4Internal.Rule, he
 	headers = append(headers, hostHeader)
 	signed[hostHeader] = append(signed[hostHeader], host)
 
+	const contentLengthHeader = "content-length"
 	if length > 0 {
-		const contentLengthHeader = "content-length"
 		headers = append(headers, contentLengthHeader)
 		signed[contentLengthHeader] = append(signed[contentLengthHeader], strconv.FormatInt(length, 10))
 	}
@@ -416,6 +433,10 @@ func (s *httpSigner) buildCanonicalHeaders(host string, rule v4Internal.Rule, he
 	for k, v := range header {
 		if !rule.IsValid(k) {
 			continue // ignored header
+		}
+		if strings.EqualFold(k, contentLengthHeader) {
+			// prevent signing already handled content-length header.
+			continue
 		}
 
 		lowerCaseKey := strings.ToLower(k)
@@ -496,7 +517,8 @@ func (s *httpSigner) setRequiredSigningFields(headers http.Header, query url.Val
 
 	if s.IsPreSign {
 		query.Set(v4Internal.AmzAlgorithmKey, signingAlgorithm)
-		if sessionToken := s.Credentials.SessionToken; len(sessionToken) > 0 {
+		sessionToken := s.Credentials.SessionToken
+		if !s.DisableSessionToken && len(sessionToken) > 0 {
 			query.Set("X-Amz-Security-Token", sessionToken)
 		}
 
@@ -506,7 +528,7 @@ func (s *httpSigner) setRequiredSigningFields(headers http.Header, query url.Val
 
 	headers[v4Internal.AmzDateKey] = append(headers[v4Internal.AmzDateKey][:0], amzDate)
 
-	if len(s.Credentials.SessionToken) > 0 {
+	if !s.DisableSessionToken && len(s.Credentials.SessionToken) > 0 {
 		headers[v4Internal.AmzSecurityTokenKey] = append(headers[v4Internal.AmzSecurityTokenKey][:0], s.Credentials.SessionToken)
 	}
 }

@@ -37,16 +37,21 @@ type HTTPMaxConns struct {
 	MaxConnsPerHost     int
 }
 
-// CredentialInf is interface for get AccessKeyID,AccessKeySecret,SecurityToken
+// Credentials is interface for get AccessKeyID,AccessKeySecret,SecurityToken
 type Credentials interface {
 	GetAccessKeyID() string
 	GetAccessKeySecret() string
 	GetSecurityToken() string
 }
 
-// CredentialInfBuild is interface for get CredentialInf
+// CredentialsProvider is interface for get Credential Info
 type CredentialsProvider interface {
 	GetCredentials() Credentials
+}
+
+type CredentialsProviderE interface {
+	CredentialsProvider
+	GetCredentialsE() (Credentials, error)
 }
 
 type defaultCredentials struct {
@@ -73,6 +78,68 @@ func (defBuild *defaultCredentialsProvider) GetCredentials() Credentials {
 	return &defaultCredentials{config: defBuild.config}
 }
 
+type envCredentials struct {
+	AccessKeyId     string
+	AccessKeySecret string
+	SecurityToken   string
+}
+
+type EnvironmentVariableCredentialsProvider struct {
+	cred Credentials
+}
+
+func (credentials *envCredentials) GetAccessKeyID() string {
+	return credentials.AccessKeyId
+}
+
+func (credentials *envCredentials) GetAccessKeySecret() string {
+	return credentials.AccessKeySecret
+}
+
+func (credentials *envCredentials) GetSecurityToken() string {
+	return credentials.SecurityToken
+}
+
+func (defBuild *EnvironmentVariableCredentialsProvider) GetCredentials() Credentials {
+	var accessID, accessKey, token string
+	if defBuild.cred == nil {
+		accessID = os.Getenv("OSS_ACCESS_KEY_ID")
+		accessKey = os.Getenv("OSS_ACCESS_KEY_SECRET")
+		token = os.Getenv("OSS_SESSION_TOKEN")
+	} else {
+		accessID = defBuild.cred.GetAccessKeyID()
+		accessKey = defBuild.cred.GetAccessKeySecret()
+		token = defBuild.cred.GetSecurityToken()
+	}
+
+	return &envCredentials{
+		AccessKeyId:     accessID,
+		AccessKeySecret: accessKey,
+		SecurityToken:   token,
+	}
+}
+
+func NewEnvironmentVariableCredentialsProvider() (EnvironmentVariableCredentialsProvider, error) {
+	var provider EnvironmentVariableCredentialsProvider
+	accessID := os.Getenv("OSS_ACCESS_KEY_ID")
+	if accessID == "" {
+		return provider, fmt.Errorf("access key id is empty!")
+	}
+	accessKey := os.Getenv("OSS_ACCESS_KEY_SECRET")
+	if accessKey == "" {
+		return provider, fmt.Errorf("access key secret is empty!")
+	}
+	token := os.Getenv("OSS_SESSION_TOKEN")
+	envCredential := &envCredentials{
+		AccessKeyId:     accessID,
+		AccessKeySecret: accessKey,
+		SecurityToken:   token,
+	}
+	return EnvironmentVariableCredentialsProvider{
+		cred: envCredential,
+	}, nil
+}
+
 // Config defines oss configuration
 type Config struct {
 	Endpoint            string              // OSS endpoint
@@ -84,6 +151,7 @@ type Config struct {
 	Timeout             uint                // Timeout in seconds. By default it's 60.
 	SecurityToken       string              // STS Token
 	IsCname             bool                // If cname is in the endpoint.
+	IsPathStyle         bool                // If Path Style is in the endpoint.
 	HTTPTimeout         HTTPTimeout         // HTTP timeout
 	HTTPMaxConns        HTTPMaxConns        // Http max connections
 	IsUseProxy          bool                // Flag of using proxy.
@@ -110,6 +178,7 @@ type Config struct {
 	Region              string              //  such as cn-hangzhou
 	CloudBoxId          string              //
 	Product             string              //  oss or oss-cloudbox, default is oss
+	VerifyObjectStrict  bool                //  a flag of verifying object name strictly. Default is enable.
 }
 
 // LimitUploadSpeed uploadSpeed:KB/s, 0 is unlimited,default is 0
@@ -194,6 +263,7 @@ func getDefaultOssConfig() *Config {
 	config.Timeout = 60 // Seconds
 	config.SecurityToken = ""
 	config.IsCname = false
+	config.IsPathStyle = false
 
 	config.HTTPTimeout.ConnectTimeout = time.Second * 30   // 30s
 	config.HTTPTimeout.ReadWriteTimeout = time.Second * 60 // 60s
@@ -224,6 +294,8 @@ func getDefaultOssConfig() *Config {
 	config.InsecureSkipVerify = false
 
 	config.Product = "oss"
+
+	config.VerifyObjectStrict = true
 
 	return &config
 }

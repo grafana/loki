@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
+
 package spec
 
 import "errors"
@@ -16,4 +19,7 @@ var (
 
 	// ErrExpandUnsupportedType indicates that $ref expansion is attempted on some invalid type
 	ErrExpandUnsupportedType = errors.New("expand: unsupported type. Input should be of type *Parameter or *Response")
+
+	// ErrSpec is an error raised by the spec package
+	ErrSpec = errors.New("spec error")
 )

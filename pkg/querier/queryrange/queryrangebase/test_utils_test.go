@@ -2,62 +2,34 @@ package queryrangebase
 
 import (
 	"math"
-	"sort"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 )
 
 func TestGenLabelsCorrectness(t *testing.T) {
 	ls := genLabels([]string{"a", "b"}, 2)
-	for _, set := range ls {
-		sort.Sort(set)
-	}
 	expected := []labels.Labels{
-		{
-			labels.Label{
-				Name:  "a",
-				Value: "0",
-			},
-			labels.Label{
-				Name:  "b",
-				Value: "0",
-			},
-		},
-		{
-			labels.Label{
-				Name:  "a",
-				Value: "0",
-			},
-			labels.Label{
-				Name:  "b",
-				Value: "1",
-			},
-		},
-		{
-			labels.Label{
-				Name:  "a",
-				Value: "1",
-			},
-			labels.Label{
-				Name:  "b",
-				Value: "0",
-			},
-		},
-		{
-			labels.Label{
-				Name:  "a",
-				Value: "1",
-			},
-			labels.Label{
-				Name:  "b",
-				Value: "1",
-			},
-		},
+		labels.FromStrings(
+			"a", "0",
+			"b", "0",
+		),
+		labels.FromStrings(
+			"a", "0",
+			"b", "1",
+		),
+		labels.FromStrings(
+			"a", "1",
+			"b", "0",
+		),
+		labels.FromStrings(
+			"a", "1",
+			"b", "1",
+		),
 	}
 	require.Equal(t, expected, ls)
 }
@@ -110,7 +82,7 @@ func TestNewMockShardedqueryable(t *testing.T) {
 		var iter chunkenc.Iterator
 		for i := 0; i < tc.shards; i++ {
 
-			set := q.Select(false, nil, &labels.Matcher{
+			set := q.Select(ctx, false, nil, &labels.Matcher{
 				Type: labels.MatchEqual,
 				Name: astmapper.ShardLabel,
 				Value: astmapper.ShardAnnotation{

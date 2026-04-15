@@ -2,21 +2,19 @@ package validation
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/prometheus/common/model"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
-var _ admission.CustomValidator = &RecordingRuleValidator{}
+var _ admission.Validator[*lokiv1.RecordingRule] = &RecordingRuleValidator{}
 
 // RecordingRuleValidator implements a custom validator for RecordingRule resources.
 type RecordingRuleValidator struct {
@@ -26,34 +24,28 @@ type RecordingRuleValidator struct {
 // SetupWebhookWithManager registers the RecordingRuleValidator as a validating webhook
 // with the controller-runtime manager or returns an error.
 func (v *RecordingRuleValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&lokiv1.RecordingRule{}).
+	return ctrl.NewWebhookManagedBy(mgr, &lokiv1.RecordingRule{}).
 		WithValidator(v).
 		Complete()
 }
 
-// ValidateCreate implements admission.CustomValidator.
-func (v *RecordingRuleValidator) ValidateCreate(ctx context.Context, obj runtime.Object) error {
+// ValidateCreate implements admission.Validator.
+func (v *RecordingRuleValidator) ValidateCreate(ctx context.Context, obj *lokiv1.RecordingRule) (admission.Warnings, error) {
 	return v.validate(ctx, obj)
 }
 
-// ValidateUpdate implements admission.CustomValidator.
-func (v *RecordingRuleValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) error {
+// ValidateUpdate implements admission.Validator.
+func (v *RecordingRuleValidator) ValidateUpdate(ctx context.Context, _, newObj *lokiv1.RecordingRule) (admission.Warnings, error) {
 	return v.validate(ctx, newObj)
 }
 
-// ValidateDelete implements admission.CustomValidator.
-func (v *RecordingRuleValidator) ValidateDelete(_ context.Context, _ runtime.Object) error {
+// ValidateDelete implements admission.Validator.
+func (v *RecordingRuleValidator) ValidateDelete(_ context.Context, _ *lokiv1.RecordingRule) (admission.Warnings, error) {
 	// No validation on delete
-	return nil
+	return nil, nil
 }
 
-func (v *RecordingRuleValidator) validate(ctx context.Context, obj runtime.Object) error {
-	recordingRule, ok := obj.(*lokiv1.RecordingRule)
-	if !ok {
-		return apierrors.NewBadRequest(fmt.Sprintf("object is not of type RecordingRule: %t", obj))
-	}
-
+func (v *RecordingRuleValidator) validate(ctx context.Context, recordingRule *lokiv1.RecordingRule) (admission.Warnings, error) {
 	var allErrs field.ErrorList
 
 	found := make(map[string]bool)
@@ -83,7 +75,7 @@ func (v *RecordingRuleValidator) validate(ctx context.Context, obj runtime.Objec
 		for j, r := range g.Rules {
 			// Check if recording rule name is a valid PromQL Label Name
 			if r.Record != "" {
-				if !model.IsValidMetricName(model.LabelValue(r.Record)) {
+				if !model.UTF8Validation.IsValidMetricName(r.Record) {
 					allErrs = append(allErrs, field.Invalid(
 						field.NewPath("spec").Child("groups").Index(i).Child("rules").Index(j).Child("record"),
 						r.Record,
@@ -120,10 +112,10 @@ func (v *RecordingRuleValidator) validate(ctx context.Context, obj runtime.Objec
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "loki.grafana.com", Kind: "RecordingRule"},
 		recordingRule.Name,
 		allErrs,

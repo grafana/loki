@@ -24,7 +24,7 @@ func TestBasicManager_ApplyConfig(t *testing.T) {
 			<-ctx.Done()
 			return nil
 		},
-		UpdateFunc: func(c Config) error {
+		UpdateFunc: func(_ Config) error {
 			return nil
 		},
 		TargetsActiveFunc: func() map[string][]*scrape.Target {
@@ -34,7 +34,7 @@ func TestBasicManager_ApplyConfig(t *testing.T) {
 
 	t.Run("dynamic update successful", func(t *testing.T) {
 		spawnedCount := 0
-		spawner := func(c Config) (ManagedInstance, error) {
+		spawner := func(_ Config) (ManagedInstance, error) {
 			spawnedCount++
 
 			newMock := baseMock
@@ -53,11 +53,11 @@ func TestBasicManager_ApplyConfig(t *testing.T) {
 
 	t.Run("dynamic update unsuccessful", func(t *testing.T) {
 		spawnedCount := 0
-		spawner := func(c Config) (ManagedInstance, error) {
+		spawner := func(_ Config) (ManagedInstance, error) {
 			spawnedCount++
 
 			newMock := baseMock
-			newMock.UpdateFunc = func(c Config) error {
+			newMock.UpdateFunc = func(_ Config) error {
 				return ErrInvalidUpdate{
 					Inner: fmt.Errorf("cannot dynamically update for testing reasons"),
 				}
@@ -77,11 +77,11 @@ func TestBasicManager_ApplyConfig(t *testing.T) {
 
 	t.Run("dynamic update errored", func(t *testing.T) {
 		spawnedCount := 0
-		spawner := func(c Config) (ManagedInstance, error) {
+		spawner := func(_ Config) (ManagedInstance, error) {
 			spawnedCount++
 
 			newMock := baseMock
-			newMock.UpdateFunc = func(c Config) error {
+			newMock.UpdateFunc = func(_ Config) error {
 				return fmt.Errorf("something really bad happened")
 			}
 			return &newMock, nil

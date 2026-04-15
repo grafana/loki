@@ -54,16 +54,17 @@ type GetInstanceIdentityDocumentOutput struct {
 func addGetInstanceIdentityDocumentMiddleware(stack *middleware.Stack, options Options) error {
 	return addAPIRequestMiddleware(stack,
 		options,
+		"GetInstanceIdentityDocument",
 		buildGetInstanceIdentityDocumentPath,
 		buildGetInstanceIdentityDocumentOutput,
 	)
 }
 
-func buildGetInstanceIdentityDocumentPath(params interface{}) (string, error) {
+func buildGetInstanceIdentityDocumentPath(params any) (string, error) {
 	return getInstanceIdentityDocumentPath, nil
 }
 
-func buildGetInstanceIdentityDocumentOutput(resp *smithyhttp.Response) (v interface{}, err error) {
+func buildGetInstanceIdentityDocumentOutput(resp *smithyhttp.Response) (v any, err error) {
 	defer func() {
 		closeErr := resp.Body.Close()
 		if err == nil {

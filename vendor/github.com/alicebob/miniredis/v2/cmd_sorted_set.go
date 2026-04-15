@@ -4,6 +4,7 @@ package miniredis
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -15,44 +16,37 @@ import (
 // commandsSortedSet handles all sorted set operations.
 func commandsSortedSet(m *Miniredis) {
 	m.srv.Register("ZADD", m.cmdZadd)
-	m.srv.Register("ZCARD", m.cmdZcard)
-	m.srv.Register("ZCOUNT", m.cmdZcount)
+	m.srv.Register("ZCARD", m.cmdZcard, server.ReadOnlyOption())
+	m.srv.Register("ZCOUNT", m.cmdZcount, server.ReadOnlyOption())
 	m.srv.Register("ZINCRBY", m.cmdZincrby)
-	m.srv.Register("ZINTERSTORE", m.cmdZinterstore)
-	m.srv.Register("ZLEXCOUNT", m.cmdZlexcount)
-	m.srv.Register("ZRANGE", m.cmdZrange)
-	m.srv.Register("ZRANGEBYLEX", m.makeCmdZrangebylex(false))
-	m.srv.Register("ZRANGEBYSCORE", m.makeCmdZrangebyscore(false))
-	m.srv.Register("ZRANK", m.makeCmdZrank(false))
+	m.srv.Register("ZINTER", m.makeCmdZinter(false), server.ReadOnlyOption())
+	m.srv.Register("ZINTERSTORE", m.makeCmdZinter(true))
+	m.srv.Register("ZLEXCOUNT", m.cmdZlexcount, server.ReadOnlyOption())
+	m.srv.Register("ZRANGE", m.cmdZrange, server.ReadOnlyOption())
+	m.srv.Register("ZRANGEBYLEX", m.makeCmdZrangebylex(false), server.ReadOnlyOption())
+	m.srv.Register("ZRANGEBYSCORE", m.makeCmdZrangebyscore(false), server.ReadOnlyOption())
+	m.srv.Register("ZRANK", m.makeCmdZrank(false), server.ReadOnlyOption())
 	m.srv.Register("ZREM", m.cmdZrem)
 	m.srv.Register("ZREMRANGEBYLEX", m.cmdZremrangebylex)
 	m.srv.Register("ZREMRANGEBYRANK", m.cmdZremrangebyrank)
 	m.srv.Register("ZREMRANGEBYSCORE", m.cmdZremrangebyscore)
-	m.srv.Register("ZREVRANGE", m.cmdZrevrange)
-	m.srv.Register("ZREVRANGEBYLEX", m.makeCmdZrangebylex(true))
-	m.srv.Register("ZREVRANGEBYSCORE", m.makeCmdZrangebyscore(true))
-	m.srv.Register("ZREVRANK", m.makeCmdZrank(true))
-	m.srv.Register("ZSCORE", m.cmdZscore)
-	m.srv.Register("ZMSCORE", m.cmdZMscore)
-	m.srv.Register("ZUNION", m.cmdZunion)
+	m.srv.Register("ZREVRANGE", m.cmdZrevrange, server.ReadOnlyOption())
+	m.srv.Register("ZREVRANGEBYLEX", m.makeCmdZrangebylex(true), server.ReadOnlyOption())
+	m.srv.Register("ZREVRANGEBYSCORE", m.makeCmdZrangebyscore(true), server.ReadOnlyOption())
+	m.srv.Register("ZREVRANK", m.makeCmdZrank(true), server.ReadOnlyOption())
+	m.srv.Register("ZSCORE", m.cmdZscore, server.ReadOnlyOption())
+	m.srv.Register("ZMSCORE", m.cmdZMscore, server.ReadOnlyOption())
+	m.srv.Register("ZUNION", m.cmdZunion, server.ReadOnlyOption())
 	m.srv.Register("ZUNIONSTORE", m.cmdZunionstore)
-	m.srv.Register("ZSCAN", m.cmdZscan)
+	m.srv.Register("ZSCAN", m.cmdZscan, server.ReadOnlyOption())
 	m.srv.Register("ZPOPMAX", m.cmdZpopmax(true))
 	m.srv.Register("ZPOPMIN", m.cmdZpopmax(false))
-	m.srv.Register("ZRANDMEMBER", m.cmdZrandmember)
+	m.srv.Register("ZRANDMEMBER", m.cmdZrandmember, server.ReadOnlyOption())
 }
 
 // ZADD
 func (m *Miniredis) cmdZadd(c *server.Peer, cmd string, args []string) {
-	if len(args) < 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(3)) {
 		return
 	}
 
@@ -140,7 +134,7 @@ outer:
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if db.exists(opts.key) && db.t(opts.key) != "zset" {
+		if db.exists(opts.key) && db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -192,15 +186,7 @@ outer:
 
 // ZCARD
 func (m *Miniredis) cmdZcard(c *server.Peer, cmd string, args []string) {
-	if len(args) != 1 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(1)) {
 		return
 	}
 
@@ -214,7 +200,7 @@ func (m *Miniredis) cmdZcard(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -225,15 +211,7 @@ func (m *Miniredis) cmdZcard(c *server.Peer, cmd string, args []string) {
 
 // ZCOUNT
 func (m *Miniredis) cmdZcount(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -270,7 +248,7 @@ func (m *Miniredis) cmdZcount(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(opts.key) != "zset" {
+		if db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -283,15 +261,7 @@ func (m *Miniredis) cmdZcount(c *server.Peer, cmd string, args []string) {
 
 // ZINCRBY
 func (m *Miniredis) cmdZincrby(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -314,7 +284,7 @@ func (m *Miniredis) cmdZincrby(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if db.exists(opts.key) && db.t(opts.key) != "zset" {
+		if db.exists(opts.key) && db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -323,158 +293,187 @@ func (m *Miniredis) cmdZincrby(c *server.Peer, cmd string, args []string) {
 	})
 }
 
-// ZINTERSTORE
-func (m *Miniredis) cmdZinterstore(c *server.Peer, cmd string, args []string) {
-	if len(args) < 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
-		return
-	}
+// ZINTERSTORE and ZINTER
+func (m *Miniredis) makeCmdZinter(store bool) func(c *server.Peer, cmd string, args []string) {
+	return func(c *server.Peer, cmd string, args []string) {
+		minArgs := 2
+		if store {
+			minArgs++
+		}
+		if !m.isValidCMD(c, cmd, args, atLeast(minArgs)) {
+			return
+		}
 
-	destination := args[0]
-	numKeys, err := strconv.Atoi(args[1])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidInt)
-		return
-	}
-	args = args[2:]
-	if len(args) < numKeys {
-		setDirty(c)
-		c.WriteError(msgSyntaxError)
-		return
-	}
-	if numKeys <= 0 {
-		setDirty(c)
-		c.WriteError("ERR at least 1 input key is needed for ZUNIONSTORE/ZINTERSTORE")
-		return
-	}
-	keys := args[:numKeys]
-	args = args[numKeys:]
+		var opts = struct {
+			Store       bool   // if true this is ZINTERSTORE
+			Destination string // only relevant if $store is true
+			Keys        []string
+			Aggregate   string
+			WithWeights bool
+			Weights     []float64
+			WithScores  bool // only for ZINTER
+		}{
+			Store:     store,
+			Aggregate: "sum",
+		}
 
-	withWeights := false
-	weights := []float64{}
-	aggregate := "sum"
-	for len(args) > 0 {
-		switch strings.ToLower(args[0]) {
-		case "weights":
-			if len(args) < numKeys+1 {
-				setDirty(c)
-				c.WriteError(msgSyntaxError)
-				return
-			}
-			for i := 0; i < numKeys; i++ {
-				f, err := strconv.ParseFloat(args[i+1], 64)
-				if err != nil {
-					setDirty(c)
-					c.WriteError("ERR weight value is not a float")
-					return
-				}
-				weights = append(weights, f)
-			}
-			withWeights = true
-			args = args[numKeys+1:]
-		case "aggregate":
-			if len(args) < 2 {
-				setDirty(c)
-				c.WriteError(msgSyntaxError)
-				return
-			}
-			aggregate = strings.ToLower(args[1])
-			switch aggregate {
-			case "sum", "min", "max":
-			default:
-				setDirty(c)
-				c.WriteError(msgSyntaxError)
-				return
-			}
-			args = args[2:]
-		default:
+		if store {
+			opts.Destination = args[0]
+			args = args[1:]
+		}
+		numKeys, err := strconv.Atoi(args[0])
+		if err != nil {
+			setDirty(c)
+			c.WriteError(msgInvalidInt)
+			return
+		}
+		args = args[1:]
+		if len(args) < numKeys {
 			setDirty(c)
 			c.WriteError(msgSyntaxError)
 			return
 		}
-	}
+		if numKeys <= 0 {
+			setDirty(c)
+			c.WriteError("ERR at least 1 input key is needed for ZUNIONSTORE/ZINTERSTORE")
+			return
+		}
+		opts.Keys = args[:numKeys]
+		args = args[numKeys:]
 
-	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-		db := m.db(ctx.selectedDB)
-		db.del(destination, true)
-
-		// We collect everything and remove all keys which turned out not to be
-		// present in every set.
-		sset := map[string]float64{}
-		counts := map[string]int{}
-		for i, key := range keys {
-			if !db.exists(key) {
-				continue
-			}
-
-			var set map[string]float64
-			switch db.t(key) {
-			case "set":
-				set = map[string]float64{}
-				for elem := range db.setKeys[key] {
-					set[elem] = 1.0
+		for len(args) > 0 {
+			switch strings.ToLower(args[0]) {
+			case "weights":
+				if len(args) < numKeys+1 {
+					setDirty(c)
+					c.WriteError(msgSyntaxError)
+					return
 				}
-			case "zset":
-				set = db.sortedSet(key)
+				for i := 0; i < numKeys; i++ {
+					f, err := strconv.ParseFloat(args[i+1], 64)
+					if err != nil {
+						setDirty(c)
+						c.WriteError("ERR weight value is not a float")
+						return
+					}
+					opts.Weights = append(opts.Weights, f)
+				}
+				opts.WithWeights = true
+				args = args[numKeys+1:]
+			case "aggregate":
+				if len(args) < 2 {
+					setDirty(c)
+					c.WriteError(msgSyntaxError)
+					return
+				}
+				aggregate := strings.ToLower(args[1])
+				switch aggregate {
+				case "sum", "min", "max":
+					opts.Aggregate = aggregate
+				default:
+					setDirty(c)
+					c.WriteError(msgSyntaxError)
+					return
+				}
+				args = args[2:]
+			case "withscores":
+				if store {
+					setDirty(c)
+					c.WriteError(msgSyntaxError)
+					return
+				}
+				opts.WithScores = true
+				args = args[1:]
 			default:
-				c.WriteError(msgWrongType)
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
 				return
 			}
-			for member, score := range set {
-				if withWeights {
-					score *= weights[i]
-				}
-				counts[member]++
-				old, ok := sset[member]
-				if !ok {
-					sset[member] = score
+		}
+
+		withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+			db := m.db(ctx.selectedDB)
+
+			// We collect everything and remove all keys which turned out not to be
+			// present in every set.
+			sset := map[string]float64{}
+			counts := map[string]int{}
+			for i, key := range opts.Keys {
+				if !db.exists(key) {
 					continue
 				}
-				switch aggregate {
-				default:
-					panic("Invalid aggregate")
-				case "sum":
-					sset[member] += score
-				case "min":
-					if score < old {
-						sset[member] = score
+
+				var set map[string]float64
+				switch db.t(key) {
+				case keyTypeSet:
+					set = map[string]float64{}
+					for elem := range db.setKeys[key] {
+						set[elem] = 1.0
 					}
-				case "max":
-					if score > old {
+				case keyTypeSortedSet:
+					set = db.sortedSet(key)
+				default:
+					c.WriteError(msgWrongType)
+					return
+				}
+				for member, score := range set {
+					if opts.WithWeights {
+						score *= opts.Weights[i]
+					}
+					counts[member]++
+					old, ok := sset[member]
+					if !ok {
 						sset[member] = score
+						continue
+					}
+					switch opts.Aggregate {
+					default:
+						panic("Invalid aggregate")
+					case "sum":
+						sset[member] += score
+					case "min":
+						if score < old {
+							sset[member] = score
+						}
+					case "max":
+						if score > old {
+							sset[member] = score
+						}
 					}
 				}
 			}
-		}
-		for key, count := range counts {
-			if count != numKeys {
-				delete(sset, key)
+			for key, count := range counts {
+				if count != numKeys {
+					delete(sset, key)
+				}
 			}
-		}
-		db.ssetSet(destination, sset)
-		c.WriteInt(len(sset))
-	})
+
+			if opts.Store {
+				// ZINTERSTORE mode
+				db.del(opts.Destination, true)
+				db.ssetSet(opts.Destination, sset)
+				c.WriteInt(len(sset))
+				return
+			}
+			// ZINTER mode
+			size := len(sset)
+			if opts.WithScores {
+				size *= 2
+			}
+			c.WriteLen(size)
+			for _, l := range sortedKeys(sset) {
+				c.WriteBulk(l)
+				if opts.WithScores {
+					c.WriteFloat(sset[l])
+				}
+			}
+		})
+	}
 }
 
 // ZLEXCOUNT
 func (m *Miniredis) cmdZlexcount(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -503,7 +502,7 @@ func (m *Miniredis) cmdZlexcount(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(opts.Key) != "zset" {
+		if db.t(opts.Key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -519,15 +518,7 @@ func (m *Miniredis) cmdZlexcount(c *server.Peer, cmd string, args []string) {
 
 // ZRANGE
 func (m *Miniredis) cmdZrange(c *server.Peer, cmd string, args []string) {
-	if len(args) < 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(3)) {
 		return
 	}
 
@@ -621,15 +612,7 @@ func (m *Miniredis) cmdZrange(c *server.Peer, cmd string, args []string) {
 
 // ZREVRANGE
 func (m *Miniredis) cmdZrevrange(c *server.Peer, cmd string, args []string) {
-	if len(args) < 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(3)) {
 		return
 	}
 
@@ -660,17 +643,10 @@ func (m *Miniredis) cmdZrevrange(c *server.Peer, cmd string, args []string) {
 // ZRANGEBYLEX and ZREVRANGEBYLEX
 func (m *Miniredis) makeCmdZrangebylex(reverse bool) server.Cmd {
 	return func(c *server.Peer, cmd string, args []string) {
-		if len(args) < 3 {
-			setDirty(c)
-			c.WriteError(errWrongNumber(cmd))
+		if !m.isValidCMD(c, cmd, args, atLeast(3)) {
 			return
 		}
-		if !m.handleAuth(c) {
-			return
-		}
-		if m.checkPubsub(c, cmd) {
-			return
-		}
+
 		opts := optsRangeByLex{
 			Reverse: reverse,
 			Key:     args[0],
@@ -709,15 +685,7 @@ func (m *Miniredis) makeCmdZrangebylex(reverse bool) server.Cmd {
 // ZRANGEBYSCORE and ZREVRANGEBYSCORE
 func (m *Miniredis) makeCmdZrangebyscore(reverse bool) server.Cmd {
 	return func(c *server.Peer, cmd string, args []string) {
-		if len(args) < 3 {
-			setDirty(c)
-			c.WriteError(errWrongNumber(cmd))
-			return
-		}
-		if !m.handleAuth(c) {
-			return
-		}
-		if m.checkPubsub(c, cmd) {
+		if !m.isValidCMD(c, cmd, args, atLeast(3)) {
 			return
 		}
 
@@ -761,15 +729,7 @@ func (m *Miniredis) makeCmdZrangebyscore(reverse bool) server.Cmd {
 // ZRANK and ZREVRANK
 func (m *Miniredis) makeCmdZrank(reverse bool) server.Cmd {
 	return func(c *server.Peer, cmd string, args []string) {
-		if len(args) != 2 {
-			setDirty(c)
-			c.WriteError(errWrongNumber(cmd))
-			return
-		}
-		if !m.handleAuth(c) {
-			return
-		}
-		if m.checkPubsub(c, cmd) {
+		if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 			return
 		}
 
@@ -778,12 +738,28 @@ func (m *Miniredis) makeCmdZrank(reverse bool) server.Cmd {
 		withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 			db := m.db(ctx.selectedDB)
 
-			if !db.exists(key) {
-				c.WriteNull()
+			withScore := false
+			if len(args) > 0 && strings.ToUpper(args[len(args)-1]) == "WITHSCORE" {
+				withScore = true
+				args = args[:len(args)-1]
+			}
+
+			if len(args) > 2 {
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
 				return
 			}
 
-			if db.t(key) != "zset" {
+			if !db.exists(key) {
+				if withScore {
+					c.WriteLen(-1)
+				} else {
+					c.WriteNull()
+				}
+				return
+			}
+
+			if db.t(key) != keyTypeSortedSet {
 				c.WriteError(ErrWrongType.Error())
 				return
 			}
@@ -794,25 +770,28 @@ func (m *Miniredis) makeCmdZrank(reverse bool) server.Cmd {
 			}
 			rank, ok := db.ssetRank(key, member, direction)
 			if !ok {
-				c.WriteNull()
+				if withScore {
+					c.WriteLen(-1)
+				} else {
+					c.WriteNull()
+				}
 				return
 			}
-			c.WriteInt(rank)
+
+			if withScore {
+				c.WriteLen(2)
+				c.WriteInt(rank)
+				c.WriteFloat(db.ssetScore(key, member))
+			} else {
+				c.WriteInt(rank)
+			}
 		})
 	}
 }
 
 // ZREM
 func (m *Miniredis) cmdZrem(c *server.Peer, cmd string, args []string) {
-	if len(args) < 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 		return
 	}
 
@@ -826,7 +805,7 @@ func (m *Miniredis) cmdZrem(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -843,15 +822,7 @@ func (m *Miniredis) cmdZrem(c *server.Peer, cmd string, args []string) {
 
 // ZREMRANGEBYLEX
 func (m *Miniredis) cmdZremrangebylex(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -880,7 +851,7 @@ func (m *Miniredis) cmdZremrangebylex(c *server.Peer, cmd string, args []string)
 			return
 		}
 
-		if db.t(opts.Key) != "zset" {
+		if db.t(opts.Key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -899,15 +870,7 @@ func (m *Miniredis) cmdZremrangebylex(c *server.Peer, cmd string, args []string)
 
 // ZREMRANGEBYRANK
 func (m *Miniredis) cmdZremrangebyrank(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -933,7 +896,7 @@ func (m *Miniredis) cmdZremrangebyrank(c *server.Peer, cmd string, args []string
 			return
 		}
 
-		if db.t(opts.key) != "zset" {
+		if db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -949,15 +912,7 @@ func (m *Miniredis) cmdZremrangebyrank(c *server.Peer, cmd string, args []string
 
 // ZREMRANGEBYSCORE
 func (m *Miniredis) cmdZremrangebyscore(c *server.Peer, cmd string, args []string) {
-	if len(args) != 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(3)) {
 		return
 	}
 
@@ -993,7 +948,7 @@ func (m *Miniredis) cmdZremrangebyscore(c *server.Peer, cmd string, args []strin
 			return
 		}
 
-		if db.t(opts.key) != "zset" {
+		if db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -1010,15 +965,7 @@ func (m *Miniredis) cmdZremrangebyscore(c *server.Peer, cmd string, args []strin
 
 // ZSCORE
 func (m *Miniredis) cmdZscore(c *server.Peer, cmd string, args []string) {
-	if len(args) != 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(2)) {
 		return
 	}
 
@@ -1032,7 +979,7 @@ func (m *Miniredis) cmdZscore(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -1048,15 +995,7 @@ func (m *Miniredis) cmdZscore(c *server.Peer, cmd string, args []string) {
 
 // ZMSCORE
 func (m *Miniredis) cmdZMscore(c *server.Peer, cmd string, args []string) {
-	if len(args) < 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 		return
 	}
 
@@ -1073,7 +1012,7 @@ func (m *Miniredis) cmdZMscore(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -1197,16 +1136,7 @@ func withLexRange(members []string, min string, minIncl bool, max string, maxInc
 
 // ZUNION
 func (m *Miniredis) cmdZunion(c *server.Peer, cmd string, args []string) {
-	if len(args) < 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 		return
 	}
 
@@ -1274,15 +1204,7 @@ func (m *Miniredis) cmdZunion(c *server.Peer, cmd string, args []string) {
 
 // ZUNIONSTORE
 func (m *Miniredis) cmdZunionstore(c *server.Peer, cmd string, args []string) {
-	if len(args) < 3 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(3)) {
 		return
 	}
 
@@ -1392,12 +1314,12 @@ func executeZUnion(db *RedisDB, opts zunionOptions) (sortedSet, error) {
 
 		var set map[string]float64
 		switch db.t(key) {
-		case "set":
+		case keyTypeSet:
 			set = map[string]float64{}
 			for elem := range db.setKeys[key] {
 				set[elem] = 1.0
 			}
-		case "zset":
+		case keyTypeSortedSet:
 			set = db.sortedSet(key)
 		default:
 			return nil, errors.New(msgWrongType)
@@ -1434,21 +1356,14 @@ func executeZUnion(db *RedisDB, opts zunionOptions) (sortedSet, error) {
 
 // ZSCAN
 func (m *Miniredis) cmdZscan(c *server.Peer, cmd string, args []string) {
-	if len(args) < 2 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
 		return
 	}
 
 	var opts struct {
 		key       string
 		cursor    int
+		count     int
 		withMatch bool
 		match     string
 	}
@@ -1466,12 +1381,18 @@ func (m *Miniredis) cmdZscan(c *server.Peer, cmd string, args []string) {
 				c.WriteError(msgSyntaxError)
 				return
 			}
-			if _, err := strconv.Atoi(args[1]); err != nil {
+			count, err := strconv.Atoi(args[1])
+			if err != nil {
 				setDirty(c)
 				c.WriteError(msgInvalidInt)
 				return
 			}
-			// We do nothing with count.
+			if count <= 0 {
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
+				return
+			}
+			opts.count = count
 			args = args[2:]
 			continue
 		}
@@ -1493,15 +1414,7 @@ func (m *Miniredis) cmdZscan(c *server.Peer, cmd string, args []string) {
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
-		// Paging is not implementend, all results are returned for cursor 0.
-		if opts.cursor != 0 {
-			// Invalid cursor.
-			c.WriteLen(2)
-			c.WriteBulk("0") // no next cursor
-			c.WriteLen(0)    // no elements
-			return
-		}
-		if db.exists(opts.key) && db.t(opts.key) != "zset" {
+		if db.exists(opts.key) && db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -1511,8 +1424,27 @@ func (m *Miniredis) cmdZscan(c *server.Peer, cmd string, args []string) {
 			members, _ = matchKeys(members, opts.match)
 		}
 
+		low := opts.cursor
+		high := low + opts.count
+		// validate high is correct
+		if high > len(members) || high == 0 {
+			high = len(members)
+		}
+		if opts.cursor > high {
+			// invalid cursor
+			c.WriteLen(2)
+			c.WriteBulk("0") // no next cursor
+			c.WriteLen(0)    // no elements
+			return
+		}
+		cursorValue := low + opts.count
+		if cursorValue >= len(members) {
+			cursorValue = 0 // no next cursor
+		}
+		members = members[low:high]
+
 		c.WriteLen(2)
-		c.WriteBulk("0") // no next cursor
+		c.WriteBulk(fmt.Sprintf("%d", cursorValue))
 		// HSCAN gives key, values.
 		c.WriteLen(len(members) * 2)
 		for _, k := range members {
@@ -1560,7 +1492,7 @@ func (m *Miniredis) cmdZpopmax(reverse bool) server.Cmd {
 				return
 			}
 
-			if db.t(key) != "zset" {
+			if db.t(key) != keyTypeSortedSet {
 				c.WriteError(ErrWrongType.Error())
 				return
 			}
@@ -1588,15 +1520,7 @@ func (m *Miniredis) cmdZpopmax(reverse bool) server.Cmd {
 
 // ZRANDMEMBER
 func (m *Miniredis) cmdZrandmember(c *server.Peer, cmd string, args []string) {
-	if len(args) < 1 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(1)) {
 		return
 	}
 
@@ -1642,7 +1566,7 @@ func (m *Miniredis) cmdZrandmember(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(opts.key) != "zset" {
+		if db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -1709,7 +1633,7 @@ func runRange(m *Miniredis, c *server.Peer, cctx *connCtx, opts optsRange) {
 		return
 	}
 
-	if db.t(opts.Key) != "zset" {
+	if db.t(opts.Key) != keyTypeSortedSet {
 		c.WriteError(ErrWrongType.Error())
 		return
 	}
@@ -1772,7 +1696,7 @@ func runRangeByScore(m *Miniredis, c *server.Peer, cctx *connCtx, opts optsRange
 		return
 	}
 
-	if db.t(opts.Key) != "zset" {
+	if db.t(opts.Key) != keyTypeSortedSet {
 		c.WriteError(ErrWrongType.Error())
 		return
 	}
@@ -1859,7 +1783,7 @@ func runRangeByLex(m *Miniredis, c *server.Peer, cctx *connCtx, opts optsRangeBy
 		return
 	}
 
-	if db.t(opts.Key) != "zset" {
+	if db.t(opts.Key) != keyTypeSortedSet {
 		c.WriteError(ErrWrongType.Error())
 		return
 	}
@@ -1921,4 +1845,13 @@ func parseLexrange(s string) (string, bool, error) {
 	default:
 		return "", false, errors.New(msgInvalidRangeItem)
 	}
+}
+
+func sortedKeys(m map[string]float64) []string {
+	var keys []string
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

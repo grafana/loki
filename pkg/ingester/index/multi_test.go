@@ -1,7 +1,6 @@
 package index
 
 import (
-	"sort"
 	"testing"
 	"time"
 
@@ -9,10 +8,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
 func MustParseDayTime(s string) config.DayTime {
@@ -26,19 +26,19 @@ func MustParseDayTime(s string) config.DayTime {
 var testPeriodConfigs = []config.PeriodConfig{
 	{
 		From:      MustParseDayTime("2020-01-01"),
-		IndexType: config.StorageTypeBigTable,
+		IndexType: types.StorageTypeBigTable,
 	},
 	{
 		From:      MustParseDayTime("2021-01-01"),
-		IndexType: config.TSDBType,
+		IndexType: types.TSDBType,
 	},
 	{
 		From:      MustParseDayTime("2022-01-01"),
-		IndexType: config.BoltDBShipperType,
+		IndexType: types.BoltDBShipperType,
 	},
 	{
 		From:      MustParseDayTime("2023-01-01"),
-		IndexType: config.TSDBType,
+		IndexType: types.TSDBType,
 	},
 }
 
@@ -50,7 +50,7 @@ func TestIgnoresInvalidShardFactorWhenTSDBNotPresent(t *testing.T) {
 		[]config.PeriodConfig{
 			{
 				From:      MustParseDayTime("2020-01-01"),
-				IndexType: config.StorageTypeBigTable,
+				IndexType: types.StorageTypeBigTable,
 			},
 		},
 		factor,
@@ -61,11 +61,11 @@ func TestIgnoresInvalidShardFactorWhenTSDBNotPresent(t *testing.T) {
 		[]config.PeriodConfig{
 			{
 				From:      MustParseDayTime("2020-01-01"),
-				IndexType: config.StorageTypeBigTable,
+				IndexType: types.StorageTypeBigTable,
 			},
 			{
 				From:      MustParseDayTime("2021-01-01"),
-				IndexType: config.TSDBType,
+				IndexType: types.TSDBType,
 			},
 		},
 		factor,
@@ -111,13 +111,12 @@ func TestMultiIndex(t *testing.T) {
 	multi, err := NewMultiInvertedIndex(testPeriodConfigs, factor)
 	require.Nil(t, err)
 
-	lbs := []logproto.LabelAdapter{
-		{Name: "foo", Value: "foo"},
-		{Name: "bar", Value: "bar"},
-		{Name: "buzz", Value: "buzz"},
-	}
-	sort.Sort(logproto.FromLabelAdaptersToLabels(lbs))
-	fp := model.Fingerprint((logproto.FromLabelAdaptersToLabels(lbs).Hash()))
+	lbs := logproto.FromLabelsToLabelAdapters(labels.New(
+		labels.Label{Name: "foo", Value: "foo"},
+		labels.Label{Name: "bar", Value: "bar"},
+		labels.Label{Name: "buzz", Value: "buzz"},
+	))
+	fp := model.Fingerprint(labels.StableHash(logproto.FromLabelAdaptersToLabels(lbs)))
 
 	ls := multi.Add(lbs, fp)
 
@@ -129,7 +128,9 @@ func TestMultiIndex(t *testing.T) {
 		[]*labels.Matcher{
 			labels.MustNewMatcher(labels.MatchEqual, "foo", "foo"),
 		},
-		&astmapper.ShardAnnotation{Shard: int(expShard), Of: int(factor)},
+		logql.NewPowerOfTwoShard(
+			index.ShardAnnotation{Shard: expShard, Of: factor},
+		).Ptr(),
 	)
 
 	require.Nil(t, err)
@@ -144,7 +145,7 @@ func TestMultiIndex(t *testing.T) {
 		[]*labels.Matcher{
 			labels.MustNewMatcher(labels.MatchEqual, "foo", "foo"),
 		},
-		&astmapper.ShardAnnotation{Shard: int(expShard), Of: int(factor)},
+		logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: expShard, Of: factor}).Ptr(),
 	)
 
 	require.Nil(t, err)

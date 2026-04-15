@@ -1,4 +1,4 @@
-// Copyright 2018 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -19,6 +19,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // ProcLimits represents the soft limits for each of the process's resource
@@ -74,7 +75,7 @@ const (
 )
 
 var (
-	limitsMatch = regexp.MustCompile(`(Max \w+\s{0,1}?\w*\s{0,1}\w*)\s{2,}(\w+)\s+(\w+)`)
+	limitsMatch = regexp.MustCompile(`(Max \w+\s??\w*\s?\w*)\s{2,}(\w+)\s+(\w+)`)
 )
 
 // NewLimits returns the current soft limits of the process.
@@ -103,10 +104,10 @@ func (p Proc) Limits() (ProcLimits, error) {
 		//fields := limitsMatch.Split(s.Text(), limitsFields)
 		fields := limitsMatch.FindStringSubmatch(s.Text())
 		if len(fields) != limitsFields {
-			return ProcLimits{}, fmt.Errorf("couldn't parse %q line %q", f.Name(), s.Text())
+			return ProcLimits{}, fmt.Errorf("%w: couldn't parse %q line %q", ErrFileParse, f.Name(), s.Text())
 		}
 
-		switch fields[1] {
+		switch strings.TrimSpace(fields[1]) {
 		case "Max cpu time":
 			l.CPUTime, err = parseUint(fields[2])
 		case "Max file size":
@@ -154,7 +155,7 @@ func parseUint(s string) (uint64, error) {
 	}
 	i, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("couldn't parse value %q: %w", s, err)
+		return 0, fmt.Errorf("%w: couldn't parse value %q: %w", ErrFileParse, s, err)
 	}
 	return i, nil
 }

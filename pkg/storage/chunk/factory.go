@@ -1,7 +1,6 @@
 package chunk
 
 import (
-	"flag"
 	"fmt"
 	"strconv"
 )
@@ -9,25 +8,9 @@ import (
 // Encoding defines which encoding we are using, delta, doubledelta, or varbit
 type Encoding byte
 
-// Config configures the behaviour of chunk encoding
-type Config struct{}
-
-var (
-	// DefaultEncoding exported for use in unit tests elsewhere
-	DefaultEncoding      = Bigchunk
-	bigchunkSizeCapBytes = 0
+const (
+	Dummy Encoding = iota
 )
-
-// RegisterFlags registers configuration settings.
-func (Config) RegisterFlags(f *flag.FlagSet) {
-	f.Var(&DefaultEncoding, "ingester.chunk-encoding", "Encoding version to use for chunks.")
-	f.IntVar(&bigchunkSizeCapBytes, "store.bigchunk-size-cap-bytes", bigchunkSizeCapBytes, "When using bigchunk encoding, start a new bigchunk if over this size (0 = unlimited)")
-}
-
-// Validate errors out if the encoding is set to Delta.
-func (Config) Validate() error {
-	return nil
-}
 
 // String implements flag.Value.
 func (e Encoding) String() string {
@@ -35,25 +18,6 @@ func (e Encoding) String() string {
 		return known.Name
 	}
 	return fmt.Sprintf("%d", e)
-}
-
-const (
-	// Big chunk encoding.
-	Bigchunk Encoding = iota
-)
-
-type encoding struct {
-	Name string
-	New  func() Data
-}
-
-var encodings = map[Encoding]encoding{
-	Bigchunk: {
-		Name: "Bigchunk",
-		New: func() Data {
-			return newBigchunk()
-		},
-	},
 }
 
 // Set implements flag.Value.
@@ -80,14 +44,16 @@ func (e *Encoding) Set(s string) error {
 	return nil
 }
 
-// New creates a new chunk according to the encoding set by the
-// DefaultEncoding flag.
-func New() Data {
-	chunk, err := NewForEncoding(DefaultEncoding)
-	if err != nil {
-		panic(err)
-	}
-	return chunk
+type encoding struct {
+	Name string
+	New  func() Data
+}
+
+var encodings = map[Encoding]encoding{
+	Dummy: {
+		Name: "dummy",
+		New:  func() Data { return newDummyChunk() },
+	},
 }
 
 // NewForEncoding allows configuring what chunk type you want

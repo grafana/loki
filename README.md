@@ -1,6 +1,6 @@
 <p align="center"><img src="docs/sources/logo_and_name.png" alt="Loki Logo"></p>
 
-<a href="https://drone.grafana.net/grafana/loki"><img src="https://drone.grafana.net/api/badges/grafana/loki/status.svg" alt="Drone CI" /></a>
+<a href="https://github.com/grafana/loki/actions/workflows/check.yml"><img src="https://github.com/grafana/loki/actions/workflows/check.yml/badge.svg" alt="Check" /></a>
 <a href="https://goreportcard.com/report/github.com/grafana/loki"><img src="https://goreportcard.com/badge/github.com/grafana/loki" alt="Go Report Card" /></a>
 <a href="https://slack.grafana.com/"><img src="https://img.shields.io/badge/join%20slack-%23loki-brightgreen.svg" alt="Slack" /></a>
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/loki.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:loki)
@@ -20,9 +20,11 @@ Compared to other log aggregation systems, Loki:
 
 A Loki-based logging stack consists of 3 components:
 
-- `promtail` is the agent, responsible for gathering logs and sending them to Loki.
-- `loki` is the main server, responsible for storing logs and processing queries.
+- [Alloy](https://github.com/grafana/alloy) is agent, responsible for gathering logs and sending them to Loki.
+- [Loki](https://github.com/grafana/loki) is the main service, responsible for storing logs and processing queries.
 - [Grafana](https://github.com/grafana/grafana) for querying and displaying the logs.
+
+**Note that Alloy replaced Promtail in the stack, because Promtail is considered to be feature complete, and future development for logs collection will be in [Grafana Alloy](https://github.com/grafana/alloy).**
 
 Loki is like Prometheus, but for logs: we prefer a multidimensional label-based approach to indexing, and want a single-binary, easy to operate system with no dependencies.
 Loki differs from Prometheus by focusing on logs instead of metrics, and delivering logs via push, instead of pull.
@@ -30,8 +32,11 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 ## Getting started
 
 * [Installing Loki](https://grafana.com/docs/loki/latest/installation/)
-* [Installing Promtail](https://grafana.com/docs/loki/latest/clients/promtail/installation/)
-* [Getting Started](https://grafana.com/docs/loki/latest/getting-started/)
+* [Installing Alloy](https://grafana.com/docs/loki/latest/send-data/alloy/)
+* [Getting Started](https://grafana.com/docs/loki/latest/get-started/)
+
+### ⚠️ Helm Chart Migration
+Effective March 16, 2026, the Grafana Loki Helm chart will be forked to a new repository [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts).  The chart in the Loki repository will continue to be maintained for GEL users only.  See [#20705](https://github.com/grafana/loki/issues/20705) for details.
 
 ## Upgrading
 
@@ -47,10 +52,8 @@ Commonly used sections:
 - [API documentation](https://grafana.com/docs/loki/latest/api/) for getting logs into Loki.
 - [Labels](https://grafana.com/docs/loki/latest/getting-started/labels/)
 - [Operations](https://grafana.com/docs/loki/latest/operations/)
-- [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/) is an agent which tails log files and pushes them to Loki.
-- [Pipelines](https://grafana.com/docs/loki/latest/clients/promtail/pipelines/) details the log processing pipeline.
 - [Docker Driver Client](https://grafana.com/docs/loki/latest/clients/docker-driver/) is a Docker plugin to send logs directly to Loki from Docker containers.
-- [LogCLI](https://grafana.com/docs/loki/latest/logcli/) provides a command-line interface for querying logs.
+- [LogCLI](https://grafana.com/docs/loki/latest/query/logcli/) provides a command-line interface for querying logs.
 - [Loki Canary](https://grafana.com/docs/loki/latest/operations/loki-canary/) monitors your Loki installation for missing logs.
 - [Troubleshooting](https://grafana.com/docs/loki/latest/operations/troubleshooting/) presents help dealing with error messages.
 - [Loki in Grafana](https://grafana.com/docs/loki/latest/operations/grafana/) describes how to set up a Loki datasource in Grafana.
@@ -77,7 +80,7 @@ Your feedback is always welcome.
 - Goutham Veeramachaneni's blog post "[Loki: Prometheus-inspired, open source logging for cloud natives](https://grafana.com/blog/2018/12/12/loki-prometheus-inspired-open-source-logging-for-cloud-natives/)" on details of the Loki architecture.
 - David Kaltschmidt's blog post "[Closer look at Grafana's user interface for Loki](https://grafana.com/blog/2019/01/02/closer-look-at-grafanas-user-interface-for-loki/)" on the ideas that went into the logging user interface.
 
-[devopsdays19-talk]: https://grafana.com/blog/2019/05/06/how-loki-correlates-metrics-and-logs--and-saves-you-money/
+[devopsdays19-talk]: https://grafana.com/blog/2019/05/06/how-loki-correlates-metrics-and-logs-and-saves-you-money/
 [architecture-blog]: https://grafana.com/blog/2019/04/15/how-we-designed-loki-to-work-easily-both-as-microservices-and-as-monoliths/
 [fosdem19-talk]: https://fosdem.org/2019/schedule/event/loki_prometheus_for_logs/
 [fosdem19-slides]: https://speakerdeck.com/grafana/grafana-loki-like-prometheus-but-for-logs
@@ -94,49 +97,41 @@ Refer to [CONTRIBUTING.md](CONTRIBUTING.md)
 
 Loki can be run in a single host, no-dependencies mode using the following commands.
 
-You need `go`, we recommend using the version found in [our build Dockerfile](https://github.com/grafana/loki/blob/main/loki-build-image/Dockerfile)
+You need an up-to-date version of [Go](https://go.dev/), we recommend using the version found in our [Makefile](https://github.com/grafana/loki/blob/main/Makefile)
 
 ```bash
+# Checkout source code
+$ git clone https://github.com/grafana/loki
+$ cd loki
 
-$ go get github.com/grafana/loki
-$ cd $GOPATH/src/github.com/grafana/loki # GOPATH is $HOME/go by default.
-
+# Build binary
 $ go build ./cmd/loki
+
+# Run executable
 $ ./loki -config.file=./cmd/loki/loki-local-config.yaml
-...
 ```
 
-To build Promtail on non-Linux platforms, use the following command:
+Alternatively, on Unix systems you can use `make` to build the binary, which adds additional arguments to the `go build` command.
 
 ```bash
-$ go build ./clients/cmd/promtail
+# Build binary
+$ make loki
+
+# Run executable
+$ ./cmd/loki/loki -config.file=./cmd/loki/loki-local-config.yaml
 ```
 
-On Linux, Promtail requires the systemd headers to be installed if
-Journal support is enabled.
-To enable Journal support the go build tag flag `promtail_journal_enabled` should be passed
-
-With Journal support on Ubuntu, run with the following commands:
-
+To run multiple Loki tenants locally, ensure that auth_enabled is set to true and provide a runtime config with any tenant specific overrides.
 ```bash
-$ sudo apt install -y libsystemd-dev
-$ go build --tags=promtail_journal_enabled ./clients/cmd/promtail
+# Build binary
+$ make loki
+
+# Run executable
+./loki -config.file=./cmd/loki/loki-local-multi-tenant-config.yaml -runtime-config.file=./cmd/loki/loki-overrides.yaml
 ```
 
-With Journal support on CentOS, run with the following commands:
-
-```bash
-$ sudo yum install -y systemd-devel
-$ go build --tags=promtail_journal_enabled ./clients/cmd/promtail
-```
-
-Otherwise, to build Promtail without Journal support, run `go build`
-with CGO disabled:
-
-```bash
-$ CGO_ENABLED=0 go build ./clients/cmd/promtail
-```
 ## Adopters
+
 Please see [ADOPTERS.md](ADOPTERS.md) for some of the organizations using Loki today.
 If you would like to add your organization to the list, please open a PR to add it to the list.
 

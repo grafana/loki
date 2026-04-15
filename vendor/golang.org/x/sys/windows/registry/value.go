@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 //go:build windows
-// +build windows
 
 package registry
 
@@ -341,7 +340,11 @@ func (k Key) SetBinaryValue(name string, value []byte) error {
 
 // DeleteValue removes a named value from the key k.
 func (k Key) DeleteValue(name string) error {
-	return regDeleteValue(syscall.Handle(k), syscall.StringToUTF16Ptr(name))
+	namePointer, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		return err
+	}
+	return regDeleteValue(syscall.Handle(k), namePointer)
 }
 
 // ReadValueNames returns the value names of key k.

@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -12,7 +12,6 @@
 // limitations under the License.
 
 //go:build !windows
-// +build !windows
 
 package procfs
 
@@ -86,7 +85,7 @@ func (fs FS) VM() (*VM, error) {
 		return nil, err
 	}
 	if !file.Mode().IsDir() {
-		return nil, fmt.Errorf("%s is not a directory", path)
+		return nil, fmt.Errorf("%w: %s is not a directory", ErrFileRead, path)
 	}
 
 	files, err := os.ReadDir(path)

@@ -13,11 +13,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 const (
@@ -49,9 +49,13 @@ func (f *fixture) Clients() (
 	}
 
 	f.gcssrv = fakestorage.NewServer(nil)
-	f.gcssrv.CreateBucket("chunks")
 
-	conn, err := grpc.Dial(f.btsrv.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	opts := fakestorage.CreateBucketOpts{
+		Name: "chunks",
+	}
+	f.gcssrv.CreateBucketWithOpts(opts)
+
+	conn, err := grpc.NewClient(f.btsrv.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return
 	}
@@ -67,7 +71,10 @@ func (f *fixture) Clients() (
 		client: adminClient,
 	}
 
-	c, err := bigtable.NewClient(ctx, proj, instance, option.WithGRPCConn(conn))
+	bigTableClientConfig := bigtable.ClientConfig{
+		MetricsProvider: bigtable.NoopMetricsProvider{},
+	}
+	c, err := bigtable.NewClientWithConfig(ctx, proj, instance, bigTableClientConfig, option.WithGRPCConn(conn))
 	if err != nil {
 		return
 	}
@@ -86,7 +93,7 @@ func (f *fixture) Clients() (
 		c, err = newGCSObjectClient(ctx, GCSConfig{
 			BucketName: "chunks",
 			Insecure:   true,
-		}, hedging.Config{}, func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error) {
+		}, hedging.Config{}, func(_ context.Context, _ ...option.ClientOption) (*storage.Client, error) {
 			return f.gcssrv.Client(), nil
 		})
 		if err != nil {

@@ -1,3 +1,4 @@
+// nolint:goconst
 package stages
 
 import (
@@ -11,11 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error
@@ -39,7 +40,7 @@ pipeline_stages:
         ingest_timestamp: true
 `
 
-// TestDropPipeline is used to verify we properly parse the yaml config and create a working pipeline
+// TestPackPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestPackPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	plName := "test_pipeline_deal_with_it_linter"
@@ -82,7 +83,7 @@ func TestPackPipeline(t *testing.T) {
 
 	// Unmarshal the packed object and validate line1
 	w := &Packed{}
-	assert.NoError(t, json.Unmarshal([]byte(out1.Entry.Entry.Line), w))
+	assert.NoError(t, json.Unmarshal([]byte(out1.Line), w))
 	expectedPackedLabels := map[string]string{
 		"pod":       "foo-xsfs3",
 		"container": "foo",
@@ -92,7 +93,7 @@ func TestPackPipeline(t *testing.T) {
 
 	// Validate line 2
 	w = &Packed{}
-	assert.NoError(t, json.Unmarshal([]byte(out2.Entry.Entry.Line), w))
+	assert.NoError(t, json.Unmarshal([]byte(out2.Line), w))
 	expectedPackedLabels = map[string]string{
 		"pod":       "foo-vvsdded",
 		"container": "bar",
@@ -105,7 +106,7 @@ func Test_packStage_Run(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg, nil, true, false)
+	util_log.InitLogger(cfg, nil, false)
 	Debug = true
 
 	tests := []struct {
@@ -122,7 +123,7 @@ func Test_packStage_Run(t *testing.T) {
 			},
 			inputEntry: Entry{
 				Extracted: map[string]interface{}{},
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{
 						"foo": "bar",
 						"bar": "baz",
@@ -134,7 +135,7 @@ func Test_packStage_Run(t *testing.T) {
 				},
 			},
 			expectedEntry: Entry{
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{
 						"foo": "bar",
 						"bar": "baz",
@@ -154,7 +155,7 @@ func Test_packStage_Run(t *testing.T) {
 			},
 			inputEntry: Entry{
 				Extracted: map[string]interface{}{},
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{
 						"foo": "bar",
 						"bar": "baz",
@@ -166,7 +167,7 @@ func Test_packStage_Run(t *testing.T) {
 				},
 			},
 			expectedEntry: Entry{
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{
 						"bar": "baz",
 					},
@@ -185,7 +186,7 @@ func Test_packStage_Run(t *testing.T) {
 			},
 			inputEntry: Entry{
 				Extracted: map[string]interface{}{},
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{
 						"foo": "bar",
 						"bar": "baz",
@@ -197,7 +198,7 @@ func Test_packStage_Run(t *testing.T) {
 				},
 			},
 			expectedEntry: Entry{
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
@@ -217,7 +218,7 @@ func Test_packStage_Run(t *testing.T) {
 					"extr1": "etr1val",
 					"extr2": "etr2val",
 				},
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{
 						"foo": "bar",
 						"bar": "baz",
@@ -229,7 +230,7 @@ func Test_packStage_Run(t *testing.T) {
 				},
 			},
 			expectedEntry: Entry{
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{
 						"bar": "baz",
 					},
@@ -251,7 +252,7 @@ func Test_packStage_Run(t *testing.T) {
 					"extr1": "etr1val",
 					"extr2": []int{1, 2, 3},
 				},
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{
 						"foo": "bar",
 						"bar": "baz",
@@ -263,7 +264,7 @@ func Test_packStage_Run(t *testing.T) {
 				},
 			},
 			expectedEntry: Entry{
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{
 						"bar": "baz",
 					},
@@ -285,7 +286,7 @@ func Test_packStage_Run(t *testing.T) {
 					"extr1":   "etr1val",
 					"ex\"tr2": `"fd"`,
 				},
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{
 						"foo": "bar",
 						"bar": "baz",
@@ -297,7 +298,7 @@ func Test_packStage_Run(t *testing.T) {
 				},
 			},
 			expectedEntry: Entry{
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{
 						"bar": "baz",
 					},
@@ -316,7 +317,7 @@ func Test_packStage_Run(t *testing.T) {
 			},
 			inputEntry: Entry{
 				Extracted: map[string]interface{}{},
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{
 						"foo": "bar",
 						"bar": "baz",
@@ -328,7 +329,7 @@ func Test_packStage_Run(t *testing.T) {
 				},
 			},
 			expectedEntry: Entry{
-				Entry: api.Entry{
+				Entry: util.Entry{
 					Labels: model.LabelSet{
 						"foo": "bar",
 						"bar": "baz",

@@ -9,10 +9,10 @@ To test the dashboards against a local grafana & Loki setup perform the followin
 ### Pre-requisites
 
 * jb is a jsonnet package manager
-To install it follow the instructions at: https://github.com/jsonnet-bundler/jsonnet-bundler.
+To install it follow the instructions at: <https://github.com/jsonnet-bundler/jsonnet-bundler>.
 
-* Grizzly is a tool for managing jsonnet dashboards in Grafana: https://github.com/grafana/grizzly.
-To install it follow the instructions at: https://grafana.github.io/grizzly/installation/.
+* Grizzly is a tool for managing jsonnet dashboards in Grafana: <https://github.com/grafana/grizzly>.
+To install it follow the instructions at: <https://grafana.github.io/grizzly/installation/>.
 
 * Make sure you have the latest dependencies in the `vendor` directory by running the following command in `production/loki-mixin`:
 
@@ -20,7 +20,7 @@ To install it follow the instructions at: https://grafana.github.io/grizzly/inst
 jb install
 ```
 
-* On your Grafana instance create an API key with role 'Admin' under Configuration > API keys. 
+* On your Grafana instance create an API key with role 'Admin' under Configuration > API keys.
 Copy this key for the next step.
 
 ### Testing dashboards

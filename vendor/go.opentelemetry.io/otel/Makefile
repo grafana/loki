@@ -1,16 +1,5 @@
 # Copyright The OpenTelemetry Authors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-License-Identifier: Apache-2.0
 
 TOOLS_MOD_DIR := ./internal/tools
 
@@ -22,11 +11,15 @@ ALL_COVERAGE_MOD_DIRS := $(shell find . -type f -name 'go.mod' -exec dirname {} 
 GO = go
 TIMEOUT = 60
 
+# User to run as in docker images.
+DOCKER_USER=$(shell id -u):$(shell id -g)
+DEPENDENCIES_DOCKERFILE=./dependencies.Dockerfile
+
 .DEFAULT_GOAL := precommit
 
 .PHONY: precommit ci
-precommit: dependabot-generate license-check vanity-import-fix misspell go-mod-tidy golangci-lint-fix test-default
-ci: dependabot-check license-check lint vanity-import-check build test-default check-clean-work-tree test-coverage
+precommit: generate toolchain-check license-check misspell go-mod-tidy golangci-lint-fix verify-readmes verify-mods test-default
+ci: generate toolchain-check license-check lint vanity-import-check verify-readmes verify-mods build test-default check-clean-work-tree test-coverage
 
 # Tools
 
@@ -34,27 +27,28 @@ TOOLS = $(CURDIR)/.tools
 
 $(TOOLS):
 	@mkdir -p $@
-$(TOOLS)/%: | $(TOOLS)
+$(TOOLS)/%: $(TOOLS_MOD_DIR)/go.mod | $(TOOLS)
 	cd $(TOOLS_MOD_DIR) && \
 	$(GO) build -o $@ $(PACKAGE)
 
 MULTIMOD = $(TOOLS)/multimod
 $(TOOLS)/multimod: PACKAGE=go.opentelemetry.io/build-tools/multimod
 
-SEMCONVGEN = $(TOOLS)/semconvgen
-$(TOOLS)/semconvgen: PACKAGE=go.opentelemetry.io/build-tools/semconvgen
-
 CROSSLINK = $(TOOLS)/crosslink
 $(TOOLS)/crosslink: PACKAGE=go.opentelemetry.io/build-tools/crosslink
 
 SEMCONVKIT = $(TOOLS)/semconvkit
+SEMCONVKIT_FILES := $(sort $(shell find $(TOOLS_MOD_DIR)/semconvkit -type f))
 $(TOOLS)/semconvkit: PACKAGE=go.opentelemetry.io/otel/$(TOOLS_MOD_DIR)/semconvkit
+$(TOOLS)/semconvkit: $(SEMCONVKIT_FILES)
 
-DBOTCONF = $(TOOLS)/dbotconf
-$(TOOLS)/dbotconf: PACKAGE=go.opentelemetry.io/build-tools/dbotconf
+VERIFYREADMES = $(TOOLS)/verifyreadmes
+VERIFYREADMES_FILES := $(sort $(shell find $(TOOLS_MOD_DIR)/verifyreadmes -type f))
+$(TOOLS)/verifyreadmes: PACKAGE=go.opentelemetry.io/otel/$(TOOLS_MOD_DIR)/verifyreadmes
+$(TOOLS)/verifyreadmes: $(VERIFYREADMES_FILES)
 
 GOLANGCI_LINT = $(TOOLS)/golangci-lint
-$(TOOLS)/golangci-lint: PACKAGE=github.com/golangci/golangci-lint/cmd/golangci-lint
+$(TOOLS)/golangci-lint: PACKAGE=github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 
 MISSPELL = $(TOOLS)/misspell
 $(TOOLS)/misspell: PACKAGE=github.com/client9/misspell/cmd/misspell
@@ -68,24 +62,78 @@ $(TOOLS)/stringer: PACKAGE=golang.org/x/tools/cmd/stringer
 PORTO = $(TOOLS)/porto
 $(TOOLS)/porto: PACKAGE=github.com/jcchavezs/porto/cmd/porto
 
-GOJQ = $(TOOLS)/gojq
-$(TOOLS)/gojq: PACKAGE=github.com/itchyny/gojq/cmd/gojq
+GOTMPL = $(TOOLS)/gotmpl
+$(GOTMPL): PACKAGE=go.opentelemetry.io/build-tools/gotmpl
+
+GORELEASE = $(TOOLS)/gorelease
+$(GORELEASE): PACKAGE=golang.org/x/exp/cmd/gorelease
+
+GOVULNCHECK = $(TOOLS)/govulncheck
+$(TOOLS)/govulncheck: PACKAGE=golang.org/x/vuln/cmd/govulncheck
 
 .PHONY: tools
-tools: $(CROSSLINK) $(DBOTCONF) $(GOLANGCI_LINT) $(MISSPELL) $(GOCOVMERGE) $(STRINGER) $(PORTO) $(GOJQ) $(SEMCONVGEN) $(MULTIMOD) $(SEMCONVKIT)
+tools: $(CROSSLINK) $(GOLANGCI_LINT) $(MISSPELL) $(GOCOVMERGE) $(STRINGER) $(PORTO) $(VERIFYREADMES) $(MULTIMOD) $(SEMCONVKIT) $(GOTMPL) $(GORELEASE)
+
+# Virtualized python tools via docker
+
+# The directory where the virtual environment is created.
+VENVDIR := venv
+
+# The directory where the python tools are installed.
+PYTOOLS := $(VENVDIR)/bin
+
+# The pip executable in the virtual environment.
+PIP := $(PYTOOLS)/pip
+
+# The directory in the docker image where the current directory is mounted.
+WORKDIR := /workdir
+
+# The python image to use for the virtual environment.
+PYTHONIMAGE := $(shell awk '$$4=="python" {print $$2}' $(DEPENDENCIES_DOCKERFILE))
+
+# Run the python image with the current directory mounted.
+DOCKERPY := docker run --rm -u $(DOCKER_USER) -v "$(CURDIR):$(WORKDIR)" -w $(WORKDIR) $(PYTHONIMAGE)
+
+# Create a virtual environment for Python tools.
+$(PYTOOLS):
+# The `--upgrade` flag is needed to ensure that the virtual environment is
+# created with the latest pip version.
+	@$(DOCKERPY) bash -c "python3 -m venv $(VENVDIR) && $(PIP) install --upgrade --cache-dir=$(WORKDIR)/.cache/pip pip"
+
+# Install python packages into the virtual environment.
+$(PYTOOLS)/%: $(PYTOOLS)
+	@$(DOCKERPY) $(PIP) install --cache-dir=$(WORKDIR)/.cache/pip -r requirements.txt
+
+CODESPELL = $(PYTOOLS)/codespell
+$(CODESPELL): PACKAGE=codespell
+
+# Generate
+
+.PHONY: generate
+generate: go-generate vanity-import-fix
+
+.PHONY: go-generate
+go-generate: $(OTEL_GO_MOD_DIRS:%=go-generate/%)
+go-generate/%: DIR=$*
+go-generate/%: $(STRINGER) $(GOTMPL)
+	@echo "$(GO) generate $(DIR)/..." \
+		&& cd $(DIR) \
+		&& PATH="$(TOOLS):$${PATH}" $(GO) generate ./...
+
+.PHONY: vanity-import-fix
+vanity-import-fix: $(PORTO)
+	@$(PORTO) --include-internal -w .
+
+# Generate go.work file for local development.
+.PHONY: go-work
+go-work: $(CROSSLINK)
+	$(CROSSLINK) work --root=$(shell pwd) --go=1.22.7
 
 # Build
 
-.PHONY: generate build
+.PHONY: build
 
-generate: $(OTEL_GO_MOD_DIRS:%=generate/%)
-generate/%: DIR=$*
-generate/%: | $(STRINGER) $(PORTO)
-	@echo "$(GO) generate $(DIR)/..." \
-		&& cd $(DIR) \
-		&& PATH="$(TOOLS):$${PATH}" $(GO) generate ./... && $(PORTO) -w .
-
-build: generate $(OTEL_GO_MOD_DIRS:%=build/%) $(OTEL_GO_MOD_DIRS:%=build-tests/%)
+build: $(OTEL_GO_MOD_DIRS:%=build/%) $(OTEL_GO_MOD_DIRS:%=build-tests/%)
 build/%: DIR=$*
 build/%:
 	@echo "$(GO) build $(DIR)/..." \
@@ -102,12 +150,15 @@ build-tests/%:
 
 # Tests
 
-TEST_TARGETS := test-default test-bench test-short test-verbose test-race
+TEST_TARGETS := test-default test-bench test-short test-verbose test-race test-concurrent-safe test-fuzz
 .PHONY: $(TEST_TARGETS) test
 test-default test-race: ARGS=-race
 test-bench:   ARGS=-run=xxxxxMatchNothingxxxxx -test.benchtime=1ms -bench=.
 test-short:   ARGS=-short
+test-fuzz:    ARGS=-fuzztime=10s -fuzz
 test-verbose: ARGS=-v -race
+test-concurrent-safe: ARGS=-run=ConcurrentSafe -count=100 -race
+test-concurrent-safe: TIMEOUT=120
 $(TEST_TARGETS): test
 test: $(OTEL_GO_MOD_DIRS:%=test/%)
 test/%: DIR=$*
@@ -121,7 +172,7 @@ test/%:
 COVERAGE_MODE    = atomic
 COVERAGE_PROFILE = coverage.out
 .PHONY: test-coverage
-test-coverage: | $(GOCOVMERGE)
+test-coverage: $(GOCOVMERGE)
 	@set -e; \
 	printf "" > coverage.txt; \
 	for dir in $(ALL_COVERAGE_MOD_DIRS); do \
@@ -135,65 +186,79 @@ test-coverage: | $(GOCOVMERGE)
 	done; \
 	$(GOCOVMERGE) $$(find . -name coverage.out) > coverage.txt
 
+.PHONY: benchmark
+benchmark: $(OTEL_GO_MOD_DIRS:%=benchmark/%)
+benchmark/%:
+	cd $* && $(GO) test -run='^$$' -bench=. $(ARGS) ./...
+
+print-sharded-benchmarks:
+	@echo $(OTEL_GO_MOD_DIRS) | jq -cR 'split(" ")'
+
 .PHONY: golangci-lint golangci-lint-fix
 golangci-lint-fix: ARGS=--fix
 golangci-lint-fix: golangci-lint
 golangci-lint: $(OTEL_GO_MOD_DIRS:%=golangci-lint/%)
 golangci-lint/%: DIR=$*
-golangci-lint/%: | $(GOLANGCI_LINT)
+golangci-lint/%: $(GOLANGCI_LINT)
 	@echo 'golangci-lint $(if $(ARGS),$(ARGS) ,)$(DIR)' \
 		&& cd $(DIR) \
 		&& $(GOLANGCI_LINT) run --allow-serial-runners $(ARGS)
 
 .PHONY: crosslink
-crosslink: | $(CROSSLINK)
+crosslink: $(CROSSLINK)
 	@echo "Updating intra-repository dependencies in all go modules" \
 		&& $(CROSSLINK) --root=$(shell pwd) --prune
 
 .PHONY: go-mod-tidy
 go-mod-tidy: $(ALL_GO_MOD_DIRS:%=go-mod-tidy/%)
 go-mod-tidy/%: DIR=$*
-go-mod-tidy/%: | crosslink
+go-mod-tidy/%: crosslink
 	@echo "$(GO) mod tidy in $(DIR)" \
 		&& cd $(DIR) \
-		&& $(GO) mod tidy -compat=1.18
-
-.PHONY: lint-modules
-lint-modules: go-mod-tidy
+		&& $(GO) mod tidy -compat=1.21
 
 .PHONY: lint
-lint: misspell lint-modules golangci-lint
+lint: misspell go-mod-tidy golangci-lint
 
 .PHONY: vanity-import-check
-vanity-import-check: | $(PORTO)
-	@$(PORTO) --include-internal -l . || echo "(run: make vanity-import-fix)"
-
-.PHONY: vanity-import-fix
-vanity-import-fix: | $(PORTO)
-	@$(PORTO) --include-internal -w .
+vanity-import-check: $(PORTO)
+	@$(PORTO) --include-internal -l . || ( echo "(run: make vanity-import-fix)"; exit 1 )
 
 .PHONY: misspell
-misspell: | $(MISSPELL)
+misspell: $(MISSPELL)
 	@$(MISSPELL) -w $(ALL_DOCS)
+
+.PHONY: govulncheck
+govulncheck: $(OTEL_GO_MOD_DIRS:%=govulncheck/%)
+govulncheck/%: DIR=$*
+govulncheck/%: $(GOVULNCHECK)
+	@echo "govulncheck ./... in $(DIR)" \
+		&& cd $(DIR) \
+		&& $(GOVULNCHECK) ./...
+
+.PHONY: codespell
+codespell: $(CODESPELL)
+	@$(DOCKERPY) $(CODESPELL)
+
+.PHONY: toolchain-check
+toolchain-check:
+	@toolchainRes=$$(for f in $(ALL_GO_MOD_DIRS); do \
+	           awk '/^toolchain/ { found=1; next } END { if (found) print FILENAME }' $$f/go.mod; \
+	done); \
+	if [ -n "$${toolchainRes}" ]; then \
+			echo "toolchain checking failed:"; echo "$${toolchainRes}"; \
+			exit 1; \
+	fi
 
 .PHONY: license-check
 license-check:
 	@licRes=$$(for f in $$(find . -type f \( -iname '*.go' -o -iname '*.sh' \) ! -path '**/third_party/*' ! -path './.git/*' ) ; do \
-	           awk '/Copyright The OpenTelemetry Authors|generated|GENERATED/ && NR<=3 { found=1; next } END { if (!found) print FILENAME }' $$f; \
+	           awk '/Copyright The OpenTelemetry Authors|generated|GENERATED/ && NR<=4 { found=1; next } END { if (!found) print FILENAME }' $$f; \
 	   done); \
 	   if [ -n "$${licRes}" ]; then \
 	           echo "license header checking failed:"; echo "$${licRes}"; \
 	           exit 1; \
 	   fi
-
-DEPENDABOT_CONFIG = .github/dependabot.yml
-.PHONY: dependabot-check
-dependabot-check: | $(DBOTCONF)
-	@$(DBOTCONF) verify $(DEPENDABOT_CONFIG) || echo "(run: make dependabot-generate)"
-
-.PHONY: dependabot-generate
-dependabot-generate: | $(DBOTCONF)
-	@$(DBOTCONF) generate > $(DEPENDABOT_CONFIG)
 
 .PHONY: check-clean-work-tree
 check-clean-work-tree:
@@ -205,23 +270,61 @@ check-clean-work-tree:
 	  exit 1; \
 	fi
 
+# The weaver docker image to use for semconv-generate.
+WEAVER_IMAGE := $(shell awk '$$4=="weaver" {print $$2}' $(DEPENDENCIES_DOCKERFILE))
+
 SEMCONVPKG ?= "semconv/"
 .PHONY: semconv-generate
-semconv-generate: | $(SEMCONVGEN) $(SEMCONVKIT)
-	[ "$(TAG)" ] || ( echo "TAG unset: missing opentelemetry specification tag"; exit 1 )
-	[ "$(OTEL_SPEC_REPO)" ] || ( echo "OTEL_SPEC_REPO unset: missing path to opentelemetry specification repo"; exit 1 )
-	$(SEMCONVGEN) -i "$(OTEL_SPEC_REPO)/semantic_conventions/." --only=span -p conventionType=trace -f trace.go -t "$(SEMCONVPKG)/template.j2" -s "$(TAG)"
-	$(SEMCONVGEN) -i "$(OTEL_SPEC_REPO)/semantic_conventions/." --only=event -p conventionType=event -f event.go -t "$(SEMCONVPKG)/template.j2" -s "$(TAG)"
-	$(SEMCONVGEN) -i "$(OTEL_SPEC_REPO)/semantic_conventions/." --only=resource -p conventionType=resource -f resource.go -t "$(SEMCONVPKG)/template.j2" -s "$(TAG)"
-	$(SEMCONVKIT) -output "$(SEMCONVPKG)/$(TAG)" -tag "$(TAG)"
+semconv-generate: $(SEMCONVKIT)
+	[ "$(TAG)" ] || ( echo "TAG unset: missing opentelemetry semantic-conventions tag"; exit 1 )
+	# Ensure the target directory for source code is available.
+	mkdir -p $(PWD)/$(SEMCONVPKG)/${TAG}
+	# Note: We mount a home directory for downloading/storing the semconv repository.
+	# Weaver will automatically clean the cache when finished, but the directories will remain.
+	mkdir -p ~/.weaver
+	docker run --rm \
+		-u $(DOCKER_USER) \
+		--env HOME=/tmp/weaver \
+		--mount 'type=bind,source=$(PWD)/semconv/templates,target=/home/weaver/templates,readonly' \
+		--mount 'type=bind,source=$(PWD)/semconv/${TAG},target=/home/weaver/target' \
+		--mount 'type=bind,source=$(HOME)/.weaver,target=/tmp/weaver/.weaver' \
+		$(WEAVER_IMAGE) registry generate \
+		--registry=https://github.com/open-telemetry/semantic-conventions/archive/refs/tags/$(TAG).zip[model] \
+		--templates=/home/weaver/templates \
+		--param tag=$(TAG) \
+		go \
+		/home/weaver/target
+	$(SEMCONVKIT) -semconv "$(SEMCONVPKG)" -tag "$(TAG)"
+
+.PHONY: gorelease
+gorelease: $(OTEL_GO_MOD_DIRS:%=gorelease/%)
+gorelease/%: DIR=$*
+gorelease/%:| $(GORELEASE)
+	@echo "gorelease in $(DIR):" \
+		&& cd $(DIR) \
+		&& $(GORELEASE) \
+		|| echo ""
+
+.PHONY: verify-mods
+verify-mods: $(MULTIMOD)
+	$(MULTIMOD) verify
 
 .PHONY: prerelease
-prerelease: | $(MULTIMOD)
+prerelease: verify-mods
 	@[ "${MODSET}" ] || ( echo ">> env var MODSET is not set"; exit 1 )
-	$(MULTIMOD) verify && $(MULTIMOD) prerelease -m ${MODSET}
+	$(MULTIMOD) prerelease -m ${MODSET}
 
 COMMIT ?= "HEAD"
 .PHONY: add-tags
-add-tags: | $(MULTIMOD)
+add-tags: verify-mods
 	@[ "${MODSET}" ] || ( echo ">> env var MODSET is not set"; exit 1 )
-	$(MULTIMOD) verify && $(MULTIMOD) tag -m ${MODSET} -c ${COMMIT}
+	$(MULTIMOD) tag -m ${MODSET} -c ${COMMIT}
+
+MARKDOWNIMAGE := $(shell awk '$$4=="markdown" {print $$2}' $(DEPENDENCIES_DOCKERFILE))
+.PHONY: lint-markdown
+lint-markdown:
+	docker run --rm -u $(DOCKER_USER) -v "$(CURDIR):$(WORKDIR)" $(MARKDOWNIMAGE) -c $(WORKDIR)/.markdownlint.yaml $(WORKDIR)/**/*.md
+
+.PHONY: verify-readmes
+verify-readmes: $(VERIFYREADMES)
+	$(VERIFYREADMES)

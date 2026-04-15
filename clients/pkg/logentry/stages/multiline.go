@@ -13,9 +13,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const (
@@ -211,10 +211,10 @@ func (m *multilineStage) flush(out chan Entry, s *multilineState) {
 	}
 	collapsed := Entry{
 		Extracted: extracted,
-		Entry: api.Entry{
-			Labels: s.startLineEntry.Entry.Labels.Clone(),
+		Entry: util.Entry{
+			Labels: s.startLineEntry.Labels.Clone(),
 			Entry: logproto.Entry{
-				Timestamp: s.startLineEntry.Entry.Entry.Timestamp,
+				Timestamp: s.startLineEntry.Timestamp,
 				Line:      s.buffer.String(),
 			},
 		},
@@ -228,4 +228,9 @@ func (m *multilineStage) flush(out chan Entry, s *multilineState) {
 // Name implements Stage
 func (m *multilineStage) Name() string {
 	return StageTypeMultiline
+}
+
+// Cleanup implements Stage.
+func (*multilineStage) Cleanup() {
+	// no-op
 }

@@ -1,3 +1,5 @@
+//go:build integration
+
 package integration
 
 import (
@@ -6,6 +8,7 @@ import (
 
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 )
 
 var (
@@ -13,16 +16,24 @@ var (
 	ErrInvalidMetricType = fmt.Errorf("invalid metric type")
 )
 
-func extractMetric(metricName, metrics string) (float64, map[string]string, error) {
-	var parser expfmt.TextParser
+func extractMetricFamily(name, metrics string) (*io_prometheus_client.MetricFamily, error) {
+	parser := expfmt.NewTextParser(model.UTF8Validation)
 	mfs, err := parser.TextToMetricFamilies(strings.NewReader(metrics))
 	if err != nil {
-		return 0, nil, err
+		return nil, err
 	}
 
-	mf, found := mfs[metricName]
-	if !found {
-		return 0, nil, ErrNoMetricFound
+	mf, ok := mfs[name]
+	if !ok {
+		return nil, ErrNoMetricFound
+	}
+	return mf, nil
+}
+
+func extractMetric(metricName, metrics string) (float64, map[string]string, error) {
+	mf, err := extractMetricFamily(metricName, metrics)
+	if err != nil {
+		return 0, nil, err
 	}
 
 	var val float64

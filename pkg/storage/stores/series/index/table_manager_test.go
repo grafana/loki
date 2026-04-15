@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/mtime"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 const (
@@ -131,16 +132,18 @@ func TestTableManager(t *testing.T) {
 		Configs: []config.PeriodConfig{
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(baseTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: baseTableName,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: baseTableName,
+					}},
 			},
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(weeklyTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: tablePrefix,
-					Period: tablePeriod,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: tablePrefix,
+						Period: tablePeriod,
+					}},
 
 				ChunkTables: config.PeriodicTableConfig{
 					Prefix: chunkTablePrefix,
@@ -149,10 +152,11 @@ func TestTableManager(t *testing.T) {
 			},
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(weeklyTable2Start.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: table2Prefix,
-					Period: tablePeriod,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: table2Prefix,
+						Period: tablePeriod,
+					}},
 
 				ChunkTables: config.PeriodicTableConfig{
 					Prefix: chunkTable2Prefix,
@@ -187,7 +191,7 @@ func TestTableManager(t *testing.T) {
 			},
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,16 +340,18 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 		Configs: []config.PeriodConfig{
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(baseTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: baseTableName,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: baseTableName,
+					}},
 			},
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(weeklyTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: tablePrefix,
-					Period: tablePeriod,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: tablePrefix,
+						Period: tablePeriod,
+					}},
 
 				ChunkTables: config.PeriodicTableConfig{
 					Prefix: chunkTablePrefix,
@@ -379,7 +385,7 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 			},
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,16 +436,18 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 		Configs: []config.PeriodConfig{
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(baseTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: baseTableName,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: baseTableName,
+					}},
 			},
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(weeklyTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: tablePrefix,
-					Period: tablePeriod,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: tablePrefix,
+						Period: tablePeriod,
+					}},
 
 				ChunkTables: config.PeriodicTableConfig{
 					Prefix: chunkTablePrefix,
@@ -475,7 +483,7 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 			},
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -555,10 +563,11 @@ func TestTableManagerTags(t *testing.T) {
 	{
 		cfg := config.SchemaConfig{
 			Configs: []config.PeriodConfig{{
-				IndexTables: config.PeriodicTableConfig{},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{}},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil, nil)
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -577,12 +586,13 @@ func TestTableManagerTags(t *testing.T) {
 	{
 		cfg := config.SchemaConfig{
 			Configs: []config.PeriodConfig{{
-				IndexTables: config.PeriodicTableConfig{
-					Tags: config.Tags{"foo": "bar"},
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Tags: config.Tags{"foo": "bar"},
+					}},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil, nil)
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -605,10 +615,11 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 		Configs: []config.PeriodConfig{
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(baseTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: tablePrefix,
-					Period: tablePeriod,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: tablePrefix,
+						Period: tablePeriod,
+					}},
 
 				ChunkTables: config.PeriodicTableConfig{
 					Prefix: chunkTablePrefix,
@@ -644,7 +655,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 			},
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -767,6 +778,6 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 
 	// Test table manager retention not multiple of periodic config
 	tbmConfig.RetentionPeriod++
-	_, err = NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
+	_, err = NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 	require.Error(t, err)
 }

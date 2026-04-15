@@ -1,4 +1,3 @@
-version: '2'
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
@@ -14,7 +13,7 @@ services:
       - ./conf:/etc/kafka/secrets
 
   kafka:
-    image: confluentinc/cp-kafka:6.2.1
+    image: confluentinc/cp-kafka:latest
     depends_on:
       - zookeeper
     ports:

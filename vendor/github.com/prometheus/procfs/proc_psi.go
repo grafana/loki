@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -61,14 +61,14 @@ type PSIStats struct {
 func (fs FS) PSIStatsForResource(resource string) (PSIStats, error) {
 	data, err := util.ReadFileNoStat(fs.proc.Path(fmt.Sprintf("%s/%s", "pressure", resource)))
 	if err != nil {
-		return PSIStats{}, fmt.Errorf("psi_stats: unavailable for %q: %w", resource, err)
+		return PSIStats{}, fmt.Errorf("%w: psi_stats: unavailable for %q: %w", ErrFileRead, resource, err)
 	}
 
-	return parsePSIStats(resource, bytes.NewReader(data))
+	return parsePSIStats(bytes.NewReader(data))
 }
 
 // parsePSIStats parses the specified file for pressure stall information.
-func parsePSIStats(resource string, r io.Reader) (PSIStats, error) {
+func parsePSIStats(r io.Reader) (PSIStats, error) {
 	psiStats := PSIStats{}
 
 	scanner := bufio.NewScanner(r)

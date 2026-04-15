@@ -3,11 +3,11 @@
 // license that can be found in the LICENSE file.
 
 //go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris || zos
-// +build aix darwin dragonfly freebsd linux netbsd openbsd solaris zos
 
 package ipv6
 
 import (
+	"encoding/binary"
 	"net"
 	"unsafe"
 
@@ -21,26 +21,26 @@ func marshalTrafficClass(b []byte, cm *ControlMessage) []byte {
 	m := socket.ControlMessage(b)
 	m.MarshalHeader(iana.ProtocolIPv6, unix.IPV6_TCLASS, 4)
 	if cm != nil {
-		socket.NativeEndian.PutUint32(m.Data(4), uint32(cm.TrafficClass))
+		binary.NativeEndian.PutUint32(m.Data(4), uint32(cm.TrafficClass))
 	}
 	return m.Next(4)
 }
 
 func parseTrafficClass(cm *ControlMessage, b []byte) {
-	cm.TrafficClass = int(socket.NativeEndian.Uint32(b[:4]))
+	cm.TrafficClass = int(binary.NativeEndian.Uint32(b[:4]))
 }
 
 func marshalHopLimit(b []byte, cm *ControlMessage) []byte {
 	m := socket.ControlMessage(b)
 	m.MarshalHeader(iana.ProtocolIPv6, unix.IPV6_HOPLIMIT, 4)
 	if cm != nil {
-		socket.NativeEndian.PutUint32(m.Data(4), uint32(cm.HopLimit))
+		binary.NativeEndian.PutUint32(m.Data(4), uint32(cm.HopLimit))
 	}
 	return m.Next(4)
 }
 
 func parseHopLimit(cm *ControlMessage, b []byte) {
-	cm.HopLimit = int(socket.NativeEndian.Uint32(b[:4]))
+	cm.HopLimit = int(binary.NativeEndian.Uint32(b[:4]))
 }
 
 func marshalPacketInfo(b []byte, cm *ControlMessage) []byte {

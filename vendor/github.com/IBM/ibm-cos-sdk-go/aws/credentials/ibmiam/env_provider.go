@@ -14,10 +14,13 @@ const EnvProviderName = "EnvProviderIBM"
 // NewEnvProvider constructor of the IBM IAM provider that loads IAM credentials from environment
 // variables
 // Parameter:
-//		AWS Config
+//
+//	AWS Config
+//
 // Returns:
-//		A new provider with AWS config, API Key, IBM IAM Authentication Server Endpoint and
-// 		Service Instance ID
+//
+//	A new provider with AWS config, API Key, IBM IAM Authentication Server Endpoint and
+//	Service Instance ID
 func NewEnvProvider(config *aws.Config) *Provider {
 	apiKey := os.Getenv("IBM_API_KEY_ID")
 	serviceInstanceID := os.Getenv("IBM_SERVICE_INSTANCE_ID")

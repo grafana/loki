@@ -36,23 +36,28 @@ Implemented commands:
  - Key
    - COPY
    - DEL
+   - DUMP -- partly, only handles string keys
    - EXISTS
    - EXPIRE
    - EXPIREAT
+   - EXPIRETIME
    - KEYS
    - MOVE
    - PERSIST
    - PEXPIRE
    - PEXPIREAT
+   - PEXPIRETIME
    - PTTL
+   - RANDOMKEY -- see m.Seed(...)
    - RENAME
    - RENAMENX
-   - RANDOMKEY -- see m.Seed(...)
+   - RESTORE -- partly, only handles string keys
    - SCAN
    - TOUCH
    - TTL
    - TYPE
    - UNLINK
+   - WAIT -- no-op
  - Transactions (complete)
    - DISCARD
    - EXEC
@@ -103,6 +108,7 @@ Implemented commands:
    - HLEN
    - HMGET
    - HMSET
+   - HRANDFIELD
    - HSET
    - HSETNX
    - HSTRLEN
@@ -142,20 +148,23 @@ Implemented commands:
    - SDIFFSTORE
    - SINTER
    - SINTERSTORE
+   - SINTERCARD
    - SISMEMBER
    - SMEMBERS
+   - SMISMEMBER
    - SMOVE
    - SPOP -- see m.Seed(...)
    - SRANDMEMBER -- see m.Seed(...)
    - SREM
+   - SSCAN
    - SUNION
    - SUNIONSTORE
-   - SSCAN
  - Sorted Set keys (complete)
    - ZADD
    - ZCARD
    - ZCOUNT
    - ZINCRBY
+   - ZINTER
    - ZINTERSTORE
    - ZLEXCOUNT
    - ZPOPMIN
@@ -216,6 +225,7 @@ Implemented commands:
    - CLUSTER SLOTS
    - CLUSTER KEYSLOT
    - CLUSTER NODES
+   - CLUSTER SHARDS
  - HyperLogLog (complete)
    - PFADD
    - PFCOUNT
@@ -295,12 +305,11 @@ Commands which will probably not be implemented:
     - ~~READONLY~~
     - ~~READWRITE~~
  - Key
-    - ~~DUMP~~
     - ~~MIGRATE~~
     - ~~OBJECT~~
-    - ~~RESTORE~~
-    - ~~WAIT~~
  - Scripting
+    - ~~FCALL / FCALL_RO *~~
+    - ~~FUNCTION *~~
     - ~~SCRIPT DEBUG~~
     - ~~SCRIPT KILL~~
  - Server
@@ -321,7 +330,7 @@ Commands which will probably not be implemented:
 
 ## &c.
 
-Integration tests are run against Redis 7.0.7. The [./integration](./integration/) subdir
+Integration tests are run against Redis 8.4.0. The [./integration](./integration/) subdir
 compares miniredis against a real redis instance.
 
 The Redis 6 RESP3 protocol is supported. If there are problems, please open

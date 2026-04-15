@@ -4,14 +4,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"unicode/utf8"
+	"unsafe"
 
-	"github.com/buger/jsonparser"
+	"github.com/grafana/jsonparser"
 
-	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
-	"github.com/grafana/loki/pkg/logql/log/logfmt"
-	"github.com/grafana/loki/pkg/logql/log/pattern"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logql/log/jsonexpr"
+	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
+	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 
 	"github.com/grafana/regexp"
 	jsoniter "github.com/json-iterator/go"
@@ -39,21 +41,33 @@ var (
 	errMissingCapture       = errors.New("at least one named capture must be supplied")
 	errFoundAllLabels       = errors.New("found all required labels")
 	errLabelDoesNotMatch    = errors.New("found a label with a matcher that didn't match")
+
+	// the rune error replacement is rejected by Prometheus hence replacing them with space.
+	removeInvalidUtf = func(r rune) rune {
+		if r == utf8.RuneError {
+			return 32 // rune value for space
+		}
+		return r
+	}
 )
 
 type JSONParser struct {
-	prefixBuffer []byte // buffer used to build json keys
-	lbs          *LabelsBuilder
+	prefixBuffer    [][]byte // buffer used to build json keys
+	lbs             *LabelsBuilder
+	captureJSONPath bool
 
-	keys        internedStringSet
-	parserHints ParserHint
+	keys                  internedStringSet
+	parserHints           ParserHint
+	sanitizedPrefixBuffer []byte
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
-func NewJSONParser() *JSONParser {
+func NewJSONParser(captureJSONPath bool) *JSONParser {
 	return &JSONParser{
-		prefixBuffer: make([]byte, 0, 1024),
-		keys:         internedStringSet{},
+		prefixBuffer:          [][]byte{},
+		keys:                  internedStringSet{},
+		captureJSONPath:       captureJSONPath,
+		sanitizedPrefixBuffer: make([]byte, 0, 64),
 	}
 }
 
@@ -112,32 +126,43 @@ func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueTyp
 
 // nextKeyPrefix load the next prefix in the buffer and tells if it should be processed based on hints.
 func (j *JSONParser) nextKeyPrefix(key []byte) bool {
-	// first add the spacer if needed.
-	if len(j.prefixBuffer) != 0 {
-		j.prefixBuffer = append(j.prefixBuffer, byte(jsonSpacer))
-	}
-	j.prefixBuffer = appendSanitized(j.prefixBuffer, key)
-	return j.lbs.ParserLabelHints().ShouldExtractPrefix(unsafeGetString(j.prefixBuffer))
+	j.prefixBuffer = append(j.prefixBuffer, key)
+
+	sanitized := j.buildSanitizedPrefixFromBuffer()
+	return j.lbs.ParserLabelHints().ShouldExtractPrefix(
+		string(sanitized),
+	)
 }
 
 func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.ValueType) error {
 	// the first time we use the field as label key.
 	if len(j.prefixBuffer) == 0 {
-		key, ok := j.keys.Get(key, func() (string, bool) {
+		sanitizedKey, ok := j.keys.Get(key, func() (string, bool) {
 			field := sanitizeLabelKey(string(key), true)
-			if j.lbs.BaseHas(field) {
-				field = field + duplicateSuffix
-			}
-			if !j.lbs.ParserLabelHints().ShouldExtract(field) {
+			if len(field) == 0 {
 				return "", false
 			}
+
 			return field, true
 		})
 		if !ok {
 			return nil
 		}
-		j.lbs.Set(key, readValue(value, dataType))
-		if !j.parserHints.ShouldContinueParsingLine(key, j.lbs) {
+
+		if j.lbs.BaseHas(sanitizedKey) || j.lbs.HasInCategory(sanitizedKey, StructuredMetadataLabel) {
+			sanitizedKey = sanitizedKey + duplicateSuffix
+		}
+
+		if !j.lbs.ParserLabelHints().ShouldExtract(sanitizedKey) || j.lbs.ParserLabelHints().Extracted(sanitizedKey) {
+			return nil
+		}
+
+		j.lbs.Set(ParsedLabel, sanitizedKey, readValue(value, dataType))
+		if j.captureJSONPath {
+			j.lbs.SetJSONPath(sanitizedKey, []string{string(key)})
+		}
+
+		if !j.parserHints.ShouldContinueParsingLine(sanitizedKey, j.lbs) {
 			return errLabelDoesNotMatch
 		}
 		return nil
@@ -147,30 +172,79 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 
 	// snapshot the current prefix position
 	prefixLen := len(j.prefixBuffer)
-	j.prefixBuffer = append(j.prefixBuffer, byte(jsonSpacer))
-	j.prefixBuffer = appendSanitized(j.prefixBuffer, key)
-	keyString, ok := j.keys.Get(j.prefixBuffer, func() (string, bool) {
-		if j.lbs.BaseHas(string(j.prefixBuffer)) {
-			j.prefixBuffer = append(j.prefixBuffer, duplicateSuffix...)
-		}
-		if !j.parserHints.ShouldExtract(string(j.prefixBuffer)) {
-			return "", false
-		}
+	j.prefixBuffer = append(j.prefixBuffer, key)
 
-		return string(j.prefixBuffer), true
+	sanitized := j.buildSanitizedPrefixFromBuffer()
+	keyString, _ := j.keys.Get(sanitized, func() (string, bool) {
+		return string(sanitized), true
 	})
 
-	// reset the prefix position
-	j.prefixBuffer = j.prefixBuffer[:prefixLen]
-	if !ok {
+	if j.lbs.BaseHas(keyString) || j.lbs.HasInCategory(keyString, StructuredMetadataLabel) {
+		j.prefixBuffer[prefixLen] = make([]byte, 0, len(key)+len(duplicateSuffix))
+		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], key...)
+		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], duplicateSuffix...)
+
+		keyString = string(j.buildSanitizedPrefixFromBuffer())
+	}
+
+	if !j.parserHints.ShouldExtract(keyString) || j.parserHints.Extracted(keyString) {
+		// reset the prefix position
+		j.prefixBuffer = j.prefixBuffer[:prefixLen]
 		return nil
 	}
 
-	j.lbs.Set(keyString, readValue(value, dataType))
+	if j.captureJSONPath {
+		if jsonPath := j.buildJSONPathFromPrefixBuffer(); len(jsonPath) > 0 {
+			j.lbs.SetJSONPath(keyString, jsonPath)
+		}
+	}
+
+	// reset the prefix position
+	j.prefixBuffer = j.prefixBuffer[:prefixLen]
+
+	j.lbs.Set(ParsedLabel, keyString, readValue(value, dataType))
+
 	if !j.parserHints.ShouldContinueParsingLine(keyString, j.lbs) {
 		return errLabelDoesNotMatch
 	}
 	return nil
+}
+
+func (j *JSONParser) buildSanitizedPrefixFromBuffer() []byte {
+	j.sanitizedPrefixBuffer = j.sanitizedPrefixBuffer[:0]
+
+	for i, part := range j.prefixBuffer {
+		if len(bytes.TrimSpace(part)) == 0 {
+			continue
+		}
+
+		if i > 0 && len(j.sanitizedPrefixBuffer) > 0 {
+			j.sanitizedPrefixBuffer = append(j.sanitizedPrefixBuffer, byte(jsonSpacer))
+		}
+		j.sanitizedPrefixBuffer = appendSanitized(j.sanitizedPrefixBuffer, part)
+	}
+
+	return j.sanitizedPrefixBuffer
+}
+
+// buildJSONPathFromPrefixBuffer constructs the JSON path from the accumulated prefix buffer.
+// It returns a slice of strings representing each segment of the JSON path.
+// If the prefix buffer is empty, it returns nil.
+// The function also removes any "_extracted" suffix from "duplicate" fields.
+func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
+	if len(j.prefixBuffer) == 0 {
+		return nil
+	}
+
+	jsonPath := make([]string, 0, len(j.prefixBuffer))
+	for _, part := range j.prefixBuffer {
+		partStr := unsafe.String(unsafe.SliceData(part), len(part)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
+		// Trim _extracted suffix if the extracted field was a duplicate field
+		partStr = strings.TrimSuffix(partStr, duplicateSuffix)
+		jsonPath = append(jsonPath, partStr)
+	}
+
+	return jsonPath
 }
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
@@ -200,12 +274,11 @@ func unescapeJSONString(b []byte) string {
 		return ""
 	}
 	res := string(bU)
-	// rune error is rejected by Prometheus
-	for _, r := range res {
-		if r == utf8.RuneError {
-			return ""
-		}
+
+	if strings.ContainsRune(res, utf8.RuneError) {
+		res = strings.Map(removeInvalidUtf, res)
 	}
+
 	return res
 }
 
@@ -230,7 +303,7 @@ func NewRegexpParser(re string) (*RegexpParser, error) {
 	uniqueNames := map[string]struct{}{}
 	for i, n := range regex.SubexpNames() {
 		if n != "" {
-			if !model.LabelName(n).IsValid() {
+			if !model.UTF8Validation.IsValidLabelName(n) {
 				return nil, fmt.Errorf("invalid extracted label name '%s'", n)
 			}
 			if _, ok := uniqueNames[n]; ok {
@@ -259,12 +332,6 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 				if len(sanitize) == 0 {
 					return "", false
 				}
-				if lbs.BaseHas(sanitize) {
-					sanitize = fmt.Sprintf("%s%s", sanitize, duplicateSuffix)
-				}
-				if !parserHints.ShouldExtract(sanitize) {
-					return "", false
-				}
 
 				return sanitize, true
 			})
@@ -272,7 +339,15 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 				continue
 			}
 
-			lbs.Set(key, string(value))
+			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
+				key = fmt.Sprintf("%s%s", key, duplicateSuffix)
+			}
+
+			if !parserHints.ShouldExtract(key) || parserHints.Extracted(key) {
+				continue
+			}
+
+			lbs.Set(ParsedLabel, key, string(value))
 			if !parserHints.ShouldContinueParsingLine(key, lbs) {
 				return line, false
 			}
@@ -325,30 +400,31 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 				return "", false
 			}
 
-			if lbs.BaseHas(sanitized) {
-				sanitized = fmt.Sprintf("%s%s", sanitized, duplicateSuffix)
-			}
-
-			if !parserHints.ShouldExtract(sanitized) {
-				return "", false
-			}
 			return sanitized, true
 		})
 		if !ok {
 			continue
 		}
 
+		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
+			key = key + duplicateSuffix
+		}
+
+		if !parserHints.ShouldExtract(key) || parserHints.Extracted(key) {
+			continue
+		}
+
 		val := l.dec.Value()
-		// the rune error replacement is rejected by Prometheus, so we skip it.
+
 		if bytes.ContainsRune(val, utf8.RuneError) {
-			val = nil
+			val = bytes.Map(removeInvalidUtf, val)
 		}
 
 		if !l.keepEmpty && len(val) == 0 {
 			continue
 		}
 
-		lbs.Set(key, string(val))
+		lbs.Set(ParsedLabel, key, string(val))
 		if !parserHints.ShouldContinueParsingLine(key, lbs) {
 			return line, false
 		}
@@ -373,7 +449,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
 
 type PatternParser struct {
-	matcher pattern.Matcher
+	matcher *pattern.Matcher
 	names   []string
 }
 
@@ -383,7 +459,7 @@ func NewPatternParser(pn string) (*PatternParser, error) {
 		return nil, err
 	}
 	for _, name := range m.Names() {
-		if !model.LabelName(name).IsValid() {
+		if !model.UTF8Validation.IsValidLabelName(name) {
 			return nil, fmt.Errorf("invalid capture label name '%s'", name)
 		}
 	}
@@ -402,15 +478,15 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 	names := l.names[:len(matches)]
 	for i, m := range matches {
 		name := names[i]
-		if lbs.BaseHas(name) {
+		if lbs.BaseHas(name) || lbs.HasInCategory(name, StructuredMetadataLabel) {
 			name = name + duplicateSuffix
 		}
 
-		if !parserHints.ShouldExtract(name) {
+		if parserHints.Extracted(name) || !parserHints.ShouldExtract(name) {
 			continue
 		}
 
-		lbs.Set(name, string(m))
+		lbs.Set(ParsedLabel, name, string(m))
 		if !parserHints.ShouldContinueParsingLine(name, lbs) {
 			return line, false
 		}
@@ -439,7 +515,7 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 			return nil, fmt.Errorf("cannot parse expression [%s]: %w", exp.Expression, err)
 		}
 
-		if !model.LabelName(exp.Identifier).IsValid() {
+		if !model.UTF8Validation.IsValidLabelName(exp.Identifier) {
 			return nil, fmt.Errorf("invalid extracted label name '%s'", exp.Identifier)
 		}
 		paths[exp.Identifier] = path
@@ -468,9 +544,17 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	keys := make(map[string]string, len(l.expressions))
 	for id, paths := range l.expressions {
 		keys[id] = fmt.Sprintf("%v", paths...)
-		if !lbs.BaseHas(id) {
-			lbs.Set(id, "")
+		if !lbs.BaseHas(id) && !lbs.HasInCategory(id, StructuredMetadataLabel) {
+			lbs.Set(ParsedLabel, id, "")
 		}
+	}
+
+	// alwaysExtract checks whether a key should be extracted regardless of other
+	// conditions.
+	alwaysExtract := func(key string) bool {
+		// Any key in the expression list should always be extracted.
+		_, ok := keys[key]
+		return ok
 	}
 
 	l.dec.Reset(line)
@@ -493,12 +577,12 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 				return "", false
 			}
 
-			if !lbs.ParserLabelHints().ShouldExtract(sanitized) {
+			if !alwaysExtract(sanitized) && !lbs.ParserLabelHints().ShouldExtract(sanitized) {
 				return "", false
 			}
 			return sanitized, true
 		})
-		if !ok {
+		if !ok || (!alwaysExtract(key) && lbs.ParserLabelHints().Extracted(key)) {
 			continue
 		}
 
@@ -515,21 +599,22 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		}
 
 		if _, ok := l.expressions[key]; ok {
-			if lbs.BaseHas(key) {
+			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 				key = key + duplicateSuffix
-				if !lbs.ParserLabelHints().ShouldExtract(key) {
+				if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
 					// Don't extract duplicates if we don't have to
 					break
 				}
 			}
 
-			lbs.Set(key, string(val))
+			lbs.Set(ParsedLabel, key, string(val))
 
 			if lbs.ParserLabelHints().AllRequiredExtracted() {
 				break
 			}
 		}
 	}
+
 	if l.strict && l.dec.Err() != nil {
 		addErrLabel(errLogfmt, l.dec.Err(), lbs)
 		return line, true
@@ -555,12 +640,12 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 			return nil, fmt.Errorf("cannot parse expression [%s]: %w", exp.Expression, err)
 		}
 
-		if !model.LabelName(exp.Identifier).IsValid() {
+		if !model.UTF8Validation.IsValidLabelName(exp.Identifier) {
 			return nil, fmt.Errorf("invalid extracted label name '%s'", exp.Identifier)
 		}
 
 		ids = append(ids, exp.Identifier)
-		paths = append(paths, pathsToString(path))
+		paths = append(paths, JSONPathToStrings(path))
 	}
 
 	return &JSONExpressionParser{
@@ -570,17 +655,17 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 	}, nil
 }
 
-func pathsToString(paths []interface{}) []string {
-	stingPaths := make([]string, 0, len(paths))
+func JSONPathToStrings(paths []interface{}) []string {
+	stringPaths := make([]string, 0, len(paths))
 	for _, p := range paths {
 		switch v := p.(type) {
 		case int:
-			stingPaths = append(stingPaths, fmt.Sprintf("[%d]", v))
+			stringPaths = append(stringPaths, fmt.Sprintf("[%d]", v))
 		case string:
-			stingPaths = append(stingPaths, v)
+			stringPaths = append(stringPaths, v)
 		}
 	}
-	return stingPaths
+	return stringPaths
 }
 
 func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
@@ -605,17 +690,20 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 
 		identifier := j.ids[idx]
 		key, _ := j.keys.Get(unsafeGetBytes(identifier), func() (string, bool) {
-			if lbs.BaseHas(identifier) {
-				identifier = identifier + duplicateSuffix
-			}
 			return identifier, true
 		})
 
+		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
+			key = key + duplicateSuffix
+		}
+
 		switch typ {
 		case jsonparser.Null:
-			lbs.Set(key, "")
+			lbs.Set(ParsedLabel, key, "")
+		case jsonparser.Object:
+			lbs.Set(ParsedLabel, key, string(data))
 		default:
-			lbs.Set(key, unescapeJSONString(data))
+			lbs.Set(ParsedLabel, key, unescapeJSONString(data))
 		}
 
 		matches++
@@ -625,7 +713,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 	if matches < len(j.ids) {
 		for _, id := range j.ids {
 			if _, ok := lbs.Get(id); !ok {
-				lbs.Set(id, "")
+				lbs.Set(ParsedLabel, id, "")
 			}
 		}
 	}
@@ -646,8 +734,7 @@ func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{}
 
 type UnpackParser struct {
 	lbsBuffer []string
-
-	keys internedStringSet
+	keys      internedStringSet
 }
 
 // NewUnpackParser creates a new unpack stage.
@@ -695,7 +782,7 @@ func addErrLabel(msg string, err error, lbs *LabelsBuilder) {
 	}
 
 	if lbs.ParserLabelHints().PreserveError() {
-		lbs.Set(logqlmodel.PreserveErrorLabel, "true")
+		lbs.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
 	}
 }
 
@@ -716,17 +803,16 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 				isPacked = true
 				return nil
 			}
-			key, ok := u.keys.Get(key, func() (string, bool) {
-				field := unsafeGetString(key)
-				if lbs.BaseHas(field) {
-					field = field + duplicateSuffix
-				}
-				if !lbs.ParserLabelHints().ShouldExtract(field) {
-					return "", false
-				}
-				return field, true
+
+			key, _ := u.keys.Get(key, func() (string, bool) {
+				return string(key), true
 			})
-			if !ok {
+
+			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
+				key = key + duplicateSuffix
+			}
+
+			if !lbs.ParserLabelHints().ShouldExtract(key) || lbs.ParserLabelHints().Extracted(key) {
 				return nil
 			}
 
@@ -746,7 +832,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 	// flush the buffer if we found a packed entry.
 	if isPacked {
 		for i := 0; i < len(u.lbsBuffer); i = i + 2 {
-			lbs.Set(u.lbsBuffer[i], u.lbsBuffer[i+1])
+			lbs.Set(ParsedLabel, u.lbsBuffer[i], u.lbsBuffer[i+1])
 			if !lbs.ParserLabelHints().ShouldContinueParsingLine(u.lbsBuffer[i], lbs) {
 				return entry, errLabelDoesNotMatch
 			}

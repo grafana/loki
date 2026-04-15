@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 var (
@@ -22,9 +22,11 @@ type Client interface {
 	GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error)
 	DeleteChunk(ctx context.Context, userID, chunkID string) error
 	IsChunkNotFoundErr(err error) bool
+	IsRetryableErr(err error) bool
 }
 
 // ObjectAndIndexClient allows optimisations where the same client handles both
+// Only used by DynamoDB (dynamodbIndexReader and dynamoDBStorageClient)
 type ObjectAndIndexClient interface {
 	PutChunksAndIndex(ctx context.Context, chunks []chunk.Chunk, index index.WriteBatch) error
 }

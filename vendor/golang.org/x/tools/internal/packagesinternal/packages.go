@@ -5,12 +5,9 @@
 // Package packagesinternal exposes internal-only fields from go/packages.
 package packagesinternal
 
-import (
-	"golang.org/x/tools/internal/gocommand"
-)
+import "fmt"
 
-var GetForTest = func(p interface{}) string { return "" }
-var GetDepsErrors = func(p interface{}) []*PackageError { return nil }
+var GetDepsErrors = func(p any) []*PackageError { return nil }
 
 type PackageError struct {
 	ImportStack []string // shortest path from package named on command line to this one
@@ -18,13 +15,9 @@ type PackageError struct {
 	Err         string   // the error itself
 }
 
-var GetGoCmdRunner = func(config interface{}) *gocommand.Runner { return nil }
-
-var SetGoCmdRunner = func(config interface{}, runner *gocommand.Runner) {}
+func (err PackageError) String() string {
+	return fmt.Sprintf("%s: %s (import stack: %s)", err.Pos, err.Err, err.ImportStack)
+}
 
 var TypecheckCgo int
 var DepsErrors int // must be set as a LoadMode to call GetDepsErrors
-var ForTest int    // must be set as a LoadMode to call GetForTest
-
-var SetModFlag = func(config interface{}, value string) {}
-var SetModFile = func(config interface{}, value string) {}

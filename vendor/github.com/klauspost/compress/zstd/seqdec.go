@@ -231,10 +231,7 @@ func (s *sequenceDecs) decodeSync(hist []byte) error {
 	llTable, mlTable, ofTable := s.litLengths.fse.dt[:maxTablesize], s.matchLengths.fse.dt[:maxTablesize], s.offsets.fse.dt[:maxTablesize]
 	llState, mlState, ofState := s.litLengths.state.state, s.matchLengths.state.state, s.offsets.state.state
 	out := s.out
-	maxBlockSize := maxCompressedBlockSize
-	if s.windowSize < maxBlockSize {
-		maxBlockSize = s.windowSize
-	}
+	maxBlockSize := min(s.windowSize, maxCompressedBlockSize)
 
 	if debugDecoder {
 		println("decodeSync: decoding", seqs, "sequences", br.remain(), "bits remain on stream")
@@ -245,7 +242,7 @@ func (s *sequenceDecs) decodeSync(hist []byte) error {
 			return io.ErrUnexpectedEOF
 		}
 		var ll, mo, ml int
-		if br.off > 4+((maxOffsetBits+16+16)>>3) {
+		if br.cursor > 4+((maxOffsetBits+16+16)>>3) {
 			// inlined function:
 			// ll, mo, ml = s.nextFast(br, llState, mlState, ofState)
 
@@ -452,18 +449,13 @@ func (s *sequenceDecs) next(br *bitReader, llState, mlState, ofState decSymbol) 
 
 	// extra bits are stored in reverse order.
 	br.fill()
-	if s.maxBits <= 32 {
-		mo += br.getBits(moB)
-		ml += br.getBits(mlB)
-		ll += br.getBits(llB)
-	} else {
-		mo += br.getBits(moB)
+	mo += br.getBits(moB)
+	if s.maxBits > 32 {
 		br.fill()
-		// matchlength+literal length, max 32 bits
-		ml += br.getBits(mlB)
-		ll += br.getBits(llB)
-
 	}
+	// matchlength+literal length, max 32 bits
+	ml += br.getBits(mlB)
+	ll += br.getBits(llB)
 	mo = s.adjustOffset(mo, ll, moB)
 	return
 }

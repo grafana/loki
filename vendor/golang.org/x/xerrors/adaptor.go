@@ -175,13 +175,13 @@ func (s *state) Write(b []byte) (n int, err error) {
 // printer wraps a state to implement an xerrors.Printer.
 type printer state
 
-func (s *printer) Print(args ...interface{}) {
+func (s *printer) Print(args ...any) {
 	if !s.inDetail || s.printDetail {
 		fmt.Fprint((*state)(s), args...)
 	}
 }
 
-func (s *printer) Printf(format string, args ...interface{}) {
+func (s *printer) Printf(format string, args ...any) {
 	if !s.inDetail || s.printDetail {
 		fmt.Fprintf((*state)(s), format, args...)
 	}

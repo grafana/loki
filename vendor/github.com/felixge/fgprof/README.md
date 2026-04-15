@@ -1,6 +1,7 @@
 [![go.dev reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go)](https://pkg.go.dev/github.com/felixge/fgprof)
 ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/felixge/fgprof/Go)
 ![GitHub](https://img.shields.io/github/license/felixge/fgprof)
+[![go-recipes](https://raw.githubusercontent.com/nikolaydubina/go-recipes/main/badge.svg?raw=true)](https://github.com/nikolaydubina/go-recipes)
 
 # :rocket: fgprof - The Full Go Profiler
 

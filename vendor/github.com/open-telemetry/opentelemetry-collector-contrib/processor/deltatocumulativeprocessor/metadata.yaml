@@ -1,0 +1,51 @@
+type: deltatocumulative
+
+status:
+  class: processor
+  stability:
+    alpha: [metrics]
+  distributions: [contrib, k8s]
+  warnings: [Statefulness]
+  codeowners:
+    active: [RichieSams]
+    emeritus: [tombrk]
+
+telemetry:
+  metrics:
+    # streams
+    deltatocumulative_datapoints:
+      description: total number of datapoints processed. may have 'error' attribute, if processing failed
+      stability:
+        level: development
+      unit: "{datapoint}"
+      sum:
+        value_type: int
+        monotonic: true
+      enabled: true
+    deltatocumulative_streams_limit:
+      description: upper limit of tracked streams
+      stability:
+        level: development
+      unit: "{stream}"
+      gauge:
+        value_type: int
+      enabled: true
+    deltatocumulative_streams_max_stale:
+      description: duration after which streams inactive streams are dropped
+      stability:
+        level: development
+      unit: "s"
+      gauge:
+        value_type: int
+      enabled: true
+    # datapoints
+    deltatocumulative_streams_tracked:
+      description: number of streams tracked
+      stability:
+        level: development
+      unit: "{dps}"
+      sum:
+        value_type: int
+        monotonic: false
+        async: true
+      enabled: true

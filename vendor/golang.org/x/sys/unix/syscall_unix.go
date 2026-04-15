@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 //go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris
-// +build aix darwin dragonfly freebsd linux netbsd openbsd solaris
 
 package unix
 
@@ -145,6 +144,23 @@ func (m *mmapper) Munmap(data []byte) (err error) {
 	}
 	delete(m.active, p)
 	return nil
+}
+
+func Mmap(fd int, offset int64, length int, prot int, flags int) (data []byte, err error) {
+	return mapper.Mmap(fd, offset, length, prot, flags)
+}
+
+func Munmap(b []byte) (err error) {
+	return mapper.Munmap(b)
+}
+
+func MmapPtr(fd int, offset int64, addr unsafe.Pointer, length uintptr, prot int, flags int) (ret unsafe.Pointer, err error) {
+	xaddr, err := mapper.mmap(uintptr(addr), length, prot, flags, fd, offset)
+	return unsafe.Pointer(xaddr), err
+}
+
+func MunmapPtr(addr unsafe.Pointer, length uintptr) (err error) {
+	return mapper.munmap(uintptr(addr), length)
 }
 
 func Read(fd int, p []byte) (n int, err error) {
@@ -351,7 +367,9 @@ func Recvmsg(fd int, p, oob []byte, flags int) (n, oobn int, recvflags int, from
 		iov[0].SetLen(len(p))
 	}
 	var rsa RawSockaddrAny
-	n, oobn, recvflags, err = recvmsgRaw(fd, iov[:], oob, flags, &rsa)
+	if n, oobn, recvflags, err = recvmsgRaw(fd, iov[:], oob, flags, &rsa); err != nil {
+		return
+	}
 	// source address is only specified if the socket is unconnected
 	if rsa.Addr.Family != AF_UNSPEC {
 		from, err = anyToSockaddr(fd, &rsa)
@@ -373,8 +391,10 @@ func RecvmsgBuffers(fd int, buffers [][]byte, oob []byte, flags int) (n, oobn in
 		}
 	}
 	var rsa RawSockaddrAny
-	n, oobn, recvflags, err = recvmsgRaw(fd, iov, oob, flags, &rsa)
-	if err == nil && rsa.Addr.Family != AF_UNSPEC {
+	if n, oobn, recvflags, err = recvmsgRaw(fd, iov, oob, flags, &rsa); err != nil {
+		return
+	}
+	if rsa.Addr.Family != AF_UNSPEC {
 		from, err = anyToSockaddr(fd, &rsa)
 	}
 	return
@@ -540,6 +560,9 @@ func SetNonblock(fd int, nonblocking bool) (err error) {
 	flag, err := fcntl(fd, F_GETFL, 0)
 	if err != nil {
 		return err
+	}
+	if (flag&O_NONBLOCK != 0) == nonblocking {
+		return nil
 	}
 	if nonblocking {
 		flag |= O_NONBLOCK

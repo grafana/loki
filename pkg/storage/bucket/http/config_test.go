@@ -65,8 +65,6 @@ max_connections_per_host: 8
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			cfg := Config{}
 			flagext.DefaultValues(&cfg)

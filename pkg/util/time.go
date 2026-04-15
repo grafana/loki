@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive
 
 import (
 	"math"
@@ -9,8 +9,6 @@ import (
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"
-
-	utilsMath "github.com/grafana/loki/pkg/util/math"
 )
 
 const (
@@ -58,7 +56,7 @@ func DurationWithJitter(input time.Duration, variancePerc float64) time.Duration
 	}
 
 	variance := int64(float64(input) * variancePerc)
-	jitter := rand.Int63n(variance*2) - variance
+	jitter := rand.Int63n(variance*2) - variance //#nosec G404 -- Jitter does not require CSPRNG -- nosemgrep: math-random-used
 
 	return input + time.Duration(jitter)
 }
@@ -71,7 +69,7 @@ func DurationWithPositiveJitter(input time.Duration, variancePerc float64) time.
 	}
 
 	variance := int64(float64(input) * variancePerc)
-	jitter := rand.Int63n(variance)
+	jitter := rand.Int63n(variance) //#nosec G404 -- Jitter does not require CSPRNG -- nosemgrep: math-random-used
 
 	return input + time.Duration(jitter)
 }
@@ -86,6 +84,8 @@ func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
 	tick := time.NewTicker(interval)
 	return func() { tick.Stop() }, tick.C
 }
+
+const SplitGap = time.Millisecond
 
 // ForInterval splits the given start and end time into given interval.
 // The start and end time in splits would be aligned to the interval
@@ -107,7 +107,7 @@ func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive 
 		if !newEnd.Before(end) {
 			newEnd = end
 		} else if endTimeInclusive {
-			newEnd = newEnd.Add(-time.Millisecond)
+			newEnd = newEnd.Add(-SplitGap)
 		}
 		if firstInterval {
 			callback(ogStart, newEnd)
@@ -146,9 +146,13 @@ func GetFactorOfTime(from, through int64, minTime, maxTime int64) (factor float6
 	}
 
 	totalTime := maxTime - minTime
-	leadingTime := utilsMath.Max64(0, from-minTime)
-	trailingTime := utilsMath.Max64(0, maxTime-through)
+	leadingTime := max(0, from-minTime)
+	trailingTime := max(0, maxTime-through)
 	factor = float64(totalTime-(leadingTime+trailingTime)) / float64(totalTime)
 
 	return factor
+}
+
+func RetentionHours(retention time.Duration) string {
+	return strconv.FormatInt(int64(math.Floor(retention.Hours())), 10)
 }

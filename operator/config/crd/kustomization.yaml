@@ -1,3 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
 # This kustomization.yaml is not intended to be run by itself,
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
@@ -8,13 +11,8 @@ resources:
 - bases/loki.grafana.com_rulerconfigs.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
-patchesStrategicMerge:
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix.
 # patches here are for enabling the conversion webhook for each CRD
-- patches/webhook_in_lokistacks.yaml
-- patches/webhook_in_alertingrules.yaml
-- patches/webhook_in_recordingrules.yaml
-- patches/webhook_in_rulerconfigs.yaml
 # +kubebuilder:scaffold:crdkustomizewebhookpatch
 
 # [CERTMANAGER] To enable webhook, uncomment all the sections with [CERTMANAGER] prefix.
@@ -28,3 +26,9 @@ patchesStrategicMerge:
 # the following config is for teaching kustomize how to do kustomization for CRDs.
 configurations:
 - kustomizeconfig.yaml
+
+patches:
+- path: patches/webhook_in_lokistacks.yaml
+- path: patches/webhook_in_alertingrules.yaml
+- path: patches/webhook_in_recordingrules.yaml
+- path: patches/webhook_in_rulerconfigs.yaml

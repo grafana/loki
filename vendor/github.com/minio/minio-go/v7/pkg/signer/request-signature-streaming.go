@@ -90,32 +90,34 @@ func getStreamLength(dataLen, chunkSize int64, trailers http.Header) int64 {
 	return streamLen
 }
 
-// buildChunkStringToSign - returns the string to sign given chunk data
-// and previous signature.
-func buildChunkStringToSign(t time.Time, region, previousSig, chunkChecksum string) string {
+// buildChunkStringToSignWithService - like buildChunkStringToSign but with configurable service type.
+func buildChunkStringToSignWithService(t time.Time, region, previousSig, chunkChecksum, serviceType string) string {
+	if serviceType == "" {
+		serviceType = ServiceTypeS3
+	}
 	stringToSignParts := []string{
 		streamingPayloadHdr,
 		t.Format(iso8601DateFormat),
-		getScope(region, t, ServiceTypeS3),
+		getScope(region, t, serviceType),
 		previousSig,
 		emptySHA256,
 		chunkChecksum,
 	}
-
 	return strings.Join(stringToSignParts, "\n")
 }
 
-// buildTrailerChunkStringToSign - returns the string to sign given chunk data
-// and previous signature.
-func buildTrailerChunkStringToSign(t time.Time, region, previousSig, chunkChecksum string) string {
+// buildTrailerChunkStringToSignWithService - like buildTrailerChunkStringToSign but with configurable service type.
+func buildTrailerChunkStringToSignWithService(t time.Time, region, previousSig, chunkChecksum, serviceType string) string {
+	if serviceType == "" {
+		serviceType = ServiceTypeS3
+	}
 	stringToSignParts := []string{
 		streamingTrailerHdr,
 		t.Format(iso8601DateFormat),
-		getScope(region, t, ServiceTypeS3),
+		getScope(region, t, serviceType),
 		previousSig,
 		chunkChecksum,
 	}
-
 	return strings.Join(stringToSignParts, "\n")
 }
 
@@ -150,36 +152,42 @@ func buildChunkHeader(chunkLen int64, signature string) []byte {
 }
 
 // buildChunkSignature - returns chunk signature for a given chunk and previous signature.
+// serviceType defaults to ServiceTypeS3 when empty.
 func buildChunkSignature(chunkCheckSum string, reqTime time.Time, region,
-	previousSignature, secretAccessKey string,
+	previousSignature, secretAccessKey, serviceType string,
 ) string {
-	chunkStringToSign := buildChunkStringToSign(reqTime, region,
-		previousSignature, chunkCheckSum)
-	signingKey := getSigningKey(secretAccessKey, region, reqTime, ServiceTypeS3)
+	if serviceType == "" {
+		serviceType = ServiceTypeS3
+	}
+	chunkStringToSign := buildChunkStringToSignWithService(reqTime, region,
+		previousSignature, chunkCheckSum, serviceType)
+	signingKey := getSigningKey(secretAccessKey, region, reqTime, serviceType)
 	return getSignature(signingKey, chunkStringToSign)
 }
 
-// buildChunkSignature - returns chunk signature for a given chunk and previous signature.
+// buildTrailerChunkSignature - returns chunk signature for trailer chunk.
+// serviceType defaults to ServiceTypeS3 when empty.
 func buildTrailerChunkSignature(chunkChecksum string, reqTime time.Time, region,
-	previousSignature, secretAccessKey string,
+	previousSignature, secretAccessKey, serviceType string,
 ) string {
-	chunkStringToSign := buildTrailerChunkStringToSign(reqTime, region,
-		previousSignature, chunkChecksum)
-	signingKey := getSigningKey(secretAccessKey, region, reqTime, ServiceTypeS3)
+	if serviceType == "" {
+		serviceType = ServiceTypeS3
+	}
+	chunkStringToSign := buildTrailerChunkStringToSignWithService(reqTime, region,
+		previousSignature, chunkChecksum, serviceType)
+	signingKey := getSigningKey(secretAccessKey, region, reqTime, serviceType)
 	return getSignature(signingKey, chunkStringToSign)
 }
 
 // getSeedSignature - returns the seed signature for a given request.
 func (s *StreamingReader) setSeedSignature(req *http.Request) {
-	// Get canonical request
+	serviceType := s.serviceType
+	if serviceType == "" {
+		serviceType = ServiceTypeS3
+	}
 	canonicalRequest := getCanonicalRequest(*req, ignoredStreamingHeaders, getHashedPayload(*req))
-
-	// Get string to sign from canonical request.
-	stringToSign := getStringToSignV4(s.reqTime, s.region, canonicalRequest, ServiceTypeS3)
-
-	signingKey := getSigningKey(s.secretAccessKey, s.region, s.reqTime, ServiceTypeS3)
-
-	// Calculate signature.
+	stringToSign := getStringToSignV4(s.reqTime, s.region, canonicalRequest, serviceType)
+	signingKey := getSigningKey(s.secretAccessKey, s.region, s.reqTime, serviceType)
 	s.seedSignature = getSignature(signingKey, stringToSign)
 }
 
@@ -190,6 +198,7 @@ type StreamingReader struct {
 	secretAccessKey string
 	sessionToken    string
 	region          string
+	serviceType     string // e.g. ServiceTypeS3, ServiceTypeS3Outposts; empty means S3
 	prevSignature   string
 	seedSignature   string
 	contentLen      int64         // Content-Length from req header
@@ -214,8 +223,12 @@ func (s *StreamingReader) signChunk(chunkLen int, addCrLf bool) {
 	s.sh256.Write(s.chunkBuf[:chunkLen])
 	chunckChecksum := hex.EncodeToString(s.sh256.Sum(nil))
 
+	serviceType := s.serviceType
+	if serviceType == "" {
+		serviceType = ServiceTypeS3
+	}
 	signature := buildChunkSignature(chunckChecksum, s.reqTime,
-		s.region, s.prevSignature, s.secretAccessKey)
+		s.region, s.prevSignature, s.secretAccessKey, serviceType)
 
 	// For next chunk signature computation
 	s.prevSignature = signature
@@ -249,9 +262,12 @@ func (s *StreamingReader) addSignedTrailer(h http.Header) {
 	s.sh256.Reset()
 	s.sh256.Write(s.chunkBuf)
 	chunkChecksum := hex.EncodeToString(s.sh256.Sum(nil))
-	// Compute chunk signature
+	serviceType := s.serviceType
+	if serviceType == "" {
+		serviceType = ServiceTypeS3
+	}
 	signature := buildTrailerChunkSignature(chunkChecksum, s.reqTime,
-		s.region, s.prevSignature, s.secretAccessKey)
+		s.region, s.prevSignature, s.secretAccessKey, serviceType)
 
 	// For next chunk signature computation
 	s.prevSignature = signature
@@ -267,8 +283,8 @@ func (s *StreamingReader) addSignedTrailer(h http.Header) {
 
 // setStreamingAuthHeader - builds and sets authorization header value
 // for streaming signature.
-func (s *StreamingReader) setStreamingAuthHeader(req *http.Request) {
-	credential := GetCredential(s.accessKeyID, s.region, s.reqTime, ServiceTypeS3)
+func (s *StreamingReader) setStreamingAuthHeader(req *http.Request, serviceType string) {
+	credential := GetCredential(s.accessKeyID, s.region, s.reqTime, serviceType)
 	authParts := []string{
 		signV4Algorithm + " Credential=" + credential,
 		"SignedHeaders=" + getSignedHeaders(*req, ignoredStreamingHeaders),
@@ -278,6 +294,54 @@ func (s *StreamingReader) setStreamingAuthHeader(req *http.Request) {
 	// Set authorization header.
 	auth := strings.Join(authParts, ",")
 	req.Header.Set("Authorization", auth)
+}
+
+// StreamingSignV4Express - provides chunked upload signatureV4 support by
+// implementing io.Reader.
+func StreamingSignV4Express(req *http.Request, accessKeyID, secretAccessKey, sessionToken,
+	region string, dataLen int64, reqTime time.Time, sh256 md5simd.Hasher,
+) *http.Request {
+	// Set headers needed for streaming signature.
+	prepareStreamingRequest(req, sessionToken, dataLen, reqTime)
+
+	if req.Body == nil {
+		req.Body = io.NopCloser(bytes.NewReader([]byte("")))
+	}
+
+	stReader := &StreamingReader{
+		baseReadCloser:  req.Body,
+		accessKeyID:     accessKeyID,
+		secretAccessKey: secretAccessKey,
+		sessionToken:    sessionToken,
+		region:          region,
+		reqTime:         reqTime,
+		chunkBuf:        make([]byte, payloadChunkSize),
+		contentLen:      dataLen,
+		chunkNum:        1,
+		totalChunks:     int((dataLen+payloadChunkSize-1)/payloadChunkSize) + 1,
+		lastChunkSize:   int(dataLen % payloadChunkSize),
+		sh256:           sh256,
+	}
+	if len(req.Trailer) > 0 {
+		stReader.trailer = req.Trailer
+		// Remove...
+		req.Trailer = nil
+	}
+
+	// Add the request headers required for chunk upload signing.
+
+	// Compute the seed signature.
+	stReader.setSeedSignature(req)
+
+	// Set the authorization header with the seed signature.
+	stReader.setStreamingAuthHeader(req, ServiceTypeS3Express)
+
+	// Set seed signature as prevSignature for subsequent
+	// streaming signing process.
+	stReader.prevSignature = stReader.seedSignature
+	req.Body = stReader
+
+	return req
 }
 
 // StreamingSignV4 - provides chunked upload signatureV4 support by
@@ -318,13 +382,47 @@ func StreamingSignV4(req *http.Request, accessKeyID, secretAccessKey, sessionTok
 	stReader.setSeedSignature(req)
 
 	// Set the authorization header with the seed signature.
-	stReader.setStreamingAuthHeader(req)
+	stReader.setStreamingAuthHeader(req, ServiceTypeS3)
 
 	// Set seed signature as prevSignature for subsequent
 	// streaming signing process.
 	stReader.prevSignature = stReader.seedSignature
 	req.Body = stReader
 
+	return req
+}
+
+// StreamingSignV4Outposts - provides chunked upload signatureV4 support for S3 on Outposts (service name s3-outposts).
+func StreamingSignV4Outposts(req *http.Request, accessKeyID, secretAccessKey, sessionToken,
+	region string, dataLen int64, reqTime time.Time, sh256 md5simd.Hasher,
+) *http.Request {
+	prepareStreamingRequest(req, sessionToken, dataLen, reqTime)
+	if req.Body == nil {
+		req.Body = io.NopCloser(bytes.NewReader([]byte("")))
+	}
+	stReader := &StreamingReader{
+		baseReadCloser:  req.Body,
+		accessKeyID:     accessKeyID,
+		secretAccessKey: secretAccessKey,
+		sessionToken:    sessionToken,
+		region:          region,
+		serviceType:     ServiceTypeS3Outposts,
+		reqTime:         reqTime,
+		chunkBuf:        make([]byte, payloadChunkSize),
+		contentLen:      dataLen,
+		chunkNum:        1,
+		totalChunks:     int((dataLen+payloadChunkSize-1)/payloadChunkSize) + 1,
+		lastChunkSize:   int(dataLen % payloadChunkSize),
+		sh256:           sh256,
+	}
+	if len(req.Trailer) > 0 {
+		stReader.trailer = req.Trailer
+		req.Trailer = nil
+	}
+	stReader.setSeedSignature(req)
+	stReader.setStreamingAuthHeader(req, ServiceTypeS3Outposts)
+	stReader.prevSignature = stReader.seedSignature
+	req.Body = stReader
 	return req
 }
 
@@ -387,7 +485,6 @@ func (s *StreamingReader) Read(buf []byte) (int, error) {
 				}
 				return 0, err
 			}
-
 		}
 	}
 	return s.buf.Read(buf)

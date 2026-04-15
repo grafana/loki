@@ -1,16 +1,17 @@
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
+
 package analysis
 
 import (
-	"fmt"
-
 	"github.com/go-openapi/spec"
 	"github.com/go-openapi/strfmt"
 )
 
-// SchemaOpts configures the schema analyzer
+// SchemaOpts configures the schema analyzer.
 type SchemaOpts struct {
 	Schema   *spec.Schema
-	Root     interface{}
+	Root     any
 	BasePath string
 	_        struct{}
 }
@@ -19,7 +20,7 @@ type SchemaOpts struct {
 // patterns.
 func Schema(opts SchemaOpts) (*AnalyzedSchema, error) {
 	if opts.Schema == nil {
-		return nil, fmt.Errorf("no schema to analyze")
+		return nil, ErrNoSchema
 	}
 
 	a := &AnalyzedSchema{
@@ -51,10 +52,10 @@ func Schema(opts SchemaOpts) (*AnalyzedSchema, error) {
 	return a, nil
 }
 
-// AnalyzedSchema indicates what the schema represents
+// AnalyzedSchema indicates what the schema represents.
 type AnalyzedSchema struct {
 	schema   *spec.Schema
-	root     interface{}
+	root     any
 	basePath string
 
 	hasProps           bool
@@ -77,7 +78,7 @@ type AnalyzedSchema struct {
 	IsEnum           bool
 }
 
-// Inherits copies value fields from other onto this schema
+// Inherits copies value fields from other onto this schema.
 func (a *AnalyzedSchema) inherits(other *AnalyzedSchema) {
 	if other == nil {
 		return
@@ -247,10 +248,10 @@ func (a *AnalyzedSchema) isArrayType() bool {
 // isAnalyzedAsComplex determines if an analyzed schema is eligible to flattening (i.e. it is "complex").
 //
 // Complex means the schema is any of:
-//  - a simple type (primitive)
-//  - an array of something (items are possibly complex ; if this is the case, items will generate a definition)
-//  - a map of something (additionalProperties are possibly complex ; if this is the case, additionalProperties will
-//    generate a definition)
+//   - a simple type (primitive)
+//   - an array of something (items are possibly complex ; if this is the case, items will generate a definition)
+//   - a map of something (additionalProperties are possibly complex ; if this is the case, additionalProperties will
+//     generate a definition)
 func (a *AnalyzedSchema) isAnalyzedAsComplex() bool {
 	return !a.IsSimpleSchema && !a.IsArray && !a.IsMap
 }

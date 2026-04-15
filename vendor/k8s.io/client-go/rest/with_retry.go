@@ -209,18 +209,18 @@ func (r *withRetry) Before(ctx context.Context, request *Request) error {
 		// we do a backoff sleep before the first attempt is made,
 		// (preserving current behavior).
 		if request.backoff != nil {
-			request.backoff.Sleep(request.backoff.CalculateBackoff(url))
+			request.backoff.SleepWithContext(ctx, request.backoff.CalculateBackoffWithContext(ctx, url))
 		}
 		return nil
 	}
 
 	// if we are here, we have made attempt(s) at least once before.
 	if request.backoff != nil {
-		delay := request.backoff.CalculateBackoff(url)
+		delay := request.backoff.CalculateBackoffWithContext(ctx, url)
 		if r.retryAfter.Wait > delay {
 			delay = r.retryAfter.Wait
 		}
-		request.backoff.Sleep(delay)
+		request.backoff.SleepWithContext(ctx, delay)
 	}
 
 	// We are retrying the request that we already send to
@@ -231,7 +231,7 @@ func (r *withRetry) Before(ctx context.Context, request *Request) error {
 		return err
 	}
 
-	klog.V(4).Infof("Got a Retry-After %s response for attempt %d to %v", r.retryAfter.Wait, r.retryAfter.Attempt, request.URL().String())
+	klog.FromContext(ctx).V(4).Info("Got a Retry-After response", "delay", r.retryAfter.Wait, "attempt", r.retryAfter.Attempt, "url", request.URL())
 	return nil
 }
 
@@ -242,13 +242,25 @@ func (r *withRetry) After(ctx context.Context, request *Request, resp *http.Resp
 	// parameters calculated from the (response, err) tuple from
 	// attempt N-1, so r.retryAfter is outdated and should not be
 	// referred to here.
+	isRetry := r.retryAfter != nil
 	r.retryAfter = nil
+
+	// the client finishes a single request after N attempts (1..N)
+	//  - all attempts (1..N) are counted to the rest_client_requests_total
+	//    metric (current behavior).
+	//  - every attempt after the first (2..N) are counted to the
+	//    rest_client_request_retries_total metric.
+	updateRequestResultMetric(ctx, request, resp, err)
+	if isRetry {
+		// this is attempt 2 or later
+		updateRequestRetryMetric(ctx, request, resp, err)
+	}
 
 	if request.c.base != nil {
 		if err != nil {
-			request.backoff.UpdateBackoff(request.URL(), err, 0)
+			request.backoff.UpdateBackoffWithContext(ctx, request.URL(), err, 0)
 		} else {
-			request.backoff.UpdateBackoff(request.URL(), err, resp.StatusCode)
+			request.backoff.UpdateBackoffWithContext(ctx, request.URL(), err, resp.StatusCode)
 		}
 	}
 }
@@ -346,8 +358,12 @@ func retryAfterResponse() *http.Response {
 }
 
 func retryAfterResponseWithDelay(delay string) *http.Response {
+	return retryAfterResponseWithCodeAndDelay(http.StatusInternalServerError, delay)
+}
+
+func retryAfterResponseWithCodeAndDelay(code int, delay string) *http.Response {
 	return &http.Response{
-		StatusCode: http.StatusInternalServerError,
+		StatusCode: code,
 		Header:     http.Header{"Retry-After": []string{delay}},
 	}
 }

@@ -9,53 +9,81 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 func TestLazyChunkIterator(t *testing.T) {
-	for i, tc := range []struct {
-		chunk    *LazyChunk
-		expected []logproto.Stream
-	}{
-		// TODO: Add tests for metadata labels.
+	periodConfigs := []config.PeriodConfig{
 		{
-			newLazyChunk(logproto.Stream{
-				Labels: fooLabelsWithName.String(),
-				Hash:   fooLabelsWithName.Hash(),
-				Entries: []logproto.Entry{
-					{
-						Timestamp: from,
-						Line:      "1",
-					},
-				},
-			}),
-			[]logproto.Stream{
-				{
-					Labels: fooLabels.String(),
-					Hash:   fooLabels.Hash(),
+			From:      config.DayTime{Time: 0},
+			Schema:    "v11",
+			RowShards: 16,
+		},
+		{
+			From:      config.DayTime{Time: 0},
+			Schema:    "v12",
+			RowShards: 16,
+		},
+		{
+			From:      config.DayTime{Time: 0},
+			Schema:    "v13",
+			RowShards: 16,
+		},
+	}
+
+	for _, periodConfig := range periodConfigs {
+		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+		require.NoError(t, err)
+
+		for i, tc := range []struct {
+			chunk    *LazyChunk
+			expected []logproto.Stream
+		}{
+			// TODO: Add tests for metadata labels.
+			{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+					Labels: fooLabelsWithName.String(),
+					Hash:   labels.StableHash(fooLabelsWithName),
 					Entries: []logproto.Entry{
 						{
-							Timestamp: from,
-							Line:      "1",
+							Timestamp:          from,
+							Line:               "1",
+							Parsed:             logproto.EmptyLabelAdapters(),
+							StructuredMetadata: logproto.EmptyLabelAdapters(),
+						},
+					},
+				}),
+				[]logproto.Stream{
+					{
+						Labels: fooLabels.String(),
+						Hash:   labels.StableHash(fooLabels),
+						Entries: []logproto.Entry{
+							{
+								Timestamp:          from,
+								Line:               "1",
+								Parsed:             logproto.EmptyLabelAdapters(),
+								StructuredMetadata: logproto.EmptyLabelAdapters(),
+							},
 						},
 					},
 				},
 			},
-		},
-	} {
-		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
-			require.Nil(t, err)
-			streams, _, err := iter.ReadBatch(it, 1000)
-			require.Nil(t, err)
-			_ = it.Close()
-			require.Equal(t, tc.expected, streams.Streams)
-		})
+		} {
+			t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+				it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.New(labels.Label{Name: "foo", Value: "bar"})), nil)
+				require.Nil(t, err)
+				streams, _, err := iter.ReadBatch(it, 1000)
+				require.Nil(t, err)
+				_ = it.Close()
+				require.Equal(t, tc.expected, streams.Streams)
+			})
+		}
 	}
 }
 
@@ -178,11 +206,11 @@ func (fakeBlock) Entries() int     { return 0 }
 func (fakeBlock) Offset() int      { return 0 }
 func (f fakeBlock) MinTime() int64 { return f.mint }
 func (f fakeBlock) MaxTime() int64 { return f.maxt }
-func (fakeBlock) Iterator(context.Context, log.StreamPipeline, ...iter.EntryIteratorOption) iter.EntryIterator {
+func (fakeBlock) Iterator(context.Context, log.StreamPipeline) iter.EntryIterator {
 	return nil
 }
 
-func (fakeBlock) SampleIterator(context.Context, log.StreamSampleExtractor) iter.SampleIterator {
+func (fakeBlock) SampleIterator(_ context.Context, _ ...log.StreamSampleExtractor) iter.SampleIterator {
 	return nil
 }
 

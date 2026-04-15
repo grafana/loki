@@ -10,17 +10,16 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-
-	"github.com/grafana/loki/pkg/logproto"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/clients/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func Test_multilineStage_Process(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg, nil, true, false)
+	util_log.InitLogger(cfg, nil, false)
 	Debug = true
 
 	mcfg := &MultilineConfig{Expression: ptrFromString("^START"), MaxWaitTime: ptrFromString("3s")}
@@ -52,7 +51,7 @@ func Test_multilineStage_MultiStreams(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg, nil, true, false)
+	util_log.InitLogger(cfg, nil, false)
 	Debug = true
 
 	mcfg := &MultilineConfig{Expression: ptrFromString("^START"), MaxWaitTime: ptrFromString("3s")}
@@ -97,7 +96,7 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg, nil, true, false)
+	util_log.InitLogger(cfg, nil, false)
 	Debug = true
 
 	maxWait := 2 * time.Second
@@ -146,7 +145,7 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 func simpleEntry(line, label string) Entry {
 	return Entry{
 		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
+		Entry: util.Entry{
 			Labels: model.LabelSet{"value": model.LabelValue(label)},
 			Entry: logproto.Entry{
 				Timestamp: time.Now(),

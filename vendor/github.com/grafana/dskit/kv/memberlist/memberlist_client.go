@@ -5,7 +5,6 @@ import (
 	"context"
 	crypto_rand "crypto/rand"
 	"encoding/binary"
-	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -16,7 +15,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/golang/snappy"
 	"github.com/hashicorp/memberlist"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
@@ -24,12 +25,14 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/timeutil"
 )
 
 const (
 	maxCasRetries              = 10          // max retries in CAS operation
 	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
 	notifyMsgQueueSize         = 1024        // size of buffered channels to handle memberlist messages
+	watchPrefixBufferSize      = 128         // size of buffered channel for the WatchPrefix function
 )
 
 // Client implements kv.Client interface, by using memberlist.KV
@@ -72,8 +75,13 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 }
 
 // Delete is part of kv.Client interface.
-func (c *Client) Delete(_ context.Context, _ string) error {
-	return errors.New("memberlist does not support Delete")
+func (c *Client) Delete(ctx context.Context, key string) error {
+	err := c.awaitKVRunningOrStopping(ctx)
+	if err != nil {
+		return err
+	}
+
+	return c.kv.Delete(key)
 }
 
 // CAS is part of kv.Client interface
@@ -137,6 +145,7 @@ type KVConfig struct {
 	GossipToTheDeadTime time.Duration `yaml:"gossip_to_dead_nodes_time" category:"advanced"`
 	DeadNodeReclaimTime time.Duration `yaml:"dead_node_reclaim_time" category:"advanced"`
 	EnableCompression   bool          `yaml:"compression_enabled" category:"advanced"`
+	NotifyInterval      time.Duration `yaml:"notify_interval" category:"advanced"`
 
 	// ip:port to advertise other cluster members. Used for NAT traversal
 	AdvertiseAddr string `yaml:"advertise_addr"`
@@ -146,28 +155,49 @@ type KVConfig struct {
 	ClusterLabelVerificationDisabled bool   `yaml:"cluster_label_verification_disabled" category:"advanced"`
 
 	// List of members to join
-	JoinMembers      flagext.StringSlice `yaml:"join_members"`
-	MinJoinBackoff   time.Duration       `yaml:"min_join_backoff" category:"advanced"`
-	MaxJoinBackoff   time.Duration       `yaml:"max_join_backoff" category:"advanced"`
-	MaxJoinRetries   int                 `yaml:"max_join_retries" category:"advanced"`
-	AbortIfJoinFails bool                `yaml:"abort_if_cluster_join_fails"`
-	RejoinInterval   time.Duration       `yaml:"rejoin_interval" category:"advanced"`
+	JoinMembers                  flagext.StringSliceCSVMulti `yaml:"join_members"`
+	MinJoinBackoff               time.Duration               `yaml:"min_join_backoff" category:"advanced"`
+	MaxJoinBackoff               time.Duration               `yaml:"max_join_backoff" category:"advanced"`
+	MaxJoinRetries               int                         `yaml:"max_join_retries" category:"advanced"`
+	AbortIfFastJoinFails         bool                        `yaml:"abort_if_cluster_fast_join_fails" category:"advanced"`
+	AbortIfFastJoinFailsMinNodes int                         `yaml:"abort_if_cluster_fast_join_fails_min_nodes" category:"advanced"`
+	AbortIfJoinFails             bool                        `yaml:"abort_if_cluster_join_fails"`
+	RejoinInterval               time.Duration               `yaml:"rejoin_interval" category:"advanced"`
+	RejoinSeedNodes              flagext.StringSliceCSVMulti `yaml:"rejoin_seed_nodes" category:"experimental"`
 
 	// Remove LEFT ingesters from ring after this timeout.
-	LeftIngestersTimeout time.Duration `yaml:"left_ingesters_timeout" category:"advanced"`
+	LeftIngestersTimeout   time.Duration `yaml:"left_ingesters_timeout" category:"advanced"`
+	ObsoleteEntriesTimeout time.Duration `yaml:"obsolete_entries_timeout" category:"experimental"`
 
 	// Timeout used when leaving the memberlist cluster.
-	LeaveTimeout time.Duration `yaml:"leave_timeout" category:"advanced"`
+	LeaveTimeout                              time.Duration `yaml:"leave_timeout" category:"advanced"`
+	BroadcastTimeoutForLocalUpdatesOnShutdown time.Duration `yaml:"broadcast_timeout_for_local_updates_on_shutdown" category:"advanced"`
 
 	// How much space to use to keep received and sent messages in memory (for troubleshooting).
 	MessageHistoryBufferBytes int `yaml:"message_history_buffer_bytes" category:"advanced"`
 
+	// Size of the buffer for key watchers.
+	WatchPrefixBufferSize int `yaml:"watch_prefix_buffer_size" category:"advanced"`
+
 	TCPTransport TCPTransportConfig `yaml:",inline"`
+
+	// Zone-aware routing configuration.
+	ZoneAwareRouting ZoneAwareRoutingConfig `yaml:"zone_aware_routing"`
+
+	// Propagation delay tracker configuration.
+	PropagationDelayTracker PropagationDelayTrackerConfig `yaml:"propagation_delay_tracker" category:"experimental"`
 
 	MetricsNamespace string `yaml:"-"`
 
 	// Codecs to register. Codecs need to be registered before joining other members.
 	Codecs []codec.Codec `yaml:"-"`
+
+	// The backoff configuration used by retries when discovering memberlist members via DNS.
+	// This useful to override it in tests.
+	discoverMembersBackoff backoff.Config `yaml:"-"`
+
+	// Hooks used for testing.
+	beforeJoinMembersOnStartupHook func(_ context.Context)
 }
 
 // RegisterFlagsWithPrefix registers flags.
@@ -177,15 +207,19 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	// "Defaults to hostname" -- memberlist sets it to hostname by default.
 	f.StringVar(&cfg.NodeName, prefix+"memberlist.nodename", "", "Name of the node in memberlist cluster. Defaults to hostname.") // memberlist.DefaultLANConfig will put hostname here.
 	f.BoolVar(&cfg.RandomizeNodeName, prefix+"memberlist.randomize-node-name", true, "Add random suffix to the node name.")
-	f.DurationVar(&cfg.StreamTimeout, prefix+"memberlist.stream-timeout", mlDefaults.TCPTimeout, "The timeout for establishing a connection with a remote node, and for read/write operations.")
+	f.DurationVar(&cfg.StreamTimeout, prefix+"memberlist.stream-timeout", 2*time.Second, "The timeout for establishing a connection with a remote node, and for read/write operations.")
 	f.IntVar(&cfg.RetransmitMult, prefix+"memberlist.retransmit-factor", mlDefaults.RetransmitMult, "Multiplication factor used when sending out messages (factor * log(N+1)).")
-	f.Var(&cfg.JoinMembers, prefix+"memberlist.join", "Other cluster members to join. Can be specified multiple times. It can be an IP, hostname or an entry specified in the DNS Service Discovery format.")
+	f.Var(&cfg.JoinMembers, prefix+"memberlist.join", "Other cluster members to join. Can be specified multiple times or as a comma-separated list. It can be an IP, hostname or an entry specified in the DNS Service Discovery format.")
 	f.DurationVar(&cfg.MinJoinBackoff, prefix+"memberlist.min-join-backoff", 1*time.Second, "Min backoff duration to join other cluster members.")
 	f.DurationVar(&cfg.MaxJoinBackoff, prefix+"memberlist.max-join-backoff", 1*time.Minute, "Max backoff duration to join other cluster members.")
 	f.IntVar(&cfg.MaxJoinRetries, prefix+"memberlist.max-join-retries", 10, "Max number of retries to join other cluster members.")
-	f.BoolVar(&cfg.AbortIfJoinFails, prefix+"memberlist.abort-if-join-fails", cfg.AbortIfJoinFails, "If this node fails to join memberlist cluster, abort.")
+	f.BoolVar(&cfg.AbortIfFastJoinFails, prefix+"memberlist.abort-if-fast-join-fails", false, "Abort if this node fails the fast memberlist cluster joining procedure at startup. When enabled, it's guaranteed that other services, depending on memberlist, have an updated view over the cluster state when they're started.")
+	f.IntVar(&cfg.AbortIfFastJoinFailsMinNodes, prefix+"memberlist.abort-if-fast-join-fails-min-nodes", 1, "Minimum number of seed nodes that must be successfully joined during fast-join for it to succeed. Only applies when -memberlist.abort-if-fast-join-fails is enabled.")
+	f.BoolVar(&cfg.AbortIfJoinFails, prefix+"memberlist.abort-if-join-fails", cfg.AbortIfJoinFails, "Abort if this node fails to join memberlist cluster at startup. When enabled, it's not guaranteed that other services are started only after the cluster state has been successfully updated; use 'abort-if-fast-join-fails' instead.")
 	f.DurationVar(&cfg.RejoinInterval, prefix+"memberlist.rejoin-interval", 0, "If not 0, how often to rejoin the cluster. Occasional rejoin can help to fix the cluster split issue, and is harmless otherwise. For example when using only few components as a seed nodes (via -memberlist.join), then it's recommended to use rejoin. If -memberlist.join points to dynamic service that resolves to all gossiping nodes (eg. Kubernetes headless service), then rejoin is not needed.")
+	f.Var(&cfg.RejoinSeedNodes, prefix+"memberlist.rejoin-seed-nodes", "Seed nodes to use for periodic rejoin. Takes precedence over -memberlist.join for rejoining. If not specified, -memberlist.join is used. Can be specified multiple times or as a comma-separated list. Supports IP, hostname, or DNS Service Discovery format.")
 	f.DurationVar(&cfg.LeftIngestersTimeout, prefix+"memberlist.left-ingesters-timeout", 5*time.Minute, "How long to keep LEFT ingesters in the ring.")
+	f.DurationVar(&cfg.ObsoleteEntriesTimeout, prefix+"memberlist.obsolete-entries-timeout", mlDefaults.PushPullInterval, "How long to keep obsolete entries in the KV store.")
 	f.DurationVar(&cfg.LeaveTimeout, prefix+"memberlist.leave-timeout", 20*time.Second, "Timeout for leaving memberlist cluster.")
 	f.DurationVar(&cfg.GossipInterval, prefix+"memberlist.gossip-interval", mlDefaults.GossipInterval, "How often to gossip.")
 	f.IntVar(&cfg.GossipNodes, prefix+"memberlist.gossip-nodes", mlDefaults.GossipNodes, "How many nodes to gossip to.")
@@ -194,16 +228,41 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.DeadNodeReclaimTime, prefix+"memberlist.dead-node-reclaim-time", mlDefaults.DeadNodeReclaimTime, "How soon can dead node's name be reclaimed with new address. 0 to disable.")
 	f.IntVar(&cfg.MessageHistoryBufferBytes, prefix+"memberlist.message-history-buffer-bytes", 0, "How much space to use for keeping received and sent messages in memory for troubleshooting (two buffers). 0 to disable.")
 	f.BoolVar(&cfg.EnableCompression, prefix+"memberlist.compression-enabled", mlDefaults.EnableCompression, "Enable message compression. This can be used to reduce bandwidth usage at the cost of slightly more CPU utilization.")
+	f.DurationVar(&cfg.NotifyInterval, prefix+"memberlist.notify-interval", 0, "How frequently to notify watchers when a key changes. Can reduce CPU activity in large memberlist deployments. 0 to notify without delay.")
 	f.StringVar(&cfg.AdvertiseAddr, prefix+"memberlist.advertise-addr", mlDefaults.AdvertiseAddr, "Gossip address to advertise to other members in the cluster. Used for NAT traversal.")
 	f.IntVar(&cfg.AdvertisePort, prefix+"memberlist.advertise-port", mlDefaults.AdvertisePort, "Gossip port to advertise to other members in the cluster. Used for NAT traversal.")
 	f.StringVar(&cfg.ClusterLabel, prefix+"memberlist.cluster-label", mlDefaults.Label, "The cluster label is an optional string to include in outbound packets and gossip streams. Other members in the memberlist cluster will discard any message whose label doesn't match the configured one, unless the 'cluster-label-verification-disabled' configuration option is set to true.")
 	f.BoolVar(&cfg.ClusterLabelVerificationDisabled, prefix+"memberlist.cluster-label-verification-disabled", mlDefaults.SkipInboundLabelCheck, "When true, memberlist doesn't verify that inbound packets and gossip streams have the cluster label matching the configured one. This verification should be disabled while rolling out the change to the configured cluster label in a live memberlist cluster.")
+	f.DurationVar(&cfg.BroadcastTimeoutForLocalUpdatesOnShutdown, prefix+"memberlist.broadcast-timeout-for-local-updates-on-shutdown", 10*time.Second, "Timeout for broadcasting all remaining locally-generated updates to other nodes when shutting down. Only used if there are nodes left in the memberlist cluster, and only applies to locally-generated updates, not to broadcast messages that are result of incoming gossip updates. 0 = no timeout, wait until all locally-generated updates are sent.")
+	f.IntVar(&cfg.WatchPrefixBufferSize, prefix+"memberlist.watch-prefix-buffer-size", watchPrefixBufferSize, "Size of the buffered channel for the WatchPrefix function.")
 
 	cfg.TCPTransport.RegisterFlagsWithPrefix(f, prefix)
+	cfg.ZoneAwareRouting.RegisterFlagsWithPrefix(f, prefix+"memberlist.zone-aware-routing.")
+	cfg.PropagationDelayTracker.RegisterFlagsWithPrefix(f, prefix+"memberlist.propagation-delay-tracker.")
+
+	cfg.discoverMembersBackoff = backoff.Config{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 5 * time.Second,
+		MaxRetries: 10,
+	}
 }
 
 func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix(f, "")
+}
+
+// Validate validates the KV configuration.
+func (cfg *KVConfig) Validate() error {
+	return cfg.ZoneAwareRouting.Validate()
+}
+
+// GetRejoinSeedNodes returns the seed nodes to use for periodic rejoin.
+// If RejoinSeedNodes is set, it returns that. Otherwise, it falls back to JoinMembers.
+func (cfg *KVConfig) GetRejoinSeedNodes() []string {
+	if len(cfg.RejoinSeedNodes) > 0 {
+		return cfg.RejoinSeedNodes
+	}
+	return cfg.JoinMembers
 }
 
 func generateRandomSuffix(logger log.Logger) string {
@@ -222,7 +281,7 @@ func generateRandomSuffix(logger log.Logger) string {
 // If joining of the cluster if configured, it is done in Running state, and if join fails and Abort flag is set, service
 // fails.
 type KV struct {
-	services.Service
+	services.NamedService
 
 	cfg        KVConfig
 	logger     log.Logger
@@ -231,13 +290,17 @@ type KV struct {
 	// dns discovery provider
 	provider DNSProvider
 
-	// Protects access to memberlist and broadcasts fields.
-	delegateReady atomic.Bool
-	memberlist    *memberlist.Memberlist
-	broadcasts    *memberlist.TransmitLimitedQueue
+	// Protects access to memberlist and broadcast queues.
+	delegateReady    atomic.Bool
+	memberlist       *memberlist.Memberlist
+	localBroadcasts  *memberlist.TransmitLimitedQueue // queue for messages generated locally
+	gossipBroadcasts *memberlist.TransmitLimitedQueue // queue for messages that we forward from other nodes
+
+	// Node metadata for zone-aware routing (nil if zone-aware routing is disabled).
+	nodeMeta []byte
 
 	// KV Store.
-	storeMu sync.Mutex
+	storeMu sync.RWMutex
 	store   map[string]ValueDesc
 
 	// Codec registry
@@ -247,6 +310,10 @@ type KV struct {
 	watchersMu     sync.Mutex
 	watchers       map[string][]chan string
 	prefixWatchers map[string][]chan string
+
+	// Delayed notifications for watchers
+	notifMu          sync.Mutex
+	keyNotifications map[string]struct{}
 
 	// Buffers with sent and received messages. Used for troubleshooting only.
 	// New messages are appended, old messages (based on configured size limit) removed from the front.
@@ -264,6 +331,9 @@ type KV struct {
 	// closed on shutdown
 	shutdown chan struct{}
 
+	// Propagation delay tracker (nil if disabled).
+	propagationDelayTracker *PropagationDelayTracker
+
 	// metrics
 	numberOfReceivedMessages            prometheus.Counter
 	totalSizeOfReceivedMessages         prometheus.Counter
@@ -273,13 +343,15 @@ type KV struct {
 	numberOfPushes                      prometheus.Counter
 	totalSizeOfPulls                    prometheus.Counter
 	totalSizeOfPushes                   prometheus.Counter
-	numberOfBroadcastMessagesInQueue    prometheus.GaugeFunc
+	numberOfGossipMessagesInQueue       prometheus.GaugeFunc
+	numberOfLocalMessagesInQueue        prometheus.GaugeFunc
 	totalSizeOfBroadcastMessagesInQueue prometheus.Gauge
 	numberOfBroadcastMessagesDropped    prometheus.Counter
 	casAttempts                         prometheus.Counter
 	casFailures                         prometheus.Counter
 	casSuccesses                        prometheus.Counter
 	watchPrefixDroppedNotifications     *prometheus.CounterVec
+	numberOfKeyNotifications            prometheus.Gauge
 
 	storeValuesDesc        *prometheus.Desc
 	storeTombstones        *prometheus.GaugeVec
@@ -307,7 +379,7 @@ type Message struct {
 	Changes []string // List of changes in this message (as computed by *this* node).
 }
 
-// ValueDesc stores the value along with it's codec and local version.
+// ValueDesc stores the value along with its codec and local version.
 type ValueDesc struct {
 	// We store the decoded value here to prevent decoding the entire state for every
 	// update we receive. Whilst the updates are small and fast to decode,
@@ -320,6 +392,12 @@ type ValueDesc struct {
 
 	// ID of codec used to write this value. Only used when sending full state.
 	CodecID string
+
+	// Deleted is used to mark the value as deleted. The value is removed from the KV store after `ObsoleteEntriesTimeout`.
+	Deleted bool
+
+	// UpdateTime keeps track of the last time the value was updated.
+	UpdateTime time.Time
 }
 
 func (v ValueDesc) Clone() (result ValueDesc) {
@@ -334,6 +412,8 @@ type valueUpdate struct {
 	value       []byte
 	codec       codec.Codec
 	messageSize int
+	deleted     bool
+	updateTime  time.Time
 }
 
 func (v ValueDesc) String() string {
@@ -342,9 +422,9 @@ func (v ValueDesc) String() string {
 
 var (
 	// if merge fails because of CAS version mismatch, this error is returned. CAS operation reacts on it
-	errVersionMismatch  = errors.New("version mismatch")
-	errNoChangeDetected = errors.New("no change detected")
-	errTooManyRetries   = errors.New("too many retries")
+	errVersionMismatch     = errors.New("version mismatch")
+	errNoChangeDetected    = errors.New("no change detected")
+	emptySnappyEncodedData = snappy.Encode(nil, []byte{})
 )
 
 // NewKV creates new gossip-based KV service. Note that service needs to be started, until then it doesn't initialize
@@ -355,17 +435,18 @@ func NewKV(cfg KVConfig, logger log.Logger, dnsProvider DNSProvider, registerer 
 	cfg.TCPTransport.MetricsNamespace = cfg.MetricsNamespace
 
 	mlkv := &KV{
-		cfg:             cfg,
-		logger:          logger,
-		registerer:      registerer,
-		provider:        dnsProvider,
-		store:           make(map[string]ValueDesc),
-		codecs:          make(map[string]codec.Codec),
-		watchers:        make(map[string][]chan string),
-		prefixWatchers:  make(map[string][]chan string),
-		workersChannels: make(map[string]chan valueUpdate),
-		shutdown:        make(chan struct{}),
-		maxCasRetries:   maxCasRetries,
+		cfg:              cfg,
+		logger:           logger,
+		registerer:       registerer,
+		provider:         dnsProvider,
+		store:            make(map[string]ValueDesc),
+		codecs:           make(map[string]codec.Codec),
+		watchers:         make(map[string][]chan string),
+		keyNotifications: make(map[string]struct{}),
+		prefixWatchers:   make(map[string][]chan string),
+		workersChannels:  make(map[string]chan valueUpdate),
+		shutdown:         make(chan struct{}),
+		maxCasRetries:    maxCasRetries,
 	}
 
 	mlkv.createAndRegisterMetrics()
@@ -374,7 +455,13 @@ func NewKV(cfg KVConfig, logger log.Logger, dnsProvider DNSProvider, registerer 
 		mlkv.codecs[c.CodecID()] = c
 	}
 
-	mlkv.Service = services.NewBasicService(mlkv.starting, mlkv.running, mlkv.stopping)
+	// Register propagation delay tracker codec if enabled.
+	if cfg.PropagationDelayTracker.Enabled {
+		mlkv.codecs[PropagationDelayTrackerCodecID] = GetPropagationDelayTrackerCodec()
+	}
+
+	mlkv.NamedService = services.NewBasicService(mlkv.starting, mlkv.running, mlkv.stopping).WithName("memberlist_kv")
+
 	return mlkv
 }
 
@@ -431,9 +518,61 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	// node, because the TCP-based fallback will always trigger.
 	mlCfg.DisableTcpPings = true
 
+	// Configure zone-aware routing if enabled.
+	if m.cfg.ZoneAwareRouting.Enabled {
+		if err := m.configureZoneAwareRouting(mlCfg); err != nil {
+			return nil, fmt.Errorf("failed to configure zone-aware routing: %w", err)
+		}
+	}
+
 	level.Info(m.logger).Log("msg", "Using memberlist cluster label and node name", "cluster_label", mlCfg.Label, "node", mlCfg.Name)
 
 	return mlCfg, nil
+}
+
+// configureZoneAwareRouting configures zone-aware routing for memberlist.
+func (m *KV) configureZoneAwareRouting(mlCfg *memberlist.Config) error {
+	// Parse the role from the config string.
+	var role NodeRole
+	switch m.cfg.ZoneAwareRouting.Role {
+	case NodeRoleMember.String():
+		role = NodeRoleMember
+	case NodeRoleBridge.String():
+		role = NodeRoleBridge
+	default:
+		return fmt.Errorf("invalid zone-aware routing role: %s (valid values: %s, %s)", m.cfg.ZoneAwareRouting.Role, NodeRoleMember.String(), NodeRoleBridge.String())
+	}
+
+	// Encode the local node metadata.
+	localMeta, err := EncodeNodeMetadata(role, m.cfg.ZoneAwareRouting.Zone)
+	if err != nil {
+		return fmt.Errorf("failed to encode node metadata: %w", err)
+	}
+
+	// Store the encoded metadata so NodeMeta() can return it.
+	m.nodeMeta = localMeta
+
+	// Set up the node selection delegate.
+	mlCfg.NodeSelection = newZoneAwareNodeSelectionDelegate(role, m.cfg.ZoneAwareRouting.Zone, m.logger, m.registerer)
+
+	// The bridge always prefer another bridge as first node. If the bridge only push/pull to 1 node per interval, then
+	// it will only communicate to bridges, potentially leading to network partitioning if the gossiping is not
+	// working to propagate changes. To reduce the likelihood of network partitioning when gossiping is not
+	// working and periodic push/pull is enabled, we configure the bridge to push/pull to 2 nodes per interval
+	// (the first node is a bridge, and the second node is selected randomly).
+	if role == NodeRoleBridge {
+		mlCfg.PushPullNodes = 2
+	} else {
+		mlCfg.PushPullNodes = 1
+	}
+
+	level.Info(m.logger).Log(
+		"msg", "zone-aware routing enabled",
+		"zone", m.cfg.ZoneAwareRouting.Zone,
+		"role", role.String(),
+	)
+
+	return nil
 }
 
 func (m *KV) starting(ctx context.Context) error {
@@ -455,7 +594,11 @@ func (m *KV) starting(ctx context.Context) error {
 	}
 	// Finish delegate initialization.
 	m.memberlist = list
-	m.broadcasts = &memberlist.TransmitLimitedQueue{
+	m.localBroadcasts = &memberlist.TransmitLimitedQueue{
+		NumNodes:       list.NumMembers,
+		RetransmitMult: mlCfg.RetransmitMult,
+	}
+	m.gossipBroadcasts = &memberlist.TransmitLimitedQueue{
 		NumNodes:       list.NumMembers,
 		RetransmitMult: mlCfg.RetransmitMult,
 	}
@@ -463,7 +606,13 @@ func (m *KV) starting(ctx context.Context) error {
 
 	// Try to fast-join memberlist cluster in Starting state, so that we don't start with empty KV store.
 	if len(m.cfg.JoinMembers) > 0 {
-		m.fastJoinMembersOnStartup(ctx)
+		if err := m.fastJoinMembersOnStartup(ctx); err != nil {
+			level.Error(m.logger).Log("msg", "failed to fast-join the memberlist cluster at startup", "err", err)
+
+			if m.cfg.AbortIfFastJoinFails {
+				return fmt.Errorf("failed to fast-join the memberlist cluster at startup: %w", err)
+			}
+		}
 	}
 
 	return nil
@@ -472,31 +621,72 @@ func (m *KV) starting(ctx context.Context) error {
 var errFailedToJoinCluster = errors.New("failed to join memberlist cluster on startup")
 
 func (m *KV) running(ctx context.Context) error {
+	// The key notifications goroutine must be started as the very first thing, otherwise watch key notifications
+	// will be delayed. In particular, it must be started before the memberlist cluster full-join procedure (below)
+	// because it may take a long time to complete.
+	if m.cfg.NotifyInterval > 0 {
+		// Start delayed key notifications.
+		notifTicker := time.NewTicker(m.cfg.NotifyInterval)
+		defer notifTicker.Stop()
+		go m.monitorKeyNotifications(ctx, notifTicker.C)
+	}
+
 	ok := m.joinMembersOnStartup(ctx)
 	if !ok && m.cfg.AbortIfJoinFails {
 		return errFailedToJoinCluster
 	}
 
-	var tickerChan <-chan time.Time
-	if m.cfg.RejoinInterval > 0 && len(m.cfg.JoinMembers) > 0 {
-		t := time.NewTicker(m.cfg.RejoinInterval)
-		defer t.Stop()
-
-		tickerChan = t.C
+	// Start propagation delay tracker after joining the cluster, so that the first
+	// WatchKey callback has the full cluster state and correctly skips pre-existing beacons.
+	if m.cfg.PropagationDelayTracker.Enabled {
+		m.propagationDelayTracker = NewPropagationDelayTracker(
+			m,
+			m.cfg.PropagationDelayTracker,
+			m.memberlist.LocalNode().Name,
+			m.logger,
+			m.registerer,
+		)
+		if err := m.propagationDelayTracker.StartAsync(ctx); err != nil {
+			level.Warn(m.logger).Log("msg", "failed to start propagation delay tracker", "err", err)
+			m.propagationDelayTracker = nil
+		}
 	}
 
+	var tickerChan <-chan time.Time
+	if m.cfg.RejoinInterval > 0 && len(m.cfg.GetRejoinSeedNodes()) > 0 {
+		// Use a random initial delay between 0 and RejoinInterval to uniformly
+		// distribute rejoins across time when multiple processes start simultaneously.
+		initialDelay := 1 + time.Duration(math_rand.Int63n(int64(m.cfg.RejoinInterval)))
+		var stop func()
+		stop, tickerChan = timeutil.NewVariableTicker(initialDelay, m.cfg.RejoinInterval)
+		defer stop()
+	}
+
+	var obsoleteEntriesTickerChan <-chan time.Time
+	if m.cfg.ObsoleteEntriesTimeout > 0 {
+		obsoleteEntriesTicker := time.NewTicker(m.cfg.ObsoleteEntriesTimeout)
+		defer obsoleteEntriesTicker.Stop()
+
+		obsoleteEntriesTickerChan = obsoleteEntriesTicker.C
+	}
+
+	logger := log.With(m.logger, "phase", "periodic_rejoin")
 	for {
 		select {
 		case <-tickerChan:
-			members := m.discoverMembers(ctx, m.cfg.JoinMembers)
-
-			reached, err := m.memberlist.Join(members)
+			const numAttempts = 1 // don't retry if resolution fails, we will try again next time
+			reached, err := m.joinMembersWithRetries(ctx, m.cfg.GetRejoinSeedNodes(), numAttempts, logger)
 			if err == nil {
-				level.Info(m.logger).Log("msg", "re-joined memberlist cluster", "reached_nodes", reached)
+				level.Info(logger).Log("msg", "re-joined memberlist cluster", "reached_nodes", reached)
 			} else {
 				// Don't report error from rejoin, otherwise KV service would be stopped completely.
-				level.Warn(m.logger).Log("msg", "re-joining memberlist cluster failed", "err", err)
+				level.Warn(logger).Log("msg", "re-joining memberlist cluster failed", "err", err, "next_try_in", m.cfg.RejoinInterval)
 			}
+
+		case <-obsoleteEntriesTickerChan:
+			// cleanupObsoleteEntries is normally called during push/pull, but if there are no other
+			// nodes to push/pull with, we can call it periodically to make sure we remove unused entries from memory.
+			m.cleanupObsoleteEntries()
 
 		case <-ctx.Done():
 			return nil
@@ -526,10 +716,15 @@ func (m *KV) JoinMembers(members []string) (int, error) {
 }
 
 // fastJoinMembersOnStartup attempts to reach small subset of nodes (computed as RetransmitMult * log10(number of discovered members + 1)).
-func (m *KV) fastJoinMembersOnStartup(ctx context.Context) {
+func (m *KV) fastJoinMembersOnStartup(ctx context.Context) error {
 	startTime := time.Now()
 
-	nodes := m.discoverMembers(ctx, m.cfg.JoinMembers)
+	nodes, err := m.discoverMembersWithRetries(ctx, m.cfg.JoinMembers)
+	if err != nil && len(nodes) == 0 {
+		return err
+	}
+
+	// Shuffle the node addresses to randomize the ones picked for the fast join.
 	math_rand.Shuffle(len(nodes), func(i, j int) {
 		nodes[i], nodes[j] = nodes[j], nodes[i]
 	})
@@ -540,10 +735,10 @@ func (m *KV) fastJoinMembersOnStartup(ctx context.Context) {
 	level.Info(m.logger).Log("msg", "memberlist fast-join starting", "nodes_found", len(nodes), "to_join", toJoin)
 
 	totalJoined := 0
-	for toJoin > 0 && len(nodes) > 0 {
+	for toJoin > 0 && len(nodes) > 0 && ctx.Err() == nil {
 		reached, err := m.memberlist.Join(nodes[0:1]) // Try to join single node only.
 		if err != nil {
-			level.Debug(m.logger).Log("msg", "fast-joining node failed", "node", nodes[0], "err", err)
+			level.Info(m.logger).Log("msg", "fast-joining node failed", "node", nodes[0], "err", err)
 		}
 
 		totalJoined += reached
@@ -552,63 +747,154 @@ func (m *KV) fastJoinMembersOnStartup(ctx context.Context) {
 		nodes = nodes[1:]
 	}
 
-	l := level.Info(m.logger)
-	// Warn, if we didn't join any node.
-	if totalJoined == 0 {
-		l = level.Warn(m.logger)
+	if totalJoined < m.cfg.AbortIfFastJoinFailsMinNodes {
+		level.Warn(m.logger).Log("msg", "memberlist fast-join failed to reach minimum required seed nodes", "joined_nodes", totalJoined, "required_nodes", m.cfg.AbortIfFastJoinFailsMinNodes, "elapsed_time", time.Since(startTime))
+		return fmt.Errorf("fast-join failed to reach minimum required seed nodes: joined %d, required %d", totalJoined, m.cfg.AbortIfFastJoinFailsMinNodes)
 	}
-	l.Log("msg", "memberlist fast-join finished", "joined_nodes", totalJoined, "elapsed_time", time.Since(startTime))
+
+	level.Info(m.logger).Log("msg", "memberlist fast-join finished", "joined_nodes", totalJoined, "elapsed_time", time.Since(startTime))
+	return nil
 }
 
 // The joinMembersOnStartup method resolves the addresses of the given join_members hosts and asks memberlist to join to them.
 // This method cannot be called before KV.running state as it may wait for K8S DNS to resolve the service addresses of members
 // running this very method. Which means the service needs to be READY for K8S to add it to DNS.
 func (m *KV) joinMembersOnStartup(ctx context.Context) bool {
+	// Trigger a hook used for testing.
+	if m.cfg.beforeJoinMembersOnStartupHook != nil {
+		m.cfg.beforeJoinMembersOnStartupHook(ctx)
+	}
+
 	if len(m.cfg.JoinMembers) == 0 {
 		return true
 	}
 
+	logger := log.With(m.logger, "phase", "startup")
+	level.Info(logger).Log("msg", "joining memberlist cluster", "join_members", strings.Join(m.cfg.JoinMembers, ","))
 	startTime := time.Now()
-
-	level.Info(m.logger).Log("msg", "joining memberlist cluster", "join_members", strings.Join(m.cfg.JoinMembers, ","))
-
-	cfg := backoff.Config{
-		MinBackoff: m.cfg.MinJoinBackoff,
-		MaxBackoff: m.cfg.MaxJoinBackoff,
-		MaxRetries: m.cfg.MaxJoinRetries,
+	reached, err := m.joinMembersWithRetries(ctx, m.cfg.JoinMembers, m.cfg.MaxJoinRetries, logger)
+	if err != nil {
+		level.Error(logger).Log("msg", "joining memberlist cluster failed", "err", err, "elapsed_time", time.Since(startTime))
+		return false
 	}
-
-	boff := backoff.New(ctx, cfg)
-	var lastErr error
-
-	for boff.Ongoing() {
-		// We rejoin all nodes, including those that were joined during "fast-join".
-		// This is harmless and simpler.
-		nodes := m.discoverMembers(ctx, m.cfg.JoinMembers)
-
-		if len(nodes) > 0 {
-			reached, err := m.memberlist.Join(nodes) // err is only returned if reached==0.
-			if err == nil {
-				level.Info(m.logger).Log("msg", "joining memberlist cluster succeeded", "reached_nodes", reached, "elapsed_time", time.Since(startTime))
-				return true
-			}
-			level.Warn(m.logger).Log("msg", "joining memberlist cluster: failed to reach any nodes", "retries", boff.NumRetries(), "err", err)
-			lastErr = err
-		} else {
-			level.Warn(m.logger).Log("msg", "joining memberlist cluster: found no nodes to join", "retries", boff.NumRetries())
-		}
-
-		boff.Wait()
-	}
-
-	level.Error(m.logger).Log("msg", "joining memberlist cluster failed", "last_error", lastErr, "elapsed_time", time.Since(startTime))
-	return false
+	level.Info(logger).Log("msg", "joining memberlist cluster succeeded", "reached_nodes", reached, "elapsed_time", time.Since(startTime))
+	return true
 }
 
-// Provides a dns-based member disovery to join a memberlist cluster w/o knowning members' addresses upfront.
-func (m *KV) discoverMembers(ctx context.Context, members []string) []string {
+// joinMembersWithRetries joins the given members 100 at a time. After each batch of 100 it rediscovers the members.
+// This helps when the list of members is big and by the time we reach the end the originally resolved addresses may be obsolete.
+// joinMembersWithRetries returns an error iff it couldn't successfully join any node OR the context was cancelled.
+func (m *KV) joinMembersWithRetries(ctx context.Context, members []string, numAttempts int, logger log.Logger) (int, error) {
+	var (
+		cfg = backoff.Config{
+			MinBackoff: m.cfg.MinJoinBackoff,
+			MaxBackoff: m.cfg.MaxJoinBackoff,
+			MaxRetries: numAttempts,
+		}
+		boff               = backoff.New(ctx, cfg)
+		err                error
+		successfullyJoined = 0
+	)
+
+	for ; boff.Ongoing(); boff.Wait() {
+		successfullyJoined, err = m.joinMembersInBatches(ctx, members)
+		if successfullyJoined > 0 {
+			// If there are _some_ successful joins, then we can consider the join done.
+			// Mimicking the Join semantics we return an error only when we couldn't join any node at all
+			err = nil
+			break
+		}
+		level.Warn(logger).Log("msg", "joining memberlist cluster", "attempts", boff.NumRetries()+1, "max_attempts", numAttempts, "err", err)
+	}
+	if err == nil && boff.Err() != nil {
+		err = fmt.Errorf("joining memberlist: %w", boff.Err())
+	}
+
+	return successfullyJoined, err
+}
+
+// joinMembersInBatches joins the given members and re-resolves their addresses after joining 100 nodes.
+// joinMembersInBatches returns the number of nodes joined. joinMembersInBatches returns an error only when the
+// number of joined nodes is 0.
+func (m *KV) joinMembersInBatches(ctx context.Context, members []string) (int, error) {
+	const batchSize = 100
+	var (
+		attemptedNodes     = make(map[string]bool)
+		successfullyJoined = 0
+		lastErr            error
+		batch              = make([]string, batchSize)
+		nodes              []string
+	)
+	for moreAvailableNodes := true; ctx.Err() == nil && moreAvailableNodes; {
+		// Rediscover nodes and try to join a subset of them with each batch.
+		// When the list of nodes is large by the time we reach the end of the list some of the
+		// IPs can be unreachable.
+		//
+		// Ignores any DNS resolution error because it's not really actionable in this
+		// context.
+		newlyResolved, _ := m.discoverMembersWithRetries(ctx, members)
+		if len(newlyResolved) > 0 {
+			// If the resolution fails we keep using the nodes list from the last resolution.
+			// If that failed too, then we fail the join attempt.
+			nodes = newlyResolved
+		}
+
+		// Prepare batch
+		batch = batch[:0]
+		moreAvailableNodes = false
+		for _, n := range nodes {
+			if attemptedNodes[n] {
+				continue
+			}
+			if len(batch) >= batchSize {
+				moreAvailableNodes = true
+				break
+			}
+			batch = append(batch, n)
+			attemptedNodes[n] = true
+		}
+
+		// Join batch
+		joinedInBatch, err := m.joinMembersBatch(ctx, batch)
+		if err != nil {
+			lastErr = err
+		}
+		successfullyJoined += joinedInBatch
+	}
+	if successfullyJoined > 0 {
+		return successfullyJoined, nil
+	}
+	if successfullyJoined == 0 && lastErr == nil {
+		return 0, errors.New("found no nodes to join")
+	}
+	return 0, lastErr
+}
+
+// joinMembersBatch returns an error only if it couldn't successfully join any nodes or if ctx is cancelled.
+func (m *KV) joinMembersBatch(ctx context.Context, nodes []string) (successfullyJoined int, lastErr error) {
+	for nodeIdx := range nodes {
+		if ctx.Err() != nil {
+			return successfullyJoined, fmt.Errorf("joining batch: %w", context.Cause(ctx))
+		}
+		// Attempt to join a single node.
+		// The cost of calling Join shouldn't be different between passing all nodes in one invocation versus passing a single node per invocation.
+		reached, err := m.memberlist.Join(nodes[nodeIdx : nodeIdx+1])
+		successfullyJoined += reached
+		if err != nil {
+			lastErr = err
+		}
+	}
+	if successfullyJoined > 0 {
+		lastErr = nil
+	}
+	return successfullyJoined, lastErr
+}
+
+// Provides a dns-based member discovery to join a memberlist cluster w/o knowning members' addresses upfront.
+// May both return some addresses and an error in case of a partial resolution.
+func (m *KV) discoverMembers(ctx context.Context, members []string) ([]string, error) {
 	if len(members) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	var ms, resolve []string
@@ -624,33 +910,67 @@ func (m *KV) discoverMembers(ctx context.Context, members []string) []string {
 
 	err := m.provider.Resolve(ctx, resolve)
 	if err != nil {
-		level.Error(m.logger).Log("msg", "failed to resolve members", "addrs", strings.Join(resolve, ","), "err", err)
+		level.Warn(m.logger).Log("msg", "failed to resolve members", "addrs", strings.Join(resolve, ","), "err", err)
 	}
 
 	ms = append(ms, m.provider.Addresses()...)
 
-	return ms
+	return ms, err
+}
+
+// Like discoverMembers() but retries (up to 10 times) on error.
+func (m *KV) discoverMembersWithRetries(ctx context.Context, members []string) ([]string, error) {
+	boff := backoff.New(ctx, m.cfg.discoverMembersBackoff)
+
+	var (
+		lastErr   error
+		lastAddrs []string
+	)
+
+	for boff.Ongoing() {
+		lastAddrs, lastErr = m.discoverMembers(ctx, members)
+		if lastErr == nil {
+			return lastAddrs, nil
+		}
+
+		boff.Wait()
+	}
+
+	// We may have both some addresses and error, in case of a partial resolution.
+	return lastAddrs, lastErr
 }
 
 // While Stopping, we try to leave memberlist cluster and then shutdown memberlist client.
 // We do this in order to send out last messages, typically that ingester has LEFT the ring.
 func (m *KV) stopping(_ error) error {
-	level.Info(m.logger).Log("msg", "leaving memberlist cluster")
-
-	// Wait until broadcast queue is empty, but don't wait for too long.
-	// Also don't wait if there is just one node left.
-	// Problem is that broadcast queue is also filled up by state changes received from other nodes,
-	// so it may never be empty in a busy cluster. However, we generally only care about messages
-	// generated on this node via CAS, and those are disabled now (via casBroadcastsEnabled), and should be able
-	// to get out in this timeout.
-
-	waitTimeout := time.Now().Add(10 * time.Second)
-	for m.broadcasts.NumQueued() > 0 && m.memberlist.NumMembers() > 1 && time.Now().Before(waitTimeout) {
-		time.Sleep(250 * time.Millisecond)
+	// Stop propagation delay tracker if running.
+	if m.propagationDelayTracker != nil {
+		m.propagationDelayTracker.StopAsync()
+		if err := m.propagationDelayTracker.AwaitTerminated(context.Background()); err != nil {
+			level.Warn(m.logger).Log("msg", "error stopping propagation delay tracker", "err", err)
+		}
 	}
 
-	if cnt := m.broadcasts.NumQueued(); cnt > 0 {
-		level.Warn(m.logger).Log("msg", "broadcast messages left in queue", "count", cnt, "nodes", m.memberlist.NumMembers())
+	level.Info(m.logger).Log("msg", "leaving memberlist cluster")
+
+	// Wait until queue with locally-generated messages is empty, but don't wait for too long.
+	// Also don't wait if there is just one node left.
+	// Note: Once we enter Stopping state, we don't queue more locally-generated messages.
+
+	deadline := time.Now().Add(m.cfg.BroadcastTimeoutForLocalUpdatesOnShutdown)
+
+	msgs := m.localBroadcasts.NumQueued()
+	nodes := m.memberlist.NumMembers()
+	for msgs > 0 && nodes > 1 && (m.cfg.BroadcastTimeoutForLocalUpdatesOnShutdown <= 0 || time.Now().Before(deadline)) {
+		level.Info(m.logger).Log("msg", "waiting for locally-generated broadcast messages to be sent out", "count", msgs, "nodes", nodes)
+		time.Sleep(250 * time.Millisecond)
+
+		msgs = m.localBroadcasts.NumQueued()
+		nodes = m.memberlist.NumMembers()
+	}
+
+	if msgs > 0 {
+		level.Warn(m.logger).Log("msg", "locally-generated broadcast messages left the queue", "count", msgs, "nodes", nodes)
 	}
 
 	err := m.memberlist.Leave(m.cfg.LeaveTimeout)
@@ -757,7 +1077,7 @@ func (m *KV) WatchKey(ctx context.Context, key string, codec codec.Codec, f func
 // Watching ends when 'f' returns false, context is done, or this client is shut down.
 func (m *KV) WatchPrefix(ctx context.Context, prefix string, codec codec.Codec, f func(string, interface{}) bool) {
 	// we use bigger buffer here, since keys are interesting and we don't want to lose them.
-	w := make(chan string, 16)
+	w := make(chan string, m.cfg.WatchPrefixBufferSize)
 
 	// register watcher
 	m.watchersMu.Lock()
@@ -780,7 +1100,10 @@ func (m *KV) WatchPrefix(ctx context.Context, prefix string, codec codec.Codec, 
 				level.Warn(m.logger).Log("msg", "failed to decode value while watching for changes", "key", key, "err", err)
 				continue
 			}
-
+			if val == nil {
+				// Skip nil values that can be generated if the notification is received after the entry has been deleted
+				continue
+			}
 			if !f(key, val) {
 				return
 			}
@@ -811,7 +1134,60 @@ func removeWatcherChannel(k string, w chan string, watchers map[string][]chan st
 	}
 }
 
+// notifyWatchers sends notification to all watchers of given key. If delay is
+// enabled, it accumulates them for later sending.
 func (m *KV) notifyWatchers(key string) {
+	if m.cfg.NotifyInterval <= 0 {
+		m.notifyWatchersSync(key)
+		return
+	}
+
+	m.notifMu.Lock()
+	defer m.notifMu.Unlock()
+	m.keyNotifications[key] = struct{}{}
+}
+
+// monitorKeyNotifications sends accumulated notifications to all watchers of
+// respective keys when the given channel ticks.
+func (m *KV) monitorKeyNotifications(ctx context.Context, tickChan <-chan time.Time) {
+	if m.cfg.NotifyInterval <= 0 {
+		panic("sendNotifications called with NotifyInterval <= 0")
+	}
+
+	for {
+		select {
+		case <-tickChan:
+			m.sendKeyNotifications()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// sendKeyNotifications sends accumulated notifications to watchers of respective keys.
+func (m *KV) sendKeyNotifications() {
+	newNotifs := func() map[string]struct{} {
+		// Grab and clear accumulated notifications.
+		m.notifMu.Lock()
+		defer m.notifMu.Unlock()
+
+		if len(m.keyNotifications) == 0 {
+			return nil
+		}
+		newMap := make(map[string]struct{})
+		m.numberOfKeyNotifications.Set(float64(len(m.keyNotifications)))
+		notifs := m.keyNotifications
+		m.keyNotifications = newMap
+		return notifs
+	}
+
+	for key := range newNotifs() {
+		m.notifyWatchersSync(key)
+	}
+}
+
+// notifyWatcherSync immediately sends notification to all watchers of given key.
+func (m *KV) notifyWatchersSync(key string) {
 	m.watchersMu.Lock()
 	defer m.watchersMu.Unlock()
 
@@ -845,6 +1221,37 @@ func (m *KV) notifyWatchers(key string) {
 	}
 }
 
+func (m *KV) Delete(key string) error {
+	m.storeMu.Lock()
+	val, ok := m.store[key]
+	m.storeMu.Unlock()
+
+	if !ok || val.Deleted {
+		return nil
+	}
+
+	c := m.GetCodec(val.CodecID)
+	if c == nil {
+		level.Error(m.logger).Log("msg", "could not mark key for deletion due to an invalid codec", "key", key, "codec", val.CodecID)
+		return fmt.Errorf("invalid codec: %s", val.CodecID)
+	}
+
+	change, newver, deleted, updated, err := m.mergeValueForKey(key, val.value, false, 0, val.CodecID, true, time.Now())
+	if err != nil {
+		level.Error(m.logger).Log("msg", "could not mark key for deletion due to error while trying to merge new value", "key", key, "err", err)
+		return err
+	}
+
+	if newver > 0 {
+		m.notifyWatchers(key)
+		m.broadcastNewValue(key, change, newver, c, false, deleted, updated)
+	}
+
+	level.Info(m.logger).Log("msg", "successfully marked key for deletion", "key", key)
+
+	return nil
+}
+
 // CAS implements Compare-And-Set/Swap operation.
 //
 // CAS expects that value returned by 'f' function implements Mergeable interface. If it doesn't, CAS fails immediately.
@@ -875,7 +1282,7 @@ outer:
 			}
 		}
 
-		change, newver, retry, err := m.trySingleCas(key, codec, f)
+		change, newver, retry, deleted, updated, err := m.trySingleCas(key, codec, f)
 		if err != nil {
 			level.Debug(m.logger).Log("msg", "CAS attempt failed", "err", err, "retry", retry)
 
@@ -890,19 +1297,14 @@ outer:
 			m.casSuccesses.Inc()
 			m.notifyWatchers(key)
 
-			if m.State() == services.Running {
-				m.broadcastNewValue(key, change, newver, codec)
-			} else {
-				level.Warn(m.logger).Log("msg", "skipped broadcasting CAS update because memberlist KV is shutting down", "key", key)
-			}
+			m.broadcastNewValue(key, change, newver, codec, true, deleted, updated)
 		}
 
 		return nil
 	}
-
-	if lastError == errVersionMismatch {
-		// this is more likely error than version mismatch.
-		lastError = errTooManyRetries
+	if errors.Is(lastError, errVersionMismatch) {
+		// Version mismatch err on CAS would have been retried up to the limit
+		lastError = errors.Wrap(lastError, "too many retries")
 	}
 
 	m.casFailures.Inc()
@@ -911,56 +1313,63 @@ outer:
 
 // returns change, error (or nil, if CAS succeeded), and whether to retry or not.
 // returns errNoChangeDetected if merge failed to detect change in f's output.
-func (m *KV) trySingleCas(key string, codec codec.Codec, f func(in interface{}) (out interface{}, retry bool, err error)) (Mergeable, uint, bool, error) {
+func (m *KV) trySingleCas(key string, codec codec.Codec, f func(in interface{}) (out interface{}, retry bool, err error)) (Mergeable, uint, bool, bool, time.Time, error) {
 	val, ver, err := m.get(key, codec)
 	if err != nil {
-		return nil, 0, false, fmt.Errorf("failed to get value: %v", err)
+		return nil, 0, false, false, time.Time{}, fmt.Errorf("failed to get value: %v", err)
 	}
 
 	out, retry, err := f(val)
 	if err != nil {
-		return nil, 0, retry, fmt.Errorf("fn returned error: %v", err)
+		return nil, 0, retry, false, time.Time{}, fmt.Errorf("fn returned error: %v", err)
 	}
 
 	if out == nil {
 		// no change to be done
-		return nil, 0, false, nil
+		return nil, 0, false, false, time.Time{}, nil
 	}
 
 	// Don't even try
-	r, ok := out.(Mergeable)
-	if !ok || r == nil {
-		return nil, 0, retry, fmt.Errorf("invalid type: %T, expected Mergeable", out)
+	incomingValue, ok := out.(Mergeable)
+	if !ok || incomingValue == nil {
+		return nil, 0, retry, false, time.Time{}, fmt.Errorf("invalid type: %T, expected Mergeable", out)
 	}
 
 	// To support detection of removed items from value, we will only allow CAS operation to
 	// succeed if version hasn't changed, i.e. state hasn't changed since running 'f'.
-	change, newver, err := m.mergeValueForKey(key, r, ver, codec)
+	// Supplied function may have kept a reference to the returned "incoming value".
+	// If KV store will keep this value as well, it needs to make a clone.
+	change, newver, deleted, updated, err := m.mergeValueForKey(key, incomingValue, true, ver, codec.CodecID(), false, time.Now())
 	if err == errVersionMismatch {
-		return nil, 0, retry, err
+		return nil, 0, retry, false, time.Time{}, err
 	}
 
 	if err != nil {
-		return nil, 0, retry, fmt.Errorf("merge failed: %v", err)
+		return nil, 0, retry, false, time.Time{}, fmt.Errorf("merge failed: %v", err)
 	}
 
 	if newver == 0 {
 		// CAS method reacts on this error
-		return nil, 0, retry, errNoChangeDetected
+		return nil, 0, retry, deleted, updated, errNoChangeDetected
 	}
 
-	return change, newver, retry, nil
+	return change, newver, retry, deleted, updated, nil
 }
 
-func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec codec.Codec) {
+func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec codec.Codec, locallyGenerated bool, deleted bool, updateTime time.Time) {
+	if locallyGenerated && m.State() != services.Running {
+		level.Warn(m.logger).Log("msg", "skipped broadcasting of locally-generated update because memberlist KV is shutting down", "key", key)
+		return
+	}
 	data, err := codec.Encode(change)
+
 	if err != nil {
 		level.Error(m.logger).Log("msg", "failed to encode change", "key", key, "version", version, "err", err)
 		m.numberOfBroadcastMessagesDropped.Inc()
 		return
 	}
 
-	kvPair := KeyValuePair{Key: key, Value: data, Codec: codec.CodecID()}
+	kvPair := KeyValuePair{Key: key, Value: data, Codec: codec.CodecID(), Deleted: deleted, UpdateTimeMillis: updateTimeMillis(updateTime)}
 	pairData, err := kvPair.Marshal()
 	if err != nil {
 		level.Error(m.logger).Log("msg", "failed to serialize KV pair", "key", key, "version", version, "err", err)
@@ -968,22 +1377,41 @@ func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec
 		return
 	}
 
+	mergedChanges := change.MergeContent()
 	m.addSentMessage(Message{
 		Time:    time.Now(),
 		Size:    len(pairData),
 		Pair:    kvPair,
 		Version: version,
-		Changes: change.MergeContent(),
+		Changes: mergedChanges,
 	})
 
-	m.queueBroadcast(key, change.MergeContent(), version, pairData)
+	l := len(pairData)
+	b := ringBroadcast{
+		key:     key,
+		content: mergedChanges,
+		version: version,
+		msg:     pairData,
+		finished: func(ringBroadcast) {
+			m.totalSizeOfBroadcastMessagesInQueue.Sub(float64(l))
+		},
+		logger: m.logger,
+	}
+
+	m.totalSizeOfBroadcastMessagesInQueue.Add(float64(l))
+
+	if locallyGenerated {
+		m.localBroadcasts.QueueBroadcast(b)
+	} else {
+		m.gossipBroadcasts.QueueBroadcast(b)
+	}
 }
 
 // NodeMeta is method from Memberlist Delegate interface
 func (m *KV) NodeMeta(_ int) []byte {
-	// we can send local state from here (512 bytes only)
-	// if state is updated, we need to tell memberlist to distribute it.
-	return nil
+	// Return the encoded node metadata if zone-aware routing is enabled.
+	// Otherwise, return nil (no metadata).
+	return m.nodeMeta
 }
 
 // NotifyMsg is method from Memberlist Delegate interface
@@ -1019,7 +1447,7 @@ func (m *KV) NotifyMsg(msg []byte) {
 
 	ch := m.getKeyWorkerChannel(kvPair.Key)
 	select {
-	case ch <- valueUpdate{value: kvPair.Value, codec: codec, messageSize: len(msg)}:
+	case ch <- valueUpdate{value: kvPair.Value, codec: codec, messageSize: len(msg), deleted: kvPair.Deleted, updateTime: updateTime(kvPair.UpdateTimeMillis)}:
 	default:
 		m.numberOfDroppedMessages.Inc()
 		level.Warn(m.logger).Log("msg", "notify queue full, dropping message", "key", kvPair.Key)
@@ -1046,7 +1474,7 @@ func (m *KV) processValueUpdate(workerCh <-chan valueUpdate, key string) {
 		select {
 		case update := <-workerCh:
 			// we have a value update! Let's merge it with our current version for given key
-			mod, version, err := m.mergeBytesValueForKey(key, update.value, update.codec)
+			mod, version, deleted, updated, err := m.mergeBytesValueForKey(key, update.value, update.codec, update.deleted, update.updateTime)
 
 			changes := []string(nil)
 			if mod != nil {
@@ -1057,9 +1485,11 @@ func (m *KV) processValueUpdate(workerCh <-chan valueUpdate, key string) {
 				Time: time.Now(),
 				Size: update.messageSize,
 				Pair: KeyValuePair{
-					Key:   key,
-					Value: update.value,
-					Codec: update.codec.CodecID(),
+					Key:              key,
+					Value:            update.value,
+					Codec:            update.codec.CodecID(),
+					Deleted:          deleted,
+					UpdateTimeMillis: updateTimeMillis(updated),
 				},
 				Version: version,
 				Changes: changes,
@@ -1070,8 +1500,8 @@ func (m *KV) processValueUpdate(workerCh <-chan valueUpdate, key string) {
 			} else if version > 0 {
 				m.notifyWatchers(key)
 
-				// Don't resend original message, but only changes.
-				m.broadcastNewValue(key, mod, version, update.codec)
+				// Don't resend original message, but only changes, if any.
+				m.broadcastNewValue(key, mod, version, update.codec, false, deleted, updated)
 			}
 
 		case <-m.shutdown:
@@ -1081,24 +1511,6 @@ func (m *KV) processValueUpdate(workerCh <-chan valueUpdate, key string) {
 	}
 }
 
-func (m *KV) queueBroadcast(key string, content []string, version uint, message []byte) {
-	l := len(message)
-
-	b := ringBroadcast{
-		key:     key,
-		content: content,
-		version: version,
-		msg:     message,
-		finished: func(b ringBroadcast) {
-			m.totalSizeOfBroadcastMessagesInQueue.Sub(float64(l))
-		},
-		logger: m.logger,
-	}
-
-	m.totalSizeOfBroadcastMessagesInQueue.Add(float64(l))
-	m.broadcasts.QueueBroadcast(b)
-}
-
 // GetBroadcasts is method from Memberlist Delegate interface
 // It returns all pending broadcasts (within the size limit)
 func (m *KV) GetBroadcasts(overhead, limit int) [][]byte {
@@ -1106,7 +1518,18 @@ func (m *KV) GetBroadcasts(overhead, limit int) [][]byte {
 		return nil
 	}
 
-	return m.broadcasts.GetBroadcasts(overhead, limit)
+	// Prioritize locally-generated messages
+	msgs := m.localBroadcasts.GetBroadcasts(overhead, limit)
+
+	// Decrease limit for each message we got from locally-generated broadcasts.
+	for _, m := range msgs {
+		limit -= overhead + len(m)
+	}
+
+	if limit > 0 {
+		msgs = append(msgs, m.gossipBroadcasts.GetBroadcasts(overhead, limit)...)
+	}
+	return msgs
 }
 
 // LocalState is method from Memberlist Delegate interface
@@ -1152,6 +1575,8 @@ func (m *KV) LocalState(_ bool) []byte {
 		kvPair.Key = key
 		kvPair.Value = encoded
 		kvPair.Codec = val.CodecID
+		kvPair.Deleted = val.Deleted
+		kvPair.UpdateTimeMillis = updateTimeMillis(val.UpdateTime)
 
 		ser, err := kvPair.Marshal()
 		if err != nil {
@@ -1234,7 +1659,7 @@ func (m *KV) MergeRemoteState(data []byte, _ bool) {
 		}
 
 		// we have both key and value, try to merge it with our state
-		change, newver, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec)
+		change, newver, deleted, updated, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec, kvPair.Deleted, updateTime(kvPair.UpdateTimeMillis))
 
 		changes := []string(nil)
 		if change != nil {
@@ -1253,7 +1678,7 @@ func (m *KV) MergeRemoteState(data []byte, _ bool) {
 			level.Error(m.logger).Log("msg", "failed to store received value", "key", kvPair.Key, "err", err)
 		} else if newver > 0 {
 			m.notifyWatchers(kvPair.Key)
-			m.broadcastNewValue(kvPair.Key, change, newver, codec)
+			m.broadcastNewValue(kvPair.Key, change, newver, codec, false, deleted, updated)
 		}
 	}
 
@@ -1262,25 +1687,30 @@ func (m *KV) MergeRemoteState(data []byte, _ bool) {
 	}
 }
 
-func (m *KV) mergeBytesValueForKey(key string, incomingData []byte, codec codec.Codec) (Mergeable, uint, error) {
+func (m *KV) mergeBytesValueForKey(key string, incomingData []byte, codec codec.Codec, deleted bool, updateTime time.Time) (Mergeable, uint, bool, time.Time, error) {
+	// Even if there is no change to the Mergeable, we still may need to update the timestamp and deleted state.
+	if len(incomingData) == 0 {
+		incomingData = emptySnappyEncodedData
+	}
 	decodedValue, err := codec.Decode(incomingData)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to decode value: %v", err)
+		return nil, 0, false, time.Time{}, fmt.Errorf("failed to decode value: %v", err)
 	}
 
 	incomingValue, ok := decodedValue.(Mergeable)
 	if !ok {
-		return nil, 0, fmt.Errorf("expected Mergeable, got: %T", decodedValue)
+		return nil, 0, false, time.Time{}, fmt.Errorf("expected Mergeable, got: %T", decodedValue)
 	}
 
-	return m.mergeValueForKey(key, incomingValue, 0, codec)
+	// No need to clone this "incomingValue", since we have just decoded it from bytes, and won't be using it.
+	return m.mergeValueForKey(key, incomingValue, false, 0, codec.CodecID(), deleted, updateTime)
 }
 
 // Merges incoming value with value we have in our store. Returns "a change" that can be sent to other
 // cluster members to update their state, and new version of the value.
 // If CAS version is specified, then merging will fail if state has changed already, and errVersionMismatch is reported.
 // If no modification occurred, new version is 0.
-func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion uint, codec codec.Codec) (Mergeable, uint, error) {
+func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, incomingValueRequiresClone bool, casVersion uint, codecID string, deleted bool, updateTime time.Time) (change Mergeable, newVersion uint, newDeleted bool, newUpdated time.Time, err error) {
 	m.storeMu.Lock()
 	defer m.storeMu.Unlock()
 
@@ -1288,18 +1718,32 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 	// This is safe because the entire function runs under the store lock; we do not return
 	// the full state anywhere as is done elsewhere (i.e. Get/WatchKey/CAS).
 	curr := m.store[key]
+
+	// if current entry is nil but the incoming for that key is deleted then we return no change, as we do not want to revive the entry.
+	if curr.value == nil && deleted {
+		return nil, 0, false, time.Time{}, err
+	}
+
 	// if casVersion is 0, then there was no previous value, so we will just do normal merge, without localCAS flag set.
 	if casVersion > 0 && curr.Version != casVersion {
-		return nil, 0, errVersionMismatch
+		return nil, 0, false, time.Time{}, errVersionMismatch
 	}
-	result, change, err := computeNewValue(incomingValue, curr.value, casVersion > 0)
+	result, change, err := computeNewValue(incomingValue, incomingValueRequiresClone, curr.value, casVersion > 0)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, time.Time{}, err
+	}
+	newUpdated = curr.UpdateTime
+	newDeleted = curr.Deleted
+
+	// If incoming value is newer, use its timestamp and deleted value
+	if !updateTime.IsZero() && updateTime.After(newUpdated) && deleted {
+		newUpdated = updateTime
+		newDeleted = deleted
 	}
 
 	// No change, don't store it.
-	if change == nil || len(change.MergeContent()) == 0 {
-		return nil, 0, nil
+	if (change == nil || len(change.MergeContent()) == 0) && curr.Deleted == newDeleted {
+		return nil, 0, curr.Deleted, curr.UpdateTime, nil
 	}
 
 	if m.cfg.LeftIngestersTimeout > 0 {
@@ -1314,29 +1758,47 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 		// Note that "result" and "change" may actually be the same Mergeable. That is why we
 		// call RemoveTombstones on "result" first, so that we get the correct metrics. Calling
 		// RemoveTombstones twice with same limit should be noop.
-		change.RemoveTombstones(limit)
-		if len(change.MergeContent()) == 0 {
-			return nil, 0, nil
+		if change != nil {
+			change.RemoveTombstones(limit)
+			if len(change.MergeContent()) == 0 {
+				return nil, 0, curr.Deleted, curr.UpdateTime, nil
+			}
 		}
 	}
 
-	newVersion := curr.Version + 1
+	if change == nil && curr.Deleted != newDeleted {
+		// return result as change if the only thing that changes is the Delete state of the entry.
+		change = result
+	}
+
+	newVersion = curr.Version + 1
 	m.store[key] = ValueDesc{
-		value:   result,
-		Version: newVersion,
-		CodecID: codec.CodecID(),
+		value:      result,
+		Version:    newVersion,
+		CodecID:    codecID,
+		Deleted:    newDeleted,
+		UpdateTime: newUpdated,
 	}
 
 	// The "changes" returned by Merge() can contain references to the "result"
 	// state. Therefore, make sure we clone it before releasing the lock.
-	change = change.Clone()
-
-	return change, newVersion, nil
+	if change != nil {
+		change = change.Clone()
+	}
+	return change, newVersion, newDeleted, newUpdated, nil
 }
 
 // returns [result, change, error]
-func computeNewValue(incoming Mergeable, oldVal Mergeable, cas bool) (Mergeable, Mergeable, error) {
+func computeNewValue(incoming Mergeable, incomingValueRequiresClone bool, oldVal Mergeable, cas bool) (Mergeable, Mergeable, error) {
 	if oldVal == nil {
+		// It's OK to return the same value twice (once as result, once as change), because "change" will be cloned
+		// in mergeValueForKey if needed.
+
+		if incomingValueRequiresClone {
+			clone := incoming.Clone()
+			return clone, clone, nil
+		}
+
 		return incoming, incoming, nil
 	}
 
@@ -1355,6 +1817,7 @@ func (m *KV) storeCopy() map[string]ValueDesc {
 	}
 	return result
 }
+
 func (m *KV) addReceivedMessage(msg Message) {
 	if m.cfg.MessageHistoryBufferBytes == 0 {
 		return
@@ -1401,6 +1864,17 @@ func (m *KV) deleteSentReceivedMessages() {
 	m.receivedMessagesSize = 0
 }
 
+func (m *KV) cleanupObsoleteEntries() {
+	m.storeMu.Lock()
+	defer m.storeMu.Unlock()
+
+	for k, v := range m.store {
+		if v.Deleted && time.Since(v.UpdateTime) > m.cfg.ObsoleteEntriesTimeout {
+			delete(m.store, k)
+		}
+	}
+}
+
 func addMessageToBuffer(msgs []Message, size int, limit int, msg Message) ([]Message, int) {
 	msgs = append(msgs, msg)
 	size += msg.Size
@@ -1411,4 +1885,18 @@ func addMessageToBuffer(msgs []Message, size int, limit int, msg Message) ([]Mes
 	}
 
 	return msgs, size
+}
+
+func updateTime(val int64) time.Time {
+	if val == 0 {
+		return time.Time{}
+	}
+	return time.UnixMilli(val)
+}
+
+func updateTimeMillis(ts time.Time) int64 {
+	if ts.IsZero() {
+		return 0
+	}
+	return ts.UnixMilli()
 }

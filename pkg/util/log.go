@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive
 
 import (
 	"fmt"
@@ -71,22 +71,4 @@ func (l LogAdapter) Printf(format string, v ...interface{}) {
 // Println implements tail.logger
 func (l LogAdapter) Println(v ...interface{}) {
 	level.Info(l).Log("msg", fmt.Sprint(v...))
-}
-
-// LogFilter translates a log level into a go-kit/log level filter.
-//
-// TODO(dannyk): remove once weaveworks/common updates to go-kit/log, we can then revert to using Level.Gokit
-func LogFilter(l string) level.Option {
-	switch l {
-	case "debug":
-		return level.AllowDebug()
-	case "info":
-		return level.AllowInfo()
-	case "warn":
-		return level.AllowWarn()
-	case "error":
-		return level.AllowError()
-	default:
-		return level.AllowAll()
-	}
 }

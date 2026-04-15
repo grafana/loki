@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -38,10 +38,4 @@ func (m *maxTimestamp) Get() float64 {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	return m.value
-}
-
-func (m *maxTimestamp) Collect(c chan<- prometheus.Metric) {
-	if m.Get() > 0 {
-		m.Gauge.Collect(c)
-	}
 }

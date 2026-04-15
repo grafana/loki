@@ -23,39 +23,41 @@ import (
 // can be stubbed out for unit testing your code with the SDK without needing
 // to inject custom request handlers into the SDK's request pipeline.
 //
-//    // myFunc uses an SDK service client to make a request to
-//    // Amazon Simple Storage Service.
-//    func myFunc(svc s3iface.S3API) bool {
-//        // Make svc.AbortMultipartUpload request
-//    }
+//	// myFunc uses an SDK service client to make a request to
+//	// Amazon Simple Storage Service.
+//	func myFunc(svc s3iface.S3API) bool {
+//	    // Make svc.AbortMultipartUpload request
+//	}
 //
 // IBM COS SDK Code -- START
-//    func main() {
-//        sess := session.Must(session.NewSession())
-//        svc := s3.New(sess)
 //
-//        myFunc(svc)
-//    }
-// IBM COS SDK Code -- END
+//	func main() {
+//	    sess := session.Must(session.NewSession())
+//	    svc := s3.New(sess)
+//
+//	    myFunc(svc)
+//	}
+//
+// # IBM COS SDK Code -- END
 //
 // In your _test.go file:
 //
-//    // Define a mock struct to be used in your unit tests of myFunc.
-//    type mockS3Client struct {
-//        s3iface.S3API
-//    }
-//    func (m *mockS3Client) AbortMultipartUpload(input *s3.AbortMultipartUploadInput) (*s3.AbortMultipartUploadOutput, error) {
-//        // mock response/functionality
-//    }
+//	// Define a mock struct to be used in your unit tests of myFunc.
+//	type mockS3Client struct {
+//	    s3iface.S3API
+//	}
+//	func (m *mockS3Client) AbortMultipartUpload(input *s3.AbortMultipartUploadInput) (*s3.AbortMultipartUploadOutput, error) {
+//	    // mock response/functionality
+//	}
 //
-//    func TestMyFunc(t *testing.T) {
-//        // Setup Test
-//        mockSvc := &mockS3Client{}
+//	func TestMyFunc(t *testing.T) {
+//	    // Setup Test
+//	    mockSvc := &mockS3Client{}
 //
-//        myfunc(mockSvc)
+//	    myfunc(mockSvc)
 //
-//        // Verify myFunc's functionality
-//    }
+//	    // Verify myFunc's functionality
+//	}
 //
 // It is important to note that this interface will have breaking changes
 // when the service model is updated and adds new API operations, paginators,
@@ -202,6 +204,10 @@ type S3API interface {
 	HeadObjectWithContext(aws.Context, *s3.HeadObjectInput, ...request.Option) (*s3.HeadObjectOutput, error)
 	HeadObjectRequest(*s3.HeadObjectInput) (*request.Request, *s3.HeadObjectOutput)
 
+	ListBucketReplicationFailures(*s3.ListBucketReplicationFailuresInput) (*s3.ListBucketReplicationFailuresOutput, error)
+	ListBucketReplicationFailuresWithContext(aws.Context, *s3.ListBucketReplicationFailuresInput, ...request.Option) (*s3.ListBucketReplicationFailuresOutput, error)
+	ListBucketReplicationFailuresRequest(*s3.ListBucketReplicationFailuresInput) (*request.Request, *s3.ListBucketReplicationFailuresOutput)
+
 	ListBuckets(*s3.ListBucketsInput) (*s3.ListBucketsOutput, error)
 	ListBucketsWithContext(aws.Context, *s3.ListBucketsInput, ...request.Option) (*s3.ListBucketsOutput, error)
 	ListBucketsRequest(*s3.ListBucketsInput) (*request.Request, *s3.ListBucketsOutput)
@@ -275,6 +281,10 @@ type S3API interface {
 	PutBucketReplication(*s3.PutBucketReplicationInput) (*s3.PutBucketReplicationOutput, error)
 	PutBucketReplicationWithContext(aws.Context, *s3.PutBucketReplicationInput, ...request.Option) (*s3.PutBucketReplicationOutput, error)
 	PutBucketReplicationRequest(*s3.PutBucketReplicationInput) (*request.Request, *s3.PutBucketReplicationOutput)
+
+	PutBucketReplicationReattempt(*s3.PutBucketReplicationReattemptInput) (*s3.PutBucketReplicationReattemptOutput, error)
+	PutBucketReplicationReattemptWithContext(aws.Context, *s3.PutBucketReplicationReattemptInput, ...request.Option) (*s3.PutBucketReplicationReattemptOutput, error)
+	PutBucketReplicationReattemptRequest(*s3.PutBucketReplicationReattemptInput) (*request.Request, *s3.PutBucketReplicationReattemptOutput)
 
 	PutBucketVersioning(*s3.PutBucketVersioningInput) (*s3.PutBucketVersioningOutput, error)
 	PutBucketVersioningWithContext(aws.Context, *s3.PutBucketVersioningInput, ...request.Option) (*s3.PutBucketVersioningOutput, error)

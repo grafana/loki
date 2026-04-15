@@ -14,11 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 
-	"github.com/grafana/loki/pkg/logproto"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -194,8 +193,6 @@ func TestPipeline_Process(t *testing.T) {
 	}
 
 	for tName, tt := range tests {
-		tt := tt
-
 		t.Run(tName, func(t *testing.T) {
 			var config map[string]interface{}
 
@@ -304,13 +301,12 @@ func TestPipeline_Wrap(t *testing.T) {
 	}
 
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			c := fake.New(func() {})
+			c := util.NewFakeClient(func() {})
 			handler := p.Wrap(c)
 
-			handler.Chan() <- api.Entry{
+			handler.Chan() <- util.Entry{
 				Labels: tt.labels,
 				Entry: logproto.Entry{
 					Line:      rawTestLine,
@@ -342,7 +338,7 @@ func newPipelineFromConfig(cfg, name string) (*Pipeline, error) {
 }
 
 func Test_PipelineParallel(t *testing.T) {
-	c := fake.New(func() {})
+	c := util.NewFakeClient(func() {})
 	cfg := `
 pipeline_stages:
 - match:
@@ -376,8 +372,8 @@ pipeline_stages:
 	require.NoError(t, err)
 
 	e1 := p.Wrap(c)
-	e2 := api.AddLabelsMiddleware(model.LabelSet{"bar": "foo"}).Wrap(e1)
-	entryhandler := api.AddLabelsMiddleware(model.LabelSet{"foo": "bar"}).Wrap(e2)
+	e2 := util.AddLabelsMiddleware(model.LabelSet{"bar": "foo"}).Wrap(e1)
+	entryhandler := util.AddLabelsMiddleware(model.LabelSet{"foo": "bar"}).Wrap(e2)
 
 	var wg sync.WaitGroup
 	parallelism := 10
@@ -386,14 +382,14 @@ pipeline_stages:
 	for i := 0; i < parallelism; i++ {
 		go func(i int) {
 			defer wg.Done()
-			entryhandler.Chan() <- api.Entry{
+			entryhandler.Chan() <- util.Entry{
 				Labels: make(model.LabelSet),
 				Entry: logproto.Entry{
 					Timestamp: time.Now(),
 					Line:      fmt.Sprintf(`{app:"%d", `, 5),
 				},
 			}
-			entryhandler.Chan() <- api.Entry{
+			entryhandler.Chan() <- util.Entry{
 				Labels: make(model.LabelSet),
 				Entry: logproto.Entry{
 					Timestamp: time.Now(),

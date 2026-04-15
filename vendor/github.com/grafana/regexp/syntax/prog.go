@@ -106,7 +106,9 @@ func EmptyOpContext(r1, r2 rune) EmptyOp {
 // during the evaluation of the \b and \B zero-width assertions.
 // These assertions are ASCII-only: the word characters are [A-Za-z0-9_].
 func IsWordChar(r rune) bool {
-	return 'A' <= r && r <= 'Z' || 'a' <= r && r <= 'z' || '0' <= r && r <= '9' || r == '_'
+	// Test for lowercase letters first, as these occur more
+	// frequently than uppercase letters in common cases.
+	return 'a' <= r && r <= 'z' || 'A' <= r && r <= 'Z' || '0' <= r && r <= '9' || r == '_'
 }
 
 // An Inst is a single instruction in a regular expression program.
@@ -146,37 +148,20 @@ func (i *Inst) op() InstOp {
 // regexp must start with. Complete is true if the prefix
 // is the entire match.
 func (p *Prog) Prefix() (prefix string, complete bool) {
-	prefix, complete, foldCase := p.PrefixAndCase()
-	if foldCase {
-		return "", false
-	}
-	return prefix, complete
-}
-
-// Prefix returns a literal string that all matches for the
-// regexp must start with. Complete is true if the prefix
-// is the entire match. FoldCase is true if the string should
-// match in upper or lower case.
-func (p *Prog) PrefixAndCase() (prefix string, complete bool, foldCase bool) {
-	i := &p.Inst[p.Start]
-	// Skip any no-op, capturing or begin-text instructions
-	for i.Op == InstNop || i.Op == InstCapture || (i.Op == InstEmptyWidth && EmptyOp(i.Arg)&EmptyBeginText != 0) {
-		i = &p.Inst[i.Out]
-	}
+	i := p.skipNop(uint32(p.Start))
 
 	// Avoid allocation of buffer if prefix is empty.
 	if i.op() != InstRune || len(i.Rune) != 1 {
-		return "", i.Op == InstMatch, false
+		return "", i.Op == InstMatch
 	}
 
 	// Have prefix; gather characters.
 	var buf strings.Builder
-	foldCase = (Flags(i.Arg)&FoldCase != 0)
-	for i.op() == InstRune && len(i.Rune) == 1 && (Flags(i.Arg)&FoldCase != 0) == foldCase && i.Rune[0] != utf8.RuneError {
+	for i.op() == InstRune && len(i.Rune) == 1 && Flags(i.Arg)&FoldCase == 0 && i.Rune[0] != utf8.RuneError {
 		buf.WriteRune(i.Rune[0])
 		i = p.skipNop(i.Out)
 	}
-	return buf.String(), i.Op == InstMatch, foldCase
+	return buf.String(), i.Op == InstMatch
 }
 
 // StartCond returns the leading empty-width conditions that must
@@ -206,7 +191,7 @@ Loop:
 const noMatch = -1
 
 // MatchRune reports whether the instruction matches (and consumes) r.
-// It should only be called when i.Op == InstRune.
+// It should only be called when i.Op == [InstRune].
 func (i *Inst) MatchRune(r rune) bool {
 	return i.MatchRunePos(r) != noMatch
 }
@@ -215,7 +200,7 @@ func (i *Inst) MatchRune(r rune) bool {
 // If so, MatchRunePos returns the index of the matching rune pair
 // (or, when len(i.Rune) == 1, rune singleton).
 // If not, MatchRunePos returns -1.
-// MatchRunePos should only be called when i.Op == InstRune.
+// MatchRunePos should only be called when i.Op == [InstRune].
 func (i *Inst) MatchRunePos(r rune) int {
 	rune := i.Rune
 
@@ -262,7 +247,7 @@ func (i *Inst) MatchRunePos(r rune) int {
 	lo := 0
 	hi := len(rune) / 2
 	for lo < hi {
-		m := lo + (hi-lo)/2
+		m := int(uint(lo+hi) >> 1)
 		if c := rune[2*m]; c <= r {
 			if r <= rune[2*m+1] {
 				return m
@@ -277,7 +262,7 @@ func (i *Inst) MatchRunePos(r rune) int {
 
 // MatchEmptyWidth reports whether the instruction matches
 // an empty string between the runes before and after.
-// It should only be called when i.Op == InstEmptyWidth.
+// It should only be called when i.Op == [InstEmptyWidth].
 func (i *Inst) MatchEmptyWidth(before rune, after rune) bool {
 	switch EmptyOp(i.Arg) {
 	case EmptyBeginLine:

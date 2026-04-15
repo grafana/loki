@@ -1,0 +1,55 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed .Values.querier.autoscaling.enabled }}
+{{- $apiVersion := include "loki.hpa.apiVersion" . -}}
+apiVersion: {{ $apiVersion }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "loki.querierFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.querierLabels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "loki.querierFullname" . }}
+  minReplicas: {{ .Values.querier.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.querier.autoscaling.maxReplicas }}
+  metrics:
+  {{- with .Values.querier.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        {{- if (eq $apiVersion "autoscaling/v2") }}
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+        {{- else }}
+        targetAverageUtilization: {{ . }}
+        {{- end }}
+  {{- end }}
+  {{- with .Values.querier.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        {{- if (eq $apiVersion "autoscaling/v2") }}
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+        {{- else }}
+        targetAverageUtilization: {{ . }}
+        {{- end }}
+  {{- end }}
+  {{- with .Values.querier.autoscaling.customMetrics }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if .Values.querier.autoscaling.behavior.enabled }}
+  behavior:
+    {{- with .Values.querier.autoscaling.behavior.scaleDown }}
+    scaleDown: {{ toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.querier.autoscaling.behavior.scaleUp }}
+    scaleUp: {{ toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
+{{- end }}

@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // covers requests to /api/prom/push
@@ -28,7 +28,7 @@ var pushTests = []struct {
 					{
 						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:23.380001319Z"),
 						Line:      "super line with labels",
-						NonIndexedLabels: []logproto.LabelAdapter{
+						StructuredMetadata: []logproto.LabelAdapter{
 							{Name: "a", Value: "1"},
 							{Name: "b", Value: "2"},
 						},
@@ -49,7 +49,7 @@ var pushTests = []struct {
 						{
 							"ts": "2019-09-13T18:32:23.380001319Z",
 							"line": "super line with labels",
-							"nonIndexedLabels": {
+							"structuredMetadata": {
 								"a": "1",
 								"b": "2"
 							}

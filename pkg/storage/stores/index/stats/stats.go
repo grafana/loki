@@ -4,11 +4,11 @@ import (
 	"encoding/binary"
 	"sync"
 
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/prometheus/common/model"
-	"github.com/willf/bloom"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 var BloomPool PoolBloom

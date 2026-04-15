@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,34 +16,37 @@ package wlog
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"hash/crc32"
 	"io"
 
-	"github.com/golang/snappy"
-	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/util/compression"
 )
 
 // Reader reads WAL records from an io.Reader.
 type Reader struct {
-	rdr       io.Reader
-	err       error
-	rec       []byte
-	snappyBuf []byte
-	buf       [pageSize]byte
-	total     int64   // Total bytes processed.
-	curRecTyp recType // Used for checking that the last record is not torn.
+	rdr io.Reader
+	err error
+	rec []byte
+
+	precomprBuf []byte
+	decBuf      compression.DecodeBuffer
+	buf         [pageSize]byte
+	total       int64   // Total bytes processed.
+	curRecTyp   recType // Used for checking that the last record is not torn.
 }
 
 // NewReader returns a new reader.
 func NewReader(r io.Reader) *Reader {
-	return &Reader{rdr: r}
+	return &Reader{rdr: r, decBuf: compression.NewSyncDecodeBuffer()}
 }
 
 // Next advances the reader to the next records and returns true if it exists.
 // It must not be called again after it returned false.
 func (r *Reader) Next() bool {
-	err := r.next()
-	if errors.Is(err, io.EOF) {
+	err := r.nextNew()
+	if err != nil && errors.Is(err, io.EOF) {
 		// The last WAL segment record shouldn't be torn(should be full or last).
 		// The last record would be torn after a crash just before
 		// the last record part could be persisted to disk.
@@ -56,23 +59,28 @@ func (r *Reader) Next() bool {
 	return r.err == nil
 }
 
-func (r *Reader) next() (err error) {
+func (r *Reader) nextNew() (err error) {
 	// We have to use r.buf since allocating byte arrays here fails escape
 	// analysis and ends up on the heap, even though it seemingly should not.
 	hdr := r.buf[:recordHeaderSize]
 	buf := r.buf[recordHeaderSize:]
 
-	r.rec = r.rec[:0]
-	r.snappyBuf = r.snappyBuf[:0]
+	r.precomprBuf = r.precomprBuf[:0]
 
 	i := 0
 	for {
 		if _, err = io.ReadFull(r.rdr, hdr[:1]); err != nil {
-			return errors.Wrap(err, "read first header byte")
+			return fmt.Errorf("read first header byte: %w", err)
 		}
 		r.total++
 		r.curRecTyp = recTypeFromHeader(hdr[0])
-		compressed := hdr[0]&snappyMask != 0
+
+		compr := compression.None
+		if hdr[0]&snappyMask == snappyMask {
+			compr = compression.Snappy
+		} else if hdr[0]&zstdMask == zstdMask {
+			compr = compression.Zstd
+		}
 
 		// Gobble up zero bytes.
 		if r.curRecTyp == recPageTerm {
@@ -90,7 +98,7 @@ func (r *Reader) next() (err error) {
 			}
 			n, err := io.ReadFull(r.rdr, buf[:k])
 			if err != nil {
-				return errors.Wrap(err, "read remaining zeros")
+				return fmt.Errorf("read remaining zeros: %w", err)
 			}
 			r.total += int64(n)
 
@@ -103,7 +111,7 @@ func (r *Reader) next() (err error) {
 		}
 		n, err := io.ReadFull(r.rdr, hdr[1:])
 		if err != nil {
-			return errors.Wrap(err, "read remaining header")
+			return fmt.Errorf("read remaining header: %w", err)
 		}
 		r.total += int64(n)
 
@@ -113,7 +121,7 @@ func (r *Reader) next() (err error) {
 		)
 
 		if length > pageSize-recordHeaderSize {
-			return errors.Errorf("invalid record size %d", length)
+			return fmt.Errorf("invalid record size %d", length)
 		}
 		n, err = io.ReadFull(r.rdr, buf[:length])
 		if err != nil {
@@ -122,31 +130,19 @@ func (r *Reader) next() (err error) {
 		r.total += int64(n)
 
 		if n != int(length) {
-			return errors.Errorf("invalid size: expected %d, got %d", length, n)
+			return fmt.Errorf("invalid size: expected %d, got %d", length, n)
 		}
 		if c := crc32.Checksum(buf[:length], castagnoliTable); c != crc {
-			return errors.Errorf("unexpected checksum %x, expected %x", c, crc)
+			return fmt.Errorf("unexpected checksum %x, expected %x", c, crc)
 		}
-
-		if compressed {
-			r.snappyBuf = append(r.snappyBuf, buf[:length]...)
-		} else {
-			r.rec = append(r.rec, buf[:length]...)
-		}
-
 		if err := validateRecord(r.curRecTyp, i); err != nil {
 			return err
 		}
+
+		r.precomprBuf = append(r.precomprBuf, buf[:length]...)
 		if r.curRecTyp == recLast || r.curRecTyp == recFull {
-			if compressed && len(r.snappyBuf) > 0 {
-				// The snappy library uses `len` to calculate if we need a new buffer.
-				// In order to allocate as few buffers as possible make the length
-				// equal to the capacity.
-				r.rec = r.rec[:cap(r.rec)]
-				r.rec, err = snappy.Decode(r.rec, r.snappyBuf)
-				return err
-			}
-			return nil
+			r.rec, err = compression.Decode(compr, r.precomprBuf, r.decBuf)
+			return err
 		}
 
 		// Only increment i for non-zero records since we use it

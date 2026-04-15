@@ -1,56 +1,69 @@
-linters-settings:
-  govet:
-    check-shadowing: true
-  golint:
-    min-confidence: 0
-  gocyclo:
-    min-complexity: 40
-  gocognit:
-    min-complexity: 40
-  maligned:
-    suggest-new: true
-  dupl:
-    threshold: 150
-  goconst:
-    min-len: 2
-    min-occurrences: 4
-
+version: "2"
 linters:
-  enable-all: true
+  default: all
   disable:
-    - maligned
-    - lll
-    - gochecknoglobals
-    - gochecknoinits
-    # scopelint is useful, but also reports false positives
-    # that unfortunately can't be disabled. So we disable the
-    # linter rather than changing code that works.
-    # see: https://github.com/kyoh86/scopelint/issues/4
-    - scopelint
-    - godox
-    - gocognit
-    #- whitespace
-    - wsl
+    - depguard
     - funlen
-    - testpackage
-    - wrapcheck
-    #- nlreturn
-    - gomnd
-    - goerr113
-    - exhaustivestruct
-    #- errorlint
-    #- nestif
-    - gofumpt
-    - godot
-    - gci
-    - dogsled
-    - paralleltest
-    - tparallel
-    - thelper
-    - ifshort
-    - forbidigo
-    - cyclop
-    - varnamelen
+    - godox
     - exhaustruct
+    - nlreturn
     - nonamedreturns
-    - nosnakecase
+    - noinlineerr
+    - paralleltest
+    - recvcheck
+    - testpackage
+    - thelper # investigate how to parameterize / fix. Temporarily disabled.
+    - tparallel
+    - varnamelen
+    - whitespace
+    - wrapcheck
+    - wsl
+    - wsl_v5
+  settings:
+    dupl:
+      threshold: 200
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    cyclop:
+      max-complexity: 25
+    gocyclo:
+      min-complexity: 25
+    gocognit:
+      min-complexity: 35
+    exhaustive:
+      default-signifies-exhaustive: true
+      default-case-required: true
+    lll:
+      line-length: 180
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+    - gofumpt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  # Maximum issues count per one linter.
+  # Set to 0 to disable.
+  # Default: 50
+  max-issues-per-linter: 0
+  # Maximum count of issues with the same text.
+  # Set to 0 to disable.
+  # Default: 3
+  max-same-issues: 0

@@ -12,17 +12,38 @@ import (
 // ToCamelCase is to convert words separated by space, underscore and hyphen to camel case.
 //
 // Some samples.
-//     "some_words"      => "SomeWords"
-//     "http_server"     => "HttpServer"
-//     "no_https"        => "NoHttps"
-//     "_complex__case_" => "_Complex_Case_"
-//     "some words"      => "SomeWords"
+//
+//	"some_words"      => "someWords"
+//	"http_server"     => "httpServer"
+//	"no_https"        => "noHttps"
+//	"_complex__case_" => "_complex_Case_"
+//	"some words"      => "someWords"
+//	"GOLANG_IS_GREAT" => "golangIsGreat"
 func ToCamelCase(str string) string {
+	return toCamelCase(str, false)
+}
+
+// ToPascalCase is to convert words separated by space, underscore and hyphen to pascal case.
+//
+// Some samples.
+//
+//	"some_words"      => "SomeWords"
+//	"http_server"     => "HttpServer"
+//	"no_https"        => "NoHttps"
+//	"_complex__case_" => "_Complex_Case_"
+//	"some words"      => "SomeWords"
+//	"GOLANG_IS_GREAT" => "GolangIsGreat"
+func ToPascalCase(str string) string {
+	return toCamelCase(str, true)
+}
+
+func toCamelCase(str string, isBig bool) string {
 	if len(str) == 0 {
 		return ""
 	}
 
 	buf := &stringBuilder{}
+	var isFirstRuneUpper bool
 	var r0, r1 rune
 	var size int
 
@@ -32,7 +53,14 @@ func ToCamelCase(str string) string {
 		str = str[size:]
 
 		if !isConnector(r0) {
-			r0 = unicode.ToUpper(r0)
+			isFirstRuneUpper = unicode.IsUpper(r0)
+
+			if isBig {
+				r0 = unicode.ToUpper(r0)
+			} else {
+				r0 = unicode.ToLower(r0)
+			}
+
 			break
 		}
 
@@ -59,11 +87,23 @@ func ToCamelCase(str string) string {
 		}
 
 		if isConnector(r1) {
+			isFirstRuneUpper = unicode.IsUpper(r0)
 			r0 = unicode.ToUpper(r0)
 		} else {
-			r0 = unicode.ToLower(r0)
+			if isFirstRuneUpper {
+				if unicode.IsUpper(r0) {
+					r0 = unicode.ToLower(r0)
+				} else {
+					isFirstRuneUpper = false
+				}
+			}
+
 			buf.WriteRune(r1)
 		}
+	}
+
+	if isFirstRuneUpper && !isBig {
+		r0 = unicode.ToLower(r0)
 	}
 
 	buf.WriteRune(r0)
@@ -74,16 +114,17 @@ func ToCamelCase(str string) string {
 // snake case format.
 //
 // Some samples.
-//     "FirstName"    => "first_name"
-//     "HTTPServer"   => "http_server"
-//     "NoHTTPS"      => "no_https"
-//     "GO_PATH"      => "go_path"
-//     "GO PATH"      => "go_path"  // space is converted to underscore.
-//     "GO-PATH"      => "go_path"  // hyphen is converted to underscore.
-//     "http2xx"      => "http_2xx" // insert an underscore before a number and after an alphabet.
-//     "HTTP20xOK"    => "http_20x_ok"
-//     "Duration2m3s" => "duration_2m3s"
-//     "Bld4Floor3rd" => "bld4_floor_3rd"
+//
+//	"FirstName"    => "first_name"
+//	"HTTPServer"   => "http_server"
+//	"NoHTTPS"      => "no_https"
+//	"GO_PATH"      => "go_path"
+//	"GO PATH"      => "go_path"  // space is converted to underscore.
+//	"GO-PATH"      => "go_path"  // hyphen is converted to underscore.
+//	"http2xx"      => "http_2xx" // insert an underscore before a number and after an alphabet.
+//	"HTTP20xOK"    => "http_20x_ok"
+//	"Duration2m3s" => "duration_2m3s"
+//	"Bld4Floor3rd" => "bld4_floor_3rd"
 func ToSnakeCase(str string) string {
 	return camelCaseToLowerCase(str, '_')
 }
@@ -92,16 +133,17 @@ func ToSnakeCase(str string) string {
 // kebab case format.
 //
 // Some samples.
-//     "FirstName"    => "first-name"
-//     "HTTPServer"   => "http-server"
-//     "NoHTTPS"      => "no-https"
-//     "GO_PATH"      => "go-path"
-//     "GO PATH"      => "go-path"  // space is converted to '-'.
-//     "GO-PATH"      => "go-path"  // hyphen is converted to '-'.
-//     "http2xx"      => "http-2xx" // insert an underscore before a number and after an alphabet.
-//     "HTTP20xOK"    => "http-20x-ok"
-//     "Duration2m3s" => "duration-2m3s"
-//     "Bld4Floor3rd" => "bld4-floor-3rd"
+//
+//	"FirstName"    => "first-name"
+//	"HTTPServer"   => "http-server"
+//	"NoHTTPS"      => "no-https"
+//	"GO_PATH"      => "go-path"
+//	"GO PATH"      => "go-path"  // space is converted to '-'.
+//	"GO-PATH"      => "go-path"  // hyphen is converted to '-'.
+//	"http2xx"      => "http-2xx" // insert an underscore before a number and after an alphabet.
+//	"HTTP20xOK"    => "http-20x-ok"
+//	"Duration2m3s" => "duration-2m3s"
+//	"Bld4Floor3rd" => "bld4-floor-3rd"
 func ToKebabCase(str string) string {
 	return camelCaseToLowerCase(str, '-')
 }
@@ -510,17 +552,18 @@ func ShuffleSource(str string, src rand.Source) string {
 // regardless whether the result is a valid rune or not.
 //
 // Only following characters are alphanumeric.
-//     * a - z
-//     * A - Z
-//     * 0 - 9
+//   - a - z
+//   - A - Z
+//   - 0 - 9
 //
 // Samples (borrowed from ruby's String#succ document):
-//     "abcd"      => "abce"
-//     "THX1138"   => "THX1139"
-//     "<<koala>>" => "<<koalb>>"
-//     "1999zzz"   => "2000aaa"
-//     "ZZZ9999"   => "AAAA0000"
-//     "***"       => "**+"
+//
+//	"abcd"      => "abce"
+//	"THX1138"   => "THX1139"
+//	"<<koala>>" => "<<koalb>>"
+//	"1999zzz"   => "2000aaa"
+//	"ZZZ9999"   => "AAAA0000"
+//	"***"       => "**+"
 func Successor(str string) string {
 	if str == "" {
 		return str

@@ -53,16 +53,17 @@ type GetIAMInfoOutput struct {
 func addGetIAMInfoMiddleware(stack *middleware.Stack, options Options) error {
 	return addAPIRequestMiddleware(stack,
 		options,
+		"GetIAMInfo",
 		buildGetIAMInfoPath,
 		buildGetIAMInfoOutput,
 	)
 }
 
-func buildGetIAMInfoPath(params interface{}) (string, error) {
+func buildGetIAMInfoPath(params any) (string, error) {
 	return getIAMInfoPath, nil
 }
 
-func buildGetIAMInfoOutput(resp *smithyhttp.Response) (v interface{}, err error) {
+func buildGetIAMInfoOutput(resp *smithyhttp.Response) (v any, err error) {
 	defer func() {
 		closeErr := resp.Body.Close()
 		if err == nil {

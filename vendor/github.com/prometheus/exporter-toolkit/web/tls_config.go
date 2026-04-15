@@ -18,17 +18,22 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/coreos/go-systemd/v22/activation"
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
+	"github.com/mdlayher/vsock"
 	config_util "github.com/prometheus/common/config"
+	"go.yaml.in/yaml/v2"
 	"golang.org/x/sync/errgroup"
-	"gopkg.in/yaml.v2"
+	"golang.org/x/time/rate"
 )
 
 var (
@@ -37,9 +42,10 @@ var (
 )
 
 type Config struct {
-	TLSConfig  TLSConfig                     `yaml:"tls_server_config"`
-	HTTPConfig HTTPConfig                    `yaml:"http_server_config"`
-	Users      map[string]config_util.Secret `yaml:"basic_auth_users"`
+	TLSConfig         TLSConfig                     `yaml:"tls_server_config"`
+	HTTPConfig        HTTPConfig                    `yaml:"http_server_config"`
+	RateLimiterConfig RateLimiterConfig             `yaml:"rate_limit"`
+	Users             map[string]config_util.Secret `yaml:"basic_auth_users"`
 }
 
 type TLSConfig struct {
@@ -104,6 +110,11 @@ func (t *TLSConfig) VerifyPeerCertificate(rawCerts [][]byte, _ [][]*x509.Certifi
 type HTTPConfig struct {
 	HTTP2  bool              `yaml:"http2"`
 	Header map[string]string `yaml:"headers,omitempty"`
+}
+
+type RateLimiterConfig struct {
+	Burst    int           `yaml:"burst"`
+	Interval time.Duration `yaml:"interval"`
 }
 
 func getConfig(configPath string) (*Config, error) {
@@ -251,11 +262,11 @@ func ConfigToTLSConfig(c *TLSConfig) (*tls.Config, error) {
 	case "", "NoClientCert":
 		cfg.ClientAuth = tls.NoClientCert
 	default:
-		return nil, errors.New("Invalid ClientAuth: " + c.ClientAuth)
+		return nil, errors.New("invalid ClientAuth: " + c.ClientAuth)
 	}
 
 	if (c.ClientCAs != "" || c.ClientCAsText != "") && cfg.ClientAuth == tls.NoClientCert {
-		return nil, errors.New("Client CA's have been configured without a Client Auth Policy")
+		return nil, errors.New("client CA's have been configured without a Client Auth Policy")
 	}
 
 	return cfg, nil
@@ -263,10 +274,9 @@ func ConfigToTLSConfig(c *TLSConfig) (*tls.Config, error) {
 
 // ServeMultiple starts the server on the given listeners. The FlagConfig is
 // also passed on to Serve.
-func ServeMultiple(listeners []net.Listener, server *http.Server, flags *FlagConfig, logger log.Logger) error {
+func ServeMultiple(listeners []net.Listener, server *http.Server, flags *FlagConfig, logger *slog.Logger) error {
 	errs := new(errgroup.Group)
 	for _, l := range listeners {
-		l := l
 		errs.Go(func() error {
 			return Serve(l, server, flags, logger)
 		})
@@ -275,16 +285,18 @@ func ServeMultiple(listeners []net.Listener, server *http.Server, flags *FlagCon
 }
 
 // ListenAndServe starts the server on addresses given in WebListenAddresses in
-// the FlagConfig or instead uses systemd socket activated listeners if
-// WebSystemdSocket in the FlagConfig is true. The FlagConfig is also passed on
-// to ServeMultiple.
-func ListenAndServe(server *http.Server, flags *FlagConfig, logger log.Logger) error {
+// the FlagConfig. When address starts looks like vsock://:{port}, it listens on
+// vsock. More info check https://wiki.qemu.org/Features/VirtioVsock .
+// Or instead uses systemd socket activated listeners if WebSystemdSocket in the
+// FlagConfig is true.
+// The FlagConfig is also passed on to ServeMultiple.
+func ListenAndServe(server *http.Server, flags *FlagConfig, logger *slog.Logger) error {
 	if flags.WebSystemdSocket == nil && (flags.WebListenAddresses == nil || len(*flags.WebListenAddresses) == 0) {
 		return ErrNoListeners
 	}
 
 	if flags.WebSystemdSocket != nil && *flags.WebSystemdSocket {
-		level.Info(logger).Log("msg", "Listening on systemd activated listeners instead of port listeners.")
+		logger.Info("Listening on systemd activated listeners instead of port listeners.")
 		listeners, err := activation.Listeners()
 		if err != nil {
 			return err
@@ -297,9 +309,22 @@ func ListenAndServe(server *http.Server, flags *FlagConfig, logger log.Logger) e
 
 	listeners := make([]net.Listener, 0, len(*flags.WebListenAddresses))
 	for _, address := range *flags.WebListenAddresses {
-		listener, err := net.Listen("tcp", address)
-		if err != nil {
-			return err
+		var err error
+		var listener net.Listener
+		if strings.HasPrefix(address, "vsock://") {
+			port, err := parseVsockPort(address)
+			if err != nil {
+				return err
+			}
+			listener, err = vsock.Listen(port, nil)
+			if err != nil {
+				return err
+			}
+		} else {
+			listener, err = net.Listen("tcp", address)
+			if err != nil {
+				return err
+			}
 		}
 		defer listener.Close()
 		listeners = append(listeners, listener)
@@ -307,13 +332,29 @@ func ListenAndServe(server *http.Server, flags *FlagConfig, logger log.Logger) e
 	return ServeMultiple(listeners, server, flags, logger)
 }
 
+func parseVsockPort(address string) (uint32, error) {
+	uri, err := url.Parse(address)
+	if err != nil {
+		return 0, err
+	}
+	_, portStr, err := net.SplitHostPort(uri.Host)
+	if err != nil {
+		return 0, err
+	}
+	port, err := strconv.ParseUint(portStr, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return uint32(port), nil
+}
+
 // Server starts the server on the given listener. Based on the file path
 // WebConfigFile in the FlagConfig, TLS or basic auth could be enabled.
-func Serve(l net.Listener, server *http.Server, flags *FlagConfig, logger log.Logger) error {
-	level.Info(logger).Log("msg", "Listening on", "address", l.Addr().String())
+func Serve(l net.Listener, server *http.Server, flags *FlagConfig, logger *slog.Logger) error {
+	logger.Info("Listening on", "address", l.Addr().String())
 	tlsConfigPath := *flags.WebConfigFile
 	if tlsConfigPath == "" {
-		level.Info(logger).Log("msg", "TLS is disabled.", "http2", false, "address", l.Addr().String())
+		logger.Info("TLS is disabled.", "http2", false, "address", l.Addr().String())
 		return server.Serve(l)
 	}
 
@@ -332,11 +373,18 @@ func Serve(l net.Listener, server *http.Server, flags *FlagConfig, logger log.Lo
 		return err
 	}
 
+	var limiter *rate.Limiter
+	if c.RateLimiterConfig.Interval != 0 {
+		limiter = rate.NewLimiter(rate.Every(c.RateLimiterConfig.Interval), c.RateLimiterConfig.Burst)
+		logger.Info("Rate Limiter is enabled.", "burst", c.RateLimiterConfig.Burst, "interval", c.RateLimiterConfig.Interval)
+	}
+
 	server.Handler = &webHandler{
 		tlsConfigPath: tlsConfigPath,
 		logger:        logger,
 		handler:       handler,
 		cache:         newCache(),
+		limiter:       limiter,
 	}
 
 	config, err := ConfigToTLSConfig(&c.TLSConfig)
@@ -346,10 +394,10 @@ func Serve(l net.Listener, server *http.Server, flags *FlagConfig, logger log.Lo
 			server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
 		}
 		// Valid TLS config.
-		level.Info(logger).Log("msg", "TLS is enabled.", "http2", c.HTTPConfig.HTTP2, "address", l.Addr().String())
+		logger.Info("TLS is enabled.", "http2", c.HTTPConfig.HTTP2, "address", l.Addr().String())
 	case errNoTLSConfig:
 		// No TLS config, back to plain HTTP.
-		level.Info(logger).Log("msg", "TLS is disabled.", "http2", false, "address", l.Addr().String())
+		logger.Info("TLS is disabled.", "http2", false, "address", l.Addr().String())
 		return server.Serve(l)
 	default:
 		// Invalid TLS config.
@@ -394,7 +442,7 @@ type Cipher uint16
 
 func (c *Cipher) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
-	err := unmarshal((*string)(&s))
+	err := unmarshal(&s)
 	if err != nil {
 		return err
 	}
@@ -422,7 +470,7 @@ var curves = map[string]Curve{
 
 func (c *Curve) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
-	err := unmarshal((*string)(&s))
+	err := unmarshal(&s)
 	if err != nil {
 		return err
 	}
@@ -453,7 +501,7 @@ var tlsVersions = map[string]TLSVersion{
 
 func (tv *TLSVersion) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
-	err := unmarshal((*string)(&s))
+	err := unmarshal(&s)
 	if err != nil {
 		return err
 	}
@@ -477,6 +525,6 @@ func (tv *TLSVersion) MarshalYAML() (interface{}, error) {
 // tlsConfigPath, TLS or basic auth could be enabled.
 //
 // Deprecated: Use ListenAndServe instead.
-func Listen(server *http.Server, flags *FlagConfig, logger log.Logger) error {
+func Listen(server *http.Server, flags *FlagConfig, logger *slog.Logger) error {
 	return ListenAndServe(server, flags, logger)
 }

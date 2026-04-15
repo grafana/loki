@@ -16,7 +16,7 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 
-// ToFileDescriptorProto copies a protoreflect.FileDescriptor into a
+// ToFileDescriptorProto copies a [protoreflect.FileDescriptor] into a
 // google.protobuf.FileDescriptorProto message.
 func ToFileDescriptorProto(file protoreflect.FileDescriptor) *descriptorpb.FileDescriptorProto {
 	p := &descriptorpb.FileDescriptorProto{
@@ -31,9 +31,6 @@ func ToFileDescriptorProto(file protoreflect.FileDescriptor) *descriptorpb.FileD
 		p.Dependency = append(p.Dependency, imp.Path())
 		if imp.IsPublic {
 			p.PublicDependency = append(p.PublicDependency, int32(i))
-		}
-		if imp.IsWeak {
-			p.WeakDependency = append(p.WeakDependency, int32(i))
 		}
 	}
 	for i, locs := 0, file.SourceLocations(); i < locs.Len(); i++ {
@@ -70,13 +67,34 @@ func ToFileDescriptorProto(file protoreflect.FileDescriptor) *descriptorpb.FileD
 	for i, exts := 0, file.Extensions(); i < exts.Len(); i++ {
 		p.Extension = append(p.Extension, ToFieldDescriptorProto(exts.Get(i)))
 	}
-	if syntax := file.Syntax(); syntax != protoreflect.Proto2 {
+	if syntax := file.Syntax(); syntax != protoreflect.Proto2 && syntax.IsValid() {
 		p.Syntax = proto.String(file.Syntax().String())
+	}
+	desc := file
+	if fileImportDesc, ok := file.(protoreflect.FileImport); ok {
+		desc = fileImportDesc.FileDescriptor
+	}
+	if file.Syntax() == protoreflect.Editions {
+		if editionsInterface, ok := desc.(interface{ Edition() int32 }); ok {
+			p.Edition = descriptorpb.Edition(editionsInterface.Edition()).Enum()
+		}
+	}
+	type hasOptionImports interface {
+		OptionImports() protoreflect.FileImports
+	}
+	if opts, ok := desc.(hasOptionImports); ok {
+		if optionImports := opts.OptionImports(); optionImports.Len() > 0 {
+			optionDeps := make([]string, optionImports.Len())
+			for i := range optionImports.Len() {
+				optionDeps[i] = optionImports.Get(i).Path()
+			}
+			p.OptionDependency = optionDeps
+		}
 	}
 	return p
 }
 
-// ToDescriptorProto copies a protoreflect.MessageDescriptor into a
+// ToDescriptorProto copies a [protoreflect.MessageDescriptor] into a
 // google.protobuf.DescriptorProto message.
 func ToDescriptorProto(message protoreflect.MessageDescriptor) *descriptorpb.DescriptorProto {
 	p := &descriptorpb.DescriptorProto{
@@ -116,10 +134,18 @@ func ToDescriptorProto(message protoreflect.MessageDescriptor) *descriptorpb.Des
 	for i, names := 0, message.ReservedNames(); i < names.Len(); i++ {
 		p.ReservedName = append(p.ReservedName, string(names.Get(i)))
 	}
+	type hasVisibility interface {
+		Visibility() int32
+	}
+	if vis, ok := message.(hasVisibility); ok {
+		if visibility := vis.Visibility(); visibility > 0 {
+			p.Visibility = descriptorpb.SymbolVisibility(visibility).Enum()
+		}
+	}
 	return p
 }
 
-// ToFieldDescriptorProto copies a protoreflect.FieldDescriptor into a
+// ToFieldDescriptorProto copies a [protoreflect.FieldDescriptor] into a
 // google.protobuf.FieldDescriptorProto message.
 func ToFieldDescriptorProto(field protoreflect.FieldDescriptor) *descriptorpb.FieldDescriptorProto {
 	p := &descriptorpb.FieldDescriptorProto{
@@ -153,6 +179,18 @@ func ToFieldDescriptorProto(field protoreflect.FieldDescriptor) *descriptorpb.Fi
 	if field.Syntax() == protoreflect.Proto3 && field.HasOptionalKeyword() {
 		p.Proto3Optional = proto.Bool(true)
 	}
+	if field.Syntax() == protoreflect.Editions {
+		// Editions have no group keyword, this type is only set so that downstream users continue
+		// treating this as delimited encoding.
+		if p.GetType() == descriptorpb.FieldDescriptorProto_TYPE_GROUP {
+			p.Type = descriptorpb.FieldDescriptorProto_TYPE_MESSAGE.Enum()
+		}
+		// Editions have no required keyword, this label is only set so that downstream users continue
+		// treating it as required.
+		if p.GetLabel() == descriptorpb.FieldDescriptorProto_LABEL_REQUIRED {
+			p.Label = descriptorpb.FieldDescriptorProto_LABEL_OPTIONAL.Enum()
+		}
+	}
 	if field.HasDefault() {
 		def, err := defval.Marshal(field.Default(), field.DefaultEnumValue(), field.Kind(), defval.Descriptor)
 		if err != nil && field.DefaultEnumValue() != nil {
@@ -168,7 +206,7 @@ func ToFieldDescriptorProto(field protoreflect.FieldDescriptor) *descriptorpb.Fi
 	return p
 }
 
-// ToOneofDescriptorProto copies a protoreflect.OneofDescriptor into a
+// ToOneofDescriptorProto copies a [protoreflect.OneofDescriptor] into a
 // google.protobuf.OneofDescriptorProto message.
 func ToOneofDescriptorProto(oneof protoreflect.OneofDescriptor) *descriptorpb.OneofDescriptorProto {
 	return &descriptorpb.OneofDescriptorProto{
@@ -177,7 +215,7 @@ func ToOneofDescriptorProto(oneof protoreflect.OneofDescriptor) *descriptorpb.On
 	}
 }
 
-// ToEnumDescriptorProto copies a protoreflect.EnumDescriptor into a
+// ToEnumDescriptorProto copies a [protoreflect.EnumDescriptor] into a
 // google.protobuf.EnumDescriptorProto message.
 func ToEnumDescriptorProto(enum protoreflect.EnumDescriptor) *descriptorpb.EnumDescriptorProto {
 	p := &descriptorpb.EnumDescriptorProto{
@@ -197,10 +235,18 @@ func ToEnumDescriptorProto(enum protoreflect.EnumDescriptor) *descriptorpb.EnumD
 	for i, names := 0, enum.ReservedNames(); i < names.Len(); i++ {
 		p.ReservedName = append(p.ReservedName, string(names.Get(i)))
 	}
+	type hasVisibility interface {
+		Visibility() int32
+	}
+	if vis, ok := enum.(hasVisibility); ok {
+		if visibility := vis.Visibility(); visibility > 0 {
+			p.Visibility = descriptorpb.SymbolVisibility(visibility).Enum()
+		}
+	}
 	return p
 }
 
-// ToEnumValueDescriptorProto copies a protoreflect.EnumValueDescriptor into a
+// ToEnumValueDescriptorProto copies a [protoreflect.EnumValueDescriptor] into a
 // google.protobuf.EnumValueDescriptorProto message.
 func ToEnumValueDescriptorProto(value protoreflect.EnumValueDescriptor) *descriptorpb.EnumValueDescriptorProto {
 	return &descriptorpb.EnumValueDescriptorProto{
@@ -210,7 +256,7 @@ func ToEnumValueDescriptorProto(value protoreflect.EnumValueDescriptor) *descrip
 	}
 }
 
-// ToServiceDescriptorProto copies a protoreflect.ServiceDescriptor into a
+// ToServiceDescriptorProto copies a [protoreflect.ServiceDescriptor] into a
 // google.protobuf.ServiceDescriptorProto message.
 func ToServiceDescriptorProto(service protoreflect.ServiceDescriptor) *descriptorpb.ServiceDescriptorProto {
 	p := &descriptorpb.ServiceDescriptorProto{
@@ -223,7 +269,7 @@ func ToServiceDescriptorProto(service protoreflect.ServiceDescriptor) *descripto
 	return p
 }
 
-// ToMethodDescriptorProto copies a protoreflect.MethodDescriptor into a
+// ToMethodDescriptorProto copies a [protoreflect.MethodDescriptor] into a
 // google.protobuf.MethodDescriptorProto message.
 func ToMethodDescriptorProto(method protoreflect.MethodDescriptor) *descriptorpb.MethodDescriptorProto {
 	p := &descriptorpb.MethodDescriptorProto{

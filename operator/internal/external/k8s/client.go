@@ -5,6 +5,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -23,10 +24,13 @@ type Client interface {
 	DeleteAllOf(ctx context.Context, obj client.Object, opts ...client.DeleteAllOfOption) error
 	List(ctx context.Context, obj client.ObjectList, opts ...client.ListOption) error
 	Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error
+	Apply(ctx context.Context, config runtime.ApplyConfiguration, opts ...client.ApplyOption) error
 
 	RESTMapper() meta.RESTMapper
 	Scheme() *runtime.Scheme
 
+	GroupVersionKindFor(obj runtime.Object) (schema.GroupVersionKind, error)
+	IsObjectNamespaced(obj runtime.Object) (bool, error)
 	Status() client.StatusWriter
 	SubResource(subResource string) client.SubResourceClient
 }
@@ -39,9 +43,10 @@ type StatusWriter interface {
 	Create(ctx context.Context, obj client.Object, subResource client.Object, opts ...client.SubResourceCreateOption) error
 	Update(ctx context.Context, obj client.Object, opts ...client.SubResourceUpdateOption) error
 	Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error
+	Apply(ctx context.Context, obj runtime.ApplyConfiguration, opts ...client.SubResourceApplyOption) error
 }
 
-// StatusWriter is a kubernetes status writer interface used internally. It copies functions from
+// SubResourceClient is a kubernetes status writer interface used internally. It copies functions from
 // sigs.k8s.io/controller-runtime/pkg/client
 //
 //counterfeiter:generate . SubResourceClient
@@ -51,4 +56,5 @@ type SubResourceClient interface {
 	Create(ctx context.Context, obj client.Object, subResource client.Object, opts ...client.SubResourceCreateOption) error
 	Update(ctx context.Context, obj client.Object, opts ...client.SubResourceUpdateOption) error
 	Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error
+	Apply(ctx context.Context, obj runtime.ApplyConfiguration, opts ...client.SubResourceApplyOption) error
 }

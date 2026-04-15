@@ -11,6 +11,16 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+var DefaultHTTPConfig = HTTPConfig{
+	IdleConnTimeout:       model.Duration(90 * time.Second),
+	ResponseHeaderTimeout: model.Duration(2 * time.Minute),
+	TLSHandshakeTimeout:   model.Duration(10 * time.Second),
+	ExpectContinueTimeout: model.Duration(1 * time.Second),
+	MaxIdleConns:          100,
+	MaxIdleConnsPerHost:   100,
+	MaxConnsPerHost:       0,
+}
+
 // HTTPConfig stores the http.Transport configuration for the cos and s3 minio client.
 type HTTPConfig struct {
 	IdleConnTimeout       model.Duration `yaml:"idle_conn_timeout"`

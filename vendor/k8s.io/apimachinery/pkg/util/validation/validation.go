@@ -19,57 +19,21 @@ package validation
 import (
 	"fmt"
 	"math"
-	"net"
 	"regexp"
-	"strconv"
 	"strings"
+	"unicode"
+
+	"k8s.io/apimachinery/pkg/api/validate/content"
 
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	netutils "k8s.io/utils/net"
 )
-
-const qnameCharFmt string = "[A-Za-z0-9]"
-const qnameExtCharFmt string = "[-A-Za-z0-9_.]"
-const qualifiedNameFmt string = "(" + qnameCharFmt + qnameExtCharFmt + "*)?" + qnameCharFmt
-const qualifiedNameErrMsg string = "must consist of alphanumeric characters, '-', '_' or '.', and must start and end with an alphanumeric character"
-const qualifiedNameMaxLength int = 63
-
-var qualifiedNameRegexp = regexp.MustCompile("^" + qualifiedNameFmt + "$")
 
 // IsQualifiedName tests whether the value passed is what Kubernetes calls a
 // "qualified name".  This is a format used in various places throughout the
 // system.  If the value is not valid, a list of error strings is returned.
 // Otherwise an empty list (or nil) is returned.
-func IsQualifiedName(value string) []string {
-	var errs []string
-	parts := strings.Split(value, "/")
-	var name string
-	switch len(parts) {
-	case 1:
-		name = parts[0]
-	case 2:
-		var prefix string
-		prefix, name = parts[0], parts[1]
-		if len(prefix) == 0 {
-			errs = append(errs, "prefix part "+EmptyError())
-		} else if msgs := IsDNS1123Subdomain(prefix); len(msgs) != 0 {
-			errs = append(errs, prefixEach(msgs, "prefix part ")...)
-		}
-	default:
-		return append(errs, "a qualified name "+RegexError(qualifiedNameErrMsg, qualifiedNameFmt, "MyName", "my.name", "123-abc")+
-			" with an optional DNS subdomain prefix and '/' (e.g. 'example.com/MyName')")
-	}
-
-	if len(name) == 0 {
-		errs = append(errs, "name part "+EmptyError())
-	} else if len(name) > qualifiedNameMaxLength {
-		errs = append(errs, "name part "+MaxLenError(qualifiedNameMaxLength))
-	}
-	if !qualifiedNameRegexp.MatchString(name) {
-		errs = append(errs, "name part "+RegexError(qualifiedNameErrMsg, qualifiedNameFmt, "MyName", "my.name", "123-abc"))
-	}
-	return errs
-}
+// Deprecated: Use k8s.io/apimachinery/pkg/api/validate/content.IsQualifiedName instead.
+var IsQualifiedName = content.IsLabelKey
 
 // IsFullyQualifiedName checks if the name is fully qualified. This is similar
 // to IsFullyQualifiedDomainName but requires a minimum of 3 segments instead of
@@ -153,29 +117,44 @@ func IsDomainPrefixedPath(fldPath *field.Path, dpPath string) field.ErrorList {
 	return allErrs
 }
 
-const labelValueFmt string = "(" + qualifiedNameFmt + ")?"
-const labelValueErrMsg string = "a valid label must be an empty string or consist of alphanumeric characters, '-', '_' or '.', and must start and end with an alphanumeric character"
+// IsDomainPrefixedKey checks if the given key string is a domain-prefixed key
+// (e.g. acme.io/foo). All characters before the first "/" must be a valid
+// subdomain as defined by RFC 1123. All characters trailing the first "/" must
+// be non-empty and match the regex ^([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]$.
+func IsDomainPrefixedKey(fldPath *field.Path, key string) field.ErrorList {
+	var allErrs field.ErrorList
+	if len(key) == 0 {
+		return append(allErrs, field.Required(fldPath, ""))
+	}
+	for _, errMessages := range content.IsLabelKey(key) {
+		allErrs = append(allErrs, field.Invalid(fldPath, key, errMessages))
+	}
+
+	if len(allErrs) > 0 {
+		return allErrs
+	}
+
+	segments := strings.Split(key, "/")
+	if len(segments) != 2 {
+		return append(allErrs, field.Invalid(fldPath, key, "must be a domain-prefixed key (such as \"acme.io/foo\")"))
+	}
+
+	return allErrs
+}
 
 // LabelValueMaxLength is a label's max length
-const LabelValueMaxLength int = 63
-
-var labelValueRegexp = regexp.MustCompile("^" + labelValueFmt + "$")
+// Deprecated: Use k8s.io/apimachinery/pkg/api/validate/content.LabelValueMaxLength instead.
+const LabelValueMaxLength int = content.LabelValueMaxLength
 
 // IsValidLabelValue tests whether the value passed is a valid label value.  If
 // the value is not valid, a list of error strings is returned.  Otherwise an
 // empty list (or nil) is returned.
-func IsValidLabelValue(value string) []string {
-	var errs []string
-	if len(value) > LabelValueMaxLength {
-		errs = append(errs, MaxLenError(LabelValueMaxLength))
-	}
-	if !labelValueRegexp.MatchString(value) {
-		errs = append(errs, RegexError(labelValueErrMsg, labelValueFmt, "MyValue", "my_value", "12345"))
-	}
-	return errs
-}
+// Deprecated: Use k8s.io/apimachinery/pkg/api/validate/content.IsLabelValue instead.
+var IsValidLabelValue = content.IsLabelValue
 
 const dns1123LabelFmt string = "[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+const dns1123LabelFmtWithUnderscore string = "_?[a-z0-9]([-_a-z0-9]*[a-z0-9])?"
+
 const dns1123LabelErrMsg string = "a lowercase RFC 1123 label must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character"
 
 // DNS1123LabelMaxLength is a label's max length in DNS (RFC 1123)
@@ -191,7 +170,13 @@ func IsDNS1123Label(value string) []string {
 		errs = append(errs, MaxLenError(DNS1123LabelMaxLength))
 	}
 	if !dns1123LabelRegexp.MatchString(value) {
-		errs = append(errs, RegexError(dns1123LabelErrMsg, dns1123LabelFmt, "my-name", "123-abc"))
+		if dns1123SubdomainRegexp.MatchString(value) {
+			// It was a valid subdomain and not a valid label.  Since we
+			// already checked length, it must be dots.
+			errs = append(errs, "must not contain dots")
+		} else {
+			errs = append(errs, RegexError(dns1123LabelErrMsg, dns1123LabelFmt, "my-name", "123-abc"))
+		}
 	}
 	return errs
 }
@@ -199,10 +184,14 @@ func IsDNS1123Label(value string) []string {
 const dns1123SubdomainFmt string = dns1123LabelFmt + "(\\." + dns1123LabelFmt + ")*"
 const dns1123SubdomainErrorMsg string = "a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, '-' or '.', and must start and end with an alphanumeric character"
 
+const dns1123SubdomainFmtWithUnderscore string = dns1123LabelFmtWithUnderscore + "(\\." + dns1123LabelFmtWithUnderscore + ")*"
+const dns1123SubdomainErrorMsgFG string = "a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, '_', '-' or '.', and must start and end with an alphanumeric character"
+
 // DNS1123SubdomainMaxLength is a subdomain's max length in DNS (RFC 1123)
 const DNS1123SubdomainMaxLength int = 253
 
 var dns1123SubdomainRegexp = regexp.MustCompile("^" + dns1123SubdomainFmt + "$")
+var dns1123SubdomainRegexpWithUnderscore = regexp.MustCompile("^" + dns1123SubdomainFmtWithUnderscore + "$")
 
 // IsDNS1123Subdomain tests for a string that conforms to the definition of a
 // subdomain in DNS (RFC 1123).
@@ -213,6 +202,19 @@ func IsDNS1123Subdomain(value string) []string {
 	}
 	if !dns1123SubdomainRegexp.MatchString(value) {
 		errs = append(errs, RegexError(dns1123SubdomainErrorMsg, dns1123SubdomainFmt, "example.com"))
+	}
+	return errs
+}
+
+// IsDNS1123SubdomainWithUnderscore tests for a string that conforms to the definition of a
+// subdomain in DNS (RFC 1123), but allows the use of an underscore in the string
+func IsDNS1123SubdomainWithUnderscore(value string) []string {
+	var errs []string
+	if len(value) > DNS1123SubdomainMaxLength {
+		errs = append(errs, MaxLenError(DNS1123SubdomainMaxLength))
+	}
+	if !dns1123SubdomainRegexpWithUnderscore.MatchString(value) {
+		errs = append(errs, RegexError(dns1123SubdomainErrorMsgFG, dns1123SubdomainFmtWithUnderscore, "example.com"))
 	}
 	return errs
 }
@@ -260,19 +262,10 @@ func IsWildcardDNS1123Subdomain(value string) []string {
 	return errs
 }
 
-const cIdentifierFmt string = "[A-Za-z_][A-Za-z0-9_]*"
-const identifierErrMsg string = "a valid C identifier must start with alphabetic character or '_', followed by a string of alphanumeric characters or '_'"
-
-var cIdentifierRegexp = regexp.MustCompile("^" + cIdentifierFmt + "$")
-
 // IsCIdentifier tests for a string that conforms the definition of an identifier
 // in C. This checks the format, but not the length.
-func IsCIdentifier(value string) []string {
-	if !cIdentifierRegexp.MatchString(value) {
-		return []string{RegexError(identifierErrMsg, cIdentifierFmt, "my_name", "MY_NAME", "MyName")}
-	}
-	return nil
-}
+// Deprecated: Use k8s.io/apimachinery/pkg/api/validate/content.IsCIdentifier instead.
+var IsCIdentifier = content.IsCIdentifier
 
 // IsValidPortNum tests that the argument is a valid, non-zero port number.
 func IsValidPortNum(port int) []string {
@@ -345,34 +338,6 @@ func IsValidPortName(port string) []string {
 	return errs
 }
 
-// IsValidIP tests that the argument is a valid IP address.
-func IsValidIP(value string) []string {
-	if netutils.ParseIPSloppy(value) == nil {
-		return []string{"must be a valid IP address, (e.g. 10.9.8.7 or 2001:db8::ffff)"}
-	}
-	return nil
-}
-
-// IsValidIPv4Address tests that the argument is a valid IPv4 address.
-func IsValidIPv4Address(fldPath *field.Path, value string) field.ErrorList {
-	var allErrors field.ErrorList
-	ip := netutils.ParseIPSloppy(value)
-	if ip == nil || ip.To4() == nil {
-		allErrors = append(allErrors, field.Invalid(fldPath, value, "must be a valid IPv4 address"))
-	}
-	return allErrors
-}
-
-// IsValidIPv6Address tests that the argument is a valid IPv6 address.
-func IsValidIPv6Address(fldPath *field.Path, value string) field.ErrorList {
-	var allErrors field.ErrorList
-	ip := netutils.ParseIPSloppy(value)
-	if ip == nil || ip.To4() != nil {
-		allErrors = append(allErrors, field.Invalid(fldPath, value, "must be a valid IPv6 address"))
-	}
-	return allErrors
-}
-
 const percentFmt string = "[0-9]+%"
 const percentErrMsg string = "a valid percent string must be a numeric string followed by an ending '%'"
 
@@ -403,6 +368,9 @@ func IsHTTPHeaderName(value string) []string {
 const envVarNameFmt = "[-._a-zA-Z][-._a-zA-Z0-9]*"
 const envVarNameFmtErrMsg string = "a valid environment variable name must consist of alphabetic characters, digits, '_', '-', or '.', and must not start with a digit"
 
+// TODO(hirazawaui): Rename this when the RelaxedEnvironmentVariableValidation gate is removed.
+const relaxedEnvVarNameFmtErrMsg string = "a valid environment variable name must consist only of printable ASCII characters other than '='"
+
 var envVarNameRegexp = regexp.MustCompile("^" + envVarNameFmt + "$")
 
 // IsEnvVarName tests if a string is a valid environment variable name.
@@ -413,6 +381,24 @@ func IsEnvVarName(value string) []string {
 	}
 
 	errs = append(errs, hasChDirPrefix(value)...)
+	return errs
+}
+
+// IsRelaxedEnvVarName tests if a string is a valid environment variable name.
+func IsRelaxedEnvVarName(value string) []string {
+	var errs []string
+
+	if len(value) == 0 {
+		errs = append(errs, "environment variable name "+EmptyError())
+	}
+
+	for _, r := range value {
+		if r > unicode.MaxASCII || !unicode.IsPrint(r) || r == '=' {
+			errs = append(errs, relaxedEnvVarNameFmtErrMsg)
+			break
+		}
+	}
+
 	return errs
 }
 
@@ -462,13 +448,6 @@ func EmptyError() string {
 	return "must be non-empty"
 }
 
-func prefixEach(msgs []string, prefix string) []string {
-	for i := range msgs {
-		msgs[i] = prefix + msgs[i]
-	}
-	return msgs
-}
-
 // InclusiveRangeError returns a string explanation of a numeric "must be
 // between" validation failure.
 func InclusiveRangeError(lo, hi int) string {
@@ -485,20 +464,5 @@ func hasChDirPrefix(value string) []string {
 	case strings.HasPrefix(value, ".."):
 		errs = append(errs, `must not start with '..'`)
 	}
-	return errs
-}
-
-// IsValidSocketAddr checks that string represents a valid socket address
-// as defined in RFC 789. (e.g 0.0.0.0:10254 or [::]:10254))
-func IsValidSocketAddr(value string) []string {
-	var errs []string
-	ip, port, err := net.SplitHostPort(value)
-	if err != nil {
-		errs = append(errs, "must be a valid socket address format, (e.g. 0.0.0.0:10254 or [::]:10254)")
-		return errs
-	}
-	portInt, _ := strconv.Atoi(port)
-	errs = append(errs, IsValidPortNum(portInt)...)
-	errs = append(errs, IsValidIP(ip)...)
 	return errs
 }

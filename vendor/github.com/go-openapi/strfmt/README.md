@@ -1,8 +1,7 @@
-# Strfmt [![Build Status](https://travis-ci.org/go-openapi/strfmt.svg?branch=master)](https://travis-ci.org/go-openapi/strfmt) [![codecov](https://codecov.io/gh/go-openapi/strfmt/branch/master/graph/badge.svg)](https://codecov.io/gh/go-openapi/strfmt) [![Slack Status](https://slackin.goswagger.io/badge.svg)](https://slackin.goswagger.io)
-
+# Strfmt [![Build Status](https://github.com/go-openapi/strfmt/actions/workflows/go-test.yml/badge.svg)](https://github.com/go-openapi/strfmt/actions?query=workflow%3A"go+test") [![codecov](https://codecov.io/gh/go-openapi/strfmt/branch/master/graph/badge.svg)](https://codecov.io/gh/go-openapi/strfmt)
+[![Slack Status](https://slackin.goswagger.io/badge.svg)](https://slackin.goswagger.io)
 [![license](http://img.shields.io/badge/license-Apache%20v2-orange.svg)](https://raw.githubusercontent.com/go-openapi/strfmt/master/LICENSE)
 [![GoDoc](https://godoc.org/github.com/go-openapi/strfmt?status.svg)](http://godoc.org/github.com/go-openapi/strfmt)
-[![GolangCI](https://golangci.com/badges/github.com/go-openapi/strfmt.svg)](https://golangci.com)
 [![Go Report Card](https://goreportcard.com/badge/github.com/go-openapi/strfmt)](https://goreportcard.com/report/github.com/go-openapi/strfmt)
 
 This package exposes a registry of data types to support string formats in the go-openapi toolkit.
@@ -36,7 +35,7 @@ It also provides convenient extensions to go-openapi users.
   - mac (e.g "01:02:03:04:05:06")
   - rgbcolor (e.g. "rgb(100,100,100)")
   - ssn
-  - uuid, uuid3, uuid4, uuid5
+  - uuid, uuid3, uuid4, uuid5, uuid7
   - cidr (e.g. "192.0.2.1/24", "2001:db8:a0b:12f0::1/32")
   - ulid (e.g. "00000PP9HGSBSSDZ1JTEXBJ0PW", [spec](https://github.com/ulid/spec))
 
@@ -82,7 +81,12 @@ List of defined types:
 - SSN
 - URI
 - UUID
-- UUID3
-- UUID4
-- UUID5
+- [UUID3](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-3)
+- [UUID4](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-4)
+- [UUID5](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-5)
+- [UUID7](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-7)
 - [ULID](https://github.com/ulid/spec)
+
+## Licensing
+
+This library ships under the [SPDX-License-Identifier: Apache-2.0](./LICENSE).

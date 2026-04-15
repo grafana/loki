@@ -88,7 +88,7 @@ type Scratch struct {
 	// Decoders will return ErrMaxDecodedSizeExceeded is this limit is exceeded.
 	MaxDecodedSize int
 
-	br byteReader
+	srcLen int
 
 	// MaxSymbolValue will override the maximum symbol value of the next block.
 	MaxSymbolValue uint8
@@ -170,7 +170,7 @@ func (s *Scratch) prepare(in []byte) (*Scratch, error) {
 	if s.fse == nil {
 		s.fse = &fse.Scratch{}
 	}
-	s.br.init(in)
+	s.srcLen = len(in)
 
 	return s, nil
 }
@@ -201,7 +201,7 @@ func (c cTable) write(s *Scratch) error {
 	for i := range hist[:16] {
 		hist[i] = 0
 	}
-	for n := uint8(0); n < maxSymbolValue; n++ {
+	for n := range maxSymbolValue {
 		v := bitsToWeight[c[n].nBits] & 15
 		huffWeight[n] = v
 		hist[v]++
@@ -271,7 +271,7 @@ func (c cTable) estTableSize(s *Scratch) (sz int, err error) {
 	for i := range hist[:16] {
 		hist[i] = 0
 	}
-	for n := uint8(0); n < maxSymbolValue; n++ {
+	for n := range maxSymbolValue {
 		v := bitsToWeight[c[n].nBits] & 15
 		huffWeight[n] = v
 		hist[v]++

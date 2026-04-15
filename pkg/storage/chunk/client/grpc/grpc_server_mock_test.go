@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 type server struct {
@@ -52,7 +52,7 @@ func (s server) DeleteIndex(_ context.Context, deletes *DeleteIndexRequest) (*em
 //
 // Support new and old chunk key formats
 func (s server) PutChunks(_ context.Context, request *PutChunksRequest) (*empty.Empty, error) {
-	if request.Chunks[0].TableName == "" && (request.Chunks[0].Key == "fake/ddf337b84e835f32:171bc00155a:171bc00155a:e5e91607") {
+	if request.Chunks[0].TableName == "" && (request.Chunks[0].Key == "fake/ddf337b84e835f32:171bc00155a:171bc00155a:e6a518a") {
 		return &empty.Empty{}, nil
 	}
 	err := errors.New("putChunks from storageClient request doesn't match with test from gRPC client")
@@ -128,7 +128,7 @@ func (s server) UpdateTable(_ context.Context, request *UpdateTableRequest) (*em
 	return &empty.Empty{}, err
 }
 
-// NewStorageClient returns a new StorageClient.
+// NewTestStorageClient returns a new StorageClient.
 func NewTestStorageClient(cfg Config, schemaCfg config.SchemaConfig) (*StorageClient, error) {
 	grpcClient, _, err := connectToGrpcServer(cfg.Address)
 	if err != nil {
@@ -143,7 +143,7 @@ func NewTestStorageClient(cfg Config, schemaCfg config.SchemaConfig) (*StorageCl
 
 //***********************  gRPC mock server *********************************//
 
-// NewTableClient returns a new TableClient.
+// NewTestTableClient returns a new TableClient.
 func NewTestTableClient(cfg Config) (*TableClient, error) {
 	grpcClient, _, err := connectToGrpcServer(cfg.Address)
 	if err != nil {
@@ -155,7 +155,7 @@ func NewTestTableClient(cfg Config) (*TableClient, error) {
 	return client, nil
 }
 
-// NewStorageClient returns a new StorageClient.
+// newTestStorageServer returns a new StorageServer.
 func newTestStorageServer(cfg Config) *server {
 	client := &server{
 		Cfg: cfg,

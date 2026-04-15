@@ -21,8 +21,14 @@ pr:
       - sdk/storage/azblob
 
 
-stages:
-  - template: /eng/pipelines/templates/jobs/archetype-sdk-client.yml
+extends:
+    template: /eng/pipelines/templates/jobs/archetype-sdk-client.yml
     parameters:
       ServiceDirectory: 'storage/azblob'
       RunLiveTests: true
+      UsePipelineProxy: false
+      EnvVars:
+        AZURE_CLIENT_ID: $(AZBLOB_CLIENT_ID)
+        AZURE_TENANT_ID: $(AZBLOB_TENANT_ID)
+        AZURE_CLIENT_SECRET: $(AZBLOB_CLIENT_SECRET)
+        AZURE_SUBSCRIPTION_ID: $(AZBLOB_SUBSCRIPTION_ID)

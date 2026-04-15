@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"slices"
 	"time"
 )
 
@@ -69,7 +70,7 @@ func MaxDurationPerTenant(tenantIDs []string, f func(string) time.Duration) time
 	return result
 }
 
-// MaxDurationOrDisabledPerTenant is returning the maximum duration per tenant or zero if one tenant has time.Duration(0).
+// MaxDurationOrZeroPerTenant is returning the maximum duration per tenant or zero if one tenant has time.Duration(0).
 func MaxDurationOrZeroPerTenant(tenantIDs []string, f func(string) time.Duration) time.Duration {
 	var result *time.Duration
 	for _, tenantID := range tenantIDs {
@@ -86,4 +87,32 @@ func MaxDurationOrZeroPerTenant(tenantIDs []string, f func(string) time.Duration
 		return 0
 	}
 	return *result
+}
+
+// IntersectionPerTenant is returning the intersection of feature flags. This is useful to determine the minimal
+// feature set supported.
+func IntersectionPerTenant(tenantIDs []string, f func(string) []string) []string {
+	var result []string
+	for _, tenantID := range tenantIDs {
+		v := f(tenantID)
+		slices.Sort(v)
+		if result == nil {
+			result = v
+			continue
+		}
+		var updatedResult []string
+		for i, j := 0, 0; i < len(result) && j < len(v); {
+			if result[i] == v[j] {
+				updatedResult = append(updatedResult, result[i])
+				i++
+				j++
+			} else if result[i] < v[j] {
+				i++
+			} else {
+				j++
+			}
+		}
+		result = updatedResult
+	}
+	return result
 }

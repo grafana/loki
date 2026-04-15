@@ -1,8 +1,9 @@
-cast
-====
-[![GoDoc](https://godoc.org/github.com/spf13/cast?status.svg)](https://godoc.org/github.com/spf13/cast)
-[![Build Status](https://api.travis-ci.org/spf13/cast.svg?branch=master)](https://travis-ci.org/spf13/cast)
-[![Go Report Card](https://goreportcard.com/badge/github.com/spf13/cast)](https://goreportcard.com/report/github.com/spf13/cast)
+# cast
+
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/spf13/cast/ci.yaml?style=flat-square)](https://github.com/spf13/cast/actions/workflows/ci.yaml)
+[![go.dev reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/mod/github.com/spf13/cast)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/spf13/cast?style=flat-square&color=61CFDD)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/spf13/cast/badge?style=flat-square)](https://deps.dev/go/github.com%252Fspf13%252Fcast)
 
 Easy and safe casting from one type to another in Go
 
@@ -17,7 +18,7 @@ interface into a bool, etc. Cast does this intelligently when an obvious
 conversion is possible. It doesn’t make any attempts to guess what you meant,
 for example you can only convert a string to an int when it is a string
 representation of an int such as “8”. Cast was developed for use in
-[Hugo](http://hugo.spf13.com), a website engine which uses YAML, TOML or JSON
+[Hugo](https://gohugo.io), a website engine which uses YAML, TOML or JSON
 for meta data.
 
 ## Why use Cast?
@@ -73,3 +74,6 @@ the code for a complete set.
     cast.ToInt(eight)              // 8
     cast.ToInt(nil)                // 0
 
+## License
+
+The project is licensed under the [MIT License](LICENSE).

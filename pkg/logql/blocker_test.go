@@ -10,9 +10,11 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 func TestEngine_ExecWithBlockedQueries(t *testing.T) {
@@ -124,7 +126,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			"correct FNV32 hash matches",
 			defaultQuery, []*validation.BlockedQuery{
 				{
-					Hash: HashedQuery(defaultQuery),
+					Hash: util.HashedQuery(defaultQuery),
 				},
 			}, logqlmodel.ErrBlocked,
 		},
@@ -132,9 +134,31 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			"incorrect FNV32 hash does not match",
 			defaultQuery, []*validation.BlockedQuery{
 				{
-					Hash: HashedQuery(defaultQuery) + 1,
+					Hash: util.HashedQuery(defaultQuery) + 1,
 				},
 			}, nil,
+		},
+		{
+			"non-matching hash does not prevent subsequent pattern from matching",
+			defaultQuery, []*validation.BlockedQuery{
+				{
+					Hash: util.HashedQuery(defaultQuery) + 1, // does not match
+				},
+				{
+					Pattern: defaultQuery, // should still be evaluated
+				},
+			}, logqlmodel.ErrBlocked,
+		},
+		{
+			"second hash in list matches when first does not",
+			defaultQuery, []*validation.BlockedQuery{
+				{
+					Hash: util.HashedQuery(defaultQuery) + 1, // does not match
+				},
+				{
+					Hash: util.HashedQuery(defaultQuery), // matches
+				},
+			}, logqlmodel.ErrBlocked,
 		},
 		{
 			"no blocked queries",
@@ -144,15 +168,102 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			limits.blockedQueries = test.blocked
 
-			q := eng.Query(LiteralParams{
-				qs:        test.q,
-				start:     time.Unix(0, 0),
-				end:       time.Unix(100000, 0),
-				step:      60 * time.Second,
-				direction: logproto.FORWARD,
-				limit:     1000,
-			})
-			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+			params, err := NewLiteralParams(test.q, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+			require.NoError(t, err)
+			q := eng.Query(params)
+			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
+
+			if test.expectedErr == nil {
+				require.NoError(t, err)
+				return
+			}
+
+			require.Error(t, err)
+			require.Equal(t, err.Error(), test.expectedErr.Error())
+		})
+	}
+}
+
+func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
+	limits := &fakeLimits{maxSeries: 10}
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), limits, log.NewNopLogger())
+
+	defaultQuery := `topk(1,rate(({app=~"foo|bar"})[1m]))`
+
+	for _, test := range []struct {
+		name        string
+		q           string
+		tagsHeader  string
+		blocked     []*validation.BlockedQuery
+		expectedErr error
+	}{
+		{
+			name:       "block when tags match and no types",
+			q:          defaultQuery,
+			tagsHeader: "Source=grafana,Feature=beta",
+			blocked: []*validation.BlockedQuery{
+				{
+					// no pattern specified -> matches all by default
+					Tags: map[string]string{"source": "grafana", "feature": "beta"},
+				},
+			},
+			expectedErr: logqlmodel.ErrBlocked,
+		},
+		{
+			name:       "do not block when tags value mismatches",
+			q:          defaultQuery,
+			tagsHeader: "Source=grafana,Feature=alpha",
+			blocked: []*validation.BlockedQuery{
+				{
+					Pattern: ".*",
+					Regex:   true,
+					Tags:    map[string]string{"feature": "beta"},
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name:       "block when types and tags match",
+			q:          defaultQuery,
+			tagsHeader: "Source=grafana,Feature=beta",
+			blocked: []*validation.BlockedQuery{
+				{
+					Pattern: ".*",
+					Regex:   true,
+					Types:   []string{QueryTypeMetric},
+					Tags:    map[string]string{"source": "GRAFANA", "feature": "BETA"}, // case-insensitive
+				},
+			},
+			expectedErr: logqlmodel.ErrBlocked,
+		},
+		{
+			name:       "do not block when types match but required tag key missing",
+			q:          defaultQuery,
+			tagsHeader: "Source=grafana",
+			blocked: []*validation.BlockedQuery{
+				{
+					Pattern: ".*",
+					Regex:   true,
+					Types:   []string{QueryTypeMetric},
+					Tags:    map[string]string{"feature": "beta"},
+				},
+			},
+			expectedErr: nil,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			limits.blockedQueries = test.blocked
+
+			params, err := NewLiteralParams(test.q, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+			require.NoError(t, err)
+			q := eng.Query(params)
+
+			ctx := user.InjectOrgID(context.Background(), "fake")
+			if test.tagsHeader != "" {
+				ctx = httpreq.InjectQueryTags(ctx, test.tagsHeader)
+			}
+
+			_, err = q.Exec(ctx)
 
 			if test.expectedErr == nil {
 				require.NoError(t, err)

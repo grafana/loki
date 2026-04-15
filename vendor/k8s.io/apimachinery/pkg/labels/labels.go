@@ -31,6 +31,9 @@ type Labels interface {
 
 	// Get returns the value for the provided label.
 	Get(label string) (value string)
+
+	// Lookup returns the value for the provided label if it exists and whether the provided label exist
+	Lookup(label string) (value string, exists bool)
 }
 
 // Set is a map of label:value. It implements Labels.
@@ -59,6 +62,12 @@ func (ls Set) Get(label string) string {
 	return ls[label]
 }
 
+// Lookup returns the value for the provided label if it exists and whether the provided label exist
+func (ls Set) Lookup(label string) (string, bool) {
+	val, exists := ls[label]
+	return val, exists
+}
+
 // AsSelector converts labels into a selectors. It does not
 // perform any validation, which means the server will reject
 // the request if the Set contains invalid values.
@@ -77,6 +86,8 @@ func (ls Set) AsValidatedSelector() (Selector, error) {
 // perform any validation.
 // According to our measurements this is significantly faster
 // in codepaths that matter at high scale.
+// Note: this method copies the Set; if the Set is immutable, consider wrapping it with ValidatedSetSelector
+// instead, which does not copy.
 func (ls Set) AsSelectorPreValidated() Selector {
 	return SelectorFromValidatedSet(ls)
 }

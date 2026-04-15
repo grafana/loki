@@ -25,10 +25,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/util/test"
+	"github.com/grafana/loki/v3/pkg/util/test"
 )
 
 func TestConfig_Unmarshal_Defaults(t *testing.T) {
@@ -197,10 +198,7 @@ func TestInstance(t *testing.T) {
 
 	count := 3
 	for i := 0; i < count; i++ {
-		_, err := app.Append(0, labels.Labels{
-			labels.Label{Name: "__name__", Value: "test"},
-			labels.Label{Name: "iter", Value: fmt.Sprintf("%v", i)},
-		}, refTime-int64(i), float64(i))
+		_, err := app.Append(0, labels.FromStrings("__name__", "test", "iter", fmt.Sprintf("%v", i)), refTime-int64(i), float64(i))
 
 		require.NoError(t, err)
 	}
@@ -246,12 +244,35 @@ type mockWalStorage struct {
 func (s *mockWalStorage) Directory() string                          { return s.directory }
 func (s *mockWalStorage) StartTime() (int64, error)                  { return 0, nil }
 func (s *mockWalStorage) WriteStalenessMarkers(_ func() int64) error { return nil }
+func (s *mockWalStorage) SetWriteNotified(_ wlog.WriteNotified)      {}
 func (s *mockWalStorage) Close() error                               { return nil }
 func (s *mockWalStorage) Truncate(_ int64) error                     { return nil }
 
 func (s *mockWalStorage) Appender(context.Context) storage.Appender {
 	return &mockAppender{s: s}
 }
+
+func (s *mockWalStorage) AppenderV2(ctx context.Context) storage.AppenderV2 {
+	return &mockAppenderV2{inner: s.Appender(ctx)}
+}
+
+type mockAppenderV2 struct {
+	inner storage.Appender
+}
+
+func (a *mockAppenderV2) Append(ref storage.SeriesRef, ls labels.Labels, _, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, _ storage.AppendV2Options) (storage.SeriesRef, error) {
+	switch {
+	case fh != nil:
+		return a.inner.AppendHistogram(ref, ls, t, nil, fh)
+	case h != nil:
+		return a.inner.AppendHistogram(ref, ls, t, h, nil)
+	default:
+		return a.inner.Append(ref, ls, t, v)
+	}
+}
+
+func (a *mockAppenderV2) Commit() error   { return a.inner.Commit() }
+func (a *mockAppenderV2) Rollback() error { return a.inner.Rollback() }
 
 type mockAppender struct {
 	s *mockWalStorage
@@ -269,7 +290,7 @@ func (a *mockAppender) Add(l labels.Labels, _ int64, _ float64) (storage.SeriesR
 	a.s.mut.Lock()
 	defer a.s.mut.Unlock()
 
-	hash := l.Hash()
+	hash := labels.StableHash(l)
 	a.s.series[storage.SeriesRef(hash)] = 1
 	return storage.SeriesRef(hash), nil
 }
@@ -298,6 +319,24 @@ func (a *mockAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ me
 func (a *mockAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	return 0, nil
 }
+
+func (a *mockAppender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, nil
+}
+
+func (a *mockAppender) AppendHistogramSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, nil
+}
+
+func (a *mockAppender) AppendSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
+	return 0, nil
+}
+
+func (a *mockAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
+	return 0, nil
+}
+
+func (a *mockAppender) SetOptions(_ *storage.AppendOptions) {}
 
 func (a *mockAppender) Commit() error {
 	return nil

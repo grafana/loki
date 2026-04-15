@@ -1,22 +1,12 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package analysis
 
 import (
 	"fmt"
 	"reflect"
+	"slices"
 
 	"github.com/go-openapi/spec"
 )
@@ -53,7 +43,7 @@ import (
 // collisions.
 func Mixin(primary *spec.Swagger, mixins ...*spec.Swagger) []string {
 	skipped := make([]string, 0, len(mixins))
-	opIds := getOpIds(primary)
+	opIDs := getOpIDs(primary)
 	initPrimary(primary)
 
 	for i, m := range mixins {
@@ -74,7 +64,7 @@ func Mixin(primary *spec.Swagger, mixins ...*spec.Swagger) []string {
 		skipped = append(skipped, mergeDefinitions(primary, m)...)
 
 		// merging paths requires a map of operationIDs to work with
-		skipped = append(skipped, mergePaths(primary, m, opIds, i)...)
+		skipped = append(skipped, mergePaths(primary, m, opIDs, i)...)
 
 		skipped = append(skipped, mergeParameters(primary, m)...)
 
@@ -84,9 +74,9 @@ func Mixin(primary *spec.Swagger, mixins ...*spec.Swagger) []string {
 	return skipped
 }
 
-// getOpIds extracts all the paths.<path>.operationIds from the given
+// getOpIDs extracts all the paths.<path>.operationIds from the given
 // spec and returns them as the keys in a map with 'true' values.
-func getOpIds(s *spec.Swagger) map[string]bool {
+func getOpIDs(s *spec.Swagger) map[string]bool {
 	rv := make(map[string]bool)
 	if s.Paths == nil {
 		return rv
@@ -179,7 +169,7 @@ func mergeDefinitions(primary *spec.Swagger, m *spec.Swagger) (skipped []string)
 	return
 }
 
-func mergePaths(primary *spec.Swagger, m *spec.Swagger, opIds map[string]bool, mixIndex int) (skipped []string) {
+func mergePaths(primary *spec.Swagger, m *spec.Swagger, opIDs map[string]bool, mixIndex int) (skipped []string) {
 	if m.Paths != nil {
 		for k, v := range m.Paths.Paths {
 			if _, exists := primary.Paths.Paths[k]; exists {
@@ -198,10 +188,10 @@ func mergePaths(primary *spec.Swagger, m *spec.Swagger, opIds map[string]bool, m
 			// all the proivded specs are already unique.
 			piops := pathItemOps(v)
 			for _, piop := range piops {
-				if opIds[piop.ID] {
+				if opIDs[piop.ID] {
 					piop.ID = fmt.Sprintf("%v%v%v", piop.ID, "Mixin", mixIndex)
 				}
-				opIds[piop.ID] = true
+				opIDs[piop.ID] = true
 			}
 			primary.Paths.Paths[k] = v
 		}
@@ -248,14 +238,7 @@ func mergeResponses(primary *spec.Swagger, m *spec.Swagger) (skipped []string) {
 
 func mergeConsumes(primary *spec.Swagger, m *spec.Swagger) []string {
 	for _, v := range m.Consumes {
-		found := false
-		for _, vv := range primary.Consumes {
-			if v == vv {
-				found = true
-
-				break
-			}
-		}
+		found := slices.Contains(primary.Consumes, v)
 
 		if found {
 			// no warning here: we just skip it
@@ -269,14 +252,7 @@ func mergeConsumes(primary *spec.Swagger, m *spec.Swagger) []string {
 
 func mergeProduces(primary *spec.Swagger, m *spec.Swagger) []string {
 	for _, v := range m.Produces {
-		found := false
-		for _, vv := range primary.Produces {
-			if v == vv {
-				found = true
-
-				break
-			}
-		}
+		found := slices.Contains(primary.Produces, v)
 
 		if found {
 			// no warning here: we just skip it
@@ -317,14 +293,7 @@ func mergeTags(primary *spec.Swagger, m *spec.Swagger) (skipped []string) {
 
 func mergeSchemes(primary *spec.Swagger, m *spec.Swagger) []string {
 	for _, v := range m.Schemes {
-		found := false
-		for _, vv := range primary.Schemes {
-			if v == vv {
-				found = true
-
-				break
-			}
-		}
+		found := slices.Contains(primary.Schemes, v)
 
 		if found {
 			// no warning here: we just skip it
@@ -367,7 +336,7 @@ func mergeSwaggerProps(primary *spec.Swagger, m *spec.Swagger) []string {
 	return skipped
 }
 
-// nolint: unparam
+//nolint:unparam
 func mergeExternalDocs(primary *spec.ExternalDocumentation, m *spec.ExternalDocumentation) []string {
 	if primary.Description == "" {
 		primary.Description = m.Description
@@ -391,7 +360,7 @@ func mergeInfo(primary *spec.Info, m *spec.Info) []string {
 	}
 
 	if primary.Title == "" {
-		primary.Description = m.Description
+		primary.Title = m.Title
 	}
 
 	if primary.TermsOfService == "" {
@@ -474,23 +443,23 @@ func initPrimary(primary *spec.Swagger) {
 	}
 
 	if primary.Security == nil {
-		primary.Security = make([]map[string][]string, 0, 10)
+		primary.Security = make([]map[string][]string, 0, allocSmallMap)
 	}
 
 	if primary.Produces == nil {
-		primary.Produces = make([]string, 0, 10)
+		primary.Produces = make([]string, 0, allocSmallMap)
 	}
 
 	if primary.Consumes == nil {
-		primary.Consumes = make([]string, 0, 10)
+		primary.Consumes = make([]string, 0, allocSmallMap)
 	}
 
 	if primary.Tags == nil {
-		primary.Tags = make([]spec.Tag, 0, 10)
+		primary.Tags = make([]spec.Tag, 0, allocSmallMap)
 	}
 
 	if primary.Schemes == nil {
-		primary.Schemes = make([]string, 0, 10)
+		primary.Schemes = make([]string, 0, allocSmallMap)
 	}
 
 	if primary.Paths == nil {

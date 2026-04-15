@@ -66,9 +66,9 @@ type BceV1Signer struct{}
 // Sign - generate the authorization string from the BceCredentials and SignOptions
 //
 // PARAMS:
-//     - req: *http.Request for this sign
-//     - cred: *BceCredentials to access the serice
-//     - opt: *SignOptions for this sign algorithm
+//   - req: *http.Request for this sign
+//   - cred: *BceCredentials to access the serice
+//   - opt: *SignOptions for this sign algorithm
 func (b *BceV1Signer) Sign(req *http.Request, cred *BceCredentials, opt *SignOptions) {
 	if req == nil {
 		log.Fatal("request should not be null for sign")
@@ -171,8 +171,10 @@ func getCanonicalHeaders(headers map[string]string,
 		if headExists ||
 			(strings.HasPrefix(headKey, http.BCE_PREFIX) &&
 				(headKey != http.BCE_REQUEST_ID)) {
-
 			headVal := strings.TrimSpace(v)
+			if len(headVal) == 0 {
+				continue
+			}
 			encoded := util.UriEncode(headKey, true) + ":" + util.UriEncode(headVal, true)
 			canonicalHeaders = append(canonicalHeaders, encoded)
 			signHeaders = append(signHeaders, headKey)

@@ -91,7 +91,10 @@ type Service interface {
 	// as the service enters those states. Additionally, at most one of the listener's callbacks will execute
 	// at once. However, multiple listeners' callbacks may execute concurrently, and listeners may execute
 	// in an order different from the one in which they were registered.
-	AddListener(listener Listener)
+	//
+	// Returned function can be used to stop the listener from receiving additional events from the service,
+	// and release resources used by the listener (e.g. goroutine, if it was started by adding listener).
+	AddListener(listener Listener) func()
 }
 
 // NamedService extends Service with a name.

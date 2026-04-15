@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -146,14 +147,6 @@ func (c *ClientInfo) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// HomeAccountID creates the home account ID.
-func (c ClientInfo) HomeAccountID() string {
-	if c.UID == "" || c.UTID == "" {
-		return ""
-	}
-	return fmt.Sprintf("%s.%s", c.UID, c.UTID)
-}
-
 // Scopes represents scopes in a TokenResponse.
 type Scopes struct {
 	Slice []string
@@ -176,18 +169,80 @@ type TokenResponse struct {
 
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
+	TokenType    string `json:"token_type"`
 
 	FamilyID       string                    `json:"foci"`
 	IDToken        IDToken                   `json:"id_token"`
 	ClientInfo     ClientInfo                `json:"client_info"`
-	ExpiresOn      internalTime.DurationTime `json:"expires_in"`
+	RefreshOn      internalTime.DurationTime `json:"refresh_in,omitempty"`
+	ExpiresOn      time.Time                 `json:"-"`
 	ExtExpiresOn   internalTime.DurationTime `json:"ext_expires_in"`
 	GrantedScopes  Scopes                    `json:"scope"`
 	DeclinedScopes []string                  // This is derived
 
 	AdditionalFields map[string]interface{}
+	scopesComputed   bool
+}
 
-	scopesComputed bool
+func (tr *TokenResponse) UnmarshalJSON(data []byte) error {
+	type Alias TokenResponse
+	aux := &struct {
+		ExpiresIn internalTime.DurationTime `json:"expires_in,omitempty"`
+		ExpiresOn any                       `json:"expires_on,omitempty"`
+		*Alias
+	}{
+		Alias: (*Alias)(tr),
+	}
+
+	// Unmarshal the JSON data into the aux struct
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	// Function to parse different date formats
+	// This is a workaround for the issue described here:
+	// https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/4963
+	parseExpiresOn := func(expiresOn string) (time.Time, error) {
+		var formats = []string{
+			"01/02/2006 15:04:05", // MM/dd/yyyy HH:mm:ss
+			"2006-01-02 15:04:05", // yyyy-MM-dd HH:mm:ss
+			time.RFC3339Nano,      // ISO 8601 (with nanosecond precision)
+		}
+
+		for _, format := range formats {
+			if t, err := time.Parse(format, expiresOn); err == nil {
+				return t, nil
+			}
+		}
+		return time.Time{}, fmt.Errorf("invalid ExpiresOn format: %s", expiresOn)
+	}
+
+	if expiresOnStr, ok := aux.ExpiresOn.(string); ok {
+		if ts, err := strconv.ParseInt(expiresOnStr, 10, 64); err == nil {
+			tr.ExpiresOn = time.Unix(ts, 0)
+			return nil
+		}
+		if expiresOnStr != "" {
+			if t, err := parseExpiresOn(expiresOnStr); err != nil {
+				return err
+			} else {
+				tr.ExpiresOn = t
+				return nil
+			}
+		}
+	}
+
+	// Check if ExpiresOn is a number (Unix timestamp or ISO 8601)
+	if expiresOnNum, ok := aux.ExpiresOn.(float64); ok {
+		tr.ExpiresOn = time.Unix(int64(expiresOnNum), 0)
+		return nil
+	}
+
+	if !aux.ExpiresIn.T.IsZero() {
+		tr.ExpiresOn = aux.ExpiresIn.T
+		return nil
+	}
+	return errors.New("expires_in and expires_on are both missing or invalid")
 }
 
 // ComputeScope computes the final scopes based on what was granted by the server and
@@ -201,6 +256,19 @@ func (tr *TokenResponse) ComputeScope(authParams authority.AuthParams) {
 		tr.DeclinedScopes = findDeclinedScopes(authParams.Scopes, tr.GrantedScopes.Slice)
 	}
 	tr.scopesComputed = true
+}
+
+// HomeAccountID uniquely identifies the authenticated account, if any. It's "" when the token is an app token.
+func (tr *TokenResponse) HomeAccountID() string {
+	id := tr.IDToken.Subject
+	if uid := tr.ClientInfo.UID; uid != "" {
+		utid := tr.ClientInfo.UTID
+		if utid == "" {
+			utid = uid
+		}
+		id = fmt.Sprintf("%s.%s", uid, utid)
+	}
+	return id
 }
 
 // Validate validates the TokenResponse has basic valid values. It must be called
@@ -228,7 +296,7 @@ func (tr *TokenResponse) CacheKey(authParams authority.AuthParams) string {
 		return authParams.AppKey()
 	}
 	if authParams.IsConfidentialClient || authParams.AuthorizationType == authority.ATRefreshToken {
-		return tr.ClientInfo.HomeAccountID()
+		return tr.HomeAccountID()
 	}
 	return ""
 }
@@ -291,10 +359,11 @@ func (rt RefreshToken) Key() string {
 		fourth = rt.ClientID
 	}
 
-	return strings.Join(
+	key := strings.Join(
 		[]string{rt.HomeAccountID, rt.Environment, rt.CredentialType, fourth},
 		shared.CacheKeySeparator,
 	)
+	return strings.ToLower(key)
 }
 
 func (rt RefreshToken) GetSecret() string {

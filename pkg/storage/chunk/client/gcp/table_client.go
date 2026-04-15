@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
 	"cloud.google.com/go/bigtable"
@@ -11,8 +13,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/dskit/middleware"
+
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 type tableClient struct {
@@ -25,10 +29,12 @@ type tableClient struct {
 
 // NewTableClient returns a new TableClient.
 func NewTableClient(ctx context.Context, cfg Config) (index.TableClient, error) {
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
+	unaryInterceptors, streamInterceptors := bigtableInstrumentation()
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}
+	dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	client, err := bigtable.NewAdminClient(ctx, cfg.Project, cfg.Instance, toOptions(dialOpts)...)
 	if err != nil {
 		return nil, err

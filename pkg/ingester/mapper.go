@@ -11,16 +11,16 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const maxMappedFP = 1 << 20 // About 1M fingerprints reserved for mapping.
 
 var separatorString = string([]byte{model.SeparatorByte})
 
-// fpMapper is used to map fingerprints in order to work around fingerprint
+// FpMapper is used to map fingerprints in order to work around fingerprint
 // collisions.
-type fpMapper struct {
+type FpMapper struct {
 	// highestMappedFP has to be aligned for atomic operations.
 	highestMappedFP atomic.Uint64
 
@@ -34,22 +34,22 @@ type fpMapper struct {
 	fpToLabels func(fingerprint model.Fingerprint) labels.Labels
 }
 
-// newFPMapper returns an fpMapper ready to use.
-func newFPMapper(fpToLabels func(fingerprint model.Fingerprint) labels.Labels) *fpMapper {
+// NewFPMapper returns an fpMapper ready to use.
+func NewFPMapper(fpToLabels func(fingerprint model.Fingerprint) labels.Labels) *FpMapper {
 	if fpToLabels == nil {
 		panic("nil fpToLabels")
 	}
 
-	return &fpMapper{
+	return &FpMapper{
 		fpToLabels: fpToLabels,
 		mappings:   map[model.Fingerprint]map[string]model.Fingerprint{},
 	}
 }
 
-// mapFP takes a raw fingerprint (as returned by Metrics.FastFingerprint) and
+// MapFP takes a raw fingerprint (as returned by Metrics.FastFingerprint) and
 // returns a truly unique fingerprint. The caller must have locked the raw
 // fingerprint.
-func (m *fpMapper) mapFP(fp model.Fingerprint, metric labels.Labels) model.Fingerprint {
+func (m *FpMapper) MapFP(fp model.Fingerprint, metric labels.Labels) model.Fingerprint {
 	// First check if we are in the reserved FP space, in which case this is
 	// automatically a collision that has to be mapped.
 	if fp <= maxMappedFP {
@@ -59,7 +59,7 @@ func (m *fpMapper) mapFP(fp model.Fingerprint, metric labels.Labels) model.Finge
 	// Then check the most likely case: This fp belongs to a series that is
 	// already in memory.
 	s := m.fpToLabels(fp)
-	if s != nil {
+	if !s.IsEmpty() {
 		// FP exists in memory, but is it for the same metric?
 		if labels.Equal(metric, s) {
 			// Yupp. We are done.
@@ -90,7 +90,7 @@ func (m *fpMapper) mapFP(fp model.Fingerprint, metric labels.Labels) model.Finge
 // maybeAddMapping is only used internally. It takes a detected collision and
 // adds it to the collisions map if not yet there. In any case, it returns the
 // truly unique fingerprint for the colliding metric.
-func (m *fpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric labels.Labels) model.Fingerprint {
+func (m *FpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric labels.Labels) model.Fingerprint {
 	ms := metricToUniqueString(collidingMetric)
 	m.mtx.RLock()
 	mappedFPs, ok := m.mappings[fp]
@@ -127,7 +127,7 @@ func (m *fpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric labels.
 	return mappedFP
 }
 
-func (m *fpMapper) nextMappedFP() model.Fingerprint {
+func (m *FpMapper) nextMappedFP() model.Fingerprint {
 	mappedFP := model.Fingerprint(m.highestMappedFP.Inc())
 	if mappedFP > maxMappedFP {
 		panic(fmt.Errorf("more than %v fingerprints mapped in collision detection", maxMappedFP))
@@ -143,10 +143,10 @@ func (m *fpMapper) nextMappedFP() model.Fingerprint {
 // and indexes as it might become really large, causing a lot of hashing effort
 // in maps and a lot of storage overhead in indexes.
 func metricToUniqueString(m labels.Labels) string {
-	parts := make([]string, 0, len(m))
-	for _, pair := range m {
-		parts = append(parts, pair.Name+separatorString+pair.Value)
-	}
+	parts := make([]string, 0, m.Len())
+	m.Range(func(l labels.Label) {
+		parts = append(parts, l.Name+separatorString+l.Value)
+	})
 	sort.Strings(parts)
 	return strings.Join(parts, separatorString)
 }

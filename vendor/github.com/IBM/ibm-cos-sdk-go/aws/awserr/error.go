@@ -10,24 +10,23 @@ package awserr
 //
 // Example:
 //
-//     output, err := s3manage.Upload(svc, input, opts)
-//     if err != nil {
-//         if awsErr, ok := err.(awserr.Error); ok {
-//             // Get error details
-//             log.Println("Error:", awsErr.Code(), awsErr.Message())
+//	output, err := s3manage.Upload(svc, input, opts)
+//	if err != nil {
+//	    if awsErr, ok := err.(awserr.Error); ok {
+//	        // Get error details
+//	        log.Println("Error:", awsErr.Code(), awsErr.Message())
 //
-//             // Prints out full error message, including original error if there was one.
-//             log.Println("Error:", awsErr.Error())
+//	        // Prints out full error message, including original error if there was one.
+//	        log.Println("Error:", awsErr.Error())
 //
-//             // Get original error
-//             if origErr := awsErr.OrigErr(); origErr != nil {
-//                 // operate on original error.
-//             }
-//         } else {
-//             fmt.Println(err.Error())
-//         }
-//     }
-//
+//	        // Get original error
+//	        if origErr := awsErr.OrigErr(); origErr != nil {
+//	            // operate on original error.
+//	        }
+//	    } else {
+//	        fmt.Println(err.Error())
+//	    }
+//	}
 type Error interface {
 	// Satisfy the generic error interface.
 	error
@@ -100,32 +99,31 @@ func NewBatchError(code, message string, errs []error) BatchedErrors {
 //
 // Example:
 //
-//     output, err := s3manage.Upload(svc, input, opts)
-//     if err != nil {
-//         if reqerr, ok := err.(RequestFailure); ok {
-//             log.Println("Request failed", reqerr.Code(), reqerr.Message(), reqerr.RequestID())
-//         } else {
-//             log.Println("Error:", err.Error())
-//         }
-//     }
+//	output, err := s3manage.Upload(svc, input, opts)
+//	if err != nil {
+//	    if reqerr, ok := err.(RequestFailure); ok {
+//	        log.Println("Request failed", reqerr.Code(), reqerr.Message(), reqerr.RequestID())
+//	    } else {
+//	        log.Println("Error:", err.Error())
+//	    }
+//	}
 //
 // Combined with awserr.Error:
 //
-//    output, err := s3manage.Upload(svc, input, opts)
-//    if err != nil {
-//        if awsErr, ok := err.(awserr.Error); ok {
-//            // Generic AWS Error with Code, Message, and original error (if any)
-//            fmt.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+//	output, err := s3manage.Upload(svc, input, opts)
+//	if err != nil {
+//	    if awsErr, ok := err.(awserr.Error); ok {
+//	        // Generic AWS Error with Code, Message, and original error (if any)
+//	        fmt.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
 //
-//            if reqErr, ok := err.(awserr.RequestFailure); ok {
-//                // A service error occurred
-//                fmt.Println(reqErr.StatusCode(), reqErr.RequestID())
-//            }
-//        } else {
-//            fmt.Println(err.Error())
-//        }
-//    }
-//
+//	        if reqErr, ok := err.(awserr.RequestFailure); ok {
+//	            // A service error occurred
+//	            fmt.Println(reqErr.StatusCode(), reqErr.RequestID())
+//	        }
+//	    } else {
+//	        fmt.Println(err.Error())
+//	    }
+//	}
 type RequestFailure interface {
 	Error
 

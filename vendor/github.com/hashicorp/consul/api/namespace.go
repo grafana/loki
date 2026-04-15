@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
@@ -82,14 +85,10 @@ func (n *NamespaceACLConfig) UnmarshalJSON(data []byte) error {
 	}
 
 	if n.PolicyDefaults == nil {
-		for _, pd := range aux.PolicyDefaultsSnake {
-			n.PolicyDefaults = append(n.PolicyDefaults, pd)
-		}
+		n.PolicyDefaults = append(n.PolicyDefaults, aux.PolicyDefaultsSnake...)
 	}
 	if n.RoleDefaults == nil {
-		for _, pd := range aux.RoleDefaultsSnake {
-			n.RoleDefaults = append(n.RoleDefaults, pd)
-		}
+		n.RoleDefaults = append(n.RoleDefaults, aux.RoleDefaultsSnake...)
 	}
 	return nil
 }

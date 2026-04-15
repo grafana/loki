@@ -5,11 +5,11 @@ rec {
     version = "0.1.0";
 
     src = ./../../../../..;
-    vendorSha256 = null;
+    vendorHash = null;
 
     buildPhase = ''
       runHook preBuild
-      go test --tags=helm_test -c -o $out/bin/helm-test ./production/helm/loki/src/helm-test
+      go test --tags=helm_test,slicelabels -c -o $out/bin/helm-test ./production/helm/loki/src/helm-test
       runHook postBuild
       '';
 

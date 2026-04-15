@@ -5,4 +5,5 @@
 // Loki services
 (import 'read.libsonnet') +
 (import 'write.libsonnet') +
+(import 'backend.libsonnet') +
 (import 'headless.libsonnet')

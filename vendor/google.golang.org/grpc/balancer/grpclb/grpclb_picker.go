@@ -19,13 +19,13 @@
 package grpclb
 
 import (
+	rand "math/rand/v2"
 	"sync"
 	"sync/atomic"
 
 	"google.golang.org/grpc/balancer"
 	lbpb "google.golang.org/grpc/balancer/grpclb/grpc_lb_v1"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/internal/grpcrand"
 	"google.golang.org/grpc/status"
 )
 
@@ -98,15 +98,6 @@ func (s *rpcStats) knownReceived() {
 	atomic.AddInt64(&s.numCallsFinished, 1)
 }
 
-type errPicker struct {
-	// Pick always returns this err.
-	err error
-}
-
-func (p *errPicker) Pick(balancer.PickInfo) (balancer.PickResult, error) {
-	return balancer.PickResult{}, p.err
-}
-
 // rrPicker does roundrobin on subConns. It's typically used when there's no
 // response from remote balancer, and grpclb falls back to the resolved
 // backends.
@@ -121,7 +112,7 @@ type rrPicker struct {
 func newRRPicker(readySCs []balancer.SubConn) *rrPicker {
 	return &rrPicker{
 		subConns:     readySCs,
-		subConnsNext: grpcrand.Intn(len(readySCs)),
+		subConnsNext: rand.IntN(len(readySCs)),
 	}
 }
 
@@ -156,7 +147,7 @@ func newLBPicker(serverList []*lbpb.Server, readySCs []balancer.SubConn, stats *
 	return &lbPicker{
 		serverList:   serverList,
 		subConns:     readySCs,
-		subConnsNext: grpcrand.Intn(len(readySCs)),
+		subConnsNext: rand.IntN(len(readySCs)),
 		stats:        stats,
 	}
 }

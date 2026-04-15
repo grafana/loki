@@ -6,7 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	bucket_s3 "github.com/grafana/loki/pkg/storage/bucket/s3"
+	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 )
 
 const (

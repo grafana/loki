@@ -2,17 +2,10 @@ package config
 
 import (
 	"context"
+	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 )
-
-// defaultLoaders are a slice of functions that will read external configuration
-// sources for configuration values. These values are read by the AWSConfigResolvers
-// using interfaces to extract specific information from the external configuration.
-var defaultLoaders = []loader{
-	loadEnvConfig,
-	loadSharedConfigIgnoreNotExist,
-}
 
 // defaultAWSConfigResolvers are a slice of functions that will resolve external
 // configuration values into AWS configuration values.
@@ -72,6 +65,37 @@ var defaultAWSConfigResolvers = []awsConfigResolver{
 	// implementations depend on or can be configured with earlier resolved
 	// configuration options.
 	resolveCredentials,
+
+	// Sets the resolved bearer authentication token API clients will use for
+	// httpBearerAuth authentication scheme.
+	resolveBearerAuthToken,
+
+	// Sets the sdk app ID if present in env var or shared config profile
+	resolveAppID,
+
+	resolveBaseEndpoint,
+
+	// Sets the DisableRequestCompression if present in env var or shared config profile
+	resolveDisableRequestCompression,
+
+	// Sets the RequestMinCompressSizeBytes if present in env var or shared config profile
+	resolveRequestMinCompressSizeBytes,
+
+	// Sets the AccountIDEndpointMode if present in env var or shared config profile
+	resolveAccountIDEndpointMode,
+
+	// Sets the RequestChecksumCalculation if present in env var or shared config profile
+	resolveRequestChecksumCalculation,
+
+	// Sets the ResponseChecksumValidation if present in env var or shared config profile
+	resolveResponseChecksumValidation,
+
+	resolveInterceptors,
+
+	resolveAuthSchemePreference,
+
+	// Sets the ServiceOptions if present in LoadOptions
+	resolveServiceOptions,
 }
 
 // A Config represents a generic configuration value or set of values. This type
@@ -79,7 +103,7 @@ var defaultAWSConfigResolvers = []awsConfigResolver{
 //
 // General the Config type will use type assertion against the Provider interfaces
 // to extract specific data from the Config.
-type Config interface{}
+type Config any
 
 // A loader is used to load external configuration data and returns it as
 // a generic Config type.
@@ -137,24 +161,17 @@ func (cs configs) ResolveAWSConfig(ctx context.Context, resolvers []awsConfigRes
 
 	for _, fn := range resolvers {
 		if err := fn(ctx, &cfg, cs); err != nil {
-			// TODO provide better error?
 			return aws.Config{}, err
 		}
 	}
-
-	var sources []interface{}
-	for _, s := range cs {
-		sources = append(sources, s)
-	}
-	cfg.ConfigSources = sources
 
 	return cfg, nil
 }
 
 // ResolveConfig calls the provide function passing slice of configuration sources.
 // This implements the aws.ConfigResolver interface.
-func (cs configs) ResolveConfig(f func(configs []interface{}) error) error {
-	var cfgs []interface{}
+func (cs configs) ResolveConfig(f func(configs []any) error) error {
+	var cfgs []any
 	for i := range cs {
 		cfgs = append(cfgs, cs[i])
 	}
@@ -169,13 +186,12 @@ func (cs configs) ResolveConfig(f func(configs []interface{}) error) error {
 // The custom configurations must satisfy the respective providers for their data
 // or the custom data will be ignored by the resolvers and config loaders.
 //
-//    cfg, err := config.LoadDefaultConfig( context.TODO(),
-//       WithSharedConfigProfile("test-profile"),
-//    )
-//    if err != nil {
-//       panic(fmt.Sprintf("failed loading config, %v", err))
-//    }
-//
+//	cfg, err := config.LoadDefaultConfig( context.TODO(),
+//	   config.WithSharedConfigProfile("test-profile"),
+//	)
+//	if err != nil {
+//	   panic(fmt.Sprintf("failed loading config, %v", err))
+//	}
 //
 // The default configuration sources are:
 // * Environment Variables
@@ -191,7 +207,7 @@ func LoadDefaultConfig(ctx context.Context, optFns ...func(*LoadOptions) error) 
 	// assign Load Options to configs
 	var cfgCpy = configs{options}
 
-	cfgCpy, err = cfgCpy.AppendFromLoaders(ctx, defaultLoaders)
+	cfgCpy, err = cfgCpy.AppendFromLoaders(ctx, resolveConfigLoaders(&options))
 	if err != nil {
 		return aws.Config{}, err
 	}
@@ -202,4 +218,18 @@ func LoadDefaultConfig(ctx context.Context, optFns ...func(*LoadOptions) error) 
 	}
 
 	return cfg, nil
+}
+
+func resolveConfigLoaders(options *LoadOptions) []loader {
+	loaders := make([]loader, 2)
+	loaders[0] = loadEnvConfig
+
+	// specification of a profile should cause a load failure if it doesn't exist
+	if os.Getenv(awsProfileEnv) != "" || options.SharedConfigProfile != "" {
+		loaders[1] = loadSharedConfig
+	} else {
+		loaders[1] = loadSharedConfigIgnoreNotExist
+	}
+
+	return loaders
 }

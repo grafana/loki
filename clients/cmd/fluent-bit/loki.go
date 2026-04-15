@@ -17,12 +17,9 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 
-	"github.com/grafana/loki/pkg/util"
-
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 var (
@@ -32,11 +29,11 @@ var (
 
 type loki struct {
 	cfg    *config
-	client client.Client
+	client util.Client
 	logger log.Logger
 }
 
-func newPlugin(cfg *config, logger log.Logger, metrics *client.Metrics) (*loki, error) {
+func newPlugin(cfg *config, logger log.Logger, metrics *util.Metrics) (*loki, error) {
 	client, err := NewClient(cfg, logger, metrics)
 	if err != nil {
 		return nil, err
@@ -69,7 +66,7 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	}
 	if l.cfg.dropSingleKey && len(records) == 1 {
 		for _, v := range records {
-			l.client.Chan() <- api.Entry{
+			l.client.Chan() <- util.Entry{
 				Labels: lbs,
 				Entry: logproto.Entry{
 					Timestamp: ts,
@@ -83,7 +80,7 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	if err != nil {
 		return fmt.Errorf("error creating line: %v", err)
 	}
-	l.client.Chan() <- api.Entry{
+	l.client.Chan() <- util.Entry{
 		Labels: lbs,
 		Entry: logproto.Entry{
 			Timestamp: ts,
@@ -166,7 +163,7 @@ func extractLabels(records map[string]interface{}, keys []string) model.LabelSet
 		}
 		ln := model.LabelName(k)
 		// skips invalid name and values
-		if !ln.IsValid() {
+		if !model.LegacyValidation.IsValidLabelName(string(ln)) {
 			continue
 		}
 		lv := model.LabelValue(fmt.Sprintf("%v", v))
@@ -193,7 +190,7 @@ func mapLabels(records map[string]interface{}, mapping map[string]interface{}, r
 			if value, ok := getRecordValue(k, records); ok {
 				lName := model.LabelName(nextKey)
 				lValue := model.LabelValue(value)
-				if lValue.IsValid() && lName.IsValid() {
+				if lValue.IsValid() && model.UTF8Validation.IsValidLabelName(string(lName)) {
 					res[lName] = lValue
 				}
 			}
@@ -270,7 +267,7 @@ func (l *loki) createLine(records map[string]interface{}, f format) (string, err
 
 func newLogger(logLevel dslog.Level) log.Logger {
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
-	logger = level.NewFilter(logger, util.LogFilter(logLevel.String()))
+	logger = level.NewFilter(logger, logLevel.Option)
 	logger = log.With(logger, "caller", log.Caller(3))
 	return logger
 }

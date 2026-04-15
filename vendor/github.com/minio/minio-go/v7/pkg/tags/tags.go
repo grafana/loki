@@ -18,6 +18,7 @@
 package tags
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"io"
 	"net/url"
@@ -69,7 +70,7 @@ const (
 // https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-restrictions
 // borrowed from this article and also testing various ASCII characters following regex
 // is supported by AWS S3 for both tags and values.
-var validTagKeyValue = regexp.MustCompile(`^[a-zA-Z0-9-+\-._:/@ ]+$`)
+var validTagKeyValue = regexp.MustCompile(`^[a-zA-Z0-9-+\-._:/@ =]+$`)
 
 func checkKey(key string) error {
 	if len(key) == 0 {
@@ -291,6 +292,26 @@ func (tags Tags) Count() int {
 // ToMap returns copy of tags.
 func (tags Tags) ToMap() map[string]string {
 	return tags.TagSet.toMap()
+}
+
+// MarshalJSON encodes Tags as a flat JSON object {"key":"value",...}.
+func (tags Tags) MarshalJSON() ([]byte, error) {
+	return json.Marshal(tags.ToMap())
+}
+
+// UnmarshalJSON decodes a flat JSON object {"key":"value",...} into Tags.
+func (tags *Tags) UnmarshalJSON(data []byte) error {
+	var m map[string]string
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+	if tags.TagSet == nil {
+		tags.TagSet = &tagSet{
+			tagMap: make(map[string]string),
+		}
+	}
+	tags.TagSet.tagMap = m
+	return nil
 }
 
 // MapToObjectTags converts an input map of key and value into

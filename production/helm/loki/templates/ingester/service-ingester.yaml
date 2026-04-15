@@ -1,0 +1,39 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.ingesterFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.ingesterLabels" . | nindent 4 }}
+    {{- with .Values.ingester.serviceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.ingester.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  type: {{ .Values.ingester.serviceType }}
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+      {{- if .Values.ingester.appProtocol.grpc }}
+      appProtocol: {{ .Values.ingester.appProtocol.grpc }}
+      {{- end }}
+  selector:
+    {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
+{{- with .Values.ingester.trafficDistribution | default .Values.loki.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+{{- end }}
+{{- end -}}

@@ -11,8 +11,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 // Test that the service ports have matching deployment/statefulset/daemonset ports on the podspec.
@@ -130,8 +130,6 @@ func TestServicesMatchPorts(t *testing.T) {
 	for _, tst := range table {
 		for _, service := range tst.Services {
 			for _, port := range service.Spec.Ports {
-				// rescope for t.Parallel
-				tst, service, port := tst, service, port
 				testName := fmt.Sprintf("%s_%d", service.GetName(), port.Port)
 				t.Run(testName, func(t *testing.T) {
 					t.Parallel()
@@ -248,9 +246,6 @@ func TestServicesMatchLabels(t *testing.T) {
 
 	for _, tst := range table {
 		for _, service := range tst.Services {
-			// rescope for t.Parallel()
-			tst, service := tst, service
-
 			testName := fmt.Sprintf("%s_%s", tst.Object.GetName(), service.GetName())
 			t.Run(testName, func(t *testing.T) {
 				t.Parallel()
@@ -715,7 +710,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		},
 	}
 	for _, test := range tt {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 			objs, err := test.buildFunc(opts)

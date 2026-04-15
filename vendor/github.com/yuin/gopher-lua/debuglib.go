@@ -155,8 +155,8 @@ func debugTraceback(L *LState) int {
 	level := L.OptInt(2, 1)
 	ls := L
 	if L.GetTop() > 0 {
-		if s, ok := L.Get(1).assertString(); ok {
-			msg = s
+		if s, ok := L.Get(1).(LString); ok {
+			msg = string(s)
 		}
 		if l, ok := L.Get(1).(*LState); ok {
 			ls = l

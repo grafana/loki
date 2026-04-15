@@ -3,7 +3,7 @@ package distributor
 import (
 	"fmt"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type StreamSharderMock struct {

@@ -61,7 +61,7 @@ func DefaultServerURL(host, apiPath string, groupVersion schema.GroupVersion, de
 	return hostURL, versionedAPIPath, nil
 }
 
-// DefaultVersionedAPIPathFor constructs the default path for the given group version, assuming the given
+// DefaultVersionedAPIPath constructs the default path for the given group version, assuming the given
 // API path, following the standard conventions of the Kubernetes API.
 func DefaultVersionedAPIPath(apiPath string, groupVersion schema.GroupVersion) string {
 	versionedAPIPath := path.Join("/", apiPath)
@@ -77,9 +77,9 @@ func DefaultVersionedAPIPath(apiPath string, groupVersion schema.GroupVersion) s
 	return versionedAPIPath
 }
 
-// defaultServerUrlFor is shared between IsConfigTransportTLS and RESTClientFor. It
+// DefaultServerUrlFor is shared between IsConfigTransportTLS and RESTClientFor. It
 // requires Host and Version to be set prior to being called.
-func defaultServerUrlFor(config *Config) (*url.URL, string, error) {
+func DefaultServerUrlFor(config *Config) (*url.URL, string, error) {
 	// TODO: move the default to secure when the apiserver supports TLS by default
 	// config.Insecure is taken to mean "I want HTTPS but don't bother checking the certs against a CA."
 	hasCA := len(config.CAFile) != 0 || len(config.CAData) != 0

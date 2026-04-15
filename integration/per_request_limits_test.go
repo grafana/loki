@@ -1,3 +1,5 @@
+//go:build integration
+
 package integration
 
 import (
@@ -8,14 +10,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/integration/client"
-	"github.com/grafana/loki/integration/cluster"
+	"github.com/grafana/loki/v3/integration/client"
+	"github.com/grafana/loki/v3/integration/cluster"
 
-	"github.com/grafana/loki/pkg/util/querylimits"
+	"github.com/grafana/loki/v3/pkg/util/querylimits"
 )
 
 func TestPerRequestLimits(t *testing.T) {
-	clu := cluster.New(nil)
+	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
@@ -35,7 +39,7 @@ func TestPerRequestLimits(t *testing.T) {
 	cliTenant := client.New("org1", "", tAll.HTTPURL(), queryLimitsPolicy)
 
 	// ingest log lines for tenant 1 and tenant 2.
-	require.NoError(t, cliTenant.PushLogLineWithTimestamp("lineA", cliTenant.Now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
+	require.NoError(t, cliTenant.PushLogLine("lineA", cliTenant.Now.Add(-45*time.Minute), nil, map[string]string{"job": "fake"}))
 
 	// check that per-rquest-limits are enforced
 	_, err := cliTenant.RunRangeQuery(context.Background(), `{job="fake"}`)

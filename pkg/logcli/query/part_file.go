@@ -36,7 +36,7 @@ func (f *PartFile) Exists() (bool, error) {
 	} else if errors.Is(err, os.ErrNotExist) {
 		// File does not exist.
 		return false, nil
-	} else {
+	} else { // nolint:revive
 		// Unclear if file exists or not, we cannot stat it.
 		return false, fmt.Errorf("failed to check if part file exists: %s: %s", f.finalName, err)
 	}
@@ -51,7 +51,7 @@ func (f *PartFile) CreateTempFile() error {
 
 	fd, err := os.Create(tmpName)
 	if err != nil {
-		return fmt.Errorf("Failed to create part file: %s: %s", tmpName, err)
+		return fmt.Errorf("failed to create part file: %s: %s", tmpName, err)
 	}
 
 	f.fd = fd

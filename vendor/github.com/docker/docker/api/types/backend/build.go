@@ -1,11 +1,12 @@
-package backend // import "github.com/docker/docker/api/types/backend"
+package backend
 
 import (
 	"io"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/build"
+	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/pkg/streamformatter"
-	specs "github.com/opencontainers/image-spec/specs-go/v1"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // PullOption defines different modes for accessing images
@@ -33,13 +34,13 @@ type ProgressWriter struct {
 type BuildConfig struct {
 	Source         io.ReadCloser
 	ProgressWriter ProgressWriter
-	Options        *types.ImageBuildOptions
+	Options        *build.ImageBuildOptions
 }
 
 // GetImageAndLayerOptions are the options supported by GetImageAndReleasableLayer
 type GetImageAndLayerOptions struct {
 	PullOption PullOption
-	AuthConfig map[string]types.AuthConfig
+	AuthConfig map[string]registry.AuthConfig
 	Output     io.Writer
-	Platform   *specs.Platform
+	Platform   *ocispec.Platform
 }

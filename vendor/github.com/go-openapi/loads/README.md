@@ -1,6 +1,32 @@
-# Loads OAI specs  [![Build Status](https://travis-ci.org/go-openapi/loads.svg?branch=master)](https://travis-ci.org/go-openapi/loads) [![codecov](https://codecov.io/gh/go-openapi/loads/branch/master/graph/badge.svg)](https://codecov.io/gh/go-openapi/loads) [![Slack Status](https://slackin.goswagger.io/badge.svg)](https://slackin.goswagger.io) [![Actions/Go Test Status](https://github.com/go-openapi/loads/workflows/Go%20Test/badge.svg)](https://github.com/go-openapi/loads/actions?query=workflow%3A"Go+Test")
+# Loads OAI specs [![Build Status](https://github.com/go-openapi/loads/actions/workflows/go-test.yml/badge.svg)](https://github.com/go-openapi/loads/actions?query=workflow%3A"go+test") [![codecov](https://codecov.io/gh/go-openapi/loads/branch/master/graph/badge.svg)](https://codecov.io/gh/go-openapi/loads)
 
 [![license](http://img.shields.io/badge/license-Apache%20v2-orange.svg)](https://raw.githubusercontent.com/go-openapi/loads/master/LICENSE) [![GoDoc](https://godoc.org/github.com/go-openapi/loads?status.svg)](http://godoc.org/github.com/go-openapi/loads)
 [![Go Report Card](https://goreportcard.com/badge/github.com/go-openapi/loads)](https://goreportcard.com/report/github.com/go-openapi/loads)
 
-Loading of OAI specification documents from local or remote locations. Supports JSON and YAML documents.
+Loading of OAI v2 API specification documents from local or remote locations. Supports JSON and YAML documents.
+
+Primary usage:
+
+```go
+  import (
+	  "github.com/go-openapi/loads"
+  )
+
+  ...
+
+	// loads a YAML spec from a http file
+	doc, err := loads.Spec(ts.URL)
+  
+  ...
+
+  // retrieves the object model for the API specification
+  spec := doc.Spec()
+
+  ...
+```
+
+See also the provided [examples](https://pkg.go.dev/github.com/go-openapi/loads#pkg-examples).
+
+## Licensing
+
+This library ships under the [SPDX-License-Identifier: Apache-2.0](./LICENSE).

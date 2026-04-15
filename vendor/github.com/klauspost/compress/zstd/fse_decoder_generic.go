@@ -1,5 +1,4 @@
 //go:build !amd64 || appengine || !gc || noasm
-// +build !amd64 appengine !gc noasm
 
 package zstd
 
@@ -20,10 +19,9 @@ func (s *fseDecoder) buildDtable() error {
 			if v == -1 {
 				s.dt[highThreshold].setAddBits(uint8(i))
 				highThreshold--
-				symbolNext[i] = 1
-			} else {
-				symbolNext[i] = uint16(v)
+				v = 1
 			}
+			symbolNext[i] = uint16(v)
 		}
 	}
 
@@ -35,10 +33,12 @@ func (s *fseDecoder) buildDtable() error {
 		for ss, v := range s.norm[:s.symbolLen] {
 			for i := 0; i < int(v); i++ {
 				s.dt[position].setAddBits(uint8(ss))
-				position = (position + step) & tableMask
-				for position > highThreshold {
+				for {
 					// lowprob area
 					position = (position + step) & tableMask
+					if position <= highThreshold {
+						break
+					}
 				}
 			}
 		}

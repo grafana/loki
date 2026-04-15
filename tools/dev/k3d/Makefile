@@ -46,6 +46,14 @@ loki-ha-single-binary: prepare helm-cluster
 	$(MAKE) -C $(CURDIR) helm-install-loki-ha-single-binary
 	echo "Helm installation finished. You can tear down this cluster with make down."
 
+loki-distributed: prepare helm-cluster
+	$(MAKE) -C $(CURDIR) apply-loki-helm-cluster
+	echo "Waiting $(SLEEP)s for cluster to be ready for helm installation."
+	# wait for tk apply to finish and cluster is ready for helm install
+	sleep $(SLEEP)
+	$(MAKE) -C $(CURDIR) helm-install-loki-distributed
+	echo "Helm installation finished. You can tear down this cluster with make down."
+
 helm-cluster: prepare
 	$(CURDIR)/scripts/create_cluster.sh helm-cluster $(REGISTRY_PORT)
 	# wait for the cluster to be ready
@@ -155,11 +163,20 @@ helm-upgrade-loki-ha-single-binary:
 helm-uninstall-loki-binary:
 	$(HELM) uninstall loki-single-binary -n loki
 
+helm-install-loki-distributed:
+	$(HELM) install loki "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/loki-distributed.yaml"
+
+helm-upgrade-loki-distributed:
+	$(HELM) upgrade loki "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/loki-distributed.yaml"
+
+helm-uninstall-loki-distributed:
+	$(HELM) uninstall loki -n loki
+
 helm-install-kube-state-metrics:
-	helm install kube-state-metrics --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/kube-state-metrics.yaml
+	$(HELM) install kube-state-metrics --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/kube-state-metrics.yaml
 
 helm-install-enterprise-logs-cloud-monitoring:
-	helm install enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-cloud-monitoring.yaml"
+	$(HELM) install enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-cloud-monitoring.yaml"
 
 helm-upgrade-enterprise-logs-cloud-monitoring:
-	helm upgrade enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-cloud-monitoring.yaml"
+	$(HELM) upgrade enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-cloud-monitoring.yaml"

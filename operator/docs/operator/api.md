@@ -237,6 +237,18 @@ string
 <p>The client-side key file path for the TLS configuration.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>insecureSkipVerify</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Skip validating server certificate.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -902,6 +914,107 @@ OPASpec
 </tbody>
 </table>
 
+## BlockedQuerySpec { #loki-grafana-com-v1-BlockedQuerySpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-PerTenantQueryLimitSpec">PerTenantQueryLimitSpec</a>)
+</p>
+<div>
+<p>BlockedQuerySpec defines the rule spec for queries to be blocked.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>hash</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Hash is a 32-bit FNV-1 hash of the query string.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>pattern</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Pattern defines the pattern matching the queries to be blocked.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>regex</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Regex defines if the pattern is a regular expression. If false the pattern will be used only for exact matches.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>types</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-BlockedQueryTypes">
+BlockedQueryTypes
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Types defines the list of query types that should be considered for blocking.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## BlockedQueryType { #loki-grafana-com-v1-BlockedQueryType }
+(<code>string</code> alias)
+<div>
+<p>BlockedQueryType defines which type of query a blocked query should apply to.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;filter&#34;</p></td>
+<td><p>BlockedQueryFilter is used, when the blocked query should apply to queries using a log filter.</p>
+</td>
+</tr><tr><td><p>&#34;limited&#34;</p></td>
+<td><p>BlockedQueryLimited is used, when the blocked query should apply to queries without a filter or a metric aggregation.</p>
+</td>
+</tr><tr><td><p>&#34;metric&#34;</p></td>
+<td><p>BlockedQueryMetric is used, when the blocked query should apply to queries with an aggregation.</p>
+</td>
+</tr></tbody>
+</table>
+
+## BlockedQueryTypes { #loki-grafana-com-v1-BlockedQueryTypes }
+(<code>[]github.com/grafana/loki/operator/api/loki/v1.BlockedQueryType</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-BlockedQuerySpec">BlockedQuerySpec</a>)
+</p>
+<div>
+<p>BlockedQueryTypes defines a slice of BlockedQueryType values to be used for a blocked query.</p>
+</div>
+
 ## CASpec { #loki-grafana-com-v1-CASpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-MTLSSpec">MTLSSpec</a>, <a href="#loki-grafana-com-v1-OIDCSpec">OIDCSpec</a>, <a href="#loki-grafana-com-v1-ObjectStorageTLSSpec">ObjectStorageTLSSpec</a>)
@@ -999,6 +1112,72 @@ string
 </tbody>
 </table>
 
+## CredentialMode { #loki-grafana-com-v1-CredentialMode }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStorageStatus">LokiStackStorageStatus</a>, <a href="#loki-grafana-com-v1-ObjectStorageSecretSpec">ObjectStorageSecretSpec</a>)
+</p>
+<div>
+<p>CredentialMode represents the type of authentication used for accessing the object storage.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;static&#34;</p></td>
+<td><p>CredentialModeStatic represents the usage of static, long-lived credentials stored in a Secret.
+This is the default authentication mode and available for all supported object storage types.</p>
+</td>
+</tr><tr><td><p>&#34;token&#34;</p></td>
+<td><p>CredentialModeToken represents the usage of short-lived tokens retrieved from a credential source.
+In this mode the static configuration does not contain credentials needed for the object storage.
+Instead, they are generated during runtime using a service, which allows for shorter-lived credentials and
+much more granular control. This authentication mode is not supported for all object storage types.</p>
+</td>
+</tr><tr><td><p>&#34;token-cco&#34;</p></td>
+<td><p>CredentialModeTokenCCO represents the usage of short-lived tokens retrieved from a credential source.
+This mode is similar to CredentialModeToken, but instead of having a user-configured credential source,
+it is configured by the environment and the operator relies on the Cloud Credential Operator to provide
+a secret. This mode is only supported for certain object storage types in certain runtime environments.</p>
+</td>
+</tr></tbody>
+</table>
+
+## GatewaySpec { #loki-grafana-com-v1-GatewaySpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
+</p>
+<div>
+<p>GatewaySpec defines the configuration specific to Gateway server</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>tls</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-TLSSpec">
+TLSSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>TLS defines the TLS configuration for the Gateway server.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## HashRingSpec { #loki-grafana-com-v1-HashRingSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
@@ -1067,7 +1246,7 @@ MemberListSpec
 
 ## IngestionLimitSpec { #loki-grafana-com-v1-IngestionLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
 </p>
 <div>
 <p>IngestionLimitSpec defines the limits applied at the ingestion path.</p>
@@ -1172,6 +1351,19 @@ int32
 </tr>
 <tr>
 <td>
+<code>perStreamDesiredRate</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PerStreamDesiredRate defines the desired ingestion rate per second that LokiStack should
+target applying automatic stream sharding. Units MB.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>perStreamRateLimit</code><br/>
 <em>
 int32
@@ -1255,8 +1447,8 @@ LimitsTemplateSpec
 <td>
 <code>tenants</code><br/>
 <em>
-<a href="#loki-grafana-com-v1-LimitsTemplateSpec">
-map[string]github.com/grafana/loki/operator/apis/loki/v1.LimitsTemplateSpec
+<a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">
+map[string]github.com/grafana/loki/operator/api/loki/v1.PerTenantLimitsTemplateSpec
 </a>
 </em>
 </td>
@@ -1309,6 +1501,22 @@ QueryLimitSpec
 <td>
 <em>(Optional)</em>
 <p>QueryLimits defines the limit applied on querying log streams.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>otlp</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPSpec">
+OTLPSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.</p>
+<p>Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+enforce the use of some required attributes.</p>
 </td>
 </tr>
 <tr>
@@ -1606,6 +1814,12 @@ PodStatusMap
 </tr><tr><td><p>&#34;FailedComponents&#34;</p></td>
 <td><p>ReasonFailedComponents when all/some LokiStack components fail to roll out.</p>
 </td>
+</tr><tr><td><p>&#34;InsufficientIngesterReplicas&#34;</p></td>
+<td><p>ReasonInsufficientIngesterReplicas when the ingester replicas are less than or equal to the replication factor. Which causes log ingestion to stop when ingester pods get restarted.</p>
+</td>
+</tr><tr><td><p>&#34;InvalidGatewayTLSConfig&#34;</p></td>
+<td><p>ReasonInvalidGatewayTLSConfig when the referenced TLS Secret or ConfigMap is invalid or missing required keys.</p>
+</td>
 </tr><tr><td><p>&#34;InvalidGatewayTenantConfigMap&#34;</p></td>
 <td><p>ReasonInvalidGatewayTenantConfigMap when the format of the configmap is invalid.</p>
 </td>
@@ -1637,6 +1851,9 @@ with the select cluster size.</p>
 </tr><tr><td><p>&#34;MissingGatewayOpenShiftBaseDomain&#34;</p></td>
 <td><p>ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.</p>
 </td>
+</tr><tr><td><p>&#34;MissingGatewayTLSConfig&#34;</p></td>
+<td><p>ReasonMissingGatewayTLSConfig when the referenced TLS Secret or ConfigMap for the gateway is missing.</p>
+</td>
 </tr><tr><td><p>&#34;MissingGatewayTenantConfigMap&#34;</p></td>
 <td><p>ReasonMissingGatewayTenantConfigMap when the required tenant configmap
 for authentication is missing.</p>
@@ -1657,8 +1874,10 @@ storage is missing.</p>
 <td><p>ReasonMissingRulerSecret when the required secret to authorization remote write connections
 for the ruler is missing.</p>
 </td>
-</tr><tr><td><p>&#34;ReasonNoZoneAwareNodes&#34;</p></td>
-<td><p>ReasonNoZoneAwareNodes when the cluster does not contain any nodes with the labels needed for zone-awareness.</p>
+</tr><tr><td><p>&#34;MissingTokenCCOAuthenticationSecret&#34;</p></td>
+<td><p>ReasonMissingTokenCCOAuthSecret when the secret generated by CCO for token authentication is missing.
+This is usually a transient error because the secret is not immediately available after creating the
+CredentialsRequest, but it can persist if the CCO or its configuration are incorrect.</p>
 </td>
 </tr><tr><td><p>&#34;PendingComponents&#34;</p></td>
 <td><p>ReasonPendingComponents when all/some LokiStack components pending dependencies</p>
@@ -1668,6 +1887,15 @@ for the ruler is missing.</p>
 </td>
 </tr><tr><td><p>&#34;ReadyComponents&#34;</p></td>
 <td><p>ReasonReadyComponents when all LokiStack components are ready to serve traffic.</p>
+</td>
+</tr><tr><td><p>&#34;StorageNeedsSchemaUpdate&#34;</p></td>
+<td><p>ReasonStorageNeedsSchemaUpdate when the object storage schema version is older than V13</p>
+</td>
+</tr><tr><td><p>&#34;ReasonZoneAwareEmptyLabel&#34;</p></td>
+<td><p>ReasonZoneAwareEmptyLabel when the node-label used for zone-awareness has an empty value.</p>
+</td>
+</tr><tr><td><p>&#34;ReasonZoneAwareNodesMissing&#34;</p></td>
+<td><p>ReasonZoneAwareNodesMissing when the cluster does not contain any nodes with the labels needed for zone-awareness.</p>
 </td>
 </tr></tbody>
 </table>
@@ -1697,6 +1925,10 @@ are degraded or the cluster cannot connect to object storage.</p>
 </tr><tr><td><p>&#34;Ready&#34;</p></td>
 <td><p>ConditionReady defines the condition that all components in the Loki deployment are ready.</p>
 </td>
+</tr><tr><td><p>&#34;Warning&#34;</p></td>
+<td><p>ConditionWarning is used for configurations that are not recommended, but don&rsquo;t currently cause
+issues. There can be multiple warning conditions active at a time.</p>
+</td>
 </tr></tbody>
 </table>
 
@@ -1725,15 +1957,22 @@ DO NOT USE THIS IN PRODUCTION!</p>
 </td>
 </tr><tr><td><p>&#34;1x.extra-small&#34;</p></td>
 <td><p>SizeOneXExtraSmall defines the size of a single Loki deployment
-with extra small resources/limits requirements and without HA support.
-This size is ultimately dedicated for development and demo purposes.
-DO NOT USE THIS IN PRODUCTION!</p>
+with extra small resources/limits requirements and HA support for all
+Loki components. This size is dedicated for setup <strong>without</strong> the
+requirement for single replication factor and auto-compaction.</p>
 <p>FIXME: Add clear description of ingestion/query performance expectations.</p>
 </td>
 </tr><tr><td><p>&#34;1x.medium&#34;</p></td>
 <td><p>SizeOneXMedium defines the size of a single Loki deployment
 with small resources/limits requirements and HA support for all
 Loki components. This size is dedicated for setup <strong>with</strong> the
+requirement for single replication factor and auto-compaction.</p>
+<p>FIXME: Add clear description of ingestion/query performance expectations.</p>
+</td>
+</tr><tr><td><p>&#34;1x.pico&#34;</p></td>
+<td><p>SizeOneXPico defines the size of a single Loki deployment
+with extra small resources/limits requirements and HA support for all
+Loki components. This size is dedicated for setup <strong>without</strong> the
 requirement for single replication factor and auto-compaction.</p>
 <p>FIXME: Add clear description of ingestion/query performance expectations.</p>
 </td>
@@ -1772,6 +2011,7 @@ ManagementStateType
 </em>
 </td>
 <td>
+<em>(Optional)</em>
 <p>ManagementState defines if the CR should be managed by the operator or not.
 Default is managed.</p>
 </td>
@@ -1924,6 +2164,22 @@ TenantsSpec
 <p>Tenants defines the per-tenant authentication and authorization spec for the lokistack-gateway component.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>networkPolicies</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPoliciesSpec">
+NetworkPoliciesSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+When enabled, the operator creates NetworkPolicies to control ingress/egress between
+Loki components and related services.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -1974,6 +2230,20 @@ to the storage configuration.</p>
 </tr>
 <tr>
 <td>
+<code>networkPolicyRuleSet</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPolicyRuleSet">
+NetworkPolicyRuleSet
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicyRuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>conditions</code><br/>
 <em>
 <a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#condition-v1-meta">
@@ -2020,6 +2290,20 @@ the Loki storage configuration.</p>
 to the LokiStack.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>credentialMode</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-CredentialMode">
+CredentialMode
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>CredentialMode contains the authentication mode used for accessing the object storage.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -2039,6 +2323,21 @@ scheduling of all Loki components to be deployed.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>
+<code>useRequestsAsLimits</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+spikes, whether on the ingestion or query side.</p>
+<p>Note: This is currently a tech-preview feature.</p>
+</td>
+</tr>
 <tr>
 <td>
 <code>compactor</code><br/>
@@ -2243,6 +2542,20 @@ Alternatively the public pod IP can be used in case private networks (RFC 1918 a
 are not available.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>enableIPv6</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>EnableIPv6 enables IPv6 support for the memberlist based hash ring.</p>
+<p>Currently this also forces the instanceAddrType to podIP to avoid local address lookup
+for the memberlist.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -2273,6 +2586,66 @@ are not available.</p>
 </tr><tr><td><p>&#34;static&#34;</p></td>
 <td><p>Static mode asserts the Authorization Spec&rsquo;s Roles and RoleBindings
 using an in-process OpenPolicyAgent Rego authorizer.</p>
+</td>
+</tr></tbody>
+</table>
+
+## NetworkPoliciesSpec { #loki-grafana-com-v1-NetworkPoliciesSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
+</p>
+<div>
+<p>NetworkPoliciesSpec defines the configuration for NetworkPolicies.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ruleSet</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPolicyRuleSet">
+NetworkPolicyRuleSet
+</a>
+</em>
+</td>
+<td>
+<p>RuleSet determines which of the pre-defined sets of NetworkPolicy rules is used for this LokiStack.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## NetworkPolicyRuleSet { #loki-grafana-com-v1-NetworkPolicyRuleSet }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>, <a href="#loki-grafana-com-v1-NetworkPoliciesSpec">NetworkPoliciesSpec</a>)
+</p>
+<div>
+<p>NetworkPolicyRuleSet is the type of network policy rule set to use</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;None&#34;</p></td>
+<td><p>The NetworkPolicyRuleSetNone rule-set contains no network policies, effectively removing all network policies created by the operator.</p>
+</td>
+</tr><tr><td><p>&#34;RestrictIngressEgress&#34;</p></td>
+<td><p>The NetworkPolicyRuleSetRestrictIngressEgress rule-set creates NetworkPolicies allowing the following:</p>
+<ul>
+<li>queries and log ingestion through the gateway</li>
+<li>access to object storage for Loki components requiring this</li>
+<li>communication between LokiStack components</li>
+</ul>
 </td>
 </tr></tbody>
 </table>
@@ -2398,13 +2771,192 @@ string
 </tbody>
 </table>
 
+## OTLPAttributeReference { #loki-grafana-com-v1-OTLPAttributeReference }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPMetadataSpec">OTLPMetadataSpec</a>, <a href="#loki-grafana-com-v1-OTLPStreamLabelSpec">OTLPStreamLabelSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>name</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Name contains either a verbatim name of an attribute or a regular expression matching many attributes.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>regex</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>If Regex is true, then Name is treated as a regular expression instead of as a verbatim attribute name.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## OTLPMetadataSpec { #loki-grafana-com-v1-OTLPMetadataSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPSpec">OTLPSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>resourceAttributes</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPAttributeReference">
+[]OTLPAttributeReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ResourceAttributes lists the names of resource attributes that should be included in structured metadata.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>scopeAttributes</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPAttributeReference">
+[]OTLPAttributeReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ScopeAttributes lists the names of scope attributes that should be included in structured metadata.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>logAttributes</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPAttributeReference">
+[]OTLPAttributeReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>LogAttributes lists the names of log attributes that should be included in structured metadata.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## OTLPSpec { #loki-grafana-com-v1-OTLPSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
+</p>
+<div>
+<p>OTLPSpec defines which resource, scope and log attributes should be used as stream labels or dropped before storing.</p>
+<p>Attributes need to be listed by their &ldquo;OpenTelemetry name&rdquo; and not the representation used by Loki. Please consult
+the documentation of the collector or application emitting the OpenTelemetry data to find out which attributes
+are emitted.</p>
+<p>Attributes not listed as stream labels or to be dropped are stored as structured metadata in Loki.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>streamLabels</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPStreamLabelSpec">
+OTLPStreamLabelSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>StreamLabels configures which resource attributes are converted to Loki stream labels.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>drop</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPMetadataSpec">
+OTLPMetadataSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Drop configures which attributes are dropped from the log entry.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## OTLPStreamLabelSpec { #loki-grafana-com-v1-OTLPStreamLabelSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPSpec">OTLPSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>resourceAttributes</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPAttributeReference">
+[]OTLPAttributeReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ResourceAttributes lists the names of the resource attributes that should be converted into Loki stream labels.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## ObjectStorageSchema { #loki-grafana-com-v1-ObjectStorageSchema }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStorageStatus">LokiStackStorageStatus</a>, <a href="#loki-grafana-com-v1-ObjectStorageSpec">ObjectStorageSpec</a>)
 </p>
 <div>
-<p>ObjectStorageSchema defines the requirements needed to configure a new
-storage schema.</p>
+<p>ObjectStorageSchema defines a schema version and the date when it will become effective.</p>
 </div>
 <table>
 <thead>
@@ -2437,9 +2989,11 @@ StorageSchemaEffectiveDate
 </em>
 </td>
 <td>
-<p>EffectiveDate is the date in UTC that the schema will be applied on.
-To ensure readibility of logs, this date should be before the current
-date in UTC.</p>
+<p>EffectiveDate contains a date in YYYY-MM-DD format which is interpreted in the UTC time zone.</p>
+<p>The configuration always needs at least one schema that is currently valid. This means that when creating a new
+LokiStack it is recommended to add a schema with the latest available version and an effective date of &ldquo;yesterday&rdquo;.
+New schema versions added to the configuration always needs to be placed &ldquo;in the future&rdquo;, so that Loki can start
+using it once the day rolls over.</p>
 </td>
 </tr>
 </tbody>
@@ -2466,6 +3020,9 @@ used with the Loki cluster.</p>
 </td>
 </tr><tr><td><p>&#34;v12&#34;</p></td>
 <td><p>ObjectStorageSchemaV12 when using v12 for the storage schema</p>
+</td>
+</tr><tr><td><p>&#34;v13&#34;</p></td>
+<td><p>ObjectStorageSchemaV13 when using v13 for the storage schema</p>
 </td>
 </tr></tbody>
 </table>
@@ -2507,6 +3064,22 @@ string
 </td>
 <td>
 <p>Name of a secret in the namespace configured for object storage secrets.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>credentialMode</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-CredentialMode">
+CredentialMode
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>CredentialMode can be used to set the desired credential mode for authenticating with the object storage.
+If this is not set, then the operator tries to infer the credential mode from the provided secret and its
+own configuration.</p>
 </td>
 </tr>
 </tbody>
@@ -2650,6 +3223,55 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 </tbody>
 </table>
 
+## OpenshiftOTLPConfig { #loki-grafana-com-v1-OpenshiftOTLPConfig }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OpenshiftTenantSpec">OpenshiftTenantSpec</a>)
+</p>
+<div>
+<p>OpenshiftOTLPConfig defines configuration specific to users using OTLP together with an OpenShift tenancy mode.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>enableConsoleLabels</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>EnableConsoleLabels can be used to add a set of additional stream labels to the OTLP input. These labels are
+currently used by the logs console in OpenShift.</p>
+<p>This is not different from manually adding some or all of the attributes to the set of stream labels using the
+normal OTLP configuration.</p>
+<p>The additional attributes which are converted to stream labels are:</p>
+<ul>
+<li>k8s.container.name</li>
+<li>k8s.cronjob.name</li>
+<li>k8s.daemonset.name</li>
+<li>k8s.deployment.name</li>
+<li>k8s.job.name</li>
+<li>k8s.node.name</li>
+<li>k8s.pod.name</li>
+<li>k8s.statefulset.name</li>
+<li>kubernetes.container_name</li>
+<li>kubernetes.host</li>
+<li>kubernetes.pod_name</li>
+<li>service.name</li>
+</ul>
+<p>See also: <a href="https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes">https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes</a></p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## OpenshiftTenantSpec { #loki-grafana-com-v1-OpenshiftTenantSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
@@ -2682,6 +3304,141 @@ Setting this to an empty array disables admin groups.</p>
 - dedicated-admin</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>otlp</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OpenshiftOTLPConfig">
+OpenshiftOTLPConfig
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>OTLP contains settings for ingesting data using OTLP in the OpenShift tenancy mode.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## PerTenantLimitsTemplateSpec { #loki-grafana-com-v1-PerTenantLimitsTemplateSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsSpec">LimitsSpec</a>)
+</p>
+<div>
+<p>PerTenantLimitsTemplateSpec defines the limits  applied at ingestion or query path.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ingestion</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-IngestionLimitSpec">
+IngestionLimitSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>IngestionLimits defines the limits applied on ingested log streams.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>queries</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PerTenantQueryLimitSpec">
+PerTenantQueryLimitSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>QueryLimits defines the limit applied on querying log streams.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>otlp</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPSpec">
+OTLPSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.</p>
+<p>Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+enforce the use of some required attributes.</p>
+<p>The per-tenant configuration for OTLP attributes will be merged with the global configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>retention</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RetentionLimitSpec">
+RetentionLimitSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Retention defines how long logs are kept in storage.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## PerTenantQueryLimitSpec { #loki-grafana-com-v1-PerTenantQueryLimitSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
+</p>
+<div>
+<p>PerTenantQueryLimitSpec defines the limits applied to per tenant query path.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>QueryLimitSpec</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-QueryLimitSpec">
+QueryLimitSpec
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
+<code>blocked</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-BlockedQuerySpec">
+[]BlockedQuerySpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Blocked defines the list of rules to block matching queries.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -2709,8 +3466,42 @@ Setting this to an empty array disables admin groups.</p>
 </tr></tbody>
 </table>
 
+## PodStatus { #loki-grafana-com-v1-PodStatus }
+(<code>string</code> alias)
+<div>
+<p>PodStatus is a short description of the status a Pod can be in.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;Failed&#34;</p></td>
+<td><p>PodFailed means that all containers in the pod have terminated, and at least one container has
+terminated in a failure (exited with a non-zero exit code or was stopped by the system).</p>
+</td>
+</tr><tr><td><p>&#34;Pending&#34;</p></td>
+<td><p>PodPending means the pod has been accepted by the system, but one or more of the containers
+has not been started. This includes time before being bound to a node, as well as time spent
+pulling images onto the host.</p>
+</td>
+</tr><tr><td><p>&#34;Ready&#34;</p></td>
+<td><p>PodReady means the pod has been started and the readiness probe reports a successful status.</p>
+</td>
+</tr><tr><td><p>&#34;Running&#34;</p></td>
+<td><p>PodRunning means the pod has been bound to a node and all of the containers have been started.
+At least one container is still running or is in the process of being restarted.</p>
+</td>
+</tr><tr><td><p>&#34;Unknown&#34;</p></td>
+<td><p>PodStatusUnknown is used when none of the other statuses apply or the information is not ready yet.</p>
+</td>
+</tr></tbody>
+</table>
+
 ## PodStatusMap { #loki-grafana-com-v1-PodStatusMap }
-(<code>map[k8s.io/api/core/v1.PodPhase][]string</code> alias)
+(<code>map[github.com/grafana/loki/operator/api/loki/v1.PodStatus][]string</code> alias)
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackComponentStatus">LokiStackComponentStatus</a>)
 </p>
@@ -2729,7 +3520,7 @@ Setting this to an empty array disables admin groups.</p>
 
 ## QueryLimitSpec { #loki-grafana-com-v1-QueryLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantQueryLimitSpec">PerTenantQueryLimitSpec</a>)
 </p>
 <div>
 <p>QueryLimitSpec defines the limits applies at the query path.</p>
@@ -2751,7 +3542,7 @@ int32
 </td>
 <td>
 <em>(Optional)</em>
-<p>MaxEntriesLimitsPerQuery defines the maximum number of log entries
+<p>MaxEntriesLimitPerQuery defines the maximum number of log entries
 that will be returned for a query.</p>
 </td>
 </tr>
@@ -2802,6 +3593,18 @@ int32
 <td>
 <em>(Optional)</em>
 <p>CardinalityLimit defines the cardinality limit for index queries.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>maxVolumeSeries</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MaxVolumeSeries defines the maximum number of aggregated series in a log-volume response</p>
 </td>
 </tr>
 </tbody>
@@ -3555,7 +4358,7 @@ IMPORTANT: Make sure that the replication factor defined is less than or equal t
 
 ## RetentionLimitSpec { #loki-grafana-com-v1-RetentionLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
 </p>
 <div>
 <p>RetentionLimitSpec controls how long logs will be kept in storage.</p>
@@ -3887,7 +4690,7 @@ RemoteWriteSpec
 <code>overrides</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-RulerOverrides">
-map[string]github.com/grafana/loki/operator/apis/loki/v1.RulerOverrides
+map[string]github.com/grafana/loki/operator/api/loki/v1.RulerOverrides
 </a>
 </em>
 </td>
@@ -4022,6 +4825,46 @@ the same namespace as the LokiStack object is in is used.</p>
 </tbody>
 </table>
 
+## SecretReference { #loki-grafana-com-v1-SecretReference }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TLSSpec">TLSSpec</a>)
+</p>
+<div>
+<p>SecretReference encodes a reference to a single key in a Secret in the same namespace.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>key</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Key contains the name of the key inside the referenced Secret.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>secretName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>SecretName contains the name of the Secret containing the referenced value.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## StorageSchemaEffectiveDate { #loki-grafana-com-v1-StorageSchemaEffectiveDate }
 (<code>string</code> alias)
 <p>
@@ -4093,6 +4936,63 @@ SubjectKind
 <td><p>User represents a subject that is a user.</p>
 </td>
 </tr></tbody>
+</table>
+
+## TLSSpec { #loki-grafana-com-v1-TLSSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-GatewaySpec">GatewaySpec</a>)
+</p>
+<div>
+<p>TLSSpec contains options for TLS connections.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ca</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-ValueReference">
+ValueReference
+</a>
+</em>
+</td>
+<td>
+<p>CA can be used to specify a custom list of trusted certificate authorities.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>certificate</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-ValueReference">
+ValueReference
+</a>
+</em>
+</td>
+<td>
+<p>Certificate points to the server certificate to use.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>privateKey</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-SecretReference">
+SecretReference
+</a>
+</em>
+</td>
+<td>
+<p>PrivateKey points to the private key of the server certificate.</p>
+</td>
+</tr>
+</tbody>
 </table>
 
 ## TenantSecretSpec { #loki-grafana-com-v1-TenantSecretSpec }
@@ -4194,6 +5094,84 @@ OpenshiftTenantSpec
 <td>
 <em>(Optional)</em>
 <p>Openshift defines the configuration specific to Openshift modes.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>disableIngress</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>DisableIngress disables automatic creation of external access resources (Route / Ingress).
+When true, no Route or Ingress will be created for the gateway.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>gateway</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-GatewaySpec">
+GatewaySpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Gateway defines the configuration specific to Gateway server</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## ValueReference { #loki-grafana-com-v1-ValueReference }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TLSSpec">TLSSpec</a>)
+</p>
+<div>
+<p>ValueReference encodes a reference to a single field in either a ConfigMap or Secret in the same namespace.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>key</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Name of the key used to get the value in either the referenced ConfigMap or Secret.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>configMapName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>ConfigMapName contains the name of the ConfigMap containing the referenced value.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>secretName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>SecretName contains the name of the Secret containing the referenced value.</p>
 </td>
 </tr>
 </tbody>
@@ -5260,7 +6238,7 @@ LimitsTemplateSpec
 <code>tenants</code><br/>
 <em>
 <a href="#loki-grafana-com-v1beta1-LimitsTemplateSpec">
-map[string]github.com/grafana/loki/operator/apis/loki/v1beta1.LimitsTemplateSpec
+map[string]github.com/grafana/loki/operator/api/loki/v1beta1.LimitsTemplateSpec
 </a>
 </em>
 </td>
@@ -5646,7 +6624,7 @@ are degraded or the cluster cannot connect to object storage.</p>
 <td><p>ConditionFailed defines the condition that components in the Loki deployment failed to roll out.</p>
 </td>
 </tr><tr><td><p>&#34;Pending&#34;</p></td>
-<td><p>ConditionPending defines the conditioin that some or all components are in pending state.</p>
+<td><p>ConditionPending defines the condition that some or all components are in pending state.</p>
 </td>
 </tr><tr><td><p>&#34;Ready&#34;</p></td>
 <td><p>ConditionReady defines the condition that all components in the Loki deployment are ready.</p>
@@ -6520,7 +7498,7 @@ int32
 </td>
 <td>
 <em>(Optional)</em>
-<p>MaxEntriesLimitsPerQuery defines the maximum number of log entries
+<p>MaxEntriesLimitPerQuery defines the maximum number of log entries
 that will be returned for a query.</p>
 </td>
 </tr>
@@ -7481,7 +8459,7 @@ RemoteWriteSpec
 <code>overrides</code><br/>
 <em>
 <a href="#loki-grafana-com-v1beta1-RulerOverrides">
-map[string]github.com/grafana/loki/operator/apis/loki/v1beta1.RulerOverrides
+map[string]github.com/grafana/loki/operator/api/loki/v1beta1.RulerOverrides
 </a>
 </em>
 </td>

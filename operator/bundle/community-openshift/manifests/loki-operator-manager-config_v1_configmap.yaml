@@ -6,12 +6,13 @@ data:
     health:
       healthProbeBindAddress: :8081
     metrics:
-      bindAddress: 127.0.0.1:8080
+      bindAddress: :8443
+      secure: true
     webhook:
       port: 9443
     leaderElection:
-      leaderElect: false
-      resourceName: e3716011.grafana.com
+      leaderElect: true
+      resourceName: loki-operator.grafana.com
     featureGates:
       #
       # Monitoring feature gates
@@ -60,9 +61,9 @@ data:
 kind: ConfigMap
 metadata:
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.4.0
+    app.kubernetes.io/instance: loki-operator-v0.10.0
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.4.0
+    app.kubernetes.io/version: 0.10.0
   name: loki-operator-manager-config

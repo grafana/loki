@@ -2,15 +2,12 @@
 Package filters provides tools for encoding a mapping of keys to a set of
 multiple values.
 */
-package filters // import "github.com/docker/docker/api/types/filters"
+package filters
 
 import (
 	"encoding/json"
 	"regexp"
 	"strings"
-
-	"github.com/docker/docker/api/types/versions"
-	"github.com/pkg/errors"
 )
 
 // Args stores a mapping of keys to a set of multiple values.
@@ -64,24 +61,6 @@ func ToJSON(a Args) (string, error) {
 	return string(buf), err
 }
 
-// ToParamWithVersion encodes Args as a JSON string. If version is less than 1.22
-// then the encoded format will use an older legacy format where the values are a
-// list of strings, instead of a set.
-//
-// Deprecated: do not use in any new code; use ToJSON instead
-func ToParamWithVersion(version string, a Args) (string, error) {
-	if a.Len() == 0 {
-		return "", nil
-	}
-
-	if version != "" && versions.LessThan(version, "1.22") {
-		buf, err := json.Marshal(convertArgsToSlice(a.fields))
-		return string(buf), err
-	}
-
-	return ToJSON(a)
-}
-
 // FromJSON decodes a JSON encoded string into Args
 func FromJSON(p string) (Args, error) {
 	args := NewArgs()
@@ -99,7 +78,7 @@ func FromJSON(p string) (Args, error) {
 	// Fallback to parsing arguments in the legacy slice format
 	deprecated := map[string][]string{}
 	if legacyErr := json.Unmarshal(raw, &deprecated); legacyErr != nil {
-		return args, invalidFilter{errors.Wrap(err, "invalid filter")}
+		return args, &invalidFilter{}
 	}
 
 	args.fields = deprecatedArgs(deprecated)
@@ -163,13 +142,13 @@ func (args Args) MatchKVList(key string, sources map[string]string) bool {
 	}
 
 	for value := range fieldValues {
-		testKV := strings.SplitN(value, "=", 2)
+		testK, testV, hasValue := strings.Cut(value, "=")
 
-		v, ok := sources[testKV[0]]
+		v, ok := sources[testK]
 		if !ok {
 			return false
 		}
-		if len(testKV) == 2 && testKV[1] != v {
+		if hasValue && testV != v {
 			return false
 		}
 	}
@@ -194,6 +173,28 @@ func (args Args) Match(field, source string) bool {
 		}
 	}
 	return false
+}
+
+// GetBoolOrDefault returns a boolean value of the key if the key is present
+// and is interpretable as a boolean value. Otherwise the default value is returned.
+// Error is not nil only if the filter values are not valid boolean or are conflicting.
+func (args Args) GetBoolOrDefault(key string, defaultValue bool) (bool, error) {
+	fieldValues, ok := args.fields[key]
+	if !ok {
+		return defaultValue, nil
+	}
+
+	if len(fieldValues) == 0 {
+		return defaultValue, &invalidFilter{key, nil}
+	}
+
+	isFalse := fieldValues["0"] || fieldValues["false"]
+	isTrue := fieldValues["1"] || fieldValues["true"]
+	if isFalse == isTrue {
+		// Either no or conflicting truthy/falsy value were provided
+		return defaultValue, &invalidFilter{key, args.Get(key)}
+	}
+	return isTrue, nil
 }
 
 // ExactMatch returns true if the source matches exactly one of the values.
@@ -246,20 +247,12 @@ func (args Args) Contains(field string) bool {
 	return ok
 }
 
-type invalidFilter struct{ error }
-
-func (e invalidFilter) Error() string {
-	return e.error.Error()
-}
-
-func (invalidFilter) InvalidParameter() {}
-
 // Validate compared the set of accepted keys against the keys in the mapping.
 // An error is returned if any mapping keys are not in the accepted set.
 func (args Args) Validate(accepted map[string]bool) error {
 	for name := range args.fields {
 		if !accepted[name] {
-			return invalidFilter{errors.New("invalid filter '" + name + "'")}
+			return &invalidFilter{name, nil}
 		}
 	}
 	return nil
@@ -302,20 +295,6 @@ func deprecatedArgs(d map[string][]string) map[string]map[string]bool {
 		values := map[string]bool{}
 		for _, vv := range v {
 			values[vv] = true
-		}
-		m[k] = values
-	}
-	return m
-}
-
-func convertArgsToSlice(f map[string]map[string]bool) map[string][]string {
-	m := map[string][]string{}
-	for k, v := range f {
-		values := []string{}
-		for kk := range v {
-			if v[kk] {
-				values = append(values, kk)
-			}
 		}
 		m[k] = values
 	}

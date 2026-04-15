@@ -9,14 +9,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func Test_dropLabelStage_Process(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg, nil, true, false)
+	util_log.InitLogger(cfg, nil, false)
 	Debug = true
 
 	tests := []struct {

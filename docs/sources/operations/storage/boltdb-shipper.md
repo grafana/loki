@@ -1,18 +1,24 @@
 ---
-title: Single Store (boltdb-shipper)
-description: Single Store (boltdb-shipper)
+title: Single Store BoltDB (boltdb-shipper)
+menuTitle: BoltDB Shipper
+description: Describes the deprecated boltdb-shipper single store usage.
+weight: 200
 ---
-# Single Store (boltdb-shipper)
+# Single Store BoltDB (boltdb-shipper)
 
-Note that single store (boltdb-shipper) is a legacy storage option and is not recommended for new deployments. It is recommended to use the [TSDB]({{< relref "./tsdb" >}}) index instead.
+{{< admonition type="note" >}}
+Single store BoltDB Shipper is a legacy storage option recommended for Loki 2.0 through 2.7.x and is not recommended for new deployments. The [TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) is the recommended index for Loki 2.8 and newer.
+{{< /admonition >}}
 
 BoltDB Shipper lets you run Grafana Loki without any dependency on NoSQL stores for storing index.
 It locally stores the index in BoltDB files instead and keeps shipping those files to a shared object store i.e the same object store which is being used for storing chunks.
 It also keeps syncing BoltDB files from shared object store to a configured local directory for getting index entries created by other services of same Loki cluster.
 This helps run Loki with one less dependency and also saves costs in storage since object stores are likely to be much cheaper compared to cost of a hosted NoSQL store or running a self hosted instance of Cassandra.
 
-**Note:** BoltDB shipper works best with 24h periodic index files. It is a requirement to have index period set to 24h for either active or upcoming usage of boltdb-shipper.
-          If boltdb-shipper already has created index files with 7 days period, and you want to retain previous data then just add a new schema config using boltdb-shipper with a future date and index files period set to 24h.
+{{< admonition type="note" >}}
+BoltDB shipper works best with 24h periodic index files. It is a requirement to have the index period set to 24h for either active or upcoming usage of boltdb-shipper.
+If boltdb-shipper already has created index files with 7 days period, and you want to retain previous data, add a new schema config using boltdb-shipper with a future date and index files period set to 24h.
+{{< /admonition >}}
 
 ## Example Configuration
 
@@ -35,7 +41,6 @@ storage_config:
 
   boltdb_shipper:
     active_index_directory: /loki/index
-    shared_store: gcs
     cache_location: /loki/boltdb-cache
 ```
 
@@ -70,7 +75,10 @@ they both having shipped files for day `18371` and `18372` with prefix `loki_ind
         └── ingester-1-1587254400.gz
         ...
 ```
-**Note:** We also add a timestamp to names of the files to randomize the names to avoid overwriting files when running Ingesters with same name and not have a persistent storage. Timestamps not shown here for simplification.
+
+{{< admonition type="note" >}}
+Loki also adds a timestamp to names of the files to randomize the names to avoid overwriting files when running Ingesters with same name and not have a persistent storage. Timestamps not shown here for simplification.
+{{< /admonition >}}
 
 Let us talk about more in depth about how both Ingesters and Queriers work when running them with BoltDB Shipper.
 
@@ -81,7 +89,9 @@ and the BoltDB Shipper looks for new and updated files in that directory at 1 mi
 When running Loki in microservices mode, there could be multiple ingesters serving write requests.
 Each ingester generates BoltDB files locally.
 
-**Note:** To avoid any loss of index when an ingester crashes, we recommend running ingesters as a statefulset (when using Kubernetes) with a persistent storage for storing index files.
+{{< admonition type="note" >}}
+To avoid any loss of index when an ingester crashes, we recommend running ingesters as a StatefulSet (when using Kubernetes) with a persistent storage for storing index files.
+{{< /admonition >}}
 
 When chunks are flushed, they are available for reads in the object store instantly. The index is not available instantly, since we upload every 15 minutes with the BoltDB shipper.
 Ingesters expose a new RPC for letting queriers query the ingester's local index for chunks which were recently flushed, but its index might not be available yet with queriers.
@@ -107,14 +117,14 @@ Within Kubernetes, if you are not using an Index Gateway, we recommend running Q
 An Index Gateway downloads and synchronizes the BoltDB index from the Object Storage in order to serve index queries to the Queriers and Rulers over gRPC.
 This avoids running Queriers and Rulers with a disk for persistence. Disks can become costly in a big cluster.
 
-To run an Index Gateway, configure [StorageConfig]({{< relref "../../configure#storage_config" >}}) and set the `-target` CLI flag to `index-gateway`.
-To connect Queriers and Rulers to the Index Gateway, set the address (with gRPC port) of the Index Gateway with the `-boltdb.shipper.index-gateway-client.server-address` CLI flag or its equivalent YAML value under [StorageConfig]({{< relref "../../configure#storage_config" >}}).
+To run an Index Gateway, configure [StorageConfig](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config) and set the `-target` CLI flag to `index-gateway`.
+To connect Queriers and Rulers to the Index Gateway, set the address (with gRPC port) of the Index Gateway with the `-boltdb.shipper.index-gateway-client.server-address` CLI flag or its equivalent YAML value under [StorageConfig](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config).
 
 When using the Index Gateway within Kubernetes, we recommend using a StatefulSet with persistent storage for downloading and querying index files. This can obtain better read performance, avoids [noisy neighbor problems](https://en.wikipedia.org/wiki/Cloud_computing_issues#Performance_interference_and_noisy_neighbors) by not using the node disk, and avoids the time consuming index downloading step on startup after rescheduling to a new node.
 
 ### Write Deduplication disabled
 
-Loki does write deduplication of chunks and index using Chunks and WriteDedupe cache respectively, configured with [ChunkStoreConfig]({{< relref "../../configure#chunk_store_config" >}}).
+Loki does write deduplication of chunks and index using Chunks and WriteDedupe cache respectively, configured with [ChunkStoreConfig](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#chunk_store_config).
 The problem with write deduplication when using `boltdb-shipper` though is ingesters only keep uploading boltdb files periodically to make them available to all the other services which means there would be a brief period where some of the services would not have received updated index yet.
 The problem due to that is if an ingester which first wrote the chunks and index goes down and all the other ingesters which were part of replication scheme skipped writing those chunks and index due to deduplication, we would end up missing those logs from query responses since only the ingester which had the index went down.
 This problem would be faced even during rollouts which is quite common.
@@ -127,7 +137,9 @@ While using `boltdb-shipper` avoid configuring WriteDedupe cache since it is use
 Compactor is a BoltDB Shipper specific service that reduces the index size by deduping the index and merging all the files to a single file per table.
 We recommend running a Compactor since a single Ingester creates 96 files per day which include a lot of duplicate index entries and querying multiple files per table adds up the overall query latency.
 
-**Note:** There should be only 1 compactor instance running at a time that otherwise could create problems and may lead to data loss.
+{{< admonition type="note" >}}
+There should be only one compactor instance running at a time that otherwise could create problems and may lead to data loss.
+{{< /admonition >}}
 
 Example compactor configuration with GCS:
 
@@ -138,11 +150,8 @@ The compactor is an optional but suggested component that combines and deduplica
 ```yaml
 compactor:
   working_directory: /loki/compactor
-  shared_store: gcs
 
 storage_config:
   gcs:
     bucket_name: GCS_BUCKET_NAME
 ```
-
-

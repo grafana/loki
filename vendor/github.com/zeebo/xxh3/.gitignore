@@ -1,0 +1,8 @@
+upstream
+*.pprof
+xxh3.test
+.vscode
+*.txt
+_compat
+*.out
+*.html

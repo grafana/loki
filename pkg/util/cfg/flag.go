@@ -36,7 +36,7 @@ func Flags(args []string, fs *flag.FlagSet) Source {
 
 // dFlags parses the flagset, applying all values set on the slice
 func dFlags(fs *flag.FlagSet, args []string) Source {
-	return func(dst Cloneable) error {
+	return func(_ Cloneable) error {
 		// parse the final flagset
 		return fs.Parse(args)
 	}

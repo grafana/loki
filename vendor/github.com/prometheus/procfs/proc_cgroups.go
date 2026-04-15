@@ -1,4 +1,4 @@
-// Copyright 2021 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -40,13 +40,13 @@ type CgroupSummary struct {
 
 // parseCgroupSummary parses each line of the /proc/cgroup file
 // Line format is `subsys_name	hierarchy	num_cgroups	enabled`.
-func parseCgroupSummaryString(CgroupSummaryStr string) (*CgroupSummary, error) {
+func parseCgroupSummaryString(cgroupSummaryStr string) (*CgroupSummary, error) {
 	var err error
 
-	fields := strings.Fields(CgroupSummaryStr)
+	fields := strings.Fields(cgroupSummaryStr)
 	// require at least 4 fields
 	if len(fields) < 4 {
-		return nil, fmt.Errorf("at least 4 fields required, found %d fields in cgroup info string: %s", len(fields), CgroupSummaryStr)
+		return nil, fmt.Errorf("%w: 4+ fields required, found %d fields in cgroup info string: %s", ErrFileParse, len(fields), cgroupSummaryStr)
 	}
 
 	CgroupSummary := &CgroupSummary{
@@ -54,15 +54,15 @@ func parseCgroupSummaryString(CgroupSummaryStr string) (*CgroupSummary, error) {
 	}
 	CgroupSummary.Hierarchy, err = strconv.Atoi(fields[1])
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse hierarchy ID")
+		return nil, fmt.Errorf("%w: Unable to parse hierarchy ID from %q", ErrFileParse, fields[1])
 	}
 	CgroupSummary.Cgroups, err = strconv.Atoi(fields[2])
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse Cgroup Num")
+		return nil, fmt.Errorf("%w: Unable to parse Cgroup Num from %q", ErrFileParse, fields[2])
 	}
 	CgroupSummary.Enabled, err = strconv.Atoi(fields[3])
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse Enabled")
+		return nil, fmt.Errorf("%w: Unable to parse Enabled from %q", ErrFileParse, fields[3])
 	}
 	return CgroupSummary, nil
 }

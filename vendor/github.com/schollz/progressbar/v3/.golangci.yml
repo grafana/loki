@@ -1,0 +1,21 @@
+run:
+  timeout: 5m
+  exclude-dirs:
+    - vendor
+    - examples
+
+linters:
+  enable:
+    - errcheck
+    - gocyclo
+    - gofmt
+    - goimports
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+linters-settings:
+  gocyclo:
+    min-complexity: 20

@@ -19,8 +19,8 @@ import (
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util/build"
 )
 
 const (
@@ -30,13 +30,10 @@ const (
 	pushEndpoint = "/loki/api/v1/push"
 )
 
-var (
-	defaultUserAgent = fmt.Sprintf("canary-push/%s", build.GetVersion().Version)
-)
+var defaultUserAgent = fmt.Sprintf("canary-push/%s", build.GetVersion().Version)
 
 // Push is a io.Writer, that writes given log entries by pushing
 // directly to the given loki server URL. Each `Push` instance handles for a single tenant.
-// No batching of log lines happens when sending to Loki.
 type Push struct {
 	lokiURL     string
 	tenantID    string
@@ -60,9 +57,16 @@ type Push struct {
 
 	// push retry and backoff
 	backoff *backoff.Config
+
+	// cfg for sending logs in batches
+	logBatchSize int
 }
 
-// NewPush creates an instance of `Push` which writes logs directly to given `lokiAddr`
+// `NewPush` creates an instance of `EntryWriter` which writes logs directly to the given `lokiAddr`
+//
+// Depending on the `logBatchSize` passed to this function, the implementing `EntryWriter` instance
+// is either a `Push` instance (which sends each log line immediately to Loki), or a `BatchedPush`
+// instance which sends log lines to Loki in batches.
 func NewPush(
 	lokiAddr, tenantID string,
 	timeout time.Duration,
@@ -74,12 +78,16 @@ func NewPush(
 	caFile, certFile, keyFile string,
 	username, password string,
 	backoffCfg *backoff.Config,
+	logBatchSize int,
 	logger log.Logger,
-) (*Push, error) {
-
+) (EntryWriter, error) {
 	client, err := config.NewClientFromConfig(cfg, "canary-push", config.WithHTTP2Disabled())
 	if err != nil {
 		return nil, err
+	}
+
+	if logBatchSize < 0 {
+		return nil, fmt.Errorf("logBatchSize must be >= 0")
 	}
 
 	client.Timeout = timeout
@@ -88,9 +96,9 @@ func NewPush(
 	// setup tls transport
 	if tlsCfg != nil {
 		tlsSettings := config.TLSRoundTripperSettings{
-			CAFile:   caFile,
-			CertFile: certFile,
-			KeyFile:  keyFile,
+			CA:   config.NewFileSecret(caFile),
+			Cert: config.NewFileSecret(certFile),
+			Key:  config.NewFileSecret(keyFile),
 		}
 		rt, err := config.NewTLSRoundTripper(tlsCfg, tlsSettings, func(tls *tls.Config) (http.RoundTripper, error) {
 			return &http.Transport{TLSClientConfig: tls}, nil
@@ -130,6 +138,18 @@ func NewPush(
 		password:    password,
 		backoff:     backoffCfg,
 	}
+
+	// batch size of 0 or 1 doesn't require actual batching so just
+	// use the Push reference.  Otherwise, return the BatchedPush
+	// as the EntryWriter interface
+	if logBatchSize > DefaultLogBatchSize {
+		bp := &BatchedPush{
+			pusher:       p,
+			logBatchSize: logBatchSize,
+		}
+		go bp.run()
+		return bp, nil
+	}
 	go p.run()
 	return p, nil
 }
@@ -155,26 +175,33 @@ func (p *Push) Stop() {
 
 // buildPayload creates the snappy compressed protobuf to send to Loki
 func (p *Push) buildPayload(e entry) ([]byte, error) {
+	req := &logproto.PushRequest{
+		Streams: []logproto.Stream{
+			p.buildStream(e),
+		},
+	}
+	return p.serializePayload(req)
+}
 
+func (p *Push) buildStream(e entry) logproto.Stream {
 	labels := model.LabelSet{
 		model.LabelName(p.labelName):  model.LabelValue(p.labelValue),
 		model.LabelName(p.streamName): model.LabelValue(p.streamValue),
 	}
 
-	req := &logproto.PushRequest{
-		Streams: []logproto.Stream{
+	return logproto.Stream{
+		Labels: labels.String(),
+		Entries: []logproto.Entry{
 			{
-				Labels: labels.String(),
-				Entries: []logproto.Entry{
-					{
-						Timestamp: e.ts,
-						Line:      e.entry,
-					},
-				},
-				Hash: uint64(labels.Fingerprint()),
+				Timestamp: e.ts,
+				Line:      e.entry,
 			},
 		},
+		Hash: uint64(labels.Fingerprint()),
 	}
+}
+
+func (p *Push) serializePayload(req *logproto.PushRequest) ([]byte, error) {
 	payload, err := proto.Marshal(req)
 	if err != nil {
 		return []byte{}, fmt.Errorf("failed to marshal payload to json: %w", err)
@@ -237,7 +264,10 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 		err  error
 		resp *http.Response
 	)
-	req, err := http.NewRequest("POST", p.lokiURL, bytes.NewReader(payload))
+	// Set a timeout for the request
+	ctx, cancel := context.WithTimeout(ctx, p.httpClient.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", p.lokiURL, bytes.NewReader(payload))
 	if err != nil {
 		return -1, fmt.Errorf("failed to create push request: %w", err)
 	}
@@ -253,10 +283,6 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 	if p.username != "" {
 		req.SetBasicAuth(p.username, p.password)
 	}
-	// Set a timeout for the request
-	ctx, cancel := context.WithTimeout(ctx, p.httpClient.Timeout)
-	defer cancel()
-	req = req.WithContext(ctx)
 
 	resp, err = p.httpClient.Do(req)
 	if err != nil {

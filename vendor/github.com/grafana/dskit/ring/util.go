@@ -3,6 +3,7 @@ package ring
 import (
 	"context"
 	"math"
+	"slices"
 	"sort"
 	"time"
 
@@ -127,9 +128,11 @@ func getZones(tokens map[string][]uint32) []string {
 
 // searchToken returns the offset of the tokens entry holding the range for the provided key.
 func searchToken(tokens []uint32, key uint32) int {
-	i := sort.Search(len(tokens), func(x int) bool {
-		return tokens[x] > key
-	})
+	i, found := slices.BinarySearch(tokens, key)
+	if found {
+		// we want the first token > key, not >= key
+		i = i + 1
+	}
 	if i >= len(tokens) {
 		i = 0
 	}
@@ -144,4 +147,61 @@ func tokenDistance(from, to uint32) int64 {
 	}
 	// the trailing +1 is needed to ensure that token 0 is counted
 	return math.MaxUint32 - int64(from) + int64(to) + 1
+}
+
+// stringSet is a set of strings optimized for both small and large sizes.
+// It uses a slice for small sets (zero allocations when using a pre-allocated buffer)
+// and automatically switches to a map when the slice is full.
+//
+// The rationale is that looking for a string in a small slice is faster than in a map: the
+// map implementation becomes faster – compared to a slice – the more the slice
+// gets bigger, so we switch to a map only when the slice is full.
+type stringSet struct {
+	setSlice []string
+	setMap   map[string]struct{}
+	count    int
+}
+
+func newStringSet(sliceBuf []string) *stringSet {
+	return &stringSet{
+		setSlice: sliceBuf[:0],
+		setMap:   nil,
+	}
+}
+
+// contains returns true if the set contains the given string.
+func (s *stringSet) contains(str string) bool {
+	if s.setMap != nil {
+		_, ok := s.setMap[str]
+		return ok
+	}
+	return slices.Contains(s.setSlice, str)
+}
+
+// add adds a string to the set. This function does NOT check if the string is already present:
+// the caller MUST ensure that by calling contains() before add().
+func (s *stringSet) add(str string) {
+	s.count++
+
+	if s.setMap != nil {
+		s.setMap[str] = struct{}{}
+	} else if len(s.setSlice) < cap(s.setSlice) {
+		s.setSlice = append(s.setSlice, str)
+	} else {
+		// Slice is full, switch to map.
+		s.setMap = make(map[string]struct{}, len(s.setSlice)*2)
+
+		// Copy the data from the slice to the map.
+		for _, h := range s.setSlice {
+			s.setMap[h] = struct{}{}
+		}
+
+		// Add the new string to the map.
+		s.setMap[str] = struct{}{}
+	}
+}
+
+// len returns the number of strings in the set.
+func (s *stringSet) len() int {
+	return s.count
 }

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
+
 package analysis
 
 import (
@@ -26,6 +29,7 @@ type FlattenOpts struct {
 	Verbose         bool // enable some reporting on possible name conflicts detected
 	RemoveUnused    bool // When true, remove unused parameters, responses and definitions after expansion/flattening
 	ContinueOnError bool // Continue when spec expansion issues are found
+	KeepNames       bool // Do not attempt to jsonify names from references when flattening
 
 	/* Extra keys */
 	_ struct{} // require keys
@@ -40,13 +44,13 @@ func (f *FlattenOpts) ExpandOpts(skipSchemas bool) *spec.ExpandOptions {
 	}
 }
 
-// Swagger gets the swagger specification for this flatten operation
+// Swagger gets the swagger specification for this flatten operation.
 func (f *FlattenOpts) Swagger() *spec.Swagger {
 	return f.Spec.spec
 }
 
 // croak logs notifications and warnings about valid, but possibly unwanted constructs resulting
-// from flattening a spec
+// from flattening a spec.
 func (f *FlattenOpts) croak() {
 	if !f.Verbose {
 		return

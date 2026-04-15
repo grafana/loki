@@ -11,15 +11,15 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logcli/volume"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	logqllog "github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/marshal"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logcli/volume"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
@@ -42,17 +42,14 @@ type FileClient struct {
 	labels      []string
 	labelValues []string
 	orgID       string
-	engine      *logql.Engine
+	engine      logql.Engine
 }
 
 // NewFileClient returns the new instance of FileClient for the given `io.ReadCloser`
 func NewFileClient(r io.ReadCloser) *FileClient {
-	lbs := []labels.Label{
-		{
-			Name:  defaultLabelKey,
-			Value: defaultLabelValue,
-		},
-	}
+	lbs := labels.New(
+		labels.Label{Name: defaultLabelKey, Value: defaultLabelValue},
+	)
 
 	eng := logql.NewEngine(logql.EngineOpts{}, &querier{r: r, labels: lbs}, &limiter{n: defaultMetricSeriesLimit}, log.Logger)
 	return &FileClient{
@@ -69,7 +66,7 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 
 	ctx = user.InjectOrgID(ctx, f.orgID)
 
-	params := logql.NewLiteralParams(
+	params, err := logql.NewLiteralParams(
 		q,
 		t, t,
 		0,
@@ -77,7 +74,11 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 		direction,
 		uint32(limit),
 		nil,
+		nil,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse query: %w", err)
+	}
 
 	query := f.engine.Query(params)
 
@@ -106,7 +107,7 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 
 	ctx = user.InjectOrgID(ctx, f.orgID)
 
-	params := logql.NewLiteralParams(
+	params, err := logql.NewLiteralParams(
 		queryStr,
 		start,
 		end,
@@ -115,7 +116,11 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 		direction,
 		uint32(limit),
 		nil,
+		nil,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	query := f.engine.Query(params)
 
@@ -184,18 +189,41 @@ func (f *FileClient) GetOrgID() string {
 }
 
 func (f *FileClient) GetStats(_ string, _, _ time.Time, _ bool) (*logproto.IndexStatsResponse, error) {
-	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	// TODO(twhitney): could we teach logcli to read from an actual index file?
 	return nil, ErrNotSupported
 }
 
 func (f *FileClient) GetVolume(_ *volume.Query) (*loghttp.QueryResponse, error) {
-	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	// TODO(twhitney): could we teach logcli to read from an actual index file?
 	return nil, ErrNotSupported
 }
 
 func (f *FileClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryResponse, error) {
-	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	// TODO(twhitney): could we teach logcli to read from an actual index file?
 	return nil, ErrNotSupported
+}
+
+func (f *FileClient) GetDetectedFields(
+	_, _ string,
+	_, _ int,
+	_, _ time.Time,
+	_ time.Duration,
+	_ bool,
+) (*loghttp.DetectedFieldsResponse, error) {
+	// TODO(twhitney): could we teach logcli to do this?
+	return nil, ErrNotSupported
+}
+
+func (f *FileClient) CreateDeleteRequest(_ DeleteRequestParams, _ bool) error {
+	return ErrNotSupported
+}
+
+func (f *FileClient) ListDeleteRequests(_ bool) ([]DeleteRequest, error) {
+	return nil, ErrNotSupported
+}
+
+func (f *FileClient) CancelDeleteRequest(_ string, _ bool, _ bool) error {
+	return ErrNotSupported
 }
 
 type limiter struct {
@@ -222,6 +250,22 @@ func (l *limiter) RequiredLabels(_ context.Context, _ string) []string {
 	return nil
 }
 
+func (l *limiter) EnableMultiVariantQueries(_ string) bool {
+	return false // Multi-variant queries disabled by default for file client
+}
+
+func (l *limiter) MaxScanTaskParallelism(_ string) int {
+	return 0 // This setting for the v2 execution engine is unused in LogCLI
+}
+
+func (l *limiter) DebugEngineTasks(_ string) bool {
+	return false // This setting for the v2 execution engine is unused in LogCLI
+}
+
+func (l *limiter) DebugEngineStreams(_ string) bool {
+	return false // This setting for the v2 execution engine is unused in LogCLI
+}
+
 type querier struct {
 	r      io.Reader
 	labels labels.Labels
@@ -240,7 +284,7 @@ func (q *querier) SelectLogs(_ context.Context, params logql.SelectLogParams) (i
 }
 
 func (q *querier) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
-	return nil, fmt.Errorf("Metrics Query: %w", ErrNotSupported)
+	return nil, fmt.Errorf("metrics Query: %w", ErrNotSupported)
 }
 
 func newFileIterator(
@@ -259,14 +303,14 @@ func newFileIterator(
 	})
 
 	if len(lines) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopEntryIterator, nil
 	}
 
 	streams := map[uint64]*logproto.Stream{}
 
 	processLine := func(line string) {
 		ts := time.Now()
-		parsedLine, parsedLabels, matches := pipeline.ProcessString(ts.UnixNano(), line)
+		parsedLine, parsedLabels, matches := pipeline.ProcessString(ts.UnixNano(), line, labels.EmptyLabels())
 		if !matches {
 			return
 		}
@@ -298,7 +342,7 @@ func newFileIterator(
 	}
 
 	if len(streams) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopEntryIterator, nil
 	}
 
 	streamResult := make([]logproto.Stream, 0, len(streams))

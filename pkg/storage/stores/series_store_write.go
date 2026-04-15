@@ -4,33 +4,37 @@ import (
 	"context"
 
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"go.opentelemetry.io/otel"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
+
+var tracer = otel.Tracer("pkg/storage/stores")
 
 var (
 	DedupedChunksTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "chunk_store_deduped_chunks_total",
 		Help:      "Count of chunks which were not stored because they have already been stored by another replica.",
 	})
 
 	DedupedBytesTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "chunk_store_deduped_bytes_total",
 		Help:      "Count of bytes from chunks which were not stored because they have already been stored by another replica.",
 	})
 
 	IndexEntriesPerChunk = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "chunk_store_index_entries_per_chunk",
 		Help:      "Number of entries written to storage per chunk.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
@@ -66,9 +70,10 @@ func (c *Writer) Put(ctx context.Context, chunks []chunk.Chunk) error {
 
 // PutOne implements Store
 func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.PutOne")
-	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
+	ctx, sp := tracer.Start(ctx, "SeriesStore.PutOne")
+	defer sp.End()
+
+	log := spanlogger.FromContext(ctx, util_log.Logger)
 	defer log.Finish()
 
 	var (

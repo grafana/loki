@@ -1,19 +1,20 @@
-package util
+package util //nolint:revive
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 
+	humanize "github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/model/labels"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -95,7 +96,7 @@ func (mfm MetricFamilyMap) SumGauges(name string) float64 {
 }
 
 func (mfm MetricFamilyMap) MaxGauges(name string) float64 {
-	return max(mfm[name], gaugeValue)
+	return maxMetric(mfm[name], gaugeValue)
 }
 
 func (mfm MetricFamilyMap) SumHistograms(name string) HistogramData {
@@ -414,9 +415,9 @@ func sum(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
 	return result
 }
 
-// max returns the max value from all metrics from same metric family (= series with the same metric name, but different labels)
+// maxMetric returns the max value from all metrics from same metric family (= series with the same metric name, but different labels)
 // Supplied function extracts value.
-func max(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
+func maxMetric(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
 	result := math.NaN()
 
 	for _, m := range mf.GetMetric() {
@@ -725,7 +726,7 @@ func (r *UserRegistries) BuildMetricFamiliesPerUser(labelTransformFn MetricLabel
 
 // FromLabelPairsToLabels converts dto.LabelPair into labels.Labels.
 func FromLabelPairsToLabels(pairs []*dto.LabelPair) labels.Labels {
-	builder := labels.NewBuilder(nil)
+	builder := labels.NewBuilder(labels.EmptyLabels())
 	for _, pair := range pairs {
 		builder.Set(pair.GetName(), pair.GetValue())
 	}
@@ -759,7 +760,7 @@ func GetSumOfHistogramSampleCount(families []*dto.MetricFamily, metricName strin
 	return sum
 }
 
-// GetLables returns list of label combinations used by this collector at the time of call.
+// GetLabels returns list of label combinations used by this collector at the time of call.
 // This can be used to find and delete unused metrics.
 func GetLabels(c prometheus.Collector, filter map[string]string) ([]labels.Labels, error) {
 	ch := make(chan prometheus.Metric, 16)
@@ -769,21 +770,21 @@ func GetLabels(c prometheus.Collector, filter map[string]string) ([]labels.Label
 		c.Collect(ch)
 	}()
 
-	errs := tsdb_errors.NewMulti()
+	var errs []error
 	var result []labels.Labels
 	dtoMetric := &dto.Metric{}
-	lbls := labels.NewBuilder(nil)
+	lbls := labels.NewBuilder(labels.EmptyLabels())
 
 nextMetric:
 	for m := range ch {
 		err := m.Write(dtoMetric)
 		if err != nil {
-			errs.Add(err)
+			errs = append(errs, err)
 			// We cannot return here, to avoid blocking goroutine calling c.Collect()
 			continue
 		}
 
-		lbls.Reset(nil)
+		lbls.Reset(labels.EmptyLabels())
 		for _, lp := range dtoMetric.Label {
 			n := lp.GetName()
 			v := lp.GetValue()
@@ -798,7 +799,7 @@ nextMetric:
 		result = append(result, lbls.Labels())
 	}
 
-	return result, errs.Err()
+	return result, errors.Join(errs...)
 }
 
 // DeleteMatchingLabels removes metric with labels matching the filter.
@@ -840,4 +841,9 @@ func RegisterCounterVec(registerer prometheus.Registerer, namespace, name, help 
 		}
 	}
 	return vec
+}
+
+// HumanizeBytes returns a human readable string representation of the given byte value and removes all whitespaces.
+func HumanizeBytes(val uint64) string {
+	return strings.Replace(humanize.Bytes(val), " ", "", 1)
 }

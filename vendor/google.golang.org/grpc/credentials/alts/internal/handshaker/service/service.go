@@ -22,9 +22,12 @@ package service
 
 import (
 	"sync"
+	"time"
 
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/internal/envconfig"
+	"google.golang.org/grpc/keepalive"
 )
 
 var (
@@ -34,8 +37,6 @@ var (
 	// to a corresponding connection to a hypervisor handshaker service
 	// instance.
 	hsConnMap = make(map[string]*grpc.ClientConn)
-	// hsDialer will be reassigned in tests.
-	hsDialer = grpc.Dial
 )
 
 // Dial dials the handshake service in the hypervisor. If a connection has
@@ -49,12 +50,42 @@ func Dial(hsAddress string) (*grpc.ClientConn, error) {
 	if !ok {
 		// Create a new connection to the handshaker service. Note that
 		// this connection stays open until the application is closed.
+		// Disable the service config to avoid unnecessary TXT record lookups that
+		// cause timeouts with some versions of systemd-resolved.
 		var err error
-		hsConn, err = hsDialer(hsAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		opts := []grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithDisableServiceConfig(),
+		}
+		if envconfig.ALTSHandshakerKeepaliveParams {
+			opts = append(opts, grpc.WithKeepaliveParams(keepalive.ClientParameters{
+				Timeout: 10 * time.Second,
+				Time:    10 * time.Minute,
+			}))
+		}
+		hsConn, err = grpc.NewClient(hsAddress, opts...)
 		if err != nil {
 			return nil, err
 		}
 		hsConnMap[hsAddress] = hsConn
 	}
 	return hsConn, nil
+}
+
+// CloseForTesting closes all open connections to the handshaker service.
+//
+// For testing purposes only.
+func CloseForTesting() error {
+	for _, hsConn := range hsConnMap {
+		if hsConn == nil {
+			continue
+		}
+		if err := hsConn.Close(); err != nil {
+			return err
+		}
+	}
+
+	// Reset the connection map.
+	hsConnMap = make(map[string]*grpc.ClientConn)
+	return nil
 }

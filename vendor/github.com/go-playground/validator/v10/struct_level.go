@@ -46,9 +46,9 @@ type StructLevel interface {
 	//
 	// NOTES:
 	//
-	// fieldName and altName get appended to the existing namespace that
-	// validator is on. e.g. pass 'FirstName' or 'Names[0]' depending
-	// on the nesting
+	// fieldName and structFieldName get appended to the existing
+	// namespace that validator is on. e.g. pass 'FirstName' or
+	// 'Names[0]' depending on the nesting
 	//
 	// tag can be an existing validation tag or just something you make up
 	// and process on the flip side it's up to you.
@@ -62,7 +62,7 @@ type StructLevel interface {
 	// existing namespace that validator is on.
 	// e.g. pass 'User.FirstName' or 'Users[0].FirstName' depending
 	// on the nesting. most of the time they will be blank, unless you validate
-	// at a level lower the the current field depth
+	// at a level lower the current field depth
 	ReportValidationErrors(relativeNamespace, relativeActualNamespace string, errs ValidationErrors)
 }
 
@@ -74,7 +74,7 @@ var _ StructLevel = new(validate)
 // if not is a nested struct.
 //
 // this is only called when within Struct and Field Level validation and
-// should not be relied upon for an acurate value otherwise.
+// should not be relied upon for an accurate value otherwise.
 func (v *validate) Top() reflect.Value {
 	return v.top
 }
@@ -85,7 +85,7 @@ func (v *validate) Top() reflect.Value {
 // if not is a nested struct.
 //
 // this is only called when within Struct and Field Level validation and
-// should not be relied upon for an acurate value otherwise.
+// should not be relied upon for an accurate value otherwise.
 func (v *validate) Parent() reflect.Value {
 	return v.slflParent
 }
@@ -107,7 +107,6 @@ func (v *validate) ExtractType(field reflect.Value) (reflect.Value, reflect.Kind
 
 // ReportError reports an error just by passing the field and tag information
 func (v *validate) ReportError(field interface{}, fieldName, structFieldName, tag, param string) {
-
 	fv, kind, _ := v.extractTypeInternal(reflect.ValueOf(field), false)
 
 	if len(structFieldName) == 0 {
@@ -123,7 +122,6 @@ func (v *validate) ReportError(field interface{}, fieldName, structFieldName, ta
 	}
 
 	if kind == reflect.Invalid {
-
 		v.errs = append(v.errs,
 			&fieldError{
 				v:              v.v,
@@ -149,7 +147,7 @@ func (v *validate) ReportError(field interface{}, fieldName, structFieldName, ta
 			structNs:       v.str2,
 			fieldLen:       uint8(len(fieldName)),
 			structfieldLen: uint8(len(structFieldName)),
-			value:          fv.Interface(),
+			value:          getValue(fv),
 			param:          param,
 			kind:           kind,
 			typ:            fv.Type(),
@@ -161,11 +159,9 @@ func (v *validate) ReportError(field interface{}, fieldName, structFieldName, ta
 //
 // NOTE: this function prepends the current namespace to the relative ones.
 func (v *validate) ReportValidationErrors(relativeNamespace, relativeStructNamespace string, errs ValidationErrors) {
-
 	var err *fieldError
 
 	for i := 0; i < len(errs); i++ {
-
 		err = errs[i].(*fieldError)
 		err.ns = string(append(append(v.ns, relativeNamespace...), err.ns...))
 		err.structNs = string(append(append(v.actualNs, relativeStructNamespace...), err.structNs...))

@@ -2,6 +2,7 @@ package loghttp
 
 import (
 	"fmt"
+	"math"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -10,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestHttp_defaultQueryRangeStep(t *testing.T) {
@@ -39,10 +40,168 @@ func TestHttp_defaultQueryRangeStep(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			assert.Equal(t, testData.expected, defaultQueryRangeStep(testData.start, testData.end))
+		})
+	}
+}
+
+func Test_uint32QueryParamBounds(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		reqPath string
+		parse   func(*testing.T, string) (uint32, error)
+		wantErr string
+	}{
+		{
+			name:    "limit rejects overflow",
+			reqPath: fmt.Sprintf("/loki/api/v1/query_range?limit=%d", uint64(math.MaxUint32)+1),
+			parse: func(t *testing.T, reqPath string) (uint32, error) {
+				req := httptest.NewRequest("GET", reqPath, nil)
+				require.NoError(t, req.ParseForm())
+				return limit(req)
+			},
+			wantErr: "limit value",
+		},
+		{
+			name:    "limit rejects negative values",
+			reqPath: "/loki/api/v1/query_range?limit=-1",
+			parse: func(t *testing.T, reqPath string) (uint32, error) {
+				req := httptest.NewRequest("GET", reqPath, nil)
+				require.NoError(t, req.ParseForm())
+				return limit(req)
+			},
+			wantErr: "limit must be a positive value",
+		},
+		{
+			name:    "line_limit rejects overflow",
+			reqPath: fmt.Sprintf("/loki/api/v1/query_range?line_limit=%d", uint64(math.MaxUint32)+1),
+			parse: func(t *testing.T, reqPath string) (uint32, error) {
+				req := httptest.NewRequest("GET", reqPath, nil)
+				require.NoError(t, req.ParseForm())
+				return lineLimit(req)
+			},
+			wantErr: "line_limit value",
+		},
+		{
+			name:    "line_limit rejects negative values",
+			reqPath: "/loki/api/v1/query_range?line_limit=-1",
+			parse: func(t *testing.T, reqPath string) (uint32, error) {
+				req := httptest.NewRequest("GET", reqPath, nil)
+				require.NoError(t, req.ParseForm())
+				return lineLimit(req)
+			},
+			wantErr: "limit must be a positive value",
+		},
+		{
+			name:    "detected fields limit rejects overflow",
+			reqPath: fmt.Sprintf("/loki/api/v1/detected_fields?limit=%d", uint64(math.MaxUint32)+1),
+			parse: func(t *testing.T, reqPath string) (uint32, error) {
+				req := httptest.NewRequest("GET", reqPath, nil)
+				require.NoError(t, req.ParseForm())
+				return detectedFieldsLimit(req)
+			},
+			wantErr: "limit value",
+		},
+		{
+			name:    "detected fields limit rejects negative values",
+			reqPath: "/loki/api/v1/detected_fields?limit=-1",
+			parse: func(t *testing.T, reqPath string) (uint32, error) {
+				req := httptest.NewRequest("GET", reqPath, nil)
+				require.NoError(t, req.ParseForm())
+				return detectedFieldsLimit(req)
+			},
+			wantErr: "limit must be a positive value",
+		},
+		{
+			name:    "tail delay rejects overflow",
+			reqPath: fmt.Sprintf("/loki/api/v1/tail?delay_for=%d", uint64(math.MaxUint32)+1),
+			parse: func(t *testing.T, reqPath string) (uint32, error) {
+				req := httptest.NewRequest("GET", reqPath, nil)
+				require.NoError(t, req.ParseForm())
+				return tailDelay(req)
+			},
+			wantErr: "delay_for value",
+		},
+		{
+			name:    "tail delay rejects negative values",
+			reqPath: "/loki/api/v1/tail?delay_for=-1",
+			parse: func(t *testing.T, reqPath string) (uint32, error) {
+				req := httptest.NewRequest("GET", reqPath, nil)
+				require.NoError(t, req.ParseForm())
+				return tailDelay(req)
+			},
+			wantErr: "delay_for value",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.parse(t, tt.reqPath)
+			require.Error(t, err)
+			assert.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func Test_uint32QueryParamValidValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		reqPath string
+		parse   func(*testing.T, string) (uint32, error)
+		want    uint32
+	}{
+		{
+			name:    "limit accepts max uint32",
+			reqPath: fmt.Sprintf("/loki/api/v1/query_range?limit=%d", uint64(math.MaxUint32)),
+			parse: func(t *testing.T, reqPath string) (uint32, error) {
+				req := httptest.NewRequest("GET", reqPath, nil)
+				require.NoError(t, req.ParseForm())
+				return limit(req)
+			},
+			want: math.MaxUint32,
+		},
+		{
+			name:    "line_limit accepts max uint32",
+			reqPath: fmt.Sprintf("/loki/api/v1/query_range?line_limit=%d", uint64(math.MaxUint32)),
+			parse: func(t *testing.T, reqPath string) (uint32, error) {
+				req := httptest.NewRequest("GET", reqPath, nil)
+				require.NoError(t, req.ParseForm())
+				return lineLimit(req)
+			},
+			want: math.MaxUint32,
+		},
+		{
+			name:    "detected fields limit accepts max uint32",
+			reqPath: fmt.Sprintf("/loki/api/v1/detected_fields?limit=%d", uint64(math.MaxUint32)),
+			parse: func(t *testing.T, reqPath string) (uint32, error) {
+				req := httptest.NewRequest("GET", reqPath, nil)
+				require.NoError(t, req.ParseForm())
+				return detectedFieldsLimit(req)
+			},
+			want: math.MaxUint32,
+		},
+		{
+			name:    "tail delay accepts max uint32",
+			reqPath: fmt.Sprintf("/loki/api/v1/tail?delay_for=%d", uint64(math.MaxUint32)),
+			parse: func(t *testing.T, reqPath string) (uint32, error) {
+				req := httptest.NewRequest("GET", reqPath, nil)
+				require.NoError(t, req.ParseForm())
+				return tailDelay(req)
+			},
+			want: math.MaxUint32,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.parse(t, tt.reqPath)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -123,8 +282,6 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			req := httptest.NewRequest("GET", testData.reqPath, nil)
 			err := req.ParseForm()
@@ -176,8 +333,6 @@ func Test_interval(t *testing.T) {
 		},
 	}
 	for _, testData := range tests {
-		testData := testData
-
 		t.Run(testData.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", testData.reqPath, nil)
 			err := req.ParseForm()

@@ -6,7 +6,7 @@ import (
 
 type node struct {
 	event string
-	count uint32
+	count float64
 	// used for the container heap Fix function
 	index           uint16
 	sketchPositions []uint32
@@ -50,7 +50,7 @@ func (h *MinHeap) Peek() interface{} {
 }
 
 // update modifies the count and value of an Item in the queue.
-func (h *MinHeap) update(event string, count uint32) {
+func (h *MinHeap) update(event string, count float64) {
 	updateNode := -1
 	for i, k := range *h {
 		if k.event == event {

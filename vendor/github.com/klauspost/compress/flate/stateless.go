@@ -4,6 +4,8 @@ import (
 	"io"
 	"math"
 	"sync"
+
+	"github.com/klauspost/compress/internal/le"
 )
 
 const (
@@ -54,8 +56,15 @@ func NewStatelessWriter(dst io.Writer) io.WriteCloser {
 
 // bitWriterPool contains bit writers that can be reused.
 var bitWriterPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return newHuffmanBitWriter(nil)
+	},
+}
+
+// tokensPool contains tokens struct objects that can be reused
+var tokensPool = sync.Pool{
+	New: func() any {
+		return &tokens{}
 	},
 }
 
@@ -65,7 +74,6 @@ var bitWriterPool = sync.Pool{
 // Longer dictionaries will be truncated and will still produce valid output.
 // Sending nil dictionary is perfectly fine.
 func StatelessDeflate(out io.Writer, in []byte, eof bool, dict []byte) error {
-	var dst tokens
 	bw := bitWriterPool.Get().(*huffmanBitWriter)
 	bw.reset(out)
 	defer func() {
@@ -89,6 +97,12 @@ func StatelessDeflate(out io.Writer, in []byte, eof bool, dict []byte) error {
 	// For subsequent loops, keep shallow dict reference to avoid alloc+copy.
 	var inDict []byte
 
+	dst := tokensPool.Get().(*tokens)
+	dst.Reset()
+	defer func() {
+		tokensPool.Put(dst)
+	}()
+
 	for len(in) > 0 {
 		todo := in
 		if len(inDict) > 0 {
@@ -111,9 +125,9 @@ func StatelessDeflate(out io.Writer, in []byte, eof bool, dict []byte) error {
 		}
 		// Compress
 		if len(inDict) == 0 {
-			statelessEnc(&dst, todo, int16(len(dict)))
+			statelessEnc(dst, todo, int16(len(dict)))
 		} else {
-			statelessEnc(&dst, inDict[:maxStatelessDict+len(todo)], maxStatelessDict)
+			statelessEnc(dst, inDict[:maxStatelessDict+len(todo)], maxStatelessDict)
 		}
 		isEof := eof && len(in) == 0
 
@@ -127,7 +141,7 @@ func StatelessDeflate(out io.Writer, in []byte, eof bool, dict []byte) error {
 			// If we removed less than 1/16th, huffman compress the block.
 			bw.writeBlockHuff(isEof, uncompressed, len(in) == 0)
 		} else {
-			bw.writeBlockDynamic(&dst, isEof, uncompressed, len(in) == 0)
+			bw.writeBlockDynamic(dst, isEof, uncompressed, len(in) == 0)
 		}
 		if len(in) > 0 {
 			// Retain a dict if we have more
@@ -152,18 +166,11 @@ func hashSL(u uint32) uint32 {
 }
 
 func load3216(b []byte, i int16) uint32 {
-	// Help the compiler eliminate bounds checks on the read so it can be done in a single read.
-	b = b[i:]
-	b = b[:4]
-	return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24
+	return le.Load32(b, i)
 }
 
 func load6416(b []byte, i int16) uint64 {
-	// Help the compiler eliminate bounds checks on the read so it can be done in a single read.
-	b = b[i:]
-	b = b[:8]
-	return uint64(b[0]) | uint64(b[1])<<8 | uint64(b[2])<<16 | uint64(b[3])<<24 |
-		uint64(b[4])<<32 | uint64(b[5])<<40 | uint64(b[6])<<48 | uint64(b[7])<<56
+	return le.Load64(b, i)
 }
 
 func statelessEnc(dst *tokens, src []byte, startAt int16) {
@@ -189,7 +196,7 @@ func statelessEnc(dst *tokens, src []byte, startAt int16) {
 	// Index until startAt
 	if startAt > 0 {
 		cv := load3232(src, 0)
-		for i := int16(0); i < startAt; i++ {
+		for i := range startAt {
 			table[hashSL(cv)] = tableEntry{offset: i}
 			cv = (cv >> 8) | (uint32(src[i+4]) << 24)
 		}

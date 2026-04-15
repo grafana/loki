@@ -4,12 +4,14 @@ import (
 	"context"
 	"strings"
 
-	"github.com/gocql/gocql"
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 var requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "loki",
+	Namespace: constants.Loki,
 	Name:      "cassandra_request_duration_seconds",
 	Help:      "Time spent doing Cassandra requests.",
 	Buckets:   prometheus.ExponentialBuckets(0.001, 4, 9),

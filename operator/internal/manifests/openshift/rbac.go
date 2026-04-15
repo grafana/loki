@@ -108,6 +108,17 @@ func BuildRulerClusterRole(opts Options) *rbacv1.ClusterRole {
 					"create",
 				},
 			},
+			{
+				APIGroups: []string{
+					"monitoring.coreos.com",
+				},
+				Resources: []string{
+					"alertmanagers/api",
+				},
+				Verbs: []string{
+					"create",
+				},
+			},
 		},
 	}
 }

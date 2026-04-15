@@ -1,27 +1,72 @@
-linters-settings:
-  misspell:
-    locale: US
-
+version: "2"
 linters:
   disable-all: true
   enable:
-    - typecheck
-    - goimports
-    - misspell
-    - revive
+    - durationcheck
+    - gocritic
+    - gomodguard
     - govet
     - ineffassign
-    - gosimple
+    - misspell
+    - revive
+    - staticcheck
+    - unconvert
     - unused
-    - gocritic
-
+    - usetesting
+    - whitespace
+  settings:
+    misspell:
+      locale: US
+    staticcheck:
+      checks:
+        - all
+        - -SA1008
+        - -SA1019
+        - -SA4000
+        - -SA9004
+        - -ST1000
+        - -ST1005
+        - -ST1016
+        - -ST1021
+        - -ST1020
+        - -U1000
+  exclusions:
+    generated: lax
+    rules:
+      - path: (.+)\.go$
+        text: "empty-block:"
+      - path: (.+)\.go$
+        text: "unused-parameter:"
+      - path: (.+)\.go$
+        text: "dot-imports:"
+      - path: (.+)\.go$
+        text: "singleCaseSwitch: should rewrite switch statement to if statement"
+      - path: (.+)\.go$
+        text: "unlambda: replace"
+      - path: (.+)\.go$
+        text: "captLocal:"
+      - path: (.+)\.go$
+        text: "should have a package comment"
+      - path: (.+)\.go$
+        text: "ifElseChain:"
+      - path: (.+)\.go$
+        text: "elseif:"
+      - path: (.+)\.go$
+        text: "Error return value of"
+      - path: (.+)\.go$
+        text: "unnecessary conversion"
+      - path: (.+)\.go$
+        text: "Error return value is not checked"
 issues:
-  exclude-use-default: false
-  exclude:
-      # todo fix these when we get enough time.
-      - "singleCaseSwitch: should rewrite switch statement to if statement"
-      - "unlambda: replace"
-      - "captLocal:"
-      - "ifElseChain:"
-      - "elseif:"
-      - "should have a package comment"
+  max-issues-per-linter: 100
+  max-same-issues: 100
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

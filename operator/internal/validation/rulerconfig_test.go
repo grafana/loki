@@ -4,15 +4,15 @@ import (
 	"context"
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/validation"
-
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/validation"
 )
 
 var rctt = []struct {
@@ -26,8 +26,8 @@ var rctt = []struct {
 			AlertManagerSpec: &lokiv1.AlertManagerSpec{
 				Client: &lokiv1.AlertManagerClientConfig{
 					BasicAuth: &lokiv1.AlertManagerClientBasicAuth{
-						Username: pointer.String("user"),
-						Password: pointer.String("pass"),
+						Username: ptr.To("user"),
+						Password: ptr.To("pass"),
 					},
 				},
 			},
@@ -36,8 +36,8 @@ var rctt = []struct {
 					AlertManagerOverrides: &lokiv1.AlertManagerSpec{
 						Client: &lokiv1.AlertManagerClientConfig{
 							BasicAuth: &lokiv1.AlertManagerClientBasicAuth{
-								Username: pointer.String("user1"),
-								Password: pointer.String("pass1"),
+								Username: ptr.To("user1"),
+								Password: ptr.To("pass1"),
 							},
 						},
 					},
@@ -51,7 +51,7 @@ var rctt = []struct {
 			AlertManagerSpec: &lokiv1.AlertManagerSpec{
 				Client: &lokiv1.AlertManagerClientConfig{
 					HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-						Credentials: pointer.String("creds"),
+						Credentials: ptr.To("creds"),
 					},
 				},
 			},
@@ -60,7 +60,7 @@ var rctt = []struct {
 					AlertManagerOverrides: &lokiv1.AlertManagerSpec{
 						Client: &lokiv1.AlertManagerClientConfig{
 							HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-								Credentials: pointer.String("creds1"),
+								Credentials: ptr.To("creds1"),
 							},
 						},
 					},
@@ -74,7 +74,7 @@ var rctt = []struct {
 			AlertManagerSpec: &lokiv1.AlertManagerSpec{
 				Client: &lokiv1.AlertManagerClientConfig{
 					HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-						CredentialsFile: pointer.String("creds-file"),
+						CredentialsFile: ptr.To("creds-file"),
 					},
 				},
 			},
@@ -83,7 +83,7 @@ var rctt = []struct {
 					AlertManagerOverrides: &lokiv1.AlertManagerSpec{
 						Client: &lokiv1.AlertManagerClientConfig{
 							HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-								CredentialsFile: pointer.String("creds-file1"),
+								CredentialsFile: ptr.To("creds-file1"),
 							},
 						},
 					},
@@ -97,7 +97,7 @@ var rctt = []struct {
 			AlertManagerSpec: &lokiv1.AlertManagerSpec{
 				Client: &lokiv1.AlertManagerClientConfig{
 					HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-						Credentials: pointer.String("creds"),
+						Credentials: ptr.To("creds"),
 					},
 				},
 			},
@@ -106,7 +106,7 @@ var rctt = []struct {
 					AlertManagerOverrides: &lokiv1.AlertManagerSpec{
 						Client: &lokiv1.AlertManagerClientConfig{
 							HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-								CredentialsFile: pointer.String("creds-file1"),
+								CredentialsFile: ptr.To("creds-file1"),
 							},
 						},
 					},
@@ -120,8 +120,8 @@ var rctt = []struct {
 			AlertManagerSpec: &lokiv1.AlertManagerSpec{
 				Client: &lokiv1.AlertManagerClientConfig{
 					HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-						Credentials:     pointer.String("creds"),
-						CredentialsFile: pointer.String("creds-file"),
+						Credentials:     ptr.To("creds"),
+						CredentialsFile: ptr.To("creds-file"),
 					},
 				},
 			},
@@ -130,8 +130,8 @@ var rctt = []struct {
 					AlertManagerOverrides: &lokiv1.AlertManagerSpec{
 						Client: &lokiv1.AlertManagerClientConfig{
 							HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-								Credentials:     pointer.String("creds1"),
-								CredentialsFile: pointer.String("creds-file1"),
+								Credentials:     ptr.To("creds1"),
+								CredentialsFile: ptr.To("creds-file1"),
 							},
 						},
 					},
@@ -169,7 +169,6 @@ var rctt = []struct {
 
 func TestRulerConfigValidationWebhook_ValidateCreate(t *testing.T) {
 	for _, tc := range rctt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -182,7 +181,7 @@ func TestRulerConfigValidationWebhook_ValidateCreate(t *testing.T) {
 			}
 
 			v := &validation.RulerConfigValidator{}
-			err := v.ValidateCreate(ctx, l)
+			_, err := v.ValidateCreate(ctx, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
@@ -194,7 +193,6 @@ func TestRulerConfigValidationWebhook_ValidateCreate(t *testing.T) {
 
 func TestRulerConfigValidationWebhook_ValidateUpdate(t *testing.T) {
 	for _, tc := range rctt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -207,7 +205,7 @@ func TestRulerConfigValidationWebhook_ValidateUpdate(t *testing.T) {
 			}
 
 			v := &validation.RulerConfigValidator{}
-			err := v.ValidateUpdate(ctx, &lokiv1.RulerConfig{}, l)
+			_, err := v.ValidateUpdate(ctx, &lokiv1.RulerConfig{}, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {

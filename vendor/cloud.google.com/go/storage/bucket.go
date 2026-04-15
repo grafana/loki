@@ -26,8 +26,7 @@ import (
 
 	"cloud.google.com/go/compute/metadata"
 	"cloud.google.com/go/internal/optional"
-	"cloud.google.com/go/internal/trace"
-	storagepb "cloud.google.com/go/storage/internal/apiv2/stubs"
+	"cloud.google.com/go/storage/internal/apiv2/storagepb"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iamcredentials/v1"
 	"google.golang.org/api/iterator"
@@ -41,13 +40,14 @@ import (
 // BucketHandle provides operations on a Google Cloud Storage bucket.
 // Use Client.Bucket to get a handle.
 type BucketHandle struct {
-	c                *Client
-	name             string
-	acl              ACLHandle
-	defaultObjectACL ACLHandle
-	conds            *BucketConditions
-	userProject      string // project for Requester Pays buckets
-	retry            *retryConfig
+	c                     *Client
+	name                  string
+	acl                   ACLHandle
+	defaultObjectACL      ACLHandle
+	conds                 *BucketConditions
+	userProject           string // project for Requester Pays buckets
+	retry                 *retryConfig
+	enableObjectRetention *bool
 }
 
 // Bucket returns a BucketHandle, which provides operations on the named bucket.
@@ -81,11 +81,12 @@ func (c *Client) Bucket(name string) *BucketHandle {
 // Create creates the Bucket in the project.
 // If attrs is nil the API defaults will be used.
 func (b *BucketHandle) Create(ctx context.Context, projectID string, attrs *BucketAttrs) (err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Create")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Bucket.Create")
+	defer func() { endSpan(ctx, err) }()
 
 	o := makeStorageOpts(true, b.retry, b.userProject)
-	if _, err := b.c.tc.CreateBucket(ctx, projectID, b.name, attrs, o...); err != nil {
+
+	if _, err := b.c.tc.CreateBucket(ctx, projectID, b.name, attrs, b.enableObjectRetention, o...); err != nil {
 		return err
 	}
 	return nil
@@ -93,8 +94,8 @@ func (b *BucketHandle) Create(ctx context.Context, projectID string, attrs *Buck
 
 // Delete deletes the Bucket.
 func (b *BucketHandle) Delete(ctx context.Context) (err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Delete")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Bucket.Delete")
+	defer func() { endSpan(ctx, err) }()
 
 	o := makeStorageOpts(true, b.retry, b.userProject)
 	return b.c.tc.DeleteBucket(ctx, b.name, b.conds, o...)
@@ -112,6 +113,11 @@ func (b *BucketHandle) ACL() *ACLHandle {
 // This call does not perform any network operations.
 func (b *BucketHandle) DefaultObjectACL() *ACLHandle {
 	return &b.defaultObjectACL
+}
+
+// BucketName returns the name of the bucket.
+func (b *BucketHandle) BucketName() string {
+	return b.name
 }
 
 // Object returns an ObjectHandle, which provides operations on the named object.
@@ -143,8 +149,8 @@ func (b *BucketHandle) Object(name string) *ObjectHandle {
 
 // Attrs returns the metadata for the bucket.
 func (b *BucketHandle) Attrs(ctx context.Context) (attrs *BucketAttrs, err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Attrs")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Bucket.Attrs")
+	defer func() { endSpan(ctx, err) }()
 
 	o := makeStorageOpts(true, b.retry, b.userProject)
 	return b.c.tc.GetBucket(ctx, b.name, b.conds, o...)
@@ -152,8 +158,8 @@ func (b *BucketHandle) Attrs(ctx context.Context) (attrs *BucketAttrs, err error
 
 // Update updates a bucket's attributes.
 func (b *BucketHandle) Update(ctx context.Context, uattrs BucketAttrsToUpdate) (attrs *BucketAttrs, err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Create")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Bucket.Update")
+	defer func() { endSpan(ctx, err) }()
 
 	isIdempotent := b.conds != nil && b.conds.MetagenerationMatch != 0
 	o := makeStorageOpts(isIdempotent, b.retry, b.userProject)
@@ -173,11 +179,17 @@ func (b *BucketHandle) Update(ctx context.Context, uattrs BucketAttrsToUpdate) (
 // [Overview of access control]: https://cloud.google.com/storage/docs/accesscontrol#signed_urls_query_string_authentication
 // [automatic detection of credentials]: https://pkg.go.dev/cloud.google.com/go/storage#hdr-Credential_requirements_for_signing
 func (b *BucketHandle) SignedURL(object string, opts *SignedURLOptions) (string, error) {
-	if opts.GoogleAccessID != "" && (opts.SignBytes != nil || len(opts.PrivateKey) > 0) {
-		return SignedURL(b.name, object, opts)
-	}
 	// Make a copy of opts so we don't modify the pointer parameter.
 	newopts := opts.clone()
+
+	if newopts.Hostname == "" {
+		// Extract the correct host from the readhost set on the client
+		newopts.Hostname = b.c.xmlHost
+	}
+
+	if opts.GoogleAccessID != "" && (opts.SignBytes != nil || len(opts.PrivateKey) > 0) {
+		return SignedURL(b.name, object, newopts)
+	}
 
 	if newopts.GoogleAccessID == "" {
 		id, err := b.detectDefaultGoogleAccessID()
@@ -187,11 +199,11 @@ func (b *BucketHandle) SignedURL(object string, opts *SignedURLOptions) (string,
 		newopts.GoogleAccessID = id
 	}
 	if newopts.SignBytes == nil && len(newopts.PrivateKey) == 0 {
-		if b.c.creds != nil && len(b.c.creds.JSON) > 0 {
+		if j, ok := b.c.credsJSON(); ok {
 			var sa struct {
 				PrivateKey string `json:"private_key"`
 			}
-			err := json.Unmarshal(b.c.creds.JSON, &sa)
+			err := json.Unmarshal(j, &sa)
 			if err == nil && sa.PrivateKey != "" {
 				newopts.PrivateKey = []byte(sa.PrivateKey)
 			}
@@ -213,13 +225,24 @@ func (b *BucketHandle) SignedURL(object string, opts *SignedURLOptions) (string,
 // to be non-nil. You may need to set the GoogleAccessID and PrivateKey fields
 // in some cases. Read more on the [automatic detection of credentials] for this method.
 //
+// To allow the unauthenticated client to upload to any object name in the
+// bucket with a given prefix rather than a specific object name, you can pass
+// an empty string for object and set [PostPolicyV4Options].Conditions to
+// include [ConditionStartsWith]("$key", "prefix").
+//
 // [automatic detection of credentials]: https://pkg.go.dev/cloud.google.com/go/storage#hdr-Credential_requirements_for_signing
 func (b *BucketHandle) GenerateSignedPostPolicyV4(object string, opts *PostPolicyV4Options) (*PostPolicyV4, error) {
-	if opts.GoogleAccessID != "" && (opts.SignRawBytes != nil || opts.SignBytes != nil || len(opts.PrivateKey) > 0) {
-		return GenerateSignedPostPolicyV4(b.name, object, opts)
-	}
 	// Make a copy of opts so we don't modify the pointer parameter.
 	newopts := opts.clone()
+
+	if newopts.Hostname == "" {
+		// Extract the correct host from the readhost set on the client
+		newopts.Hostname = b.c.xmlHost
+	}
+
+	if opts.GoogleAccessID != "" && (opts.SignRawBytes != nil || opts.SignBytes != nil || len(opts.PrivateKey) > 0) {
+		return GenerateSignedPostPolicyV4(b.name, object, newopts)
+	}
 
 	if newopts.GoogleAccessID == "" {
 		id, err := b.detectDefaultGoogleAccessID()
@@ -229,11 +252,11 @@ func (b *BucketHandle) GenerateSignedPostPolicyV4(object string, opts *PostPolic
 		newopts.GoogleAccessID = id
 	}
 	if newopts.SignBytes == nil && newopts.SignRawBytes == nil && len(newopts.PrivateKey) == 0 {
-		if b.c.creds != nil && len(b.c.creds.JSON) > 0 {
+		if j, ok := b.c.credsJSON(); ok {
 			var sa struct {
 				PrivateKey string `json:"private_key"`
 			}
-			err := json.Unmarshal(b.c.creds.JSON, &sa)
+			err := json.Unmarshal(j, &sa)
 			if err == nil && sa.PrivateKey != "" {
 				newopts.PrivateKey = []byte(sa.PrivateKey)
 			}
@@ -251,28 +274,34 @@ func (b *BucketHandle) GenerateSignedPostPolicyV4(object string, opts *PostPolic
 func (b *BucketHandle) detectDefaultGoogleAccessID() (string, error) {
 	returnErr := errors.New("no credentials found on client and not on GCE (Google Compute Engine)")
 
-	if b.c.creds != nil && len(b.c.creds.JSON) > 0 {
+	if j, ok := b.c.credsJSON(); ok {
 		var sa struct {
 			ClientEmail        string `json:"client_email"`
 			SAImpersonationURL string `json:"service_account_impersonation_url"`
 			CredType           string `json:"type"`
 		}
 
-		err := json.Unmarshal(b.c.creds.JSON, &sa)
+		err := json.Unmarshal(j, &sa)
 		if err != nil {
 			returnErr = err
-		} else if sa.CredType == "impersonated_service_account" {
-			start, end := strings.LastIndex(sa.SAImpersonationURL, "/"), strings.LastIndex(sa.SAImpersonationURL, ":")
-
-			if end <= start {
-				returnErr = errors.New("error parsing impersonated service account credentials")
-			} else {
-				return sa.SAImpersonationURL[start+1 : end], nil
-			}
-		} else if sa.CredType == "service_account" && sa.ClientEmail != "" {
-			return sa.ClientEmail, nil
 		} else {
-			returnErr = errors.New("unable to parse credentials; only service_account and impersonated_service_account credentials are supported")
+			switch sa.CredType {
+			case "impersonated_service_account", "external_account":
+				start, end := strings.LastIndex(sa.SAImpersonationURL, "/"), strings.LastIndex(sa.SAImpersonationURL, ":")
+
+				if end <= start {
+					returnErr = errors.New("error parsing external or impersonated service account credentials")
+				} else {
+					return sa.SAImpersonationURL[start+1 : end], nil
+				}
+			case "service_account":
+				if sa.ClientEmail != "" {
+					return sa.ClientEmail, nil
+				}
+				returnErr = errors.New("empty service account client email")
+			default:
+				returnErr = errors.New("unable to parse credentials; only service_account, external_account and impersonated_service_account credentials are supported")
+			}
 		}
 	}
 
@@ -288,24 +317,37 @@ func (b *BucketHandle) detectDefaultGoogleAccessID() (string, error) {
 		}
 
 	}
-	return "", fmt.Errorf("storage: unable to detect default GoogleAccessID: %w. Please provide the GoogleAccessID or use a supported means for autodetecting it (see https://pkg.go.dev/cloud.google.com/go/storage#hdr-Credential_requirements_for_[BucketHandle.SignedURL]_and_[BucketHandle.GenerateSignedPostPolicyV4])", returnErr)
+	return "", fmt.Errorf("storage: unable to detect default GoogleAccessID: %w. Please provide the GoogleAccessID or use a supported means for autodetecting it (see https://pkg.go.dev/cloud.google.com/go/storage#hdr-Credential_requirements_for_signing)", returnErr)
 }
 
 func (b *BucketHandle) defaultSignBytesFunc(email string) func([]byte) ([]byte, error) {
 	return func(in []byte) ([]byte, error) {
 		ctx := context.Background()
 
+		opts := []option.ClientOption{option.WithHTTPClient(b.c.hc)}
+
+		if b.c.creds != nil {
+			universeDomain, err := b.c.creds.UniverseDomain(ctx)
+			if err != nil {
+				return nil, err
+			}
+			opts = append(opts, option.WithUniverseDomain(universeDomain))
+		}
+
 		// It's ok to recreate this service per call since we pass in the http client,
 		// circumventing the cost of recreating the auth/transport layer
-		svc, err := iamcredentials.NewService(ctx, option.WithHTTPClient(b.c.hc))
+		svc, err := iamcredentials.NewService(ctx, opts...)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create iamcredentials client: %w", err)
 		}
-
-		resp, err := svc.Projects.ServiceAccounts.SignBlob(fmt.Sprintf("projects/-/serviceAccounts/%s", email), &iamcredentials.SignBlobRequest{
-			Payload: base64.StdEncoding.EncodeToString(in),
-		}).Do()
-		if err != nil {
+		// Do the SignBlob call with a retry for transient errors.
+		var resp *iamcredentials.SignBlobResponse
+		if err := run(ctx, func(ctx context.Context) error {
+			resp, err = svc.Projects.ServiceAccounts.SignBlob(fmt.Sprintf("projects/-/serviceAccounts/%s", email), &iamcredentials.SignBlobRequest{
+				Payload: base64.StdEncoding.EncodeToString(in),
+			}).Do()
+			return err
+		}, b.retry, true); err != nil {
 			return nil, fmt.Errorf("unable to sign bytes: %w", err)
 		}
 		out, err := base64.StdEncoding.DecodeString(resp.SignedBlob)
@@ -391,6 +433,10 @@ type BucketAttrs struct {
 	// This field is read-only.
 	Created time.Time
 
+	// Updated is the time at which the bucket was last modified.
+	// This field is read-only.
+	Updated time.Time
+
 	// VersioningEnabled reports whether this bucket has versioning enabled.
 	VersioningEnabled bool
 
@@ -421,6 +467,21 @@ type BucketAttrs struct {
 	// The encryption configuration used by default for newly inserted objects.
 	Encryption *BucketEncryption
 
+	// GoogleManagedEncryptionEnforcementConfig specifies the enforcement config
+	// for Google Managed Encryption. Pass NotRestricted in Restriction mode
+	// to unset the configuration.
+	GoogleManagedEncryptionEnforcementConfig *EncryptionEnforcementConfig
+
+	// CustomerManagedEncryptionEnforcementConfig specifies the enforcement config
+	// for Customer Managed Encryption. Pass NotRestricted in Restriction mode
+	// to unset the configuration.
+	CustomerManagedEncryptionEnforcementConfig *EncryptionEnforcementConfig
+
+	// CustomerSuppliedEncryptionEnforcementConfig specifies the enforcement config
+	// for Customer Supplied Encryption. Pass NotRestricted in Restriction mode
+	// to unset the configuration.
+	CustomerSuppliedEncryptionEnforcementConfig *EncryptionEnforcementConfig
+
 	// The logging configuration.
 	Logging *BucketLogging
 
@@ -450,6 +511,32 @@ type BucketAttrs struct {
 	// allows for the automatic selection of the best storage class
 	// based on object access patterns.
 	Autoclass *Autoclass
+
+	// ObjectRetentionMode reports whether individual objects in the bucket can
+	// be configured with a retention policy. An empty value means that object
+	// retention is disabled.
+	// This field is read-only. Object retention can be enabled only by creating
+	// a bucket with SetObjectRetention set to true on the BucketHandle. It
+	// cannot be modified once the bucket is created.
+	// ObjectRetention cannot be configured or reported through the gRPC API.
+	ObjectRetentionMode string
+
+	// SoftDeletePolicy contains the bucket's soft delete policy, which defines
+	// the period of time that soft-deleted objects will be retained, and cannot
+	// be permanently deleted. By default, new buckets will be created with a
+	// 7 day retention duration. In order to fully disable soft delete, you need
+	// to set a policy with a RetentionDuration of 0.
+	SoftDeletePolicy *SoftDeletePolicy
+
+	// HierarchicalNamespace contains the bucket's hierarchical namespace
+	// configuration. Hierarchical namespace enabled buckets can contain
+	// [cloud.google.com/go/storage/control/apiv2/controlpb.Folder] resources.
+	// It cannot be modified after bucket creation time.
+	// UniformBucketLevelAccess must also also be enabled on the bucket.
+	HierarchicalNamespace *HierarchicalNamespace
+
+	// OwnerEntity contains entity information in the form "project-owner-projectId".
+	OwnerEntity string
 }
 
 // BucketPolicyOnly is an alias for UniformBucketLevelAccess.
@@ -728,6 +815,36 @@ type Autoclass struct {
 	// If Autoclass is enabled when the bucket is created, the ToggleTime
 	// is set to the bucket creation time. This field is read-only.
 	ToggleTime time.Time
+	// TerminalStorageClass: The storage class that objects in the bucket
+	// eventually transition to if they are not read for a certain length of
+	// time. Valid values are NEARLINE and ARCHIVE.
+	// To modify TerminalStorageClass, Enabled must be set to true.
+	TerminalStorageClass string
+	// TerminalStorageClassUpdateTime represents the time of the most recent
+	// update to "TerminalStorageClass".
+	TerminalStorageClassUpdateTime time.Time
+}
+
+// SoftDeletePolicy contains the bucket's soft delete policy, which defines the
+// period of time that soft-deleted objects will be retained, and cannot be
+// permanently deleted.
+type SoftDeletePolicy struct {
+	// EffectiveTime indicates the time from which the policy, or one with a
+	// greater retention, was effective. This field is read-only.
+	EffectiveTime time.Time
+
+	// RetentionDuration is the amount of time that soft-deleted objects in the
+	// bucket will be retained and cannot be permanently deleted.
+	RetentionDuration time.Duration
+}
+
+// HierarchicalNamespace contains the bucket's hierarchical namespace
+// configuration. Hierarchical namespace enabled buckets can contain
+// [cloud.google.com/go/storage/control/apiv2/controlpb.Folder] resources.
+type HierarchicalNamespace struct {
+	// Enabled indicates whether hierarchical namespace features are enabled on
+	// the bucket. This can only be set at bucket creation time currently.
+	Enabled bool
 }
 
 func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
@@ -738,22 +855,28 @@ func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &BucketAttrs{
-		Name:                     b.Name,
-		Location:                 b.Location,
-		MetaGeneration:           b.Metageneration,
-		DefaultEventBasedHold:    b.DefaultEventBasedHold,
-		StorageClass:             b.StorageClass,
-		Created:                  convertTime(b.TimeCreated),
-		VersioningEnabled:        b.Versioning != nil && b.Versioning.Enabled,
-		ACL:                      toBucketACLRules(b.Acl),
-		DefaultObjectACL:         toObjectACLRules(b.DefaultObjectAcl),
-		Labels:                   b.Labels,
-		RequesterPays:            b.Billing != nil && b.Billing.RequesterPays,
-		Lifecycle:                toLifecycle(b.Lifecycle),
-		RetentionPolicy:          rp,
-		CORS:                     toCORS(b.Cors),
-		Encryption:               toBucketEncryption(b.Encryption),
+		Name:                                     b.Name,
+		Location:                                 b.Location,
+		MetaGeneration:                           b.Metageneration,
+		DefaultEventBasedHold:                    b.DefaultEventBasedHold,
+		StorageClass:                             b.StorageClass,
+		Created:                                  convertTime(b.TimeCreated),
+		Updated:                                  convertTime(b.Updated),
+		VersioningEnabled:                        b.Versioning != nil && b.Versioning.Enabled,
+		ACL:                                      toBucketACLRules(b.Acl),
+		DefaultObjectACL:                         toObjectACLRules(b.DefaultObjectAcl),
+		Labels:                                   b.Labels,
+		RequesterPays:                            b.Billing != nil && b.Billing.RequesterPays,
+		Lifecycle:                                toLifecycle(b.Lifecycle),
+		RetentionPolicy:                          rp,
+		ObjectRetentionMode:                      toBucketObjectRetention(b.ObjectRetention),
+		CORS:                                     toCORS(b.Cors),
+		Encryption:                               toBucketEncryption(b.Encryption),
+		GoogleManagedEncryptionEnforcementConfig: toGoogleManagedEncryptionEnforcementConfig(b.Encryption),
+		CustomerManagedEncryptionEnforcementConfig:  toCustomerManagedEncryptionEnforcementConfig(b.Encryption),
+		CustomerSuppliedEncryptionEnforcementConfig: toCustomerSuppliedEncryptionEnforcementConfig(b.Encryption),
 		Logging:                  toBucketLogging(b.Logging),
 		Website:                  toBucketWebsite(b.Website),
 		BucketPolicyOnly:         toBucketPolicyOnly(b.IamConfiguration),
@@ -765,6 +888,9 @@ func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
 		RPO:                      toRPO(b),
 		CustomPlacementConfig:    customPlacementFromRaw(b.CustomPlacementConfig),
 		Autoclass:                toAutoclassFromRaw(b.Autoclass),
+		SoftDeletePolicy:         toSoftDeletePolicyFromRaw(b.SoftDeletePolicy),
+		HierarchicalNamespace:    toHierarchicalNamespaceFromRaw(b.HierarchicalNamespace),
+		OwnerEntity:              ownerEntityFromRaw(b.Owner),
 	}, nil
 }
 
@@ -773,21 +899,25 @@ func newBucketFromProto(b *storagepb.Bucket) *BucketAttrs {
 		return nil
 	}
 	return &BucketAttrs{
-		Name:                     parseBucketName(b.GetName()),
-		Location:                 b.GetLocation(),
-		MetaGeneration:           b.GetMetageneration(),
-		DefaultEventBasedHold:    b.GetDefaultEventBasedHold(),
-		StorageClass:             b.GetStorageClass(),
-		Created:                  b.GetCreateTime().AsTime(),
-		VersioningEnabled:        b.GetVersioning().GetEnabled(),
-		ACL:                      toBucketACLRulesFromProto(b.GetAcl()),
-		DefaultObjectACL:         toObjectACLRulesFromProto(b.GetDefaultObjectAcl()),
-		Labels:                   b.GetLabels(),
-		RequesterPays:            b.GetBilling().GetRequesterPays(),
-		Lifecycle:                toLifecycleFromProto(b.GetLifecycle()),
-		RetentionPolicy:          toRetentionPolicyFromProto(b.GetRetentionPolicy()),
-		CORS:                     toCORSFromProto(b.GetCors()),
-		Encryption:               toBucketEncryptionFromProto(b.GetEncryption()),
+		Name:                                     parseBucketName(b.GetName()),
+		Location:                                 b.GetLocation(),
+		MetaGeneration:                           b.GetMetageneration(),
+		DefaultEventBasedHold:                    b.GetDefaultEventBasedHold(),
+		StorageClass:                             b.GetStorageClass(),
+		Created:                                  b.GetCreateTime().AsTime(),
+		Updated:                                  b.GetUpdateTime().AsTime(),
+		VersioningEnabled:                        b.GetVersioning().GetEnabled(),
+		ACL:                                      toBucketACLRulesFromProto(b.GetAcl()),
+		DefaultObjectACL:                         toObjectACLRulesFromProto(b.GetDefaultObjectAcl()),
+		Labels:                                   b.GetLabels(),
+		RequesterPays:                            b.GetBilling().GetRequesterPays(),
+		Lifecycle:                                toLifecycleFromProto(b.GetLifecycle()),
+		RetentionPolicy:                          toRetentionPolicyFromProto(b.GetRetentionPolicy()),
+		CORS:                                     toCORSFromProto(b.GetCors()),
+		Encryption:                               toBucketEncryptionFromProto(b.GetEncryption()),
+		GoogleManagedEncryptionEnforcementConfig: toGoogleManagedEncryptionEnforcementConfigFromProto(b.GetEncryption()),
+		CustomerManagedEncryptionEnforcementConfig:  toCustomerManagedEncryptionEnforcementConfigFromProto(b.GetEncryption()),
+		CustomerSuppliedEncryptionEnforcementConfig: toCustomerSuppliedEncryptionEnforcementConfigFromProto(b.GetEncryption()),
 		Logging:                  toBucketLoggingFromProto(b.GetLogging()),
 		Website:                  toBucketWebsiteFromProto(b.GetWebsite()),
 		BucketPolicyOnly:         toBucketPolicyOnlyFromProto(b.GetIamConfig()),
@@ -798,6 +928,9 @@ func newBucketFromProto(b *storagepb.Bucket) *BucketAttrs {
 		CustomPlacementConfig:    customPlacementFromProto(b.GetCustomPlacementConfig()),
 		ProjectNumber:            parseProjectNumber(b.GetProject()), // this can return 0 the project resource name is ID based
 		Autoclass:                toAutoclassFromProto(b.GetAutoclass()),
+		SoftDeletePolicy:         toSoftDeletePolicyFromProto(b.SoftDeletePolicy),
+		HierarchicalNamespace:    toHierarchicalNamespaceFromProto(b.HierarchicalNamespace),
+		OwnerEntity:              ownerEntityFromProto(b.GetOwner()),
 	}
 }
 
@@ -846,13 +979,15 @@ func (b *BucketAttrs) toRawBucket() *raw.Bucket {
 		Lifecycle:             toRawLifecycle(b.Lifecycle),
 		RetentionPolicy:       b.RetentionPolicy.toRawRetentionPolicy(),
 		Cors:                  toRawCORS(b.CORS),
-		Encryption:            b.Encryption.toRawBucketEncryption(),
+		Encryption:            b.toRawBucketEncryption(),
 		Logging:               b.Logging.toRawBucketLogging(),
 		Website:               b.Website.toRawBucketWebsite(),
 		IamConfiguration:      bktIAM,
 		Rpo:                   b.RPO.String(),
 		CustomPlacementConfig: b.CustomPlacementConfig.toRawCustomPlacement(),
 		Autoclass:             b.Autoclass.toRawAutoclass(),
+		SoftDeletePolicy:      b.SoftDeletePolicy.toRawSoftDeletePolicy(),
+		HierarchicalNamespace: b.HierarchicalNamespace.toRawHierarchicalNamespace(),
 	}
 }
 
@@ -906,13 +1041,15 @@ func (b *BucketAttrs) toProtoBucket() *storagepb.Bucket {
 		Lifecycle:             toProtoLifecycle(b.Lifecycle),
 		RetentionPolicy:       b.RetentionPolicy.toProtoRetentionPolicy(),
 		Cors:                  toProtoCORS(b.CORS),
-		Encryption:            b.Encryption.toProtoBucketEncryption(),
+		Encryption:            b.toProtoBucketEncryption(),
 		Logging:               b.Logging.toProtoBucketLogging(),
 		Website:               b.Website.toProtoBucketWebsite(),
 		IamConfig:             bktIAM,
 		Rpo:                   b.RPO.String(),
 		CustomPlacementConfig: b.CustomPlacementConfig.toProtoCustomPlacement(),
 		Autoclass:             b.Autoclass.toProtoAutoclass(),
+		SoftDeletePolicy:      b.SoftDeletePolicy.toProtoSoftDeletePolicy(),
+		HierarchicalNamespace: b.HierarchicalNamespace.toProtoHierarchicalNamespace(),
 	}
 }
 
@@ -920,8 +1057,6 @@ func (ua *BucketAttrsToUpdate) toProtoBucket() *storagepb.Bucket {
 	if ua == nil {
 		return &storagepb.Bucket{}
 	}
-
-	// TODO(cathyo): Handle labels. Pending b/230510191.
 
 	var v *storagepb.Bucket_Versioning
 	if ua.VersioningEnabled != nil {
@@ -990,12 +1125,14 @@ func (ua *BucketAttrsToUpdate) toProtoBucket() *storagepb.Bucket {
 		Lifecycle:             toProtoLifecycle(lifecycle),
 		RetentionPolicy:       ua.RetentionPolicy.toProtoRetentionPolicy(),
 		Cors:                  toProtoCORS(ua.CORS),
-		Encryption:            ua.Encryption.toProtoBucketEncryption(),
+		Encryption:            ua.toProtoBucketEncryption(),
 		Logging:               ua.Logging.toProtoBucketLogging(),
 		Website:               ua.Website.toProtoBucketWebsite(),
 		IamConfig:             bktIAM,
 		Rpo:                   ua.RPO.String(),
 		Autoclass:             ua.Autoclass.toProtoAutoclass(),
+		SoftDeletePolicy:      ua.SoftDeletePolicy.toProtoSoftDeletePolicy(),
+		Labels:                ua.setLabels,
 	}
 }
 
@@ -1029,6 +1166,27 @@ type BucketEncryption struct {
 	// The key's location must be the same as the bucket's.
 	DefaultKMSKeyName string
 }
+
+// EncryptionEnforcementConfig specifies the enforcement config for encryption.
+type EncryptionEnforcementConfig struct {
+	// RestrictionMode specifies the restriction mode for encryption.
+	// Valid values are "NotRestricted" and "FullyRestricted".
+	RestrictionMode RestrictionMode
+
+	// EffectiveTime is the time from which the policy was enforced and
+	// effective. This field is read-only.
+	EffectiveTime time.Time
+}
+
+// RestrictionMode is the restriction mode for encryption.
+// It should be either "NotRestricted" or "FullyRestricted".
+type RestrictionMode string
+
+// RestrictionMode constants.
+const (
+	NotRestricted   RestrictionMode = "NotRestricted"
+	FullyRestricted RestrictionMode = "FullyRestricted"
+)
 
 // BucketAttrsToUpdate define the attributes to update during an Update call.
 type BucketAttrsToUpdate struct {
@@ -1088,6 +1246,21 @@ type BucketAttrsToUpdate struct {
 	// configuration.
 	Encryption *BucketEncryption
 
+	// GoogleManagedEncryptionEnforcementConfig specifies the enforcement config
+	// for Google Managed Encryption. Pass NotRestricted in Restriction mode
+	// to unset the configuration.
+	GoogleManagedEncryptionEnforcementConfig *EncryptionEnforcementConfig
+
+	// CustomerManagedEncryptionEnforcementConfig specifies the enforcement config
+	// for Customer Managed Encryption. Pass NotRestricted in Restriction mode
+	// to unset the configuration.
+	CustomerManagedEncryptionEnforcementConfig *EncryptionEnforcementConfig
+
+	// CustomerSuppliedEncryptionEnforcementConfig specifies the enforcement config
+	// for Customer Supplied Encryption. Pass NotRestricted in Restriction mode
+	// to unset the configuration.
+	CustomerSuppliedEncryptionEnforcementConfig *EncryptionEnforcementConfig
+
 	// If set, replaces the lifecycle configuration of the bucket.
 	Lifecycle *Lifecycle
 
@@ -1112,8 +1285,14 @@ type BucketAttrsToUpdate struct {
 	RPO RPO
 
 	// If set, updates the autoclass configuration of the bucket.
+	// To disable autoclass on the bucket, set to an empty &Autoclass{}.
+	// To update the configuration for Autoclass.TerminalStorageClass,
+	// Autoclass.Enabled must also be set to true.
 	// See https://cloud.google.com/storage/docs/using-autoclass for more information.
 	Autoclass *Autoclass
+
+	// If set, updates the soft delete policy of the bucket.
+	SoftDeletePolicy *SoftDeletePolicy
 
 	// acl is the list of access control rules on the bucket.
 	// It is unexported and only used internally by the gRPC client.
@@ -1200,14 +1379,7 @@ func (ua *BucketAttrsToUpdate) toRawBucket() *raw.Bucket {
 		}
 		rb.IamConfiguration.PublicAccessPrevention = ua.PublicAccessPrevention.String()
 	}
-	if ua.Encryption != nil {
-		if ua.Encryption.DefaultKMSKeyName == "" {
-			rb.NullFields = append(rb.NullFields, "Encryption")
-			rb.Encryption = nil
-		} else {
-			rb.Encryption = ua.Encryption.toRawBucketEncryption()
-		}
-	}
+	rb.Encryption = ua.toRawBucketEncryption()
 	if ua.Lifecycle != nil {
 		rb.Lifecycle = toRawLifecycle(*ua.Lifecycle)
 		rb.ForceSendFields = append(rb.ForceSendFields, "Lifecycle")
@@ -1230,8 +1402,20 @@ func (ua *BucketAttrsToUpdate) toRawBucket() *raw.Bucket {
 	}
 	if ua.Autoclass != nil {
 		rb.Autoclass = &raw.BucketAutoclass{
-			Enabled:         ua.Autoclass.Enabled,
-			ForceSendFields: []string{"Enabled"},
+			Enabled:              ua.Autoclass.Enabled,
+			TerminalStorageClass: ua.Autoclass.TerminalStorageClass,
+			ForceSendFields:      []string{"Enabled"},
+		}
+		rb.ForceSendFields = append(rb.ForceSendFields, "Autoclass")
+	}
+	if ua.SoftDeletePolicy != nil {
+		if ua.SoftDeletePolicy.RetentionDuration == 0 {
+			rb.SoftDeletePolicy = &raw.BucketSoftDeletePolicy{
+				RetentionDurationSeconds: 0,
+				ForceSendFields:          []string{"RetentionDurationSeconds"},
+			}
+		} else {
+			rb.SoftDeletePolicy = ua.SoftDeletePolicy.toRawSoftDeletePolicy()
 		}
 	}
 	if ua.PredefinedACL != "" {
@@ -1264,7 +1448,9 @@ func (ua *BucketAttrsToUpdate) toRawBucket() *raw.Bucket {
 }
 
 // If returns a new BucketHandle that applies a set of preconditions.
-// Preconditions already set on the BucketHandle are ignored.
+// Preconditions already set on the BucketHandle are ignored. The supplied
+// BucketConditions must have exactly one field set to a non-zero value;
+// otherwise an error will be returned from any operation on the BucketHandle.
 // Operations on the new handle will return an error if the preconditions are not
 // satisfied. The only valid preconditions for buckets are MetagenerationMatch
 // and MetagenerationNotMatch.
@@ -1326,6 +1512,17 @@ func (b *BucketHandle) LockRetentionPolicy(ctx context.Context) error {
 	return b.c.tc.LockBucketRetentionPolicy(ctx, b.name, b.conds, o...)
 }
 
+// SetObjectRetention returns a new BucketHandle that will enable object retention
+// on bucket creation. To enable object retention, you must use the returned
+// handle to create the bucket. This has no effect on an already existing bucket.
+// ObjectRetention is not enabled by default.
+// ObjectRetention cannot be configured through the gRPC API.
+func (b *BucketHandle) SetObjectRetention(enable bool) *BucketHandle {
+	b2 := *b
+	b2.enableObjectRetention = &enable
+	return &b2
+}
+
 // applyBucketConds modifies the provided call using the conditions in conds.
 // call is something that quacks like a *raw.WhateverCall.
 func applyBucketConds(method string, conds *BucketConditions, call interface{}) error {
@@ -1338,11 +1535,11 @@ func applyBucketConds(method string, conds *BucketConditions, call interface{}) 
 	cval := reflect.ValueOf(call)
 	switch {
 	case conds.MetagenerationMatch != 0:
-		if !setConditionField(cval, "IfMetagenerationMatch", conds.MetagenerationMatch) {
+		if !setIfMetagenerationMatch(cval, conds.MetagenerationMatch) {
 			return fmt.Errorf("storage: %s: ifMetagenerationMatch not supported", method)
 		}
 	case conds.MetagenerationNotMatch != 0:
-		if !setConditionField(cval, "IfMetagenerationNotMatch", conds.MetagenerationNotMatch) {
+		if !setIfMetagenerationNotMatch(cval, conds.MetagenerationNotMatch) {
 			return fmt.Errorf("storage: %s: ifMetagenerationNotMatch not supported", method)
 		}
 	}
@@ -1423,6 +1620,13 @@ func toRetentionPolicyFromProto(rp *storagepb.Bucket_RetentionPolicy) *Retention
 		EffectiveTime:   rp.GetEffectiveTime().AsTime(),
 		IsLocked:        rp.GetIsLocked(),
 	}
+}
+
+func toBucketObjectRetention(or *raw.BucketObjectRetention) string {
+	if or == nil {
+		return ""
+	}
+	return or.Mode
 }
 
 func toRawCORS(c []CORS) []*raw.BucketCors {
@@ -1545,7 +1749,6 @@ func toProtoLifecycle(l Lifecycle) *storagepb.Bucket_Lifecycle {
 				// doc states "format: int32"), so the client types used int64,
 				// but the proto uses int32 so we have a potentially lossy
 				// conversion.
-				AgeDays:                 proto.Int32(int32(r.Condition.AgeInDays)),
 				DaysSinceCustomTime:     proto.Int32(int32(r.Condition.DaysSinceCustomTime)),
 				DaysSinceNoncurrentTime: proto.Int32(int32(r.Condition.DaysSinceNoncurrentTime)),
 				MatchesPrefix:           r.Condition.MatchesPrefix,
@@ -1555,7 +1758,11 @@ func toProtoLifecycle(l Lifecycle) *storagepb.Bucket_Lifecycle {
 			},
 		}
 
-		// TODO(#6205): This may not be needed for gRPC
+		// Only set AgeDays in the proto if it is non-zero, or if the user has set
+		// Condition.AllObjects.
+		if r.Condition.AgeInDays != 0 {
+			rr.Condition.AgeDays = proto.Int32(int32(r.Condition.AgeInDays))
+		}
 		if r.Condition.AllObjects {
 			rr.Condition.AgeDays = proto.Int32(0)
 		}
@@ -1654,8 +1861,8 @@ func toLifecycleFromProto(rl *storagepb.Bucket_Lifecycle) Lifecycle {
 			},
 		}
 
-		// TODO(#6205): This may not be needed for gRPC
-		if rr.GetCondition().GetAgeDays() == 0 {
+		// Only set Condition.AllObjects if AgeDays is zero, not if it is nil.
+		if rr.GetCondition().AgeDays != nil && rr.GetCondition().GetAgeDays() == 0 {
 			r.Condition.AllObjects = true
 		}
 
@@ -1681,22 +1888,76 @@ func toLifecycleFromProto(rl *storagepb.Bucket_Lifecycle) Lifecycle {
 	return l
 }
 
-func (e *BucketEncryption) toRawBucketEncryption() *raw.BucketEncryption {
-	if e == nil {
-		return nil
-	}
-	return &raw.BucketEncryption{
-		DefaultKmsKeyName: e.DefaultKMSKeyName,
-	}
+func (b *BucketAttrs) toRawBucketEncryption() *raw.BucketEncryption {
+	return toRawBucketEncryption(b.Encryption, b.GoogleManagedEncryptionEnforcementConfig, b.CustomerManagedEncryptionEnforcementConfig, b.CustomerSuppliedEncryptionEnforcementConfig)
 }
 
-func (e *BucketEncryption) toProtoBucketEncryption() *storagepb.Bucket_Encryption {
-	if e == nil {
+func (b *BucketAttrsToUpdate) toRawBucketEncryption() *raw.BucketEncryption {
+	return toRawBucketEncryption(b.Encryption, b.GoogleManagedEncryptionEnforcementConfig, b.CustomerManagedEncryptionEnforcementConfig, b.CustomerSuppliedEncryptionEnforcementConfig)
+}
+
+func toRawBucketEncryption(e *BucketEncryption, gme, cme, cse *EncryptionEnforcementConfig) *raw.BucketEncryption {
+	if e == nil && gme == nil && cme == nil && cse == nil {
 		return nil
 	}
-	return &storagepb.Bucket_Encryption{
-		DefaultKmsKey: e.DefaultKMSKeyName,
+	ret := &raw.BucketEncryption{}
+	if e != nil {
+		if e.DefaultKMSKeyName != "" {
+			ret.DefaultKmsKeyName = e.DefaultKMSKeyName
+		} else {
+			ret.NullFields = append(ret.NullFields, "DefaultKmsKeyName")
+		}
 	}
+	if gme != nil {
+		ret.GoogleManagedEncryptionEnforcementConfig = &raw.BucketEncryptionGoogleManagedEncryptionEnforcementConfig{
+			RestrictionMode: string(gme.RestrictionMode),
+		}
+	}
+	if cme != nil {
+		ret.CustomerManagedEncryptionEnforcementConfig = &raw.BucketEncryptionCustomerManagedEncryptionEnforcementConfig{
+			RestrictionMode: string(cme.RestrictionMode),
+		}
+	}
+	if cse != nil {
+		ret.CustomerSuppliedEncryptionEnforcementConfig = &raw.BucketEncryptionCustomerSuppliedEncryptionEnforcementConfig{
+			RestrictionMode: string(cse.RestrictionMode),
+		}
+	}
+	return ret
+}
+
+func (b *BucketAttrs) toProtoBucketEncryption() *storagepb.Bucket_Encryption {
+	return toProtoEncryption(b.Encryption, b.GoogleManagedEncryptionEnforcementConfig, b.CustomerManagedEncryptionEnforcementConfig, b.CustomerSuppliedEncryptionEnforcementConfig)
+}
+
+func (b *BucketAttrsToUpdate) toProtoBucketEncryption() *storagepb.Bucket_Encryption {
+	return toProtoEncryption(b.Encryption, b.GoogleManagedEncryptionEnforcementConfig, b.CustomerManagedEncryptionEnforcementConfig, b.CustomerSuppliedEncryptionEnforcementConfig)
+}
+
+func toProtoEncryption(e *BucketEncryption, gme, cme, cse *EncryptionEnforcementConfig) *storagepb.Bucket_Encryption {
+	if e == nil && gme == nil && cme == nil && cse == nil {
+		return nil
+	}
+	ret := &storagepb.Bucket_Encryption{}
+	if e != nil {
+		ret.DefaultKmsKey = e.DefaultKMSKeyName
+	}
+	if gme != nil {
+		ret.GoogleManagedEncryptionEnforcementConfig = &storagepb.Bucket_Encryption_GoogleManagedEncryptionEnforcementConfig{
+			RestrictionMode: toProtoRestrictionMode(gme.RestrictionMode),
+		}
+	}
+	if cme != nil {
+		ret.CustomerManagedEncryptionEnforcementConfig = &storagepb.Bucket_Encryption_CustomerManagedEncryptionEnforcementConfig{
+			RestrictionMode: toProtoRestrictionMode(cme.RestrictionMode),
+		}
+	}
+	if cse != nil {
+		ret.CustomerSuppliedEncryptionEnforcementConfig = &storagepb.Bucket_Encryption_CustomerSuppliedEncryptionEnforcementConfig{
+			RestrictionMode: toProtoRestrictionMode(cse.RestrictionMode),
+		}
+	}
+	return ret
 }
 
 func toBucketEncryption(e *raw.BucketEncryption) *BucketEncryption {
@@ -1706,11 +1967,81 @@ func toBucketEncryption(e *raw.BucketEncryption) *BucketEncryption {
 	return &BucketEncryption{DefaultKMSKeyName: e.DefaultKmsKeyName}
 }
 
+func toGoogleManagedEncryptionEnforcementConfig(e *raw.BucketEncryption) *EncryptionEnforcementConfig {
+	if e == nil || e.GoogleManagedEncryptionEnforcementConfig == nil {
+		return nil
+	}
+	return &EncryptionEnforcementConfig{
+		RestrictionMode: RestrictionMode(e.GoogleManagedEncryptionEnforcementConfig.RestrictionMode),
+		EffectiveTime:   convertTime(e.GoogleManagedEncryptionEnforcementConfig.EffectiveTime),
+	}
+}
+
+func toCustomerManagedEncryptionEnforcementConfig(e *raw.BucketEncryption) *EncryptionEnforcementConfig {
+	if e == nil || e.CustomerManagedEncryptionEnforcementConfig == nil {
+		return nil
+	}
+	return &EncryptionEnforcementConfig{
+		RestrictionMode: RestrictionMode(e.CustomerManagedEncryptionEnforcementConfig.RestrictionMode),
+		EffectiveTime:   convertTime(e.CustomerManagedEncryptionEnforcementConfig.EffectiveTime),
+	}
+}
+
+func toCustomerSuppliedEncryptionEnforcementConfig(e *raw.BucketEncryption) *EncryptionEnforcementConfig {
+	if e == nil || e.CustomerSuppliedEncryptionEnforcementConfig == nil {
+		return nil
+	}
+	return &EncryptionEnforcementConfig{
+		RestrictionMode: RestrictionMode(e.CustomerSuppliedEncryptionEnforcementConfig.RestrictionMode),
+		EffectiveTime:   convertTime(e.CustomerSuppliedEncryptionEnforcementConfig.EffectiveTime),
+	}
+}
+
 func toBucketEncryptionFromProto(e *storagepb.Bucket_Encryption) *BucketEncryption {
 	if e == nil {
 		return nil
 	}
 	return &BucketEncryption{DefaultKMSKeyName: e.GetDefaultKmsKey()}
+}
+
+func toGoogleManagedEncryptionEnforcementConfigFromProto(e *storagepb.Bucket_Encryption) *EncryptionEnforcementConfig {
+	if e == nil {
+		return nil
+	}
+	x := e.GetGoogleManagedEncryptionEnforcementConfig()
+	if x == nil {
+		return nil
+	}
+	return &EncryptionEnforcementConfig{
+		RestrictionMode: RestrictionMode(x.GetRestrictionMode()),
+		EffectiveTime:   x.GetEffectiveTime().AsTime(),
+	}
+}
+func toCustomerManagedEncryptionEnforcementConfigFromProto(e *storagepb.Bucket_Encryption) *EncryptionEnforcementConfig {
+	if e == nil {
+		return nil
+	}
+	x := e.GetCustomerManagedEncryptionEnforcementConfig()
+	if x == nil {
+		return nil
+	}
+	return &EncryptionEnforcementConfig{
+		RestrictionMode: RestrictionMode(x.GetRestrictionMode()),
+		EffectiveTime:   x.GetEffectiveTime().AsTime(),
+	}
+}
+func toCustomerSuppliedEncryptionEnforcementConfigFromProto(e *storagepb.Bucket_Encryption) *EncryptionEnforcementConfig {
+	if e == nil {
+		return nil
+	}
+	x := e.GetCustomerSuppliedEncryptionEnforcementConfig()
+	if x == nil {
+		return nil
+	}
+	return &EncryptionEnforcementConfig{
+		RestrictionMode: RestrictionMode(x.GetRestrictionMode()),
+		EffectiveTime:   x.GetEffectiveTime().AsTime(),
+	}
 }
 
 func (b *BucketLogging) toRawBucketLogging() *raw.BucketLogging {
@@ -1938,9 +2269,10 @@ func (a *Autoclass) toRawAutoclass() *raw.BucketAutoclass {
 	if a == nil {
 		return nil
 	}
-	// Excluding read only field ToggleTime.
+	// Excluding read only fields ToggleTime and TerminalStorageClassUpdateTime.
 	return &raw.BucketAutoclass{
-		Enabled: a.Enabled,
+		Enabled:              a.Enabled,
+		TerminalStorageClass: a.TerminalStorageClass,
 	}
 }
 
@@ -1948,27 +2280,34 @@ func (a *Autoclass) toProtoAutoclass() *storagepb.Bucket_Autoclass {
 	if a == nil {
 		return nil
 	}
-	// Excluding read only field ToggleTime.
-	return &storagepb.Bucket_Autoclass{
+	// Excluding read only fields ToggleTime and TerminalStorageClassUpdateTime.
+	ba := &storagepb.Bucket_Autoclass{
 		Enabled: a.Enabled,
 	}
+	if a.TerminalStorageClass != "" {
+		ba.TerminalStorageClass = &a.TerminalStorageClass
+	}
+	return ba
 }
 
 func toAutoclassFromRaw(a *raw.BucketAutoclass) *Autoclass {
 	if a == nil || a.ToggleTime == "" {
 		return nil
 	}
-	// Return Autoclass.ToggleTime only if parsed with a valid value.
+	ac := &Autoclass{
+		Enabled:              a.Enabled,
+		TerminalStorageClass: a.TerminalStorageClass,
+	}
+	// Return ToggleTime and TSCUpdateTime only if parsed with valid values.
 	t, err := time.Parse(time.RFC3339, a.ToggleTime)
-	if err != nil {
-		return &Autoclass{
-			Enabled: a.Enabled,
-		}
+	if err == nil {
+		ac.ToggleTime = t
 	}
-	return &Autoclass{
-		Enabled:    a.Enabled,
-		ToggleTime: t,
+	ut, err := time.Parse(time.RFC3339, a.TerminalStorageClassUpdateTime)
+	if err == nil {
+		ac.TerminalStorageClassUpdateTime = ut
 	}
+	return ac
 }
 
 func toAutoclassFromProto(a *storagepb.Bucket_Autoclass) *Autoclass {
@@ -1976,9 +2315,111 @@ func toAutoclassFromProto(a *storagepb.Bucket_Autoclass) *Autoclass {
 		return nil
 	}
 	return &Autoclass{
-		Enabled:    a.GetEnabled(),
-		ToggleTime: a.GetToggleTime().AsTime(),
+		Enabled:                        a.GetEnabled(),
+		ToggleTime:                     a.GetToggleTime().AsTime(),
+		TerminalStorageClass:           a.GetTerminalStorageClass(),
+		TerminalStorageClassUpdateTime: a.GetTerminalStorageClassUpdateTime().AsTime(),
 	}
+}
+
+func (p *SoftDeletePolicy) toRawSoftDeletePolicy() *raw.BucketSoftDeletePolicy {
+	if p == nil {
+		return nil
+	}
+	// Excluding read only field EffectiveTime.
+	// ForceSendFields must be set to send a zero value for RetentionDuration and disable
+	// soft delete.
+	return &raw.BucketSoftDeletePolicy{
+		RetentionDurationSeconds: int64(p.RetentionDuration.Seconds()),
+		ForceSendFields:          []string{"RetentionDurationSeconds"},
+	}
+}
+
+func (p *SoftDeletePolicy) toProtoSoftDeletePolicy() *storagepb.Bucket_SoftDeletePolicy {
+	if p == nil {
+		return nil
+	}
+	// Excluding read only field EffectiveTime.
+	return &storagepb.Bucket_SoftDeletePolicy{
+		RetentionDuration: durationpb.New(p.RetentionDuration),
+	}
+}
+
+func toSoftDeletePolicyFromRaw(p *raw.BucketSoftDeletePolicy) *SoftDeletePolicy {
+	if p == nil {
+		return nil
+	}
+
+	policy := &SoftDeletePolicy{
+		RetentionDuration: time.Duration(p.RetentionDurationSeconds) * time.Second,
+	}
+
+	// Return EffectiveTime only if parsed to a valid value.
+	if t, err := time.Parse(time.RFC3339, p.EffectiveTime); err == nil {
+		policy.EffectiveTime = t
+	}
+
+	return policy
+}
+
+func toSoftDeletePolicyFromProto(p *storagepb.Bucket_SoftDeletePolicy) *SoftDeletePolicy {
+	if p == nil {
+		return nil
+	}
+	return &SoftDeletePolicy{
+		EffectiveTime:     p.GetEffectiveTime().AsTime(),
+		RetentionDuration: p.GetRetentionDuration().AsDuration(),
+	}
+}
+
+func (hns *HierarchicalNamespace) toProtoHierarchicalNamespace() *storagepb.Bucket_HierarchicalNamespace {
+	if hns == nil {
+		return nil
+	}
+	return &storagepb.Bucket_HierarchicalNamespace{
+		Enabled: hns.Enabled,
+	}
+}
+
+func (hns *HierarchicalNamespace) toRawHierarchicalNamespace() *raw.BucketHierarchicalNamespace {
+	if hns == nil {
+		return nil
+	}
+	return &raw.BucketHierarchicalNamespace{
+		Enabled: hns.Enabled,
+	}
+}
+
+func toHierarchicalNamespaceFromProto(p *storagepb.Bucket_HierarchicalNamespace) *HierarchicalNamespace {
+	if p == nil {
+		return nil
+	}
+	return &HierarchicalNamespace{
+		Enabled: p.Enabled,
+	}
+}
+
+func toHierarchicalNamespaceFromRaw(r *raw.BucketHierarchicalNamespace) *HierarchicalNamespace {
+	if r == nil {
+		return nil
+	}
+	return &HierarchicalNamespace{
+		Enabled: r.Enabled,
+	}
+}
+
+func ownerEntityFromRaw(r *raw.BucketOwner) string {
+	if r == nil {
+		return ""
+	}
+	return r.Entity
+}
+
+func ownerEntityFromProto(p *storagepb.Owner) string {
+	if p == nil {
+		return ""
+	}
+	return p.GetEntity()
 }
 
 // Objects returns an iterator over the objects in the bucket that match the
@@ -2064,6 +2505,11 @@ func (it *ObjectIterator) Next() (*ObjectAttrs, error) {
 // whose names begin with the prefix. By default, all buckets in the project
 // are returned.
 //
+// To receive a partial list of buckets when some are unavailable, set the
+// iterator's ReturnPartialSuccess field to true. You can then call the
+// iterator's Unreachable method to retrieve the names of the unreachable
+// buckets.
+//
 // Note: The returned iterator is not safe for concurrent operations without explicit synchronization.
 func (c *Client) Buckets(ctx context.Context, projectID string) *BucketIterator {
 	o := makeStorageOpts(true, c.retry, "")
@@ -2076,12 +2522,24 @@ func (c *Client) Buckets(ctx context.Context, projectID string) *BucketIterator 
 type BucketIterator struct {
 	// Prefix restricts the iterator to buckets whose names begin with it.
 	Prefix string
+	// If true, the iterator will return a partial result of buckets even if
+	// some buckets are unreachable. Call the Unreachable() method to retrieve the
+	// list of unreachable buckets. By default (false), the iterator will return
+	// an error if any buckets are unreachable.
+	ReturnPartialSuccess bool
 
-	ctx       context.Context
-	projectID string
-	buckets   []*BucketAttrs
-	pageInfo  *iterator.PageInfo
-	nextFunc  func() error
+	ctx         context.Context
+	projectID   string
+	buckets     []*BucketAttrs
+	unreachable []string
+	pageInfo    *iterator.PageInfo
+	nextFunc    func() error
+}
+
+// Unreachable returns a list of bucket names that could not be reached
+// during the iteration if ReturnPartialSuccess was set to true.
+func (it *BucketIterator) Unreachable() []string {
+	return it.unreachable
 }
 
 // Next returns the next result. Its second return value is iterator.Done if
@@ -2144,6 +2602,14 @@ func (rpo RPO) String() string {
 // Hours, minutes, seconds, and nanoseconds are set to 0.
 func protoDateToUTCTime(d *dpb.Date) time.Time {
 	return protoDateToTime(d, time.UTC)
+}
+
+func toProtoRestrictionMode(rm RestrictionMode) *string {
+	if rm == "" {
+		return nil
+	}
+	s := string(rm)
+	return &s
 }
 
 // protoDateToTime returns a new Time based on the google.type.Date and provided

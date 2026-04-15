@@ -20,6 +20,8 @@ const (
 	typeOr
 	typeKeys
 	typeEndKeys
+	typeOmitNil
+	typeOmitZero
 )
 
 const (
@@ -120,12 +122,11 @@ func (v *Validate) extractStructCache(current reflect.Value, sName string) *cStr
 	var fld reflect.StructField
 	var tag string
 	var customName string
-	
-	for i := 0; i < numFields; i++ {
 
+	for i := 0; i < numFields; i++ {
 		fld = typ.Field(i)
 
-		if !fld.Anonymous && len(fld.PkgPath) > 0 {
+		if !v.privateFieldValidation && !fld.Anonymous && len(fld.PkgPath) > 0 {
 			continue
 		}
 
@@ -189,7 +190,6 @@ func (v *Validate) parseFieldTagsRecursive(tag string, fieldName string, alias s
 			} else {
 				next, curr := v.parseFieldTagsRecursive(tagsVal, fieldName, t, true)
 				current.next, current = next, curr
-
 			}
 			continue
 		}
@@ -208,7 +208,6 @@ func (v *Validate) parseFieldTagsRecursive(tag string, fieldName string, alias s
 		switch t {
 		case diveTag:
 			current.typeof = typeDive
-			continue
 
 		case keysTag:
 			current.typeof = typeKeys
@@ -217,8 +216,6 @@ func (v *Validate) parseFieldTagsRecursive(tag string, fieldName string, alias s
 				panic(fmt.Sprintf("'%s' tag must be immediately preceded by the '%s' tag", keysTag, diveTag))
 			}
 
-			current.typeof = typeKeys
-
 			// need to pass along only keys tag
 			// need to increment i to skip over the keys tags
 			b := make([]byte, 0, 64)
@@ -226,7 +223,6 @@ func (v *Validate) parseFieldTagsRecursive(tag string, fieldName string, alias s
 			i++
 
 			for ; i < len(tags); i++ {
-
 				b = append(b, tags[i]...)
 				b = append(b, ',')
 
@@ -236,7 +232,6 @@ func (v *Validate) parseFieldTagsRecursive(tag string, fieldName string, alias s
 			}
 
 			current.keys, _ = v.parseFieldTagsRecursive(string(b[:len(b)-1]), fieldName, "", false)
-			continue
 
 		case endKeysTag:
 			current.typeof = typeEndKeys
@@ -248,17 +243,21 @@ func (v *Validate) parseFieldTagsRecursive(tag string, fieldName string, alias s
 			}
 			return
 
+		case omitzero:
+			current.typeof = typeOmitZero
+			continue
+
 		case omitempty:
 			current.typeof = typeOmitEmpty
-			continue
+
+		case omitnil:
+			current.typeof = typeOmitNil
 
 		case structOnlyTag:
 			current.typeof = typeStructOnly
-			continue
 
 		case noStructLevelTag:
 			current.typeof = typeNoStructLevel
-			continue
 
 		default:
 			if t == isdefault {
@@ -289,7 +288,7 @@ func (v *Validate) parseFieldTagsRecursive(tag string, fieldName string, alias s
 
 				if wrapper, ok := v.validations[current.tag]; ok {
 					current.fn = wrapper.fn
-					current.runValidationWhenNil = wrapper.runValidatinOnNil
+					current.runValidationWhenNil = wrapper.runValidationOnNil
 				} else {
 					panic(strings.TrimSpace(fmt.Sprintf(undefinedValidation, current.tag, fieldName)))
 				}
@@ -299,7 +298,7 @@ func (v *Validate) parseFieldTagsRecursive(tag string, fieldName string, alias s
 				}
 
 				if len(vals) > 1 {
-					current.param = strings.Replace(strings.Replace(vals[1], utf8HexComma, ",", -1), utf8Pipe, "|", -1)
+					current.param = strings.ReplaceAll(strings.ReplaceAll(vals[1], utf8HexComma, ","), utf8Pipe, "|")
 				}
 			}
 			current.isBlockEnd = true

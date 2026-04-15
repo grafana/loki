@@ -1,9 +1,13 @@
 # OpenTelemetry-Go
 
-[![CI](https://github.com/open-telemetry/opentelemetry-go/workflows/ci/badge.svg)](https://github.com/open-telemetry/opentelemetry-go/actions?query=workflow%3Aci+branch%3Amain)
+[![ci](https://github.com/open-telemetry/opentelemetry-go/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/open-telemetry/opentelemetry-go/actions/workflows/ci.yml)
 [![codecov.io](https://codecov.io/gh/open-telemetry/opentelemetry-go/coverage.svg?branch=main)](https://app.codecov.io/gh/open-telemetry/opentelemetry-go?branch=main)
 [![PkgGoDev](https://pkg.go.dev/badge/go.opentelemetry.io/otel)](https://pkg.go.dev/go.opentelemetry.io/otel)
 [![Go Report Card](https://goreportcard.com/badge/go.opentelemetry.io/otel)](https://goreportcard.com/report/go.opentelemetry.io/otel)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/open-telemetry/opentelemetry-go/badge)](https://scorecard.dev/viewer/?uri=github.com/open-telemetry/opentelemetry-go)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/9996/badge)](https://www.bestpractices.dev/projects/9996)
+[![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/opentelemetry-go.svg)](https://issues.oss-fuzz.com/issues?q=project:opentelemetry-go)
+[![FOSSA Status](https://app.fossa.com/api/projects/custom%2B162%2Fgithub.com%2Fopen-telemetry%2Fopentelemetry-go.svg?type=shield&issueType=license)](https://app.fossa.com/projects/custom%2B162%2Fgithub.com%2Fopen-telemetry%2Fopentelemetry-go?ref=badge_shield&issueType=license)
 [![Slack](https://img.shields.io/badge/slack-@cncf/otel--go-brightgreen.svg?logo=slack)](https://cloud-native.slack.com/archives/C01NPAXACKT)
 
 OpenTelemetry-Go is the [Go](https://golang.org/) implementation of [OpenTelemetry](https://opentelemetry.io/).
@@ -11,22 +15,21 @@ It provides a set of APIs to directly measure performance and behavior of your s
 
 ## Project Status
 
-| Signal  | Status     | Project |
-| ------- | ---------- | ------- |
-| Traces  | Stable     | N/A     |
-| Metrics | Alpha      | N/A     |
-| Logs    | Frozen [1] | N/A     |
+| Signal  | Status             |
+|---------|--------------------|
+| Traces  | Stable             |
+| Metrics | Stable             |
+| Logs    | Beta[^1]           |
 
-- [1]: The Logs signal development is halted for this project while we develop both Traces and Metrics.
-   No Logs Pull Requests are currently being accepted.
-
-Progress and status specific to this repository is tracked in our local
+Progress and status specific to this repository is tracked in our
 [project boards](https://github.com/open-telemetry/opentelemetry-go/projects)
 and
 [milestones](https://github.com/open-telemetry/opentelemetry-go/milestones).
 
 Project versioning information and stability guarantees can be found in the
-[versioning documentation](./VERSIONING.md).
+[versioning documentation](VERSIONING.md).
+
+[^1]: https://github.com/orgs/open-telemetry/projects/43
 
 ### Compatibility
 
@@ -48,30 +51,29 @@ stop ensuring compatibility with these versions in the following manner:
 
 Currently, this project supports the following environments.
 
-| OS      | Go Version | Architecture |
-| ------- | ---------- | ------------ |
-| Ubuntu  | 1.20       | amd64        |
-| Ubuntu  | 1.19       | amd64        |
-| Ubuntu  | 1.18       | amd64        |
-| Ubuntu  | 1.20       | 386          |
-| Ubuntu  | 1.19       | 386          |
-| Ubuntu  | 1.18       | 386          |
-| MacOS   | 1.20       | amd64        |
-| MacOS   | 1.19       | amd64        |
-| MacOS   | 1.18       | amd64        |
-| Windows | 1.20       | amd64        |
-| Windows | 1.19       | amd64        |
-| Windows | 1.18       | amd64        |
-| Windows | 1.20       | 386          |
-| Windows | 1.19       | 386          |
-| Windows | 1.18       | 386          |
+| OS       | Go Version | Architecture |
+|----------|------------|--------------|
+| Ubuntu   | 1.26       | amd64        |
+| Ubuntu   | 1.25       | amd64        |
+| Ubuntu   | 1.26       | 386          |
+| Ubuntu   | 1.25       | 386          |
+| Ubuntu   | 1.26       | arm64        |
+| Ubuntu   | 1.25       | arm64        |
+| macOS    | 1.26       | amd64        |
+| macOS    | 1.25       | amd64        |
+| macOS    | 1.26       | arm64        |
+| macOS    | 1.25       | arm64        |
+| Windows  | 1.26       | amd64        |
+| Windows  | 1.25       | amd64        |
+| Windows  | 1.26       | 386          |
+| Windows  | 1.25       | 386          |
 
 While this project should work for other systems, no compatibility guarantees
 are made for those systems currently.
 
 ## Getting Started
 
-You can find a getting started guide on [opentelemetry.io](https://opentelemetry.io/docs/go/getting-started/).
+You can find a getting started guide on [opentelemetry.io](https://opentelemetry.io/docs/languages/go/getting-started/).
 
 OpenTelemetry's goal is to provide a single set of APIs to capture distributed
 traces and metrics from your application and send them to an observability
@@ -91,8 +93,8 @@ If you need to extend the telemetry an instrumentation library provides or want
 to build your own instrumentation for your application directly you will need
 to use the
 [Go otel](https://pkg.go.dev/go.opentelemetry.io/otel)
-package. The included [examples](./example/) are a good way to see some
-practical uses of this process.
+package. The [examples](https://github.com/open-telemetry/opentelemetry-go-contrib/tree/main/examples)
+are a good way to see some practical uses of this process.
 
 ### Export
 
@@ -101,13 +103,12 @@ export pipeline to send that telemetry to an observability platform.
 
 All officially supported exporters for the OpenTelemetry project are contained in the [exporters directory](./exporters).
 
-| Exporter                              | Metrics | Traces |
-| :-----------------------------------: | :-----: | :----: |
-| [Jaeger](./exporters/jaeger/)         |         | ✓      |
-| [OTLP](./exporters/otlp/)             | ✓       | ✓      |
-| [Prometheus](./exporters/prometheus/) | ✓       |        |
-| [stdout](./exporters/stdout/)         | ✓       | ✓      |
-| [Zipkin](./exporters/zipkin/)         |         | ✓      |
+| Exporter                              | Logs | Metrics | Traces |
+|---------------------------------------|:----:|:-------:|:------:|
+| [OTLP](./exporters/otlp/)             |  ✓   |    ✓    |   ✓    |
+| [Prometheus](./exporters/prometheus/) |      |    ✓    |        |
+| [stdout](./exporters/stdout/)         |  ✓   |    ✓    |   ✓    |
+| [Zipkin](./exporters/zipkin/)         |      |         |   ✓    |
 
 ## Contributing
 

@@ -7,8 +7,8 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 type StorageClient struct {
@@ -76,6 +76,10 @@ func (s *StorageClient) DeleteChunk(ctx context.Context, _, chunkID string) erro
 }
 
 func (s *StorageClient) IsChunkNotFoundErr(_ error) bool {
+	return false
+}
+
+func (s *StorageClient) IsRetryableErr(_ error) bool {
 	return false
 }
 

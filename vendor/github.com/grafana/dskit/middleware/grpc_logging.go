@@ -6,29 +6,43 @@ package middleware
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"time"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
+
+	dskit_log "github.com/grafana/dskit/log"
 
 	"google.golang.org/grpc"
 
 	grpcUtils "github.com/grafana/dskit/grpcutil"
-	"github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/user"
 )
 
 const (
-	gRPC     = "gRPC"
-	errorKey = "err"
+	gRPC = "gRPC"
 )
 
-// An error can implement ShouldLog() to control whether GRPCServerLog will log.
+// OptionalLogging is the interface that needs be implemented by an error that wants to control whether the log
+// should be logged by GRPCServerLog.
 type OptionalLogging interface {
-	ShouldLog(ctx context.Context, duration time.Duration) bool
+	// ShouldLog returns whether the error should be logged and the reason. For example, if the error should be sampled
+	// return returned reason could be something like "sampled 1/10". The reason, if any, is used to decorate the error
+	// both in case the error should be logged or skipped.
+	ShouldLog(ctx context.Context) (bool, string)
 }
+
+type DoNotLogError struct{ Err error }
+
+func (i DoNotLogError) Error() string                              { return i.Err.Error() }
+func (i DoNotLogError) Unwrap() error                              { return i.Err }
+func (i DoNotLogError) ShouldLog(_ context.Context) (bool, string) { return false, "" }
 
 // GRPCServerLog logs grpc requests, errors, and latency.
 type GRPCServerLog struct {
-	Log log.Interface
+	Log log.Logger
 	// WithRequest will log the entire request rather than just the error
 	WithRequest              bool
 	DisableRequestSuccessLog bool
@@ -41,23 +55,28 @@ func (s GRPCServerLog) UnaryServerInterceptor(ctx context.Context, req interface
 	if err == nil && s.DisableRequestSuccessLog {
 		return resp, nil
 	}
-	var optional OptionalLogging
-	if errors.As(err, &optional) && !optional.ShouldLog(ctx, time.Since(begin)) {
+
+	// Honor sampled error logging.
+	keep, reason := shouldLog(ctx, err)
+	if reason != "" {
+		err = fmt.Errorf("%w (%s)", err, reason)
+	}
+	if !keep {
 		return resp, err
 	}
 
-	entry := user.LogWith(ctx, s.Log).WithFields(log.Fields{"method": info.FullMethod, "duration": time.Since(begin)})
+	entry := log.With(user.LogWith(ctx, s.Log), "method", info.FullMethod, "duration", time.Since(begin))
 	if err != nil {
 		if s.WithRequest {
-			entry = entry.WithField("request", req)
+			entry = log.With(entry, "request", req)
 		}
 		if grpcUtils.IsCanceled(err) {
-			entry.WithField(errorKey, err).Debugln(gRPC)
+			level.Debug(entry).Log("msg", gRPC, "err", err)
 		} else {
-			entry.WithField(errorKey, err).Warnln(gRPC)
+			level.Warn(entry).Log("msg", gRPC, "err", err)
 		}
 	} else {
-		entry.Debugf("%s (success)", gRPC)
+		level.Debug(entry).Log("msg", dskit_log.LazySprintf("%s (success)", gRPC))
 	}
 	return resp, err
 }
@@ -70,15 +89,24 @@ func (s GRPCServerLog) StreamServerInterceptor(srv interface{}, ss grpc.ServerSt
 		return nil
 	}
 
-	entry := user.LogWith(ss.Context(), s.Log).WithFields(log.Fields{"method": info.FullMethod, "duration": time.Since(begin)})
+	entry := log.With(user.LogWith(ss.Context(), s.Log), "method", info.FullMethod, "duration", time.Since(begin))
 	if err != nil {
 		if grpcUtils.IsCanceled(err) {
-			entry.WithField(errorKey, err).Debugln(gRPC)
+			level.Debug(entry).Log("msg", gRPC, "err", err)
 		} else {
-			entry.WithField(errorKey, err).Warnln(gRPC)
+			level.Warn(entry).Log("msg", gRPC, "err", err)
 		}
 	} else {
-		entry.Debugf("%s (success)", gRPC)
+		level.Debug(entry).Log("msg", dskit_log.LazySprintf("%s (success)", gRPC))
 	}
 	return err
+}
+
+func shouldLog(ctx context.Context, err error) (bool, string) {
+	var optional OptionalLogging
+	if !errors.As(err, &optional) {
+		return true, ""
+	}
+
+	return optional.ShouldLog(ctx)
 }

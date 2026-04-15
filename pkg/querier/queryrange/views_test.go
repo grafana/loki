@@ -12,11 +12,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
 )
 
 func TestGetLokiSeriesResponse(t *testing.T) {
@@ -26,13 +26,14 @@ func TestGetLokiSeriesResponse(t *testing.T) {
 				Status: "success",
 				Data: []logproto.SeriesIdentifier{
 					{
-						Labels: map[string]string{
-							"foo": "bar",
-							"baz": "woof",
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
+							{Key: "foo", Value: "bar"},
+							{Key: "baz", Value: "woof"},
 						},
 					},
 				},
-			}},
+			},
+		},
 	}
 	buf, err := p.Marshal()
 	require.NoError(t, err)
@@ -52,9 +53,9 @@ func TestGetLokiSeriesResponse(t *testing.T) {
 
 func TestSeriesIdentifierViewHash(t *testing.T) {
 	identifier := &logproto.SeriesIdentifier{
-		Labels: map[string]string{
-			"foo": "bar",
-			"baz": "woof",
+		Labels: []logproto.SeriesIdentifier_LabelsEntry{
+			{Key: "foo", Value: "bar"},
+			{Key: "baz", Value: "woof"},
 		},
 	}
 
@@ -70,14 +71,15 @@ func TestSeriesIdentifierViewHash(t *testing.T) {
 	require.NoError(t, err)
 	require.ElementsMatch(t, keyLabelPairs, []string{"baz\xffwoof\xff", "foo\xffbar\xff"})
 
-	expected, _ := identifier.Hash(b, keyLabelPairs)
+	expected := identifier.Hash(b)
 	require.Equal(t, expected, actual)
 }
+
 func TestSeriesIdentifierViewForEachLabel(t *testing.T) {
 	identifier := &logproto.SeriesIdentifier{
-		Labels: map[string]string{
-			"foo": "bar",
-			"baz": "woof",
+		Labels: []logproto.SeriesIdentifier_LabelsEntry{
+			{Key: "foo", Value: "bar"},
+			{Key: "baz", Value: "woof"},
 		},
 	}
 
@@ -100,10 +102,16 @@ func TestSeriesResponseViewForEach(t *testing.T) {
 	response := &LokiSeriesResponse{
 		Data: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"i": "1", "baz": "woof"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "i", Value: "1"},
+					{Key: "baz", Value: "woof"},
+				},
 			},
 			{
-				Labels: map[string]string{"i": "2", "foo": "bar"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "i", Value: "2"},
+					{Key: "foo", Value: "bar"},
+				},
 			},
 		},
 	}
@@ -128,8 +136,7 @@ func TestSeriesResponseViewForEach(t *testing.T) {
 	expectedHashes := make([]uint64, 0)
 	for _, id := range response.Data {
 		b := make([]byte, 0, 1024)
-		keyLabelPairs := make([]string, 0)
-		hash, _ := id.Hash(b, keyLabelPairs)
+		hash := id.Hash(b)
 		expectedHashes = append(expectedHashes, hash)
 	}
 	require.ElementsMatch(t, expectedHashes, actualHashes)
@@ -140,20 +147,32 @@ func TestMergedViewDeduplication(t *testing.T) {
 		{
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{"i": "1", "baz": "woof"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "i", Value: "1"},
+						{Key: "baz", Value: "woof"},
+					},
 				},
 				{
-					Labels: map[string]string{"i": "2", "foo": "bar"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "i", Value: "2"},
+						{Key: "foo", Value: "bar"},
+					},
 				},
 			},
 		},
 		{
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{"i": "3", "baz": "woof"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "i", Value: "3"},
+						{Key: "baz", Value: "woof"},
+					},
 				},
 				{
-					Labels: map[string]string{"i": "2", "foo": "bar"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "i", Value: "2"},
+						{Key: "foo", Value: "bar"},
+					},
 				},
 			},
 		},
@@ -168,7 +187,7 @@ func TestMergedViewDeduplication(t *testing.T) {
 	}
 
 	count := 0
-	err := view.ForEachUniqueSeries(func(s *SeriesIdentifierView) error {
+	err := view.ForEachUniqueSeries(func(_ *SeriesIdentifierView) error {
 		count++
 		return nil
 	})
@@ -181,20 +200,32 @@ func TestMergedViewMaterialize(t *testing.T) {
 		{
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{"i": "1", "baz": "woof"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "i", Value: "1"},
+						{Key: "baz", Value: "woof"},
+					},
 				},
 				{
-					Labels: map[string]string{"i": "2", "foo": "bar"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "i", Value: "2"},
+						{Key: "foo", Value: "bar"},
+					},
 				},
 			},
 		},
 		{
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{"i": "3", "baz": "woof"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "i", Value: "3"},
+						{Key: "baz", Value: "woof"},
+					},
 				},
 				{
-					Labels: map[string]string{"i": "2", "foo": "bar"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "i", Value: "2"},
+						{Key: "foo", Value: "bar"},
+					},
 				},
 			},
 		},
@@ -213,7 +244,11 @@ func TestMergedViewMaterialize(t *testing.T) {
 	require.Len(t, mat.Data, 3)
 	series := make([]string, 0)
 	for _, d := range mat.Data {
-		series = append(series, labels.FromMap(d.Labels).String())
+		l := labels.NewBuilder(labels.EmptyLabels())
+		for _, p := range d.Labels {
+			l.Set(p.Key, p.Value)
+		}
+		series = append(series, l.Labels().String())
 	}
 	expected := []string{`{baz="woof", i="1"}`, `{baz="woof", i="3"}`, `{foo="bar", i="2"}`}
 	require.ElementsMatch(t, series, expected)
@@ -224,13 +259,22 @@ func TestMergedViewJSON(t *testing.T) {
 	response := &LokiSeriesResponse{
 		Data: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"i": "1", "baz": "woof"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "i", Value: "1"},
+					{Key: "baz", Value: "woof"},
+				},
 			},
 			{
-				Labels: map[string]string{"i": "2", "foo": "bar"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "i", Value: "2"},
+					{Key: "foo", Value: "bar"},
+				},
 			},
 			{
-				Labels: map[string]string{"i": "3", "baz": "woof"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "i", Value: "3"},
+					{Key: "baz", Value: "woof"},
+				},
 			},
 		},
 	}
@@ -245,10 +289,7 @@ func TestMergedViewJSON(t *testing.T) {
 	actual := b.String()
 	b.Reset()
 
-	result := logproto.SeriesResponse{
-		Series: response.Data,
-	}
-	err = marshal.WriteSeriesResponseJSON(result, &b)
+	err = marshal.WriteSeriesResponseJSON(response.Data, &b)
 	require.NoError(t, err)
 	expected := b.String()
 
@@ -321,5 +362,4 @@ func Benchmark_DecodeMergeEncodeCycle(b *testing.B) {
 		require.NoError(b, err)
 		require.Equal(b, "application/json; charset=UTF-8", httpRes.Header.Get("Content-Type"))
 	}
-
 }

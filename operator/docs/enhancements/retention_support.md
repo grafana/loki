@@ -142,7 +142,7 @@ spec:
     secret:
       name: test
       type: s3
-  storageClassName: gp2
+  storageClassName: gp3-csi
   retention: 
     deleteDelay: 
   limits:

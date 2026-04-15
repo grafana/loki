@@ -109,7 +109,7 @@ func New(url, job string) *Pusher {
 		gatherers:  prometheus.Gatherers{reg},
 		registerer: reg,
 		client:     &http.Client{},
-		expfmt:     expfmt.FmtProtoDelim,
+		expfmt:     expfmt.NewFormat(expfmt.TypeProtoDelim),
 	}
 }
 
@@ -182,7 +182,8 @@ func (p *Pusher) Error() error {
 // For convenience, this method returns a pointer to the Pusher itself.
 func (p *Pusher) Grouping(name, value string) *Pusher {
 	if p.error == nil {
-		if !model.LabelName(name).IsValid() {
+		//nolint:staticcheck // TODO: Don't use deprecated model.NameValidationScheme.
+		if !model.NameValidationScheme.IsValidLabelName(name) {
 			p.error = fmt.Errorf("grouping label has invalid name: %s", name)
 			return p
 		}
@@ -289,7 +290,7 @@ func (p *Pusher) push(ctx context.Context, method string) error {
 		}
 		if err := enc.Encode(mf); err != nil {
 			return fmt.Errorf(
-				"failed to encode metric familty %s, error is %w",
+				"failed to encode metric family %s, error is %w",
 				mf.GetName(), err)
 		}
 	}

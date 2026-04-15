@@ -10,8 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/dskit/flagext"
+
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
@@ -58,11 +59,10 @@ func Test_Hedging(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			count := atomic.NewInt32(0)
 			// hijack the transport to count the number of calls
-			defaultTransport = RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			transportCounter := RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				// fake auth
 				if req.Header.Get("X-Auth-Key") == "passwd" {
 					return &http.Response{
@@ -90,13 +90,14 @@ func Test_Hedging(t *testing.T) {
 			})
 
 			c, err := NewSwiftObjectClient(SwiftConfig{
-				Config: swift.Config{
-					MaxRetries:     1,
-					ContainerName:  "foo",
-					AuthVersion:    1,
-					Password:       "passwd",
-					ConnectTimeout: 10 * time.Second,
-					RequestTimeout: 10 * time.Second,
+				MaxRetries:     1,
+				ContainerName:  "foo",
+				AuthVersion:    1,
+				Password:       flagext.SecretWithValue("passwd"),
+				ConnectTimeout: 10 * time.Second,
+				RequestTimeout: 10 * time.Second,
+				HTTP: HTTPConfig{
+					Transport: transportCounter,
 				},
 			}, hedging.Config{
 				At:           tc.hedgeAt,

@@ -1,6 +1,6 @@
-package util
+package util //nolint:revive
 
-import "github.com/grafana/loki/pkg/loghttp"
+import "github.com/grafana/loki/v3/pkg/loghttp"
 
 func MatchLabels(on bool, l loghttp.LabelSet, names []string) loghttp.LabelSet {
 	ret := loghttp.LabelSet{}

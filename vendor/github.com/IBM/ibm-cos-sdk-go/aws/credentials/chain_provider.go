@@ -37,19 +37,18 @@ var (
 // does not return any credentials ChainProvider will return the error
 // ErrNoValidProvidersFoundInChain
 //
-//     creds := credentials.NewChainCredentials(
-//         []credentials.Provider{
-//             &credentials.EnvProvider{},
-//             &ec2rolecreds.EC2RoleProvider{
-//                 Client: ec2metadata.New(sess),
-//             },
-//         })
+//	creds := credentials.NewChainCredentials(
+//	    []credentials.Provider{
+//	        &credentials.EnvProvider{},
+//	        &ec2rolecreds.EC2RoleProvider{
+//	            Client: ec2metadata.New(sess),
+//	        },
+//	    })
 //
-//     // Usage of ChainCredentials with aws.Config
-//     svc := ec2.New(session.Must(session.NewSession(&aws.Config{
-//       Credentials: creds,
-//     })))
-//
+//	// Usage of ChainCredentials with aws.Config
+//	svc := ec2.New(session.Must(session.NewSession(&aws.Config{
+//	  Credentials: creds,
+//	})))
 type ChainProvider struct {
 	Providers     []Provider
 	curr          Provider

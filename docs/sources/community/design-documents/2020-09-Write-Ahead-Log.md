@@ -97,7 +97,7 @@ Introduction of the WAL requires that ingesters have persistent disks which are 
 
 ### Implementation goals
 
-- Use underlying prometheus wal pkg when possible for consistency & to mitigate undifferentiated heavy lifting. Interfaces handle page alignment & use []byte.
+- Use underlying prometheus wal pkg when possible for consistency and to mitigate undifferentiated heavy lifting. Interfaces handle page alignment and use []byte.
   - Ensure this package handles arbitrarily long records (log lines in Loki’s case).
 - Ensure our in memory representations can be efficiently moved to/from `[]byte` in order to generate conversions for fast/efficient loading from checkpoints.
 - Ensure chunks which have already been flushed to storage are kept around for `ingester.retain-period`, even after a WAL replay.
@@ -110,7 +110,7 @@ Since we're not checkpointing from the WAL records but instead doing a memory du
 
 #### Don't build checkpoints from memory, instead write new WAL elements
 
-Instead of building checkpoints from memory, this would build the same efficiencies into two distinct WAL Record types: `Blocks` and `FlushedChunks`. The former is a record type which will contain an entire compressed block after it's cut and the latter will contain an entire chunk + the sequence of blocks it holds when it's flushed. This may offer good enough amortization of writes because block cuts are assumed to be evenly distributed & chunk flushes have the same property and use jitter for synchronization.
+Instead of building checkpoints from memory, this would build the same efficiencies into two distinct WAL Record types: `Blocks` and `FlushedChunks`. The former is a record type which will contain an entire compressed block after it's cut and the latter will contain an entire chunk + the sequence of blocks it holds when it's flushed. This may offer good enough amortization of writes because block cuts are assumed to be evenly distributed and chunk flushes have the same property and use jitter for synchronization.
 
 This could be used to drop WAL records which have already elapsed the `ingester.retain-period`, allowing for faster WAL replays and more efficient loading.
 ```golang

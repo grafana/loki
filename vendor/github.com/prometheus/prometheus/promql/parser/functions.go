@@ -1,4 +1,4 @@
-// Copyright 2015 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -16,10 +16,11 @@ package parser
 // Function represents a function of the expression language and is
 // used by function nodes.
 type Function struct {
-	Name       string
-	ArgTypes   []ValueType
-	Variadic   int
-	ReturnType ValueType
+	Name         string
+	ArgTypes     []ValueType
+	Variadic     int
+	ReturnType   ValueType
+	Experimental bool
 }
 
 // Functions is a list of all functions supported by PromQL, including their types.
@@ -158,8 +159,19 @@ var Functions = map[string]*Function{
 		ArgTypes:   []ValueType{ValueTypeVector},
 		ReturnType: ValueTypeVector,
 	},
+	"first_over_time": {
+		Name:         "first_over_time",
+		ArgTypes:     []ValueType{ValueTypeMatrix},
+		ReturnType:   ValueTypeVector,
+		Experimental: true,
+	},
 	"floor": {
 		Name:       "floor",
+		ArgTypes:   []ValueType{ValueTypeVector},
+		ReturnType: ValueTypeVector,
+	},
+	"histogram_avg": {
+		Name:       "histogram_avg",
 		ArgTypes:   []ValueType{ValueTypeVector},
 		ReturnType: ValueTypeVector,
 	},
@@ -173,6 +185,16 @@ var Functions = map[string]*Function{
 		ArgTypes:   []ValueType{ValueTypeVector},
 		ReturnType: ValueTypeVector,
 	},
+	"histogram_stddev": {
+		Name:       "histogram_stddev",
+		ArgTypes:   []ValueType{ValueTypeVector},
+		ReturnType: ValueTypeVector,
+	},
+	"histogram_stdvar": {
+		Name:       "histogram_stdvar",
+		ArgTypes:   []ValueType{ValueTypeVector},
+		ReturnType: ValueTypeVector,
+	},
 	"histogram_fraction": {
 		Name:       "histogram_fraction",
 		ArgTypes:   []ValueType{ValueTypeScalar, ValueTypeScalar, ValueTypeVector},
@@ -183,10 +205,18 @@ var Functions = map[string]*Function{
 		ArgTypes:   []ValueType{ValueTypeScalar, ValueTypeVector},
 		ReturnType: ValueTypeVector,
 	},
-	"holt_winters": {
-		Name:       "holt_winters",
-		ArgTypes:   []ValueType{ValueTypeMatrix, ValueTypeScalar, ValueTypeScalar},
-		ReturnType: ValueTypeVector,
+	"histogram_quantiles": {
+		Name:         "histogram_quantiles",
+		ArgTypes:     []ValueType{ValueTypeVector, ValueTypeString, ValueTypeScalar, ValueTypeScalar},
+		Variadic:     9,
+		ReturnType:   ValueTypeVector,
+		Experimental: true,
+	},
+	"double_exponential_smoothing": {
+		Name:         "double_exponential_smoothing",
+		ArgTypes:     []ValueType{ValueTypeMatrix, ValueTypeScalar, ValueTypeScalar},
+		ReturnType:   ValueTypeVector,
+		Experimental: true,
 	},
 	"hour": {
 		Name:       "hour",
@@ -203,6 +233,13 @@ var Functions = map[string]*Function{
 		Name:       "increase",
 		ArgTypes:   []ValueType{ValueTypeMatrix},
 		ReturnType: ValueTypeVector,
+	},
+	"info": {
+		Name:         "info",
+		ArgTypes:     []ValueType{ValueTypeVector, ValueTypeVector},
+		ReturnType:   ValueTypeVector,
+		Experimental: true,
+		Variadic:     1,
 	},
 	"irate": {
 		Name:       "irate",
@@ -240,6 +277,12 @@ var Functions = map[string]*Function{
 		ArgTypes:   []ValueType{ValueTypeVector},
 		ReturnType: ValueTypeVector,
 	},
+	"mad_over_time": {
+		Name:         "mad_over_time",
+		ArgTypes:     []ValueType{ValueTypeMatrix},
+		ReturnType:   ValueTypeVector,
+		Experimental: true,
+	},
 	"max_over_time": {
 		Name:       "max_over_time",
 		ArgTypes:   []ValueType{ValueTypeMatrix},
@@ -249,6 +292,30 @@ var Functions = map[string]*Function{
 		Name:       "min_over_time",
 		ArgTypes:   []ValueType{ValueTypeMatrix},
 		ReturnType: ValueTypeVector,
+	},
+	"ts_of_first_over_time": {
+		Name:         "ts_of_first_over_time",
+		ArgTypes:     []ValueType{ValueTypeMatrix},
+		ReturnType:   ValueTypeVector,
+		Experimental: true,
+	},
+	"ts_of_max_over_time": {
+		Name:         "ts_of_max_over_time",
+		ArgTypes:     []ValueType{ValueTypeMatrix},
+		ReturnType:   ValueTypeVector,
+		Experimental: true,
+	},
+	"ts_of_min_over_time": {
+		Name:         "ts_of_min_over_time",
+		ArgTypes:     []ValueType{ValueTypeMatrix},
+		ReturnType:   ValueTypeVector,
+		Experimental: true,
+	},
+	"ts_of_last_over_time": {
+		Name:         "ts_of_last_over_time",
+		ArgTypes:     []ValueType{ValueTypeMatrix},
+		ReturnType:   ValueTypeVector,
+		Experimental: true,
 	},
 	"minute": {
 		Name:       "minute",
@@ -333,6 +400,20 @@ var Functions = map[string]*Function{
 		ArgTypes:   []ValueType{ValueTypeVector},
 		ReturnType: ValueTypeVector,
 	},
+	"sort_by_label": {
+		Name:         "sort_by_label",
+		ArgTypes:     []ValueType{ValueTypeVector, ValueTypeString},
+		Variadic:     -1,
+		ReturnType:   ValueTypeVector,
+		Experimental: true,
+	},
+	"sort_by_label_desc": {
+		Name:         "sort_by_label_desc",
+		ArgTypes:     []ValueType{ValueTypeVector, ValueTypeString},
+		Variadic:     -1,
+		ReturnType:   ValueTypeVector,
+		Experimental: true,
+	},
 	"sqrt": {
 		Name:       "sqrt",
 		ArgTypes:   []ValueType{ValueTypeVector},
@@ -387,7 +468,7 @@ var Functions = map[string]*Function{
 }
 
 // getFunction returns a predefined Function object for the given name.
-func getFunction(name string) (*Function, bool) {
-	function, ok := Functions[name]
+func getFunction(name string, functions map[string]*Function) (*Function, bool) {
+	function, ok := functions[name]
 	return function, ok
 }

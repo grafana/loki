@@ -23,10 +23,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/config"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/util/build"
-	"github.com/grafana/loki/pkg/util/unmarshal"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/unmarshal"
 )
 
 var (
@@ -45,7 +45,7 @@ var (
 
 type LokiReader interface {
 	Query(start time.Time, end time.Time) ([]time.Time, error)
-	QueryCountOverTime(queryRange string) (float64, error)
+	QueryCountOverTime(queryRange string, now time.Time, cache bool) (float64, error)
 }
 
 type Reader struct {
@@ -74,6 +74,7 @@ type Reader struct {
 	shuttingDown    bool
 	done            chan struct{}
 	queryAppend     string
+	labels          string
 }
 
 func NewReader(writer io.Writer,
@@ -92,6 +93,7 @@ func NewReader(writer io.Writer,
 	streamValue string,
 	interval time.Duration,
 	queryAppend string,
+	labels string,
 ) (*Reader, error) {
 	h := http.Header{}
 
@@ -100,9 +102,9 @@ func NewReader(writer io.Writer,
 	if tlsConfig != nil && (certFile != "" || keyFile != "" || caFile != "") {
 		// For the mTLS case, use a http.Client configured with the client side certificates.
 		tlsSettings := config.TLSRoundTripperSettings{
-			CAFile:   caFile,
-			CertFile: certFile,
-			KeyFile:  keyFile,
+			CA:   config.NewFileSecret(caFile),
+			Cert: config.NewFileSecret(certFile),
+			Key:  config.NewFileSecret(keyFile),
 		}
 		rt, err := config.NewTLSRoundTripper(tlsConfig, tlsSettings, func(tls *tls.Config) (http.RoundTripper, error) {
 			return &http.Transport{TLSClientConfig: tls}, nil
@@ -154,6 +156,7 @@ func NewReader(writer io.Writer,
 		done:            make(chan struct{}),
 		shuttingDown:    false,
 		queryAppend:     queryAppend,
+		labels:          labels,
 	}
 
 	go rd.run()
@@ -180,7 +183,7 @@ func (r *Reader) Stop() {
 
 // QueryCountOverTime will ask Loki for a count of logs over the provided range e.g. 5m
 // QueryCountOverTime blocks if a previous query has failed until the appropriate backoff time has been reached.
-func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
+func (r *Reader) QueryCountOverTime(queryRange string, now time.Time, cache bool) (float64, error) {
 	r.backoffMtx.RLock()
 	next := r.nextQuery
 	r.backoffMtx.RUnlock()
@@ -201,10 +204,10 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 		Host:   r.addr,
 		Path:   "/loki/api/v1/query",
 		RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("count_over_time({%v=\"%v\",%v=\"%v\"}[%s])", r.sName, r.sValue, r.lName, r.lVal, queryRange)) +
-			fmt.Sprintf("&time=%d", time.Now().UnixNano()) +
+			fmt.Sprintf("&time=%d", now.UnixNano()) +
 			"&limit=1000",
 	}
-	fmt.Fprintf(r.w, "Querying loki for metric count with query: %v\n", u.String())
+	fmt.Fprintf(r.w, "Querying loki for metric count with query: %v, cache: %v\n", u.String(), cache)
 
 	ctx, cancel := context.WithTimeout(context.Background(), r.queryTimeout)
 	defer cancel()
@@ -221,6 +224,9 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 		req.Header.Set("X-Scope-OrgID", r.tenantID)
 	}
 	req.Header.Set("User-Agent", userAgent)
+	if !cache {
+		req.Header.Set("Cache-Control", "no-cache")
+	}
 
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
@@ -287,12 +293,27 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	if r.useTLS {
 		scheme = "https"
 	}
+	var labels string
+	if r.labels != "" {
+		var lbls []string
+		for _, label := range strings.Split(r.labels, ",") {
+			labelParts := strings.Split(label, "=")
+			if len(labelParts) != 2 {
+				return nil, fmt.Errorf("invalid label format: %s, expected key=value", label)
+			}
+			lbls = append(lbls, fmt.Sprintf("%s=\"%s\"", labelParts[0], labelParts[1]))
+		}
+		labels = fmt.Sprintf("{%s}", strings.Join(lbls, ","))
+	} else {
+		labels = fmt.Sprintf("{%s=\"%s\",%s=\"%s\"}", r.sName, r.sValue, r.lName, r.lVal)
+	}
+
 	u := url.URL{
 		Scheme: scheme,
 		Host:   r.addr,
 		Path:   "/loki/api/v1/query_range",
 		RawQuery: fmt.Sprintf("start=%d&end=%d", start.UnixNano(), end.UnixNano()) +
-			"&query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"} %v", r.sName, r.sValue, r.lName, r.lVal, r.queryAppend)) +
+			"&query=" + url.QueryEscape(fmt.Sprintf("%s %v", labels, r.queryAppend)) +
 			"&limit=1000",
 	}
 	fmt.Fprintf(r.w, "Querying loki for logs with query: %v\n", u.String())
@@ -387,6 +408,14 @@ func (r *Reader) run() {
 		// or times out based on the above SetReadDeadline call.
 		err := unmarshal.ReadTailResponseJSON(tailResponse, r.conn)
 		if err != nil {
+			var e *websocket.CloseError
+			if errors.As(err, &e) && e.Text == "reached tail max duration limit" {
+				fmt.Fprintf(r.w, "tail max duration limit exceeded, will retry immediately: %s\n", err)
+
+				r.closeAndReconnect()
+				continue
+			}
+
 			reason := "error reading websocket"
 			if e, ok := err.(net.Error); ok && e.Timeout() {
 				reason = fmt.Sprintf("timeout tailing new logs (timeout period: %.2fs)", timeoutInterval.Seconds())

@@ -1,5 +1,5 @@
-//go:build go1.19
-// +build go1.19
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package spec
 

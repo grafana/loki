@@ -6,13 +6,13 @@ type Sequence interface {
 	Next() bool // Advances and returns true if there is a value at this new position.
 }
 
-func New[E any, S Sequence](sequences []S, maxVal E, at func(S) E, less func(E, E) bool, close func(S)) *Tree[E, S] {
+func New[E any, S Sequence](sequences []S, maxVal E, at func(S) E, less func(E, E) bool, closeFunc func(S)) *Tree[E, S] {
 	nSequences := len(sequences)
 	t := Tree[E, S]{
 		maxVal: maxVal,
 		at:     at,
 		less:   less,
-		close:  close,
+		close:  closeFunc,
 		nodes:  make([]node[E, S], nSequences*2),
 	}
 	for i, s := range sequences {

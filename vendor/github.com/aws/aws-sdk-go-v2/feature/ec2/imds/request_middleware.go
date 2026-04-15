@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"path"
 	"time"
@@ -17,10 +17,11 @@ import (
 
 func addAPIRequestMiddleware(stack *middleware.Stack,
 	options Options,
-	getPath func(interface{}) (string, error),
-	getOutput func(*smithyhttp.Response) (interface{}, error),
+	operation string,
+	getPath func(any) (string, error),
+	getOutput func(*smithyhttp.Response) (any, error),
 ) (err error) {
-	err = addRequestMiddleware(stack, options, "GET", getPath, getOutput)
+	err = addRequestMiddleware(stack, options, "GET", operation, getPath, getOutput)
 	if err != nil {
 		return err
 	}
@@ -44,8 +45,9 @@ func addAPIRequestMiddleware(stack *middleware.Stack,
 func addRequestMiddleware(stack *middleware.Stack,
 	options Options,
 	method string,
-	getPath func(interface{}) (string, error),
-	getOutput func(*smithyhttp.Response) (interface{}, error),
+	operation string,
+	getPath func(any) (string, error),
+	getOutput func(*smithyhttp.Response) (any, error),
 ) (err error) {
 	err = awsmiddleware.AddSDKAgentKey(awsmiddleware.FeatureMetadata, "ec2-imds")(stack)
 	if err != nil {
@@ -54,6 +56,7 @@ func addRequestMiddleware(stack *middleware.Stack,
 
 	// Operation timeout
 	err = stack.Initialize.Add(&operationTimeout{
+		Disabled:       options.DisableDefaultTimeout,
 		DefaultTimeout: defaultOperationTimeout,
 	}, middleware.Before)
 	if err != nil {
@@ -86,6 +89,25 @@ func addRequestMiddleware(stack *middleware.Stack,
 		return err
 	}
 
+	err = stack.Deserialize.Add(&smithyhttp.RequestResponseLogger{
+		LogRequest:          options.ClientLogMode.IsRequest(),
+		LogRequestWithBody:  options.ClientLogMode.IsRequestWithBody(),
+		LogResponse:         options.ClientLogMode.IsResponse(),
+		LogResponseWithBody: options.ClientLogMode.IsResponseWithBody(),
+	}, middleware.After)
+	if err != nil {
+		return err
+	}
+
+	err = addSetLoggerMiddleware(stack, options)
+	if err != nil {
+		return err
+	}
+
+	if err := addProtocolFinalizerMiddlewares(stack, options, operation); err != nil {
+		return fmt.Errorf("add protocol finalizers: %w", err)
+	}
+
 	// Retry support
 	return retry.AddRetryMiddlewares(stack, retry.AddRetryMiddlewaresOptions{
 		Retryer:          options.Retryer,
@@ -93,8 +115,12 @@ func addRequestMiddleware(stack *middleware.Stack,
 	})
 }
 
+func addSetLoggerMiddleware(stack *middleware.Stack, o Options) error {
+	return middleware.AddSetLoggerMiddleware(stack, o.Logger)
+}
+
 type serializeRequest struct {
-	GetPath func(interface{}) (string, error)
+	GetPath func(any) (string, error)
 	Method  string
 }
 
@@ -124,7 +150,7 @@ func (m *serializeRequest) HandleSerialize(
 }
 
 type deserializeResponse struct {
-	GetOutput func(*smithyhttp.Response) (interface{}, error)
+	GetOutput func(*smithyhttp.Response) (any, error)
 }
 
 func (*deserializeResponse) ID() string {
@@ -150,11 +176,11 @@ func (m *deserializeResponse) HandleDeserialize(
 
 	// read the full body so that any operation timeouts cleanup will not race
 	// the body being read.
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return out, metadata, fmt.Errorf("read response body failed, %w", err)
 	}
-	resp.Body = ioutil.NopCloser(bytes.NewReader(body))
+	resp.Body = io.NopCloser(bytes.NewReader(body))
 
 	// Anything that's not 200 |< 300 is error
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -235,6 +261,7 @@ const (
 // Otherwise the timeout cleanup will race the resource being consumed
 // upstream.
 type operationTimeout struct {
+	Disabled       bool
 	DefaultTimeout time.Duration
 }
 
@@ -245,6 +272,10 @@ func (m *operationTimeout) HandleInitialize(
 ) (
 	output middleware.InitializeOutput, metadata middleware.Metadata, err error,
 ) {
+	if m.Disabled {
+		return next.HandleInitialize(ctx, input)
+	}
+
 	if _, ok := ctx.Deadline(); !ok && m.DefaultTimeout != 0 {
 		var cancelFn func()
 		ctx, cancelFn = context.WithTimeout(ctx, m.DefaultTimeout)
@@ -263,4 +294,20 @@ func appendURIPath(base, add string) string {
 		reqPath += "/"
 	}
 	return reqPath
+}
+
+func addProtocolFinalizerMiddlewares(stack *middleware.Stack, options Options, operation string) error {
+	if err := stack.Finalize.Add(&resolveAuthSchemeMiddleware{operation: operation, options: options}, middleware.Before); err != nil {
+		return fmt.Errorf("add ResolveAuthScheme: %w", err)
+	}
+	if err := stack.Finalize.Insert(&getIdentityMiddleware{options: options}, "ResolveAuthScheme", middleware.After); err != nil {
+		return fmt.Errorf("add GetIdentity: %w", err)
+	}
+	if err := stack.Finalize.Insert(&resolveEndpointV2Middleware{options: options}, "GetIdentity", middleware.After); err != nil {
+		return fmt.Errorf("add ResolveEndpointV2: %w", err)
+	}
+	if err := stack.Finalize.Insert(&signRequestMiddleware{}, "ResolveEndpointV2", middleware.After); err != nil {
+		return fmt.Errorf("add Signing: %w", err)
+	}
+	return nil
 }

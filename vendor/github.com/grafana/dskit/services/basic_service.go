@@ -3,7 +3,10 @@ package services
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
+
+	"go.uber.org/atomic"
 )
 
 // StartingFn is called when service enters Starting state. If StartingFn returns
@@ -325,26 +328,59 @@ func (b *BasicService) State() State {
 }
 
 // AddListener is part of Service interface.
-func (b *BasicService) AddListener(listener Listener) {
+func (b *BasicService) AddListener(listener Listener) func() {
 	b.stateMu.Lock()
 	defer b.stateMu.Unlock()
 
 	if b.state == Terminated || b.state == Failed {
 		// no more state transitions will be done, and channel wouldn't get closed
-		return
+		return func() {}
 	}
 
 	// There are max 4 state transitions. We use buffer to avoid blocking the sender,
 	// which holds service lock.
-	ch := make(chan func(l Listener), 4)
-	b.listeners = append(b.listeners, ch)
+	listenerCh := make(chan func(l Listener), 4)
+	b.listeners = append(b.listeners, listenerCh)
+
+	stop := make(chan struct{})
+	stopClosed := atomic.NewBool(false)
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 
 	// each listener has its own goroutine, processing events.
 	go func() {
-		for lfn := range ch {
-			lfn(listener)
+		defer wg.Done()
+		for {
+			select {
+			// Process events from service.
+			case lfn, ok := <-listenerCh:
+				if !ok {
+					return
+				}
+				lfn(listener)
+
+			case <-stop:
+				return
+			}
 		}
 	}()
+
+	return func() {
+		if stopClosed.CompareAndSwap(false, true) {
+			// Tell listener goroutine to stop.
+			close(stop)
+		}
+
+		// Remove channel for notifications from service's list of listeners.
+		b.stateMu.Lock()
+		b.listeners = slices.DeleteFunc(b.listeners, func(c chan func(l Listener)) bool {
+			return listenerCh == c
+		})
+		b.stateMu.Unlock()
+
+		wg.Wait()
+	}
 }
 
 // lock must be held here. Read lock would be good enough, but since

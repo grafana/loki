@@ -3,27 +3,29 @@ package syntax
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
 	EmptyMatchers = "{}"
 
 	errAtleastOneEqualityMatcherRequired = "queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~\".*\" does not meet this requirement, but app=~\".+\" will"
+
+	// Prometheus internal data structure panics if given more than this.
+	maxStreamLabelsSize = 1<<24 - 1 // 16MB
 )
 
 var parserPool = sync.Pool{
 	New: func() interface{} {
 		p := &parser{
-			p:      &exprParserImpl{},
+			p:      &syntaxParserImpl{},
 			Reader: strings.NewReader(""),
 			lexer:  &lexer{},
 		}
@@ -31,33 +33,39 @@ var parserPool = sync.Pool{
 	},
 }
 
-const maxInputSize = 5120
+// (E.Welch) We originally added this limit from fuzz testing and realizing there should be some maximum limit to an allowed query size.
+// The original limit was 5120 based on some internet searching and a best estimate of what a reasonable limit would be.
+// We have seen use cases with queries containing a lot of filter expressions or long expanded variable names where this limit was too small.
+// Apparently the spec does not specify a limit, and more internet searching suggests almost all browsers will handle 100k+ length urls without issue
+// Some limit here still seems prudent however, so the new limit is now 128k.
+// Also note this is used to allocate the buffer for reading the query string, so there is some memory cost to making this larger.
+const maxInputSize = 131072
 
 func init() {
 	// Improve the error messages coming out of yacc.
-	exprErrorVerbose = true
+	syntaxErrorVerbose = true
 	// uncomment when you need to understand yacc rule tree.
 	// exprDebug = 3
 	for str, tok := range tokens {
-		exprToknames[tok-exprPrivate+1] = str
+		syntaxToknames[tok-syntaxPrivate+1] = str
 	}
 }
 
 type parser struct {
-	p *exprParserImpl
+	p *syntaxParserImpl
 	*lexer
 	expr Expr
 	*strings.Reader
 }
 
 func (p *parser) Parse() (Expr, error) {
-	p.lexer.errs = p.lexer.errs[:0]
-	p.lexer.Scanner.Error = func(_ *Scanner, msg string) {
-		p.lexer.Error(msg)
+	p.errs = p.errs[:0]
+	p.Scanner.Error = func(_ *Scanner, msg string) {
+		p.Error(msg)
 	}
 	e := p.p.Parse(p)
-	if e != 0 || len(p.lexer.errs) > 0 {
-		return nil, p.lexer.errs[0]
+	if e != 0 || len(p.errs) > 0 {
+		return nil, p.errs[0]
 	}
 	return p.expr, nil
 }
@@ -94,9 +102,17 @@ func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	p := parserPool.Get().(*parser)
 	defer parserPool.Put(p)
 
-	p.Reader.Reset(input)
-	p.lexer.Init(p.Reader)
+	p.Reset(input)
+	p.Init(p.Reader)
 	return p.Parse()
+}
+
+func MustParseExpr(input string) Expr {
+	expr, err := ParseExpr(input)
+	if err != nil {
+		panic(err)
+	}
+	return expr
 }
 
 func validateExpr(expr Expr) error {
@@ -105,9 +121,27 @@ func validateExpr(expr Expr) error {
 		return validateSampleExpr(e)
 	case LogSelectorExpr:
 		return validateLogSelectorExpression(e)
+	case VariantsExpr:
+		return validateVariantsExpr(e)
 	default:
 		return logqlmodel.NewParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
 	}
+}
+
+func validateVariantsExpr(e VariantsExpr) error {
+	err := validateLogSelectorExpression(e.LogRange().Left)
+	if err != nil {
+		return err
+	}
+
+	for _, variant := range e.Variants() {
+		err = validateSampleExpr(variant)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // validateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
@@ -121,14 +155,24 @@ func validateMatchers(matchers []*labels.Matcher) error {
 
 // ParseMatchers parses a string and returns labels matchers, if the expression contains
 // anything else it will return an error.
-func ParseMatchers(input string) ([]*labels.Matcher, error) {
-	expr, err := ParseExpr(input)
+func ParseMatchers(input string, validate bool) ([]*labels.Matcher, error) {
+	var (
+		expr Expr
+		err  error
+	)
+
+	if validate {
+		expr, err = ParseExpr(input)
+	} else {
+		expr, err = ParseExprWithoutValidation(input)
+	}
+
 	if err != nil {
 		return nil, err
 	}
 	matcherExpr, ok := expr.(*MatchersExpr)
 	if !ok {
-		return nil, errors.New("only label matchers is supported")
+		return nil, logqlmodel.ErrParseMatchers
 	}
 	return matcherExpr.Mts, nil
 }
@@ -181,6 +225,11 @@ func validateSampleExpr(expr SampleExpr) error {
 			}
 		}
 		return validateSampleExpr(e.Left)
+	case *LabelReplaceExpr:
+		if e.err != nil {
+			return e.err
+		}
+		return validateSampleExpr(e.Left)
 	default:
 		selector, err := e.Selector()
 		if err != nil {
@@ -228,15 +277,14 @@ func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
 
 // ParseLabels parses labels from a string using logql parser.
 func ParseLabels(lbs string) (labels.Labels, error) {
-	ls, err := promql_parser.ParseMetric(lbs)
-	if err != nil {
-		return nil, err
+	if len(lbs) > maxStreamLabelsSize {
+		return labels.EmptyLabels(), fmt.Errorf("labels size %d MiB exceeds limit of %d", len(lbs)>>20, maxStreamLabelsSize>>20)
 	}
-	// Sort labels to ensure functionally equivalent
-	// inputs map to the same output
-	sort.Sort(ls)
+	ls, err := promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
+	if err != nil {
+		return labels.EmptyLabels(), err
+	}
 
-	// Use the label builder to trim empty label values.
 	// Empty label values are equivalent to absent labels
 	// in Prometheus, but they unfortunately alter the
 	// Hash values created. This can cause problems in Loki
@@ -245,5 +293,5 @@ func ParseLabels(lbs string) (labels.Labels, error) {
 	// Therefore we must normalize early in the write path.
 	// See https://github.com/grafana/loki/pull/7355
 	// for more information
-	return labels.NewBuilder(ls).Labels(), nil
+	return ls.WithoutEmpty(), nil
 }

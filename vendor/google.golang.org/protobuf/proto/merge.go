@@ -21,7 +21,7 @@ import (
 // The unknown fields of src are appended to the unknown fields of dst.
 //
 // It is semantically equivalent to unmarshaling the encoded form of src
-// into dst with the UnmarshalOptions.Merge option specified.
+// into dst with the [UnmarshalOptions.Merge] option specified.
 func Merge(dst, src Message) {
 	// TODO: Should nil src be treated as semantically equivalent to a
 	// untyped, read-only, empty message? What about a nil dst?
@@ -57,6 +57,12 @@ func Clone(m Message) Message {
 	dst := src.New()
 	mergeOptions{}.mergeMessage(dst, src)
 	return dst.Interface()
+}
+
+// CloneOf returns a deep copy of m. If the top-level message is invalid,
+// it returns an invalid message as well.
+func CloneOf[M Message](m M) M {
+	return Clone(m).(M)
 }
 
 // mergeOptions provides a namespace for merge functions, and can be

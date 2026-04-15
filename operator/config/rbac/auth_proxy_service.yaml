@@ -2,12 +2,13 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
+    app.kubernetes.io/component: metrics
   name: controller-manager-metrics-service
 spec:
   ports:
-  - name: https
+  - name: metrics
     port: 8443
     protocol: TCP
-    targetPort: https
+    targetPort: metrics
   selector:
     name: loki-operator-controller-manager

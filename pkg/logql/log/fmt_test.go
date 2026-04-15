@@ -2,13 +2,14 @@ package log
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func Test_lineFormatter_Format(t *testing.T) {
@@ -352,7 +353,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			"timestamp",
 			newMustLineFormatter("{{ __timestamp__ | date \"2006-01-02\" }} bar {{ .bar }}"),
 			labels.FromStrings("bar", "2"),
-			1656353124120000000,
+			1656331200000000000,
 			[]byte("2022-06-27 bar 2"),
 			labels.FromStrings("bar", "2"),
 			[]byte("1"),
@@ -478,10 +479,37 @@ func Test_lineFormatter_Format(t *testing.T) {
 			labels.FromStrings("foo", "hello"),
 			[]byte("1"),
 		},
+		{
+			"simple key template",
+			newMustLineFormatter("{{.foo}}"),
+			labels.FromStrings("foo", "bar"),
+			0,
+			[]byte("bar"),
+			labels.FromStrings("foo", "bar"),
+			nil,
+		},
+		{
+			"simple key template with space",
+			newMustLineFormatter("{{.foo}}  "),
+			labels.FromStrings("foo", "bar"),
+			0,
+			[]byte("bar  "),
+			labels.FromStrings("foo", "bar"),
+			nil,
+		},
+		{
+			"simple key template with missing key",
+			newMustLineFormatter("{{.missing}}"),
+			labels.FromStrings("foo", "bar"),
+			0,
+			[]byte{},
+			labels.FromStrings("foo", "bar"),
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			builder := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			builder := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			builder.Reset()
 			outLine, _ := tt.fmter.Process(tt.ts, tt.in, builder)
 			require.Equal(t, tt.want, outLine)
@@ -514,6 +542,22 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		in   labels.Labels
 		want labels.Labels
 	}{
+		{
+			"rename label",
+			mustNewLabelsFormatter([]LabelFmt{
+				NewRenameLabelFmt("baz", "foo"),
+			}),
+			labels.FromStrings("foo", "blip", "bar", "blop"),
+			labels.FromStrings("bar", "blop", "baz", "blip"),
+		},
+		{
+			"rename and overwrite existing label",
+			mustNewLabelsFormatter([]LabelFmt{
+				NewRenameLabelFmt("bar", "foo"),
+			}),
+			labels.FromStrings("foo", "blip", "bar", "blop"),
+			labels.FromStrings("bar", "blip"),
+		},
 		{
 			"combined with template",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", "{{.foo}} and {{.bar}}")}),
@@ -667,53 +711,53 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		{
 			"unixToTime days",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "19503"}},
-			labels.Labels{
-				{Name: "bar", Value: "19503"},
-				{Name: "foo", Value: epochDay19503.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "19503"),
+			labels.FromStrings(
+				"bar", "19503",
+				"foo", epochDay19503.String(),
+			),
 		},
 		{
 			"unixToTime seconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1679577215"}},
-			labels.Labels{
-				{Name: "bar", Value: "1679577215"},
-				{Name: "foo", Value: epochSeconds1679577215.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "1679577215"),
+			labels.FromStrings(
+				"bar", "1679577215",
+				"foo", epochSeconds1679577215.String(),
+			),
 		},
 		{
 			"unixToTime milliseconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1257894000000"}},
-			labels.Labels{
-				{Name: "bar", Value: "1257894000000"},
-				{Name: "foo", Value: epochMilliseconds1257894000000.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "1257894000000"),
+			labels.FromStrings(
+				"bar", "1257894000000",
+				"foo", epochMilliseconds1257894000000.String(),
+			),
 		},
 		{
 			"unixToTime microseconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1673798889902000"}},
-			labels.Labels{
-				{Name: "bar", Value: "1673798889902000"},
-				{Name: "foo", Value: epochMicroseconds1673798889902000.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "1673798889902000"),
+			labels.FromStrings(
+				"bar", "1673798889902000",
+				"foo", epochMicroseconds1673798889902000.String(),
+			),
 		},
 		{
 			"unixToTime nanoseconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1000000000000000000"}},
-			labels.Labels{
-				{Name: "bar", Value: "1000000000000000000"},
-				{Name: "foo", Value: epochNanoseconds1000000000000000000.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "1000000000000000000"),
+			labels.FromStrings(
+				"bar", "1000000000000000000",
+				"foo", epochNanoseconds1000000000000000000.String(),
+			),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			builder := NewBaseLabelsBuilder().ForLabels(tt.in, tt.in.Hash())
+			builder := NewBaseLabelsBuilder().ForLabels(tt.in, labels.StableHash(tt.in))
 			builder.Reset()
 			_, _ = tt.fmter.Process(1661518453244672570, []byte("test line"), builder)
 			require.Equal(t, tt.want, builder.LabelsResult().Labels())
@@ -899,7 +943,7 @@ func TestLabelFormatter_RequiredLabelNames(t *testing.T) {
 }
 
 func TestDecolorizer(t *testing.T) {
-	var decolorizer, _ = NewDecolorizer()
+	decolorizer, _ := NewDecolorizer()
 	tests := []struct {
 		name     string
 		src      []byte
@@ -910,7 +954,7 @@ func TestDecolorizer(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var result, _ = decolorizer.Process(0, tt.src, nil)
+			result, _ := decolorizer.Process(0, tt.src, nil)
 			require.Equal(t, tt.expected, result)
 		})
 	}
@@ -922,4 +966,48 @@ func TestInvalidUnixTimes(t *testing.T) {
 
 	_, err = unixToTime("464")
 	require.Error(t, err)
+}
+
+func TestMapPoolPanic(_ *testing.T) {
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	wgFinished := sync.WaitGroup{}
+
+	ls := labels.FromStrings("cluster", "us-central-0")
+	builder := NewBaseLabelsBuilder().ForLabels(ls, labels.StableHash(ls))
+	// this specific line format was part of the query that first alerted us to the panic caused by map pooling in the label/line formatter Process functions
+	tmpl := `[1m{{if .level }}{{alignRight 5 .level}}{{else if .severity}}{{alignRight 5 .severity}}{{end}}[0m [90m[{{alignRight 10 .resources_service_instance_id}}{{if .attributes_thread_name}}/{{alignRight 20 .attributes_thread_name}}{{else if eq "java" .resources_telemetry_sdk_language }}                    {{end}}][0m [36m{{if .instrumentation_scope_name }}{{alignRight 40 .instrumentation_scope_name}}{{end}}[0m {{.body}} {{if .traceid}} [37m[3m[traceid={{.traceid}}]{{end}}`
+	a := newMustLineFormatter(tmpl)
+	a.Process(0,
+		[]byte("logger=sqlstore.metrics traceID=XXXXXXXXXXXXXXXXXXXXXXXXXXXX t=2024-01-04T23:58:47.696779826Z level=debug msg=\"query finished\" status=success elapsedtime=1.523571ms sql=\"some SQL query\" error=null"),
+		builder,
+	)
+
+	for i := 0; i < 100; i++ {
+		wgFinished.Add(1)
+		go func() {
+			wg.Wait()
+			a := newMustLineFormatter(tmpl)
+			a.Process(0,
+				[]byte("logger=sqlstore.metrics traceID=XXXXXXXXXXXXXXXXXXXXXXXXXXXX t=2024-01-04T23:58:47.696779826Z level=debug msg=\"query finished\" status=success elapsedtime=1.523571ms sql=\"some SQL query\" error=null"),
+				builder,
+			)
+			wgFinished.Done()
+		}()
+	}
+	for i := 0; i < 100; i++ {
+		wgFinished.Add(1)
+		j := i
+		go func() {
+			wg.Wait()
+			m := smp.Get()
+			for k, v := range m {
+				m[k] = fmt.Sprintf("%s%d", v, j)
+			}
+			smp.Put(m)
+			wgFinished.Done()
+		}()
+	}
+	wg.Done()
+	wgFinished.Wait()
 }

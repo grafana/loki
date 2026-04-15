@@ -3,7 +3,9 @@ package base
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -12,7 +14,7 @@ import (
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -61,7 +63,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Ring flags
 	cfg.KVStore.RegisterFlagsWithPrefix("ruler.ring.", "rulers/", f)
-	f.DurationVar(&cfg.HeartbeatPeriod, "ruler.ring.heartbeat-period", 5*time.Second, "Interval between heartbeats sent to the ring. 0 = disabled.")
+	f.DurationVar(&cfg.HeartbeatPeriod, "ruler.ring.heartbeat-period", 5*time.Second, "Interval between heartbeats sent to the ring.")
 	f.DurationVar(&cfg.HeartbeatTimeout, "ruler.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ruler ring members are considered unhealthy within the ring. 0 = never (timeout disabled).")
 
 	// Instance flags
@@ -88,7 +90,7 @@ func (cfg *RingConfig) ToLifecyclerConfig(logger log.Logger) (ring.BasicLifecycl
 
 	return ring.BasicLifecyclerConfig{
 		ID:                  cfg.InstanceID,
-		Addr:                fmt.Sprintf("%s:%d", instanceAddr, instancePort),
+		Addr:                net.JoinHostPort(instanceAddr, strconv.Itoa(instancePort)),
 		HeartbeatPeriod:     cfg.HeartbeatPeriod,
 		TokensObservePeriod: 0,
 		NumTokens:           cfg.NumTokens,

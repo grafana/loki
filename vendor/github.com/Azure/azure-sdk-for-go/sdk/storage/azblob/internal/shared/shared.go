@@ -9,6 +9,7 @@ package shared
 import (
 	"errors"
 	"fmt"
+	"hash/crc64"
 	"io"
 	"net"
 	"net/url"
@@ -37,7 +38,13 @@ const (
 	HeaderIfNoneMatch       = "If-None-Match"
 	HeaderIfUnmodifiedSince = "If-Unmodified-Since"
 	HeaderRange             = "Range"
+	HeaderXmsVersion        = "x-ms-version"
+	HeaderXmsRequestID      = "x-ms-request-id"
 )
+
+const crc64Polynomial uint64 = 0x9A6C9329AC4BC9B5
+
+var CRC64Table = crc64.MakeTable(crc64Polynomial)
 
 // CopyOptions returns a zero-value T if opts is nil.
 // If opts is not nil, a copy is made and its address returned.
@@ -80,22 +87,6 @@ func ParseConnectionString(connectionString string) (ParsedConnectionString, err
 		connStrMap[parts[0]] = parts[1]
 	}
 
-	accountName, ok := connStrMap["AccountName"]
-	if !ok {
-		return ParsedConnectionString{}, errors.New("connection string missing AccountName")
-	}
-
-	accountKey, ok := connStrMap["AccountKey"]
-	if !ok {
-		sharedAccessSignature, ok := connStrMap["SharedAccessSignature"]
-		if !ok {
-			return ParsedConnectionString{}, errors.New("connection string missing AccountKey and SharedAccessSignature")
-		}
-		return ParsedConnectionString{
-			ServiceURL: fmt.Sprintf("%v://%v.blob.%v/?%v", defaultScheme, accountName, defaultSuffix, sharedAccessSignature),
-		}, nil
-	}
-
 	protocol, ok := connStrMap["DefaultEndpointsProtocol"]
 	if !ok {
 		protocol = defaultScheme
@@ -106,26 +97,44 @@ func ParseConnectionString(connectionString string) (ParsedConnectionString, err
 		suffix = defaultSuffix
 	}
 
-	if blobEndpoint, ok := connStrMap["BlobEndpoint"]; ok {
+	blobEndpoint, has_blobEndpoint := connStrMap["BlobEndpoint"]
+	accountName, has_accountName := connStrMap["AccountName"]
+
+	var serviceURL string
+	if has_blobEndpoint {
+		serviceURL = blobEndpoint
+	} else if has_accountName {
+		serviceURL = fmt.Sprintf("%v://%v.blob.%v", protocol, accountName, suffix)
+	} else {
+		return ParsedConnectionString{}, errors.New("connection string needs either AccountName or BlobEndpoint")
+	}
+
+	if !strings.HasSuffix(serviceURL, "/") {
+		// add a trailing slash to be consistent with the portal
+		serviceURL += "/"
+	}
+
+	accountKey, has_accountKey := connStrMap["AccountKey"]
+	sharedAccessSignature, has_sharedAccessSignature := connStrMap["SharedAccessSignature"]
+
+	if has_accountName && has_accountKey {
 		return ParsedConnectionString{
-			ServiceURL:  blobEndpoint,
+			ServiceURL:  serviceURL,
 			AccountName: accountName,
 			AccountKey:  accountKey,
 		}, nil
+	} else if has_sharedAccessSignature {
+		return ParsedConnectionString{
+			ServiceURL: fmt.Sprintf("%v?%v", serviceURL, sharedAccessSignature),
+		}, nil
+	} else {
+		return ParsedConnectionString{}, errors.New("connection string needs either AccountKey or SharedAccessSignature")
 	}
 
-	return ParsedConnectionString{
-		ServiceURL:  fmt.Sprintf("%v://%v.blob.%v", protocol, accountName, suffix),
-		AccountName: accountName,
-		AccountKey:  accountKey,
-	}, nil
 }
 
 // SerializeBlobTags converts tags to generated.BlobTags
 func SerializeBlobTags(tagsMap map[string]string) *generated.BlobTags {
-	if tagsMap == nil {
-		return nil
-	}
 	blobTagSet := make([]*generated.BlobTag, 0)
 	for key, val := range tagsMap {
 		newKey, newVal := key, val
@@ -135,7 +144,7 @@ func SerializeBlobTags(tagsMap map[string]string) *generated.BlobTags {
 }
 
 func SerializeBlobTagsToStrPtr(tagsMap map[string]string) *string {
-	if tagsMap == nil {
+	if len(tagsMap) == 0 {
 		return nil
 	}
 	tags := make([]string, 0)
@@ -235,4 +244,28 @@ func IsIPEndpointStyle(host string) bool {
 		host = host[1 : len(host)-1]
 	}
 	return net.ParseIP(host) != nil
+}
+
+// ReadAtLeast reads from r into buf until it has read at least min bytes.
+// It returns the number of bytes copied and an error.
+// The EOF error is returned if no bytes were read or
+// EOF happened after reading fewer than min bytes.
+// If min is greater than the length of buf, ReadAtLeast returns ErrShortBuffer.
+// On return, n >= min if and only if err == nil.
+// If r returns an error having read at least min bytes, the error is dropped.
+// This method is same as io.ReadAtLeast except that it does not
+// return io.ErrUnexpectedEOF when fewer than min bytes are read.
+func ReadAtLeast(r io.Reader, buf []byte, min int) (n int, err error) {
+	if len(buf) < min {
+		return 0, io.ErrShortBuffer
+	}
+	for n < min && err == nil {
+		var nn int
+		nn, err = r.Read(buf[n:])
+		n += nn
+	}
+	if n >= min {
+		err = nil
+	}
+	return
 }

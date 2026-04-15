@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive
 
 // CopyMap makes a copy of the given map
 func CopyMap(m map[string]string) map[string]string {

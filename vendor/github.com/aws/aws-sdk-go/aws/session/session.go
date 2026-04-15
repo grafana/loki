@@ -779,6 +779,14 @@ func mergeConfigSrcs(cfg, userCfg *aws.Config,
 		cfg.EndpointResolver = wrapEC2IMDSEndpoint(cfg.EndpointResolver, ec2IMDSEndpoint, endpointMode)
 	}
 
+	cfg.EC2MetadataEnableFallback = userCfg.EC2MetadataEnableFallback
+	if cfg.EC2MetadataEnableFallback == nil && envCfg.EC2IMDSv1Disabled != nil {
+		cfg.EC2MetadataEnableFallback = aws.Bool(!*envCfg.EC2IMDSv1Disabled)
+	}
+	if cfg.EC2MetadataEnableFallback == nil && sharedCfg.EC2IMDSv1Disabled != nil {
+		cfg.EC2MetadataEnableFallback = aws.Bool(!*sharedCfg.EC2IMDSv1Disabled)
+	}
+
 	cfg.S3UseARNRegion = userCfg.S3UseARNRegion
 	if cfg.S3UseARNRegion == nil {
 		cfg.S3UseARNRegion = &envCfg.S3UseARNRegion

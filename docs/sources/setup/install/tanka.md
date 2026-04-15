@@ -1,7 +1,7 @@
 ---
 title: Tanka 
 menuTitle: Install using Tanka
-description: Install Loki using Tanka
+description: Describes how to install Loki using Tanka.
 aliases: 
   - ../../installation/tanka/
 weight: 300
@@ -14,9 +14,13 @@ deprecated. Tanka is used by Grafana Labs to run Grafana Loki in production.
 
 The Tanka installation runs the Loki cluster in microservices mode.
 
+{{< admonition type="note" >}}
+Grafana Loki does not come with any included authentication layer. You must run an authenticating reverse proxy in front of your services to prevent unauthorized access to Loki (for example, nginx). Refer to [Manage authentication](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/authentication/) for a list of open-source reverse proxies you can use.
+{{< /admonition >}}
+
 ## Prerequisites
 
-Install the latest version of Tanka (version v0.17.1 or a more recent version) for the `tk env`
+Install the latest version of Tanka (version v0.31.0 or a more recent version) for the `tk env`
 commands. Prebuilt binaries for Tanka can be found at the [Tanka releases
 URL](https://github.com/grafana/tanka/releases).
 
@@ -24,7 +28,7 @@ In your config repo, if you don't have a Tanka application, create a folder and
 call `tk init` inside of it. Then create an environment for Loki and provide the
 URL for the Kubernetes API server to deploy to (e.g., `https://localhost:6443`):
 
-```
+```bash
 mkdir <application name>
 cd <application name>
 tk init
@@ -35,7 +39,13 @@ Install `jsonnet-bundler` (`jb`), find instructions for your platform in Tanka's
 
 ## Deploying
 
-Download and install the Loki and Promtail module using `jb` (version v0.4.0 or a more recent version):
+{{< docs/shared source="loki" lookup="promtail-deprecation" version="<LOKI_VERSION>" >}}
+
+{{< admonition type="note" >}}
+We recommend deploying [Grafana Alloy](https://grafana.com/docs/alloy/latest/set-up/) as your log shipping agent instead of Promtail.
+{{< /admonition >}}
+
+Download and install the Loki and Promtail module using `jb` (version v0.6.0 or a more recent version):
 
 ```bash
 jb init  # not required if you already ran `tk init`
@@ -46,12 +56,10 @@ jb install github.com/grafana/loki/production/ksonnet/promtail@main
 Revise the YAML contents of `environments/loki/main.jsonnet`, updating these variables:
 
 - Update the `username`, `password`, and the relevant `htpasswd` variable values.
-- Update the S3 or GCS variable values, depending on your object storage type. See [storage_config](/docs/loki/latest/configuration/#storage_config) for more configuration details.
+- Update the S3 or GCS variable values, depending on your object storage type. See [storage_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#storage_config) for more configuration details.
 - Remove from the configuration the S3 or GCS object storage variables that are not part of your setup.
-- Update the value of `boltdb_shipper_shared_store` or `tsdb_shipper_shared_store` to the type of object storage you are using. Options are `gcs`, `s3`, `azure`, `cos` or `filesystem`. Update the `object_store` variable under the `schema_config` section to the same value. 
 - Update the Promtail configuration `container_root_path` variable's value to reflect your root path for the Docker daemon. Run `docker info | grep "Root Dir"` to acquire your root path.
-- Update the `from` value in the Loki `schema_config` section to no more than 14 days prior to the current date. The `from` date represents the first day for which the `schema_config` section is valid. For example, if today is `2021-01-15`, set `from` to `2021-01-01`. This recommendation is based on Loki's default acceptance of log lines up to 14 days in the past. The `reject_old_samples_max_age` configuration variable controls the acceptance range.
-
+- Update the `from` value in the Loki `schema_config` section to no more than 14 days prior to the current date. The `from` date represents the first day for which the `schema_config` section is valid. For example, if today is `2021-01-15`, set `from` to `2021-01-01`. This recommendation is based on the Loki default acceptance of log lines up to 14 days in the past. The `reject_old_samples_max_age` configuration variable controls the acceptance range.
 
 ```jsonnet
 local gateway = import 'loki/gateway.libsonnet';
@@ -76,9 +84,6 @@ loki + promtail + gateway {
     bigtable_instance: 'instance',
     bigtable_project: 'project',
     gcs_bucket_name: 'bucket',
-
-    //Set this variable based on the type of object storage you're using.
-    boltdb_shipper_shared_store: 'my-object-storage-backend-type',
 
     //Update the object_store and from fields
     loki+: {

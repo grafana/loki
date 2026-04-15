@@ -1,9 +1,9 @@
-package util
+package util //nolint:revive
 
 import (
 	"fmt"
 
-	"github.com/imdario/mergo"
+	"dario.cat/mergo"
 	"gopkg.in/yaml.v2"
 )
 

@@ -3,11 +3,14 @@ package logql
 import (
 	"math"
 	"testing"
+	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestDefaultEvaluator_DivideByZero(t *testing.T) {
@@ -18,6 +21,7 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 		&promql.Sample{
 			T: 1, F: 0,
 		},
+		false,
 		false,
 		false,
 	)
@@ -33,20 +37,21 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 		},
 		false,
 		false,
+		false,
 	)
 	require.NoError(t, err)
 	require.Equal(t, true, math.IsNaN(binOp.F))
 }
 func TestDefaultEvaluator_Sortable(t *testing.T) {
 	logqlSort := `sort(rate(({app=~"foo|bar"} |~".+bar")[1m])) `
-	sortable, err := Sortable(LiteralParams{qs: logqlSort})
+	sortable, err := Sortable(LiteralParams{queryString: logqlSort, queryExpr: syntax.MustParseExpr(logqlSort)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	require.Equal(t, true, sortable)
 
 	logqlSum := `sum(rate(({app=~"foo|bar"} |~".+bar")[1m])) `
-	sortableSum, err := Sortable(LiteralParams{qs: logqlSum})
+	sortableSum, err := Sortable(LiteralParams{queryString: logqlSum, queryExpr: syntax.MustParseExpr(logqlSum)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,14 +225,14 @@ func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			// comparing a binop should yield the unfiltered (non-nil variant) regardless
 			// of whether this is a vector-vector comparison or not.
-			op, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, false)
+			op, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, false, false)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, op)
-			op2, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, true)
+			op2, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, false, true)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, op2)
 
-			op3, err := syntax.MergeBinOp(tc.op, tc.lhs, nil, false, true)
+			op3, err := syntax.MergeBinOp(tc.op, tc.lhs, nil, false, false, true)
 			require.NoError(t, err)
 			require.Nil(t, op3)
 
@@ -235,20 +240,149 @@ func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
 			if tc.expected.F == 0 {
 				//  ensure zeroed predicates are filtered out
 
-				op, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, true, false)
+				op, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, true, false)
 				require.NoError(t, err)
 				require.Nil(t, op)
-				op2, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, true, true)
+				op2, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, true, true)
 				require.NoError(t, err)
 				require.Nil(t, op2)
 
 				// for vector-vector comparisons, ensure that nil right hand sides
 				// translate into nil results
-				op3, err := syntax.MergeBinOp(tc.op, tc.lhs, nil, true, true)
+				op3, err := syntax.MergeBinOp(tc.op, tc.lhs, nil, false, true, true)
 				require.NoError(t, err)
 				require.Nil(t, op3)
 
 			}
 		})
+	}
+}
+
+func TestEmptyNestedEvaluator(t *testing.T) {
+
+	for _, tc := range []struct {
+		desc string
+		ev   StepEvaluator
+	}{
+		{
+			desc: "LiteralStepEvaluator",
+			ev:   &LiteralStepEvaluator{nextEv: &emptyEvaluator{}},
+		},
+		{
+			desc: "LabelReplaceEvaluator",
+			ev:   &LabelReplaceEvaluator{nextEvaluator: &emptyEvaluator{}},
+		},
+		{
+			desc: "BinOpStepEvaluator",
+			ev:   &BinOpStepEvaluator{rse: &emptyEvaluator{}},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			ok, _, _ := tc.ev.Next()
+			require.False(t, ok)
+		})
+	}
+
+}
+
+func TestLiteralStepEvaluator(t *testing.T) {
+	cases := []struct {
+		name     string
+		expr     *LiteralStepEvaluator
+		expected []float64
+	}{
+		{
+			name: "vector op scalar",
+			// e.g: sum(count_over_time({app="foo"}[1m])) > 20
+			expr: &LiteralStepEvaluator{
+				nextEv:   newReturnVectorEvaluator([]float64{20, 21, 22, 23}),
+				val:      20,
+				inverted: true, //  set to true, because literal expression is not on left.
+				op:       ">",
+			},
+			expected: []float64{21, 22, 23},
+		},
+		{
+			name: "scalar op vector",
+			// e.g: 20 < sum(count_over_time({app="foo"}[1m]))
+			expr: &LiteralStepEvaluator{
+				nextEv:   newReturnVectorEvaluator([]float64{20, 21, 22, 23}),
+				val:      20,
+				inverted: false,
+				op:       "<",
+			},
+			expected: []float64{21, 22, 23},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ok, _, got := tc.expr.Next()
+			require.True(t, ok)
+			vecs := got.SampleVector()
+			gotSamples := make([]float64, 0, len(vecs))
+
+			for _, v := range vecs {
+				gotSamples = append(gotSamples, v.F)
+			}
+
+			assert.Equal(t, tc.expected, gotSamples)
+		})
+	}
+}
+
+type emptyEvaluator struct{}
+
+func (*emptyEvaluator) Next() (ok bool, ts int64, r StepResult) {
+	return false, 0, nil
+}
+
+func (*emptyEvaluator) Close() error {
+	return nil
+}
+
+func (*emptyEvaluator) Error() error {
+	return nil
+}
+
+func (*emptyEvaluator) Explain(Node) {}
+
+// returnVectorEvaluator returns elements of vector
+// passed in, everytime it's `Next()` is called. Used for testing.
+type returnVectorEvaluator struct {
+	vec promql.Vector
+}
+
+func (e *returnVectorEvaluator) Next() (ok bool, ts int64, r StepResult) {
+	return true, 0, SampleVector(e.vec)
+}
+
+func (*returnVectorEvaluator) Close() error {
+	return nil
+}
+
+func (*returnVectorEvaluator) Error() error {
+	return nil
+}
+
+func (*returnVectorEvaluator) Explain(Node) {
+
+}
+
+func newReturnVectorEvaluator(vec []float64) *returnVectorEvaluator {
+	testTime := time.Now().Unix()
+
+	pvec := make([]promql.Sample, 0, len(vec))
+
+	for _, v := range vec {
+		pvec = append(pvec, promql.Sample{
+			T:      testTime,
+			F:      v,
+			Metric: labels.FromStrings("foo", "bar"),
+		})
+	}
+
+	return &returnVectorEvaluator{
+		vec: pvec,
 	}
 }

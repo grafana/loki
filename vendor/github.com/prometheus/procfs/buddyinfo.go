@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -55,26 +55,24 @@ func parseBuddyInfo(r io.Reader) ([]BuddyInfo, error) {
 		parts := strings.Fields(line)
 
 		if len(parts) < 4 {
-			return nil, fmt.Errorf("invalid number of fields when parsing buddyinfo")
+			return nil, fmt.Errorf("%w: Invalid number of fields, found: %v", ErrFileParse, parts)
 		}
 
-		node := strings.TrimRight(parts[1], ",")
-		zone := strings.TrimRight(parts[3], ",")
+		node := strings.TrimSuffix(parts[1], ",")
+		zone := strings.TrimSuffix(parts[3], ",")
 		arraySize := len(parts[4:])
 
 		if bucketCount == -1 {
 			bucketCount = arraySize
-		} else {
-			if bucketCount != arraySize {
-				return nil, fmt.Errorf("mismatch in number of buddyinfo buckets, previous count %d, new count %d", bucketCount, arraySize)
-			}
+		} else if bucketCount != arraySize {
+			return nil, fmt.Errorf("%w: mismatch in number of buddyinfo buckets, previous count %d, new count %d", ErrFileParse, bucketCount, arraySize)
 		}
 
 		sizes := make([]float64, arraySize)
-		for i := 0; i < arraySize; i++ {
+		for i := range arraySize {
 			sizes[i], err = strconv.ParseFloat(parts[i+4], 64)
 			if err != nil {
-				return nil, fmt.Errorf("invalid value in buddyinfo: %w", err)
+				return nil, fmt.Errorf("%w: Invalid valid in buddyinfo: %f: %w", ErrFileParse, sizes[i], err)
 			}
 		}
 

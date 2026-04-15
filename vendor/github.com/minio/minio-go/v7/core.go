@@ -91,6 +91,7 @@ type PutObjectPartOptions struct {
 	Md5Base64, Sha256Hex  string
 	SSE                   encrypt.ServerSide
 	CustomHeader, Trailer http.Header
+	DisableContentSha256  bool
 }
 
 // PutObjectPart - Upload an object part.
@@ -107,7 +108,7 @@ func (c Core) PutObjectPart(ctx context.Context, bucket, object, uploadID string
 		sha256Hex:    opts.Sha256Hex,
 		size:         size,
 		sse:          opts.SSE,
-		streamSha256: true,
+		streamSha256: !opts.DisableContentSha256,
 		customHeader: opts.CustomHeader,
 		trailer:      opts.Trailer,
 	}

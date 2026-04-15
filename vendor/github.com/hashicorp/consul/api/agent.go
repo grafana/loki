@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
@@ -7,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // ServiceKind is the kind of service being registered.
@@ -79,6 +83,62 @@ type AgentWeights struct {
 	Warning int
 }
 
+type ServicePort struct {
+	Name    string
+	Port    int
+	Default bool
+}
+
+type ServicePorts []ServicePort
+
+func (sp ServicePorts) Validate() error {
+	if len(sp) == 0 {
+		return nil
+	}
+
+	seenName := make(map[string]struct{}, len(sp))
+	seenDefault := false
+	for _, p := range sp {
+		if strings.TrimSpace(p.Name) == "" {
+			return errors.New("Ports.Name cannot be empty")
+		}
+
+		if p.Port <= 0 {
+			return errors.New("Ports.Port must be non-zero")
+		}
+
+		_, ok := seenName[p.Name]
+		if ok {
+			return fmt.Errorf("Ports.Name %q has to be unique", p.Name)
+		}
+
+		seenName[p.Name] = struct{}{}
+
+		if p.Default && seenDefault {
+			return errors.New("only one port can be marked as default")
+		}
+
+		if p.Default {
+			seenDefault = true
+		}
+	}
+
+	if !seenDefault {
+		return fmt.Errorf("one of the Ports must be marked as Default")
+	}
+
+	return nil
+}
+
+func (sp ServicePorts) HasDefault() bool {
+	for _, p := range sp {
+		if p.Default {
+			return true
+		}
+	}
+	return false
+}
+
 // AgentService represents a service known to the agent
 type AgentService struct {
 	Kind              ServiceKind `json:",omitempty"`
@@ -87,6 +147,7 @@ type AgentService struct {
 	Tags              []string
 	Meta              map[string]string
 	Port              int
+	Ports             ServicePorts `json:",omitempty" bexpr:"-"`
 	Address           string
 	SocketPath        string                    `json:",omitempty"`
 	TaggedAddresses   map[string]ServiceAddress `json:",omitempty"`
@@ -104,7 +165,18 @@ type AgentService struct {
 	Namespace string `json:",omitempty" bexpr:"-" hash:"ignore"`
 	Partition string `json:",omitempty" bexpr:"-" hash:"ignore"`
 	// Datacenter is only ever returned and is ignored if presented.
-	Datacenter string `json:",omitempty" bexpr:"-" hash:"ignore"`
+	Datacenter string    `json:",omitempty" bexpr:"-" hash:"ignore"`
+	Locality   *Locality `json:",omitempty" bexpr:"-" hash:"ignore"`
+}
+
+func (a AgentService) DefaultPort() int {
+	for _, p := range a.Ports {
+		if p.Default {
+			return p.Port
+		}
+	}
+
+	return a.Port
 }
 
 // AgentServiceChecksInfo returns information about a Service and its checks
@@ -270,6 +342,8 @@ type MembersOpts struct {
 	// Segment is the LAN segment to show members for. Setting this to the
 	// AllSegments value above will show members in all segments.
 	Segment string
+
+	Filter string
 }
 
 // AgentServiceRegistration is used to register a new service
@@ -279,6 +353,7 @@ type AgentServiceRegistration struct {
 	Name              string                    `json:",omitempty"`
 	Tags              []string                  `json:",omitempty"`
 	Port              int                       `json:",omitempty"`
+	Ports             ServicePorts              `json:",omitempty"`
 	Address           string                    `json:",omitempty"`
 	SocketPath        string                    `json:",omitempty"`
 	TaggedAddresses   map[string]ServiceAddress `json:",omitempty"`
@@ -291,6 +366,11 @@ type AgentServiceRegistration struct {
 	Connect           *AgentServiceConnect            `json:",omitempty"`
 	Namespace         string                          `json:",omitempty" bexpr:"-" hash:"ignore"`
 	Partition         string                          `json:",omitempty" bexpr:"-" hash:"ignore"`
+	Locality          *Locality                       `json:",omitempty" bexpr:"-" hash:"ignore"`
+}
+
+func (a *AgentServiceRegistration) IsConnectEnabled() bool {
+	return a.Connect != nil && (a.Connect.Native || a.Connect.SidecarService != nil)
 }
 
 // ServiceRegisterOpts is used to pass extra options to the service register.
@@ -299,6 +379,10 @@ type ServiceRegisterOpts struct {
 	// Using this parameter allows to idempotently register a service and its checks without
 	// having to manually deregister checks.
 	ReplaceExistingChecks bool
+
+	// Token is used to provide a per-request ACL token
+	// which overrides the agent's default token.
+	Token string
 
 	// ctx is an optional context pass through to the underlying HTTP
 	// request layer. Use WithContext() to set the context.
@@ -338,6 +422,7 @@ type AgentServiceCheck struct {
 	Method                 string              `json:",omitempty"`
 	Body                   string              `json:",omitempty"`
 	TCP                    string              `json:",omitempty"`
+	TCPUseTLS              bool                `json:",omitempty"`
 	UDP                    string              `json:",omitempty"`
 	Status                 string              `json:",omitempty"`
 	Notes                  string              `json:",omitempty"`
@@ -483,6 +568,24 @@ func (a *Agent) Self() (map[string]map[string]interface{}, error) {
 // a operator:read ACL token.
 func (a *Agent) Host() (map[string]interface{}, error) {
 	r := a.c.newRequest("GET", "/v1/agent/host")
+	_, resp, err := a.c.doRequest(r)
+	if err != nil {
+		return nil, err
+	}
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, err
+	}
+	var out map[string]interface{}
+	if err := decodeBody(resp, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Version is used to retrieve information about the running Consul version and build.
+func (a *Agent) Version() (map[string]interface{}, error) {
+	r := a.c.newRequest("GET", "/v1/agent/version")
 	_, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, err
@@ -767,6 +870,10 @@ func (a *Agent) MembersOpts(opts MembersOpts) ([]*AgentMember, error) {
 		r.params.Set("wan", "1")
 	}
 
+	if opts.Filter != "" {
+		r.params.Set("filter", opts.Filter)
+	}
+
 	_, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, err
@@ -804,6 +911,9 @@ func (a *Agent) serviceRegister(service *AgentServiceRegistration, opts ServiceR
 	r.ctx = opts.ctx
 	if opts.ReplaceExistingChecks {
 		r.params.Set("replace-existing-checks", "true")
+	}
+	if opts.Token != "" {
+		r.header.Set("X-Consul-Token", opts.Token)
 	}
 	_, resp, err := a.c.doRequest(r)
 	if err != nil {
@@ -961,7 +1071,14 @@ func (a *Agent) UpdateTTLOpts(checkID, output, status string, q *QueryOptions) e
 // CheckRegister is used to register a new check with
 // the local agent
 func (a *Agent) CheckRegister(check *AgentCheckRegistration) error {
+	return a.CheckRegisterOpts(check, nil)
+}
+
+// CheckRegisterOpts is used to register a new check with
+// the local agent using query options
+func (a *Agent) CheckRegisterOpts(check *AgentCheckRegistration, q *QueryOptions) error {
 	r := a.c.newRequest("PUT", "/v1/agent/check/register")
+	r.setQueryOptions(q)
 	r.obj = check
 	_, resp, err := a.c.doRequest(r)
 	if err != nil {
@@ -1050,8 +1167,17 @@ func (a *Agent) ForceLeavePrune(node string) error {
 
 // ForceLeaveOpts is used to have the agent eject a failed node or remove it
 // completely from the list of members.
+//
+// DEPRECATED - Use ForceLeaveOptions instead.
 func (a *Agent) ForceLeaveOpts(node string, opts ForceLeaveOpts) error {
+	return a.ForceLeaveOptions(node, opts, nil)
+}
+
+// ForceLeaveOptions is used to have the agent eject a failed node or remove it
+// completely from the list of members. Allows usage of QueryOptions on-top of ForceLeaveOpts
+func (a *Agent) ForceLeaveOptions(node string, opts ForceLeaveOpts, q *QueryOptions) error {
 	r := a.c.newRequest("PUT", "/v1/agent/force-leave/"+node)
+	r.setQueryOptions(q)
 	if opts.Prune {
 		r.params.Set("prune", "1")
 	}
@@ -1338,6 +1464,10 @@ func (a *Agent) UpdateReplicationACLToken(token string, q *WriteOptions) (*Write
 // for more details
 func (a *Agent) UpdateConfigFileRegistrationToken(token string, q *WriteOptions) (*WriteMeta, error) {
 	return a.updateToken("config_file_service_registration", token, q)
+}
+
+func (a *Agent) UpdateDNSToken(token string, q *WriteOptions) (*WriteMeta, error) {
+	return a.updateToken("dns", token, q)
 }
 
 // updateToken can be used to update one of an agent's ACL tokens after the agent has

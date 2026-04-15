@@ -1,4 +1,4 @@
-// Copyright 2021 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -21,41 +21,52 @@ import (
 
 func writeHistogramChunkLayout(
 	b *bstream, schema int32, zeroThreshold float64,
-	positiveSpans, negativeSpans []histogram.Span,
+	positiveSpans, negativeSpans []histogram.Span, customValues []float64,
 ) {
 	putZeroThreshold(b, zeroThreshold)
 	putVarbitInt(b, int64(schema))
 	putHistogramChunkLayoutSpans(b, positiveSpans)
 	putHistogramChunkLayoutSpans(b, negativeSpans)
+	if histogram.IsCustomBucketsSchema(schema) {
+		putHistogramChunkLayoutCustomBounds(b, customValues)
+	}
 }
 
 func readHistogramChunkLayout(b *bstreamReader) (
 	schema int32, zeroThreshold float64,
 	positiveSpans, negativeSpans []histogram.Span,
+	customValues []float64,
 	err error,
 ) {
 	zeroThreshold, err = readZeroThreshold(b)
 	if err != nil {
-		return
+		return schema, zeroThreshold, positiveSpans, negativeSpans, customValues, err
 	}
 
 	v, err := readVarbitInt(b)
 	if err != nil {
-		return
+		return schema, zeroThreshold, positiveSpans, negativeSpans, customValues, err
 	}
 	schema = int32(v)
 
 	positiveSpans, err = readHistogramChunkLayoutSpans(b)
 	if err != nil {
-		return
+		return schema, zeroThreshold, positiveSpans, negativeSpans, customValues, err
 	}
 
 	negativeSpans, err = readHistogramChunkLayoutSpans(b)
 	if err != nil {
-		return
+		return schema, zeroThreshold, positiveSpans, negativeSpans, customValues, err
 	}
 
-	return
+	if histogram.IsCustomBucketsSchema(schema) {
+		customValues, err = readHistogramChunkLayoutCustomBounds(b)
+		if err != nil {
+			return schema, zeroThreshold, positiveSpans, negativeSpans, customValues, err
+		}
+	}
+
+	return schema, zeroThreshold, positiveSpans, negativeSpans, customValues, err
 }
 
 func putHistogramChunkLayoutSpans(b *bstream, spans []histogram.Span) {
@@ -73,7 +84,6 @@ func readHistogramChunkLayoutSpans(b *bstreamReader) ([]histogram.Span, error) {
 		return nil, err
 	}
 	for i := 0; i < int(num); i++ {
-
 		length, err := readVarbitUint(b)
 		if err != nil {
 			return nil, err
@@ -90,6 +100,30 @@ func readHistogramChunkLayoutSpans(b *bstreamReader) ([]histogram.Span, error) {
 		})
 	}
 	return spans, nil
+}
+
+func putHistogramChunkLayoutCustomBounds(b *bstream, customValues []float64) {
+	putVarbitUint(b, uint64(len(customValues)))
+	for _, bound := range customValues {
+		putCustomBound(b, bound)
+	}
+}
+
+func readHistogramChunkLayoutCustomBounds(b *bstreamReader) ([]float64, error) {
+	var customValues []float64
+	num, err := readVarbitUint(b)
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < int(num); i++ {
+		bound, err := readCustomBound(b)
+		if err != nil {
+			return nil, err
+		}
+
+		customValues = append(customValues, bound)
+	}
+	return customValues, nil
 }
 
 // putZeroThreshold writes the zero threshold to the bstream. It stores typical
@@ -137,6 +171,59 @@ func readZeroThreshold(br *bstreamReader) (float64, error) {
 		return math.Float64frombits(v), nil
 	default:
 		return math.Ldexp(0.5, int(b)-243), nil
+	}
+}
+
+// isWholeWhenMultiplied checks to see if the number when multiplied by 1000 can
+// be converted into an integer without losing precision.
+func isWholeWhenMultiplied(in float64) bool {
+	i := uint(math.Round(in * 1000))
+	out := float64(i) / 1000
+	return in == out
+}
+
+// putCustomBound writes a custom bound to the bstream. It stores values from
+// 0 to 33554.430 (inclusive) that are multiples of 0.001 in unsigned varbit
+// encoding of up to 4 bytes, but needs 1 bit + 8 bytes for other values like
+// negative numbers, numbers greater than 33554.430, or numbers that are not
+// a multiple of 0.001, on the assumption that they are less common. In detail:
+//   - Multiply the bound by 1000, without rounding.
+//   - If the multiplied bound is >= 0, <= 33554430 and a whole number,
+//     add 1 and store it in unsigned varbit encoding. All these numbers are
+//     greater than 0, so the leading bit of the varbit is always 1!
+//   - Otherwise, store a 0 bit, followed by the 8 bytes of the original
+//     bound as a float64.
+//
+// When reading the values, we can first decode a value as unsigned varbit,
+// if it's 0, then we read the next 8 bytes as a float64, otherwise
+// we can convert the value to a float64 by subtracting 1 and dividing by 1000.
+func putCustomBound(b *bstream, f float64) {
+	tf := f * 1000
+	// 33554431-1 comes from the maximum that can be stored in a varbit in 4
+	// bytes, other values are stored in 8 bytes anyway.
+	if tf < 0 || tf > 33554430 || !isWholeWhenMultiplied(f) {
+		b.writeBit(zero)
+		b.writeBits(math.Float64bits(f), 64)
+		return
+	}
+	putVarbitUint(b, uint64(math.Round(tf))+1)
+}
+
+// readCustomBound reads the custom bound written with putCustomBound.
+func readCustomBound(br *bstreamReader) (float64, error) {
+	b, err := readVarbitUint(br)
+	if err != nil {
+		return 0, err
+	}
+	switch b {
+	case 0:
+		v, err := br.readBits(64)
+		if err != nil {
+			return 0, err
+		}
+		return math.Float64frombits(v), nil
+	default:
+		return float64(b-1) / 1000, nil
 	}
 }
 
@@ -191,100 +278,18 @@ func (b *bucketIterator) Next() (int, bool) {
 type Insert struct {
 	pos int
 	num int
+
+	// Optional: bucketIdx is the index of the bucket that is inserted.
+	// Can be used to adjust spans.
+	bucketIdx int
 }
 
-// expandSpansForward returns the inserts to expand the bucket spans 'a' so that
-// they match the spans in 'b'. 'b' must cover the same or more buckets than
-// 'a', otherwise the function will return false.
-//
-// Example:
-//
-// Let's say the old buckets look like this:
-//
-//	span syntax: [offset, length]
-//	spans      : [ 0 , 2 ]               [2,1]                   [ 3 , 2 ]                     [3,1]       [1,1]
-//	bucket idx : [0]   [1]    2     3    [4]    5     6     7    [8]   [9]    10    11    12   [13]   14   [15]
-//	raw values    6     3                 3                       2     4                       5           1
-//	deltas        6    -3                 0                      -1     2                       1          -4
-//
-// But now we introduce a new bucket layout. (Carefully chosen example where we
-// have a span appended, one unchanged[*], one prepended, and two merge - in
-// that order.)
-//
-// [*] unchanged in terms of which bucket indices they represent. but to achieve
-// that, their offset needs to change if "disrupted" by spans changing ahead of
-// them
-//
-//	                                      \/ this one is "unchanged"
-//	spans      : [  0  ,  3    ]         [1,1]       [    1    ,   4     ]                     [  3  ,   3    ]
-//	bucket idx : [0]   [1]   [2]    3    [4]    5    [6]   [7]   [8]   [9]    10    11    12   [13]  [14]  [15]
-//	raw values    6     3     0           3           0     0     2     4                       5     0     1
-//	deltas        6    -3    -3           3          -3     0     2     2                       1    -5     1
-//	delta mods:                          / \                     / \                                       / \
-//
-// Note for histograms with delta-encoded buckets: Whenever any new buckets are
-// introduced, the subsequent "old" bucket needs to readjust its delta to the
-// new base of 0. Thus, for the caller who wants to transform the set of
-// original deltas to a new set of deltas to match a new span layout that adds
-// buckets, we simply need to generate a list of inserts.
-//
-// Note: Within expandSpansForward we don't have to worry about the changes to the
-// spans themselves, thanks to the iterators we get to work with the more useful
-// bucket indices (which of course directly correspond to the buckets we have to
-// adjust).
-func expandSpansForward(a, b []histogram.Span) (forward []Insert, ok bool) {
-	ai := newBucketIterator(a)
-	bi := newBucketIterator(b)
-
-	var inserts []Insert
-
-	// When inter.num becomes > 0, this becomes a valid insert that should
-	// be yielded when we finish a streak of new buckets.
-	var inter Insert
-
-	av, aOK := ai.Next()
-	bv, bOK := bi.Next()
-loop:
-	for {
-		switch {
-		case aOK && bOK:
-			switch {
-			case av == bv: // Both have an identical value. move on!
-				// Finish WIP insert and reset.
-				if inter.num > 0 {
-					inserts = append(inserts, inter)
-				}
-				inter.num = 0
-				av, aOK = ai.Next()
-				bv, bOK = bi.Next()
-				inter.pos++
-			case av < bv: // b misses a value that is in a.
-				return inserts, false
-			case av > bv: // a misses a value that is in b. Forward b and recompare.
-				inter.num++
-				bv, bOK = bi.Next()
-			}
-		case aOK && !bOK: // b misses a value that is in a.
-			return inserts, false
-		case !aOK && bOK: // a misses a value that is in b. Forward b and recompare.
-			inter.num++
-			bv, bOK = bi.Next()
-		default: // Both iterators ran out. We're done.
-			if inter.num > 0 {
-				inserts = append(inserts, inter)
-			}
-			break loop
-		}
-	}
-
-	return inserts, true
-}
-
-// expandSpansBothWays is similar to expandSpansForward, but now b may also
-// cover an entirely different set of buckets. The function returns the
-// “forward” inserts to expand 'a' to also cover all the buckets exclusively
-// covered by 'b', and it returns the “backward” inserts to expand 'b' to also
-// cover all the buckets exclusively covered by 'a'
+// expandSpansBothWays is similar to expandFloatSpansAndBuckets and
+// expandIntSpansAndBuckets, but now b may also cover an entirely different set
+// of buckets and counter resets are ignored. The function returns the “forward”
+// inserts to expand 'a' to also cover all the buckets exclusively covered by
+// 'b', and it returns the “backward” inserts to expand 'b' to also cover all
+// the buckets exclusively covered by 'a'.
 func expandSpansBothWays(a, b []histogram.Span) (forward, backward []Insert, mergedSpans []histogram.Span) {
 	ai := newBucketIterator(a)
 	bi := newBucketIterator(b)
@@ -394,14 +399,24 @@ func insert[BV bucketValue](in, out []BV, inserts []Insert, deltas bool) []BV {
 		ii int // The next insert to process.
 	)
 	for i, d := range in {
-		if ii < len(inserts) && i == inserts[ii].pos {
+		if ii >= len(inserts) || i != inserts[ii].pos {
+			// No inserts at this position, the original delta is still valid.
+			out[oi] = d
+			oi++
+			v += d
+			continue
+		}
+		// Process inserts.
+		firstInsert := true
+		for ii < len(inserts) && i == inserts[ii].pos {
 			// We have an insert!
 			// Add insert.num new delta values such that their
 			// bucket values equate 0. When deltas==false, it means
 			// that it is an absolute value. So we set it to 0
 			// directly.
-			if deltas {
+			if deltas && firstInsert {
 				out[oi] = -v
+				firstInsert = false // No need to go to 0 in further inserts.
 			} else {
 				out[oi] = 0
 			}
@@ -411,32 +426,30 @@ func insert[BV bucketValue](in, out []BV, inserts []Insert, deltas bool) []BV {
 				oi++
 			}
 			ii++
-
-			// Now save the value from the input. The delta value we
-			// should save is the original delta value + the last
-			// value of the point before the insert (to undo the
-			// delta that was introduced by the insert). When
-			// deltas==false, it means that it is an absolute value,
-			// so we set it directly to the value in the 'in' slice.
-			if deltas {
-				out[oi] = d + v
-			} else {
-				out[oi] = d
-			}
-			oi++
-			v = d + v
-			continue
 		}
-		// If there was no insert, the original delta is still valid.
-		out[oi] = d
+		// Now save the value from the input. The delta value we
+		// should save is the original delta value + the last
+		// value of the point before the insert (to undo the
+		// delta that was introduced by the insert). When
+		// deltas==false, it means that it is an absolute value,
+		// so we set it directly to the value in the 'in' slice.
+		if deltas {
+			out[oi] = d + v
+		} else {
+			out[oi] = d
+		}
 		oi++
 		v += d
 	}
-	switch ii {
-	case len(inserts):
-		// All inserts processed. Nothing more to do.
-	case len(inserts) - 1:
-		// One more insert to process at the end.
+	// Insert empty buckets at the end.
+	for ii < len(inserts) {
+		if inserts[ii].pos < len(in) {
+			panic("leftover inserts must be after the current buckets")
+		}
+		// Add insert.num new delta values such that their
+		// bucket values equate 0. When deltas==false, it means
+		// that it is an absolute value. So we set it to 0
+		// directly.
 		if deltas {
 			out[oi] = -v
 		} else {
@@ -447,8 +460,8 @@ func insert[BV bucketValue](in, out []BV, inserts []Insert, deltas bool) []BV {
 			out[oi] = 0
 			oi++
 		}
-	default:
-		panic("unprocessed inserts left")
+		ii++
+		v = 0
 	}
 	return out
 }
@@ -464,26 +477,78 @@ func counterResetHint(crh CounterResetHeader, numRead uint16) histogram.CounterR
 		// In a counter histogram chunk, there will not be any counter
 		// resets after the first histogram.
 		return histogram.NotCounterReset
-	case crh == CounterReset:
-		// If the chunk was started because of a counter reset, we can
-		// safely return that hint. This histogram always has to be
-		// treated as a counter reset.
-		return histogram.CounterReset
 	default:
 		// Sadly, we have to return "unknown" as the hint for all other
-		// cases, even if we know that the chunk was started without a
+		// cases, even if we know that the chunk was started with or without a
 		// counter reset. But we cannot be sure that the previous chunk
-		// still exists in the TSDB, so we conservatively return
-		// "unknown". On the bright side, this case should be relatively
-		// rare.
+		// still exists in the TSDB, or if the previous chunk was added later
+		// by out of order or backfill, so we conservatively return "unknown".
 		//
-		// TODO(beorn7): Nevertheless, if the current chunk is in the
-		// middle of a block (not the first chunk in the block for this
-		// series), it's probably safe to assume that the previous chunk
-		// will exist in the TSDB for as long as the current chunk
-		// exist, and we could safely return
-		// "histogram.NotCounterReset". This needs some more work and
-		// might not be worth the effort and/or risk. To be vetted...
+		// TODO: If we can detect whether the previous and current chunk are
+		// actually consecutive then we could trust its hint:
+		// https://github.com/prometheus/prometheus/issues/15346.
 		return histogram.UnknownCounterReset
 	}
+}
+
+// adjustForInserts adjusts the spans for the given inserts.
+func adjustForInserts(spans []histogram.Span, inserts []Insert) (mergedSpans []histogram.Span) {
+	if len(inserts) == 0 {
+		return spans
+	}
+
+	it := newBucketIterator(spans)
+
+	var (
+		lastBucket int
+		i          int
+		insertIdx  = inserts[i].bucketIdx
+		insertNum  = inserts[i].num
+	)
+
+	addBucket := func(b int) {
+		offset := b - lastBucket - 1
+		if offset == 0 && len(mergedSpans) > 0 {
+			mergedSpans[len(mergedSpans)-1].Length++
+		} else {
+			if len(mergedSpans) == 0 {
+				offset++
+			}
+			mergedSpans = append(mergedSpans, histogram.Span{
+				Offset: int32(offset),
+				Length: 1,
+			})
+		}
+
+		lastBucket = b
+	}
+	consumeInsert := func() {
+		// Consume the insert.
+		insertNum--
+		if insertNum == 0 {
+			i++
+			if i < len(inserts) {
+				insertIdx = inserts[i].bucketIdx
+				insertNum = inserts[i].num
+			}
+		} else {
+			insertIdx++
+		}
+	}
+
+	bucket, ok := it.Next()
+	for ok {
+		if i < len(inserts) && insertIdx < bucket {
+			addBucket(insertIdx)
+			consumeInsert()
+		} else {
+			addBucket(bucket)
+			bucket, ok = it.Next()
+		}
+	}
+	for i < len(inserts) {
+		addBucket(insertIdx)
+		consumeInsert()
+	}
+	return mergedSpans
 }

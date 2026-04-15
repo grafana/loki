@@ -1,4 +1,4 @@
-// Copyright 2020 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -68,7 +68,7 @@ func parseV21SlabEntry(line string) (*Slab, error) {
 	l := slabSpace.ReplaceAllString(line, " ")
 	s := strings.Split(l, " ")
 	if len(s) != 16 {
-		return nil, fmt.Errorf("unable to parse: %q", line)
+		return nil, fmt.Errorf("%w: unable to parse: %q", ErrFileParse, line)
 	}
 	var err error
 	i := &Slab{Name: s[0]}

@@ -32,10 +32,25 @@ import (
 // to update tag(s) of a specific object version
 type PutObjectTaggingOptions struct {
 	VersionID string
+	Internal  AdvancedObjectTaggingOptions
 }
 
-// PutObjectTagging replaces or creates object tag(s) and can target
-// a specific object version in a versioned bucket.
+// AdvancedObjectTaggingOptions for internal use by MinIO server - not intended for client use.
+type AdvancedObjectTaggingOptions struct {
+	ReplicationProxyRequest string
+}
+
+// PutObjectTagging replaces or creates object tag(s) and can target a specific object version
+// in a versioned bucket.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - objectName: Name of the object
+//   - otags: Tags to apply to the object
+//   - opts: Options including VersionID to target a specific version
+//
+// Returns an error if the operation fails.
 func (c *Client) PutObjectTagging(ctx context.Context, bucketName, objectName string, otags *tags.Tags, opts PutObjectTaggingOptions) error {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -50,7 +65,10 @@ func (c *Client) PutObjectTagging(ctx context.Context, bucketName, objectName st
 	if opts.VersionID != "" {
 		urlValues.Set("versionId", opts.VersionID)
 	}
-
+	headers := make(http.Header, 0)
+	if opts.Internal.ReplicationProxyRequest != "" {
+		headers.Set(minIOBucketReplicationProxyRequest, opts.Internal.ReplicationProxyRequest)
+	}
 	reqBytes, err := xml.Marshal(otags)
 	if err != nil {
 		return err
@@ -63,6 +81,7 @@ func (c *Client) PutObjectTagging(ctx context.Context, bucketName, objectName st
 		contentBody:      bytes.NewReader(reqBytes),
 		contentLength:    int64(len(reqBytes)),
 		contentMD5Base64: sumMD5Base64(reqBytes),
+		customHeader:     headers,
 	}
 
 	// Execute PUT to set a object tagging.
@@ -83,10 +102,19 @@ func (c *Client) PutObjectTagging(ctx context.Context, bucketName, objectName st
 // to fetch the tagging key/value pairs
 type GetObjectTaggingOptions struct {
 	VersionID string
+	Internal  AdvancedObjectTaggingOptions
 }
 
-// GetObjectTagging fetches object tag(s) with options to target
-// a specific object version in a versioned bucket.
+// GetObjectTagging retrieves object tag(s) with options to target a specific object version
+// in a versioned bucket.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - objectName: Name of the object
+//   - opts: Options including VersionID to target a specific version
+//
+// Returns the object's tags or an error if the operation fails.
 func (c *Client) GetObjectTagging(ctx context.Context, bucketName, objectName string, opts GetObjectTaggingOptions) (*tags.Tags, error) {
 	// Get resources properly escaped and lined up before
 	// using them in http request.
@@ -96,12 +124,16 @@ func (c *Client) GetObjectTagging(ctx context.Context, bucketName, objectName st
 	if opts.VersionID != "" {
 		urlValues.Set("versionId", opts.VersionID)
 	}
-
+	headers := make(http.Header, 0)
+	if opts.Internal.ReplicationProxyRequest != "" {
+		headers.Set(minIOBucketReplicationProxyRequest, opts.Internal.ReplicationProxyRequest)
+	}
 	// Execute GET on object to get object tag(s)
 	resp, err := c.executeMethod(ctx, http.MethodGet, requestMetadata{
-		bucketName:  bucketName,
-		objectName:  objectName,
-		queryValues: urlValues,
+		bucketName:   bucketName,
+		objectName:   objectName,
+		queryValues:  urlValues,
+		customHeader: headers,
 	})
 
 	defer closeResponse(resp)
@@ -121,10 +153,19 @@ func (c *Client) GetObjectTagging(ctx context.Context, bucketName, objectName st
 // RemoveObjectTaggingOptions holds the version id of the object to remove
 type RemoveObjectTaggingOptions struct {
 	VersionID string
+	Internal  AdvancedObjectTaggingOptions
 }
 
-// RemoveObjectTagging removes object tag(s) with options to control a specific object
-// version in a versioned bucket
+// RemoveObjectTagging removes object tag(s) with options to target a specific object version
+// in a versioned bucket.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - objectName: Name of the object
+//   - opts: Options including VersionID to target a specific version
+//
+// Returns an error if the operation fails.
 func (c *Client) RemoveObjectTagging(ctx context.Context, bucketName, objectName string, opts RemoveObjectTaggingOptions) error {
 	// Get resources properly escaped and lined up before
 	// using them in http request.
@@ -134,12 +175,16 @@ func (c *Client) RemoveObjectTagging(ctx context.Context, bucketName, objectName
 	if opts.VersionID != "" {
 		urlValues.Set("versionId", opts.VersionID)
 	}
-
+	headers := make(http.Header, 0)
+	if opts.Internal.ReplicationProxyRequest != "" {
+		headers.Set(minIOBucketReplicationProxyRequest, opts.Internal.ReplicationProxyRequest)
+	}
 	// Execute DELETE on object to remove object tag(s)
 	resp, err := c.executeMethod(ctx, http.MethodDelete, requestMetadata{
-		bucketName:  bucketName,
-		objectName:  objectName,
-		queryValues: urlValues,
+		bucketName:   bucketName,
+		objectName:   objectName,
+		queryValues:  urlValues,
+		customHeader: headers,
 	})
 
 	defer closeResponse(resp)

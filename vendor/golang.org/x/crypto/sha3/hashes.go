@@ -2,96 +2,94 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package sha3 implements the SHA-3 hash algorithms and the SHAKE extendable
+// output functions defined in FIPS 202.
+//
+// Most of this package is a wrapper around the crypto/sha3 package in the
+// standard library. The only exception is the legacy Keccak hash functions.
 package sha3
 
-// This file provides functions for creating instances of the SHA-3
-// and SHAKE hash functions, as well as utility functions for hashing
-// bytes.
-
 import (
+	"crypto/sha3"
 	"hash"
 )
 
 // New224 creates a new SHA3-224 hash.
 // Its generic security strength is 224 bits against preimage attacks,
 // and 112 bits against collision attacks.
+//
+// It is a wrapper for the [sha3.New224] function in the standard library.
+//
+//go:fix inline
 func New224() hash.Hash {
-	if h := new224Asm(); h != nil {
-		return h
-	}
-	return &state{rate: 144, outputLen: 28, dsbyte: 0x06}
+	return sha3.New224()
 }
 
 // New256 creates a new SHA3-256 hash.
 // Its generic security strength is 256 bits against preimage attacks,
 // and 128 bits against collision attacks.
+//
+// It is a wrapper for the [sha3.New256] function in the standard library.
+//
+//go:fix inline
 func New256() hash.Hash {
-	if h := new256Asm(); h != nil {
-		return h
-	}
-	return &state{rate: 136, outputLen: 32, dsbyte: 0x06}
+	return sha3.New256()
 }
 
 // New384 creates a new SHA3-384 hash.
 // Its generic security strength is 384 bits against preimage attacks,
 // and 192 bits against collision attacks.
+//
+// It is a wrapper for the [sha3.New384] function in the standard library.
+//
+//go:fix inline
 func New384() hash.Hash {
-	if h := new384Asm(); h != nil {
-		return h
-	}
-	return &state{rate: 104, outputLen: 48, dsbyte: 0x06}
+	return sha3.New384()
 }
 
 // New512 creates a new SHA3-512 hash.
 // Its generic security strength is 512 bits against preimage attacks,
 // and 256 bits against collision attacks.
+//
+// It is a wrapper for the [sha3.New512] function in the standard library.
+//
+//go:fix inline
 func New512() hash.Hash {
-	if h := new512Asm(); h != nil {
-		return h
-	}
-	return &state{rate: 72, outputLen: 64, dsbyte: 0x06}
+	return sha3.New512()
 }
 
-// NewLegacyKeccak256 creates a new Keccak-256 hash.
-//
-// Only use this function if you require compatibility with an existing cryptosystem
-// that uses non-standard padding. All other users should use New256 instead.
-func NewLegacyKeccak256() hash.Hash { return &state{rate: 136, outputLen: 32, dsbyte: 0x01} }
-
-// NewLegacyKeccak512 creates a new Keccak-512 hash.
-//
-// Only use this function if you require compatibility with an existing cryptosystem
-// that uses non-standard padding. All other users should use New512 instead.
-func NewLegacyKeccak512() hash.Hash { return &state{rate: 72, outputLen: 64, dsbyte: 0x01} }
-
 // Sum224 returns the SHA3-224 digest of the data.
-func Sum224(data []byte) (digest [28]byte) {
-	h := New224()
-	h.Write(data)
-	h.Sum(digest[:0])
-	return
+//
+// It is a wrapper for the [sha3.Sum224] function in the standard library.
+//
+//go:fix inline
+func Sum224(data []byte) [28]byte {
+	return sha3.Sum224(data)
 }
 
 // Sum256 returns the SHA3-256 digest of the data.
-func Sum256(data []byte) (digest [32]byte) {
-	h := New256()
-	h.Write(data)
-	h.Sum(digest[:0])
-	return
+//
+// It is a wrapper for the [sha3.Sum256] function in the standard library.
+//
+//go:fix inline
+func Sum256(data []byte) [32]byte {
+	return sha3.Sum256(data)
 }
 
 // Sum384 returns the SHA3-384 digest of the data.
-func Sum384(data []byte) (digest [48]byte) {
-	h := New384()
-	h.Write(data)
-	h.Sum(digest[:0])
-	return
+//
+// It is a wrapper for the [sha3.Sum384] function in the standard library.
+//
+//go:fix inline
+func Sum384(data []byte) [48]byte {
+	return sha3.Sum384(data)
 }
 
 // Sum512 returns the SHA3-512 digest of the data.
-func Sum512(data []byte) (digest [64]byte) {
-	h := New512()
-	h.Write(data)
-	h.Sum(digest[:0])
-	return
+//
+// It is a wrapper for the [sha3.Sum512] function in the standard library.
+//
+//go:fix inline
+func Sum512(data []byte) [64]byte {
+	return sha3.Sum512(data)
 }

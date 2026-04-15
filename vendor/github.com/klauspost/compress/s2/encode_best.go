@@ -42,10 +42,7 @@ func encodeBlockBest(dst, src []byte, dict *Dict) (d int) {
 	if len(src) < minNonLiteralBlockSize {
 		return 0
 	}
-	sLimitDict := len(src) - inputMargin
-	if sLimitDict > MaxDictSrcOffset-inputMargin {
-		sLimitDict = MaxDictSrcOffset - inputMargin
-	}
+	sLimitDict := min(len(src)-inputMargin, MaxDictSrcOffset-inputMargin)
 
 	var lTable [maxLTableSize]uint64
 	var sTable [maxSTableSize]uint64
@@ -157,6 +154,9 @@ func encodeBlockBest(dst, src []byte, dict *Dict) (d int) {
 				return m
 			}
 			matchDict := func(candidate, s int, first uint32, rep bool) match {
+				if s >= MaxDictSrcOffset {
+					return match{offset: candidate, s: s}
+				}
 				// Calculate offset as if in continuous array with s
 				offset := -len(dict.dict) + candidate
 				if best.length != 0 && best.s-best.offset == s-offset && !rep {

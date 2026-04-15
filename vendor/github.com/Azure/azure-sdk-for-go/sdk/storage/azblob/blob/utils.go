@@ -14,25 +14,25 @@ import (
 
 // ObjectReplicationRules struct
 type ObjectReplicationRules struct {
-	RuleId string
+	RuleID string
 	Status string
 }
 
-// ObjectReplicationPolicy are deserialized attributes
+// ObjectReplicationPolicy are deserialized attributes.
 type ObjectReplicationPolicy struct {
-	PolicyId *string
+	PolicyID *string
 	Rules    *[]ObjectReplicationRules
 }
 
-// deserializeORSPolicies is utility function to deserialize ORS Policies
-func deserializeORSPolicies(policies map[string]string) (objectReplicationPolicies []ObjectReplicationPolicy) {
+// deserializeORSPolicies is utility function to deserialize ORS Policies.
+func deserializeORSPolicies(policies map[string]*string) (objectReplicationPolicies []ObjectReplicationPolicy) {
 	if policies == nil {
 		return nil
 	}
 	// For source blobs (blobs that have policy ids and rule ids applied to them),
 	// the header will be formatted as "x-ms-or-<policy_id>_<rule_id>: {Complete, Failed}".
 	// The value of this header is the status of the replication.
-	orPolicyStatusHeader := make(map[string]string)
+	orPolicyStatusHeader := make(map[string]*string)
 	for key, value := range policies {
 		if strings.Contains(key, "or-") && key != "x-ms-or-policy-id" {
 			orPolicyStatusHeader[key] = value
@@ -44,19 +44,19 @@ func deserializeORSPolicies(policies map[string]string) (objectReplicationPolici
 		policyAndRuleIDs := strings.Split(strings.Split(key, "or-")[1], "_")
 		policyId, ruleId := policyAndRuleIDs[0], policyAndRuleIDs[1]
 
-		parsedResult[policyId] = append(parsedResult[policyId], ObjectReplicationRules{RuleId: ruleId, Status: value})
+		parsedResult[policyId] = append(parsedResult[policyId], ObjectReplicationRules{RuleID: ruleId, Status: *value})
 	}
 
 	for policyId, rules := range parsedResult {
 		objectReplicationPolicies = append(objectReplicationPolicies, ObjectReplicationPolicy{
-			PolicyId: &policyId,
+			PolicyID: &policyId,
 			Rules:    &rules,
 		})
 	}
 	return
 }
 
-// ParseHTTPHeaders parses GetPropertiesResponse and returns HTTPHeaders
+// ParseHTTPHeaders parses GetPropertiesResponse and returns HTTPHeaders.
 func ParseHTTPHeaders(resp GetPropertiesResponse) HTTPHeaders {
 	return HTTPHeaders{
 		BlobContentType:        resp.ContentType,

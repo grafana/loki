@@ -9,17 +9,23 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
-	ot "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.yaml.in/yaml/v3"
 	"golang.org/x/net/context/ctxhttp"
 
-	"github.com/grafana/loki/pkg/ruler/rulespb"
+	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 )
 
 type DefaultMultiTenantManager struct {
@@ -46,9 +52,10 @@ type DefaultMultiTenantManager struct {
 	configUpdatesTotal            *prometheus.CounterVec
 	registry                      prometheus.Registerer
 	logger                        log.Logger
+	metricsNamespace              string
 }
 
-func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger, limits RulesLimits) (*DefaultMultiTenantManager, error) {
+func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger, limits RulesLimits, metricsNamespace string) (*DefaultMultiTenantManager, error) {
 	userManagerMetrics := NewManagerMetrics(cfg.DisableRuleGroupLabel, func(k, v string) string {
 		// When "by-rule" sharding is enabled, each rule group is assigned a unique name to work around some of Prometheus'
 		// assumptions, and metrics are exported based on these rule group names. If we kept these unique rule group names
@@ -59,7 +66,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 
 		return v
 
-	})
+	}, metricsNamespace)
 	if reg != nil {
 		reg.MustRegister(userManagerMetrics)
 	}
@@ -73,23 +80,24 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		mapper:             newMapper(cfg.RulePath, logger),
 		userManagers:       map[string]RulesManager{},
 		userManagerMetrics: userManagerMetrics,
+		metricsNamespace:   metricsNamespace,
 		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace: "cortex",
+			Namespace: metricsNamespace,
 			Name:      "ruler_managers_total",
 			Help:      "Total number of managers registered and running in the ruler",
 		}),
 		lastReloadSuccessful: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "cortex",
+			Namespace: metricsNamespace,
 			Name:      "ruler_config_last_reload_successful",
 			Help:      "Boolean set to 1 whenever the last configuration reload attempt was successful.",
 		}, []string{"user"}),
 		lastReloadSuccessfulTimestamp: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "cortex",
+			Namespace: metricsNamespace,
 			Name:      "ruler_config_last_reload_successful_seconds",
 			Help:      "Timestamp of the last successful configuration reload.",
 		}, []string{"user"}),
 		configUpdatesTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
+			Namespace: metricsNamespace,
 			Name:      "ruler_config_updates_total",
 			Help:      "Total number of config updates triggered by a user",
 		}, []string{"user"}),
@@ -213,7 +221,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 	}
 
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
-	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
+	reg = prometheus.WrapRegistererWithPrefix(r.metricsNamespace+"_", reg)
 	n = newRulerNotifier(&notifier.Options{
 		QueueCapacity: r.cfg.NotificationQueueCapacity,
 		Registerer:    reg,
@@ -225,11 +233,11 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 			if err := user.InjectOrgIDIntoHTTPRequest(ctx, req); err != nil {
 				return nil, err
 			}
-			// Jaeger complains the passed-in context has an invalid span ID, so start a new root span
-			sp := ot.GlobalTracer().StartSpan("notify", ot.Tag{Key: "organization", Value: userID})
-			defer sp.Finish()
-			ctx = ot.ContextWithSpan(ctx, sp)
-			_ = ot.GlobalTracer().Inject(sp.Context(), ot.HTTPHeaders, ot.HTTPHeadersCarrier(req.Header))
+
+			_, sp := tracer.Start(context.Background(), "notify", trace.WithAttributes(attribute.String("organization", userID)))
+			defer sp.End()
+			ctx = trace.ContextWithSpan(ctx, sp)
+			otelhttptrace.Inject(ctx, req)
 			return ctxhttp.Do(ctx, client, req)
 		},
 	}, log.With(r.logger, "user", userID))
@@ -296,12 +304,17 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 	}
 
 	for i, r := range g.Rules {
-		for _, err := range r.Validate() {
+		ruleNode := rulefmt.RuleNode{
+			Record: yaml.Node{Value: r.Record},
+			Alert:  yaml.Node{Value: r.Alert},
+			Expr:   yaml.Node{Value: r.Expr},
+		}
+		for _, err := range r.Validate(ruleNode, model.UTF8Validation, parser.NewParser(parser.Options{})) {
 			var ruleName string
-			if r.Alert.Value != "" {
-				ruleName = r.Alert.Value
+			if r.Alert != "" {
+				ruleName = r.Alert
 			} else {
-				ruleName = r.Record.Value
+				ruleName = r.Record
 			}
 			errs = append(errs, &rulefmt.Error{
 				Group:    g.Name,

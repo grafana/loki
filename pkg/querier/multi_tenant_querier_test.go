@@ -3,29 +3,28 @@ package querier
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 	"unicode"
 
+	"github.com/axiomhq/hyperloglog"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/dskit/tenant"
-
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 )
 
 func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc      string
 		orgID     string
@@ -90,6 +89,9 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 				Shards:    nil,
 				Start:     time.Unix(0, 1),
 				End:       time.Unix(0, time.Now().UnixNano()),
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tc.selector),
+				},
 			}}
 			iter, err := multiTenantQuerier.SelectLogs(ctx, params)
 			require.NoError(t, err)
@@ -97,7 +99,7 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 			entriesCount := 0
 			for iter.Next() {
 				require.Equal(t, tc.expLabels[entriesCount], iter.Labels())
-				require.Equal(t, tc.expLines[entriesCount], iter.Entry().Line)
+				require.Equal(t, tc.expLines[entriesCount], iter.At().Line)
 				entriesCount++
 			}
 			require.Equalf(t, len(tc.expLabels), entriesCount, "Expected %d entries but got %d", len(tc.expLabels), entriesCount)
@@ -106,8 +108,6 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 }
 
 func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc      string
 		orgID     string
@@ -161,6 +161,9 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), tc.orgID)
 			params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 				Selector: tc.selector,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tc.selector),
+				},
 			}}
 			iter, err := multiTenantQuerier.SelectSamples(ctx, params)
 			require.NoError(t, err)
@@ -191,6 +194,9 @@ func TestMultiTenantQuerier_TenantFilter(t *testing.T) {
 		t.Run(tc.selector, func(t *testing.T) {
 			params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 				Selector: tc.selector,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tc.selector),
+				},
 			}}
 			_, updatedSelector, err := removeTenantSelector(params, []string{})
 			require.NoError(t, err)
@@ -214,12 +220,12 @@ func newSampleIterator() iter.SampleIterator {
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:     labelFoo.String(),
 			Samples:    samples,
-			StreamHash: labelFoo.Hash(),
+			StreamHash: labels.StableHash(labelFoo),
 		}),
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:     labelBar.String(),
 			Samples:    samples,
-			StreamHash: labelBar.Hash(),
+			StreamHash: labels.StableHash(labelBar),
 		}),
 	})
 }
@@ -241,7 +247,7 @@ type mockEntryIterator struct {
 }
 
 func newMockEntryIterator(numLabels int) mockEntryIterator {
-	builder := labels.NewBuilder(nil)
+	builder := labels.NewBuilder(labels.EmptyLabels())
 	for i := 1; i <= numLabels; i++ {
 		builder.Set(fmt.Sprintf("label_%d", i), strconv.Itoa(i))
 	}
@@ -252,7 +258,7 @@ func (it mockEntryIterator) Labels() string {
 	return it.labels
 }
 
-func (it mockEntryIterator) Entry() logproto.Entry {
+func (it mockEntryIterator) At() logproto.Entry {
 	return logproto.Entry{}
 }
 
@@ -264,7 +270,7 @@ func (it mockEntryIterator) StreamHash() uint64 {
 	return 0
 }
 
-func (it mockEntryIterator) Error() error {
+func (it mockEntryIterator) Err() error {
 	return nil
 }
 
@@ -284,8 +290,6 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 			End:    &end,
 		}
 	}
-
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
 
 	for _, tc := range []struct {
 		desc           string
@@ -344,8 +348,6 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 }
 
 func TestMultiTenantQuerierSeries(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc           string
 		orgID          string
@@ -355,42 +357,42 @@ func TestMultiTenantQuerierSeries(t *testing.T) {
 			desc:  "two tenantIDs",
 			orgID: "1|2",
 			expectedSeries: []logproto.SeriesIdentifier{
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "5"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "5"}},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "2")},
 			},
 		},
 		{
 			desc:  "three tenantIDs",
 			orgID: "1|2|3",
 			expectedSeries: []logproto.SeriesIdentifier{
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "5"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "5"}},
-				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "5"}},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "3")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "3")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "3")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "3")},
 			},
 		},
 		{
 			desc:  "single tenantID; behaves like a normal `Series` call",
 			orgID: "2",
 			expectedSeries: []logproto.SeriesIdentifier{
-				{Labels: map[string]string{"a": "1", "b": "2"}},
-				{Labels: map[string]string{"a": "1", "b": "3"}},
-				{Labels: map[string]string{"a": "1", "b": "4"}},
-				{Labels: map[string]string{"a": "1", "b": "5"}},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5")},
 			},
 		},
 	} {
@@ -408,8 +410,6 @@ func TestMultiTenantQuerierSeries(t *testing.T) {
 }
 
 func TestVolume(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc            string
 		orgID           string
@@ -455,16 +455,16 @@ func mockSeriesResponse() *logproto.SeriesResponse {
 	return &logproto.SeriesResponse{
 		Series: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"a": "1", "b": "2"},
+				Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2"),
 			},
 			{
-				Labels: map[string]string{"a": "1", "b": "3"},
+				Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3"),
 			},
 			{
-				Labels: map[string]string{"a": "1", "b": "4"},
+				Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4"),
 			},
 			{
-				Labels: map[string]string{"a": "1", "b": "5"},
+				Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5"),
 			},
 		},
 	}
@@ -521,6 +521,271 @@ func TestSliceToSet(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			actual := sliceToSet(tc.slice)
 			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
+	for _, tc := range []struct {
+		desc      string
+		orgID     string
+		expected  []*logproto.DetectedLabel
+		mockSetup func(*querierMock)
+	}{
+		{
+			desc:  "single tenant",
+			orgID: "1",
+			expected: []*logproto.DetectedLabel{
+				{Label: "app", Cardinality: 100},
+				{Label: "env", Cardinality: 50},
+			},
+			mockSetup: func(q *querierMock) {
+				// Create sketches for app and env labels
+				appSketch := hyperloglog.New()
+				for i := 0; i < 100; i++ {
+					appSketch.Insert([]byte(fmt.Sprintf("app-value-%d", i)))
+				}
+				appSketchData, _ := appSketch.MarshalBinary()
+
+				envSketch := hyperloglog.New()
+				for i := 0; i < 50; i++ {
+					envSketch.Insert([]byte(fmt.Sprintf("env-value-%d", i)))
+				}
+				envSketchData, _ := envSketch.MarshalBinary()
+
+				q.On("DetectedLabels", mock.Anything, mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app", Cardinality: 100, Sketch: appSketchData},
+						{Label: "env", Cardinality: 50, Sketch: envSketchData},
+					},
+				}, nil)
+			},
+		},
+		{
+			desc:  "multiple tenants with overlapping labels",
+			orgID: "1|2",
+			expected: []*logproto.DetectedLabel{
+				{Label: "app", Cardinality: 150},    // Combined cardinality after merging sketches
+				{Label: "env", Cardinality: 50},     // from tenant 1
+				{Label: "service", Cardinality: 75}, // from tenant 2
+			},
+			mockSetup: func(q *querierMock) {
+				// Create sketches for tenant 1
+				appSketch1 := hyperloglog.New()
+				for i := 0; i < 100; i++ {
+					appSketch1.Insert([]byte(fmt.Sprintf("app-value-%d", i)))
+				}
+				appSketch1Data, _ := appSketch1.MarshalBinary()
+
+				envSketch := hyperloglog.New()
+				for i := 0; i < 50; i++ {
+					envSketch.Insert([]byte(fmt.Sprintf("env-value-%d", i)))
+				}
+				envSketchData, _ := envSketch.MarshalBinary()
+
+				// Create sketches for tenant 2
+				appSketch2 := hyperloglog.New()
+				for i := 50; i < 150; i++ { // 50 new values + 50 overlapping values
+					appSketch2.Insert([]byte(fmt.Sprintf("app-value-%d", i)))
+				}
+				appSketch2Data, _ := appSketch2.MarshalBinary()
+
+				serviceSketch := hyperloglog.New()
+				for i := 0; i < 75; i++ {
+					serviceSketch.Insert([]byte(fmt.Sprintf("service-value-%d", i)))
+				}
+				serviceSketchData, _ := serviceSketch.MarshalBinary()
+
+				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
+					id, err := user.ExtractOrgID(ctx)
+					return err == nil && id == "1"
+				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app", Cardinality: 100, Sketch: appSketch1Data},
+						{Label: "env", Cardinality: 50, Sketch: envSketchData},
+					},
+				}, nil).Once()
+
+				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
+					id, err := user.ExtractOrgID(ctx)
+					return err == nil && id == "2"
+				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app", Cardinality: 100, Sketch: appSketch2Data},
+						{Label: "service", Cardinality: 75, Sketch: serviceSketchData},
+					},
+				}, nil).Once()
+			},
+		},
+		{
+			desc:  "multiple tenants with unique labels",
+			orgID: "1|2",
+			expected: []*logproto.DetectedLabel{
+				{Label: "app1", Cardinality: 100},
+				{Label: "app2", Cardinality: 200},
+				{Label: "env1", Cardinality: 50},
+				{Label: "env2", Cardinality: 75},
+			},
+			mockSetup: func(q *querierMock) {
+				// Create sketches for tenant 1
+				app1Sketch := hyperloglog.New()
+				for i := 0; i < 100; i++ {
+					app1Sketch.Insert([]byte(fmt.Sprintf("app1-value-%d", i)))
+				}
+				app1SketchData, _ := app1Sketch.MarshalBinary()
+
+				env1Sketch := hyperloglog.New()
+				for i := 0; i < 50; i++ {
+					env1Sketch.Insert([]byte(fmt.Sprintf("env1-value-%d", i)))
+				}
+				env1SketchData, _ := env1Sketch.MarshalBinary()
+
+				// Create sketches for tenant 2
+				app2Sketch := hyperloglog.New()
+				for i := 0; i < 200; i++ {
+					app2Sketch.Insert([]byte(fmt.Sprintf("app2-value-%d", i)))
+				}
+				app2SketchData, _ := app2Sketch.MarshalBinary()
+
+				env2Sketch := hyperloglog.New()
+				for i := 0; i < 75; i++ {
+					env2Sketch.Insert([]byte(fmt.Sprintf("env2-value-%d", i)))
+				}
+				env2SketchData, _ := env2Sketch.MarshalBinary()
+
+				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
+					id, err := user.ExtractOrgID(ctx)
+					return err == nil && id == "1"
+				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app1", Cardinality: 100, Sketch: app1SketchData},
+						{Label: "env1", Cardinality: 50, Sketch: env1SketchData},
+					},
+				}, nil).Once()
+
+				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
+					id, err := user.ExtractOrgID(ctx)
+					return err == nil && id == "2"
+				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app2", Cardinality: 200, Sketch: app2SketchData},
+						{Label: "env2", Cardinality: 75, Sketch: env2SketchData},
+					},
+				}, nil).Once()
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			querier := newQuerierMock()
+			tc.mockSetup(querier)
+
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+			req := &logproto.DetectedLabelsRequest{
+				Query: `{app="foo"}`,
+				Start: time.Now().Add(-1 * time.Hour),
+				End:   time.Now(),
+			}
+
+			resp, err := multiTenantQuerier.DetectedLabels(ctx, req)
+			require.NoError(t, err)
+			require.Equal(t, len(tc.expected), len(resp.DetectedLabels))
+
+			// Sort both slices for comparison
+			sort.Slice(tc.expected, func(i, j int) bool {
+				return tc.expected[i].Label < tc.expected[j].Label
+			})
+			sort.Slice(resp.DetectedLabels, func(i, j int) bool {
+				return resp.DetectedLabels[i].Label < resp.DetectedLabels[j].Label
+			})
+
+			for i := range tc.expected {
+				require.Equal(t, tc.expected[i].Label, resp.DetectedLabels[i].Label)
+				// Allow for some error in cardinality estimation due to HyperLogLog approximation
+				require.InDelta(t, tc.expected[i].Cardinality, resp.DetectedLabels[i].Cardinality, float64(tc.expected[i].Cardinality)*0.02)
+			}
+		})
+	}
+}
+
+func TestMultiTenantQuerierPatterns(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name              string
+		orgID             string
+		expectedCallCount int // number of times underlying Patterns should be called
+		expectedPatterns  []string
+	}{
+		{
+			name:              "single tenant",
+			orgID:             "tenant1",
+			expectedCallCount: 1,
+			expectedPatterns:  []string{"pattern1", "pattern2"},
+		},
+		{
+			name:              "multiple tenants",
+			orgID:             "tenant1|tenant2",
+			expectedCallCount: 2,
+			expectedPatterns:  []string{"pattern1", "pattern2"}, // merged from both tenants
+		},
+		{
+			name:              "three tenants",
+			orgID:             "tenant1|tenant2|tenant3",
+			expectedCallCount: 3,
+			expectedPatterns:  []string{"pattern1", "pattern2"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			querier := newQuerierMock()
+
+			// Mock the Patterns method to return a response
+			querier.On("Patterns", mock.Anything, mock.Anything).Return(&logproto.QueryPatternsResponse{
+				Series: []*logproto.PatternSeries{
+					{
+						Pattern: "pattern1",
+						Samples: []*logproto.PatternSample{
+							{Timestamp: 0, Value: 100},
+						},
+					},
+					{
+						Pattern: "pattern2",
+						Samples: []*logproto.PatternSample{
+							{Timestamp: 0, Value: 50},
+						},
+					},
+				},
+			}, nil)
+
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+
+			req := &logproto.QueryPatternsRequest{
+				Query: `{service_name="test"}`,
+				Start: now.Add(-1 * time.Hour),
+				End:   now,
+				Step:  time.Minute.Milliseconds(),
+			}
+
+			resp, err := multiTenantQuerier.Patterns(ctx, req)
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+
+			// Verify the underlying Patterns was called the expected number of times
+			querier.AssertNumberOfCalls(t, "Patterns", tc.expectedCallCount)
+
+			// Verify we got the expected patterns
+			require.Len(t, resp.Series, len(tc.expectedPatterns))
+			foundPatterns := make(map[string]bool)
+			for _, series := range resp.Series {
+				foundPatterns[series.Pattern] = true
+			}
+			for _, expectedPattern := range tc.expectedPatterns {
+				require.True(t, foundPatterns[expectedPattern], "Expected pattern %s not found", expectedPattern)
+			}
 		})
 	}
 }

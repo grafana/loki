@@ -48,33 +48,48 @@ See [MAINTAINERS.md](https://github.com/thanos-io/thanos/blob/main/MAINTAINERS.m
 
 The core this module is the [`Bucket` interface](objstore.go):
 
-```go mdox-exec="sed -n '37,50p' objstore.go"
+```go mdox-exec="sed -n '55,73p' objstore.go"
 // Bucket provides read and write access to an object storage bucket.
 // NOTE: We assume strong consistency for write-read flow.
 type Bucket interface {
 	io.Closer
 	BucketReader
 
+	Provider() ObjProvider
+
 	// Upload the contents of the reader as an object into the bucket.
 	// Upload should be idempotent.
 	Upload(ctx context.Context, name string, r io.Reader) error
 
 	// Delete removes the object with the given name.
-	// If object does not exists in the moment of deletion, Delete should throw error.
+	// If object does not exist in the moment of deletion, Delete should throw error.
 	Delete(ctx context.Context, name string) error
 
+	// Name returns the bucket name for the provider.
+	Name() string
+}
 ```
 
 All [provider implementations](providers) have to implement `Bucket` interface that allows common read and write operations that all supported by all object providers. If you want to limit the code that will do bucket operation to only read access (smart idea, allowing to limit access permissions), you can use the [`BucketReader` interface](objstore.go):
 
-```go mdox-exec="sed -n '68,88p' objstore.go"
-
+```go mdox-exec="sed -n '89,124p' objstore.go"
 // BucketReader provides read access to an object storage bucket.
 type BucketReader interface {
 	// Iter calls f for each entry in the given directory (not recursive.). The argument to f is the full
 	// object name including the prefix of the inspected directory.
+
 	// Entries are passed to function in sorted order.
-	Iter(ctx context.Context, dir string, f func(string) error, options ...IterOption) error
+	Iter(ctx context.Context, dir string, f func(name string) error, options ...IterOption) error
+
+	// IterWithAttributes calls f for each entry in the given directory similar to Iter.
+	// In addition to Name, it also includes requested object attributes in the argument to f.
+	//
+	// Attributes can be requested using IterOption.
+	// Not all IterOptions are supported by all providers, requesting for an unsupported option will fail with ErrOptionNotSupported.
+	IterWithAttributes(ctx context.Context, dir string, f func(attrs IterObjectAttributes) error, options ...IterOption) error
+
+	// SupportedIterOptions returns a list of supported IterOptions by the underlying provider.
+	SupportedIterOptions() []IterOptionType
 
 	// Get returns a reader for the given object name.
 	Get(ctx context.Context, name string) (io.ReadCloser, error)
@@ -88,7 +103,12 @@ type BucketReader interface {
 	// IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 	IsObjNotFoundErr(err error) bool
 
+	// IsAccessDeniedErr returns true if access to object is denied.
+	IsAccessDeniedErr(err error) bool
+
 	// Attributes returns information about the specified object.
+	Attributes(ctx context.Context, name string) (ObjectAttributes, error)
+}
 ```
 
 Those interfaces represent the object storage operations your code can use from `objstore` clients.
@@ -128,6 +148,7 @@ Current object storage client implementations:
 | [Baidu BOS](#baidu-bos)                                                                   | Beta               | Production Usage      | no                | @yahaa                           |
 | [Local Filesystem](#filesystem)                                                           | Stable             | Testing and Demo only | yes               | @bwplotka                        |
 | [Oracle Cloud Infrastructure Object Storage](#oracle-cloud-infrastructure-object-storage) | Beta               | Production Usage      | yes               | @aarontams,@gaurav-05,@ericrrath |
+| [HuaweiCloud OBS](#huaweicloud-obs)                                                       | Beta               | Production Usage      | no                | @setoru                          |
 
 **Missing support to some object storage?** Check out [how to add your client section](#how-to-add-a-new-client-to-thanos)
 
@@ -139,7 +160,7 @@ Thanos uses the [minio client](https://github.com/minio/minio-go) library to upl
 
 > NOTE: S3 client was designed for AWS S3, but it can be configured against other S3-compatible object storages e.g Ceph
 
-The S# object storage yaml configuration definition:
+The S3 object storage yaml configuration definition:
 
 ```yaml mdox-exec="go run scripts/cfggen/main.go --name=s3.Config"
 type: S3
@@ -147,11 +168,13 @@ config:
   bucket: ""
   endpoint: ""
   region: ""
+  disable_dualstack: false
   aws_sdk_auth: false
   access_key: ""
   insecure: false
   signature_version2: false
   secret_key: ""
+  session_token: ""
   put_user_metadata: {}
   http_config:
     idle_conn_timeout: 1m30s
@@ -173,6 +196,8 @@ config:
     enable: false
   list_objects_version: ""
   bucket_lookup_type: auto
+  send_content_md5: true
+  disable_multipart: false
   part_size: 67108864
   sse_config:
     type: ""
@@ -190,6 +215,8 @@ However if you set `aws_sdk_auth: true` Thanos will use the default authenticati
 The field `prefix` can be used to transparently use prefixes in your S3 bucket. This allows you to separate blocks coming from different sources into paths with different prefixes, making it easier to understand what's going on (i.e. you don't have to use Thanos tooling to know from where which blocks came).
 
 The AWS region to endpoint mapping can be found in this [link](https://docs.aws.amazon.com/general/latest/gr/s3.html).
+
+By default, the library prefers using [dual-stack endpoints](https://docs.aws.amazon.com/AmazonS3/latest/userguide/dual-stack-endpoints.html). You can explicitly disable this behaviour by setting `disable_dualstack: true`.
 
 Make sure you use a correct signature version. Currently AWS requires signature v4, so it needs `signature_version2: false`. If you don't specify it, you will get an `Access Denied` error. On the other hand, several S3 compatible APIs use `signature_version2: true`.
 
@@ -289,7 +316,7 @@ Example working AWS IAM policy for user:
 To test the policy, set env vars for S3 access for *empty, not used* bucket as well as:
 
 ```
-THANOS_TEST_OBJSTORE_SKIP=GCS,AZURE,SWIFT,COS,ALIYUNOSS,OCI
+THANOS_TEST_OBJSTORE_SKIP=GCS,AZURE,SWIFT,COS,ALIYUNOSS,OCI,OBS
 THANOS_ALLOW_EXISTING_BUCKET_USE=true
 ```
 
@@ -323,7 +350,7 @@ We need access to CreateBucket and DeleteBucket and access to all buckets:
 }
 ```
 
-With this policy you should be able to run set `THANOS_TEST_OBJSTORE_SKIP=GCS,AZURE,SWIFT,COS,ALIYUNOSS,OCI` and unset `S3_BUCKET` and run all tests using `make test`.
+With this policy you should be able to run set `THANOS_TEST_OBJSTORE_SKIP=GCS,AZURE,SWIFT,COS,ALIYUNOSS,OCI,OBS` and unset `S3_BUCKET` and run all tests using `make test`.
 
 Details about AWS policies: https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html
 
@@ -344,6 +371,25 @@ type: GCS
 config:
   bucket: ""
   service_account: ""
+  use_grpc: false
+  grpc_conn_pool_size: 0
+  http_config:
+    idle_conn_timeout: 0s
+    response_header_timeout: 0s
+    insecure_skip_verify: false
+    tls_handshake_timeout: 0s
+    expect_continue_timeout: 0s
+    max_idle_conns: 0
+    max_idle_conns_per_host: 0
+    max_conns_per_host: 0
+    tls_config:
+      ca_file: ""
+      cert_file: ""
+      key_file: ""
+      server_name: ""
+      insecure_skip_verify: false
+    disable_compression: false
+  chunk_size_bytes: 0
 prefix: ""
 ```
 
@@ -416,6 +462,8 @@ type: AZURE
 config:
   storage_account: ""
   storage_account_key: ""
+  storage_connection_string: ""
+  storage_create_container: false
   container: ""
   endpoint: ""
   user_assigned_id: ""
@@ -450,6 +498,8 @@ prefix: ""
 If `msi_resource` is used, authentication is done via system-assigned managed identity. The value for Azure should be `https://<storage-account-name>.blob.core.windows.net`.
 
 If `user_assigned_id` is used, authentication is done via user-assigned managed identity. When using `user_assigned_id` the `msi_resource` defaults to `https://<storage_account>.<endpoint>`
+
+If `storage_connection_string` is set, the values of `storage_account` and `endpoint` values will not be used. Use this method over `storage_account_key` if you need to authenticate via a SAS token.
 
 The generic `max_retries` will be used as value for the `pipeline_config`'s `max_tries` and `reader_config`'s `max_retry_requests`. For more control, `max_retries` could be ignored (0) and one could set specific retry values.
 
@@ -488,6 +538,22 @@ config:
   connect_timeout: 10s
   timeout: 5m
   use_dynamic_large_objects: false
+  http_config:
+    idle_conn_timeout: 1m30s
+    response_header_timeout: 2m
+    insecure_skip_verify: false
+    tls_handshake_timeout: 10s
+    expect_continue_timeout: 1s
+    max_idle_conns: 100
+    max_idle_conns_per_host: 100
+    max_conns_per_host: 0
+    tls_config:
+      ca_file: ""
+      cert_file: ""
+      key_file: ""
+      server_name: ""
+      insecure_skip_verify: false
+    disable_compression: false
 prefix: ""
 ```
 
@@ -576,7 +642,7 @@ prefix: ""
 
 ### Oracle Cloud Infrastructure Object Storage
 
-To configure Oracle Cloud Infrastructure (OCI) Object Storage as Thanos Object Store, you need to provide appropriate authentication credentials to your OCI tenancy. The OCI object storage client implementation for Thanos supports either the default keypair or instance principal authentication.
+To configure Oracle Cloud Infrastructure (OCI) Object Storage as a Thanos Object Store, you need to provide appropriate authentication credentials to your OCI tenancy. The OCI object storage client implementation for Thanos supports default keypair, instance principal, and OKE workload identity authentication.
 
 #### API Signing Key
 
@@ -639,6 +705,54 @@ config:
 ```
 
 You can also include any of the optional configuration just like the example in `Default Provider`.
+
+#### OKE Workload Identity Provider
+
+For Example:
+
+```yaml
+type: OCI
+config:
+  provider: "oke-workload-identity"
+  bucket: ""
+  region: ""
+```
+
+The `bucket` and `region` fields are required. The `region` field identifies the bucket region.
+
+##### HuaweiCloud OBS
+
+To use HuaweiCloud OBS as an object store, you should apply for a HuaweiCloud Account to create an object storage bucket at first. More details: [HuaweiCloud OBS](https://support.huaweicloud.com/obs/index.html)
+
+To configure HuaweiCloud Account to use OBS as storage store you need to set these parameters in YAML format stored in a file:
+
+```yaml mdox-exec="go run scripts/cfggen/main.go --name=obs.Config"
+type: OBS
+config:
+  bucket: ""
+  endpoint: ""
+  access_key: ""
+  secret_key: ""
+  http_config:
+    idle_conn_timeout: 1m30s
+    response_header_timeout: 2m
+    insecure_skip_verify: false
+    tls_handshake_timeout: 10s
+    expect_continue_timeout: 1s
+    max_idle_conns: 100
+    max_idle_conns_per_host: 100
+    max_conns_per_host: 0
+    tls_config:
+      ca_file: ""
+      cert_file: ""
+      key_file: ""
+      server_name: ""
+      insecure_skip_verify: false
+    disable_compression: false
+prefix: ""
+```
+
+The `access_key` and `secret_key` field is required. The `http_config` field is optional for optimize HTTP transport settings.
 
 #### How to add a new client to Thanos?
 

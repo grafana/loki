@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
@@ -44,6 +47,16 @@ type PeeringRemoteInfo struct {
 	Partition string
 	// Datacenter is the remote peer's datacenter.
 	Datacenter string
+	Locality   *Locality `json:",omitempty"`
+}
+
+// Locality identifies where a given entity is running.
+type Locality struct {
+	// Region is region the zone belongs to.
+	Region string
+
+	// Zone is the zone the entity is running in.
+	Zone string
 }
 
 type Peering struct {
@@ -205,7 +218,7 @@ func (p *Peerings) GenerateToken(ctx context.Context, g PeeringGenerateTokenRequ
 		return nil, nil, fmt.Errorf("peer name cannot be empty")
 	}
 
-	req := p.c.newRequest("POST", fmt.Sprint("/v1/peering/token"))
+	req := p.c.newRequest("POST", "/v1/peering/token")
 	req.setWriteOptions(wq)
 	req.ctx = ctx
 	req.obj = g
@@ -231,7 +244,7 @@ func (p *Peerings) GenerateToken(ctx context.Context, g PeeringGenerateTokenRequ
 
 // TODO(peering): verify this is the ultimate signature we want
 func (p *Peerings) Establish(ctx context.Context, i PeeringEstablishRequest, wq *WriteOptions) (*PeeringEstablishResponse, *WriteMeta, error) {
-	req := p.c.newRequest("POST", fmt.Sprint("/v1/peering/establish"))
+	req := p.c.newRequest("POST", "/v1/peering/establish")
 	req.setWriteOptions(wq)
 	req.ctx = ctx
 	req.obj = i

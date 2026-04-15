@@ -15,7 +15,12 @@ import (
 	"os"
 	"time"
 
+	"cloud.google.com/go/auth"
+	"cloud.google.com/go/auth/credentials"
+	"cloud.google.com/go/auth/oauth2adapt"
 	"golang.org/x/oauth2"
+	"google.golang.org/api/internal/cert"
+	"google.golang.org/api/internal/credentialstype"
 	"google.golang.org/api/internal/impersonate"
 
 	"golang.org/x/oauth2/google"
@@ -26,6 +31,9 @@ const quotaProjectEnvVar = "GOOGLE_CLOUD_QUOTA_PROJECT"
 // Creds returns credential information obtained from DialSettings, or if none, then
 // it returns default credential information.
 func Creds(ctx context.Context, ds *DialSettings) (*google.Credentials, error) {
+	if ds.IsNewAuthLibraryEnabled() {
+		return credsNewAuth(ds)
+	}
 	creds, err := baseCreds(ctx, ds)
 	if err != nil {
 		return nil, err
@@ -36,6 +44,114 @@ func Creds(ctx context.Context, ds *DialSettings) (*google.Credentials, error) {
 	return creds, nil
 }
 
+// AuthCreds returns [cloud.google.com/go/auth.Credentials] based on credentials
+// options provided via [option.ClientOption], including legacy oauth2/google
+// options. If there are no applicable options, then it returns the result of
+// [cloud.google.com/go/auth/credentials.DetectDefault].
+// Note: If NoAuth is true, when [google.golang.org/api/option.WithoutAuthentication]
+// is passed, then no authentication will be performed and this function will
+// return nil, nil.
+func AuthCreds(ctx context.Context, settings *DialSettings) (*auth.Credentials, error) {
+	if settings.NoAuth {
+		return nil, nil
+	}
+	if settings.AuthCredentials != nil {
+		return settings.AuthCredentials, nil
+	}
+	// Support oauth2/google options
+	var oauth2Creds *google.Credentials
+	if settings.InternalCredentials != nil {
+		oauth2Creds = settings.InternalCredentials
+	} else if settings.Credentials != nil {
+		oauth2Creds = settings.Credentials
+	} else if settings.TokenSource != nil {
+		oauth2Creds = &google.Credentials{TokenSource: settings.TokenSource}
+	}
+	if oauth2Creds != nil {
+		return oauth2adapt.AuthCredentialsFromOauth2Credentials(oauth2Creds), nil
+	}
+
+	return detectDefaultFromDialSettings(settings)
+}
+
+// GetOAuth2Configuration determines configurations for the OAuth2 transport, which is separate from the API transport.
+// The OAuth2 transport and endpoint will be configured for mTLS if applicable.
+func GetOAuth2Configuration(ctx context.Context, settings *DialSettings) (string, *http.Client, error) {
+	clientCertSource, err := getClientCertificateSource(settings)
+	if err != nil {
+		return "", nil, err
+	}
+	tokenURL := oAuth2Endpoint(clientCertSource)
+	var oauth2Client *http.Client
+	if clientCertSource != nil {
+		tlsConfig := &tls.Config{
+			GetClientCertificate: clientCertSource,
+		}
+		oauth2Client = customHTTPClient(tlsConfig)
+	} else {
+		oauth2Client = oauth2.NewClient(ctx, nil)
+	}
+	return tokenURL, oauth2Client, nil
+}
+
+func credsNewAuth(settings *DialSettings) (*google.Credentials, error) {
+	// Preserve old options behavior
+	if settings.InternalCredentials != nil {
+		return settings.InternalCredentials, nil
+	} else if settings.Credentials != nil {
+		return settings.Credentials, nil
+	} else if settings.TokenSource != nil {
+		return &google.Credentials{TokenSource: settings.TokenSource}, nil
+	}
+
+	if settings.AuthCredentials != nil {
+		return oauth2adapt.Oauth2CredentialsFromAuthCredentials(settings.AuthCredentials), nil
+	}
+
+	creds, err := detectDefaultFromDialSettings(settings)
+	if err != nil {
+		return nil, err
+	}
+	return oauth2adapt.Oauth2CredentialsFromAuthCredentials(creds), nil
+}
+
+func detectDefaultFromDialSettings(settings *DialSettings) (*auth.Credentials, error) {
+	var useSelfSignedJWT bool
+	var aud string
+	var scopes []string
+	// If scoped JWTs are enabled user provided an aud, allow self-signed JWT.
+	if settings.EnableJwtWithScope || len(settings.Audiences) > 0 {
+		useSelfSignedJWT = true
+	}
+
+	if len(settings.Scopes) > 0 {
+		scopes = make([]string, len(settings.Scopes))
+		copy(scopes, settings.Scopes)
+	}
+	if len(settings.Audiences) > 0 {
+		aud = settings.Audiences[0]
+	}
+	// Only default scopes if user did not also set an audience.
+	if len(settings.Scopes) == 0 && aud == "" && len(settings.DefaultScopes) > 0 {
+		scopes = make([]string, len(settings.DefaultScopes))
+		copy(scopes, settings.DefaultScopes)
+	}
+	if len(scopes) == 0 && aud == "" {
+		aud = settings.DefaultAudience
+	}
+
+	credsFile, _ := settings.GetAuthCredentialsFile()
+	credsJSON, _ := settings.GetAuthCredentialsJSON()
+	return credentials.DetectDefault(&credentials.DetectOptions{
+		Scopes:           scopes,
+		Audience:         aud,
+		CredentialsFile:  credsFile,
+		CredentialsJSON:  credsJSON,
+		UseSelfSignedJWT: useSelfSignedJWT,
+		Logger:           settings.Logger,
+	})
+}
+
 func baseCreds(ctx context.Context, ds *DialSettings) (*google.Credentials, error) {
 	if ds.InternalCredentials != nil {
 		return ds.InternalCredentials, nil
@@ -43,15 +159,15 @@ func baseCreds(ctx context.Context, ds *DialSettings) (*google.Credentials, erro
 	if ds.Credentials != nil {
 		return ds.Credentials, nil
 	}
-	if ds.CredentialsJSON != nil {
-		return credentialsFromJSON(ctx, ds.CredentialsJSON, ds)
+	if credsJSON, checkCredType := ds.GetAuthCredentialsJSON(); len(credsJSON) > 0 {
+		return credentialsFromJSON(ctx, credsJSON, ds, checkCredType)
 	}
-	if ds.CredentialsFile != "" {
-		data, err := os.ReadFile(ds.CredentialsFile)
+	if credsFile, checkCredType := ds.GetAuthCredentialsFile(); credsFile != "" {
+		data, err := os.ReadFile(credsFile)
 		if err != nil {
 			return nil, fmt.Errorf("cannot read credentials file: %v", err)
 		}
-		return credentialsFromJSON(ctx, data, ds)
+		return credentialsFromJSON(ctx, data, ds, checkCredType)
 	}
 	if ds.TokenSource != nil {
 		return &google.Credentials{TokenSource: ds.TokenSource}, nil
@@ -61,7 +177,7 @@ func baseCreds(ctx context.Context, ds *DialSettings) (*google.Credentials, erro
 		return nil, err
 	}
 	if len(cred.JSON) > 0 {
-		return credentialsFromJSON(ctx, cred.JSON, ds)
+		return credentialsFromJSON(ctx, cred.JSON, ds, credentialstype.Unknown)
 	}
 	// For GAE and GCE, the JSON is empty so return the default credentials directly.
 	return cred, nil
@@ -78,30 +194,27 @@ const (
 // met:
 //
 //	(1) At least one of the following is true:
-//	    (a) No scope is provided
-//	    (b) Scope for self-signed JWT flow is enabled
-//	    (c) Audiences are explicitly provided by users
+//	    (a) Scope for self-signed JWT flow is enabled
+//	    (b) Audiences are explicitly provided by users
 //	(2) No service account impersontation
 //
 // - Otherwise, executes standard OAuth 2.0 flow
 // More details: google.aip.dev/auth/4111
-func credentialsFromJSON(ctx context.Context, data []byte, ds *DialSettings) (*google.Credentials, error) {
+func credentialsFromJSON(ctx context.Context, data []byte, ds *DialSettings, checkCredType credentialstype.CredType) (*google.Credentials, error) {
+	if checkCredType != credentialstype.Unknown {
+		if err := credentialstype.CheckCredentialType(data, checkCredType); err != nil {
+			return nil, err
+		}
+	}
 	var params google.CredentialsParams
 	params.Scopes = ds.GetScopes()
 
-	// Determine configurations for the OAuth2 transport, which is separate from the API transport.
-	// The OAuth2 transport and endpoint will be configured for mTLS if applicable.
-	clientCertSource, oauth2Endpoint, err := getClientCertificateSourceAndEndpoint(oauth2DialSettings(ds))
+	tokenURL, oauth2Client, err := GetOAuth2Configuration(ctx, ds)
 	if err != nil {
 		return nil, err
 	}
-	params.TokenURL = oauth2Endpoint
-	if clientCertSource != nil {
-		tlsConfig := &tls.Config{
-			GetClientCertificate: clientCertSource,
-		}
-		ctx = context.WithValue(ctx, oauth2.HTTPClient, customHTTPClient(tlsConfig))
-	}
+	params.TokenURL = tokenURL
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, oauth2Client)
 
 	// By default, a standard OAuth 2.0 token source is created
 	cred, err := google.CredentialsFromJSONWithParams(ctx, data, params)
@@ -125,20 +238,35 @@ func credentialsFromJSON(ctx context.Context, data []byte, ds *DialSettings) (*g
 	return cred, err
 }
 
+func oAuth2Endpoint(clientCertSource cert.Source) string {
+	if isMTLS(clientCertSource) {
+		return google.MTLSTokenURL
+	}
+	return google.Endpoint.TokenURL
+}
+
 func isSelfSignedJWTFlow(data []byte, ds *DialSettings) (bool, error) {
-	if (ds.EnableJwtWithScope || ds.HasCustomAudience()) &&
-		ds.ImpersonationConfig == nil {
-		// Check if JSON is a service account and if so create a self-signed JWT.
-		var f struct {
-			Type string `json:"type"`
-			// The rest JSON fields are omitted because they are not used.
-		}
-		if err := json.Unmarshal(data, &f); err != nil {
-			return false, err
-		}
-		return f.Type == serviceAccountKey, nil
+	// For non-GDU universe domains, token exchange is impossible and services
+	// must support self-signed JWTs with scopes.
+	if !ds.IsUniverseDomainGDU() {
+		return typeServiceAccount(data)
+	}
+	if (ds.EnableJwtWithScope || ds.HasCustomAudience()) && ds.ImpersonationConfig == nil {
+		return typeServiceAccount(data)
 	}
 	return false, nil
+}
+
+// typeServiceAccount checks if JSON data is for a service account.
+func typeServiceAccount(data []byte) (bool, error) {
+	var f struct {
+		Type string `json:"type"`
+		// The remaining JSON fields are omitted because they are not used.
+	}
+	if err := json.Unmarshal(data, &f); err != nil {
+		return false, err
+	}
+	return f.Type == serviceAccountKey, nil
 }
 
 func selfSignedJWTTokenSource(data []byte, ds *DialSettings) (oauth2.TokenSource, error) {
@@ -187,15 +315,6 @@ func impersonateCredentials(ctx context.Context, creds *google.Credentials, ds *
 		TokenSource: ts,
 		ProjectID:   creds.ProjectID,
 	}, nil
-}
-
-// oauth2DialSettings returns the settings to be used by the OAuth2 transport, which is separate from the API transport.
-func oauth2DialSettings(ds *DialSettings) *DialSettings {
-	var ods DialSettings
-	ods.DefaultEndpoint = google.Endpoint.TokenURL
-	ods.DefaultMTLSEndpoint = google.MTLSTokenURL
-	ods.ClientCertSource = ds.ClientCertSource
-	return &ods
 }
 
 // customHTTPClient constructs an HTTPClient using the provided tlsConfig, to support mTLS.

@@ -27,7 +27,6 @@ package gzip
 
 import (
 	"compress/gzip"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"sync"
@@ -40,7 +39,7 @@ const Name = "gzip"
 
 func init() {
 	c := &compressor{}
-	c.poolCompressor.New = func() interface{} {
+	c.poolCompressor.New = func() any {
 		return &writer{Writer: gzip.NewWriter(io.Discard), pool: &c.poolCompressor}
 	}
 	encoding.RegisterCompressor(c)
@@ -61,7 +60,7 @@ func SetLevel(level int) error {
 		return fmt.Errorf("grpc: invalid gzip compression level: %d", level)
 	}
 	c := encoding.GetCompressor(Name).(*compressor)
-	c.poolCompressor.New = func() interface{} {
+	c.poolCompressor.New = func() any {
 		w, err := gzip.NewWriterLevel(io.Discard, level)
 		if err != nil {
 			panic(err)
@@ -109,17 +108,6 @@ func (z *reader) Read(p []byte) (n int, err error) {
 		z.pool.Put(z)
 	}
 	return n, err
-}
-
-// RFC1952 specifies that the last four bytes "contains the size of
-// the original (uncompressed) input data modulo 2^32."
-// gRPC has a max message size of 2GB so we don't need to worry about wraparound.
-func (c *compressor) DecompressedSize(buf []byte) int {
-	last := len(buf)
-	if last < 4 {
-		return -1
-	}
-	return int(binary.LittleEndian.Uint32(buf[last-4 : last]))
 }
 
 func (c *compressor) Name() string {

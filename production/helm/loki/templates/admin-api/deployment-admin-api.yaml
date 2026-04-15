@@ -1,0 +1,176 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled $isDistributed }}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "enterprise-logs.adminApiFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "enterprise-logs.adminApiLabels" . | nindent 4 }}
+    {{- with .Values.adminApi.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/part-of: memberlist
+  annotations:
+    {{- with .Values.adminApi.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.adminApi.replicas }}
+  selector:
+    matchLabels:
+      {{- include "enterprise-logs.adminApiSelectorLabels" . | nindent 6 }}
+  strategy:
+    {{- toYaml .Values.adminApi.strategy | nindent 4 }}
+  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "enterprise-logs.adminApiLabels" . | nindent 8 }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.adminApi.labels }}
+        {{- tpl (toYaml .) $ | nindent 8 }}
+        {{- end }}
+        app.kubernetes.io/part-of: memberlist
+      annotations:
+        {{- if .Values.useExternalConfig }}
+        checksum/config: {{ .Values.externalConfigVersion }}
+        {{- else }}
+        checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/config.yaml") }}
+        {{- end}}
+        {{- with .Values.adminApi.annotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
+      {{- with .Values.adminApi.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
+      {{- end }}
+      {{- with .Values.adminApi.dnsConfig | default .Values.loki.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      serviceAccountName: {{ template "loki.serviceAccountName" . }}
+      {{- if .Values.adminApi.priorityClassName }}
+      priorityClassName: {{ .Values.adminApi.priorityClassName }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.adminApi.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.adminApi.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.adminApi.hostUsers) }}
+      hostUsers: {{ .Values.adminApi.hostUsers }}
+      {{- end }}
+      containers:
+        - name: admin-api
+          image: "{{ template "loki.image" . }}"
+          imagePullPolicy: {{ .Values.enterprise.image.pullPolicy }}
+          args:
+            - -target=admin-api
+            - -config.file=/etc/loki/config/config.yaml
+            {{- if .Values.minio.enabled }}
+            - -admin.client.backend-type=s3
+            - -admin.client.s3.endpoint={{ template "loki.minio" . }}
+            - -admin.client.s3.bucket-name={{ .Values.loki.storage.bucketNames.admin }}
+            - -admin.client.s3.access-key-id={{ (index .Values.minio.users 0).accessKey }}
+            - -admin.client.s3.secret-access-key={{ (index .Values.minio.users 0).secretKey }}
+            - -admin.client.s3.insecure={{ .Values.loki.storage.s3.insecure }}
+            {{- end }}
+            {{- range $key, $value := .Values.adminApi.extraArgs }}
+            - "-{{ $key }}={{ $value }}"
+            {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki/config
+            - name: license
+              mountPath: /etc/loki/license
+            - name: storage
+              mountPath: /data
+            {{- if .Values.adminApi.extraVolumeMounts }}
+            {{ toYaml .Values.adminApi.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http-metrics
+              containerPort: 3100
+              protocol: TCP
+            - name: grpc
+              containerPort: 9095
+              protocol: TCP
+            - name: http-memberlist
+              containerPort: 7946
+              protocol: TCP
+          {{- with .Values.adminApi.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.adminApi.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.adminApi.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.adminApi.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.adminApi.containerSecurityContext | nindent 12 }}
+          {{- with (concat .Values.global.extraEnv .Values.adminApi.extraEnv) | uniq }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.adminApi.extraEnvFrom) | uniq }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- with .Values.adminApi.extraContainers }}
+        {{ toYaml . | nindent 8 }}
+        {{- end }}
+      nodeSelector:
+        {{- toYaml .Values.adminApi.nodeSelector | nindent 8 }}
+      affinity:
+        {{- tpl (.Values.adminApi.affinity | toYaml) . | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.adminApi.tolerations | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.adminApi.terminationGracePeriodSeconds }}
+      volumes:
+        - name: config
+          {{- include "loki.configVolume" . | nindent 10 }}
+        - name: license
+          secret:
+          {{- if .Values.enterprise.useExternalLicense }}
+            secretName: {{ .Values.enterprise.externalLicenseName }}
+          {{- else }}
+            secretName: enterprise-logs-license
+          {{- end }}
+        - name: storage
+          emptyDir: {}
+        {{- if .Values.adminApi.extraVolumes }}
+        {{ toYaml .Values.adminApi.extraVolumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.minio.enabled }}
+        - name: minio-configuration
+          projected:
+            sources:
+              - configMap:
+                  name: {{ .Release.Name }}-minio
+              - secret:
+                  name: {{ .Release.Name }}-minio
+        {{- if .Values.minio.tls.enabled }}
+        - name: cert-secret-volume-mc
+          secret:
+            secretName: {{ .Values.minio.tls.certSecret }}
+            items:
+              - key: {{ .Values.minio.tls.publicCrt }}
+                path: CAs/public.crt
+        {{- end }}
+        {{- end }}
+{{- end }}

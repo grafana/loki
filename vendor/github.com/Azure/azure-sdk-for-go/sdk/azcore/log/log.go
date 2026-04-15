@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -22,6 +19,11 @@ const (
 	// EventResponse entries contain information about HTTP responses.
 	// This includes information like the HTTP status code, headers, and request URL.
 	EventResponse Event = "Response"
+
+	// EventResponseError entries contain information about HTTP responses that returned
+	// an *azcore.ResponseError (i.e. responses with a non 2xx HTTP status code).
+	// This includes the contents of ResponseError.Error().
+	EventResponseError Event = "ResponseError"
 
 	// EventRetryPolicy entries contain information specific to the retry policy in use.
 	EventRetryPolicy Event = "Retry"

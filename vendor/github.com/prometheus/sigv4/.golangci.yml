@@ -1,0 +1,41 @@
+version: "2"
+linters:
+  enable:
+    - errorlint
+    - gocritic
+    - misspell
+    - revive
+    - testifylint
+  settings:
+    gocritic:
+      enable-all: true
+      disabled-checks:
+        - whyNoLint
+    revive:
+      rules:
+        - name: unused-parameter
+          severity: warning
+          disabled: true
+    testifylint:
+      enable-all: true
+      disable:
+        - float-compare
+        - go-require
+  exclusions:
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/prometheus/sigv4
+

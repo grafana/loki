@@ -143,7 +143,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 		c <- nil // signal the collection loop that we are done
 		<-c      // wait for the collect loop to complete
 		if f.isLegacy() && cum == cumx {
-			err = io.EOF
+			err = lz4errors.ErrEndOfStream
 		}
 		b.closeR(err)
 		close(data)
@@ -224,9 +224,7 @@ func (b *FrameDataBlock) Close(f *Frame) {
 func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.CompressionLevel) *FrameDataBlock {
 	data := b.data
 	if f.isLegacy() {
-		// In legacy mode, the buffer is sized according to CompressBlockBound,
-		// but only 8Mb is buffered for compression.
-		src = src[:8<<20]
+		data = data[:cap(data)]
 	} else {
 		data = data[:len(src)] // trigger the incompressible flag in CompressBlock
 	}
@@ -248,7 +246,7 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.Compressi
 	b.src = src // keep track of the source for content checksum
 
 	if f.Descriptor.Flags.BlockChecksum() {
-		b.Checksum = xxh32.ChecksumZero(src)
+		b.Checksum = xxh32.ChecksumZero(b.Data)
 	}
 	return b
 }
@@ -292,11 +290,11 @@ func (b *FrameDataBlock) Read(f *Frame, src io.Reader, cum uint32) (uint32, erro
 			// Only works in non concurrent mode, for concurrent mode
 			// it is handled separately.
 			// Linux kernel format appends the total uncompressed size at the end.
-			return 0, io.EOF
+			return 0, lz4errors.ErrEndOfStream
 		}
 	} else if x == 0 {
 		// Marker for end of stream.
-		return 0, io.EOF
+		return 0, lz4errors.ErrEndOfStream
 	}
 	b.Size = DataBlockSize(x)
 
@@ -330,7 +328,7 @@ func (b *FrameDataBlock) Uncompress(f *Frame, dst, dict []byte, sum bool) ([]byt
 		dst = dst[:n]
 	}
 	if f.Descriptor.Flags.BlockChecksum() {
-		if c := xxh32.ChecksumZero(dst); c != b.Checksum {
+		if c := xxh32.ChecksumZero(b.data); c != b.Checksum {
 			err := fmt.Errorf("%w: got %x; expected %x", lz4errors.ErrInvalidBlockChecksum, c, b.Checksum)
 			return nil, err
 		}

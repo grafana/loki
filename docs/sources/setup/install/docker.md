@@ -1,6 +1,6 @@
 ---
 title: Install Loki with Docker or Docker Compose
-menuTitle:  Install using Docker
+menuTitle: Install using Docker
 description: Describes how to install Loki using Docker or Docker Compose
 aliases: 
  - ../../installation/docker/
@@ -8,56 +8,120 @@ weight: 400
 ---
 # Install Loki with Docker or Docker Compose
 
-You can install Loki and Promtail with Docker or Docker Compose if you are evaluating, testing, or developing Loki.
-For production, we recommend installing with Tanka or Helm.
+You can install Loki and Alloy with Docker or Docker Compose if you are evaluating, testing, or developing Loki.
+For production, Grafana recommends installing with Helm or Tanka.
 
-The configuration acquired with these installation instructions run Loki as a single binary.
+The configuration files associated with these installation instructions run Loki as a single binary.
 
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/install)
 - [Docker Compose](https://docs.docker.com/compose/install) (optional, only needed for the Docker Compose install method)
 
-## Install with Docker
+## Install with Docker on Linux
 
-**Linux**
+1. Create a directory called `loki`. Make `loki` your current working directory:
 
-Copy and paste the commands below into your command line.
+    ```bash
+    mkdir loki
+    cd loki
+    ```
 
-```bash
-wget https://raw.githubusercontent.com/grafana/loki/v2.8.3/cmd/loki/loki-local-config.yaml -O loki-config.yaml
-docker run --name loki -d -v $(pwd):/mnt/config -p 3100:3100 grafana/loki:2.8.3 -config.file=/mnt/config/loki-config.yaml
-wget https://raw.githubusercontent.com/grafana/loki/v2.8.3/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
-docker run --name promtail -d -v $(pwd):/mnt/config -v /var/log:/var/log --link loki grafana/promtail:2.8.3 -config.file=/mnt/config/promtail-config.yaml
-```
+1. Copy and paste the following command into your command line to download `loki-local-config.yaml` to your `loki` directory. If necessary, update the Loki version numbers in the commands to match your version of Loki.
 
-When finished, `loki-config.yaml` and `promtail-config.yaml` are downloaded in the directory you chose. Docker containers are running Loki and Promtail using those config files.
+    ```bash
+    wget https://raw.githubusercontent.com/grafana/loki/v3.6.0/cmd/loki/loki-local-config.yaml -O loki-config.yaml
+    ```
 
-Navigate to http://localhost:3100/metrics to view the metrics and http://localhost:3100/ready for readiness.
+1. Copy and paste the following command into your command line to start the Docker container using the configuration file you downloaded in the previous step. If necessary, update the Loki version numbers in the commands to match your version of Loki.
 
-The image is configured to run by default as user loki with  UID `10001` and GID `10001`. You can use a different user, specially if you are using bind mounts, by specifying the UID with a `docker run` command and using `--user=UID` with numeric UID suited to your needs.
+    ```bash
+    docker run --name loki -d -v $(pwd):/mnt/config -p 3100:3100 grafana/loki:3.6.0 -config.file=/mnt/config/loki-config.yaml
+    ```
 
-**Windows**
+    {{< admonition type="note" >}}
+    The image is configured to run by default as user `loki` with UID `10001` and GID `10001`. You can use a different user, specially if you are using bind mounts, by specifying the UID with a `docker run` command and using `--user=UID` with a numeric UID suited to your needs.
+    {{< /admonition >}}
 
-Copy and paste the commands below into your terminal. Note that you will need to replace the `<placeholders>` in the commands with your local path.
+    To send logs to Loki, consider using [Grafana Alloy](https://grafana.com/docs/alloy/latest/).
+
+1. Verify that your containers are running:
+
+    ```bash
+    docker container ls
+    ```
+
+    You should see something similar to the following:
+
+    ```bash
+
+    CONTAINER ID   IMAGE                    COMMAND                  CREATED              STATUS              PORTS                                       NAMES
+    cece1df84519   grafana/loki:3.6.0       "/usr/bin/loki -conf…"   About a minute ago   Up About a minute   0.0.0.0:3100->3100/tcp, :::3100->3100/tcp   loki
+    ```
+
+1. Verify that Loki is up and running.
+
+    - To view readiness, navigate to http://localhost:3100/ready.
+    - To view metrics, navigate to http://localhost:3100/metrics.
+
+## Install with Docker on Windows
+
+1. Copy and paste the following commands into your command line to download `loki-local-config.yaml` to your `loki` directory. Note that you will need to replace the `<local-path>` in the commands with your local path. If necessary, update the Loki version numbers in the commands to match your version of Loki.
 
 ```bash
 cd "<local-path>"
-wget https://raw.githubusercontent.com/grafana/loki/v2.8.3/cmd/loki/loki-local-config.yaml -O loki-config.yaml
-docker run --name loki -v <local-path>:/mnt/config -p 3100:3100 grafana/loki:2.8.3 --config.file=/mnt/config/loki-config.yaml
-wget https://raw.githubusercontent.com/grafana/loki/v2.8.3/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
-docker run -v <local-path>:/mnt/config -v /var/log:/var/log --link loki grafana/promtail:2.8.3 --config.file=/mnt/config/promtail-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v3.6.0/cmd/loki/loki-local-config.yaml -O loki-config.yaml
 ```
 
-When finished, `loki-config.yaml` and `promtail-config.yaml` are downloaded in the directory you chose. Docker containers are running Loki and Promtail using those config files.
+1. Copy and paste the following command into your command line to start the Docker container using the configuration file you downloaded in the previous step. Note that you will need to replace the `<local-path>` in the commands with your local path. If necessary, update the Loki version numbers in the commands to match your version of Loki.
 
-Navigate to http://localhost:3100/metrics to view the output.
+```bash
+docker run --name loki -v <local-path>:/mnt/config -p 3100:3100 grafana/loki:3.6.0 --config.file=/mnt/config/loki-config.yaml
+```
+
+To send logs to Loki, consider using [Grafana Alloy](https://grafana.com/docs/alloy/latest/).
+
+1. Verify that Loki is up and running.
+
+    - To view readiness, navigate to http://localhost:3100/ready.
+    - To view metrics, navigate to http://localhost:3100/metrics.
 
 ## Install with Docker Compose
 
 Run the following commands in your command line. They work for Windows or Linux systems.
 
-```bash
-wget https://raw.githubusercontent.com/grafana/loki/v2.8.3/production/docker-compose.yaml -O docker-compose.yaml
-docker-compose -f docker-compose.yaml up
-```
+1. Create a directory called `loki`. Make `loki` your current working directory:
+
+    ```bash
+    mkdir loki
+    cd loki
+    ```
+
+1. Copy and paste the following commands into your command line to download the `docker-compose.yaml` and `alloy-local-config.yaml` files. If necessary, update the Loki version numbers in the commands to match your version of Loki.
+
+    ```bash
+    wget https://raw.githubusercontent.com/grafana/loki/v3.6.0/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/v3.6.0/examples/getting-started/alloy-local-config.yaml -O alloy-local-config.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/v3.6.0/examples/getting-started/loki-config.yaml -O loki-config.yaml
+    ```
+
+1. With `loki` as the current working directory, run the following 'docker-compose` command:
+
+    ```bash
+    docker-compose -f docker-compose.yaml up
+    ```
+
+    You should see something similar to the following:
+
+    ```bash
+    ✔ Container loki-loki-1      Started              0.0s
+    ✔ Container loki-grafana-1   Started              0.0s
+    ✔ Container loki-alloy-1     Started              0.0s
+    ```
+
+1. Verify that Loki is up and running.
+
+    - To view read path readiness, navigate to http://localhost:3101/ready.
+    - To view read path metrics, navigate to http://localhost:3101/metrics.
+    - To view write path readiness, navigate to http://localhost:3102/ready.
+    - To view write path metrics, navigate to http://localhost:3102/metrics.

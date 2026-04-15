@@ -4,11 +4,12 @@ health:
   healthProbeBindAddress: :8081
 metrics:
   bindAddress: :8080
+  secure: false
 webhook:
   port: 9443
 leaderElection:
-  leaderElect: false
-  resourceName: e3716011.grafana.com
+  leaderElect: true
+  resourceName: loki-operator.grafana.com
 featureGates:
   #
   # Encryption feature gates

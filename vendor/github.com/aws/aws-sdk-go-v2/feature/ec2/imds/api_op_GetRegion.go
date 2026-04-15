@@ -45,12 +45,13 @@ type GetRegionOutput struct {
 func addGetRegionMiddleware(stack *middleware.Stack, options Options) error {
 	return addAPIRequestMiddleware(stack,
 		options,
+		"GetRegion",
 		buildGetInstanceIdentityDocumentPath,
 		buildGetRegionOutput,
 	)
 }
 
-func buildGetRegionOutput(resp *smithyhttp.Response) (interface{}, error) {
+func buildGetRegionOutput(resp *smithyhttp.Response) (any, error) {
 	out, err := buildGetInstanceIdentityDocumentOutput(resp)
 	if err != nil {
 		return nil, err

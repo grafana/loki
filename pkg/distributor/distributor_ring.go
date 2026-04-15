@@ -2,8 +2,9 @@ package distributor
 
 import (
 	"flag"
-	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -13,7 +14,7 @@ import (
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // RingConfig masks the ring lifecycler config which contains
@@ -46,7 +47,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Ring flags
 	cfg.KVStore.RegisterFlagsWithPrefix("distributor.ring.", "collectors/", f)
-	f.DurationVar(&cfg.HeartbeatPeriod, "distributor.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring. 0 = disabled.")
+	f.DurationVar(&cfg.HeartbeatPeriod, "distributor.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring.")
 	f.DurationVar(&cfg.HeartbeatTimeout, "distributor.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which distributors are considered unhealthy within the ring. 0 = never (timeout disabled).")
 
 	// Instance flags
@@ -72,7 +73,7 @@ func (cfg *RingConfig) ToBasicLifecyclerConfig(logger log.Logger) (ring.BasicLif
 
 	return ring.BasicLifecyclerConfig{
 		ID:                              cfg.InstanceID,
-		Addr:                            fmt.Sprintf("%s:%d", instanceAddr, instancePort),
+		Addr:                            net.JoinHostPort(instanceAddr, strconv.Itoa(instancePort)),
 		HeartbeatPeriod:                 cfg.HeartbeatPeriod,
 		HeartbeatTimeout:                cfg.HeartbeatTimeout,
 		TokensObservePeriod:             0,

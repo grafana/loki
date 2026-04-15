@@ -11,14 +11,17 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/grafana/dskit/log"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+
+	dskit_log "github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/tracing"
 	"github.com/grafana/dskit/user"
 )
 
 // Log middleware logs http requests
 type Log struct {
-	Log                      log.Interface
+	Log                      log.Logger
 	DisableRequestSuccessLog bool
 	LogRequestHeaders        bool // LogRequestHeaders true -> dump http headers at debug log level
 	LogRequestAtInfoLevel    bool // LogRequestAtInfoLevel true -> log requests at info log level
@@ -26,15 +29,17 @@ type Log struct {
 	HTTPHeadersToExclude     map[string]bool
 }
 
-var defaultExcludedHeaders = map[string]bool{
-	"Cookie":        true,
-	"X-Csrf-Token":  true,
-	"Authorization": true,
+var AlwaysExcludedHeaders = map[string]bool{
+	"Cookie":         true,
+	"X-Csrf-Token":   true,
+	"Authorization":  true,
+	"X-Grafana-Id":   true,
+	"X-Access-Token": true,
 }
 
-func NewLogMiddleware(log log.Interface, logRequestHeaders bool, logRequestAtInfoLevel bool, sourceIPs *SourceIPExtractor, headersList []string) Log {
+func NewLogMiddleware(log log.Logger, logRequestHeaders bool, logRequestAtInfoLevel bool, sourceIPs *SourceIPExtractor, headersList []string) Log {
 	httpHeadersToExclude := map[string]bool{}
-	for header := range defaultExcludedHeaders {
+	for header := range AlwaysExcludedHeaders {
 		httpHeadersToExclude[header] = true
 	}
 	for _, header := range headersList {
@@ -51,17 +56,19 @@ func NewLogMiddleware(log log.Interface, logRequestHeaders bool, logRequestAtInf
 }
 
 // logWithRequest information from the request and context as fields.
-func (l Log) logWithRequest(r *http.Request) log.Interface {
+func (l Log) logWithRequest(r *http.Request) log.Logger {
 	localLog := l.Log
-	traceID, ok := tracing.ExtractTraceID(r.Context())
+	traceID, ok := tracing.ExtractSampledTraceID(r.Context())
 	if ok {
-		localLog = localLog.WithField("traceID", traceID)
+		localLog = log.With(localLog, "trace_id", traceID)
+	} else if traceID != "" {
+		localLog = log.With(localLog, "trace_id_unsampled", traceID)
 	}
 
 	if l.SourceIPs != nil {
 		ips := l.SourceIPs.Get(r)
 		if ips != "" {
-			localLog = localLog.WithField("sourceIPs", ips)
+			localLog = log.With(localLog, "sourceIPs", ips)
 		}
 	}
 
@@ -75,10 +82,10 @@ func (l Log) Wrap(next http.Handler) http.Handler {
 		uri := r.RequestURI // capture the URI before running next, as it may get rewritten
 		requestLog := l.logWithRequest(r)
 		// Log headers before running 'next' in case other interceptors change the data.
-		headers, err := dumpRequest(r, l.HTTPHeadersToExclude)
+		headers, err := dumpRequestHeaders(r, l.HTTPHeadersToExclude)
 		if err != nil {
 			headers = nil
-			requestLog.Errorf("Could not dump request headers: %v", err)
+			level.Error(requestLog).Log("msg", "could not dump request headers", "err", err)
 		}
 		var buf bytes.Buffer
 		wrapped := newBadResponseLoggingWriter(w, &buf)
@@ -89,14 +96,25 @@ func (l Log) Wrap(next http.Handler) http.Handler {
 		if writeErr != nil {
 			if errors.Is(writeErr, context.Canceled) {
 				if l.LogRequestAtInfoLevel {
-					requestLog.Infof("%s %s %s, request cancelled: %s ws: %v; %s", r.Method, uri, time.Since(begin), writeErr, IsWSHandshakeRequest(r), headers)
+					if l.LogRequestHeaders && headers != nil {
+						level.Info(requestLog).Log("msg", dskit_log.LazySprintf("%s %s %s, request cancelled: %s ws: %v; %s", r.Method, uri, time.Since(begin), writeErr, IsWSHandshakeRequest(r), headers))
+					} else {
+						level.Info(requestLog).Log("msg", dskit_log.LazySprintf("%s %s %s, request cancelled: %s ws: %v", r.Method, uri, time.Since(begin), writeErr, IsWSHandshakeRequest(r)))
+					}
 				} else {
-					requestLog.Debugf("%s %s %s, request cancelled: %s ws: %v; %s", r.Method, uri, time.Since(begin), writeErr, IsWSHandshakeRequest(r), headers)
+					if l.LogRequestHeaders && headers != nil {
+						level.Debug(requestLog).Log("msg", dskit_log.LazySprintf("%s %s %s, request cancelled: %s ws: %v; %s", r.Method, uri, time.Since(begin), writeErr, IsWSHandshakeRequest(r), headers))
+					} else {
+						level.Debug(requestLog).Log("msg", dskit_log.LazySprintf("%s %s %s, request cancelled: %s ws: %v", r.Method, uri, time.Since(begin), writeErr, IsWSHandshakeRequest(r)))
+					}
 				}
 			} else {
-				requestLog.Warnf("%s %s %s, error: %s ws: %v; %s", r.Method, uri, time.Since(begin), writeErr, IsWSHandshakeRequest(r), headers)
+				if l.LogRequestHeaders && headers != nil {
+					level.Warn(requestLog).Log("msg", dskit_log.LazySprintf("%s %s %s, error: %s ws: %v; %s", r.Method, uri, time.Since(begin), writeErr, IsWSHandshakeRequest(r), headers))
+				} else {
+					level.Warn(requestLog).Log("msg", dskit_log.LazySprintf("%s %s %s, error: %s ws: %v", r.Method, uri, time.Since(begin), writeErr, IsWSHandshakeRequest(r)))
+				}
 			}
-
 			return
 		}
 
@@ -107,37 +125,34 @@ func (l Log) Wrap(next http.Handler) http.Handler {
 
 		case 100 <= statusCode && statusCode < 500 || statusCode == http.StatusBadGateway || statusCode == http.StatusServiceUnavailable:
 			if l.LogRequestAtInfoLevel {
-				requestLog.Infof("%s %s (%d) %s", r.Method, uri, statusCode, time.Since(begin))
-
 				if l.LogRequestHeaders && headers != nil {
-					requestLog.Infof("ws: %v; %s", IsWSHandshakeRequest(r), string(headers))
+					level.Info(requestLog).Log("msg", dskit_log.LazySprintf("%s %s (%d) %s ws: %v; %s", r.Method, uri, statusCode, time.Since(begin), IsWSHandshakeRequest(r), string(headers)))
+				} else {
+					level.Info(requestLog).Log("msg", dskit_log.LazySprintf("%s %s (%d) %s", r.Method, uri, statusCode, time.Since(begin)))
 				}
-				return
-			}
-
-			requestLog.Debugf("%s %s (%d) %s", r.Method, uri, statusCode, time.Since(begin))
-			if l.LogRequestHeaders && headers != nil {
-				requestLog.Debugf("ws: %v; %s", IsWSHandshakeRequest(r), string(headers))
+			} else {
+				if l.LogRequestHeaders && headers != nil {
+					level.Debug(requestLog).Log("msg", dskit_log.LazySprintf("%s %s (%d) %s ws: %v; %s", r.Method, uri, statusCode, time.Since(begin), IsWSHandshakeRequest(r), string(headers)))
+				} else {
+					level.Debug(requestLog).Log("msg", dskit_log.LazySprintf("%s %s (%d) %s", r.Method, uri, statusCode, time.Since(begin)))
+				}
 			}
 		default:
-			requestLog.Warnf("%s %s (%d) %s Response: %q ws: %v; %s",
-				r.Method, uri, statusCode, time.Since(begin), buf.Bytes(), IsWSHandshakeRequest(r), headers)
+			if l.LogRequestHeaders && headers != nil {
+				level.Warn(requestLog).Log("msg", dskit_log.LazySprintf("%s %s (%d) %s Response: %q ws: %v; %s", r.Method, uri, statusCode, time.Since(begin), buf.Bytes(), IsWSHandshakeRequest(r), headers))
+			} else {
+				level.Warn(requestLog).Log("msg", dskit_log.LazySprintf("%s %s (%d) %s Response: %q", r.Method, uri, statusCode, time.Since(begin), buf.Bytes()))
+			}
 		}
 	})
 }
 
-// Logging middleware logs each HTTP request method, path, response code and
-// duration for all HTTP requests.
-var Logging = Log{
-	Log: log.Global(),
-}
-
-func dumpRequest(req *http.Request, httpHeadersToExclude map[string]bool) ([]byte, error) {
+func dumpRequestHeaders(req *http.Request, httpHeadersToExclude map[string]bool) ([]byte, error) {
 	var b bytes.Buffer
 
 	// In case users initialize the Log middleware using the exported struct, skip the default headers anyway
 	if len(httpHeadersToExclude) == 0 {
-		httpHeadersToExclude = defaultExcludedHeaders
+		httpHeadersToExclude = AlwaysExcludedHeaders
 	}
 	// Exclude some headers for security, or just that we don't need them when debugging
 	err := req.Header.WriteSubset(&b, httpHeadersToExclude)
@@ -145,6 +160,6 @@ func dumpRequest(req *http.Request, httpHeadersToExclude map[string]bool) ([]byt
 		return nil, err
 	}
 
-	ret := bytes.Replace(b.Bytes(), []byte("\r\n"), []byte("; "), -1)
+	ret := bytes.ReplaceAll(b.Bytes(), []byte("\r\n"), []byte("; "))
 	return ret, nil
 }

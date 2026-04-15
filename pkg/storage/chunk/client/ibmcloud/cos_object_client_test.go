@@ -15,17 +15,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IBM/ibm-cos-sdk-go/aws"
 	"github.com/IBM/ibm-cos-sdk-go/aws/credentials/ibmiam/token"
 	"github.com/IBM/ibm-cos-sdk-go/aws/request"
 	"github.com/IBM/ibm-cos-sdk-go/service/s3"
 	"github.com/IBM/ibm-cos-sdk-go/service/s3/s3iface"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 var (
@@ -569,6 +571,33 @@ func Test_TrustedProfileAuth(t *testing.T) {
 	require.Equal(t, resp, strings.Trim(string(data), "\n"))
 }
 
+func Test_IsObjectNotFoundErr(t *testing.T) {
+	cosConfig := COSConfig{
+		BucketNames:     "test",
+		Endpoint:        "test",
+		Region:          "dummy",
+		AccessKeyID:     "dummy",
+		SecretAccessKey: flagext.SecretWithValue("dummy"),
+	}
+
+	cosClient, err := NewCOSObjectClient(cosConfig, hedging.Config{})
+	require.NoError(t, err)
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"no such key", &types.NoSuchKey{Message: aws.String("no such key")}, true},
+		{"no such bucket", &types.NoSuchBucket{Message: aws.String("no such bucket")}, false},
+		{"no error", nil, false},
+	}
+
+	for _, tt := range tests {
+		require.Equal(t, tt.want, cosClient.IsObjectNotFoundErr(tt.err))
+	}
+}
+
 func mockCOSServer(accessToken, tokenType, resp string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != fmt.Sprintf("%s %s", tokenType, accessToken) {
@@ -584,7 +613,7 @@ func mockCOSServer(accessToken, tokenType, resp string) *httptest.Server {
 }
 
 func mockAuthServer(accessToken, tokenType string) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		token := token.Token{
 			AccessToken:  accessToken,
 			RefreshToken: "test",

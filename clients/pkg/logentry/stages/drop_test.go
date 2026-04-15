@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error
@@ -23,7 +23,7 @@ pipeline_stages:
       app:
       msg:
 - drop:
-    sources:
+    source:
       - src
     expression: ".*test.*"
     older_than: 24h
@@ -31,7 +31,7 @@ pipeline_stages:
 - drop:
     expression: ".*app1.*"
 - drop:
-    sources:
+    source:
       - app
     expression: loki
 - drop:
@@ -42,7 +42,7 @@ func Test_dropStage_Process(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg, nil, true, false)
+	util_log.InitLogger(cfg, nil, false)
 	Debug = true
 
 	tests := []struct {

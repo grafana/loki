@@ -208,7 +208,7 @@ func (w *dnsWatcher) lookupSRV() map[string]*Update {
 		for _, a := range addrs {
 			a, ok := formatIP(a)
 			if !ok {
-				level.Error(w.logger).Log("failed IP parsing", "err", err)
+				level.Error(w.logger).Log("msg", "failed IP parsing", "err", err)
 				continue
 			}
 			addr := a + ":" + strconv.Itoa(int(s.Port))

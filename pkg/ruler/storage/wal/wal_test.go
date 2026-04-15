@@ -24,7 +24,7 @@ import (
 
 func newTestStorage(walDir string) (*Storage, error) {
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	return NewStorage(log.NewNopLogger(), metrics, nil, walDir)
+	return NewStorage(log.NewNopLogger(), metrics, nil, walDir, true)
 }
 
 func TestStorage_InvalidSeries(t *testing.T) {
@@ -42,28 +42,28 @@ func TestStorage_InvalidSeries(t *testing.T) {
 	_, err = app.Append(0, labels.Labels{}, 0, 0)
 	require.Error(t, err, "should reject empty labels")
 
-	_, err = app.Append(0, labels.Labels{{Name: "a", Value: "1"}, {Name: "a", Value: "2"}}, 0, 0)
+	_, err = app.Append(0, labels.FromStrings("a", "1", "a", "2"), 0, 0)
 	require.Error(t, err, "should reject duplicate labels")
 
 	// Sanity check: valid series
-	sRef, err := app.Append(0, labels.Labels{{Name: "a", Value: "1"}}, 0, 0)
+	sRef, err := app.Append(0, labels.FromStrings("a", "1"), 0, 0)
 	require.NoError(t, err, "should not reject valid series")
 
 	// Exemplars
-	_, err = app.AppendExemplar(0, nil, exemplar.Exemplar{})
+	_, err = app.AppendExemplar(0, labels.EmptyLabels(), exemplar.Exemplar{})
 	require.Error(t, err, "should reject unknown series ref")
 
-	e := exemplar.Exemplar{Labels: labels.Labels{{Name: "a", Value: "1"}, {Name: "a", Value: "2"}}}
-	_, err = app.AppendExemplar(sRef, nil, e)
+	e := exemplar.Exemplar{Labels: labels.FromStrings("a", "1", "a", "2")}
+	_, err = app.AppendExemplar(sRef, labels.EmptyLabels(), e)
 	require.ErrorIs(t, err, tsdb.ErrInvalidExemplar, "should reject duplicate labels")
 
-	e = exemplar.Exemplar{Labels: labels.Labels{{Name: "a_somewhat_long_trace_id", Value: "nYJSNtFrFTY37VR7mHzEE/LIDt7cdAQcuOzFajgmLDAdBSRHYPDzrxhMA4zz7el8naI/AoXFv9/e/G0vcETcIoNUi3OieeLfaIRQci2oa"}}}
-	_, err = app.AppendExemplar(sRef, nil, e)
+	e = exemplar.Exemplar{Labels: labels.FromStrings("a_somewhat_long_trace_id", "nYJSNtFrFTY37VR7mHzEE/LIDt7cdAQcuOzFajgmLDAdBSRHYPDzrxhMA4zz7el8naI/AoXFv9/e/G0vcETcIoNUi3OieeLfaIRQci2oa")}
+	_, err = app.AppendExemplar(sRef, labels.EmptyLabels(), e)
 	require.ErrorIs(t, err, storage.ErrExemplarLabelLength, "should reject too long label length")
 
 	// Sanity check: valid exemplars
-	e = exemplar.Exemplar{Labels: labels.Labels{{Name: "a", Value: "1"}}, Value: 20, Ts: 10, HasTs: true}
-	_, err = app.AppendExemplar(sRef, nil, e)
+	e = exemplar.Exemplar{Labels: labels.FromStrings("a", "1"), Value: 20, Ts: 10, HasTs: true}
+	_, err = app.AppendExemplar(sRef, labels.EmptyLabels(), e)
 	require.NoError(t, err, "should not reject valid exemplars")
 }
 
@@ -323,6 +323,53 @@ func TestStorage_TruncateAfterClose(t *testing.T) {
 	require.Error(t, ErrWALClosed, s.Truncate(0))
 }
 
+func TestStorage_DisableReplay(t *testing.T) {
+	walDir := t.TempDir()
+
+	// Create a WAL and write some data to it
+	metrics := NewMetrics(prometheus.DefaultRegisterer)
+	s, err := NewStorage(log.NewNopLogger(), metrics, nil, walDir, true)
+	require.NoError(t, err)
+
+	app := s.Appender(context.Background())
+
+	// Write some samples
+	payload := buildSeries([]string{"foo", "bar", "baz"})
+	for _, metric := range payload {
+		metric.Write(t, app)
+	}
+
+	require.NoError(t, app.Commit())
+	require.NoError(t, s.Close())
+
+	// Create a new WAL with replay disabled
+	s, err = NewStorage(log.NewNopLogger(), metrics, nil, walDir, false)
+	require.NoError(t, err)
+
+	// Verify that no series were loaded (replay didn't happen)
+	count := 0
+	for range s.series.iterator().Channel() {
+		count++
+	}
+	require.Equal(t, 0, count, "no series should have been loaded with replay disabled")
+
+	require.NoError(t, s.Close())
+
+	// Create a new WAL with replay enabled
+	s, err = NewStorage(log.NewNopLogger(), metrics, nil, walDir, true)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, s.Close())
+	}()
+
+	// Verify that series were loaded (replay happened)
+	count = 0
+	for range s.series.iterator().Channel() {
+		count++
+	}
+	require.Equal(t, len(payload), count, "series should have been loaded with replay enabled")
+}
+
 type sample struct {
 	ts  int64
 	val float64
@@ -339,7 +386,7 @@ type series struct {
 func (s *series) Write(t *testing.T, app storage.Appender) {
 	t.Helper()
 
-	lbls := labels.FromMap(map[string]string{"__name__": s.name})
+	lbls := labels.FromStrings("__name__", s.name)
 
 	offset := 0
 	if s.ref == nil {
@@ -360,7 +407,7 @@ func (s *series) Write(t *testing.T, app storage.Appender) {
 	sRef := *s.ref
 	for _, exemplar := range s.exemplars {
 		var err error
-		sRef, err = app.AppendExemplar(sRef, nil, exemplar)
+		sRef, err = app.AppendExemplar(sRef, labels.EmptyLabels(), exemplar)
 		require.NoError(t, err)
 	}
 }
@@ -452,8 +499,8 @@ func buildSeries(nameSlice []string) seriesList {
 			name:    n,
 			samples: []sample{{int64(i), float64(i * 10.0)}, {int64(i * 10), float64(i * 100.0)}},
 			exemplars: []exemplar.Exemplar{
-				{Labels: labels.Labels{{Name: "foobar", Value: "barfoo"}}, Value: float64(i * 10.0), Ts: int64(i), HasTs: true},
-				{Labels: labels.Labels{{Name: "lorem", Value: "ipsum"}}, Value: float64(i * 100.0), Ts: int64(i * 10), HasTs: true},
+				{Labels: labels.FromStrings("foobar", "barfoo"), Value: float64(i * 10.0), Ts: int64(i), HasTs: true},
+				{Labels: labels.FromStrings("lorem", "ipsum"), Value: float64(i * 100.0), Ts: int64(i * 10), HasTs: true},
 			},
 		})
 	}

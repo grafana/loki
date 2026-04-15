@@ -8,12 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
@@ -28,8 +29,8 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion:         "loki.grafana.com/v1",
-					BlockOwnerDeletion: pointer.Bool(true),
-					Controller:         pointer.Bool(true),
+					BlockOwnerDeletion: ptr.To(true),
+					Controller:         ptr.To(true),
 					Kind:               "LokiStack",
 					Name:               "lokistack-testing",
 					UID:                "6128aa83-de7f-47c0-abf2-4a380713b599",
@@ -50,8 +51,8 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 }
 
 func TestGetMutateFunc_ReturnErrOnNotSupportedType(t *testing.T) {
-	got := &corev1.Endpoints{}
-	want := &corev1.Endpoints{}
+	got := &discoveryv1.EndpointSlice{}
+	want := &discoveryv1.EndpointSlice{}
 	f := MutateFuncFor(got, want, nil)
 
 	require.Error(t, f())
@@ -227,7 +228,6 @@ func TestGetMutateFunc_MutateServiceAccountObjectMeta(t *testing.T) {
 	}
 
 	for _, tt := range table {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			f := MutateFuncFor(tt.got, tt.want, nil)
@@ -504,7 +504,7 @@ func TestMutateFuncFor_MutateDeploymentSpec(t *testing.T) {
 							"test": "test",
 						},
 					},
-					Replicas: pointer.Int32Ptr(1),
+					Replicas: ptr.To[int32](1),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -525,7 +525,7 @@ func TestMutateFuncFor_MutateDeploymentSpec(t *testing.T) {
 							"and":  "another",
 						},
 					},
-					Replicas: pointer.Int32Ptr(2),
+					Replicas: ptr.To[int32](2),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -552,7 +552,7 @@ func TestMutateFuncFor_MutateDeploymentSpec(t *testing.T) {
 							"test": "test",
 						},
 					},
-					Replicas: pointer.Int32Ptr(1),
+					Replicas: ptr.To[int32](1),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -574,7 +574,7 @@ func TestMutateFuncFor_MutateDeploymentSpec(t *testing.T) {
 							"and":  "another",
 						},
 					},
-					Replicas: pointer.Int32Ptr(2),
+					Replicas: ptr.To[int32](2),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -626,7 +626,6 @@ func TestMutateFuncFor_MutateDeploymentSpec(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 			f := MutateFuncFor(tst.got, tst.want, nil)
@@ -665,7 +664,7 @@ func TestMutateFuncFor_MutateStatefulSetSpec(t *testing.T) {
 							"test": "test",
 						},
 					},
-					Replicas: pointer.Int32Ptr(1),
+					Replicas: ptr.To[int32](1),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -693,7 +692,7 @@ func TestMutateFuncFor_MutateStatefulSetSpec(t *testing.T) {
 							"and":  "another",
 						},
 					},
-					Replicas: pointer.Int32Ptr(2),
+					Replicas: ptr.To[int32](2),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -728,7 +727,7 @@ func TestMutateFuncFor_MutateStatefulSetSpec(t *testing.T) {
 							"test": "test",
 						},
 					},
-					Replicas: pointer.Int32Ptr(1),
+					Replicas: ptr.To[int32](1),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -757,7 +756,7 @@ func TestMutateFuncFor_MutateStatefulSetSpec(t *testing.T) {
 							"and":  "another",
 						},
 					},
-					Replicas: pointer.Int32Ptr(2),
+					Replicas: ptr.To[int32](2),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -816,7 +815,6 @@ func TestMutateFuncFor_MutateStatefulSetSpec(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 			f := MutateFuncFor(tst.got, tst.want, nil)
@@ -854,13 +852,19 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 						{
 							Port:            "loki-test",
 							Path:            "/some-path",
-							Scheme:          "https",
+							Scheme:          ptr.To(monitoringv1.Scheme("https")),
 							BearerTokenFile: BearerTokenFile,
-							TLSConfig: &monitoringv1.TLSConfig{
-								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									TLSConfig: &monitoringv1.TLSConfig{
+										SafeTLSConfig: monitoringv1.SafeTLSConfig{
+											ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
+										},
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile: PrometheusCAFile,
+										},
+									},
 								},
-								CAFile: PrometheusCAFile,
 							},
 						},
 					},
@@ -881,25 +885,37 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 						{
 							Port:            "loki-test",
 							Path:            "/some-path",
-							Scheme:          "https",
+							Scheme:          ptr.To(monitoringv1.Scheme("https")),
 							BearerTokenFile: BearerTokenFile,
-							TLSConfig: &monitoringv1.TLSConfig{
-								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									TLSConfig: &monitoringv1.TLSConfig{
+										SafeTLSConfig: monitoringv1.SafeTLSConfig{
+											ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
+										},
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile: PrometheusCAFile,
+										},
+									},
 								},
-								CAFile: PrometheusCAFile,
 							},
 						},
 						{
 							Port:            "loki-test",
 							Path:            "/some-new-path",
-							Scheme:          "https",
+							Scheme:          ptr.To(monitoringv1.Scheme("https")),
 							BearerTokenFile: BearerTokenFile,
-							TLSConfig: &monitoringv1.TLSConfig{
-								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									TLSConfig: &monitoringv1.TLSConfig{
+										SafeTLSConfig: monitoringv1.SafeTLSConfig{
+											ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
+										},
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile: PrometheusCAFile,
+										},
+									},
 								},
-								CAFile: PrometheusCAFile,
 							},
 						},
 					},
@@ -925,13 +941,19 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 						{
 							Port:            "loki-test",
 							Path:            "/some-path",
-							Scheme:          "https",
+							Scheme:          ptr.To(monitoringv1.Scheme("https")),
 							BearerTokenFile: BearerTokenFile,
-							TLSConfig: &monitoringv1.TLSConfig{
-								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									TLSConfig: &monitoringv1.TLSConfig{
+										SafeTLSConfig: monitoringv1.SafeTLSConfig{
+											ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
+										},
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile: PrometheusCAFile,
+										},
+									},
 								},
-								CAFile: PrometheusCAFile,
 							},
 						},
 					},
@@ -957,25 +979,37 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 						{
 							Port:            "loki-test",
 							Path:            "/some-path",
-							Scheme:          "https",
+							Scheme:          ptr.To(monitoringv1.Scheme("https")),
 							BearerTokenFile: BearerTokenFile,
-							TLSConfig: &monitoringv1.TLSConfig{
-								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									TLSConfig: &monitoringv1.TLSConfig{
+										SafeTLSConfig: monitoringv1.SafeTLSConfig{
+											ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
+										},
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile: PrometheusCAFile,
+										},
+									},
 								},
-								CAFile: PrometheusCAFile,
 							},
 						},
 						{
 							Port:            "loki-test",
 							Path:            "/some-new-path",
-							Scheme:          "https",
+							Scheme:          ptr.To(monitoringv1.Scheme("https")),
 							BearerTokenFile: BearerTokenFile,
-							TLSConfig: &monitoringv1.TLSConfig{
-								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									TLSConfig: &monitoringv1.TLSConfig{
+										SafeTLSConfig: monitoringv1.SafeTLSConfig{
+											ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
+										},
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile: PrometheusCAFile,
+										},
+									},
 								},
-								CAFile: PrometheusCAFile,
 							},
 						},
 					},
@@ -993,7 +1027,6 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 			f := MutateFuncFor(tst.got, tst.want, nil)
@@ -1108,7 +1141,7 @@ func TestGetMutateFunc_MutateRoute(t *testing.T) {
 			To: routev1.RouteTargetReference{
 				Kind:   "Service",
 				Name:   "a-service",
-				Weight: pointer.Int32(100),
+				Weight: ptr.To[int32](100),
 			},
 			TLS: &routev1.TLSConfig{
 				Termination:                   routev1.TLSTerminationReencrypt,

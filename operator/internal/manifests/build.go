@@ -1,19 +1,21 @@
 package manifests
 
 import (
+	"dario.cat/mergo"
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/crypto"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 )
 
 // BuildAll builds all manifests required to run a Loki Stack
 func BuildAll(opts Options) ([]client.Object, error) {
 	res := make([]client.Object, 0)
+
+	sa := BuildServiceAccount(opts)
 
 	cm, sha1C, mapErr := LokiConfigMap(opts)
 	if mapErr != nil {
@@ -52,6 +54,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	}
 
 	res = append(res, cm)
+	res = append(res, sa)
 	res = append(res, distributorObjs...)
 	res = append(res, ingesterObjs...)
 	res = append(res, querierObjs...)
@@ -100,6 +103,11 @@ func BuildAll(opts Options) ([]client.Object, error) {
 		res = append(res, prometheusRuleObjs...)
 	}
 
+	if opts.Stack.NetworkPolicies != nil && opts.Stack.NetworkPolicies.RuleSet == lokiv1.NetworkPolicyRuleSetRestrictIngressEgress {
+		networkPolicyObjs := BuildNetworkPolicies(opts)
+		res = append(res, networkPolicyObjs...)
+	}
+
 	return res, nil
 }
 
@@ -113,6 +121,14 @@ func DefaultLokiStackSpec(size lokiv1.LokiStackSizeType) *lokiv1.LokiStackSpec {
 // ApplyDefaultSettings manipulates the options to conform to
 // build specifications
 func ApplyDefaultSettings(opts *Options) error {
+	// Handle the deprecated field opt.Stack.ReplicationFactor.
+	if (opts.Stack.Replication == nil || opts.Stack.Replication.Factor == 0) && opts.Stack.ReplicationFactor > 0 { // nolint:staticcheck
+		if opts.Stack.Replication == nil {
+			opts.Stack.Replication = &lokiv1.ReplicationSpec{}
+		}
+		opts.Stack.Replication.Factor = opts.Stack.ReplicationFactor // nolint:staticcheck
+	}
+
 	spec := DefaultLokiStackSpec(opts.Stack.Size)
 
 	if err := mergo.Merge(spec, opts.Stack, mergo.WithOverride); err != nil {
@@ -122,7 +138,7 @@ func ApplyDefaultSettings(opts *Options) error {
 	strictOverrides := lokiv1.LokiStackSpec{
 		Template: &lokiv1.LokiTemplateSpec{
 			Compactor: &lokiv1.LokiComponentSpec{
-				// Compactor is a singelton application.
+				// Compactor is a singleton application.
 				// Only one replica allowed!!!
 				Replicas: 1,
 			},
@@ -133,7 +149,11 @@ func ApplyDefaultSettings(opts *Options) error {
 		return kverrors.Wrap(err, "failed to merge strict defaults")
 	}
 
-	opts.ResourceRequirements = internal.ResourceRequirementsTable[opts.Stack.Size]
+	useRequestsAsLimits := false
+	if opts.Stack.Template != nil {
+		useRequestsAsLimits = opts.Stack.Template.UseRequestsAsLimits
+	}
+	opts.ResourceRequirements = internal.ResourceRequirementsForSize(opts.Stack.Size, useRequestsAsLimits)
 	opts.Stack = *spec
 
 	return nil

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 //go:build !windows
-// +build !windows
 
 package renameio
 
@@ -75,5 +74,25 @@ func WithStaticPermissions(perm os.FileMode) Option {
 func WithExistingPermissions() Option {
 	return optionFunc(func(c *config) {
 		c.attemptPermCopy = true
+	})
+}
+
+// WithReplaceOnClose causes PendingFile.Close() to actually call
+// CloseAtomicallyReplace(). This means PendingFile implements io.Closer while
+// maintaining atomicity per default.
+func WithReplaceOnClose() Option {
+	return optionFunc(func(c *config) {
+		c.renameOnClose = true
+	})
+}
+
+// WithRoot specifies a root directory to use when working with files.
+// See [os.Root] and https://go.dev/blog/osroot for more details.
+//
+// When WithRoot is used, WithTempDir (and the $TMPDIR environment variable) are
+// ignored, as temporary files must be created in the specified root directory.
+func WithRoot(root *os.Root) Option {
+	return optionFunc(func(c *config) {
+		c.root = root
 	})
 }

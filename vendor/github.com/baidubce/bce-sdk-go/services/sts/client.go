@@ -23,7 +23,6 @@ import (
 	"github.com/baidubce/bce-sdk-go/auth"
 	"github.com/baidubce/bce-sdk-go/bce"
 	"github.com/baidubce/bce-sdk-go/services/sts/api"
-	"github.com/baidubce/bce-sdk-go/util"
 )
 
 const DEFAULT_SERVICE_DOMAIN = "sts." + bce.DEFAULT_REGION + "." + bce.DEFAULT_DOMAIN
@@ -57,16 +56,16 @@ func NewStsClient(ak, sk, endpoint string) (*Client, error) {
 		endpoint = DEFAULT_SERVICE_DOMAIN
 	}
 	defaultSignOptions := &auth.SignOptions{
-		HeadersToSign:   	auth.DEFAULT_HEADERS_TO_SIGN,
-		Timestamp: 			util.NowUTCSeconds(),
-		ExpireSeconds:		auth.DEFAULT_EXPIRE_SECONDS}
+		HeadersToSign: auth.DEFAULT_HEADERS_TO_SIGN,
+		Timestamp:     0,
+		ExpireSeconds: auth.DEFAULT_EXPIRE_SECONDS}
 	defaultConf := &bce.BceClientConfiguration{
-		Endpoint:    endpoint,
-		Region:      bce.DEFAULT_REGION,
-		UserAgent:   bce.DEFAULT_USER_AGENT,
-		Credentials: credentials,
-		SignOption:  defaultSignOptions,
-		Retry:       bce.DEFAULT_RETRY_POLICY,
+		Endpoint:                  endpoint,
+		Region:                    bce.DEFAULT_REGION,
+		UserAgent:                 bce.DEFAULT_USER_AGENT,
+		Credentials:               credentials,
+		SignOption:                defaultSignOptions,
+		Retry:                     bce.DEFAULT_RETRY_POLICY,
 		ConnectionTimeoutInMillis: bce.DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS}
 	v1Signer := &auth.BceV1Signer{}
 

@@ -68,7 +68,7 @@ func (c *Client) CopyObject(ctx context.Context, dst CopyDestOptions, src CopySr
 		Bucket:           dst.Bucket,
 		Key:              dst.Object,
 		LastModified:     cpObjRes.LastModified,
-		ETag:             trimEtag(resp.Header.Get("ETag")),
+		ETag:             trimEtag(cpObjRes.ETag),
 		VersionID:        resp.Header.Get(amzVersionID),
 		Expiration:       expTime,
 		ExpirationRuleID: ruleID,

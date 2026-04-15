@@ -8,7 +8,7 @@ import (
 
 	"github.com/fatih/color"
 
-	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/loghttp"
 )
 
 // DefaultOutput provides logs and metadata in human readable format
@@ -19,7 +19,12 @@ type DefaultOutput struct {
 
 // Format a log entry in a human readable format
 func (o *DefaultOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) {
-	timestamp := ts.In(o.options.Timezone).Format(time.RFC3339)
+	format := o.options.TimestampFormat
+	if format == "" {
+		format = time.RFC3339
+	}
+
+	timestamp := ts.In(o.options.Timezone).Format(format)
 	line = strings.TrimSpace(line)
 
 	if o.options.NoLabels {

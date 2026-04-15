@@ -17,13 +17,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func setupFrontend(t *testing.T, config Config) *Frontend {
 	logger := log.NewNopLogger()
 
-	frontend, err := New(config, limits{queriers: 3}, logger, nil)
+	frontend, err := New(config, mockLimits{queriers: 3}, logger, nil, constants.Loki)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

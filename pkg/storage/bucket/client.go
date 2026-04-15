@@ -1,22 +1,30 @@
 package bucket
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
-	"strings"
+	"io"
+	"net/http"
+	"regexp"
+	"strconv"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
+	objstoretracing "github.com/thanos-io/objstore/tracing/opentracing"
 
-	"github.com/grafana/loki/pkg/storage/bucket/azure"
-	"github.com/grafana/loki/pkg/storage/bucket/filesystem"
-	"github.com/grafana/loki/pkg/storage/bucket/gcs"
-	"github.com/grafana/loki/pkg/storage/bucket/s3"
-	"github.com/grafana/loki/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/azure"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/bos"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/oss"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
@@ -34,35 +42,78 @@ const (
 
 	// Filesystem is the value for the filesystem storage backend.
 	Filesystem = "filesystem"
+
+	// Alibaba is the value for the Alibaba Cloud OSS storage backend
+	Alibaba = "alibabacloud"
+
+	// BOS is the value for the Baidu Cloud BOS storage backend
+	BOS = "bos"
+
+	// validPrefixCharactersRegex allows only alphanumeric characters and dashes to prevent subtle bugs and simplify validation
+	validPrefixCharactersRegex = `^[\da-zA-Z-]+$`
 )
 
 var (
-	SupportedBackends = []string{S3, GCS, Azure, Swift, Filesystem}
+	SupportedBackends = []string{S3, GCS, Azure, Swift, Filesystem, Alibaba, BOS}
 
-	ErrUnsupportedStorageBackend = errors.New("unsupported storage backend")
+	ErrUnsupportedStorageBackend        = errors.New("unsupported storage backend")
+	ErrInvalidCharactersInStoragePrefix = errors.New("storage prefix contains invalid characters, it may only contain digits, English alphabet letters and dashes")
+
+	metrics *objstore.Metrics
+
+	// added to track the status codes by method
+	bucketRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "objstore_bucket_transport_requests_total",
+			Help:      "Total number of HTTP transport requests made to the bucket backend by status code and method.",
+		},
+		[]string{"status_code", "method"},
+	)
+	bucketRequestsDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Name:                            "objstore_bucket_transport_hedged_requests_duration_seconds",
+			Help:                            "Time spent doing requests to the bucket backend after request hedging.",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+		},
+		[]string{"status_code", "method"},
+	)
 )
+
+func init() {
+	prometheus.MustRegister(bucketRequestsTotal)
+	prometheus.MustRegister(bucketRequestsDuration)
+	metrics = objstore.BucketMetrics(prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), "")
+}
 
 // Config holds configuration for accessing long-term storage.
 type Config struct {
-	Backend string `yaml:"backend"`
 	// Backends
 	S3         s3.Config         `yaml:"s3"`
 	GCS        gcs.Config        `yaml:"gcs"`
 	Azure      azure.Config      `yaml:"azure"`
 	Swift      swift.Config      `yaml:"swift"`
 	Filesystem filesystem.Config `yaml:"filesystem"`
+	Alibaba    oss.Config        `yaml:"alibaba"`
+	BOS        bos.Config        `yaml:"bos"`
 
-	// Not used internally, meant to allow callers to wrap Buckets
-	// created using this config
-	Middlewares []func(objstore.Bucket) (objstore.Bucket, error) `yaml:"-"`
+	StoragePrefix string `yaml:"storage_prefix"`
 
 	// Used to inject additional backends into the config. Allows for this config to
 	// be embedded in multiple contexts and support non-object storage based backends.
 	ExtraBackends []string `yaml:"-"`
+
+	// Not used internally, meant to allow callers to wrap Buckets
+	// created using this config
+	Middlewares []func(objstore.InstrumentedBucket) (objstore.InstrumentedBucket, error) `yaml:"-"`
 }
 
-// Returns the supportedBackends for the package and any custom backends injected into the config.
-func (cfg *Config) supportedBackends() []string {
+// Returns the SupportedBackends for the package and any custom backends injected into the config.
+func (cfg *Config) SupportedBackends() []string {
 	return append(SupportedBackends, cfg.ExtraBackends...)
 }
 
@@ -71,43 +122,110 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
-func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.S3.RegisterFlagsWithPrefix(prefix, f)
+func (cfg *Config) RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir string, f *flag.FlagSet) {
 	cfg.GCS.RegisterFlagsWithPrefix(prefix, f)
+	cfg.S3.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Azure.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
-	cfg.Filesystem.RegisterFlagsWithPrefix(prefix, f)
+	cfg.Filesystem.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir, f)
+	cfg.Alibaba.RegisterFlagsWithPrefix(prefix, f)
+	cfg.BOS.RegisterFlagsWithPrefix(prefix, f)
+	f.StringVar(&cfg.StoragePrefix, prefix+"storage-prefix", "", "Prefix for all objects stored in the backend storage. For simplicity, it may only contain digits, English alphabet letters and dashes.")
+}
 
-	f.StringVar(&cfg.Backend, prefix+"backend", S3, fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(cfg.supportedBackends(), ", ")))
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, "", f)
 }
 
 func (cfg *Config) Validate() error {
-	if !util.StringsContain(cfg.supportedBackends(), cfg.Backend) {
-		return ErrUnsupportedStorageBackend
+	if cfg.StoragePrefix != "" {
+		acceptablePrefixCharacters := regexp.MustCompile(validPrefixCharactersRegex)
+		if !acceptablePrefixCharacters.MatchString(cfg.StoragePrefix) {
+			return ErrInvalidCharactersInStoragePrefix
+		}
 	}
 
-	if cfg.Backend == S3 {
-		if err := cfg.S3.Validate(); err != nil {
-			return err
-		}
+	if err := cfg.S3.Validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type ConfigWithNamedStores struct {
+	Config      `yaml:",inline"`
+	NamedStores NamedStores `yaml:"named_stores"`
+}
+
+func (cfg *ConfigWithNamedStores) Validate() error {
+	if err := cfg.Config.Validate(); err != nil {
+		return err
+	}
+
+	return cfg.NamedStores.Validate()
+}
+
+func (cfg *Config) disableRetries(backend string) error {
+	switch backend {
+	case S3:
+		cfg.S3.MaxRetries = 1
+	case GCS:
+		cfg.GCS.MaxRetries = 1
+	case Azure:
+		cfg.Azure.MaxRetries = 1
+	case Swift:
+		cfg.Swift.MaxRetries = 1
+	case Filesystem, Alibaba, BOS:
+		// do nothing
+	default:
+		return fmt.Errorf("cannot disable retries for backend: %s", backend)
+	}
+
+	return nil
+}
+
+func (cfg *Config) configureTransport(backend string, rt http.RoundTripper) error {
+	switch backend {
+	case S3:
+		cfg.S3.HTTP.Transport = rt
+	case GCS:
+		cfg.GCS.Transport = rt
+	case Azure:
+		cfg.Azure.Transport = rt
+	case Swift:
+		cfg.Swift.HTTP.Transport = rt
+	case Filesystem, Alibaba, BOS:
+		// do nothing
+	default:
+		return fmt.Errorf("cannot configure transport for backend: %s", backend)
 	}
 
 	return nil
 }
 
 // NewClient creates a new bucket client based on the configured backend
-func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, reg prometheus.Registerer) (client objstore.Bucket, err error) {
-	switch cfg.Backend {
+func NewClient(ctx context.Context, backend string, cfg Config, name string, logger log.Logger) (objstore.InstrumentedBucket, error) {
+	var (
+		client objstore.Bucket
+		err    error
+	)
+
+	// TODO: add support for other backends that loki already supports
+	switch backend {
 	case S3:
-		client, err = s3.NewBucketClient(cfg.S3, name, logger)
+		client, err = s3.NewBucketClient(cfg.S3, name, logger, instrumentTransport())
 	case GCS:
-		client, err = gcs.NewBucketClient(ctx, cfg.GCS, name, logger)
+		client, err = gcs.NewBucketClient(ctx, cfg.GCS, name, logger, instrumentTransport())
 	case Azure:
-		client, err = azure.NewBucketClient(cfg.Azure, name, logger)
+		client, err = azure.NewBucketClient(cfg.Azure, name, logger, instrumentTransport())
 	case Swift:
-		client, err = swift.NewBucketClient(cfg.Swift, name, logger)
+		client, err = swift.NewBucketClient(cfg.Swift, name, logger, instrumentTransport())
 	case Filesystem:
 		client, err = filesystem.NewBucketClient(cfg.Filesystem)
+	case Alibaba:
+		client, err = oss.NewBucketClient(cfg.Alibaba, name, logger)
+	case BOS:
+		client, err = bos.NewBucketClient(cfg.BOS, name, logger)
 	default:
 		return nil, ErrUnsupportedStorageBackend
 	}
@@ -116,26 +234,87 @@ func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, 
 		return nil, err
 	}
 
-	client = objstore.NewTracingBucket(bucketWithMetrics(client, name, reg))
+	if cfg.StoragePrefix != "" {
+		client = NewPrefixedBucketClient(client, cfg.StoragePrefix)
+	}
+
+	client = newSizedGetAndReplaceBucket(client)
+
+	instrumentedClient := objstoretracing.WrapWithTraces(objstore.WrapWith(client, metrics))
 
 	// Wrap the client with any provided middleware
 	for _, wrap := range cfg.Middlewares {
-		client, err = wrap(client)
+		instrumentedClient, err = wrap(instrumentedClient)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return client, nil
+	return instrumentedClient, nil
 }
 
-func bucketWithMetrics(bucketClient objstore.Bucket, name string, reg prometheus.Registerer) objstore.Bucket {
-	if reg == nil {
-		return bucketClient
+type instrumentedRoundTripper struct {
+	next http.RoundTripper
+}
+
+func instrumentTransport() func(http.RoundTripper) http.RoundTripper {
+	return func(rt http.RoundTripper) http.RoundTripper {
+		return &instrumentedRoundTripper{next: rt}
+	}
+}
+
+func (i *instrumentedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	start := time.Now()
+
+	resp, err := i.next.RoundTrip(req)
+	if err != nil {
+		return resp, err
 	}
 
-	return objstore.BucketWithMetrics(
-		"", // bucket label value
-		bucketClient,
-		prometheus.WrapRegistererWith(prometheus.Labels{"component": name}, reg))
+	// Record status code and method metrics
+	statusCode := strconv.Itoa(resp.StatusCode)
+	bucketRequestsTotal.WithLabelValues(statusCode, req.Method).Inc()
+	bucketRequestsDuration.WithLabelValues(statusCode, req.Method).Observe(time.Since(start).Seconds())
+
+	return resp, nil
+}
+
+// sizedGetAndReplaceBucket wraps a Bucket and guarantees that the io.ReadCloser
+// returned by GetAndReplace callbacks always has a size known to
+// objstore.TryToGetSize. Without this, callers that return opaque ReadClosers
+// (such as io.NopCloser-wrapped readers) cause the S3 backend to fall into the
+// putObjectMultipartStreamNoLength code path in minio-go, which reconstructs
+// PutObjectOptions before CompleteMultipartUpload and silently drops
+// customHeaders — including the If-Match conditional write header set by
+// GetAndReplace. The result is that stale writes are accepted by S3 even when
+// the object's ETag has already changed, breaking the optimistic-concurrency
+// guarantee that GetAndReplace is supposed to provide.
+//
+// The fix buffers the reader when its size cannot be determined upfront.
+// GetAndReplace is only used for small metadata objects (e.g. ToC files), so
+// the buffering cost is negligible.
+type sizedGetAndReplaceBucket struct {
+	objstore.Bucket
+}
+
+func newSizedGetAndReplaceBucket(bkt objstore.Bucket) objstore.Bucket {
+	return &sizedGetAndReplaceBucket{Bucket: bkt}
+}
+
+func (b *sizedGetAndReplaceBucket) GetAndReplace(ctx context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
+	return b.Bucket.GetAndReplace(ctx, name, func(existing io.ReadCloser) (io.ReadCloser, error) {
+		rc, err := fn(existing)
+		if err != nil || rc == nil {
+			return rc, err
+		}
+		if _, sizeErr := objstore.TryToGetSize(rc); sizeErr == nil {
+			return rc, nil
+		}
+		data, readErr := io.ReadAll(rc)
+		_ = rc.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		return objstore.NopCloserWithSize(bytes.NewReader(data)), nil
+	})
 }

@@ -15,9 +15,9 @@ import (
 	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -196,14 +196,14 @@ func WriteToDB(_ context.Context, db *bbolt.DB, bucketName []byte, writes TableW
 			}
 		}
 
-		for key, value := range writes.puts {
-			if err := b.Put([]byte(key), value); err != nil {
+		for key := range writes.deletes {
+			if err := b.Delete([]byte(key)); err != nil {
 				return err
 			}
 		}
 
-		for key := range writes.deletes {
-			if err := b.Delete([]byte(key)); err != nil {
+		for key, value := range writes.puts {
+			if err := b.Put([]byte(key), value); err != nil {
 				return err
 			}
 		}

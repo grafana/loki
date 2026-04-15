@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,6 +17,7 @@
 package textparse
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -26,10 +27,13 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
+	"github.com/prometheus/prometheus/schema"
 )
 
 type promlexer struct {
@@ -55,6 +59,7 @@ const (
 	tComment
 	tBlank
 	tMName
+	tQString
 	tBraceOpen
 	tBraceClose
 	tLName
@@ -91,6 +96,8 @@ func (t token) String() string {
 		return "BLANK"
 	case tMName:
 		return "MNAME"
+	case tQString:
+		return "QSTRING"
 	case tBraceOpen:
 		return "BOPEN"
 	case tBraceClose:
@@ -146,17 +153,29 @@ type PromParser struct {
 	builder labels.ScratchBuilder
 	series  []byte
 	text    []byte
-	mtype   MetricType
+	mtype   model.MetricType
 	val     float64
 	ts      int64
 	hasTS   bool
 	start   int
+	// offsets is a list of offsets into series that describe the positions
+	// of the metric name and label names and values for this series.
+	// p.offsets[0] is the start character of the metric name.
+	// p.offsets[1] is the end of the metric name.
+	// Subsequently, p.offsets is a pair of offsets for the positions
+	// of the label name and value start and end characters.
 	offsets []int
+
+	enableTypeAndUnitLabels bool
 }
 
 // NewPromParser returns a new parser of the byte slice.
-func NewPromParser(b []byte) Parser {
-	return &PromParser{l: &promlexer{b: append(b, '\n')}}
+func NewPromParser(b []byte, st *labels.SymbolTable, enableTypeAndUnitLabels bool) Parser {
+	return &PromParser{
+		l:                       &promlexer{b: append(b, '\n')},
+		builder:                 labels.NewScratchBuilderWithSymbolTable(st, 16),
+		enableTypeAndUnitLabels: enableTypeAndUnitLabels,
+	}
 }
 
 // Series returns the bytes of the series, the timestamp if set, and the value
@@ -170,7 +189,7 @@ func (p *PromParser) Series() ([]byte, *int64, float64) {
 
 // Histogram returns (nil, nil, nil, nil) for now because the Prometheus text
 // format does not support sparse histograms yet.
-func (p *PromParser) Histogram() ([]byte, *int64, *histogram.Histogram, *histogram.FloatHistogram) {
+func (*PromParser) Histogram() ([]byte, *int64, *histogram.Histogram, *histogram.FloatHistogram) {
 	return nil, nil, nil, nil
 }
 
@@ -181,7 +200,7 @@ func (p *PromParser) Help() ([]byte, []byte) {
 	m := p.l.b[p.offsets[0]:p.offsets[1]]
 
 	// Replacer causes allocations. Replace only when necessary.
-	if strings.IndexByte(yoloString(p.text), byte('\\')) >= 0 {
+	if bytes.IndexByte(p.text, byte('\\')) >= 0 {
 		return m, []byte(helpReplacer.Replace(string(p.text)))
 	}
 	return m, p.text
@@ -190,14 +209,14 @@ func (p *PromParser) Help() ([]byte, []byte) {
 // Type returns the metric name and type in the current entry.
 // Must only be called after Next returned a type entry.
 // The returned byte slices become invalid after the next call to Next.
-func (p *PromParser) Type() ([]byte, MetricType) {
+func (p *PromParser) Type() ([]byte, model.MetricType) {
 	return p.l.b[p.offsets[0]:p.offsets[1]], p.mtype
 }
 
 // Unit returns the metric name and unit in the current entry.
 // Must only be called after Next returned a unit entry.
 // The returned byte slices become invalid after the next call to Next.
-func (p *PromParser) Unit() ([]byte, []byte) {
+func (*PromParser) Unit() ([]byte, []byte) {
 	// The Prometheus format does not have units.
 	return nil, nil
 }
@@ -209,40 +228,56 @@ func (p *PromParser) Comment() []byte {
 	return p.text
 }
 
-// Metric writes the labels of the current sample into the passed labels.
-// It returns the string from which the metric was parsed.
-func (p *PromParser) Metric(l *labels.Labels) string {
-	// Copy the buffer to a string: this is only necessary for the return value.
+// Labels writes the labels of the current sample into the passed labels.
+func (p *PromParser) Labels(l *labels.Labels) {
+	// Defensive copy in case the following keeps a reference.
+	// See https://github.com/prometheus/prometheus/issues/16490
 	s := string(p.series)
-
 	p.builder.Reset()
-	p.builder.Add(labels.MetricName, s[:p.offsets[0]-p.start])
+	metricName := unreplace(s[p.offsets[0]-p.start : p.offsets[1]-p.start])
 
-	for i := 1; i < len(p.offsets); i += 4 {
+	m := schema.Metadata{
+		Name: metricName,
+		// NOTE(bwplotka): There is a known case where the type is wrong on a broken exposition
+		// (see the TestPromParse windspeed metric). Fixing it would require extra
+		// allocs and benchmarks. Since it was always broken, don't fix for now.
+		Type: p.mtype,
+	}
+
+	if p.enableTypeAndUnitLabels {
+		m.AddToLabels(&p.builder)
+	} else {
+		p.builder.Add(labels.MetricName, metricName)
+	}
+	for i := 2; i < len(p.offsets); i += 4 {
 		a := p.offsets[i] - p.start
 		b := p.offsets[i+1] - p.start
+		label := unreplace(s[a:b])
+		if p.enableTypeAndUnitLabels && !m.IsEmptyFor(label) {
+			// Dropping user provided metadata labels, if found in the OM metadata.
+			continue
+		}
 		c := p.offsets[i+2] - p.start
 		d := p.offsets[i+3] - p.start
-
-		value := s[c:d]
-		// Replacer causes allocations. Replace only when necessary.
-		if strings.IndexByte(s[c:d], byte('\\')) >= 0 {
-			value = lvalReplacer.Replace(value)
-		}
-		p.builder.Add(s[a:b], value)
+		value := normalizeFloatsInLabelValues(p.mtype, label, unreplace(s[c:d]))
+		p.builder.Add(label, value)
 	}
 
 	p.builder.Sort()
 	*l = p.builder.Labels()
-
-	return s
 }
 
 // Exemplar implements the Parser interface. However, since the classic
 // Prometheus text format does not support exemplars, this implementation simply
 // returns false and does nothing else.
-func (p *PromParser) Exemplar(*exemplar.Exemplar) bool {
+func (*PromParser) Exemplar(*exemplar.Exemplar) bool {
 	return false
+}
+
+// StartTimestamp returns 0 as it's not implemented yet.
+// TODO(bwplotka): https://github.com/prometheus/prometheus/issues/12980
+func (*PromParser) StartTimestamp() int64 {
+	return 0
 }
 
 // nextToken returns the next token from the promlexer. It skips over tabs
@@ -256,15 +291,12 @@ func (p *PromParser) nextToken() token {
 }
 
 func (p *PromParser) parseError(exp string, got token) error {
-	e := p.l.i + 1
-	if len(p.l.b) < e {
-		e = len(p.l.b)
-	}
+	e := min(len(p.l.b), p.l.i+1)
 	return fmt.Errorf("%s, got %q (%q) while parsing: %q", exp, p.l.b[p.l.start:e], got, p.l.b[p.start:e])
 }
 
-// Next advances the parser to the next sample. It returns false if no
-// more samples were read or an error occurred.
+// Next advances the parser to the next sample.
+// It returns (EntryInvalid, io.EOF) if no samples were read.
 func (p *PromParser) Next() (Entry, error) {
 	var err error
 
@@ -281,7 +313,13 @@ func (p *PromParser) Next() (Entry, error) {
 	case tHelp, tType:
 		switch t2 := p.nextToken(); t2 {
 		case tMName:
-			p.offsets = append(p.offsets, p.l.start, p.l.i)
+			mStart := p.l.start
+			mEnd := p.l.i
+			if p.l.b[mStart] == '"' && p.l.b[mEnd-1] == '"' {
+				mStart++
+				mEnd--
+			}
+			p.offsets = append(p.offsets, mStart, mEnd)
 		default:
 			return EntryInvalid, p.parseError("expected metric name after "+t.String(), t2)
 		}
@@ -293,21 +331,21 @@ func (p *PromParser) Next() (Entry, error) {
 				p.text = []byte{}
 			}
 		default:
-			return EntryInvalid, fmt.Errorf("expected text in %s", t.String())
+			return EntryInvalid, fmt.Errorf("expected text in %s, got %v", t.String(), t2.String())
 		}
 		switch t {
 		case tType:
 			switch s := yoloString(p.text); s {
 			case "counter":
-				p.mtype = MetricTypeCounter
+				p.mtype = model.MetricTypeCounter
 			case "gauge":
-				p.mtype = MetricTypeGauge
+				p.mtype = model.MetricTypeGauge
 			case "histogram":
-				p.mtype = MetricTypeHistogram
+				p.mtype = model.MetricTypeHistogram
 			case "summary":
-				p.mtype = MetricTypeSummary
+				p.mtype = model.MetricTypeSummary
 			case "untyped":
-				p.mtype = MetricTypeUnknown
+				p.mtype = model.MetricTypeUnknown
 			default:
 				return EntryInvalid, fmt.Errorf("invalid metric type %q", s)
 			}
@@ -331,12 +369,24 @@ func (p *PromParser) Next() (Entry, error) {
 			return EntryInvalid, p.parseError("linebreak expected after comment", t)
 		}
 		return EntryComment, nil
+	case tBraceOpen:
+		// We found a brace, so make room for the eventual metric name. If these
+		// values aren't updated, then the metric name was not set inside the
+		// braces and we can return an error.
+		if len(p.offsets) == 0 {
+			p.offsets = []int{-1, -1}
+		}
+		if err := p.parseLVals(); err != nil {
+			return EntryInvalid, err
+		}
 
-	case tMName:
-		p.offsets = append(p.offsets, p.l.i)
 		p.series = p.l.b[p.start:p.l.i]
-
+		return p.parseMetricSuffix(p.nextToken())
+	case tMName:
+		p.offsets = append(p.offsets, p.start, p.l.i)
+		p.series = p.l.b[p.start:p.l.i]
 		t2 := p.nextToken()
+		// If there's a brace, consume and parse the label values.
 		if t2 == tBraceOpen {
 			if err := p.parseLVals(); err != nil {
 				return EntryInvalid, err
@@ -344,32 +394,7 @@ func (p *PromParser) Next() (Entry, error) {
 			p.series = p.l.b[p.start:p.l.i]
 			t2 = p.nextToken()
 		}
-		if t2 != tValue {
-			return EntryInvalid, p.parseError("expected value after metric", t2)
-		}
-		if p.val, err = parseFloat(yoloString(p.l.buf())); err != nil {
-			return EntryInvalid, fmt.Errorf("%v while parsing: %q", err, p.l.b[p.start:p.l.i])
-		}
-		// Ensure canonical NaN value.
-		if math.IsNaN(p.val) {
-			p.val = math.Float64frombits(value.NormalNaN)
-		}
-		p.hasTS = false
-		switch t := p.nextToken(); t {
-		case tLinebreak:
-			break
-		case tTimestamp:
-			p.hasTS = true
-			if p.ts, err = strconv.ParseInt(yoloString(p.l.buf()), 10, 64); err != nil {
-				return EntryInvalid, fmt.Errorf("%v while parsing: %q", err, p.l.b[p.start:p.l.i])
-			}
-			if t2 := p.nextToken(); t2 != tLinebreak {
-				return EntryInvalid, p.parseError("expected next entry after timestamp", t2)
-			}
-		default:
-			return EntryInvalid, p.parseError("expected timestamp or new record", t)
-		}
-		return EntrySeries, nil
+		return p.parseMetricSuffix(t2)
 
 	default:
 		err = p.parseError("expected a valid start token", t)
@@ -377,19 +402,45 @@ func (p *PromParser) Next() (Entry, error) {
 	return EntryInvalid, err
 }
 
+// parseLVals parses the contents inside the braces.
 func (p *PromParser) parseLVals() error {
 	t := p.nextToken()
 	for {
+		curTStart := p.l.start
+		curTI := p.l.i
+		var isQString bool
 		switch t {
 		case tBraceClose:
 			return nil
 		case tLName:
+		case tQString:
+			isQString = true
 		default:
 			return p.parseError("expected label name", t)
 		}
-		p.offsets = append(p.offsets, p.l.start, p.l.i)
 
-		if t := p.nextToken(); t != tEqual {
+		t = p.nextToken()
+		// A quoted string followed by a comma or brace is a metric name. Set the
+		// offsets and continue processing.
+		if isQString && (t == tComma || t == tBraceClose) {
+			if p.offsets[0] != -1 || p.offsets[1] != -1 {
+				return fmt.Errorf("metric name already set while parsing: %q", p.l.b[p.start:p.l.i])
+			}
+			p.offsets[0] = curTStart + 1
+			p.offsets[1] = curTI - 1
+			if t == tBraceClose {
+				return nil
+			}
+			t = p.nextToken()
+			continue
+		}
+		// We have a label name, and it might be quoted.
+		if p.l.b[curTStart] == '"' {
+			curTStart++
+			curTI--
+		}
+		p.offsets = append(p.offsets, curTStart, curTI)
+		if t != tEqual {
 			return p.parseError("expected equal", t)
 		}
 		if t := p.nextToken(); t != tLValue {
@@ -403,11 +454,49 @@ func (p *PromParser) parseLVals() error {
 		// and last character.
 		p.offsets = append(p.offsets, p.l.start+1, p.l.i-1)
 
-		// Free trailing commas are allowed.
+		// Free trailing commas are allowed. NOTE: this allows spaces between label
+		// names, unlike in OpenMetrics. It is not clear if this is intended or an
+		// accidental bug.
 		if t = p.nextToken(); t == tComma {
 			t = p.nextToken()
 		}
 	}
+}
+
+// parseMetricSuffix parses the end of the line after the metric name and
+// labels. It starts parsing with the provided token.
+func (p *PromParser) parseMetricSuffix(t token) (Entry, error) {
+	if p.offsets[0] == -1 {
+		return EntryInvalid, fmt.Errorf("metric name not set while parsing: %q", p.l.b[p.start:p.l.i])
+	}
+	if t != tValue {
+		return EntryInvalid, p.parseError("expected value after metric", t)
+	}
+	var err error
+	if p.val, err = parseFloat(yoloString(p.l.buf())); err != nil {
+		return EntryInvalid, fmt.Errorf("%w while parsing: %q", err, p.l.b[p.start:p.l.i])
+	}
+	// Ensure canonical NaN value.
+	if math.IsNaN(p.val) {
+		p.val = math.Float64frombits(value.NormalNaN)
+	}
+	p.hasTS = false
+	switch t := p.nextToken(); t {
+	case tLinebreak:
+		break
+	case tTimestamp:
+		p.hasTS = true
+		if p.ts, err = strconv.ParseInt(yoloString(p.l.buf()), 10, 64); err != nil {
+			return EntryInvalid, fmt.Errorf("%w while parsing: %q", err, p.l.b[p.start:p.l.i])
+		}
+		if t2 := p.nextToken(); t2 != tLinebreak {
+			return EntryInvalid, p.parseError("expected next entry after timestamp", t2)
+		}
+	default:
+		return EntryInvalid, p.parseError("expected timestamp or new record", t)
+	}
+
+	return EntrySeries, nil
 }
 
 var lvalReplacer = strings.NewReplacer(
@@ -421,14 +510,26 @@ var helpReplacer = strings.NewReplacer(
 	`\n`, "\n",
 )
 
+func unreplace(s string) string {
+	// Replacer causes allocations. Replace only when necessary.
+	if strings.IndexByte(s, byte('\\')) >= 0 {
+		return lvalReplacer.Replace(s)
+	}
+	return s
+}
+
 func yoloString(b []byte) string {
-	return *((*string)(unsafe.Pointer(&b)))
+	return unsafe.String(unsafe.SliceData(b), len(b))
+}
+
+func yoloBytes(b string) []byte {
+	return unsafe.Slice(unsafe.StringData(b), len(b))
 }
 
 func parseFloat(s string) (float64, error) {
 	// Keep to pre-Go 1.13 float formats.
 	if strings.ContainsAny(s, "pP_") {
-		return 0, fmt.Errorf("unsupported character in float")
+		return 0, errors.New("unsupported character in float")
 	}
 	return strconv.ParseFloat(s, 64)
 }

@@ -1,13 +1,17 @@
 {
-  "bigquery": "1.51.2",
-  "bigtable": "1.18.1",
-  "datastore": "1.11.0",
-  "errorreporting": "0.3.0",
-  "firestore": "1.9.0",
-  "logging": "1.7.0",
-  "profiler": "0.3.1",
-  "pubsub": "1.30.1",
-  "pubsublite": "1.8.0",
-  "spanner": "1.45.1",
-  "storage": "1.30.1"
+  "auth": "0.16.5",
+  "auth/oauth2adapt": "0.2.8",
+  "bigquery": "1.70.0",
+  "bigtable": "1.39.0",
+  "datastore": "1.20.0",
+  "errorreporting": "0.3.2",
+  "firestore": "1.18.0",
+  "logging": "1.13.0",
+  "profiler": "0.4.3",
+  "pubsub": "1.50.1",
+  "pubsub/v2": "2.0.1",
+  "pubsublite": "1.8.2",
+  "spanner": "1.85.1",
+  "storage": "1.56.1",
+  "vertexai": "0.15.0"
 }

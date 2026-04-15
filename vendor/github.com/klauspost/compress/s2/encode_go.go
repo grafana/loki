@@ -1,5 +1,4 @@
 //go:build !amd64 || appengine || !gc || noasm
-// +build !amd64 appengine !gc noasm
 
 package s2
 
@@ -21,6 +20,9 @@ func encodeBlock(dst, src []byte) (d int) {
 	if len(src) < minNonLiteralBlockSize {
 		return 0
 	}
+	if len(src) <= 64<<10 {
+		return encodeBlockGo64K(dst, src)
+	}
 	return encodeBlockGo(dst, src)
 }
 
@@ -32,6 +34,9 @@ func encodeBlock(dst, src []byte) (d int) {
 //
 //	len(dst) >= MaxEncodedLen(len(src))
 func encodeBlockBetter(dst, src []byte) (d int) {
+	if len(src) <= 64<<10 {
+		return encodeBlockBetterGo64K(dst, src)
+	}
 	return encodeBlockBetterGo(dst, src)
 }
 
@@ -43,6 +48,9 @@ func encodeBlockBetter(dst, src []byte) (d int) {
 //
 //	len(dst) >= MaxEncodedLen(len(src))
 func encodeBlockBetterSnappy(dst, src []byte) (d int) {
+	if len(src) <= 64<<10 {
+		return encodeBlockBetterSnappyGo64K(dst, src)
+	}
 	return encodeBlockBetterSnappyGo(dst, src)
 }
 
@@ -56,6 +64,9 @@ func encodeBlockBetterSnappy(dst, src []byte) (d int) {
 func encodeBlockSnappy(dst, src []byte) (d int) {
 	if len(src) < minNonLiteralBlockSize {
 		return 0
+	}
+	if len(src) <= 64<<10 {
+		return encodeBlockSnappyGo64K(dst, src)
 	}
 	return encodeBlockSnappyGo(dst, src)
 }
@@ -316,7 +327,8 @@ func matchLen(a []byte, b []byte) int {
 	return len(a) + checked
 }
 
-func calcBlockSize(src []byte) (d int) {
+// input must be > inputMargin
+func calcBlockSize(src []byte, _ *[32768]byte) (d int) {
 	// Initialize the hash table.
 	const (
 		tableBits    = 13
@@ -501,7 +513,8 @@ emitRemainder:
 	return d
 }
 
-func calcBlockSizeSmall(src []byte) (d int) {
+// length must be > inputMargin.
+func calcBlockSizeSmall(src []byte, _ *[2048]byte) (d int) {
 	// Initialize the hash table.
 	const (
 		tableBits    = 9

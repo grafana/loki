@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
+
 package spec
 
 import (
@@ -9,8 +12,9 @@ import (
 
 // OrderSchemaItem holds a named schema (e.g. from a property of an object)
 type OrderSchemaItem struct {
-	Name string
 	Schema
+
+	Name string
 }
 
 // OrderSchemaItems is a sortable slice of named schemas.
@@ -21,29 +25,34 @@ type OrderSchemaItems []OrderSchemaItem
 // of the OrderSchemaItems slice, keeping the original order of the slice.
 func (items OrderSchemaItems) MarshalJSON() ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
-	buf.WriteString("{")
-	for i := range items {
-		if i > 0 {
-			buf.WriteString(",")
-		}
-		buf.WriteString("\"")
-		buf.WriteString(items[i].Name)
-		buf.WriteString("\":")
-		bs, err := json.Marshal(&items[i].Schema)
-		if err != nil {
+	buf.WriteByte('{')
+
+	if len(items) == 0 {
+		buf.WriteByte('}')
+
+		return buf.Bytes(), nil
+	}
+
+	if err := items.marshalJSONItem(items[0], buf); err != nil {
+		return nil, err
+	}
+
+	for _, item := range items[1:] {
+		buf.WriteByte(',')
+		if err := items.marshalJSONItem(item, buf); err != nil {
 			return nil, err
 		}
-		buf.Write(bs)
 	}
-	buf.WriteString("}")
+	buf.WriteByte('}')
+
 	return buf.Bytes(), nil
 }
 
 func (items OrderSchemaItems) Len() int      { return len(items) }
 func (items OrderSchemaItems) Swap(i, j int) { items[i], items[j] = items[j], items[i] }
 func (items OrderSchemaItems) Less(i, j int) (ret bool) {
-	ii, oki := items[i].Extensions.GetString("x-order")
-	ij, okj := items[j].Extensions.GetString("x-order")
+	ii, oki := items[i].Extensions.GetInt("x-order")
+	ij, okj := items[j].Extensions.GetInt("x-order")
 	if oki {
 		if okj {
 			defer func() {
@@ -56,13 +65,29 @@ func (items OrderSchemaItems) Less(i, j int) (ret bool) {
 					ret = reflect.ValueOf(ii).String() < reflect.ValueOf(ij).String()
 				}
 			}()
-			return reflect.ValueOf(ii).Int() < reflect.ValueOf(ij).Int()
+			return ii < ij
 		}
 		return true
 	} else if okj {
 		return false
 	}
 	return items[i].Name < items[j].Name
+}
+
+func (items OrderSchemaItems) marshalJSONItem(item OrderSchemaItem, output *bytes.Buffer) error {
+	nameJSON, err := json.Marshal(item.Name)
+	if err != nil {
+		return err
+	}
+	output.Write(nameJSON)
+	output.WriteByte(':')
+	schemaJSON, err := json.Marshal(&item.Schema)
+	if err != nil {
+		return err
+	}
+	output.Write(schemaJSON)
+
+	return nil
 }
 
 // SchemaProperties is a map representing the properties of a Schema object.

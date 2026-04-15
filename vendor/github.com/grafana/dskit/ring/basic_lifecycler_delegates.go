@@ -83,6 +83,7 @@ func (d *TokensPersistencyDelegate) OnRingInstanceRegister(lifecycler *BasicLife
 	// case the instance exist in the ring (which is OK because the lifecycler
 	// will correctly reconcile this case too).
 	return d.next.OnRingInstanceRegister(lifecycler, ringDesc, true, lifecycler.GetInstanceID(), InstanceDesc{
+		Id:                  lifecycler.GetInstanceID(),
 		Addr:                lifecycler.GetInstanceAddr(),
 		Timestamp:           time.Now().Unix(),
 		RegisteredTimestamp: lifecycler.GetRegisteredAt().Unix(),

@@ -20,27 +20,27 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/crypto/tls"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/user"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	otgrpc "github.com/opentracing-contrib/go-grpc"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/util/build"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -54,9 +54,7 @@ const (
 	EvalModeRemote = "remote"
 )
 
-var (
-	userAgent = fmt.Sprintf("loki-ruler/%s", build.Version)
-)
+var userAgent = fmt.Sprintf("loki-ruler/%s", build.Version)
 
 type metrics struct {
 	reqDurationSecs     *prometheus.HistogramVec
@@ -72,35 +70,41 @@ type RemoteEvaluator struct {
 	overrides RulesLimits
 	logger    log.Logger
 
+	// we don't want/need to log all the additional context, such as
+	// caller=spanlogger.go:116 component=ruler evaluation_mode=remote method=ruler.remoteEvaluation.Query
+	// in insights logs, so create a new logger
+	insightsLogger log.Logger
+
 	metrics *metrics
 }
 
 func NewRemoteEvaluator(client httpgrpc.HTTPClient, overrides RulesLimits, logger log.Logger, registerer prometheus.Registerer) (*RemoteEvaluator, error) {
 	return &RemoteEvaluator{
-		client:    client,
-		overrides: overrides,
-		logger:    logger,
-		metrics:   newMetrics(registerer),
+		client:         client,
+		overrides:      overrides,
+		logger:         logger,
+		insightsLogger: log.With(util_log.Logger, "msg", "request timings", "insight", "true", "source", "loki_ruler", "rule_name"),
+		metrics:        newMetrics(registerer),
 	}, nil
 }
 
 func newMetrics(registerer prometheus.Registerer) *metrics {
 	reqDurationSecs := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "request_duration_seconds",
 		// 0.005000, 0.015000, 0.045000, 0.135000, 0.405000, 1.215000, 3.645000, 10.935000, 32.805000
 		Buckets: prometheus.ExponentialBuckets(0.005, 3, 9),
 	}, []string{"user"})
 	responseSizeBytes := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "response_bytes",
 		// 32, 128, 512, 2K, 8K, 32K, 128K, 512K, 2M, 8M
 		Buckets: prometheus.ExponentialBuckets(32, 4, 10),
 	}, []string{"user"})
 	responseSizeSamples := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "response_samples",
 		// 1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144
@@ -108,12 +112,12 @@ func newMetrics(registerer prometheus.Registerer) *metrics {
 	}, []string{"user"})
 
 	successfulEvals := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "success_total",
 	}, []string{"user"})
 	failedEvals := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "failure_total",
 	}, []string{"reason", "user"})
@@ -168,11 +172,11 @@ func (r *RemoteEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*
 
 // DialQueryFrontend creates and initializes a new httpgrpc.HTTPClient taking a QueryFrontendConfig configuration.
 func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
-	tlsDialOptions, err := cfg.TLS.GetGRPCDialOptions(cfg.TLSEnabled)
+	dialOptions, err := cfg.ClientConfig.DialOption(nil, nil, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}
-	dialOptions := append(
+	dialOptions = append(dialOptions,
 		[]grpc.DialOption{
 			grpc.WithKeepaliveParams(
 				keepalive.ClientParameters{
@@ -181,17 +185,15 @@ func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
 					PermitWithoutStream: true,
 				},
 			),
-			grpc.WithUnaryInterceptor(
-				grpc_middleware.ChainUnaryClient(
-					otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-					middleware.ClientUserHeaderInterceptor,
-				),
+			grpc.WithChainUnaryInterceptor(
+				middleware.ClientUserHeaderInterceptor,
 			),
 			grpc.WithDefaultServiceConfig(serviceConfig),
-		},
-		tlsDialOptions...,
+			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		}...,
 	)
 
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(cfg.Address, dialOptions...)
 	if err != nil {
 		return nil, err
@@ -204,8 +206,8 @@ type Middleware func(ctx context.Context, req *httpgrpc.HTTPRequest) error
 
 // Query performs a query for the given time.
 func (r *RemoteEvaluator) Query(ctx context.Context, ch chan<- queryResponse, orgID, qs string, t time.Time) {
-	logger, ctx := spanlogger.NewWithLogger(ctx, r.logger, "ruler.remoteEvaluation.Query")
-	defer logger.Span.Finish()
+	logger, ctx := spanlogger.NewOTel(ctx, r.logger, tracer, "ruler.remoteEvaluation.Query")
+	defer logger.Finish()
 
 	res, err := r.query(ctx, orgID, qs, t, logger)
 	ch <- queryResponse{res, err}
@@ -219,8 +221,13 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 		args.Set("time", ts.Format(time.RFC3339Nano))
 	}
 	body := []byte(args.Encode())
-	hash := logql.HashedQuery(query)
+	hash := util.HashedQuery(query)
 
+	// Retrieve rule details from context
+	ruleName, ruleType := GetRuleDetailsFromContext(ctx)
+
+	// Construct the X-Query-Tags header value
+	queryTags := fmt.Sprintf("source=ruler,rule_name=%s,rule_type=%s", ruleName, ruleType)
 	req := httpgrpc.HTTPRequest{
 		Method: http.MethodPost,
 		Url:    queryEndpointPath,
@@ -229,7 +236,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 			{Key: textproto.CanonicalMIMEHeaderKey("User-Agent"), Values: []string{userAgent}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Type"), Values: []string{mimeTypeFormPost}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Length"), Values: []string{strconv.Itoa(len(body))}},
-			{Key: textproto.CanonicalMIMEHeaderKey(string(httpreq.QueryTagsHTTPHeader)), Values: []string{"ruler"}},
+			{Key: textproto.CanonicalMIMEHeaderKey(string(httpreq.QueryTagsHTTPHeader)), Values: []string{queryTags}},
 			{Key: textproto.CanonicalMIMEHeaderKey(user.OrgIDHeaderName), Values: []string{orgID}},
 		},
 	}
@@ -243,12 +250,12 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 		instrument.ObserveWithExemplar(ctx, r.metrics.responseSizeBytes.WithLabelValues(orgID), float64(len(resp.Body)))
 	}
 
-	log := log.With(logger, "query_hash", hash, "query", query, "instant", ts, "response_time", time.Since(start).String())
+	logger = log.With(logger, "query_hash", hash, "query", query, "instant", ts, "response_time", time.Since(start).String())
 
 	if err != nil {
 		r.metrics.failedEvals.WithLabelValues("error", orgID).Inc()
 
-		level.Warn(log).Log("msg", "failed to evaluate rule", "err", err)
+		level.Warn(logger).Log("msg", "failed to evaluate rule", "err", err)
 		return nil, fmt.Errorf("rule evaluation failed: %w", err)
 	}
 
@@ -262,7 +269,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 		r.metrics.failedEvals.WithLabelValues("upstream_error", orgID).Inc()
 
 		respBod, _ := io.ReadAll(limitedBody)
-		level.Warn(log).Log("msg", "rule evaluation failed with non-2xx response", "response_code", resp.Code, "response_body", respBod)
+		level.Warn(logger).Log("msg", "rule evaluation failed with non-2xx response", "response_code", resp.Code, "response_body", respBod)
 		return nil, fmt.Errorf("unsuccessful/unexpected response - status code %d", resp.Code)
 	}
 
@@ -270,14 +277,19 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 	if maxSize > 0 && int64(len(fullBody)) >= maxSize {
 		r.metrics.failedEvals.WithLabelValues("max_size", orgID).Inc()
 
-		level.Error(log).Log("msg", "rule evaluation exceeded max size", "max_size", maxSize, "response_size", len(fullBody))
+		level.Error(logger).Log("msg", "rule evaluation exceeded max size", "max_size", maxSize, "response_size", len(fullBody))
 		return nil, fmt.Errorf("%d bytes exceeds response size limit of %d (defined by ruler_remote_evaluation_max_response_size)", len(resp.Body), maxSize)
 	}
 
-	level.Debug(log).Log("msg", "rule evaluation succeeded")
+	level.Debug(logger).Log("msg", "rule evaluation succeeded")
 	r.metrics.successfulEvals.WithLabelValues(orgID).Inc()
 
-	return r.decodeResponse(ctx, resp, orgID)
+	dr, err := r.decodeResponse(ctx, resp, orgID)
+	if err != nil {
+		return nil, err
+	}
+	level.Info(r.insightsLogger).Log(ruleName, "rule_type", ruleType, "total", dr.Statistics.Summary.ExecTime, "total_bytes", dr.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(query))
+	return dr, err
 }
 
 func (r *RemoteEvaluator) decodeResponse(ctx context.Context, resp *httpgrpc.HTTPResponse, orgID string) (*logqlmodel.Result, error) {
@@ -345,16 +357,12 @@ type QueryFrontendConfig struct {
 	// The address of the remote querier to connect to.
 	Address string `yaml:"address"`
 
-	// TLSEnabled tells whether TLS should be used to establish remote connection.
-	TLSEnabled bool `yaml:"tls_enabled"`
-
-	// TLS is the config for client TLS.
-	TLS tls.ClientConfig `yaml:",inline"`
+	// ClientConfig allows configuring the gRPC client used to connect to the query-frontend.
+	ClientConfig grpcclient.Config `yaml:",inline"`
 }
 
 func (c *QueryFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Address, "ruler.evaluation.query-frontend.address", "", "GRPC listen address of the query-frontend(s). Must be a DNS address (prefixed with dns:///) to enable client side load balancing.")
-	f.BoolVar(&c.TLSEnabled, "ruler.evaluation.query-frontend.tls-enabled", false, "Set to true if query-frontend connection requires TLS.")
 
-	c.TLS.RegisterFlagsWithPrefix("ruler.evaluation.query-frontend", f)
+	c.ClientConfig.RegisterFlagsWithPrefix("ruler.evaluation.query-frontend", f)
 }

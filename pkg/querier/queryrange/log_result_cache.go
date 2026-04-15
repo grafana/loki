@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -10,20 +11,20 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/opentracing/opentracing-go"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/dskit/tenant"
-
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 // LogResultCacheMetrics is the metrics wrapper used in log result cache.
@@ -36,14 +37,59 @@ type LogResultCacheMetrics struct {
 func NewLogResultCacheMetrics(registerer prometheus.Registerer) *LogResultCacheMetrics {
 	return &LogResultCacheMetrics{
 		CacheHit: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "query_frontend_log_result_cache_hit_total",
 		}),
 		CacheMiss: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "query_frontend_log_result_cache_miss_total",
 		}),
 	}
+}
+
+// LogCacheLimits is the subset of Limits used by logResultCache (only freshness check).
+type LogCacheLimits interface {
+	MaxCacheFreshness(context.Context, string) time.Duration
+}
+
+// LogCacheKeyGenerator generates cache keys for log result cache entries.
+// Returning an empty string signals that the request should not be cached.
+type LogCacheKeyGenerator interface {
+	GenerateCacheKey(ctx context.Context, tenantIDs []string, req *LokiRequest) string
+}
+
+type defaultLogCacheKeyGenerator struct {
+	limits      Limits
+	transformer UserIDTransformer
+}
+
+func (g *defaultLogCacheKeyGenerator) GenerateCacheKey(ctx context.Context, tenantIDs []string, req *LokiRequest) string {
+	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, g.limits.QuerySplitDuration)
+	// skip caching if interval is unset
+	// skip caching when limit is 0 as it would get registered as empty result in the cache even if that time range contains log lines.
+	if interval == 0 || req.Limit == 0 {
+		return ""
+	}
+	alignedStart := time.Unix(0, req.GetStartTs().UnixNano()-(req.GetStartTs().UnixNano()%interval.Nanoseconds()))
+
+	transformedTenantIDs := tenantIDs
+	if g.transformer != nil {
+		transformedTenantIDs = make([]string, 0, len(tenantIDs))
+		for _, tenantID := range tenantIDs {
+			transformedTenantIDs = append(transformedTenantIDs, g.transformer(ctx, tenantID))
+		}
+	}
+
+	cacheKey := fmt.Sprintf("log:%s:%s:%d:%d", tenant.JoinTenantIDs(transformedTenantIDs), req.GetQuery(), interval.Nanoseconds(), alignedStart.UnixNano()/(interval.Nanoseconds()))
+	if httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) == "true" {
+		cacheKey = "pipeline-disabled:" + cacheKey
+	}
+	return cacheKey
+}
+
+// NewDefaultLogCacheKeyGenerator creates the standard key generator using QuerySplitDuration.
+func NewDefaultLogCacheKeyGenerator(limits Limits, transformer UserIDTransformer) LogCacheKeyGenerator {
+	return &defaultLogCacheKeyGenerator{limits: limits, transformer: transformer}
 }
 
 // NewLogResultCache creates a new log result cache middleware.
@@ -51,8 +97,17 @@ func NewLogResultCacheMetrics(registerer prometheus.Registerer) *LogResultCacheM
 // Log hits are difficult to handle because of the limit query parameter and the size of the response.
 // In the future it could be extended to cache non-empty query results.
 // see https://docs.google.com/document/d/1_mACOpxdWZ5K0cIedaja5gzMbv-m0lUVazqZd2O4mEU/edit
-func NewLogResultCache(logger log.Logger, limits Limits, cache cache.Cache, shouldCache queryrangebase.ShouldCacheFn,
-	transformer UserIDTransformer, metrics *LogResultCacheMetrics) queryrangebase.Middleware {
+func NewLogResultCache(
+	logger log.Logger,
+	limits LogCacheLimits,
+	c cache.Cache,
+	shouldCache queryrangebase.ShouldCacheFn,
+	keyGen LogCacheKeyGenerator,
+	metrics *LogResultCacheMetrics,
+) (queryrangebase.Middleware, error) {
+	if keyGen == nil {
+		return nil, errors.New("keyGen must not be nil")
+	}
 	if metrics == nil {
 		metrics = NewLogResultCacheMetrics(nil)
 	}
@@ -60,32 +115,33 @@ func NewLogResultCache(logger log.Logger, limits Limits, cache cache.Cache, shou
 		return &logResultCache{
 			next:        next,
 			limits:      limits,
-			cache:       cache,
+			cache:       c,
 			logger:      logger,
 			shouldCache: shouldCache,
-			transformer: transformer,
+			keyGen:      keyGen,
 			metrics:     metrics,
 		}
-	})
+	}), nil
 }
 
 type logResultCache struct {
 	next        queryrangebase.Handler
-	limits      Limits
+	limits      LogCacheLimits
 	cache       cache.Cache
 	shouldCache queryrangebase.ShouldCacheFn
-	transformer UserIDTransformer
+	keyGen      LogCacheKeyGenerator
 
 	metrics *LogResultCacheMetrics
 	logger  log.Logger
 }
 
 func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "logResultCache.Do")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "logResultCache.Do")
+	defer sp.End()
+
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	if l.shouldCache != nil && !l.shouldCache(ctx, req) {
@@ -95,7 +151,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	cacheFreshnessCapture := func(id string) time.Duration { return l.limits.MaxCacheFreshness(ctx, id) }
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
-	if req.GetEnd() > maxCacheTime {
+	if req.GetEnd().UnixMilli() > maxCacheTime {
 		return l.next.Do(ctx, req)
 	}
 
@@ -104,25 +160,10 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request type %T", req)
 	}
 
-	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.limits.QuerySplitDuration)
-	// skip caching by if interval is unset
-	if interval == 0 {
+	cacheKey := l.keyGen.GenerateCacheKey(ctx, tenantIDs, lokiReq)
+	if cacheKey == "" {
 		return l.next.Do(ctx, req)
 	}
-	// The first subquery might not be aligned.
-	alignedStart := time.Unix(0, lokiReq.GetStartTs().UnixNano()-(lokiReq.GetStartTs().UnixNano()%interval.Nanoseconds()))
-	// generate the cache key based on query, tenant and start time.
-
-	transformedTenantIDs := tenantIDs
-	if l.transformer != nil {
-		transformedTenantIDs = make([]string, 0, len(tenantIDs))
-
-		for _, tenantID := range tenantIDs {
-			transformedTenantIDs = append(transformedTenantIDs, l.transformer(ctx, tenantID))
-		}
-	}
-
-	cacheKey := fmt.Sprintf("log:%s:%s:%d:%d", tenant.JoinTenantIDs(transformedTenantIDs), req.GetQuery(), interval.Nanoseconds(), alignedStart.UnixNano()/(interval.Nanoseconds()))
 
 	_, buff, _, err := l.cache.Fetch(ctx, []string{cache.HashKey(cacheKey)})
 	if err != nil {
@@ -181,7 +222,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey string, req *L
 func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedRequest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
 	l.metrics.CacheHit.Inc()
 	// we start with an empty response
-	result := emptyResponse(cachedRequest)
+	result := emptyResponse(lokiReq)
 	// if the request is the same and cover the whole time range,
 	// we can just return the cached result.
 	if cachedRequest.StartTs.UnixNano() <= lokiReq.StartTs.UnixNano() && cachedRequest.EndTs.UnixNano() >= lokiReq.EndTs.UnixNano() {
@@ -200,7 +241,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 
 		// if the response is empty and the query is larger than what is cached, update the cache
 		if isEmpty(result) && (lokiReq.EndTs.UnixNano()-lokiReq.StartTs.UnixNano() > cachedRequest.EndTs.UnixNano()-cachedRequest.StartTs.UnixNano()) {
-			cachedRequest = cachedRequest.WithStartEndTime(lokiReq.GetStartTs(), lokiReq.GetEndTs())
+			cachedRequest = cachedRequest.WithStartEnd(lokiReq.GetStartTs(), lokiReq.GetEndTs()).(*LokiRequest)
 			updateCache = true
 		}
 	} else {
@@ -215,7 +256,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		// if we're missing data at the start, start fetching from the start to the cached start.
 		if lokiReq.GetStartTs().Before(cachedRequest.GetStartTs()) {
 			g.Go(func() error {
-				startRequest = lokiReq.WithStartEndTime(lokiReq.GetStartTs(), cachedRequest.GetStartTs())
+				startRequest = lokiReq.WithStartEnd(lokiReq.GetStartTs(), cachedRequest.GetStartTs()).(*LokiRequest)
 				resp, err := l.next.Do(ctx, startRequest)
 				if err != nil {
 					return err
@@ -232,7 +273,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		// if we're missing data at the end, start fetching from the cached end to the end.
 		if lokiReq.GetEndTs().After(cachedRequest.GetEndTs()) {
 			g.Go(func() error {
-				endRequest = lokiReq.WithStartEndTime(cachedRequest.GetEndTs(), lokiReq.GetEndTs())
+				endRequest = lokiReq.WithStartEnd(cachedRequest.GetEndTs(), lokiReq.GetEndTs()).(*LokiRequest)
 				resp, err := l.next.Do(ctx, endRequest)
 				if err != nil {
 					return err
@@ -254,7 +295,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		// If it's not empty only merge the response.
 		if startResp != nil {
 			if isEmpty(startResp) {
-				cachedRequest = cachedRequest.WithStartEndTime(startRequest.GetStartTs(), cachedRequest.GetEndTs())
+				cachedRequest = cachedRequest.WithStartEnd(startRequest.GetStartTs(), cachedRequest.GetEndTs()).(*LokiRequest)
 				updateCache = true
 			} else {
 				if startResp.Status != loghttp.QueryStatusSuccess {
@@ -268,7 +309,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		// If it's not empty only merge the response.
 		if endResp != nil {
 			if isEmpty(endResp) {
-				cachedRequest = cachedRequest.WithStartEndTime(cachedRequest.GetStartTs(), endRequest.GetEndTs())
+				cachedRequest = cachedRequest.WithStartEnd(cachedRequest.GetStartTs(), endRequest.GetEndTs()).(*LokiRequest)
 				updateCache = true
 			} else {
 				if endResp.Status != loghttp.QueryStatusSuccess {

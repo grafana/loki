@@ -1,24 +1,25 @@
 ---
-title: Loki Canary
-description: Loki Canary is a standalone app that audits the log-capturing performance of a Grafana Loki cluster.
-weight: 60
+title: Audit data propagation latency and correctness using Loki Canary
+menuTitle: Loki Canary
+description: Describes how to use Loki Canary to audit the log-capturing performance of a Grafana Loki cluster to ensure Loki is ingesting logs without data loss.
+weight: 
 ---
-# Loki Canary
+# Audit data propagation latency and correctness using Loki Canary
 
-Loki Canary is a standalone app that audits the log-capturing performance of
-a Grafana Loki cluster.
+Loki Canary is a standalone app that audits the log-capturing performance of a Grafana Loki cluster.  
+This component emits and periodically queries for logs, making sure that Loki is ingesting logs without any data loss.
+When something is wrong with Loki, the Canary often provides the first indication. 
 
 Loki Canary generates artificial log lines.
 These log lines are sent to the Loki cluster.
 Loki Canary communicates with the Loki cluster to capture metrics about the
 artificial log lines,
-such that Loki Canary forms information about the performance of the
-Loki cluster.
+such that Loki Canary forms information about the performance of the Loki cluster.
 The information is available as Prometheus time series metrics.
 
-![block_diagram](./loki-canary-block.png)
+{{< figure max-width="75%" src="./loki-canary-block.png" alt="Loki canary">}}
 
-Loki Canary writes a log to a file and stores the timestamp in an internal
+Loki Canary writes a log to standard output and stores the timestamp in an internal
 array. The contents look something like this:
 
 ```nohighlight
@@ -28,8 +29,7 @@ array. The contents look something like this:
 The relevant part of the log entry is the timestamp; the `p`s are just filler
 bytes to make the size of the log configurable.
 
-An agent (like Promtail) should be configured to read the log file and ship it
-to Loki.
+Loki Canary's standard output should be captured and written to a file. An agent (like Grafana Alloy) should be configured to read the log file and ship it to Loki.
 
 Meanwhile, Loki Canary will open a WebSocket connection to Loki and will tail
 the logs it creates. When a log is received on the WebSocket, the timestamp
@@ -84,8 +84,8 @@ too far in the past can cause issues with the spot check test.
 
 
 When using `out-of-order-percentage` you also need to make use of pipeline stages
-in your Promtail configuration in order to set the timestamps correctly as the logs are pushed
-to Loki. The `client/promtail/pipelines` docs have examples of how to do this.
+in your Alloy configuration in order to set the timestamps correctly as the logs are pushed
+to Loki. The [Alloy `loki.process`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/) docs have examples of how to do this.
 
 #### Metric Test
 
@@ -132,7 +132,7 @@ Loki Canary is also provided as a Docker container image:
 
 ```bash
 # change tag to the most recent release
-$ docker pull grafana/loki-canary:2.0.0
+$ docker pull grafana/loki-canary:2.9.2
 ```
 
 ### Kubernetes
@@ -259,16 +259,23 @@ spec:
 If the other options are not sufficient for your use case, you can compile
 `loki-canary` yourself:
 
-```bash
-# clone the source tree
-$ git clone https://github.com/grafana/loki
+1. Clone the source tree.
 
-# build the binary
-$ make loki-canary
+    ```bash
+    $ git clone https://github.com/grafana/loki
+    ```
 
-# (optionally build the container image)
-$ make loki-canary-image
-```
+1. Build the binary.
+
+    ```bash
+    $ make loki-canary
+    ```
+
+1. Optional: Build the container image.
+
+    ```bash
+    $ make loki-canary-image
+    ```
 
 ## Configuration
 
@@ -281,7 +288,7 @@ The `-labelname` and `-labelvalue` flags should also be provided, as these are
 used by Loki Canary to filter the log stream to only process logs for the
 current instance of the canary. Ensure that the values provided to the flags are
 unique to each instance of Loki Canary. Grafana Labs' Tanka config
-accomplishes this by passing in the pod name as the label value.
+accomplishes this by passing in the Pod name as the label value.
 
 If Loki Canary reports a high number of `unexpected_entries`, Loki Canary may
 not be waiting long enough and the value for the `-wait` flag should be
@@ -316,6 +323,8 @@ All options:
     	Duration between log entries (default 1s)
   -key-file string
     	Client PEM encoded X.509 key for optional use with TLS connection to Loki
+  -labels string
+        Comma-separated string of labels for the query e.g. 'service=loki,app=canary'. The parsing logic for this argument is simple, label values must not contain a comma or special characters and should not be quoted. Overwrites labelname and streamname
   -labelname string
     	The label name for this instance of loki-canary to use in the log selector (default "name")
   -labelvalue string
@@ -340,6 +349,8 @@ All options:
     	Frequency to check sent vs received logs, also the frequency which queries for missing logs will be dispatched to loki (default 1m0s)
   -push
     	Push the logs directly to given Loki address
+  -query-append string
+        LogQL filters to be appended to the Canary query e.g. '| json | line_format `{{.log}}`'  	
   -query-timeout duration
     	How long to wait for a query response from Loki (default 10s)
   -size int
@@ -374,4 +385,79 @@ All options:
     	Initial backoff time before first retry  (default 500ms)
   -write-timeout duration
     	How long to wait write response from Loki (default 10s)
+```
+
+## Monolithic mode setup
+
+This section describes how to set up Loki Canary for Loki's [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) using Systemd, Alloy, and Prometheus.
+
+### Systemd
+
+Create a systemd service file that writes Loki Canary's standard output to the file `/var/log/loki-canary.log`.
+
+```ini
+[Unit]
+Description=Loki Canary
+Documentation=https://grafana.com/docs/loki/latest/operations/loki-canary/
+
+[Service]
+User=loki
+ExecStart=/usr/bin/loki-canary -addr=localhost:3100 -labelname=job -labelvalue=loki_canary -streamname=job -streamvalue=loki_canary
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/loki-canary.log
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`-labelname` and `-labelvalue` flags specify a label pair used to identify Loki Canary's logs. `-streamname` and `-streamvalue` flags specify an additional label pair and must be provided. The same values can be provided to both label pairs if no additional label exists. Labels can be added when Alloy scrapes the logs.
+
+### Scrape logs
+
+Scrape the `/var/log/loki-canary.log` file with Alloy.
+
+```alloy
+loki.source.file "canary" {
+  forward_to = [loki.write.local.receiver]
+  targets = [{
+    __path__ = "/var/log/loki-canary.log",
+    job      = "loki_canary",
+  }]
+}
+
+loki.write "local" {
+  endpoint {
+    url  = "http://localhost:3100/loki/api/v1/push"
+  }
+}
+```
+
+### Scrape metrics
+
+Scrape Loki Canary's metrics with Alloy or Prometheus.
+
+#### Scrape metrics with Alloy
+
+```alloy
+prometheus.scrape "loki" {
+  targets    = [{__address__ = "localhost:3100"}]
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.remote_write "default" {
+  endpoint {  
+    url = "<PROMETHEUS_REMOTE_WRITE_URL>"
+  }  
+}
+```
+
+#### Scrape metrics with Prometheus
+
+```yaml
+scrape_configs:
+  - job_name: loki-canary
+    static_configs:
+      - targets: ['localhost:3500']
 ```

@@ -7,15 +7,15 @@ import (
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/require"
-
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
+
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
 func defaultGatewayDeployment() *appsv1.Deployment {
@@ -270,14 +270,15 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				},
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
-						LokiStackName:        "lokistack-ocp",
-						LokiStackNamespace:   "stack-ns",
-						GatewayName:          "lokistack-ocp-gateway",
-						GatewaySvcName:       "lokistack-ocp-gateway-http",
-						GatewaySvcTargetPort: "public",
-						GatewayRouteTimeout:  75 * time.Second,
-						RulerName:            "lokistack-ocp-ruler",
-						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						LokiStackName:         "lokistack-ocp",
+						LokiStackNamespace:    "stack-ns",
+						GatewayName:           "lokistack-ocp-gateway",
+						GatewaySvcName:        "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort:  "public",
+						GatewayRouteTimeout:   75 * time.Second,
+						RulerName:             "lokistack-ocp-ruler",
+						Labels:                ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						ExternalAccessEnabled: true,
 					},
 					Authentication: []openshift.AuthenticationSpec{
 						{
@@ -366,14 +367,15 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				},
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
-						LokiStackName:        "lokistack-ocp",
-						LokiStackNamespace:   "stack-ns",
-						GatewayName:          "lokistack-ocp-gateway",
-						GatewaySvcName:       "lokistack-ocp-gateway-http",
-						GatewaySvcTargetPort: "public",
-						GatewayRouteTimeout:  75 * time.Second,
-						RulerName:            "lokistack-ocp-ruler",
-						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						LokiStackName:         "lokistack-ocp",
+						LokiStackNamespace:    "stack-ns",
+						GatewayName:           "lokistack-ocp-gateway",
+						GatewaySvcName:        "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort:  "public",
+						GatewayRouteTimeout:   75 * time.Second,
+						RulerName:             "lokistack-ocp-ruler",
+						Labels:                ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						ExternalAccessEnabled: true,
 					},
 					Authentication: []openshift.AuthenticationSpec{
 						{
@@ -389,9 +391,89 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				},
 			},
 		},
+		{
+			desc: "openshift-logging mode with external access disabled",
+			opts: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode:           lokiv1.OpenshiftLogging,
+						DisableIngress: true,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+			},
+			want: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode:           lokiv1.OpenshiftLogging,
+						DisableIngress: true,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						LokiStackName:         "lokistack-ocp",
+						LokiStackNamespace:    "stack-ns",
+						GatewayName:           "lokistack-ocp-gateway",
+						GatewaySvcName:        "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort:  "public",
+						GatewayRouteTimeout:   75 * time.Second,
+						RulerName:             "lokistack-ocp-ruler",
+						Labels:                ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						ExternalAccessEnabled: false,
+					},
+					Authentication: []openshift.AuthenticationSpec{
+						{
+							TenantName:     "application",
+							TenantID:       "",
+							ServiceAccount: "lokistack-ocp-gateway",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/application/callback",
+						},
+						{
+							TenantName:     "infrastructure",
+							TenantID:       "",
+							ServiceAccount: "lokistack-ocp-gateway",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/infrastructure/callback",
+						},
+						{
+							TenantName:     "audit",
+							TenantID:       "",
+							ServiceAccount: "lokistack-ocp-gateway",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/audit/callback",
+						},
+					},
+					Authorization: openshift.AuthorizationSpec{
+						OPAUrl: "http://localhost:8082/v1/data/lokistack/allow",
+					},
+				},
+			},
+		},
 	}
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			err := ApplyGatewayDefaultOptions(tc.opts)
@@ -717,6 +799,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.auth.extract-selectors=kubernetes_namespace_name,k8s_namespace_name",
+									},
 								},
 								{
 									Name:  "opa",
@@ -729,7 +814,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--opa.skip-tenants=audit,infrastructure",
 										"--opa.package=lokistack",
 										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
-										"--opa.matcher=kubernetes_namespace_name",
+										"--opa.matcher=kubernetes_namespace_name,k8s_namespace_name",
+										"--opa.viaq-to-otel-migration=true",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,
@@ -823,6 +909,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.auth.extract-selectors=kubernetes_namespace_name,k8s_namespace_name",
+									},
 								},
 								{
 									Name:  "opa",
@@ -835,7 +924,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--opa.skip-tenants=audit,infrastructure",
 										"--opa.package=lokistack",
 										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
-										"--opa.matcher=kubernetes_namespace_name",
+										"--opa.matcher=kubernetes_namespace_name,k8s_namespace_name",
+										"--opa.viaq-to-otel-migration=true",
 										"--tls.internal.server.cert-file=/var/run/tls/http/server/tls.crt",
 										"--tls.internal.server.key-file=/var/run/tls/http/server/tls.key",
 										"--tls.min-version=min-version",
@@ -938,6 +1028,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.auth.extract-selectors=SrcK8S_Namespace,DstK8S_Namespace",
+									},
 								},
 								{
 									Name:  "opa",
@@ -1045,6 +1138,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.auth.extract-selectors=SrcK8S_Namespace,DstK8S_Namespace",
+									},
 								},
 								{
 									Name:  "opa",
@@ -1157,6 +1253,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.auth.extract-selectors=kubernetes_namespace_name,k8s_namespace_name",
+									},
 								},
 								{
 									Name:  "opa",
@@ -1169,7 +1268,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--opa.skip-tenants=audit,infrastructure",
 										"--opa.package=lokistack",
 										"--opa.admin-groups=custom-admins,other-admins",
-										"--opa.matcher=kubernetes_namespace_name",
+										"--opa.matcher=kubernetes_namespace_name,k8s_namespace_name",
+										"--opa.viaq-to-otel-migration=true",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,
@@ -1251,6 +1351,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.auth.extract-selectors=kubernetes_namespace_name,k8s_namespace_name",
+									},
 								},
 								{
 									Name:  "opa",
@@ -1262,7 +1365,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.healthchecks.url=http://localhost:8082",
 										"--opa.skip-tenants=audit,infrastructure",
 										"--opa.package=lokistack",
-										"--opa.matcher=kubernetes_namespace_name",
+										"--opa.matcher=kubernetes_namespace_name,k8s_namespace_name",
+										"--opa.viaq-to-otel-migration=true",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,
@@ -1313,7 +1417,6 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 	}
 
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			err := configureGatewayDeploymentForMode(tc.dpl, tc.tenants, tc.featureGates, "min-version", "cipher1,cipher2", tc.adminGroups)
@@ -1372,7 +1475,6 @@ func TestConfigureServiceForMode(t *testing.T) {
 		},
 	}
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			err := configureGatewayServiceForMode(tc.svc, tc.mode)
@@ -1384,12 +1486,11 @@ func TestConfigureServiceForMode(t *testing.T) {
 
 func TestConfigureServiceMonitorForMode(t *testing.T) {
 	type tt struct {
-		desc         string
-		opts         Options
-		mode         lokiv1.ModeType
-		featureGates configv1.FeatureGates
-		sm           *monitoringv1.ServiceMonitor
-		want         *monitoringv1.ServiceMonitor
+		desc string
+		opts Options
+		mode lokiv1.ModeType
+		sm   *monitoringv1.ServiceMonitor
+		want *monitoringv1.ServiceMonitor
 	}
 
 	tc := []tt{
@@ -1433,7 +1534,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 						{
 							Port:   openshift.GatewayOPAInternalPortName,
 							Path:   "/metrics",
-							Scheme: "http",
+							Scheme: ptr.To(monitoringv1.Scheme("http")),
 						},
 					},
 				},
@@ -1455,7 +1556,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 						{
 							Port:   openshift.GatewayOPAInternalPortName,
 							Path:   "/metrics",
-							Scheme: "http",
+							Scheme: ptr.To(monitoringv1.Scheme("http")),
 						},
 					},
 				},
@@ -1480,16 +1581,27 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 				Spec: monitoringv1.ServiceMonitorSpec{
 					Endpoints: []monitoringv1.Endpoint{
 						{
-							TLSConfig: &monitoringv1.TLSConfig{
-								CAFile:   "/path/to/ca/file",
-								CertFile: "/path/to/cert/file",
-								KeyFile:  "/path/to/key/file",
-							},
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+										Authorization: &monitoringv1.SafeAuthorization{
+											Type: "Bearer",
+											Credentials: &corev1.SecretKeySelector{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "abcd-gateway-token",
+												},
+												Key: corev1.ServiceAccountTokenKey,
+											},
+										},
+									},
+									TLSConfig: &monitoringv1.TLSConfig{
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile:   "/path/to/ca/file",
+											CertFile: "/path/to/cert/file",
+											KeyFile:  "/path/to/key/file",
+										},
+									},
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 						},
 					},
@@ -1499,32 +1611,54 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 				Spec: monitoringv1.ServiceMonitorSpec{
 					Endpoints: []monitoringv1.Endpoint{
 						{
-							TLSConfig: &monitoringv1.TLSConfig{
-								CAFile:   "/path/to/ca/file",
-								CertFile: "/path/to/cert/file",
-								KeyFile:  "/path/to/key/file",
-							},
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+										Authorization: &monitoringv1.SafeAuthorization{
+											Type: "Bearer",
+											Credentials: &corev1.SecretKeySelector{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "abcd-gateway-token",
+												},
+												Key: corev1.ServiceAccountTokenKey,
+											},
+										},
+									},
+									TLSConfig: &monitoringv1.TLSConfig{
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile:   "/path/to/ca/file",
+											CertFile: "/path/to/cert/file",
+											KeyFile:  "/path/to/key/file",
+										},
+									},
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 						},
 						{
 							Port:   openshift.GatewayOPAInternalPortName,
 							Path:   "/metrics",
-							Scheme: "https",
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Scheme: ptr.To(monitoringv1.Scheme("https")),
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+										Authorization: &monitoringv1.SafeAuthorization{
+											Type: "Bearer",
+											Credentials: &corev1.SecretKeySelector{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "abcd-gateway-token",
+												},
+												Key: corev1.ServiceAccountTokenKey,
+											},
+										},
+									},
+									TLSConfig: &monitoringv1.TLSConfig{
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile:   "/path/to/ca/file",
+											CertFile: "/path/to/cert/file",
+											KeyFile:  "/path/to/key/file",
+										},
+									},
 								},
-								Key: corev1.ServiceAccountTokenKey,
-							},
-							TLSConfig: &monitoringv1.TLSConfig{
-								CAFile:   "/path/to/ca/file",
-								CertFile: "/path/to/cert/file",
-								KeyFile:  "/path/to/key/file",
 							},
 						},
 					},
@@ -1551,16 +1685,27 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 				Spec: monitoringv1.ServiceMonitorSpec{
 					Endpoints: []monitoringv1.Endpoint{
 						{
-							TLSConfig: &monitoringv1.TLSConfig{
-								CAFile:   "/path/to/ca/file",
-								CertFile: "/path/to/cert/file",
-								KeyFile:  "/path/to/key/file",
-							},
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+										Authorization: &monitoringv1.SafeAuthorization{
+											Type: "Bearer",
+											Credentials: &corev1.SecretKeySelector{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "abcd-gateway-token",
+												},
+												Key: corev1.ServiceAccountTokenKey,
+											},
+										},
+									},
+									TLSConfig: &monitoringv1.TLSConfig{
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile:   "/path/to/ca/file",
+											CertFile: "/path/to/cert/file",
+											KeyFile:  "/path/to/key/file",
+										},
+									},
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 						},
 					},
@@ -1570,32 +1715,54 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 				Spec: monitoringv1.ServiceMonitorSpec{
 					Endpoints: []monitoringv1.Endpoint{
 						{
-							TLSConfig: &monitoringv1.TLSConfig{
-								CAFile:   "/path/to/ca/file",
-								CertFile: "/path/to/cert/file",
-								KeyFile:  "/path/to/key/file",
-							},
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+										Authorization: &monitoringv1.SafeAuthorization{
+											Type: "Bearer",
+											Credentials: &corev1.SecretKeySelector{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "abcd-gateway-token",
+												},
+												Key: corev1.ServiceAccountTokenKey,
+											},
+										},
+									},
+									TLSConfig: &monitoringv1.TLSConfig{
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile:   "/path/to/ca/file",
+											CertFile: "/path/to/cert/file",
+											KeyFile:  "/path/to/key/file",
+										},
+									},
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 						},
 						{
 							Port:   openshift.GatewayOPAInternalPortName,
 							Path:   "/metrics",
-							Scheme: "https",
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Scheme: ptr.To(monitoringv1.Scheme("https")),
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+										Authorization: &monitoringv1.SafeAuthorization{
+											Type: "Bearer",
+											Credentials: &corev1.SecretKeySelector{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "abcd-gateway-token",
+												},
+												Key: corev1.ServiceAccountTokenKey,
+											},
+										},
+									},
+									TLSConfig: &monitoringv1.TLSConfig{
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile:   "/path/to/ca/file",
+											CertFile: "/path/to/cert/file",
+											KeyFile:  "/path/to/key/file",
+										},
+									},
 								},
-								Key: corev1.ServiceAccountTokenKey,
-							},
-							TLSConfig: &monitoringv1.TLSConfig{
-								CAFile:   "/path/to/ca/file",
-								CertFile: "/path/to/cert/file",
-								KeyFile:  "/path/to/key/file",
 							},
 						},
 					},
@@ -1604,7 +1771,6 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 		},
 	}
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			err := configureGatewayServiceMonitorForMode(tc.sm, tc.opts)

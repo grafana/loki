@@ -16,11 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/rulestore"
-	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/objectclient"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 )
 
 type testGroup struct {
@@ -106,7 +106,7 @@ func TestListRules(t *testing.T) {
 func TestLoadRules(t *testing.T) {
 	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ interface{}) {
 		groups := []testGroup{
-			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup", Interval: model.Duration(time.Minute), Rules: []rulefmt.RuleNode{{
+			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup", Interval: model.Duration(time.Minute), Rules: []rulefmt.Rule{{
 				For:    model.Duration(5 * time.Minute),
 				Labels: map[string]string{"label1": "value1"},
 			}}, Limit: 10}},

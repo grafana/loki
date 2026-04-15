@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,6 +14,7 @@
 package promql
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,8 +25,8 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/util/annotations"
 )
 
 func (Matrix) Type() parser.ValueType { return parser.ValueTypeMatrix }
@@ -44,7 +45,7 @@ func (s String) String() string {
 }
 
 func (s String) MarshalJSON() ([]byte, error) {
-	return json.Marshal([...]interface{}{float64(s.T) / 1000, s.V})
+	return json.Marshal([...]any{float64(s.T) / 1000, s.V})
 }
 
 // Scalar is a data point that's explicitly not associated with a metric.
@@ -60,7 +61,7 @@ func (s Scalar) String() string {
 
 func (s Scalar) MarshalJSON() ([]byte, error) {
 	v := strconv.FormatFloat(s.V, 'f', -1, 64)
-	return json.Marshal([...]interface{}{float64(s.T) / 1000, v})
+	return json.Marshal([...]any{float64(s.T) / 1000, v})
 }
 
 // Series is a stream of data points belonging to a metric.
@@ -68,6 +69,9 @@ type Series struct {
 	Metric     labels.Labels `json:"metric"`
 	Floats     []FPoint      `json:"values,omitempty"`
 	Histograms []HPoint      `json:"histograms,omitempty"`
+	// DropName is used to indicate whether the __name__ label should be dropped
+	// as part of the query evaluation.
+	DropName bool `json:"-"`
 }
 
 func (s Series) String() string {
@@ -107,7 +111,7 @@ func (p FPoint) String() string {
 // timestamp.
 func (p FPoint) MarshalJSON() ([]byte, error) {
 	v := strconv.FormatFloat(p.F, 'f', -1, 64)
-	return json.Marshal([...]interface{}{float64(p.T) / 1000, v})
+	return json.Marshal([...]any{float64(p.T) / 1000, v})
 }
 
 // HPoint represents a single histogram data point for a given timestamp.
@@ -132,9 +136,9 @@ func (p HPoint) String() string {
 // timestamp.
 func (p HPoint) MarshalJSON() ([]byte, error) {
 	h := struct {
-		Count   string          `json:"count"`
-		Sum     string          `json:"sum"`
-		Buckets [][]interface{} `json:"buckets,omitempty"`
+		Count   string  `json:"count"`
+		Sum     string  `json:"sum"`
+		Buckets [][]any `json:"buckets,omitempty"`
 	}{
 		Count: strconv.FormatFloat(p.H.Count, 'f', -1, 64),
 		Sum:   strconv.FormatFloat(p.H.Sum, 'f', -1, 64),
@@ -157,7 +161,7 @@ func (p HPoint) MarshalJSON() ([]byte, error) {
 				boundaries = 0 // Inclusive only on upper end AKA left open.
 			}
 		}
-		bucketToMarshal := []interface{}{
+		bucketToMarshal := []any{
 			boundaries,
 			strconv.FormatFloat(bucket.Lower, 'f', -1, 64),
 			strconv.FormatFloat(bucket.Upper, 'f', -1, 64),
@@ -165,7 +169,24 @@ func (p HPoint) MarshalJSON() ([]byte, error) {
 		}
 		h.Buckets = append(h.Buckets, bucketToMarshal)
 	}
-	return json.Marshal([...]interface{}{float64(p.T) / 1000, h})
+	return json.Marshal([...]any{float64(p.T) / 1000, h})
+}
+
+// size returns the size of the HPoint compared to the size of an FPoint.
+// The total size is calculated considering the histogram timestamp (p.T - 8 bytes),
+// and then a number of bytes in the histogram.
+// This sum is divided by 16, as samples are 16 bytes.
+func (p HPoint) size() int {
+	return (p.H.Size() + 8) / 16
+}
+
+// totalHPointSize returns the total number of samples in the given slice of HPoints.
+func totalHPointSize(histograms []HPoint) int {
+	var total int
+	for _, h := range histograms {
+		total += h.size()
+	}
+	return total
 }
 
 // Sample is a single sample belonging to a metric. It represents either a float
@@ -177,6 +198,9 @@ type Sample struct {
 	H *histogram.FloatHistogram
 
 	Metric labels.Labels
+	// DropName is used to indicate whether the __name__ label should be dropped
+	// as part of the query evaluation.
+	DropName bool
 }
 
 func (s Sample) String() string {
@@ -214,7 +238,7 @@ func (s Sample) MarshalJSON() ([]byte, error) {
 	return json.Marshal(h)
 }
 
-// Vector is basically only an an alias for []Sample, but the contract is that
+// Vector is basically only an alias for []Sample, but the contract is that
 // in a Vector, all Samples have the same timestamp.
 type Vector []Sample
 
@@ -224,6 +248,21 @@ func (vec Vector) String() string {
 		entries[i] = s.String()
 	}
 	return strings.Join(entries, "\n")
+}
+
+// TotalSamples returns the total number of samples in the series within a vector.
+// Float samples have a weight of 1 in this number, while histogram samples have a higher
+// weight according to their size compared with the size of a float sample.
+// See HPoint.size for details.
+func (vec Vector) TotalSamples() int {
+	numSamples := 0
+	for _, sample := range vec {
+		numSamples++
+		if sample.H != nil {
+			numSamples += sample.H.Size() / 16
+		}
+	}
+	return numSamples
 }
 
 // ContainsSameLabelset checks if a vector has samples with the same labelset
@@ -264,10 +303,13 @@ func (m Matrix) String() string {
 }
 
 // TotalSamples returns the total number of samples in the series within a matrix.
+// Float samples have a weight of 1 in this number, while histogram samples have a higher
+// weight according to their size compared with the size of a float sample.
+// See HPoint.size for details.
 func (m Matrix) TotalSamples() int {
 	numSamples := 0
 	for _, series := range m {
-		numSamples += len(series.Floats) + len(series.Histograms)
+		numSamples += len(series.Floats) + totalHPointSize(series.Histograms)
 	}
 	return numSamples
 }
@@ -303,7 +345,7 @@ func (m Matrix) ContainsSameLabelset() bool {
 type Result struct {
 	Err      error
 	Value    parser.Value
-	Warnings storage.Warnings
+	Warnings annotations.Annotations
 }
 
 // Vector returns a Vector if the result value is one. An error is returned if
@@ -429,16 +471,25 @@ func (ssi *storageSeriesIterator) At() (t int64, v float64) {
 	return ssi.currT, ssi.currF
 }
 
-func (ssi *storageSeriesIterator) AtHistogram() (int64, *histogram.Histogram) {
+func (*storageSeriesIterator) AtHistogram(*histogram.Histogram) (int64, *histogram.Histogram) {
 	panic(errors.New("storageSeriesIterator: AtHistogram not supported"))
 }
 
-func (ssi *storageSeriesIterator) AtFloatHistogram() (int64, *histogram.FloatHistogram) {
-	return ssi.currT, ssi.currH
+func (ssi *storageSeriesIterator) AtFloatHistogram(fh *histogram.FloatHistogram) (int64, *histogram.FloatHistogram) {
+	if fh == nil {
+		return ssi.currT, ssi.currH.Copy()
+	}
+	ssi.currH.CopyTo(fh)
+	return ssi.currT, fh
 }
 
 func (ssi *storageSeriesIterator) AtT() int64 {
 	return ssi.currT
+}
+
+// TODO(krajorama): implement AtST.
+func (*storageSeriesIterator) AtST() int64 {
+	return 0
 }
 
 func (ssi *storageSeriesIterator) Next() chunkenc.ValueType {
@@ -485,10 +536,75 @@ func (ssi *storageSeriesIterator) Next() chunkenc.ValueType {
 		ssi.currH = p.H
 		return chunkenc.ValFloatHistogram
 	default:
-		panic("storageSeriesIterater.Next failed to pick value type")
+		panic("storageSeriesIterator.Next failed to pick value type")
 	}
 }
 
-func (ssi *storageSeriesIterator) Err() error {
+func (*storageSeriesIterator) Err() error {
 	return nil
+}
+
+type fParams struct {
+	series     Series
+	constValue float64
+	isConstant bool
+	minValue   float64
+	maxValue   float64
+	hasAnyNaN  bool
+}
+
+// newFParams evaluates the expression and returns an fParams object,
+// which holds the parameter values (constant or series) along with min, max, and NaN info.
+func newFParams(ctx context.Context, ev *evaluator, expr parser.Expr) (*fParams, annotations.Annotations) {
+	if expr == nil {
+		return &fParams{}, nil
+	}
+	var constParam bool
+	if _, ok := expr.(*parser.NumberLiteral); ok {
+		constParam = true
+	}
+	val, ws := ev.eval(ctx, expr)
+	mat, ok := val.(Matrix)
+	if !ok || len(mat) == 0 {
+		return &fParams{}, ws
+	}
+	fp := &fParams{
+		series:     mat[0],
+		isConstant: constParam,
+		minValue:   math.MaxFloat64,
+		maxValue:   -math.MaxFloat64,
+	}
+
+	if constParam {
+		fp.constValue = fp.series.Floats[0].F
+		fp.minValue, fp.maxValue = fp.constValue, fp.constValue
+		fp.hasAnyNaN = math.IsNaN(fp.constValue)
+		return fp, ws
+	}
+
+	for _, v := range fp.series.Floats {
+		fp.maxValue = math.Max(fp.maxValue, v.F)
+		fp.minValue = math.Min(fp.minValue, v.F)
+		if math.IsNaN(v.F) {
+			fp.hasAnyNaN = true
+		}
+	}
+	return fp, ws
+}
+
+func (fp *fParams) Max() float64    { return fp.maxValue }
+func (fp *fParams) Min() float64    { return fp.minValue }
+func (fp *fParams) HasAnyNaN() bool { return fp.hasAnyNaN }
+
+// Next returns the next value from the series or the constant value, and advances the series if applicable.
+func (fp *fParams) Next() float64 {
+	if fp.isConstant {
+		return fp.constValue
+	}
+	if len(fp.series.Floats) > 0 {
+		val := fp.series.Floats[0].F
+		fp.series.Floats = fp.series.Floats[1:]
+		return val
+	}
+	return 0
 }

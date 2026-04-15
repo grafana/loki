@@ -12,7 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
 )
 
 func TestWALCleaner_getAllStorageNoRoot(t *testing.T) {
@@ -50,7 +50,7 @@ func TestWALCleaner_getAbandonedStorageBeforeCutoff(t *testing.T) {
 	now := time.Now()
 
 	cleaner := newCleaner(walRoot, Config{})
-	cleaner.walLastModified = func(path string) (time.Time, error) {
+	cleaner.walLastModified = func(_ string) (time.Time, error) {
 		return now, nil
 	}
 
@@ -76,7 +76,7 @@ func TestWALCleaner_getAbandonedStorageAfterCutoff(t *testing.T) {
 		MinAge: 5 * time.Minute,
 	})
 
-	cleaner.walLastModified = func(path string) (time.Time, error) {
+	cleaner.walLastModified = func(_ string) (time.Time, error) {
 		return now.Add(-30 * time.Minute), nil
 	}
 
@@ -105,7 +105,7 @@ func TestWALCleaner_cleanup(t *testing.T) {
 	})
 	cleaner.instanceManager = manager
 
-	cleaner.walLastModified = func(path string) (time.Time, error) {
+	cleaner.walLastModified = func(_ string) (time.Time, error) {
 		return now.Add(-30 * time.Minute), nil
 	}
 

@@ -46,7 +46,8 @@ func NewAccount(homeAccountID, env, realm, localAccountID, authorityType, userna
 
 // Key creates the key for storing accounts in the cache.
 func (acc Account) Key() string {
-	return strings.Join([]string{acc.HomeAccountID, acc.Environment, acc.Realm}, CacheKeySeparator)
+	key := strings.Join([]string{acc.HomeAccountID, acc.Environment, acc.Realm}, CacheKeySeparator)
+	return strings.ToLower(key)
 }
 
 // IsZero checks the zero value of account.

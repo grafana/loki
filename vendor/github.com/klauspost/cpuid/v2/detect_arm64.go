@@ -10,6 +10,7 @@ import "runtime"
 func getMidr() (midr uint64)
 func getProcFeatures() (procFeatures uint64)
 func getInstAttributes() (instAttrReg0, instAttrReg1 uint64)
+func getVectorLength() (vl, pl uint64)
 
 func initCPU() {
 	cpuid = func(uint32) (a, b, c, d uint32) { return 0, 0, 0, 0 }
@@ -24,7 +25,7 @@ func addInfo(c *CPUInfo, safe bool) {
 	detectOS(c)
 
 	// ARM64 disabled since it may crash if interrupt is not intercepted by OS.
-	if safe && !c.Supports(ARMCPUID) && runtime.GOOS != "freebsd" {
+	if safe && !c.Has(ARMCPUID) && runtime.GOOS != "freebsd" {
 		return
 	}
 	midr := getMidr()
@@ -156,6 +157,10 @@ func addInfo(c *CPUInfo, safe bool) {
 	// x--------------------------------------------------x
 	// | Name                         |  bits   | visible |
 	// |--------------------------------------------------|
+	// | RNDR                         | [63-60] |    y    |
+	// |--------------------------------------------------|
+	// | TLB                          | [59-56] |    y    |
+	// |--------------------------------------------------|
 	// | TS                           | [55-52] |    y    |
 	// |--------------------------------------------------|
 	// | FHM                          | [51-48] |    y    |
@@ -181,12 +186,10 @@ func addInfo(c *CPUInfo, safe bool) {
 	// | AES                          | [7-4]   |    y    |
 	// x--------------------------------------------------x
 
-	// if instAttrReg0&(0xf<<52) != 0 {
-	// 	fmt.Println("TS")
-	// }
-	// if instAttrReg0&(0xf<<48) != 0 {
-	// 	fmt.Println("FHM")
-	// }
+	f.setIf(instAttrReg0&(0xf<<60) != 0, RNDR)
+	f.setIf(instAttrReg0&(0xf<<56) != 0, TLB)
+	f.setIf(instAttrReg0&(0xf<<52) != 0, TS)
+	f.setIf(instAttrReg0&(0xf<<48) != 0, FHM)
 	f.setIf(instAttrReg0&(0xf<<44) != 0, ASIMDDP)
 	f.setIf(instAttrReg0&(0xf<<40) != 0, SM4)
 	f.setIf(instAttrReg0&(0xf<<36) != 0, SM3)

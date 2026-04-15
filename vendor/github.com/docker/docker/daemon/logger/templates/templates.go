@@ -1,4 +1,4 @@
-package templates // import "github.com/docker/docker/daemon/logger/templates"
+package templates
 
 import (
 	"bytes"
@@ -14,7 +14,7 @@ var basicFunctions = template.FuncMap{
 		buf := &bytes.Buffer{}
 		enc := json.NewEncoder(buf)
 		enc.SetEscapeHTML(false)
-		enc.Encode(v)
+		_ = enc.Encode(v) //nolint:errchkjson // ignore "Error return json.Encoder.Encode` is not checked"
 		// Remove the trailing new line added by the encoder
 		return strings.TrimSpace(buf.String())
 	},

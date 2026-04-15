@@ -13,14 +13,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/util/test"
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/test"
 )
 
 func TestSyncRuleGroups(t *testing.T) {
 	dir := t.TempDir()
 
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, nil, log.NewNopLogger(), ruleLimits{})
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, nil, log.NewNopLogger(), ruleLimits{}, constants.Loki)
 	require.NoError(t, err)
 
 	const user = "testUser"

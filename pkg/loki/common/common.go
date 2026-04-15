@@ -1,4 +1,4 @@
-package common
+package common //nolint:revive
 
 import (
 	"flag"
@@ -6,16 +6,18 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
-	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
-	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
-	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
-	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
-	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
-	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/baidubce"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/congestion"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 // Config holds common config that can be shared between multiple other config sections.
@@ -26,7 +28,7 @@ type Config struct {
 	Storage           Storage         `yaml:"storage"`
 	PersistTokens     bool            `yaml:"persist_tokens"`
 	ReplicationFactor int             `yaml:"replication_factor"`
-	Ring              util.RingConfig `yaml:"ring"`
+	Ring              ring.RingConfig `yaml:"ring"`
 
 	// InstanceInterfaceNames represents a common list of net interfaces used to look for host addresses.
 	//
@@ -47,6 +49,13 @@ type Config struct {
 
 	// CompactorAddress is the grpc address of the compactor in the form host:port
 	CompactorGRPCAddress string `yaml:"compactor_grpc_address"`
+
+	// ScratchPath is a path to a directory where Loki can store temporary data.
+	// All files in this path with the extension ".lokiscratch" will be deleted
+	// on startup.
+	//
+	// If ScratchPath is not set, Loki will buffer temporary data in memory.
+	ScratchPath string `yaml:"scratch_path" experimental:"true"`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -64,18 +73,22 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&c.CompactorAddress, "common.compactor-address", "", "the http address of the compactor in the form http://host:port")
 	f.StringVar(&c.CompactorGRPCAddress, "common.compactor-grpc-address", "", "the grpc address of the compactor in the form host:port")
+	f.StringVar(&c.PathPrefix, "common.path-prefix", "", "prefix for the path")
+	f.StringVar(&c.ScratchPath, "common.scratch-path", "", "Experimental: path to use for temporary data, where scratch data is supported.")
 }
 
 type Storage struct {
-	S3           aws.S3Config              `yaml:"s3"`
-	GCS          gcp.GCSConfig             `yaml:"gcs"`
-	Azure        azure.BlobStorageConfig   `yaml:"azure"`
-	AlibabaCloud alibaba.OssConfig         `yaml:"alibabacloud"`
-	BOS          baidubce.BOSStorageConfig `yaml:"bos"`
-	Swift        openstack.SwiftConfig     `yaml:"swift"`
-	FSConfig     FilesystemConfig          `yaml:"filesystem"`
-	Hedging      hedging.Config            `yaml:"hedging"`
-	COS          ibmcloud.COSConfig        `yaml:"cos"`
+	S3                aws.S3Config              `yaml:"s3"`
+	GCS               gcp.GCSConfig             `yaml:"gcs"`
+	Azure             azure.BlobStorageConfig   `yaml:"azure"`
+	AlibabaCloud      alibaba.OssConfig         `yaml:"alibabacloud"`
+	BOS               baidubce.BOSStorageConfig `yaml:"bos"`
+	Swift             openstack.SwiftConfig     `yaml:"swift"`
+	FSConfig          FilesystemConfig          `yaml:"filesystem"`
+	Hedging           hedging.Config            `yaml:"hedging"`
+	COS               ibmcloud.COSConfig        `yaml:"cos"`
+	CongestionControl congestion.Config         `yaml:"congestion_control,omitempty"`
+	ObjectStore       bucket.Config             `yaml:"object_store"`
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -88,6 +101,9 @@ func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	s.FSConfig.RegisterFlagsWithPrefix(prefix, f)
 	s.Hedging.RegisterFlagsWithPrefix(prefix, f)
 	s.COS.RegisterFlagsWithPrefix(prefix, f)
+	s.CongestionControl.RegisterFlagsWithPrefix(prefix, f)
+
+	s.ObjectStore.RegisterFlagsWithPrefix(prefix+"object-store.", f)
 }
 
 type FilesystemConfig struct {

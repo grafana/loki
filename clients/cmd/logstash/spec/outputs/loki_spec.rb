@@ -28,15 +28,15 @@ describe LogStash::Outputs::Loki do
 
   context 'when adding en entry to the batch' do
     let (:simple_loki_config) {{'url' => 'http://localhost:3100'}}
-    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message", [])}
+    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message", [], [])}
     let (:lbs) {{"buzz"=>"bar","cluster"=>"us-central1"}.sort.to_h}
     let (:include_loki_config) {{ 'url' => 'http://localhost:3100', 'include_fields' => ["cluster"] }}
-    let (:include_entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message", ["cluster"])}
+    let (:include_entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message", ["cluster"], [])}
     let (:include_lbs) {{"cluster"=>"us-central1"}.sort.to_h}
 
     it 'should not add empty line' do
       plugin = LogStash::Plugin.lookup("output", "loki").new(simple_loki_config)
-      emptyEntry = Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"foo", [])
+      emptyEntry = Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"foo", [], [])
       expect(plugin.add_entry_to_batch(emptyEntry)).to eql true
       expect(plugin.batch).to eql nil
     end
@@ -83,8 +83,51 @@ describe LogStash::Outputs::Loki do
     end
   end
 
+  context 'when building json from batch to send' do
+    let (:basic_loki_config) {{'url' => 'http://localhost:3100'}}
+    let (:basic_entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","trace_id"=>"trace_001","@timestamp"=>Time.at(1)}),"message", [], [])}
+    let (:include_loki_config) {{ 'url' => 'http://localhost:3100', 'include_fields' => ["cluster"] }}
+    let (:include_entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","trace_id"=>"trace_001","@timestamp"=>Time.at(1)}),"message", ["cluster"], [])}
+    let (:metadata_loki_config) {{ 'url' => 'http://localhost:3100', 'include_fields' => ["cluster"], 'metadata_fields' => ["trace_id"] }}
+    let (:metadata_entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","trace_id"=>"trace_001","@timestamp"=>Time.at(1)}),"message", ["cluster"], ["trace_id"])}
+    let (:metadata_multi_loki_config) {{ 'url' => 'http://localhost:3100', 'include_fields' => ["cluster"], 'metadata_fields' => ["trace_id", "user_id"] }}
+    let (:metadata_multi_entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","trace_id"=>"trace_001","user_id"=>"user_001","@timestamp"=>Time.at(1)}),"message", ["cluster"], ["trace_id", "user_id"])}
+
+    it 'should not include labels or metadata' do
+      plugin = LogStash::Plugin.lookup("output", "loki").new(basic_loki_config)
+      expect(plugin.batch).to eql nil
+      expect(plugin.add_entry_to_batch(basic_entry)).to eql true
+      expect(plugin.batch).not_to be_nil
+      expect(plugin.batch.to_json).to eq '{"streams":[{"stream":{"buzz":"bar","cluster":"us-central1","trace_id":"trace_001"},"values":[["1000000000","foobuzz"]]}]}'
+    end
+
+    it 'should include metadata with no labels' do
+      plugin = LogStash::Plugin.lookup("output", "loki").new(metadata_loki_config)
+      expect(plugin.batch).to eql nil
+      expect(plugin.add_entry_to_batch(metadata_entry)).to eql true
+      expect(plugin.batch).not_to be_nil
+      expect(plugin.batch.to_json).to eq '{"streams":[{"stream":{"cluster":"us-central1"},"values":[["1000000000","foobuzz",{"trace_id":"trace_001"}]]}]}'
+    end
+
+    it 'should include labels with no metadata' do
+      plugin = LogStash::Plugin.lookup("output", "loki").new(include_loki_config)
+      expect(plugin.batch).to eql nil
+      expect(plugin.add_entry_to_batch(include_entry)).to eql true
+      expect(plugin.batch).not_to be_nil
+      expect(plugin.batch.to_json).to eq '{"streams":[{"stream":{"cluster":"us-central1"},"values":[["1000000000","foobuzz"]]}]}'
+    end
+
+    it 'should include labels with multiple metadata' do
+      plugin = LogStash::Plugin.lookup("output", "loki").new(metadata_multi_loki_config)
+      expect(plugin.batch).to eql nil
+      expect(plugin.add_entry_to_batch(metadata_multi_entry)).to eql true
+      expect(plugin.batch).not_to be_nil
+      expect(plugin.batch.to_json).to eq '{"streams":[{"stream":{"cluster":"us-central1"},"values":[["1000000000","foobuzz",{"trace_id":"trace_001","user_id":"user_001"}]]}]}'
+    end
+  end
+
   context 'batch expiration' do
-    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message", [])}
+    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message", [], [])}
 
     it 'should not expire if empty' do
       loki = LogStash::Outputs::Loki.new(simple_loki_config.merge!({'batch_wait'=>0.5}))
@@ -147,13 +190,13 @@ describe LogStash::Outputs::Loki do
       loki.receive(event)
       sent.deq
       sleep(0.01) # Adding a minimal sleep. In few cases @batch=nil might happen after evaluating for nil
-      expect(loki.batch).to be_nil 
+      expect(loki.batch).to be_nil
       loki.close
     end
   end
 
   context 'http requests' do
-    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message", [])}
+    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message", [], [])}
 
     it 'should send credentials' do
       conf = {

@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build windows && go1.9
-// +build windows,go1.9
+//go:build windows
 
 package windows
 
 import "syscall"
 
+type Signal = syscall.Signal
 type Errno = syscall.Errno
 type SysProcAttr = syscall.SysProcAttr

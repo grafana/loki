@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 
@@ -21,9 +21,14 @@ import (
 // This should be used as the first resolver in the slice of resolvers when
 // resolving external configuration.
 func resolveDefaultAWSConfig(ctx context.Context, cfg *aws.Config, cfgs configs) error {
+	var sources []any
+	for _, s := range cfgs {
+		sources = append(sources, s)
+	}
+
 	*cfg = aws.Config{
-		Credentials: aws.AnonymousCredentials{},
-		Logger:      logging.NewStandardLogger(os.Stderr),
+		Logger:        logging.NewStandardLogger(os.Stderr),
+		ConfigSources: sources,
 	}
 	return nil
 }
@@ -64,7 +69,7 @@ func resolveCustomCABundle(ctx context.Context, cfg *aws.Config, cfgs configs) e
 			tr.TLSClientConfig.RootCAs = x509.NewCertPool()
 		}
 
-		b, err := ioutil.ReadAll(pemCerts)
+		b, err := io.ReadAll(pemCerts)
 		if err != nil {
 			appendErr = fmt.Errorf("failed to read custom CA bundle PEM file")
 		}
@@ -97,6 +102,113 @@ func resolveRegion(ctx context.Context, cfg *aws.Config, configs configs) error 
 	}
 
 	cfg.Region = v
+	return nil
+}
+
+func resolveBaseEndpoint(ctx context.Context, cfg *aws.Config, configs configs) error {
+	var downcastCfgSources []any
+	for _, cs := range configs {
+		downcastCfgSources = append(downcastCfgSources, any(cs))
+	}
+
+	if val, found, err := GetIgnoreConfiguredEndpoints(ctx, downcastCfgSources); found && val && err == nil {
+		cfg.BaseEndpoint = nil
+		return nil
+	}
+
+	v, found, err := getBaseEndpoint(ctx, configs)
+	if err != nil {
+		return err
+	}
+
+	if !found {
+		return nil
+	}
+	cfg.BaseEndpoint = aws.String(v)
+	return nil
+}
+
+// resolveAppID extracts the sdk app ID from the configs slice's SharedConfig or env var
+func resolveAppID(ctx context.Context, cfg *aws.Config, configs configs) error {
+	ID, _, err := getAppID(ctx, configs)
+	if err != nil {
+		return err
+	}
+
+	cfg.AppID = ID
+	return nil
+}
+
+// resolveDisableRequestCompression extracts the DisableRequestCompression from the configs slice's
+// SharedConfig or EnvConfig
+func resolveDisableRequestCompression(ctx context.Context, cfg *aws.Config, configs configs) error {
+	disable, _, err := getDisableRequestCompression(ctx, configs)
+	if err != nil {
+		return err
+	}
+
+	cfg.DisableRequestCompression = disable
+	return nil
+}
+
+// resolveRequestMinCompressSizeBytes extracts the RequestMinCompressSizeBytes from the configs slice's
+// SharedConfig or EnvConfig
+func resolveRequestMinCompressSizeBytes(ctx context.Context, cfg *aws.Config, configs configs) error {
+	minBytes, found, err := getRequestMinCompressSizeBytes(ctx, configs)
+	if err != nil {
+		return err
+	}
+	// must set a default min size 10240 if not configured
+	if !found {
+		minBytes = 10240
+	}
+	cfg.RequestMinCompressSizeBytes = minBytes
+	return nil
+}
+
+// resolveAccountIDEndpointMode extracts the AccountIDEndpointMode from the configs slice's
+// SharedConfig or EnvConfig
+func resolveAccountIDEndpointMode(ctx context.Context, cfg *aws.Config, configs configs) error {
+	m, found, err := getAccountIDEndpointMode(ctx, configs)
+	if err != nil {
+		return err
+	}
+
+	if !found {
+		m = aws.AccountIDEndpointModePreferred
+	}
+
+	cfg.AccountIDEndpointMode = m
+	return nil
+}
+
+// resolveRequestChecksumCalculation extracts the RequestChecksumCalculation from the configs slice's
+// SharedConfig or EnvConfig
+func resolveRequestChecksumCalculation(ctx context.Context, cfg *aws.Config, configs configs) error {
+	c, found, err := getRequestChecksumCalculation(ctx, configs)
+	if err != nil {
+		return err
+	}
+
+	if !found {
+		c = aws.RequestChecksumCalculationWhenSupported
+	}
+	cfg.RequestChecksumCalculation = c
+	return nil
+}
+
+// resolveResponseValidation extracts the ResponseChecksumValidation from the configs slice's
+// SharedConfig or EnvConfig
+func resolveResponseChecksumValidation(ctx context.Context, cfg *aws.Config, configs configs) error {
+	c, found, err := getResponseChecksumValidation(ctx, configs)
+	if err != nil {
+		return err
+	}
+
+	if !found {
+		c = aws.ResponseChecksumValidationWhenSupported
+	}
+	cfg.ResponseChecksumValidation = c
 	return nil
 }
 
@@ -297,5 +409,36 @@ func resolveRetryMode(ctx context.Context, cfg *aws.Config, configs configs) err
 	}
 	cfg.RetryMode = retryMode
 
+	return nil
+}
+
+func resolveInterceptors(ctx context.Context, cfg *aws.Config, configs configs) error {
+	// LoadOptions is the only thing that you can really configure interceptors
+	// on so just check that directly.
+	for _, c := range configs {
+		if loadopts, ok := c.(LoadOptions); ok {
+			cfg.Interceptors = loadopts.Interceptors.Copy()
+		}
+	}
+	return nil
+}
+
+func resolveAuthSchemePreference(ctx context.Context, cfg *aws.Config, configs configs) error {
+	if pref, ok := getAuthSchemePreference(ctx, configs); ok {
+		cfg.AuthSchemePreference = pref
+	}
+	return nil
+}
+
+func resolveServiceOptions(ctx context.Context, cfg *aws.Config, configs configs) error {
+	serviceOptions, found, err := getServiceOptions(ctx, configs)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+
+	cfg.ServiceOptions = serviceOptions
 	return nil
 }

@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func BenchmarkPrometheusCodec_DecodeResponse(b *testing.B) {
@@ -29,7 +29,7 @@ func BenchmarkPrometheusCodec_DecodeResponse(b *testing.B) {
 	b.ReportAllocs()
 
 	for n := 0; n < b.N; n++ {
-		_, err := PrometheusCodec.DecodeResponse(context.Background(), &http.Response{
+		_, err := PrometheusCodecForRangeQueries.DecodeResponse(context.Background(), &http.Response{
 			StatusCode:    200,
 			Body:          io.NopCloser(bytes.NewReader(encodedRes)),
 			ContentLength: int64(len(encodedRes)),
@@ -51,7 +51,7 @@ func BenchmarkPrometheusCodec_EncodeResponse(b *testing.B) {
 	b.ReportAllocs()
 
 	for n := 0; n < b.N; n++ {
-		_, err := PrometheusCodec.EncodeResponse(context.Background(), nil, res)
+		_, err := PrometheusCodecForRangeQueries.EncodeResponse(context.Background(), nil, res)
 		require.NoError(b, err)
 	}
 }

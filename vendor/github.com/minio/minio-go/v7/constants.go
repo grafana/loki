@@ -42,6 +42,10 @@ const maxSinglePutObjectSize = 1024 * 1024 * 1024 * 5
 // Multipart operation.
 const maxMultipartPutObjectSize = 1024 * 1024 * 1024 * 1024 * 5
 
+// maxObjectSize - maximum size of an object calculated from
+// maxPartSize * maxPartsCount = 5GiB * 10000 = ~48.83TiB
+const maxObjectSize = maxPartSize * maxPartsCount
+
 // unsignedPayload - value to be set to X-Amz-Content-Sha256 header when
 // we don't want to sign the request payload
 const unsignedPayload = "UNSIGNED-PAYLOAD"
@@ -60,11 +64,31 @@ const (
 )
 
 const (
+	// GetObjectAttributesTags are tags used to defined
+	// return values for the GetObjectAttributes API
+	GetObjectAttributesTags = "ETag,Checksum,StorageClass,ObjectSize,ObjectParts"
+	// GetObjectAttributesMaxParts defined the default maximum
+	// number of parts returned by GetObjectAttributes
+	GetObjectAttributesMaxParts = 1000
+)
+
+const (
+	// Response Headers
+
+	// ETag is a common response header
+	ETag = "ETag"
+
 	// Storage class header.
 	amzStorageClass = "X-Amz-Storage-Class"
 
 	// Website redirect location header
 	amzWebsiteRedirectLocation = "X-Amz-Website-Redirect-Location"
+
+	// GetObjectAttributes headers
+	amzPartNumberMarker    = "X-Amz-Part-Number-Marker"
+	amzExpectedBucketOnwer = "X-Amz-Expected-Bucket-Owner"
+	amzMaxParts            = "X-Amz-Max-Parts"
+	amzObjectAttributes    = "X-Amz-Object-Attributes"
 
 	// Object Tagging headers
 	amzTaggingHeader          = "X-Amz-Tagging"

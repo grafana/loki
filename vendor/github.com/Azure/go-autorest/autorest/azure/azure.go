@@ -20,7 +20,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -333,7 +333,7 @@ func WithErrorUnlessStatusCode(codes ...int) autorest.RespondDecorator {
 				// Copy and replace the Body in case it does not contain an error object.
 				// This will leave the Body available to the caller.
 				b, decodeErr := autorest.CopyAndDecode(encodedAs, resp.Body, &e)
-				resp.Body = ioutil.NopCloser(&b)
+				resp.Body = io.NopCloser(&b)
 				if decodeErr != nil {
 					return fmt.Errorf("autorest/azure: error response cannot be parsed: %q error: %v", b, decodeErr)
 				}

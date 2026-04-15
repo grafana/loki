@@ -10,6 +10,7 @@ import (
 
 	gklog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
@@ -18,8 +19,26 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/notifier"
 
-	ruler_config "github.com/grafana/loki/pkg/ruler/config"
+	ruler_config "github.com/grafana/loki/v3/pkg/ruler/config"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+// TODO: Instead of using the same metrics for all notifiers,
+// should we have separate metrics for each discovery.NewManager?
+var (
+	sdMetrics map[string]discovery.DiscovererMetrics
+
+	srvDNSregexp = regexp.MustCompile(`^_.+._.+`)
+)
+
+func init() {
+	var err error
+	sdMetrics, err = discovery.CreateAndRegisterSDMetrics(prometheus.DefaultRegisterer)
+	if err != nil {
+		panic(err)
+	}
+}
 
 // rulerNotifier bundles a notifier.Manager together with an associated
 // Alertmanager service discovery manager and handles the lifecycle
@@ -35,9 +54,9 @@ type rulerNotifier struct {
 func newRulerNotifier(o *notifier.Options, l gklog.Logger) *rulerNotifier {
 	sdCtx, sdCancel := context.WithCancel(context.Background())
 	return &rulerNotifier{
-		notifier:  notifier.NewManager(o, l),
+		notifier:  notifier.NewManager(o, model.UTF8Validation, util_log.SlogFromGoKit(l)),
 		sdCancel:  sdCancel,
-		sdManager: discovery.NewManager(sdCtx, l),
+		sdManager: discovery.NewManager(sdCtx, util_log.SlogFromGoKit(l), util.NoopRegistry{}, sdMetrics),
 		logger:    l,
 	}
 }
@@ -98,7 +117,6 @@ func buildNotifierConfig(amConfig *ruler_config.AlertManagerConfig, externalLabe
 	amURLs := strings.Split(amConfig.AlertmanagerURL, ",")
 	validURLs := make([]*url.URL, 0, len(amURLs))
 
-	srvDNSregexp := regexp.MustCompile(`^_.+._.+`)
 	for _, h := range amURLs {
 		url, err := url.Parse(h)
 		if err != nil {
@@ -136,6 +154,9 @@ func buildNotifierConfig(amConfig *ruler_config.AlertManagerConfig, externalLabe
 	promConfig := &config.Config{
 		GlobalConfig: config.GlobalConfig{
 			ExternalLabels: externalLabels,
+			// Prometheus notifier ApplyConfig assigns this to alert relabel configs whose
+			// scheme is unset; model.UnsetValidation panics during notify (see grafana/loki#21368).
+			MetricNameValidationScheme: model.UTF8Validation,
 		},
 		AlertingConfig: config.AlertingConfig{
 			AlertRelabelConfigs: amConfig.AlertRelabelConfigs,
@@ -200,15 +221,15 @@ func amConfigFromURL(cfg *ruler_config.AlertManagerConfig, url *url.URL, apiVers
 	if cfg.Notifier.BasicAuth.IsEnabled() {
 		amConfig.HTTPClientConfig.BasicAuth = &config_util.BasicAuth{
 			Username: cfg.Notifier.BasicAuth.Username,
-			Password: config_util.Secret(cfg.Notifier.BasicAuth.Password),
+			Password: config_util.Secret(cfg.Notifier.BasicAuth.Password.String()),
 		}
 	}
 
 	if cfg.Notifier.HeaderAuth.IsEnabled() {
-		if cfg.Notifier.HeaderAuth.Credentials != "" {
+		if cfg.Notifier.HeaderAuth.Credentials.String() != "" {
 			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{
 				Type:        cfg.Notifier.HeaderAuth.Type,
-				Credentials: config_util.Secret(cfg.Notifier.HeaderAuth.Credentials),
+				Credentials: config_util.Secret(cfg.Notifier.HeaderAuth.Credentials.String()),
 			}
 		} else if cfg.Notifier.HeaderAuth.CredentialsFile != "" {
 			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{

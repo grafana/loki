@@ -9,12 +9,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/googleapis/gax-go/v2"
+	"github.com/googleapis/gax-go/v2/callctx"
 )
 
 // Use this error type to return an error which allows introspection of both
@@ -38,11 +40,51 @@ func (e wrappedCallErr) Is(target error) bool {
 	return errors.Is(e.ctxErr, target) || errors.Is(e.wrappedErr, target)
 }
 
+// addContextHeaders adds headers set in context metadata.
+// x-goog-api-client and x-goog-request-params are merged properly.
+func addContextHeaders(ctx context.Context, req *http.Request) {
+	if ctx == nil {
+		return
+	}
+	headers := callctx.HeadersFromContext(ctx)
+	for k, vals := range headers {
+		if strings.EqualFold(k, "x-goog-api-client") {
+			mergeHeader(req.Header, k, vals, ' ')
+		} else if strings.EqualFold(k, "x-goog-request-params") {
+			mergeHeader(req.Header, k, vals, '&')
+		} else {
+			for _, v := range vals {
+				req.Header.Add(k, v)
+			}
+		}
+	}
+}
+
+// mergeHeader merges multiple values into a single header.
+func mergeHeader(header http.Header, key string, vals []string, separator rune) {
+	var mergedVal strings.Builder
+	baseHeader := header.Get(key)
+	if baseHeader != "" {
+		mergedVal.WriteString(baseHeader)
+		mergedVal.WriteRune(separator)
+	}
+	for _, v := range vals {
+		mergedVal.WriteString(v)
+		mergedVal.WriteRune(separator)
+	}
+	if mergedVal.Len() > 0 {
+		// Remove the last separator and replace the header on the request.
+		header.Set(key, mergedVal.String()[:mergedVal.Len()-1])
+	}
+}
+
 // SendRequest sends a single HTTP request using the given client.
 // If ctx is non-nil, it calls all hooks, then sends the request with
 // req.WithContext, then calls any functions returned by the hooks in
 // reverse order.
 func SendRequest(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
+	addContextHeaders(ctx, req)
+
 	// Disallow Accept-Encoding because it interferes with the automatic gzip handling
 	// done by the default http.Transport. See https://github.com/google/google-api-go-client/issues/219.
 	if _, ok := req.Header["Accept-Encoding"]; ok {
@@ -77,6 +119,8 @@ func send(ctx context.Context, client *http.Client, req *http.Request) (*http.Re
 // req.WithContext, then calls any functions returned by the hooks in
 // reverse order.
 func SendRequestWithRetry(ctx context.Context, client *http.Client, req *http.Request, retry *RetryConfig) (*http.Response, error) {
+	addContextHeaders(ctx, req)
+
 	// Disallow Accept-Encoding because it interferes with the automatic gzip handling
 	// done by the default http.Transport. See https://github.com/google/google-api-go-client/issues/219.
 	if _, ok := req.Header["Accept-Encoding"]; ok {
@@ -97,7 +141,9 @@ func sendAndRetry(ctx context.Context, client *http.Client, req *http.Request, r
 	var err error
 	attempts := 1
 	invocationID := uuid.New().String()
-	baseXGoogHeader := req.Header.Get("X-Goog-Api-Client")
+
+	xGoogHeaderVals := req.Header.Values("X-Goog-Api-Client")
+	baseXGoogHeader := strings.Join(xGoogHeaderVals, " ")
 
 	// Loop to retry the request, up to the context deadline.
 	var pause time.Duration
@@ -182,4 +228,20 @@ func DecodeResponse(target interface{}, res *http.Response) error {
 		return nil
 	}
 	return json.NewDecoder(res.Body).Decode(target)
+}
+
+// DecodeResponseBytes decodes the body of res into target and returns bytes read
+// from the body. If there is no body, target is unchanged.
+func DecodeResponseBytes(target interface{}, res *http.Response) ([]byte, error) {
+	if res.StatusCode == http.StatusNoContent {
+		return nil, nil
+	}
+	b, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(b, target); err != nil {
+		return nil, err
+	}
+	return b, nil
 }

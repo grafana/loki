@@ -1,4 +1,4 @@
-package jsonlog // import "github.com/docker/docker/daemon/logger/jsonfilelog/jsonlog"
+package jsonlog
 
 import (
 	"bytes"
@@ -20,7 +20,7 @@ type JSONLogs struct {
 // MarshalJSONBuf is an optimized JSON marshaller that avoids reflection
 // and unnecessary allocation.
 func (mj *JSONLogs) MarshalJSONBuf(buf *bytes.Buffer) error {
-	var first = true
+	first := true
 
 	buf.WriteString(`{`)
 	if len(mj.Log) != 0 {
@@ -28,7 +28,7 @@ func (mj *JSONLogs) MarshalJSONBuf(buf *bytes.Buffer) error {
 		buf.WriteString(`"log":`)
 		ffjsonWriteJSONBytesAsString(buf, mj.Log)
 	}
-	if len(mj.Stream) != 0 {
+	if mj.Stream != "" {
 		if first {
 			first = false
 		} else {

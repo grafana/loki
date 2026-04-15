@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error
@@ -60,7 +60,7 @@ var testNonAppLogLine = `
 
 var plName = "testPipeline"
 
-// TestLimitPipeline is used to verify we properly parse the yaml config and create a working pipeline
+// TestLimitWaitPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestLimitWaitPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	pl, err := NewPipeline(util_log.Logger, loadConfig(testLimitWaitYaml), &plName, registry)
@@ -78,7 +78,7 @@ func TestLimitWaitPipeline(t *testing.T) {
 	assert.Equal(t, out[0].Line, testMatchLogLineApp1)
 }
 
-// TestLimitPipeline is used to verify we properly parse the yaml config and create a working pipeline
+// TestLimitDropPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestLimitDropPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	pl, err := NewPipeline(util_log.Logger, loadConfig(testLimitDropYaml), &plName, registry)
@@ -124,11 +124,12 @@ func TestLimitByLabelPipeline(t *testing.T) {
 	var hasTotal, hasByLabel bool
 	mfs, _ := registry.Gather()
 	for _, mf := range mfs {
-		if *mf.Name == "logentry_dropped_lines_total" {
+		switch *mf.Name {
+		case "logentry_dropped_lines_total":
 			hasTotal = true
 			assert.Len(t, mf.Metric, 1)
 			assert.Equal(t, 8, int(mf.Metric[0].Counter.GetValue()))
-		} else if *mf.Name == "logentry_dropped_lines_by_label_total" {
+		case "logentry_dropped_lines_by_label_total":
 			hasByLabel = true
 			assert.Len(t, mf.Metric, 2)
 			assert.Equal(t, 4, int(mf.Metric[0].Counter.GetValue()))

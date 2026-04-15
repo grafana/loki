@@ -14,8 +14,8 @@ import (
 	"github.com/go-kit/log/level"
 	promwal "github.com/prometheus/prometheus/tsdb/wlog"
 
-	"github.com/grafana/loki/pkg/ruler/storage/instance"
-	"github.com/grafana/loki/pkg/ruler/storage/wal"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/wal"
 )
 
 // Default settings for the WAL cleaner.

@@ -1,6 +1,8 @@
 ---
 title: Storage schema
-description: Storage schema
+menuTitle:  
+description: Describes the Loki storage schema
+weight: 400
 ---
 # Storage schema
 
@@ -12,16 +14,54 @@ Loki uses the defined schemas to determine which format to use when storing and 
 
 Use of a schema allows Loki to iterate over the storage layer without requiring migration of existing data.
 
+## New Loki installs
+
+For a new Loki install with no previous data, here is an example schema configuration with recommended values
+
+```yaml
+schema_config:
+  configs:
+    - from: 2024-04-01
+      object_store: s3
+      store: tsdb
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+```
+
+| Property     | Description                                                                                                                                            |
+|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| from         | for a new install, this must be a date in the past, use a recent date. Format is YYYY-MM-DD.                                                           |
+| object_store | s3, azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (see [StorageConfig](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config)). |
+| store        | `tsdb` is the current and only recommended value for store.                                                                                            |
+| schema       | `v13` is the most recent schema and recommended value.                                                                                                 |
+| prefix:      | any value without spaces is acceptable.                                                                                                                |
+| period:      | must be `24h`.                                                                                                                                         |
+
+{{< admonition type="note" >}}
+For a new install, the `from` date must be in the past so the schema is immediately active when Loki starts. If you set it to a future date, Loki will have no valid schema for the current time and will not be able to store incoming data.
+
+This is different from adding a new schema entry to an existing install, where the `from` date must be in the future. See [Changing the schema](#changing-the-schema) below.
+{{< /admonition >}}
+
 ## Changing the schema
 
+{{< admonition type="note" >}}
+The guidance in this section applies when you are adding a new schema entry to an existing Loki install that already has data. Setting the `from` date to a future date gives Loki time to transition to the new schema and ensures that existing data continues to be read using the old schema. If the `from` date is not in the future, data written just before the cutover may become unreadable because Loki would try to query it using the wrong schema.
+
+For a brand new install with no previous data, the `from` date should be in the past instead. See [New Loki installs](#new-loki-installs) above.
+{{< /admonition >}}
+
 Here are items to consider when changing the schema; if schema changes are not done properly, a scenario can be created which prevents data from being read.
+
 - Always set the `from` date in the new schema to a date in the future.
 
   The `from` date is interpreted by Loki to start at 00:00:00 UTC. Therefore, Loki must have a date in the future to be able to transition to the new schema when that date and time arrives.
 
   Be aware of your relation to UTC when using the current date. Make sure that UTC 00:00:00 has not already passed for your current date.
   
-  As an example, assume that the current date is 2022-04-10, and you want to update to the v12 schema, so you restart Loki with 2022-04-11 as the `from` date for the new schema. If you forget to take into account that your timezone is UTC -5:00 and it’s currently 20:00 hours in your local timezone,  that is actually 2022-04-11T01:00:00 UTC. When Loki starts it will see the new schema and begin to write and store objects following that new schema. If you then try to query data that was written between 00:00:00 and 01:00:00 UTC, Loki will use the new schema and the data will be unreadable, because it was created with the previous schema.
+  As an example, assume that the current date is 2022-04-10, and you want to update to the v13 schema, so you restart Loki with 2022-04-11 as the `from` date for the new schema. If you forget to take into account that your timezone is UTC -5:00 and it’s currently 20:00 hours in your local timezone,  that is actually 2022-04-11T01:00:00 UTC. When Loki starts it will see the new schema and begin to write and store objects following that new schema. If you then try to query data that was written between 00:00:00 and 01:00:00 UTC, Loki will use the new schema and the data will be unreadable, because it was created with the previous schema.
 
 - You cannot undo or roll back a schema change.
 
@@ -29,21 +69,21 @@ Here are items to consider when changing the schema; if schema changes are not d
 
 ## Schema configuration example
 
-```
+```yaml
 schema_config:
-    configs:
-        - from: "2020-07-31"
-          index:
-            period: 24h
-            prefix: loki_ops_index_
-          object_store: gcs
-          schema: v11
-          store: boltdb-shipper
-        - from: "2022-01-20"
-          index:
-            period: 24h
-            prefix: loki_ops_index_
-          object_store: gcs
-          schema: v12
-          store: boltdb-shipper
+  configs:
+    - from: "2020-07-31"
+      index:
+        period: 24h
+        prefix: loki_ops_index_
+      object_store: gcs
+      schema: v11
+      store: tsdb
+    - from: "2022-01-20"
+      index:
+        period: 24h
+        prefix: loki_ops_index_
+      object_store: gcs
+      schema: v13
+      store: tsdb
 ```

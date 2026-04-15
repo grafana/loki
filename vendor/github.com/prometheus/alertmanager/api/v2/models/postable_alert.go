@@ -203,6 +203,10 @@ func (m *PostableAlert) ContextValidate(ctx context.Context, formats strfmt.Regi
 
 func (m *PostableAlert) contextValidateAnnotations(ctx context.Context, formats strfmt.Registry) error {
 
+	if swag.IsZero(m.Annotations) { // not required
+		return nil
+	}
+
 	if err := m.Annotations.ContextValidate(ctx, formats); err != nil {
 		if ve, ok := err.(*errors.Validation); ok {
 			return ve.ValidateName("annotations")

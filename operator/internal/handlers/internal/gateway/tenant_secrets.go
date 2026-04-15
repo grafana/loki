@@ -7,23 +7,21 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/status"
 )
 
-// GetTenantSecrets returns the list to gateway tenant secrets for a tenant mode.
+// getTenantSecrets returns the list to gateway tenant secrets for a tenant mode.
 // For modes static and dynamic the secrets are fetched from external provided
 // secrets. For modes openshift-logging and openshift-network a secret per default tenants are created.
 // All secrets live in the same namespace as the lokistack request.
-func GetTenantSecrets(
+func getTenantSecrets(
 	ctx context.Context,
 	k k8s.Client,
-	req ctrl.Request,
 	stack *lokiv1.LokiStack,
 ) ([]*manifests.TenantSecrets, error) {
 	var (
@@ -34,7 +32,7 @@ func GetTenantSecrets(
 	for _, tenant := range stack.Spec.Tenants.Authentication {
 		switch {
 		case tenant.OIDC != nil:
-			key := client.ObjectKey{Name: tenant.OIDC.Secret.Name, Namespace: req.Namespace}
+			key := client.ObjectKey{Name: tenant.OIDC.Secret.Name, Namespace: stack.Namespace}
 			if err := k.Get(ctx, key, &gatewaySecret); err != nil {
 				if apierrors.IsNotFound(err) {
 					return nil, &status.DegradedError{
@@ -60,7 +58,7 @@ func GetTenantSecrets(
 				OIDCSecret: oidcSecret,
 			}
 			if tenant.OIDC.IssuerCA != nil {
-				caPath, err := extractCAPath(ctx, k, req.Namespace, tenant.TenantName, tenant.OIDC.IssuerCA)
+				caPath, err := extractCAPath(ctx, k, stack.Namespace, tenant.TenantName, tenant.OIDC.IssuerCA)
 				if err != nil {
 					return nil, err
 				}
@@ -68,7 +66,7 @@ func GetTenantSecrets(
 			}
 			tenantSecrets = append(tenantSecrets, tennantSecret)
 		case tenant.MTLS != nil:
-			caPath, err := extractCAPath(ctx, k, req.Namespace, tenant.TenantName, tenant.MTLS.CA)
+			caPath, err := extractCAPath(ctx, k, stack.Namespace, tenant.TenantName, tenant.MTLS.CA)
 			if err != nil {
 				return nil, err
 			}
@@ -114,13 +112,13 @@ func checkKeyIsPresent(cm *corev1.ConfigMap, key string) error {
 	return nil
 }
 
-func extractCAPath(ctx context.Context, k k8s.Client, namespace string, tennantName string, caSpec *lokiv1.CASpec) (string, error) {
+func extractCAPath(ctx context.Context, k k8s.Client, namespace string, tenantName string, caSpec *lokiv1.CASpec) (string, error) {
 	var caConfigMap corev1.ConfigMap
 	key := client.ObjectKey{Name: caSpec.CA, Namespace: namespace}
 	if err := k.Get(ctx, key, &caConfigMap); err != nil {
 		if apierrors.IsNotFound(err) {
 			return "", &status.DegradedError{
-				Message: fmt.Sprintf("Missing configmap for tenant %s", tennantName),
+				Message: fmt.Sprintf("Missing ConfigMap with CA bundle for tenant: %s", tenantName),
 				Reason:  lokiv1.ReasonMissingGatewayTenantConfigMap,
 				Requeue: true,
 			}
@@ -136,10 +134,10 @@ func extractCAPath(ctx context.Context, k k8s.Client, namespace string, tennantN
 	err := checkKeyIsPresent(&caConfigMap, cmKey)
 	if err != nil {
 		return "", &status.DegradedError{
-			Message: "Invalid gateway tenant configmap contents",
+			Message: fmt.Sprintf("Invalid contents of ConfigMap for tenant %q. Can not find CA bundle with key: %s", tenantName, cmKey),
 			Reason:  lokiv1.ReasonInvalidGatewayTenantConfigMap,
 			Requeue: true,
 		}
 	}
-	return manifests.TenantCAPath(tennantName, cmKey), nil
+	return manifests.TenantCAPath(tenantName, cmKey), nil
 }

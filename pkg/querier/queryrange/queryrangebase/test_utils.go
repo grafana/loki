@@ -9,9 +9,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/querier/series"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/querier/series"
 )
 
 // genLabels will create a slice of labels where each label has an equal chance to occupy a value from [0,labelBuckets]. It returns a slice of length labelBuckets^len(labelSet)
@@ -19,26 +20,23 @@ func genLabels(
 	labelSet []string,
 	labelBuckets int,
 ) (result []labels.Labels) {
+
 	if len(labelSet) == 0 {
-		return result
+		return []labels.Labels{}
 	}
 
 	l := labelSet[0]
 	rest := genLabels(labelSet[1:], labelBuckets)
 
 	for i := 0; i < labelBuckets; i++ {
-		x := labels.Label{
-			Name:  l,
-			Value: fmt.Sprintf("%d", i),
-		}
 		if len(rest) == 0 {
-			set := labels.Labels{x}
-			result = append(result, set)
+			result = append(result, labels.FromStrings(l, fmt.Sprintf("%d", i)))
 			continue
 		}
 		for _, others := range rest {
-			set := append(others, x)
-			result = append(result, set)
+			builder := labels.NewBuilder(others)
+			builder.Set(l, fmt.Sprintf("%d", i))
+			result = append(result, builder.Labels())
 		}
 	}
 	return result
@@ -84,7 +82,7 @@ func (q *MockShardedQueryable) Querier(_ context.Context, _, _ int64) (storage.Q
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q *MockShardedQueryable) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (q *MockShardedQueryable) Select(_ context.Context, _ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	tStart := time.Now()
 
 	shard, _, err := astmapper.ShardFromMatchers(matchers)
@@ -153,29 +151,26 @@ type ShardLabelSeries struct {
 
 // Labels impls storage.Series
 func (s *ShardLabelSeries) Labels() labels.Labels {
-	ls := s.Series.Labels()
+	ls := labels.NewBuilder(s.Series.Labels())
 
 	if s.name != "" {
-		ls = append(ls, labels.Label{
-			Name:  "__name__",
-			Value: s.name,
-		})
+		ls.Set("__name__", s.name)
 	}
 
 	if s.shard != nil {
-		ls = append(ls, s.shard.Label())
+		ls.Set(s.shard.Label().Name, s.shard.Label().Value)
 	}
 
-	return ls
+	return ls.Labels()
 }
 
 // LabelValues impls storage.Querier
-func (q *MockShardedQueryable) LabelValues(_ string, _ ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (q *MockShardedQueryable) LabelValues(_ context.Context, _ string, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, errors.Errorf("unimplemented")
 }
 
 // LabelNames returns all the unique label names present in the block in sorted order.
-func (q *MockShardedQueryable) LabelNames(_ ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (q *MockShardedQueryable) LabelNames(_ context.Context, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, errors.Errorf("unimplemented")
 }
 

@@ -10,44 +10,40 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
-	"github.com/opentracing/opentracing-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/uber/jaeger-client-go"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func TestQueryType(t *testing.T) {
 	tests := []struct {
-		name    string
-		query   string
-		want    string
-		wantErr bool
+		name  string
+		query string
+		want  string
 	}{
-		{"bad", "ddd", "", true},
-		{"limited", `{app="foo"}`, QueryTypeLimited, false},
-		{"limited multi label", `{app="foo" ,fuzz=~"foo"}`, QueryTypeLimited, false},
-		{"limited with parser", `{app="foo" ,fuzz=~"foo"} | logfmt`, QueryTypeLimited, false},
-		{"filter", `{app="foo"} |= "foo"`, QueryTypeFilter, false},
-		{"filter string extracted label", `{app="foo"} | json | foo="a"`, QueryTypeFilter, false},
-		{"filter duration", `{app="foo"} | json | duration > 5s`, QueryTypeFilter, false},
-		{"metrics", `rate({app="foo"} |= "foo"[5m])`, QueryTypeMetric, false},
-		{"metrics binary", `rate({app="foo"} |= "foo"[5m]) + count_over_time({app="foo"} |= "foo"[5m]) / rate({app="foo"} |= "foo"[5m]) `, QueryTypeMetric, false},
-		{"filters", `{app="foo"} |= "foo" |= "f" != "b"`, QueryTypeFilter, false},
-		{"filters and labels filters", `{app="foo"} |= "foo" |= "f" != "b" | json | a > 5`, QueryTypeFilter, false},
+		{"limited", `{app="foo"}`, QueryTypeLimited},
+		{"limited multi label", `{app="foo" ,fuzz=~"foo"}`, QueryTypeLimited},
+		{"limited with parser", `{app="foo" ,fuzz=~"foo"} | logfmt`, QueryTypeLimited},
+		{"filter", `{app="foo"} |= "foo"`, QueryTypeFilter},
+		{"filter string extracted label", `{app="foo"} | json | foo="a"`, QueryTypeFilter},
+		{"filter duration", `{app="foo"} | json | duration > 5s`, QueryTypeFilter},
+		{"metrics", `rate({app="foo"} |= "foo"[5m])`, QueryTypeMetric},
+		{"metrics binary", `rate({app="foo"} |= "foo"[5m]) + count_over_time({app="foo"} |= "foo"[5m]) / rate({app="foo"} |= "foo"[5m]) `, QueryTypeMetric},
+		{"filters", `{app="foo"} |= "foo" |= "f" != "b"`, QueryTypeFilter},
+		{"filters and labels filters", `{app="foo"} |= "foo" |= "f" != "b" | json | a > 5`, QueryTypeFilter},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := QueryType(tt.query)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("QueryType() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			got, err := QueryType(syntax.MustParseExpr(tt.query))
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("QueryType() = %v, want %v", got, tt.want)
 			}
@@ -58,22 +54,23 @@ func TestQueryType(t *testing.T) {
 func TestLogSlowQuery(t *testing.T) {
 	buf := bytes.NewBufferString("")
 	util_log.Logger = log.NewLogfmtLogger(buf)
-	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
-	defer c.Close()
-	opentracing.SetGlobalTracer(tr)
-	sp := opentracing.StartSpan("")
-	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
+
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	ctx, sp := tracesdk.NewTracerProvider().Tracer("test").Start(ctx, "test")
+	defer sp.End()
+
 	now := time.Now()
 
 	ctx = context.WithValue(ctx, httpreq.QueryTagsHTTPHeader, "Source=logvolhist,Feature=Beta")
 
 	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, LiteralParams{
-		qs:        `{foo="bar"} |= "buzz"`,
-		direction: logproto.BACKWARD,
-		end:       now,
-		start:     now.Add(-1 * time.Hour),
-		limit:     1000,
-		step:      time.Minute,
+		queryString: `{foo="bar"} |= "buzz"`,
+		direction:   logproto.BACKWARD,
+		end:         now,
+		start:       now.Add(-1 * time.Hour),
+		limit:       1000,
+		step:        time.Minute,
+		queryExpr:   syntax.MustParseExpr(`{foo="bar"} |= "buzz"`),
 	}, "200", stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 100000,
@@ -86,7 +83,7 @@ func TestLogSlowQuery(t *testing.T) {
 	require.Regexp(t,
 		regexp.MustCompile(fmt.Sprintf(
 			`level=info org_id=foo traceID=%s sampled=true latency=slow query=".*" query_hash=.* query_type=filter range_type=range length=1h0m0s .*\n`,
-			sp.Context().(jaeger.SpanContext).SpanID().String(),
+			sp.SpanContext().TraceID(),
 		)),
 		buf.String())
 	util_log.Logger = log.NewNopLogger()
@@ -95,11 +92,11 @@ func TestLogSlowQuery(t *testing.T) {
 func TestLogLabelsQuery(t *testing.T) {
 	buf := bytes.NewBufferString("")
 	logger := log.NewLogfmtLogger(buf)
-	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
-	defer c.Close()
-	opentracing.SetGlobalTracer(tr)
-	sp := opentracing.StartSpan("")
-	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
+
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	ctx, sp := tracesdk.NewTracerProvider().Tracer("test").Start(ctx, "test")
+	defer sp.End()
+
 	now := time.Now()
 	RecordLabelQueryMetrics(ctx, logger, now.Add(-1*time.Hour), now, "foo", "", "200", stats.Result{
 		Summary: stats.Summary{
@@ -108,11 +105,20 @@ func TestLogLabelsQuery(t *testing.T) {
 			TotalBytesProcessed:     100000,
 			TotalEntriesReturned:    12,
 		},
+		Caches: stats.Caches{
+			LabelResult: stats.Cache{
+				EntriesRequested:  2,
+				EntriesFound:      1,
+				EntriesStored:     1,
+				DownloadTime:      80,
+				QueryLengthServed: 10,
+			},
+		},
 	})
-	require.Equal(t,
+	require.Regexp(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=labels length=1h0m0s duration=25.25s status=200 label=foo query= splits=0 throughput=100kB total_bytes=100kB total_entries=12\n",
-			sp.Context().(jaeger.SpanContext).SpanID().String(),
+			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=labels splits=0 start=.* end=.* start_delta=1h0m0.* end_delta=.* length=1h0m0s duration=25.25s status=200 label=foo query= query_hash=2166136261 total_entries=12 cache_label_results_req=2 cache_label_results_hit=1 cache_label_results_stored=1 cache_label_results_download_time=80ns cache_label_results_query_length_served=10ns\n",
+			sp.SpanContext().TraceID(),
 		),
 		buf.String())
 	util_log.Logger = log.NewNopLogger()
@@ -121,81 +127,81 @@ func TestLogLabelsQuery(t *testing.T) {
 func TestLogSeriesQuery(t *testing.T) {
 	buf := bytes.NewBufferString("")
 	logger := log.NewLogfmtLogger(buf)
-	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
-	defer c.Close()
-	opentracing.SetGlobalTracer(tr)
-	sp := opentracing.StartSpan("")
-	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
+
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	ctx, sp := tracesdk.NewTracerProvider().Tracer("test").Start(ctx, "test")
+	defer sp.End()
+
 	now := time.Now()
-	RecordSeriesQueryMetrics(ctx, logger, now.Add(-1*time.Hour), now, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", stats.Result{
+	RecordSeriesQueryMetrics(ctx, logger, now.Add(-1*time.Hour), now, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", []string{}, stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 100000,
 			ExecTime:                25.25,
 			TotalBytesProcessed:     100000,
 			TotalEntriesReturned:    10,
 		},
+		Caches: stats.Caches{
+			SeriesResult: stats.Cache{
+				EntriesRequested:  2,
+				EntriesFound:      1,
+				EntriesStored:     1,
+				DownloadTime:      80,
+				QueryLengthServed: 10,
+			},
+		},
 	})
-	require.Equal(t,
+	require.Regexp(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=series length=1h0m0s duration=25.25s status=200 match=\"{container_name=~\\\"prometheus.*\\\", component=\\\"server\\\"}:{app=\\\"loki\\\"}\" splits=0 throughput=100kB total_bytes=100kB total_entries=10\n",
-			sp.Context().(jaeger.SpanContext).SpanID().String(),
+			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=series splits=0 start=.* end=.* start_delta=1h0m0.* end_delta=.* length=1h0m0s duration=25.25s status=200 match=\"{container_name=.*\"}:{app=.*}\" query_hash=23523089 total_entries=10 cache_series_results_req=2 cache_series_results_hit=1 cache_series_results_stored=1 cache_series_results_download_time=80ns cache_series_results_query_length_served=10ns\n",
+			sp.SpanContext().TraceID(),
 		),
 		buf.String())
 	util_log.Logger = log.NewNopLogger()
 }
 
-func Test_testToKeyValues(t *testing.T) {
+func TestQueryHashing(t *testing.T) {
+	h1 := util.HashedQuery(`{app="myapp",env="myenv"} |= "error" |= "metrics.go" |= logfmt`)
+	h2 := util.HashedQuery(`{app="myapp",env="myenv"} |= "error" |= logfmt |= "metrics.go"`)
+	// check that it capture differences of order.
+	require.NotEqual(t, h1, h2)
+	h3 := util.HashedQuery(`{app="myapp",env="myenv"} |= "error" |= "metrics.go" |= logfmt`)
+	// check that it evaluate same queries as same hashes, even if evaluated at different timestamps.
+	require.Equal(t, h1, h3)
+}
+
+func TestHasMatchEqualLabelFilterBeforeParser(t *testing.T) {
 	cases := []struct {
-		name string
-		in   string
-		exp  []interface{}
+		query  string
+		result bool
 	}{
 		{
-			name: "canonical-form",
-			in:   "Source=logvolhist",
-			exp: []interface{}{
-				"source",
-				"logvolhist",
-			},
+			query:  `{env="prod"} |= "id"`,
+			result: false,
 		},
 		{
-			name: "canonical-form-multiple-values",
-			in:   "Source=logvolhist,Feature=beta,User=Jinx@grafana.com",
-			exp: []interface{}{
-				"source",
-				"logvolhist",
-				"feature",
-				"beta",
-				"user",
-				"Jinx@grafana.com",
-			},
+			query:  `{env="prod"} |= "id" | level="debug"`,
+			result: true,
 		},
 		{
-			name: "empty",
-			in:   "",
-			exp:  []interface{}{},
+			query:  `{env="prod"} |= "id" | logfmt | level="debug"`,
+			result: false,
 		},
 		{
-			name: "non-canonical form",
-			in:   "abc",
-			exp:  []interface{}{},
+			query:  `{env="prod"} | level="debug" or level="info"`,
+			result: true,
+		},
+		{
+			query:  `{env="prod"} | level="debug" and level!="info"`,
+			result: false,
 		},
 	}
 
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			got := tagsToKeyValues(c.in)
-			assert.Equal(t, c.exp, got)
+		t.Run(fmt.Sprintf("%s => %v", c.query, c.result), func(t *testing.T) {
+			p := LiteralParams{
+				queryExpr: syntax.MustParseExpr(c.query),
+			}
+			assert.Equal(t, c.result, hasMatchEqualLabelFilterBeforeParser(p))
 		})
 	}
-}
-
-func TestQueryHashing(t *testing.T) {
-	h1 := HashedQuery(`{app="myapp",env="myenv"} |= "error" |= "metrics.go" |= logfmt`)
-	h2 := HashedQuery(`{app="myapp",env="myenv"} |= "error" |= logfmt |= "metrics.go"`)
-	// check that it capture differences of order.
-	require.NotEqual(t, h1, h2)
-	h3 := HashedQuery(`{app="myapp",env="myenv"} |= "error" |= "metrics.go" |= logfmt`)
-	// check that it evaluate same queries as same hashes, even if evaluated at different timestamps.
-	require.Equal(t, h1, h3)
 }

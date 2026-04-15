@@ -1,0 +1,192 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if (and $isDistributed (gt (int .Values.bloomPlanner.replicas) 0)) -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "loki.bloomPlannerFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.bloomPlannerLabels" . | nindent 4 }}
+  {{- with .Values.loki.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.bloomPlanner.replicas }}
+  podManagementPolicy: Parallel
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+  serviceName: {{ include "loki.bloomPlannerFullname" . }}-headless
+  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
+  {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.bloomPlanner.persistence.enableStatefulSetAutoDeletePVC)  }}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: {{ .Values.bloomPlanner.persistence.whenDeleted }}
+    whenScaled: {{ .Values.bloomPlanner.persistence.whenScaled }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "loki.bloomPlannerSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- include "loki.config.checksum" . | nindent 8 }}
+        {{- with .Values.loki.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.bloomPlanner.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "loki.bloomPlannerLabels" . | nindent 8 }}
+        app.kubernetes.io/part-of: memberlist
+        {{- with merge (dict) .Values.loki.podLabels .Values.bloomPlanner.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "loki.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.bloomPlanner.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.bloomPlanner.hostUsers) }}
+      hostUsers: {{ .Values.bloomPlanner.hostUsers }}
+      {{- end }}
+      {{- with .Values.bloomPlanner.dnsConfig | default .Values.loki.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- include "loki.bloomPlannerPriorityClassName" . | nindent 6 }}
+      securityContext:
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.bloomPlanner.terminationGracePeriodSeconds }}
+      {{- with .Values.bloomPlanner.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: bloom-planner
+          image: {{ include "loki.image" . }}
+          imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
+          {{- if or .Values.loki.command .Values.bloomPlanner.command }}
+          command:
+            - {{ coalesce .Values.bloomPlanner.command .Values.loki.command | quote }}
+          {{- end }}
+          args:
+            - -config.file=/etc/loki/config/config.yaml
+            - -target=bloom-planner
+            {{- with (concat .Values.global.extraArgs .Values.bloomPlanner.extraArgs) | uniq }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http-metrics
+              containerPort: 3100
+              protocol: TCP
+            - name: grpc
+              containerPort: 9095
+              protocol: TCP
+            - name: http-memberlist
+              containerPort: 7946
+              protocol: TCP
+          {{- with (concat .Values.global.extraEnv .Values.bloomPlanner.extraEnv) | uniq }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.bloomPlanner.extraEnvFrom) | uniq }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- include "loki.bloomPlanner.livenessProbe" . | nindent 10 }}
+          {{- include "loki.bloomPlanner.readinessProbe" . | nindent 10 }}
+          {{- include "loki.bloomPlanner.startupProbe" . | nindent 10 }}
+          volumeMounts:
+            - name: temp
+              mountPath: /tmp
+            - name: config
+              mountPath: /etc/loki/config
+            - name: runtime-config
+              mountPath: /etc/loki/runtime-config
+            - name: data
+              mountPath: /var/loki
+            {{- if .Values.enterprise.enabled }}
+            - name: license
+              mountPath: /etc/loki/license
+            {{- end }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.bloomPlanner.extraVolumeMounts) | uniq }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.bloomPlanner.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- if .Values.bloomPlanner.extraContainers }}
+        {{- toYaml .Values.bloomPlanner.extraContainers | nindent 8}}
+        {{- end }}
+      {{- with .Values.bloomPlanner.affinity }}
+      affinity:
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
+      {{- end }}
+      {{- with .Values.bloomPlanner.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.bloomPlanner.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: temp
+          emptyDir: {}
+        - name: config
+          {{- include "loki.configVolume" . | nindent 10 }}
+        - name: runtime-config
+          configMap:
+            name: {{ template "loki.name" . }}-runtime
+        {{- if .Values.enterprise.enabled }}
+        - name: license
+          secret:
+          {{- if .Values.enterprise.useExternalLicense }}
+            secretName: {{ .Values.enterprise.externalLicenseName }}
+          {{- else }}
+            secretName: enterprise-logs-license
+          {{- end }}
+        {{- end }}
+        {{- if not .Values.bloomPlanner.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+        {{- with (concat .Values.global.extraVolumes .Values.bloomPlanner.extraVolumes) | uniq }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+  {{- if .Values.bloomPlanner.persistence.enabled }}
+  volumeClaimTemplates:
+  {{- range .Values.bloomPlanner.persistence.claims }}
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: {{ .name }}
+        {{- with .annotations }}
+        annotations:
+          {{- . | toYaml | nindent 10 }}
+        {{- end }}
+      spec:
+        accessModes:
+          {{- toYaml .accessModes | nindent 10 }}
+        {{- with .storageClass }}
+        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        {{- with .volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .size | quote }}
+  {{- end }}
+  {{- end }}
+{{- end -}}

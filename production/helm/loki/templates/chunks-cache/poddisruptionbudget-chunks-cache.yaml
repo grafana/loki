@@ -1,0 +1,9 @@
+{{- if and .Values.chunksCache.enabled (.Values.memcached.enabled) }}
+
+{{- include "loki.memcached.pdb" (dict "ctx" $ "memcacheConfig" .Values.chunksCache "valuesSection" "chunksCache" "component" "chunks-cache") }}
+
+{{- if .Values.chunksCache.l2.enabled }}
+---
+{{ include "loki.memcached.pdb" (dict "ctx" $ "memcacheConfig" .Values.chunksCache.l2 "valuesSection" "chunksCache" "component" "chunks-cache") }}
+{{- end -}}
+{{- end -}}

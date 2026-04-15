@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	lokiutil "github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	lokiutil "github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var testTimestampYaml = `
@@ -71,7 +71,7 @@ func TestPipelineWithMissingKey_Timestamp(t *testing.T) {
 	Debug = true
 	_ = processEntries(pl, newEntry(nil, nil, testTimestampLogLineWithMissingKey, time.Now()))
 
-	expectedLog := fmt.Sprintf("level=debug msg=\"%s\" err=\"Can't convert <nil> to string\" type=null", ErrTimestampConversionFailed)
+	expectedLog := fmt.Sprintf("level=debug msg=\"%s\" err=\"can't convert <nil> to string\" type=null", ErrTimestampConversionFailed)
 	if !(strings.Contains(buf.String(), expectedLog)) {
 		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
 	}
@@ -174,7 +174,6 @@ func TestTimestampValidation(t *testing.T) {
 		},
 	}
 	for name, test := range tests {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			parser, err := validateTimestampConfig(test.config)
@@ -295,7 +294,6 @@ func TestTimestampStage_Process(t *testing.T) {
 		},
 	}
 	for name, test := range tests {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			st, err := newTimestampStage(util_log.Logger, test.config)
@@ -431,8 +429,6 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 

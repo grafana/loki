@@ -11,9 +11,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var jobRename = `
@@ -87,7 +87,7 @@ func Test_parsePipeline(t *testing.T) {
 	}
 	defer os.Remove(f.Name())
 
-	_, err = f.Write([]byte(fmt.Sprintf("pipeline_stages:\n%s", pipelineString)))
+	_, err = fmt.Fprintf(f, "pipeline_stages:\n%s", pipelineString)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -12,7 +12,6 @@
 // limitations under the License.
 
 //go:build linux
-// +build linux
 
 package procfs
 
@@ -79,7 +78,7 @@ func parseCPUInfoX86(info []byte) ([]CPUInfo, error) {
 	// find the first "processor" line
 	firstLine := firstNonEmptyLine(scanner)
 	if !strings.HasPrefix(firstLine, "processor") || !strings.Contains(firstLine, ":") {
-		return nil, fmt.Errorf("invalid cpuinfo file: %q", firstLine)
+		return nil, fmt.Errorf("%w: Cannot parse  line: %q", ErrFileParse, firstLine)
 	}
 	field := strings.SplitN(firstLine, ": ", 2)
 	v, err := strconv.ParseUint(field[1], 0, 32)
@@ -192,9 +191,10 @@ func parseCPUInfoARM(info []byte) ([]CPUInfo, error) {
 	scanner := bufio.NewScanner(bytes.NewReader(info))
 
 	firstLine := firstNonEmptyLine(scanner)
-	match, _ := regexp.MatchString("^[Pp]rocessor", firstLine)
+	match, err := regexp.MatchString("^[Pp]rocessor", firstLine)
 	if !match || !strings.Contains(firstLine, ":") {
-		return nil, fmt.Errorf("invalid cpuinfo file: %q", firstLine)
+		return nil, fmt.Errorf("%w: Cannot parse line: %q: %w", ErrFileParse, firstLine, err)
+
 	}
 	field := strings.SplitN(firstLine, ": ", 2)
 	cpuinfo := []CPUInfo{}
@@ -258,7 +258,7 @@ func parseCPUInfoS390X(info []byte) ([]CPUInfo, error) {
 
 	firstLine := firstNonEmptyLine(scanner)
 	if !strings.HasPrefix(firstLine, "vendor_id") || !strings.Contains(firstLine, ":") {
-		return nil, fmt.Errorf("invalid cpuinfo file: %q", firstLine)
+		return nil, fmt.Errorf("%w: Cannot parse line: %q", ErrFileParse, firstLine)
 	}
 	field := strings.SplitN(firstLine, ": ", 2)
 	cpuinfo := []CPUInfo{}
@@ -283,7 +283,7 @@ func parseCPUInfoS390X(info []byte) ([]CPUInfo, error) {
 		if strings.HasPrefix(line, "processor") {
 			match := cpuinfoS390XProcessorRegexp.FindStringSubmatch(line)
 			if len(match) < 2 {
-				return nil, fmt.Errorf("invalid cpuinfo file: %q", firstLine)
+				return nil, fmt.Errorf("%w: %q", ErrFileParse, firstLine)
 			}
 			cpu := commonCPUInfo
 			v, err := strconv.ParseUint(match[1], 0, 32)
@@ -343,7 +343,7 @@ func parseCPUInfoMips(info []byte) ([]CPUInfo, error) {
 	// find the first "processor" line
 	firstLine := firstNonEmptyLine(scanner)
 	if !strings.HasPrefix(firstLine, "system type") || !strings.Contains(firstLine, ":") {
-		return nil, fmt.Errorf("invalid cpuinfo file: %q", firstLine)
+		return nil, fmt.Errorf("%w: %q", ErrFileParse, firstLine)
 	}
 	field := strings.SplitN(firstLine, ": ", 2)
 	cpuinfo := []CPUInfo{}
@@ -385,7 +385,7 @@ func parseCPUInfoLoong(info []byte) ([]CPUInfo, error) {
 	// find the first "processor" line
 	firstLine := firstNonEmptyLine(scanner)
 	if !strings.HasPrefix(firstLine, "system type") || !strings.Contains(firstLine, ":") {
-		return nil, errors.New("invalid cpuinfo file: " + firstLine)
+		return nil, fmt.Errorf("%w: %q", ErrFileParse, firstLine)
 	}
 	field := strings.SplitN(firstLine, ": ", 2)
 	cpuinfo := []CPUInfo{}
@@ -421,7 +421,7 @@ func parseCPUInfoPPC(info []byte) ([]CPUInfo, error) {
 
 	firstLine := firstNonEmptyLine(scanner)
 	if !strings.HasPrefix(firstLine, "processor") || !strings.Contains(firstLine, ":") {
-		return nil, fmt.Errorf("invalid cpuinfo file: %q", firstLine)
+		return nil, fmt.Errorf("%w: %q", ErrFileParse, firstLine)
 	}
 	field := strings.SplitN(firstLine, ": ", 2)
 	v, err := strconv.ParseUint(field[1], 0, 32)
@@ -466,7 +466,7 @@ func parseCPUInfoRISCV(info []byte) ([]CPUInfo, error) {
 
 	firstLine := firstNonEmptyLine(scanner)
 	if !strings.HasPrefix(firstLine, "processor") || !strings.Contains(firstLine, ":") {
-		return nil, fmt.Errorf("invalid cpuinfo file: %q", firstLine)
+		return nil, fmt.Errorf("%w: %q", ErrFileParse, firstLine)
 	}
 	field := strings.SplitN(firstLine, ": ", 2)
 	v, err := strconv.ParseUint(field[1], 0, 32)
@@ -501,7 +501,7 @@ func parseCPUInfoRISCV(info []byte) ([]CPUInfo, error) {
 	return cpuinfo, nil
 }
 
-func parseCPUInfoDummy(_ []byte) ([]CPUInfo, error) { // nolint:unused,deadcode
+func parseCPUInfoDummy(_ []byte) ([]CPUInfo, error) { //nolint:unused
 	return nil, errors.New("not implemented")
 }
 

@@ -3,11 +3,11 @@
 // license that can be found in the LICENSE file.
 
 //go:build darwin
-// +build darwin
 
 package ipv6
 
 import (
+	"encoding/binary"
 	"unsafe"
 
 	"golang.org/x/net/internal/iana"
@@ -20,7 +20,7 @@ func marshal2292HopLimit(b []byte, cm *ControlMessage) []byte {
 	m := socket.ControlMessage(b)
 	m.MarshalHeader(iana.ProtocolIPv6, unix.IPV6_2292HOPLIMIT, 4)
 	if cm != nil {
-		socket.NativeEndian.PutUint32(m.Data(4), uint32(cm.HopLimit))
+		binary.NativeEndian.PutUint32(m.Data(4), uint32(cm.HopLimit))
 	}
 	return m.Next(4)
 }

@@ -1,4 +1,4 @@
-// Copyright 2013 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,18 +15,24 @@ package rules
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
+	"sync"
 	"time"
 
 	"go.uber.org/atomic"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v2"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 )
+
+// ErrDuplicateRecordingLabelSet is returned when a recording rule evaluation produces
+// metrics with identical labelsets after applying rule labels.
+var ErrDuplicateRecordingLabelSet = errors.New("vector contains metrics with the same labelset after applying rule labels")
 
 // A RecordingRule records its vector expression into new timeseries.
 type RecordingRule struct {
@@ -41,6 +47,10 @@ type RecordingRule struct {
 	lastError *atomic.Error
 	// Duration of how long it took to evaluate the recording rule.
 	evaluationDuration *atomic.Duration
+
+	dependenciesMutex sync.RWMutex
+	dependentRules    []Rule
+	dependencyRules   []Rule
 }
 
 // NewRecordingRule returns a new recording rule.
@@ -72,10 +82,9 @@ func (rule *RecordingRule) Labels() labels.Labels {
 }
 
 // Eval evaluates the rule and then overrides the metric names and labels accordingly.
-func (rule *RecordingRule) Eval(ctx context.Context, ts time.Time, query QueryFunc, _ *url.URL, limit int) (promql.Vector, error) {
+func (rule *RecordingRule) Eval(ctx context.Context, queryOffset time.Duration, ts time.Time, query QueryFunc, _ *url.URL, limit int) (promql.Vector, error) {
 	ctx = NewOriginContext(ctx, NewRuleDetail(rule))
-
-	vector, err := query(ctx, rule.vector.String(), ts)
+	vector, err := query(ctx, rule.vector.String(), ts.Add(-queryOffset))
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +108,7 @@ func (rule *RecordingRule) Eval(ctx context.Context, ts time.Time, query QueryFu
 	// Check that the rule does not produce identical metrics after applying
 	// labels.
 	if vector.ContainsSameLabelset() {
-		return nil, fmt.Errorf("vector contains metrics with the same labelset after applying rule labels")
+		return nil, ErrDuplicateRecordingLabelSet
 	}
 
 	numSeries := len(vector)
@@ -165,4 +174,54 @@ func (rule *RecordingRule) SetEvaluationTimestamp(ts time.Time) {
 // GetEvaluationTimestamp returns the time the evaluation took place.
 func (rule *RecordingRule) GetEvaluationTimestamp() time.Time {
 	return rule.evaluationTimestamp.Load()
+}
+
+func (rule *RecordingRule) SetDependentRules(dependents []Rule) {
+	rule.dependenciesMutex.Lock()
+	defer rule.dependenciesMutex.Unlock()
+
+	rule.dependentRules = make([]Rule, len(dependents))
+	copy(rule.dependentRules, dependents)
+}
+
+func (rule *RecordingRule) NoDependentRules() bool {
+	rule.dependenciesMutex.RLock()
+	defer rule.dependenciesMutex.RUnlock()
+
+	if rule.dependentRules == nil {
+		return false // We don't know if there are dependent rules.
+	}
+
+	return len(rule.dependentRules) == 0
+}
+
+func (rule *RecordingRule) DependentRules() []Rule {
+	rule.dependenciesMutex.RLock()
+	defer rule.dependenciesMutex.RUnlock()
+	return rule.dependentRules
+}
+
+func (rule *RecordingRule) SetDependencyRules(dependencies []Rule) {
+	rule.dependenciesMutex.Lock()
+	defer rule.dependenciesMutex.Unlock()
+
+	rule.dependencyRules = make([]Rule, len(dependencies))
+	copy(rule.dependencyRules, dependencies)
+}
+
+func (rule *RecordingRule) NoDependencyRules() bool {
+	rule.dependenciesMutex.RLock()
+	defer rule.dependenciesMutex.RUnlock()
+
+	if rule.dependencyRules == nil {
+		return false // We don't know if there are dependency rules.
+	}
+
+	return len(rule.dependencyRules) == 0
+}
+
+func (rule *RecordingRule) DependencyRules() []Rule {
+	rule.dependenciesMutex.RLock()
+	defer rule.dependenciesMutex.RUnlock()
+	return rule.dependencyRules
 }

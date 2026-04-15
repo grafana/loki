@@ -6,18 +6,17 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
+	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
-
-	"github.com/stretchr/testify/require"
 )
 
-func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
+func TestApplyDefaultSettings_OverrideDefaults(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
 		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
@@ -44,7 +43,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, defs.Size, opt.Stack.Size)
 		require.Equal(t, defs.Limits, opt.Stack.Limits)
-		require.Equal(t, defs.ReplicationFactor, opt.Stack.ReplicationFactor)
+		require.Equal(t, defs.ReplicationFactor, opt.Stack.ReplicationFactor) //nolint:staticcheck
 		require.Equal(t, defs.Replication, opt.Stack.Replication)
 		require.Equal(t, defs.ManagementState, opt.Stack.ManagementState)
 		require.Equal(t, defs.Template.Ingester, opt.Stack.Template.Ingester)
@@ -60,7 +59,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 	}
 }
 
-func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
+func TestApplyDefaultSettings_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
 		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
@@ -91,6 +90,40 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 	}
 }
 
+func TestApplyDefaultSettings_UseRequestsAsLimits(t *testing.T) {
+	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXDemo,
+		lokiv1.SizeOneXExtraSmall,
+		lokiv1.SizeOneXSmall,
+		lokiv1.SizeOneXMedium,
+	}
+	for _, size := range allSizes {
+		opt := Options{
+			Name:      "abcd",
+			Namespace: "efgh",
+			Stack: lokiv1.LokiStackSpec{
+				Size: size,
+				Template: &lokiv1.LokiTemplateSpec{
+					UseRequestsAsLimits: true,
+				},
+			},
+			Timeouts: defaultTimeoutConfig,
+		}
+		err := ApplyDefaultSettings(&opt)
+
+		require.NoError(t, err)
+		require.Equal(t, opt.ResourceRequirements.IndexGateway.Limits, opt.ResourceRequirements.IndexGateway.Requests)
+		require.Equal(t, opt.ResourceRequirements.Ingester.Limits, opt.ResourceRequirements.Ingester.Requests)
+		require.Equal(t, opt.ResourceRequirements.Compactor.Limits, opt.ResourceRequirements.Compactor.Requests)
+		require.Equal(t, opt.ResourceRequirements.Ruler.Limits, opt.ResourceRequirements.Ruler.Requests)
+		require.Equal(t, opt.ResourceRequirements.WALStorage.Limits, opt.ResourceRequirements.WALStorage.Requests)
+		require.Equal(t, opt.ResourceRequirements.Querier.Limits, opt.ResourceRequirements.Querier.Requests)
+		require.Equal(t, opt.ResourceRequirements.Distributor.Limits, opt.ResourceRequirements.Distributor.Requests)
+		require.Equal(t, opt.ResourceRequirements.QueryFrontend.Limits, opt.ResourceRequirements.QueryFrontend.Requests)
+		require.Equal(t, opt.ResourceRequirements.Gateway.Limits, opt.ResourceRequirements.Gateway.Requests)
+	}
+}
+
 func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 	type tt struct {
 		desc     string
@@ -108,6 +141,9 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS10",
 				Ciphers: []string{
+					"TLS_AES_128_GCM_SHA256",
+					"TLS_AES_256_GCM_SHA384",
+					"TLS_CHACHA20_POLY1305_SHA256",
 					"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
 					"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
 					"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
@@ -137,6 +173,9 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS12",
 				Ciphers: []string{
+					"TLS_AES_128_GCM_SHA256",
+					"TLS_AES_256_GCM_SHA384",
+					"TLS_CHACHA20_POLY1305_SHA256",
 					"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
 					"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
 					"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
@@ -153,9 +192,11 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			},
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS13",
-				// Go lib crypto doesn't allow ciphers to be configured for TLS 1.3
-				// (Read this and weep: https://github.com/golang/go/issues/29349)
-				Ciphers: []string{},
+				Ciphers: []string{
+					"TLS_AES_128_GCM_SHA256",
+					"TLS_AES_256_GCM_SHA384",
+					"TLS_CHACHA20_POLY1305_SHA256",
+				},
 			},
 		},
 		{
@@ -194,7 +235,6 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 	}
 
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -259,7 +299,6 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 	}
 
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -320,7 +359,6 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 	}
 
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -333,9 +371,9 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 
 			for _, service := range svcs {
 				if !tst.BuildOptions.Gates.OpenShift.ServingCertsService {
-					require.Equal(t, service.ObjectMeta.Annotations, map[string]string{})
+					require.Equal(t, service.Annotations, map[string]string{})
 				} else {
-					require.NotNil(t, service.ObjectMeta.Annotations["service.beta.openshift.io/serving-cert-secret-name"])
+					require.NotNil(t, service.Annotations["service.beta.openshift.io/serving-cert-secret-name"])
 				}
 			}
 		})
@@ -379,14 +417,14 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		case *appsv1.StatefulSet:
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		default:
 			continue
 		}
@@ -452,14 +490,14 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		case *appsv1.StatefulSet:
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		default:
 			continue
 		}
@@ -595,7 +633,6 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 	}
 
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -751,7 +788,6 @@ func TestBuildAll_WithFeatureGates_RestrictedPodSecurityStandard(t *testing.T) {
 	}
 
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -868,7 +904,6 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.desc, func(t *testing.T) {
 			t.Parallel()
 			err := ApplyDefaultSettings(&tst.BuildOptions)
@@ -922,7 +957,6 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.desc, func(t *testing.T) {
 			t.Parallel()
 			err := ApplyDefaultSettings(&tst.BuildOptions)

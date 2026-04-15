@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 
-	lokiutil "github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	lokiutil "github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var testTenantYamlExtractedData = `
@@ -47,7 +47,7 @@ func TestPipelineWithMissingKey_Tenant(t *testing.T) {
 	Debug = true
 
 	_ = processEntries(pl, newEntry(nil, nil, testTenantLogLineWithMissingKey, time.Now()))
-	expectedLog := "level=debug msg=\"failed to convert value to string\" err=\"Can't convert <nil> to string\" type=null"
+	expectedLog := "level=debug msg=\"failed to convert value to string\" err=\"can't convert <nil> to string\" type=null"
 	if !(strings.Contains(buf.String(), expectedLog)) {
 		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
 	}
@@ -126,8 +126,6 @@ func TestTenantStage_Validation(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			stage, err := newTenantStage(util_log.Logger, testData.config)
 
@@ -159,7 +157,7 @@ func TestTenantStage_Process(t *testing.T) {
 		},
 		"should not override the tenant if the source field is not defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
-			inputLabels:    model.LabelSet{client.ReservedLabelTenantID: "foo"},
+			inputLabels:    model.LabelSet{util.ReservedLabelTenantID: "foo"},
 			inputExtracted: map[string]interface{}{},
 			expectedTenant: lokiutil.StringRef("foo"),
 		},
@@ -177,7 +175,7 @@ func TestTenantStage_Process(t *testing.T) {
 		},
 		"should override the tenant if the source field is defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
-			inputLabels:    model.LabelSet{client.ReservedLabelTenantID: "foo"},
+			inputLabels:    model.LabelSet{util.ReservedLabelTenantID: "foo"},
 			inputExtracted: map[string]interface{}{"tenant_id": "bar"},
 			expectedTenant: lokiutil.StringRef("bar"),
 		},
@@ -195,15 +193,13 @@ func TestTenantStage_Process(t *testing.T) {
 		},
 		"should override the tenant with the configured static value": {
 			config:         &TenantConfig{Value: "bar"},
-			inputLabels:    model.LabelSet{client.ReservedLabelTenantID: "foo"},
+			inputLabels:    model.LabelSet{util.ReservedLabelTenantID: "foo"},
 			inputExtracted: map[string]interface{}{},
 			expectedTenant: lokiutil.StringRef("bar"),
 		},
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			stage, err := newTenantStage(util_log.Logger, testData.config)
 			require.NoError(t, err)
@@ -216,7 +212,7 @@ func TestTenantStage_Process(t *testing.T) {
 			assert.Equal(t, time.Unix(1, 1), out.Timestamp)
 			assert.Equal(t, "hello world", out.Line)
 
-			actualTenant, ok := out.Labels[client.ReservedLabelTenantID]
+			actualTenant, ok := out.Labels[util.ReservedLabelTenantID]
 			if testData.expectedTenant == nil {
 				assert.False(t, ok)
 			} else {

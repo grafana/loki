@@ -1,6 +1,7 @@
 package oss
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/hex"
@@ -279,6 +280,8 @@ type uploadCheckpoint struct {
 	ObjectKey string   // Key
 	UploadID  string   // Upload ID
 	Parts     []cpPart // All parts of the local file
+	CallbackVal string
+	CallbackBody *[]byte
 }
 
 type cpStat struct {
@@ -294,7 +297,19 @@ type cpPart struct {
 }
 
 // isValid checks if the uploaded data is valid---it's valid when the file is not updated and the checkpoint data is valid.
-func (cp uploadCheckpoint) isValid(filePath string) (bool, error) {
+func (cp uploadCheckpoint) isValid(filePath string,options []Option) (bool, error) {
+
+	callbackVal, _ := FindOption(options, HTTPHeaderOssCallback, "")
+	if callbackVal != "" && cp.CallbackVal != callbackVal {
+		return false, nil
+	}
+	callbackBody, _ := FindOption(options, responseBody, nil)
+	if callbackBody != nil{
+		body, _ := json.Marshal(callbackBody)
+		if bytes.Equal(*cp.CallbackBody, body) {
+			return false, nil
+		}
+	}
 	// Compare the CP's magic number and MD5.
 	cpb := cp
 	cpb.MD5 = ""
@@ -430,6 +445,13 @@ func prepare(cp *uploadCheckpoint, objectKey, filePath string, partSize int64, b
 	}
 	cp.FileStat.Size = st.Size()
 	cp.FileStat.LastModified = st.ModTime()
+	callbackVal, _ := FindOption(options, HTTPHeaderOssCallback, "")
+	cp.CallbackVal = callbackVal.(string)
+	callbackBody, _ := FindOption(options, responseBody, nil)
+	if callbackBody != nil  {
+		body, _ := json.Marshal(callbackBody)
+		cp.CallbackBody = &body
+	}
 	md, err := calcFileMD5(filePath)
 	if err != nil {
 		return err
@@ -462,8 +484,12 @@ func prepare(cp *uploadCheckpoint, objectKey, filePath string, partSize int64, b
 func complete(cp *uploadCheckpoint, bucket *Bucket, parts []UploadPart, cpFilePath string, options []Option) error {
 	imur := InitiateMultipartUploadResult{Bucket: bucket.BucketName,
 		Key: cp.ObjectKey, UploadID: cp.UploadID}
+
 	_, err := bucket.CompleteMultipartUpload(imur, parts, options...)
 	if err != nil {
+		if e, ok := err.(ServiceError);ok && (e.StatusCode == 203 || e.StatusCode == 404) {
+			os.Remove(cpFilePath)
+		}
 		return err
 	}
 	os.Remove(cpFilePath)
@@ -485,7 +511,7 @@ func (bucket Bucket) uploadFileWithCp(objectKey, filePath string, partSize int64
 	}
 
 	// Load error or the CP data is invalid.
-	valid, err := ucp.isValid(filePath)
+	valid, err := ucp.isValid(filePath,options)
 	if err != nil || !valid {
 		if err = prepare(&ucp, objectKey, filePath, partSize, &bucket, options); err != nil {
 			return err

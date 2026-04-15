@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 )
 
 type SeriesResponse struct {
@@ -32,7 +32,7 @@ func ParseSeriesQuery(r *http.Request) (*logproto.SeriesRequest, error) {
 	// empty label matcher, we treat the latter case here as if no `match` was supplied at all.
 	if len(deduped) == 1 {
 		matcher := deduped[0]
-		matcher = strings.Replace(matcher, " ", "", -1)
+		matcher = strings.ReplaceAll(matcher, " ", "")
 		if matcher == "{}" {
 			deduped = deduped[:0]
 		}
@@ -68,9 +68,10 @@ func ParseAndValidateSeriesQuery(r *http.Request) (*logproto.SeriesRequest, erro
 	if err != nil {
 		return nil, err
 	}
+
 	// ensure matchers are valid before fanning out to ingesters/store as well as returning valuable parsing errors
 	// instead of 500s
-	if _, err = logql.Match(req.Groups); err != nil {
+	if _, err = logql.MatchForSeriesRequest(req.Groups); err != nil {
 		return nil, err
 	}
 	return req, nil

@@ -1,0 +1,55 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed .Values.bloomBuilder.autoscaling.enabled }}
+{{- $apiVersion := include "loki.hpa.apiVersion" . -}}
+apiVersion: {{ $apiVersion }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "loki.bloomBuilderFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.bloomBuilderLabels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "loki.bloomBuilderFullname" . }}
+  minReplicas: {{ .Values.bloomBuilder.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.bloomBuilder.autoscaling.maxReplicas }}
+  metrics:
+  {{- with .Values.bloomBuilder.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        {{- if (eq $apiVersion "autoscaling/v2") }}
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+        {{- else }}
+        targetAverageUtilization: {{ . }}
+        {{- end }}
+  {{- end }}
+  {{- with .Values.bloomBuilder.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        {{- if (eq $apiVersion "autoscaling/v2") }}
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+        {{- else }}
+        targetAverageUtilization: {{ . }}
+        {{- end }}
+  {{- end }}
+  {{- with .Values.bloomBuilder.autoscaling.customMetrics }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if .Values.bloomBuilder.autoscaling.behavior.enabled }}
+  behavior:
+    {{- with .Values.bloomBuilder.autoscaling.behavior.scaleDown }}
+    scaleDown: {{ toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.bloomBuilder.autoscaling.behavior.scaleUp }}
+    scaleUp: {{ toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
+{{- end }}

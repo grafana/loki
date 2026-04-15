@@ -19,4 +19,9 @@ message KeyValuePair {
 
     // ID of the codec used to write the value
     string codec = 3;
+
+    // Is this Key marked for deletion?
+    bool deleted = 4;
+    // When was the key last updated?
+    int64 update_time_millis = 5;
 }

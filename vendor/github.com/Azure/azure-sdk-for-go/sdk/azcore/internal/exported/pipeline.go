@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -8,10 +5,7 @@ package exported
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
-
-	"golang.org/x/net/http/httpguts"
 )
 
 // Policy represents an extensibility point for the Pipeline that can mutate the specified
@@ -74,23 +68,6 @@ func NewPipeline(transport Transporter, policies ...Policy) Pipeline {
 func (p Pipeline) Do(req *Request) (*http.Response, error) {
 	if req == nil {
 		return nil, errors.New("request cannot be nil")
-	}
-	// check copied from Transport.roundTrip()
-	for k, vv := range req.Raw().Header {
-		if !httpguts.ValidHeaderFieldName(k) {
-			if req.Raw().Body != nil {
-				req.Raw().Body.Close()
-			}
-			return nil, fmt.Errorf("invalid header field name %q", k)
-		}
-		for _, v := range vv {
-			if !httpguts.ValidHeaderFieldValue(v) {
-				if req.Raw().Body != nil {
-					req.Raw().Body.Close()
-				}
-				return nil, fmt.Errorf("invalid header field value %q for key %v", v, k)
-			}
-		}
 	}
 	req.policies = p.policies
 	return req.Next()

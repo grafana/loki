@@ -1,4 +1,4 @@
-// Copyright 2015 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// nolint:revive // Many legitimately empty blocks in this file.
 package parser
 
 import (
@@ -19,13 +18,15 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/prometheus/prometheus/promql/parser/posrange"
 )
 
 // Item represents a token or text string returned from the scanner.
 type Item struct {
-	Typ ItemType // The type of this Item.
-	Pos Pos      // The starting position, in bytes, of this Item in the input string.
-	Val string   // The value of this Item.
+	Typ ItemType     // The type of this Item.
+	Pos posrange.Pos // The starting position, in bytes, of this Item in the input string.
+	Val string       // The value of this Item.
 }
 
 // String returns a descriptive string for the Item.
@@ -58,13 +59,19 @@ func (i Item) Pretty(int) string { return i.String() }
 func (i ItemType) IsOperator() bool { return i > operatorsStart && i < operatorsEnd }
 
 // IsAggregator returns true if the Item belongs to the aggregator functions.
-// Returns false otherwise
+// Returns false otherwise.
 func (i ItemType) IsAggregator() bool { return i > aggregatorsStart && i < aggregatorsEnd }
 
 // IsAggregatorWithParam returns true if the Item is an aggregator that takes a parameter.
-// Returns false otherwise
+// Returns false otherwise.
 func (i ItemType) IsAggregatorWithParam() bool {
-	return i == TOPK || i == BOTTOMK || i == COUNT_VALUES || i == QUANTILE
+	return i == TOPK || i == BOTTOMK || i == COUNT_VALUES || i == QUANTILE || i == LIMITK || i == LIMIT_RATIO
+}
+
+// IsExperimentalAggregator defines the experimental aggregation functions that are controlled
+// with EnableExperimentalFunctions.
+func (i ItemType) IsExperimentalAggregator() bool {
+	return i == LIMITK || i == LIMIT_RATIO
 }
 
 // IsKeyword returns true if the Item corresponds to a keyword.
@@ -117,25 +124,57 @@ var key = map[string]ItemType{
 	"bottomk":      BOTTOMK,
 	"count_values": COUNT_VALUES,
 	"quantile":     QUANTILE,
+	"limitk":       LIMITK,
+	"limit_ratio":  LIMIT_RATIO,
 
 	// Keywords.
 	"offset":      OFFSET,
+	"smoothed":    SMOOTHED,
+	"anchored":    ANCHORED,
 	"by":          BY,
 	"without":     WITHOUT,
 	"on":          ON,
 	"ignoring":    IGNORING,
 	"group_left":  GROUP_LEFT,
 	"group_right": GROUP_RIGHT,
+	"fill":        FILL,
+	"fill_left":   FILL_LEFT,
+	"fill_right":  FILL_RIGHT,
 	"bool":        BOOL,
 
 	// Preprocessors.
 	"start": START,
 	"end":   END,
+	"step":  STEP,
+	"range": RANGE,
+}
+
+var histogramDesc = map[string]ItemType{
+	"sum":                SUM_DESC,
+	"count":              COUNT_DESC,
+	"schema":             SCHEMA_DESC,
+	"offset":             OFFSET_DESC,
+	"n_offset":           NEGATIVE_OFFSET_DESC,
+	"buckets":            BUCKETS_DESC,
+	"n_buckets":          NEGATIVE_BUCKETS_DESC,
+	"z_bucket":           ZERO_BUCKET_DESC,
+	"z_bucket_w":         ZERO_BUCKET_WIDTH_DESC,
+	"custom_values":      CUSTOM_VALUES_DESC,
+	"counter_reset_hint": COUNTER_RESET_HINT_DESC,
+}
+
+var counterResetHints = map[string]ItemType{
+	"unknown":   UNKNOWN_COUNTER_RESET,
+	"reset":     COUNTER_RESET,
+	"not_reset": NOT_COUNTER_RESET,
+	"gauge":     GAUGE_TYPE,
 }
 
 // ItemTypeStr is the default string representations for common Items. It does not
 // imply that those are the only character sequences that can be lexed to such an Item.
 var ItemTypeStr = map[ItemType]string{
+	OPEN_HIST:     "{{",
+	CLOSE_HIST:    "}}",
 	LEFT_PAREN:    "(",
 	RIGHT_PAREN:   ")",
 	LEFT_BRACE:    "{",
@@ -150,20 +189,23 @@ var ItemTypeStr = map[ItemType]string{
 	TIMES:         "x",
 	SPACE:         "<space>",
 
-	SUB:       "-",
-	ADD:       "+",
-	MUL:       "*",
-	MOD:       "%",
-	DIV:       "/",
-	EQLC:      "==",
-	NEQ:       "!=",
-	LTE:       "<=",
-	LSS:       "<",
-	GTE:       ">=",
-	GTR:       ">",
-	EQL_REGEX: "=~",
-	NEQ_REGEX: "!~",
-	POW:       "^",
+	SUB:        "-",
+	ADD:        "+",
+	MUL:        "*",
+	MOD:        "%",
+	DIV:        "/",
+	EQLC:       "==",
+	NEQ:        "!=",
+	LTE:        "<=",
+	LSS:        "<",
+	GTE:        ">=",
+	GTR:        ">",
+	TRIM_UPPER: "</",
+	TRIM_LOWER: ">/",
+	EQL_REGEX:  "=~",
+	NEQ_REGEX:  "!~",
+	POW:        "^",
+	AT:         "@",
 }
 
 func init() {
@@ -220,30 +262,38 @@ const eof = -1
 // stateFn represents the state of the scanner as a function that returns the next state.
 type stateFn func(*Lexer) stateFn
 
-// Pos is the position in a string.
-// Negative numbers indicate undefined positions.
-type Pos int
+type histogramState int
+
+const (
+	histogramStateNone histogramState = iota
+	histogramStateOpen
+	histogramStateMul
+	histogramStateAdd
+	histogramStateSub
+)
 
 // Lexer holds the state of the scanner.
 type Lexer struct {
-	input       string  // The string being scanned.
-	state       stateFn // The next lexing function to enter.
-	pos         Pos     // Current position in the input.
-	start       Pos     // Start position of this Item.
-	width       Pos     // Width of last rune read from input.
-	lastPos     Pos     // Position of most recent Item returned by NextItem.
-	itemp       *Item   // Pointer to where the next scanned item should be placed.
-	scannedItem bool    // Set to true every time an item is scanned.
+	input       string       // The string being scanned.
+	state       stateFn      // The next lexing function to enter.
+	pos         posrange.Pos // Current position in the input.
+	start       posrange.Pos // Start position of this Item.
+	width       posrange.Pos // Width of last rune read from input.
+	lastPos     posrange.Pos // Position of most recent Item returned by NextItem.
+	itemp       *Item        // Pointer to where the next scanned item should be placed.
+	scannedItem bool         // Set to true every time an item is scanned.
 
 	parenDepth  int  // Nesting depth of ( ) exprs.
 	braceOpen   bool // Whether a { is opened.
 	bracketOpen bool // Whether a [ is opened.
 	gotColon    bool // Whether we got a ':' after [ was opened.
+	gotDuration bool // Whether we got a duration after [ was opened.
 	stringOpen  rune // Quote rune of the string currently being read.
 
-	// seriesDesc is set when a series description for the testing
-	// language is lexed.
-	seriesDesc bool
+	// series description variables for internal PromQL testing framework as well as in promtool rules unit tests.
+	// see https://prometheus.io/docs/prometheus/latest/configuration/unit_testing_rules/#series
+	seriesDesc     bool           // Whether we are lexing a series description.
+	histogramState histogramState // Determines whether or not inside of a histogram description.
 }
 
 // next returns the next rune in the input.
@@ -253,7 +303,7 @@ func (l *Lexer) next() rune {
 		return eof
 	}
 	r, w := utf8.DecodeRuneInString(l.input[l.pos:])
-	l.width = Pos(w)
+	l.width = posrange.Pos(w)
 	l.pos += l.width
 	return r
 }
@@ -291,6 +341,11 @@ func (l *Lexer) accept(valid string) bool {
 	return false
 }
 
+// is peeks and returns true if the next rune is contained in the provided string.
+func (l *Lexer) is(valid string) bool {
+	return strings.ContainsRune(valid, l.peek())
+}
+
 // acceptRun consumes a run of runes from the valid set.
 func (l *Lexer) acceptRun(valid string) {
 	for strings.ContainsRune(valid, l.next()) {
@@ -301,7 +356,7 @@ func (l *Lexer) acceptRun(valid string) {
 
 // errorf returns an error token and terminates the scan by passing
 // back a nil pointer that will be the next state, terminating l.NextItem.
-func (l *Lexer) errorf(format string, args ...interface{}) stateFn {
+func (l *Lexer) errorf(format string, args ...any) stateFn {
 	*l.itemp = Item{ERROR, l.start, fmt.Sprintf(format, args...)}
 	l.scannedItem = true
 
@@ -338,6 +393,9 @@ const lineComment = "#"
 
 // lexStatements is the top-level state for lexing.
 func lexStatements(l *Lexer) stateFn {
+	if l.histogramState != histogramStateNone {
+		return lexHistogram
+	}
 	if l.braceOpen {
 		return lexInsideBraces
 	}
@@ -382,15 +440,17 @@ func lexStatements(l *Lexer) stateFn {
 			l.emit(EQL)
 		}
 	case r == '!':
-		if t := l.next(); t == '=' {
-			l.emit(NEQ)
-		} else {
+		if t := l.next(); t != '=' {
 			return l.errorf("unexpected character after '!': %q", t)
 		}
+		l.emit(NEQ)
 	case r == '<':
 		if t := l.peek(); t == '=' {
 			l.next()
 			l.emit(LTE)
+		} else if t := l.peek(); t == '/' {
+			l.next()
+			l.emit(TRIM_UPPER)
 		} else {
 			l.emit(LSS)
 		}
@@ -398,6 +458,9 @@ func lexStatements(l *Lexer) stateFn {
 		if t := l.peek(); t == '=' {
 			l.next()
 			l.emit(GTE)
+		} else if t := l.peek(); t == '/' {
+			l.next()
+			l.emit(TRIM_LOWER)
 		} else {
 			l.emit(GTR)
 		}
@@ -415,11 +478,20 @@ func lexStatements(l *Lexer) stateFn {
 			l.backup()
 			return lexKeywordOrIdentifier
 		}
-		if l.gotColon {
-			return l.errorf("unexpected colon %q", r)
+		switch r {
+		case ':':
+			if l.gotColon {
+				return l.errorf("unexpected colon %q", r)
+			}
+			l.emit(COLON)
+			l.gotColon = true
+			return lexStatements
+		case 's', 'S', 'm', 'M':
+			if l.scanDurationKeyword() {
+				return lexStatements
+			}
 		}
-		l.emit(COLON)
-		l.gotColon = true
+		return l.errorf("unexpected character: %q, expected %q", r, ':')
 	case r == '(':
 		l.emit(LEFT_PAREN)
 		l.parenDepth++
@@ -445,7 +517,7 @@ func lexStatements(l *Lexer) stateFn {
 			skipSpaces(l)
 		}
 		l.bracketOpen = true
-		return lexDuration
+		return lexDurationExpr
 	case r == ']':
 		if !l.bracketOpen {
 			return l.errorf("unexpected right bracket %q", r)
@@ -458,6 +530,142 @@ func lexStatements(l *Lexer) stateFn {
 		return l.errorf("unexpected character: %q", r)
 	}
 	return lexStatements
+}
+
+func lexHistogram(l *Lexer) stateFn {
+	switch l.histogramState {
+	case histogramStateMul:
+		l.histogramState = histogramStateNone
+		l.next()
+		l.emit(TIMES)
+		return lexValueSequence
+	case histogramStateAdd:
+		l.histogramState = histogramStateNone
+		l.next()
+		l.emit(ADD)
+		return lexValueSequence
+	case histogramStateSub:
+		l.histogramState = histogramStateNone
+		l.next()
+		l.emit(SUB)
+		return lexValueSequence
+	}
+
+	if l.bracketOpen {
+		return lexBuckets
+	}
+	switch r := l.next(); {
+	case isSpace(r):
+		l.emit(SPACE)
+		return lexSpace
+	case isAlpha(r):
+		l.backup()
+		return lexHistogramDescriptor
+	case r == ':':
+		l.emit(COLON)
+		return lexHistogram
+	case r == '-':
+		l.emit(SUB)
+		return lexHistogram
+	case r == 'x':
+		l.emit(TIMES)
+		return lexNumber
+	case isDigit(r):
+		l.backup()
+		return lexNumber
+	case r == '[':
+		l.bracketOpen = true
+		l.gotColon = false
+		l.gotDuration = false
+		l.emit(LEFT_BRACKET)
+		return lexBuckets
+	case r == '}' && l.peek() == '}':
+		l.next()
+		l.emit(CLOSE_HIST)
+		switch l.peek() {
+		case 'x':
+			l.histogramState = histogramStateMul
+			return lexHistogram
+		case '+':
+			l.histogramState = histogramStateAdd
+			return lexHistogram
+		case '-':
+			l.histogramState = histogramStateSub
+			return lexHistogram
+		default:
+			l.histogramState = histogramStateNone
+			return lexValueSequence
+		}
+	default:
+		return l.errorf("histogram description incomplete unexpected: %q", r)
+	}
+}
+
+func lexHistogramDescriptor(l *Lexer) stateFn {
+Loop:
+	for {
+		switch r := l.next(); {
+		case isAlpha(r):
+			// absorb.
+		default:
+			l.backup()
+
+			word := l.input[l.start:l.pos]
+			if desc, ok := histogramDesc[strings.ToLower(word)]; ok {
+				if l.peek() == ':' {
+					l.emit(desc)
+					return lexHistogram
+				}
+				l.errorf("missing `:` for histogram descriptor")
+				break Loop
+			}
+			// Current word is Inf or NaN.
+			if desc, ok := key[strings.ToLower(word)]; ok {
+				if desc == NUMBER {
+					l.emit(desc)
+					return lexHistogram
+				}
+			}
+			if desc, ok := counterResetHints[strings.ToLower(word)]; ok {
+				l.emit(desc)
+				return lexHistogram
+			}
+
+			l.errorf("bad histogram descriptor found: %q", word)
+			break Loop
+		}
+	}
+	return lexStatements
+}
+
+func lexBuckets(l *Lexer) stateFn {
+	switch r := l.next(); {
+	case isSpace(r):
+		l.emit(SPACE)
+		return lexSpace
+	case r == '-':
+		l.emit(SUB)
+		return lexNumber
+	case isDigit(r):
+		l.backup()
+		return lexNumber
+	case r == ']':
+		l.bracketOpen = false
+		l.emit(RIGHT_BRACKET)
+		return lexHistogram
+	case isAlpha(r):
+		// Current word is Inf or NaN.
+		word := l.input[l.start:l.pos]
+		if desc, ok := key[strings.ToLower(word)]; ok {
+			if desc == NUMBER {
+				l.emit(desc)
+				return lexStatements
+			}
+		}
+		return lexBuckets
+	default:
+		return l.errorf("invalid character in buckets description: %q", r)
+	}
 }
 
 // lexInsideBraces scans the inside of a vector selector. Keywords are ignored and
@@ -491,10 +699,10 @@ func lexInsideBraces(l *Lexer) stateFn {
 		l.backup()
 		l.emit(EQL)
 	case r == '!':
-		switch nr := l.next(); {
-		case nr == '~':
+		switch nr := l.next(); nr {
+		case '~':
 			l.emit(NEQ_REGEX)
-		case nr == '=':
+		case '=':
 			l.emit(NEQ)
 		default:
 			return l.errorf("unexpected character after '!' inside braces: %q", nr)
@@ -517,9 +725,20 @@ func lexInsideBraces(l *Lexer) stateFn {
 
 // lexValueSequence scans a value sequence of a series description.
 func lexValueSequence(l *Lexer) stateFn {
+	if l.histogramState != histogramStateNone {
+		return lexHistogram
+	}
 	switch r := l.next(); {
 	case r == eof:
 		return lexStatements
+	case r == '{' && l.peek() == '{':
+		if l.histogramState != histogramStateNone {
+			return l.errorf("unexpected histogram opening {{")
+		}
+		l.histogramState = histogramStateOpen
+		l.next()
+		l.emit(OPEN_HIST)
+		return lexHistogram
 	case isSpace(r):
 		l.emit(SPACE)
 		lexSpace(l)
@@ -554,23 +773,23 @@ func lexValueSequence(l *Lexer) stateFn {
 // was only modified to integrate with our lexer.
 func lexEscape(l *Lexer) stateFn {
 	var n int
-	var base, max uint32
+	var base, maxVal uint32
 
 	ch := l.next()
 	switch ch {
 	case 'a', 'b', 'f', 'n', 'r', 't', 'v', '\\', l.stringOpen:
 		return lexString
 	case '0', '1', '2', '3', '4', '5', '6', '7':
-		n, base, max = 3, 8, 255
+		n, base, maxVal = 3, 8, 255
 	case 'x':
 		ch = l.next()
-		n, base, max = 2, 16, 255
+		n, base, maxVal = 2, 16, 255
 	case 'u':
 		ch = l.next()
-		n, base, max = 4, 16, unicode.MaxRune
+		n, base, maxVal = 4, 16, unicode.MaxRune
 	case 'U':
 		ch = l.next()
-		n, base, max = 8, 16, unicode.MaxRune
+		n, base, maxVal = 8, 16, unicode.MaxRune
 	case eof:
 		l.errorf("escape sequence not terminated")
 		return lexString
@@ -599,7 +818,7 @@ func lexEscape(l *Lexer) stateFn {
 		}
 	}
 
-	if x > max || 0xD800 <= x && x < 0xE000 {
+	if x > maxVal || 0xD800 <= x && x < 0xE000 {
 		l.errorf("escape sequence is an invalid Unicode code point")
 	}
 	return lexString
@@ -677,24 +896,12 @@ func lexSpace(l *Lexer) stateFn {
 
 // lexLineComment scans a line comment. Left comment marker is known to be present.
 func lexLineComment(l *Lexer) stateFn {
-	l.pos += Pos(len(lineComment))
+	l.pos += posrange.Pos(len(lineComment))
 	for r := l.next(); !isEndOfLine(r) && r != eof; {
 		r = l.next()
 	}
 	l.backup()
 	l.emit(COMMENT)
-	return lexStatements
-}
-
-func lexDuration(l *Lexer) stateFn {
-	if l.scanNumber() {
-		return l.errorf("missing unit character in duration")
-	}
-	if !acceptRemainingDuration(l) {
-		return l.errorf("bad duration syntax: %q", l.input[l.start:l.pos])
-	}
-	l.backup()
-	l.emit(DURATION)
 	return lexStatements
 }
 
@@ -705,6 +912,35 @@ func lexNumber(l *Lexer) stateFn {
 	}
 	l.emit(NUMBER)
 	return lexStatements
+}
+
+func (l *Lexer) scanDurationKeyword() bool {
+	for {
+		switch r := l.next(); {
+		case isAlpha(r):
+			// absorb.
+		default:
+			l.backup()
+			word := l.input[l.start:l.pos]
+			kw := strings.ToLower(word)
+			switch kw {
+			case "step":
+				l.emit(STEP)
+				return true
+			case "range":
+				l.emit(RANGE)
+				return true
+			case "min":
+				l.emit(MIN)
+				return true
+			case "max":
+				l.emit(MAX)
+				return true
+			default:
+				return false
+			}
+		}
+	}
 }
 
 // lexNumberOrDuration scans a number or a duration Item.
@@ -749,18 +985,81 @@ func acceptRemainingDuration(l *Lexer) bool {
 // scanNumber scans numbers of different formats. The scanned Item is
 // not necessarily a valid number. This case is caught by the parser.
 func (l *Lexer) scanNumber() bool {
-	digits := "0123456789"
+	initialPos := l.pos
+	// Modify the digit pattern if the number is hexadecimal.
+	digitPattern := "0123456789"
 	// Disallow hexadecimal in series descriptions as the syntax is ambiguous.
-	if !l.seriesDesc && l.accept("0") && l.accept("xX") {
-		digits = "0123456789abcdefABCDEF"
+	if !l.seriesDesc &&
+		l.accept("0") && l.accept("xX") {
+		l.accept("_") // eg., 0X_1FFFP-16 == 0.1249847412109375
+		digitPattern = "0123456789abcdefABCDEF"
 	}
-	l.acceptRun(digits)
-	if l.accept(".") {
-		l.acceptRun(digits)
+	const (
+		// Define dot, exponent, and underscore patterns.
+		dotPattern        = "."
+		exponentPattern   = "eE"
+		underscorePattern = "_"
+		// Anti-patterns are rune sets that cannot follow their respective rune.
+		dotAntiPattern        = "_."
+		exponentAntiPattern   = "._eE" // and EOL.
+		underscoreAntiPattern = "._eE" // and EOL.
+	)
+	// All numbers follow the prefix: [.][d][d._eE]*
+	l.accept(dotPattern)
+	l.accept(digitPattern)
+	// [d._eE]* hereon.
+	dotConsumed := false
+	exponentConsumed := false
+	for l.is(digitPattern + dotPattern + underscorePattern + exponentPattern) {
+		// "." cannot repeat.
+		if l.is(dotPattern) {
+			if dotConsumed {
+				l.accept(dotPattern)
+				return false
+			}
+		}
+		// "eE" cannot repeat.
+		if l.is(exponentPattern) {
+			if exponentConsumed {
+				l.accept(exponentPattern)
+				return false
+			}
+		}
+		// Handle dots.
+		if l.accept(dotPattern) {
+			dotConsumed = true
+			if l.accept(dotAntiPattern) {
+				return false
+			}
+			// Fractional hexadecimal literals are not allowed.
+			if len(digitPattern) > 10 /* 0x[\da-fA-F].[\d]+p[\d] */ {
+				return false
+			}
+			continue
+		}
+		// Handle exponents.
+		if l.accept(exponentPattern) {
+			exponentConsumed = true
+			l.accept("+-")
+			if l.accept(exponentAntiPattern) || l.peek() == eof {
+				return false
+			}
+			continue
+		}
+		// Handle underscores.
+		if l.accept(underscorePattern) {
+			if l.accept(underscoreAntiPattern) || l.peek() == eof {
+				return false
+			}
+
+			continue
+		}
+		// Handle digits at the end since we already consumed before this loop.
+		l.acceptRun(digitPattern)
 	}
-	if l.accept("eE") {
-		l.accept("+-")
-		l.acceptRun("0123456789")
+	// Empty string is not a valid number.
+	if l.pos == initialPos {
+		return false
 	}
 	// Next thing must not be alphanumeric unless it's the times token
 	// for series repetitions.
@@ -795,6 +1094,17 @@ Loop:
 			word := l.input[l.start:l.pos]
 			switch kw, ok := key[strings.ToLower(word)]; {
 			case ok:
+				// For fill/fill_left/fill_right, only treat as keyword if followed by '('
+				// This allows using these as metric names (e.g., "fill + fill").
+				// This could be done for other keywords as well, but for the new fill
+				// modifiers this is especially important so we don't break any existing
+				// queries.
+				if kw == FILL || kw == FILL_LEFT || kw == FILL_RIGHT {
+					if !l.peekFollowedByLeftParen() {
+						l.emit(IDENTIFIER)
+						break Loop
+					}
+				}
 				l.emit(kw)
 			case !strings.Contains(word, ":"):
 				l.emit(IDENTIFIER)
@@ -808,6 +1118,23 @@ Loop:
 		return lexValueSequence
 	}
 	return lexStatements
+}
+
+// peekFollowedByLeftParen checks if the next non-whitespace character is '('.
+// This is used for context-sensitive keywords like fill/fill_left/fill_right
+// that should only be treated as keywords when followed by '('.
+func (l *Lexer) peekFollowedByLeftParen() bool {
+	pos := l.pos
+	for {
+		if int(pos) >= len(l.input) {
+			return false
+		}
+		r, w := utf8.DecodeRuneInString(l.input[pos:])
+		if !isSpace(r) {
+			return r == '('
+		}
+		pos += posrange.Pos(w)
+	}
 }
 
 func isSpace(r rune) bool {
@@ -836,15 +1163,102 @@ func isAlpha(r rune) bool {
 	return r == '_' || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z')
 }
 
-// isLabel reports whether the string can be used as label.
-func isLabel(s string) bool {
-	if len(s) == 0 || !isAlpha(rune(s[0])) {
-		return false
+// lexDurationExpr scans arithmetic expressions within brackets for duration expressions.
+func lexDurationExpr(l *Lexer) stateFn {
+	switch r := l.next(); {
+	case r == eof:
+		return l.errorf("unexpected end of input in duration expression")
+	case r == ']':
+		l.emit(RIGHT_BRACKET)
+		l.bracketOpen = false
+		l.gotColon = false
+		return lexStatements
+	case r == ':':
+		l.emit(COLON)
+		if !l.gotDuration {
+			return l.errorf("unexpected colon before duration in duration expression")
+		}
+		if l.gotColon {
+			return l.errorf("unexpected repeated colon in duration expression")
+		}
+		l.gotColon = true
+		return lexDurationExpr
+	case r == '(':
+		l.emit(LEFT_PAREN)
+		l.parenDepth++
+		return lexDurationExpr
+	case r == ')':
+		l.emit(RIGHT_PAREN)
+		l.parenDepth--
+		if l.parenDepth < 0 {
+			return l.errorf("unexpected right parenthesis %q", r)
+		}
+		return lexDurationExpr
+	case isSpace(r):
+		skipSpaces(l)
+		return lexDurationExpr
+	case r == '+':
+		l.emit(ADD)
+		return lexDurationExpr
+	case r == '-':
+		l.emit(SUB)
+		return lexDurationExpr
+	case r == '*':
+		l.emit(MUL)
+		return lexDurationExpr
+	case r == '/':
+		l.emit(DIV)
+		return lexDurationExpr
+	case r == '%':
+		l.emit(MOD)
+		return lexDurationExpr
+	case r == '^':
+		l.emit(POW)
+		return lexDurationExpr
+	case r == ',':
+		l.emit(COMMA)
+		return lexDurationExpr
+	case r == 's' || r == 'S' || r == 'm' || r == 'M' || r == 'r' || r == 'R':
+		if l.scanDurationKeyword() {
+			return lexDurationExpr
+		}
+		return l.errorf("unexpected character in duration expression: %q", r)
+	case isDigit(r) || (r == '.' && isDigit(l.peek())):
+		l.backup()
+		l.gotDuration = true
+		return lexNumberOrDuration
+	default:
+		return l.errorf("unexpected character in duration expression: %q", r)
 	}
-	for _, c := range s[1:] {
-		if !isAlphaNumeric(c) {
-			return false
+}
+
+// findPrevRightParen finds the previous right parenthesis.
+// Use in case when the parser had to read ahead to the find the next right
+// parenthesis to decide whether to continue and lost track of the previous right
+// parenthesis position.
+// Only use when outside string literals as those can have runes made up of
+// multiple bytes, which would break the position calculation.
+// Falls back to the input start position on any problem.
+// https://github.com/prometheus/prometheus/issues/16053
+func (l *Lexer) findPrevRightParen(fallbackPos posrange.Pos) posrange.Pos {
+	// Early return on:
+	// - invalid fallback position,
+	// - not enough space for second right parenthesis,
+	// - last read position is after the end, since then we stopped due to the
+	//   end of the input, not a parenthesis, or if last position doesn't hold
+	//   right parenthesis,
+	// - last position doesn't hold right parenthesis.
+	if fallbackPos <= 0 || fallbackPos > posrange.Pos(len(l.input)) || l.lastPos <= 0 || l.lastPos >= posrange.Pos(len(l.input)) || l.input[l.lastPos] != ')' {
+		return fallbackPos
+	}
+	for i := l.lastPos - 1; i > 0; i-- {
+		switch {
+		case l.input[i] == ')':
+			return i + 1
+		case isSpace(rune(l.input[i])):
+		default:
+			return fallbackPos
 		}
 	}
-	return true
+	return fallbackPos
 }

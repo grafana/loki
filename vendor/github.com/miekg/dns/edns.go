@@ -24,9 +24,12 @@ const (
 	EDNS0TCPKEEPALIVE = 0xb     // EDNS0 tcp keep alive (See RFC 7828)
 	EDNS0PADDING      = 0xc     // EDNS0 padding (See RFC 7830)
 	EDNS0EDE          = 0xf     // EDNS0 extended DNS errors (See RFC 8914)
+	EDNS0REPORTING    = 0x12    // EDNS0 reporting (See RFC 9567)
+	EDNS0ZONEVERSION  = 0x13    // EDNS0 Zone Version (See RFC 9660)
 	EDNS0LOCALSTART   = 0xFDE9  // Beginning of range reserved for local/experimental use (See RFC 6891)
 	EDNS0LOCALEND     = 0xFFFE  // End of range reserved for local/experimental use (See RFC 6891)
 	_DO               = 1 << 15 // DNSSEC OK
+	_CO               = 1 << 14 // Compact Answers OK
 )
 
 // makeDataOpt is used to unpack the EDNS0 option(s) from a message.
@@ -58,7 +61,11 @@ func makeDataOpt(code uint16) EDNS0 {
 	case EDNS0EDE:
 		return new(EDNS0_EDE)
 	case EDNS0ESU:
-		return &EDNS0_ESU{Code: EDNS0ESU}
+		return new(EDNS0_ESU)
+	case EDNS0REPORTING:
+		return new(EDNS0_REPORTING)
+	case EDNS0ZONEVERSION:
+		return new(EDNS0_ZONEVERSION)
 	default:
 		e := new(EDNS0_LOCAL)
 		e.Code = code
@@ -66,8 +73,7 @@ func makeDataOpt(code uint16) EDNS0 {
 	}
 }
 
-// OPT is the EDNS0 RR appended to messages to convey extra (meta) information.
-// See RFC 6891.
+// OPT is the EDNS0 RR appended to messages to convey extra (meta) information. See RFC 6891.
 type OPT struct {
 	Hdr    RR_Header
 	Option []EDNS0 `dns:"opt"`
@@ -75,13 +81,16 @@ type OPT struct {
 
 func (rr *OPT) String() string {
 	s := "\n;; OPT PSEUDOSECTION:\n; EDNS: version " + strconv.Itoa(int(rr.Version())) + "; "
+	s += "flags:"
 	if rr.Do() {
-		s += "flags: do; "
-	} else {
-		s += "flags:; "
+		s += " do"
 	}
-	if rr.Hdr.Ttl&0x7FFF != 0 {
-		s += fmt.Sprintf("MBZ: 0x%04x, ", rr.Hdr.Ttl&0x7FFF)
+	if rr.Co() {
+		s += " co"
+	}
+	s += "; "
+	if z := rr.Z(); z != 0 {
+		s += fmt.Sprintf("MBZ: 0x%04x, ", z)
 	}
 	s += "udp: " + strconv.Itoa(int(rr.UDPSize()))
 
@@ -123,6 +132,10 @@ func (rr *OPT) String() string {
 			s += "\n; EDE: " + o.String()
 		case *EDNS0_ESU:
 			s += "\n; ESU: " + o.String()
+		case *EDNS0_REPORTING:
+			s += "\n; REPORT-CHANNEL: " + o.String()
+		case *EDNS0_ZONEVERSION:
+			s += "\n; ZONEVERSION: " + o.String()
 		}
 	}
 	return s
@@ -143,8 +156,6 @@ func (*OPT) parse(c *zlexer, origin string) *ParseError {
 }
 
 func (rr *OPT) isDuplicate(r2 RR) bool { return false }
-
-// return the old value -> delete SetVersion?
 
 // Version returns the EDNS version used. Only zero is defined.
 func (rr *OPT) Version() uint8 {
@@ -185,7 +196,7 @@ func (rr *OPT) Do() bool {
 
 // SetDo sets the DO (DNSSEC OK) bit.
 // If we pass an argument, set the DO bit to that value.
-// It is possible to pass 2 or more arguments. Any arguments after the 1st is silently ignored.
+// It is possible to pass 2 or more arguments, but they will be ignored.
 func (rr *OPT) SetDo(do ...bool) {
 	if len(do) == 1 {
 		if do[0] {
@@ -198,14 +209,34 @@ func (rr *OPT) SetDo(do ...bool) {
 	}
 }
 
-// Z returns the Z part of the OPT RR as a uint16 with only the 15 least significant bits used.
-func (rr *OPT) Z() uint16 {
-	return uint16(rr.Hdr.Ttl & 0x7FFF)
+// Co returns the value of the CO (Compact Answers OK) bit.
+func (rr *OPT) Co() bool {
+	return rr.Hdr.Ttl&_CO == _CO
 }
 
-// SetZ sets the Z part of the OPT RR, note only the 15 least significant bits of z are used.
+// SetCo sets the CO (Compact Answers OK) bit.
+// If we pass an argument, set the CO bit to that value.
+// It is possible to pass 2 or more arguments, but they will be ignored.
+func (rr *OPT) SetCo(co ...bool) {
+	if len(co) == 1 {
+		if co[0] {
+			rr.Hdr.Ttl |= _CO
+		} else {
+			rr.Hdr.Ttl &^= _CO
+		}
+	} else {
+		rr.Hdr.Ttl |= _CO
+	}
+}
+
+// Z returns the Z part of the OPT RR as a uint16 with only the 14 least significant bits used.
+func (rr *OPT) Z() uint16 {
+	return uint16(rr.Hdr.Ttl & 0x3FFF)
+}
+
+// SetZ sets the Z part of the OPT RR, note only the 14 least significant bits of z are used.
 func (rr *OPT) SetZ(z uint16) {
-	rr.Hdr.Ttl = rr.Hdr.Ttl&^0x7FFF | uint32(z&0x7FFF)
+	rr.Hdr.Ttl = rr.Hdr.Ttl&^0x3FFF | uint32(z&0x3FFF)
 }
 
 // EDNS0 defines an EDNS0 Option. An OPT RR can have multiple options appended to it.
@@ -236,8 +267,8 @@ type EDNS0 interface {
 //	e.Nsid = "AA"
 //	o.Option = append(o.Option, e)
 type EDNS0_NSID struct {
-	Code uint16 // Always EDNS0NSID
-	Nsid string // This string needs to be hex encoded
+	Code uint16 // always EDNS0NSID
+	Nsid string // string needs to be hex encoded
 }
 
 func (e *EDNS0_NSID) pack() ([]byte, error) {
@@ -275,7 +306,7 @@ func (e *EDNS0_NSID) copy() EDNS0           { return &EDNS0_NSID{e.Code, e.Nsid}
 // When packing it will apply SourceNetmask. If you need more advanced logic,
 // patches welcome and good luck.
 type EDNS0_SUBNET struct {
-	Code          uint16 // Always EDNS0SUBNET
+	Code          uint16 // always EDNS0SUBNET
 	Family        uint16 // 1 for IP, 2 for IP6
 	SourceNetmask uint8
 	SourceScope   uint8
@@ -286,41 +317,54 @@ type EDNS0_SUBNET struct {
 func (e *EDNS0_SUBNET) Option() uint16 { return EDNS0SUBNET }
 
 func (e *EDNS0_SUBNET) pack() ([]byte, error) {
-	b := make([]byte, 4)
-	binary.BigEndian.PutUint16(b[0:], e.Family)
-	b[2] = e.SourceNetmask
-	b[3] = e.SourceScope
 	switch e.Family {
 	case 0:
 		// "dig" sets AddressFamily to 0 if SourceNetmask is also 0
 		// We might don't need to complain either
 		if e.SourceNetmask != 0 {
-			return nil, errors.New("dns: bad address family")
+			return nil, errors.New("bad address family")
 		}
+		b := make([]byte, 4)
+		b[3] = e.SourceScope
+		return b, nil
 	case 1:
 		if e.SourceNetmask > net.IPv4len*8 {
-			return nil, errors.New("dns: bad netmask")
+			return nil, errors.New("bad netmask")
 		}
-		if len(e.Address.To4()) != net.IPv4len {
-			return nil, errors.New("dns: bad address")
+		ip4 := e.Address.To4()
+		if len(ip4) != net.IPv4len {
+			return nil, errors.New("bad address")
 		}
-		ip := e.Address.To4().Mask(net.CIDRMask(int(e.SourceNetmask), net.IPv4len*8))
 		needLength := (e.SourceNetmask + 8 - 1) / 8 // division rounding up
-		b = append(b, ip[:needLength]...)
+		b := make([]byte, 4+needLength)
+		binary.BigEndian.PutUint16(b[0:], e.Family)
+		b[2] = e.SourceNetmask
+		b[3] = e.SourceScope
+		if needLength > 0 {
+			ip := ip4.Mask(net.CIDRMask(int(e.SourceNetmask), net.IPv4len*8))
+			copy(b[4:], ip[:needLength])
+		}
+		return b, nil
 	case 2:
 		if e.SourceNetmask > net.IPv6len*8 {
-			return nil, errors.New("dns: bad netmask")
+			return nil, errors.New("bad netmask")
 		}
 		if len(e.Address) != net.IPv6len {
-			return nil, errors.New("dns: bad address")
+			return nil, errors.New("bad address")
 		}
-		ip := e.Address.Mask(net.CIDRMask(int(e.SourceNetmask), net.IPv6len*8))
 		needLength := (e.SourceNetmask + 8 - 1) / 8 // division rounding up
-		b = append(b, ip[:needLength]...)
+		b := make([]byte, 4+needLength)
+		binary.BigEndian.PutUint16(b[0:], e.Family)
+		b[2] = e.SourceNetmask
+		b[3] = e.SourceScope
+		if needLength > 0 {
+			ip := e.Address.Mask(net.CIDRMask(int(e.SourceNetmask), net.IPv6len*8))
+			copy(b[4:], ip[:needLength])
+		}
+		return b, nil
 	default:
-		return nil, errors.New("dns: bad address family")
+		return nil, errors.New("bad address family")
 	}
-	return b, nil
 }
 
 func (e *EDNS0_SUBNET) unpack(b []byte) error {
@@ -335,25 +379,25 @@ func (e *EDNS0_SUBNET) unpack(b []byte) error {
 		// "dig" sets AddressFamily to 0 if SourceNetmask is also 0
 		// It's okay to accept such a packet
 		if e.SourceNetmask != 0 {
-			return errors.New("dns: bad address family")
+			return errors.New("bad address family")
 		}
 		e.Address = net.IPv4(0, 0, 0, 0)
 	case 1:
 		if e.SourceNetmask > net.IPv4len*8 || e.SourceScope > net.IPv4len*8 {
-			return errors.New("dns: bad netmask")
+			return errors.New("bad netmask")
 		}
 		addr := make(net.IP, net.IPv4len)
 		copy(addr, b[4:])
 		e.Address = addr.To16()
 	case 2:
 		if e.SourceNetmask > net.IPv6len*8 || e.SourceScope > net.IPv6len*8 {
-			return errors.New("dns: bad netmask")
+			return errors.New("bad netmask")
 		}
 		addr := make(net.IP, net.IPv6len)
 		copy(addr, b[4:])
 		e.Address = addr
 	default:
-		return errors.New("dns: bad address family")
+		return errors.New("bad address family")
 	}
 	return nil
 }
@@ -399,8 +443,8 @@ func (e *EDNS0_SUBNET) copy() EDNS0 {
 //
 // There is no guarantee that the Cookie string has a specific length.
 type EDNS0_COOKIE struct {
-	Code   uint16 // Always EDNS0COOKIE
-	Cookie string // Hex-encoded cookie data
+	Code   uint16 // always EDNS0COOKIE
+	Cookie string // hex encoded cookie data
 }
 
 func (e *EDNS0_COOKIE) pack() ([]byte, error) {
@@ -430,7 +474,7 @@ func (e *EDNS0_COOKIE) copy() EDNS0           { return &EDNS0_COOKIE{e.Code, e.C
 //	e.Lease = 120 // in seconds
 //	o.Option = append(o.Option, e)
 type EDNS0_UL struct {
-	Code     uint16 // Always EDNS0UL
+	Code     uint16 // always EDNS0UL
 	Lease    uint32
 	KeyLease uint32
 }
@@ -469,7 +513,7 @@ func (e *EDNS0_UL) unpack(b []byte) error {
 // EDNS0_LLQ stands for Long Lived Queries: http://tools.ietf.org/html/draft-sekar-dns-llq-01
 // Implemented for completeness, as the EDNS0 type code is assigned.
 type EDNS0_LLQ struct {
-	Code      uint16 // Always EDNS0LLQ
+	Code      uint16 // always EDNS0LLQ
 	Version   uint16
 	Opcode    uint16
 	Error     uint16
@@ -508,13 +552,14 @@ func (e *EDNS0_LLQ) String() string {
 		" " + strconv.FormatUint(uint64(e.LeaseLife), 10)
 	return s
 }
+
 func (e *EDNS0_LLQ) copy() EDNS0 {
 	return &EDNS0_LLQ{e.Code, e.Version, e.Opcode, e.Error, e.Id, e.LeaseLife}
 }
 
 // EDNS0_DAU implements the EDNS0 "DNSSEC Algorithm Understood" option. See RFC 6975.
 type EDNS0_DAU struct {
-	Code    uint16 // Always EDNS0DAU
+	Code    uint16 // always EDNS0DAU
 	AlgCode []uint8
 }
 
@@ -538,7 +583,7 @@ func (e *EDNS0_DAU) copy() EDNS0 { return &EDNS0_DAU{e.Code, e.AlgCode} }
 
 // EDNS0_DHU implements the EDNS0 "DS Hash Understood" option. See RFC 6975.
 type EDNS0_DHU struct {
-	Code    uint16 // Always EDNS0DHU
+	Code    uint16 // always EDNS0DHU
 	AlgCode []uint8
 }
 
@@ -562,7 +607,7 @@ func (e *EDNS0_DHU) copy() EDNS0 { return &EDNS0_DHU{e.Code, e.AlgCode} }
 
 // EDNS0_N3U implements the EDNS0 "NSEC3 Hash Understood" option. See RFC 6975.
 type EDNS0_N3U struct {
-	Code    uint16 // Always EDNS0N3U
+	Code    uint16 // always EDNS0N3U
 	AlgCode []uint8
 }
 
@@ -587,7 +632,7 @@ func (e *EDNS0_N3U) copy() EDNS0 { return &EDNS0_N3U{e.Code, e.AlgCode} }
 
 // EDNS0_EXPIRE implements the EDNS0 option as described in RFC 7314.
 type EDNS0_EXPIRE struct {
-	Code   uint16 // Always EDNS0EXPIRE
+	Code   uint16 // always EDNS0EXPIRE
 	Expire uint32
 	Empty  bool // Empty is used to signal an empty Expire option in a backwards compatible way, it's not used on the wire.
 }
@@ -667,7 +712,7 @@ func (e *EDNS0_LOCAL) unpack(b []byte) error {
 // EDNS0_TCP_KEEPALIVE is an EDNS0 option that instructs the server to keep
 // the TCP connection alive. See RFC 7828.
 type EDNS0_TCP_KEEPALIVE struct {
-	Code uint16 // Always EDNSTCPKEEPALIVE
+	Code uint16 // always EDNSTCPKEEPALIVE
 
 	// Timeout is an idle timeout value for the TCP connection, specified in
 	// units of 100 milliseconds, encoded in network byte order. If set to 0,
@@ -697,7 +742,7 @@ func (e *EDNS0_TCP_KEEPALIVE) unpack(b []byte) error {
 	case 2:
 		e.Timeout = binary.BigEndian.Uint16(b)
 	default:
-		return fmt.Errorf("dns: length mismatch, want 0/2 but got %d", len(b))
+		return fmt.Errorf("length mismatch, want 0/2 but got %d", len(b))
 	}
 	return nil
 }
@@ -755,36 +800,48 @@ const (
 	ExtendedErrorCodeNoReachableAuthority
 	ExtendedErrorCodeNetworkError
 	ExtendedErrorCodeInvalidData
+	ExtendedErrorCodeSignatureExpiredBeforeValid
+	ExtendedErrorCodeTooEarly
+	ExtendedErrorCodeUnsupportedNSEC3IterValue
+	ExtendedErrorCodeUnableToConformToPolicy
+	ExtendedErrorCodeSynthesized
+	ExtendedErrorCodeInvalidQueryType
 )
 
 // ExtendedErrorCodeToString maps extended error info codes to a human readable
 // description.
 var ExtendedErrorCodeToString = map[uint16]string{
-	ExtendedErrorCodeOther:                      "Other",
-	ExtendedErrorCodeUnsupportedDNSKEYAlgorithm: "Unsupported DNSKEY Algorithm",
-	ExtendedErrorCodeUnsupportedDSDigestType:    "Unsupported DS Digest Type",
-	ExtendedErrorCodeStaleAnswer:                "Stale Answer",
-	ExtendedErrorCodeForgedAnswer:               "Forged Answer",
-	ExtendedErrorCodeDNSSECIndeterminate:        "DNSSEC Indeterminate",
-	ExtendedErrorCodeDNSBogus:                   "DNSSEC Bogus",
-	ExtendedErrorCodeSignatureExpired:           "Signature Expired",
-	ExtendedErrorCodeSignatureNotYetValid:       "Signature Not Yet Valid",
-	ExtendedErrorCodeDNSKEYMissing:              "DNSKEY Missing",
-	ExtendedErrorCodeRRSIGsMissing:              "RRSIGs Missing",
-	ExtendedErrorCodeNoZoneKeyBitSet:            "No Zone Key Bit Set",
-	ExtendedErrorCodeNSECMissing:                "NSEC Missing",
-	ExtendedErrorCodeCachedError:                "Cached Error",
-	ExtendedErrorCodeNotReady:                   "Not Ready",
-	ExtendedErrorCodeBlocked:                    "Blocked",
-	ExtendedErrorCodeCensored:                   "Censored",
-	ExtendedErrorCodeFiltered:                   "Filtered",
-	ExtendedErrorCodeProhibited:                 "Prohibited",
-	ExtendedErrorCodeStaleNXDOMAINAnswer:        "Stale NXDOMAIN Answer",
-	ExtendedErrorCodeNotAuthoritative:           "Not Authoritative",
-	ExtendedErrorCodeNotSupported:               "Not Supported",
-	ExtendedErrorCodeNoReachableAuthority:       "No Reachable Authority",
-	ExtendedErrorCodeNetworkError:               "Network Error",
-	ExtendedErrorCodeInvalidData:                "Invalid Data",
+	ExtendedErrorCodeOther:                       "Other",
+	ExtendedErrorCodeUnsupportedDNSKEYAlgorithm:  "Unsupported DNSKEY Algorithm",
+	ExtendedErrorCodeUnsupportedDSDigestType:     "Unsupported DS Digest Type",
+	ExtendedErrorCodeStaleAnswer:                 "Stale Answer",
+	ExtendedErrorCodeForgedAnswer:                "Forged Answer",
+	ExtendedErrorCodeDNSSECIndeterminate:         "DNSSEC Indeterminate",
+	ExtendedErrorCodeDNSBogus:                    "DNSSEC Bogus",
+	ExtendedErrorCodeSignatureExpired:            "Signature Expired",
+	ExtendedErrorCodeSignatureNotYetValid:        "Signature Not Yet Valid",
+	ExtendedErrorCodeDNSKEYMissing:               "DNSKEY Missing",
+	ExtendedErrorCodeRRSIGsMissing:               "RRSIGs Missing",
+	ExtendedErrorCodeNoZoneKeyBitSet:             "No Zone Key Bit Set",
+	ExtendedErrorCodeNSECMissing:                 "NSEC Missing",
+	ExtendedErrorCodeCachedError:                 "Cached Error",
+	ExtendedErrorCodeNotReady:                    "Not Ready",
+	ExtendedErrorCodeBlocked:                     "Blocked",
+	ExtendedErrorCodeCensored:                    "Censored",
+	ExtendedErrorCodeFiltered:                    "Filtered",
+	ExtendedErrorCodeProhibited:                  "Prohibited",
+	ExtendedErrorCodeStaleNXDOMAINAnswer:         "Stale NXDOMAIN Answer",
+	ExtendedErrorCodeNotAuthoritative:            "Not Authoritative",
+	ExtendedErrorCodeNotSupported:                "Not Supported",
+	ExtendedErrorCodeNoReachableAuthority:        "No Reachable Authority",
+	ExtendedErrorCodeNetworkError:                "Network Error",
+	ExtendedErrorCodeInvalidData:                 "Invalid Data",
+	ExtendedErrorCodeSignatureExpiredBeforeValid: "Signature Expired Before Valid",
+	ExtendedErrorCodeTooEarly:                    "Too Early",
+	ExtendedErrorCodeUnsupportedNSEC3IterValue:   "Unsupported NSEC3 Iterations Value",
+	ExtendedErrorCodeUnableToConformToPolicy:     "Unable To Conform To Policy",
+	ExtendedErrorCodeSynthesized:                 "Synthesized",
+	ExtendedErrorCodeInvalidQueryType:            "Invalid Query Type",
 }
 
 // StringToExtendedErrorCode is a map from human readable descriptions to
@@ -826,18 +883,88 @@ func (e *EDNS0_EDE) unpack(b []byte) error {
 	return nil
 }
 
-// The EDNS0_ESU option for ENUM Source-URI Extension
+// The EDNS0_ESU option for ENUM Source-URI Extension.
 type EDNS0_ESU struct {
-	Code uint16
+	Code uint16 // always EDNS0ESU
 	Uri  string
 }
 
-// Option implements the EDNS0 interface.
 func (e *EDNS0_ESU) Option() uint16        { return EDNS0ESU }
 func (e *EDNS0_ESU) String() string        { return e.Uri }
 func (e *EDNS0_ESU) copy() EDNS0           { return &EDNS0_ESU{e.Code, e.Uri} }
 func (e *EDNS0_ESU) pack() ([]byte, error) { return []byte(e.Uri), nil }
 func (e *EDNS0_ESU) unpack(b []byte) error {
 	e.Uri = string(b)
+	return nil
+}
+
+// EDNS0_REPORTING implements the EDNS0 Reporting Channel option (RFC 9567).
+type EDNS0_REPORTING struct {
+	Code        uint16 // always EDNS0REPORTING
+	AgentDomain string
+}
+
+func (e *EDNS0_REPORTING) Option() uint16 { return EDNS0REPORTING }
+func (e *EDNS0_REPORTING) String() string { return e.AgentDomain }
+func (e *EDNS0_REPORTING) copy() EDNS0    { return &EDNS0_REPORTING{e.Code, e.AgentDomain} }
+func (e *EDNS0_REPORTING) pack() ([]byte, error) {
+	b := make([]byte, 255)
+	off1, err := PackDomainName(Fqdn(e.AgentDomain), b, 0, nil, false)
+	if err != nil {
+		return nil, fmt.Errorf("bad agent domain: %w", err)
+	}
+	return b[:off1], nil
+}
+func (e *EDNS0_REPORTING) unpack(b []byte) error {
+	domain, _, err := UnpackDomainName(b, 0)
+	if err != nil {
+		return fmt.Errorf("bad agent domain: %w", err)
+	}
+	e.AgentDomain = domain
+	return nil
+}
+
+// EDNS0_ZONEVERSION implements the EDNS0 Zone Version option (RFC 9660).
+type EDNS0_ZONEVERSION struct {
+	// always EDNS0ZONEVERSION (19)
+	Code uint16
+	// An unsigned 1-octet Label Count indicating
+	// the number of labels for the name of the zone that VERSION value refers to.
+	LabelCount uint8
+	// An unsigned 1-octet type number distinguishing the format and meaning of version.
+	// 0 SOA-SERIAL, 1-245 Unassigned, 246-255 Reserved for private use, see RFC 9660.
+	Type uint8
+	// An opaque octet string conveying the zone version data (VERSION).
+	Version string
+}
+
+func (e *EDNS0_ZONEVERSION) Option() uint16 { return EDNS0ZONEVERSION }
+func (e *EDNS0_ZONEVERSION) String() string { return e.Version }
+func (e *EDNS0_ZONEVERSION) copy() EDNS0 {
+	return &EDNS0_ZONEVERSION{e.Code, e.LabelCount, e.Type, e.Version}
+}
+func (e *EDNS0_ZONEVERSION) pack() ([]byte, error) {
+	b := []byte{
+		// first octet label count
+		e.LabelCount,
+		// second octet is type
+		e.Type,
+	}
+	if len(e.Version) > 0 {
+		b = append(b, []byte(e.Version)...)
+	}
+	return b, nil
+}
+func (e *EDNS0_ZONEVERSION) unpack(b []byte) error {
+	if len(b) < 2 {
+		return ErrBuf
+	}
+	e.LabelCount = b[0]
+	e.Type = b[1]
+	if len(b) > 2 {
+		e.Version = string(b[2:])
+	} else {
+		e.Version = ""
+	}
 	return nil
 }

@@ -128,7 +128,8 @@ func (sa *SockaddrUnix) sockaddr() (unsafe.Pointer, _Socklen, error) {
 	if n > 0 {
 		sl += _Socklen(n) + 1
 	}
-	if sa.raw.Path[0] == '@' {
+	if sa.raw.Path[0] == '@' || (sa.raw.Path[0] == 0 && sl > 3) {
+		// Check sl > 3 so we don't change unnamed socket behavior.
 		sa.raw.Path[0] = 0
 		// Don't count trailing NUL for abstract address.
 		sl--
@@ -157,7 +158,7 @@ func GetsockoptString(fd, level, opt int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(buf[:vallen-1]), nil
+	return ByteSliceToString(buf[:vallen]), nil
 }
 
 const ImplementsGetwd = true
@@ -628,7 +629,7 @@ func Sendfile(outfd int, infd int, offset *int64, count int) (written int, err e
 //sys	Kill(pid int, signum syscall.Signal) (err error)
 //sys	Lchown(path string, uid int, gid int) (err error)
 //sys	Link(path string, link string) (err error)
-//sys	Listen(s int, backlog int) (err error) = libsocket.__xnet_llisten
+//sys	Listen(s int, backlog int) (err error) = libsocket.__xnet_listen
 //sys	Lstat(path string, stat *Stat_t) (err error)
 //sys	Madvise(b []byte, advice int) (err error)
 //sys	Mkdir(path string, mode uint32) (err error)
@@ -697,38 +698,6 @@ func Sendfile(outfd int, infd int, offset *int64, count int) (written int, err e
 //sysnb	getpeername(fd int, rsa *RawSockaddrAny, addrlen *_Socklen) (err error) = libsocket.getpeername
 //sys	setsockopt(s int, level int, name int, val unsafe.Pointer, vallen uintptr) (err error) = libsocket.setsockopt
 //sys	recvfrom(fd int, p []byte, flags int, from *RawSockaddrAny, fromlen *_Socklen) (n int, err error) = libsocket.recvfrom
-
-func readlen(fd int, buf *byte, nbuf int) (n int, err error) {
-	r0, _, e1 := sysvicall6(uintptr(unsafe.Pointer(&procread)), 3, uintptr(fd), uintptr(unsafe.Pointer(buf)), uintptr(nbuf), 0, 0, 0)
-	n = int(r0)
-	if e1 != 0 {
-		err = e1
-	}
-	return
-}
-
-func writelen(fd int, buf *byte, nbuf int) (n int, err error) {
-	r0, _, e1 := sysvicall6(uintptr(unsafe.Pointer(&procwrite)), 3, uintptr(fd), uintptr(unsafe.Pointer(buf)), uintptr(nbuf), 0, 0, 0)
-	n = int(r0)
-	if e1 != 0 {
-		err = e1
-	}
-	return
-}
-
-var mapper = &mmapper{
-	active: make(map[*byte][]byte),
-	mmap:   mmap,
-	munmap: munmap,
-}
-
-func Mmap(fd int, offset int64, length int, prot int, flags int) (data []byte, err error) {
-	return mapper.Mmap(fd, offset, length, prot, flags)
-}
-
-func Munmap(b []byte) (err error) {
-	return mapper.Munmap(b)
-}
 
 // Event Ports
 
@@ -1083,14 +1052,6 @@ func IoctlSetIntRetInt(fd int, req int, arg int) (int, error) {
 	return ioctlRet(fd, req, uintptr(arg))
 }
 
-func IoctlSetString(fd int, req int, val string) error {
-	bs := make([]byte, len(val)+1)
-	copy(bs[:len(bs)-1], val)
-	err := ioctlPtr(fd, req, unsafe.Pointer(&bs[0]))
-	runtime.KeepAlive(&bs[0])
-	return err
-}
-
 // Lifreq Helpers
 
 func (l *Lifreq) SetName(name string) error {
@@ -1132,4 +1093,91 @@ func (s *Strioctl) SetInt(i int) {
 
 func IoctlSetStrioctlRetInt(fd int, req int, s *Strioctl) (int, error) {
 	return ioctlPtrRet(fd, req, unsafe.Pointer(s))
+}
+
+// Ucred Helpers
+// See ucred(3c) and getpeerucred(3c)
+
+//sys	getpeerucred(fd uintptr, ucred *uintptr) (err error)
+//sys	ucredFree(ucred uintptr) = ucred_free
+//sys	ucredGet(pid int) (ucred uintptr, err error) = ucred_get
+//sys	ucredGeteuid(ucred uintptr) (uid int) = ucred_geteuid
+//sys	ucredGetegid(ucred uintptr) (gid int) = ucred_getegid
+//sys	ucredGetruid(ucred uintptr) (uid int) = ucred_getruid
+//sys	ucredGetrgid(ucred uintptr) (gid int) = ucred_getrgid
+//sys	ucredGetsuid(ucred uintptr) (uid int) = ucred_getsuid
+//sys	ucredGetsgid(ucred uintptr) (gid int) = ucred_getsgid
+//sys	ucredGetpid(ucred uintptr) (pid int) = ucred_getpid
+
+// Ucred is an opaque struct that holds user credentials.
+type Ucred struct {
+	ucred uintptr
+}
+
+// We need to ensure that ucredFree is called on the underlying ucred
+// when the Ucred is garbage collected.
+func ucredFinalizer(u *Ucred) {
+	ucredFree(u.ucred)
+}
+
+func GetPeerUcred(fd uintptr) (*Ucred, error) {
+	var ucred uintptr
+	err := getpeerucred(fd, &ucred)
+	if err != nil {
+		return nil, err
+	}
+	result := &Ucred{
+		ucred: ucred,
+	}
+	// set the finalizer on the result so that the ucred will be freed
+	runtime.SetFinalizer(result, ucredFinalizer)
+	return result, nil
+}
+
+func UcredGet(pid int) (*Ucred, error) {
+	ucred, err := ucredGet(pid)
+	if err != nil {
+		return nil, err
+	}
+	result := &Ucred{
+		ucred: ucred,
+	}
+	// set the finalizer on the result so that the ucred will be freed
+	runtime.SetFinalizer(result, ucredFinalizer)
+	return result, nil
+}
+
+func (u *Ucred) Geteuid() int {
+	defer runtime.KeepAlive(u)
+	return ucredGeteuid(u.ucred)
+}
+
+func (u *Ucred) Getruid() int {
+	defer runtime.KeepAlive(u)
+	return ucredGetruid(u.ucred)
+}
+
+func (u *Ucred) Getsuid() int {
+	defer runtime.KeepAlive(u)
+	return ucredGetsuid(u.ucred)
+}
+
+func (u *Ucred) Getegid() int {
+	defer runtime.KeepAlive(u)
+	return ucredGetegid(u.ucred)
+}
+
+func (u *Ucred) Getrgid() int {
+	defer runtime.KeepAlive(u)
+	return ucredGetrgid(u.ucred)
+}
+
+func (u *Ucred) Getsgid() int {
+	defer runtime.KeepAlive(u)
+	return ucredGetsgid(u.ucred)
+}
+
+func (u *Ucred) Getpid() int {
+	defer runtime.KeepAlive(u)
+	return ucredGetpid(u.ucred)
 }

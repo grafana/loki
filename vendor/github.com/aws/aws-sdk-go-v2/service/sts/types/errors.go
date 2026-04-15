@@ -12,6 +12,8 @@ import (
 type ExpiredTokenException struct {
 	Message *string
 
+	ErrorCodeOverride *string
+
 	noSmithyDocumentSerde
 }
 
@@ -24,8 +26,40 @@ func (e *ExpiredTokenException) ErrorMessage() string {
 	}
 	return *e.Message
 }
-func (e *ExpiredTokenException) ErrorCode() string             { return "ExpiredTokenException" }
+func (e *ExpiredTokenException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "ExpiredTokenException"
+	}
+	return *e.ErrorCodeOverride
+}
 func (e *ExpiredTokenException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// The trade-in token provided in the request has expired and can no longer be
+// exchanged for credentials. Request a new token and retry the operation.
+type ExpiredTradeInTokenException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *ExpiredTradeInTokenException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *ExpiredTradeInTokenException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *ExpiredTradeInTokenException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "ExpiredTradeInTokenException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *ExpiredTradeInTokenException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // The request could not be fulfilled because the identity provider (IDP) that was
 // asked to verify the incoming identity token could not be reached. This is often
@@ -34,6 +68,8 @@ func (e *ExpiredTokenException) ErrorFault() smithy.ErrorFault { return smithy.F
 // persists, the identity provider might be down or not responding.
 type IDPCommunicationErrorException struct {
 	Message *string
+
+	ErrorCodeOverride *string
 
 	noSmithyDocumentSerde
 }
@@ -47,15 +83,23 @@ func (e *IDPCommunicationErrorException) ErrorMessage() string {
 	}
 	return *e.Message
 }
-func (e *IDPCommunicationErrorException) ErrorCode() string             { return "IDPCommunicationError" }
+func (e *IDPCommunicationErrorException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "IDPCommunicationError"
+	}
+	return *e.ErrorCodeOverride
+}
 func (e *IDPCommunicationErrorException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // The identity provider (IdP) reported that authentication failed. This might be
-// because the claim is invalid. If this error is returned for the
-// AssumeRoleWithWebIdentity operation, it can also mean that the claim has expired
-// or has been explicitly revoked.
+// because the claim is invalid.
+//
+// If this error is returned for the AssumeRoleWithWebIdentity operation, it can
+// also mean that the claim has expired or has been explicitly revoked.
 type IDPRejectedClaimException struct {
 	Message *string
+
+	ErrorCodeOverride *string
 
 	noSmithyDocumentSerde
 }
@@ -69,14 +113,21 @@ func (e *IDPRejectedClaimException) ErrorMessage() string {
 	}
 	return *e.Message
 }
-func (e *IDPRejectedClaimException) ErrorCode() string             { return "IDPRejectedClaim" }
+func (e *IDPRejectedClaimException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "IDPRejectedClaim"
+	}
+	return *e.ErrorCodeOverride
+}
 func (e *IDPRejectedClaimException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // The error returned if the message passed to DecodeAuthorizationMessage was
-// invalid. This can happen if the token contains invalid characters, such as
-// linebreaks.
+// invalid. This can happen if the token contains invalid characters, such as line
+// breaks, or if the message has expired.
 type InvalidAuthorizationMessageException struct {
 	Message *string
+
+	ErrorCodeOverride *string
 
 	noSmithyDocumentSerde
 }
@@ -91,7 +142,10 @@ func (e *InvalidAuthorizationMessageException) ErrorMessage() string {
 	return *e.Message
 }
 func (e *InvalidAuthorizationMessageException) ErrorCode() string {
-	return "InvalidAuthorizationMessageException"
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "InvalidAuthorizationMessageException"
+	}
+	return *e.ErrorCodeOverride
 }
 func (e *InvalidAuthorizationMessageException) ErrorFault() smithy.ErrorFault {
 	return smithy.FaultClient
@@ -102,6 +156,8 @@ func (e *InvalidAuthorizationMessageException) ErrorFault() smithy.ErrorFault {
 // request.
 type InvalidIdentityTokenException struct {
 	Message *string
+
+	ErrorCodeOverride *string
 
 	noSmithyDocumentSerde
 }
@@ -115,13 +171,48 @@ func (e *InvalidIdentityTokenException) ErrorMessage() string {
 	}
 	return *e.Message
 }
-func (e *InvalidIdentityTokenException) ErrorCode() string             { return "InvalidIdentityToken" }
+func (e *InvalidIdentityTokenException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "InvalidIdentityToken"
+	}
+	return *e.ErrorCodeOverride
+}
 func (e *InvalidIdentityTokenException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// The requested token payload size exceeds the maximum allowed size. Reduce the
+// number of request tags included in the GetWebIdentityToken API call to reduce
+// the token payload size.
+type JWTPayloadSizeExceededException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *JWTPayloadSizeExceededException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *JWTPayloadSizeExceededException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *JWTPayloadSizeExceededException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "JWTPayloadSizeExceededException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *JWTPayloadSizeExceededException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // The request was rejected because the policy document was malformed. The error
 // message describes the specific error.
 type MalformedPolicyDocumentException struct {
 	Message *string
+
+	ErrorCodeOverride *string
 
 	noSmithyDocumentSerde
 }
@@ -135,23 +226,60 @@ func (e *MalformedPolicyDocumentException) ErrorMessage() string {
 	}
 	return *e.Message
 }
-func (e *MalformedPolicyDocumentException) ErrorCode() string             { return "MalformedPolicyDocument" }
+func (e *MalformedPolicyDocumentException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "MalformedPolicyDocument"
+	}
+	return *e.ErrorCodeOverride
+}
 func (e *MalformedPolicyDocumentException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// The outbound web identity federation feature is not enabled for this account.
+// To use this feature, you must first enable it through the Amazon Web Services
+// Management Console or API.
+type OutboundWebIdentityFederationDisabledException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *OutboundWebIdentityFederationDisabledException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *OutboundWebIdentityFederationDisabledException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *OutboundWebIdentityFederationDisabledException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "OutboundWebIdentityFederationDisabledException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *OutboundWebIdentityFederationDisabledException) ErrorFault() smithy.ErrorFault {
+	return smithy.FaultClient
+}
 
 // The request was rejected because the total packed size of the session policies
 // and session tags combined was too large. An Amazon Web Services conversion
 // compresses the session policy document, session policy ARNs, and session tags
 // into a packed binary format that has a separate limit. The error message
 // indicates by percentage how close the policies and tags are to the upper size
-// limit. For more information, see Passing Session Tags in STS
-// (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html) in the
-// IAM User Guide. You could receive this error even though you meet other defined
-// session policy and session tag limits. For more information, see IAM and STS
-// Entity Character Limits
-// (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html#reference_iam-limits-entity-length)
-// in the IAM User Guide.
+// limit. For more information, see [Passing Session Tags in STS]in the IAM User Guide.
+//
+// You could receive this error even though you meet other defined session policy
+// and session tag limits. For more information, see [IAM and STS Entity Character Limits]in the IAM User Guide.
+//
+// [Passing Session Tags in STS]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html
+// [IAM and STS Entity Character Limits]: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html#reference_iam-limits-entity-length
 type PackedPolicyTooLargeException struct {
 	Message *string
+
+	ErrorCodeOverride *string
 
 	noSmithyDocumentSerde
 }
@@ -165,17 +293,24 @@ func (e *PackedPolicyTooLargeException) ErrorMessage() string {
 	}
 	return *e.Message
 }
-func (e *PackedPolicyTooLargeException) ErrorCode() string             { return "PackedPolicyTooLarge" }
+func (e *PackedPolicyTooLargeException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "PackedPolicyTooLarge"
+	}
+	return *e.ErrorCodeOverride
+}
 func (e *PackedPolicyTooLargeException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
-// STS is not activated in the requested region for the account that is being asked
-// to generate credentials. The account administrator must use the IAM console to
-// activate STS in that region. For more information, see Activating and
-// Deactivating Amazon Web Services STS in an Amazon Web Services Region
-// (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_enable-regions.html)
-// in the IAM User Guide.
+// STS is not activated in the requested region for the account that is being
+// asked to generate credentials. The account administrator must use the IAM
+// console to activate STS in that region. For more information, see [Activating and Deactivating STS in an Amazon Web Services Region]in the IAM
+// User Guide.
+//
+// [Activating and Deactivating STS in an Amazon Web Services Region]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_enable-regions.html#sts-regions-activate-deactivate
 type RegionDisabledException struct {
 	Message *string
+
+	ErrorCodeOverride *string
 
 	noSmithyDocumentSerde
 }
@@ -189,5 +324,40 @@ func (e *RegionDisabledException) ErrorMessage() string {
 	}
 	return *e.Message
 }
-func (e *RegionDisabledException) ErrorCode() string             { return "RegionDisabledException" }
+func (e *RegionDisabledException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "RegionDisabledException"
+	}
+	return *e.ErrorCodeOverride
+}
 func (e *RegionDisabledException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// The requested token duration would extend the session beyond its original
+// expiration time. You cannot use this operation to extend the lifetime of a
+// session beyond what was granted when the session was originally created.
+type SessionDurationEscalationException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *SessionDurationEscalationException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *SessionDurationEscalationException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *SessionDurationEscalationException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "SessionDurationEscalationException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *SessionDurationEscalationException) ErrorFault() smithy.ErrorFault {
+	return smithy.FaultClient
+}

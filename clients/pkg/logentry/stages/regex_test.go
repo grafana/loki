@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var testRegexYamlSingleStageWithoutSource = `
@@ -102,8 +102,6 @@ func TestPipeline_Regex(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
@@ -128,7 +126,7 @@ func TestPipelineWithMissingKey_Regex(t *testing.T) {
 	}
 	_ = processEntries(pl, newEntry(nil, nil, testRegexLogLineWithMissingKey, time.Now()))[0]
 
-	expectedLog := "level=debug component=stage type=regex msg=\"failed to convert source value to string\" source=time err=\"Can't convert <nil> to string\" type=null"
+	expectedLog := "level=debug component=stage type=regex msg=\"failed to convert source value to string\" source=time err=\"can't convert <nil> to string\" type=null"
 	if !(strings.Contains(buf.String(), expectedLog)) {
 		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
 	}
@@ -204,7 +202,6 @@ func TestRegexConfig_validate(t *testing.T) {
 		},
 	}
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			c, err := parseRegexConfig(tt.config)
 			if err != nil {
@@ -322,7 +319,6 @@ func TestRegexParser_Parse(t *testing.T) {
 		},
 	}
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
 			p, err := New(util_log.Logger, nil, StageTypeRegex, tt.config, nil)

@@ -27,6 +27,8 @@ import (
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/tools/metrics"
+	"k8s.io/klog/v2"
 )
 
 // TlsTransportCache caches TLS http.RoundTrippers different configurations. The
@@ -80,11 +82,16 @@ func (c *tlsTransportCache) get(config *Config) (http.RoundTripper, error) {
 		// Ensure we only create a single transport for the given TLS options
 		c.mu.Lock()
 		defer c.mu.Unlock()
+		defer metrics.TransportCacheEntries.Observe(len(c.transports))
 
 		// See if we already have a custom transport for this config
 		if t, ok := c.transports[key]; ok {
+			metrics.TransportCreateCalls.Increment("hit")
 			return t, nil
 		}
+		metrics.TransportCreateCalls.Increment("miss")
+	} else {
+		metrics.TransportCreateCalls.Increment("uncacheable")
 	}
 
 	// Get the TLS options for this client config
@@ -110,10 +117,13 @@ func (c *tlsTransportCache) get(config *Config) (http.RoundTripper, error) {
 	// If we use are reloading files, we need to handle certificate rotation properly
 	// TODO(jackkleeman): We can also add rotation here when config.HasCertCallback() is true
 	if config.TLS.ReloadTLSFiles && tlsConfig != nil && tlsConfig.GetClientCertificate != nil {
-		dynamicCertDialer := certRotatingDialer(tlsConfig.GetClientCertificate, dial)
+		// The TLS cache is a singleton, so sharing the same name for all of its
+		// background activity seems okay.
+		logger := klog.Background().WithName("tls-transport-cache")
+		dynamicCertDialer := certRotatingDialer(logger, tlsConfig.GetClientCertificate, dial)
 		tlsConfig.GetClientCertificate = dynamicCertDialer.GetClientCertificate
 		dial = dynamicCertDialer.connDialer.DialContext
-		go dynamicCertDialer.Run(DialerStopCh)
+		go dynamicCertDialer.run(DialerStopCh)
 	}
 
 	proxy := http.ProxyFromEnvironment

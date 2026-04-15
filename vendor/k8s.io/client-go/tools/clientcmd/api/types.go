@@ -40,7 +40,8 @@ type Config struct {
 	// +optional
 	APIVersion string `json:"apiVersion,omitempty"`
 	// Preferences holds general information to be use for cli interactions
-	Preferences Preferences `json:"preferences"`
+	// Deprecated: this field is deprecated in v1.34. It is not used by any of the Kubernetes components.
+	Preferences Preferences `json:"preferences,omitzero"`
 	// Clusters is a map of referencable names to cluster configs
 	Clusters map[string]*Cluster `json:"clusters"`
 	// AuthInfos is a map of referencable names to user configs
@@ -55,6 +56,7 @@ type Config struct {
 }
 
 // IMPORTANT if you add fields to this struct, please update IsConfigEmpty()
+// Deprecated: this structure is deprecated in v1.34. It is not used by any of the Kubernetes components.
 type Preferences struct {
 	// +optional
 	Colors bool `json:"colors,omitempty"`
@@ -67,7 +69,7 @@ type Preferences struct {
 type Cluster struct {
 	// LocationOfOrigin indicates where this object came from.  It is used for round tripping config post-merge, but never serialized.
 	// +k8s:conversion-gen=false
-	LocationOfOrigin string
+	LocationOfOrigin string `json:"-"`
 	// Server is the address of the kubernetes cluster (https://hostname:port).
 	Server string `json:"server"`
 	// TLSServerName is used to check server certificate. If TLSServerName is empty, the hostname used to contact the server is used.
@@ -107,7 +109,7 @@ type Cluster struct {
 type AuthInfo struct {
 	// LocationOfOrigin indicates where this object came from.  It is used for round tripping config post-merge, but never serialized.
 	// +k8s:conversion-gen=false
-	LocationOfOrigin string
+	LocationOfOrigin string `json:"-"`
 	// ClientCertificate is the path to a client cert file for TLS.
 	// +optional
 	ClientCertificate string `json:"client-certificate,omitempty"`
@@ -123,7 +125,8 @@ type AuthInfo struct {
 	// Token is the bearer token for authentication to the kubernetes cluster.
 	// +optional
 	Token string `json:"token,omitempty" datapolicy:"token"`
-	// TokenFile is a pointer to a file that contains a bearer token (as described above).  If both Token and TokenFile are present, Token takes precedence.
+	// TokenFile is a pointer to a file that contains a bearer token (as described above).  If both Token and TokenFile are present,
+	// the TokenFile will be periodically read and the last successfully read value takes precedence over Token.
 	// +optional
 	TokenFile string `json:"tokenFile,omitempty"`
 	// Impersonate is the username to act-as.
@@ -159,7 +162,7 @@ type AuthInfo struct {
 type Context struct {
 	// LocationOfOrigin indicates where this object came from.  It is used for round tripping config post-merge, but never serialized.
 	// +k8s:conversion-gen=false
-	LocationOfOrigin string
+	LocationOfOrigin string `json:"-"`
 	// Cluster is the name of the cluster for this context
 	Cluster string `json:"cluster"`
 	// AuthInfo is the name of the authInfo for this context
@@ -252,7 +255,7 @@ type ExecConfig struct {
 	// recommended as one of the prime benefits of exec plugins is that no secrets need
 	// to be stored directly in the kubeconfig.
 	// +k8s:conversion-gen=false
-	Config runtime.Object
+	Config runtime.Object `json:"-"`
 
 	// InteractiveMode determines this plugin's relationship with standard input. Valid
 	// values are "Never" (this exec plugin never uses standard input), "IfAvailable" (this
@@ -264,7 +267,7 @@ type ExecConfig struct {
 	// client.authentication.k8s.io/v1beta1, then this field is optional and defaults
 	// to "IfAvailable" when unset. Otherwise, this field is required.
 	// +optional
-	InteractiveMode ExecInteractiveMode
+	InteractiveMode ExecInteractiveMode `json:"interactiveMode,omitempty"`
 
 	// StdinUnavailable indicates whether the exec authenticator can pass standard
 	// input through to this exec plugin. For example, a higher level entity might be using
@@ -272,15 +275,64 @@ type ExecConfig struct {
 	// plugin to use standard input. This is kept here in order to keep all of the exec configuration
 	// together, but it is never serialized.
 	// +k8s:conversion-gen=false
-	StdinUnavailable bool
+	StdinUnavailable bool `json:"-"`
 
 	// StdinUnavailableMessage is an optional message to be displayed when the exec authenticator
 	// cannot successfully run this exec plugin because it needs to use standard input and
 	// StdinUnavailable is true. For example, a process that is already using standard input to
 	// read user instructions might set this to "used by my-program to read user instructions".
 	// +k8s:conversion-gen=false
-	StdinUnavailableMessage string
+	StdinUnavailableMessage string `json:"-"`
+
+	// PluginPolicy is the policy governing whether or not the configured
+	// `Command` may run.
+	// +k8s:conversion-gen=false
+	PluginPolicy PluginPolicy `json:"-"`
 }
+
+// AllowlistEntry is an entry in the allowlist. For each allowlist item, at
+// least one field must be nonempty. A struct with all empty fields is
+// considered a misconfiguration error. Each field is a criterion for
+// execution. If multiple fields are specified, then the criteria of all
+// specified fields must be met. That is, the result of an individual entry is
+// the logical AND of all checks corresponding to the specified fields within
+// the entry.
+type AllowlistEntry struct {
+	// Name matching is performed by first resolving the absolute path of both
+	// the plugin and the name in the allowlist entry using `exec.LookPath`. It
+	// will be called on both, and the resulting strings must be equal. If
+	// either call to `exec.LookPath` results in an error, the `Name` check
+	// will be considered a failure.
+	Name string `json:"-"`
+}
+
+// PluginPolicy describes the policy type and allowlist (if any) for client-go
+// credential plugins.
+type PluginPolicy struct {
+	// PolicyType specifies the policy governing which, if any, client-go
+	// credential plugins may be executed. It MUST be one of { "", "AllowAll", "DenyAll", "Allowlist" }.
+	// If the policy is "", then it falls back to "AllowAll" (this is required
+	// to maintain backward compatibility). If the policy is DenyAll, no
+	// credential plugins may run. If the policy is Allowlist, only those
+	// plugins meeting the criteria specified in the `credentialPluginAllowlist`
+	// field may run. If the policy is not `Allowlist` but one is provided, it
+	// is considered a configuration error.
+	PolicyType PolicyType `json:"-"`
+
+	// Allowlist is a slice of allowlist entries. If any of them is a match,
+	// then the executable in question may execute. That is, the result is the
+	// logical OR of all entries in the allowlist. This list MUST be nil
+	// whenever the policy is not "Allowlist".
+	Allowlist []AllowlistEntry `json:"-"`
+}
+
+type PolicyType string
+
+const (
+	PluginPolicyAllowAll  PolicyType = "AllowAll"
+	PluginPolicyDenyAll   PolicyType = "DenyAll"
+	PluginPolicyAllowlist PolicyType = "Allowlist"
+)
 
 var _ fmt.Stringer = new(ExecConfig)
 var _ fmt.GoStringer = new(ExecConfig)
@@ -339,11 +391,10 @@ const (
 // NewConfig is a convenience function that returns a new Config object with non-nil maps
 func NewConfig() *Config {
 	return &Config{
-		Preferences: *NewPreferences(),
-		Clusters:    make(map[string]*Cluster),
-		AuthInfos:   make(map[string]*AuthInfo),
-		Contexts:    make(map[string]*Context),
-		Extensions:  make(map[string]runtime.Object),
+		Clusters:   make(map[string]*Cluster),
+		AuthInfos:  make(map[string]*AuthInfo),
+		Contexts:   make(map[string]*Context),
+		Extensions: make(map[string]runtime.Object),
 	}
 }
 
@@ -370,6 +421,7 @@ func NewAuthInfo() *AuthInfo {
 
 // NewPreferences is a convenience function that returns a new
 // Preferences object with non-nil maps
+// Deprecated: this method is deprecated in v1.34. It is not used by any of the Kubernetes components.
 func NewPreferences() *Preferences {
 	return &Preferences{Extensions: make(map[string]runtime.Object)}
 }

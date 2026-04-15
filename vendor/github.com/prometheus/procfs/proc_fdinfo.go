@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -26,6 +26,7 @@ var (
 	rPos          = regexp.MustCompile(`^pos:\s+(\d+)$`)
 	rFlags        = regexp.MustCompile(`^flags:\s+(\d+)$`)
 	rMntID        = regexp.MustCompile(`^mnt_id:\s+(\d+)$`)
+	rIno          = regexp.MustCompile(`^ino:\s+(\d+)$`)
 	rInotify      = regexp.MustCompile(`^inotify`)
 	rInotifyParts = regexp.MustCompile(`^inotify\s+wd:([0-9a-f]+)\s+ino:([0-9a-f]+)\s+sdev:([0-9a-f]+)(?:\s+mask:([0-9a-f]+))?`)
 )
@@ -40,6 +41,8 @@ type ProcFDInfo struct {
 	Flags string
 	// Mount point ID
 	MntID string
+	// Inode number
+	Ino string
 	// List of inotify lines (structured) in the fdinfo file (kernel 3.8+ only)
 	InotifyInfos []InotifyInfo
 }
@@ -51,19 +54,22 @@ func (p Proc) FDInfo(fd string) (*ProcFDInfo, error) {
 		return nil, err
 	}
 
-	var text, pos, flags, mntid string
+	var text, pos, flags, mntid, ino string
 	var inotify []InotifyInfo
 
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for scanner.Scan() {
 		text = scanner.Text()
-		if rPos.MatchString(text) {
+		switch {
+		case rPos.MatchString(text):
 			pos = rPos.FindStringSubmatch(text)[1]
-		} else if rFlags.MatchString(text) {
+		case rFlags.MatchString(text):
 			flags = rFlags.FindStringSubmatch(text)[1]
-		} else if rMntID.MatchString(text) {
+		case rMntID.MatchString(text):
 			mntid = rMntID.FindStringSubmatch(text)[1]
-		} else if rInotify.MatchString(text) {
+		case rIno.MatchString(text):
+			ino = rIno.FindStringSubmatch(text)[1]
+		case rInotify.MatchString(text):
 			newInotify, err := parseInotifyInfo(text)
 			if err != nil {
 				return nil, err
@@ -77,6 +83,7 @@ func (p Proc) FDInfo(fd string) (*ProcFDInfo, error) {
 		Pos:          pos,
 		Flags:        flags,
 		MntID:        mntid,
+		Ino:          ino,
 		InotifyInfos: inotify,
 	}
 
@@ -111,7 +118,7 @@ func parseInotifyInfo(line string) (*InotifyInfo, error) {
 		}
 		return i, nil
 	}
-	return nil, fmt.Errorf("invalid inode entry: %q", line)
+	return nil, fmt.Errorf("%w: invalid inode entry: %q", ErrFileParse, line)
 }
 
 // ProcFDInfos represents a list of ProcFDInfo structs.

@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package otelhttp // import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
@@ -20,15 +9,14 @@ import (
 	"net/http/httptrace"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
 
-const (
-	instrumentationName = "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-)
+// ScopeName is the instrumentation scope name.
+const ScopeName = "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 // config represents the configuration options available for the http.Handler
 // and http.Transport types.
@@ -38,7 +26,6 @@ type config struct {
 	Meter             metric.Meter
 	Propagators       propagation.TextMapPropagator
 	SpanStartOptions  []trace.SpanStartOption
-	PublicEndpoint    bool
 	PublicEndpointFn  func(*http.Request) bool
 	ReadEvent         bool
 	WriteEvent        bool
@@ -46,8 +33,9 @@ type config struct {
 	SpanNameFormatter func(string, *http.Request) string
 	ClientTrace       func(context.Context) *httptrace.ClientTrace
 
-	TracerProvider trace.TracerProvider
-	MeterProvider  metric.MeterProvider
+	TracerProvider     trace.TracerProvider
+	MeterProvider      metric.MeterProvider
+	MetricAttributesFn func(*http.Request) []attribute.KeyValue
 }
 
 // Option interface used for setting optional config properties.
@@ -65,7 +53,7 @@ func (o optionFunc) apply(c *config) {
 func newConfig(opts ...Option) *config {
 	c := &config{
 		Propagators:   otel.GetTextMapPropagator(),
-		MeterProvider: global.MeterProvider(),
+		MeterProvider: otel.GetMeterProvider(),
 	}
 	for _, opt := range opts {
 		opt.apply(c)
@@ -77,8 +65,8 @@ func newConfig(opts ...Option) *config {
 	}
 
 	c.Meter = c.MeterProvider.Meter(
-		instrumentationName,
-		metric.WithInstrumentationVersion(SemVersion()),
+		ScopeName,
+		metric.WithInstrumentationVersion(Version),
 	)
 
 	return c
@@ -104,20 +92,10 @@ func WithMeterProvider(provider metric.MeterProvider) Option {
 	})
 }
 
-// WithPublicEndpoint configures the Handler to link the span with an incoming
-// span context. If this option is not provided, then the association is a child
-// association instead of a link.
-func WithPublicEndpoint() Option {
-	return optionFunc(func(c *config) {
-		c.PublicEndpoint = true
-	})
-}
-
-// WithPublicEndpointFn runs with every request, and allows conditionnally
+// WithPublicEndpointFn runs with every request, and allows conditionally
 // configuring the Handler to link the span with an incoming span context. If
 // this option is not provided or returns false, then the association is a
 // child association instead of a link.
-// Note: WithPublicEndpoint takes precedence over WithPublicEndpointFn.
 func WithPublicEndpointFn(fn func(*http.Request) bool) Option {
 	return optionFunc(func(c *config) {
 		c.PublicEndpointFn = fn
@@ -154,11 +132,13 @@ func WithFilter(f Filter) Option {
 	})
 }
 
-type event int
+// Event represents message event types for [WithMessageEvents].
+type Event int
 
 // Different types of events that can be recorded, see WithMessageEvents.
 const (
-	ReadEvents event = iota
+	unspecifiedEvents Event = iota
+	ReadEvents
 	WriteEvents
 )
 
@@ -171,7 +151,7 @@ const (
 //     using the ReadBytesKey
 //   - WriteEvents: Record the number of bytes written after every http.ResponeWriter.Write
 //     using the WriteBytesKey
-func WithMessageEvents(events ...event) Option {
+func WithMessageEvents(events ...Event) Option {
 	return optionFunc(func(c *config) {
 		for _, e := range events {
 			switch e {
@@ -186,6 +166,10 @@ func WithMessageEvents(events ...event) Option {
 
 // WithSpanNameFormatter takes a function that will be called on every
 // request and the returned string will become the Span Name.
+//
+// When using [http.ServeMux] (or any middleware that sets the Pattern of [http.Request]),
+// the span name formatter will run twice. Once when the span is created, and
+// second time after the middleware, so the pattern can be used.
 func WithSpanNameFormatter(f func(operation string, r *http.Request) string) Option {
 	return optionFunc(func(c *config) {
 		c.SpanNameFormatter = f
@@ -205,5 +189,16 @@ func WithClientTrace(f func(context.Context) *httptrace.ClientTrace) Option {
 func WithServerName(server string) Option {
 	return optionFunc(func(c *config) {
 		c.ServerName = server
+	})
+}
+
+// WithMetricAttributesFn returns an Option to set a function that maps an HTTP request to a slice of attribute.KeyValue.
+// These attributes will be included in metrics for every request.
+//
+// Deprecated: WithMetricAttributesFn is deprecated and will be removed in a
+// future release. Use [Labeler] instead.
+func WithMetricAttributesFn(metricAttributesFn func(r *http.Request) []attribute.KeyValue) Option {
+	return optionFunc(func(c *config) {
+		c.MetricAttributesFn = metricAttributesFn
 	})
 }

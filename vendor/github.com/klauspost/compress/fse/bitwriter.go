@@ -143,7 +143,7 @@ func (b *bitWriter) flush32() {
 // flushAlign will flush remaining full bytes and align to next byte boundary.
 func (b *bitWriter) flushAlign() {
 	nbBytes := (b.nBits + 7) >> 3
-	for i := uint8(0); i < nbBytes; i++ {
+	for i := range nbBytes {
 		b.out = append(b.out, byte(b.bitContainer>>(i*8)))
 	}
 	b.nBits = 0
@@ -152,12 +152,11 @@ func (b *bitWriter) flushAlign() {
 
 // close will write the alignment bit and write the final byte(s)
 // to the output.
-func (b *bitWriter) close() error {
+func (b *bitWriter) close() {
 	// End mark
 	b.addBits16Clean(1, 1)
 	// flush until next byte.
 	b.flushAlign()
-	return nil
 }
 
 // reset and continue writing by appending to out.

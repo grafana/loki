@@ -1,4 +1,4 @@
-// Copyright 2022 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,10 +14,92 @@
 package histogram
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strings"
 )
+
+const (
+	ExponentialSchemaMax         int32 = 8
+	ExponentialSchemaMaxReserved int32 = 52
+	ExponentialSchemaMin         int32 = -4
+	ExponentialSchemaMinReserved int32 = -9
+	CustomBucketsSchema          int32 = -53
+)
+
+type Error struct {
+	error
+}
+
+func (e Error) Unwrap() error {
+	return e.error
+}
+
+var (
+	ErrHistogramCountNotBigEnough       = Error{error: errors.New("histogram's observation count should be at least the number of observations found in the buckets")}
+	ErrHistogramCountMismatch           = Error{error: errors.New("histogram's observation count should equal the number of observations found in the buckets (in absence of NaN)")}
+	ErrHistogramNegativeCount           = Error{error: errors.New("histogram's observation count is negative")}
+	ErrHistogramNegativeBucketCount     = Error{error: errors.New("histogram has a bucket whose observation count is negative")}
+	ErrHistogramSpanNegativeOffset      = Error{error: errors.New("histogram has a span whose offset is negative")}
+	ErrHistogramSpansBucketsMismatch    = Error{error: errors.New("histogram spans specify different number of buckets than provided")}
+	ErrHistogramCustomBucketsMismatch   = Error{error: errors.New("histogram custom bounds are too few")}
+	ErrHistogramCustomBucketsInvalid    = Error{error: errors.New("histogram custom bounds must be in strictly increasing order")}
+	ErrHistogramCustomBucketsInfinite   = Error{error: errors.New("histogram custom bounds must be finite")}
+	ErrHistogramCustomBucketsNaN        = Error{error: errors.New("histogram custom bounds must not be NaN")}
+	ErrHistogramsIncompatibleSchema     = Error{error: errors.New("cannot apply this operation on histograms with a mix of exponential and custom bucket schemas")}
+	ErrHistogramCustomBucketsZeroCount  = Error{error: errors.New("custom buckets: must have zero count of 0")}
+	ErrHistogramCustomBucketsZeroThresh = Error{error: errors.New("custom buckets: must have zero threshold of 0")}
+	ErrHistogramCustomBucketsNegSpans   = Error{error: errors.New("custom buckets: must not have negative spans")}
+	ErrHistogramCustomBucketsNegBuckets = Error{error: errors.New("custom buckets: must not have negative buckets")}
+	ErrHistogramExpSchemaCustomBounds   = Error{error: errors.New("histogram with exponential schema must not have custom bounds")}
+	ErrHistogramsInvalidSchema          = Error{error: fmt.Errorf("histogram has an invalid schema, which must be between %d and %d for exponential buckets, or %d for custom buckets", ExponentialSchemaMin, ExponentialSchemaMax, CustomBucketsSchema)}
+	ErrHistogramsUnknownSchema          = Error{error: fmt.Errorf("histogram has an unknown schema, which must be between %d and %d for exponential buckets, or %d for custom buckets", ExponentialSchemaMinReserved, ExponentialSchemaMaxReserved, CustomBucketsSchema)}
+)
+
+func InvalidSchemaError(s int32) error {
+	return Error{error: fmt.Errorf("%w, got schema %d", ErrHistogramsInvalidSchema, s)}
+}
+
+func UnknownSchemaError(s int32) error {
+	return Error{error: fmt.Errorf("%w, got schema %d", ErrHistogramsUnknownSchema, s)}
+}
+
+func IsCustomBucketsSchema(s int32) bool {
+	return s == CustomBucketsSchema
+}
+
+func IsExponentialSchema(s int32) bool {
+	return s >= ExponentialSchemaMin && s <= ExponentialSchemaMax
+}
+
+func IsExponentialSchemaReserved(s int32) bool {
+	return s >= ExponentialSchemaMinReserved && s <= ExponentialSchemaMaxReserved
+}
+
+func IsValidSchema(s int32) bool {
+	return IsCustomBucketsSchema(s) || IsExponentialSchema(s)
+}
+
+// IsKnownSchema returns bool if we known and accept the schema, but need to
+// reduce resolution to the nearest supported schema.
+func IsKnownSchema(s int32) bool {
+	return IsCustomBucketsSchema(s) || IsExponentialSchemaReserved(s)
+}
+
+// CustomBucketBoundsMatch compares histogram custom bucket bounds (CustomValues)
+// and returns true if all values match.
+func CustomBucketBoundsMatch(c1, c2 []float64) bool {
+	if len(c1) != len(c2) {
+		return false
+	}
+	for i, c := range c1 {
+		if c != c2[i] {
+			return false
+		}
+	}
+	return true
+}
 
 // BucketCount is a type constraint for the count in a bucket, which can be
 // float64 (for type FloatHistogram) or uint64 (for type Histogram).
@@ -31,7 +113,7 @@ type BucketCount interface {
 // absolute counts directly). Go type parameters don't allow type
 // specialization. Therefore, where special treatment of deltas between buckets
 // vs. absolute counts is important, this information has to be provided as a
-// separate boolean parameter "deltaBuckets"
+// separate boolean parameter "deltaBuckets".
 type InternalBucketCount interface {
 	float64 | int64
 }
@@ -51,6 +133,13 @@ type Bucket[BC BucketCount] struct {
 	// Index within schema. To easily compare buckets that share the same
 	// schema and sign (positive or negative). Irrelevant for the zero bucket.
 	Index int32
+}
+
+// strippedBucket is Bucket without bound values (which are expensive to calculate
+// and not used in certain use cases).
+type strippedBucket[BC BucketCount] struct {
+	count BC
+	index int32
 }
 
 // String returns a string representation of a Bucket, using the usual
@@ -99,36 +188,71 @@ type baseBucketIterator[BC BucketCount, IBC InternalBucketCount] struct {
 
 	currCount IBC   // Count in the current bucket.
 	currIdx   int32 // The actual bucket index.
+
+	customValues []float64 // Bounds (usually upper) for histograms with custom buckets.
 }
 
-func (b baseBucketIterator[BC, IBC]) At() Bucket[BC] {
+func (b *baseBucketIterator[BC, IBC]) At() Bucket[BC] {
+	return b.at(b.schema)
+}
+
+// at is an internal version of the exported At to enable using a different schema.
+func (b *baseBucketIterator[BC, IBC]) at(schema int32) Bucket[BC] {
 	bucket := Bucket[BC]{
 		Count: BC(b.currCount),
 		Index: b.currIdx,
 	}
 	if b.positive {
-		bucket.Upper = getBound(b.currIdx, b.schema)
-		bucket.Lower = getBound(b.currIdx-1, b.schema)
+		bucket.Upper = getBound(b.currIdx, schema, b.customValues)
+		bucket.Lower = getBound(b.currIdx-1, schema, b.customValues)
 	} else {
-		bucket.Lower = -getBound(b.currIdx, b.schema)
-		bucket.Upper = -getBound(b.currIdx-1, b.schema)
+		bucket.Lower = -getBound(b.currIdx, schema, b.customValues)
+		bucket.Upper = -getBound(b.currIdx-1, schema, b.customValues)
 	}
-	bucket.LowerInclusive = bucket.Lower < 0
-	bucket.UpperInclusive = bucket.Upper > 0
+	if IsCustomBucketsSchema(schema) {
+		bucket.LowerInclusive = b.currIdx == 0
+		bucket.UpperInclusive = true
+	} else {
+		bucket.LowerInclusive = bucket.Lower < 0
+		bucket.UpperInclusive = bucket.Upper > 0
+	}
 	return bucket
+}
+
+// strippedAt returns current strippedBucket (which lacks bucket bounds but is cheaper to compute).
+func (b *baseBucketIterator[BC, IBC]) strippedAt() strippedBucket[BC] {
+	return strippedBucket[BC]{
+		count: BC(b.currCount),
+		index: b.currIdx,
+	}
 }
 
 // compactBuckets is a generic function used by both Histogram.Compact and
 // FloatHistogram.Compact. Set deltaBuckets to true if the provided buckets are
 // deltas. Set it to false if the buckets contain absolute counts.
-func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmptyBuckets int, deltaBuckets bool) ([]IBC, []Span) {
+// For float histograms, deltaBuckets is always false.
+// primaryBuckets hold the main histogram values, while compensationBuckets (if provided) store
+// Kahan compensation values. compensationBuckets can only be provided for float histograms
+// and are processed in parallel with primaryBuckets to maintain synchronization.
+func compactBuckets[IBC InternalBucketCount](
+	primaryBuckets []IBC, compensationBuckets []float64,
+	spans []Span, maxEmptyBuckets int, deltaBuckets bool,
+) (updatedPrimaryBuckets []IBC, updatedCompensationBuckets []float64, updatedSpans []Span) {
+	if deltaBuckets && compensationBuckets != nil {
+		panic("histogram type mismatch: deltaBuckets cannot be true when compensationBuckets is provided")
+	} else if compensationBuckets != nil && len(primaryBuckets) != len(compensationBuckets) {
+		panic(fmt.Errorf(
+			"primary buckets layout (%v) mismatch against associated compensation buckets layout (%v)",
+			primaryBuckets, compensationBuckets),
+		)
+	}
 	// Fast path: If there are no empty buckets AND no offset in any span is
 	// <= maxEmptyBuckets AND no span has length 0, there is nothing to do and we can return
 	// immediately. We check that first because it's cheap and presumably
 	// common.
 	nothingToDo := true
 	var currentBucketAbsolute IBC
-	for _, bucket := range buckets {
+	for _, bucket := range primaryBuckets {
 		if deltaBuckets {
 			currentBucketAbsolute += bucket
 		} else {
@@ -147,7 +271,7 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 			}
 		}
 		if nothingToDo {
-			return buckets, spans
+			return primaryBuckets, compensationBuckets, spans
 		}
 	}
 
@@ -159,12 +283,19 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 	emptyBucketsHere := func() int {
 		i := 0
 		abs := currentBucketAbsolute
-		for uint32(i)+posInSpan < spans[iSpan].Length && abs == 0 {
+		comp := float64(0)
+		if compensationBuckets != nil {
+			comp = compensationBuckets[iBucket]
+		}
+		for uint32(i)+posInSpan < spans[iSpan].Length && abs == 0 && comp == 0 {
 			i++
-			if i+iBucket >= len(buckets) {
+			if i+iBucket >= len(primaryBuckets) {
 				break
 			}
-			abs = buckets[i+iBucket]
+			abs = primaryBuckets[i+iBucket]
+			if compensationBuckets != nil {
+				comp = compensationBuckets[i+iBucket]
+			}
 		}
 		return i
 	}
@@ -204,11 +335,11 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 	// Cut out empty buckets from start and end of spans, no matter
 	// what. Also cut out empty buckets from the middle of a span but only
 	// if there are more than maxEmptyBuckets consecutive empty buckets.
-	for iBucket < len(buckets) {
+	for iBucket < len(primaryBuckets) {
 		if deltaBuckets {
-			currentBucketAbsolute += buckets[iBucket]
+			currentBucketAbsolute += primaryBuckets[iBucket]
 		} else {
-			currentBucketAbsolute = buckets[iBucket]
+			currentBucketAbsolute = primaryBuckets[iBucket]
 		}
 		if nEmpty := emptyBucketsHere(); nEmpty > 0 {
 			if posInSpan > 0 &&
@@ -225,11 +356,14 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 				continue
 			}
 			// In all other cases, we cut out the empty buckets.
-			if deltaBuckets && iBucket+nEmpty < len(buckets) {
-				currentBucketAbsolute = -buckets[iBucket]
-				buckets[iBucket+nEmpty] += buckets[iBucket]
+			if deltaBuckets && iBucket+nEmpty < len(primaryBuckets) {
+				currentBucketAbsolute = -primaryBuckets[iBucket]
+				primaryBuckets[iBucket+nEmpty] += primaryBuckets[iBucket]
 			}
-			buckets = append(buckets[:iBucket], buckets[iBucket+nEmpty:]...)
+			primaryBuckets = append(primaryBuckets[:iBucket], primaryBuckets[iBucket+nEmpty:]...)
+			if compensationBuckets != nil {
+				compensationBuckets = append(compensationBuckets[:iBucket], compensationBuckets[iBucket+nEmpty:]...)
+			}
 			if posInSpan == 0 {
 				// Start of span.
 				if nEmpty == int(spans[iSpan].Length) {
@@ -279,8 +413,8 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 			iSpan++
 		}
 	}
-	if maxEmptyBuckets == 0 || len(buckets) == 0 {
-		return buckets, spans
+	if maxEmptyBuckets == 0 || len(primaryBuckets) == 0 {
+		return primaryBuckets, compensationBuckets, spans
 	}
 
 	// Finally, check if any offsets between spans are small enough to merge
@@ -288,7 +422,7 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 	iBucket = int(spans[0].Length)
 	if deltaBuckets {
 		currentBucketAbsolute = 0
-		for _, bucket := range buckets[:iBucket] {
+		for _, bucket := range primaryBuckets[:iBucket] {
 			currentBucketAbsolute += bucket
 		}
 	}
@@ -297,7 +431,7 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 		if int(spans[iSpan].Offset) > maxEmptyBuckets {
 			l := int(spans[iSpan].Length)
 			if deltaBuckets {
-				for _, bucket := range buckets[iBucket : iBucket+l] {
+				for _, bucket := range primaryBuckets[iBucket : iBucket+l] {
 					currentBucketAbsolute += bucket
 				}
 			}
@@ -309,37 +443,119 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 		offset := int(spans[iSpan].Offset)
 		spans[iSpan-1].Length += uint32(offset) + spans[iSpan].Length
 		spans = append(spans[:iSpan], spans[iSpan+1:]...)
-		newBuckets := make([]IBC, len(buckets)+offset)
-		copy(newBuckets, buckets[:iBucket])
-		copy(newBuckets[iBucket+offset:], buckets[iBucket:])
+		newPrimaryBuckets := make([]IBC, len(primaryBuckets)+offset)
+		copy(newPrimaryBuckets, primaryBuckets[:iBucket])
+		copy(newPrimaryBuckets[iBucket+offset:], primaryBuckets[iBucket:])
 		if deltaBuckets {
-			newBuckets[iBucket] = -currentBucketAbsolute
-			newBuckets[iBucket+offset] += currentBucketAbsolute
+			newPrimaryBuckets[iBucket] = -currentBucketAbsolute
+			newPrimaryBuckets[iBucket+offset] += currentBucketAbsolute
+		}
+		primaryBuckets = newPrimaryBuckets
+		if compensationBuckets != nil {
+			newCompensationBuckets := make([]float64, len(compensationBuckets)+offset)
+			copy(newCompensationBuckets, compensationBuckets[:iBucket])
+			copy(newCompensationBuckets[iBucket+offset:], compensationBuckets[iBucket:])
+			compensationBuckets = newCompensationBuckets
 		}
 		iBucket += offset
-		buckets = newBuckets
-		currentBucketAbsolute = buckets[iBucket]
+		currentBucketAbsolute = primaryBuckets[iBucket]
 		// Note that with many merges, it would be more efficient to
 		// first record all the chunks of empty buckets to insert and
 		// then do it in one go through all the buckets.
 	}
 
-	return buckets, spans
+	return primaryBuckets, compensationBuckets, spans
 }
 
-func bucketsMatch[IBC InternalBucketCount](b1, b2 []IBC) bool {
-	if len(b1) != len(b2) {
-		return false
+func checkHistogramSpans(spans []Span, numBuckets int) error {
+	var spanBuckets int
+	for n, span := range spans {
+		if n > 0 && span.Offset < 0 {
+			return fmt.Errorf("span number %d with offset %d: %w", n+1, span.Offset, ErrHistogramSpanNegativeOffset)
+		}
+		spanBuckets += int(span.Length)
 	}
-	for i, b := range b1 {
-		if b != b2[i] {
-			return false
+	if spanBuckets != numBuckets {
+		return fmt.Errorf("spans need %d buckets, have %d buckets: %w", spanBuckets, numBuckets, ErrHistogramSpansBucketsMismatch)
+	}
+	return nil
+}
+
+func checkHistogramBuckets[BC BucketCount, IBC InternalBucketCount](buckets []IBC, count *BC, deltas bool) error {
+	if len(buckets) == 0 {
+		return nil
+	}
+
+	var last IBC
+	for i := range buckets {
+		var c IBC
+		if deltas {
+			c = last + buckets[i]
+		} else {
+			c = buckets[i]
+		}
+		if c < 0 {
+			return fmt.Errorf("bucket number %d has observation count of %v: %w", i+1, c, ErrHistogramNegativeBucketCount)
+		}
+		last = c
+		*count += BC(c)
+	}
+
+	return nil
+}
+
+func checkHistogramCustomBounds(bounds []float64, spans []Span, numBuckets int) error {
+	prev := math.Inf(-1)
+	for i, curr := range bounds {
+		if math.IsNaN(curr) {
+			return ErrHistogramCustomBucketsNaN
+		}
+		if i > 0 && curr <= prev {
+			return fmt.Errorf("previous bound is %f and current is %f: %w", prev, curr, ErrHistogramCustomBucketsInvalid)
+		}
+		prev = curr
+	}
+	if prev == math.Inf(1) {
+		return fmt.Errorf("last +Inf bound must not be explicitly defined: %w", ErrHistogramCustomBucketsInfinite)
+	}
+
+	var spanBuckets int
+	var totalSpanLength int
+	for n, span := range spans {
+		if span.Offset < 0 {
+			return fmt.Errorf("span number %d with offset %d: %w", n+1, span.Offset, ErrHistogramSpanNegativeOffset)
+		}
+		spanBuckets += int(span.Length)
+		totalSpanLength += int(span.Length) + int(span.Offset)
+	}
+	if spanBuckets != numBuckets {
+		return fmt.Errorf("spans need %d buckets, have %d buckets: %w", spanBuckets, numBuckets, ErrHistogramSpansBucketsMismatch)
+	}
+	if (len(bounds) + 1) < totalSpanLength {
+		return fmt.Errorf("only %d custom bounds defined which is insufficient to cover total span length of %d: %w", len(bounds), totalSpanLength, ErrHistogramCustomBucketsMismatch)
+	}
+
+	return nil
+}
+
+func getBound(idx, schema int32, customValues []float64) float64 {
+	if IsCustomBucketsSchema(schema) {
+		length := int32(len(customValues))
+		switch {
+		case idx > length || idx < -1:
+			panic(fmt.Errorf("index %d out of bounds for custom bounds of length %d", idx, length))
+		case idx == length:
+			return math.Inf(1)
+		case idx == -1:
+			return math.Inf(-1)
+		default:
+			return customValues[idx]
 		}
 	}
-	return true
+	return getBoundExponential(idx, schema)
 }
 
-func getBound(idx, schema int32) float64 {
+func getBoundExponential(idx, schema int32) float64 {
 	// Here a bit of context about the behavior for the last bucket counting
 	// regular numbers (called simply "last bucket" below) and the bucket
 	// counting observations of ±Inf (called "inf bucket" below, with an idx
@@ -368,7 +584,7 @@ func getBound(idx, schema int32) float64 {
 	// bucket results in precisely that. It is either frac=1.0 & exp=1024
 	// (for schema < 0) or frac=0.5 & exp=1025 (for schema >=0). (This is,
 	// by the way, a power of two where the exponent itself is a power of
-	// two, 2¹⁰ in fact, which coinicides with a bucket boundary in all
+	// two, 2¹⁰ in fact, which coincides with a bucket boundary in all
 	// schemas.) So these are the special cases we have to catch below.
 	if schema < 0 {
 		exp := int(idx) << -schema
@@ -545,4 +761,145 @@ var exponentialBounds = [][]float64{
 		0.9785720620876999, 0.9812252401044634, 0.9838856116165875, 0.9865531961276168,
 		0.9892280131939752, 0.9919100824251095, 0.9945994234836328, 0.9972960560854698,
 	},
+}
+
+// reduceResolution reduces the input spans, buckets in origin schema to the spans, buckets in target schema.
+// The target schema must be smaller than the original schema.
+// Set deltaBuckets to true if the provided buckets are
+// deltas. Set it to false if the buckets contain absolute counts.
+// Set inplace to true to reuse input slices and avoid allocations (otherwise
+// new slices will be allocated for result).
+// The functions returns an error if there are too many or too few buckets for the spans
+// or if any span except the first has a negative offset.
+func reduceResolution[IBC InternalBucketCount](
+	originSpans []Span,
+	originBuckets []IBC,
+	originSchema,
+	targetSchema int32,
+	deltaBuckets bool,
+	inplace bool,
+) ([]Span, []IBC, error) {
+	var (
+		targetSpans           []Span // The spans in the target schema.
+		targetBuckets         []IBC  // The bucket counts in the target schema.
+		bucketIdx             int32  // The index of bucket in the origin schema.
+		bucketCountIdx        int    // The position of a bucket in origin bucket count slice `originBuckets`.
+		targetBucketIdx       int32  // The index of bucket in the target schema.
+		lastBucketCount       IBC    // The last visited bucket's count in the origin schema.
+		lastTargetBucketIdx   int32  // The index of the last added target bucket.
+		lastTargetBucketCount IBC
+	)
+
+	if inplace {
+		// Slice reuse is safe because when reducing the resolution,
+		// target slices don't grow faster than origin slices are being read.
+		targetSpans = originSpans[:0]
+		targetBuckets = originBuckets[:0]
+	}
+
+	for n, span := range originSpans {
+		if n > 0 && span.Offset < 0 {
+			return nil, nil, fmt.Errorf("span number %d with offset %d: %w", n+1, span.Offset, ErrHistogramSpanNegativeOffset)
+		}
+		// Determine the index of the first bucket in this span.
+		bucketIdx += span.Offset
+		for j := 0; j < int(span.Length); j++ {
+			// Protect against too few buckets in the origin.
+			if bucketCountIdx >= len(originBuckets) {
+				return nil, nil, fmt.Errorf("have %d buckets but spans need more: %w", len(originBuckets), ErrHistogramSpansBucketsMismatch)
+			}
+
+			// Determine the index of the bucket in the target schema from the index in the original schema.
+			targetBucketIdx = targetIdx(bucketIdx, originSchema, targetSchema)
+
+			switch {
+			case len(targetSpans) == 0:
+				// This is the first span in the targetSpans.
+				span := Span{
+					Offset: targetBucketIdx,
+					Length: 1,
+				}
+				targetSpans = append(targetSpans, span)
+				targetBuckets = append(targetBuckets, originBuckets[bucketCountIdx])
+				lastTargetBucketIdx = targetBucketIdx
+				lastBucketCount = originBuckets[bucketCountIdx]
+				lastTargetBucketCount = originBuckets[bucketCountIdx]
+
+			case lastTargetBucketIdx == targetBucketIdx:
+				// The current bucket has to be merged into the same target bucket as the previous bucket.
+				if deltaBuckets {
+					lastBucketCount += originBuckets[bucketCountIdx]
+					targetBuckets[len(targetBuckets)-1] += lastBucketCount
+					lastTargetBucketCount += lastBucketCount
+				} else {
+					targetBuckets[len(targetBuckets)-1] += originBuckets[bucketCountIdx]
+				}
+
+			case (lastTargetBucketIdx + 1) == targetBucketIdx:
+				// The current bucket has to go into a new target bucket,
+				// and that bucket is next to the previous target bucket,
+				// so we add it to the current target span.
+				targetSpans[len(targetSpans)-1].Length++
+				lastTargetBucketIdx++
+				if deltaBuckets {
+					lastBucketCount += originBuckets[bucketCountIdx]
+					targetBuckets = append(targetBuckets, lastBucketCount-lastTargetBucketCount)
+					lastTargetBucketCount = lastBucketCount
+				} else {
+					targetBuckets = append(targetBuckets, originBuckets[bucketCountIdx])
+				}
+
+			case (lastTargetBucketIdx + 1) < targetBucketIdx:
+				// The current bucket has to go into a new target bucket,
+				// and that bucket is separated by a gap from the previous target bucket,
+				// so we need to add a new target span.
+				span := Span{
+					Offset: targetBucketIdx - lastTargetBucketIdx - 1,
+					Length: 1,
+				}
+				targetSpans = append(targetSpans, span)
+				lastTargetBucketIdx = targetBucketIdx
+				if deltaBuckets {
+					lastBucketCount += originBuckets[bucketCountIdx]
+					targetBuckets = append(targetBuckets, lastBucketCount-lastTargetBucketCount)
+					lastTargetBucketCount = lastBucketCount
+				} else {
+					targetBuckets = append(targetBuckets, originBuckets[bucketCountIdx])
+				}
+			}
+			bucketIdx++
+			bucketCountIdx++
+		}
+	}
+	if bucketCountIdx != len(originBuckets) {
+		return nil, nil, fmt.Errorf("spans need %d buckets, have %d buckets: %w", bucketCountIdx, len(originBuckets), ErrHistogramSpansBucketsMismatch)
+	}
+	return targetSpans, targetBuckets, nil
+}
+
+// mustReduceResolution works like reduceResolution, but panics instead of
+// returning an error. Use mustReduceResolution if you are sure that the spans
+// and buckets are valid.
+func mustReduceResolution[IBC InternalBucketCount](
+	originSpans []Span,
+	originBuckets []IBC,
+	originSchema,
+	targetSchema int32,
+	deltaBuckets bool,
+	inplace bool,
+) ([]Span, []IBC) {
+	targetSpans, targetBuckets, err := reduceResolution(
+		originSpans, originBuckets, originSchema, targetSchema, deltaBuckets, inplace,
+	)
+	if err != nil {
+		panic(err)
+	}
+	return targetSpans, targetBuckets
+}
+
+func clearIfNotNil[T any](items []T) []T {
+	if items == nil {
+		return nil
+	}
+	return items[:0]
 }

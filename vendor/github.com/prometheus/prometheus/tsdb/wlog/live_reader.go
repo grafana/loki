@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,19 +16,20 @@ package wlog
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
+	"log/slog"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	"github.com/golang/snappy"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/prometheus/prometheus/util/compression"
 )
 
 // LiveReaderMetrics holds all metrics exposed by the LiveReader.
 type LiveReaderMetrics struct {
+	reg                    prometheus.Registerer
 	readerCorruptionErrors *prometheus.CounterVec
 }
 
@@ -36,6 +37,7 @@ type LiveReaderMetrics struct {
 // at LiveReader instantiation.
 func NewLiveReaderMetrics(reg prometheus.Registerer) *LiveReaderMetrics {
 	m := &LiveReaderMetrics{
+		reg: reg,
 		readerCorruptionErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "prometheus_tsdb_wal_reader_corruption_errors_total",
 			Help: "Errors encountered when reading the WAL.",
@@ -49,11 +51,21 @@ func NewLiveReaderMetrics(reg prometheus.Registerer) *LiveReaderMetrics {
 	return m
 }
 
+// Unregister unregisters metrics emitted by this instance.
+func (m *LiveReaderMetrics) Unregister() {
+	if m.reg == nil {
+		return
+	}
+
+	m.reg.Unregister(m.readerCorruptionErrors)
+}
+
 // NewLiveReader returns a new live reader.
-func NewLiveReader(logger log.Logger, metrics *LiveReaderMetrics, r io.Reader) *LiveReader {
+func NewLiveReader(logger *slog.Logger, metrics *LiveReaderMetrics, r io.Reader) *LiveReader {
 	lr := &LiveReader{
 		logger:  logger,
 		rdr:     r,
+		decBuf:  compression.NewSyncDecodeBuffer(),
 		metrics: metrics,
 
 		// Until we understand how they come about, make readers permissive
@@ -68,17 +80,19 @@ func NewLiveReader(logger log.Logger, metrics *LiveReaderMetrics, r io.Reader) *
 // that are still in the process of being written, and returns records as soon
 // as they can be read.
 type LiveReader struct {
-	logger     log.Logger
-	rdr        io.Reader
-	err        error
-	rec        []byte
-	snappyBuf  []byte
-	hdr        [recordHeaderSize]byte
-	buf        [pageSize]byte
-	readIndex  int   // Index in buf to start at for next read.
-	writeIndex int   // Index in buf to start at for next write.
-	total      int64 // Total bytes processed during reading in calls to Next().
-	index      int   // Used to track partial records, should be 0 at the start of every new record.
+	logger *slog.Logger
+	rdr    io.Reader
+	err    error
+	rec    []byte
+
+	precomprBuf []byte
+	decBuf      compression.DecodeBuffer
+	hdr         [recordHeaderSize]byte
+	buf         [pageSize]byte
+	readIndex   int   // Index in buf to start at for next read.
+	writeIndex  int   // Index in buf to start at for next write.
+	total       int64 // Total bytes processed during reading in calls to Next().
+	index       int   // Used to track partial records, should be 0 at the start of every new record.
 
 	// For testing, we can treat EOF as a non-error.
 	eofNonErr bool
@@ -129,7 +143,7 @@ func (r *LiveReader) Next() bool {
 		switch ok, err := r.buildRecord(); {
 		case ok:
 			return true
-		case err != nil && err != io.EOF:
+		case err != nil && !errors.Is(err, io.EOF):
 			r.err = err
 			return false
 		}
@@ -151,7 +165,7 @@ func (r *LiveReader) Next() bool {
 
 		if r.writeIndex != pageSize {
 			n, err := r.fillBuffer()
-			if n == 0 || (err != nil && err != io.EOF) {
+			if n == 0 || (err != nil && !errors.Is(err, io.EOF)) {
 				r.err = err
 				return false
 			}
@@ -168,7 +182,7 @@ func (r *LiveReader) Record() []byte {
 // Rebuild a full record from potentially partial records. Returns false
 // if there was an error or if we weren't able to read a record for any reason.
 // Returns true if we read a full record. Any record data is appended to
-// LiveReader.rec
+// LiveReader.rec.
 func (r *LiveReader) buildRecord() (bool, error) {
 	for {
 		// Check that we have data in the internal buffer to read.
@@ -190,16 +204,19 @@ func (r *LiveReader) buildRecord() (bool, error) {
 
 		rt := recTypeFromHeader(r.hdr[0])
 		if rt == recFirst || rt == recFull {
-			r.rec = r.rec[:0]
-			r.snappyBuf = r.snappyBuf[:0]
+			r.precomprBuf = r.precomprBuf[:0]
 		}
 
-		compressed := r.hdr[0]&snappyMask != 0
-		if compressed {
-			r.snappyBuf = append(r.snappyBuf, temp...)
-		} else {
-			r.rec = append(r.rec, temp...)
+		// Segment format has only 2 bits, so it's either of those 3 options.
+		// https://github.com/prometheus/prometheus/blob/main/tsdb/docs/format/wal.md#records-encoding
+		compr := compression.None
+		if r.hdr[0]&snappyMask == snappyMask {
+			compr = compression.Snappy
+		} else if r.hdr[0]&zstdMask == zstdMask {
+			compr = compression.Zstd
 		}
+
+		r.precomprBuf = append(r.precomprBuf, temp...)
 
 		if err := validateRecord(rt, r.index); err != nil {
 			r.index = 0
@@ -207,15 +224,9 @@ func (r *LiveReader) buildRecord() (bool, error) {
 		}
 		if rt == recLast || rt == recFull {
 			r.index = 0
-			if compressed && len(r.snappyBuf) > 0 {
-				// The snappy library uses `len` to calculate if we need a new buffer.
-				// In order to allocate as few buffers as possible make the length
-				// equal to the capacity.
-				r.rec = r.rec[:cap(r.rec)]
-				r.rec, err = snappy.Decode(r.rec, r.snappyBuf)
-				if err != nil {
-					return false, err
-				}
+			r.rec, err = compression.Decode(compr, r.precomprBuf, r.decBuf)
+			if err != nil {
+				return false, err
 			}
 			return true, nil
 		}
@@ -252,7 +263,7 @@ func validateRecord(typ recType, i int) error {
 		}
 		return nil
 	default:
-		return errors.Errorf("unexpected record type %d", typ)
+		return fmt.Errorf("unexpected record type %d", typ)
 	}
 }
 
@@ -298,7 +309,7 @@ func (r *LiveReader) readRecord() ([]byte, int, error) {
 			return nil, 0, fmt.Errorf("record would overflow current page: %d > %d", r.readIndex+recordHeaderSize+length, pageSize)
 		}
 		r.metrics.readerCorruptionErrors.WithLabelValues("record_span_page").Inc()
-		level.Warn(r.logger).Log("msg", "Record spans page boundaries", "start", r.readIndex, "end", recordHeaderSize+length, "pageSize", pageSize)
+		r.logger.Warn("Record spans page boundaries", "start", r.readIndex, "end", recordHeaderSize+length, "pageSize", pageSize)
 	}
 	if recordHeaderSize+length > pageSize {
 		return nil, 0, fmt.Errorf("record length greater than a single page: %d > %d", recordHeaderSize+length, pageSize)
@@ -309,15 +320,8 @@ func (r *LiveReader) readRecord() ([]byte, int, error) {
 
 	rec := r.buf[r.readIndex+recordHeaderSize : r.readIndex+recordHeaderSize+length]
 	if c := crc32.Checksum(rec, castagnoliTable); c != crc {
-		return nil, 0, errors.Errorf("unexpected checksum %x, expected %x", c, crc)
+		return nil, 0, fmt.Errorf("unexpected checksum %x, expected %x", c, crc)
 	}
 
 	return rec, length + recordHeaderSize, nil
-}
-
-func min(i, j int) int {
-	if i < j {
-		return i
-	}
-	return j
 }

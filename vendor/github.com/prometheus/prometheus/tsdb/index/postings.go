@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,17 +15,25 @@ package index
 
 import (
 	"container/heap"
+	"context"
 	"encoding/binary"
+	"fmt"
+	"maps"
+	"math"
 	"runtime"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
+	"time"
 
-	"github.com/pkg/errors"
-	"golang.org/x/exp/slices"
+	"github.com/bboreham/go-loser"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 )
+
+const exponentialSliceGrowthFactor = 2
 
 var allPostingsKey = labels.Label{}
 
@@ -39,7 +47,7 @@ const ensureOrderBatchSize = 1024
 
 // ensureOrderBatchPool is a pool used to recycle batches passed to workers in MemPostings.EnsureOrder().
 var ensureOrderBatchPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		x := make([][]storage.SeriesRef, 0, ensureOrderBatchSize)
 		return &x // Return pointer type as preferred by Pool.
 	},
@@ -50,15 +58,33 @@ var ensureOrderBatchPool = sync.Pool{
 // EnsureOrder() must be called once before any reads are done. This allows for quick
 // unordered batch fills on startup.
 type MemPostings struct {
-	mtx     sync.RWMutex
-	m       map[string]map[string][]storage.SeriesRef
+	mtx sync.RWMutex
+
+	// m holds the postings lists for each label-value pair, indexed first by label name, and then by label value.
+	//
+	// mtx must be held when interacting with m (the appropriate one for reading or writing).
+	// It is safe to retain a reference to a postings list after releasing the lock.
+	//
+	// BUG: There's currently a data race in addFor, which might modify the tail of the postings list:
+	// https://github.com/prometheus/prometheus/issues/15317
+	m map[string]map[string][]storage.SeriesRef
+
+	// lvs holds the label values for each label name.
+	// lvs[name] is essentially an unsorted append-only list of all keys in m[name]
+	// mtx must be held when interacting with lvs.
+	// Since it's append-only, it is safe to read the label values slice after releasing the lock.
+	lvs map[string][]string
+
 	ordered bool
 }
+
+const defaultLabelNamesMapSize = 512
 
 // NewMemPostings returns a memPostings that's ready for reads and writes.
 func NewMemPostings() *MemPostings {
 	return &MemPostings{
-		m:       make(map[string]map[string][]storage.SeriesRef, 512),
+		m:       make(map[string]map[string][]storage.SeriesRef, defaultLabelNamesMapSize),
+		lvs:     make(map[string][]string, defaultLabelNamesMapSize),
 		ordered: true,
 	}
 }
@@ -67,7 +93,8 @@ func NewMemPostings() *MemPostings {
 // until EnsureOrder() was called once.
 func NewUnorderedMemPostings() *MemPostings {
 	return &MemPostings{
-		m:       make(map[string]map[string][]storage.SeriesRef, 512),
+		m:       make(map[string]map[string][]storage.SeriesRef, defaultLabelNamesMapSize),
+		lvs:     make(map[string][]string, defaultLabelNamesMapSize),
 		ordered: false,
 	}
 }
@@ -75,16 +102,19 @@ func NewUnorderedMemPostings() *MemPostings {
 // Symbols returns an iterator over all unique name and value strings, in order.
 func (p *MemPostings) Symbols() StringIter {
 	p.mtx.RLock()
+	// Make a quick clone of the map to avoid holding the lock while iterating.
+	// It's safe to use the values of the map after releasing the lock, as they're append-only slices.
+	lvs := maps.Clone(p.lvs)
+	p.mtx.RUnlock()
 
 	// Add all the strings to a map to de-duplicate.
-	symbols := make(map[string]struct{}, 512)
-	for n, e := range p.m {
+	symbols := make(map[string]struct{}, defaultLabelNamesMapSize)
+	for n, labelValues := range lvs {
 		symbols[n] = struct{}{}
-		for v := range e {
+		for _, v := range labelValues {
 			symbols[v] = struct{}{}
 		}
 	}
-	p.mtx.RUnlock()
 
 	res := make([]string, 0, len(symbols))
 	for k := range symbols {
@@ -107,11 +137,14 @@ func (p *MemPostings) SortedKeys() []labels.Label {
 	}
 	p.mtx.RUnlock()
 
-	sort.Slice(keys, func(i, j int) bool {
-		if keys[i].Name != keys[j].Name {
-			return keys[i].Name < keys[j].Name
+	slices.SortFunc(keys, func(a, b labels.Label) int {
+		nameCompare := strings.Compare(a.Name, b.Name)
+		// If names are the same, compare values.
+		if nameCompare != 0 {
+			return nameCompare
 		}
-		return keys[i].Value < keys[j].Value
+
+		return strings.Compare(a.Value, b.Value)
 	})
 	return keys
 }
@@ -135,15 +168,20 @@ func (p *MemPostings) LabelNames() []string {
 }
 
 // LabelValues returns label values for the given name.
-func (p *MemPostings) LabelValues(name string) []string {
+func (p *MemPostings) LabelValues(_ context.Context, name string, hints *storage.LabelHints) []string {
 	p.mtx.RLock()
-	defer p.mtx.RUnlock()
+	values := p.lvs[name]
+	p.mtx.RUnlock()
 
-	values := make([]string, 0, len(p.m[name]))
-	for v := range p.m[name] {
-		values = append(values, v)
+	if hints != nil && hints.Limit > 0 && len(values) > hints.Limit {
+		values = values[:hints.Limit]
 	}
-	return values
+
+	// The slice from p.lvs[name] is shared between all readers, and it is append-only.
+	// Since it's shared, we need to make a copy of it before returning it to make
+	// sure that no caller modifies the original one by sorting it or filtering it.
+	// Since it's append-only, we can do this while not holding the mutex anymore.
+	return slices.Clone(values)
 }
 
 // PostingsStats contains cardinality based statistics for postings.
@@ -156,10 +194,9 @@ type PostingsStats struct {
 }
 
 // Stats calculates the cardinality statistics from postings.
-func (p *MemPostings) Stats(label string) *PostingsStats {
-	const maxNumOfRecords = 10
+// Caller can pass in a function which computes the space required for n series with a given label.
+func (p *MemPostings) Stats(label string, limit int, labelSizeFunc func(string, string, uint64) uint64) *PostingsStats {
 	var size uint64
-
 	p.mtx.RLock()
 
 	metrics := &maxHeap{}
@@ -168,10 +205,10 @@ func (p *MemPostings) Stats(label string) *PostingsStats {
 	labelValuePairs := &maxHeap{}
 	numLabelPairs := 0
 
-	metrics.init(maxNumOfRecords)
-	labels.init(maxNumOfRecords)
-	labelValueLength.init(maxNumOfRecords)
-	labelValuePairs.init(maxNumOfRecords)
+	metrics.init(limit)
+	labels.init(limit)
+	labelValueLength.init(limit)
+	labelValuePairs.init(limit)
 
 	for n, e := range p.m {
 		if n == "" {
@@ -184,8 +221,9 @@ func (p *MemPostings) Stats(label string) *PostingsStats {
 			if n == label {
 				metrics.push(Stat{Name: name, Count: uint64(len(values))})
 			}
-			labelValuePairs.push(Stat{Name: n + "=" + name, Count: uint64(len(values))})
-			size += uint64(len(name))
+			seriesCnt := uint64(len(values))
+			labelValuePairs.push(Stat{Name: n + "=" + name, Count: seriesCnt})
+			size += labelSizeFunc(n, name, seriesCnt)
 		}
 		labelValueLength.push(Stat{Name: n, Count: size})
 	}
@@ -201,25 +239,9 @@ func (p *MemPostings) Stats(label string) *PostingsStats {
 	}
 }
 
-// Get returns a postings list for the given label pair.
-func (p *MemPostings) Get(name, value string) Postings {
-	var lp []storage.SeriesRef
-	p.mtx.RLock()
-	l := p.m[name]
-	if l != nil {
-		lp = l[value]
-	}
-	p.mtx.RUnlock()
-
-	if lp == nil {
-		return EmptyPostings()
-	}
-	return newListPostings(lp...)
-}
-
 // All returns a postings list over all documents ever added.
 func (p *MemPostings) All() Postings {
-	return p.Get(AllPostingsKey())
+	return p.Postings(context.Background(), allPostingsKey.Name, allPostingsKey.Value)
 }
 
 // EnsureOrder ensures that all postings lists are sorted. After it returns all further
@@ -282,62 +304,84 @@ func (p *MemPostings) EnsureOrder(numberOfConcurrentProcesses int) {
 }
 
 // Delete removes all ids in the given map from the postings lists.
-func (p *MemPostings) Delete(deleted map[storage.SeriesRef]struct{}) {
-	var keys, vals []string
+// affectedLabels contains all the labels that are affected by the deletion, there's no need to check other labels.
+func (p *MemPostings) Delete(deleted map[storage.SeriesRef]struct{}, affected map[labels.Label]struct{}) {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
 
-	// Collect all keys relevant for deletion once. New keys added afterwards
-	// can by definition not be affected by any of the given deletes.
+	affectedLabelNames := map[string]struct{}{}
+	process := func(l labels.Label) {
+		orig := p.m[l.Name][l.Value]
+		repl := make([]storage.SeriesRef, 0, len(orig))
+		for _, id := range orig {
+			if _, ok := deleted[id]; !ok {
+				repl = append(repl, id)
+			}
+		}
+		if len(repl) > 0 {
+			p.m[l.Name][l.Value] = repl
+		} else {
+			delete(p.m[l.Name], l.Value)
+			affectedLabelNames[l.Name] = struct{}{}
+		}
+	}
+
+	i := 0
+	for l := range affected {
+		i++
+		process(l)
+
+		// From time to time we want some readers to go through and read their postings.
+		// It takes around 50ms to process a 1K series batch, and 120ms to process a 10K series batch (local benchmarks on an M3).
+		// Note that a read query will most likely want to read multiple postings lists, say 5, 10 or 20 (depending on the number of matchers)
+		// And that read query will most likely evaluate only one of those matchers before we unpause here, so we want to pause often.
+		if i%512 == 0 {
+			p.unlockWaitAndLockAgain()
+		}
+	}
+	process(allPostingsKey)
+
+	// Now we need to update the label values slices.
+	i = 0
+	for name := range affectedLabelNames {
+		i++
+		// From time to time we want some readers to go through and read their postings.
+		if i%512 == 0 {
+			p.unlockWaitAndLockAgain()
+		}
+
+		if len(p.m[name]) == 0 {
+			// Delete the label name key if we deleted all values.
+			delete(p.m, name)
+			delete(p.lvs, name)
+			continue
+		}
+
+		// Create the new slice with enough room to grow without reallocating.
+		// We have deleted values here, so there's definitely some churn, so be prepared for it.
+		lvs := make([]string, 0, exponentialSliceGrowthFactor*len(p.m[name]))
+		for v := range p.m[name] {
+			lvs = append(lvs, v)
+		}
+		p.lvs[name] = lvs
+	}
+}
+
+// unlockWaitAndLockAgain will unlock an already locked p.mtx.Lock() and then wait a little bit before locking it again,
+// letting the RLock()-waiting goroutines to get the lock.
+func (p *MemPostings) unlockWaitAndLockAgain() {
+	p.mtx.Unlock()
+	// While it's tempting to just do a `time.Sleep(time.Millisecond)` here,
+	// it wouldn't ensure use that readers actually were able to get the read lock,
+	// because if there are writes waiting on same mutex, readers won't be able to get it.
+	// So we just grab one RLock ourselves.
 	p.mtx.RLock()
-	for n := range p.m {
-		keys = append(keys, n)
-	}
-	p.mtx.RUnlock()
-
-	for _, n := range keys {
-		p.mtx.RLock()
-		vals = vals[:0]
-		for v := range p.m[n] {
-			vals = append(vals, v)
-		}
-		p.mtx.RUnlock()
-
-		// For each posting we first analyse whether the postings list is affected by the deletes.
-		// If yes, we actually reallocate a new postings list.
-		for _, l := range vals {
-			// Only lock for processing one postings list so we don't block reads for too long.
-			p.mtx.Lock()
-
-			found := false
-			for _, id := range p.m[n][l] {
-				if _, ok := deleted[id]; ok {
-					found = true
-					break
-				}
-			}
-			if !found {
-				p.mtx.Unlock()
-				continue
-			}
-			repl := make([]storage.SeriesRef, 0, len(p.m[n][l]))
-
-			for _, id := range p.m[n][l] {
-				if _, ok := deleted[id]; !ok {
-					repl = append(repl, id)
-				}
-			}
-			if len(repl) > 0 {
-				p.m[n][l] = repl
-			} else {
-				delete(p.m[n], l)
-			}
-			p.mtx.Unlock()
-		}
-		p.mtx.Lock()
-		if len(p.m[n]) == 0 {
-			delete(p.m, n)
-		}
-		p.mtx.Unlock()
-	}
+	// We shouldn't wait here, because we would be blocking a potential write for no reason.
+	// Note that if there's a writer waiting for us to unlock, no reader will be able to get the read lock.
+	p.mtx.RUnlock() //nolint:staticcheck // SA2001: this is an intentionally empty critical section.
+	// Now we can wait a little bit just to increase the chance of a reader getting the lock.
+	time.Sleep(time.Millisecond)
+	p.mtx.Lock()
 }
 
 // Iter calls f for each postings list. It aborts if f returns an error and returns it.
@@ -347,7 +391,7 @@ func (p *MemPostings) Iter(f func(labels.Label, Postings) error) error {
 
 	for n, e := range p.m {
 		for v, p := range e {
-			if err := f(labels.Label{Name: n, Value: v}, newListPostings(p...)); err != nil {
+			if err := f(labels.Label{Name: n, Value: v}, NewListPostings(p)); err != nil {
 				return err
 			}
 		}
@@ -367,13 +411,26 @@ func (p *MemPostings) Add(id storage.SeriesRef, lset labels.Labels) {
 	p.mtx.Unlock()
 }
 
+func appendWithExponentialGrowth[T any](a []T, v T) []T {
+	if cap(a) < len(a)+1 {
+		newList := make([]T, len(a), len(a)*exponentialSliceGrowthFactor+1)
+		copy(newList, a)
+		a = newList
+	}
+	return append(a, v)
+}
+
 func (p *MemPostings) addFor(id storage.SeriesRef, l labels.Label) {
 	nm, ok := p.m[l.Name]
 	if !ok {
 		nm = map[string][]storage.SeriesRef{}
 		p.m[l.Name] = nm
 	}
-	list := append(nm[l.Value], id)
+	vm, ok := nm[l.Value]
+	if !ok {
+		p.lvs[l.Name] = appendWithExponentialGrowth(p.lvs[l.Name], l.Value)
+	}
+	list := appendWithExponentialGrowth(vm, id)
 	nm[l.Value] = list
 
 	if !p.ordered {
@@ -391,6 +448,92 @@ func (p *MemPostings) addFor(id storage.SeriesRef, l labels.Label) {
 	}
 }
 
+func (p *MemPostings) PostingsForLabelMatching(ctx context.Context, name string, match func(string) bool) Postings {
+	// We'll take the label values slice and then match over that,
+	// this way we don't need to hold the mutex while we're matching,
+	// which can be slow (seconds) if the match function is a huge regex.
+	// Holding this lock prevents new series from being added (slows down the write path)
+	// and blocks the compaction process.
+	//
+	// We just need to make sure we don't modify the slice we took,
+	// so we'll append matching values to a different one.
+	p.mtx.RLock()
+	readOnlyLabelValues := p.lvs[name]
+	p.mtx.RUnlock()
+
+	vals := make([]string, 0, len(readOnlyLabelValues))
+	for i, v := range readOnlyLabelValues {
+		if i%checkContextEveryNIterations == 0 && ctx.Err() != nil {
+			return ErrPostings(ctx.Err())
+		}
+
+		if match(v) {
+			vals = append(vals, v)
+		}
+	}
+
+	// If none matched (or this label had no values), no need to grab the lock again.
+	if len(vals) == 0 {
+		return EmptyPostings()
+	}
+
+	// Now `vals` only contains the values that matched, get their postings.
+	its := make([]*listPostings, 0, len(vals))
+	lps := make([]listPostings, len(vals))
+	p.mtx.RLock()
+	e := p.m[name]
+	for i, v := range vals {
+		if refs, ok := e[v]; ok {
+			// Some of the values may have been garbage-collected in the meantime this is fine, we'll just skip them.
+			// If we didn't let the mutex go, we'd have these postings here, but they would be pointing nowhere
+			// because there would be a `MemPostings.Delete()` call waiting for the lock to delete these labels,
+			// because the series were deleted already.
+			lps[i] = listPostings{list: refs}
+			its = append(its, &lps[i])
+		}
+	}
+	// Let the mutex go before merging.
+	p.mtx.RUnlock()
+
+	return Merge(ctx, its...)
+}
+
+// Postings returns a postings iterator for the given label values.
+func (p *MemPostings) Postings(ctx context.Context, name string, values ...string) Postings {
+	res := make([]*listPostings, 0, len(values))
+	lps := make([]listPostings, len(values))
+	p.mtx.RLock()
+	postingsMapForName := p.m[name]
+	for i, value := range values {
+		if lp := postingsMapForName[value]; lp != nil {
+			lps[i] = listPostings{list: lp}
+			res = append(res, &lps[i])
+		}
+	}
+	p.mtx.RUnlock()
+	return Merge(ctx, res...)
+}
+
+func (p *MemPostings) PostingsForAllLabelValues(ctx context.Context, name string) Postings {
+	p.mtx.RLock()
+
+	e := p.m[name]
+	its := make([]*listPostings, 0, len(e))
+	lps := make([]listPostings, len(e))
+	i := 0
+	for _, refs := range e {
+		if len(refs) > 0 {
+			lps[i] = listPostings{list: refs}
+			its = append(its, &lps[i])
+		}
+		i++
+	}
+
+	// Let the mutex go before merging.
+	p.mtx.RUnlock()
+	return Merge(ctx, its...)
+}
+
 // ExpandPostings returns the postings expanded as a slice.
 func ExpandPostings(p Postings) (res []storage.SeriesRef, err error) {
 	for p.Next() {
@@ -399,7 +542,7 @@ func ExpandPostings(p Postings) (res []storage.SeriesRef, err error) {
 	return res, p.Err()
 }
 
-// Postings provides iterative access over a postings list.
+// Postings provides iterative access over an ordered list of SeriesRef.
 type Postings interface {
 	// Next advances the iterator and returns true if another value was found.
 	Next() bool
@@ -409,6 +552,7 @@ type Postings interface {
 	Seek(v storage.SeriesRef) bool
 
 	// At returns the value at the current iterator position.
+	// At should only be called after a successful call to Next or Seek.
 	At() storage.SeriesRef
 
 	// Err returns the last error of the iterator.
@@ -420,10 +564,10 @@ type errPostings struct {
 	err error
 }
 
-func (e errPostings) Next() bool                  { return false }
-func (e errPostings) Seek(storage.SeriesRef) bool { return false }
-func (e errPostings) At() storage.SeriesRef       { return 0 }
-func (e errPostings) Err() error                  { return e.err }
+func (errPostings) Next() bool                  { return false }
+func (errPostings) Seek(storage.SeriesRef) bool { return false }
+func (errPostings) At() storage.SeriesRef       { return 0 }
+func (e errPostings) Err() error                { return e.err }
 
 var emptyPostings = errPostings{}
 
@@ -455,63 +599,75 @@ func Intersect(its ...Postings) Postings {
 	if len(its) == 1 {
 		return its[0]
 	}
-	for _, p := range its {
-		if p == EmptyPostings() {
-			return EmptyPostings()
-		}
+	if slices.Contains(its, EmptyPostings()) {
+		return EmptyPostings()
 	}
 
 	return newIntersectPostings(its...)
 }
 
 type intersectPostings struct {
-	arr []Postings
-	cur storage.SeriesRef
+	postings []Postings        // These are the postings we will be intersecting.
+	current  storage.SeriesRef // The current intersection, if Seek() or Next() has returned true.
 }
 
 func newIntersectPostings(its ...Postings) *intersectPostings {
-	return &intersectPostings{arr: its}
+	return &intersectPostings{postings: its}
 }
 
 func (it *intersectPostings) At() storage.SeriesRef {
-	return it.cur
+	return it.current
 }
 
-func (it *intersectPostings) doNext() bool {
-Loop:
+func (it *intersectPostings) Seek(target storage.SeriesRef) bool {
 	for {
-		for _, p := range it.arr {
-			if !p.Seek(it.cur) {
+		allEqual := true
+		for _, p := range it.postings {
+			if !p.Seek(target) {
 				return false
 			}
-			if p.At() > it.cur {
-				it.cur = p.At()
-				continue Loop
+			if p.At() > target {
+				target = p.At()
+				allEqual = false
 			}
 		}
-		return true
+
+		// if all p.At() are all equal, we found an intersection.
+		if allEqual {
+			it.current = target
+			return true
+		}
 	}
 }
 
 func (it *intersectPostings) Next() bool {
-	for _, p := range it.arr {
+	// Move forward the first Postings and take its value as the target to match.
+	if !it.postings[0].Next() {
+		return false
+	}
+	target := it.postings[0].At()
+	allEqual := true
+	for _, p := range it.postings[1:] { // Now move forward all the other ones and check if they match.
 		if !p.Next() {
 			return false
 		}
-		if p.At() > it.cur {
-			it.cur = p.At()
+		at := p.At()
+		if at > target { // This one is past the target, so pick up a new target to Seek at the end.
+			target = at
+			allEqual = false
+		} else if at < target { // This one needs to Seek to the target, but carry on with other postings in case they have an even higher target.
+			allEqual = false
 		}
 	}
-	return it.doNext()
-}
-
-func (it *intersectPostings) Seek(id storage.SeriesRef) bool {
-	it.cur = id
-	return it.doNext()
+	if allEqual {
+		it.current = target
+		return true
+	}
+	return it.Seek(target)
 }
 
 func (it *intersectPostings) Err() error {
-	for _, p := range it.arr {
+	for _, p := range it.postings {
 		if p.Err() != nil {
 			return p.Err()
 		}
@@ -520,7 +676,7 @@ func (it *intersectPostings) Err() error {
 }
 
 // Merge returns a new iterator over the union of the input iterators.
-func Merge(its ...Postings) Postings {
+func Merge[T Postings](_ context.Context, its ...T) Postings {
 	if len(its) == 0 {
 		return EmptyPostings()
 	}
@@ -535,122 +691,55 @@ func Merge(its ...Postings) Postings {
 	return p
 }
 
-type postingsHeap []Postings
-
-func (h postingsHeap) Len() int           { return len(h) }
-func (h postingsHeap) Less(i, j int) bool { return h[i].At() < h[j].At() }
-func (h *postingsHeap) Swap(i, j int)     { (*h)[i], (*h)[j] = (*h)[j], (*h)[i] }
-
-func (h *postingsHeap) Push(x interface{}) {
-	*h = append(*h, x.(Postings))
+type mergedPostings[T Postings] struct {
+	p   []T
+	h   *loser.Tree[storage.SeriesRef, T]
+	cur storage.SeriesRef
 }
 
-func (h *postingsHeap) Pop() interface{} {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[0 : n-1]
-	return x
+func newMergedPostings[T Postings](p []T) (m *mergedPostings[T], nonEmpty bool) {
+	const maxVal = storage.SeriesRef(math.MaxUint64) // This value must be higher than all real values used in the tree.
+	lt := loser.New(p, maxVal)
+	return &mergedPostings[T]{p: p, h: lt}, true
 }
 
-type mergedPostings struct {
-	h           postingsHeap
-	initialized bool
-	cur         storage.SeriesRef
-	err         error
-}
-
-func newMergedPostings(p []Postings) (m *mergedPostings, nonEmpty bool) {
-	ph := make(postingsHeap, 0, len(p))
-
-	for _, it := range p {
-		// NOTE: mergedPostings struct requires the user to issue an initial Next.
-		switch {
-		case it.Next():
-			ph = append(ph, it)
-		case it.Err() != nil:
-			return &mergedPostings{err: it.Err()}, true
-		}
-	}
-
-	if len(ph) == 0 {
-		return nil, false
-	}
-	return &mergedPostings{h: ph}, true
-}
-
-func (it *mergedPostings) Next() bool {
-	if it.h.Len() == 0 || it.err != nil {
-		return false
-	}
-
-	// The user must issue an initial Next.
-	if !it.initialized {
-		heap.Init(&it.h)
-		it.cur = it.h[0].At()
-		it.initialized = true
-		return true
-	}
-
+func (it *mergedPostings[T]) Next() bool {
 	for {
-		cur := it.h[0]
-		if !cur.Next() {
-			heap.Pop(&it.h)
-			if cur.Err() != nil {
-				it.err = cur.Err()
-				return false
-			}
-			if it.h.Len() == 0 {
-				return false
-			}
-		} else {
-			// Value of top of heap has changed, re-heapify.
-			heap.Fix(&it.h, 0)
+		if !it.h.Next() {
+			return false
 		}
-
-		if it.h[0].At() != it.cur {
-			it.cur = it.h[0].At()
+		// Remove duplicate entries.
+		newItem := it.h.At()
+		if newItem != it.cur {
+			it.cur = newItem
 			return true
 		}
 	}
 }
 
-func (it *mergedPostings) Seek(id storage.SeriesRef) bool {
-	if it.h.Len() == 0 || it.err != nil {
+func (it *mergedPostings[T]) Seek(id storage.SeriesRef) bool {
+	for !it.h.IsEmpty() && it.h.At() < id {
+		finished := !it.h.Winner().Seek(id)
+		it.h.Fix(finished)
+	}
+	if it.h.IsEmpty() {
 		return false
 	}
-	if !it.initialized {
-		if !it.Next() {
-			return false
-		}
-	}
-	for it.cur < id {
-		cur := it.h[0]
-		if !cur.Seek(id) {
-			heap.Pop(&it.h)
-			if cur.Err() != nil {
-				it.err = cur.Err()
-				return false
-			}
-			if it.h.Len() == 0 {
-				return false
-			}
-		} else {
-			// Value of top of heap has changed, re-heapify.
-			heap.Fix(&it.h, 0)
-		}
-
-		it.cur = it.h[0].At()
-	}
+	it.cur = it.h.At()
 	return true
 }
 
-func (it mergedPostings) At() storage.SeriesRef {
+func (it mergedPostings[T]) At() storage.SeriesRef {
 	return it.cur
 }
 
-func (it mergedPostings) Err() error {
-	return it.err
+func (it mergedPostings[T]) Err() error {
+	for _, p := range it.p {
+		if err := p.Err(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Without returns a new postings list that contains all elements from the full list that
@@ -702,7 +791,6 @@ func (rp *removedPostings) Next() bool {
 			rp.fok = rp.full.Next()
 			return true
 		}
-
 		switch fcur, rcur := rp.full.At(), rp.remove.At(); {
 		case fcur < rcur:
 			rp.cur = fcur
@@ -739,25 +827,23 @@ func (rp *removedPostings) Err() error {
 	return rp.remove.Err()
 }
 
-// ListPostings implements the Postings interface over a plain list.
-type ListPostings struct {
+// listPostings implements the Postings interface over a plain list.
+type listPostings struct {
 	list []storage.SeriesRef
 	cur  storage.SeriesRef
 }
 
+// NewListPostings creates a Postings from the supplied SeriesRefs, which must be in order.
+// The list slice passed in is retained.
 func NewListPostings(list []storage.SeriesRef) Postings {
-	return newListPostings(list...)
+	return &listPostings{list: list}
 }
 
-func newListPostings(list ...storage.SeriesRef) *ListPostings {
-	return &ListPostings{list: list}
-}
-
-func (it *ListPostings) At() storage.SeriesRef {
+func (it *listPostings) At() storage.SeriesRef {
 	return it.cur
 }
 
-func (it *ListPostings) Next() bool {
+func (it *listPostings) Next() bool {
 	if len(it.list) > 0 {
 		it.cur = it.list[0]
 		it.list = it.list[1:]
@@ -767,7 +853,7 @@ func (it *ListPostings) Next() bool {
 	return false
 }
 
-func (it *ListPostings) Seek(x storage.SeriesRef) bool {
+func (it *listPostings) Seek(x storage.SeriesRef) bool {
 	// If the current value satisfies, then return.
 	if it.cur >= x {
 		return true
@@ -776,21 +862,26 @@ func (it *ListPostings) Seek(x storage.SeriesRef) bool {
 		return false
 	}
 
-	// Do binary search between current position and end.
-	i := sort.Search(len(it.list), func(i int) bool {
-		return it.list[i] >= x
-	})
-	if i < len(it.list) {
-		it.cur = it.list[i]
-		it.list = it.list[i+1:]
-		return true
+	i := 0 // Check the next item in the list, otherwise binary search between current position and end.
+	if it.list[0] < x {
+		i, _ = slices.BinarySearch(it.list, x)
+		if i >= len(it.list) { // Off the end - terminate the iterator.
+			it.list = nil
+			return false
+		}
 	}
-	it.list = nil
-	return false
+	it.cur = it.list[i]
+	it.list = it.list[i+1:]
+	return true
 }
 
-func (it *ListPostings) Err() error {
+func (*listPostings) Err() error {
 	return nil
+}
+
+// Len returns the remaining number of postings in the list.
+func (it *listPostings) Len() int {
+	return len(it.list)
 }
 
 // bigEndianPostings implements the Postings interface over a byte stream of
@@ -837,7 +928,7 @@ func (it *bigEndianPostings) Seek(x storage.SeriesRef) bool {
 	return false
 }
 
-func (it *bigEndianPostings) Err() error {
+func (*bigEndianPostings) Err() error {
 	return nil
 }
 
@@ -865,7 +956,7 @@ func FindIntersectingPostings(p Postings, candidates []Postings) (indexes []int,
 		}
 		if p.At() == h.at() {
 			indexes = append(indexes, h.popIndex())
-		} else if err := h.next(); err != nil {
+		} else if err := h.seekHead(p.At()); err != nil {
 			return nil, err
 		}
 	}
@@ -908,20 +999,18 @@ func (h *postingsWithIndexHeap) popIndex() int {
 // at provides the storage.SeriesRef where root Postings is pointing at this moment.
 func (h postingsWithIndexHeap) at() storage.SeriesRef { return h[0].p.At() }
 
-// next performs the Postings.Next() operation on the root of the heap, performing the related operation on the heap
-// and conveniently returning the result of calling Postings.Err() if the result of calling Next() was false.
-// If Next() succeeds, heap is fixed to move the root to its new position, according to its Postings.At() value.
-// If Next() returns fails and there's no error reported by Postings.Err(), then root is marked as removed and heap is fixed.
-func (h *postingsWithIndexHeap) next() error {
+// seekHead performs the Postings.Seek() operation on the root of the heap.
+// If the root is exhausted or fails, it is removed from the heap.
+func (h *postingsWithIndexHeap) seekHead(val storage.SeriesRef) error {
 	pi := (*h)[0]
-	next := pi.p.Next()
+	next := pi.p.Seek(val)
 	if next {
 		heap.Fix(h, 0)
 		return nil
 	}
 
 	if err := pi.p.Err(); err != nil {
-		return errors.Wrapf(err, "postings %d", pi.index)
+		return fmt.Errorf("seek postings %d: %w", pi.index, err)
 	}
 	h.popIndex()
 	return nil
@@ -945,14 +1034,14 @@ func (h postingsWithIndexHeap) Less(i, j int) bool {
 func (h *postingsWithIndexHeap) Swap(i, j int) { (*h)[i], (*h)[j] = (*h)[j], (*h)[i] }
 
 // Push implements heap.Interface.
-func (h *postingsWithIndexHeap) Push(x interface{}) {
+func (h *postingsWithIndexHeap) Push(x any) {
 	*h = append(*h, x.(postingsWithIndex))
 }
 
 // Pop implements heap.Interface and pops the last element, which is NOT the min element,
 // so this doesn't return the same heap.Pop()
 // Although this method is implemented for correctness, we don't expect it to be used, see popIndex() method for details.
-func (h *postingsWithIndexHeap) Pop() interface{} {
+func (h *postingsWithIndexHeap) Pop() any {
 	old := *h
 	n := len(old)
 	x := old[n-1]

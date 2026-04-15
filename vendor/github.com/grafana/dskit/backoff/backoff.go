@@ -54,7 +54,7 @@ func (b *Backoff) Ongoing() bool {
 	return b.ctx.Err() == nil && (b.cfg.MaxRetries == 0 || b.numRetries < b.cfg.MaxRetries)
 }
 
-// Err returns the reason for terminating the backoff, or nil if it didn't terminate
+// Err returns the reason for terminating the backoff, or nil if it didn't terminate.
 func (b *Backoff) Err() error {
 	if b.ctx.Err() != nil {
 		return b.ctx.Err()
@@ -63,6 +63,15 @@ func (b *Backoff) Err() error {
 		return fmt.Errorf("terminated after %d retries", b.numRetries)
 	}
 	return nil
+}
+
+// ErrCause is like Err() but returns the context cause if backoff is terminated because the
+// context has been canceled.
+func (b *Backoff) ErrCause() error {
+	if b.ctx.Err() != nil {
+		return context.Cause(b.ctx)
+	}
+	return b.Err()
 }
 
 // NumRetries returns the number of retries so far

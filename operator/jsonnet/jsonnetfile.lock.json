@@ -8,7 +8,7 @@
           "subdir": "grafonnet"
         }
       },
-      "version": "f0b70307b8e5f12236b277883d998af129a8211f",
+      "version": "a1d61cce1da59c71409b99b5c7568511fec661ea",
       "sum": "342u++/7rViR/zj2jeJOjshzglkZ1SY+hFNuyCBFMdc="
     },
     {
@@ -18,8 +18,8 @@
           "subdir": "grafana-builder"
         }
       },
-      "version": "e8e0f6f536f3397a22a49bd9014a7e0a1dfa151d",
-      "sum": "tDR6yT2GVfw0wTU12iZH+m01HrbIr6g/xN+/8nzNkU0="
+      "version": "5a573cd6b179ac3ce46bcf74db290a941f6f5f0d",
+      "sum": "YPaA+KJ6JBW9QpxNvl0iAxnC7gL4jRRvulNl6QRkPU0="
     },
     {
       "source": {
@@ -28,8 +28,8 @@
           "subdir": "mixin-utils"
         }
       },
-      "version": "e8e0f6f536f3397a22a49bd9014a7e0a1dfa151d",
-      "sum": "N1Uz6AJpnQXv4w8F6lxDqMwoT7azPVrpuhJ4N7Oqzcw="
+      "version": "5a573cd6b179ac3ce46bcf74db290a941f6f5f0d",
+      "sum": "kgoIxOkFlpadoT9+HnMZ4LMdaS1HJsAAUQEe1eUg22E="
     },
     {
       "source": {
@@ -38,8 +38,8 @@
           "subdir": "production/loki-mixin"
         }
       },
-      "version": "b7ce95402ac5e2712432e8bfc638b262793b8811",
-      "sum": "iYoW3v95aLI2zY2zoQvS0TrIe6kVzdIYyCaGUJ0oC+s="
+      "version": "1967a6a3fd5589f0f1e9be14cdd5637ecf0b65d3",
+      "sum": "eWbTcw/pDtp0PmKktHzTxMH4uS+7UwDmbKOypRyxlCM="
     },
     {
       "source": {
@@ -48,8 +48,18 @@
           "subdir": "operations/mimir-mixin"
         }
       },
-      "version": "154abe81c5c6b3f263e2b39084f186dd564860af",
-      "sum": "xnakaDny0zXG7mhuyUH90swndHinwpt5/RRVFotDqFY="
+      "version": "34b078fbd5e790f27796430d3c498e9b07bc0532",
+      "sum": "otMM8BRbzTMcedkpqaxPqTxLFh3kE3WBYRs9+a8QLPs="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/rollout-operator.git",
+          "subdir": "operations/rollout-operator-mixin"
+        }
+      },
+      "version": "ee4822b061cb7497b7e8a716161dfa0e3230c0ca",
+      "sum": "zz2Sep/VbyrGcKKa3wy0oGIwMq2qEqBiLTVEVmqDMDE="
     },
     {
       "source": {
@@ -58,7 +68,7 @@
           "subdir": "jsonnet/kube-prometheus/lib"
         }
       },
-      "version": "b176baa776a4d6002fe162846dacb424965df1bc",
+      "version": "110c59d94ccff6f3e894c55247df6c218ef6cd7a",
       "sum": "QKRgrgEZ3k9nLmLCrDBaeIGVqQZf+AvZTcnhdLk3TrA="
     }
   ],

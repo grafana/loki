@@ -1,4 +1,4 @@
-// Copyright 2013 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -19,20 +19,24 @@ import (
 	"errors"
 	"fmt"
 	html_template "html/template"
+	"maps"
 	"math"
 	"net"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	text_template "text/template"
 	"time"
 
 	"github.com/grafana/regexp"
 	"github.com/prometheus/client_golang/prometheus"
+	common_templates "github.com/prometheus/common/helpers/templates"
 	"github.com/prometheus/common/model"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/util/features"
 	"github.com/prometheus/prometheus/util/strutil"
 )
 
@@ -57,7 +61,7 @@ func init() {
 // A version of vector that's easier to use from templates.
 type sample struct {
 	Labels map[string]string
-	Value  float64
+	Value  any
 }
 type queryResult []*sample
 
@@ -96,35 +100,19 @@ func query(ctx context.Context, q string, ts time.Time, queryFn QueryFunc) (quer
 			Value:  v.F,
 			Labels: v.Metric.Map(),
 		}
+		if v.H != nil {
+			s.Value = v.H
+		}
 		result[n] = &s
 	}
 	return result, nil
-}
-
-func convertToFloat(i interface{}) (float64, error) {
-	switch v := i.(type) {
-	case float64:
-		return v, nil
-	case string:
-		return strconv.ParseFloat(v, 64)
-	case int:
-		return float64(v), nil
-	case uint:
-		return float64(v), nil
-	case int64:
-		return float64(v), nil
-	case uint64:
-		return float64(v), nil
-	default:
-		return 0, fmt.Errorf("can't convert %T to float", v)
-	}
 }
 
 // Expander executes templates in text or HTML mode with a common set of Prometheus template functions.
 type Expander struct {
 	text    string
 	name    string
-	data    interface{}
+	data    any
 	funcMap text_template.FuncMap
 	options []string
 }
@@ -134,7 +122,7 @@ func NewTemplateExpander(
 	ctx context.Context,
 	text string,
 	name string,
-	data interface{},
+	data any,
 	timestamp model.Time,
 	queryFunc QueryFunc,
 	externalURL *url.URL,
@@ -160,14 +148,14 @@ func NewTemplateExpander(
 			"label": func(label string, s *sample) string {
 				return s.Labels[label]
 			},
-			"value": func(s *sample) float64 {
+			"value": func(s *sample) any {
 				return s.Value
 			},
 			"strvalue": func(s *sample) string {
 				return s.Labels["__value__"]
 			},
-			"args": func(args ...interface{}) map[string]interface{} {
-				result := make(map[string]interface{})
+			"args": func(args ...any) map[string]any {
+				result := make(map[string]any)
 				for i, a := range args {
 					result[fmt.Sprintf("arg%d", i)] = a
 				}
@@ -181,7 +169,7 @@ func NewTemplateExpander(
 				return html_template.HTML(text)
 			},
 			"match":     regexp.MatchString,
-			"title":     strings.Title, // nolint:staticcheck
+			"title":     cases.Title(language.AmericanEnglish, cases.NoLower).String,
 			"toUpper":   strings.ToUpper,
 			"toLower":   strings.ToLower,
 			"graphLink": strutil.GraphLinkForExpression,
@@ -213,8 +201,8 @@ func NewTemplateExpander(
 				}
 				return host
 			},
-			"humanize": func(i interface{}) (string, error) {
-				v, err := convertToFloat(i)
+			"humanize": func(i any) (string, error) {
+				v, err := common_templates.ConvertToFloat(i)
 				if err != nil {
 					return "", err
 				}
@@ -242,8 +230,8 @@ func NewTemplateExpander(
 				}
 				return fmt.Sprintf("%.4g%s", v, prefix), nil
 			},
-			"humanize1024": func(i interface{}) (string, error) {
-				v, err := convertToFloat(i)
+			"humanize1024": func(i any) (string, error) {
+				v, err := common_templates.ConvertToFloat(i)
 				if err != nil {
 					return "", err
 				}
@@ -260,81 +248,33 @@ func NewTemplateExpander(
 				}
 				return fmt.Sprintf("%.4g%s", v, prefix), nil
 			},
-			"humanizeDuration": func(i interface{}) (string, error) {
-				v, err := convertToFloat(i)
-				if err != nil {
-					return "", err
-				}
-				if math.IsNaN(v) || math.IsInf(v, 0) {
-					return fmt.Sprintf("%.4g", v), nil
-				}
-				if v == 0 {
-					return fmt.Sprintf("%.4gs", v), nil
-				}
-				if math.Abs(v) >= 1 {
-					sign := ""
-					if v < 0 {
-						sign = "-"
-						v = -v
-					}
-					duration := int64(v)
-					seconds := duration % 60
-					minutes := (duration / 60) % 60
-					hours := (duration / 60 / 60) % 24
-					days := duration / 60 / 60 / 24
-					// For days to minutes, we display seconds as an integer.
-					if days != 0 {
-						return fmt.Sprintf("%s%dd %dh %dm %ds", sign, days, hours, minutes, seconds), nil
-					}
-					if hours != 0 {
-						return fmt.Sprintf("%s%dh %dm %ds", sign, hours, minutes, seconds), nil
-					}
-					if minutes != 0 {
-						return fmt.Sprintf("%s%dm %ds", sign, minutes, seconds), nil
-					}
-					// For seconds, we display 4 significant digits.
-					return fmt.Sprintf("%s%.4gs", sign, v), nil
-				}
-				prefix := ""
-				for _, p := range []string{"m", "u", "n", "p", "f", "a", "z", "y"} {
-					if math.Abs(v) >= 1 {
-						break
-					}
-					prefix = p
-					v *= 1000
-				}
-				return fmt.Sprintf("%.4g%ss", v, prefix), nil
-			},
-			"humanizePercentage": func(i interface{}) (string, error) {
-				v, err := convertToFloat(i)
+			"humanizeDuration": common_templates.HumanizeDuration,
+			"humanizePercentage": func(i any) (string, error) {
+				v, err := common_templates.ConvertToFloat(i)
 				if err != nil {
 					return "", err
 				}
 				return fmt.Sprintf("%.4g%%", v*100), nil
 			},
-			"humanizeTimestamp": func(i interface{}) (string, error) {
-				v, err := convertToFloat(i)
-				if err != nil {
-					return "", err
-				}
-
-				tm, err := floatToTime(v)
-				switch {
-				case errors.Is(err, errNaNOrInf):
-					return fmt.Sprintf("%.4g", v), nil
-				case err != nil:
-					return "", err
-				}
-
-				return fmt.Sprint(tm), nil
-			},
-			"toTime": func(i interface{}) (*time.Time, error) {
-				v, err := convertToFloat(i)
+			"humanizeTimestamp": common_templates.HumanizeTimestamp,
+			"toTime": func(i any) (*time.Time, error) {
+				v, err := common_templates.ConvertToFloat(i)
 				if err != nil {
 					return nil, err
 				}
 
 				return floatToTime(v)
+			},
+			"toDuration": func(i any) (*time.Duration, error) {
+				v, err := common_templates.ConvertToFloat(i)
+				if err != nil {
+					return nil, err
+				}
+				d := time.Duration(v * float64(time.Second))
+				return &d, nil
+			},
+			"now": func() float64 {
+				return float64(timestamp) / 1000.0
 			},
 			"pathPrefix": func() string {
 				return externalURL.Path
@@ -343,38 +283,43 @@ func NewTemplateExpander(
 				return externalURL.String()
 			},
 			"parseDuration": func(d string) (float64, error) {
-				v, err := model.ParseDuration(d)
+				v, err := model.ParseDurationAllowNegative(d)
 				if err != nil {
 					return 0, err
 				}
 				return float64(time.Duration(v)) / float64(time.Second), nil
 			},
+			"urlQueryEscape": url.QueryEscape,
 		},
 		options: options,
 	}
 }
 
 // AlertTemplateData returns the interface to be used in expanding the template.
-func AlertTemplateData(labels, externalLabels map[string]string, externalURL string, value float64) interface{} {
-	return struct {
+func AlertTemplateData(labels, externalLabels map[string]string, externalURL string, smpl promql.Sample) any {
+	res := struct {
 		Labels         map[string]string
 		ExternalLabels map[string]string
 		ExternalURL    string
-		Value          float64
+		Value          any
 	}{
 		Labels:         labels,
 		ExternalLabels: externalLabels,
 		ExternalURL:    externalURL,
-		Value:          value,
+		Value:          smpl.F,
 	}
+
+	if smpl.H != nil {
+		res.Value = smpl.H
+	}
+
+	return res
 }
 
 // Funcs adds the functions in fm to the Expander's function map.
 // Existing functions will be overwritten in case of conflict.
 func (te Expander) Funcs(fm text_template.FuncMap) {
-	for k, v := range fm {
-		te.funcMap[k] = v
-	}
+	maps.Copy(te.funcMap, fm)
 }
 
 // Expand expands a template in text (non-HTML) mode.
@@ -421,11 +366,11 @@ func (te Expander) ExpandHTML(templateFiles []string) (result string, resultErr 
 			}
 		}
 	}()
-
+	//nolint:unconvert // Before Go 1.19 conversion from text_template to html_template is mandatory
 	tmpl := html_template.New(te.name).Funcs(html_template.FuncMap(te.funcMap))
 	tmpl.Option(te.options...)
 	tmpl.Funcs(html_template.FuncMap{
-		"tmpl": func(name string, data interface{}) (html_template.HTML, error) {
+		"tmpl": func(name string, data any) (html_template.HTML, error) {
 			var buffer bytes.Buffer
 			err := tmpl.ExecuteTemplate(&buffer, name, data)
 			return html_template.HTML(buffer.String()), err
@@ -468,4 +413,30 @@ func floatToTime(v float64) (*time.Time, error) {
 	}
 	t := model.TimeFromUnixNano(int64(timestamp)).Time().UTC()
 	return &t, nil
+}
+
+// templateFunctions returns a representative funcMap with all available template functions.
+// This is used to discover which functions are available for feature registration.
+func templateFunctions() text_template.FuncMap {
+	// Create a dummy expander to get the function map.
+	expander := NewTemplateExpander(
+		context.Background(),
+		"",
+		"",
+		nil,
+		0,
+		nil,
+		&url.URL{},
+		nil,
+	)
+	return expander.funcMap
+}
+
+// RegisterFeatures registers all template functions with the feature registry.
+func RegisterFeatures(r features.Collector) {
+	// Get all function names from the template function map.
+	funcMap := templateFunctions()
+	for name := range funcMap {
+		r.Enable(features.TemplatingFunctions, name)
+	}
 }

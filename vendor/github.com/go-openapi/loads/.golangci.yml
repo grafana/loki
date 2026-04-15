@@ -1,44 +1,75 @@
-linters-settings:
-  govet:
-    check-shadowing: true
-  golint:
-    min-confidence: 0
-  gocyclo:
-    min-complexity: 30
-  maligned:
-    suggest-new: true
-  dupl:
-    threshold: 100
-  goconst:
-    min-len: 2
-    min-occurrences: 4
-
+version: "2"
 linters:
-  enable-all: true
+  default: all
   disable:
-    - maligned
-    - lll
-    - gochecknoglobals
-    - gochecknoinits
-    - godox
-    - gocognit
-    - whitespace
-    - wsl
+    - cyclop
+    - depguard
+    - errchkjson
+    - errorlint
+    - exhaustruct
+    - forcetypeassert
     - funlen
     - gochecknoglobals
     - gochecknoinits
-    - scopelint
-    - wrapcheck
-    - exhaustivestruct
-    - exhaustive
-    - nlreturn
-    - testpackage
-    - gci
-    - gofumpt
-    - goerr113
-    - gomnd
-    - tparallel
-    - nestif
+    - gocognit
     - godot
-    - errorlint
+    - godox
+    - gosmopolitan
+    - inamedparam
+    - intrange
+    - ireturn
+    - lll
+    - musttag
+    - nestif
+    - nlreturn
+    - nonamedreturns
+    - noinlineerr
     - paralleltest
+    - recvcheck
+    - testpackage
+    - thelper
+    - tparallel
+    - unparam
+    - varnamelen
+    - whitespace
+    - wrapcheck
+    - wsl
+    - wsl_v5
+  settings:
+    dupl:
+      threshold: 200
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    gocyclo:
+      min-complexity: 45
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  # Maximum issues count per one linter.
+  # Set to 0 to disable.
+  # Default: 50
+  max-issues-per-linter: 0
+  # Maximum count of issues with the same text.
+  # Set to 0 to disable.
+  # Default: 3
+  max-same-issues: 0

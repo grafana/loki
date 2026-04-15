@@ -13,19 +13,17 @@ jobs:
   docs:
     name: docs
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go: ['1.20']
+    permissions:
+      contents: "read"
     steps:
-    - name: Install make
-      run: sudo apt-get install make
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v4
+    - uses: actions/checkout@v6
       with:
-        go-version: ${{ matrix.go }}
-      id: go
-    - uses: actions/checkout@v3
+        persist-credentials: false
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: ./operator/go.mod
+        cache-dependency-path: ./operator/go.sum
     - name: Check generated docs
       working-directory: ./operator
       run: |
@@ -35,24 +33,22 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go: ['1.20']
+    permissions:
+      contents: "read"
     steps:
-    - name: Install make
-      run: sudo apt-get install make
+    - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v6
       with:
-        go-version: ${{ matrix.go }}
-      id: go
-    - uses: actions/checkout@v3
+        go-version-file: ./operator/go.mod
+        cache-dependency-path: ./operator/go.sum
     - name: Lint
-      uses: golangci/golangci-lint-action@v3.5.0
+      uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2
       with:
-        version: v1.53.3
-        args: --timeout=4m
+        version: v2.11.4
+        args: --timeout=5m
         working-directory: ./operator
     - name: Check prometheus rules
       working-directory: ./operator
@@ -61,19 +57,18 @@ jobs:
   build-manager:
     name: Build Manager
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go: ['1.20']
+    permissions:
+      contents: "read"
     steps:
-    - name: Install make
-      run: sudo apt-get install make
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v4
+    - uses: actions/checkout@v6
       with:
-        go-version: ${{ matrix.go }}
+        persist-credentials: false
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: ./operator/go.mod
+        cache-dependency-path: ./operator/go.sum
       id: go
-    - uses: actions/checkout@v3
     - name: Build Manager
       working-directory: ./operator
       run: |-
@@ -82,19 +77,17 @@ jobs:
   build-broker:
     name: Build Broker
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go: ['1.20']
+    permissions:
+      contents: "read"
     steps:
-    - name: Install make
-      run: sudo apt-get install make
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v4
+    - uses: actions/checkout@v6
       with:
-        go-version: ${{ matrix.go }}
-      id: go
-    - uses: actions/checkout@v3
+        persist-credentials: false
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: ./operator/go.mod
+        cache-dependency-path: ./operator/go.sum
     - name: Build Broker
       working-directory: ./operator
       run: |-
@@ -103,19 +96,17 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go: ['1.20']
+    permissions:
+      contents: "read"
     steps:
-    - name: Install make
-      run: sudo apt-get install make
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v4
+    - uses: actions/checkout@v6
       with:
-        go-version: ${{ matrix.go }}
-      id: go
-    - uses: actions/checkout@v3
+        persist-credentials: false
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: ./operator/go.mod
+        cache-dependency-path: ./operator/go.sum
     - name: Run tests
       working-directory: ./operator
       run: go test -coverprofile=profile.cov ./...
@@ -123,9 +114,9 @@ jobs:
       working-directory: ./operator
       run: make test-unit-prometheus
     - name: Send coverage
-      uses: shogo82148/actions-goveralls@v1
+      uses: shogo82148/actions-goveralls@9606dbc5ac5cf888a0e9ef901515c3cd516a2790 # v1.11.0
       with:
         working-directory: ./operator
         path-to-profile: profile.cov
-        flag-name: Go-${{ matrix.go }}
+        flag-name: Go-1.25
         shallow: true

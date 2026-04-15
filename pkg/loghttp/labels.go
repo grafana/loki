@@ -1,15 +1,16 @@
 package loghttp
 
 import (
+	"errors"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/buger/jsonparser"
 	"github.com/gorilla/mux"
+	"github.com/grafana/jsonparser"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // LabelResponse represents the http json response to a label query
@@ -85,4 +86,23 @@ func ParseLabelQuery(r *http.Request) (*logproto.LabelRequest, error) {
 
 	req.Query = query(r)
 	return req, nil
+}
+
+func ParseDetectedLabelsQuery(r *http.Request) (*logproto.DetectedLabelsRequest, error) {
+	var err error
+
+	start, end, err := bounds(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if end.Before(start) {
+		return nil, errors.New("end timestamp must not be before or equal to start time")
+	}
+
+	return &logproto.DetectedLabelsRequest{
+		Start: start,
+		End:   end,
+		Query: query(r),
+	}, nil
 }

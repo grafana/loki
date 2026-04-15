@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package validate
 
@@ -30,23 +19,63 @@ type schemaSliceValidator struct {
 	UniqueItems     bool
 	AdditionalItems *spec.SchemaOrBool
 	Items           *spec.SchemaOrArray
-	Root            interface{}
+	Root            any
 	KnownFormats    strfmt.Registry
-	Options         SchemaValidatorOptions
+	Options         *SchemaValidatorOptions
+}
+
+func newSliceValidator(path, in string,
+	maxItems, minItems *int64, uniqueItems bool,
+	additionalItems *spec.SchemaOrBool, items *spec.SchemaOrArray,
+	root any, formats strfmt.Registry, opts *SchemaValidatorOptions) *schemaSliceValidator {
+	if opts == nil {
+		opts = new(SchemaValidatorOptions)
+	}
+
+	var v *schemaSliceValidator
+	if opts.recycleValidators {
+		v = pools.poolOfSliceValidators.BorrowValidator()
+	} else {
+		v = new(schemaSliceValidator)
+	}
+
+	v.Path = path
+	v.In = in
+	v.MaxItems = maxItems
+	v.MinItems = minItems
+	v.UniqueItems = uniqueItems
+	v.AdditionalItems = additionalItems
+	v.Items = items
+	v.Root = root
+	v.KnownFormats = formats
+	v.Options = opts
+
+	return v
 }
 
 func (s *schemaSliceValidator) SetPath(path string) {
 	s.Path = path
 }
 
-func (s *schemaSliceValidator) Applies(source interface{}, kind reflect.Kind) bool {
+func (s *schemaSliceValidator) Applies(source any, kind reflect.Kind) bool {
 	_, ok := source.(*spec.Schema)
 	r := ok && kind == reflect.Slice
 	return r
 }
 
-func (s *schemaSliceValidator) Validate(data interface{}) *Result {
-	result := new(Result)
+func (s *schemaSliceValidator) Validate(data any) *Result {
+	if s.Options.recycleValidators {
+		defer func() {
+			s.redeem()
+		}()
+	}
+
+	var result *Result
+	if s.Options.recycleResult {
+		result = pools.poolOfResults.BorrowResult()
+	} else {
+		result = new(Result)
+	}
 	if data == nil {
 		return result
 	}
@@ -54,8 +83,8 @@ func (s *schemaSliceValidator) Validate(data interface{}) *Result {
 	size := val.Len()
 
 	if s.Items != nil && s.Items.Schema != nil {
-		validator := NewSchemaValidator(s.Items.Schema, s.Root, s.Path, s.KnownFormats, s.Options.Options()...)
-		for i := 0; i < size; i++ {
+		for i := range size {
+			validator := newSchemaValidator(s.Items.Schema, s.Root, s.Path, s.KnownFormats, s.Options)
 			validator.SetPath(fmt.Sprintf("%s.%d", s.Path, i))
 			value := val.Index(i)
 			result.mergeForSlice(val, i, validator.Validate(value.Interface()))
@@ -65,11 +94,12 @@ func (s *schemaSliceValidator) Validate(data interface{}) *Result {
 	itemsSize := 0
 	if s.Items != nil && len(s.Items.Schemas) > 0 {
 		itemsSize = len(s.Items.Schemas)
-		for i := 0; i < itemsSize; i++ {
-			validator := NewSchemaValidator(&s.Items.Schemas[i], s.Root, fmt.Sprintf("%s.%d", s.Path, i), s.KnownFormats, s.Options.Options()...)
-			if val.Len() <= i {
+		for i := range itemsSize {
+			if size <= i {
 				break
 			}
+
+			validator := newSchemaValidator(&s.Items.Schemas[i], s.Root, fmt.Sprintf("%s.%d", s.Path, i), s.KnownFormats, s.Options)
 			result.mergeForSlice(val, i, validator.Validate(val.Index(i).Interface()))
 		}
 	}
@@ -79,7 +109,7 @@ func (s *schemaSliceValidator) Validate(data interface{}) *Result {
 		}
 		if s.AdditionalItems.Schema != nil {
 			for i := itemsSize; i < size-itemsSize+1; i++ {
-				validator := NewSchemaValidator(s.AdditionalItems.Schema, s.Root, fmt.Sprintf("%s.%d", s.Path, i), s.KnownFormats, s.Options.Options()...)
+				validator := newSchemaValidator(s.AdditionalItems.Schema, s.Root, fmt.Sprintf("%s.%d", s.Path, i), s.KnownFormats, s.Options)
 				result.mergeForSlice(val, i, validator.Validate(val.Index(i).Interface()))
 			}
 		}
@@ -102,4 +132,8 @@ func (s *schemaSliceValidator) Validate(data interface{}) *Result {
 	}
 	result.Inc()
 	return result
+}
+
+func (s *schemaSliceValidator) redeem() {
+	pools.poolOfSliceValidators.RedeemValidator(s)
 }

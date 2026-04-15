@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/loghttp"
 )
 
 func TestJSONLOutput_Format(t *testing.T) {
@@ -63,8 +63,6 @@ func TestJSONLOutput_Format(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			writer := &bytes.Buffer{}

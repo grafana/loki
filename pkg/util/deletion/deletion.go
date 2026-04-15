@@ -1,10 +1,10 @@
 package deletion
 
 import (
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func SetupPipeline(req logql.SelectLogParams, p log.Pipeline) (log.Pipeline, error) {
@@ -20,12 +20,12 @@ func SetupPipeline(req logql.SelectLogParams, p log.Pipeline) (log.Pipeline, err
 	return log.NewFilteringPipeline(filters, p), nil
 }
 
-func SetupExtractor(req logql.SelectSampleParams, se log.SampleExtractor) (log.SampleExtractor, error) {
-	if len(req.Deletes) == 0 {
+func SetupExtractor(req logql.QueryParams, se log.SampleExtractor) (log.SampleExtractor, error) {
+	if len(req.GetDeletes()) == 0 {
 		return se, nil
 	}
 
-	filters, err := deleteFilters(req.Deletes)
+	filters, err := deleteFilters(req.GetDeletes())
 	if err != nil {
 		return nil, err
 	}

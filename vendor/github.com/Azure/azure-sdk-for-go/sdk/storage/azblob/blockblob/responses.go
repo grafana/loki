@@ -16,6 +16,9 @@ import (
 // UploadResponse contains the response from method Client.Upload.
 type UploadResponse = generated.BlockBlobClientUploadResponse
 
+// UploadBlobFromURLResponse contains the response from the method Client.UploadBlobFromURL
+type UploadBlobFromURLResponse = generated.BlockBlobClientPutBlobFromURLResponse
+
 // StageBlockResponse contains the response from method Client.StageBlock.
 type StageBlockResponse = generated.BlockBlobClientStageBlockResponse
 
@@ -97,7 +100,7 @@ func toUploadReaderAtResponseFromCommitBlockListResponse(resp CommitBlockListRes
 		RequestID:           resp.RequestID,
 		Version:             resp.Version,
 		VersionID:           resp.VersionID,
-		ContentCRC64:        resp.XMSContentCRC64,
+		ContentCRC64:        resp.ContentCRC64,
 	}
 }
 
@@ -109,3 +112,6 @@ type UploadBufferResponse = uploadFromReaderResponse
 
 // UploadStreamResponse contains the response from method Client.CommitBlockList.
 type UploadStreamResponse = CommitBlockListResponse
+
+// SetExpiryResponse contains the response from method Client.SetExpiry.
+type SetExpiryResponse = generated.BlobClientSetExpiryResponse

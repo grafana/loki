@@ -5,7 +5,7 @@ package stats;
 import "gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
 
-option go_package = "github.com/grafana/loki/pkg/querier/stats";
+option go_package = "github.com/grafana/loki/v3/pkg/querier/stats";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 

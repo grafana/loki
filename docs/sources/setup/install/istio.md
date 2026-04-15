@@ -1,13 +1,13 @@
 ---
 title: Install on Istio
 menuTitle:  
-description: Installation instructions for Istio service mesh
+description: Describes additional steps for installing Loki with Istio service mesh.
 aliases: 
   - ../../installation/istio/
 weight: 600
 keywords: 
 ---
-# Install on Istio 
+# Install on Istio
 
 When installing Loki on Istio service mesh you must complete some additional steps. Without these steps, the ingester, querier, etc. might start, but you will see logs like the following:
 
@@ -17,27 +17,27 @@ loki level=debug ts=2021-11-24T11:33:37.352544925Z caller=broadcast.go:48 msg="I
 
 This means that the pod is failing to join the ring.
 
-If you try to add `loki` to `Grafana` data sources, you will see logs like (`empty ring`)
+If you try to add `loki` to `Grafana` data sources, you will see logs like (`empty ring`):
 
 ```
 loki level=warn ts=2021-11-24T08:02:42.08262122Z caller=logging.go:72 traceID=3fc821042d8ada1a orgID=fake msg="GET /loki/api/v1/labels?end=1637740962079859431&start=1637740361925000000 (500) 97.4µs Response: \"empty ring\\n\" ws: false; X-Scope-Orgid: fake; uber-trace-id: 3fc821042d8ada1a:1feed8872deea75c:1180f95a8235bb6c:0; "
 ```
 
-When you enable istio-injection on the namespace where Loki is running, you need to also modify the configuration for the Loki services. Given that Istio will not allow a pod to resolve another mod using an IP address, you must also modify the `memberlist` service.
+When you enable istio-injection on the namespace where Loki is running, you need to also modify the configuration for the Loki services. Given that Istio will not allow a pod to resolve another pod using an IP address, you must also modify the `memberlist` service.
 
 ## Required changes
 
 ### Query frontend service
 
-Make the following modifications to the file for Loki's Query Frontend service.
+Make the following modifications to the file for the Loki Query Frontend service.
 
 1. Change the name of `grpc` port to `grpclb`. This is used by the grpc load balancing strategy which relies on SRV records. Otherwise the `querier` will not be able to reach the `query-frontend`. See https://github.com/grafana/loki/blob/0116aa61c86fa983ddcbbd5e30a2141d2e89081a/production/ksonnet/loki/common.libsonnet#L19
 and
 https://grpc.github.io/grpc/core/md_doc_load-balancing.html
-3. Set the `appProtocol` of `grpclb` to `tcp`
-4. Set `publishNotReadyAddresses` to `true`
+1. Set the `appProtocol` of `grpclb` to `tcp`
+1. Set `publishNotReadyAddresses` to `true`
 
-```
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -67,11 +67,11 @@ spec:
 
 ### Querier service
 
-Make the following modifications to the file for Loki's Querier service.
+Make the following modifications to the file for the Loki Querier service.
 
 Set the `appProtocol` of the `grpc` service to `tcp`
 
-```
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -103,11 +103,11 @@ spec:
 
 ### Ingester service and Ingester headless service
 
-Make the following modifications to the file for Loki's Query Ingester and Ingester Headless service.
+Make the following modifications to the file for the Loki Query Ingester and Ingester Headless service.
 
-Set the `appProtocol` of the `grpc` port to `tcp` 
+Set the `appProtocol` of the `grpc` port to `tcp`.
 
-```
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -137,11 +137,11 @@ spec:
 
 ### Distributor service
 
-Make the following modifications to the file for Loki's Distributor service.
+Make the following modifications to the file for the Loki Distributor service.
 
-Set the `appProtocol` of the `grpc` port to `tcp` 
+Set the `appProtocol` of the `grpc` port to `tcp`.
 
-```
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -173,9 +173,9 @@ spec:
 
 Make the following modifications to the file for the Memberlist service.
 
-Set the `appProtocol` of the `http` port to `tcp`
+Set the `appProtocol` of the `http` port to `tcp`.
 
-```
+```yaml
 apiVersion: v1
 kind: Service
 metadata:

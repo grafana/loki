@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright 2017 Microsoft Corporation. All rights reserved.
 // Use of this source code is governed by an MIT
 // license that can be found in the LICENSE file.
@@ -253,5 +250,12 @@ When resuming a poller, no IO is performed, and zero-value arguments can be used
 
 Resume tokens are unique per service client and operation.  Attempting to resume a poller for LRO BeginB() with a token from LRO
 BeginA() will result in an error.
+
+# Fakes
+
+The fake package contains types used for constructing in-memory fake servers used in unit tests.
+This allows writing tests to cover various success/error conditions without the need for connecting to a live service.
+
+Please see https://github.com/Azure/azure-sdk-for-go/tree/main/sdk/samples/fakes for details and examples on how to use fakes.
 */
 package azcore

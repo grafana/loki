@@ -3,26 +3,33 @@ syntax = "proto3";
 package queryrangebase;
 
 import "gogoproto/gogo.proto";
-import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
 import "pkg/logproto/logproto.proto";
 import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
+import "pkg/storage/chunk/cache/resultscache/types.proto";
 
-option go_package = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase";
+option go_package = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 message PrometheusRequest {
   string path = 1;
-  int64 start = 2;
-  int64 end = 3;
+  google.protobuf.Timestamp start = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
   int64 step = 4;
   google.protobuf.Duration timeout = 5 [
     (gogoproto.stdduration) = true,
     (gogoproto.nullable) = false
   ];
   string query = 6;
-  definitions.CachingOptions cachingOptions = 7 [(gogoproto.nullable) = false];
+  resultscache.CachingOptions cachingOptions = 7 [(gogoproto.nullable) = false];
   repeated definitions.PrometheusRequestHeader Headers = 8 [(gogoproto.jsontag) = "-"];
 }
 
@@ -35,6 +42,7 @@ message PrometheusResponse {
   string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
   string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
   repeated definitions.PrometheusResponseHeader Headers = 5 [(gogoproto.jsontag) = "-"];
+  repeated string Warnings = 6 [(gogoproto.jsontag) = "warnings,omitempty"];
 }
 
 message PrometheusData {
@@ -49,29 +57,10 @@ message SampleStream {
   repeated logproto.LegacyLabelPair labels = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "metric",
-    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.LabelAdapter"
   ];
   repeated logproto.LegacySample samples = 2 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "values"
   ];
-}
-
-message CachedResponse {
-  string key = 1 [(gogoproto.jsontag) = "key"];
-
-  // List of cached responses; non-overlapping and in order.
-  repeated Extent extents = 2 [
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "extents"
-  ];
-}
-
-message Extent {
-  int64 start = 1 [(gogoproto.jsontag) = "start"];
-  int64 end = 2 [(gogoproto.jsontag) = "end"];
-  // reserved the previous key to ensure cache transition
-  reserved 3;
-  string trace_id = 4 [(gogoproto.jsontag) = "-"];
-  google.protobuf.Any response = 5 [(gogoproto.jsontag) = "response"];
 }

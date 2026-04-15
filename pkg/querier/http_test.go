@@ -5,191 +5,53 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"net/url"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/engine"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/validation"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )
 
-var (
-	statsResultString = `"stats" : {
-		"ingester" : {
-			"store": {
-				"chunk":{
-					"compressedBytes": 1,
-					"decompressedBytes": 2,
-					"decompressedLines": 3,
-					"decompressedNonIndexedLabelsBytes": 0,
-					"headChunkBytes": 4,
-					"headChunkLines": 5,
-					"headChunkNonIndexedLabelsBytes": 0,
-					"postFilterLines": 0,
-					"totalDuplicates": 8
-				},
-				"chunksDownloadTime": 0,
-				"totalChunksRef": 0,
-				"totalChunksDownloaded": 0
-			},
-			"totalBatches": 6,
-			"totalChunksMatched": 7,
-			"totalLinesSent": 9,
-			"totalReached": 10
-		},
-		"querier": {
-			"store" : {
-				"chunk": {
-					"compressedBytes": 11,
-					"decompressedBytes": 12,
-					"decompressedLines": 13,
-					"decompressedNonIndexedLabelsBytes": 0,
-					"headChunkBytes": 14,
-					"headChunkLines": 15,
-					"headChunkNonIndexedLabelsBytes": 0,
-					"postFilterLines": 0,
-					"totalDuplicates": 19
-				},
-				"chunksDownloadTime": 16,
-				"totalChunksRef": 17,
-				"totalChunksDownloaded": 18
-			}
-		},
-		"cache": {
-			"chunk": {
-				"entriesFound": 0,
-				"entriesRequested": 0,
-				"entriesStored": 0,
-				"bytesReceived": 0,
-				"bytesSent": 0,
-				"requests": 0,
-				"downloadTime": 0
-			},
-			"index": {
-				"entriesFound": 0,
-				"entriesRequested": 0,
-				"entriesStored": 0,
-				"bytesReceived": 0,
-				"bytesSent": 0,
-				"requests": 0,
-				"downloadTime": 0
-			},
-		    "statsResult": {
-				"entriesFound": 0,
-				"entriesRequested": 0,
-				"entriesStored": 0,
-				"bytesReceived": 0,
-				"bytesSent": 0,
-				"requests": 0,
-				"downloadTime": 0
-			},
-			"result": {
-				"entriesFound": 0,
-				"entriesRequested": 0,
-				"entriesStored": 0,
-				"bytesReceived": 0,
-				"bytesSent": 0,
-				"requests": 0,
-				"downloadTime": 0
-			}
-		},
-		"summary": {
-			"bytesProcessedPerSecond": 20,
-			"execTime": 22,
-			"linesProcessedPerSecond": 23,
-			"queueTime": 21,
-			"shards": 0,
-			"splits": 0,
-			"subqueries": 0,
-			"totalBytesProcessed": 24,
-			"totalEntriesReturned": 10,
-			"totalLinesProcessed": 25,
-			"totalNonIndexedLabelsBytesProcessed": 0,
-			"totalPostFilterLines": 0
-		}
-	}`
-	statsResult = stats.Result{
-		Summary: stats.Summary{
-			BytesProcessedPerSecond: 20,
-			QueueTime:               21,
-			ExecTime:                22,
-			LinesProcessedPerSecond: 23,
-			TotalBytesProcessed:     24,
-			TotalLinesProcessed:     25,
-			TotalEntriesReturned:    10,
-		},
-		Querier: stats.Querier{
-			Store: stats.Store{
-				Chunk: stats.Chunk{
-					CompressedBytes:   11,
-					DecompressedBytes: 12,
-					DecompressedLines: 13,
-					HeadChunkBytes:    14,
-					HeadChunkLines:    15,
-					TotalDuplicates:   19,
-				},
-				ChunksDownloadTime:    16,
-				TotalChunksRef:        17,
-				TotalChunksDownloaded: 18,
-			},
-		},
-
-		Ingester: stats.Ingester{
-			Store: stats.Store{
-				Chunk: stats.Chunk{
-					CompressedBytes:   1,
-					DecompressedBytes: 2,
-					DecompressedLines: 3,
-					HeadChunkBytes:    4,
-					HeadChunkLines:    5,
-					TotalDuplicates:   8,
-				},
-			},
-			TotalBatches:       6,
-			TotalChunksMatched: 7,
-			TotalLinesSent:     9,
-			TotalReached:       10,
-		},
-
-		Caches: stats.Caches{
-			Chunk:  stats.Cache{},
-			Index:  stats.Cache{},
-			Result: stats.Cache{},
-		},
-	}
-)
-
-func TestTailHandler(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
+func TestInstantQueryHandler(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
-	api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
+	t.Run("log selector expression not allowed for instant queries", func(t *testing.T) {
+		api := NewQuerierAPI(mockQuerierConfig(), engine.Config{}, nil, nil, limits, nil, nil, log.NewNopLogger())
 
-	req, err := http.NewRequest("GET", "/", nil)
-	ctx := user.InjectOrgID(req.Context(), "1|2")
-	req = req.WithContext(ctx)
-	require.NoError(t, err)
+		ctx := user.InjectOrgID(context.Background(), "user")
+		req, err := http.NewRequestWithContext(ctx, "GET", `/api/v1/query`, nil)
+		require.NoError(t, err)
 
-	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(api.TailHandler)
+		q := req.URL.Query()
+		q.Add("query", `{app="loki"}`)
+		req.URL.RawQuery = q.Encode()
+		err = req.ParseForm()
+		require.NoError(t, err)
 
-	handler.ServeHTTP(rr, req)
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.Equal(t, "multiple org IDs present\n", rr.Body.String())
+		rr := httptest.NewRecorder()
+
+		handler := NewQuerierHandler(api)
+		httpHandler := NewQuerierHTTPHandler(handler)
+
+		httpHandler.ServeHTTP(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Equal(t, logqlmodel.ErrUnsupportedSyntaxForInstantQuery.Error(), rr.Body.String())
+	})
 }
 
 type slowConnectionSimulator struct {
@@ -202,7 +64,6 @@ func (s *slowConnectionSimulator) ServeHTTP(_ http.ResponseWriter, r *http.Reque
 	ctx := r.Context()
 	if err := ctx.Err(); err != nil {
 		panic(fmt.Sprintf("context already errored: %s", err))
-
 	}
 	time.Sleep(s.sleepFor)
 
@@ -219,14 +80,14 @@ func (s *slowConnectionSimulator) ServeHTTP(_ http.ResponseWriter, r *http.Reque
 }
 
 func TestQueryWrapperMiddleware(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	shortestTimeout := time.Millisecond * 5
 
 	t.Run("request timeout is the shortest one", func(t *testing.T) {
 		defaultLimits := defaultLimitsTestConfig()
+		defaultLimits.QueryTimeout = model.Duration(time.Millisecond * 10)
+
 		limits, err := validation.NewOverrides(defaultLimits, nil)
 		require.NoError(t, err)
-		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
 
 		// request timeout is 5ms but it sleeps for 100ms, so timeout injected in the request is expected.
 		connSimulator := &slowConnectionSimulator{
@@ -234,8 +95,7 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 			deadline: shortestTimeout,
 		}
 
-		api.cfg.QueryTimeout = time.Millisecond * 10
-		midl := WrapQuerySpanAndTimeout("mycall", api).Wrap(connSimulator)
+		midl := WrapQuerySpanAndTimeout("mycall", limits).Wrap(connSimulator)
 
 		req, err := http.NewRequest("GET", "/loki/api/v1/label", nil)
 		ctx, cancelFunc := context.WithTimeout(user.InjectOrgID(req.Context(), "fake"), shortestTimeout)
@@ -261,66 +121,19 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 		require.True(t, connSimulator.didTimeout)
 	})
 
-	t.Run("old querier:query_timeout is configured to supersede all others", func(t *testing.T) {
-		defaultLimits := defaultLimitsTestConfig()
-		defaultLimits.QueryTimeout = model.Duration(shortestTimeout)
-		limits, err := validation.NewOverrides(defaultLimits, nil)
-		require.NoError(t, err)
-		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
-
-		// configure old querier:query_timeout parameter.
-		// although it is longer than the limits timeout, it should supersede it.
-		api.cfg.QueryTimeout = time.Millisecond * 100
-
-		// although limits:query_timeout is shorter than querier:query_timeout,
-		// limits:query_timeout should be ignored.
-		// here we configure it to sleep for 100ms and we want it to timeout at the 100ms.
-		connSimulator := &slowConnectionSimulator{
-			sleepFor: api.cfg.QueryTimeout,
-			deadline: time.Millisecond * 200,
-		}
-
-		midl := WrapQuerySpanAndTimeout("mycall", api).Wrap(connSimulator)
-
-		req, err := http.NewRequest("GET", "/loki/api/v1/label", nil)
-		ctx, cancelFunc := context.WithTimeout(user.InjectOrgID(req.Context(), "fake"), time.Millisecond*200)
-		defer cancelFunc()
-		req = req.WithContext(ctx)
-		require.NoError(t, err)
-
-		rr := httptest.NewRecorder()
-		srv := http.HandlerFunc(midl.ServeHTTP)
-
-		srv.ServeHTTP(rr, req)
-		require.Equal(t, http.StatusOK, rr.Code)
-
-		select {
-		case <-ctx.Done():
-			require.FailNow(t, fmt.Sprintf("should timeout in %s", api.cfg.QueryTimeout))
-		case <-time.After(shortestTimeout):
-			// didn't use the limits timeout (i.e: shortest one), exactly what we want.
-			break
-		case <-time.After(api.cfg.QueryTimeout):
-			require.FailNow(t, fmt.Sprintf("should timeout in %s", api.cfg.QueryTimeout))
-		}
-
-		require.True(t, connSimulator.didTimeout)
-	})
-
-	t.Run("new limits query timeout is configured to supersede all others", func(t *testing.T) {
+	t.Run("apply limits query timeout", func(t *testing.T) {
 		defaultLimits := defaultLimitsTestConfig()
 		defaultLimits.QueryTimeout = model.Duration(shortestTimeout)
 
 		limits, err := validation.NewOverrides(defaultLimits, nil)
 		require.NoError(t, err)
-		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
 
 		connSimulator := &slowConnectionSimulator{
 			sleepFor: time.Millisecond * 100,
 			deadline: shortestTimeout,
 		}
 
-		midl := WrapQuerySpanAndTimeout("mycall", api).Wrap(connSimulator)
+		midl := WrapQuerySpanAndTimeout("mycall", limits).Wrap(connSimulator)
 
 		req, err := http.NewRequest("GET", "/loki/api/v1/label", nil)
 		ctx, cancelFunc := context.WithTimeout(user.InjectOrgID(req.Context(), "fake"), time.Millisecond*100)
@@ -345,21 +158,32 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 	})
 }
 
+func injectOrgID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, ctx, _ := user.ExtractOrgIDFromHTTPRequest(r)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func buildHandler(api *QuerierAPI) http.Handler {
+	return injectOrgID(NewQuerierHTTPHandler(NewQuerierHandler(api)))
+}
+
 func TestSeriesHandler(t *testing.T) {
 	t.Run("instant queries set a step of 0", func(t *testing.T) {
 		ret := func() *logproto.SeriesResponse {
 			return &logproto.SeriesResponse{
 				Series: []logproto.SeriesIdentifier{
 					{
-						Labels: map[string]string{
-							"a": "1",
-							"b": "2",
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
+							{Key: "a", Value: "1"},
+							{Key: "b", Value: "2"},
 						},
 					},
 					{
-						Labels: map[string]string{
-							"c": "3",
-							"d": "4",
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
+							{Key: "c", Value: "3"},
+							{Key: "d", Value: "4"},
 						},
 					},
 				},
@@ -367,21 +191,77 @@ func TestSeriesHandler(t *testing.T) {
 		}
 		expected := `{"status":"success","data":[{"a":"1","b":"2"},{"c":"3","d":"4"}]}`
 
-		querier := newQuerierMock()
-		querier.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
-		api := setupAPI(querier)
+		q := newQuerierMock()
+		q.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
+		api := setupAPI(t, q, false)
+		handler := buildHandler(api)
 
 		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series"+
 			"?start=0"+
 			"&end=1"+
 			"&step=42"+
 			"&query=%7Bfoo%3D%22bar%22%7D", nil)
-		res := makeRequest(t, api.SeriesHandler, req)
+		req.Header.Set("X-Scope-OrgID", "test-org")
+		res := makeRequest(t, handler, req)
 
 		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
 		require.JSONEq(t, expected, res.Body.String())
 	})
+
+	t.Run("ignores __aggregated_metric__ and __patern__ series, when possible, unless explicitly requested", func(t *testing.T) {
+		ret := func() *logproto.SeriesResponse {
+			return &logproto.SeriesResponse{
+				Series: []logproto.SeriesIdentifier{},
+			}
+		}
+
+		q := newQuerierMock()
+		q.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
+		api := setupAPI(t, q, true)
+		handler := buildHandler(api)
+
+		for _, tt := range []struct {
+			match          string
+			expectedGroups []string
+		}{
+			{
+				// we can't add the negated __aggregated_metric__ matcher to an empty matcher set,
+				// as that will produce an invalid query
+				match:          "{}",
+				expectedGroups: []string{},
+			},
+			{
+				match:          `{foo="bar"}`,
+				expectedGroups: []string{fmt.Sprintf(`{foo="bar", %s="", %s=""}`, constants.AggregatedMetricLabel, constants.PatternLabel)},
+			},
+			{
+				match:          fmt.Sprintf(`{%s="foo-service"}`, constants.AggregatedMetricLabel),
+				expectedGroups: []string{fmt.Sprintf(`{%s="foo-service", %s=""}`, constants.AggregatedMetricLabel, constants.PatternLabel)},
+			},
+			{
+				match:          fmt.Sprintf(`{%s="foo-service"}`, constants.PatternLabel),
+				expectedGroups: []string{fmt.Sprintf(`{%s="foo-service", %s=""}`, constants.PatternLabel, constants.AggregatedMetricLabel)},
+			},
+			{
+				match:          fmt.Sprintf(`{%s="foo-service", %s="foo-service"}`, constants.AggregatedMetricLabel, constants.PatternLabel),
+				expectedGroups: []string{fmt.Sprintf(`{%s="foo-service", %s="foo-service"}`, constants.AggregatedMetricLabel, constants.PatternLabel)},
+			},
+		} {
+			req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series"+
+				"?start=0"+
+				"&end=1"+
+				fmt.Sprintf("&match=%s", url.QueryEscape(tt.match)), nil)
+			req.Header.Set("X-Scope-OrgID", "test-org")
+			_ = makeRequest(t, handler, req)
+			q.AssertCalled(t, "Series", mock.Anything, &logproto.SeriesRequest{
+				Start:  time.Unix(0, 0).UTC(),
+				End:    time.Unix(1, 0).UTC(),
+				Groups: tt.expectedGroups,
+			})
+		}
+	})
 }
+
 func TestVolumeHandler(t *testing.T) {
 	ret := &logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
@@ -391,23 +271,19 @@ func TestVolumeHandler(t *testing.T) {
 
 	t.Run("shared beavhior between range and instant queries", func(t *testing.T) {
 		for _, tc := range []struct {
-			mode    string
-			handler func(api *QuerierAPI) http.HandlerFunc
+			mode string
+			req  *logproto.VolumeRequest
 		}{
-			{mode: "instant", handler: func(api *QuerierAPI) http.HandlerFunc { return api.VolumeInstantHandler }},
-			{mode: "range", handler: func(api *QuerierAPI) http.HandlerFunc { return api.VolumeRangeHandler }},
+			{mode: "instant", req: loghttp.NewVolumeInstantQueryWithDefaults(`{foo="bar"}`)},
+			{mode: "range", req: loghttp.NewVolumeRangeQueryWithDefaults(`{foo="bar"}`)},
 		} {
 			t.Run(fmt.Sprintf("%s queries return label volumes from the querier", tc.mode), func(t *testing.T) {
 				querier := newQuerierMock()
 				querier.On("Volume", mock.Anything, mock.Anything).Return(ret, nil)
-				api := setupAPI(querier)
+				api := setupAPI(t, querier, false)
 
-				req := httptest.NewRequest(http.MethodGet, "/volume"+
-					"?start=0"+
-					"&end=1"+
-					"&query=%7Bfoo%3D%22bar%22%7D", nil)
-
-				w := makeRequest(t, tc.handler(api), req)
+				res, err := api.VolumeHandler(context.Background(), tc.req)
+				require.NoError(t, err)
 
 				calls := querier.GetMockedCallsByMethod("Volume")
 				require.Len(t, calls, 1)
@@ -416,27 +292,21 @@ func TestVolumeHandler(t *testing.T) {
 				require.Equal(t, `{foo="bar"}`, request.Matchers)
 				require.Equal(t, "series", request.AggregateBy)
 
-				require.Equal(
-					t,
-					`{"volumes":[{"name":"{foo=\"bar\"}","volume":38}]}`,
-					strings.TrimSpace(w.Body.String()),
-				)
-				require.Equal(t, http.StatusOK, w.Result().StatusCode)
+				require.Equal(t, ret, res)
 			})
 
 			t.Run(fmt.Sprintf("%s queries return nothing when a store doesn't support label volumes", tc.mode), func(t *testing.T) {
 				querier := newQuerierMock()
 				querier.On("Volume", mock.Anything, mock.Anything).Return(nil, nil)
-				api := setupAPI(querier)
+				api := setupAPI(t, querier, false)
 
-				req := httptest.NewRequest(http.MethodGet, "/volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
-				w := makeRequest(t, tc.handler(api), req)
+				res, err := api.VolumeHandler(context.Background(), tc.req)
+				require.NoError(t, err)
 
 				calls := querier.GetMockedCallsByMethod("Volume")
 				require.Len(t, calls, 1)
 
-				require.Equal(t, strings.TrimSpace(w.Body.String()), `{"volumes":[]}`)
-				require.Equal(t, http.StatusOK, w.Result().StatusCode)
+				require.Empty(t, res.Volumes)
 			})
 
 			t.Run(fmt.Sprintf("%s queries return error when there's an error in the querier", tc.mode), func(t *testing.T) {
@@ -444,189 +314,458 @@ func TestVolumeHandler(t *testing.T) {
 				querier := newQuerierMock()
 				querier.On("Volume", mock.Anything, mock.Anything).Return(nil, err)
 
-				api := setupAPI(querier)
+				api := setupAPI(t, querier, false)
 
-				req := httptest.NewRequest(http.MethodGet, "/volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
-				w := makeRequest(t, tc.handler(api), req)
+				_, err = api.VolumeHandler(context.Background(), tc.req)
+				require.ErrorContains(t, err, "something bad")
 
 				calls := querier.GetMockedCallsByMethod("Volume")
 				require.Len(t, calls, 1)
-
-				require.Equal(t, strings.TrimSpace(w.Body.String()), `something bad`)
-				require.Equal(t, http.StatusInternalServerError, w.Result().StatusCode)
 			})
 		}
 	})
+}
 
-	t.Run("instant queries set a step of 0", func(t *testing.T) {
-		querier := newQuerierMock()
-		querier.On("Volume", mock.Anything, mock.Anything).Return(ret, nil)
-		api := setupAPI(querier)
+func TestLabelsHandler(t *testing.T) {
+	t.Run("remove __aggregated_metric__ label from response when present", func(t *testing.T) {
+		ret := &logproto.LabelResponse{
+			Values: []string{
+				constants.AggregatedMetricLabel,
+				"foo",
+				"bar",
+			},
+		}
+		expected := `{"status":"success","data":["foo","bar"]}`
 
-		req := httptest.NewRequest(http.MethodGet, "/volume"+
+		q := newQuerierMock()
+		q.On("Label", mock.Anything, mock.Anything).Return(ret, nil)
+		api := setupAPI(t, q, true)
+		handler := buildHandler(api)
+
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels"+
 			"?start=0"+
-			"&end=1"+
-			"&step=42"+
-			"&query=%7Bfoo%3D%22bar%22%7D", nil)
-		makeRequest(t, api.VolumeInstantHandler, req)
+			"&end=1", nil)
+		req.Header.Set("X-Scope-OrgID", "test-org")
+		res := makeRequest(t, handler, req)
 
-		calls := querier.GetMockedCallsByMethod("Volume")
-		require.Len(t, calls, 1)
-
-		request := calls[0].Arguments[1].(*logproto.VolumeRequest)
-		require.Equal(t, int64(0), request.Step)
+		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
+		require.JSONEq(t, expected, res.Body.String())
 	})
 
-	t.Run("range queries parse step from request", func(t *testing.T) {
-		querier := newQuerierMock()
-		querier.On("Volume", mock.Anything, mock.Anything).Return(ret, nil)
-		api := setupAPI(querier)
+	t.Run("remove __pattern__ label from response when present", func(t *testing.T) {
+		ret := &logproto.LabelResponse{
+			Values: []string{
+				constants.PatternLabel,
+				"foo",
+				"bar",
+			},
+		}
+		expected := `{"status":"success","data":["foo","bar"]}`
 
-		req := httptest.NewRequest(http.MethodGet, "/volume"+
+		q := newQuerierMock()
+		q.On("Label", mock.Anything, mock.Anything).Return(ret, nil)
+		api := setupAPI(t, q, true)
+		handler := buildHandler(api)
+
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels"+
 			"?start=0"+
-			"&end=1"+
-			"&step=42"+
-			"&query=%7Bfoo%3D%22bar%22%7D", nil)
-		makeRequest(t, api.VolumeRangeHandler, req)
+			"&end=1", nil)
+		req.Header.Set("X-Scope-OrgID", "test-org")
+		res := makeRequest(t, handler, req)
 
-		calls := querier.GetMockedCallsByMethod("Volume")
-		require.Len(t, calls, 1)
-
-		request := calls[0].Arguments[1].(*logproto.VolumeRequest)
-		require.Equal(t, (42 * time.Second).Milliseconds(), request.Step)
+		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
+		require.JSONEq(t, expected, res.Body.String())
 	})
 
-	t.Run("range queries provide default step when not provided", func(t *testing.T) {
-		querier := newQuerierMock()
-		querier.On("Volume", mock.Anything, mock.Anything).Return(ret, nil)
-		api := setupAPI(querier)
+	t.Run("remove both __aggregated_metric__ and __pattern__ labels from response when present", func(t *testing.T) {
+		ret := &logproto.LabelResponse{
+			Values: []string{
+				constants.AggregatedMetricLabel,
+				constants.PatternLabel,
+				"foo",
+				"bar",
+			},
+		}
+		expected := `{"status":"success","data":["foo","bar"]}`
 
-		req := httptest.NewRequest(http.MethodGet, "/volume"+
+		q := newQuerierMock()
+		q.On("Label", mock.Anything, mock.Anything).Return(ret, nil)
+		api := setupAPI(t, q, true)
+		handler := buildHandler(api)
+
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels"+
 			"?start=0"+
-			"&end=1"+
-			"&query=%7Bfoo%3D%22bar%22%7D", nil)
-		makeRequest(t, api.VolumeRangeHandler, req)
+			"&end=1", nil)
+		req.Header.Set("X-Scope-OrgID", "test-org")
+		res := makeRequest(t, handler, req)
 
-		calls := querier.GetMockedCallsByMethod("Volume")
-		require.Len(t, calls, 1)
-
-		request := calls[0].Arguments[1].(*logproto.VolumeRequest)
-		require.Equal(t, time.Second.Milliseconds(), request.Step)
+		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
+		require.JSONEq(t, expected, res.Body.String())
 	})
 }
 
-func TestResponseFormat(t *testing.T) {
-	for _, tc := range []struct {
-		url             string
-		accept          string
-		handler         func(api *QuerierAPI) http.HandlerFunc
-		result          logqlmodel.Result
-		expectedRespone string
-	}{
-		{
-			url: "/api/prom/query",
-			handler: func(api *QuerierAPI) http.HandlerFunc {
-				return api.LogQueryHandler
-			},
-			result: logqlmodel.Result{
-				Data: logqlmodel.Streams{
-					logproto.Stream{
-						Entries: []logproto.Entry{
-							{
-								Timestamp: time.Unix(0, 123456789012345).UTC(),
-								Line:      "super line",
-							},
-						},
-						Labels: `{foo="bar"}`,
-					},
-				},
-				Statistics: statsResult,
-			},
-			expectedRespone: `{
-				` + statsResultString + `,
-				"streams": [
-				  {
-				    "labels": "{foo=\"bar\"}",
-				    "entries": [
-				      {
-				        "line": "super line",
-				        "ts": "1970-01-02T10:17:36.789012345Z"
-				      }
-				    ]
-				  }
-				]
-			}`,
-		},
-		{
-			url: "/loki/api/v1/query_range",
-			handler: func(api *QuerierAPI) http.HandlerFunc {
-				return api.RangeQueryHandler
-			},
-			result: logqlmodel.Result{
-				Data: logqlmodel.Streams{
-					logproto.Stream{
-						Entries: []logproto.Entry{
-							{
-								Timestamp: time.Unix(0, 123456789012345).UTC(),
-								Line:      "super line",
-							},
-						},
-						Labels: `{foo="bar"}`,
-					},
-				},
-				Statistics: statsResult,
-			},
-			expectedRespone: `{
-				"status": "success",
-				"data": {
-				  "resultType": "streams",
-				` + statsResultString + `,
-				  "result": [{
-					"stream": {"foo": "bar"},
-					"values": [
-					  ["123456789012345", "super line"]
-					]
-				  }]
-				}
-			}`,
-		},
-	} {
-		t.Run(fmt.Sprintf("%s returns the expected format", tc.url), func(t *testing.T) {
-			engine := newEngineMock()
-			engine.On("Query", mock.Anything, mock.Anything).Return(queryMock{tc.result})
-			api := setupAPIWithEngine(engine)
-
-			req := httptest.NewRequest(http.MethodGet, tc.url+
-				"?start=0"+
-				"&end=1"+
-				"&query=%7Bfoo%3D%22bar%22%7D", nil)
-			req = req.WithContext(user.InjectOrgID(context.Background(), "1"))
-
-			w := makeRequest(t, tc.handler(api), req)
-
-			require.Equalf(t, http.StatusOK, w.Code, "unexpected response: %s", w.Body.String())
-			require.JSONEq(t, tc.expectedRespone, w.Body.String())
-		})
-	}
-}
-
-func makeRequest(t *testing.T, handler http.HandlerFunc, req *http.Request) *httptest.ResponseRecorder {
+func makeRequest(t *testing.T, handler http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	err := req.ParseForm()
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
-	handler(w, req)
+	handler.ServeHTTP(w, req)
 	return w
 }
 
-func setupAPI(querier *querierMock) *QuerierAPI {
-	api := NewQuerierAPI(Config{}, querier, nil, log.NewNopLogger())
+func setupAPI(t *testing.T, querier *querierMock, enableMetricAggregation bool) *QuerierAPI {
+	defaultLimits := defaultLimitsTestConfig()
+	defaultLimits.MetricAggregationEnabled = enableMetricAggregation
+	limits, err := validation.NewOverrides(defaultLimits, nil)
+	require.NoError(t, err)
+
+	api := NewQuerierAPI(mockQuerierConfig(), engine.Config{}, nil, querier, limits, nil, nil, log.NewNopLogger())
 	return api
 }
 
-func setupAPIWithEngine(engine *engineMock) *QuerierAPI {
-	limits, _ := validation.NewOverrides(validation.Limits{}, mockTenantLimits{})
-	api := NewQuerierAPI(Config{}, nil, limits, log.NewNopLogger())
-	api.engine = engine
-	return api
+// Mock pattern responses
+var mockPatternResponse = func(now time.Time, patterns []string) *logproto.QueryPatternsResponse {
+	resp := &logproto.QueryPatternsResponse{
+		Series: make([]*logproto.PatternSeries, 0),
+	}
+	for i, pattern := range patterns {
+		resp.Series = append(resp.Series, &logproto.PatternSeries{
+			Pattern: pattern,
+			Level:   constants.LogLevelInfo,
+			Samples: []*logproto.PatternSample{
+				{
+					Timestamp: model.Time(now.Unix() * 1000),
+					Value:     int64((i + 1) * 100),
+				},
+			},
+		})
+	}
+	return resp
+}
+
+func TestPatternsHandler(t *testing.T) {
+	// Enable pattern persistence for most tests
+	limitsConfig := defaultLimitsTestConfig()
+	limitsConfig.PatternPersistenceEnabled = true
+	limits, err := validation.NewOverrides(limitsConfig, nil)
+	require.NoError(t, err)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	now := time.Now()
+
+	tests := []struct {
+		name                          string
+		start, end                    time.Time
+		queryIngestersWithin          time.Duration
+		queryPatternIngestersWithin   time.Duration
+		ingesterQueryStoreMaxLookback time.Duration
+		setupQuerier                  func() Querier
+		patternsFromStore             []string
+		expectedPatterns              []string
+		expectedError                 error
+		queryStoreOnly                bool
+		queryIngesterOnly             bool
+	}{
+		{
+			name:                 "query both ingester and store when time range overlaps and ingesterQueryStoreMaxLookback is not set",
+			start:                now.Add(-2 * time.Hour),
+			end:                  now,
+			queryIngestersWithin: 3 * time.Hour,
+			setupQuerier: func() Querier {
+				q := &querierMock{}
+				q.On("Patterns", mock.Anything, mock.MatchedBy(func(req *logproto.QueryPatternsRequest) bool {
+					// Should query recent data only (within queryIngestersWithin)
+					return req.Start.After(now.Add(-3*time.Hour)) && req.End.Equal(now)
+				})).Return(mockPatternResponse(now, []string{"pattern1", "pattern2"}), nil)
+				return q
+			},
+			patternsFromStore: []string{"pattern3", "pattern4"},
+			expectedPatterns:  []string{"pattern1", "pattern2", "pattern3", "pattern4"},
+		},
+		{
+			name:                 "query only store when time range is older than ingester lookback",
+			start:                now.Add(-10 * time.Hour),
+			end:                  now.Add(-4 * time.Hour),
+			queryIngestersWithin: 3 * time.Hour,
+			setupQuerier: func() Querier {
+				// Should not be called
+				q := &querierMock{}
+				return q
+			},
+			patternsFromStore: []string{"old_pattern1", "old_pattern2"},
+			expectedPatterns:  []string{"old_pattern1", "old_pattern2"},
+		},
+		{
+			name:                          "query only ingester when time range is recent and ingesterQueryStoreMaxLookback is set",
+			start:                         now.Add(-30 * time.Minute),
+			end:                           now,
+			queryIngestersWithin:          3 * time.Hour,
+			ingesterQueryStoreMaxLookback: 1 * time.Hour,
+			setupQuerier: func() Querier {
+				q := &querierMock{}
+				q.On("Patterns", mock.Anything, mock.MatchedBy(func(req *logproto.QueryPatternsRequest) bool {
+					return req.Start.Equal(now.Add(-30*time.Minute)) && req.End.Equal(now)
+				})).Return(mockPatternResponse(now, []string{"recent_pattern1", "recent_pattern2"}), nil)
+				return q
+			},
+			patternsFromStore: []string{"old_pattern1", "old_pattern2"},
+			expectedPatterns:  []string{"recent_pattern1", "recent_pattern2"},
+		},
+		{
+			name:           "query store only when configured",
+			start:          now.Add(-2 * time.Hour),
+			end:            now,
+			queryStoreOnly: true,
+			setupQuerier: func() Querier {
+				// Should not be called
+				return newQuerierMock()
+			},
+			patternsFromStore: []string{"store_only_pattern"},
+			expectedPatterns:  []string{"store_only_pattern"},
+		},
+		{
+			name:                 "query ingester only when configured",
+			start:                now.Add(-2 * time.Hour),
+			end:                  now,
+			queryIngesterOnly:    true,
+			queryIngestersWithin: 3 * time.Hour,
+			setupQuerier: func() Querier {
+				q := &querierMock{}
+				q.On("Patterns", mock.Anything, mock.Anything).Return(mockPatternResponse(now, []string{"ingester_only_pattern"}), nil)
+				return q
+			},
+			patternsFromStore: []string{"store_only_pattern"},
+			expectedPatterns:  []string{"ingester_only_pattern"},
+		},
+		{
+			name:                 "returns empty response when no patterns found",
+			start:                now.Add(-2 * time.Hour),
+			end:                  now,
+			queryIngestersWithin: 3 * time.Hour,
+			setupQuerier: func() Querier {
+				q := &querierMock{}
+				q.On("Patterns", mock.Anything, mock.Anything).Return(&logproto.QueryPatternsResponse{Series: []*logproto.PatternSeries{}}, nil)
+				return q
+			},
+		},
+		{
+			name:                        "query uses pattern-specific lookback when configured",
+			start:                       now.Add(-2 * time.Hour),
+			end:                         now.Add(-90 * time.Minute), // Query ends before pattern ingester lookback
+			queryIngestersWithin:        3 * time.Hour,
+			queryPatternIngestersWithin: 1 * time.Hour, // Pattern ingester only looks back 1 hour
+			setupQuerier: func() Querier {
+				// Should not be called since query is entirely outside pattern ingester lookback
+				return newQuerierMock()
+			},
+			patternsFromStore: []string{"pattern_from_store"},
+			expectedPatterns:  []string{"pattern_from_store"},
+		},
+		{
+			name:                 "merges patterns from both sources correctly",
+			start:                now.Add(-2 * time.Hour),
+			end:                  now,
+			queryIngestersWithin: 3 * time.Hour,
+			setupQuerier: func() Querier {
+				q := &querierMock{}
+				q.On("Patterns", mock.Anything, mock.Anything).Return(&logproto.QueryPatternsResponse{
+					Series: []*logproto.PatternSeries{
+						{
+							Pattern: "common_pattern",
+							Samples: []*logproto.PatternSample{
+								{Timestamp: model.Time(now.Add(-30*time.Minute).Unix() * 1000), Value: 100},
+							},
+						},
+						{
+							Pattern: "ingester_pattern",
+							Samples: []*logproto.PatternSample{
+								{Timestamp: model.Time(now.Add(-15*time.Minute).Unix() * 1000), Value: 200},
+							},
+						},
+					},
+				}, nil)
+				return q
+			},
+			patternsFromStore: []string{"common_pattern", "store_pattern"},
+			expectedPatterns:  []string{"common_pattern", "ingester_pattern", "store_pattern"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			conf := mockQuerierConfig()
+			conf.QueryIngestersWithin = tc.queryIngestersWithin
+			if tc.queryPatternIngestersWithin != 0 {
+				conf.QueryPatternIngestersWithin = tc.queryPatternIngestersWithin
+			} else {
+				conf.QueryPatternIngestersWithin = tc.queryIngestersWithin
+			}
+			conf.IngesterQueryStoreMaxLookback = tc.ingesterQueryStoreMaxLookback
+			conf.QueryStoreOnly = tc.queryStoreOnly
+			conf.QueryIngesterOnly = tc.queryIngesterOnly
+
+			querier := tc.setupQuerier()
+
+			// Create a mock engine that returns the expected patterns from store
+			engineMock := newMockEngineWithPatterns(tc.patternsFromStore)
+
+			api := &QuerierAPI{
+				cfgV1:    conf,
+				querier:  querier,
+				limits:   limits,
+				engineV1: engineMock,
+				logger:   log.NewNopLogger(),
+			}
+
+			req := &logproto.QueryPatternsRequest{
+				Query: `{service_name="test-service"}`,
+				Start: tc.start,
+				End:   tc.end,
+				Step:  time.Minute.Milliseconds(),
+			}
+
+			resp, err := api.PatternsHandler(ctx, req)
+
+			if tc.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tc.expectedError, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+
+			// Collect all patterns from response
+			foundPatterns := make(map[string]bool)
+			for _, series := range resp.Series {
+				foundPatterns[series.Pattern] = true
+			}
+
+			// Check expected patterns from ingester
+			for _, pattern := range tc.expectedPatterns {
+				require.True(t, foundPatterns[pattern], "Expected pattern %s, not found", pattern)
+			}
+
+			require.Equal(t, len(tc.expectedPatterns), len(resp.Series), "Unexpected number of patterns in response")
+
+			// Verify mocks were called as expected (if it's a mock)
+			if q, ok := querier.(*querierMock); ok {
+				q.AssertExpectations(t)
+			}
+		})
+	}
+}
+
+func TestPatternsHandlerDisabled(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "test")
+	now := time.Now()
+	// Add test case for when pattern persistence is disabled
+	tests := []struct {
+		name                          string
+		start, end                    time.Time
+		queryIngestersWithin          time.Duration
+		queryPatternIngestersWithin   time.Duration
+		ingesterQueryStoreMaxLookback time.Duration
+		setupQuerier                  func() Querier
+		patternsFromStore             []string
+		expectedPatterns              []string
+		expectedError                 error
+		queryStoreOnly                bool
+		queryIngesterOnly             bool
+	}{
+		{
+			name:                          "skip store query when pattern persistence is disabled",
+			start:                         now.Add(-5 * time.Hour),
+			end:                           now,
+			queryIngestersWithin:          3 * time.Hour,
+			ingesterQueryStoreMaxLookback: 1 * time.Hour,
+			setupQuerier: func() Querier {
+				q := &querierMock{}
+				q.On("Patterns", mock.Anything, mock.MatchedBy(func(req *logproto.QueryPatternsRequest) bool {
+					// Should query recent data only (within queryIngestersWithin)
+					return req.Start.After(now.Add(-3*time.Hour)) && req.End.Equal(now)
+				})).Return(mockPatternResponse(now, []string{"ingester_pattern1", "ingester_pattern2"}), nil)
+				return q
+			},
+			patternsFromStore: []string{"store_pattern1", "store_pattern2"},       // These should NOT be returned
+			expectedPatterns:  []string{"ingester_pattern1", "ingester_pattern2"}, // Only ingester patterns
+		},
+	}
+
+	// Test cases for when pattern persistence is disabled
+	for _, tc := range tests {
+		t.Run(tc.name+" (pattern persistence disabled)", func(t *testing.T) {
+			// Use limits without pattern persistence enabled
+			limitsConfigDisabled := defaultLimitsTestConfig()
+			limitsConfigDisabled.PatternPersistenceEnabled = false
+			limitsDisabled, err := validation.NewOverrides(limitsConfigDisabled, nil)
+			require.NoError(t, err)
+
+			conf := mockQuerierConfig()
+			conf.QueryIngestersWithin = tc.queryIngestersWithin
+			if tc.queryPatternIngestersWithin != 0 {
+				conf.QueryPatternIngestersWithin = tc.queryPatternIngestersWithin
+			} else {
+				conf.QueryPatternIngestersWithin = tc.queryIngestersWithin
+			}
+			conf.IngesterQueryStoreMaxLookback = tc.ingesterQueryStoreMaxLookback
+			conf.QueryStoreOnly = tc.queryStoreOnly
+			conf.QueryIngesterOnly = tc.queryIngesterOnly
+
+			querier := tc.setupQuerier()
+
+			// Create a mock engine that returns the expected patterns from store
+			// This should NOT be called when pattern persistence is disabled
+			engineMock := newMockEngineWithPatterns(tc.patternsFromStore)
+
+			api := &QuerierAPI{
+				cfgV1:    conf,
+				querier:  querier,
+				limits:   limitsDisabled, // Use the disabled limits
+				engineV1: engineMock,
+				logger:   log.NewNopLogger(),
+			}
+
+			req := &logproto.QueryPatternsRequest{
+				Query: `{service_name="test-service"}`,
+				Start: tc.start,
+				End:   tc.end,
+				Step:  time.Minute.Milliseconds(),
+			}
+
+			resp, err := api.PatternsHandler(ctx, req)
+
+			if tc.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tc.expectedError, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+
+			// Collect all patterns from response
+			foundPatterns := make(map[string]bool)
+			for _, series := range resp.Series {
+				foundPatterns[series.Pattern] = true
+			}
+
+			// Check expected patterns from ingester only
+			for _, pattern := range tc.expectedPatterns {
+				require.True(t, foundPatterns[pattern], "Expected pattern %s, not found", pattern)
+			}
+
+			// Ensure store patterns are NOT included
+			for _, pattern := range tc.patternsFromStore {
+				require.False(t, foundPatterns[pattern], "Store pattern %s should not be included when pattern persistence is disabled", pattern)
+			}
+
+			require.Equal(t, len(tc.expectedPatterns), len(resp.Series), "Unexpected number of patterns in response")
+
+			// Verify mocks were called as expected (if it's a mock)
+			if q, ok := querier.(*querierMock); ok {
+				q.AssertExpectations(t)
+			}
+		})
+	}
 }

@@ -18,12 +18,13 @@ package web
 import (
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 
-	"github.com/go-kit/log"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/time/rate"
 )
 
 // extraHTTPHeaders is a map of HTTP headers that can be added to HTTP
@@ -78,8 +79,9 @@ HeadersLoop:
 type webHandler struct {
 	tlsConfigPath string
 	handler       http.Handler
-	logger        log.Logger
+	logger        *slog.Logger
 	cache         *cache
+	limiter       *rate.Limiter
 	// bcryptMtx is there to ensure that bcrypt.CompareHashAndPassword is run
 	// only once in parallel as this is CPU intensive.
 	bcryptMtx sync.Mutex
@@ -88,8 +90,13 @@ type webHandler struct {
 func (u *webHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c, err := getConfig(u.tlsConfigPath)
 	if err != nil {
-		u.logger.Log("msg", "Unable to parse configuration", "err", err)
+		u.logger.Error("Unable to parse configuration", "err", err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	if u.limiter != nil && !u.limiter.Allow() {
+		http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
 		return
 	}
 

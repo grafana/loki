@@ -17,7 +17,8 @@ limitations under the License.
 package sets
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 )
 
 // Set is a set of the same type elements, implemented via map[comparable]struct{} for minimal memory consumption.
@@ -37,7 +38,7 @@ func New[T comparable](items ...T) Set[T] {
 // KeySet creates a Set from a keys of a map[comparable](? extends interface{}).
 // If the value passed in is not actually a map, this will panic.
 func KeySet[T comparable, V any](theMap map[T]V) Set[T] {
-	ret := Set[T]{}
+	ret := make(Set[T], len(theMap))
 	for keyValue := range theMap {
 		ret.Insert(keyValue)
 	}
@@ -61,6 +62,14 @@ func (s Set[T]) Delete(items ...T) Set[T] {
 	for _, item := range items {
 		delete(s, item)
 	}
+	return s
+}
+
+// Clear empties the set.
+// It is preferable to replace the set with a newly constructed set,
+// but not all callers can do that (when there are other references to the map).
+func (s Set[T]) Clear() Set[T] {
+	clear(s)
 	return s
 }
 
@@ -179,22 +188,13 @@ func (s1 Set[T]) Equal(s2 Set[T]) bool {
 	return len(s1) == len(s2) && s1.IsSuperset(s2)
 }
 
-type sortableSliceOfGeneric[T ordered] []T
-
-func (g sortableSliceOfGeneric[T]) Len() int           { return len(g) }
-func (g sortableSliceOfGeneric[T]) Less(i, j int) bool { return less[T](g[i], g[j]) }
-func (g sortableSliceOfGeneric[T]) Swap(i, j int)      { g[i], g[j] = g[j], g[i] }
-
 // List returns the contents as a sorted T slice.
 //
 // This is a separate function and not a method because not all types supported
 // by Generic are ordered and only those can be sorted.
-func List[T ordered](s Set[T]) []T {
-	res := make(sortableSliceOfGeneric[T], 0, len(s))
-	for key := range s {
-		res = append(res, key)
-	}
-	sort.Sort(res)
+func List[T cmp.Ordered](s Set[T]) []T {
+	res := s.UnsortedList()
+	slices.Sort(res)
 	return res
 }
 
@@ -220,8 +220,4 @@ func (s Set[T]) PopAny() (T, bool) {
 // Len returns the size of the set.
 func (s Set[T]) Len() int {
 	return len(s)
-}
-
-func less[T ordered](lhs, rhs T) bool {
-	return lhs < rhs
 }

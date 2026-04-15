@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/clients/pkg/logentry/logql"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/logql"
 )
 
 const (
@@ -51,10 +51,10 @@ func validateMatcherConfig(cfg *MatcherConfig) (logql.Expr, error) {
 		return nil, errors.New(ErrUnknownMatchAction)
 	}
 
-	if cfg.Action == MatchActionKeep && (cfg.Stages == nil || len(cfg.Stages) == 0) {
+	if cfg.Action == MatchActionKeep && (len(cfg.Stages) == 0) {
 		return nil, errors.New(ErrMatchRequiresStages)
 	}
-	if cfg.Action == MatchActionDrop && (cfg.Stages != nil && len(cfg.Stages) != 0) {
+	if cfg.Action == MatchActionDrop && (len(cfg.Stages) != 0) {
 		return nil, errors.New(ErrStagesWithDropLine)
 	}
 
@@ -205,4 +205,9 @@ func (m *matcherStage) processLogQL(e Entry) (Entry, bool) {
 // Name implements Stage
 func (m *matcherStage) Name() string {
 	return StageTypeMatch
+}
+
+// Cleanup implements Stage.
+func (*matcherStage) Cleanup() {
+	// no-op
 }

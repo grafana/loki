@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -16,6 +13,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/log"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
+	"github.com/Azure/azure-sdk-for-go/sdk/internal/poller"
 )
 
 // see https://github.com/Azure/azure-resource-manager-rpc/blob/master/v1.0/async-api-reference.md
@@ -26,7 +24,7 @@ func Applicable(resp *http.Response) bool {
 }
 
 // CanResume returns true if the token can rehydrate this poller type.
-func CanResume(token map[string]interface{}) bool {
+func CanResume(token map[string]any) bool {
 	_, ok := token["asyncURL"]
 	return ok
 }
@@ -68,15 +66,15 @@ func New[T any](pl exported.Pipeline, resp *http.Response, finalState pollers.Fi
 	if asyncURL == "" {
 		return nil, errors.New("response is missing Azure-AsyncOperation header")
 	}
-	if !pollers.IsValidURL(asyncURL) {
+	if !poller.IsValidURL(asyncURL) {
 		return nil, fmt.Errorf("invalid polling URL %s", asyncURL)
 	}
 	// check for provisioning state.  if the operation is a RELO
 	// and terminates synchronously this will prevent extra polling.
 	// it's ok if there's no provisioning state.
-	state, _ := pollers.GetProvisioningState(resp)
+	state, _ := poller.GetProvisioningState(resp)
 	if state == "" {
-		state = pollers.StatusInProgress
+		state = poller.StatusInProgress
 	}
 	p := &Poller[T]{
 		pl:         pl,
@@ -93,17 +91,17 @@ func New[T any](pl exported.Pipeline, resp *http.Response, finalState pollers.Fi
 
 // Done returns true if the LRO is in a terminal state.
 func (p *Poller[T]) Done() bool {
-	return pollers.IsTerminalState(p.CurState)
+	return poller.IsTerminalState(p.CurState)
 }
 
 // Poll retrieves the current state of the LRO.
 func (p *Poller[T]) Poll(ctx context.Context) (*http.Response, error) {
 	err := pollers.PollHelper(ctx, p.AsyncURL, p.pl, func(resp *http.Response) (string, error) {
-		if !pollers.StatusCodeValid(resp) {
+		if !poller.StatusCodeValid(resp) {
 			p.resp = resp
 			return "", exported.NewResponseError(resp)
 		}
-		state, err := pollers.GetStatus(resp)
+		state, err := poller.GetStatus(resp)
 		if err != nil {
 			return "", err
 		} else if state == "" {
@@ -122,15 +120,16 @@ func (p *Poller[T]) Poll(ctx context.Context) (*http.Response, error) {
 func (p *Poller[T]) Result(ctx context.Context, out *T) error {
 	if p.resp.StatusCode == http.StatusNoContent {
 		return nil
-	} else if pollers.Failed(p.CurState) {
+	} else if poller.Failed(p.CurState) {
 		return exported.NewResponseError(p.resp)
 	}
 	var req *exported.Request
 	var err error
-	if p.Method == http.MethodPatch || p.Method == http.MethodPut {
+	switch p.Method {
+	case http.MethodPatch, http.MethodPut:
 		// for PATCH and PUT, the final GET is on the original resource URL
 		req, err = exported.NewRequest(ctx, http.MethodGet, p.OrigURL)
-	} else if p.Method == http.MethodPost {
+	case http.MethodPost:
 		if p.FinalState == pollers.FinalStateViaAzureAsyncOp {
 			// no final GET required
 		} else if p.FinalState == pollers.FinalStateViaOriginalURI {
@@ -154,5 +153,5 @@ func (p *Poller[T]) Result(ctx context.Context, out *T) error {
 		p.resp = resp
 	}
 
-	return pollers.ResultHelper(p.resp, pollers.Failed(p.CurState), out)
+	return pollers.ResultHelper(p.resp, poller.Failed(p.CurState), "", out)
 }

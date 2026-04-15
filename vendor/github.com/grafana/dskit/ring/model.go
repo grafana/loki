@@ -7,12 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/dskit/loser"
-
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
+	"github.com/grafana/dskit/loser"
 )
 
 // ByAddr is a sortable list of InstanceDesc.
@@ -21,6 +20,15 @@ type ByAddr []InstanceDesc
 func (ts ByAddr) Len() int           { return len(ts) }
 func (ts ByAddr) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
 func (ts ByAddr) Less(i, j int) bool { return ts[i].Addr < ts[j].Addr }
+
+// ByID is a sortable list of InstanceDesc.
+type ByID []InstanceDesc
+
+func (ts ByID) Len() int           { return len(ts) }
+func (ts ByID) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
+func (ts ByID) Less(i, j int) bool { return ts[i].Id < ts[j].Id }
+
+type InstanceVersions map[uint64]uint64
 
 // ProtoDescFactory makes new Descs
 func ProtoDescFactory() proto.Message {
@@ -39,25 +47,31 @@ func NewDesc() *Desc {
 	}
 }
 
+func timeToUnixSecons(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
+}
+
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
-func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state InstanceState, registeredAt time.Time) InstanceDesc {
+func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state InstanceState, registeredAt time.Time, readOnly bool, readOnlyUpdated time.Time, versions InstanceVersions) InstanceDesc {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]InstanceDesc{}
 	}
 
-	registeredTimestamp := int64(0)
-	if !registeredAt.IsZero() {
-		registeredTimestamp = registeredAt.Unix()
-	}
-
 	ingester := InstanceDesc{
-		Addr:                addr,
-		Timestamp:           time.Now().Unix(),
-		RegisteredTimestamp: registeredTimestamp,
-		State:               state,
-		Tokens:              tokens,
-		Zone:                zone,
+		Id:                       id,
+		Addr:                     addr,
+		Timestamp:                time.Now().Unix(),
+		State:                    state,
+		Tokens:                   tokens,
+		Zone:                     zone,
+		RegisteredTimestamp:      timeToUnixSecons(registeredAt),
+		ReadOnly:                 readOnly,
+		ReadOnlyUpdatedTimestamp: timeToUnixSecons(readOnlyUpdated),
+		Versions:                 versions,
 	}
 
 	d.Ingesters[id] = ingester
@@ -135,6 +149,30 @@ func (i *InstanceDesc) GetRegisteredAt() time.Time {
 	return time.Unix(i.RegisteredTimestamp, 0)
 }
 
+// GetLastHeartbeatAt returns the timestamp of the last heartbeat sent by the instance
+// or a zero value if unknown.
+func (i *InstanceDesc) GetLastHeartbeatAt() time.Time {
+	if i == nil || i.Timestamp == 0 {
+		return time.Time{}
+	}
+
+	return time.Unix(i.Timestamp, 0)
+}
+
+// GetReadOnlyState returns the read-only state and timestamp of last read-only state update.
+func (i *InstanceDesc) GetReadOnlyState() (bool, time.Time) {
+	if i == nil {
+		return false, time.Time{}
+	}
+
+	ts := time.Time{}
+	if i.ReadOnlyUpdatedTimestamp > 0 {
+		ts = time.Unix(i.ReadOnlyUpdatedTimestamp, 0)
+	}
+
+	return i.ReadOnly, ts
+}
+
 func (i *InstanceDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, now time.Time) bool {
 	healthy := op.IsInstanceInStateHealthy(i.State)
 
@@ -142,11 +180,8 @@ func (i *InstanceDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, n
 }
 
 // IsHeartbeatHealthy returns whether the heartbeat timestamp for the ingester is within the
-// specified timeout period. A timeout of zero disables the timeout; the heartbeat is ignored.
+// specified timeout period.
 func (i *InstanceDesc) IsHeartbeatHealthy(heartbeatTimeout time.Duration, now time.Time) bool {
-	if heartbeatTimeout == 0 {
-		return true
-	}
 	return now.Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
 }
 
@@ -195,7 +230,6 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 
 	other, ok := mergeable.(*Desc)
 	if !ok {
-		// This method only deals with non-nil rings.
 		return nil, fmt.Errorf("expected *ring.Desc, got %T", mergeable)
 	}
 
@@ -512,6 +546,87 @@ func (d *Desc) getOldestRegisteredTimestamp() int64 {
 	return result
 }
 
+func (d *Desc) instancesWithTokensCount() int {
+	count := 0
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			if len(ingester.Tokens) > 0 {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func (d *Desc) instancesCountPerZone() map[string]int {
+	instancesCountPerZone := map[string]int{}
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			instancesCountPerZone[ingester.Zone]++
+		}
+	}
+	return instancesCountPerZone
+}
+
+func (d *Desc) instancesWithTokensCountPerZone() map[string]int {
+	instancesCountPerZone := map[string]int{}
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			if len(ingester.Tokens) > 0 {
+				instancesCountPerZone[ingester.Zone]++
+			}
+		}
+	}
+	return instancesCountPerZone
+}
+
+func (d *Desc) writableInstancesWithTokensCount() int {
+	writableInstancesWithTokensCount := 0
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			if len(ingester.Tokens) > 0 && !ingester.ReadOnly {
+				writableInstancesWithTokensCount++
+			}
+		}
+	}
+	return writableInstancesWithTokensCount
+}
+
+func (d *Desc) writableInstancesWithTokensCountPerZone() map[string]int {
+	instancesCountPerZone := map[string]int{}
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			if len(ingester.Tokens) > 0 && !ingester.ReadOnly {
+				instancesCountPerZone[ingester.Zone]++
+			}
+		}
+	}
+	return instancesCountPerZone
+}
+
+func (d *Desc) readOnlyInstancesAndOldestReadOnlyUpdatedTimestamp() (int, int64) {
+	readOnlyInstances := 0
+	oldestReadOnlyUpdatedTimestamp := int64(0)
+	first := true
+
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			if !ingester.ReadOnly {
+				continue
+			}
+
+			readOnlyInstances++
+			if first {
+				oldestReadOnlyUpdatedTimestamp = ingester.ReadOnlyUpdatedTimestamp
+			} else {
+				oldestReadOnlyUpdatedTimestamp = min(oldestReadOnlyUpdatedTimestamp, ingester.ReadOnlyUpdatedTimestamp)
+			}
+			first = false
+		}
+	}
+	return readOnlyInstances, oldestReadOnlyUpdatedTimestamp
+}
+
 type CompareResult int
 
 // CompareResult responses
@@ -560,6 +675,14 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 			return Different
 		}
 
+		if ing.ReadOnly != oing.ReadOnly {
+			return Different
+		}
+
+		if ing.ReadOnlyUpdatedTimestamp != oing.ReadOnlyUpdatedTimestamp {
+			return Different
+		}
+
 		if len(ing.Tokens) != len(oing.Tokens) {
 			return Different
 		}
@@ -585,10 +708,19 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 	return EqualButStatesAndTimestamps
 }
 
+// setInstanceIDs sets the ID of each InstanceDesc object managed by this Desc
+func (d *Desc) setInstanceIDs() {
+	for id, inst := range d.Ingesters {
+		inst.Id = id
+		d.Ingesters[id] = inst
+	}
+}
+
 func GetOrCreateRingDesc(d interface{}) *Desc {
 	if d == nil {
 		return NewDesc()
 	}
+
 	return d.(*Desc)
 }
 

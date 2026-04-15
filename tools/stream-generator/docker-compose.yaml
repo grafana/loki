@@ -1,0 +1,106 @@
+services:
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    hostname: kafka-ui
+    container_name: kafka-ui
+    ports:
+      - 8080:8080
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker:29092
+      KAFKA_CLUSTERS_0_METRICS_PORT: 9997
+    depends_on:
+      - broker
+    networks:
+      - loki
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  broker:
+    image: apache/kafka:latest
+    hostname: broker
+    container_name: broker
+    ports:
+      - 9092:9092
+      - 29092:29092
+      - 29093:29093
+      - 29094:29094
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT,STREAMETAGEN:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092,STREAMETAGEN://broker:29094
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker:29093
+      KAFKA_LISTENERS: PLAINTEXT://broker:29092,CONTROLLER://broker:29093,PLAINTEXT_HOST://0.0.0.0:9092,STREAMETAGEN://0.0.0.0:29094
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    networks:
+      - loki
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  loki:
+    image: theperiklis/loki:feat-usage-tracker-293aed8
+    hostname: loki
+    container_name: loki
+    user: root
+    ports:
+      - 3100:3100
+      - 9096:9096
+      - 7946:7946
+    volumes:
+      - ./loki-local-config.debug.yaml:/etc/loki/local-config.yaml
+      - ./entrypoint.sh:/entrypoint.sh
+      - loki-data:/tmp/loki
+    entrypoint: ["/entrypoint.sh"]
+    depends_on:
+      - broker
+    networks:
+      - loki
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  generator:
+    image: theperiklis/stream-generator:latest
+    hostname: generator
+    container_name: generator
+    build:
+      context: ../..
+      dockerfile: tools/stream-generator/Dockerfile
+    ports:
+      - 3101:3100
+      - 7947:7947
+    command:
+      - --log.level=debug
+      - --tenants.total=2
+      - --tenants.streams.total=500
+      - --tenants.qps=50
+      - --memberlist.bind-port=7947
+      - --memberlist.advertise-port=7947
+      - --memberlist.join=loki:7946
+      - --kafka.address=broker:29094
+      - --kafka.topic=loki
+      - --kafka.auto-create-topic-default-partitions=1000
+      - --stream-generator.store=memberlist
+      - --stream-generator.push-target=metadata-topic-only
+    depends_on:
+      - broker
+      - loki
+    networks:
+      - loki
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  loki:
+    driver: bridge
+
+volumes:
+  loki-data:

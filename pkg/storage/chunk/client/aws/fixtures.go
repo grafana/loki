@@ -8,10 +8,10 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 type fixture struct {
@@ -39,14 +39,12 @@ var Fixtures = []testutils.Fixture{
 				metrics:  newMetrics(nil),
 			}
 			index := &dynamoDBStorageClient{
-				DynamoDB:                dynamoDB,
-				batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
-				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
-				schemaCfg:               schemaConfig,
-				metrics:                 newMetrics(nil),
+				DynamoDB:  dynamoDB,
+				schemaCfg: schemaConfig,
+				metrics:   newMetrics(nil),
 			}
 			mock := newMockS3()
-			object := client.NewClient(&S3ObjectClient{S3: mock, hedgedS3: mock}, nil, schemaConfig)
+			object := client.NewClient(&S3ObjectClient{S3: &mock, hedgedS3: &mock}, nil, schemaConfig)
 			return index, object, table, schemaConfig, testutils.CloserFunc(func() error {
 				table.Stop()
 				index.Stop()
@@ -82,12 +80,10 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 						MaxRetries: 20,
 					},
 				},
-				DynamoDB:                dynamoDB,
-				writeThrottle:           rate.NewLimiter(10, dynamoDBMaxWriteBatchSize),
-				batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
-				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
-				schemaCfg:               schemaCfg,
-				metrics:                 newMetrics(nil),
+				DynamoDB:      dynamoDB,
+				writeThrottle: rate.NewLimiter(10, dynamoDBMaxWriteBatchSize),
+				schemaCfg:     schemaCfg,
+				metrics:       newMetrics(nil),
 			}
 			return storage, storage, table, schemaCfg, testutils.CloserFunc(func() error {
 				table.Stop()

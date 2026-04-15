@@ -1,4 +1,4 @@
-// Copyright 2019 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -78,11 +78,11 @@ func parseMountInfoString(mountString string) (*MountInfo, error) {
 	mountInfo := strings.Split(mountString, " ")
 	mountInfoLength := len(mountInfo)
 	if mountInfoLength < 10 {
-		return nil, fmt.Errorf("couldn't find enough fields in mount string: %s", mountString)
+		return nil, fmt.Errorf("%w: Too few fields in mount string: %s", ErrFileParse, mountString)
 	}
 
 	if mountInfo[mountInfoLength-4] != "-" {
-		return nil, fmt.Errorf("couldn't find separator in expected field: %s", mountInfo[mountInfoLength-4])
+		return nil, fmt.Errorf("%w: couldn't find separator in expected field: %s", ErrFileParse, mountInfo[mountInfoLength-4])
 	}
 
 	mount := &MountInfo{
@@ -98,18 +98,18 @@ func parseMountInfoString(mountString string) (*MountInfo, error) {
 
 	mount.MountID, err = strconv.Atoi(mountInfo[0])
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse mount ID")
+		return nil, fmt.Errorf("%w: mount ID: %q", ErrFileParse, mount.MountID)
 	}
 	mount.ParentID, err = strconv.Atoi(mountInfo[1])
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse parent ID")
+		return nil, fmt.Errorf("%w: parent ID: %q", ErrFileParse, mount.ParentID)
 	}
 	// Has optional fields, which is a space separated list of values.
 	// Example: shared:2 master:7
 	if mountInfo[6] != "" {
 		mount.OptionalFields, err = mountOptionsParseOptionalFields(mountInfo[6 : mountInfoLength-4])
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w: %w", ErrFileParse, err)
 		}
 	}
 	return mount, nil
@@ -147,8 +147,7 @@ func mountOptionsParseOptionalFields(o []string) (map[string]string, error) {
 // mountOptionsParser parses the mount options, superblock options.
 func mountOptionsParser(mountOptions string) map[string]string {
 	opts := make(map[string]string)
-	options := strings.Split(mountOptions, ",")
-	for _, opt := range options {
+	for opt := range strings.SplitSeq(mountOptions, ",") {
 		splitOption := strings.Split(opt, "=")
 		if len(splitOption) < 2 {
 			key := splitOption[0]
@@ -173,6 +172,24 @@ func GetMounts() ([]*MountInfo, error) {
 // GetProcMounts retrieves mountinfo information from a processes' `/proc/<pid>/mountinfo`.
 func GetProcMounts(pid int) ([]*MountInfo, error) {
 	data, err := util.ReadFileNoStat(fmt.Sprintf("/proc/%d/mountinfo", pid))
+	if err != nil {
+		return nil, err
+	}
+	return parseMountInfo(data)
+}
+
+// GetMounts retrieves mountinfo information from `/proc/self/mountinfo`.
+func (fs FS) GetMounts() ([]*MountInfo, error) {
+	data, err := util.ReadFileNoStat(fs.proc.Path("self/mountinfo"))
+	if err != nil {
+		return nil, err
+	}
+	return parseMountInfo(data)
+}
+
+// GetProcMounts retrieves mountinfo information from a processes' `/proc/<pid>/mountinfo`.
+func (fs FS) GetProcMounts(pid int) ([]*MountInfo, error) {
+	data, err := util.ReadFileNoStat(fs.proc.Path(fmt.Sprintf("%d/mountinfo", pid)))
 	if err != nil {
 		return nil, err
 	}

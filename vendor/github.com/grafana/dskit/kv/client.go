@@ -120,7 +120,7 @@ type Client interface {
 	// WatchKey calls f whenever the value stored under key changes.
 	WatchKey(ctx context.Context, key string, f func(interface{}) bool)
 
-	// WatchPrefix calls f whenever any value stored under prefix changes.
+	// WatchPrefix calls f whenever any value stored under prefix changes. Key deletions are not notified.
 	WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool)
 }
 

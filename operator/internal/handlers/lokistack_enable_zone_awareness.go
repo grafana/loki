@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
@@ -49,8 +49,8 @@ func AnnotatePodWithAvailabilityZone(ctx context.Context, log logr.Logger, c k8s
 		return nil
 	}
 
-	mergePatch, err := json.Marshal(map[string]interface{}{
-		"metadata": map[string]interface{}{
+	mergePatch, err := json.Marshal(map[string]any{
+		"metadata": map[string]any{
 			"annotations": map[string]string{
 				lokiv1.AnnotationAvailabilityZone: availabilityZone,
 			},

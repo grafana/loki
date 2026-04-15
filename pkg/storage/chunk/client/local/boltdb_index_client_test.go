@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 var (
@@ -188,9 +188,9 @@ func TestBoltDB_Writes(t *testing.T) {
 		{
 			name:              "both puts and deletes",
 			initialPuts:       []string{"1", "2", "3", "4"},
-			testPuts:          []string{"5", "6"},
+			testPuts:          []string{"2", "5", "6"},
 			testDeletes:       []string{"1", "2"},
-			valuesAfterWrites: []string{"3", "4", "5", "6"},
+			valuesAfterWrites: []string{"2", "3", "4", "5", "6"},
 		},
 		{
 			name:        "deletes without initial writes",
@@ -299,6 +299,7 @@ func Benchmark_Query(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		err = indexClient.query(context.Background(), entry, func(_ index.Query, read index.ReadBatchResult) bool {
 			iter := read.Iterator()
+			//nolint:revive
 			for iter.Next() {
 			}
 			return true

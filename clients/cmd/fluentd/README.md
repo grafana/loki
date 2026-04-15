@@ -2,7 +2,11 @@
 
 [Fluentd](https://fluentd.org/) is a data collector for unified logging layer, it can be configured with the Loki output plugin, provided in this folder, to ship logs to Loki.
 
-See [docs/client/fluentd/README.md](../../docs/sources/clients/fluentd/_index.md) for detailed information.
+See the [Fluentd documentation](../../../docs/sources/send-data/fluentd/_index.md) for detailed information.
+
+## Client certificates (mTLS)
+
+For mutual TLS in front of Loki, configure `cert`, `key`, and optionally `ca_cert`. A PEM `cert` file may include the leaf plus intermediate chain; **sending the full chain requires Ruby 3.0+**. See [Client certificate verification](../../../docs/sources/send-data/fluentd/_index.md#client-certificate-verification) in the Loki docs.
 
 ## Development
 

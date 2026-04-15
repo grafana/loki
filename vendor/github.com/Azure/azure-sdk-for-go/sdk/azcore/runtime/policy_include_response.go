@@ -1,6 +1,3 @@
-//go:build go1.16
-// +build go1.16
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -20,7 +17,7 @@ func includeResponsePolicy(req *policy.Request) (*http.Response, error) {
 	if resp == nil {
 		return resp, err
 	}
-	if httpOutRaw := req.Raw().Context().Value(shared.CtxIncludeResponseKey{}); httpOutRaw != nil {
+	if httpOutRaw := req.Raw().Context().Value(shared.CtxWithCaptureResponse{}); httpOutRaw != nil {
 		httpOut := httpOutRaw.(**http.Response)
 		*httpOut = resp
 	}
@@ -29,6 +26,8 @@ func includeResponsePolicy(req *policy.Request) (*http.Response, error) {
 
 // WithCaptureResponse applies the HTTP response retrieval annotation to the parent context.
 // The resp parameter will contain the HTTP response after the request has completed.
+//
+// Deprecated: use [policy.WithCaptureResponse] instead.
 func WithCaptureResponse(parent context.Context, resp **http.Response) context.Context {
-	return context.WithValue(parent, shared.CtxIncludeResponseKey{}, resp)
+	return policy.WithCaptureResponse(parent, resp)
 }

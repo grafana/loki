@@ -30,6 +30,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/tags"
 )
 
 // CopyDestOptions represents options specified by user for CopyObject/ComposeObject APIs
@@ -41,13 +42,15 @@ type CopyDestOptions struct {
 	// provided key. If it is nil, no encryption is performed.
 	Encryption encrypt.ServerSide
 
+	ChecksumType ChecksumType
+
 	// `userMeta` is the user-metadata key-value pairs to be set on the
 	// destination. The keys are automatically prefixed with `x-amz-meta-`
 	// if needed. If nil is passed, and if only a single source (of any
 	// size) is provided in the ComposeObject call, then metadata from the
 	// source is copied to the destination.
 	// if no user-metadata is provided, it is copied from source
-	// (when there is only once source object in the compose
+	// (when there is only one source object in the compose
 	// request)
 	UserMetadata map[string]string
 	// UserMetadata is only set to destination if ReplaceMetadata is true
@@ -67,12 +70,21 @@ type CopyDestOptions struct {
 	LegalHold LegalHoldStatus
 
 	// Object Retention related fields
-	Mode            RetentionMode
-	RetainUntilDate time.Time
+	Mode               RetentionMode
+	RetainUntilDate    time.Time
+	Expires            time.Time
+	ContentType        string
+	ContentEncoding    string
+	ContentDisposition string
+	ContentLanguage    string
+	CacheControl       string
 
 	Size int64 // Needs to be specified if progress bar is specified.
 	// Progress of the entire copy operation will be sent here.
 	Progress io.Reader
+	// PartSize specifies the part size for multipart copy operations.
+	// If not specified, defaults to maxPartSize (5 GiB).
+	PartSize uint64
 }
 
 // Process custom-metadata to remove a `x-amz-meta-` prefix if
@@ -98,8 +110,8 @@ func (opts CopyDestOptions) Marshal(header http.Header) {
 	const replaceDirective = "REPLACE"
 	if opts.ReplaceTags {
 		header.Set(amzTaggingHeaderDirective, replaceDirective)
-		if tags := s3utils.TagEncode(opts.UserTags); tags != "" {
-			header.Set(amzTaggingHeader, tags)
+		if tags, _ := tags.NewTags(opts.UserTags, true); tags != nil {
+			header.Set(amzTaggingHeader, tags.String())
 		}
 	}
 
@@ -115,11 +127,32 @@ func (opts CopyDestOptions) Marshal(header http.Header) {
 	if opts.Encryption != nil {
 		opts.Encryption.Marshal(header)
 	}
+	if opts.ContentType != "" {
+		header.Set("Content-Type", opts.ContentType)
+	}
+	if opts.ContentEncoding != "" {
+		header.Set("Content-Encoding", opts.ContentEncoding)
+	}
+	if opts.ContentDisposition != "" {
+		header.Set("Content-Disposition", opts.ContentDisposition)
+	}
+	if opts.ContentLanguage != "" {
+		header.Set("Content-Language", opts.ContentLanguage)
+	}
+	if opts.CacheControl != "" {
+		header.Set("Cache-Control", opts.CacheControl)
+	}
+	if !opts.Expires.IsZero() {
+		header.Set("Expires", opts.Expires.UTC().Format(http.TimeFormat))
+	}
+	if opts.ChecksumType.IsSet() {
+		header.Set(amzChecksumAlgo, opts.ChecksumType.String())
+	}
 
 	if opts.ReplaceMetadata {
 		header.Set("x-amz-metadata-directive", replaceDirective)
 		for k, v := range filterCustomMeta(opts.UserMetadata) {
-			if isAmzHeader(k) || isStandardHeader(k) || isStorageClassHeader(k) {
+			if isAmzHeader(k) || isStandardHeader(k) || isStorageClassHeader(k) || isMinioHeader(k) {
 				header.Set(k, v)
 			} else {
 				header.Set("x-amz-meta-"+k, v)
@@ -236,7 +269,9 @@ func (c *Client) copyObjectDo(ctx context.Context, srcBucket, srcObject, destBuc
 	}
 
 	if len(dstOpts.UserTags) != 0 {
-		headers.Set(amzTaggingHeader, s3utils.TagEncode(dstOpts.UserTags))
+		if tags, _ := tags.NewTags(dstOpts.UserTags, true); tags != nil {
+			headers.Set(amzTaggingHeader, tags.String())
+		}
 	}
 
 	reqMetadata := requestMetadata{
@@ -318,7 +353,7 @@ func (c *Client) copyObjectPartDo(ctx context.Context, srcBucket, srcObject, des
 	})
 	defer closeResponse(resp)
 	if err != nil {
-		return
+		return p, err
 	}
 
 	// Check if we got an error response.
@@ -428,15 +463,15 @@ func (c *Client) ComposeObject(ctx context.Context, dst CopyDestOptions, srcs ..
 
 		// Is data to copy too large?
 		totalSize += srcCopySize
-		if totalSize > maxMultipartPutObjectSize {
-			return UploadInfo{}, errInvalidArgument(fmt.Sprintf("Cannot compose an object of size %d (> 5TiB)", totalSize))
+		if totalSize > maxObjectSize {
+			return UploadInfo{}, errInvalidArgument(fmt.Sprintf("Cannot compose an object of size %d (> 5GiB * 10000)", totalSize))
 		}
 
 		// record source size
 		srcObjectSizes[i] = srcCopySize
 
 		// calculate parts needed for current source
-		totalParts += partsRequired(srcCopySize)
+		totalParts += partsRequired(srcCopySize, int64(dst.PartSize))
 		// Do we need more parts than we are allowed?
 		if totalParts > maxPartsCount {
 			return UploadInfo{}, errInvalidArgument(fmt.Sprintf(
@@ -502,7 +537,7 @@ func (c *Client) ComposeObject(ctx context.Context, dst CopyDestOptions, srcs ..
 
 		// calculate start/end indices of parts after
 		// splitting.
-		startIdx, endIdx := calculateEvenSplits(srcObjectSizes[i], src)
+		startIdx, endIdx := calculateEvenSplits(srcObjectSizes[i], src, int64(dst.PartSize))
 		for j, start := range startIdx {
 			end := endIdx[j]
 
@@ -536,12 +571,14 @@ func (c *Client) ComposeObject(ctx context.Context, dst CopyDestOptions, srcs ..
 	return uploadInfo, nil
 }
 
-// partsRequired is maximum parts possible with
-// max part size of ceiling(maxMultipartPutObjectSize / (maxPartsCount - 1))
-func partsRequired(size int64) int64 {
-	maxPartSize := maxMultipartPutObjectSize / (maxPartsCount - 1)
-	r := size / int64(maxPartSize)
-	if size%int64(maxPartSize) > 0 {
+// partsRequired calculates the number of parts needed for a given size
+// using the specified part size. If partSize is 0, defaults to maxPartSize (5 GiB).
+func partsRequired(size int64, partSize int64) int64 {
+	if partSize == 0 {
+		partSize = maxPartSize
+	}
+	r := size / partSize
+	if size%partSize > 0 {
 		r++
 	}
 	return r
@@ -550,13 +587,13 @@ func partsRequired(size int64) int64 {
 // calculateEvenSplits - computes splits for a source and returns
 // start and end index slices. Splits happen evenly to be sure that no
 // part is less than 5MiB, as that could fail the multipart request if
-// it is not the last part.
-func calculateEvenSplits(size int64, src CopySrcOptions) (startIndex, endIndex []int64) {
+// it is not the last part. If partSize is 0, defaults to maxPartSize (5 GiB).
+func calculateEvenSplits(size int64, src CopySrcOptions, partSize int64) (startIndex, endIndex []int64) {
 	if size == 0 {
-		return
+		return startIndex, endIndex
 	}
 
-	reqParts := partsRequired(size)
+	reqParts := partsRequired(size, partSize)
 	startIndex = make([]int64, reqParts)
 	endIndex = make([]int64, reqParts)
 	// Compute number of required parts `k`, as:
@@ -590,5 +627,5 @@ func calculateEvenSplits(size int64, src CopySrcOptions) (startIndex, endIndex [
 
 		startIndex[j], endIndex[j] = cStart, cEnd
 	}
-	return
+	return startIndex, endIndex
 }
