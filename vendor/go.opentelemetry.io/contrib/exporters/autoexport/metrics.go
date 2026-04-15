@@ -171,6 +171,11 @@ func init() {
 			return nil, err
 		}
 		for _, producer := range producers {
+			if _, ok := producer.(myProducer); ok {
+				// Skip default prometheusbridge producer. Only add
+				// user-configured producers.
+				continue
+			}
 			exporterOpts = append(exporterOpts, promexporter.WithProducer(producer))
 		}
 
@@ -212,11 +217,15 @@ func init() {
 	})
 
 	RegisterMetricProducer("prometheus", func(context.Context) (metric.Producer, error) {
-		return prometheusbridge.NewMetricProducer(), nil
+		return myProducer{prometheusbridge.NewMetricProducer()}, nil
 	})
 	RegisterMetricProducer("none", func(context.Context) (metric.Producer, error) {
 		return newNoopMetricProducer(), nil
 	})
+}
+
+type myProducer struct {
+	metric.Producer
 }
 
 type readerWithServer struct {
@@ -286,7 +295,7 @@ func (pr producerRegistry) create(ctx context.Context) ([]metric.Producer, error
 
 func dedupedMetricProducers(envValue string) []string {
 	producers := make(map[string]struct{})
-	for _, producer := range strings.Split(envValue, ",") {
+	for producer := range strings.SplitSeq(envValue, ",") {
 		producers[producer] = struct{}{}
 	}
 

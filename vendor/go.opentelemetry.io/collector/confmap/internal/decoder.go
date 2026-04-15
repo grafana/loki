@@ -7,13 +7,13 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
-	"maps"
 	"reflect"
 	"slices"
 	"strings"
 
 	"github.com/go-viper/mapstructure/v2"
 
+	"go.opentelemetry.io/collector/confmap/internal/metadata"
 	"go.opentelemetry.io/collector/confmap/internal/third_party/composehook"
 )
 
@@ -29,6 +29,18 @@ const (
 func WithIgnoreUnused() UnmarshalOption {
 	return UnmarshalOptionFunc(func(uo *UnmarshalOptions) {
 		uo.IgnoreUnused = true
+	})
+}
+
+// WithForceUnmarshaler sets an option to run a top-level Unmarshal method,
+// even if the Conf being unmarshaled is already a parameter from an Unmarshal method.
+// To avoid infinite recursion, this should only be used when unmarshaling into
+// a different type from the current Unmarshaler.
+// For instance, this should be used in wrapper types such as configoptional.Optional
+// to ensure the inner type's Unmarshal method is called.
+func WithForceUnmarshaler() UnmarshalOption {
+	return UnmarshalOptionFunc(func(uo *UnmarshalOptions) {
+		uo.ForceUnmarshaler = true
 	})
 }
 
@@ -54,10 +66,10 @@ func Decode(input, result any, settings UnmarshalOptions, skipTopLevelUnmarshale
 			mapKeyStringToMapKeyTextUnmarshalerHookFunc(),
 			mapstructure.StringToTimeDurationHookFunc(),
 			mapstructure.TextUnmarshallerHookFunc(),
-			unmarshalerHookFunc(result, skipTopLevelUnmarshaler),
+			unmarshalerHookFunc(result, skipTopLevelUnmarshaler && !settings.ForceUnmarshaler),
 			// after the main unmarshaler hook is called,
 			// we unmarshal the embedded structs if present to merge with the result:
-			unmarshalerEmbeddedStructsHookFunc(),
+			unmarshalerEmbeddedStructsHookFunc(settings),
 			zeroSliceAndMapHookFunc(),
 		),
 	}
@@ -76,7 +88,10 @@ func Decode(input, result any, settings UnmarshalOptions, skipTopLevelUnmarshale
 
 // When a value has been loaded from an external source via a provider, we keep both the
 // parsed value and the original string value. This allows us to expand the value to its
-// original string representation when decoding into a string field, and use the original otherwise.
+// original string representation when decoding into a string field, and use the parsed value otherwise.
+//
+// Fields containing a pointer to a string will also be set to the original string representation,
+// except when the parsed value is nil (i.e. parsed from YAML `null`, `NULL`, `~`, the empty string, etc.)
 func useExpandValue() mapstructure.DecodeHookFuncType {
 	return func(
 		_ reflect.Type,
@@ -84,7 +99,26 @@ func useExpandValue() mapstructure.DecodeHookFuncType {
 		data any,
 	) (any, error) {
 		if exp, ok := data.(ExpandedValue); ok {
-			v := castTo(exp, to.Kind() == reflect.String)
+			var useOriginal bool
+			if metadata.ConfmapNewExpandedValueSanitizerFeatureGate.IsEnabled() {
+				// Check if the target field is string, *string, **string, etc.
+				baseType := to
+				pointed := false
+				for baseType.Kind() == reflect.Pointer {
+					baseType = baseType.Elem()
+					pointed = true
+				}
+				useOriginal = baseType.Kind() == reflect.String
+
+				// If the parsed value is nil and the target is a pointer, use the parsed value.
+				if pointed && exp.Value == nil {
+					useOriginal = false
+				}
+			} else {
+				useOriginal = to.Kind() == reflect.String
+			}
+
+			v := castTo(exp, useOriginal)
 			// See https://github.com/open-telemetry/opentelemetry-collector/issues/10949
 			// If the `to.Kind` is not a string, then expandValue's original value is useless and
 			// the casted-to value will be nil. In that scenario, we need to use the default value of `to`'s kind.
@@ -94,14 +128,17 @@ func useExpandValue() mapstructure.DecodeHookFuncType {
 			return v, nil
 		}
 
-		switch to.Kind() {
-		case reflect.Array, reflect.Slice, reflect.Map:
-			if isStringyStructure(to) {
-				// If the target field is a stringy structure, sanitize to use the original string value everywhere.
-				return sanitizeToStr(data), nil
+		if !metadata.ConfmapNewExpandedValueSanitizerFeatureGate.IsEnabled() {
+			switch to.Kind() {
+			case reflect.Array, reflect.Slice, reflect.Map:
+				if isStringyStructure(to) {
+					// If the target field is a stringy structure, sanitize to use the original string value everywhere.
+					return sanitizeToStr(data), nil
+				}
+
+				// Otherwise, sanitize to use the parsed value everywhere.
+				return sanitize(data), nil
 			}
-			// Otherwise, sanitize to use the parsed value everywhere.
-			return sanitize(data), nil
 		}
 		return data, nil
 	}
@@ -168,7 +205,7 @@ func mapKeyStringToMapKeyTextUnmarshalerHookFunc() mapstructure.DecodeHookFuncTy
 		}
 
 		// Create a map with key value of to's key to bool.
-		fieldNameSet := reflect.MakeMap(reflect.MapOf(to.Key(), reflect.TypeOf(true)))
+		fieldNameSet := reflect.MakeMap(reflect.MapOf(to.Key(), reflect.TypeFor[bool]()))
 		for k := range data.(map[string]any) {
 			// Create a new value of the to's key type.
 			tKey := reflect.New(to.Key())
@@ -189,7 +226,7 @@ func mapKeyStringToMapKeyTextUnmarshalerHookFunc() mapstructure.DecodeHookFuncTy
 
 // unmarshalerEmbeddedStructsHookFunc provides a mechanism for embedded structs to define their own unmarshal logic,
 // by implementing the Unmarshaler interface.
-func unmarshalerEmbeddedStructsHookFunc() mapstructure.DecodeHookFuncValue {
+func unmarshalerEmbeddedStructsHookFunc(settings UnmarshalOptions) mapstructure.DecodeHookFuncValue {
 	return safeWrapDecodeHookFunc(func(from, to reflect.Value) (any, error) {
 		if to.Type().Kind() != reflect.Struct {
 			return from.Interface(), nil
@@ -198,32 +235,72 @@ func unmarshalerEmbeddedStructsHookFunc() mapstructure.DecodeHookFuncValue {
 		if !ok {
 			return from.Interface(), nil
 		}
+
+		// First call Unmarshaler on squashed embedded fields, if necessary.
+		var squashedUnmarshalers []int
 		for i := 0; i < to.Type().NumField(); i++ {
-			// embedded structs passed in via `squash` cannot be pointers. We just check if they are structs:
 			f := to.Type().Field(i)
-			if f.IsExported() && slices.Contains(strings.Split(f.Tag.Get(MapstructureTag), ","), "squash") {
-				if unmarshaler, ok := to.Field(i).Addr().Interface().(Unmarshaler); ok {
-					c := NewFromStringMap(fromAsMap)
-					c.skipTopLevelUnmarshaler = true
-					if err := unmarshaler.Unmarshal(c); err != nil {
-						return nil, err
-					}
-					// the struct we receive from this unmarshaling only contains fields related to the embedded struct.
-					// we merge this partially unmarshaled struct with the rest of the result.
-					// note we already unmarshaled the main struct earlier, and therefore merge with it.
-					conf := New()
-					if err := conf.Marshal(unmarshaler); err != nil {
-						return nil, err
-					}
-					resultMap := conf.ToStringMap()
-					if fromAsMap == nil && len(resultMap) > 0 {
-						fromAsMap = make(map[string]any, len(resultMap))
-					}
-					maps.Copy(fromAsMap, resultMap)
-				}
+			if !f.IsExported() {
+				continue
 			}
+			tagParts := strings.Split(f.Tag.Get(MapstructureTag), ",")
+			if !slices.Contains(tagParts[1:], "squash") {
+				continue
+			}
+			unmarshaler, ok := to.Field(i).Addr().Interface().(Unmarshaler)
+			if !ok {
+				continue
+			}
+			c := NewFromStringMap(fromAsMap)
+			c.skipTopLevelUnmarshaler = true
+			if err := unmarshaler.Unmarshal(c); err != nil {
+				return nil, err
+			}
+			squashedUnmarshalers = append(squashedUnmarshalers, i)
 		}
-		return fromAsMap, nil
+
+		// No squashed unmarshalers, we can let mapstructure do its job.
+		if len(squashedUnmarshalers) == 0 {
+			return fromAsMap, nil
+		}
+
+		// We need to unmarshal into all other fields without overwriting the output of the Unmarshal calls.
+		// To do that, create a custom "partial" struct containing only the non-squashed fields.
+		var fields []reflect.StructField
+		var fieldValues []reflect.Value
+		for i := 0; i < to.Type().NumField(); i++ {
+			f := to.Type().Field(i)
+			if !f.IsExported() {
+				continue
+			}
+			if slices.Contains(squashedUnmarshalers, i) {
+				continue
+			}
+			fields = append(fields, f)
+			fieldValues = append(fieldValues, to.Field(i))
+		}
+		restType := reflect.StructOf(fields)
+		restValue := reflect.New(restType)
+
+		// Copy initial values into partial struct.
+		for i, fieldValue := range fieldValues {
+			restValue.Elem().Field(i).Set(fieldValue)
+		}
+
+		// Decode into the partial struct.
+		// This performs a recursive call into this hook, which will be handled by the "no squashed unmarshalers" case above.
+		// We need to set `IgnoreUnused` to avoid errors from the map containing fields only present in the full struct.
+		settings.IgnoreUnused = true
+		if err := Decode(fromAsMap, restValue.Interface(), settings, true); err != nil {
+			return nil, err
+		}
+
+		// Copy decoding results back to the original struct.
+		for i, fieldValue := range fieldValues {
+			fieldValue.Set(restValue.Elem().Field(i))
+		}
+
+		return to, nil
 	})
 }
 

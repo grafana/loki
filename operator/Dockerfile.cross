@@ -1,11 +1,8 @@
-ARG BUILD_IMAGE=grafana/loki-build-image:0.33.6
+# Build the manager binary. BUILD_IMAGE defaults to the same Go image as Dockerfile.
+ARG BUILD_IMAGE=golang:1.25.9
 
-FROM golang:1.24.4-alpine as goenv
-RUN go env GOARCH > /goarch && \
-  go env GOARM > /goarm
+FROM ${BUILD_IMAGE} AS builder
 
-FROM --platform=linux/amd64 $BUILD_IMAGE as builder
-COPY --from=goenv /goarch /goarm /
 WORKDIR /workspace
 # Copy the Go Modules manifests
 COPY api/ api/
@@ -19,8 +16,8 @@ RUN go mod download
 COPY cmd/loki-operator/main.go cmd/loki-operator/main.go
 COPY internal/ internal/
 
-# Build
-RUN CGO_ENABLED=0 GOOS=linux GO111MODULE=on GOARCH=$(cat /goarch) GOARM=$(cat /goarm) go build -a -o manager cmd/loki-operator/main.go
+# Build (GOARCH/GOARM follow the build platform; use docker buildx --platform for cross-compiles)
+RUN CGO_ENABLED=0 GOOS=linux GO111MODULE=on GOARCH=$(go env GOARCH) GOARM=$(go env GOARM) go build -mod=readonly -o manager cmd/loki-operator/main.go
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details

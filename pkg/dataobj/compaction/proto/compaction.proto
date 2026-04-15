@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package proto;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/proto";
+
+// Stream identifies a single stream from an index.
+// It does not include Tenant ID to let us store group of streams for same Tenant without repeating the ID.
+message Stream {
+  int64 ID = 1 [(gogoproto.jsontag) = "id"];
+  string Index = 2 [(gogoproto.jsontag) = "index"];
+}
+
+// TenantStream identifies a single stream from an index belonging to a specific Tenant.
+message TenantStream {
+  string Tenant = 1 [(gogoproto.jsontag) = "tenant"];
+  Stream Stream = 2 [(gogoproto.jsontag) = "stream"];
+}
+
+message TimeRange {
+  int64 From = 1 [(gogoproto.jsontag) = "from"];
+  int64 Through = 2 [(gogoproto.jsontag) = "through"];
+}
+
+// SingleTenantObjectSource holds all the required info to build one or more output objects for a single tenant.
+// To avoid repetition, common info like time-range and target size of objects are to be referenced from CompactionManifest and added separately where relevant.
+message SingleTenantObjectSource {
+  repeated Stream Streams = 1 [(gogoproto.jsontag) = "streams"];
+  int32 NumOutputObjects = 2 [(gogoproto.jsontag) = "num_output_objects"];
+}
+
+// MultiTenantObjectSource holds all the required info to build one or more multi-tenant output objects.
+// To avoid repetition, common info like time-range and target size of objects are to be referenced from CompactionManifest and added separately where relevant.
+message MultiTenantObjectSource {
+  repeated TenantStream TenantStreams = 1 [(gogoproto.jsontag) = "tenant_streams"];
+  int32 NumOutputObjects = 2 [(gogoproto.jsontag) = "num_output_objects"];
+}
+
+// CompactionManifest represents the completion of compaction planning stage and summarizes the compaction plan.
+// It serves two purposes:
+// 1. Acts as a marker indicating all the relevant data has been scanned for building a compaction plan
+// 2. Stores a summary of data being compacted:
+//   - Time Range of compaction window
+//   - Configured target size while planning the compaction
+//   - List of source indexes considered for planning the compaction
+message CompactionManifest {
+  TimeRange TimeRange = 1 [(gogoproto.jsontag) = "time_range"];
+  int64 TargetSizeBytes = 2 [(gogoproto.jsontag) = "target_size_bytes"];
+  repeated string SourceIndexes = 3 [(gogoproto.jsontag) = "source_indexes"];
+}
+
+message SingleTenantObjectSourceWithTenantID {
+  string Tenant = 1 [(gogoproto.jsontag) = "tenant"];
+  SingleTenantObjectSource Source = 2 [(gogoproto.jsontag) = "source"];
+}
+
+// CompactionJob defines a single compaction job to build one or more DataObjects using the data defined in Source.
+message CompactionJob {
+  // Source either defines a single-tenant source to build single-tenant object(s) or read multi-tenant source to build multi-tenant object(s).
+  oneof Source {
+    SingleTenantObjectSourceWithTenantID SingleTenant = 1 [(gogoproto.jsontag) = "single_tenant"];
+    MultiTenantObjectSource MultiTenant = 2 [(gogoproto.jsontag) = "multi_tenant"];
+  }
+  int64 TargetSizeBytes = 3 [(gogoproto.jsontag) = "target_size_bytes"];
+  // ReadRange defines time-range of logs to read from source for building new objects.
+  // It could have either From or Through set to 0 to signify no boundaries on either end.
+  TimeRange ReadRange = 4 [(gogoproto.jsontag) = "read_range"];
+}
+
+message CompactionJobResponse {
+  repeated string Paths = 1 [(gogoproto.jsontag) = "paths"];
+}
+
+message IndexingJob {
+  repeated string Paths = 1 [(gogoproto.jsontag) = "paths"];
+}
+
+message IndexInfo {
+  string Tenant = 1 [(gogoproto.jsontag) = "tenant"];
+  string Path = 2 [(gogoproto.jsontag) = "path"];
+  TimeRange TimeRange = 3 [(gogoproto.jsontag) = "time_range"];
+}
+
+message IndexingJobResponse {
+  repeated IndexInfo Indexes = 1 [(gogoproto.jsontag) = "indexes"];
+}

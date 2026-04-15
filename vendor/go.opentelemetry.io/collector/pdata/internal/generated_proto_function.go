@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -31,7 +32,7 @@ var (
 )
 
 func NewFunction() *Function {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &Function{}
 	}
 	return protoPoolFunction.Get().(*Function)
@@ -42,7 +43,7 @@ func DeleteFunction(orig *Function, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -67,11 +68,8 @@ func CopyFunction(dest, src *Function) *Function {
 		dest = NewFunction()
 	}
 	dest.NameStrindex = src.NameStrindex
-
 	dest.SystemNameStrindex = src.SystemNameStrindex
-
 	dest.FilenameStrindex = src.FilenameStrindex
-
 	dest.StartLine = src.StartLine
 
 	return dest
@@ -173,16 +171,16 @@ func (orig *Function) SizeProto() int {
 	var n int
 	var l int
 	_ = l
-	if orig.NameStrindex != 0 {
+	if orig.NameStrindex != int32(0) {
 		n += 1 + proto.Sov(uint64(orig.NameStrindex))
 	}
-	if orig.SystemNameStrindex != 0 {
+	if orig.SystemNameStrindex != int32(0) {
 		n += 1 + proto.Sov(uint64(orig.SystemNameStrindex))
 	}
-	if orig.FilenameStrindex != 0 {
+	if orig.FilenameStrindex != int32(0) {
 		n += 1 + proto.Sov(uint64(orig.FilenameStrindex))
 	}
-	if orig.StartLine != 0 {
+	if orig.StartLine != int64(0) {
 		n += 1 + proto.Sov(uint64(orig.StartLine))
 	}
 	return n
@@ -192,22 +190,22 @@ func (orig *Function) MarshalProto(buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	if orig.NameStrindex != 0 {
+	if orig.NameStrindex != int32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.NameStrindex))
 		pos--
 		buf[pos] = 0x8
 	}
-	if orig.SystemNameStrindex != 0 {
+	if orig.SystemNameStrindex != int32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.SystemNameStrindex))
 		pos--
 		buf[pos] = 0x10
 	}
-	if orig.FilenameStrindex != 0 {
+	if orig.FilenameStrindex != int32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.FilenameStrindex))
 		pos--
 		buf[pos] = 0x18
 	}
-	if orig.StartLine != 0 {
+	if orig.StartLine != int64(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.StartLine))
 		pos--
 		buf[pos] = 0x20
@@ -239,7 +237,6 @@ func (orig *Function) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.NameStrindex = int32(num)
 
 		case 2:
@@ -251,7 +248,6 @@ func (orig *Function) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.SystemNameStrindex = int32(num)
 
 		case 3:
@@ -263,7 +259,6 @@ func (orig *Function) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.FilenameStrindex = int32(num)
 
 		case 4:
@@ -275,7 +270,6 @@ func (orig *Function) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.StartLine = int64(num)
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)

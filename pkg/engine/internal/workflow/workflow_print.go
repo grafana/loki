@@ -20,6 +20,11 @@ func Sprint(wf *Workflow) string {
 
 // Fprint prints a string representation of the workflow to the given writer.
 func Fprint(w io.Writer, wf *Workflow) error {
+	if wf.Empty() {
+		_, err := fmt.Fprintln(w, "Empty")
+		return err
+	}
+
 	visited := make(map[*Task]struct{}, wf.graph.Len())
 
 	roots := wf.graph.Roots()

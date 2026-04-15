@@ -57,18 +57,16 @@ func TestScheduler_RegisterManifest(t *testing.T) {
 		// Create a stream but don't add it to any manifest.
 		stream := &workflow.Stream{ULID: ulid.Make()}
 
-		var (
-			manifest = &workflow.Manifest{
-				Tasks: []*workflow.Task{{
-					ULID: ulid.Make(),
-					Sources: map[physical.Node][]*workflow.Stream{
-						nil: {stream},
-					},
-				}},
-				StreamEventHandler: nopStreamHandler,
-				TaskEventHandler:   nopTaskHandler,
-			}
-		)
+		manifest := &workflow.Manifest{
+			Tasks: []*workflow.Task{{
+				ULID: ulid.Make(),
+				Sources: map[physical.Node][]*workflow.Stream{
+					nil: {stream},
+				},
+			}},
+			StreamEventHandler: nopStreamHandler,
+			TaskEventHandler:   nopTaskHandler,
+		}
 
 		require.Error(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should not accept manifest with unrecognized source stream")
 	})
@@ -79,18 +77,16 @@ func TestScheduler_RegisterManifest(t *testing.T) {
 		// Create a stream but don't add it to any manifest.
 		stream := &workflow.Stream{ULID: ulid.Make()}
 
-		var (
-			manifest = &workflow.Manifest{
-				Tasks: []*workflow.Task{{
-					ULID: ulid.Make(),
-					Sinks: map[physical.Node][]*workflow.Stream{
-						nil: {stream},
-					},
-				}},
-				StreamEventHandler: nopStreamHandler,
-				TaskEventHandler:   nopTaskHandler,
-			}
-		)
+		manifest := &workflow.Manifest{
+			Tasks: []*workflow.Task{{
+				ULID: ulid.Make(),
+				Sinks: map[physical.Node][]*workflow.Stream{
+					nil: {stream},
+				},
+			}},
+			StreamEventHandler: nopStreamHandler,
+			TaskEventHandler:   nopTaskHandler,
+		}
 
 		require.Error(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should not accept manifest with unrecognized sink stream")
 	})
@@ -292,6 +288,7 @@ func TestScheduler_Listen(t *testing.T) {
 
 			peer := wire.Peer{
 				Logger:  log.NewNopLogger(),
+				Metrics: wire.NewMetrics(),
 				Conn:    conn,
 				Handler: nil,
 			}
@@ -429,8 +426,9 @@ func TestScheduler_worker(t *testing.T) {
 		messages := make(chan wire.Message, 10)
 
 		peer := wire.Peer{
-			Logger: log.NewNopLogger(),
-			Conn:   conn,
+			Logger:  log.NewNopLogger(),
+			Metrics: wire.NewMetrics(),
+			Conn:    conn,
 			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
 				select {
 				case <-ctx.Done():
@@ -458,8 +456,9 @@ func TestScheduler_worker(t *testing.T) {
 		messages := make(chan wire.Message, 10)
 
 		peer := wire.Peer{
-			Logger: log.NewNopLogger(),
-			Conn:   conn,
+			Logger:  log.NewNopLogger(),
+			Metrics: wire.NewMetrics(),
+			Conn:    conn,
 			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
 				select {
 				case <-ctx.Done():
@@ -487,8 +486,9 @@ func TestScheduler_worker(t *testing.T) {
 		messages := make(chan wire.Message, 10)
 
 		peer := wire.Peer{
-			Logger: log.NewNopLogger(),
-			Conn:   conn,
+			Logger:  log.NewNopLogger(),
+			Metrics: wire.NewMetrics(),
+			Conn:    conn,
 			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
 				select {
 				case <-ctx.Done():
@@ -556,8 +556,9 @@ func TestScheduler_worker(t *testing.T) {
 		messages := make(chan wire.Message, 10)
 
 		peer := wire.Peer{
-			Logger: log.NewNopLogger(),
-			Conn:   conn,
+			Logger:  log.NewNopLogger(),
+			Metrics: wire.NewMetrics(),
+			Conn:    conn,
 			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
 				select {
 				case <-ctx.Done():
@@ -635,8 +636,9 @@ func TestScheduler_worker(t *testing.T) {
 		messages := make(chan wire.Message, 10)
 
 		peer := wire.Peer{
-			Logger: log.NewNopLogger(),
-			Conn:   conn,
+			Logger:  log.NewNopLogger(),
+			Metrics: wire.NewMetrics(),
+			Conn:    conn,
 			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
 				select {
 				case <-ctx.Done():
@@ -736,8 +738,9 @@ func TestScheduler_worker(t *testing.T) {
 			messages := make(chan wire.Message, 10)
 
 			peer := wire.Peer{
-				Logger: log.NewNopLogger(),
-				Conn:   conn,
+				Logger:  log.NewNopLogger(),
+				Metrics: wire.NewMetrics(),
+				Conn:    conn,
 				Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
 					select {
 					case <-ctx.Done():
@@ -805,8 +808,9 @@ func TestScheduler_worker(t *testing.T) {
 			messages := make(chan wire.Message, 10)
 
 			peer := wire.Peer{
-				Logger: log.NewNopLogger(),
-				Conn:   conn,
+				Logger:  log.NewNopLogger(),
+				Metrics: wire.NewMetrics(),
+				Conn:    conn,
 				Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
 					select {
 					case <-ctx.Done():
@@ -895,8 +899,9 @@ func TestScheduler_worker(t *testing.T) {
 			messages := make(chan wire.Message, 10)
 
 			peer := wire.Peer{
-				Logger: log.NewNopLogger(),
-				Conn:   conn,
+				Logger:  log.NewNopLogger(),
+				Metrics: wire.NewMetrics(),
+				Conn:    conn,
 				Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
 					select {
 					case <-ctx.Done():
@@ -970,8 +975,9 @@ func TestScheduler_worker(t *testing.T) {
 			messages := make(chan wire.Message, 10)
 
 			peer := wire.Peer{
-				Logger: log.NewNopLogger(),
-				Conn:   conn,
+				Logger:  log.NewNopLogger(),
+				Metrics: wire.NewMetrics(),
+				Conn:    conn,
 				Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
 					select {
 					case <-ctx.Done():
@@ -1041,8 +1047,9 @@ func TestScheduler_worker(t *testing.T) {
 		messages := make(chan wire.Message, 10)
 
 		peer := wire.Peer{
-			Logger: log.NewNopLogger(),
-			Conn:   conn,
+			Logger:  log.NewNopLogger(),
+			Metrics: wire.NewMetrics(),
+			Conn:    conn,
 			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
 				select {
 				case <-ctx.Done():
@@ -1125,8 +1132,9 @@ func TestScheduler_worker(t *testing.T) {
 		messages := make(chan wire.Message, 10)
 
 		peer := wire.Peer{
-			Logger: log.NewNopLogger(),
-			Conn:   conn,
+			Logger:  log.NewNopLogger(),
+			Metrics: wire.NewMetrics(),
+			Conn:    conn,
 			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
 				select {
 				case <-ctx.Done():
@@ -1206,8 +1214,9 @@ func TestScheduler_worker(t *testing.T) {
 		messages := make(chan wire.Message, 10)
 
 		peer := wire.Peer{
-			Logger: log.NewNopLogger(),
-			Conn:   conn,
+			Logger:  log.NewNopLogger(),
+			Metrics: wire.NewMetrics(),
+			Conn:    conn,
 			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
 				select {
 				case <-ctx.Done():
@@ -1298,8 +1307,9 @@ func TestScheduler_worker(t *testing.T) {
 		messages := make(chan wire.Message, 10)
 
 		peer := wire.Peer{
-			Logger: log.NewNopLogger(),
-			Conn:   conn,
+			Logger:  log.NewNopLogger(),
+			Metrics: wire.NewMetrics(),
+			Conn:    conn,
 			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
 				select {
 				case <-ctx.Done():

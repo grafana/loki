@@ -43,6 +43,7 @@ func init() {
 	storageinternal.WithReadStallTimeout = withReadStallTimeout
 	storageinternal.WithGRPCBidiReads = withGRPCBidiReads
 	storageinternal.WithZonalBucketAPIs = withZonalBucketAPIs
+	storageinternal.WithDirectConnectivityEnforced = withDirectConnectivityEnforced
 }
 
 // getDynamicReadReqIncreaseRateFromEnv returns the value set in the env variable.
@@ -87,6 +88,7 @@ type storageConfig struct {
 	readStallTimeoutConfig *experimental.ReadStallTimeoutConfig
 	grpcBidiReads          bool
 	grpcAppendableUploads  bool
+	grpcDirectPathEnforced bool
 }
 
 // newStorageConfig generates a new storageConfig with all the given
@@ -105,6 +107,18 @@ func newStorageConfig(opts ...option.ClientOption) storageConfig {
 type storageClientOption interface {
 	option.ClientOption
 	ApplyStorageOpt(*storageConfig)
+}
+
+func withDirectConnectivityEnforced() option.ClientOption {
+	return &withDirectPathEnforced{}
+}
+
+type withDirectPathEnforced struct {
+	internaloption.EmbeddableAdapter
+}
+
+func (w *withDirectPathEnforced) ApplyStorageOpt(c *storageConfig) {
+	c.grpcDirectPathEnforced = true
 }
 
 // WithJSONReads is an option that may be passed to [NewClient].

@@ -69,9 +69,9 @@ func isFileTypeNamePresent(in []byte, flType string) bool {
 
 // vintWidth parses the variable-integer width in matroska containers
 func vintWidth(v int) int {
-	mask, max, num := 128, 8, 1
-	for num < max && v&mask == 0 {
-		mask = mask >> 1
+	mask, nTimes, num := 128, 8, 1
+	for num < nTimes && v&mask == 0 {
+		mask >>= 1
 		num++
 	}
 	return num

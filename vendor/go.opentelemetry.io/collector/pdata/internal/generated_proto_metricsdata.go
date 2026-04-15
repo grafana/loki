@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -30,7 +31,7 @@ var (
 )
 
 func NewMetricsData() *MetricsData {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &MetricsData{}
 	}
 	return protoPoolMetricsData.Get().(*MetricsData)
@@ -41,15 +42,13 @@ func DeleteMetricsData(orig *MetricsData, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.ResourceMetrics {
 		DeleteResourceMetrics(orig.ResourceMetrics[i], true)
 	}
-
 	orig.Reset()
 	if nullable {
 		protoPoolMetricsData.Put(orig)

@@ -1,0 +1,35 @@
+$defs:
+  aggregation_temporality:
+    description: AggregationTemporality defines how a metric aggregator reports aggregated values. It describes how those values relate to the time interval over which they are aggregated.
+    type: integer
+    x-customType: int32
+  profile_id:
+    description: ProfileID is a custom data type that is used for all profile_id fields in OTLP Protobuf messages.
+    type: array
+    items:
+      type: string
+      x-customType: byte
+  severity_number:
+    description: SeverityNumber represent possible values for LogRecord.SeverityNumber
+    type: integer
+    x-customType: int32
+  span_id:
+    description: SpanID is a custom data type that is used for all span_id fields in OTLP Protobuf messages.
+    type: array
+    items:
+      type: string
+      x-customType: byte
+  span_kind:
+    description: SpanKind is the type of span. Can be used to specify additional relationships between spans in addition to a parent/child relationship.
+    type: integer
+    x-customType: int32
+  status_code:
+    description: StatusCode is the status of the span, for the semantics of codes see https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/api.md#set-status
+    type: integer
+    x-customType: int32
+  trace_id:
+    description: TraceID is a custom data type that is used for all trace_id fields in OTLP Protobuf messages.
+    type: array
+    items:
+      type: string
+      x-customType: byte

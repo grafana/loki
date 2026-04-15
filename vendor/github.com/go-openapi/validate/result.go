@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package validate
 
@@ -36,7 +25,7 @@ var emptyResult = &Result{MatchCount: 1}
 // schema validation. Results from the validation branch
 // with most matches get eventually selected.
 //
-// TODO: keep path of key originating the error
+// Proposal for enhancement: keep path of key originating the error.
 type Result struct {
 	Errors     []error
 	Warnings   []error
@@ -77,7 +66,7 @@ func NewFieldKey(obj map[string]any, field string) FieldKey {
 
 // Object returns the underlying object of this key.
 func (fk *FieldKey) Object() map[string]any {
-	return fk.object.Interface().(map[string]any)
+	return fk.object.Interface().(map[string]any) //nolint:forcetypeassert // object is always map[string]any
 }
 
 // Field returns the underlying field of this key.
@@ -92,7 +81,7 @@ func NewItemKey(slice any, i int) ItemKey {
 
 // Slice returns the underlying slice of this key.
 func (ik *ItemKey) Slice() []any {
-	return ik.slice.Interface().([]any)
+	return ik.slice.Interface().([]any) //nolint:forcetypeassert // slice is always []any
 }
 
 // Index returns the underlying index of this key.
@@ -294,14 +283,14 @@ func (r *Result) HasErrorsOrWarnings() bool {
 	return len(r.Errors) > 0 || len(r.Warnings) > 0
 }
 
-// Inc increments the match count
+// Inc increments the match count.
 func (r *Result) Inc() {
 	r.MatchCount++
 }
 
-// AsError renders this result as an error interface
+// AsError renders this result as an error interface.
 //
-// TODO: reporting / pretty print with path ordered and indented
+// Proposal for enhancement: reporting / pretty print with path ordered and indented.
 func (r *Result) AsError() error {
 	if r.IsValid() {
 		return nil
@@ -436,7 +425,7 @@ func stripImportantTag(err error) error {
 }
 
 func (r *Result) keepRelevantErrors() *Result {
-	// TODO: this one is going to disapear...
+	// NOTE: this one is going to disapear...
 	// keepRelevantErrors strips a result from standard errors and keeps
 	// the ones which are supposedly more accurate.
 	//

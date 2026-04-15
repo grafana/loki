@@ -576,3 +576,103 @@ func columnRef(ty types.ColumnType, column string) *physical.ColumnExpr {
 		},
 	}
 }
+
+func Test_buildLogsPredicate_CaseInsensitive_Substring(t *testing.T) {
+	messageColumn := &logs.Column{Type: logs.ColumnTypeMessage}
+	columns := []*logs.Column{messageColumn}
+
+	// Build a predicate for case-insensitive substring match
+	expr := &physical.BinaryExpr{
+		Op: types.BinaryOpMatchSubstrCaseInsensitive,
+		Left: &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Type:   types.ColumnTypeBuiltin,
+				Column: types.ColumnNameBuiltinMessage,
+			},
+		},
+		Right: physical.NewLiteral("DURATION"), // Uppercased pattern
+	}
+
+	predicate, err := buildLogsPredicate(expr, columns)
+	require.NoError(t, err, "buildLogsPredicate should support case-insensitive operators")
+
+	funcPred, ok := predicate.(logs.FuncPredicate)
+	require.True(t, ok, "expected logs.FuncPredicate")
+
+	// Test that it matches various cases
+	testCases := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"lowercase", "duration", true},
+		{"uppercase", "DURATION", true},
+		{"mixed case", "Duration", true},
+		{"mixed case 2", "DuRaTiOn", true},
+		{"in sentence lowercase", "request duration was 100ms", true},
+		{"in sentence uppercase", "REQUEST DURATION WAS 100MS", true},
+		{"in sentence mixed", "Request Duration was 100ms", true},
+		{"no match", "timeout occurred", false},
+		{"partial match", "dura", false}, // "DURATION" is not in "dura"
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := memory.NewBufferBytes([]byte(tc.input))
+			inputScalar := scalar.NewBinaryScalar(buf, arrow.BinaryTypes.Binary)
+
+			result := funcPred.Keep(messageColumn, inputScalar)
+			require.Equal(t, tc.expected, result,
+				"case-insensitive match should correctly match %q", tc.input)
+		})
+	}
+}
+
+func Test_buildLogsPredicate_CaseInsensitive_Equality(t *testing.T) {
+	messageColumn := &logs.Column{Type: logs.ColumnTypeMessage}
+	columns := []*logs.Column{messageColumn}
+
+	// Build a predicate for case-insensitive equality
+	expr := &physical.BinaryExpr{
+		Op: types.BinaryOpEqCaseInsensitive,
+		Left: &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Type:   types.ColumnTypeBuiltin,
+				Column: types.ColumnNameBuiltinMessage,
+			},
+		},
+		Right: physical.NewLiteral("ERROR"), // Uppercased pattern
+	}
+
+	predicate, err := buildLogsPredicate(expr, columns)
+	require.NoError(t, err, "buildLogsPredicate should support case-insensitive operators")
+
+	funcPred, ok := predicate.(logs.FuncPredicate)
+	require.True(t, ok, "expected logs.FuncPredicate")
+
+	// Test exact equality with various cases
+	testCases := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"exact lowercase", "error", true},
+		{"exact uppercase", "ERROR", true},
+		{"exact mixed case", "Error", true},
+		{"exact mixed case 2", "ErRoR", true},
+		{"substring should not match", "error occurred", false},
+		{"prefix should not match", "error!", false},
+		{"different word", "warning", false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := memory.NewBufferBytes([]byte(tc.input))
+			inputScalar := scalar.NewBinaryScalar(buf, arrow.BinaryTypes.Binary)
+
+			result := funcPred.Keep(messageColumn, inputScalar)
+			require.Equal(t, tc.expected, result,
+				"case-insensitive equality should correctly match %q", tc.input)
+		})
+	}
+}

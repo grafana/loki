@@ -46,6 +46,12 @@ func main() {
 
 	var config loki.ConfigWrapper
 
+	// Health check command - runs before any config parsing
+	// Usage: loki -health [-health.url=http://localhost:3100/ready]
+	if CheckHealth(os.Args[1:]) {
+		os.Exit(RunHealthCheck(os.Args[1:]))
+	}
+
 	if loki.PrintVersion(os.Args[1:]) {
 		fmt.Println(version.Print("loki"))
 		os.Exit(0)

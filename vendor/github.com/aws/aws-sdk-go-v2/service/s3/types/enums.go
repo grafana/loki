@@ -201,6 +201,25 @@ func (BucketLogsPermission) Values() []BucketLogsPermission {
 	}
 }
 
+type BucketNamespace string
+
+// Enum values for BucketNamespace
+const (
+	BucketNamespaceAccountRegional BucketNamespace = "account-regional"
+	BucketNamespaceGlobal          BucketNamespace = "global"
+)
+
+// Values returns all known values for BucketNamespace. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (BucketNamespace) Values() []BucketNamespace {
+	return []BucketNamespace{
+		"account-regional",
+		"global",
+	}
+}
+
 type BucketType string
 
 // Enum values for BucketType
@@ -715,6 +734,7 @@ const (
 	InventoryOptionalFieldChecksumAlgorithm            InventoryOptionalField = "ChecksumAlgorithm"
 	InventoryOptionalFieldObjectAccessControlList      InventoryOptionalField = "ObjectAccessControlList"
 	InventoryOptionalFieldObjectOwner                  InventoryOptionalField = "ObjectOwner"
+	InventoryOptionalFieldLifecycleExpirationDate      InventoryOptionalField = "LifecycleExpirationDate"
 )
 
 // Values returns all known values for InventoryOptionalField. Note that this can
@@ -738,6 +758,7 @@ func (InventoryOptionalField) Values() []InventoryOptionalField {
 		"ChecksumAlgorithm",
 		"ObjectAccessControlList",
 		"ObjectOwner",
+		"LifecycleExpirationDate",
 	}
 }
 

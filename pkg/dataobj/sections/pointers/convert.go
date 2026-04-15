@@ -16,6 +16,7 @@ func PopulateSectionKey(_ arrow.Field, columnType ColumnType) bool {
 var sectionPointerColumns = map[ColumnType]struct{}{
 	ColumnTypePath:             {},
 	ColumnTypeSection:          {},
+	ColumnTypePointerKind:      {},
 	ColumnTypeStreamID:         {},
 	ColumnTypeStreamIDRef:      {},
 	ColumnTypeMinTimestamp:     {},
@@ -27,6 +28,17 @@ var sectionPointerColumns = map[ColumnType]struct{}{
 func PopulateSection(_ arrow.Field, columnType ColumnType) bool {
 	_, ok := sectionPointerColumns[columnType]
 	return ok
+}
+
+func InternalLabelsColumn(rec arrow.RecordBatch) *array.String {
+	schema := rec.Schema()
+	for fIdx := range schema.Fields() {
+		field := schema.Field(fIdx)
+		if field.Name == InternalLabelsFieldName {
+			return rec.Column(fIdx).(*array.String)
+		}
+	}
+	return nil
 }
 
 func FromRecordBatch(
@@ -65,6 +77,14 @@ func FromRecordBatch(
 					continue
 				}
 				dest[rIdx].Section = values.Value(rIdx)
+			}
+		case ColumnTypePointerKind:
+			values := col.(*array.Int64)
+			for rIdx := range numRows {
+				if col.IsNull(rIdx) {
+					continue
+				}
+				dest[rIdx].PointerKind = PointerKind(values.Value(rIdx))
 			}
 		case ColumnTypeStreamID:
 			values := col.(*array.Int64)

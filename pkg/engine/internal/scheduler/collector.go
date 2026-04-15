@@ -174,7 +174,7 @@ func (mc *collector) collectAssignStats(ch chan<- prometheus.Metric) {
 	defer mc.sched.assignMut.RUnlock()
 
 	ch <- prometheus.MustNewConstMetric(mc.readyWorkers, prometheus.GaugeValue, float64(len(mc.sched.readyWorkers)))
-	ch <- prometheus.MustNewConstMetric(mc.taskQueue, prometheus.GaugeValue, float64(len(mc.sched.taskQueue)))
+	ch <- prometheus.MustNewConstMetric(mc.taskQueue, prometheus.GaugeValue, float64(mc.sched.taskQueue.Len()))
 }
 
 func (mc *collector) Describe(ch chan<- *prometheus.Desc) {

@@ -93,11 +93,6 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, succes
 		return ErrStopped
 	}
 
-	queue, err := q.queues.getOrAddQueue(tenant, path)
-	if err != nil {
-		return fmt.Errorf("no queue found: %w", err)
-	}
-
 	// Optimistically increase queue counter for tenant instead of doing separate
 	// get and set operations, because _most_ of the time the increased value is
 	// smaller than the max queue length.
@@ -110,6 +105,11 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, succes
 		// decrement, because we already optimistically increased the counter
 		q.queues.perUserQueueLen.Dec(tenant)
 		return ErrTooManyRequests
+	}
+
+	queue, err := q.queues.getOrAddQueue(tenant, path)
+	if err != nil {
+		return fmt.Errorf("no queue found: %w", err)
 	}
 
 	select {

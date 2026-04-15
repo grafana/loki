@@ -17,7 +17,7 @@ per-stream rate limit.
    ```yaml
    limits_config:
      shard_streams:
-         enabled: true
+       enabled: true
    ```
 
 1. Optionally lower the `desired_rate` in bytes if you find that the system is still hitting the `per_stream_rate_limit`:

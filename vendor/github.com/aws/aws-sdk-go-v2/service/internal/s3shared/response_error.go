@@ -28,6 +28,6 @@ func (e *ResponseError) Error() string {
 
 // As populates target and returns true if the type of target is a error type that
 // the ResponseError embeds, (e.g.S3 HTTP ResponseError)
-func (e *ResponseError) As(target interface{}) bool {
+func (e *ResponseError) As(target any) bool {
 	return errors.As(e.ResponseError, target)
 }

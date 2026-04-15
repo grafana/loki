@@ -386,6 +386,35 @@ func (m *HttpConnectionManager) validate(all bool) error {
 	}
 
 	if all {
+		switch v := interface{}(m.GetStreamFlushTimeout()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, HttpConnectionManagerValidationError{
+					field:  "StreamFlushTimeout",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, HttpConnectionManagerValidationError{
+					field:  "StreamFlushTimeout",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetStreamFlushTimeout()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return HttpConnectionManagerValidationError{
+				field:  "StreamFlushTimeout",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
 		switch v := interface{}(m.GetRequestTimeout()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
@@ -805,6 +834,35 @@ func (m *HttpConnectionManager) validate(all bool) error {
 		if err := v.Validate(); err != nil {
 			return HttpConnectionManagerValidationError{
 				field:  "SetCurrentClientCertDetails",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetForwardClientCertMatcher()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, HttpConnectionManagerValidationError{
+					field:  "ForwardClientCertMatcher",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, HttpConnectionManagerValidationError{
+					field:  "ForwardClientCertMatcher",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetForwardClientCertMatcher()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return HttpConnectionManagerValidationError{
+				field:  "ForwardClientCertMatcher",
 				reason: "embedded message failed validation",
 				cause:  err,
 			}
@@ -1265,7 +1323,7 @@ type HttpConnectionManagerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpConnectionManagerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1434,7 +1492,7 @@ type LocalReplyConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m LocalReplyConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1692,7 +1750,7 @@ type ResponseMapperMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ResponseMapperMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1777,17 +1835,6 @@ func (m *Rds) validate(all bool) error {
 
 	var errors []error
 
-	if m.GetConfigSource() == nil {
-		err := RdsValidationError{
-			field:  "ConfigSource",
-			reason: "value is required",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
-
 	if all {
 		switch v := interface{}(m.GetConfigSource()).(type) {
 		case interface{ ValidateAll() error }:
@@ -1832,7 +1879,7 @@ type RdsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RdsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1977,7 +2024,7 @@ type ScopedRouteConfigurationsListMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ScopedRouteConfigurationsListMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2259,7 +2306,7 @@ type ScopedRoutesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ScopedRoutesMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2400,7 +2447,7 @@ type ScopedRdsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ScopedRdsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2601,7 +2648,7 @@ type HttpFilterMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpFilterMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2730,7 +2777,7 @@ type RequestIDExtensionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m RequestIDExtensionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2863,7 +2910,7 @@ type EnvoyMobileHttpConnectionManagerMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m EnvoyMobileHttpConnectionManagerMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3162,6 +3209,10 @@ func (m *HttpConnectionManager_Tracing) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for Operation
+
+	// no validation rules for UpstreamOperation
+
 	if len(errors) > 0 {
 		return HttpConnectionManager_TracingMultiError(errors)
 	}
@@ -3176,7 +3227,7 @@ type HttpConnectionManager_TracingMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpConnectionManager_TracingMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3318,7 +3369,7 @@ type HttpConnectionManager_InternalAddressConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpConnectionManager_InternalAddressConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3461,7 +3512,7 @@ type HttpConnectionManager_SetCurrentClientCertDetailsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpConnectionManager_SetCurrentClientCertDetailsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3534,6 +3585,146 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = HttpConnectionManager_SetCurrentClientCertDetailsValidationError{}
+
+// Validate checks the field values on
+// HttpConnectionManager_ForwardClientCertConfig with the rules defined in the
+// proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *HttpConnectionManager_ForwardClientCertConfig) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on
+// HttpConnectionManager_ForwardClientCertConfig with the rules defined in the
+// proto definition for this message. If any rules are violated, the result is
+// a list of violation errors wrapped in
+// HttpConnectionManager_ForwardClientCertConfigMultiError, or nil if none found.
+func (m *HttpConnectionManager_ForwardClientCertConfig) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *HttpConnectionManager_ForwardClientCertConfig) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for ForwardClientCertDetails
+
+	if all {
+		switch v := interface{}(m.GetSetCurrentClientCertDetails()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, HttpConnectionManager_ForwardClientCertConfigValidationError{
+					field:  "SetCurrentClientCertDetails",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, HttpConnectionManager_ForwardClientCertConfigValidationError{
+					field:  "SetCurrentClientCertDetails",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetSetCurrentClientCertDetails()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return HttpConnectionManager_ForwardClientCertConfigValidationError{
+				field:  "SetCurrentClientCertDetails",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return HttpConnectionManager_ForwardClientCertConfigMultiError(errors)
+	}
+
+	return nil
+}
+
+// HttpConnectionManager_ForwardClientCertConfigMultiError is an error wrapping
+// multiple validation errors returned by
+// HttpConnectionManager_ForwardClientCertConfig.ValidateAll() if the
+// designated constraints aren't met.
+type HttpConnectionManager_ForwardClientCertConfigMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m HttpConnectionManager_ForwardClientCertConfigMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m HttpConnectionManager_ForwardClientCertConfigMultiError) AllErrors() []error { return m }
+
+// HttpConnectionManager_ForwardClientCertConfigValidationError is the
+// validation error returned by
+// HttpConnectionManager_ForwardClientCertConfig.Validate if the designated
+// constraints aren't met.
+type HttpConnectionManager_ForwardClientCertConfigValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e HttpConnectionManager_ForwardClientCertConfigValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e HttpConnectionManager_ForwardClientCertConfigValidationError) Reason() string {
+	return e.reason
+}
+
+// Cause function returns cause value.
+func (e HttpConnectionManager_ForwardClientCertConfigValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e HttpConnectionManager_ForwardClientCertConfigValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e HttpConnectionManager_ForwardClientCertConfigValidationError) ErrorName() string {
+	return "HttpConnectionManager_ForwardClientCertConfigValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e HttpConnectionManager_ForwardClientCertConfigValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sHttpConnectionManager_ForwardClientCertConfig.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = HttpConnectionManager_ForwardClientCertConfigValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = HttpConnectionManager_ForwardClientCertConfigValidationError{}
 
 // Validate checks the field values on HttpConnectionManager_UpgradeConfig with
 // the rules defined in the proto definition for this message. If any rules
@@ -3638,7 +3829,7 @@ type HttpConnectionManager_UpgradeConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpConnectionManager_UpgradeConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3802,7 +3993,7 @@ type HttpConnectionManager_PathNormalizationOptionsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpConnectionManager_PathNormalizationOptionsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -3948,7 +4139,7 @@ type HttpConnectionManager_ProxyStatusConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpConnectionManager_ProxyStatusConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4088,7 +4279,7 @@ type HttpConnectionManager_HcmAccessLogOptionsMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpConnectionManager_HcmAccessLogOptionsMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4236,7 +4427,7 @@ type ScopedRoutes_ScopeKeyBuilderMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ScopedRoutes_ScopeKeyBuilderMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4400,7 +4591,7 @@ type ScopedRoutes_ScopeKeyBuilder_FragmentBuilderMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ScopedRoutes_ScopeKeyBuilder_FragmentBuilderMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4590,7 +4781,7 @@ type ScopedRoutes_ScopeKeyBuilder_FragmentBuilder_HeaderValueExtractorMultiError
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ScopedRoutes_ScopeKeyBuilder_FragmentBuilder_HeaderValueExtractorMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -4733,7 +4924,7 @@ type ScopedRoutes_ScopeKeyBuilder_FragmentBuilder_HeaderValueExtractor_KvElement
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ScopedRoutes_ScopeKeyBuilder_FragmentBuilder_HeaderValueExtractor_KvElementMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

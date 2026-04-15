@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package spec
 
@@ -49,7 +38,7 @@ func optionsOrDefault(opts *ExpandOptions) *ExpandOptions {
 	return &ExpandOptions{}
 }
 
-// ExpandSpec expands the references in a swagger spec
+// ExpandSpec expands the references in a swagger spec.
 func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 	options = optionsOrDefault(options)
 	resolver := defaultSchemaLoader(spec, options, nil, nil)
@@ -103,8 +92,8 @@ func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 const rootBase = ".root"
 
 // baseForRoot loads in the cache the root document and produces a fake ".root" base path entry
-// for further $ref resolution
-func baseForRoot(root interface{}, cache ResolutionCache) string {
+// for further $ref resolution.
+func baseForRoot(root any, cache ResolutionCache) string {
 	// cache the root document to resolve $ref's
 	normalizedBase := normalizeBase(rootBase)
 
@@ -116,7 +105,7 @@ func baseForRoot(root interface{}, cache ResolutionCache) string {
 			return normalizedBase
 		}
 
-		root = map[string]interface{}{}
+		root = map[string]any{}
 	}
 
 	cache.Set(normalizedBase, root)
@@ -132,7 +121,7 @@ func baseForRoot(root interface{}, cache ResolutionCache) string {
 // (use ExpandSchemaWithBasePath to resolve external references).
 //
 // Setting the cache is optional and this parameter may safely be left to nil.
-func ExpandSchema(schema *Schema, root interface{}, cache ResolutionCache) error {
+func ExpandSchema(schema *Schema, root any, cache ResolutionCache) error {
 	cache = cacheOrDefault(cache)
 	if root == nil {
 		root = schema
@@ -201,6 +190,7 @@ func expandItems(target Schema, parentRefs []string, resolver *schemaLoader, bas
 	return &target, nil
 }
 
+//nolint:gocognit,gocyclo,cyclop // complex but well-tested $ref expansion logic; refactoring deferred to dedicated PR
 func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, basePath string) (*Schema, error) {
 	if target.Ref.String() == "" && target.Ref.IsRoot() {
 		newRef := normalizeRef(&target.Ref, basePath)
@@ -463,7 +453,7 @@ func expandOperation(op *Operation, resolver *schemaLoader, basePath string) err
 // (use ExpandResponse to resolve external references).
 //
 // Setting the cache is optional and this parameter may safely be left to nil.
-func ExpandResponseWithRoot(response *Response, root interface{}, cache ResolutionCache) error {
+func ExpandResponseWithRoot(response *Response, root any, cache ResolutionCache) error {
 	cache = cacheOrDefault(cache)
 	opts := &ExpandOptions{
 		RelativeBase: baseForRoot(root, cache),
@@ -475,7 +465,7 @@ func ExpandResponseWithRoot(response *Response, root interface{}, cache Resoluti
 
 // ExpandResponse expands a response based on a basepath
 //
-// All refs inside response will be resolved relative to basePath
+// All refs inside response will be resolved relative to basePath.
 func ExpandResponse(response *Response, basePath string) error {
 	opts := optionsOrDefault(&ExpandOptions{
 		RelativeBase: basePath,
@@ -489,7 +479,7 @@ func ExpandResponse(response *Response, basePath string) error {
 //
 // Notice that it is impossible to reference a json schema in a different document other than root
 // (use ExpandParameter to resolve external references).
-func ExpandParameterWithRoot(parameter *Parameter, root interface{}, cache ResolutionCache) error {
+func ExpandParameterWithRoot(parameter *Parameter, root any, cache ResolutionCache) error {
 	cache = cacheOrDefault(cache)
 
 	opts := &ExpandOptions{
@@ -502,7 +492,7 @@ func ExpandParameterWithRoot(parameter *Parameter, root interface{}, cache Resol
 
 // ExpandParameter expands a parameter based on a basepath.
 // This is the exported version of expandParameter
-// all refs inside parameter will be resolved relative to basePath
+// all refs inside parameter will be resolved relative to basePath.
 func ExpandParameter(parameter *Parameter, basePath string) error {
 	opts := optionsOrDefault(&ExpandOptions{
 		RelativeBase: basePath,
@@ -512,7 +502,7 @@ func ExpandParameter(parameter *Parameter, basePath string) error {
 	return expandParameterOrResponse(parameter, resolver, opts.RelativeBase)
 }
 
-func getRefAndSchema(input interface{}) (*Ref, *Schema, error) {
+func getRefAndSchema(input any) (*Ref, *Schema, error) {
 	var (
 		ref *Ref
 		sch *Schema
@@ -538,7 +528,7 @@ func getRefAndSchema(input interface{}) (*Ref, *Schema, error) {
 	return ref, sch, nil
 }
 
-func expandParameterOrResponse(input interface{}, resolver *schemaLoader, basePath string) error {
+func expandParameterOrResponse(input any, resolver *schemaLoader, basePath string) error {
 	ref, sch, err := getRefAndSchema(input)
 	if err != nil {
 		return err
@@ -556,6 +546,9 @@ func expandParameterOrResponse(input interface{}, resolver *schemaLoader, basePa
 		}
 
 		ref, sch, _ = getRefAndSchema(input)
+		if ref == nil {
+			ref = &Ref{} // empty ref
+		}
 	}
 
 	if ref.String() != "" {
@@ -573,7 +566,7 @@ func expandParameterOrResponse(input interface{}, resolver *schemaLoader, basePa
 		return nil
 	}
 
-	if sch.Ref.String() != "" {
+	if sch.Ref.String() != "" { //nolint:nestif // intertwined ref rebasing and circularity check
 		rebasedRef, ern := NewRef(normalizeURI(sch.Ref.String(), basePath))
 		if ern != nil {
 			return ern

@@ -209,8 +209,9 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		defer workerConn.Close()
 
 		workerPeer := &wire.Peer{
-			Logger: logger,
-			Conn:   workerConn,
+			Logger:  logger,
+			Metrics: wire.NewMetrics(),
+			Conn:    workerConn,
 			Handler: func(_ context.Context, _ *wire.Peer, _ wire.Message) error {
 				return nil
 			},
@@ -229,8 +230,9 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		defer schedulerConn.Close()
 
 		schedulerPeer := &wire.Peer{
-			Logger: logger,
-			Conn:   schedulerConn,
+			Logger:  logger,
+			Metrics: wire.NewMetrics(),
+			Conn:    schedulerConn,
 			Handler: func(_ context.Context, _ *wire.Peer, _ wire.Message) error {
 				return nil
 			},
@@ -362,7 +364,7 @@ func newTestWorkerWithContext(t *testing.T, logger log.Logger, loc objtest.Locat
 }
 
 func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc objtest.Location, sched *scheduler.Scheduler, params logql.Params) *workflow.Workflow {
-	logicalPlan, err := logical.BuildPlan(params)
+	logicalPlan, err := logical.BuildPlan(ctx, params)
 	require.NoError(t, err, "expected to create logical plan")
 
 	ms := metastore.NewObjectMetastore(
@@ -391,10 +393,12 @@ func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc obj
 	}
 
 	opts := workflow.Options{
+		Tenant: objtest.Tenant,
+
 		MaxRunningScanTasks:  32,
 		MaxRunningOtherTasks: 0, // unlimited
 	}
-	wf, err := workflow.New(opts, logger, objtest.Tenant, sched, plan)
+	wf, err := workflow.New(opts, logger, sched, plan)
 	require.NoError(t, err)
 
 	if testing.Verbose() {

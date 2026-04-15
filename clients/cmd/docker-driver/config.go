@@ -20,8 +20,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/file"
+	clients_util "github.com/grafana/loki/v3/clients/pkg/util"
 
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -67,21 +66,21 @@ const (
 )
 
 var (
-	defaultClientConfig = client.Config{
-		BatchWait: client.BatchWait,
-		BatchSize: client.BatchSize,
+	defaultClientConfig = clients_util.Config{
+		BatchWait: clients_util.BatchWait,
+		BatchSize: clients_util.BatchSize,
 		BackoffConfig: backoff.Config{
-			MinBackoff: client.MinBackoff,
-			MaxBackoff: client.MaxBackoff,
-			MaxRetries: client.MaxRetries,
+			MinBackoff: clients_util.MinBackoff,
+			MaxBackoff: clients_util.MaxBackoff,
+			MaxRetries: clients_util.MaxRetries,
 		},
-		Timeout: client.Timeout,
+		Timeout: clients_util.Timeout,
 	}
 )
 
 type config struct {
 	labels       model.LabelSet
-	clientConfig client.Config
+	clientConfig clients_util.Config
 	pipeline     PipelineConfig
 }
 
@@ -283,7 +282,7 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	if err == nil {
 		labels[defaultHostLabelName] = model.LabelValue(host)
 	}
-	labels[file.FilenameLabel] = model.LabelValue(logCtx.LogPath)
+	labels["filename"] = model.LabelValue(logCtx.LogPath)
 
 	// Process relabel configs.
 	if relabelString, ok := logCtx.Config[cfgRelabelKey]; ok && relabelString != "" {
@@ -372,8 +371,11 @@ func relabelConfig(config string, lbs model.LabelSet) (model.LabelSet, error) {
 			return nil, err
 		}
 	}
-	relabed, _ := relabel.Process(labels.FromMap(util.ModelLabelSetToMap(lbs)), relabelConfig...)
-	return model.LabelSet(util.LabelsToMetric(relabed)), nil
+	lb := labels.NewBuilder(labels.FromMap(util.ModelLabelSetToMap(lbs)))
+	if keep := relabel.ProcessBuilder(lb, relabelConfig...); !keep {
+		return nil, nil
+	}
+	return model.LabelSet(util.LabelsToMetric(lb.Labels())), nil
 }
 
 func parseBoolean(key string, logCtx logger.Info, defaultValue bool) (bool, error) {

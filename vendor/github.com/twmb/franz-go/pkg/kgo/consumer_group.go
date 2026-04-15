@@ -815,10 +815,23 @@ func newAssignRevokeSession() *assignRevokeSession {
 // diff its last assignment and its new assignment and revoke anything lost.
 // We call this a "prerevoke".
 func (s *assignRevokeSession) prerevoke(g *groupConsumer, lost map[string][]int32) <-chan struct{} {
+	// For 848, set prerevoking before the goroutine starts so the
+	// very first concurrent heartbeat sends keepalive.
+	g.mu.Lock()
+	g848 := g.g848
+	g.mu.Unlock()
+	if g848 != nil {
+		g848.prerevoking.Store(true)
+	}
 	go func() {
 		defer close(s.prerevokeDone)
 		if g.cooperative.Load() && len(lost) > 0 {
 			g.revoke(revokeLastSession, lost, false)
+		}
+		// Now that prerevoke is complete, clear prerevoking so
+		// subsequent heartbeats resume sending full requests.
+		if g848 != nil {
+			g848.prerevoking.Store(false)
 		}
 	}()
 	return s.prerevokeDone
@@ -1878,7 +1891,8 @@ type EpochOffset struct {
 // than the other if this one's epoch is less, or the epoch's are equal and
 // this one's offset is less.
 func (e EpochOffset) Less(o EpochOffset) bool {
-	return e.Epoch < o.Epoch || e.Epoch == o.Epoch && e.Offset < o.Offset
+	ee, oe := max(e.Epoch, -1), max(o.Epoch, -1)
+	return ee < oe || ee == oe && e.Offset < o.Offset
 }
 
 type uncommitted map[string]map[int32]uncommit
@@ -1925,13 +1939,18 @@ func (g *groupConsumer) updateUncommitted(fetches Fetches) {
 					final.LeaderEpoch, // -1 if old message / unknown
 					final.Offset + 1,
 				}
-				prior := topicOffsets[partition.Partition]
+				prior, ok := topicOffsets[partition.Partition]
+				if !ok {
+					uninit := EpochOffset{-1, 0}
+					uncommit := uncommit{uninit, uninit, uninit}
+					prior, topicOffsets[partition.Partition] = uncommit, uncommit
+				}
 
 				if debug {
 					if setHead {
-						fmt.Fprintf(&b, "%d{%d=>%d r%d}, ", partition.Partition, prior.head.Offset, set.Offset, len(partition.Records))
+						fmt.Fprintf(&b, "%d{%d=>%d r%d e%d}, ", partition.Partition, prior.head.Offset, set.Offset, len(partition.Records), set.Epoch)
 					} else {
-						fmt.Fprintf(&b, "%d{%d=>%d=>%d r%d}, ", partition.Partition, prior.head.Offset, prior.dirty.Offset, set.Offset, len(partition.Records))
+						fmt.Fprintf(&b, "%d{%d=>%d=>%d r%d e%d}, ", partition.Partition, prior.head.Offset, prior.dirty.Offset, set.Offset, len(partition.Records), set.Epoch)
 					}
 				}
 
@@ -2202,21 +2221,22 @@ func (g *groupConsumer) loopCommit() {
 	}
 }
 
-// For SetOffsets, the gist of what follows:
-//
-// We need to set uncommitted.committed; that is the guarantee of this
-// function. However, if, for everything we are setting, the head equals the
-// commit, then we do not need to actually invalidate our current assignments.
-// This is a great optimization for transactions that are resetting their state
-// on abort.
-func (g *groupConsumer) getSetAssigns(setOffsets map[string]map[int32]EpochOffset) (assigns map[string]map[int32]Offset) {
+// applySetOffsets applies the given offsets to g.uncommitted for partitions
+// that are currently being consumed, updating their dirty, head, and committed
+// fields. Partitions not in g.uncommitted are skipped (per SetOffsets docs:
+// "any extra partitions are skipped"). If any partition's dirty field actually
+// changed, the partition is returned in assigns so the caller can reassign
+// cursors. If all partitions already had the same dirty offset, this returns
+// nil and no cursor reassignment is needed - this is a key optimization for
+// transactions resetting state on abort.
+func (g *groupConsumer) applySetOffsets(setOffsets map[string]map[int32]EpochOffset) (assigns map[string]map[int32]Offset) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	groupTopics := g.tps.load()
 
 	if g.uncommitted == nil {
-		g.uncommitted = make(uncommitted)
+		return nil
 	}
 	for topic, partitions := range setOffsets {
 		if !groupTopics.hasTopic(topic) {
@@ -2224,18 +2244,20 @@ func (g *groupConsumer) getSetAssigns(setOffsets map[string]map[int32]EpochOffse
 		}
 		topicUncommitted := g.uncommitted[topic]
 		if topicUncommitted == nil {
-			topicUncommitted = make(map[int32]uncommit)
-			g.uncommitted[topic] = topicUncommitted
+			continue // topic was not being consumed
 		}
 		var topicAssigns map[int32]Offset
 		for partition, epochOffset := range partitions {
 			current, exists := topicUncommitted[partition]
+			if !exists {
+				continue // partition was not being consumed
+			}
 			topicUncommitted[partition] = uncommit{
 				dirty:     epochOffset,
 				head:      epochOffset,
 				committed: epochOffset,
 			}
-			if exists && current.dirty == epochOffset {
+			if current.dirty == epochOffset {
 				continue
 			} else if topicAssigns == nil {
 				topicAssigns = make(map[int32]Offset, len(partitions))
@@ -2400,15 +2422,18 @@ func (cl *Client) CommitRecords(ctx context.Context, rs ...*Record) error {
 			offsets[r.Topic] = toffsets
 		}
 
-		if at, exists := toffsets[r.Partition]; exists {
-			if at.Epoch > r.LeaderEpoch || at.Epoch == r.LeaderEpoch && at.Offset > r.Offset {
-				continue
-			}
-		}
-		toffsets[r.Partition] = EpochOffset{
+		set := EpochOffset{
 			r.LeaderEpoch,
 			r.Offset + 1, // need to advice to next offset to move forward
 		}
+
+		if at, exists := toffsets[r.Partition]; exists {
+			if set.Less(at) {
+				continue
+			}
+		}
+
+		toffsets[r.Partition] = set
 	}
 
 	var rerr error // return error
@@ -2469,11 +2494,11 @@ func (cl *Client) MarkCommitRecords(rs ...*Record) {
 			curTopic = r.Topic
 		}
 
-		current := curPartitions[r.Partition]
+		current, ok := curPartitions[r.Partition]
 		if newHead := (EpochOffset{
 			r.LeaderEpoch,
 			r.Offset + 1,
-		}); current.head.Less(newHead) {
+		}); !ok || current.head.Less(newHead) {
 			curPartitions[r.Partition] = uncommit{
 				dirty:     current.dirty,
 				committed: current.committed,
@@ -2509,8 +2534,8 @@ func (cl *Client) MarkCommitOffsets(unmarked map[string]map[int32]EpochOffset) {
 		}
 
 		for partition, newHead := range partitions {
-			current := curPartitions[partition]
-			if current.head.Less(newHead) {
+			current, ok := curPartitions[partition]
+			if !ok || current.head.Less(newHead) {
 				curPartitions[partition] = uncommit{
 					dirty:     current.dirty,
 					committed: current.committed,

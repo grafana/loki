@@ -18,6 +18,9 @@ func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
 	defer left.Close()
 	defer right.Close()
 
+	require.NoError(t, left.Open(ctx))
+	require.NoError(t, right.Open(ctx))
+
 	var (
 		leftBatch, rightBatch   arrow.RecordBatch
 		leftPos, rightPos       int64

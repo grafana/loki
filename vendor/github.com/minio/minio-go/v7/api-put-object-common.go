@@ -67,9 +67,11 @@ func isReadAt(reader io.Reader) (ok bool) {
 //
 //	maxPartsCount - 10000
 //	minPartSize - 16MiB
-//	maxMultipartPutObjectSize - 5TiB
+//	maxObjectSize - ~48.83TiB (maxPartSize * maxPartsCount)
 func OptimalPartInfo(objectSize int64, configuredPartSize uint64) (totalPartsCount int, partSize, lastPartSize int64, err error) {
-	// object size is '-1' set it to 5TiB.
+	// When object size is unknown (-1), default to 5TiB to limit memory usage.
+	// This results in ~537MiB part sizes. For larger objects (up to ~48.83TiB),
+	// callers should set configuredPartSize explicitly to control memory usage.
 	var unknownSize bool
 	if objectSize == -1 {
 		unknownSize = true
@@ -77,8 +79,8 @@ func OptimalPartInfo(objectSize int64, configuredPartSize uint64) (totalPartsCou
 	}
 
 	// object size is larger than supported maximum.
-	if objectSize > maxMultipartPutObjectSize {
-		err = errEntityTooLarge(objectSize, maxMultipartPutObjectSize, "", "")
+	if objectSize > maxObjectSize {
+		err = errEntityTooLarge(objectSize, maxObjectSize, "", "")
 		return totalPartsCount, partSize, lastPartSize, err
 	}
 

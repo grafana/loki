@@ -27,7 +27,7 @@ import (
 // TODO: Instead of using the same metrics for all notifiers,
 // should we have separate metrics for each discovery.NewManager?
 var (
-	sdMetrics map[string]discovery.DiscovererMetrics
+	sdMetrics *discovery.SDMetrics
 
 	srvDNSregexp = regexp.MustCompile(`^_.+._.+`)
 )
@@ -154,6 +154,9 @@ func buildNotifierConfig(amConfig *ruler_config.AlertManagerConfig, externalLabe
 	promConfig := &config.Config{
 		GlobalConfig: config.GlobalConfig{
 			ExternalLabels: externalLabels,
+			// Prometheus notifier ApplyConfig assigns this to alert relabel configs whose
+			// scheme is unset; model.UnsetValidation panics during notify (see grafana/loki#21368).
+			MetricNameValidationScheme: model.UTF8Validation,
 		},
 		AlertingConfig: config.AlertingConfig{
 			AlertRelabelConfigs: amConfig.AlertRelabelConfigs,
@@ -218,15 +221,15 @@ func amConfigFromURL(cfg *ruler_config.AlertManagerConfig, url *url.URL, apiVers
 	if cfg.Notifier.BasicAuth.IsEnabled() {
 		amConfig.HTTPClientConfig.BasicAuth = &config_util.BasicAuth{
 			Username: cfg.Notifier.BasicAuth.Username,
-			Password: config_util.Secret(cfg.Notifier.BasicAuth.Password),
+			Password: config_util.Secret(cfg.Notifier.BasicAuth.Password.String()),
 		}
 	}
 
 	if cfg.Notifier.HeaderAuth.IsEnabled() {
-		if cfg.Notifier.HeaderAuth.Credentials != "" {
+		if cfg.Notifier.HeaderAuth.Credentials.String() != "" {
 			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{
 				Type:        cfg.Notifier.HeaderAuth.Type,
-				Credentials: config_util.Secret(cfg.Notifier.HeaderAuth.Credentials),
+				Credentials: config_util.Secret(cfg.Notifier.HeaderAuth.Credentials.String()),
 			}
 		} else if cfg.Notifier.HeaderAuth.CredentialsFile != "" {
 			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{

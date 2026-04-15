@@ -483,7 +483,7 @@ func main() {
     ctx := context.Background()
 
     // Open data object
-    obj, err := dataobj.FromBucket(ctx, bucket, "objects/ab/cd123...")
+    obj, err := dataobj.FromBucket(ctx, bucket, "objects/ab/cd123...", 0)
     if err != nil {
         panic(err)
     }
@@ -525,6 +525,10 @@ func main() {
         },
     })
     defer reader.Close()
+    
+    if err := reader.Open(ctx); err != nil {
+        panic(err)
+    }
 
     // Read batches
     for {

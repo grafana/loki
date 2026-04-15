@@ -6,6 +6,7 @@
     <alias>sage</alias>
     <alias>python3</alias>
     <alias>py3</alias>
+    <alias>starlark</alias>
     <filename>*.py</filename>
     <filename>*.pyi</filename>
     <filename>*.pyw</filename>
@@ -23,6 +24,7 @@
     <filename>WORKSPACE.bazel</filename>
     <filename>MODULE.bazel</filename>
     <filename>REPO.bazel</filename>
+    <filename>*.star</filename>
     <filename>*.tac</filename>
     <mime_type>text/x-python</mime_type>
     <mime_type>application/x-python</mime_type>

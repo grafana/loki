@@ -9,6 +9,7 @@ import (
 	"github.com/parquet-go/bitpack/unsafecast"
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding"
+	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
 )
 
@@ -23,7 +24,7 @@ func newFixedLenByteArrayDictionary(typ Type, columnIndex int16, numValues int32
 		fixedLenByteArrayPage: fixedLenByteArrayPage{
 			typ:         typ,
 			size:        size,
-			data:        data,
+			data:        memory.SliceBufferFrom(data[:int(numValues)*size]),
 			columnIndex: ^columnIndex,
 		},
 	}
@@ -31,18 +32,19 @@ func newFixedLenByteArrayDictionary(typ Type, columnIndex int16, numValues int32
 
 func (d *fixedLenByteArrayDictionary) Type() Type { return newIndexedType(d.typ, d) }
 
-func (d *fixedLenByteArrayDictionary) Len() int { return len(d.data) / d.size }
+func (d *fixedLenByteArrayDictionary) Len() int { return d.data.Len() / d.size }
 
-func (d *fixedLenByteArrayDictionary) Size() int64 { return int64(len(d.data)) }
+func (d *fixedLenByteArrayDictionary) Size() int64 { return int64(d.data.Len()) }
 
 func (d *fixedLenByteArrayDictionary) Index(i int32) Value {
 	return d.makeValueBytes(d.index(i))
 }
 
 func (d *fixedLenByteArrayDictionary) index(i int32) []byte {
+	data := d.data.Slice()
 	j := (int(i) + 0) * d.size
 	k := (int(i) + 1) * d.size
-	return d.data[j:k:k]
+	return data[j:k:k]
 }
 
 func (d *fixedLenByteArrayDictionary) Insert(indexes []int32, values []Value) {
@@ -61,9 +63,10 @@ func (d *fixedLenByteArrayDictionary) insertValues(indexes []int32, count int, v
 	_ = indexes[:count]
 
 	if d.hashmap == nil {
-		d.hashmap = make(map[string]int32, cap(d.data)/d.size)
-		for i, j := 0, int32(0); i < len(d.data); i += d.size {
-			d.hashmap[string(d.data[i:i+d.size])] = j
+		data := d.data.Slice()
+		d.hashmap = make(map[string]int32, d.data.Cap()/d.size)
+		for i, j := 0, int32(0); i < len(data); i += d.size {
+			d.hashmap[string(data[i:i+d.size])] = j
 			j++
 		}
 	}
@@ -74,9 +77,10 @@ func (d *fixedLenByteArrayDictionary) insertValues(indexes []int32, count int, v
 		index, exists := d.hashmap[string(value)]
 		if !exists {
 			index = int32(d.Len())
-			start := len(d.data)
-			d.data = append(d.data, value...)
-			d.hashmap[string(d.data[start:])] = index
+			start := d.data.Len()
+			d.data.Append(value...)
+			data := d.data.Slice()
+			d.hashmap[string(data[start:])] = index
 		}
 
 		indexes[i] = index
@@ -121,7 +125,7 @@ func (d *fixedLenByteArrayDictionary) Bounds(indexes []int32) (min, max Value) {
 }
 
 func (d *fixedLenByteArrayDictionary) Reset() {
-	d.data = d.data[:0]
+	d.data.Resize(0)
 	d.hashmap = nil
 }
 

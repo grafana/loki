@@ -71,7 +71,7 @@ type config struct {
 	ensureNativeEndian bool
 	noAutoSchema       bool
 	emitDictDeltas     bool
-	minSpaceSavings    *float64
+	minSpaceSavings    float64
 }
 
 func newConfig(opts ...Option) *config {
@@ -189,7 +189,7 @@ func WithDictionaryDeltas(v bool) Option {
 // Go and C++ versions prior to 12.0.0.
 func WithMinSpaceSavings(savings float64) Option {
 	return func(cfg *config) {
-		cfg.minSpaceSavings = &savings
+		cfg.minSpaceSavings = savings
 	}
 }
 

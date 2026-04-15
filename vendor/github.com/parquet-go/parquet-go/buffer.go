@@ -6,10 +6,10 @@ import (
 	"runtime"
 	"slices"
 	"sort"
-	"sync"
 	"sync/atomic"
 
 	"github.com/parquet-go/parquet-go/internal/debug"
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 // GenericBuffer is similar to a Buffer but uses a type parameter to define the
@@ -261,19 +261,9 @@ func (buf *Buffer) configure(schema *Schema) {
 		column := columnType.NewColumnBuffer(columnIndex, bufferCap)
 		switch {
 		case leaf.maxRepetitionLevel > 0:
-			// The Buffer implementation does not have a Close method, so we should do direct
-			// allocation to avoid breaking existing users.
-			n := column.Cap()
-			repetitionLevels := make([]byte, 0, n)
-			definitionLevels := make([]byte, 0, n)
-			column = newRepeatedColumnBuffer(column, repetitionLevels, definitionLevels, leaf.maxRepetitionLevel, leaf.maxDefinitionLevel, nullOrdering)
+			column = newRepeatedColumnBuffer(column, leaf.maxRepetitionLevel, leaf.maxDefinitionLevel, nullOrdering)
 		case leaf.maxDefinitionLevel > 0:
-			// The Buffer implementation does not have a Close method, so we should do direct
-			// allocation to avoid breaking existing users.
-			n := column.Cap()
-			rows := make([]int32, 0, n)
-			definitionLevels := make([]byte, 0, n)
-			column = newOptionalColumnBuffer(column, rows, definitionLevels, leaf.maxDefinitionLevel, nullOrdering)
+			column = newOptionalColumnBuffer(column, leaf.maxDefinitionLevel, nullOrdering)
 		}
 		buf.columns = append(buf.columns, column)
 
@@ -474,24 +464,22 @@ var (
 	_ ValueWriter = (*bufferWriter)(nil)
 )
 
-type bufferedType interface{ byte | int32 | uint32 }
-
-type buffer[T bufferedType] struct {
-	data  []T
+type buffer[T memory.Datum] struct {
+	data  memory.SliceBuffer[T]
 	refc  atomic.Int32
 	pool  *bufferPool[T]
 	stack []byte
 	id    uint64
 }
 
-func newBuffer[T bufferedType](data []T) *buffer[T] {
-	b := &buffer[T]{data: data}
+func newBuffer[T memory.Datum](data []T) *buffer[T] {
+	b := &buffer[T]{data: memory.SliceBufferFrom(data)}
 	b.refc.Store(1)
 	return b
 }
 
 func (b *buffer[T]) reset() {
-	b.data = b.data[:0]
+	b.data.Resize(0)
 }
 
 func (b *buffer[T]) ref() {
@@ -504,64 +492,45 @@ func (b *buffer[T]) unref() {
 	switch refc := b.refc.Add(-1); {
 	case refc < 0:
 		panic("BUG: buffer reference count underflow")
-	case refc == 0 && b.pool != nil:
-		b.pool.put(b)
+	case refc == 0:
+		b.data.Reset()
+		if b.pool != nil {
+			b.pool.put(b)
+		}
 	}
 }
 
-func monitorBufferRelease[T bufferedType](b *buffer[T]) {
+func monitorBufferRelease[T memory.Datum](b *buffer[T]) {
 	if rc := b.refc.Load(); rc != 0 {
 		log.Printf("PARQUETGODEBUG: buffer[%d] garbage collected with non-zero reference count (rc=%d)\n%s", b.id, rc, string(b.stack))
 	}
 }
 
-type bufferPool[T bufferedType] struct {
-	// Buckets are split in two groups for short and large buffers. In the short
-	// buffer group (below 256KB), the growth rate between each bucket is 2. The
-	// growth rate changes to 1.5 in the larger buffer group.
-	//
-	// Short buffer buckets:
-	// ---------------------
-	//   4K, 8K, 16K, 32K, 64K, 128K, 256K
-	//
-	// Large buffer buckets:
-	// ---------------------
-	//   364K, 546K, 819K ...
-	//
-	buckets [bufferPoolBucketCount]sync.Pool
+type bufferPool[T memory.Datum] struct {
+	pool memory.Pool[buffer[T]]
 }
 
-func (p *bufferPool[T]) newBuffer(bufferSize, bucketSize int) *buffer[T] {
-	b := &buffer[T]{
-		data: make([]T, bufferSize, bucketSize),
-		pool: p,
-	}
-	if debug.TRACEBUF > 0 {
-		b.stack = make([]byte, 4096)
-		runtime.SetFinalizer(b, monitorBufferRelease[T])
-	}
-	return b
-}
+var bufferIDCounter atomic.Uint64
 
-// get returns a buffer from the levelled buffer pool. size is used to choose
-// the appropriate pool.
-func (p *bufferPool[T]) get(bufferSize int) *buffer[T] {
-	bucketIndex, bucketSize := bufferPoolBucketIndexAndSizeOfGet(bufferSize)
-
-	var b *buffer[T] = nil
-	if bucketIndex >= 0 {
-		b, _ = p.buckets[bucketIndex].Get().(*buffer[T])
-	}
-
-	if b == nil {
-		b = p.newBuffer(bufferSize, bucketSize)
-	} else {
-		b.data = b.data[:bufferSize]
-	}
+func (p *bufferPool[T]) get(size int) *buffer[T] {
+	b := p.pool.Get(
+		func() *buffer[T] {
+			b := &buffer[T]{pool: p}
+			if debug.TRACEBUF > 0 {
+				b.stack = make([]byte, 4096)
+				runtime.SetFinalizer(b, monitorBufferRelease[T])
+			}
+			return b
+		},
+		func(*buffer[T]) {},
+	)
 
 	if debug.TRACEBUF > 0 {
+		b.id = bufferIDCounter.Add(1)
 		b.stack = b.stack[:runtime.Stack(b.stack[:cap(b.stack)], false)]
 	}
+
+	b.data.Resize(size)
 	b.refc.Store(1)
 	return b
 }
@@ -573,53 +542,7 @@ func (p *bufferPool[T]) put(b *buffer[T]) {
 	if b.refc.Load() != 0 {
 		panic("BUG: buffer returned to pool with a non-zero reference count")
 	}
-	if bucketIndex, _ := bufferPoolBucketIndexAndSizeOfPut(cap(b.data)); bucketIndex >= 0 {
-		p.buckets[bucketIndex].Put(b)
-	}
-}
-
-const (
-	bufferPoolBucketCount         = 32
-	bufferPoolMinSize             = 4096
-	bufferPoolLastShortBucketSize = 262144
-)
-
-func bufferPoolNextSize(size int) int {
-	if size < bufferPoolLastShortBucketSize {
-		return size * 2
-	} else {
-		return size + (size / 2)
-	}
-}
-
-func bufferPoolBucketIndexAndSizeOfGet(size int) (int, int) {
-	limit := bufferPoolMinSize
-
-	for i := range bufferPoolBucketCount {
-		if size <= limit {
-			return i, limit
-		}
-		limit = bufferPoolNextSize(limit)
-	}
-
-	return -1, size
-}
-
-func bufferPoolBucketIndexAndSizeOfPut(size int) (int, int) {
-	// When releasing buffers, some may have a capacity that is not one of the
-	// bucket sizes (due to the use of append for example). In this case, we
-	// have to put the buffer is the highest bucket with a size less or equal
-	// to the buffer capacity.
-	if limit := bufferPoolMinSize; size >= limit {
-		for i := range bufferPoolBucketCount {
-			n := bufferPoolNextSize(limit)
-			if size < n {
-				return i, limit
-			}
-			limit = n
-		}
-	}
-	return -1, size
+	p.pool.Put(b)
 }
 
 var (
@@ -694,13 +617,13 @@ func (p *bufferedPage) ReleaseAndDetachValues() {
 	bufferUnref(p.repetitionLevels)
 }
 
-func bufferRef[T bufferedType](buf *buffer[T]) {
+func bufferRef[T memory.Datum](buf *buffer[T]) {
 	if buf != nil {
 		buf.ref()
 	}
 }
 
-func bufferUnref[T bufferedType](buf *buffer[T]) {
+func bufferUnref[T memory.Datum](buf *buffer[T]) {
 	if buf != nil {
 		buf.unref()
 	}

@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -30,7 +31,7 @@ var (
 )
 
 func NewStatus() *Status {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &Status{}
 	}
 	return protoPoolStatus.Get().(*Status)
@@ -41,7 +42,7 @@ func DeleteStatus(orig *Status, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -66,7 +67,6 @@ func CopyStatus(dest, src *Status) *Status {
 		dest = NewStatus()
 	}
 	dest.Message = src.Message
-
 	dest.Code = src.Code
 
 	return dest
@@ -157,11 +157,12 @@ func (orig *Status) SizeProto() int {
 	var n int
 	var l int
 	_ = l
+
 	l = len(orig.Message)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.Code != 0 {
+	if orig.Code != StatusCode(0) {
 		n += 1 + proto.Sov(uint64(orig.Code))
 	}
 	return n
@@ -179,7 +180,7 @@ func (orig *Status) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x12
 	}
-	if orig.Code != 0 {
+	if orig.Code != StatusCode(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.Code))
 		pos--
 		buf[pos] = 0x18
@@ -223,7 +224,6 @@ func (orig *Status) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.Code = StatusCode(num)
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)

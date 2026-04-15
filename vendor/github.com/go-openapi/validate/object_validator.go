@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package validate
 
@@ -42,7 +31,8 @@ type objectValidator struct {
 func newObjectValidator(path, in string,
 	maxProperties, minProperties *int64, required []string, properties spec.SchemaProperties,
 	additionalProperties *spec.SchemaOrBool, patternProperties spec.SchemaProperties,
-	root any, formats strfmt.Registry, opts *SchemaValidatorOptions) *objectValidator {
+	root any, formats strfmt.Registry, opts *SchemaValidatorOptions,
+) *objectValidator {
 	if opts == nil {
 		opts = new(SchemaValidatorOptions)
 	}
@@ -115,7 +105,7 @@ func (o *objectValidator) Validate(data any) *Result {
 	o.validatePropertiesSchema(val, res)
 
 	// Check patternProperties
-	// TODO: it looks like we have done that twice in many cases
+	// NOTE: it looks like we have done that twice in many cases
 	for key, value := range val {
 		_, regularProperty := o.Properties[key]
 		matched, _, patterns := o.validatePatternProperty(key, value, res) // applies to regular properties as well
@@ -126,7 +116,7 @@ func (o *objectValidator) Validate(data any) *Result {
 		for _, pName := range patterns {
 			if v, ok := o.PatternProperties[pName]; ok {
 				r := newSchemaValidator(&v, o.Root, o.Path+"."+key, o.KnownFormats, o.Options).Validate(value)
-				res.mergeForField(data.(map[string]any), key, r)
+				res.mergeForField(data.(map[string]any), key, r) //nolint:forcetypeassert // data is always map[string]any at this point
 			}
 		}
 	}
@@ -140,7 +130,7 @@ func (o *objectValidator) SetPath(path string) {
 }
 
 func (o *objectValidator) Applies(source any, kind reflect.Kind) bool {
-	// TODO: this should also work for structs
+	// NOTE: this should also work for structs
 	// there is a problem in the type validator where it will be unhappy about null values
 	// so that requires more testing
 	_, isSchema := source.(*spec.Schema)
@@ -296,7 +286,7 @@ func (o *objectValidator) validateNoAdditionalProperties(val map[string]any, res
 			/*
 				case "$ref":
 					if val[k] != nil {
-						// TODO: check context of that ref: warn about siblings, check against invalid context
+						// Proposal for enhancement: check context of that ref: warn about siblings, check against invalid context
 					}
 			*/
 		}
@@ -388,7 +378,7 @@ func (o *objectValidator) validatePropertiesSchema(val map[string]any, res *Resu
 	}
 }
 
-// TODO: succeededOnce is not used anywhere
+// NOTE: succeededOnce is not used anywhere.
 func (o *objectValidator) validatePatternProperty(key string, value any, result *Result) (bool, bool, []string) {
 	if len(o.PatternProperties) == 0 {
 		return false, false, nil

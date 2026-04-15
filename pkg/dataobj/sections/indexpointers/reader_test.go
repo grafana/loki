@@ -79,6 +79,21 @@ func TestReaderWithoutPredicate(t *testing.T) {
 	}
 }
 
+func TestReader_ReadBeforeOpen(t *testing.T) {
+	sec := buildSection(t, []indexpointers.IndexPointer{
+		{Path: "path1", StartTs: unixTime(10), EndTs: unixTime(20)},
+	})
+
+	r := indexpointers.NewReader(indexpointers.ReaderOptions{
+		Columns:   sec.Columns(),
+		Allocator: memory.DefaultAllocator,
+	})
+
+	rec, err := r.Read(context.Background(), 128)
+	require.Nil(t, rec)
+	require.ErrorContains(t, err, "reader not opened")
+}
+
 // TestReaderWithTimestampPredicates tests reading with timestamp predicates.
 func TestReaderWithTimestampPredicates(t *testing.T) {
 	var (
@@ -157,6 +172,9 @@ func buildSection(t *testing.T, ptrData []indexpointers.IndexPointer) *indexpoin
 
 func readTable(ctx context.Context, r *indexpointers.Reader) (arrow.Table, error) {
 	var recs []arrow.RecordBatch
+	if err := r.Open(ctx); err != nil {
+		return nil, err
+	}
 
 	for {
 		rec, err := r.Read(ctx, 128)

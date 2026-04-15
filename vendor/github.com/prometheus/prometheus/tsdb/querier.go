@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -27,7 +27,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
 	"github.com/prometheus/prometheus/util/annotations"
@@ -92,13 +91,13 @@ func (q *blockBaseQuerier) Close() error {
 		return errors.New("block querier already closed")
 	}
 
-	errs := tsdb_errors.NewMulti(
+	errs := []error{
 		q.index.Close(),
 		q.chunks.Close(),
 		q.tombstones.Close(),
-	)
+	}
 	q.closed = true
-	return errs.Err()
+	return errors.Join(errs...)
 }
 
 type blockQuerier struct {
@@ -788,6 +787,11 @@ func (p *populateWithDelSeriesIterator) AtT() int64 {
 	return p.curr.AtT()
 }
 
+// AtST TODO(krajorama): test AtST() when chunks support it.
+func (p *populateWithDelSeriesIterator) AtST() int64 {
+	return p.curr.AtST()
+}
+
 func (p *populateWithDelSeriesIterator) Err() error {
 	if err := p.populateWithDelGenericSeriesIterator.Err(); err != nil {
 		return err
@@ -877,60 +881,50 @@ func (p *populateWithDelChunkSeriesIterator) populateCurrForSingleChunk() bool {
 	var (
 		newChunk chunkenc.Chunk
 		app      chunkenc.Appender
-		t        int64
+		st, t    int64
 		err      error
 	)
-	switch valueType {
-	case chunkenc.ValHistogram:
-		newChunk = chunkenc.NewHistogramChunk()
-		if app, err = newChunk.Appender(); err != nil {
+	newChunk, err = chunkenc.NewEmptyChunk(p.currMeta.Chunk.Encoding())
+	if err != nil {
+		p.err = fmt.Errorf("create new chunk while re-encoding: %w", err)
+		return false
+	}
+	app, err = newChunk.Appender()
+	if err != nil {
+		p.err = fmt.Errorf("create appender while re-encoding: %w", err)
+		return false
+	}
+
+loop:
+	for vt := valueType; vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
+		if vt != valueType {
+			err = fmt.Errorf("found value type %v in chunk with %v", vt, valueType)
 			break
 		}
-		for vt := valueType; vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
-			if vt != chunkenc.ValHistogram {
-				err = fmt.Errorf("found value type %v in histogram chunk", vt)
-				break
-			}
-			var h *histogram.Histogram
-			t, h = p.currDelIter.AtHistogram(nil)
-			_, _, app, err = app.AppendHistogram(nil, t, h, true)
-			if err != nil {
-				break
-			}
-		}
-	case chunkenc.ValFloat:
-		newChunk = chunkenc.NewXORChunk()
-		if app, err = newChunk.Appender(); err != nil {
-			break
-		}
-		for vt := valueType; vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
-			if vt != chunkenc.ValFloat {
-				err = fmt.Errorf("found value type %v in float chunk", vt)
-				break
-			}
+		st = p.currDelIter.AtST()
+		switch vt {
+		case chunkenc.ValFloat:
 			var v float64
 			t, v = p.currDelIter.At()
-			app.Append(t, v)
-		}
-	case chunkenc.ValFloatHistogram:
-		newChunk = chunkenc.NewFloatHistogramChunk()
-		if app, err = newChunk.Appender(); err != nil {
-			break
-		}
-		for vt := valueType; vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
-			if vt != chunkenc.ValFloatHistogram {
-				err = fmt.Errorf("found value type %v in histogram chunk", vt)
-				break
+			app.Append(st, t, v)
+		case chunkenc.ValHistogram:
+			var h *histogram.Histogram
+			t, h = p.currDelIter.AtHistogram(nil)
+			_, _, app, err = app.AppendHistogram(nil, st, t, h, true)
+			if err != nil {
+				break loop
 			}
+		case chunkenc.ValFloatHistogram:
 			var h *histogram.FloatHistogram
 			t, h = p.currDelIter.AtFloatHistogram(nil)
-			_, _, app, err = app.AppendFloatHistogram(nil, t, h, true)
+			_, _, app, err = app.AppendFloatHistogram(nil, st, t, h, true)
 			if err != nil {
-				break
+				break loop
 			}
+		default:
+			err = fmt.Errorf("populateCurrForSingleChunk: value type %v unsupported", valueType)
+			break loop
 		}
-	default:
-		err = fmt.Errorf("populateCurrForSingleChunk: value type %v unsupported", valueType)
 	}
 
 	if err != nil {
@@ -965,7 +959,7 @@ func (p *populateWithDelChunkSeriesIterator) populateChunksFromIterable() bool {
 
 	var (
 		// t is the timestamp for the current sample.
-		t     int64
+		st, t int64
 		cmint int64
 		cmaxt int64
 
@@ -973,30 +967,37 @@ func (p *populateWithDelChunkSeriesIterator) populateChunksFromIterable() bool {
 
 		app chunkenc.Appender
 
-		newChunk chunkenc.Chunk
-		recoded  bool
-
 		err error
 	)
 
 	prevValueType := chunkenc.ValNone
+	hasTS := false
 
 	for currentValueType := firstValueType; currentValueType != chunkenc.ValNone; currentValueType = p.currDelIter.Next() {
+		var (
+			newChunk chunkenc.Chunk
+			recoded  bool
+		)
 		// Check if the encoding has changed (i.e. we need to create a new
 		// chunk as chunks can't have multiple encoding types).
 		// For the first sample, the following condition will always be true as
 		// ValNone != ValFloat | ValHistogram | ValFloatHistogram.
-		if currentValueType != prevValueType {
+		// Also if we need to store start time (ST), but the current chunk is
+		// not capable.
+		st = p.currDelIter.AtST()
+		needTS := st != 0
+		if currentValueType != prevValueType || !hasTS && needTS {
 			if prevValueType != chunkenc.ValNone {
 				p.chunksFromIterable = append(p.chunksFromIterable, chunks.Meta{Chunk: currentChunk, MinTime: cmint, MaxTime: cmaxt})
 			}
 			cmint = p.currDelIter.AtT()
-			if currentChunk, err = currentValueType.NewChunk(); err != nil {
+			if currentChunk, err = currentValueType.NewChunk(needTS); err != nil {
 				break
 			}
 			if app, err = currentChunk.Appender(); err != nil {
 				break
 			}
+			hasTS = needTS
 		}
 
 		switch currentValueType {
@@ -1004,7 +1005,7 @@ func (p *populateWithDelChunkSeriesIterator) populateChunksFromIterable() bool {
 			{
 				var v float64
 				t, v = p.currDelIter.At()
-				app.Append(t, v)
+				app.Append(st, t, v)
 			}
 		case chunkenc.ValHistogram:
 			{
@@ -1012,7 +1013,7 @@ func (p *populateWithDelChunkSeriesIterator) populateChunksFromIterable() bool {
 				t, v = p.currDelIter.AtHistogram(nil)
 				// No need to set prevApp as AppendHistogram will set the
 				// counter reset header for the appender that's returned.
-				newChunk, recoded, app, err = app.AppendHistogram(nil, t, v, false)
+				newChunk, recoded, app, err = app.AppendHistogram(nil, st, t, v, false)
 			}
 		case chunkenc.ValFloatHistogram:
 			{
@@ -1020,7 +1021,7 @@ func (p *populateWithDelChunkSeriesIterator) populateChunksFromIterable() bool {
 				t, v = p.currDelIter.AtFloatHistogram(nil)
 				// No need to set prevApp as AppendHistogram will set the
 				// counter reset header for the appender that's returned.
-				newChunk, recoded, app, err = app.AppendFloatHistogram(nil, t, v, false)
+				newChunk, recoded, app, err = app.AppendFloatHistogram(nil, st, t, v, false)
 			}
 		}
 
@@ -1200,6 +1201,11 @@ func (it *DeletedIterator) AtFloatHistogram(fh *histogram.FloatHistogram) (int64
 
 func (it *DeletedIterator) AtT() int64 {
 	return it.Iter.AtT()
+}
+
+// AtST TODO(krajorama): test AtST() when chunks support it.
+func (it *DeletedIterator) AtST() int64 {
+	return it.Iter.AtST()
 }
 
 func (it *DeletedIterator) Seek(t int64) chunkenc.ValueType {

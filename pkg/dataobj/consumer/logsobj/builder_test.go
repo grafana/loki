@@ -159,7 +159,7 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 
 	newBuilder, _ := NewBuilder(testBuilderConfig, nil)
 
-	obj2, closer2, err := newBuilder.CopyAndSort(obj1)
+	obj2, closer2, err := newBuilder.CopyAndSort(t.Context(), obj1)
 	require.NoError(t, err)
 	defer closer2.Close()
 

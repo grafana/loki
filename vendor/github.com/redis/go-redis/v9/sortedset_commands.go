@@ -479,10 +479,16 @@ func (c cmdable) zRangeBy(ctx context.Context, zcmd, key string, opt *ZRangeBy, 
 	return cmd
 }
 
+// ZRangeByScore returns members in a sorted set within a range of scores.
+//
+// Deprecated: Use ZRangeArgs with ByScore option instead as of Redis 6.2.0.
 func (c cmdable) ZRangeByScore(ctx context.Context, key string, opt *ZRangeBy) *StringSliceCmd {
 	return c.zRangeBy(ctx, "zrangebyscore", key, opt, false)
 }
 
+// ZRangeByLex returns members in a sorted set within a lexicographical range.
+//
+// Deprecated: Use ZRangeArgs with ByLex option instead as of Redis 6.2.0.
 func (c cmdable) ZRangeByLex(ctx context.Context, key string, opt *ZRangeBy) *StringSliceCmd {
 	return c.zRangeBy(ctx, "zrangebylex", key, opt, false)
 }
@@ -559,6 +565,9 @@ func (c cmdable) ZRemRangeByLex(ctx context.Context, key, min, max string) *IntC
 	return cmd
 }
 
+// ZRevRange returns members in a sorted set within a range of indexes in reverse order.
+//
+// Deprecated: Use ZRangeArgs with Rev option instead as of Redis 6.2.0.
 func (c cmdable) ZRevRange(ctx context.Context, key string, start, stop int64) *StringSliceCmd {
 	cmd := NewStringSliceCmd(ctx, "zrevrange", key, start, stop)
 	_ = c(ctx, cmd)
@@ -588,10 +597,16 @@ func (c cmdable) zRevRangeBy(ctx context.Context, zcmd, key string, opt *ZRangeB
 	return cmd
 }
 
+// ZRevRangeByScore returns members in a sorted set within a range of scores in reverse order.
+//
+// Deprecated: Use ZRangeArgs with Rev and ByScore options instead as of Redis 6.2.0.
 func (c cmdable) ZRevRangeByScore(ctx context.Context, key string, opt *ZRangeBy) *StringSliceCmd {
 	return c.zRevRangeBy(ctx, "zrevrangebyscore", key, opt)
 }
 
+// ZRevRangeByLex returns members in a sorted set within a lexicographical range in reverse order.
+//
+// Deprecated: Use ZRangeArgs with Rev and ByLex options instead as of Redis 6.2.0.
 func (c cmdable) ZRevRangeByLex(ctx context.Context, key string, opt *ZRangeBy) *StringSliceCmd {
 	return c.zRevRangeBy(ctx, "zrevrangebylex", key, opt)
 }

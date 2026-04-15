@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package validate
 
@@ -60,7 +49,7 @@ func (t *typeValidator) SetPath(path string) {
 	t.Path = path
 }
 
-func (t *typeValidator) Applies(source interface{}, _ reflect.Kind) bool {
+func (t *typeValidator) Applies(source any, _ reflect.Kind) bool {
 	// typeValidator applies to Schema, Parameter and Header objects
 	switch source.(type) {
 	case *spec.Schema:
@@ -73,7 +62,7 @@ func (t *typeValidator) Applies(source interface{}, _ reflect.Kind) bool {
 	return (len(t.Type) > 0 || t.Format != "")
 }
 
-func (t *typeValidator) Validate(data interface{}) *Result {
+func (t *typeValidator) Validate(data any) *Result {
 	if t.Options.recycleValidators {
 		defer func() {
 			t.redeem()
@@ -82,7 +71,7 @@ func (t *typeValidator) Validate(data interface{}) *Result {
 
 	if data == nil {
 		// nil or zero value for the passed structure require Type: null
-		if len(t.Type) > 0 && !t.Type.Contains(nullType) && !t.Nullable { // TODO: if a property is not required it also passes this
+		if len(t.Type) > 0 && !t.Type.Contains(nullType) && !t.Nullable { // NOTE: if a property is not required it also passes this
 			return errorHelp.sErr(errors.InvalidType(t.Path, t.In, strings.Join(t.Type, ","), nullType), t.Options.recycleResult)
 		}
 
@@ -97,15 +86,18 @@ func (t *typeValidator) Validate(data interface{}) *Result {
 	schType, format := t.schemaInfoForType(data)
 
 	// check numerical types
-	// TODO: check unsigned ints
-	// TODO: check json.Number (see schema.go)
+	// Proposal for enhancement: check unsigned ints
+	// Proposal for enhancement: check json.Number (see schema.go)
 	isLowerInt := t.Format == integerFormatInt64 && format == integerFormatInt32
 	isLowerFloat := t.Format == numberFormatFloat64 && format == numberFormatFloat32
 	isFloatInt := schType == numberType && conv.IsFloat64AJSONInteger(val.Float()) && t.Type.Contains(integerType)
 	isIntFloat := schType == integerType && t.Type.Contains(numberType)
 
-	if kind != reflect.String && kind != reflect.Slice && t.Format != "" && !t.Type.Contains(schType) && format != t.Format && !isFloatInt && !isIntFloat && !isLowerInt && !isLowerFloat {
-		// TODO: test case
+	formatMismatch := kind != reflect.String && kind != reflect.Slice &&
+		t.Format != "" && !t.Type.Contains(schType) && format != t.Format &&
+		!isFloatInt && !isIntFloat && !isLowerInt && !isLowerFloat
+	if formatMismatch {
+		// NOTE: test case
 		return errorHelp.sErr(errors.InvalidType(t.Path, t.In, t.Format, format), t.Options.recycleResult)
 	}
 
@@ -120,10 +112,10 @@ func (t *typeValidator) Validate(data interface{}) *Result {
 	return emptyResult
 }
 
-func (t *typeValidator) schemaInfoForType(data interface{}) (string, string) {
+func (t *typeValidator) schemaInfoForType(data any) (string, string) {
 	// internal type to JSON type with swagger 2.0 format (with go-openapi/strfmt extensions),
 	// see https://github.com/go-openapi/strfmt/blob/master/README.md
-	// TODO: this switch really is some sort of reverse lookup for formats. It should be provided by strfmt.
+	// NOTE: this switch really is some sort of reverse lookup for formats. It should be provided by strfmt.
 	switch data.(type) {
 	case []byte, strfmt.Base64, *strfmt.Base64:
 		return stringType, stringFormatByte
@@ -173,8 +165,8 @@ func (t *typeValidator) schemaInfoForType(data interface{}) (string, string) {
 		return stringType, stringFormatUUID4
 	case strfmt.UUID5, *strfmt.UUID5:
 		return stringType, stringFormatUUID5
-	// TODO: missing binary (io.ReadCloser)
-	// TODO: missing json.Number
+	// Proposal for enhancement: missing binary (io.ReadCloser)
+	// Proposal for enhancement: missing json.Number
 	default:
 		val := reflect.ValueOf(data)
 		tpe := val.Type()

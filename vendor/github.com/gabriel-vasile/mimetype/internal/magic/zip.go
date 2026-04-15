@@ -85,10 +85,14 @@ func Zip(raw []byte, limit uint32) bool {
 // (instead of relying on offsets told by the file.)
 func Jar(raw []byte, limit uint32) bool {
 	return executableJar(raw) ||
+		// First entry must be an empty META-INF directory or the manifest.
+		// There is no specification saying that, but the jar reader and writer
+		// implementations from Java do it that way.
+		// https://github.com/openjdk/jdk/blob/88c4678eed818cbe9380f35352e90883fed27d33/src/java.base/share/classes/java/util/jar/JarInputStream.java#L170-L173
 		zipHas(raw, zipEntries{{
-			name: []byte("META-INF/MANIFEST.MF"),
-		}, {
 			name: []byte("META-INF/"),
+		}, {
+			name: []byte("META-INF/MANIFEST.MF"),
 		}}, 1)
 }
 
@@ -127,11 +131,14 @@ type zipEntries []struct {
 
 func (z zipEntries) match(file []byte) bool {
 	for i := range z {
-		if z[i].dir && bytes.HasPrefix(file, z[i].name) {
-			return true
-		}
-		if bytes.Equal(file, z[i].name) {
-			return true
+		if z[i].dir {
+			if bytes.HasPrefix(file, z[i].name) {
+				return true
+			}
+		} else {
+			if bytes.Equal(file, z[i].name) {
+				return true
+			}
 		}
 	}
 	return false

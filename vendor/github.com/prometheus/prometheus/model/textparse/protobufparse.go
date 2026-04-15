@@ -1,4 +1,4 @@
-// Copyright 2021 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/gogo/protobuf/types"
@@ -400,24 +399,24 @@ func (p *ProtobufParser) Exemplar(ex *exemplar.Exemplar) bool {
 	return true
 }
 
-// CreatedTimestamp returns CT or 0 if CT is not present on counters, summaries or histograms.
-func (p *ProtobufParser) CreatedTimestamp() int64 {
-	var ct *types.Timestamp
+// StartTimestamp returns ST or 0 if ST is not present on counters, summaries or histograms.
+func (p *ProtobufParser) StartTimestamp() int64 {
+	var st *types.Timestamp
 	switch p.dec.GetType() {
 	case dto.MetricType_COUNTER:
-		ct = p.dec.GetCounter().GetCreatedTimestamp()
+		st = p.dec.GetCounter().GetStartTimestamp()
 	case dto.MetricType_SUMMARY:
-		ct = p.dec.GetSummary().GetCreatedTimestamp()
+		st = p.dec.GetSummary().GetStartTimestamp()
 	case dto.MetricType_HISTOGRAM, dto.MetricType_GAUGE_HISTOGRAM:
-		ct = p.dec.GetHistogram().GetCreatedTimestamp()
+		st = p.dec.GetHistogram().GetStartTimestamp()
 	default:
 	}
-	if ct == nil {
+	if st == nil {
 		return 0
 	}
 	// Same as the gogo proto types.TimestampFromProto but straight to integer.
 	// and without validation.
-	return ct.GetSeconds()*1e3 + int64(ct.GetNanos())/1e6
+	return st.GetSeconds()*1e3 + int64(st.GetNanos())/1e6
 }
 
 // Next advances the parser to the next "sample" (emulating the behavior of a
@@ -466,16 +465,6 @@ func (p *ProtobufParser) Next() (Entry, error) {
 		default:
 			return EntryInvalid, fmt.Errorf("unknown metric type for metric %q: %s", name, p.dec.GetType())
 		}
-		unit := p.dec.GetUnit()
-		if len(unit) > 0 {
-			if p.dec.GetType() == dto.MetricType_COUNTER && strings.HasSuffix(name, "_total") {
-				if !strings.HasSuffix(name[:len(name)-6], unit) || len(name)-6 < len(unit)+1 || name[len(name)-6-len(unit)-1] != '_' {
-					return EntryInvalid, fmt.Errorf("unit %q not a suffix of counter %q", unit, name)
-				}
-			} else if !strings.HasSuffix(name, unit) || len(name) < len(unit)+1 || name[len(name)-len(unit)-1] != '_' {
-				return EntryInvalid, fmt.Errorf("unit %q not a suffix of metric %q", unit, name)
-			}
-		}
 		p.entryBytes.Reset()
 		p.entryBytes.WriteString(name)
 		p.state = EntryHelp
@@ -494,6 +483,9 @@ func (p *ProtobufParser) Next() (Entry, error) {
 				p.state = EntrySeries
 				p.fieldPos = -3 // We have not returned anything, let p.Next() increment it to -2.
 				return p.Next()
+			}
+			if err := checkNativeHistogramConsistency(p.dec.GetHistogram()); err != nil {
+				return EntryInvalid, fmt.Errorf("histogram %q: %w", p.dec.GetName(), err)
 			}
 			p.state = EntryHistogram
 		} else {
@@ -538,6 +530,9 @@ func (p *ProtobufParser) Next() (Entry, error) {
 			// it means we might need to do NHCB conversion.
 			if t == dto.MetricType_HISTOGRAM || t == dto.MetricType_GAUGE_HISTOGRAM {
 				if !isClassicHistogram {
+					if err := checkNativeHistogramConsistency(p.dec.GetHistogram()); err != nil {
+						return EntryInvalid, fmt.Errorf("histogram %q: %w", p.dec.GetName(), err)
+					}
 					p.state = EntryHistogram
 				} else if p.convertClassicHistogramsToNHCB {
 					// We still need to spit out the NHCB.
@@ -685,6 +680,10 @@ func (p *ProtobufParser) getMagicLabel() (bool, string, string) {
 	switch p.dec.GetType() {
 	case dto.MetricType_SUMMARY:
 		qq := p.dec.GetSummary().GetQuantile()
+		if p.fieldPos >= len(qq) {
+			p.fieldsDone = true
+			return false, "", ""
+		}
 		q := qq[p.fieldPos]
 		p.fieldsDone = p.fieldPos == len(qq)-1
 		return true, model.QuantileLabel, labels.FormatOpenMetricsFloat(q.GetQuantile())
@@ -754,4 +753,37 @@ func (p *ProtobufParser) convertToNHCB(t dto.MetricType) (*histogram.Histogram, 
 		}
 	}
 	return ch, cfh, nil
+}
+
+// checkNativeHistogramConsistency returns an error if the span bucket counts
+// do not match the number of bucket values in a native histogram protobuf
+// message. It catches malformed input before it reaches compactBuckets, where
+// a mismatch would cause a panic.
+func checkNativeHistogramConsistency(h *dto.Histogram) error {
+	isFloat := h.GetSampleCountFloat() > 0 || h.GetZeroCountFloat() > 0
+	var positiveBuckets, negativeBuckets int
+	if isFloat {
+		positiveBuckets = len(h.GetPositiveCount())
+		negativeBuckets = len(h.GetNegativeCount())
+	} else {
+		positiveBuckets = len(h.GetPositiveDelta())
+		negativeBuckets = len(h.GetNegativeDelta())
+	}
+	if err := checkProtoSpanBucketConsistency("positive", h.GetPositiveSpan(), positiveBuckets); err != nil {
+		return err
+	}
+	return checkProtoSpanBucketConsistency("negative", h.GetNegativeSpan(), negativeBuckets)
+}
+
+// checkProtoSpanBucketConsistency returns an error when the total length
+// described by spans does not match numBuckets.
+func checkProtoSpanBucketConsistency(side string, spans []dto.BucketSpan, numBuckets int) error {
+	var total int
+	for _, s := range spans {
+		total += int(s.GetLength())
+	}
+	if total != numBuckets {
+		return fmt.Errorf("%s side: spans require %d buckets, have %d", side, total, numBuckets)
+	}
+	return nil
 }

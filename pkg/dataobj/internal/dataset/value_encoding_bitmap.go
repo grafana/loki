@@ -1,24 +1,16 @@
 package dataset
 
 import (
-	"errors"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math/bits"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
-
-func init() {
-	// Register the encoding so instances of it can be dynamically created.
-	registerValueEncoding(
-		datasetmd.PHYSICAL_TYPE_UINT64,
-		datasetmd.ENCODING_TYPE_BITMAP,
-		func(w streamio.Writer) valueEncoder { return newBitmapEncoder(w) },
-		func(r streamio.Reader) valueDecoder { return newBitmapDecoder(r) },
-	)
-}
 
 const maxRunLength uint64 = 1<<63 - 1 // 2^63-1
 
@@ -126,6 +118,11 @@ func (enc *bitmapEncoder) Encode(v Value) error {
 		return fmt.Errorf("invalid value type %s", v.Type())
 	}
 	uv := v.Uint64()
+	if uv != 0 && uv != 1 {
+		// Both decoder and encoder specialize on boolean values for now as this encoding is used only for presence
+		// bitmap at the moment. We can add support for larger values later if required.
+		return fmt.Errorf("invalid value %d of %s", uv, v.Type())
+	}
 
 	switch {
 	case enc.runLength == 0 && enc.setSize == 0: // READY; start a new run.
@@ -183,6 +180,12 @@ func (enc *bitmapEncoder) EncodeN(v Value, n uint64) error {
 		return fmt.Errorf("invalid value type %s", v.Type())
 	}
 	uv := v.Uint64()
+
+	if uv != 0 && uv != 1 {
+		// Both decoder and encoder specialize on boolean values for now as this encoding is used only for presence
+		// bitmap at the moment. We can add support for larger values later if required.
+		return fmt.Errorf("invalid value %d of %s", uv, v.Type())
+	}
 
 	switch {
 	case enc.runLength == 0 && enc.setSize == 0: // Ready; start a new run.
@@ -514,10 +517,11 @@ func (b *bitpackBuffer) Reset() {
 	b.data = b.data[:0]
 }
 
-// bitmapDecoder decoes uint64s from a bitmap-encoded stream. See the doc
-// comment on [bitmapEncoder] for detail on the format.
+// bitmapDecoder decodes boolean presence values from a bitmap-encoded byte
+// slice. It assumes values are encoded as 0/1 and that bitpacked runs use a
+// width of 1 (one byte holds 8 values, LSB-first).
 type bitmapDecoder struct {
-	r streamio.Reader
+	data []byte
 
 	// Like [bitmapEncoder], bitmapDecoder is a basic state machine with four
 	// states:
@@ -531,7 +535,7 @@ type bitmapDecoder struct {
 	//
 	// BITPACK-READY  The decoder is ready to read a new bitpacked set. Active
 	//                when sets>0 and setSize==0. The decoder needs to pull the
-	//                next set, update setSize and decrement sets by 1.
+	//                next set (1 byte), update setSize and decrement sets by 1.
 	//
 	// BITPACK-SET    The decoder is in the middle of a bitpacked set. Active
 	//                when setSize>0. setSize decreases by 1 each time Decode is
@@ -542,19 +546,21 @@ type bitmapDecoder struct {
 	// determines whether it moves to RLE or BITPACK-READY. After fully consuming
 	// a run, it reverts back to READY.
 
-	runValue  uint64 // Value of the current RLE run.
+	off int // Byte offset into data.
+
+	runValue  bool   // Value of the current RLE run.
 	runLength uint64 // Remaining values in the current RLE run.
 
-	sets     int    // Number of bitpacked sets left to read, each of which contains 8 elements.
-	setWidth int    // Number of bits to use for each value. Must be no greater than 64.
-	setSize  byte   // Number of values left in the current bitpacked set.
-	set      []byte // Current set of bitpacked values.
+	sets    int  // Number of bitpacked sets left to read, each of which contains 8 elements.
+	setSize byte // Number of values left in the current bitpacked set.
+	set     byte // Current bitpacked set byte (8 values, LSB-first).
 }
 
-// newBitmapDecoder creates a new bitmap decoder that reads encoded numbers
-// from r.
-func newBitmapDecoder(r streamio.Reader) *bitmapDecoder {
-	return &bitmapDecoder{r: r}
+var _ valueDecoder = (*bitmapDecoder)(nil)
+
+// newBitmapDecoder creates a new bitmap decoder that reads encoded bools from data.
+func newBitmapDecoder(data []byte) *bitmapDecoder {
+	return &bitmapDecoder{data: data}
 }
 
 // PhysicalType returns [datasetmd.PHYSICAL_TYPE_UINT64].
@@ -567,128 +573,122 @@ func (dec *bitmapDecoder) EncodingType() datasetmd.EncodingType {
 	return datasetmd.ENCODING_TYPE_BITMAP
 }
 
-// Decode decodes up to len(s) values, storing the results into s. The
-// number of decoded values is returned, followed by an error (if any).
-// At the end of the stream, Decode returns 0, [io.EOF].
-func (dec *bitmapDecoder) Decode(s []Value) (int, error) {
-	if len(s) == 0 {
-		return 0, nil
-	}
+// Decode decodes up to count values and returns them as a bitmap. The number
+// of decoded values is bm.Len(). At the end of the stream, Decode returns
+// any decoded values along with [io.EOF].
+func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
+	bm := memory.NewBitmap(alloc, count)
+	bm.Grow(count)
 
-	var err error
-	var v Value
-
-	for i := range s {
-		v, err = dec.decode()
-		if errors.Is(err, io.EOF) {
-			if i == 0 {
-				return 0, io.EOF
-			}
-			return i, nil
-		} else if err != nil {
-			return i, err
-		}
-		s[i] = v
-	}
-	return len(s), nil
+	err := dec.DecodeTo(&bm, count)
+	return columnar.NewBool(bm, memory.Bitmap{}), err
 }
 
-// decode reads the next uint64 value from the stream.
-func (dec *bitmapDecoder) decode() (Value, error) {
-	// See comment inside [bitmapDecoder] for the state machine details.
-
-NextState:
-	switch {
-	case dec.runLength == 0 && dec.sets == 0 && dec.setSize == 0: // READY
-		if err := dec.readHeader(); err != nil {
-			return Uint64Value(0), fmt.Errorf("reading header: %w", err)
-		}
-		goto NextState
-
-	case dec.runLength > 0: // RLE
-		dec.runLength--
-		return Uint64Value(dec.runValue), nil
-
-	case dec.sets > 0 && dec.setSize == 0: // BITPACK-READY
-		if err := dec.nextBitpackSet(); err != nil {
-			return Uint64Value(0), fmt.Errorf("reading bitpacked set: %w", err)
-		}
-		goto NextState
-
-	case dec.setSize > 0: // BITPACK-SET
-		elem := 8 - dec.setSize
-
-		var val uint64
-		for b := 0; b < dec.setWidth; b++ {
-			// Read bit b of element index i, where i is byte i*8/width.
-			i := (int(elem)*dec.setWidth + b) / 8
-			offset := (int(elem)*dec.setWidth + b) % 8
-			bitValue := dec.set[i] & (1 << offset) >> offset
-
-			val |= uint64(bitValue) << b
-		}
-
-		dec.setSize--
-		return Uint64Value(val), nil
-
-	default:
-		panic("dataset.bitmapDecoder: invalid state")
-	}
-}
-
-// readHeader reads the next header from the stream
-func (dec *bitmapDecoder) readHeader() error {
-	// Ready the next uvarint.
-	header, err := streamio.ReadUvarint(dec.r)
-	if err != nil {
-		return err
-	}
-
-	if header&1 == 1 {
-		// Start of a bitpacked set.
-		dec.sets = int(header >> 7)
-		dec.setWidth = int((header>>1)&0x3f) + 1
-		dec.setSize = 0 // Sets will be loaded in [bitmapDecoder.nextBitpackSet].
-		dec.set = make([]byte, dec.setWidth)
-	} else {
-		// RLE run.
-		runLength := header >> 1
-
-		val, err := streamio.ReadUvarint(dec.r)
-		if err != nil {
-			return err
-		}
-
+func (dec *bitmapDecoder) DecodeTo(bm *memory.Bitmap, count int) error {
+	var (
+		runLength    = dec.runLength
+		sets         = dec.sets
+		setSize      = dec.setSize
+		off          = dec.off
+		data         = dec.data
+		set          = dec.set
+		runValue     = dec.runValue
+		leftToDecode = uint64(count)
+	)
+	defer func() {
 		dec.runLength = runLength
-		dec.runValue = val
+		dec.sets = sets
+		dec.setSize = setSize
+		dec.off = off
+		dec.data = data
+		dec.set = set
+		dec.runValue = runValue
+	}()
+
+	bm.Grow(count)
+	bm.Resize(0)
+
+	for leftToDecode > 0 {
+		switch {
+		case runLength == 0 && sets == 0 && setSize == 0: // READY
+			if off >= len(data) {
+				return io.EOF
+			}
+			header, uvarintSize := binary.Uvarint(data[off:])
+			if uvarintSize <= 0 {
+				return io.EOF
+			}
+			off += uvarintSize
+
+			if header&1 == 1 {
+				// Start of a bitpacked set.
+				sets = int(header >> 7)
+				setSize = 0 // Sets will be loaded in [bitmapDecoder.nextBitpackSet].
+				set = 0
+				setWidth := int((header>>1)&0x3f) + 1
+				// only support bool values encoded as ints
+				if setWidth != 1 {
+					return fmt.Errorf("set width is supposed to be 1, got %d", setWidth)
+				}
+			} else {
+				// RLE run.
+				runLength = header >> 1
+
+				if off >= len(data) {
+					return io.EOF
+				}
+				val, uvarintSize := binary.Uvarint(data[off:])
+				if uvarintSize <= 0 {
+					return io.EOF
+				}
+				off += uvarintSize
+				// only support bool values encoded as ints
+				if val != 0 && val != 1 {
+					return fmt.Errorf("unsupported RLE value %d", val)
+				}
+				runValue = val > 0
+			}
+			continue
+
+		case runLength > 0: // RLE
+			decoded := min(runLength, leftToDecode)
+			bm.AppendCountUnsafe(runValue, int(decoded))
+			runLength -= decoded
+			leftToDecode -= decoded
+			continue
+
+		case sets > 0 && setSize == 0: // BITPACK-READY
+			if off >= len(dec.data) {
+				return io.EOF
+			}
+			set = data[off]
+			off++
+			setSize = 8 // Always 8 elements in each set.
+			sets--
+			continue
+
+		case setSize > 0: // BITPACK-SET
+			// we expect setWidth to be 1 because we currently support only boolean values encode as ints (0/1).
+			elem := 8 - setSize
+			bm.AppendUnsafe((set>>elem)&1 == 1)
+			setSize--
+			leftToDecode--
+
+		default:
+			panic("dataset.bitmapDecoder: invalid state")
+		}
 	}
 
 	return nil
 }
 
-// nextBitpackSet loads the next bitpack set and decrements the sets counter.
-func (dec *bitmapDecoder) nextBitpackSet() error {
-	if dec.sets == 0 {
-		return fmt.Errorf("no bitpacked sets left")
-	}
-
-	// dec.set is allocated in [bitmapDecoder.readHeader].
-	if _, err := io.ReadFull(dec.r, dec.set); err != nil {
-		return err
-	}
-
-	dec.setSize = 8 // Always 8 elements in each set.
-	dec.sets--
-	return nil
-}
-
-// Reset resets dec to read from r.
-func (dec *bitmapDecoder) Reset(r streamio.Reader) {
-	dec.r = r
-	dec.runValue = 0
+// Reset resets dec to read from data.
+func (dec *bitmapDecoder) Reset(data []byte) {
+	dec.data = data
+	dec.runValue = false
 	dec.runLength = 0
 	dec.sets = 0
-	dec.setWidth = 0
 	dec.setSize = 0
-	dec.set = nil
+	dec.set = 0
+	dec.off = 0
 }

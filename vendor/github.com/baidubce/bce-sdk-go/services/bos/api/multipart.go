@@ -17,7 +17,6 @@
 package api
 
 import (
-	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -50,6 +49,9 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 	req.SetBucket(bucket)
 	if len(contentType) == 0 {
 		contentType = RAW_CONTENT_TYPE
+	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
 	}
 	req.SetHeader(http.CONTENT_TYPE, contentType)
 	// Joiner for generate the user id list string for grant acl header
@@ -84,8 +86,7 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 			req.SetHeader(http.BCE_STORAGE_CLASS, args.StorageClass)
 		} else {
 			if len(args.StorageClass) != 0 {
-				return nil, bce.NewBceClientError("invalid storage class value: " +
-					args.StorageClass)
+				return nil, bce.NewBceClientError("invalid storage class value: " + args.StorageClass)
 			}
 		}
 		if len(args.ObjectTagging) != 0 {
@@ -143,6 +144,7 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 func UploadPart(cli bce.Client, bucket, object, uploadId string, partNumber int, content *bce.Body,
 	args *UploadPartArgs, ctx *BosContext, options ...Option) (string, error) {
 	req := &BosRequest{}
+	resp := &BosResponse{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.PUT)
 	req.SetParam("uploadId", uploadId)
@@ -154,7 +156,17 @@ func UploadPart(cli bce.Client, bucket, object, uploadId string, partNumber int,
 	if content.Size() >= THRESHOLD_100_CONTINUE {
 		req.SetHeader("Expect", "100-continue")
 	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	req.SetBody(content)
+
+	AddCrc64Check(req, resp)
+	for _, tracker := range req.Tracker {
+		if err := tracker(req); err != nil {
+			return "", fmt.Errorf("handle request tracker failed: %s", err)
+		}
+	}
 
 	// Optional arguments settings
 	if args != nil {
@@ -169,7 +181,8 @@ func UploadPart(cli bce.Client, bucket, object, uploadId string, partNumber int,
 		//set traffic-limit
 		if args.TrafficLimit > 0 {
 			if args.TrafficLimit > TRAFFIC_LIMIT_MAX || args.TrafficLimit < TRAFFIC_LIMIT_MIN {
-				return "", bce.NewBceClientError(fmt.Sprintf("TrafficLimit must between %d ~ %d, current value:%d", TRAFFIC_LIMIT_MIN, TRAFFIC_LIMIT_MAX, args.TrafficLimit))
+				return "", bce.NewBceClientError(fmt.Sprintf("TrafficLimit must between %d ~ %d, current value:%d",
+					TRAFFIC_LIMIT_MIN, TRAFFIC_LIMIT_MAX, args.TrafficLimit))
 			}
 			req.SetHeader(http.BCE_TRAFFIC_LIMIT, fmt.Sprintf("%d", args.TrafficLimit))
 		}
@@ -180,7 +193,6 @@ func UploadPart(cli bce.Client, bucket, object, uploadId string, partNumber int,
 		return "", bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
 	}
 	// Send request and get the result
-	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return "", err
 	}
@@ -189,16 +201,6 @@ func UploadPart(cli bce.Client, bucket, object, uploadId string, partNumber int,
 	}
 	defer func() { resp.Body().Close() }()
 
-	headers := resp.Headers()
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
-		if args != nil && args.ContentCrc32cFlag && content.Writer() != nil {
-			localCrc32c := strconv.FormatUint(uint64(content.Crc32()), 10)
-			if localCrc32c != val {
-				errMsg := fmt.Sprintf(BOS_CRC32C_CHECK_ERROR_MSG, args.ContentCrc32c, val)
-				return strings.Trim(resp.Header(http.ETAG), "\""), bce.NewBceClientError(errMsg)
-			}
-		}
-	}
 	return strings.Trim(resp.Header(http.ETAG), "\""), nil
 }
 
@@ -219,6 +221,7 @@ func UploadPart(cli bce.Client, bucket, object, uploadId string, partNumber int,
 func UploadPartFromBytes(cli bce.Client, bucket, object, uploadId string, partNumber int, content []byte,
 	args *UploadPartArgs, ctx *BosContext, options ...Option) (string, error) {
 	req := &BosRequest{}
+	resp := &BosResponse{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.PUT)
 	req.SetParam("uploadId", uploadId)
@@ -227,32 +230,27 @@ func UploadPartFromBytes(cli bce.Client, bucket, object, uploadId string, partNu
 	if content == nil {
 		return "", bce.NewBceClientError("upload part content should not be empty")
 	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	size := len(content)
 	if size >= THRESHOLD_100_CONTINUE {
 		req.SetHeader("Expect", "100-continue")
 	}
-	// set md5 and content-length
-	req.SetLength(int64(size))
 	if size > 0 {
-		// calc md5
-		if args == nil || args.ContentMD5 == "" {
-			buf := bytes.NewBuffer(content)
-			contentMD5, err := util.CalculateContentMD5(buf, int64(size))
-			if err != nil {
-				return "", err
-			}
-			req.SetHeader(http.CONTENT_MD5, contentMD5)
-		}
-		// calc crc32c
-		if args != nil && args.ContentCrc32cFlag {
-			buf := bytes.NewBuffer(content)
-			contentCrc32c, err := util.CalculateContentCrc32c(buf, int64(size))
-			if err != nil {
-				return "", err
-			}
-			args.ContentCrc32c = contentCrc32c
-		}
+		req.SetLength(int64(size))
 		req.SetHeader(http.CONTENT_LENGTH, fmt.Sprintf("%d", size))
+	}
+	body, err := bce.NewBodyFromBytesV2(content, ctx.EnableCalcMd5)
+	if err != nil {
+		return "", fmt.Errorf("new body failed: %s", err)
+	}
+	req.SetBody(body)
+	AddCrc64Check(req, resp)
+	for _, tracker := range req.Tracker {
+		if err := tracker(req); err != nil {
+			return "", fmt.Errorf("handle request tracker failed: %s", err)
+		}
 	}
 	// Optional arguments settings
 	if args != nil {
@@ -272,28 +270,22 @@ func UploadPartFromBytes(cli bce.Client, bucket, object, uploadId string, partNu
 			}
 			req.SetHeader(http.BCE_TRAFFIC_LIMIT, fmt.Sprintf("%d", args.TrafficLimit))
 		}
+		if args.ContentMD5 != "" {
+			req.SetHeader(http.CONTENT_MD5, args.ContentMD5)
+		}
 	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return "", bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
 	}
 	// Send request and get the result
-	resp := &BosResponse{}
-	if err := SendRequestFromBytes(cli, req, resp, ctx, content); err != nil {
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return "", err
 	}
 	if resp.IsFail() {
 		return "", resp.ServiceError()
 	}
 	defer func() { resp.Body().Close() }()
-
-	headers := resp.Headers()
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
-		if args != nil && args.ContentCrc32c != "" && args.ContentCrc32c != val {
-			errMsg := fmt.Sprintf(BOS_CRC32C_CHECK_ERROR_MSG, args.ContentCrc32c, val)
-			return strings.Trim(resp.Header(http.ETAG), "\""), bce.NewBceClientError(errMsg)
-		}
-	}
 
 	return strings.Trim(resp.Header(http.ETAG), "\""), nil
 }
@@ -322,6 +314,9 @@ func UploadPartCopy(cli bce.Client, bucket, object, source, uploadId string, par
 	req.SetBucket(bucket)
 	if len(source) == 0 {
 		return nil, bce.NewBceClientError("upload part copy source should not be empty")
+	}
+	if ctx == nil {
+		ctx = newDefaultBosContext()
 	}
 	req.SetHeader(http.BCE_COPY_SOURCE, util.UriEncode(source, false))
 
@@ -364,6 +359,9 @@ func UploadPartCopy(cli bce.Client, bucket, object, source, uploadId string, par
 	if resp.Header(http.BCE_REQUEST_ID) != "" {
 		result.RequestId = resp.Header(http.BCE_REQUEST_ID)
 	}
+	if len(result.Code) > 0 {
+		return nil, bce.NewBceServiceError(result.Code, result.Message, result.RequestId, 500)
+	}
 	return result, nil
 }
 
@@ -394,6 +392,9 @@ func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string, bo
 		req.SetHeader("Expect", "100-continue")
 	}
 	req.SetBody(body)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 
 	if args != nil {
 		// Optional arguments settings
@@ -409,9 +410,9 @@ func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string, bo
 			http.BCE_CONTENT_CRC32C_FLAG: strconv.FormatBool(args.ContentCrc32cFlag),
 			http.BCE_CONTENT_CRC64ECMA:   args.ContentCrc64ECMA,
 		})
-		if args.ObjectExpires > 0 {
-			req.SetHeader(http.BCE_OBJECT_EXPIRES, fmt.Sprintf("%d", args.ObjectExpires))
-		}
+		options = append(options, ObjectExpires(args.ObjectExpires))
+		options = append(options, IfMatch(args.IfMatch))
+		options = append(options, IfNoneMatch(args.IfNoneMatch))
 	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
@@ -439,7 +440,7 @@ func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string, bo
 		log.Warnf("Handle get options error: %s", err)
 	}
 	if args != nil && args.ContentCrc32c != "" && args.ContentCrc32c != result.ContentCrc32c {
-		errMsg := fmt.Sprintf(BOS_CRC32C_CHECK_ERROR_MSG, args.ContentCrc32c, result.ContentCrc32c)
+		errMsg := fmt.Sprintf("crc32 is inconsistence, client: %s, server: %s", args.ContentCrc32c, result.ContentCrc32c)
 		return result, bce.NewBceClientError(errMsg)
 	}
 	return result, nil
@@ -461,6 +462,9 @@ func AbortMultipartUpload(cli bce.Client, bucket, object, uploadId string, ctx *
 	req.SetMethod(http.DELETE)
 	req.SetParam("uploadId", uploadId)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -497,6 +501,9 @@ func ListParts(cli bce.Client, bucket, object, uploadId string, args *ListPartsA
 	req.SetMethod(http.GET)
 	req.SetParam("uploadId", uploadId)
 	req.SetBucket(bucket)
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// Optional arguments settings
 	if args != nil {
 		if len(args.PartNumberMarker) > 0 {
@@ -542,7 +549,9 @@ func ListMultipartUploads(cli bce.Client, bucket string, args *ListMultipartUplo
 	req.SetMethod(http.GET)
 	req.SetParam("uploads", "")
 	req.SetBucket(bucket)
-
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// Optional arguments settings
 	if args != nil {
 		if len(args.Delimiter) > 0 {
