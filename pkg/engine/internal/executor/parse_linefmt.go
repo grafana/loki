@@ -38,8 +38,8 @@ func buildLinefmtColumns(input arrow.RecordBatch, sourceCol *array.String, lineF
 func tokenizeLinefmt(input arrow.RecordBatch, line string, formatter *LineFormatter) (map[string]string, error) {
 	result := make(map[string]string)
 
-	if _, ok := formatter.Process(line, input, result); !ok {
-		return nil, fmt.Errorf("unable to process line %v", line)
+	if _, err := formatter.Process(line, input, result); err != nil {
+		return nil, err
 	}
 	return result, nil
 }
@@ -85,7 +85,7 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	return lf, nil
 }
 
-func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result map[string]string) (string, bool) {
+func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result map[string]string) (string, error) {
 	var messageIdx = -1
 	for i := 0; i < len(input.Columns()); i++ {
 		colIdent := semconv.MustParseFQN(input.ColumnName(i)).ColumnRef().Column
@@ -95,7 +95,7 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 		}
 	}
 	if messageIdx < 0 {
-		return "", false
+		return "", fmt.Errorf("Message column not found")
 	}
 	if lf.simpleKey != "" {
 		var simpleKeyIdx = -1
@@ -107,10 +107,10 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 			}
 		}
 		if simpleKeyIdx < 0 {
-			return "", true
+			return "", nil
 		}
 		result[types.ColumnNameBuiltinMessage] = input.Column(simpleKeyIdx).ValueStr(0)
-		return input.Column(simpleKeyIdx).ValueStr(0), true
+		return input.Column(simpleKeyIdx).ValueStr(0), nil
 	}
 	var timestampIdx = -1
 	for i := 0; i < len(input.Columns()); i++ {
@@ -120,13 +120,13 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 		}
 	}
 	if timestampIdx == -1 {
-		panic("Unable to find timestamp column in inputs")
+		return "", fmt.Errorf("Unable to find timestamp column in inputs")
 	}
 	lf.buf.Reset()
 	lf.currentLine = unsafeBytes(line)
 	ts, err := time.Parse("2006-01-02T15:04:05.999999999Z", input.Column(timestampIdx).ValueStr(0))
 	if err != nil {
-		panic(fmt.Sprintf("Unable to convert timestamp %v", input.Column(timestampIdx).ValueStr(0)))
+		return "", err
 	}
 	lf.currentTs = ts.UnixNano()
 
@@ -137,9 +137,9 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 
 	if err := lf.Execute(lf.buf, m); err != nil {
 		result[types.ColumnNameError] = "TemplateFormatErr " + err.Error()
-		return line, true
+		return line, nil
 	}
 	result[types.ColumnNameBuiltinMessage] = lf.buf.String()
 
-	return lf.buf.String(), true
+	return lf.buf.String(), nil
 }

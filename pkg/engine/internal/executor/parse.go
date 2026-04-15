@@ -51,13 +51,13 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 			}
 			headers, parsedColumns = buildRegexpColumns(input, sourceCol, pattern)
 		case types.VariadicOpParseLinefmt:
-			sourceCol, _, lineFmtTemplate, err = extractLineFmtParameters(args)
+			sourceCol, lineFmtTemplate, err = extractLineFmtParameters(args)
 			if err != nil {
 				panic(err)
 			}
 			headers, parsedColumns = buildLinefmtColumns(input, sourceCol, lineFmtTemplate)
 		case types.VariadicOpParseLabelfmt:
-			sourceCol, _, labelFmts, err = extractLabelFmtParameters(args)
+			sourceCol, labelFmts, err = extractLabelFmtParameters(args)
 			if err != nil {
 				panic(err)
 			}
@@ -91,9 +91,9 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 	})
 }
 
-func extractLineFmtParameters(args []arrow.Array) (*array.String, []string, string, error) {
+func extractLineFmtParameters(args []arrow.Array) (*array.String, string, error) {
 	if len(args) != 3 {
-		return nil, nil, "", fmt.Errorf("parse function expected 3 arguments, got %d", len(args))
+		return nil, "", fmt.Errorf("parse function expected 3 arguments, got %d", len(args))
 	}
 	var sourceColArr, templateArr arrow.Array
 	sourceColArr = args[0]
@@ -101,17 +101,17 @@ func extractLineFmtParameters(args []arrow.Array) (*array.String, []string, stri
 	templateArr = args[2]
 
 	if sourceColArr == nil {
-		return nil, nil, "", fmt.Errorf("parse function arguments did not include a source ColumnVector to parse")
+		return nil, "", fmt.Errorf("parse function arguments did not include a source ColumnVector to parse")
 	}
 
 	sourceCol, ok := sourceColArr.(*array.String)
 	if !ok {
-		return nil, nil, "", fmt.Errorf("parse can only operate on string column types, got %T", sourceColArr)
+		return nil, "", fmt.Errorf("parse can only operate on string column types, got %T", sourceColArr)
 	}
 
 	stringArr, ok := templateArr.(*array.String)
 	if !ok {
-		return nil, nil, "", fmt.Errorf("template must be a string, got %T", templateArr)
+		return nil, "", fmt.Errorf("template must be a string, got %T", templateArr)
 	}
 
 	var template string
@@ -119,13 +119,13 @@ func extractLineFmtParameters(args []arrow.Array) (*array.String, []string, stri
 	if (stringArr != nil) && (stringArr.Len() > 0) {
 		template = stringArr.Value(templateIdx)
 	}
-	return sourceCol, nil, template, nil
+	return sourceCol, template, nil
 
 }
 
-func extractLabelFmtParameters(args []arrow.Array) (*array.String, []string, []log.LabelFmt, error) {
+func extractLabelFmtParameters(args []arrow.Array) (*array.String, []log.LabelFmt, error) {
 	if len(args) != 3 {
-		return nil, nil, nil, fmt.Errorf("parse function expected 3 arguments, got %d", len(args))
+		return nil, nil, fmt.Errorf("parse function expected 3 arguments, got %d", len(args))
 	}
 	var sourceColArr, labelFmtArray arrow.Array
 	sourceColArr = args[0]
@@ -133,17 +133,17 @@ func extractLabelFmtParameters(args []arrow.Array) (*array.String, []string, []l
 	labelFmtArray = args[2]
 
 	if sourceColArr == nil {
-		return nil, nil, nil, fmt.Errorf("parse function arguments did not include a source ColumnVector to parse")
+		return nil, nil, fmt.Errorf("parse function arguments did not include a source ColumnVector to parse")
 	}
 
 	sourceCol, ok := sourceColArr.(*array.String)
 	if !ok {
-		return nil, nil, nil, fmt.Errorf("parse can only operate on string column types, got %T", sourceColArr)
+		return nil, nil, fmt.Errorf("parse can only operate on string column types, got %T", sourceColArr)
 	}
 
 	listArr, ok := labelFmtArray.(*array.List)
 	if !ok {
-		return nil, nil, nil, fmt.Errorf("labelfmts array must be of type struct, got %T", labelFmtArray)
+		return nil, nil, fmt.Errorf("labelfmts array must be of type struct, got %T", labelFmtArray)
 	}
 	var labelFmts []log.LabelFmt
 	listValues := listArr.ListValues()
@@ -158,15 +158,15 @@ func extractLabelFmtParameters(args []arrow.Array) (*array.String, []string, []l
 			val := listValues.Field(1).ValueStr(i)
 			rename, err := strconv.ParseBool(listValues.Field(2).ValueStr(i))
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("wrong format for labelFmt value rename: error %v", err)
+				return nil, nil, fmt.Errorf("wrong format for labelFmt value rename: error %v", err)
 			}
 			labelFmts = append(labelFmts, log.LabelFmt{Name: name, Value: val, Rename: rename})
 		}
 	default:
-		return nil, nil, nil, fmt.Errorf("unknown labelfmt type %T; expected *array.Struct", listValues)
+		return nil, nil, fmt.Errorf("unknown labelfmt type %T; expected *array.Struct", listValues)
 	}
 
-	return sourceCol, nil, labelFmts, nil
+	return sourceCol, labelFmts, nil
 
 }
 
@@ -315,8 +315,8 @@ func parseLines(input arrow.RecordBatch, sourceCol *array.String, columnBuilders
 		if parseType == types.VariadicOpParseLabelfmt || parseType == types.VariadicOpParseLinefmt {
 			// pass the corresponding row of input as well
 			inputRow := input.NewSlice(int64(i), int64(i+1))
-			defer inputRow.Release()
 			parsed, err = parseFunc(inputRow, line)
+			inputRow.Release()
 		} else {
 			// don't need the row of input
 			parsed, err = parseFunc(nil, line)
