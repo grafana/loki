@@ -10,6 +10,18 @@
     replication_factor: 3,
     memcached_replicas: 3,
 
+    // KV store backend used for ring state when memberlist_ring_enabled is false.
+    // Supported values: 'consul' (default), 'etcd'.
+    ring_kvstore_store: 'consul',
+
+    // When ring_kvstore_store == 'etcd', this object is rendered under the
+    // kvstore.etcd key of every ring config (ingester, distributor, ruler,
+    // pattern_ingester). Provide endpoints and any TLS/auth options required
+    // by your etcd cluster. Any field supported by Loki's etcd kvstore config
+    // (endpoints, dial_timeout, tls_enabled, tls_cert_path, tls_key_path,
+    // tls_ca_path, username, password, ...) can be set here.
+    ring_kvstore_etcd: {},
+
     grpc_server_max_msg_size: 100 << 20,  // 100MB
 
     query_scheduler_enabled: false,
@@ -254,7 +266,11 @@
           ring: {
             heartbeat_timeout: '1m',
             replication_factor: $._config.replication_factor,
-            kvstore: if $._config.memberlist_ring_enabled then {} else {
+            kvstore: if $._config.memberlist_ring_enabled then {}
+            else if $._config.ring_kvstore_store == 'etcd' then {
+              store: 'etcd',
+              etcd: $._config.ring_kvstore_etcd,
+            } else {
               store: 'consul',
               consul: {
                 host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
@@ -276,7 +292,11 @@
           ring: {
             heartbeat_timeout: '1m',
             replication_factor: 1,
-            kvstore: if $._config.memberlist_ring_enabled then {} else {
+            kvstore: if $._config.memberlist_ring_enabled then {}
+            else if $._config.ring_kvstore_store == 'etcd' then {
+              store: 'etcd',
+              etcd: $._config.ring_kvstore_etcd,
+            } else {
               store: 'consul',
               consul: {
                 host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
@@ -357,7 +377,11 @@
       distributor: {
         // Creates a ring between distributors, required by the ingestion rate global limit.
         ring: {
-          kvstore: if $._config.memberlist_ring_enabled then {} else {
+          kvstore: if $._config.memberlist_ring_enabled then {}
+          else if $._config.ring_kvstore_store == 'etcd' then {
+            store: 'etcd',
+            etcd: $._config.ring_kvstore_etcd,
+          } else {
             store: 'consul',
             consul: {
               host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
@@ -377,7 +401,11 @@
         enable_sharding: true,
         enable_alertmanager_v2: true,
         ring: {
-          kvstore: if $._config.memberlist_ring_enabled then {} else {
+          kvstore: if $._config.memberlist_ring_enabled then {}
+          else if $._config.ring_kvstore_store == 'etcd' then {
+            store: 'etcd',
+            etcd: $._config.ring_kvstore_etcd,
+          } else {
             store: 'consul',
             consul: {
               host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
