@@ -107,7 +107,8 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 			}
 		}
 		if simpleKeyIdx < 0 {
-			return "", nil
+			result[types.ColumnNameBuiltinMessage] = ""
+			return "", fmt.Errorf("Missing key %v", lf.simpleKey)
 		}
 		result[types.ColumnNameBuiltinMessage] = input.Column(simpleKeyIdx).ValueStr(0)
 		return input.Column(simpleKeyIdx).ValueStr(0), nil
