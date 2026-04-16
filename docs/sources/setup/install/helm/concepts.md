@@ -91,4 +91,4 @@ If NetworkPolicies are enabled, they are more restrictive if the gateway is enab
 
 ## Caching
 
-By default, this chart configures in-memory caching. If that caching does not work for your deployment, you should setup [memcache](../../../../operations/caching/).
+By default, this chart configures in-memory caching. If that caching does not work for your deployment, you should set up [memcache](../../../../operations/caching/).
