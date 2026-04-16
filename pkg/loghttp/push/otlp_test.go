@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,7 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/grafana/loki/v3/pkg/loghttp/push/otlplabels"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/pkg/push"
@@ -32,6 +34,12 @@ import (
 	"github.com/pierrec/lz4/v4"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
+
+var defaultGlobalOTLPConfig = GlobalOTLPConfig{}
+
+func init() {
+	flagext.DefaultValues(&defaultGlobalOTLPConfig)
+}
 
 func TestOTLPToLokiPushRequest(t *testing.T) {
 	now := time.Unix(0, time.Now().UnixNano())
@@ -861,9 +869,24 @@ func TestAttributesToLabels(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			lbls, err := attributesToLabels(tc.buildAttrs(), "")
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedResp, lbls)
+			attrs := tc.buildAttrs()
+			var result push.LabelsAdapter
+			if attrs.Len() == 0 {
+				result = push.LabelsAdapter{}
+			} else {
+				var rangeErr error
+				attrs.Range(func(k string, v pcommon.Value) bool {
+					ol, err := otlplabels.AttributeToLabels(k, v, "")
+					if err != nil {
+						rangeErr = err
+						return false
+					}
+					result = append(result, ol...)
+					return true
+				})
+				require.NoError(t, rangeErr)
+			}
+			require.Equal(t, tc.expectedResp, result)
 		})
 	}
 }

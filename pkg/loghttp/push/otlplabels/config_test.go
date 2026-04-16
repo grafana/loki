@@ -1,4 +1,4 @@
-package push
+package otlplabels
 
 import (
 	"testing"
@@ -131,14 +131,14 @@ log_attributes:
   - action: keep
     attributes:
       - fizz`),
-			expectedErr: errUnsupportedAction,
+			expectedErr: ErrUnsupportedAction,
 		},
 		{
 			name: "attributes and regex both not set should error",
 			yamlConfig: []byte(`
 log_attributes:
   - action: drop`),
-			expectedErr: errAttributesAndRegexNotSet,
+			expectedErr: ErrAttributesAndRegexNotSet,
 		},
 		{
 			name: "attributes and regex both being set should error",
@@ -148,7 +148,7 @@ log_attributes:
     regex: foo
     attributes:
       - fizz`),
-			expectedErr: errAttributesAndRegexBothSet,
+			expectedErr: ErrAttributesAndRegexBothSet,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -182,7 +182,7 @@ func TestOTLPConfig(t *testing.T) {
 			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			resAttrs: []attrAndExpAction{
 				{
-					attr:           attrServiceName,
+					attr:           AttrServiceName,
 					expectedAction: IndexLabel,
 				},
 				{
@@ -210,7 +210,7 @@ func TestOTLPConfig(t *testing.T) {
 					AttributesConfig: []AttributesConfig{
 						{
 							Action:     IndexLabel,
-							Attributes: []string{attrServiceName},
+							Attributes: []string{AttrServiceName},
 						},
 						{
 							Action: StructuredMetadata,
@@ -245,7 +245,7 @@ func TestOTLPConfig(t *testing.T) {
 			},
 			resAttrs: []attrAndExpAction{
 				{
-					attr:           attrServiceName,
+					attr:           AttrServiceName,
 					expectedAction: IndexLabel,
 				},
 				{
@@ -285,7 +285,7 @@ func TestOTLPConfig(t *testing.T) {
 					AttributesConfig: []AttributesConfig{
 						{
 							Action:     Drop,
-							Attributes: []string{attrServiceName},
+							Attributes: []string{AttrServiceName},
 						},
 						{
 							Action: IndexLabel,
@@ -316,7 +316,7 @@ func TestOTLPConfig(t *testing.T) {
 			},
 			resAttrs: []attrAndExpAction{
 				{
-					attr:           attrServiceName,
+					attr:           AttrServiceName,
 					expectedAction: Drop,
 				},
 				{
@@ -360,4 +360,20 @@ func TestOTLPConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidate(t *testing.T) {
+	t.Run("scope with index_label returns error", func(t *testing.T) {
+		cfg := OTLPConfig{
+			ScopeAttributes: []AttributesConfig{
+				{Action: IndexLabel, Attributes: []string{"foo"}},
+			},
+		}
+		require.Error(t, cfg.Validate())
+	})
+
+	t.Run("valid config returns nil", func(t *testing.T) {
+		cfg := DefaultOTLPConfig(defaultGlobalOTLPConfig)
+		require.NoError(t, cfg.Validate())
+	})
 }
