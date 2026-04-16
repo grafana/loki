@@ -24,6 +24,10 @@ func ColumnarSectionEncoder(pageSizeHint int, pageMaxRowCount int) SectionEncode
 func columnarEncode(rows []Posting, enc *columnar.Encoder, pageSizeHint, pageMaxRowCount int) error {
 	// Build column builders for all 10 columns.
 
+	// kind is a 2-value flag (0=bloom, 1=label). DELTA is the only encoding
+	// available for INT64 in the dataset package. With sorted rows (blooms
+	// first, then labels), deltas are almost all zeros — ZSTD compresses
+	// these runs very well.
 	kindBuilder, err := dataset.NewColumnBuilder(colKind, dataset.BuilderOptions{
 		PageSizeHint:    pageSizeHint,
 		PageMaxRowCount: pageMaxRowCount,
@@ -32,7 +36,7 @@ func columnarEncode(rows []Posting, enc *columnar.Encoder, pageSizeHint, pageMax
 			Logical:  ColumnTypeKind.String(),
 		},
 		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
-		Compression: datasetmd.COMPRESSION_TYPE_NONE,
+		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
 	})
 	if err != nil {
 		return fmt.Errorf("creating kind column: %w", err)
