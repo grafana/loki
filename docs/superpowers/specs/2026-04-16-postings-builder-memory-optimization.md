@@ -14,11 +14,9 @@ This means both the calculator and the builder hold postings data in memory simu
 1. **Calculator** — holds state keyed by posting key (label value, column name, etc.) to aggregate stream IDs into bitmaps and build bloom filters
 2. **Builder** — holds the fully-formed `[]Posting` slice waiting to be flushed
 
-The bloom filters and bitmaps are the dominant memory cost. Mid-accumulation flushing (when `EstimatedSize() > TargetSectionSize`) bounds the builder's slice, but the calculator's state persists across flushes since it's still aggregating.
+The bloom filters and bitmaps are the dominant memory cost. Mid-accumulation flushing (when `EstimatedSize() > TargetSectionSize`) bounds the builder's slice, but the calculator's internal maps (posting key → bitmap, bloom state) persist for the entire object build since the calculator is still aggregating across batches.
 
-Question: What does is mean that the calculator holds aggregates across flushes?
-I don't think it shoudl do that, and the seems like a really bad potential for a
-memory leak.
+**Potential memory leak concern:** The calculator holding aggregates across flushes means its internal state grows monotonically during an object build. Mid-accumulation flushing only drains the *builder's* `[]Posting` slice — the calculator's maps are never cleared until the object is complete. For tenants with high cardinality (many unique label values × column names), this could lead to unbounded memory growth during a single object build. This needs investigation: is the calculator's state bounded by the number of unique posting keys per tenant, and is that a safe bound in practice?
 
 By contrast, the streams builder uses an observation/aggregation pattern: callers pass raw events (`Record(labels, timestamp, size)`) and the builder aggregates in-place (deduplicating streams, merging timestamp ranges, summing sizes). Memory is proportional to unique streams, and there's no separate "calculator holding state + builder holding rows" duplication.
 
