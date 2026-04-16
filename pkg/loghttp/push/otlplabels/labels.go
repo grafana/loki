@@ -3,7 +3,6 @@ package otlplabels
 import (
 	"encoding/hex"
 	"fmt"
-	"slices"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/otlptranslator"
@@ -27,44 +26,50 @@ const (
 // more LabelAdapters. Map-valued attributes are expanded recursively with the
 // parent key as prefix. The key is normalized via otlptranslator.LabelNamer.
 func AttributeToLabels(k string, v pcommon.Value, prefix string) (push.LabelsAdapter, error) {
+	var labelsAdapter push.LabelsAdapter
+
 	keyWithPrefix := k
 	if prefix != "" {
 		keyWithPrefix = prefix + "_" + k
 	}
 
-	namer := otlptranslator.LabelNamer{}
-	normalized, err := namer.Build(keyWithPrefix)
+	labelNamer := otlptranslator.LabelNamer{}
+	keyWithPrefix, err := labelNamer.Build(keyWithPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("symbolizer lookup: %w", err)
 	}
 
-	if v.Type() == pcommon.ValueTypeMap {
+	typ := v.Type()
+	if typ == pcommon.ValueTypeMap {
 		mv := v.Map()
-		result := make(push.LabelsAdapter, 0, mv.Len())
+		labelsAdapter = make(push.LabelsAdapter, 0, mv.Len())
 		var rangeErr error
-		mv.Range(func(mk string, mv pcommon.Value) bool {
-			sub, err := AttributeToLabels(mk, mv, normalized)
+		mv.Range(func(k string, v pcommon.Value) bool {
+			lbls, err := AttributeToLabels(k, v, keyWithPrefix)
 			if err != nil {
 				rangeErr = fmt.Errorf("symbolizer lookup: %w", err)
 				return false
 			}
-			result = append(result, sub...)
+			labelsAdapter = append(labelsAdapter, lbls...)
 			return true
 		})
 		if rangeErr != nil {
 			return nil, rangeErr
 		}
-		return result, nil
+	} else {
+		labelsAdapter = push.LabelsAdapter{
+			push.LabelAdapter{Name: keyWithPrefix, Value: v.AsString()},
+		}
 	}
 
-	return push.LabelsAdapter{{Name: normalized, Value: v.AsString()}}, nil
+	return labelsAdapter, nil
 }
 
 // attributesToLabels converts all attributes in a pcommon.Map to LabelsAdapter.
 func attributesToLabels(attrs pcommon.Map, prefix string) (push.LabelsAdapter, error) {
-	result := make(push.LabelsAdapter, 0, attrs.Len())
+	labelsAdapter := make(push.LabelsAdapter, 0, attrs.Len())
 	if attrs.Len() == 0 {
-		return result, nil
+		return labelsAdapter, nil
 	}
 
 	var rangeErr error
@@ -74,11 +79,11 @@ func attributesToLabels(attrs pcommon.Map, prefix string) (push.LabelsAdapter, e
 			rangeErr = err
 			return false
 		}
-		result = append(result, lbls...)
+		labelsAdapter = append(labelsAdapter, lbls...)
 		return true
 	})
 
-	return result, rangeErr
+	return labelsAdapter, rangeErr
 }
 
 // ResourceAttrsResult holds the output of ResourceAttrsToStreamLabels.
@@ -102,7 +107,7 @@ func ResourceAttrsToStreamLabels(attrs pcommon.Map, otlpConfig OTLPConfig, disco
 		StructuredMetadata: make(push.LabelsAdapter, 0, attrs.Len()),
 	}
 
-	shouldDiscover := len(discoverServiceName) > 0
+	shouldDiscoverServiceName := len(discoverServiceName) > 0
 	hasServiceName := false
 	if v, ok := attrs.Get(AttrServiceName); ok && v.AsString() != "" {
 		hasServiceName = true
@@ -115,25 +120,28 @@ func ResourceAttrsToStreamLabels(attrs pcommon.Map, otlpConfig OTLPConfig, disco
 			return true
 		}
 
-		attrLabels, err := AttributeToLabels(k, v, "")
+		attributeAsLabels, err := AttributeToLabels(k, v, "")
 		if err != nil {
 			rangeErr = err
 			return false
 		}
 
 		if action == IndexLabel {
-			for _, lbl := range attrLabels {
+			for _, lbl := range attributeAsLabels {
 				result.StreamLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 
-				if !hasServiceName && shouldDiscover {
-					if slices.Contains(discoverServiceName, lbl.Name) {
-						result.StreamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(lbl.Value)
-						hasServiceName = true
+				if !hasServiceName && shouldDiscoverServiceName {
+					for _, labelName := range discoverServiceName {
+						if lbl.Name == labelName {
+							result.StreamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(lbl.Value)
+							hasServiceName = true
+							break
+						}
 					}
 				}
 			}
 		} else if action == StructuredMetadata {
-			result.StructuredMetadata = append(result.StructuredMetadata, attrLabels...)
+			result.StructuredMetadata = append(result.StructuredMetadata, attributeAsLabels...)
 		}
 
 		return true
@@ -142,7 +150,7 @@ func ResourceAttrsToStreamLabels(attrs pcommon.Map, otlpConfig OTLPConfig, disco
 		return nil, rangeErr
 	}
 
-	if !hasServiceName && shouldDiscover {
+	if !hasServiceName && shouldDiscoverServiceName {
 		result.StreamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(ServiceUnknown)
 	}
 
@@ -156,9 +164,9 @@ type ScopeAttrsResult struct {
 
 // ScopeAttrsToStructuredMetadata converts OTLP scope attributes plus scope
 // name, version, and dropped attributes count into structured metadata labels.
-func ScopeAttrsToStructuredMetadata(scope plog.ScopeLogsSlice, idx int, otlpConfig OTLPConfig) (*ScopeAttrsResult, error) {
-	s := scope.At(idx).Scope()
-	scopeAttrs := s.Attributes()
+func ScopeAttrsToStructuredMetadata(sls plog.ScopeLogsSlice, idx int, otlpConfig OTLPConfig) (*ScopeAttrsResult, error) {
+	scope := sls.At(idx).Scope()
+	scopeAttrs := scope.Attributes()
 	result := &ScopeAttrsResult{
 		StructuredMetadata: make(push.LabelsAdapter, 0, scopeAttrs.Len()+3),
 	}
@@ -170,36 +178,37 @@ func ScopeAttrsToStructuredMetadata(scope plog.ScopeLogsSlice, idx int, otlpConf
 			return true
 		}
 
-		attrLabels, err := AttributeToLabels(k, v, "")
+		attributeAsLabels, err := AttributeToLabels(k, v, "")
 		if err != nil {
 			rangeErr = err
 			return false
 		}
 		if action == StructuredMetadata {
-			result.StructuredMetadata = append(result.StructuredMetadata, attrLabels...)
+			result.StructuredMetadata = append(result.StructuredMetadata, attributeAsLabels...)
 		}
+
 		return true
 	})
 	if rangeErr != nil {
 		return nil, rangeErr
 	}
 
-	if name := s.Name(); name != "" {
+	if scopeName := scope.Name(); scopeName != "" {
 		result.StructuredMetadata = append(result.StructuredMetadata, push.LabelAdapter{
 			Name:  "scope_name",
-			Value: name,
+			Value: scopeName,
 		})
 	}
-	if version := s.Version(); version != "" {
+	if scopeVersion := scope.Version(); scopeVersion != "" {
 		result.StructuredMetadata = append(result.StructuredMetadata, push.LabelAdapter{
 			Name:  "scope_version",
-			Value: version,
+			Value: scopeVersion,
 		})
 	}
-	if dropped := s.DroppedAttributesCount(); dropped != 0 {
+	if scopeDroppedAttributesCount := scope.DroppedAttributesCount(); scopeDroppedAttributesCount != 0 {
 		result.StructuredMetadata = append(result.StructuredMetadata, push.LabelAdapter{
 			Name:  "scope_dropped_attributes_count",
-			Value: fmt.Sprintf("%d", dropped),
+			Value: fmt.Sprintf("%d", scopeDroppedAttributesCount),
 		})
 	}
 
@@ -232,32 +241,35 @@ func LogAttrsToLabels(log plog.LogRecord, otlpConfig OTLPConfig) (*LogAttrsResul
 			return true
 		}
 
-		// When the dedicated OTLP EventName field is set, skip any log
-		// attribute also named event_name to avoid duplicates. The
-		// first-class field takes precedence.
+		// If the dedicated OTLP EventName field is set, skip any log attribute
+		// also named event_name to avoid duplicate entries. The first-class field
+		// takes precedence over the attribute.
 		if k == OTLPEventName && log.EventName() != "" {
 			return true
 		}
 
-		attrLabels, err := AttributeToLabels(k, v, "")
+		attributeAsLabels, err := AttributeToLabels(k, v, "")
 		if err != nil {
 			rangeErr = err
 			return false
 		}
 		if action == StructuredMetadata {
-			result.StructuredMetadata = append(result.StructuredMetadata, attrLabels...)
+			result.StructuredMetadata = append(result.StructuredMetadata, attributeAsLabels...)
 		}
+
 		if action == IndexLabel {
-			for _, lbl := range attrLabels {
+			for _, lbl := range attributeAsLabels {
 				result.IndexLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 			}
 		}
+
 		return true
 	})
 	if rangeErr != nil {
 		return nil, rangeErr
 	}
 
+	// if log.Timestamp() is 0, we would have already stored log.ObservedTimestamp as log timestamp so no need to store again in structured metadata
 	if log.Timestamp() != 0 && log.ObservedTimestamp() != 0 {
 		result.StructuredMetadata = append(result.StructuredMetadata, push.LabelAdapter{
 			Name:  "observed_timestamp",
@@ -272,25 +284,28 @@ func LogAttrsToLabels(log plog.LogRecord, otlpConfig OTLPConfig) (*LogAttrsResul
 		})
 	}
 	if severityText := log.SeverityText(); severityText != "" {
+		// Add severity_text as an index label if configured
 		if otlpConfig.SeverityTextAsLabel {
 			result.IndexLabels[model.LabelName(OTLPSeverityText)] = model.LabelValue(severityText)
 		}
+
+		// Always add severity_text as structured metadata
 		result.StructuredMetadata = append(result.StructuredMetadata, push.LabelAdapter{
 			Name:  OTLPSeverityText,
 			Value: severityText,
 		})
 	}
 
-	if dropped := log.DroppedAttributesCount(); dropped != 0 {
+	if droppedAttributesCount := log.DroppedAttributesCount(); droppedAttributesCount != 0 {
 		result.StructuredMetadata = append(result.StructuredMetadata, push.LabelAdapter{
 			Name:  "dropped_attributes_count",
-			Value: fmt.Sprintf("%d", dropped),
+			Value: fmt.Sprintf("%d", droppedAttributesCount),
 		})
 	}
-	if flags := log.Flags(); flags != 0 {
+	if logRecordFlags := log.Flags(); logRecordFlags != 0 {
 		result.StructuredMetadata = append(result.StructuredMetadata, push.LabelAdapter{
 			Name:  "flags",
-			Value: fmt.Sprintf("%d", flags),
+			Value: fmt.Sprintf("%d", logRecordFlags),
 		})
 	}
 

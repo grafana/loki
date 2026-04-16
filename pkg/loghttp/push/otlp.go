@@ -34,8 +34,7 @@ const (
 	pbContentType       = "application/x-protobuf"
 	gzipContentEncoding = "gzip"
 	zstdContentEncoding = "zstd"
-	lz4ContentEncoding  = "lz4"
-	attrServiceName     = "service.name"
+	lz4ContentEncoding = "lz4"
 
 	OTLPSeverityNumber = "severity_number"
 	OTLPSeverityText   = "severity_text"
