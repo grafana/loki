@@ -37,6 +37,20 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Removal of deprecated `/api/prom` API endpoints
+
+The legacy Prometheus-compatible `/api/prom` endpoints that were deprecated in Loki 2.x have been removed:
+
+| Removed endpoint  | Replacement |
+| ----------------- | ----------- |
+| `/api/prom/push`  | [Ingest logs](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#ingest-logs) |
+| `/api/prom/tail`  | [Stream logs](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#stream-logs) |
+| `/api/prom/query` | [Query logs at a single point in time](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#query-logs-at-a-single-point-in-time) |
+| `/api/prom/label` | [Query labels](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#query-labels) |
+| `/api/prom/rules` | [Rules endpoints](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#rules-endpoints) |
+
+You must migrate any clients, dashboards, or automation that still use these endpoints to their `/loki/api/v1/` equivalents before upgrading. Requests to the removed endpoints will result in `404` errors.
+
 ### Breaking change: Removal of various configuration options
 
 - The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
@@ -83,7 +97,14 @@ Please refer to [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/op
 
 If the latest entry of your schema config is older than retention period of your data, then it is safe to remove any old entries from the `schema_config.configs` when upgrading.
 
+<<<<<<< HEAD
 With the legacy backends removed, also the `table-manager` target and `table_manager` configuration block are removed, as they are not needed any more. If you have a `table_manager` configuration block in your `config.yaml` you can safely remove it completely.
+=======
+<<<<<<< HEAD
+With the legacy backends removed, also the `table-manager` target and `table_manager` configuration block are removed, as they are not needed any more. If you have a `table_manager` configuration block in your `config.yaml` you can savely remove it completely.
+=======
+>>>>>>> 42d4484e94 (fixup: Add upgrade notes)
+>>>>>>> 8b15c32dc9 (fixup: Add upgrade notes)
 
 ### Distributor Max Receive Limits for uncompressed bytes
 

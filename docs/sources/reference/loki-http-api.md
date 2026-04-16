@@ -114,22 +114,6 @@ These HTTP endpoints are exposed by all individual components:
 
 - [`GET /loki/api/v1/format_query`](#format-a-logql-query)
 
-### Deprecated endpoints
-
-{{< admonition type="note" >}}
-The following endpoints are deprecated.While they still exist and work, they should not be used for new deployments.
-Existing deployments should upgrade to use the supported endpoints.
-{{< /admonition >}}
-
-| Deprecated | Replacement |
-| ---------- | ----------- |
-| `POST /api/prom/push` | [`POST /loki/api/v1/push`](#ingest-logs) |
-| `GET /api/prom/tail` | [`GET /loki/api/v1/tail`](#stream-logs) |
-| `GET /api/prom/query` | [`GET /loki/api/v1/query`](#query-logs-at-a-single-point-in-time) |
-| `GET /api/prom/label` | [`GET /loki/api/v1/labels`](#query-labels) |
-| `GET /api/prom/label/<name>/values` | [`GET /loki/api/v1/label/<name>/values`](#query-label-values) |
-| `GET /api/prom/series` | [`GET /loki/api/v1/series`](#query-streams) |
-
 ## Format
 
 ### Matrix, vector, and stream
