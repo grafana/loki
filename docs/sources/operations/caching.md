@@ -10,7 +10,7 @@ keywords:
 # Configure caches to speed up queries
 
 Loki supports two types of caching for query results and chunks to speed up query performance and reduce calls to the storage layer. Memcached is included in the Loki Helm chart and enabled by default for the `chunksCache` and `resultsCache`.
-This sections describes the recommended Memcached configuration to enable caching for chunks and query results.
+This section describes the recommended Memcached configuration to enable caching for chunks and query results.
 
 #### Results cache
 The results cache stores the results for index-stat, instant-metric, label and volume queries and it supports negative caching for log queries. It is sometimes called frontend cache in some configurations. For details of each supported request type, refer to the [Components section](https://grafana.com/docs/loki/<LOKI_VERSION>//get-started/components).
