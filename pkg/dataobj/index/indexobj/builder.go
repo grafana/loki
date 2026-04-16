@@ -124,7 +124,7 @@ func (b *Builder) getIndexPointerBuilderForTenant(tenantID string) *indexpointer
 
 func (b *Builder) getStatsBuilderForTenant(tenantID string) *stats.Builder {
 	if _, ok := b.stats[tenantID]; !ok {
-		sb := stats.NewBuilder(int(b.cfg.TargetSectionSize), stats.ColumnarEncoder)
+		sb := stats.NewBuilder(stats.ColumnarSectionEncoder(int(b.cfg.TargetPageSize), b.cfg.MaxPageRows))
 		sb.SetTenant(tenantID)
 		b.stats[tenantID] = sb
 	}

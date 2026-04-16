@@ -3,87 +3,81 @@ package stats
 import (
 	"context"
 	"fmt"
-	"io"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
-// Reader reads columnar data from a stats [Section].
-//
-// Use [RowReader] for higher-level access to typed [Stat] rows.
-type Reader struct {
-	sec      *Section
-	readers  map[string]ColumnReader
-	rowCount int
+// Section represents an opened stats section.
+type Section struct {
+	inner   *columnar.Section
+	columns []*Column
 }
 
-// NewReader creates a new Reader that reads from the provided [Section].
-func NewReader(sec *Section) (*Reader, error) {
-	if sec == nil {
-		return nil, fmt.Errorf("section must not be nil")
+// Open opens a [Section] from an underlying [dataobj.Section]. Open returns an
+// error if the section metadata could not be read or if the provided ctx is
+// canceled.
+func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
+	if !CheckSection(section) {
+		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
 	}
-	return &Reader{
-		sec:      sec,
-		readers:  make(map[string]ColumnReader),
-		rowCount: sec.RowCount,
-	}, nil
-}
-
-// RowCount returns the total number of rows in the section.
-func (r *Reader) RowCount() int { return r.rowCount }
-
-// getOrOpenColumn lazily opens and caches a ColumnReader for the named column.
-func (r *Reader) getOrOpenColumn(name string) (ColumnReader, error) {
-	if cr, ok := r.readers[name]; ok {
-		return cr, nil
+	if section.Type.Version != 1 {
+		return nil, fmt.Errorf("unsupported section schema version: got=%d want=1", section.Type.Version)
 	}
-	cr, err := r.sec.OpenColumn(name)
+
+	dec, err := columnar.NewDecoder(section.Reader, columnar.FormatVersion)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating decoder: %w", err)
 	}
-	r.readers[name] = cr
-	return cr, nil
-}
 
-// readInt64Column reads up to count values from a named int64 column.
-// Returns the values slice and the number of values read.
-func (r *Reader) readInt64Column(ctx context.Context, name string, count int) ([]int64, error) {
-	cr, err := r.getOrOpenColumn(name)
+	columnarSection, err := columnar.Open(ctx, section.Tenant, dec)
 	if err != nil {
-		return nil, fmt.Errorf("column %q not found: %w", name, err)
+		return nil, fmt.Errorf("opening columnar section: %w", err)
 	}
-	arr, err := cr.Read(ctx, count)
-	if err != nil && err != io.EOF {
-		return nil, fmt.Errorf("reading column %q: %w", name, err)
+
+	sec := &Section{inner: columnarSection}
+	if err := sec.init(); err != nil {
+		return nil, fmt.Errorf("initializing section: %w", err)
 	}
-	if arr == nil {
-		return nil, io.EOF
-	}
-	return extractInt64Values(arr)
+	return sec, nil
 }
 
-// readStringColumn reads up to count values from a named UTF8 column.
-// Returns the string slice and the number of values read.
-func (r *Reader) readStringColumn(ctx context.Context, name string, count int) ([]string, error) {
-	cr, err := r.getOrOpenColumn(name)
-	if err != nil {
-		return nil, fmt.Errorf("column %q not found: %w", name, err)
-	}
-	arr, err := cr.Read(ctx, count)
-	if err != nil && err != io.EOF {
-		return nil, fmt.Errorf("reading column %q: %w", name, err)
-	}
-	if arr == nil {
-		return nil, io.EOF
-	}
-	return extractStringValues(arr)
-}
-
-// Close closes the reader and releases any resources.
-func (r *Reader) Close() error {
-	var firstErr error
-	for _, cr := range r.readers {
-		if err := cr.Close(); err != nil && firstErr == nil {
-			firstErr = err
+func (s *Section) init() error {
+	for _, col := range s.inner.Columns() {
+		colType, err := ParseColumnType(col.Type.Logical)
+		if err != nil {
+			// Skip over unrecognized columns; probably come from a newer
+			// version of the code.
+			continue
 		}
+
+		s.columns = append(s.columns, &Column{
+			Section: s,
+			Name:    col.Tag,
+			Type:    colType,
+
+			inner: col,
+		})
 	}
-	return firstErr
+
+	return nil
+}
+
+// Columns returns the set of Columns in the section. The slice of returned
+// columns must not be mutated.
+//
+// Unrecognized columns (e.g., when running older code against newer stats
+// sections) are skipped.
+func (s *Section) Columns() []*Column { return s.columns }
+
+// A Column represents one of the columns in the stats section. Valid columns
+// can only be retrieved by calling [Section.Columns].
+//
+// Data in columns can be read by using a [RowReader].
+type Column struct {
+	Section *Section   // Section that contains the column.
+	Name    string     // Optional name of the column (label name for dynamic columns).
+	Type    ColumnType // Type of data in the column.
+
+	inner *columnar.Column
 }
