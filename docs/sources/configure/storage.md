@@ -331,7 +331,7 @@ The role should have a policy with the following permissions attached.
 }
 ```
 
-**To setup an S3 bucket and an IAM role and policy:**
+**To set up an S3 bucket and an IAM role and policy:**
 
 This guide assumes a provisioned EKS cluster.
 
