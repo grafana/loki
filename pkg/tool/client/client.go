@@ -26,11 +26,11 @@ var (
 
 // Config is used to configure a Ruler Client
 type Config struct {
-	User            string `yaml:"user"`
-	Key             string `yaml:"key"`
-	Address         string `yaml:"address"`
-	ID              string `yaml:"id"`
-	TLS             tls.ClientConfig
+	User      string `yaml:"user"`
+	Key       string `yaml:"key"`
+	Address   string `yaml:"address"`
+	ID        string `yaml:"id"`
+	TLS       tls.ClientConfig
 	AuthToken string `yaml:"auth_token"`
 }
 
