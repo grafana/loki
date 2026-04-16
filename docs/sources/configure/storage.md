@@ -99,14 +99,6 @@ Cassandra can also be utilized for the index store and aside from the [boltdb-sh
 This storage type for indexes is deprecated and may be removed in future major versions of Loki.
 {{< /admonition >}}
 
-### BigTable (deprecated)
-
-Bigtable is a cloud database offered by Google. It is a good candidate for a managed index store if you're already using it (due to its heavy fixed costs) or wish to run in GCP.
-
-{{< admonition type="note" >}}
-This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
-
 ### DynamoDB (deprecated)
 
 DynamoDB is a cloud database offered by AWS. It is a good candidate for a managed index store, especially if you're already running in AWS.
