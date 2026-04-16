@@ -8,12 +8,17 @@
 
 The postings builder uses a struct-append/accumulator pattern: the calculation pipeline (`label_postings_calculation.go`, `bloom_postings_calculation.go`) fully constructs each `Posting` struct — including heap-allocated `[]byte` fields for bloom filters and stream ID bitmaps — and passes it to the builder via `b.Append(Posting{...})`. The builder accumulates all rows in a `[]Posting` slice until flush.
 
+
 This means both the calculator and the builder hold postings data in memory simultaneously:
 
 1. **Calculator** — holds state keyed by posting key (label value, column name, etc.) to aggregate stream IDs into bitmaps and build bloom filters
 2. **Builder** — holds the fully-formed `[]Posting` slice waiting to be flushed
 
 The bloom filters and bitmaps are the dominant memory cost. Mid-accumulation flushing (when `EstimatedSize() > TargetSectionSize`) bounds the builder's slice, but the calculator's state persists across flushes since it's still aggregating.
+
+Question: What does is mean that the calculator holds aggregates across flushes?
+I don't think it shoudl do that, and the seems like a really bad potential for a
+memory leak.
 
 By contrast, the streams builder uses an observation/aggregation pattern: callers pass raw events (`Record(labels, timestamp, size)`) and the builder aggregates in-place (deduplicating streams, merging timestamp ranges, summing sizes). Memory is proportional to unique streams, and there's no separate "calculator holding state + builder holding rows" duplication.
 
