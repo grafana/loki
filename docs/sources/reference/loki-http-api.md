@@ -89,16 +89,8 @@ These HTTP endpoints are exposed by the `ruler` component:
 - [`POST /loki/api/v1/rules/{namespace}`](#set-rule-group)
 - [`DELETE /loki/api/v1/rules/{namespace}/{groupName}`](#delete-rule-group)
 - [`DELETE /loki/api/v1/rules/{namespace}`](#delete-namespace)
-- [`GET /api/prom/rules`](#list-rule-groups)
-- [`GET /api/prom/rules/{namespace}`](#get-rule-groups-by-namespace)
-- [`GET /api/prom/rules/{namespace}/{groupName}`](#get-rule-group)
-- [`POST /api/prom/rules/{namespace}`](#set-rule-group)
-- [`DELETE /api/prom/rules/{namespace}/{groupName}`](#delete-rule-group)
-- [`DELETE /api/prom/rules/{namespace}`](#delete-namespace)
 - [`GET /prometheus/api/v1/rules`](#list-rules)
 - [`GET /prometheus/api/v1/alerts`](#list-alerts)
-
-API endpoints starting with `/api/prom` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
 ### Log deletion endpoints
 
