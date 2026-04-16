@@ -20,7 +20,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/crypto/tls"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
@@ -54,9 +54,7 @@ const (
 	EvalModeRemote = "remote"
 )
 
-var (
-	userAgent = fmt.Sprintf("loki-ruler/%s", build.Version)
-)
+var userAgent = fmt.Sprintf("loki-ruler/%s", build.Version)
 
 type metrics struct {
 	reqDurationSecs     *prometheus.HistogramVec
@@ -174,11 +172,11 @@ func (r *RemoteEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*
 
 // DialQueryFrontend creates and initializes a new httpgrpc.HTTPClient taking a QueryFrontendConfig configuration.
 func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
-	tlsDialOptions, err := cfg.TLS.GetGRPCDialOptions(cfg.TLSEnabled)
+	dialOptions, err := cfg.ClientConfig.DialOption(nil, nil, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}
-	dialOptions := append(
+	dialOptions = append(dialOptions,
 		[]grpc.DialOption{
 			grpc.WithKeepaliveParams(
 				keepalive.ClientParameters{
@@ -192,8 +190,7 @@ func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
 			),
 			grpc.WithDefaultServiceConfig(serviceConfig),
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-		},
-		tlsDialOptions...,
+		}...,
 	)
 
 	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
@@ -360,16 +357,12 @@ type QueryFrontendConfig struct {
 	// The address of the remote querier to connect to.
 	Address string `yaml:"address"`
 
-	// TLSEnabled tells whether TLS should be used to establish remote connection.
-	TLSEnabled bool `yaml:"tls_enabled"`
-
-	// TLS is the config for client TLS.
-	TLS tls.ClientConfig `yaml:",inline"`
+	// ClientConfig allows configuring the gRPC client used to connect to the query-frontend.
+	ClientConfig grpcclient.Config `yaml:",inline"`
 }
 
 func (c *QueryFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Address, "ruler.evaluation.query-frontend.address", "", "GRPC listen address of the query-frontend(s). Must be a DNS address (prefixed with dns:///) to enable client side load balancing.")
-	f.BoolVar(&c.TLSEnabled, "ruler.evaluation.query-frontend.tls-enabled", false, "Set to true if query-frontend connection requires TLS.")
 
-	c.TLS.RegisterFlagsWithPrefix("ruler.evaluation.query-frontend", f)
+	c.ClientConfig.RegisterFlagsWithPrefix("ruler.evaluation.query-frontend", f)
 }

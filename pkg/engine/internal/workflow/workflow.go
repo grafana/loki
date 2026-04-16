@@ -33,6 +33,11 @@ var (
 		Name: "loki_engine_v2_task_short_circuits_total",
 		Help: "Total number of tasks preemptively canceled by short circuiting.",
 	})
+
+	eliminatedCachedTasksTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "loki_engine_v2_task_cached_eliminated_total",
+		Help: "Total number of tasks eliminated before execution because their cached result was empty.",
+	})
 )
 
 // Options configures a [Workflow].
@@ -74,6 +79,19 @@ type Options struct {
 	// CacheCompression is the compression codec to use when encoding cache entries
 	// (e.g. "snappy"). An empty string means no compression.
 	CacheCompression string
+
+	// PruneEmptyCachedTasks controls whether tasks with a known-empty cached
+	// result are eliminated at plan time before any work is dispatched.
+	PruneEmptyCachedTasks bool
+
+	// TaskPruningCacheFetchBatchSize is the maximum number of cache keys fetched per
+	// batch when pruning empty cached tasks at plan time. 0 means all keys
+	// are fetched in a single call per cache name.
+	TaskPruningCacheFetchBatchSize int
+
+	// TaskCacheRegistry is the registry of cache backends used at plan time to
+	// prune tasks whose cached result is known to be empty.
+	TaskCacheRegistry executor.TaskCacheRegistry
 }
 
 var _ fmt.Stringer = (*Workflow)(nil)
@@ -119,9 +137,25 @@ func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*
 		taskCacheMaxSizeBytes:   opts.MaxTaskCacheSize,
 		dataObjScanMaxSizeBytes: opts.MaxDataObjScanCacheSize,
 		compression:             opts.CacheCompression,
-	})
+		registry:                opts.TaskCacheRegistry,
+		pruneEmptyCachedTasks:   opts.PruneEmptyCachedTasks,
+		eliminationBatchSize:    opts.TaskPruningCacheFetchBatchSize,
+	}, logger)
 	if err != nil {
 		return nil, err
+	}
+
+	// All tasks were eliminated at plan time — return an empty workflow whose
+	// Run() immediately yields EOF without dispatching any work.
+	if graph.Len() == 0 {
+		level.Debug(logger).Log("msg", "workflow plan is empty")
+		return &Workflow{
+			opts:         opts,
+			logger:       logger,
+			runner:       runner,
+			taskStates:   make(map[*Task]TaskState),
+			streamStates: make(map[*Stream]StreamState),
+		}, nil
 	}
 
 	// Inject a stream for final task results.
@@ -146,6 +180,12 @@ func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*
 		return nil, err
 	}
 	return wf, nil
+}
+
+// Empty reports whether the workflow has no tasks to execute. This happens when
+// all tasks were eliminated at plan time because their cached results were empty.
+func (wf *Workflow) Empty() bool {
+	return wf.graph.Len() == 0
 }
 
 // injectResultsStream injects a new stream into the sinks of the root task for
@@ -197,12 +237,21 @@ func (wf *Workflow) String() string {
 func (wf *Workflow) Opts() Options { return wf.opts }
 
 // Len returns the total number of tasks in the workflow.
-func (wf *Workflow) Len() int { return len(wf.manifest.Tasks) }
+func (wf *Workflow) Len() int {
+	if wf.Empty() {
+		return 0
+	}
+	return len(wf.manifest.Tasks)
+}
 
 // Close releases resources associated with the workflow.
 func (wf *Workflow) Close() {
 	if wf.span != nil {
 		wf.span.End()
+	}
+
+	if wf.Empty() {
+		return
 	}
 
 	if err := wf.runner.UnregisterManifest(context.Background(), wf.manifest); err != nil {
@@ -216,6 +265,11 @@ func (wf *Workflow) Close() {
 // The returned pipeline must be closed when the workflow is complete to release
 // resources.
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
+	if wf.Empty() {
+		level.Debug(wf.logger).Log("msg", "workflow is empty. will return an empty pipeline.")
+		return newEOFPipeline(), nil
+	}
+
 	wf.capture = xcap.CaptureFromContext(ctx)
 	wf.parentRegion = xcap.RegionFromContext(ctx)
 

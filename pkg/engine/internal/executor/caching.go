@@ -64,9 +64,9 @@ func newCachingPipeline(
 // cachingPipeline wraps a Pipeline and transparently stores and retrieves Arrow
 // record batch results via a cache.Cache.
 //
-// On a cache hit: Open decodes the cached payload into a recordDecoder; Read
+// On a cache hit: Open decodes the cached payload into a CacheEntryDecoder; Read
 // iterates records through it without touching the inner pipeline.
-// On a cache miss: Read add records through a recordEncoder; on EOF the
+// On a cache miss: Read add records through a CacheEntryEncoder; on EOF the
 // encoded payload is committed to the cache.
 type cachingPipeline struct {
 	inner        Pipeline
@@ -80,11 +80,11 @@ type cachingPipeline struct {
 	hit bool
 
 	// For hit path
-	decoder *recordDecoder // non-nil on hit path
+	decoder *CacheEntryDecoder // non-nil on hit path
 
 	// For miss path
 	passthrough bool // true once we know we won't cache (size overflow)
-	encoder     *recordEncoder
+	encoder     *CacheEntryEncoder
 
 	// Accumulated across whichever path is active
 	cachedRows    int64
@@ -97,7 +97,7 @@ func (p *cachingPipeline) Open(ctx context.Context) error {
 
 	found, buffs, missing, err := p.cache.Fetch(ctx, []string{p.key})
 	if err == nil && len(missing) == 0 && len(found) > 0 {
-		dec, decErr := newRecordDecoder(buffs[0])
+		dec, decErr := NewCacheEntryDecoder(buffs[0])
 		if decErr == nil {
 			p.decoder = dec
 			p.hit = true
@@ -115,7 +115,7 @@ func (p *cachingPipeline) Open(ctx context.Context) error {
 	}
 
 	region.Record(p.stats.Misses.Observe(1))
-	p.encoder = newRecordEncoder(p.compression)
+	p.encoder = NewCacheEntryEncoder(p.compression)
 	level.Debug(p.logger).Log("msg", "cache miss", "key", p.key)
 	return p.inner.Open(ctx)
 }
@@ -279,6 +279,15 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 	}, nil
 }
 
+// NewTestTaskCacheRegistry builds a TaskCacheRegistry backed by the provided
+// cache map. Intended for use in tests that need to pre-populate cache entries.
+func NewTestTaskCacheRegistry(caches map[physical.TaskCacheName]cache.Cache) TaskCacheRegistry {
+	return TaskCacheRegistry{
+		caches: caches,
+		stats:  make(map[physical.TaskCacheName]CacheStats),
+	}
+}
+
 // GetForType returns the raw cache backend for the given cache type.
 func (r TaskCacheRegistry) GetForType(cacheType physical.TaskCacheName) (cache.Cache, CacheStats, error) {
 	if c, ok := r.caches[cacheType]; ok {
@@ -293,25 +302,25 @@ const (
 	compressionSnappy byte = 1
 )
 
-// recordEncoder accumulates Arrow record batches and encodes them incrementally.
+// CacheEntryEncoder accumulates Arrow record batches and encodes them incrementally.
 // Each record is compressed independently, allowing callers to check Size() after
 // every Append and short-circuit before the full payload is committed.
-type recordEncoder struct {
+type CacheEntryEncoder struct {
 	comp   byte
 	frames [][]byte // per-record compressed IPC bytes
 	size   uint64   // sum of len(frame) across all frames
 }
 
-func newRecordEncoder(compression string) *recordEncoder {
+func NewCacheEntryEncoder(compression string) *CacheEntryEncoder {
 	comp := compressionNone
 	if strings.EqualFold(compression, "snappy") {
 		comp = compressionSnappy
 	}
-	return &recordEncoder{comp: comp}
+	return &CacheEntryEncoder{comp: comp}
 }
 
 // Append serializes rec, optionally compresses it, and stores the resulting frame.
-func (e *recordEncoder) Append(rec arrow.RecordBatch) error {
+func (e *CacheEntryEncoder) Append(rec arrow.RecordBatch) error {
 	// Skip empty batches
 	if rec.NumRows() == 0 {
 		return nil
@@ -331,7 +340,7 @@ func (e *recordEncoder) Append(rec arrow.RecordBatch) error {
 
 // Size returns the total byte size of all encoded frames accumulated so far.
 // This does not include the fixed-size buffer header.
-func (e *recordEncoder) Size() uint64 { return e.size }
+func (e *CacheEntryEncoder) Size() uint64 { return e.size }
 
 // Commit serializes all accumulated frames into a single framed buffer.
 //
@@ -342,7 +351,7 @@ func (e *recordEncoder) Size() uint64 { return e.size }
 //	for each record:
 //	  [8 bytes: compressed frame length (big-endian uint64)]
 //	  [N bytes: compressed Arrow IPC stream]
-func (e *recordEncoder) Commit() ([]byte, error) {
+func (e *CacheEntryEncoder) Commit() ([]byte, error) {
 	var buf bytes.Buffer
 	var hdr [8]byte
 
@@ -359,13 +368,13 @@ func (e *recordEncoder) Commit() ([]byte, error) {
 }
 
 // Reset discards all accumulated frames and resets counters, freeing their memory.
-func (e *recordEncoder) Reset() {
+func (e *CacheEntryEncoder) Reset() {
 	e.frames = nil
 	e.size = 0
 }
 
-// recordDecoder iterates over a framed buffer produced by [recordEncoder.Commit].
-type recordDecoder struct {
+// CacheEntryDecoder iterates over a framed buffer produced by [CacheEntryEncoder.Commit].
+type CacheEntryDecoder struct {
 	data []byte
 	pos  int
 	n    int  // total record count from header
@@ -373,26 +382,26 @@ type recordDecoder struct {
 	read int  // records consumed so far
 }
 
-// newRecordDecoder parses the buffer header and returns a ready decoder.
+// NewCacheEntryDecoder parses the buffer header and returns a ready decoder.
 // A zero-length buffer represents an empty cached result (n=0).
-func newRecordDecoder(data []byte) (*recordDecoder, error) {
+func NewCacheEntryDecoder(data []byte) (*CacheEntryDecoder, error) {
 	if len(data) == 0 {
-		return &recordDecoder{}, nil
+		return &CacheEntryDecoder{}, nil
 	}
 	if len(data) < 9 {
 		return nil, fmt.Errorf("cache buffer too short (%d bytes)", len(data))
 	}
 	n := int(binary.BigEndian.Uint64(data[:8]))
 	comp := data[8]
-	return &recordDecoder{data: data, pos: 9, n: n, comp: comp}, nil
+	return &CacheEntryDecoder{data: data, pos: 9, n: n, comp: comp}, nil
 }
 
 // Len returns the total number of records declared in the buffer header.
-func (d *recordDecoder) Len() int { return d.n }
+func (d *CacheEntryDecoder) Len() int { return d.n }
 
 // Next returns the next Arrow record batch from the buffer.
 // Returns (nil, [EOF]) when all records have been consumed.
-func (d *recordDecoder) Next() (arrow.RecordBatch, error) {
+func (d *CacheEntryDecoder) Next() (arrow.RecordBatch, error) {
 	if d.read >= d.n {
 		return nil, EOF
 	}

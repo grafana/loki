@@ -7,10 +7,11 @@ chunk_store_config:
       max_size_mb: 500
 common:
   storage:
-    s3:
-      bucketnames: my-bucket
-      region: my-region
-      s3forcepathstyle: false
+    object_store:
+      s3:
+        bucket_name: my-bucket
+        endpoint: s3.my-region.amazonaws.com
+        region: my-region
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
     kvstore:
@@ -144,6 +145,7 @@ server:
   http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
+  use_thanos_objstore: true
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache

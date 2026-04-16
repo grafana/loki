@@ -318,6 +318,16 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	}
 }
 
+// recordBatchBytes returns the total in-memory size in bytes of all column
+// buffers in a RecordBatch.
+func recordBatchBytes(rec arrow.RecordBatch) int64 {
+	var n int64
+	for i := 0; i < int(rec.NumCols()); i++ {
+		n += int64(rec.Column(i).Data().SizeInBytes())
+	}
+	return n
+}
+
 func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (int, error) {
 	region := xcap.RegionFromContext(ctx)
 
@@ -355,6 +365,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		}
 		region.Record(xcap.TaskRecordsSent.Observe(1))
 		region.Record(xcap.TaskRowsSent.Observe(rec.NumRows()))
+		region.Record(xcap.TaskWireBytes.Observe(recordBatchBytes(rec)))
 		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
 	}
 

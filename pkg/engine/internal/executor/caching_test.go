@@ -85,7 +85,7 @@ func TestRecordEncoderDecoder(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("no compression round-trip", func(t *testing.T) {
-		enc := newRecordEncoder("")
+		enc := NewCacheEntryEncoder("")
 		require.NoError(t, enc.Append(rec1))
 		require.Greater(t, enc.Size(), uint64(0))
 
@@ -93,7 +93,7 @@ func TestRecordEncoderDecoder(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, payload)
 
-		dec, err := newRecordDecoder(payload)
+		dec, err := NewCacheEntryDecoder(payload)
 		require.NoError(t, err)
 		require.Equal(t, 1, dec.Len())
 
@@ -106,13 +106,13 @@ func TestRecordEncoderDecoder(t *testing.T) {
 	})
 
 	t.Run("snappy round-trip", func(t *testing.T) {
-		enc := newRecordEncoder("snappy")
+		enc := NewCacheEntryEncoder("snappy")
 		require.NoError(t, enc.Append(rec1))
 
 		payload, err := enc.Commit()
 		require.NoError(t, err)
 
-		dec, err := newRecordDecoder(payload)
+		dec, err := NewCacheEntryDecoder(payload)
 		require.NoError(t, err)
 		require.Equal(t, 1, dec.Len())
 
@@ -122,11 +122,11 @@ func TestRecordEncoderDecoder(t *testing.T) {
 	})
 
 	t.Run("empty result", func(t *testing.T) {
-		enc := newRecordEncoder("snappy")
+		enc := NewCacheEntryEncoder("snappy")
 		payload, err := enc.Commit()
 		require.NoError(t, err)
 
-		dec, err := newRecordDecoder(payload)
+		dec, err := NewCacheEntryDecoder(payload)
 		require.NoError(t, err)
 		require.Equal(t, 0, dec.Len())
 
@@ -135,7 +135,7 @@ func TestRecordEncoderDecoder(t *testing.T) {
 	})
 
 	t.Run("zero-length buffer is treated as empty", func(t *testing.T) {
-		dec, err := newRecordDecoder([]byte{})
+		dec, err := NewCacheEntryDecoder([]byte{})
 		require.NoError(t, err)
 		require.Equal(t, 0, dec.Len())
 	})
@@ -160,7 +160,7 @@ func TestCachingPipelineCaching(t *testing.T) {
 	require.NoError(t, err)
 
 	sizeOf := func(rec arrow.RecordBatch, compression string) uint64 {
-		enc := newRecordEncoder(compression)
+		enc := NewCacheEntryEncoder(compression)
 		_ = enc.Append(rec)
 		return enc.Size()
 	}
@@ -360,7 +360,7 @@ func BenchmarkEncode_WholeSnappy(b *testing.B) {
 	// buffer, then compress the entire buffer in a single snappy.Encode call.
 	// This mirrors the OLD arrowCacheAdapter approach.
 	encodeWhole := func() ([]byte, error) {
-		enc := newRecordEncoder("") // no per-record compression
+		enc := NewCacheEntryEncoder("") // no per-record compression
 		for _, rec := range records {
 			if err := enc.Append(rec); err != nil {
 				return nil, err
@@ -393,7 +393,7 @@ func BenchmarkEncode_PerRecordSnappy(b *testing.B) {
 
 	var lastEncoded []byte
 	for i := 0; i < b.N; i++ {
-		enc := newRecordEncoder("snappy")
+		enc := NewCacheEntryEncoder("snappy")
 		for _, rec := range records {
 			require.NoError(b, enc.Append(rec))
 		}
@@ -406,7 +406,7 @@ func BenchmarkEncode_PerRecordSnappy(b *testing.B) {
 
 func BenchmarkDecode_WholeSnappy(b *testing.B) {
 	records := makeBenchRecords(b, benchRecordCount, benchRowsPerRecord)
-	enc := newRecordEncoder("")
+	enc := NewCacheEntryEncoder("")
 	for _, rec := range records {
 		require.NoError(b, enc.Append(rec))
 	}
@@ -421,7 +421,7 @@ func BenchmarkDecode_WholeSnappy(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		buf, err := snappy.Decode(nil, encoded)
 		require.NoError(b, err)
-		dec, err := newRecordDecoder(buf)
+		dec, err := NewCacheEntryDecoder(buf)
 		require.NoError(b, err)
 		for {
 			rec, err := dec.Next()
@@ -435,7 +435,7 @@ func BenchmarkDecode_WholeSnappy(b *testing.B) {
 
 func BenchmarkDecode_PerRecordSnappy(b *testing.B) {
 	records := makeBenchRecords(b, benchRecordCount, benchRowsPerRecord)
-	enc := newRecordEncoder("snappy")
+	enc := NewCacheEntryEncoder("snappy")
 	for _, rec := range records {
 		require.NoError(b, enc.Append(rec))
 	}
@@ -447,7 +447,7 @@ func BenchmarkDecode_PerRecordSnappy(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		dec, err := newRecordDecoder(encoded)
+		dec, err := NewCacheEntryDecoder(encoded)
 		require.NoError(b, err)
 		for {
 			rec, err := dec.Next()

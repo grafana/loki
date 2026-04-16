@@ -461,7 +461,7 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 	// cleanup any empty streams due to chunk removals above
 	for seriesID, stream := range c.builder.streams {
 		if len(stream.chunks) == 0 {
-			delete(c.indexChunks, seriesID)
+			delete(c.builder.streams, seriesID)
 		}
 	}
 

@@ -27,6 +27,7 @@ func TestResult(t *testing.T) {
 	stats.AddCacheRequest(ResultCache, 1)
 	stats.SetQueryReferencedStructuredMetadata()
 	stats.AddPipelineWrapperFilterdLines(1)
+	stats.AddWireBytesTransferred(42)
 
 	fakeIngesterQuery(ctx)
 	fakeIngesterQuery(ctx)
@@ -65,6 +66,9 @@ func TestResult(t *testing.T) {
 					DecompressedLines: 20,
 					CompressedBytes:   30,
 					TotalDuplicates:   10,
+				},
+				Dataobj: Dataobj{
+					WireBytesTransferred: 42,
 				},
 			},
 		},

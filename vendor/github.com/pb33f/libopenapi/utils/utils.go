@@ -321,14 +321,26 @@ func ExtractValueFromInterfaceMap(name string, raw interface{}) interface{} {
 	return nil
 }
 
+// leadingMergeContent unwraps a leading YAML merge key when it has a corresponding value node.
+// Malformed YAML can produce a bare `<<` node with no value; in that case we leave the original
+// node slice intact and let higher-level validation return an error instead of panicking.
+func leadingMergeContent(nodes []*yaml.Node) []*yaml.Node {
+	if len(nodes) < 2 || nodes[0] == nil || nodes[0].Tag != "!!merge" {
+		return nodes
+	}
+	merged := NodeAlias(nodes[1])
+	if merged == nil {
+		return nodes
+	}
+	return merged.Content
+}
+
 // FindFirstKeyNode will locate the first key and value yaml.Node based on a key.
 func FindFirstKeyNode(key string, nodes []*yaml.Node, depth int) (keyNode *yaml.Node, valueNode *yaml.Node) {
 	if depth > 40 {
 		return nil, nil
 	}
-	if nodes != nil && len(nodes) > 0 && nodes[0].Tag == "!!merge" {
-		nodes = NodeAlias(nodes[1]).Content
-	}
+	nodes = leadingMergeContent(nodes)
 	for i, v := range nodes {
 		if key != "" && key == v.Value {
 			if i+1 >= len(nodes) {
@@ -366,9 +378,7 @@ type KeyNodeSearch struct {
 // FindKeyNodeTop is a non-recursive search of top level nodes for a key, will not look at content.
 // Returns the key and value
 func FindKeyNodeTop(key string, nodes []*yaml.Node) (keyNode *yaml.Node, valueNode *yaml.Node) {
-	if nodes != nil && len(nodes) > 0 && nodes[0].Tag == "!!merge" {
-		nodes = NodeAlias(nodes[1]).Content
-	}
+	nodes = leadingMergeContent(nodes)
 	for i := 0; i < len(nodes); i++ {
 		v := nodes[i]
 		if i%2 != 0 {
@@ -387,9 +397,7 @@ func FindKeyNodeTop(key string, nodes []*yaml.Node) (keyNode *yaml.Node, valueNo
 // FindKeyNode is a non-recursive search of a *yaml.Node Content for a child node with a key.
 // Returns the key and value
 func FindKeyNode(key string, nodes []*yaml.Node) (keyNode *yaml.Node, valueNode *yaml.Node) {
-	if nodes != nil && len(nodes) > 0 && nodes[0].Tag == "!!merge" {
-		nodes = NodeAlias(nodes[1]).Content
-	}
+	nodes = leadingMergeContent(nodes)
 	for i, v := range nodes {
 		if i%2 == 0 && key == v.Value {
 			if len(nodes) <= i+1 {
@@ -419,9 +427,7 @@ func FindKeyNode(key string, nodes []*yaml.Node) (keyNode *yaml.Node, valueNode 
 // generally different things are required from different node trees, so depending on what this function is looking at
 // it will return different things.
 func FindKeyNodeFull(key string, nodes []*yaml.Node) (keyNode *yaml.Node, labelNode *yaml.Node, valueNode *yaml.Node) {
-	if nodes != nil && len(nodes) > 0 && nodes[0].Tag == "!!merge" {
-		nodes = NodeAlias(nodes[1]).Content
-	}
+	nodes = leadingMergeContent(nodes)
 	for i := 0; i < len(nodes); i++ {
 		if i%2 == 0 && key == nodes[i].Value {
 			if i+1 >= len(nodes) {
@@ -460,9 +466,7 @@ func FindKeyNodeFull(key string, nodes []*yaml.Node) (keyNode *yaml.Node, labelN
 // FindKeyNodeFullTop is an overloaded version of FindKeyNodeFull. This version only looks at the top
 // level of the node and not the children.
 func FindKeyNodeFullTop(key string, nodes []*yaml.Node) (keyNode *yaml.Node, labelNode *yaml.Node, valueNode *yaml.Node) {
-	if nodes != nil && len(nodes) >= 0 && nodes[0].Tag == "!!merge" {
-		nodes = NodeAlias(nodes[1]).Content
-	}
+	nodes = leadingMergeContent(nodes)
 	for i := 0; i < len(nodes); i++ {
 		v := nodes[i]
 		if i%2 == 0 {
@@ -479,6 +483,9 @@ func FindKeyNodeFullTop(key string, nodes []*yaml.Node) (keyNode *yaml.Node, lab
 			continue
 		}
 		if i%2 == 0 && key == nodes[i].Value {
+			if i+1 >= len(nodes) {
+				return NodeAlias(nodes[i]), NodeAlias(nodes[i]), NodeAlias(nodes[i])
+			}
 			return NodeAlias(nodes[i]), NodeAlias(nodes[i]), NodeAlias(nodes[i+1]) // next node is what we need.
 		}
 	}
@@ -1236,7 +1243,7 @@ func CheckForMergeNodes(node *yaml.Node) {
 	for i := 0; i < total; i++ {
 		mn := node.Content[i]
 		if i%2 == 0 {
-			if mn.Tag == "!!merge" {
+			if mn.Tag == "!!merge" && i+1 < len(node.Content) {
 				an := node.Content[i+1].Alias
 				if an != nil {
 					node.Content = append(node.Content, an.Content...) // append the merged nodes
