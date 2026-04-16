@@ -34,11 +34,11 @@ const (
 	pbContentType       = "application/x-protobuf"
 	gzipContentEncoding = "gzip"
 	zstdContentEncoding = "zstd"
-	lz4ContentEncoding = "lz4"
+	lz4ContentEncoding  = "lz4"
 
-	OTLPSeverityNumber = "severity_number"
-	OTLPSeverityText   = "severity_text"
-	OTLPEventName      = "event_name"
+	OTLPSeverityNumber = otlplabels.OTLPSeverityNumber
+	OTLPSeverityText   = otlplabels.OTLPSeverityText
+	OTLPEventName      = otlplabels.OTLPEventName
 
 	messageSizeLargerErrFmt = "%w than max (%d vs %d)"
 )
@@ -178,14 +178,15 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			}
 		}
 
+		// this must be pushed to the end after log lines are also evaluated
 		if logServiceNameDiscovery {
 			var sb strings.Builder
 			sb.WriteString("{")
-			lblStrs := make([]string, 0, len(pushedLabels))
+			labels := make([]string, 0, len(pushedLabels))
 			for name, value := range pushedLabels {
-				lblStrs = append(lblStrs, fmt.Sprintf(`%s="%s"`, name, value))
+				labels = append(labels, fmt.Sprintf(`%s="%s"`, name, value))
 			}
-			sb.WriteString(strings.Join(lblStrs, ", "))
+			sb.WriteString(strings.Join(labels, ", "))
 			sb.WriteString("}")
 
 			level.Debug(logger).Log(
