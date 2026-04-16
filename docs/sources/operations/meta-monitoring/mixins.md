@@ -13,7 +13,7 @@ To set up monitoring using the mixin, you need to:
 1. Deploy the Kubernetes Monitoring Helm chart. Follow the instructions in the [Deploy Loki Meta-monitoring](https://grafana.com/docs/loki/latest/operations/meta-monitoring/deploy) documentation.
 1. Be actively storing metrics from your Loki cluster in Grafana Cloud or a separate LGTM stack.
 
-This procedure assumes that you have set up Loki using the Helm chart.
+This procedure assumes that you have already set up Loki using the Helm chart.
 
 {{< admonition type="note" >}}
 Be sure to update the commands and configuration to match your own deployment.
