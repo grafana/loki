@@ -1,7 +1,7 @@
 ---
 title: Loki deployment user interface
 menuTitle: Loki UI
-description: Describes how to setup and use the Loki Deployment UI.
+description: Describes how to set up and use the Loki Deployment UI.
 draft: true
 weight: 100
 ---
@@ -30,7 +30,7 @@ Each Loki component now includes the UI service.
 
 When running Loki as a docker container, the UI service is enabled by default. No additional configuration is required. 
 
-For Loki Helm users discoverability of the UI service needs to be enabled in the Loki configuration. To enable the UI discoverability, add the following paramter to the `loki` section of the `values.yaml` file:
+For Loki Helm users, discovery of the UI service needs to be enabled in the Loki configuration. To enable UI discovery, add the following parameter to the `loki` section of the `values.yaml` file:
 
 ```yaml
 loki:
