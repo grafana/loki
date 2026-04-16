@@ -339,12 +339,6 @@ github.com/apache/arrow-go/v18/parquet/internal/debug
 github.com/apache/arrow-go/v18/parquet/internal/gen-go/parquet
 github.com/apache/arrow-go/v18/parquet/schema
 github.com/apache/arrow-go/v18/parquet/variant
-# github.com/apache/cassandra-gocql-driver/v2 v2.1.0
-## explicit; go 1.19
-github.com/apache/cassandra-gocql-driver/v2
-github.com/apache/cassandra-gocql-driver/v2/internal/lru
-github.com/apache/cassandra-gocql-driver/v2/internal/murmur
-github.com/apache/cassandra-gocql-driver/v2/internal/streams
 # github.com/apache/thrift v0.22.0
 ## explicit; go 1.23
 github.com/apache/thrift/lib/go/thrift
