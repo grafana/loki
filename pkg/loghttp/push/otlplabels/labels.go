@@ -65,7 +65,6 @@ func AttributeToLabels(k string, v pcommon.Value, prefix string) (push.LabelsAda
 	return labelsAdapter, nil
 }
 
-// attributesToLabels converts all attributes in a pcommon.Map to LabelsAdapter.
 func attributesToLabels(attrs pcommon.Map, prefix string) (push.LabelsAdapter, error) {
 	labelsAdapter := make(push.LabelsAdapter, 0, attrs.Len())
 	if attrs.Len() == 0 {
