@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	sectionscolumnar "github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // sectionType identifies postings sections in a data object.
@@ -126,7 +126,7 @@ func (p Posting) Size() int {
 
 // Section represents an opened postings section.
 type Section struct {
-	inner   *sectionscolumnar.Section
+	inner   *columnar.Section
 	columns []*Column
 }
 
@@ -141,12 +141,12 @@ func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 		return nil, fmt.Errorf("unsupported section schema version: got=%d want=1", section.Type.Version)
 	}
 
-	dec, err := sectionscolumnar.NewDecoder(section.Reader, sectionscolumnar.FormatVersion)
+	dec, err := columnar.NewDecoder(section.Reader, columnar.FormatVersion)
 	if err != nil {
 		return nil, fmt.Errorf("creating decoder: %w", err)
 	}
 
-	columnarSection, err := sectionscolumnar.Open(ctx, section.Tenant, dec)
+	columnarSection, err := columnar.Open(ctx, section.Tenant, dec)
 	if err != nil {
 		return nil, fmt.Errorf("opening columnar section: %w", err)
 	}
@@ -195,8 +195,8 @@ type Column struct {
 	Name    string     // Optional name of the column.
 	Type    ColumnType // Type of data in the column.
 
-	inner *sectionscolumnar.Column
+	inner *columnar.Column
 }
 
 // SectionEncoder encodes a batch of sorted Posting rows into a columnar encoder.
-type SectionEncoder func(rows []Posting, enc *sectionscolumnar.Encoder) error
+type SectionEncoder func(rows []Posting, enc *columnar.Encoder) error

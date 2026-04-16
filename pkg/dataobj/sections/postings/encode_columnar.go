@@ -25,9 +25,9 @@ func columnarEncode(rows []Posting, enc *columnar.Encoder, pageSizeHint, pageMax
 	// Build column builders for all 10 columns.
 
 	// kind is a 2-value flag (0=bloom, 1=label). DELTA is the only encoding
-	// available for INT64 in the dataset package. With sorted rows (blooms
-	// first, then labels), deltas are almost all zeros — ZSTD compresses
-	// these runs very well.
+	// available for INT64 in the dataset package. With sorted rows (blooms first,
+	// then labels), deltas are almost all zeros — ZSTD compresses these runs very
+	// well, unlike delta encodings on our other int64 cols
 	kindBuilder, err := dataset.NewColumnBuilder(colKind, dataset.BuilderOptions{
 		PageSizeHint:    pageSizeHint,
 		PageMaxRowCount: pageMaxRowCount,

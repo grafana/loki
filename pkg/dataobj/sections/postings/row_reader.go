@@ -8,7 +8,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
-	sectionscolumnar "github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // RowReader reads the set of postings from a [Section].
@@ -19,9 +19,6 @@ type RowReader struct {
 	buf     []dataset.Row
 	reader  *dataset.RowReader
 	columns []dataset.Column
-
-	// colIndex maps each Section Column index to the corresponding dataset column index.
-	colIndex []int
 }
 
 var errRowReaderNotOpen = errors.New("row reader not opened")
@@ -74,7 +71,7 @@ func (r *RowReader) Read(ctx context.Context, p []Posting) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		if err := r.decodeRow(r.buf[i], &p[i]); err != nil {
+		if err := decodeRow(r.sec.Columns(), r.buf[i], &p[i]); err != nil {
 			return i, fmt.Errorf("decoding posting: %w", err)
 		}
 	}
@@ -83,7 +80,7 @@ func (r *RowReader) Read(ctx context.Context, p []Posting) (int, error) {
 }
 
 func (r *RowReader) initReader(ctx context.Context) error {
-	dset, err := sectionscolumnar.MakeDataset(r.sec.inner, r.sec.inner.Columns())
+	dset, err := columnar.MakeDataset(r.sec.inner, r.sec.inner.Columns())
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
 	}
@@ -104,25 +101,6 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		return fmt.Errorf("opening row reader: %w", err)
 	}
 
-	// Build the mapping from Section Column index → dataset column index.
-	// The dataset includes ALL columns from s.inner.Columns(), in order.
-	// r.sec.columns only contains RECOGNIZED columns (unrecognized ones were skipped in init).
-	// We need to map each recognized column to its position in the dataset columns slice.
-	//
-	// The inner columnar columns and the dataset columns are in the same order,
-	// so we find the position of each recognized column's inner column in the
-	// full columnar column list.
-	allInnerCols := r.sec.inner.Columns()
-	r.colIndex = make([]int, len(r.sec.columns))
-	for i, secCol := range r.sec.columns {
-		for j, innerCol := range allInnerCols {
-			if innerCol == secCol.inner {
-				r.colIndex[i] = j
-				break
-			}
-		}
-	}
-
 	r.columns = columns
 	r.ready = true
 	return nil
@@ -136,8 +114,6 @@ func (r *RowReader) Reset(sec *Section) {
 	r.sec = sec
 	r.ready = false
 	r.columns = nil
-	r.colIndex = nil
-
 	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first
 	// call to Open.
 }
@@ -151,13 +127,13 @@ func (r *RowReader) Close() error {
 	return nil
 }
 
-// decodeRow decodes a dataset.Row into a Posting using the column mapping built
-// during initReader.
-func (r *RowReader) decodeRow(row dataset.Row, p *Posting) error {
-	for i, col := range r.sec.columns {
-		idx := r.colIndex[i]
-		val := row.Values[idx]
-		switch col.Type {
+// decodeRow decodes a dataset.Row into a Posting. Column values are matched
+// by position using the Section's column list, following the streams.decodeRow
+// pattern.
+func decodeRow(columns []*Column, row dataset.Row, p *Posting) error {
+	for columnIndex, val := range row.Values {
+		column := columns[columnIndex]
+		switch column.Type {
 		case ColumnTypeKind:
 			p.Kind = PostingKind(val.Int64())
 		case ColumnTypeObjectPath:
