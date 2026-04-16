@@ -50,6 +50,7 @@ func ApplyGatewayDefaultOptions(opts *Options, k k8s.Client, logger logr.Logger)
 	externalOIDC, err := openshift.DetectExternalOIDC(context.Background(), k, &opts.Stack, opts.Namespace, logger)
 	if err != nil {
 		// handle error
+		kverrors.Wrap(err, "failed to detect external OIDC configuration")
 	}
 
 	switch opts.Stack.Tenants.Mode {
@@ -66,9 +67,8 @@ func ApplyGatewayDefaultOptions(opts *Options, k k8s.Client, logger logr.Logger)
 		o.WithTenantsForMode(opts.Stack.Tenants.Mode, opts.GatewayBaseDomain, tenantData)
 
 		if externalOIDC != nil {
-			println("OIDC!!!")
 			for i := range o.Authentication {
-				o.Authentication[i].OIDCIssuer = externalOIDC.IssuerURL
+				o.Authentication[i].OIDCIssuerURL = externalOIDC.IssuerURL
 				o.Authentication[i].OIDCClientID = externalOIDC.ClientID
 				o.Authentication[i].OIDCClientSecret = externalOIDC.ClientSecret
 				o.Authentication[i].OIDCCA = externalOIDC.CA

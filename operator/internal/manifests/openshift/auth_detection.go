@@ -65,8 +65,13 @@ func DetectExternalOIDC(ctx context.Context, c k8s.Client, opts *lokiv1.LokiStac
 
 	provider := auth.Spec.OIDCProviders[0]
 
+	issuerURL := oidcSpec.IssuerURL
+	if issuerURL == "" {
+		issuerURL = provider.Issuer.URL
+	}
+
 	config := &ExternalOIDCConfig{
-		IssuerURL:    provider.Issuer.URL,
+		IssuerURL:    issuerURL,
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 	}

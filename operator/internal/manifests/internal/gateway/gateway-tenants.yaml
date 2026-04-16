@@ -77,6 +77,18 @@ tenants:
     serviceAccount: {{ $spec.ServiceAccount }}
     redirectURL: {{ $spec.RedirectURL }}
     cookieSecret: {{ $spec.CookieSecret }}
+    {{- if $spec.OIDCIssuerURL }}
+    oidcIssuerURL: {{ $spec.OIDCIssuerURL }}
+    {{- end }}
+    {{- if $spec.OIDCClientID }}
+    oidcClientID: {{ $spec.OIDCClientID }}
+    {{- end }}
+    {{- if $spec.OIDCClientSecret }}
+    oidcClientSecret: {{ $spec.OIDCClientSecret }}
+    {{- end }}
+    {{- if $spec.OIDCCA }}
+    oidcCA: {{ $spec.OIDCCA }}
+    {{- end }}
   opa:
     url: {{ $l.OpenShiftOptions.Authorization.OPAUrl }}
     withAccessToken: true

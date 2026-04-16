@@ -33,6 +33,11 @@ type openShiftSpec struct {
 	ServiceAccount string `json:"serviceAccount"`
 	RedirectURL    string `json:"redirectURL"`
 	CookieSecret   string `json:"cookieSecret"`
+
+	OIDCIssuerURL    string `json:oidcIssuerURL,omitempty`
+	OIDCClientID     string `json:oidcCliendID,omitempty`
+	OIDCClientSecret string `json:oidcClientSecret,omitempty`
+	OIDCCA           string `json:oidcCA,omitempty`
 }
 
 // getTenantConfigFromSecret returns the tenantName, tenantId, cookieSecret

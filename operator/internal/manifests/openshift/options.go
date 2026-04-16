@@ -28,7 +28,7 @@ type AuthenticationSpec struct {
 	CookieSecret   string
 
 	// ExternalOIDC fields
-	OIDCIssuer       string
+	OIDCIssuerURL    string
 	OIDCClientID     string
 	OIDCClientSecret string
 	OIDCCA           string

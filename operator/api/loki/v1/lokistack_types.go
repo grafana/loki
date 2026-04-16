@@ -175,6 +175,8 @@ type OIDCSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="IssuerCA ConfigMap"
 	IssuerCA *CASpec `json:"issuerCA"`
 	// IssuerURL defines the URL for issuer.
+	// When using openshift-logging mode, the IssuerURL is automatically detected
+	// from the Authentication CR if not specified. (should we make it optional?)
 	//
 	// +required
 	// +kubebuilder:validation:Required
