@@ -629,10 +629,12 @@ loki:
 
 # -- Configuration for running Enterprise Loki
 enterprise:
-  # Enable enterprise features, license must be provided
-  enabled: false
+  # Enterprise features are enabled by default; a valid GEL license must be provided
+  # via `enterprise.license.contents` or `enterprise.useExternalLicense`/`enterprise.externalLicenseName`.
+  # Set to `false` to deploy open source Loki instead.
+  enabled: true
   # Default version of GEL to deploy
-  version: 3.6.5
+  version: 3.6.6
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -674,7 +676,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.6.7
+    tag: 3.6.6
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -4034,6 +4036,17 @@ rollout_operator:
 # -- Configuration for the minio subchart
 minio:
   enabled: false
+  # Override the upstream MinIO, Inc. images with the Pigsty (pgsty) community
+  # fork to mitigate the unresolved CVE in the abandoned MinIO images.
+  # See https://github.com/pgsty/minio for details.
+  image:
+    repository: docker.io/pgsty/minio
+    tag: RELEASE.2026-03-14T12-00-00Z
+    pullPolicy: IfNotPresent
+  mcImage:
+    repository: docker.io/pgsty/mc
+    tag: RELEASE.2026-03-13T08-57-32Z
+    pullPolicy: IfNotPresent
   replicas: 1
   # Minio requires 2 to 16 drives for erasure code (drivesPerNode * replicas)
   # https://docs.min.io/docs/minio-erasure-code-quickstart-guide

@@ -13,6 +13,12 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+
+## 6.56.0
+
+- [CHANGE] Swap bundled minio subchart images from `minio/minio` to the Pigsty (`pgsty`) community fork (`docker.io/pgsty/minio:RELEASE.2026-03-14T12-00-00Z`, `docker.io/pgsty/mc:RELEASE.2026-03-13T08-57-32Z`) to mitigate an unresolved upstream MinIO CVE.
+- [CHANGE] Default `enterprise.enabled` to `true` so the chart targets Grafana Enterprise Logs (GEL) by default, matching the post-fork direction of this repository.
+- [CHANGE] Changed GEL version to 3.6.6 (updated `enterprise.version`, `enterprise.image.tag`, and chart `appVersion`).
 - [FEATURE] Update README chart migration notice from future tense to past tense
 
 ## 6.55.0
