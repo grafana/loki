@@ -689,9 +689,13 @@ enterprise:
   canarySecret: null
   # -- Configuration for `provisioner` target
   # Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api.
+  # The provisioner is disabled by default because it requires an out-of-band admin token secret
+  # (created via GEL `tokengen`) referenced by `enterprise.adminToken.secret`. After creating that
+  # secret, set both `enterprise.adminToken.secret` and `enterprise.provisioner.enabled: true`.
+  # See production/helm/loki/docs/examples/enterprise/README.md for the full procedure.
   provisioner:
     # -- Whether the job should be part of the deployment
-    enabled: true
+    enabled: false
     # -- Name of the secret to store provisioned tokens in
     provisionedSecretPrefix: null
     # -- Hook type(s) to customize when the job runs.  defaults to post-install
