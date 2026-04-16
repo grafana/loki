@@ -145,6 +145,7 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 	sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
 
 	tenantStats := b.getStatsBuilderForTenant(tenantID)
+	preAppendSizeEstimate := tenantStats.EstimatedSize()
 
 	tenantStats.Append(stats.Stat{
 		ObjectPath:       objectPath,
@@ -157,7 +158,21 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 		UncompressedSize: uncompressedSize,
 	})
 
-	// TODO: set b.state = builderStateDirty when we implement flush.
+	postAppendSizeEstimate := tenantStats.EstimatedSize()
+	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
+
+	if postAppendSizeEstimate > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantStats); err != nil {
+			return err
+		}
+	}
+
+	b.currentSizeEstimate = b.estimatedSize()
+	b.state = builderStateDirty
+	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
+		b.builderFull = true
+	}
+
 	return nil
 }
 
@@ -167,6 +182,7 @@ func (b *Builder) AppendLabelPosting(tenantID, objectPath string, sectionIdx int
 	uncompressedSize int64, minTs, maxTs time.Time) error {
 
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
+	preAppendSizeEstimate := tenantPostings.EstimatedSize()
 
 	tenantPostings.Append(postings.Posting{
 		Kind:             postings.KindLabel,
@@ -181,7 +197,21 @@ func (b *Builder) AppendLabelPosting(tenantID, objectPath string, sectionIdx int
 		MaxTimestamp:     maxTs.UnixNano(),
 	})
 
-	// TODO: set b.state = builderStateDirty when we implement flush.
+	postAppendSizeEstimate := tenantPostings.EstimatedSize()
+	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
+
+	if postAppendSizeEstimate > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantPostings); err != nil {
+			return err
+		}
+	}
+
+	b.currentSizeEstimate = b.estimatedSize()
+	b.state = builderStateDirty
+	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
+		b.builderFull = true
+	}
+
 	return nil
 }
 
@@ -191,6 +221,7 @@ func (b *Builder) AppendBloomPosting(tenantID, objectPath string, sectionIdx int
 	uncompressedSize int64, minTs, maxTs time.Time) error {
 
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
+	preAppendSizeEstimate := tenantPostings.EstimatedSize()
 
 	tenantPostings.Append(postings.Posting{
 		Kind:             postings.KindBloom,
@@ -204,7 +235,21 @@ func (b *Builder) AppendBloomPosting(tenantID, objectPath string, sectionIdx int
 		MaxTimestamp:     maxTs.UnixNano(),
 	})
 
-	// TODO: set b.state = builderStateDirty when we implement flush.
+	postAppendSizeEstimate := tenantPostings.EstimatedSize()
+	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
+
+	if postAppendSizeEstimate > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantPostings); err != nil {
+			return err
+		}
+	}
+
+	b.currentSizeEstimate = b.estimatedSize()
+	b.state = builderStateDirty
+	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
+		b.builderFull = true
+	}
+
 	return nil
 }
 
@@ -448,12 +493,15 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 		}
 	}
 
-	// Stats and postings builders - reset only (no-op flush until serialization lands)
 	for _, tenantStats := range b.stats {
-		tenantStats.Reset()
+		if tenantStats.EstimatedSize() > 0 {
+			flushErrors = append(flushErrors, b.builder.Append(tenantStats))
+		}
 	}
 	for _, tenantPostings := range b.postings {
-		tenantPostings.Reset()
+		if tenantPostings.EstimatedSize() > 0 {
+			flushErrors = append(flushErrors, b.builder.Append(tenantPostings))
+		}
 	}
 
 	if err := errors.Join(flushErrors...); err != nil {
@@ -537,18 +585,4 @@ func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
 // UnregisterMetrics unregisters metrics about builder from reg.
 func (b *Builder) UnregisterMetrics(reg prometheus.Registerer) {
 	b.metrics.Unregister(reg)
-}
-
-// StatsBuilderForTenant returns the stats builder for the given tenant. If no
-// stats have been appended for this tenant, nil is returned.
-// This is intended for testing only.
-func (b *Builder) StatsBuilderForTenant(tenantID string) *stats.Builder {
-	return b.stats[tenantID]
-}
-
-// PostingsBuilderForTenant returns the postings builder for the given tenant. If no
-// postings have been appended for this tenant, nil is returned.
-// This is intended for testing only.
-func (b *Builder) PostingsBuilderForTenant(tenantID string) *postings.Builder {
-	return b.postings[tenantID]
 }

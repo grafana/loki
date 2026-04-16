@@ -93,7 +93,7 @@ func TestColumnValuesCalculation_BloomPostingAppended(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	allPostings := flushAndReadAllPostings(t, builder)
 
 	// We expect 2 bloom postings: one for trace_id, one for span_id.
 	var tracePosting, spanPosting *postings.Posting
@@ -151,7 +151,7 @@ func TestColumnValuesCalculation_TimestampsAndSizes(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	allPostings := flushAndReadAllPostings(t, builder)
 
 	var tracePosting *postings.Posting
 	for i := range allPostings {
@@ -195,7 +195,7 @@ func TestColumnValuesCalculation_StreamIDBitmapBitsSet(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	allPostings := flushAndReadAllPostings(t, builder)
 
 	var tracePosting *postings.Posting
 	for i := range allPostings {
@@ -228,7 +228,7 @@ func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
 
 	// The column was registered during Prepare, so Flush still appends a bloom
 	// posting for trace_id — but with empty data since no records were processed.
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	allPostings := flushAndReadAllPostings(t, builder)
 
 	var tracePosting *postings.Posting
 	for i := range allPostings {
@@ -272,7 +272,7 @@ func TestColumnValuesCalculation_MultipleBatches(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch2))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	allPostings := flushAndReadAllPostings(t, builder)
 
 	var tracePosting *postings.Posting
 	for i := range allPostings {

@@ -2,7 +2,6 @@ package index
 
 import (
 	"context"
-	"io"
 	"testing"
 	"time"
 
@@ -43,32 +42,36 @@ func makeTestCalcContext(builder *indexobj.Builder) *logsCalculationContext {
 	}
 }
 
-func flushStatsForTenant(t *testing.T, builder *indexobj.Builder, tenantID string) []stats.Stat {
+func flushAndReadAllStats(t *testing.T, builder *indexobj.Builder) []stats.Stat {
 	t.Helper()
-	sb := builder.StatsBuilderForTenant(tenantID)
-	if sb == nil {
-		return nil
-	}
-	sections, err := sb.Flush(context.Background())
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
 
-	var allStats []stats.Stat
-	for _, sec := range sections {
-		rr, err := stats.NewRowReader(&sec)
-		require.NoError(t, err)
+	var result []stats.Stat
+	for _, sec := range obj.Sections() {
+		if !stats.CheckSection(sec) {
+			continue
+		}
+		opened, err := stats.Open(context.Background(), sec)
+		if err != nil {
+			continue
+		}
+		rr := stats.NewRowReader(opened)
 		defer rr.Close()
-
-		buf := make([]stats.Stat, 64)
+		if err := rr.Open(context.Background()); err != nil {
+			continue
+		}
+		buf := make([]stats.Stat, 100)
 		for {
-			n, err := rr.Read(context.Background(), buf)
-			allStats = append(allStats, buf[:n]...)
-			if err == io.EOF {
+			n, readErr := rr.Read(context.Background(), buf)
+			result = append(result, buf[:n]...)
+			if readErr != nil {
 				break
 			}
-			require.NoError(t, err)
 		}
 	}
-	return allStats
+	return result
 }
 
 func TestStatsCalculation_BasicAggregation(t *testing.T) {
@@ -97,7 +100,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
 	require.NoError(t, calc.Flush(context.Background(), ctx))
 
-	got := flushStatsForTenant(t, builder, "tenant-1")
+	got := flushAndReadAllStats(t, builder)
 	// We expect 3 aggregates: "", "svcA", "svcB" (sorted)
 	require.Len(t, got, 3)
 
@@ -133,7 +136,7 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
 	require.NoError(t, calc.Flush(context.Background(), ctx))
 
-	got := flushStatsForTenant(t, builder, "tenant-1")
+	got := flushAndReadAllStats(t, builder)
 	require.Len(t, got, 1)
 
 	// Verify metadata fields are set correctly.
@@ -157,7 +160,7 @@ func TestStatsCalculation_MissingServiceName(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
 	require.NoError(t, calc.Flush(context.Background(), ctx))
 
-	got := flushStatsForTenant(t, builder, "tenant-1")
+	got := flushAndReadAllStats(t, builder)
 	require.Len(t, got, 1)
 	require.Equal(t, "", got[0].Labels["service_name"])
 }
@@ -183,7 +186,7 @@ func TestStatsCalculation_MultipleBatches(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch2))
 	require.NoError(t, calc.Flush(context.Background(), ctx))
 
-	got := flushStatsForTenant(t, builder, "tenant-1")
+	got := flushAndReadAllStats(t, builder)
 	// svcA and svcB
 	require.Len(t, got, 2)
 
@@ -208,7 +211,7 @@ func TestStatsCalculation_EmptyBatch(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, nil))
 	require.NoError(t, calc.Flush(context.Background(), ctx))
 
-	// No data → no stats.
-	sb := builder.StatsBuilderForTenant("tenant-1")
-	require.Nil(t, sb, "expected no stats builder to be created for empty batch")
+	// No data → builder is empty, Flush returns ErrBuilderEmpty.
+	_, _, err := builder.Flush()
+	require.ErrorIs(t, err, indexobj.ErrBuilderEmpty, "expected builder to be empty after empty batch")
 }
