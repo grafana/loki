@@ -1348,10 +1348,9 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 			TLSClientConfig: cfg,
 		}
 
-		director := tp.Director
-		tp.Director = func(req *http.Request) {
-			director(req)
-			req.Host = tailURL.Host
+		tp.Rewrite = func(pr *httputil.ProxyRequest) {
+			pr.SetURL(tailURL)
+			pr.Out.Host = tailURL.Host
 		}
 
 		defaultHandler = httpMiddleware.Wrap(tp)
