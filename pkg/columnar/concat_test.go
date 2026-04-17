@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -17,10 +18,10 @@ func TestConcat_Null(t *testing.T) {
 	var in []columnar.Array
 	for _, l := range []int{10, 5, 32} {
 		values := make([]any, l)
-		in = append(in, columnartest.Array(t, columnar.KindNull, &alloc, values...))
+		in = append(in, columnartest.Array(t, types.KindNull, &alloc, values...))
 	}
 
-	expect := columnartest.Array(t, columnar.KindNull, &alloc, make([]any, 10+5+32)...)
+	expect := columnartest.Array(t, types.KindNull, &alloc, make([]any, 10+5+32)...)
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
 	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
@@ -30,12 +31,12 @@ func TestConcat_Bool(t *testing.T) {
 	var alloc memory.Allocator
 
 	in := []columnar.Array{
-		columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, true),
-		columnartest.Array(t, columnar.KindBool, &alloc),
-		columnartest.Array(t, columnar.KindBool, &alloc, false, nil),
+		columnartest.Array(t, types.KindBool, &alloc, true, false, false, true),
+		columnartest.Array(t, types.KindBool, &alloc),
+		columnartest.Array(t, types.KindBool, &alloc, false, nil),
 	}
 
-	expect := columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, true, false, nil)
+	expect := columnartest.Array(t, types.KindBool, &alloc, true, false, false, true, false, nil)
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
 	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
@@ -45,12 +46,12 @@ func TestConcat_Int32(t *testing.T) {
 	var alloc memory.Allocator
 
 	in := []columnar.Array{
-		columnartest.Array(t, columnar.KindInt32, &alloc, 1, 2, 3, 4),
-		columnartest.Array(t, columnar.KindInt32, &alloc),
-		columnartest.Array(t, columnar.KindInt32, &alloc, 5, nil),
+		columnartest.Array(t, types.KindInt32, &alloc, 1, 2, 3, 4),
+		columnartest.Array(t, types.KindInt32, &alloc),
+		columnartest.Array(t, types.KindInt32, &alloc, 5, nil),
 	}
 
-	expect := columnartest.Array(t, columnar.KindInt32, &alloc, 1, 2, 3, 4, 5, nil)
+	expect := columnartest.Array(t, types.KindInt32, &alloc, 1, 2, 3, 4, 5, nil)
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
 	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
@@ -60,12 +61,12 @@ func TestConcat_Int64(t *testing.T) {
 	var alloc memory.Allocator
 
 	in := []columnar.Array{
-		columnartest.Array(t, columnar.KindInt64, &alloc, 1, 2, 3, 4),
-		columnartest.Array(t, columnar.KindInt64, &alloc),
-		columnartest.Array(t, columnar.KindInt64, &alloc, 5, nil),
+		columnartest.Array(t, types.KindInt64, &alloc, 1, 2, 3, 4),
+		columnartest.Array(t, types.KindInt64, &alloc),
+		columnartest.Array(t, types.KindInt64, &alloc, 5, nil),
 	}
 
-	expect := columnartest.Array(t, columnar.KindInt64, &alloc, 1, 2, 3, 4, 5, nil)
+	expect := columnartest.Array(t, types.KindInt64, &alloc, 1, 2, 3, 4, 5, nil)
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
 	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
@@ -75,12 +76,12 @@ func TestConcat_Uint32(t *testing.T) {
 	var alloc memory.Allocator
 
 	in := []columnar.Array{
-		columnartest.Array(t, columnar.KindUint32, &alloc, 1, 2, 3, 4),
-		columnartest.Array(t, columnar.KindUint32, &alloc),
-		columnartest.Array(t, columnar.KindUint32, &alloc, 5, nil),
+		columnartest.Array(t, types.KindUint32, &alloc, 1, 2, 3, 4),
+		columnartest.Array(t, types.KindUint32, &alloc),
+		columnartest.Array(t, types.KindUint32, &alloc, 5, nil),
 	}
 
-	expect := columnartest.Array(t, columnar.KindUint32, &alloc, 1, 2, 3, 4, 5, nil)
+	expect := columnartest.Array(t, types.KindUint32, &alloc, 1, 2, 3, 4, 5, nil)
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
 	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
@@ -90,12 +91,12 @@ func TestConcat_Uint64(t *testing.T) {
 	var alloc memory.Allocator
 
 	in := []columnar.Array{
-		columnartest.Array(t, columnar.KindUint64, &alloc, 1, 2, 3, 4),
-		columnartest.Array(t, columnar.KindUint64, &alloc),
-		columnartest.Array(t, columnar.KindUint64, &alloc, 5, nil),
+		columnartest.Array(t, types.KindUint64, &alloc, 1, 2, 3, 4),
+		columnartest.Array(t, types.KindUint64, &alloc),
+		columnartest.Array(t, types.KindUint64, &alloc, 5, nil),
 	}
 
-	expect := columnartest.Array(t, columnar.KindUint64, &alloc, 1, 2, 3, 4, 5, nil)
+	expect := columnartest.Array(t, types.KindUint64, &alloc, 1, 2, 3, 4, 5, nil)
 	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
 	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
@@ -105,13 +106,13 @@ func TestConcat_UTF8(t *testing.T) {
 	var alloc memory.Allocator
 
 	in := []columnar.Array{
-		columnartest.Array(t, columnar.KindUTF8, &alloc, "hello", "world", "foo", "bar"),
-		columnartest.Array(t, columnar.KindUTF8, &alloc),
-		columnartest.Array(t, columnar.KindUTF8, &alloc, "baz", nil),
+		columnartest.Array(t, types.KindUTF8, &alloc, "hello", "world", "foo", "bar"),
+		columnartest.Array(t, types.KindUTF8, &alloc),
+		columnartest.Array(t, types.KindUTF8, &alloc, "baz", nil),
 	}
 
 	expect := columnartest.Array(
-		t, columnar.KindUTF8, &alloc,
+		t, types.KindUTF8, &alloc,
 		"hello", "world", "foo", "bar", "baz", nil,
 	)
 
@@ -129,13 +130,13 @@ func TestConcat_UTF8_Slices(t *testing.T) {
 	var alloc memory.Allocator
 
 	in := []columnar.Array{
-		columnartest.Array(t, columnar.KindUTF8, &alloc, "hello", "world", "foo", "bar").Slice(1, 3),
-		columnartest.Array(t, columnar.KindUTF8, &alloc),
-		columnartest.Array(t, columnar.KindUTF8, &alloc, "baz", nil),
+		columnartest.Array(t, types.KindUTF8, &alloc, "hello", "world", "foo", "bar").Slice(1, 3),
+		columnartest.Array(t, types.KindUTF8, &alloc),
+		columnartest.Array(t, types.KindUTF8, &alloc, "baz", nil),
 	}
 
 	expect := columnartest.Array(
-		t, columnar.KindUTF8, &alloc,
+		t, types.KindUTF8, &alloc,
 		"world", "foo", "baz", nil,
 	)
 
@@ -150,13 +151,13 @@ func TestConcat_Struct(t *testing.T) {
 	schema := columnar.NewSchema([]columnar.Column{{Name: "x"}, {Name: "y"}})
 
 	s1 := columnar.NewStruct(schema, []columnar.Array{
-		columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
-		columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "b"),
+		columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(2)),
+		columnartest.Array(t, types.KindUTF8, &alloc, "a", "b"),
 	}, 2, memory.Bitmap{})
 
 	s2 := columnar.NewStruct(schema, []columnar.Array{
-		columnartest.Array(t, columnar.KindInt64, &alloc, int64(3)),
-		columnartest.Array(t, columnar.KindUTF8, &alloc, "c"),
+		columnartest.Array(t, types.KindInt64, &alloc, int64(3)),
+		columnartest.Array(t, types.KindUTF8, &alloc, "c"),
 	}, 1, memory.Bitmap{})
 
 	result, err := columnar.Concat(&alloc, []columnar.Array{s1, s2})
@@ -167,11 +168,11 @@ func TestConcat_Struct(t *testing.T) {
 	require.Equal(t, 2, rs.NumFields())
 
 	columnartest.RequireArraysEqual(t,
-		columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
+		columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(2), int64(3)),
 		rs.Field(0), memory.Bitmap{},
 	)
 	columnartest.RequireArraysEqual(t,
-		columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "b", "c"),
+		columnartest.Array(t, types.KindUTF8, &alloc, "a", "b", "c"),
 		rs.Field(1), memory.Bitmap{},
 	)
 }
@@ -187,10 +188,10 @@ func TestConcat_Struct_WithValidity(t *testing.T) {
 	v2.AppendValues(true)
 
 	s1 := columnar.NewStruct(schema, []columnar.Array{
-		columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(0)),
+		columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(0)),
 	}, 2, v1)
 	s2 := columnar.NewStruct(schema, []columnar.Array{
-		columnartest.Array(t, columnar.KindInt64, &alloc, int64(3)),
+		columnartest.Array(t, types.KindInt64, &alloc, int64(3)),
 	}, 1, v2)
 
 	result, err := columnar.Concat(&alloc, []columnar.Array{s1, s2})

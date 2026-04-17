@@ -84,11 +84,6 @@ type Options struct {
 	// result are eliminated at plan time before any work is dispatched.
 	PruneEmptyCachedTasks bool
 
-	// TaskPruningCacheFetchBatchSize is the maximum number of cache keys fetched per
-	// batch when pruning empty cached tasks at plan time. 0 means all keys
-	// are fetched in a single call per cache name.
-	TaskPruningCacheFetchBatchSize int
-
 	// TaskCacheRegistry is the registry of cache backends used at plan time to
 	// prune tasks whose cached result is known to be empty.
 	TaskCacheRegistry executor.TaskCacheRegistry
@@ -139,7 +134,6 @@ func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*
 		compression:             opts.CacheCompression,
 		registry:                opts.TaskCacheRegistry,
 		pruneEmptyCachedTasks:   opts.PruneEmptyCachedTasks,
-		eliminationBatchSize:    opts.TaskPruningCacheFetchBatchSize,
 	}, logger)
 	if err != nil {
 		return nil, err

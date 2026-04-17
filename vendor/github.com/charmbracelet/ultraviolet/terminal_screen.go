@@ -34,6 +34,7 @@ type TerminalScreen struct {
 	foregroundColor      color.Color
 	progressBar          *ProgressBar
 	windowTitle          string
+	syncUpdates          bool // mode 2026
 }
 
 var _ Screen = (*TerminalScreen)(nil)
@@ -52,9 +53,11 @@ func NewTerminalScreen(w io.Writer, env Environ) *TerminalScreen {
 	s.rbuf = NewRenderBuffer(0, 0)
 	s.env = env
 
-	if f, err := os.OpenFile("uv_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
-		log.SetOutput(f)
-		s.rend.SetLogger(log.Default())
+	if debugFile := env.Getenv("UV_DEBUG"); debugFile != "" {
+		if f, err := os.OpenFile(debugFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
+			log.SetOutput(f)
+			s.rend.SetLogger(log.Default())
+		}
 	}
 
 	// Configure renderer optimizations based on console settings.
@@ -176,7 +179,38 @@ func (s *TerminalScreen) Flush() error {
 		}
 	}
 
-	_, err := s.w.Write(s.buf.Bytes())
+	var buf bytes.Buffer
+	buf.Grow(s.buf.Len())
+
+	if s.buf.Len() > 0 {
+		if s.syncUpdates {
+			buf.Grow(len(ansi.SetModeSynchronizedOutput) + len(ansi.ResetModeSynchronizedOutput))
+
+			// If synchronized updates are enabled, we need to wrap the output in
+			// the appropriate control sequences to ensure that the terminal treats
+			// it as a single atomic update. This is necessary to prevent flickering
+			// and other visual artifacts that can occur when multiple updates are sent
+			// separately.
+			buf.WriteString(ansi.SetModeSynchronizedOutput)
+		} else if s.cursor != nil && !s.cursor.Hidden {
+			buf.Grow(len(ansi.HideCursor) + len(ansi.ShowCursor))
+
+			// If synchronized updates are not enabled, we need to ensure that
+			// the cursor is hidden before writing any output to prevent
+			// unwanted cursor visual artifacts.
+			buf.WriteString(ansi.HideCursor)
+		}
+
+		buf.Write(s.buf.Bytes())
+
+		if s.syncUpdates {
+			buf.WriteString(ansi.ResetModeSynchronizedOutput)
+		} else if s.cursor != nil && !s.cursor.Hidden {
+			buf.WriteString(ansi.ShowCursor)
+		}
+	}
+
+	_, err := s.w.Write(buf.Bytes())
 	if err != nil {
 		return err
 	}
@@ -456,6 +490,23 @@ func (s *TerminalScreen) DisableBracketedPaste() error {
 // BracketedPaste returns whether bracketed paste mode is currently enabled.
 func (s *TerminalScreen) BracketedPaste() bool {
 	return s.bracketedPaste
+}
+
+// SetSynchronizedUpdates sets whether to use synchronized updates (mode 2026),
+// which allows applications to batch updates to the terminal screen and flush
+// them all at once for improved performance.
+//
+// The changes can be committed to the underlying writer by calling the
+// [TerminalScreen.Flush] method.
+func (s *TerminalScreen) SetSynchronizedUpdates(enabled bool) error {
+	s.syncUpdates = enabled
+	return nil
+}
+
+// SynchronizedUpdates returns whether synchronized updates (mode 2026) are
+// currently enabled.
+func (s *TerminalScreen) SynchronizedUpdates() bool {
+	return s.syncUpdates
 }
 
 // SetMouseMode sets the mouse mode for the terminal, allowing applications to

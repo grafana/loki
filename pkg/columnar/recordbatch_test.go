@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -19,16 +20,16 @@ func TestRecordBatch_Slice(t *testing.T) {
 		}),
 		4, // row count
 		[]columnar.Array{
-			columnartest.Array(t, columnar.KindUTF8, &alloc, "Peter", "Paul", "Mary", "John"),
-			columnartest.Array(t, columnar.KindUint64, &alloc, 30, 25, 43, 28),
+			columnartest.Array(t, types.KindUTF8, &alloc, "Peter", "Paul", "Mary", "John"),
+			columnartest.Array(t, types.KindUint64, &alloc, 30, 25, 43, 28),
 		},
 	)
 
 	slice := record.Slice(1, 3)
 
 	var (
-		expectNames = columnartest.Array(t, columnar.KindUTF8, &alloc, "Paul", "Mary")
-		expectAges  = columnartest.Array(t, columnar.KindUint64, &alloc, 25, 43)
+		expectNames = columnartest.Array(t, types.KindUTF8, &alloc, "Paul", "Mary")
+		expectAges  = columnartest.Array(t, types.KindUint64, &alloc, 25, 43)
 	)
 
 	columnartest.RequireArraysEqual(t, expectNames, slice.Column(0), memory.Bitmap{})

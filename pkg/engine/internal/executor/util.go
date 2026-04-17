@@ -2,6 +2,7 @@ package executor
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -35,9 +36,7 @@ func columnForFQN(fqn string, batch arrow.RecordBatch) (arrow.Array, int, error)
 }
 
 // labelValuesCache returns label values for a given row in range and vector aggregators, but cache them in order
-// to reduce object allocations for repeated label sets. It computes an xxhash over the non-null label values
-// to form the cache key, then returns the full slice of values.
-// In case of a cache miss it scans the row again and allocates arrays for label values.
+// to reduce object allocations for repeated label sets. Strings are copied to avoid referencing the Arrow data buffer.
 type labelValuesCache struct {
 	digest *xxhash.Digest
 	cache  map[uint64][]string
@@ -51,6 +50,7 @@ func newLabelValuesCache() *labelValuesCache {
 }
 
 func (c *labelValuesCache) getLabelValues(arrays []*array.String, row int) []string {
+	// Compute an xxhash over the non-null label values to form the cache key.
 	c.digest.Reset()
 	for _, arr := range arrays {
 		if !arr.IsNull(row) {
@@ -61,11 +61,12 @@ func (c *labelValuesCache) getLabelValues(arrays []*array.String, row int) []str
 	key := c.digest.Sum64()
 
 	labelValues, ok := c.cache[key]
+	// In case of a cache miss, scan the row again and copy the label values.
 	if !ok {
 		labelValues = make([]string, 0, len(arrays))
 		for _, arr := range arrays {
 			if !arr.IsNull(row) {
-				labelValues = append(labelValues, arr.Value(row))
+				labelValues = append(labelValues, strings.Clone(arr.Value(row)))
 			}
 		}
 		c.cache[key] = labelValues

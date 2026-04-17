@@ -15,9 +15,6 @@ Ultraviolet is not a framework by design, however it can be used standalone to c
 [bbt]: https://github.com/charmbracelet/bubbletea
 [lg]: https://github.com/charmbracelet/lipgloss
 
-> [!CAUTION]
-> This project currently exists to serve internal use cases. API stability is a goal, but expect no stability guarantees as of now.
-
 ## Features
 
 Ultraviolet is built with several core features in mind to make terminal
