@@ -26,6 +26,7 @@ type Record struct {
 	severity          Severity
 	severityText      string
 	body              Value
+	err               error
 
 	// The fields below are for optimizing the implementation of Attributes and
 	// AddAttributes. This design is borrowed from the slog Record type:
@@ -110,6 +111,16 @@ func (r *Record) SetBody(v Value) {
 	r.body = v
 }
 
+// Err returns the associated error if one has been set.
+func (r *Record) Err() error {
+	return r.err
+}
+
+// SetErr sets the associated error. Passing nil clears the error.
+func (r *Record) SetErr(err error) {
+	r.err = err
+}
+
 // WalkAttributes walks all attributes the log record holds by calling f for
 // each on each [KeyValue] in the [Record]. Iteration stops if f returns false.
 func (r *Record) WalkAttributes(f func(KeyValue) bool) {
@@ -141,4 +152,12 @@ func (r *Record) AddAttributes(attrs ...KeyValue) {
 // AttributesLen returns the number of attributes in the log record.
 func (r *Record) AttributesLen() int {
 	return r.nFront + len(r.back)
+}
+
+// Clone returns a copy of the record with no shared state.
+// The original record and the clone can both be modified without interfering with each other.
+func (r *Record) Clone() Record {
+	res := *r
+	res.back = slices.Clone(r.back)
+	return res
 }
