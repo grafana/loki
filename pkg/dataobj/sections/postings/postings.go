@@ -196,6 +196,3 @@ type Column struct {
 
 	inner *columnar.Column
 }
-
-// SectionEncoder encodes a batch of sorted Posting rows into a columnar encoder.
-type SectionEncoder func(rows []Posting, enc *columnar.Encoder) error
