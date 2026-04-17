@@ -356,17 +356,56 @@ func (index *SpecIndex) SearchIndexForReferenceByReferenceWithContext(ctx contex
 		}
 	}
 
-	if index.logger != nil {
-		// this is a last ditch effort. if this fails, all hope is lost.
-		if index.GetRolodex() != nil {
-			for _, i := range index.GetRolodex().GetIndexes() {
-				v := i.FindComponent(ctx, ref)
+	// last ditch effort: search all rolodex indexes and root index.
+	// this is decoupled from the logger guard so search works even without a logger.
+	if rolo := index.GetRolodex(); rolo != nil {
+		for _, i := range rolo.GetIndexes() {
+			v := i.FindComponent(ctx, ref)
+			if v != nil {
+				return v, v.Index, ctx
+			}
+		}
+
+		// also try the root index, which is not included in GetIndexes().
+		// this handles the case where an external file contains a local #/ ref
+		// (e.g., #/components/schemas/Workspace) that the resolver expanded into
+		// an absolute path form (e.g., /path/to/file.yaml#/components/schemas/Workspace).
+		// the component actually lives in the root document, not in the external file.
+		if rootIdx := rolo.GetRootIndex(); rootIdx != nil && rootIdx != index {
+			v := rootIdx.FindComponent(ctx, ref)
+			if v != nil {
+				return v, v.Index, ctx
+			}
+			// if the ref contains a file path + fragment, extract the fragment
+			// and try it against the root index directly. This resolves cases where
+			// #/components/schemas/Name was expanded to /abs/path/file.yaml#/components/schemas/Name
+			// but the schema actually lives in the root document.
+			if parts := strings.SplitN(ref, "#/", 2); len(parts) == 2 && parts[0] != "" {
+				fragmentRef := fmt.Sprintf("#/%s", parts[1])
+				v = rootIdx.FindComponent(ctx, fragmentRef)
 				if v != nil {
 					return v, v.Index, ctx
 				}
 			}
 		}
-		index.logger.Error("unable to locate reference anywhere in the rolodex", "reference", ref)
+	}
+
+	if index.logger != nil {
+		rolodexIndexCount := -1
+		rootIndexPath := "<nil>"
+		if rolo := index.GetRolodex(); rolo != nil {
+			rolodexIndexCount = len(rolo.GetIndexes())
+			if ri := rolo.GetRootIndex(); ri != nil {
+				rootIndexPath = ri.GetSpecAbsolutePath()
+			}
+		}
+		index.logger.Error("unable to locate reference anywhere in the rolodex",
+			"reference", ref,
+			"indexPath", index.specAbsolutePath,
+			"hasRolodex", index.GetRolodex() != nil,
+			"rolodexIndexCount", rolodexIndexCount,
+			"rootIndexPath", rootIndexPath,
+		)
 	}
 	return nil, index, ctx
 }

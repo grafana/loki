@@ -2,6 +2,8 @@ package local
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"path"
 	"testing"
@@ -87,7 +89,8 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 type testFileLoader struct{}
 
 func (testFileLoader) Load(identifier string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
-	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, parser.NewParser(parser.Options{}))
+	parseLog := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, parser.NewParser(parser.Options{}), parseLog)
 }
 
 func (testFileLoader) Parse(query string) (parser.Expr, error) {

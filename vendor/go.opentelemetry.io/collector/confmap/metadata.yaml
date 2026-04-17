@@ -10,3 +10,15 @@ status:
   class: pkg
   stability:
     stable: [logs, metrics, traces]
+
+feature_gates:
+  - id: confmap.enableMergeAppendOption
+    description: "Combines lists when resolving configs from different sources. This feature gate will not be stabilized 'as is'; the current behavior will remain the default."
+    stage: alpha
+    from_version: 'v0.120.0'
+    reference_url: 'https://github.com/open-telemetry/opentelemetry-collector/issues/8754'
+  - id: confmap.newExpandedValueSanitizer
+    description: 'Fixes some types of decoding errors where environment variables are parsed as non-string types but assigned to string fields.'
+    stage: beta
+    from_version: 'v0.144.0'
+    reference_url: 'https://github.com/open-telemetry/opentelemetry-collector/pull/14413'

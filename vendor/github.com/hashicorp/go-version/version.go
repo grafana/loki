@@ -49,6 +49,23 @@ const (
 		`?`
 )
 
+// Optional options for NewVersion function.
+type options struct {
+	// If set, this prefix will be trimmed from the version string before parsing.
+	prefix string
+}
+
+// Option is a functional option for NewVersion.
+type Option func(*options)
+
+// WithPrefix is a functional option that sets a prefix to be removed from the
+// version string before parsing.
+func WithPrefix(prefix string) Option {
+	return func(o *options) {
+		o.prefix = prefix
+	}
+}
+
 // Version represents a single version.
 type Version struct {
 	metadata string
@@ -56,12 +73,36 @@ type Version struct {
 	segments []int64
 	si       int
 	original string
+	prefix   string
 }
 
-// NewVersion parses the given version and returns a new
-// Version.
-func NewVersion(v string) (*Version, error) {
-	return newVersion(v, getVersionRegexp())
+// NewVersion parses the given version and returns a new Version.
+//
+// Optional parsing behavior can be enabled with Option values such as
+// WithPrefix, which validates and strips an expected prefix before parsing.
+func NewVersion(v string, opts ...Option) (*Version, error) {
+	options := &options{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(options)
+		}
+	}
+
+	vToParse := v
+	if options.prefix != "" {
+		if !strings.HasPrefix(v, options.prefix) {
+			return nil, fmt.Errorf("version %q does not have prefix %q", v, options.prefix)
+		}
+		vToParse = strings.TrimPrefix(v, options.prefix)
+	}
+
+	ver, err := newVersion(vToParse, getVersionRegexp())
+	if err != nil {
+		return nil, err
+	}
+	ver.prefix = options.prefix
+	ver.original = v
+	return ver, nil
 }
 
 // NewSemver parses the given version and returns a new
@@ -422,6 +463,11 @@ func (v *Version) bytes() []byte {
 // potential whitespace, `v` prefix, etc.
 func (v *Version) Original() string {
 	return v.original
+}
+
+// Prefix returns the explicit prefix used with WithPrefix, if any.
+func (v *Version) Prefix() string {
+	return v.prefix
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler interface.

@@ -466,17 +466,21 @@ func lokiServiceMonitorEndpoint(stackName, portName, serviceName, namespace stri
 		}
 
 		return monitoringv1.Endpoint{
-			Port:      portName,
-			Path:      "/metrics",
-			Scheme:    "https",
-			TLSConfig: &tlsConfig,
+			Port:   portName,
+			Path:   "/metrics",
+			Scheme: ptr.To(monitoringv1.Scheme("https")),
+			HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+				HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+					TLSConfig: &tlsConfig,
+				},
+			},
 		}
 	}
 
 	return monitoringv1.Endpoint{
 		Port:   portName,
 		Path:   "/metrics",
-		Scheme: "http",
+		Scheme: ptr.To(monitoringv1.Scheme("http")),
 	}
 }
 
@@ -524,24 +528,30 @@ func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace
 		return monitoringv1.Endpoint{
 			Port:   portName,
 			Path:   "/metrics",
-			Scheme: "https",
-			Authorization: &monitoringv1.SafeAuthorization{
-				Type: "Bearer",
-				Credentials: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: gatewayTokenSecretName(gatewayName),
+			Scheme: ptr.To(monitoringv1.Scheme("https")),
+			HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+				HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+					HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+						Authorization: &monitoringv1.SafeAuthorization{
+							Type: "Bearer",
+							Credentials: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: gatewayTokenSecretName(gatewayName),
+								},
+								Key: corev1.ServiceAccountTokenKey,
+							},
+						},
 					},
-					Key: corev1.ServiceAccountTokenKey,
+					TLSConfig: &tlsConfig,
 				},
 			},
-			TLSConfig: &tlsConfig,
 		}
 	}
 
 	return monitoringv1.Endpoint{
 		Port:   portName,
 		Path:   "/metrics",
-		Scheme: "http",
+		Scheme: ptr.To(monitoringv1.Scheme("http")),
 	}
 }
 

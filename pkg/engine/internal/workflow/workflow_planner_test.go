@@ -1053,7 +1053,7 @@ func (m *workflowMockCache) GetCacheType() stats.CacheType { return stats.TaskRe
 // emptyResultPayload returns a zero-length buffer which is treated as an empty cached result.
 func emptyResultPayload() []byte { return []byte{} }
 
-// nonEmptyResultPayload returns a non-empty buffer so that isCacheEntryEmpty returns false.
+// nonEmptyResultPayload returns a non-empty buffer so that the cache entry is not treated as empty.
 func nonEmptyResultPayload() []byte {
 	// Wire format: [8 bytes count big-endian] [1 byte codec]
 	return []byte{0, 0, 0, 0, 0, 0, 0, 1, 0}

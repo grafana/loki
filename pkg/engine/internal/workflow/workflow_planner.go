@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -121,24 +122,16 @@ func optimize(t *Task) {
 // task-level cache entry or its DataObjScan-level cache entry is an empty hit,
 // since zero scan rows guarantee zero rows from any operators above.
 //
-// Cache fetch errors are non-fatal: a warning is logged and the task is left in the graph.
+// Cache fetch errors are non-fatal: a warning is logged and the batch is skipped.
 func eliminateEmptyCachedTasks(p *planner, caches executor.TaskCacheRegistry, logger log.Logger) error {
-	// Walk the graph to collect tasks to eliminate before mutating.
-	// NOTE: eliminateTask cannot be called here since dag.Graph.Eliminate uses
-	// slices.DeleteFunc which zeroes the tail of the underlying slice array,
-	// corrupting the range slice captured by the walk.
-	var taskCount int
-	var toEliminate []*Task
-	for _, root := range p.graph.Roots() {
-		_ = p.graph.Walk(root, func(task *Task) error {
-			if shouldEliminateTask(task, caches, logger) {
-				toEliminate = append(toEliminate, task)
-			}
-			taskCount++
-			return nil
-		}, dag.PreOrderWalk)
-	}
+	start := time.Now()
 
+	keyToTask, backends, taskCount := collectCacheKeys(p, caches, logger)
+	toEliminate := findEmptyTasks(context.Background(), keyToTask, backends, logger)
+
+	// NOTE: tasks cannot be eliminated inside the walk or fetch loops since
+	// dag.Graph.Eliminate uses slices.DeleteFunc which zeroes the tail of the
+	// underlying slice, corrupting any live range slice.
 	var tasksRemoved int
 	for _, task := range toEliminate {
 		tasksRemoved += eliminateTask(p, task)
@@ -147,60 +140,119 @@ func eliminateEmptyCachedTasks(p *planner, caches executor.TaskCacheRegistry, lo
 	// Log the number of tasks removed. Note that if removed_tasks is bigger than to_eliminate
 	// then, (removed_tasks-to_eliminate) parents were removed because all their children were removed,
 	if tasksRemoved > 0 {
-		level.Debug(logger).Log("msg", "removed empty cached tasks from workflow", "removed_tasks", tasksRemoved, "total_tasks", taskCount, "to_eliminate", len(toEliminate))
+		level.Debug(logger).Log(
+			"msg", "removed empty cached tasks from workflow",
+			"total_tasks", taskCount,
+			"removed_tasks", tasksRemoved,
+			"to_eliminate", len(toEliminate),
+			"elapsed", time.Since(start),
+		)
 	}
 
 	return nil
 }
 
-// shouldEliminateTask returns true if any cache node in the task fragment
-// has a cached result that is empty. Either the task-level cache or any
-// DataObjScan-level cache returning empty is sufficient to eliminate the task.
-func shouldEliminateTask(task *Task, registry executor.TaskCacheRegistry, logger log.Logger) bool {
-	ctx := context.Background()
+// collectCacheKeys walks the task graph and builds a mapping from cache name to
+// (hashedKey → task). Each hashed key belongs to exactly one task, though a
+// task may contribute multiple keys (one per Cache node in its fragment).
+// backends contains the resolved cache.Cache for each name (nil = unavailable).
+func collectCacheKeys(p *planner, caches executor.TaskCacheRegistry, logger log.Logger) (
+	keyToTask map[physical.TaskCacheName]map[string]*Task,
+	backends map[physical.TaskCacheName]cache.Cache,
+	taskCount int,
+) {
+	keyToTask = make(map[physical.TaskCacheName]map[string]*Task)
+	backends = make(map[physical.TaskCacheName]cache.Cache)
 
-	for n := range task.Fragment.Graph().Nodes() {
-		cacheNode, ok := n.(*physical.Cache)
-		if !ok {
-			continue
-		}
-		c, _, err := registry.GetForType(cacheNode.CacheName)
-		if err != nil || c == nil {
-			continue
-		}
-		hit, isEmpty, err := isCacheEntryEmpty(ctx, c, cacheNode.Key)
-		if err != nil {
-			level.Warn(logger).Log("msg", "cache fetch failed during task elimination", "cache_name", cacheNode.CacheName, "err", err)
-			return false
-		}
-		if hit && isEmpty {
-			return true
-		}
+	for _, root := range p.graph.Roots() {
+		_ = p.graph.Walk(root, func(task *Task) error {
+			taskCount++
+			for n := range task.Fragment.Graph().Nodes() {
+				cacheNode, ok := n.(*physical.Cache)
+				if !ok {
+					continue
+				}
+				if _, resolved := backends[cacheNode.CacheName]; !resolved {
+					c, _, err := caches.GetForType(cacheNode.CacheName)
+					if err != nil {
+						level.Error(logger).Log(
+							"msg", "failed to resolve cache",
+							"cache_name", cacheNode.CacheName,
+							"err", err,
+						)
+
+					}
+
+					backends[cacheNode.CacheName] = c // store nil on failure to avoid repeated lookups
+				}
+
+				if keyToTask[cacheNode.CacheName] == nil {
+					keyToTask[cacheNode.CacheName] = make(map[string]*Task)
+				}
+				keyToTask[cacheNode.CacheName][cache.HashKey(cacheNode.Key)] = task
+			}
+			return nil
+		}, dag.PreOrderWalk)
 	}
 
-	return false
+	return keyToTask, backends, taskCount
 }
 
-// isCacheEntryEmpty fetches rawKey from c and reports whether the cached entry
-// exists and encodes an empty result (zero records). The key is hashed before
-// the fetch. Returns (false, false, nil) on miss.
-func isCacheEntryEmpty(ctx context.Context, c cache.Cache, rawKey string) (hit bool, isEmpty bool, err error) {
-	found, buffs, _, err := c.Fetch(ctx, []string{cache.HashKey(rawKey)})
-	if err != nil {
-		return false, false, err
+// findEmptyTasks fetches cache keys in batches per cache name and returns the
+// set of tasks whose cached result is an empty hit (zero records). A task is
+// included as soon as any of its cache keys decodes to an empty result; its
+// remaining keys are then skipped. Fetch errors are non-fatal: the batch is
+// skipped and a warning is logged.
+func findEmptyTasks(
+	ctx context.Context,
+	keyToTask map[physical.TaskCacheName]map[string]*Task,
+	backends map[physical.TaskCacheName]cache.Cache,
+	logger log.Logger,
+) []*Task {
+	toEliminate := make(map[*Task]struct{})
+
+	for cacheName, keyMap := range keyToTask {
+		logger := log.With(logger, "cache_name", cacheName)
+		c := backends[cacheName]
+		if c == nil {
+			// This is not expected, but since the backend is not available, we sip it
+			level.Warn(logger).Log("msg", "cache backend not available")
+			continue
+		}
+
+		// Skip keys whose task is already marked — another cache node for the
+		// same task already produced an empty hit.
+		keys := make([]string, 0, len(keyMap))
+		for k, task := range keyMap {
+			if _, already := toEliminate[task]; !already {
+				keys = append(keys, k)
+			}
+		}
+
+		found, bufs, _, err := c.Fetch(ctx, keys)
+		if err != nil {
+			level.Error(logger).Log("msg", "cache fetch failed during task elimination", "err", err)
+			continue
+		}
+		for i, key := range found {
+			dec, err := executor.NewCacheEntryDecoder(bufs[i])
+			if err != nil {
+				level.Error(logger).Log("msg", "cache entry decoding failed during task elimination", "err", err)
+				continue
+			}
+
+			if dec.Len() == 0 {
+				toEliminate[keyMap[key]] = struct{}{}
+			}
+		}
 	}
 
-	// Empty responses should be stored as empty buffers, but just in case,
-	// we will also (lazily) decode and see how may records are there
-	if len(found) == 0 {
-		return false, false, nil
+	var asSlice []*Task
+	for task := range toEliminate {
+		asSlice = append(asSlice, task)
 	}
 
-	dec, err := executor.NewCacheEntryDecoder(buffs[0])
-	if err != nil {
-		return false, false, err
-	}
-	return true, dec.Len() == 0, nil
+	return asSlice
 }
 
 // eliminateTask removes task from the planner graph and cleans up all stream

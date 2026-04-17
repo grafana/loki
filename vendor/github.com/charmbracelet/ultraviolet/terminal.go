@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -285,16 +284,25 @@ func (t *Terminal) Wait() error {
 	return nil
 }
 
-// Stop stops the terminal event loop. This is a non-blocking call. Use
-// [Terminal.Wait] to wait for the terminal to exit.
+// Stop stops the terminal event loop. It is safe to call Stop without a
+// prior [Terminal.Start], and safe to call Stop multiple times in a row.
+// After Stop returns, [Terminal.Start] may be called again to resume.
 func (t *Terminal) Stop() error {
-	sync.OnceFunc(func() {
-		close(t.donec)
-	})
-	signal.Stop(t.winch)
+	if t.donec != nil {
+		select {
+		case <-t.donec:
+			// Already closed.
+		default:
+			close(t.donec)
+		}
+	}
+	if t.winch != nil {
+		signal.Stop(t.winch)
+	}
 	if t.pr != nil {
 		t.pr.Cancel()
 		_ = t.pr.Close()
+		t.pr = nil
 	}
 	if err := t.scr.Reset(); err != nil {
 		_ = t.scr.Flush()

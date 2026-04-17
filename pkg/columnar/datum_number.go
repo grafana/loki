@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"unsafe"
 
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -18,17 +19,25 @@ type NumberScalar[T Numeric] struct {
 	Value T    // Value of the scalar.
 	Null  bool // True if the scalar is null.
 
-	kind Kind // Cached kind.
+	typ types.Type // Cached type.
 }
 
 var _ Scalar = (*NumberScalar[int64])(nil)
 
-// Kind implements [Datum] and returns the kind matching T.
-func (s *NumberScalar[T]) Kind() Kind {
-	if s.kind == KindNull {
+// Kind implements [Datum] and returns the kind of the type representing T.
+func (s *NumberScalar[T]) Kind() types.Kind {
+	if s.typ == nil {
 		s.init()
 	}
-	return s.kind
+	return s.typ.Kind()
+}
+
+// Type implements [Datum] and returns the type representing T.
+func (s *NumberScalar[T]) Type() types.Type {
+	if s.typ == nil {
+		s.init()
+	}
+	return s.typ
 }
 
 //go:noinline
@@ -36,13 +45,13 @@ func (s *NumberScalar[T]) init() {
 	var zero T
 	switch reflect.TypeOf(zero).Kind() {
 	case reflect.Int32:
-		s.kind = KindInt32
+		s.typ = int32Type
 	case reflect.Int64:
-		s.kind = KindInt64
+		s.typ = int64Type
 	case reflect.Uint32:
-		s.kind = KindUint32
+		s.typ = uint32Type
 	case reflect.Uint64:
-		s.kind = KindUint64
+		s.typ = uint64Type
 	default:
 		panic(fmt.Sprintf("unsupported type %T", zero))
 	}
@@ -59,7 +68,7 @@ type Number[T Numeric] struct {
 	validity  memory.Bitmap // Empty when there's no nulls.
 	values    []T
 	nullCount int
-	kind      Kind // Determined in [Number.init] based on T.
+	typ       types.Type // Determined in [Number.init] based on T.
 }
 
 var _ Array = (*Number[int64])(nil)
@@ -92,13 +101,13 @@ func (arr *Number[T]) init() {
 	var zero T
 	switch reflect.TypeOf(zero).Kind() {
 	case reflect.Int32:
-		arr.kind = KindInt32
+		arr.typ = int32Type
 	case reflect.Int64:
-		arr.kind = KindInt64
+		arr.typ = int64Type
 	case reflect.Uint32:
-		arr.kind = KindUint32
+		arr.typ = uint32Type
 	case reflect.Uint64:
-		arr.kind = KindUint64
+		arr.typ = uint64Type
 	default:
 		panic(fmt.Sprintf("unsupported type %T", zero))
 	}
@@ -148,8 +157,11 @@ func (arr *Number[T]) Size() int {
 	return validitySize + valuesSize
 }
 
-// Kind returns the kind of Array being represented.
-func (arr *Number[T]) Kind() Kind { return arr.kind }
+// Kind implements [Datum] and returns the kind of the type representing T.
+func (arr *Number[T]) Kind() types.Kind { return arr.typ.Kind() }
+
+// Type returns the type of Array being represented.
+func (arr *Number[T]) Type() types.Type { return arr.typ }
 
 // Slice returns a slice of arr from i to j.
 func (arr *Number[T]) Slice(i, j int) Array {

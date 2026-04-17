@@ -47,7 +47,7 @@ jobs:
     - name: Lint
       uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2
       with:
-        version: v2.10.1
+        version: v2.11.4
         args: --timeout=5m
         working-directory: ./operator
     - name: Check prometheus rules
@@ -114,7 +114,7 @@ jobs:
       working-directory: ./operator
       run: make test-unit-prometheus
     - name: Send coverage
-      uses: shogo82148/actions-goveralls@25f5320d970fb565100cf1993ada29be1bb196a1 # v1.10.0
+      uses: shogo82148/actions-goveralls@9606dbc5ac5cf888a0e9ef901515c3cd516a2790 # v1.11.0
       with:
         working-directory: ./operator
         path-to-profile: profile.cov
