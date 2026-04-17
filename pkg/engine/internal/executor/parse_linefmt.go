@@ -39,7 +39,7 @@ func tokenizeLinefmt(input arrow.RecordBatch, line string, formatter *LineFormat
 	result := make(map[string]string)
 
 	if _, err := formatter.Process(line, input, result); err != nil {
-		return nil, err
+		return result, err
 	}
 	return result, nil
 }
