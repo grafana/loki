@@ -3436,6 +3436,7 @@ dataobj_tee:
 
 # Timeout for sending a record to the in-memory dataobj channel before returning
 # backpressure to the caller. Default 5s matches the previous hardcoded value.
+# Set to 0 for no timeout.
 # CLI flag: -distributor.inmemory-dataobj-push-timeout
 [inmemory_dataobj_push_timeout: <duration> | default = 5s]
 ```

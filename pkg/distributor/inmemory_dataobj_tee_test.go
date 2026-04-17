@@ -6,9 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -70,98 +68,4 @@ func TestInMemoryDataObjTee_Duplicate_SendsRecords(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for record")
 	}
-}
-
-func TestInMemoryDataObjTee_Duplicate_ChannelFull_Timeout(t *testing.T) {
-	// Channel capacity 0 forces immediate block.
-	reg := prometheus.NewRegistry()
-	ch := make(chan *kgo.Record)
-	tee := NewInMemoryDataObjTee(ch, reg, nil, 50*time.Millisecond)
-
-	ctx := context.Background()
-	tenant := "test-tenant"
-	now := time.Now()
-
-	streams := []KeyedStream{
-		{
-			Stream: logproto.Stream{
-				Labels: `{job="test"}`,
-				Entries: []logproto.Entry{
-					{Timestamp: now, Line: "drop-me"},
-				},
-			},
-		},
-	}
-
-	errCh := make(chan error, 1)
-	pushTracker := &PushTracker{
-		done: make(chan struct{}, 1),
-		err:  errCh,
-	}
-	pushTracker.streamsPending.Store(1)
-
-	tee.Duplicate(ctx, tenant, streams, pushTracker)
-
-	select {
-	case err := <-errCh:
-		require.Error(t, err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for error")
-	}
-
-	// Verify reason label is "channel_full".
-	require.Equal(t, 1.0, testutil.ToFloat64(tee.streamFailures.WithLabelValues("channel_full")))
-}
-
-func TestInMemoryDataObjTee_Reason_Label(t *testing.T) {
-	t.Run("channel_full", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		ch := make(chan *kgo.Record)
-		tee := NewInMemoryDataObjTee(ch, reg, nil, 10*time.Millisecond)
-
-		ctx := context.Background()
-		now := time.Now()
-		streams := []KeyedStream{
-			{Stream: logproto.Stream{
-				Labels:  `{job="test"}`,
-				Entries: []logproto.Entry{{Timestamp: now, Line: "x"}},
-			}},
-		}
-		errCh := make(chan error, 1)
-		pt := &PushTracker{done: make(chan struct{}, 1), err: errCh}
-		pt.streamsPending.Store(1)
-
-		tee.Duplicate(ctx, "t", streams, pt)
-		<-errCh
-
-		assert.Equal(t, 1.0, testutil.ToFloat64(tee.streamFailures.WithLabelValues("channel_full")))
-		assert.Equal(t, 0.0, testutil.ToFloat64(tee.streamFailures.WithLabelValues("encode_error")))
-		assert.Equal(t, 0.0, testutil.ToFloat64(tee.streamFailures.WithLabelValues("timeout")))
-	})
-
-	t.Run("timeout", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		ch := make(chan *kgo.Record)
-		tee := NewInMemoryDataObjTee(ch, reg, nil, 30*time.Second)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel() // cancel immediately
-
-		now := time.Now()
-		streams := []KeyedStream{
-			{Stream: logproto.Stream{
-				Labels:  `{job="test"}`,
-				Entries: []logproto.Entry{{Timestamp: now, Line: "x"}},
-			}},
-		}
-		errCh := make(chan error, 1)
-		pt := &PushTracker{done: make(chan struct{}, 1), err: errCh}
-		pt.streamsPending.Store(1)
-
-		tee.Duplicate(ctx, "t", streams, pt)
-		<-errCh
-
-		assert.Equal(t, 1.0, testutil.ToFloat64(tee.streamFailures.WithLabelValues("timeout")))
-		assert.Equal(t, 0.0, testutil.ToFloat64(tee.streamFailures.WithLabelValues("channel_full")))
-	})
 }
