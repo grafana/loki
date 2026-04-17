@@ -215,8 +215,7 @@ type Distributor struct {
 	// are consumed.
 	numMetadataPartitions int
 
-	// inflightBytes keeps track of the total number of bytes for all in-flight
-	// push requests.
+	// Track the maximum number of inflight bytes in the last 1 minute.
 	inflightBytes      *atomic.Uint64
 	inflightBytesGauge prometheus.Gauge
 
@@ -411,8 +410,8 @@ func New(
 		inflightBytes:         atomic.NewUint64(0),
 		inflightBytesGauge: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
-			Name:      "distributor_inflight_bytes",
-			Help:      "The number of bytes currently inflight.",
+			Name:      "distributor_max_inflight_bytes",
+			Help:      "The maximum number of inflight bytes in the last 1 minute.",
 		}),
 	}
 
@@ -483,11 +482,38 @@ func (d *Distributor) running(ctx context.Context) error {
 			go d.pushIngesterWorker(ctx)
 		}
 	}
+	go d.collectInflightBytes(ctx)
 	select {
 	case <-ctx.Done():
 		return nil
 	case err := <-d.subservicesWatcher.Chan():
 		return errors.Wrap(err, "distributor subservice failed")
+	}
+}
+
+// collectInflightBytes updates the inflightBytesGauge with the max value
+// from the last 1 minute.
+func (d *Distributor) collectInflightBytes(ctx context.Context) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	// window contains per-second samples for the last 1 minute.
+	window := make([]uint64, 60)
+	secs := 0
+	for {
+		select {
+		case <-ticker.C:
+			window[secs] = d.inflightBytes.Load()
+			secs = (secs + 1) % 60
+			var maxVal uint64
+			for _, val := range window {
+				if val > maxVal {
+					maxVal = val
+				}
+			}
+			d.inflightBytesGauge.Set(float64(maxVal))
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
@@ -567,11 +593,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	requestSizeBytes := uint64(req.Size())
 	d.inflightBytes.Add(requestSizeBytes)
-	d.inflightBytesGauge.Add(float64(requestSizeBytes))
-	defer func() {
-		d.inflightBytes.Sub(requestSizeBytes)
-		d.inflightBytesGauge.Sub(float64(requestSizeBytes))
-	}()
+	defer d.inflightBytes.Sub(requestSizeBytes)
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
