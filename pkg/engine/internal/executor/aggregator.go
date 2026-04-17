@@ -4,7 +4,6 @@ import (
 	"errors"
 	"maps"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -37,11 +36,10 @@ const (
 
 // aggregator is used to aggregate sample values by a set of grouping keys for each point in time.
 type aggregator struct {
-	points            map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
-	digest            *xxhash.Digest                       // used to compute key for each group
-	operation         aggregationOperation                 // aggregation type
-	labels            map[string]arrow.Field               // combined list of all label fields for all sample values
-	clonedLabelValues map[string]string                    // cache of cloned strings to reduce allocations for repeated values
+	points    map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
+	digest    *xxhash.Digest                       // used to compute key for each group
+	operation aggregationOperation                 // aggregation type
+	labels    map[string]arrow.Field               // combined list of all label fields for all sample values
 
 	// Track unique series across all timestamps to enforce maxSeries limit
 	maxSeries    int                          // maximum number of unique series allowed (0 means no limit)
@@ -51,11 +49,10 @@ type aggregator struct {
 // newAggregator creates a new aggregator with the specified grouping.
 func newAggregator(pointsSizeHint int, operation aggregationOperation) *aggregator {
 	a := aggregator{
-		digest:            xxhash.New(),
-		operation:         operation,
-		clonedLabelValues: make(map[string]string),
-		labels:            make(map[string]arrow.Field),
-		uniqueSeries:      make(map[uint64]map[string]string),
+		digest:       xxhash.New(),
+		operation:    operation,
+		labels:       make(map[string]arrow.Field),
+		uniqueSeries: make(map[uint64]map[string]string),
 	}
 
 	if pointsSizeHint > 0 {
@@ -84,6 +81,7 @@ func (a *aggregator) SetMaxSeries(maxSeries int) {
 
 // Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
 // It expects labelValues to be in the same order as the groupBy columns.
+// labels and labelValues may be retained, so callers must ensure this is ok.
 func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) error {
 	if len(labels) != len(labelValues) {
 		panic("len(labels) != len(labelValues)")
@@ -138,17 +136,9 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 			}
 
 			if len(labels) > 0 {
-				series = make(map[string]string)
+				series = make(map[string]string, len(labelValues))
 				for i, v := range labelValues {
-					// copy the value as this is backed by the arrow array data buffer.
-					// We could retain the record to avoid this copy, but that would hold
-					// all other columns in memory for as long as the query is evaluated.
-					cloned, ok := a.clonedLabelValues[v]
-					if !ok {
-						cloned = strings.Clone(v)
-						a.clonedLabelValues[v] = cloned
-					}
-					series[labels[i].Name] = cloned
+					series[labels[i].Name] = v
 				}
 			}
 
@@ -226,7 +216,6 @@ func (a *aggregator) Reset() {
 	}
 
 	clear(a.uniqueSeries)
-	clear(a.clonedLabelValues)
 }
 
 // getSortedTimestamps returns all timestamps in sorted order
