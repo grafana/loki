@@ -87,10 +87,40 @@ func TestLinefmtParser_Process(t *testing.T) {
 			parser, err := NewFormatter(tt.lineFmt)
 			require.NoError(t, err)
 			var result = map[string]string{}
-			output, _ := parser.Process(tt.line, recordBatch, result)
-			require.NoError(t, err)
+			output, processErr := parser.Process(tt.line, recordBatch, result)
+			require.NoError(t, processErr)
 			require.Equal(t, tt.want, output)
 			require.Equal(t, tt.want, result["message"])
 		})
 	}
+}
+func TestBuildLinefmtColumns_TemplateExecutionErrorProducesErrorDetails(t *testing.T) {
+	timestamp := time.Now().In(time.UTC).Add(time.Second)
+	schema := arrow.NewSchema(
+		[]arrow.Field{
+			semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
+			semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
+		},
+		nil,
+	)
+
+	logBuilder := array.NewStringBuilder(memory.DefaultAllocator)
+	tsBuilder := array.NewTimestampBuilder(memory.DefaultAllocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
+	logBuilder.Append("line")
+	tsBuilder.Append(arrow.Timestamp(timestamp.UnixNano()))
+
+	logArray := logBuilder.NewStringArray()
+	tsArray := tsBuilder.NewArray()
+	recordBatch := array.NewRecordBatch(schema, []arrow.Array{logArray, tsArray}, 1)
+
+	headers, columns := buildLinefmtColumns(recordBatch, logArray, "{{.foo | now}}")
+	require.Equal(t, []string{
+		semconv.ColumnIdentError.ShortName(),
+		semconv.ColumnIdentErrorDetails.ShortName(),
+	}, headers)
+
+	errColumn := columns[0].(*array.String)
+	errDetailsColumn := columns[1].(*array.String)
+	require.Equal(t, types.LinefmtParserErrorType, errColumn.Value(0))
+	require.Contains(t, errDetailsColumn.Value(0), "wrong number of args for now")
 }

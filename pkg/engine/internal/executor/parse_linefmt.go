@@ -95,7 +95,7 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 		}
 	}
 	if messageIdx < 0 {
-		return "", fmt.Errorf("Message column not found")
+		return "", fmt.Errorf("message column not found")
 	}
 	if lf.simpleKey != "" {
 		var simpleKeyIdx = -1
@@ -108,7 +108,7 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 		}
 		if simpleKeyIdx < 0 {
 			result[types.ColumnNameBuiltinMessage] = ""
-			return "", fmt.Errorf("Missing key %v", lf.simpleKey)
+			return "", fmt.Errorf("missing key %v", lf.simpleKey)
 		}
 		result[types.ColumnNameBuiltinMessage] = input.Column(simpleKeyIdx).ValueStr(0)
 		return input.Column(simpleKeyIdx).ValueStr(0), nil
@@ -121,7 +121,7 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 		}
 	}
 	if timestampIdx == -1 {
-		return "", fmt.Errorf("Unable to find timestamp column in inputs")
+		return "", fmt.Errorf("unable to find timestamp column in inputs")
 	}
 	lf.buf.Reset()
 	lf.currentLine = unsafeBytes(line)
@@ -137,8 +137,7 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 	}
 
 	if err := lf.Execute(lf.buf, m); err != nil {
-		result[types.ColumnNameError] = "TemplateFormatErr " + err.Error()
-		return line, nil
+		return line, err
 	}
 	result[types.ColumnNameBuiltinMessage] = lf.buf.String()
 
