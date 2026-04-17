@@ -340,7 +340,7 @@ func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *
 	// best-effort message so we don't need to wait for acknowledgement.
 	receiver, found := s.tasks[target.taskReceiver]
 	if found && receiver.owner != nil {
-		_ = receiver.owner.SendMessageAsync(ctx, wire.StreamStatusMessage{
+		_ = receiver.owner.Notify(ctx, wire.StreamStatusMessage{
 			StreamID: target.inner.ULID,
 			State:    newState,
 		})
@@ -454,7 +454,7 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 
 		// TODO(rfratto): allow assignment timeout to be configurable.
 		sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		err := worker.SendMessage(sendCtx, assignment.msg)
+		err := worker.Message(sendCtx, assignment.msg)
 		cancel()
 
 		if err != nil {
@@ -650,7 +650,7 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	for _, p := range pendingMsgs {
-		_ = p.peer.SendMessageAsync(ctx, p.msg)
+		_ = p.peer.Notify(ctx, p.msg)
 	}
 }
 
@@ -701,7 +701,7 @@ func isTooManyRequestsError(err error) bool {
 // workerSubscribe sends a WorkerSubscribe message to the provided worker. The
 // worker will eventually send a WorkerReady message in response.
 func (s *Scheduler) workerSubscribe(ctx context.Context, worker *workerConn) {
-	if err := worker.SendMessageAsync(ctx, wire.WorkerSubscribeMessage{}); err != nil {
+	if err := worker.Notify(ctx, wire.WorkerSubscribeMessage{}); err != nil {
 		level.Warn(s.logger).Log("msg", "failed to request subscription for ready worker thread", "err", err)
 	}
 }
@@ -906,7 +906,7 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 		//
 		// This is a best-effort message, so we don't wait for acknowledgement.
 		if owner := registered.owner; owner != nil {
-			_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
+			_ = owner.Notify(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 		}
 
 		// Inform the owner about the change.
@@ -991,7 +991,7 @@ func (s *Scheduler) Listen(ctx context.Context, writer workflow.RecordWriter, st
 
 	// Send bind message outside the lock.
 	if pending != nil {
-		_ = pending.peer.SendMessageAsync(ctx, pending.msg)
+		_ = pending.peer.Notify(ctx, pending.msg)
 	}
 	return nil
 }
@@ -1139,7 +1139,7 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			// This is a best-effort message, so we don't wait for acknowledgement.
 			if owner := registered.owner; owner != nil {
 				owner.Unassign(registered)
-				_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
+				_ = owner.Notify(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 			}
 
 			// Inform the owner about the change.

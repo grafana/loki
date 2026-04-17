@@ -103,7 +103,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 
 		// Echo back a WorkerReadyMessage
 		if _, ok := message.(wire.TaskStatusMessage); ok {
-			return peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{})
+			return peer.Notify(ctx, wire.WorkerReadyMessage{})
 		}
 		return nil
 	}
@@ -170,7 +170,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}()
 
 	// Send message from client to server (synchronous)
-	err = clientPeer.SendMessage(ctx, wire.TaskStatusMessage{})
+	err = clientPeer.Message(ctx, wire.TaskStatusMessage{})
 	require.NoError(t, err)
 
 	// Wait for server to receive the message
@@ -225,7 +225,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 		t.Logf("Server received from %s: %T (total: %d)", remoteAddr, message, count)
 
 		// Send acknowledgment back
-		return peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{})
+		return peer.Notify(ctx, wire.WorkerReadyMessage{})
 	}
 
 	// Accept connections and create server peers
@@ -325,7 +325,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			// Send messages
 			for j := 0; j < 3; j++ {
 				msg := wire.TaskStatusMessage{}
-				err := peer.SendMessage(ctx, msg)
+				err := peer.Message(ctx, msg)
 				if err != nil {
 					t.Errorf("Client %d send failed: %v", clientIdx, err)
 					return
@@ -440,7 +440,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	}()
 
 	// Send message that will trigger error
-	err = clientPeer.SendMessage(ctx, wire.WorkerReadyMessage{})
+	err = clientPeer.Message(ctx, wire.WorkerReadyMessage{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "simulated error")
 
