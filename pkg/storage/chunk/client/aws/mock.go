@@ -20,14 +20,23 @@ import (
 
 const arnPrefix = "arn:"
 
+type consumedCapacityRefsReturned int
+
+const (
+	consumedCapacityNone consumedCapacityRefsReturned = iota
+	consumedCapacityNilRefs
+	consumedCapacityValidRefs
+)
+
 type mockDynamoDBClient struct {
 	dynamodb.Client
 
-	mtx            sync.RWMutex
-	unprocessed    int
-	provisionedErr int
-	errAfter       int
-	tables         map[string]*mockDynamoDBTable
+	mtx                  sync.RWMutex
+	unprocessed          int
+	provisionedErr       int
+	errAfter             int
+	tables               map[string]*mockDynamoDBTable
+	consumedCapacityRefs consumedCapacityRefsReturned
 }
 
 type mockDynamoDBTable struct {
@@ -51,6 +60,12 @@ func (a dynamoDBStorageClient) setErrorParameters(provisionedErr, errAfter int) 
 	if m, ok := a.DynamoDB.(*mockDynamoDBClient); ok {
 		m.provisionedErr = provisionedErr
 		m.errAfter = errAfter
+	}
+}
+
+func (a dynamoDBStorageClient) setConsumedCapacityRefs(mode consumedCapacityRefsReturned) {
+	if m, ok := a.DynamoDB.(*mockDynamoDBClient); ok {
+		m.consumedCapacityRefs = mode
 	}
 }
 
@@ -111,6 +126,25 @@ func (m *mockDynamoDBClient) BatchWriteItem(_ context.Context, params *dynamodb.
 			table.items[hashValue] = items
 		}
 	}
+
+	switch m.consumedCapacityRefs {
+	case consumedCapacityNilRefs:
+		for tableName := range params.RequestItems {
+			resp.ConsumedCapacity = append(resp.ConsumedCapacity, types.ConsumedCapacity{
+				TableName:     nil,
+				CapacityUnits: nil,
+			})
+			_ = tableName
+		}
+	case consumedCapacityValidRefs:
+		for tableName := range params.RequestItems {
+			resp.ConsumedCapacity = append(resp.ConsumedCapacity, types.ConsumedCapacity{
+				TableName:     aws.String(tableName),
+				CapacityUnits: aws.Float64(1.0),
+			})
+		}
+	}
+
 	return resp, nil
 }
 
@@ -169,6 +203,25 @@ func (m *mockDynamoDBClient) BatchGetItem(_ context.Context, params *dynamodb.Ba
 			resp.Responses[tableName] = append(resp.Responses[tableName], item)
 		}
 	}
+
+	switch m.consumedCapacityRefs {
+	case consumedCapacityNilRefs:
+		for tableName := range params.RequestItems {
+			resp.ConsumedCapacity = append(resp.ConsumedCapacity, types.ConsumedCapacity{
+				TableName:     nil,
+				CapacityUnits: nil,
+			})
+			_ = tableName
+		}
+	case consumedCapacityValidRefs:
+		for tableName := range params.RequestItems {
+			resp.ConsumedCapacity = append(resp.ConsumedCapacity, types.ConsumedCapacity{
+				TableName:     aws.String(tableName),
+				CapacityUnits: aws.Float64(1.0),
+			})
+		}
+	}
+
 	return resp, nil
 }
 
@@ -219,6 +272,20 @@ func (m *mockDynamoDBClient) Query(_ context.Context, params *dynamodb.QueryInpu
 
 		result.Items = append(result.Items, item)
 	}
+
+	switch m.consumedCapacityRefs {
+	case consumedCapacityNilRefs:
+		result.ConsumedCapacity = &types.ConsumedCapacity{
+			TableName:     nil,
+			CapacityUnits: nil,
+		}
+	case consumedCapacityValidRefs:
+		result.ConsumedCapacity = &types.ConsumedCapacity{
+			TableName:     params.TableName,
+			CapacityUnits: aws.Float64(1.0),
+		}
+	}
+
 	return result, nil
 }
 
