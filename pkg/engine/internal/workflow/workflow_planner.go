@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
-	iterv2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
@@ -36,7 +35,6 @@ type cacheParams struct {
 	compression             string
 	registry                executor.TaskCacheRegistry
 	pruneEmptyCachedTasks   bool
-	eliminationBatchSize    int
 }
 
 // planWorkflow partitions a physical plan into a graph of tasks.
@@ -89,7 +87,7 @@ func planWorkflow(tenantID string, plan *physical.Plan, cacheOpts cacheParams, l
 			return dag.Graph[*Task]{}, fmt.Errorf("injecting DataObjScan caching: %w", err)
 		}
 		if cacheOpts.pruneEmptyCachedTasks {
-			if err := eliminateEmptyCachedTasks(planner, cacheOpts.registry, cacheOpts.eliminationBatchSize, logger); err != nil {
+			if err := eliminateEmptyCachedTasks(planner, cacheOpts.registry, logger); err != nil {
 				return dag.Graph[*Task]{}, fmt.Errorf("eliminating empty cached tasks: %w", err)
 			}
 		}
@@ -124,13 +122,12 @@ func optimize(t *Task) {
 // task-level cache entry or its DataObjScan-level cache entry is an empty hit,
 // since zero scan rows guarantee zero rows from any operators above.
 //
-// Keys are fetched in batches of batchSize per cache name (0 = single batch).
 // Cache fetch errors are non-fatal: a warning is logged and the batch is skipped.
-func eliminateEmptyCachedTasks(p *planner, caches executor.TaskCacheRegistry, batchSize int, logger log.Logger) error {
+func eliminateEmptyCachedTasks(p *planner, caches executor.TaskCacheRegistry, logger log.Logger) error {
 	start := time.Now()
 
 	keyToTask, backends, taskCount := collectCacheKeys(p, caches, logger)
-	toEliminate := findEmptyTasks(context.Background(), keyToTask, backends, batchSize, logger)
+	toEliminate := findEmptyTasks(context.Background(), keyToTask, backends, logger)
 
 	// NOTE: tasks cannot be eliminated inside the walk or fetch loops since
 	// dag.Graph.Eliminate uses slices.DeleteFunc which zeroes the tail of the
@@ -210,7 +207,6 @@ func findEmptyTasks(
 	ctx context.Context,
 	keyToTask map[physical.TaskCacheName]map[string]*Task,
 	backends map[physical.TaskCacheName]cache.Cache,
-	batchSize int,
 	logger log.Logger,
 ) []*Task {
 	toEliminate := make(map[*Task]struct{})
@@ -233,22 +229,20 @@ func findEmptyTasks(
 			}
 		}
 
-		for batch := range iterv2.Batches(keys, batchSize) {
-			found, bufs, _, err := c.Fetch(ctx, batch)
+		found, bufs, _, err := c.Fetch(ctx, keys)
+		if err != nil {
+			level.Error(logger).Log("msg", "cache fetch failed during task elimination", "err", err)
+			continue
+		}
+		for i, key := range found {
+			dec, err := executor.NewCacheEntryDecoder(bufs[i])
 			if err != nil {
-				level.Error(logger).Log("msg", "cache fetch failed during task elimination", "err", err)
+				level.Error(logger).Log("msg", "cache entry decoding failed during task elimination", "err", err)
 				continue
 			}
-			for i, key := range found {
-				dec, err := executor.NewCacheEntryDecoder(bufs[i])
-				if err != nil {
-					level.Error(logger).Log("msg", "cache entry decoding failed during task elimination", "err", err)
-					continue
-				}
 
-				if dec.Len() == 0 {
-					toEliminate[keyMap[key]] = struct{}{}
-				}
+			if dec.Len() == 0 {
+				toEliminate[keyMap[key]] = struct{}{}
 			}
 		}
 	}
