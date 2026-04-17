@@ -230,6 +230,7 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 		for _, partition := range partitions {
 			// Delete partition metrics to prevent cardinality growth
 			p.metrics.deletePartitionMetrics(partition)
+			p.metrics.bufferedEvents.delete(partition)
 
 			delete(p.partitionStates, partition)
 
@@ -372,6 +373,7 @@ func (p *Builder) markEventsCompleted(partition int32, eventsProcessed int) {
 		return
 	}
 	state.events = state.events[eventsProcessed:]
+	p.metrics.bufferedEvents.set(partition, len(state.events))
 }
 
 // Check for partitions that either haven't received new events for MaxIdleTime
@@ -478,6 +480,8 @@ func (p *Builder) bufferAndTryProcess(ctx context.Context, partition int32, newE
 		state.lastActivity = time.Now()
 		level.Debug(p.logger).Log("msg", "buffered new event for partition", "count", len(state.events), "partition", partition, "trigger", trigger)
 	}
+
+	p.metrics.bufferedEvents.set(partition, len(state.events))
 
 	// Check if we can start processing
 	if state.isProcessing || len(state.events) == 0 {

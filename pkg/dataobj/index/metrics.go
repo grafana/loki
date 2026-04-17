@@ -9,6 +9,12 @@ import (
 )
 
 var (
+	bufferedEventsDesc = prometheus.NewDesc(
+		"loki_index_builder_buffered_events",
+		"Total number of buffered events.",
+		[]string{"partition"},
+		nil,
+	)
 	processingDelayDesc = prometheus.NewDesc(
 		"loki_index_builder_latest_processing_delay_seconds",
 		"Latest time difference between record timestamp and processing time in seconds",
@@ -16,6 +22,48 @@ var (
 		nil,
 	)
 )
+
+type bufferedEventsCollector struct {
+	mtx    sync.RWMutex
+	events map[int32]int
+}
+
+func newBufferedEventsCollector() *bufferedEventsCollector {
+	return &bufferedEventsCollector{
+		events: make(map[int32]int),
+	}
+}
+
+// Describe implements [prometheus.Collector].
+func (c *bufferedEventsCollector) Describe(descs chan<- *prometheus.Desc) {
+	descs <- bufferedEventsDesc
+}
+
+// Collect implements [prometheus.Collector].
+func (c *bufferedEventsCollector) Collect(metrics chan<- prometheus.Metric) {
+	c.mtx.RLock()
+	defer c.mtx.RUnlock()
+	for partition, numEvents := range c.events {
+		metrics <- prometheus.MustNewConstMetric(
+			bufferedEventsDesc,
+			prometheus.GaugeValue,
+			float64(numEvents),
+			strconv.Itoa(int(partition)),
+		)
+	}
+}
+
+func (c *bufferedEventsCollector) set(partition int32, numEvents int) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.events[partition] = numEvents
+}
+
+func (c *bufferedEventsCollector) delete(partition int32) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	delete(c.events, partition)
+}
 
 // processingDelayCollector implements prometheus.Collector to dynamically report
 // processing delay only for active partitions, preventing cardinality explosion.
@@ -62,6 +110,8 @@ func (c *processingDelayCollector) delete(partition int32) {
 }
 
 type builderMetrics struct {
+	bufferedEvents *bufferedEventsCollector
+
 	// Error counters
 	commitFailures prometheus.Counter
 
@@ -74,6 +124,7 @@ type builderMetrics struct {
 
 func newBuilderMetrics() *builderMetrics {
 	p := &builderMetrics{
+		bufferedEvents: newBufferedEventsCollector(),
 		commitFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_index_builder_commit_failures_total",
 			Help: "Total number of commit failures",
@@ -90,6 +141,7 @@ func newBuilderMetrics() *builderMetrics {
 
 func (p *builderMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
+		p.bufferedEvents,
 		p.commitFailures,
 		p.commitsTotal,
 		p.processingDelay,
@@ -107,6 +159,7 @@ func (p *builderMetrics) register(reg prometheus.Registerer) error {
 
 func (p *builderMetrics) unregister(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
+		p.bufferedEvents,
 		p.commitFailures,
 		p.commitsTotal,
 		p.processingDelay,
