@@ -7,17 +7,34 @@ import (
 	"github.com/go-kit/log/level"
 )
 
-func goKitLevelFunc(logger log.Logger, lvl slog.Level) log.Logger {
-	switch lvl {
-	case slog.LevelInfo:
-		logger = level.Info(logger)
-	case slog.LevelWarn:
-		logger = level.Warn(logger)
-	case slog.LevelError:
-		logger = level.Error(logger)
-	default:
-		logger = level.Debug(logger)
-	}
+// levelLoggerCache holds pre-built leveled loggers so that Handle() can
+// retrieve an existing leveled logger rather than creating a new one each
+// time.
+type levelLoggerCache struct {
+	debugLogger log.Logger
+	infoLogger  log.Logger
+	warnLogger  log.Logger
+	errorLogger log.Logger
+}
 
-	return logger
+func newLevelCache(logger log.Logger) *levelLoggerCache {
+	return &levelLoggerCache{
+		debugLogger: level.Debug(logger),
+		infoLogger:  level.Info(logger),
+		warnLogger:  level.Warn(logger),
+		errorLogger: level.Error(logger),
+	}
+}
+
+func (c *levelLoggerCache) get(lvl slog.Level) log.Logger {
+	switch {
+	case lvl >= slog.LevelError:
+		return c.errorLogger
+	case lvl >= slog.LevelWarn:
+		return c.warnLogger
+	case lvl >= slog.LevelInfo:
+		return c.infoLogger
+	default:
+		return c.debugLogger
+	}
 }

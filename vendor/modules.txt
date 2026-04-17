@@ -1770,7 +1770,7 @@ github.com/thanos-io/objstore/tracing/opentracing
 ## explicit; go 1.24
 github.com/tinylib/msgp/msgp
 github.com/tinylib/msgp/msgp/setof
-# github.com/tjhop/slog-gokit v0.1.6
+# github.com/tjhop/slog-gokit v0.2.0
 ## explicit; go 1.21
 github.com/tjhop/slog-gokit
 # github.com/tklauser/go-sysconf v0.3.16
