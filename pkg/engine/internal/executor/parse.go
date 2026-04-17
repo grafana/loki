@@ -76,7 +76,7 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 			if header == semconv.ColumnIdentError.ShortName() || header == semconv.ColumnIdentErrorDetails.ShortName() {
 				ct = types.ColumnTypeGenerated
 			}
-			if header == semconv.ColumnIdentMessage.ShortName() {
+			if op == types.VariadicOpParseLinefmt && header == semconv.ColumnIdentMessage.ShortName() {
 				ct = types.ColumnTypeBuiltin
 			}
 			ident := semconv.NewIdentifier(header, ct, types.Loki.String)
