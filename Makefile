@@ -333,6 +333,9 @@ packages: dist
 publish: packages
 	./tools/release
 
+# Included file contains dynamically created make targets for cross-compiling
+include crosscompile.mk
+
 ########
 # Lint #
 ########

@@ -29,6 +29,9 @@
     withTimeoutMinutes: function(timeout) {
       'timeout-minutes': timeout,
     },
+    withContinueOnError: function() {
+      'continue-on-error': true,
+    },
   },
   job: {
     new: function(runsOn='ubuntu-latest') {
