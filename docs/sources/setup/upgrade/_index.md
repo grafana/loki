@@ -66,7 +66,7 @@ With the move to the [Grafana-community/helm-charts repository](https://github.c
 
 ### Migrating from the Loki Repository Helm Chart to the Community Helm Chart
 
-If you are migrating from the Helm chart previously hosted in the Loki repository (chart version 6.x) to the Grafana Community Helm chart (chart version 12.x), refer to the dedicated migration guide: [Migrate to the Community Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-community/).
+If you are upgrading from the Helm chart previously hosted in the Loki repository (chart version 6.x) to the Grafana Community Helm chart (chart version 13.x), refer to the dedicated migration guide: [Upgrade to the Community Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-community/).
 
 ### Helm Chart 6.50.0 - Respect the global registry in the sidecar image
 

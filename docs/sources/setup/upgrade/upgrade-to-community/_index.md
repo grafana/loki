@@ -1,27 +1,26 @@
 ---
-title: Migrate from the Loki Helm chart to the Community Helm chart
-menuTitle: Migrate to Community Helm chart
-description: Migrate from the Loki repository Helm chart (6.x) to the Grafana Community Helm chart (12.x).
+title: Upgrade from the Loki Helm chart to the Community Helm chart
+menuTitle: Upgrade to Community Helm chart
+description: Upgrade from the Loki repository Helm chart (6.x) to the Grafana Community Helm chart (13.x).
 weight: 900
 keywords:
   - upgrade
-  - migrate
   - community
   - helm
 ---
 
-# Migrate from the Loki Helm chart to the Community Helm chart
+# Upgrade from the Loki Helm chart to the Community Helm chart
 
-The Loki Helm chart has moved from the [Loki repository](https://github.com/grafana/loki) to the [Grafana Community Helm Charts repository](https://github.com/grafana-community/helm-charts). Chart version 6.55.0 (appVersion 3.6.7) was the last release from the Loki repository. Chart version 12.0.0 (appVersion 3.7.1) is the current release from the community repository.
+The Loki Helm chart has moved from the [Loki repository](https://github.com/grafana/loki) to the [Grafana Community Helm Charts repository](https://github.com/grafana-community/helm-charts). Chart version 6.55.0 (appVersion 3.6.7) was the last release from the Loki repository. Chart version 13.1.2 (appVersion 3.7.1) is the current release from the community repository at the time this topic was published.
 
-This guide walks you through migrating from 6.55.0 to 12.0.0, which spans six major chart versions (7 through 12), each with breaking changes.
+This guide walks you through upgrading from 6.55.0 to 13.x, which spans seven major chart versions (7 through 13), each with breaking changes.
 
 {{< admonition type="caution" >}}
-This migration spans six major versions with accumulated breaking changes. Test the upgrade in a non-production environment before applying it to production.
+This upgrade spans seven major versions with accumulated breaking changes. Test the upgrade in a non-production environment before applying it to production.
 {{< /admonition >}}
 
 {{< admonition type="warning" >}}
-Grafana Enterprise Logs (GEL) support was removed from the community chart in version 8.0.0. If you are a GEL user, **do not migrate** to the community chart. The upstream `grafana/loki` chart remains available for GEL users. Consult your Grafana Labs account team about your migration options. Refer to the [migration announcement](https://github.com/grafana/loki/issues/20705) for details.
+Grafana Enterprise Logs (GEL) support was removed from the community chart in version 8.0.0. If you are a GEL user, **do not migrate** to the community chart. The upstream `grafana/loki` chart remains available for GEL users.
 {{< /admonition >}}
 
 ## Prerequisites
@@ -49,23 +48,27 @@ helm repo add grafana https://grafana.github.io/helm-charts
 helm upgrade <RELEASE_NAME> grafana/loki -f values.yaml
 ```
 
-**After** (12.x from the community repository):
+**After** (13.x from the community repository):
 
 ```bash
 helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo update
-helm upgrade <RELEASE_NAME> grafana-community/loki -f values.yaml --version 12.0.0
+helm upgrade <RELEASE_NAME> grafana-community/loki -f values.yaml --version 13.1.2
 ```
 
 Or using OCI:
 
 ```bash
-helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki -f values.yaml --version 12.0.0
+helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki -f values.yaml --version 13.1.2
 ```
 
 ## Step 2: Update your values file for breaking changes
 
-The following sections describe every breaking change between chart versions 6.55.0 and 12.0.0, grouped by the major version that introduced each change. Review each section and update your values file accordingly.
+The following sections describe every breaking change between chart versions 6.55.0 and 13.x, grouped by the major version that introduced each change. Review each section and update your values file accordingly.
+
+{{< admonition type="caution" >}}
+Check the Loki Helm Chart [README](https://github.com/grafana-community/helm-charts/tree/main/charts/loki#upgrading) for the latest changes and upgrade information.  The Grafana Community is constantly improving the charts.
+{{< /admonition >}}
 
 ### 6.x to 7.0: Kubernetes API cleanup
 
@@ -79,7 +82,7 @@ rbac:
   pspAnnotations: {}       # remove this key
 ```
 
-The `rbac` section in 12.0.0 only contains:
+The `rbac` section in 13.x only contains:
 
 ```yaml
 rbac:
@@ -108,6 +111,10 @@ enterprise:
   gelGateway: true
   # ... all other enterprise.* keys
 ```
+
+{{< admonition type="note" >}}
+The Helm Chart in the Loki repository is being maintained for GEL customers only.
+{{< /admonition >}}
 
 ### 8.x to 9.0: Self-monitoring and Grafana Agent Operator removed
 
@@ -153,7 +160,7 @@ monitoring:
       password: "my-password"
 ```
 
-**After** (12.0.0):
+**After** (13.x):
 
 ```yaml
 lokiCanary:
@@ -180,7 +187,7 @@ indexGateway:
     size: 10Gi
 ```
 
-**After** (12.0.0):
+**After** (13.x):
 
 ```yaml
 indexGateway:
@@ -225,7 +232,7 @@ The default `deploymentMode` has changed from `SimpleScalable` to `Monolithic`, 
 deploymentMode: SimpleScalable
 ```
 
-**After** (12.0.0 default):
+**After** (13.x default):
 
 ```yaml
 deploymentMode: Monolithic
@@ -254,6 +261,44 @@ deploymentMode: Monolithic
 ```
 
 If you are running **Distributed**, no change is needed.
+
+### 12.x to 13.0: Ephemeral volume persistence flattened
+
+The persistence configuration for ephemeral volumes has been flattened across all components. The nested `persistence.ephemeralDataVolume` structure has been replaced with a `persistence.type` field.
+
+{{< admonition type="note" >}}
+If you are migrating directly from 6.55.0 and have never used the `ephemeralDataVolume` configuration introduced in the community chart, this change does not require action on your existing values. However, be aware of the new `persistence.type` field when configuring persistence for components like the compactor or bloom-builder.
+{{< /admonition >}}
+
+If you adopted the `ephemeralDataVolume` pattern from any intermediate community chart version, update your values as follows:
+
+**Before** (12.x):
+
+```yaml
+<component>:
+  persistence:
+    ephemeralDataVolume:
+      enabled: true
+      accessModes:
+        - ReadWriteOnce
+      size: 10Gi
+      storageClass: null
+```
+
+**After** (13.x):
+
+```yaml
+<component>:
+  persistence:
+    enabled: true
+    type: ephemeral
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+    storageClass: null
+```
+
+The `type` field accepts `pvc` (default for most components) or `ephemeral`. Fields that were nested under `ephemeralDataVolume` (`accessModes`, `size`, `storageClass`, `volumeAttributesClassName`, `selector`, `annotations`, `labels`) now sit directly under `persistence`.
 
 ## Step 3: Review additional deprecations
 
@@ -290,7 +335,7 @@ After updating your values file, run the upgrade:
 ```bash
 helm upgrade <RELEASE_NAME> grafana-community/loki \
   -f your-updated-values.yaml \
-  --version 12.0.0
+  --version 13.1.2
 ```
 
 Or using OCI:
@@ -298,7 +343,7 @@ Or using OCI:
 ```bash
 helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki \
   -f your-updated-values.yaml \
-  --version 12.0.0
+  --version 13.1.2
 ```
 
 ### Verify the upgrade
@@ -337,7 +382,7 @@ After a successful upgrade:
 
 ### Loki canary fails authentication
 
-**Cause:** Canary tenant configuration was under `monitoring.selfMonitoring.tenant` in 6.x and has moved to `lokiCanary.tenant` in 12.0.0.
+**Cause:** Canary tenant configuration was under `monitoring.selfMonitoring.tenant` in 6.x and has moved to `lokiCanary.tenant` in 13.x.
 
 **Fix:** Move `tenant.name` and `tenant.password` to the `lokiCanary.tenant` section.
 
@@ -358,6 +403,12 @@ After a successful upgrade:
 **Cause:** The `enterprise.*` section was removed in 8.0.0. Any leftover keys cause Helm to reject the values.
 
 **Fix:** Remove the entire `enterprise` section from your values file.
+
+### Unknown field `ephemeralDataVolume`
+
+**Cause:** The nested `persistence.ephemeralDataVolume` structure was flattened in 13.0.0. If you adopted this pattern from an intermediate community chart version, the old keys are no longer recognized.
+
+**Fix:** Replace `persistence.ephemeralDataVolume.enabled: true` with `persistence.enabled: true` and `persistence.type: ephemeral`, and move all nested fields directly under `persistence` as described in [12.x to 13.0](#12x-to-130-ephemeral-volume-persistence-flattened).
 
 ## Further reading
 
