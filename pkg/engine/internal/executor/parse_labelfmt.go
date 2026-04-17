@@ -61,6 +61,8 @@ func tokenizeLabelfmt(input arrow.RecordBatch, line string, decoder *log.LabelsF
 	for _, label := range labelFmts {
 		relevantLabels[label.Name] = true
 	}
+	relevantLabels[semconv.ColumnIdentError.ShortName()] = true
+	relevantLabels[semconv.ColumnIdentErrorDetails.ShortName()] = true
 	for labelName := range result {
 		if _, ok := relevantLabels[labelName]; !ok {
 			delete(result, labelName)
