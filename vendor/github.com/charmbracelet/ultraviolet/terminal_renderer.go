@@ -137,7 +137,6 @@ type TerminalRenderer struct {
 	cur, saved       cursor       // the current and saved cursors
 	flags            tFlag        // terminal writer flags.
 	term             string       // the terminal type
-	scrollHeight     int          // keeps track of how many lines we've scrolled down (inline mode)
 	clear            bool         // whether to force clear the screen
 	caps             capabilities // terminal control sequence capabilities
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
@@ -167,7 +166,6 @@ func NewTerminalRenderer(w io.Writer, env []string) (s *TerminalRenderer) {
 	s.caps = xtermCaps(s.term)
 	s.cur = cursor{Cell: EmptyCell, Position: Pos(-1, -1)} // start at -1 to force a move
 	s.saved = s.cur
-	s.scrollHeight = 0
 	s.oldhash, s.newhash = nil, nil
 	return
 }
@@ -368,9 +366,7 @@ func (s *TerminalRenderer) moveCursor(newbuf *RenderBuffer, x, y int, overwrite 
 		_ = s.buf.WriteByte('\r')
 		s.cur.X, s.cur.Y = 0, 0
 	}
-	seq, scrollHeight := moveCursor(s, newbuf, x, y, overwrite)
-	// If we scrolled the screen, we need to update the scroll height.
-	s.scrollHeight = max(s.scrollHeight, scrollHeight)
+	seq := moveCursor(s, newbuf, x, y, overwrite)
 	_, _ = s.buf.WriteString(seq)
 	s.cur.X, s.cur.Y = x, y
 }
@@ -1218,7 +1214,7 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		}
 	}
 
-	if !s.flags.Contains(tFullscreen) && s.scrollHeight < newHeight-1 {
+	if !s.flags.Contains(tFullscreen) && (curWidth != newWidth || curHeight != newHeight) {
 		s.move(newbuf, 0, newHeight-1)
 	}
 
@@ -1258,7 +1254,6 @@ func (s *TerminalRenderer) Resize(width, _ int) {
 	if s.tabs != nil {
 		s.tabs.Resize(width)
 	}
-	s.scrollHeight = 0
 }
 
 // Position returns the cursor position in the screen buffer after applying any
@@ -1314,9 +1309,8 @@ func notLocal(cols, fx, fy, tx, ty int) bool {
 //
 // It is safe to call this function with a nil [Buffer]. In that case, it won't
 // use any optimizations that require the new buffer such as overwrite.
-func relativeCursorMove(s *TerminalRenderer, newbuf *RenderBuffer, fx, fy, tx, ty int, overwrite, useTabs, useBackspace bool) (string, int) {
+func relativeCursorMove(s *TerminalRenderer, newbuf *RenderBuffer, fx, fy, tx, ty int, overwrite, useTabs, useBackspace bool) string {
 	var seq strings.Builder
-	var scrollHeight int
 	if newbuf == nil {
 		overwrite = false // We can't overwrite the current buffer.
 	}
@@ -1332,10 +1326,8 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *RenderBuffer, fx, fy, tx, t
 			if cud := ansi.CursorDown(n); yseq == "" || len(cud) < len(yseq) {
 				yseq = cud
 			}
-			shouldScroll := !s.flags.Contains(tFullscreen) && ty > s.scrollHeight
-			if shouldScroll || n < len(yseq) { // n is the cost of using newline characters
+			if !s.flags.Contains(tFullscreen) || n < len(yseq) { // n is the cost of using newline characters
 				yseq = strings.Repeat("\n", n)
-				scrollHeight = ty
 				if s.flags.Contains(tMapNewline) {
 					fx = 0
 				}
@@ -1462,7 +1454,7 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *RenderBuffer, fx, fy, tx, t
 		seq.WriteString(xseq)
 	}
 
-	return seq.String(), scrollHeight
+	return seq.String()
 }
 
 // moveCursor moves and returns the cursor movement sequence to move the cursor
@@ -1472,7 +1464,7 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *RenderBuffer, fx, fy, tx, t
 //
 // It is safe to call this function with a nil [Buffer]. In that case, it won't
 // use any optimizations that require the new buffer such as overwrite.
-func moveCursor(s *TerminalRenderer, newbuf *RenderBuffer, x, y int, overwrite bool) (seq string, scrollHeight int) {
+func moveCursor(s *TerminalRenderer, newbuf *RenderBuffer, x, y int, overwrite bool) (seq string) {
 	fx, fy := s.cur.X, s.cur.Y
 
 	if !s.flags.Contains(tRelativeCursor) {
@@ -1490,7 +1482,7 @@ func moveCursor(s *TerminalRenderer, newbuf *RenderBuffer, x, y int, overwrite b
 		// Method #0: Use [ansi.CUP] if the distance is long.
 		seq = ansi.CursorPosition(x+1, y+1)
 		if fx == -1 || fy == -1 || width == -1 || notLocal(width, fx, fy, x, y) {
-			return seq, 0
+			return seq
 		}
 	}
 
@@ -1514,32 +1506,29 @@ func moveCursor(s *TerminalRenderer, newbuf *RenderBuffer, x, y int, overwrite b
 		useBackspace := i&1 != 0
 
 		// Method #1: Use local movement sequences.
-		nseq1, nscrollHeight1 := relativeCursorMove(s, newbuf, fx, fy, x, y, overwrite, useHardTabs, useBackspace)
+		nseq1 := relativeCursorMove(s, newbuf, fx, fy, x, y, overwrite, useHardTabs, useBackspace)
 		if (i == 0 && len(seq) == 0) || len(nseq1) < len(seq) {
 			seq = nseq1
-			scrollHeight = max(scrollHeight, nscrollHeight1)
 		}
 
 		// Method #2: Use [ansi.CR] and local movement sequences.
-		nseq2, nscrollHeight2 := relativeCursorMove(s, newbuf, 0, fy, x, y, overwrite, useHardTabs, useBackspace)
+		nseq2 := relativeCursorMove(s, newbuf, 0, fy, x, y, overwrite, useHardTabs, useBackspace)
 		nseq2 = "\r" + nseq2
 		if len(nseq2) < len(seq) {
 			seq = nseq2
-			scrollHeight = max(scrollHeight, nscrollHeight2)
 		}
 
 		if !s.flags.Contains(tRelativeCursor) {
 			// Method #3: Use [ansi.CursorHomePosition] and local movement sequences.
-			nseq3, nscrollHeight3 := relativeCursorMove(s, newbuf, 0, 0, x, y, overwrite, useHardTabs, useBackspace)
+			nseq3 := relativeCursorMove(s, newbuf, 0, 0, x, y, overwrite, useHardTabs, useBackspace)
 			nseq3 = ansi.CursorHomePosition + nseq3
 			if len(nseq3) < len(seq) {
 				seq = nseq3
-				scrollHeight = max(scrollHeight, nscrollHeight3)
 			}
 		}
 	}
 
-	return seq, scrollHeight
+	return seq
 }
 
 // xtermCaps returns whether the terminal is xterm-like. This means that the

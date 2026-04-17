@@ -12,8 +12,8 @@ charm.land/bubbles/v2/paginator
 charm.land/bubbles/v2/spinner
 charm.land/bubbles/v2/textinput
 charm.land/bubbles/v2/viewport
-# charm.land/bubbletea/v2 v2.0.2
-## explicit; go 1.24.2
+# charm.land/bubbletea/v2 v2.0.5
+## explicit; go 1.25.0
 charm.land/bubbletea/v2
 # charm.land/lipgloss/v2 v2.0.2
 ## explicit; go 1.25.0
@@ -581,13 +581,13 @@ github.com/cenkalti/backoff/v5
 # github.com/cespare/xxhash/v2 v2.3.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
-# github.com/charmbracelet/colorprofile v0.4.2
-## explicit; go 1.24.2
+# github.com/charmbracelet/colorprofile v0.4.3
+## explicit; go 1.25.0
 github.com/charmbracelet/colorprofile
-# github.com/charmbracelet/ultraviolet v0.0.0-20260205113103-524a6607adb8
-## explicit; go 1.24.2
+# github.com/charmbracelet/ultraviolet v0.0.0-20260413211237-bd52878bcec2
+## explicit; go 1.25.0
 github.com/charmbracelet/ultraviolet
-# github.com/charmbracelet/x/ansi v0.11.6
+# github.com/charmbracelet/x/ansi v0.11.7
 ## explicit; go 1.24.2
 github.com/charmbracelet/x/ansi
 github.com/charmbracelet/x/ansi/kitty
@@ -1264,7 +1264,7 @@ github.com/kylelemons/godebug/pretty
 ## explicit; go 1.18
 github.com/leodido/go-urn
 github.com/leodido/go-urn/scim/schema
-# github.com/lucasb-eyer/go-colorful v1.3.0
+# github.com/lucasb-eyer/go-colorful v1.4.0
 ## explicit; go 1.12
 github.com/lucasb-eyer/go-colorful
 # github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3
@@ -1279,7 +1279,7 @@ github.com/mattn/go-ieproxy
 # github.com/mattn/go-isatty v0.0.20
 ## explicit; go 1.15
 github.com/mattn/go-isatty
-# github.com/mattn/go-runewidth v0.0.21
+# github.com/mattn/go-runewidth v0.0.23
 ## explicit; go 1.20
 github.com/mattn/go-runewidth
 # github.com/mdlayher/socket v0.5.1
