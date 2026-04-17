@@ -86,7 +86,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		&cfg.ChannelSize,
 		prefix+"channel-size",
 		10000,
-		`Buffered channel for in-process records (inmemory mode only). Each record is ~100B-10KB depending on log line size. Default 10,000 is safe for most experimental workloads. Monitor loki_distributor_inmemory_dataobj_tee_stream_failures_total{reason="channel_full"} to alert on backpressure.`,
+		`Internal buffer size for records for inmemory ingestion.`,
 	)
 	f.StringVar(
 		&cfg.Topic,

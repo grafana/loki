@@ -1521,11 +1521,7 @@ dataobj:
     # CLI flag: -dataobj-consumer.ingest-mode
     [ingest_mode: <string> | default = "kafka"]
 
-    # Buffered channel for in-process records (inmemory mode only). Each record
-    # is ~100B-10KB depending on log line size. Default 10,000 is safe for most
-    # experimental workloads. Monitor
-    # loki_distributor_inmemory_dataobj_tee_stream_failures_total{reason="channel_full"}
-    # to alert on backpressure.
+    # Internal buffer size for records for inmemory ingestion.
     # CLI flag: -dataobj-consumer.channel-size
     [channel_size: <int> | default = 10000]
 
