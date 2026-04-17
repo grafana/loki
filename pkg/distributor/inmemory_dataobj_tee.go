@@ -47,7 +47,7 @@ func NewInMemoryDataObjTee(records chan *kgo.Record, reg prometheus.Registerer, 
 		logger:           logger,
 		streams: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_inmemory_dataobj_tee_streams_total",
-			Help: "Total number of streams duplicated to the in-memory dataobj channel.",
+			Help: "Total number of streams duplicated (both successful and failed) to the in-memory dataobj channel.",
 		}),
 		streamFailures: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_distributor_inmemory_dataobj_tee_stream_failures_total",
@@ -65,11 +65,11 @@ func (t *InMemoryDataObjTee) Register(_ context.Context, _ string, streams []Key
 // Duplicate implements [Tee]. It encodes each stream and sends it to the
 // in-process channel, calling pushTracker.doneWithResult for each stream.
 func (t *InMemoryDataObjTee) Duplicate(ctx context.Context, tenant string, streams []KeyedStream, pushTracker *PushTracker) {
-	for _, s := range streams {
-		go func(stream KeyedStream) {
-			t.duplicate(ctx, tenant, stream, pushTracker)
-		}(s)
-	}
+	go func() {
+		for _, s := range streams {
+			t.duplicate(ctx, tenant, s, pushTracker)
+		}
+	}()
 }
 
 func (t *InMemoryDataObjTee) duplicate(ctx context.Context, tenant string, stream KeyedStream, pushTracker *PushTracker) {
