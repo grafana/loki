@@ -83,6 +83,10 @@ You may use any substitutable services, such as those that implement the S3 API 
 
 ## Index storage
 
+{{< admonition type="note" >}}
+This storage type for indexes is deprecated and may be removed in future major versions of Loki.
+{{< /admonition >}}
+
 ### BoltDB (deprecated)
 
 BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) aims to support clustered deployments using `boltdb` as an index.
