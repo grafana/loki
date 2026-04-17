@@ -27,6 +27,17 @@ import (
 // ListenerUpdate contains information received in an LDS response, which is of
 // interest to the registered LDS watcher.
 type ListenerUpdate struct {
+	// APIListener contains the HTTP connection manager configuration.
+	APIListener *HTTPConnectionManagerConfig
+	// TCPListener contains inbound listener configuration.
+	TCPListener *InboundListenerConfig
+
+	// Raw is the resource from the xds response.
+	Raw *anypb.Any
+}
+
+// HTTPConnectionManagerConfig contains the HTTP connection manager configuration.
+type HTTPConnectionManagerConfig struct {
 	// RouteConfigName is the route configuration name corresponding to the
 	// target which is being watched through LDS.
 	//
@@ -45,11 +56,6 @@ type ListenerUpdate struct {
 	// HTTPFilters is a list of HTTP filters (name, config) from the LDS
 	// response.
 	HTTPFilters []HTTPFilter
-	// InboundListenerCfg contains inbound listener configuration.
-	InboundListenerCfg *InboundListenerConfig
-
-	// Raw is the resource from the xds response.
-	Raw *anypb.Any
 }
 
 // HTTPFilter represents one HTTP filter from an LDS response's HTTP connection
@@ -74,6 +80,10 @@ type InboundListenerConfig struct {
 	// Port is the local port on which the inbound listener is expected to
 	// accept incoming connections.
 	Port string
-	// FilterChains is the list of filter chains associated with this listener.
-	FilterChains *FilterChainManager
+
+	// DefaultFilterChain is the default filter chain to use if no other filter
+	// chain matches.
+	DefaultFilterChain NetworkFilterChainConfig
+	// FilterChains contains the filter chains associated with this listener.
+	FilterChains NetworkFilterChainMap
 }
