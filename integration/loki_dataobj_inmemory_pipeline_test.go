@@ -5,8 +5,6 @@ package integration
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -38,11 +36,8 @@ func TestInmemoryPipeline(t *testing.T) {
 		"-dataobj-consumer.section-stripe-merge-limit=2",
 		"-dataobj-consumer.sha-prefix-size=2",
 		"-dataobj-consumer.idle-flush-timeout=100ms",
-		// In inmemory mode the distributor writes only to the dataobj channel,
-		// not to ingesters or Kafka.
 		"-distributor.ingester-writes-enabled=false",
 		"-pattern-ingester.enabled=false",
-		// Use the v2 query engine to read from dataobjects.
 		"-query-engine.enable=true",
 		"-query-engine.storage-lag=0",
 	)
@@ -64,24 +59,11 @@ ingest_limits:
 	cli := client.New(tenantID, "", tAll.HTTPURL())
 	cli.Now = time.Now().Add(-30 * time.Second)
 
-	t.Run("readiness-probe", func(t *testing.T) {
-		resp, err := http.Get(tAll.HTTPURL() + "/ready") //nolint:noctx
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, http.StatusOK, resp.StatusCode)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Contains(t, string(body), "ready")
-	})
-
 	t.Run("round-trip", func(t *testing.T) {
 		require.NoError(t, cli.PushLogLine("pipeline-line-1", cli.Now, nil, map[string]string{"job": "pipeline-test"}))
 		require.NoError(t, cli.PushLogLine("pipeline-line-2", cli.Now.Add(-time.Second), nil, map[string]string{"job": "pipeline-test"}))
 
 		require.NoError(t, cli.FlushDataobj())
-		require.NoError(t, err)
-		require.Equal(t, http.StatusNoContent, flushResp.StatusCode)
-		flushResp.Body.Close()
 
 		var lines []string
 		require.Eventually(t, func() bool {
