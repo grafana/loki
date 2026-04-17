@@ -133,7 +133,7 @@ func (b *Builder) getStatsBuilderForTenant(tenantID string) *stats.Builder {
 
 func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder {
 	if _, ok := b.postings[tenantID]; !ok {
-		pb := postings.NewBuilder(b.metrics.postings, postings.ColumnarSectionEncoder(int(b.cfg.TargetPageSize), b.cfg.MaxPageRows))
+		pb := postings.NewBuilder(b.metrics.postings, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 		pb.SetTenant(tenantID)
 		b.postings[tenantID] = pb
 	}
@@ -180,89 +180,73 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 	return nil
 }
 
-// AppendLabelPosting records a label-based posting for a data object column.
-func (b *Builder) AppendLabelPosting(tenantID, objectPath string, sectionIdx int64,
-	columnName string, labelValue string, streamIDBitmap []byte,
-	uncompressedSize int64, minTs, maxTs time.Time) error {
+// ObserveLabelPosting records a label-based posting observation for a data object column.
+// Multiple observations for the same (objectPath, sectionIdx, columnName, labelValue) are aggregated internally.
+// The aggregated postings are flushed when [Builder.Flush] is called.
+func (b *Builder) ObserveLabelPosting(tenantID, objectPath string, sectionIdx int64,
+	columnName, labelValue string, streamID, uncompressedSize int64, ts time.Time) error {
 	b.metrics.appendsTotal.Inc()
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
-	preAppendSizeEstimate := tenantPostings.EstimatedSize()
+	preSize := tenantPostings.EstimatedSize()
 
-	tenantPostings.Append(postings.Posting{
-		Kind:             postings.KindLabel,
-		ObjectPath:       objectPath,
-		SectionIndex:     sectionIdx,
-		ColumnName:       columnName,
-		LabelValue:       labelValue,
-		BloomFilter:      nil,
-		StreamIDBitmap:   streamIDBitmap,
-		UncompressedSize: uncompressedSize,
-		MinTimestamp:     minTs.UnixNano(),
-		MaxTimestamp:     maxTs.UnixNano(),
-	})
+	tenantPostings.ObserveLabelPosting(objectPath, sectionIdx, columnName, labelValue, streamID, ts, uncompressedSize)
 
-	postAppendSizeEstimate := tenantPostings.EstimatedSize()
-	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
-
-	if postAppendSizeEstimate > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(tenantPostings); err != nil {
-			return err
-		}
-	}
+	postSize := tenantPostings.EstimatedSize()
+	b.unflushedSizeEstimate += postSize - preSize
 
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true
 	}
-
 	return nil
 }
 
-// AppendBloomPosting records a Bloom-filter posting for a data object column.
-func (b *Builder) AppendBloomPosting(tenantID, objectPath string, sectionIdx int64,
-	columnName string, bloomFilter []byte, streamIDBitmap []byte,
-	uncompressedSize int64, minTs, maxTs time.Time) error {
+// PrepareBloomColumn initializes the bloom filter for a specific column.
+// Must be called before any ObserveBloomPosting calls for the given (objectPath, sectionIdx, columnName).
+func (b *Builder) PrepareBloomColumn(tenantID, objectPath string, sectionIdx int64,
+	columnName string, estimatedCardinality uint) {
+	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
+	tenantPostings.PrepareBloomColumn(objectPath, sectionIdx, columnName, estimatedCardinality)
+}
+
+// ObserveBloomPosting records a bloom-filter posting observation for a data object column.
+// Returns an error if the column has not been prepared via PrepareBloomColumn.
+// The aggregated postings are flushed when [Builder.Flush] is called.
+func (b *Builder) ObserveBloomPosting(tenantID, objectPath string, sectionIdx int64,
+	columnName, value string, streamID, uncompressedSize int64, ts time.Time) error {
 	b.metrics.appendsTotal.Inc()
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
-	preAppendSizeEstimate := tenantPostings.EstimatedSize()
+	preSize := tenantPostings.EstimatedSize()
 
-	tenantPostings.Append(postings.Posting{
-		Kind:             postings.KindBloom,
-		ObjectPath:       objectPath,
-		SectionIndex:     sectionIdx,
-		ColumnName:       columnName,
-		BloomFilter:      bloomFilter,
-		StreamIDBitmap:   streamIDBitmap,
-		UncompressedSize: uncompressedSize,
-		MinTimestamp:     minTs.UnixNano(),
-		MaxTimestamp:     maxTs.UnixNano(),
-	})
-
-	postAppendSizeEstimate := tenantPostings.EstimatedSize()
-	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
-
-	if postAppendSizeEstimate > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(tenantPostings); err != nil {
-			return err
-		}
+	if err := tenantPostings.ObserveBloomPosting(objectPath, sectionIdx, columnName, value, streamID, ts, uncompressedSize); err != nil {
+		return err
 	}
+
+	postSize := tenantPostings.EstimatedSize()
+	b.unflushedSizeEstimate += postSize - preSize
 
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true
 	}
-
 	return nil
+}
+
+// BloomBytes returns the marshaled bloom filter bytes for a specific column.
+// Returns an error if the column has not been prepared via PrepareBloomColumn.
+func (b *Builder) BloomBytes(tenantID, objectPath string, sectionIdx int64, columnName string) ([]byte, error) {
+	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
+	return tenantPostings.BloomBytes(objectPath, sectionIdx, columnName)
 }
 
 func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.Time, endTs time.Time) error {
@@ -371,12 +355,7 @@ func (b *Builder) getPointersBuilderForTenant(tenantID string) *pointers.Builder
 	return tenantPointers
 }
 
-// Append buffers a stream to be written to a data object. Append returns an
-// error if the stream labels cannot be parsed or [ErrBuilderFull] if the
-// builder is full.
-//
-// Once a Builder is full, call [Builder.Flush] to flush the buffered data,
-// then call Append again with the same entry.
+// ObserveLogLine records a log line observation for a stream in the pointers section.
 func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, streamIDInObject int64, streamIDInIndex int64, ts time.Time, uncompressedSize int64) error {
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.
@@ -407,12 +386,7 @@ func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, st
 	return nil
 }
 
-// Append buffers a stream to be written to a data object. Append returns an
-// error if the stream labels cannot be parsed or [ErrBuilderFull] if the
-// builder is full.
-//
-// Once a Builder is full, call [Builder.Flush] to flush the buffered data,
-// then call Append again with the same entry.
+// AppendColumnIndex records a column index entry with bloom filter data in the pointers section.
 func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64, columnName string, columnIndex int64, valuesBloom []byte) error {
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.

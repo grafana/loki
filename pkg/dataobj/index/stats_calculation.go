@@ -34,7 +34,7 @@ func (c *statsCalculation) Name() string { return "stats" }
 // shared-builder writes happen in Flush, so no lock is required.
 func (c *statsCalculation) ProcessBatchNeedsBuilderLock() bool { return false }
 
-func (c *statsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs.Stats) error {
+func (c *statsCalculation) Prepare(_ context.Context, _ *logsCalculationContext, _ *dataobj.Section, _ logs.Stats) error {
 	c.aggregates = make(map[uint64]*statsAggregate)
 	return nil
 }

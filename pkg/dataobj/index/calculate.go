@@ -26,7 +26,7 @@ type logsIndexCalculation interface {
 	// Name returns a short identifier for this calculation step, used for metrics labels.
 	Name() string
 	// Prepare is called before the first batch of logs is processed in order to initialize any state.
-	Prepare(ctx context.Context, section *dataobj.Section, stats logs.Stats) error
+	Prepare(ctx context.Context, calcCtx *logsCalculationContext, section *dataobj.Section, stats logs.Stats) error
 	// ProcessBatch is called for each batch of logs records.
 	//
 	// If ProcessBatchNeedsBuilderLock returns true, implementations can assume
@@ -256,7 +256,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	stepDurations := make([]time.Duration, len(calculationSteps))
 
 	for _, calculation := range calculationSteps {
-		if err := calculation.Prepare(ctx, section, stats); err != nil {
+		if err := calculation.Prepare(ctx, calculationContext, section, stats); err != nil {
 			return fmt.Errorf("failed to prepare calculation: %w", err)
 		}
 	}
