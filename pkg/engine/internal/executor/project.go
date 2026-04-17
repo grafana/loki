@@ -152,6 +152,7 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 				return nil, err
 			}
 			_, shouldDelete := renamedLabelSources[ident.ShortName()]
+			shouldDelete = shouldDelete && ident.ColumnType() == types.ColumnTypeLabel // only overwrite labels, not other column types
 			if !ident.Equal(semconv.ColumnIdentValue) && !shouldDelete {
 				outputCols = append(outputCols, batch.Column(i))
 				outputFields = append(outputFields, field)
