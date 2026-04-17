@@ -41,7 +41,6 @@ func (e *labelPostingEntry) BitmapBytes() []byte {
 // It is NOT goroutine-safe; callers must synchronize if needed.
 type labelAggregator struct {
 	entries       map[labelPostingKey]*labelPostingEntry
-	maxStreamID   int64
 	estimatedSize int
 }
 
@@ -98,9 +97,6 @@ func (a *labelAggregator) Observe(objectPath string, sectionIndex int64, columnN
 	}
 	entry.UncompressedSize += uncompressedSize
 
-	if streamID > a.maxStreamID {
-		a.maxStreamID = streamID
-	}
 }
 
 // Entries returns all aggregated entries. Bitmap normalization (padding to
@@ -127,6 +123,5 @@ func (a *labelAggregator) EstimatedSize() int {
 // Reset clears all accumulated state.
 func (a *labelAggregator) Reset() {
 	a.entries = make(map[labelPostingKey]*labelPostingEntry)
-	a.maxStreamID = 0
 	a.estimatedSize = 0
 }

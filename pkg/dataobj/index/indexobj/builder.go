@@ -183,6 +183,11 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 // ObserveLabelPosting records a label-based posting observation for a data object column.
 // Multiple observations for the same (objectPath, sectionIdx, columnName, labelValue) are aggregated internally.
 // The aggregated postings are flushed when [Builder.Flush] is called.
+//
+// Unlike other section types (stats, pointers), postings are NOT flushed mid-stream
+// when they exceed TargetSectionSize. The aggregation model requires all observations
+// for a section to be present before encoding (bitmap normalization, bloom filter
+// construction). The builderFull flag provides back-pressure via TargetObjectSize.
 func (b *Builder) ObserveLabelPosting(tenantID, objectPath string, sectionIdx int64,
 	columnName, labelValue string, streamID, uncompressedSize int64, ts time.Time) error {
 	b.metrics.appendsTotal.Inc()

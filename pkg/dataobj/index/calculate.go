@@ -255,11 +255,18 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	// Track cumulative duration per calculation step across all batches + flush.
 	stepDurations := make([]time.Duration, len(calculationSteps))
 
+	// Lock the builder during Prepare because some calculations (e.g.,
+	// columnValuesCalculation) mutate shared builder state via
+	// PrepareBloomColumn. The builder is not goroutine-safe, and multiple
+	// processLogsSection goroutines may run concurrently for the same tenant.
+	c.builderMtx.Lock()
 	for _, calculation := range calculationSteps {
 		if err := calculation.Prepare(ctx, calculationContext, section, stats); err != nil {
+			c.builderMtx.Unlock()
 			return fmt.Errorf("failed to prepare calculation: %w", err)
 		}
 	}
+	c.builderMtx.Unlock()
 
 	// TODO(benclive): Switch to a columnar reader instead of row based
 	rowReader := logs.NewRowReader(logsSection)

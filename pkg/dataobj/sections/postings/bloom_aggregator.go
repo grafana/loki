@@ -58,7 +58,6 @@ func (e *bloomPostingEntry) BitmapBytes() []byte {
 // It is NOT goroutine-safe; callers must synchronize if needed.
 type bloomAggregator struct {
 	entries       map[bloomPostingKey]*bloomPostingEntry
-	maxStreamID   int64
 	estimatedSize int
 }
 
@@ -134,10 +133,6 @@ func (a *bloomAggregator) Observe(objectPath string, sectionIndex int64, columnN
 	}
 	entry.UncompressedSize += uncompressedSize
 
-	if streamID > a.maxStreamID {
-		a.maxStreamID = streamID
-	}
-
 	return nil
 }
 
@@ -180,6 +175,5 @@ func (a *bloomAggregator) EstimatedSize() int {
 // Reset clears all accumulated state including prepared columns.
 func (a *bloomAggregator) Reset() {
 	a.entries = make(map[bloomPostingKey]*bloomPostingEntry)
-	a.maxStreamID = 0
 	a.estimatedSize = 0
 }
