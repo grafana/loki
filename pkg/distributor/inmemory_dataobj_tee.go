@@ -86,17 +86,22 @@ func (t *InMemoryDataObjTee) duplicate(ctx context.Context, tenant string, strea
 	// Single timer for the whole stream batch. Using time.NewTimer + defer Stop
 	// avoids the leak caused by time.After inside a loop (each call creates a timer
 	// that lives until it fires, even if the select chose a different case).
+	// A nil channel blocks forever, so timeout stays nil when pushTimeout == 0.
 	//
 	// Note: if the channel send times out mid-batch, earlier records from this
 	// stream are already queued. The consumer will process them as a partial
 	// stream. This is acceptable in inmemory mode (no durability guarantees).
-	timer := time.NewTimer(t.pushTimeout)
-	defer timer.Stop()
+	var timeout <-chan time.Time
+	if t.pushTimeout > 0 {
+		timer := time.NewTimer(t.pushTimeout)
+		defer timer.Stop()
+		timeout = timer.C
+	}
 
 	for _, rec := range records {
 		select {
 		case t.records <- rec:
-		case <-timer.C:
+		case <-timeout:
 			level.Error(t.logger).Log("msg", "in-memory dataobj tee channel full, dropping record", "tenant", tenant)
 			t.streamFailures.WithLabelValues("channel_full").Inc()
 			pushTracker.doneWithResult(fmt.Errorf("couldn't process request internally due to inmemory tee error: %d", TeeCouldntProduceRecordsError))
