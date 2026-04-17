@@ -347,13 +347,15 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		startCompute := time.Now()
 		rec, err := pipeline.Read(ctx)
 		computeDuration := time.Since(startCompute)
+		if err == nil || errors.Is(err, executor.EOF) {
+			t.Metrics.passComputeSeconds.Observe(computeDuration.Seconds())
+			totalComputeTime += computeDuration
+		}
 		if err != nil && errors.Is(err, executor.EOF) {
 			break
 		} else if err != nil {
 			return totalRows, err
 		}
-		t.Metrics.passComputeSeconds.Observe(computeDuration.Seconds())
-		totalComputeTime += computeDuration
 
 		region.Record(xcap.TaskDrainRecordsReceived.Observe(1))
 		totalRows += int(rec.NumRows())
