@@ -7,6 +7,34 @@ import (
 	smithy "github.com/aws/smithy-go"
 )
 
+//	You might receive this error for several reasons. For details, see the
+//
+// description of this API operation.
+type AccessDenied struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *AccessDenied) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *AccessDenied) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *AccessDenied) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "AccessDenied"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *AccessDenied) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
 // The requested bucket name is not available. The bucket namespace is shared by
 // all users of the system. Select a different name and try again.
 type BucketAlreadyExists struct {
@@ -64,6 +92,70 @@ func (e *BucketAlreadyOwnedByYou) ErrorCode() string {
 }
 func (e *BucketAlreadyOwnedByYou) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
+//	The existing object was created with a different encryption type. Subsequent
+//
+// write requests must include the appropriate encryption parameters in the request
+// or while creating the session.
+type EncryptionTypeMismatch struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *EncryptionTypeMismatch) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *EncryptionTypeMismatch) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *EncryptionTypeMismatch) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "EncryptionTypeMismatch"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *EncryptionTypeMismatch) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// Parameters on this idempotent request are inconsistent with parameters used in
+// previous request(s).
+//
+// For a list of error codes and more information on Amazon S3 errors, see [Error codes].
+//
+// Idempotency ensures that an API request completes no more than one time. With
+// an idempotent request, if the original request completes successfully, any
+// subsequent retries complete successfully without performing any further actions.
+//
+// [Error codes]: https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList
+type IdempotencyParameterMismatch struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *IdempotencyParameterMismatch) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *IdempotencyParameterMismatch) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *IdempotencyParameterMismatch) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "IdempotencyParameterMismatch"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *IdempotencyParameterMismatch) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
 // Object is archived and inaccessible until restored.
 //
 // If the object you are retrieving is stored in the S3 Glacier Flexible Retrieval
@@ -102,6 +194,61 @@ func (e *InvalidObjectState) ErrorCode() string {
 	return *e.ErrorCodeOverride
 }
 func (e *InvalidObjectState) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// A parameter or header in your request isn't valid. For details, see the
+// description of this API operation.
+type InvalidRequest struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *InvalidRequest) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *InvalidRequest) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *InvalidRequest) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "InvalidRequest"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *InvalidRequest) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+//	The write offset value that you specified does not match the current object
+//
+// size.
+type InvalidWriteOffset struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *InvalidWriteOffset) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *InvalidWriteOffset) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *InvalidWriteOffset) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "InvalidWriteOffset"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *InvalidWriteOffset) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // The specified bucket does not exist.
 type NoSuchBucket struct {
@@ -259,3 +406,32 @@ func (e *ObjectNotInActiveTierError) ErrorCode() string {
 	return *e.ErrorCodeOverride
 }
 func (e *ObjectNotInActiveTierError) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+//	You have attempted to add more parts than the maximum of 10000 that are
+//
+// allowed for this object. You can use the CopyObject operation to copy this
+// object to another and then add more data to the newly copied object.
+type TooManyParts struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *TooManyParts) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *TooManyParts) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *TooManyParts) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "TooManyParts"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *TooManyParts) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }

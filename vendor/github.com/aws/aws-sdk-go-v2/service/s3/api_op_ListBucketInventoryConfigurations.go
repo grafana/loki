@@ -14,10 +14,10 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// This operation is not supported by directory buckets.
+// This operation is not supported for directory buckets.
 //
-// Returns a list of inventory configurations for the bucket. You can have up to
-// 1,000 analytics configurations per bucket.
+// Returns a list of S3 Inventory configurations for the bucket. You can have up
+// to 1,000 inventory configurations per bucket.
 //
 // This action supports list pagination and does not return more than 100
 // configurations at a time. Always check the IsTruncated element in the response.
@@ -41,6 +41,10 @@ import (
 // [DeleteBucketInventoryConfiguration]
 //
 // [PutBucketInventoryConfiguration]
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // [Amazon S3 Inventory]: https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-inventory.html
 // [Permissions Related to Bucket Subresource Operations]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources
@@ -149,13 +153,16 @@ func (c *Client) addOperationListBucketInventoryConfigurationsMiddlewares(stack 
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
 		return err
 	}
 	if err = addRecordResponseTiming(stack); err != nil {
+		return err
+	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
 		return err
 	}
 	if err = addClientUserAgent(stack, options); err != nil {
@@ -173,13 +180,13 @@ func (c *Client) addOperationListBucketInventoryConfigurationsMiddlewares(stack 
 	if err = addPutBucketContextMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
-		return err
-	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListBucketInventoryConfigurationsValidationMiddleware(stack); err != nil {
@@ -213,6 +220,15 @@ func (c *Client) addOperationListBucketInventoryConfigurationsMiddlewares(stack 
 		return err
 	}
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

@@ -3,6 +3,7 @@ package checksum
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/aws/smithy-go"
@@ -55,7 +56,7 @@ func (m *validateOutputPayloadChecksum) ID() string {
 }
 
 // HandleDeserialize is a Deserialize middleware that wraps the HTTP response
-// body with an io.ReadCloser that will validate the its checksum.
+// body with an io.ReadCloser that will validate its checksum.
 func (m *validateOutputPayloadChecksum) HandleDeserialize(
 	ctx context.Context, in middleware.DeserializeInput, next middleware.DeserializeHandler,
 ) (
@@ -66,8 +67,7 @@ func (m *validateOutputPayloadChecksum) HandleDeserialize(
 		return out, metadata, err
 	}
 
-	// If there is no validation mode specified nothing is supported.
-	if mode := getContextOutputValidationMode(ctx); mode != "ENABLED" {
+	if mode := getContextOutputValidationMode(ctx); mode != checksumValidationModeEnabled {
 		return out, metadata, err
 	}
 
@@ -76,6 +76,12 @@ func (m *validateOutputPayloadChecksum) HandleDeserialize(
 		return out, metadata, &smithy.DeserializationError{
 			Err: fmt.Errorf("unknown transport type %T", out.RawResponse),
 		}
+	}
+
+	// this runs BEFORE the deserializer, so we have to preemptively check for
+	// non-200, in which case there is no checksum to validate
+	if response.StatusCode != 200 {
+		return out, metadata, err
 	}
 
 	var expectedChecksum string
@@ -90,13 +96,11 @@ func (m *validateOutputPayloadChecksum) HandleDeserialize(
 		algorithmToUse = algorithm
 	}
 
-	// TODO this must validate the validation mode is set to enabled.
-
 	logger := middleware.GetLogger(ctx)
 
 	// Skip validation if no checksum algorithm or checksum is available.
 	if len(expectedChecksum) == 0 || len(algorithmToUse) == 0 {
-		if m.LogValidationSkipped {
+		if response.Body != http.NoBody && m.LogValidationSkipped {
 			// TODO this probably should have more information about the
 			// operation output that won't be validated.
 			logger.Logf(logging.Warn,

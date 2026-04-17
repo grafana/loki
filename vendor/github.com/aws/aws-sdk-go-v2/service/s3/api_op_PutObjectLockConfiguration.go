@@ -14,7 +14,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// This operation is not supported by directory buckets.
+// This operation is not supported for directory buckets.
 //
 // Places an Object Lock configuration on the specified bucket. The rule specified
 // in the Object Lock configuration will be applied by default to every new object
@@ -27,6 +27,10 @@ import (
 //
 //   - You can enable Object Lock for new or existing buckets. For more
 //     information, see [Configuring Object Lock].
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // [Configuring Object Lock]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-configure.html
 // [Locking Objects]: https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html
@@ -82,9 +86,8 @@ type PutObjectLockConfigurationInput struct {
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. If either the
 	// source or destination S3 bucket has Requester Pays enabled, the requester will
-	// pay for corresponding charges to copy the object. For information about
-	// downloading objects from Requester Pays buckets, see [Downloading Objects in Requester Pays Buckets]in the Amazon S3 User
-	// Guide.
+	// pay for the corresponding charges. For information about downloading objects
+	// from Requester Pays buckets, see [Downloading Objects in Requester Pays Buckets]in the Amazon S3 User Guide.
 	//
 	// This functionality is not supported for directory buckets.
 	//
@@ -106,9 +109,12 @@ func (in *PutObjectLockConfigurationInput) bindEndpointParams(p *EndpointParamet
 type PutObjectLockConfigurationOutput struct {
 
 	// If present, indicates that the requester was successfully charged for the
-	// request.
+	// request. For more information, see [Using Requester Pays buckets for storage transfers and usage]in the Amazon Simple Storage Service user
+	// guide.
 	//
 	// This functionality is not supported for directory buckets.
+	//
+	// [Using Requester Pays buckets for storage transfers and usage]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/RequesterPaysBuckets.html
 	RequestCharged types.RequestCharged
 
 	// Metadata pertaining to the operation's result.
@@ -151,13 +157,16 @@ func (c *Client) addOperationPutObjectLockConfigurationMiddlewares(stack *middle
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
 		return err
 	}
 	if err = addRecordResponseTiming(stack); err != nil {
+		return err
+	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
 		return err
 	}
 	if err = addClientUserAgent(stack, options); err != nil {
@@ -175,13 +184,16 @@ func (c *Client) addOperationPutObjectLockConfigurationMiddlewares(stack *middle
 	if err = addPutBucketContextMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
-		return err
-	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
+		return err
+	}
+	if err = addRequestChecksumMetricsTracking(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpPutObjectLockConfigurationValidationMiddleware(stack); err != nil {
@@ -223,6 +235,15 @@ func (c *Client) addOperationPutObjectLockConfigurationMiddlewares(stack *middle
 	if err = s3cust.AddExpressDefaultChecksumMiddleware(stack); err != nil {
 		return err
 	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -252,9 +273,10 @@ func getPutObjectLockConfigurationRequestAlgorithmMember(input interface{}) (str
 }
 
 func addPutObjectLockConfigurationInputChecksumMiddlewares(stack *middleware.Stack, options Options) error {
-	return internalChecksum.AddInputMiddleware(stack, internalChecksum.InputMiddlewareOptions{
+	return addInputChecksumMiddleware(stack, internalChecksum.InputMiddlewareOptions{
 		GetAlgorithm:                     getPutObjectLockConfigurationRequestAlgorithmMember,
 		RequireChecksum:                  true,
+		RequestChecksumCalculation:       options.RequestChecksumCalculation,
 		EnableTrailingChecksum:           false,
 		EnableComputeSHA256PayloadHash:   true,
 		EnableDecodedContentLengthHeader: true,
