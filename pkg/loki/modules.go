@@ -365,7 +365,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	if t.Cfg.DataObj.Enabled && t.Cfg.DataObj.Consumer.IngestMode == consumer.IngestModeInMemory {
 		reg := prometheus.DefaultRegisterer
 		logger := log.With(util_log.Logger, "component", "inmemory-dataobj-tee")
-		inmemTee := distributor.NewInMemoryDataObjTee(t.dataObjInMemoryRecordsChan, reg, logger, t.Cfg.Distributor.InMemoryPushTimeout)
+		inmemTee := distributor.NewInMemoryDataObjTee(t.dataObjConsumer.RecordsChannel(), reg, logger, t.Cfg.Distributor.InMemoryPushTimeout)
 		t.Tee = distributor.WrapTee(t.Tee, inmemTee)
 	}
 
@@ -2451,7 +2451,6 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 			return nil, err
 		}
 		t.dataObjConsumer = svc
-		t.dataObjInMemoryRecordsChan = svc.RecordsChannel()
 
 		// Register the flush endpoint for inmemory mode (testing/operational use).
 		httpMiddleware := middleware.Merge(
