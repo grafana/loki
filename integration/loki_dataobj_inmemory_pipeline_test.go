@@ -78,7 +78,7 @@ ingest_limits:
 		require.NoError(t, cli.PushLogLine("pipeline-line-1", cli.Now, nil, map[string]string{"job": "pipeline-test"}))
 		require.NoError(t, cli.PushLogLine("pipeline-line-2", cli.Now.Add(-time.Second), nil, map[string]string{"job": "pipeline-test"}))
 
-		flushResp, err := http.Post(tAll.HTTPURL()+"/dataobj-consumer/flush", "", nil) //nolint:noctx
+		require.NoError(t, cli.FlushDataobj())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, flushResp.StatusCode)
 		flushResp.Body.Close()

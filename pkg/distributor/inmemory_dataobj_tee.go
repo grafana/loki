@@ -102,7 +102,7 @@ func (t *InMemoryDataObjTee) duplicate(ctx context.Context, tenant string, strea
 			pushTracker.doneWithResult(fmt.Errorf("couldn't process request internally due to inmemory tee error: %d", TeeCouldntProduceRecordsError))
 			return
 		case <-ctx.Done():
-			t.streamFailures.WithLabelValues("timeout").Inc()
+			t.streamFailures.WithLabelValues("cancellation").Inc()
 			pushTracker.doneWithResult(ctx.Err())
 			return
 		}

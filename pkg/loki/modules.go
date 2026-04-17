@@ -2504,7 +2504,7 @@ func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
 		return nil, nil
 	}
 	if t.Cfg.DataObj.Consumer.IngestMode == consumer.IngestModeInMemory {
-		level.Info(util_log.Logger).Log("msg", "skipping dataobj index builder in inmemory mode; label queries will use full ToC scan")
+		level.Info(util_log.Logger).Log("msg", "skipping dataobj index builder in inmemory mode; label queries will use full dataobj scan")
 		return nil, nil
 	}
 	store, err := t.getDataObjBucket("dataobj-index-builder")
