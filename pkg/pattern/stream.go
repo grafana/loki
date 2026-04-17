@@ -230,7 +230,7 @@ func (s *stream) writePattern(
 	count int64,
 	lvl string,
 ) {
-	service := streamLbls.Get(push.LabelServiceName)
+	service := streamLbls.Get(constants.ServiceLabelName)
 	if service == "" {
 		service = push.ServiceUnknown
 	}

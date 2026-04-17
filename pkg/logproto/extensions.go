@@ -213,11 +213,11 @@ func (m *QueryPatternsRequest) GetSampleQuery() (string, error) {
 		return "", nil
 	}
 
-	// Find service_name from matchers
+	// Find service label from matchers
 	var serviceName string
 	var serviceMatcher labels.MatchType
 	for i, m := range matchers {
-		if m.Name == "service_name" {
+		if m.Name == constants.ServiceLabelName {
 			matchers = slices.Delete(matchers, i, i+1)
 			serviceName = m.Value
 			serviceMatcher = m.Type

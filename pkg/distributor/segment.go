@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // A segmentationKey is a special partition key that attempts to equally
@@ -34,7 +35,7 @@ func getSegmentationKey(stream KeyedStream) (segmentationKey, error) {
 	if err != nil {
 		return "", err
 	}
-	if serviceName := labels.Get("service_name"); serviceName != "" {
+	if serviceName := labels.Get(constants.ServiceLabelName); serviceName != "" {
 		return segmentationKey(serviceName), nil
 	}
 	return segmentationKey("unknown_service"), nil

@@ -82,10 +82,11 @@ import (
 
 // Config is the root config for Loki.
 type Config struct {
-	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
-	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
-	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
-	BallastBytes int                    `yaml:"ballast_bytes"`
+	Target           flagext.StringSliceCSV `yaml:"target,omitempty"`
+	AuthEnabled      bool                   `yaml:"auth_enabled,omitempty"`
+	ServiceLabelName string                 `yaml:"service_label_name,omitempty"`
+	HTTPPrefix       string                 `yaml:"http_prefix" doc:"hidden"`
+	BallastBytes     int                    `yaml:"ballast_bytes"`
 
 	Server              server.Config              `yaml:"server,omitempty"`
 	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
@@ -159,6 +160,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true,
 		"Enables authentication through the X-Scope-OrgID header, which must be present if true. "+
 			"If false, the OrgID will always be set to 'fake'.",
+	)
+	f.StringVar(&c.ServiceLabelName, "service-label-name", "service_name",
+		"The label name used for service name discovery. "+
+			"Changing this value will affect how service names are discovered, stored, and queried.",
 	)
 	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0,
 		"The amount of virtual memory in bytes to reserve as ballast in order to optimize garbage collection. "+

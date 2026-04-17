@@ -168,8 +168,8 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 
 	numLabelNames := ls.Len()
 	// This is a special case that's often added by the Loki infrastructure. It may result in allowing one extra label
-	// if incoming requests already have a service_name
-	if ls.Has(push.LabelServiceName) {
+	// if incoming requests already have the configured service label
+	if ls.Has(constants.ServiceLabelName) {
 		numLabelNames--
 	}
 

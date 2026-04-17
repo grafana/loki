@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	_ "github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/util/cfg"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -63,6 +64,10 @@ func main() {
 
 	// Set the global OTLP config which is needed in per tenant otlp config
 	config.LimitsConfig.SetGlobalOTLPConfig(config.Distributor.OTLPConfig)
+	// Set the global service label name used for service name discovery
+	if config.ServiceLabelName != "" {
+		constants.ServiceLabelName = config.ServiceLabelName
+	}
 	// Set the default policy stream mappings which are needed in per tenant policy stream mappings
 	if err := config.LimitsConfig.SetDefaultPolicyStreamMapping(config.Distributor.DefaultPolicyStreamMappings); err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to set default policy stream mappings", "err", err.Error())
