@@ -55,6 +55,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	util_metric "github.com/grafana/loki/v3/pkg/util/metric"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -216,8 +217,7 @@ type Distributor struct {
 	numMetadataPartitions int
 
 	// Track the maximum number of inflight bytes in the last 1 minute.
-	inflightBytes      *atomic.Uint64
-	inflightBytesGauge prometheus.Gauge
+	inflightBytes *util_metric.MaxSampleCollector
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -407,12 +407,10 @@ func New(
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
-		inflightBytes:         atomic.NewUint64(0),
-		inflightBytesGauge: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_max_inflight_bytes",
-			Help:      "The maximum number of inflight bytes in the last 1 minute.",
-		}),
+		inflightBytes: util_metric.NewMaxSampleCollector(
+			"loki_distributor_max_inflight_bytes",
+			"The maximum number of inflight bytes in the last 1 minute.",
+		),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -453,6 +451,8 @@ func New(
 	)
 	d.rateStore = rs
 
+	_ = registerer.Register(d.inflightBytes)
+	servs = append(servs, d.inflightBytes)
 	servs = append(servs, d.ingesterClients, rs)
 	d.subservices, err = services.NewManager(servs...)
 	if err != nil {
@@ -482,38 +482,11 @@ func (d *Distributor) running(ctx context.Context) error {
 			go d.pushIngesterWorker(ctx)
 		}
 	}
-	go d.collectInflightBytes(ctx)
 	select {
 	case <-ctx.Done():
 		return nil
 	case err := <-d.subservicesWatcher.Chan():
 		return errors.Wrap(err, "distributor subservice failed")
-	}
-}
-
-// collectInflightBytes updates the inflightBytesGauge with the max value
-// from the last 1 minute.
-func (d *Distributor) collectInflightBytes(ctx context.Context) {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	// window contains per-second samples for the last 1 minute.
-	window := make([]uint64, 60)
-	secs := 0
-	for {
-		select {
-		case <-ticker.C:
-			window[secs] = d.inflightBytes.Load()
-			secs = (secs + 1) % 60
-			var maxVal uint64
-			for _, val := range window {
-				if val > maxVal {
-					maxVal = val
-				}
-			}
-			d.inflightBytesGauge.Set(float64(maxVal))
-		case <-ctx.Done():
-			return
-		}
 	}
 }
 
@@ -591,9 +564,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // Push a set of streams.
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
-	requestSizeBytes := uint64(req.Size())
-	d.inflightBytes.Add(requestSizeBytes)
-	defer d.inflightBytes.Sub(requestSizeBytes)
+	requestSize := int64(req.Size())
+	d.inflightBytes.Inc(requestSize)
+	defer d.inflightBytes.Inc(-requestSize)
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
