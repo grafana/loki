@@ -2,7 +2,7 @@ package metric
 
 import (
 	"context"
-	"sync/atomic"
+	"sync/atomic" //lint:ignore faillint we use new atomic types from sync/atomic.
 	"time"
 
 	"github.com/grafana/dskit/services"
