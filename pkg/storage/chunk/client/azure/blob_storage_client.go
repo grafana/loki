@@ -412,6 +412,9 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 		if err != nil {
 			return nil, err
 		}
+		if parsed.AccountKey == "" {
+			return azblob.NewPipeline(azblob.NewAnonymousCredential(), opts), nil
+		}
 		credential, err := azblob.NewSharedKeyCredential(parsed.AccountName, parsed.AccountKey)
 		if err != nil {
 			return nil, err
@@ -649,11 +652,15 @@ func (b *BlobStorage) endpointFromConnectionString() string {
 }
 
 func (b *BlobStorage) fmtBlobURL(blobID string) string {
-	return fmt.Sprintf("%s/%s", b.fmtContainerURL(), blobID)
+	u, _ := url.Parse(b.fmtContainerURL())
+	u.Path += "/" + blobID
+	return u.String()
 }
 
 func (b *BlobStorage) fmtContainerURL() string {
-	return fmt.Sprintf("%s/%s", b.fmtResourceURL(), b.cfg.ContainerName)
+	u, _ := url.Parse(b.fmtResourceURL())
+	u.Path = strings.TrimRight(u.Path, "/") + "/" + b.cfg.ContainerName
+	return u.String()
 }
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
