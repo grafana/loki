@@ -85,6 +85,7 @@ import (
              MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
              FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
              DECOLORIZE DROP KEEP VARIANTS OF
+             QUANTILE_SKETCH_OVER_TIME FIRST_OVER_TIME_TS LAST_OVER_TIME_TS
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -505,6 +506,10 @@ rangeOp:
     | FIRST_OVER_TIME    { $$ = OpRangeTypeFirst }
     | LAST_OVER_TIME     { $$ = OpRangeTypeLast }
     | ABSENT_OVER_TIME   { $$ = OpRangeTypeAbsent }
+    // internal ops emitted by the shard mapper so sharded queries round-trip
+    | QUANTILE_SKETCH_OVER_TIME { $$ = OpRangeTypeQuantileSketch }
+    | FIRST_OVER_TIME_TS        { $$ = OpRangeTypeFirstWithTimestamp }
+    | LAST_OVER_TIME_TS         { $$ = OpRangeTypeLastWithTimestamp }
     ;
 
 offsetExpr:

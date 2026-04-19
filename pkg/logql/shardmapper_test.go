@@ -1922,3 +1922,52 @@ func TestShardTopk(t *testing.T) {
 )`
 	require.Equal(t, expected, mappedExpr.Pretty(0))
 }
+
+// Regression test for #20326: sharded downstream queries round-trip via
+// String()/ParseExpr, so the shard mapper's internal range ops must be
+// parseable and must preserve Operation.
+func TestShardMapperReparse(t *testing.T) {
+	strategy := NewPowerOfTwoStrategy(ConstantShards(2))
+	m := NewShardMapper(strategy, nilShardMetrics, []string{
+		ShardQuantileOverTime,
+		ShardFirstOverTime,
+		ShardLastOverTime,
+	})
+
+	// `by (b)` forces the full-downstream branch that rewrites Operation.
+	cases := []struct {
+		query string
+		op    string
+	}{
+		{`quantile_over_time(0.99, {a="foo"} | unwrap bytes [1s]) by (b)`, syntax.OpRangeTypeQuantileSketch},
+		{`first_over_time({a="foo"} | unwrap bytes [1s]) by (b)`, syntax.OpRangeTypeFirstWithTimestamp},
+		{`last_over_time({a="foo"} | unwrap bytes [1s]) by (b)`, syntax.OpRangeTypeLastWithTimestamp},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.query, func(t *testing.T) {
+			parsed, err := syntax.ParseExpr(tc.query)
+			require.NoError(t, err)
+
+			_, _, mapped, err := m.Parse(parsed)
+			require.NoError(t, err)
+
+			mapped.Walk(func(e syntax.Expr) bool {
+				d, ok := e.(DownstreamSampleExpr)
+				if !ok {
+					return true
+				}
+				rp, err := syntax.ParseSampleExpr(d.SampleExpr.String())
+				require.NoError(t, err)
+
+				rp.Walk(func(e syntax.Expr) bool {
+					if r, ok := e.(*syntax.RangeAggregationExpr); ok {
+						require.Equal(t, tc.op, r.Operation)
+					}
+					return true
+				})
+				return true
+			})
+		})
+	}
+}
