@@ -13,7 +13,7 @@ permissions:
 jobs:
   helm-diff:
     name: ${{ matrix.scenario.name }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     permissions:
       contents: "read"
       id-token: "write"
@@ -104,7 +104,7 @@ jobs:
 
   summary-diff-outputs:
     name: Summary Diffs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     permissions:
       contents: "read"
       id-token: "write"

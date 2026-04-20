@@ -3,7 +3,7 @@ name: enforce conventional commits
 on: [pull_request]
 jobs:
   check-title:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64-small
     permissions:
       contents: "read"
       id-token: "write"
