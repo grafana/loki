@@ -4628,6 +4628,12 @@ ruler_remote_write_sigv4_config:
 
   [role_arn: <string> | default = ""]
 
+  [external_id: <string> | default = ""]
+
+  [use_fips_sts_endpoint: <boolean>]
+
+  [service_name: <string> | default = ""]
+
 # Configures global and per-tenant limits for remote write clients. A map with
 # remote client id as key.
 [ruler_remote_write_config: <map of string to RemoteWriteConfig>]
