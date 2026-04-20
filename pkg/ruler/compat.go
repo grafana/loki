@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/sigv4"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/model/timestamp"
@@ -23,6 +22,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/template"
+	"github.com/prometheus/sigv4"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
