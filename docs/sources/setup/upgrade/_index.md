@@ -41,12 +41,16 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 We deprecated legacy storage backends in Loki 3.0 and now they are subsequently removed:
 - Google BigTable (for chunks and indexes)
+- Apache Cassandra (for chunks and indexes)
+- Amazon DynamoDB (for indexes)
 
 Loki will fail to start if a deprecated and removed storage backend is referenced in the schema or storage configuration. You must not upgrade if you still use one of the above mentioned backends.
 
 Please refer to [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/) for more information about how to evolve your schema.
 
 If the latest entry of your schema config is older than retention period of your data, then it is safe to remove any old entries from the `schema_config.configs` when upgrading.
+
+With the legacy backends removed, also the `table-manager` target and `table_manager` configuration block are removed, as they are not needed any more. If you have a `table_manager` configuration block in your `config.yaml` you can savely remove it completely.
 
 ### Distributor Max Receive Limits for uncompressed bytes
 

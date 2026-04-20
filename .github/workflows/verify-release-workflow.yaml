@@ -2,7 +2,7 @@ name: Verify release workflow updates
 on: [pull_request]
 jobs:
   check-release-changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     permissions:
       contents: "read"
       id-token: "write"

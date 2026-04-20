@@ -2,6 +2,7 @@ local defaultMapping = {
   'linux/amd64': ['github-hosted-ubuntu-x64-small'],
   'linux/arm64': ['github-hosted-ubuntu-arm64-small'],
   'linux/arm': ['github-hosted-ubuntu-arm64-small'],  // equal to linux/arm/v7
+  'linux/riscv64': ['ubuntu-26.04-riscv'],  // https://github.com/apps/rise-risc-v-runners
 };
 
 {
@@ -27,6 +28,6 @@ local defaultMapping = {
     }
     else {
       arch: arch,
-      runs_on: ['ubuntu-latest'],
+      runs_on: ['ubuntu-x64'],
     },
 }

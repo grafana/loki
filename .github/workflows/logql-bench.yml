@@ -31,7 +31,7 @@ permissions: {}
 jobs:
   generate-testdata:
     name: Generate test data
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     steps:
       - name: Checkout code
         id: checkout
@@ -61,7 +61,7 @@ jobs:
   setup-matrix:
     name: Setup matrix
     needs: generate-testdata
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     outputs:
       matrix: ${{ steps.generate.outputs.matrix }}
     steps:

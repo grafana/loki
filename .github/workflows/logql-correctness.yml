@@ -35,7 +35,7 @@ permissions: {}
 jobs:
   generate-testdata:
     name: Generate test data
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     timeout-minutes: 60
     outputs:
       commit: ${{ steps.checkout.outputs.commit }}
