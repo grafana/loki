@@ -202,6 +202,7 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 			abort = true
 		case <-ctx.Done():
 			abort = true
+			err = ctx.Err()
 		default:
 			c.inputCh <- &work{
 				keys:     keys[i:min(i+batchSize, len(keys))],
@@ -232,6 +233,9 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 		bufs = append(bufs, r.bufs...)
 		missed = append(missed, r.missed...)
 		if r.err != nil {
+			// NOTE: this will overwrite the error from the context if any.
+			// I considered using a multierror, but if there are many batches,
+			// this may result in too many errors for the likely same reason
 			err = r.err
 		}
 	}
