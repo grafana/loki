@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -19,21 +20,21 @@ func Equals(alloc *memory.Allocator, left, right columnar.Datum, selection memor
 	}
 
 	switch left.Kind() {
-	case columnar.KindNull:
+	case types.KindNull:
 		return dispatchNullEquality(alloc, left, right, selection)
-	case columnar.KindBool:
+	case types.KindBool:
 		return dispatchBoolEquality(alloc, boolEqualKernel, left, right, selection)
-	case columnar.KindInt32:
+	case types.KindInt32:
 		return dispatchNumericEquality(alloc, int32EqualKernel, left, right, selection)
-	case columnar.KindInt64:
+	case types.KindInt64:
 		return dispatchNumericEquality(alloc, int64EqualKernel, left, right, selection)
-	case columnar.KindUint32:
+	case types.KindUint32:
 		return dispatchNumericEquality(alloc, uint32EqualKernel, left, right, selection)
-	case columnar.KindUint64:
+	case types.KindUint64:
 		return dispatchNumericEquality(alloc, uint64EqualKernel, left, right, selection)
-	case columnar.KindUTF8:
+	case types.KindUTF8:
 		return dispatchUTF8Equality(alloc, utf8EqualKernel, left, right, selection)
-	case columnar.KindStruct:
+	case types.KindStruct:
 		return structEquals(alloc, left.(*columnar.Struct), right.(*columnar.Struct), selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not comparable", left.Kind())
@@ -52,21 +53,21 @@ func NotEquals(alloc *memory.Allocator, left, right columnar.Datum, selection me
 	}
 
 	switch left.Kind() {
-	case columnar.KindNull:
+	case types.KindNull:
 		return dispatchNullEquality(alloc, left, right, selection)
-	case columnar.KindBool:
+	case types.KindBool:
 		return dispatchBoolEquality(alloc, boolNotEqualKernel, left, right, selection)
-	case columnar.KindInt32:
+	case types.KindInt32:
 		return dispatchNumericEquality(alloc, int32NotEqualKernel, left, right, selection)
-	case columnar.KindInt64:
+	case types.KindInt64:
 		return dispatchNumericEquality(alloc, int64NotEqualKernel, left, right, selection)
-	case columnar.KindUint32:
+	case types.KindUint32:
 		return dispatchNumericEquality(alloc, uint32NotEqualKernel, left, right, selection)
-	case columnar.KindUint64:
+	case types.KindUint64:
 		return dispatchNumericEquality(alloc, uint64NotEqualKernel, left, right, selection)
-	case columnar.KindUTF8:
+	case types.KindUTF8:
 		return dispatchUTF8Equality(alloc, utf8NotEqualKernel, left, right, selection)
-	case columnar.KindStruct:
+	case types.KindStruct:
 		return structNotEquals(alloc, left.(*columnar.Struct), right.(*columnar.Struct), selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not comparable", left.Kind())
@@ -85,17 +86,17 @@ func LessThan(alloc *memory.Allocator, left, right columnar.Datum, selection mem
 	}
 
 	switch left.Kind() {
-	case columnar.KindNull:
+	case types.KindNull:
 		return dispatchNullEquality(alloc, left, right, selection)
-	case columnar.KindInt32:
+	case types.KindInt32:
 		return dispatchNumericEquality(alloc, int32LTKernel, left, right, selection)
-	case columnar.KindInt64:
+	case types.KindInt64:
 		return dispatchNumericEquality(alloc, int64LTKernel, left, right, selection)
-	case columnar.KindUint32:
+	case types.KindUint32:
 		return dispatchNumericEquality(alloc, uint32LTKernel, left, right, selection)
-	case columnar.KindUint64:
+	case types.KindUint64:
 		return dispatchNumericEquality(alloc, uint64LTKernel, left, right, selection)
-	case columnar.KindUTF8:
+	case types.KindUTF8:
 		return dispatchUTF8Equality(alloc, utf8LTKernel, left, right, selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not ordered", left.Kind())
@@ -114,17 +115,17 @@ func LessOrEqual(alloc *memory.Allocator, left, right columnar.Datum, selection 
 	}
 
 	switch left.Kind() {
-	case columnar.KindNull:
+	case types.KindNull:
 		return dispatchNullEquality(alloc, left, right, selection)
-	case columnar.KindInt32:
+	case types.KindInt32:
 		return dispatchNumericEquality(alloc, int32LTEKernel, left, right, selection)
-	case columnar.KindInt64:
+	case types.KindInt64:
 		return dispatchNumericEquality(alloc, int64LTEKernel, left, right, selection)
-	case columnar.KindUint32:
+	case types.KindUint32:
 		return dispatchNumericEquality(alloc, uint32LTEKernel, left, right, selection)
-	case columnar.KindUint64:
+	case types.KindUint64:
 		return dispatchNumericEquality(alloc, uint64LTEKernel, left, right, selection)
-	case columnar.KindUTF8:
+	case types.KindUTF8:
 		return dispatchUTF8Equality(alloc, utf8LTEKernel, left, right, selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not ordered", left.Kind())
@@ -143,17 +144,17 @@ func GreaterThan(alloc *memory.Allocator, left, right columnar.Datum, selection 
 	}
 
 	switch left.Kind() {
-	case columnar.KindNull:
+	case types.KindNull:
 		return dispatchNullEquality(alloc, left, right, selection)
-	case columnar.KindInt32:
+	case types.KindInt32:
 		return dispatchNumericEquality(alloc, int32GTKernel, left, right, selection)
-	case columnar.KindInt64:
+	case types.KindInt64:
 		return dispatchNumericEquality(alloc, int64GTKernel, left, right, selection)
-	case columnar.KindUint32:
+	case types.KindUint32:
 		return dispatchNumericEquality(alloc, uint32GTKernel, left, right, selection)
-	case columnar.KindUint64:
+	case types.KindUint64:
 		return dispatchNumericEquality(alloc, uint64GTKernel, left, right, selection)
-	case columnar.KindUTF8:
+	case types.KindUTF8:
 		return dispatchUTF8Equality(alloc, utf8GTKernel, left, right, selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not ordered", left.Kind())
@@ -172,17 +173,17 @@ func GreaterOrEqual(alloc *memory.Allocator, left, right columnar.Datum, selecti
 	}
 
 	switch left.Kind() {
-	case columnar.KindNull:
+	case types.KindNull:
 		return dispatchNullEquality(alloc, left, right, selection)
-	case columnar.KindInt32:
+	case types.KindInt32:
 		return dispatchNumericEquality(alloc, int32GTEKernel, left, right, selection)
-	case columnar.KindInt64:
+	case types.KindInt64:
 		return dispatchNumericEquality(alloc, int64GTEKernel, left, right, selection)
-	case columnar.KindUint32:
+	case types.KindUint32:
 		return dispatchNumericEquality(alloc, uint32GTEKernel, left, right, selection)
-	case columnar.KindUint64:
+	case types.KindUint64:
 		return dispatchNumericEquality(alloc, uint64GTEKernel, left, right, selection)
-	case columnar.KindUTF8:
+	case types.KindUTF8:
 		return dispatchUTF8Equality(alloc, utf8GTEKernel, left, right, selection)
 	default:
 		return nil, fmt.Errorf("datum of type %s is not ordered", left.Kind())

@@ -2028,7 +2028,7 @@ storage_config:
       parallelism: 10
     memcached_client:
       consistent_hash: true
-      host: memcached-index-queries.loki-bigtable.svc.cluster.local
+      host: memcached-index-queries.loki.svc.cluster.local
       service: memcached-client
 `
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
@@ -2055,7 +2055,7 @@ storage_config:
       parallelism: 10
     memcached_client:
       consistent_hash: true
-      host: memcached-index-queries.loki-bigtable.svc.cluster.local
+      host: memcached-index-queries.loki.svc.cluster.local
       service: memcached-client
 `
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)

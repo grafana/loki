@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"log/slog"
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
@@ -142,15 +144,19 @@ func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.
 // default PromQL parser. This replaces direct use of newDefaultFileLoader(),
 // whose parser field is unexported and nil by default, causing panics.
 type defaultFileLoader struct {
-	p parser.Parser
+	p        parser.Parser
+	parseLog *slog.Logger
 }
 
 func newDefaultFileLoader() defaultFileLoader {
-	return defaultFileLoader{p: parser.NewParser(parser.Options{})}
+	return defaultFileLoader{
+		p:        parser.NewParser(parser.Options{}),
+		parseLog: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
 }
 
 func (fl defaultFileLoader) Load(identifier string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
-	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, fl.p)
+	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, fl.p, fl.parseLog)
 }
 
 func (fl defaultFileLoader) Parse(query string) (parser.Expr, error) {

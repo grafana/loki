@@ -217,8 +217,8 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 	prepareCmd.Flag("label-excluded-rule-groups", "Comma separated list of rule group names to exclude when including the configured label to aggregations.").StringVar(&r.AggregationLabelExcludedRuleGroups)
 
 	// Lint Command
-	lintCmd.Arg("rule-files", "The rule files to check.").ExistingFilesVar(&r.RuleFilesList)
-	lintCmd.Flag("rule-files", "The rule files to check. Flag can be reused to load multiple files.").StringVar(&r.RuleFiles)
+	lintCmd.Arg("rule-files", "The rule files to format.").ExistingFilesVar(&r.RuleFilesList)
+	lintCmd.Flag("rule-files", "The rule files to format. Flag can be reused to load multiple files.").StringVar(&r.RuleFiles)
 	lintCmd.Flag(
 		"rule-dirs",
 		"Comma separated list of paths to directories containing rules yaml files. Each file in a directory with a .yml or .yaml suffix will be parsed.",

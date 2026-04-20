@@ -6,6 +6,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -16,7 +17,7 @@ import (
 //
 //   - The negation of null is null.
 func Not(alloc *memory.Allocator, input columnar.Datum, _ memory.Bitmap) (columnar.Datum, error) {
-	if got, want := input.Kind(), columnar.KindBool; got != want {
+	if got, want := input.Kind(), types.KindBool; got != want {
 		return nil, fmt.Errorf("invalid input kind %s, expected %s", got, want)
 	}
 
@@ -84,10 +85,10 @@ func Or(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bi
 }
 
 func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right columnar.Datum, _ memory.Bitmap) (columnar.Datum, error) {
-	if got, want := left.Kind(), columnar.KindBool; got != want {
+	if got, want := left.Kind(), types.KindBool; got != want {
 		return nil, fmt.Errorf("invalid input kind %s, expected %s", got, want)
 	} else if left.Kind() != right.Kind() {
-		return nil, fmt.Errorf("both inputs must be %s, got %s and %s", columnar.KindBool, left.Kind(), right.Kind())
+		return nil, fmt.Errorf("both inputs must be %s, got %s and %s", types.KindBool, left.Kind(), right.Kind())
 	}
 
 	_, leftScalar := left.(columnar.Scalar)

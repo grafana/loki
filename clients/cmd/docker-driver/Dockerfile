@@ -1,4 +1,5 @@
-ARG BUILD_IMAGE=grafana/loki-build-image:0.34.6
+ARG GO_VERSION=1.26
+ARG BUILD_IMAGE=golang:${GO_VERSION}
 ARG GOARCH=amd64
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
