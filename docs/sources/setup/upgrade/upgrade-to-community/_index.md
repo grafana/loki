@@ -304,18 +304,17 @@ The `type` field accepts `pvc` (default for most components) or `ephemeral`. Fie
 
 ## Review additional deprecations
 
-Several per-component fields have been deprecated in favor of unified blocks. These still work but will be removed in a future release. Consider updating them now:
+Several per-component fields have been deprecated in favor of unified blocks. These deprecated per-component service fields apply to indexGateway, compactor, and others.
 
-```yaml
-# Deprecated per-component service fields (applies to indexGateway, compactor, and others)
-indexGateway:
-  serviceLabels: {}        # deprecated, use indexGateway.service.labels
-  serviceAnnotations: {}   # deprecated, use indexGateway.service.annotations
-  serviceType: "ClusterIP" # deprecated, use indexGateway.service.type
-  appProtocol:             # deprecated, use indexGateway.service.appProtocol
-    grpc: ""
-  maxUnavailable: null     # deprecated, use podDisruptionBudget.maxUnavailable
-```
+These still work but will be removed in a future release. Consider updating them now:
+
+| Deprecated                      | Use                                |
+| ------------------------------- | ------------------------------- -- |
+| indexGateway.serviceLabels      | indexGateway.service.labels        |
+| indexGateway.serviceAnnotations | indexGateway.service.annotations   |
+| indexGateway.serviceType        | indexGateway.service.type          |
+| indexGateway.appProtocol        | indexGateway.service.type          |
+| indexGateway.maxUnavailable     | podDisruptionBudget.maxUnavailable |
 
 The global image registry override has also been renamed:
 
