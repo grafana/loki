@@ -15,20 +15,20 @@ The Loki Helm chart has moved from the [Loki repository](https://github.com/graf
 
 This guide walks you through upgrading from 6.55.0 to 13.x, which spans seven major chart versions (7 through 13), each with breaking changes.
 
-{{< admonition type="caution" >}}
-This upgrade spans seven major versions with accumulated breaking changes. Test the upgrade in a non-production environment before applying it to production.
+{{< admonition type="warning" >}}
+Grafana Enterprise Logs (GEL) support was removed from the community chart in version 8.0.0. If you are a GEL user, **do not migrate** to the community chart. The `grafana/loki` chart remains available for GEL users.
 {{< /admonition >}}
 
-{{< admonition type="warning" >}}
-Grafana Enterprise Logs (GEL) support was removed from the community chart in version 8.0.0. If you are a GEL user, **do not migrate** to the community chart. The upstream `grafana/loki` chart remains available for GEL users.
+{{< admonition type="caution" >}}
+This upgrade spans several major versions with accumulated breaking changes. Test the upgrade in a non-production environment before applying it to production.
 {{< /admonition >}}
 
 ## Prerequisites
 
 Before you begin:
 
-- **Kubernetes 1.25 or later** is required (enforced since chart version 7.0.0).
-- **Helm 3.x** is required.
+- Kubernetes 1.25 or later is required (enforced since chart version 7.0.0).
+- Helm 3.x is required.
 - Back up your current Helm release values:
 
   ```bash
@@ -37,18 +37,18 @@ Before you begin:
 
 - Back up any persistent volumes and object store indexes.
 
-## Step 1: Update your Helm repository
+## Update your Helm repository
 
-The chart is now published to a different Helm repository and OCI registry.
+The chart is now published to a different Helm repository and Open Container Initiative (OCI) registry.  The official Helm documentation now recommends using OCI registries as they implement unified storage, distribution, and improved security.
 
-**Before** (6.x from the Loki repository):
+Old Location - 6.x from the Loki repository:
 
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
 helm upgrade <RELEASE_NAME> grafana/loki -f values.yaml
 ```
 
-**After** (13.x from the community repository):
+New Location - 7.x and later from the community repository:
 
 ```bash
 helm repo add grafana-community https://grafana-community.github.io/helm-charts
@@ -56,13 +56,13 @@ helm repo update
 helm upgrade <RELEASE_NAME> grafana-community/loki -f values.yaml --version 13.1.2
 ```
 
-Or using OCI:
+Or using OCI for 7.x and later:
 
 ```bash
 helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki -f values.yaml --version 13.1.2
 ```
 
-## Step 2: Update your values file for breaking changes
+## Update your values file for breaking changes
 
 The following sections describe every breaking change between chart versions 6.55.0 and 13.x, grouped by the major version that introduced each change. Review each section and update your values file accordingly.
 
@@ -74,7 +74,7 @@ Check the Loki Helm Chart [README](https://github.com/grafana-community/helm-cha
 
 Support for deprecated Kubernetes APIs and PodSecurityPolicy has been removed. Kubernetes 1.25 or later is now required.
 
-**Remove** the following from your values file:
+Remove the following from your values file:
 
 ```yaml
 rbac:
@@ -91,14 +91,18 @@ rbac:
   namespaced: false
 ```
 
-If you have custom Ingress resources using `networking.k8s.io/v1beta1`, update them to `networking.k8s.io/v1`. If you reference PodDisruptionBudget resources with `policy/v1beta1`, update them to `policy/v1`.
+| If you have   | using   | update them to |
+| ------------- | ------------- | ------------- |
+| custom Ingress resources | `networking.k8s.io/v1beta1` | `networking.k8s.io/v1` |
+| PodDisruptionBudget resources | `policy/v1beta1` | `policy/v1` |
 
 ### 7.x to 8.0: Enterprise support removed
 
-The entire `enterprise` configuration section has been removed from the chart. If your values file includes any `enterprise.*` keys, remove them:
+Enterprise support is removed in the community Helm chart.
+
+Remove the entire `enterprise` configuration section from your chart, including any `enterprise.*` keys:
 
 ```yaml
-# Remove this entire section
 enterprise:
   enabled: false
   version: 3.6.5
@@ -109,7 +113,6 @@ enterprise:
   externalLicenseName: null
   externalConfigName: ""
   gelGateway: true
-  # ... all other enterprise.* keys
 ```
 
 {{< admonition type="note" >}}
@@ -120,10 +123,9 @@ The Helm Chart in the Loki repository is being maintained for GEL customers only
 
 The `monitoring.selfMonitoring` section and the `grafana-agent-operator` subchart dependency have been removed.
 
-**Remove** the following from your values file:
+Remove the `monitoring.selfMonitoring` section from your values file:
 
 ```yaml
-# Remove this entire section
 monitoring:
   selfMonitoring:
     enabled: false
@@ -150,7 +152,7 @@ Also remove `monitoring.serviceMonitor.metricsInstance` if present. It reference
 
 Loki canary tenant authentication has moved from `monitoring.selfMonitoring.tenant` to the top-level `lokiCanary.tenant` section. If you were using canary tenant auth, update as follows:
 
-**Before** (6.x):
+Before (6.x):
 
 ```yaml
 monitoring:
@@ -160,7 +162,7 @@ monitoring:
       password: "my-password"
 ```
 
-**After** (13.x):
+After (13.x):
 
 ```yaml
 lokiCanary:
@@ -177,7 +179,7 @@ lokiCanary:
 
 The `indexGateway.persistence.inMemory` field has been replaced with `indexGateway.persistence.dataVolumeParameters` for more consistent configuration across components.
 
-**Before** (6.x):
+Before (6.x):
 
 ```yaml
 indexGateway:
@@ -187,7 +189,7 @@ indexGateway:
     size: 10Gi
 ```
 
-**After** (13.x):
+After (13.x):
 
 ```yaml
 indexGateway:
@@ -213,7 +215,7 @@ indexGateway:
 
 The `read.legacyReadTarget` option has been removed. Simple scalable deployments now always require a dedicated backend target (read, write, and backend).
 
-**Remove** from your values file if present:
+Remove from your values file if present:
 
 ```yaml
 read:
@@ -226,21 +228,21 @@ If you had `legacyReadTarget: true` (running the 2-target read/write mode withou
 
 The default `deploymentMode` has changed from `SimpleScalable` to `Monolithic`, and `SingleBinary` has been renamed to `Monolithic`.
 
-**Before** (6.x default):
+Before (6.x default):
 
 ```yaml
 deploymentMode: SimpleScalable
 ```
 
-**After** (13.x default):
+After (13.x default):
 
 ```yaml
 deploymentMode: Monolithic
 ```
 
-**Action required based on your current mode:**
+Action required based on your current mode:
 
-If you are running **SimpleScalable** (the 6.x default), explicitly set it in your values file to preserve your current deployment:
+If you are running `SimpleScalable` (the 6.x default), explicitly set it in your values file to preserve your current deployment:
 
 ```yaml
 deploymentMode: SimpleScalable
@@ -250,7 +252,7 @@ deploymentMode: SimpleScalable
 `SimpleScalable` is deprecated and will be removed in Loki 4.0. Plan to migrate to `Monolithic` or `Distributed`.
 {{< /admonition >}}
 
-If you are running **SingleBinary**, update the value to the new name:
+If you are running `SingleBinary`, update the value to the new name:
 
 ```yaml
 # Before
@@ -260,7 +262,7 @@ deploymentMode: SingleBinary
 deploymentMode: Monolithic
 ```
 
-If you are running **Distributed**, no change is needed.
+If you are running `Distributed`, no change is needed.
 
 ### 12.x to 13.0: Ephemeral volume persistence flattened
 
@@ -272,7 +274,7 @@ If you are migrating directly from 6.55.0 and have never used the `ephemeralData
 
 If you adopted the `ephemeralDataVolume` pattern from any intermediate community chart version, update your values as follows:
 
-**Before** (12.x):
+Before (12.x):
 
 ```yaml
 <component>:
@@ -285,7 +287,7 @@ If you adopted the `ephemeralDataVolume` pattern from any intermediate community
       storageClass: null
 ```
 
-**After** (13.x):
+After (13.x):
 
 ```yaml
 <component>:
@@ -300,7 +302,7 @@ If you adopted the `ephemeralDataVolume` pattern from any intermediate community
 
 The `type` field accepts `pvc` (default for most components) or `ephemeral`. Fields that were nested under `ephemeralDataVolume` (`accessModes`, `size`, `storageClass`, `volumeAttributesClassName`, `selector`, `annotations`, `labels`) now sit directly under `persistence`.
 
-## Step 3: Review additional deprecations
+## Review additional deprecations
 
 Several per-component fields have been deprecated in favor of unified blocks. These still work but will be removed in a future release. Consider updating them now:
 
@@ -328,7 +330,7 @@ global:
   imageRegistry: null
 ```
 
-## Step 4: Perform the upgrade
+## Perform the upgrade
 
 After updating your values file, run the upgrade:
 
@@ -359,7 +361,7 @@ kubectl logs -l app.kubernetes.io/component=write --tail=50
 kubectl logs -l app.kubernetes.io/component=loki-canary --tail=20
 ```
 
-## Step 5: Post-migration cleanup
+## Post-migration cleanup
 
 After a successful upgrade:
 
@@ -372,7 +374,7 @@ After a successful upgrade:
 - Update any CI/CD pipelines to reference `grafana-community/loki` or the OCI URL `oci://ghcr.io/grafana-community/helm-charts/loki`.
 - Review monitoring dashboards for renamed metrics. Refer to the [Loki 3.x upgrade notes](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/#30) for metric namespace changes.
 
-## Troubleshooting
+## Troubleshoot
 
 ### Pods fail to start with PodSecurityPolicy errors
 
