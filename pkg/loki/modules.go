@@ -101,8 +101,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-const maxChunkAgeForTableManager = 12 * time.Hour
-
 // The various modules that make up Loki.
 const (
 	Ring                         = "ring"
