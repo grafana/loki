@@ -48,7 +48,7 @@ type delayedMockMemcache struct {
 	delay time.Duration
 }
 
-func (m *delayedMockMemcache) GetMulti(ctx context.Context, keys []string, opts ...memcache.Option) (map[string]*memcache.Item, error) {
+func (m *delayedMockMemcache) GetMulti(ctx context.Context, keys []string, _ ...memcache.Option) (map[string]*memcache.Item, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
