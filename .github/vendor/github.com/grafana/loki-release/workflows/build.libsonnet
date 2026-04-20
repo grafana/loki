@@ -321,7 +321,6 @@ local runner = import 'runner.libsonnet',
       'id-token': 'write',
     })
     + job.withSteps([
-      common.cleanUpBuildCache,
       common.fetchReleaseRepo,
       common.fetchGcsCredentials,
       common.googleAuth,
