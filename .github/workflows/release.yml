@@ -5,7 +5,7 @@ env:
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
+  RELEASE_LIB_REF: "decfa8d4d77a2dbc10e71a0785591e1cbcea6b8b"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
@@ -25,7 +25,7 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -151,7 +151,7 @@ jobs:
     permissions:
       contents: "write"
       id-token: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -248,7 +248,7 @@ jobs:
     - "createRelease"
     permissions:
       id-token: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -302,7 +302,7 @@ jobs:
     - "createRelease"
     permissions:
       id-token: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -352,7 +352,7 @@ jobs:
     permissions:
       contents: "write"
       id-token: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -407,7 +407,7 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"

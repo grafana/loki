@@ -1,10 +1,10 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@52d476dc60de14b52b6dec2b33e86abeeb497fcc"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@decfa8d4d77a2dbc10e71a0785591e1cbcea6b8b"
     "with":
       "build_image": "grafana/loki-build-image:0.35.1"
       "golang_ci_lint_version": "v2.10.1"
-      "release_lib_ref": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
+      "release_lib_ref": "decfa8d4d77a2dbc10e71a0785591e1cbcea6b8b"
       "skip_validation": false
       "use_github_app_token": true
   "loki-canary-boringcrypto-image":
@@ -12,7 +12,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.2"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
+      "RELEASE_LIB_REF": "decfa8d4d77a2dbc10e71a0785591e1cbcea6b8b"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -112,7 +112,7 @@
     "permissions":
       "contents": "read"
       "id-token": "write"
-    "runs-on": "ubuntu-latest"
+    "runs-on": "ubuntu-x64"
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
@@ -136,7 +136,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.2"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
+      "RELEASE_LIB_REF": "decfa8d4d77a2dbc10e71a0785591e1cbcea6b8b"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -236,7 +236,7 @@
     "permissions":
       "contents": "read"
       "id-token": "write"
-    "runs-on": "ubuntu-latest"
+    "runs-on": "ubuntu-x64"
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
@@ -260,7 +260,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.2"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
+      "RELEASE_LIB_REF": "decfa8d4d77a2dbc10e71a0785591e1cbcea6b8b"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -360,7 +360,7 @@
     "permissions":
       "contents": "read"
       "id-token": "write"
-    "runs-on": "ubuntu-latest"
+    "runs-on": "ubuntu-x64"
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
@@ -384,7 +384,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.2"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
+      "RELEASE_LIB_REF": "decfa8d4d77a2dbc10e71a0785591e1cbcea6b8b"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -484,7 +484,7 @@
     "permissions":
       "contents": "read"
       "id-token": "write"
-    "runs-on": "ubuntu-latest"
+    "runs-on": "ubuntu-x64"
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
@@ -514,7 +514,7 @@
     "permissions":
       "contents": "read"
       "id-token": "write"
-    "runs-on": "ubuntu-latest"
+    "runs-on": "ubuntu-x64"
     "steps":
     - "name": "Trigger CD workflow"
       "uses": "grafana/shared-workflows/actions/trigger-argo-workflow@8b88213bca76e86f9f59b43038cc5d7545452436"

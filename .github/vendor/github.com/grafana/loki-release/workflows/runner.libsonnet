@@ -28,6 +28,6 @@ local defaultMapping = {
     }
     else {
       arch: arch,
-      runs_on: ['ubuntu-latest'],
+      runs_on: ['ubuntu-x64'],
     },
 }
