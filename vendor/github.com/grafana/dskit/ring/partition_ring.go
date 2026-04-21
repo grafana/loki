@@ -73,6 +73,13 @@ type PartitionRing struct {
 	// newSubring compute the subring token count in O(k) instead of O(total_tokens).
 	pidTokenCounts [64]uint16
 
+	// tokenBuckets is a 257-entry prefix-sum table dividing the uint32 keyspace into 256
+	// equal-width buckets by top 8 bits.  tokenBuckets[i] is the index of the first token
+	// in ringTokens with (token >> 24) >= i.  Non-nil only for root rings with ≤65535 tokens.
+	// Lets searchRingToken restrict the binary search to ~64 tokens instead of all 16K,
+	// reducing comparisons from log2(16384)=14 to log2(64)=6.
+	tokenBuckets *[257]uint16
+
 	// allPIDsFitBitset is true when every partition ID in desc is in [0, 63], enabling the
 	// zero-alloc bitset fast path in shuffleShard.
 	allPIDsFitBitset bool
@@ -136,6 +143,25 @@ func (r *PartitionRing) searchRingToken(key uint32) int {
 	if r.parent != nil {
 		r.ensureIndices()
 		return searchTokenIndirect(r.ringTokenIndices, r.parent.ringTokens, key)
+	}
+	if r.tokenBuckets != nil {
+		tokens := r.ringTokens
+		n := len(tokens)
+		bucket := key >> 24
+		lo := int(r.tokenBuckets[bucket])
+		hi := int(r.tokenBuckets[bucket+1])
+		for lo < hi {
+			mid := int(uint(lo+hi) >> 1)
+			if tokens[mid] < key {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if lo < n && tokens[lo] == key {
+			lo++
+		}
+		return lo % n
 	}
 	return searchToken(r.ringTokens, key)
 }
@@ -224,6 +250,18 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 		}
 	}
 
+	var tokenBuckets *[257]uint16
+	if len(ringTokens) <= 65535 {
+		tb := new([257]uint16)
+		for _, t := range ringTokens {
+			tb[t>>24+1]++
+		}
+		for i := 1; i <= 256; i++ {
+			tb[i] += tb[i-1]
+		}
+		tokenBuckets = tb
+	}
+
 	return &PartitionRing{
 		desc:                  desc,
 		ringTokens:            ringTokens,
@@ -232,6 +270,7 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 		activePartitionsCount: desc.activePartitionsCount(),
 		shuffleShardCache:     shuffleShardCache,
 		pidTokenCounts:        pidTokenCounts,
+		tokenBuckets:          tokenBuckets,
 		allPIDsFitBitset:      allPIDsFitBitset,
 		opts:                  opts,
 	}, nil
