@@ -49,6 +49,10 @@ func (r *scanTimeRangePushup) applyToTargets(node Node, timeRange TimeRange) boo
 	case *RangeAggregation:
 		if node.Step == 0 { // instant query
 			if node.End.Compare(timeRange.End) > 0 && node.End.Add(-1*node.Range).Compare(timeRange.End) < 0 { // node range overlaps the scan range
+				// keep track of the unmodified values for later
+				node.InstantTimeUpdated = true
+				node.InstantOrigEnd = node.End
+				node.InstantOrigRange = node.Range
 				// reduce the node range and clamp to the scan range end
 				node.Range = node.Range - (node.End.Sub(timeRange.End))
 				node.Start = timeRange.End.UTC()
