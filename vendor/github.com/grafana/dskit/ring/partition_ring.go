@@ -75,12 +75,13 @@ type PartitionRing struct {
 	// unused array, reducing their allocation size by 37%.
 	pidTokenCounts *[64]uint16
 
-	// tokenBuckets is a 4097-entry prefix-sum table dividing the uint32 keyspace into 4096
-	// equal-width buckets by top 12 bits.  tokenBuckets[i] is the index of the first token
-	// in ringTokens with (token >> 20) >= i.  Non-nil only for root rings with ≤65535 tokens.
-	// Lets searchRingToken restrict the binary search to ~4 tokens instead of all 16K,
-	// reducing comparisons from log2(16384)=14 to log2(4)=2.
-	tokenBuckets *[4097]uint16
+	// tokenBuckets is a 16385-entry prefix-sum table dividing the uint32 keyspace into 16384
+	// equal-width buckets by top 14 bits.  tokenBuckets[i] is the index of the first token
+	// in ringTokens with (token >> 18) >= i.  Non-nil only for root rings with ≤65535 tokens.
+	// Lets searchRingToken restrict the binary search to ~1 token instead of all 16K,
+	// reducing comparisons from log2(16384)=14 to ~0-1 comparisons.  The 32 KB table fits
+	// in the M4 Pro's 128 KB L1 data cache alongside the 64 KB token array.
+	tokenBuckets *[16385]uint16
 
 	// activePartBits and pendingPartBits are bitsets of active/pending PIDs for PIDs 0-63.
 	// Only populated for root rings (parent == nil, allPIDsFitBitset == true).
@@ -155,7 +156,7 @@ func (r *PartitionRing) searchRingToken(key uint32) int {
 	if r.tokenBuckets != nil {
 		tokens := r.ringTokens
 		n := len(tokens)
-		bucket := key >> 20
+		bucket := key >> 18
 		lo := int(r.tokenBuckets[bucket])
 		hi := int(r.tokenBuckets[bucket+1])
 		for lo < hi {
@@ -258,13 +259,13 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 		}
 	}
 
-	var tokenBuckets *[4097]uint16
+	var tokenBuckets *[16385]uint16
 	if len(ringTokens) <= 65535 {
-		tb := new([4097]uint16)
+		tb := new([16385]uint16)
 		for _, t := range ringTokens {
-			tb[t>>20+1]++
+			tb[t>>18+1]++
 		}
-		for i := 1; i <= 4096; i++ {
+		for i := 1; i <= 16384; i++ {
 			tb[i] += tb[i-1]
 		}
 		tokenBuckets = tb
